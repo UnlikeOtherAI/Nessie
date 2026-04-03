@@ -32,19 +32,22 @@ The feel: **Jarvis meets terminal**. Ambient, omnipresent, ready.
 ## Architecture
 
 ```
-[You] ←→ [Voice Layer (Minimax)] ←→ [Orchestrator Agent] ←→ [Sub-Agents]
+[You] ←→ [Voice Layer (???)] ←→ [Orchestrator Agent] ←→ [Sub-Agents]
                                                       ↓
                                               [Tool Layer]
                                               - File read/write
                                               - Bash commands
-                                              - File search
+                                              - File find
                                               - Web search
 ```
 
-### Voice Layer (Minimax)
+### Voice Layer
 - Handles audio input/output only
-- Streams voice to/from Minimax voice-to-voice API
-- Pure audio passthrough — no business logic here
+- Streams voice to/from **OpenAI Realtime API** (`gpt-4o-realtime-preview`)
+- True voice-to-voice: audio in → audio out (single model, WebSocket)
+- Sub-250ms latency, streaming audio chunks
+- No STT/TTS split — model handles speech understanding and generation natively
+- Fallback: Minimax TTS for voice output if OpenAI voice quality is preferred
 
 ### Orchestrator Agent (Main Agent)
 - **Central coordinator, always running**
@@ -125,13 +128,14 @@ runToolUse(toolUse, context)
 
 ```
 [Voice in]
-    → Minimax streams audio → transcribed text
-    → Orchestrator receives text, decides action:
-        → [Voice response] → Minimax speaks back
+    → OpenAI Realtime API (audio WebSocket)
+    → Orchestrator receives context + audio response
+    → Orchestrator decides action:
+        → [Voice response] → streamed back via Realtime API
         → [Inject to app] → finds active app, types text
         → [Spawn sub-agent] → assigns tools + task, sub-agent works
     → Orchestrator waits for sub-agent results
-    → Synthesizes final response → voice out via Minimax
+    → Synthesizes final response → voice out via Realtime API
 ```
 
 ## Native macOS App
@@ -214,7 +218,13 @@ runToolUse(toolUse, context)
 
 ## Open Questions
 
-- Minimax voice-to-voice API — exact endpoint, latency, streaming format
+### Voice-to-Voice — RESOLVED
+- **OpenAI Realtime API** (`gpt-4o-realtime-preview`) — true audio-in/audio-out via WebSocket, single model handles everything
+- Latency: ~200-300ms end-to-end
+- Must verify: pricing, rate limits, audio format support (PCM 24kHz)
+- Fallback voice: Minimax TTS for output only if needed
+
+### Other Open Questions
 - Input injection — AXUIElement vs CGEvent vs accessibility APIs
 - Sub-agent communication — IPC socket, file-based, or stdout capture
 - Main orchestrator model — which LLM powers the orchestrator?
