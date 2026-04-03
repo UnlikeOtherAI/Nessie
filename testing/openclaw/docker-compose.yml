@@ -1,0 +1,58 @@
+# OpenClaw local Gateway for development / testing
+#
+# Usage:
+#   cd testing/openclaw
+#   docker compose up -d
+#   openclaw gateway status   # or: curl http://localhost:18789/health
+#
+# To get the auth token:
+#   docker compose exec openclaw-gateway cat /root/.openclaw/openclaw.json | jq '.auth.token'
+#
+# To shell into the container:
+#   docker compose exec openclaw-gateway sh
+#
+# To rebuild:
+#   docker compose build --no-cache
+#
+# To stop:
+#   docker compose down
+#
+# Note: This uses the official OpenClaw Docker image. For development,
+# you may want to mount a local source directory instead of the image.
+# Replace the `image` line with a `build` section if building locally.
+
+version: "3.9"
+
+services:
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    ports:
+      - "18789:18789"   # Gateway WS + HTTP port
+    environment:
+      # Use env vars for auth — tokens are printed on first run and stored in the volume
+      # To set a custom token on first start:
+      # OPENCLAW_AUTH_TOKEN: "my-custom-token"
+      NODE_ENV: production
+    volumes:
+      # Persist state across restarts
+      - openclaw-data:/root/.openclaw
+      # Optional: mount a local workspace for the agent
+      # - /path/to/workspace:/root/workspace
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:18789/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - openclaw-net
+
+volumes:
+  openclaw-data:
+    name: openclaw-gateway-data
+
+networks:
+  openclaw-net:
+    name: openclaw-net

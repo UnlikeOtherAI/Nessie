@@ -1,113 +1,149 @@
-# OpenClaw Research — Suggested Improvements
+# OpenClaw Research — Implementation Status
 
-## Comparison of the two documents
+> This document tracks the 11 suggested improvements from the original deep research documents and their implementation status.
 
-| Aspect | `openclaw-deep-research.md` (Native Mobile) | `openclaw-deep-research-report.md` (Business Operations) |
-|---|---|---|
-| Focus | Mobile client architecture, protocol deep-dive | Business operations, deployment, security |
-| Audience | Mobile developers, architects | Business operators, security teams, DevOps |
-| Strength | Detailed protocol/API mapping with explicit effort estimates | Comprehensive threat model and hardening checklist |
-| Gap | Lacks hands-on deployment/runbook content | Lacks concrete API details (WS frames, HTTP schemas) |
-| Gap | No actual OpenClaw Gateway code or schema references | No native mobile or client-side architecture |
-| Gap | Protocol details sourced from cited docs, not verified against live Gateway | Security events are snapshot-in-time (Feb 2026) and will stale |
+## Completed
 
-## What to improve
+### ✅ 2. Merged into a single canonical document
+**File**: `docs/openclaw-reference.md`
 
-### 1. Verify protocol details against live Gateway
+Replaced both `openclaw-deep-research.md` (Native Mobile) and `openclaw-deep-research-report.md` (Business Operations) with a single 9-part canonical reference:
 
-Both documents source protocol specifics (WS frame shapes, `chat.send` params, `sessions.patch` fields, etc.) from cited docs. The OpenClaw Gateway is open source. Cross-reference against:
+- Part 1 — What OpenClaw Is (architecture diagram, agent loop, Gateway role)
+- Part 2 — Protocol Reference (WS + HTTP surfaces, auth flows, session model, `connect` frame, auth error codes)
+- Part 3 — Live Gateway Walkthrough (annotated startup, wscat handshake, chat.send round-trip, curl examples)
+- Part 4 — Business Deployment (hosting, channels, email, automation, Lobster, deployment checklist)
+- Part 5 — Mobile Client Architecture (Feature Router, build-vs-buy decision tree, top-9 feature table)
+- Part 6 — Security, Compliance & Hardening (threat model, hardening checklist, UK/EU GDPR DPIA triggers, data flow, retention template)
+- Part 7 — Alternatives Comparison (agent orchestration vs LangGraph/crewAI/AutoGen; workflow automation vs n8n/Temporal/Zapier/Make; macOS menu bar vs OpenClaw node)
+- Part 8 — Gap Analysis summary (pointing to `docs/openclaw-gap-analysis.md`)
+- Part 9 — Testing Playground (pointing to `testing/openclaw/`)
 
-- The actual TypeBox schemas in `packages/gateway/src/protocol/` or equivalent source.
-- A running Gateway instance via `openclaw gateway --help` and introspected WS traffic.
-- The JSON-Schema / OpenRPC specs if exported by the Gateway.
+### ✅ 3. Added live Gateway walkthrough
+**File**: `docs/openclaw-reference.md` Part 3
 
-This would validate field names, optionality, enum values, and default limits that may have drifted from docs.
+Includes:
+- Annotated `openclaw gateway` startup with flag table
+- Annotated `wscat` handshake with exact JSON frames
+- Annotated `chat.send` → streaming events → final response round-trip
+- Full `curl` examples for `/v1/chat/completions`, `/v1/responses`, `/sessions/{key}/history`, `/hooks/agent`, `/tools/invoke`
 
-### 2. Merge into a single canonical document
+### ✅ 4. Added "what's different from OpenClaw" section
+**File**: `docs/openclaw-gap-analysis.md`
 
-The two docs cover the same project but talk past each other. A merged structure would serve readers better:
+Full gap analysis covering:
+- What Helper Agent has (8 capabilities mapped to implementation)
+- What OpenClaw has (16 capabilities)
+- Direct comparison table (17 dimensions)
+- Three integration paths: Helper as OpenClaw operator client, Helper as OpenClaw node, hybrid
+- Recommendations for short/medium/long term
+- What Helper Agent should NOT take from OpenClaw (skills marketplace, full tool policy, Pi runtime, Control UI)
+- What Helper Agent should take from OpenClaw (session persistence, cron, webhooks, Lobster approvals)
 
-- **Part 1 — What OpenClaw is** (architecture diagram, agent loop, Gateway role)
-- **Part 2 — Protocol reference** (WS + HTTP surfaces, auth flows, session model)
-- **Part 3 — Mobile client architecture** (native-first strategy, Feature Router, API mapping)
-- **Part 4 — Business deployment** (hosting, channels, automation, hardening)
-- **Part 5 — Security & compliance** (threat model, hardening checklist, GDPR framing)
-- **Part 6 — Roadmap & gaps** (what's missing, what to build next)
+### ✅ 5. Filled Protocol Reference gaps
+**File**: `docs/openclaw-reference.md` Part 2
 
-### 3. Add a live Gateway walkthrough section
+- `connect` frame: complete JSON with all documented fields (`minProtocol`, `client`, `role`, `scopes`, `auth`, `device`)
+- `chat.send` response events: enumerated all `state` values (`running`, `delta`, `final`, `aborted`, `error`)
+- `sessions.list` response: inferred row schema with field annotations
+- HTTP `/sessions/{key}/history`: cursor pagination, SSE `follow=1` semantics, error cases
+- `/tools/invoke`: full request shape + default HTTP deny list table
+- Auth error codes: complete table with client action guidance
 
-Both docs describe mechanisms but don't guide the reader through a real session. Add:
+### ✅ 6. Added "build vs buy" decision tree for mobile
+**File**: `docs/openclaw-reference.md` Part 5
 
-- Annotated `openclaw gateway` startup output (flags, ports, health checks).
-- Annotated WebSocket handshake captured via `wscat` or similar.
-- Annotated `chat.send` → streaming events → `chat.history` round-trip.
-- Annotated `/hooks/agent` curl example with a real payload.
+- Decision tree: top-9 → native; else → WebView
+- WebView → Native migration checklist (route → flag → implement → test → gate → remove flag → cleanup)
+- Criteria for promotion: usage frequency, latency sensitivity, offline requirement, device integration need
+- Effort-ranked top-9 feature table mapped to milestones A–D
 
-### 4. Add a "what's different from OpenClaw" section specific to this project
+### ✅ 7. Added testing/playground section
+**Files**: `testing/openclaw/`
 
-This project (the Helper Agent) already has:
+- `docker-compose.yml` — local Gateway with persistent volume, health check, named networks
+- `wscat-connect.sh` — annotated WS connection script with `--auth` fallback for older wscat
+- `http-examples.sh` — curl commands for all HTTP endpoints (health, chat completions, responses, session history, tools invoke, hooks)
+- `mock-gateway-server.ts` — minimal mock WS server implementing connect, chat.*, sessions.*, config.*, device.pair for contract testing
+- `README.md` — quick start guide for both real Gateway and mock approaches
 
-- Voice-first input via OpenAI Realtime API.
-- macOS accessibility/input injection.
-- Multi-agent orchestration.
+### ✅ 8. Addressed mobile push strategy gap
+**File**: `docs/openclaw-reference.md` Part 5
 
-Map these onto OpenClaw's architecture: where do they overlap, where do they diverge, and what would it take to make this Helper Agent act as an OpenClaw operator client vs an OpenClaw node?
+Detailed push strategy section covering:
+- Relay architecture (why: avoids storing raw APNs/FCM tokens on Gateway)
+- Full iOS APNs relay sequence diagram (Register → Associate → Send → Silent push → Reconnect → Deliver)
+- Android FCM planned path and design guidance
+- Android foreground service for "always-on" mode
+- iOS background limitations (silent push throttling, BGTaskScheduler as supplement)
 
-### 5. Fill the Protocol Reference gaps
+### ✅ 9. Added legal section (practitioner POV)
+**File**: `docs/openclaw-reference.md` Part 6
 
-- `connect` frame: enumerate all fields in `connect.params` and `connect.params.device`.
-- `chat.send` response events: enumerate all `state` values and when each fires.
-- `sessions.list` response: show the actual row schema.
-- HTTP `GET /sessions/{key}/history`: document all cursor/pagination semantics.
-- `/tools/invoke`: enumerate the default HTTP deny list.
+- DPIA trigger criteria: special category data, systematic monitoring, scale
+- Data flow diagram: ingress → Gateway → workspace file → external tools → persistence
+- Retention policy template table: transcripts, workspace, credentials, hook logs, skills
+- Processor checklist for skills/plugins: code review, logging audit, scope validation, SSRF review
 
-### 6. Add a "build vs buy" decision tree for mobile
+### ✅ 10. Added "why not just use X" section
+**File**: `docs/openclaw-reference.md` Part 7
 
-The native mobile doc recommends a hybrid (native chat + WebView fallback). Make this concrete:
+- Concrete comparison matrices:
+  - Agent orchestration: OpenClaw vs LangGraph vs crewAI vs AutoGen (7 dimensions)
+  - Workflow automation: OpenClaw vs n8n vs Temporal vs Zapier vs Make (9 dimensions)
+  - macOS app: Helper Agent vs OpenClaw node app (10 dimensions)
+- Decision guidance for each alternative category
 
-- Decision tree: is the feature in the top-9 table? → native. Otherwise → WebView.
-- Migration checklist: how to move a WebView route to native (route → flag → implement → test → remove flag).
-- Criteria for promoting a feature from WebView to native (usage frequency, latency sensitivity, offline requirement).
+### ✅ 11. Gap analysis: what we have vs what OpenClaw has
+**File**: `docs/openclaw-gap-analysis.md`
 
-### 7. Add a testing/playground section
+Full analysis covering:
+- Helper Agent capabilities (voice, input injection, orchestrator, tools, UI)
+- OpenClaw capabilities (channels, WS protocol, tools, session model, cron, push)
+- 17-dimension comparison table
+- Three integration paths with implementation notes and effort estimates
+- Short/medium/long term recommendations
 
-Both docs are design-oriented. Add:
+---
 
-- Minimal `docker-compose.yml` to spin up a local Gateway for experimentation.
-- `wscat` commands for connecting as operator.
-- Example `curl` calls for each HTTP endpoint.
-- Mobile client mock server for contract testing without a real Gateway.
+## Pending Live Verification
 
-### 8. Address the mobile push strategy gap
+The following items need to be verified against a **live OpenClaw Gateway instance** (running `openclaw gateway`) and the **TypeBox source schemas** (`packages/gateway/src/protocol/`) before use in production clients or implementations:
 
-The native mobile doc mentions APNs relay-backed push and FCM but doesn't specify:
+### Protocol schemas
+- [ ] `connect.params` full field set — confirm optional fields (`locale`, `timezone`, etc.)
+- [ ] `hello-ok.auth` lifecycle fields — confirm `expiresAt` presence, token rotation methods
+- [ ] `chat.send` `state` enum — confirm complete list including intermediate states (`thinking`, `tool_use`, etc.)
+- [ ] `chat.send` `usage` object shape — confirm which fields are populated and in what units
+- [ ] `sessions.list` response row schema — extract from schema export (`openclaw schema export` if available)
+- [ ] `sessions.spawn` — confirm existence, exact params, and response shape
+- [ ] `node.invoke` — confirm `nodeId`/`command`/`args` semantics and response format
+- [ ] `sessions.patch` enum values — confirm `thinkingLevel`, `reasoningLevel`, `verboseLevel`, `elevatedLevel` strings
 
-- What the relay server is (OpenClaw-hosted? self-hosted?).
-- How the app registers (`push.apns.register` frame shape and server response).
-- How the Gateway sends a push wake end-to-end (sequence diagram).
-- What happens on Android when the app is force-killed.
+### HTTP API
+- [ ] `/tools/invoke` default HTTP deny list — verify from `packages/gateway/src/http/denyList.ts` or equivalent
+- [ ] `GET /sessions/{key}/history` cursor encoding — confirm format (base64 JSON? opaque string?)
+- [ ] `GET /sessions/{key}/history` SSE event names in `follow=1` mode
+- [ ] `GET /sessions/{key}/history` `limit` server-side cap
+- [ ] `POST /v1/responses` SSE event type enumeration
+- [ ] `gateway.auth.rateLimit` threshold values
 
-### 9. Legal section needs a practitioner POV
+### CLI / Operations
+- [ ] `openclaw gateway --help` — confirm all flags
+- [ ] `openclaw devices approve` — confirm exact CLI for device pairing approval
+- [ ] TypeBox schemas for code generation — check if `openclaw schema` or similar exports JSON Schema / OpenRPC spec
 
-The GDPR framing in the business report is advisory-level. Add:
+### Configuration
+- [ ] `tools.profile` valid values — confirm `"messaging"`, `"all"`, `"none"`, etc.
+- [ ] `channels.*.policy` valid values — confirm `pairing`, `allowlist`, `open`, `disabled`
+- [ ] `gateway.controlUi.allowedOrigins` default behaviour and validation
 
-- Specific DPIA trigger criteria for OpenClaw deployments.
-- Example data flow diagram (ingress → Gateway memory → transcript storage → external tools).
-- Retention policy template for transcripts and session logs.
-- Processor checklist for the skill/plugin ecosystem.
+---
 
-### 10. Add a "why not just use X" section
+## How to Verify
 
-The alternatives in the business report are high-level. Add concrete comparison matrices:
-
-- OpenClaw vs LangGraph vs crewAI vs AutoGen for agent orchestration.
-- OpenClaw vs n8n vs Temporal for workflow automation.
-- OpenClaw native node app vs a custom macOS menu bar app for personal use.
-
-### 11. Capture the "what we have vs what OpenClaw has" gap analysis
-
-Given this Helper Agent already has voice, orchestration, and macOS integration, the most valuable research would be:
-
-- How would this Helper Agent consume OpenClaw as a backend? (Operator WS client connecting to OpenClaw Gateway.)
-- How would OpenClaw use this Helper Agent as a node? (Helper as a node with voice/camera/tools capabilities.)
-- Is there a hybrid where this project becomes an OpenClaw-compatible client?
+1. Start a local Gateway: `docker compose -f testing/openclaw/docker-compose.yml up -d`
+2. Inspect TypeBox source: clone `github.com/openclaw/openclaw` and check `packages/gateway/src/protocol/`
+3. Run `openclaw gateway --verbose` and capture traffic with `wscat` for WS protocol details
+4. Run `curl` commands from `testing/openclaw/http-examples.sh` against the live Gateway
+5. Use `testing/openclaw/mock-gateway-server.ts` for offline contract testing (update it with verified shapes)
