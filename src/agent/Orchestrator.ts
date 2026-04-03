@@ -2,10 +2,12 @@ import { allTools } from '../tools/index.js'
 import { findToolByName } from '../tools/Tool.js'
 import type { ToolUseContext, ToolUseBlock } from '../tools/types.js'
 import type { OrchestratorState, SubAgentTask, AgentMessage } from './types.js'
+import type { LlmClient } from '../llm/client.js'
 
 export class Orchestrator {
   private state: OrchestratorState
   private callbacks: OrchestratorCallbacks
+  private llm: LlmClient | null
 
   constructor(options: OrchestratorOptions) {
     this.state = {
@@ -16,6 +18,11 @@ export class Orchestrator {
       currentAgent: options.defaultAgent ?? 'main',
     }
     this.callbacks = options.callbacks ?? {}
+    this.llm = options.llm ?? null
+  }
+
+  setLlm(llm: LlmClient) {
+    this.llm = llm
   }
 
   getState(): OrchestratorState {
@@ -40,8 +47,7 @@ export class Orchestrator {
       case 'subagent':
         return await this.handleSubAgentTask(action.task ?? content, action.tools ?? [])
       default:
-        // Voice response - return the content for voice synthesis
-        return content
+        return await this.handleVoiceResponse()
     }
   }
 
@@ -59,6 +65,19 @@ export class Orchestrator {
   private async handleKeyboardInject(text: string): Promise<string> {
     await this.callbacks.injectToActiveApp?.(text)
     return `Injected: ${text}`
+  }
+
+  private async handleVoiceResponse(): Promise<string> {
+    if (!this.llm) return `No LLM client configured.`
+    try {
+      const conversation = this.state.messages.map((m) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content,
+      }))
+      return await this.llm!.chat(conversation)
+    } catch (err) {
+      return `LLM error: ${err instanceof Error ? err.message : String(err)}`
+    }
   }
 
   private async handleSubAgentTask(task: string, toolNames: string[]): Promise<string> {
@@ -134,6 +153,7 @@ export class Orchestrator {
 export type OrchestratorOptions = {
   defaultAgent?: string
   callbacks?: OrchestratorCallbacks
+  llm?: LlmClient
 }
 
 export type OrchestratorCallbacks = {
