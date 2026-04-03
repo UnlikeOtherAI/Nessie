@@ -51,16 +51,18 @@ The feel: **Jarvis meets terminal**. Ambient, omnipresent, ready.
 
 ### Orchestrator Agent (Main Agent)
 - **Central coordinator, always running**
-- Receives text context from voice layer (after Minimax transcribes)
+- Receives text context from voice layer (after OpenAI Realtime transcribes)
 - Decides what to do: respond vocally, inject to app, or spawn sub-agent
 - **Spawns and manages all sub-agents** — can spin up multiple simultaneously
 - **Owns the tool layer** — orchestrates which tools are available to which agents
+- **Sub-agents run via `max`** — MiniMax-powered Claude (ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic, token=$MINIMAX_API_KEY)
 - Maintains conversation context and memory across sessions
 - Handles input injection coordination with active app detection
 - Subscribes to audio state (listening, speaking, idle)
 
 ### Sub-Agents
 - **Created and managed by orchestrator** — spawned on demand, killed when done
+- Run via `max` CLI (MiniMax API, Anthropic-compatible)
 - Can run multiple concurrently (pool or parallel)
 - Each sub-agent gets tools + task context from orchestrator
 - Report results back to orchestrator when complete
@@ -225,12 +227,7 @@ runToolUse(toolUse, context)
 - Fallback voice: Minimax TTS for output only if needed
 
 ### Other Open Questions
-- Input injection — AXUIElement vs CGEvent vs accessibility APIs
 - Sub-agent communication — IPC socket, file-based, or stdout capture
-- Main orchestrator model — which LLM powers the orchestrator?
-- Sub-agent pool size — max concurrent agents?
 - Tool schema format — Zod vs JSON Schema for tool input validation
 - Progress reporting — streaming progress vs polling for long-running tools
-- Sub-agent spawning — fork process, thread, or external CLI invocation?
 - Hotword engine — Apple Speech framework, ANE, or Porcupine/brownie for local wake word?
-- App architecture — SwiftUI vs React Native vs Electron for native macOS app?
