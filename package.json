@@ -7,13 +7,14 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "glob": "^13.0.6",
     "ws": "^8.18.0",
     "zod": "^3.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.0",
-    "bun-types": "^1.0.0"
+    "bun-types": "^1.0.0",
+    "typescript": "^5.0.0"
   }
 }
