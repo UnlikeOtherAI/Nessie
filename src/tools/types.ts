@@ -31,3 +31,9 @@ export type ToolUseContext = {
 }
 
 export type Tools = readonly Tool[]
+
+export type ToolUseBlock = {
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
