@@ -1,0 +1,17 @@
+name: Helper
+options:
+  bundleIdPrefix: com.helper
+  deploymentTarget:
+    macOS: "14.0"
+targets:
+  Helper:
+    type: application
+    platform: macOS
+    sources:
+      - path: Helper
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.helper.Agent
+      INFOPLIST_FILE: Helper/Info.plist
+      CODE_SIGN_ENTITLEMENTS: Helper/Helper.entitlements
+      ENABLE_HARDENED_RUNTIME: YES
+      COMBINE_HIDPI_IMAGES: YES
