@@ -22,9 +22,8 @@ class AppState: ObservableObject {
   ]
   @Published var messages: [ChatMessage] = []
   @Published var hotwordReady = true
-  @StateObject private var _networkMonitor = NetworkMonitor()
 
-  var networkMonitor: NetworkMonitor { _networkMonitor }
+  let networkMonitor = NetworkMonitor()
 
   init() {
     // Observe network changes via NotificationCenter
@@ -33,7 +32,7 @@ class AppState: ObservableObject {
       object: nil,
       queue: .main
     ) { [weak self] _ in
-      self?.isOnline = self?._networkMonitor.isConnected ?? false
+      self?.isOnline = self?.networkMonitor.isConnected ?? false
     }
   }
 }

@@ -6,13 +6,13 @@ struct Agent: Identifiable, Hashable {
   let type: String
 }
 
-struct ChatMessage: Identifiable {
+struct ChatMessage: Identifiable, Equatable {
   let id = UUID()
   let role: ChatRole
   let content: String
   let timestamp: Date
 
-  enum ChatRole {
+  enum ChatRole: Equatable {
     case user
     case assistant
     case system
