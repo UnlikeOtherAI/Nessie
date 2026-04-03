@@ -19,8 +19,8 @@ struct ContentView: View {
       }
     }
     .frame(minWidth: 800, minHeight: 600)
-    .onReceive(appState.networkMonitor.$isConnected) { isOnline in
-      appState.isOnline = isOnline
+    .onReceive(appState.networkMonitor.$isConnected) { connected in
+      appState.isOnline = connected
     }
   }
 }

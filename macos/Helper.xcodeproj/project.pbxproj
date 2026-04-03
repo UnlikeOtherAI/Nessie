@@ -10,6 +10,7 @@
 		0F86F85CB70FE1D5DE2D6107 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8696A4F8C5986B630C7F892A /* NetworkMonitor.swift */; };
 		14B5724E66ACB337FCF1F799 /* AgentSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F91D222A2CEA2512D0DEA388 /* AgentSidebar.swift */; };
 		20DD0C26C2CC1DDF851FC9C5 /* InputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 364BDE297DE26C66C470A068 /* InputBar.swift */; };
+		76B93C2CC55107D70A5837A7 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048393CF5001FF96E2137698 /* Models.swift */; };
 		B3C4CA718F65E0DD01DD98AE /* HotwordDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56917EEC231746BACE9EC29A /* HotwordDetector.swift */; };
 		C2A6D175432069C997303182 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C011C58210C3D51B2ACE1DA6 /* ChatView.swift */; };
 		C8DBEF9B834C9258F95ABB0E /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158F012C520BCBA790BF3D50 /* App.swift */; };
@@ -19,6 +20,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		048393CF5001FF96E2137698 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		158F012C520BCBA790BF3D50 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		28A96C083BA7787E80EE340F /* Helper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Helper.entitlements; sourceTree = "<group>"; };
 		364BDE297DE26C66C470A068 /* InputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBar.swift; sourceTree = "<group>"; };
@@ -45,6 +47,7 @@
 				56917EEC231746BACE9EC29A /* HotwordDetector.swift */,
 				CB415DCA00A53E7015039432 /* Info.plist */,
 				364BDE297DE26C66C470A068 /* InputBar.swift */,
+				048393CF5001FF96E2137698 /* Models.swift */,
 				8696A4F8C5986B630C7F892A /* NetworkMonitor.swift */,
 				F0B4F53AFFE889EA6C2BF322 /* StatusBar.swift */,
 				E3B498259AC9C22E147BE42B /* VoiceManager.swift */,
@@ -129,6 +132,7 @@
 				DD0D165F8688A9C962F84CAF /* ContentView.swift in Sources */,
 				B3C4CA718F65E0DD01DD98AE /* HotwordDetector.swift in Sources */,
 				20DD0C26C2CC1DDF851FC9C5 /* InputBar.swift in Sources */,
+				76B93C2CC55107D70A5837A7 /* Models.swift in Sources */,
 				0F86F85CB70FE1D5DE2D6107 /* NetworkMonitor.swift in Sources */,
 				DFBA297598C3330E25C25092 /* StatusBar.swift in Sources */,
 				EE0FAA9240DC257287DCE58B /* VoiceManager.swift in Sources */,

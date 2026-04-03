@@ -30,7 +30,7 @@ struct InputBar: View {
       } label: {
         Image(systemName: "arrow.up.circle.fill")
           .font(.system(size: 22))
-          .foregroundColor(text.isEmpty ? .secondary : .accentColor)
+          .foregroundColor(text.isEmpty ? .secondary : Color.accentColor)
       }
       .buttonStyle(.plain)
       .disabled(text.isEmpty)

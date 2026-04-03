@@ -1,6 +1,5 @@
 import Foundation
 import Speech
-import SoundAnalysis
 
 class HotwordDetector: ObservableObject {
   @Published var isListening = false

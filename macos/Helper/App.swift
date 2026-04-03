@@ -22,35 +22,18 @@ class AppState: ObservableObject {
   ]
   @Published var messages: [ChatMessage] = []
   @Published var hotwordReady = true
-  @ObservedObject var networkMonitor = NetworkMonitor()
+  @StateObject private var _networkMonitor = NetworkMonitor()
+
+  var networkMonitor: NetworkMonitor { _networkMonitor }
 
   init() {
-    // Observe network changes
+    // Observe network changes via NotificationCenter
     NotificationCenter.default.addObserver(
       forName: NSNotification.Name("NetworkStatusChanged"),
       object: nil,
       queue: .main
     ) { [weak self] _ in
-      self?.isOnline = self?.networkMonitor.isConnected ?? false
+      self?.isOnline = self?._networkMonitor.isConnected ?? false
     }
-  }
-}
-
-struct Agent: Identifiable, Hashable {
-  let id: String
-  let name: String
-  let type: String
-}
-
-struct ChatMessage: Identifiable {
-  let id = UUID()
-  let role: ChatRole
-  let content: String
-  let timestamp: Date
-
-  enum ChatRole {
-    case user
-    case assistant
-    case system
   }
 }
