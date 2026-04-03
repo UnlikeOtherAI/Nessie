@@ -49,7 +49,7 @@ function createOpenAiClient(apiKey: string, model = 'gpt-4o'): LlmClient {
 // MiniMax (Anthropic-compatible endpoint)
 // ---------------------------------------------------------------------------
 
-function createMiniMaxClient(apiKey: string, model = 'MiniMax-Text-01'): LlmClient {
+function createMiniMaxClient(apiKey: string, model = 'MiniMax-M2.5'): LlmClient {
   return {
     async chat(messages, options) {
       const res = await fetch('https://api.minimax.io/v1/text/chatcompletion_v2', {
@@ -69,8 +69,14 @@ function createMiniMaxClient(apiKey: string, model = 'MiniMax-Text-01'): LlmClie
         const err = await res.text()
         throw new Error(`MiniMax API error ${res.status}: ${err}`)
       }
-      const json = (await res.json()) as { choices: { messages: { content: string }[] } }
-      return json.choices[0]?.messages[0]?.content ?? ''
+      const json = (await res.json()) as {
+        choices?: { message: { role: string; content: string } }[]
+        base_resp?: { status_code: number; status_msg: string }
+      }
+      if (json.base_resp && json.base_resp.status_code !== 0) {
+        throw new Error(`MiniMax API error: ${json.base_resp.status_msg}`)
+      }
+      return json.choices?.[0]?.message?.content ?? ''
     },
     close() {},
   }

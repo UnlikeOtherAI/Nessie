@@ -13,5 +13,10 @@
   <key>NSMicrophoneUsageDescription</key><string>Helper needs microphone access for voice commands.</string>
   <key>NSAppleEventsUsageDescription</key><string>Helper needs accessibility access to inject text into other apps.</string>
   <key>LSUIElement</key><false/>
+  <key>NSLocalNetworkUsageDescription</key><string>Helper uses the local network to enable AppReveal testing tools.</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_appreveal._tcp</string>
+  </array>
 </dict>
 </plist>

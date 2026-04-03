@@ -3,6 +3,10 @@ options:
   bundleIdPrefix: com.helper
   deploymentTarget:
     macOS: "14.0"
+packages:
+  AppReveal:
+    url: https://github.com/UnlikeOtherAI/AppReveal.git
+    from: "0.4.0"
 targets:
   Helper:
     type: application
@@ -15,3 +19,5 @@ targets:
       CODE_SIGN_ENTITLEMENTS: Helper/Helper.entitlements
       ENABLE_HARDENED_RUNTIME: YES
       COMBINE_HIDPI_IMAGES: YES
+    dependencies:
+      - package: AppReveal
