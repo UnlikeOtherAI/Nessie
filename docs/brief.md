@@ -43,8 +43,8 @@ The feel: **Jarvis meets terminal**. Ambient, omnipresent, ready.
 
 ### Voice Layer
 - Handles audio input/output only
-- Streams voice to/from **OpenAI Realtime API** (`gpt-4o-realtime-preview`)
-- True voice-to-voice: audio in → audio out (single model, WebSocket)
+- Streams voice to/from **OpenAI Realtime API** (`gpt-realtime-1.5`)
+- True voice-to-voice: audio in → audio out (single model, WebSocket/WebRTC)
 - Sub-250ms latency, streaming audio chunks
 - No STT/TTS split — model handles speech understanding and generation natively
 - Fallback: Minimax TTS for voice output if OpenAI voice quality is preferred

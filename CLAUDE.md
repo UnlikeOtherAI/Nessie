@@ -4,7 +4,7 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 
 ## Architecture
 
-- **Voice Layer** — OpenAI Realtime API (audio-in/audio-out WebSocket), single model
+- **Voice Layer** — OpenAI Realtime API (`gpt-realtime-1.5`, audio-in/audio-out WebSocket), single model
 - **Orchestrator** — Main agent, coordinates all activity
 - **Sub-Agents** — Spawned on demand, each with specific purpose
 - **Tool Layer** — File read/write, bash, file search, web search
