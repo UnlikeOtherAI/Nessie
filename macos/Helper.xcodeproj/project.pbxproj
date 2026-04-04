@@ -8,15 +8,19 @@
 
 /* Begin PBXBuildFile section */
 		0F86F85CB70FE1D5DE2D6107 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8696A4F8C5986B630C7F892A /* NetworkMonitor.swift */; };
-		14B5724E66ACB337FCF1F799 /* AgentSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F91D222A2CEA2512D0DEA388 /* AgentSidebar.swift */; };
 		20DD0C26C2CC1DDF851FC9C5 /* InputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 364BDE297DE26C66C470A068 /* InputBar.swift */; };
+		2570489A3F30784AD8321C19 /* SessionsSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C488D9DD0B40EE8B83FDD834 /* SessionsSidebar.swift */; };
+		3B644E6CB2577368AABACBCE /* AppReveal in Frameworks */ = {isa = PBXBuildFile; productRef = 741A8C19F9456C6742A091EA /* AppReveal */; };
 		76B93C2CC55107D70A5837A7 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048393CF5001FF96E2137698 /* Models.swift */; };
+		79A893E35E8FA2C1E93BFDF4 /* HelperClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C91D55E7E927AA25515E4BB /* HelperClient.swift */; };
 		B3C4CA718F65E0DD01DD98AE /* HotwordDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56917EEC231746BACE9EC29A /* HotwordDetector.swift */; };
 		C2A6D175432069C997303182 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C011C58210C3D51B2ACE1DA6 /* ChatView.swift */; };
 		C8DBEF9B834C9258F95ABB0E /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158F012C520BCBA790BF3D50 /* App.swift */; };
 		DD0D165F8688A9C962F84CAF /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC37ABAF29ADA676232A9377 /* ContentView.swift */; };
 		DFBA297598C3330E25C25092 /* StatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B4F53AFFE889EA6C2BF322 /* StatusBar.swift */; };
+		EDD81F009708EFA055C2E3D6 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A2D34A3F51661609C5CD5E1 /* VoiceModeView.swift */; };
 		EE0FAA9240DC257287DCE58B /* VoiceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B498259AC9C22E147BE42B /* VoiceManager.swift */; };
+		F1EE884946CDE3B600AF668C /* StatusPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D310D60F3598BF07E845DAF4 /* StatusPanel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,33 +28,50 @@
 		158F012C520BCBA790BF3D50 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		28A96C083BA7787E80EE340F /* Helper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Helper.entitlements; sourceTree = "<group>"; };
 		364BDE297DE26C66C470A068 /* InputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBar.swift; sourceTree = "<group>"; };
+		4C91D55E7E927AA25515E4BB /* HelperClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperClient.swift; sourceTree = "<group>"; };
 		56917EEC231746BACE9EC29A /* HotwordDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotwordDetector.swift; sourceTree = "<group>"; };
+		7A2D34A3F51661609C5CD5E1 /* VoiceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeView.swift; sourceTree = "<group>"; };
 		7C727C7C98CB845FD7D2635F /* Helper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Helper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8696A4F8C5986B630C7F892A /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		BC37ABAF29ADA676232A9377 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		C011C58210C3D51B2ACE1DA6 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		C488D9DD0B40EE8B83FDD834 /* SessionsSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsSidebar.swift; sourceTree = "<group>"; };
 		CB415DCA00A53E7015039432 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D310D60F3598BF07E845DAF4 /* StatusPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPanel.swift; sourceTree = "<group>"; };
 		E3B498259AC9C22E147BE42B /* VoiceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceManager.swift; sourceTree = "<group>"; };
 		F0B4F53AFFE889EA6C2BF322 /* StatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBar.swift; sourceTree = "<group>"; };
-		F91D222A2CEA2512D0DEA388 /* AgentSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSidebar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8E28FB288FD4D5A3BA1D729A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3B644E6CB2577368AABACBCE /* AppReveal in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		1B94BC86F06B6FE5EA222379 /* Helper */ = {
 			isa = PBXGroup;
 			children = (
-				F91D222A2CEA2512D0DEA388 /* AgentSidebar.swift */,
 				158F012C520BCBA790BF3D50 /* App.swift */,
 				C011C58210C3D51B2ACE1DA6 /* ChatView.swift */,
 				BC37ABAF29ADA676232A9377 /* ContentView.swift */,
 				28A96C083BA7787E80EE340F /* Helper.entitlements */,
+				4C91D55E7E927AA25515E4BB /* HelperClient.swift */,
 				56917EEC231746BACE9EC29A /* HotwordDetector.swift */,
 				CB415DCA00A53E7015039432 /* Info.plist */,
 				364BDE297DE26C66C470A068 /* InputBar.swift */,
 				048393CF5001FF96E2137698 /* Models.swift */,
 				8696A4F8C5986B630C7F892A /* NetworkMonitor.swift */,
+				C488D9DD0B40EE8B83FDD834 /* SessionsSidebar.swift */,
 				F0B4F53AFFE889EA6C2BF322 /* StatusBar.swift */,
+				D310D60F3598BF07E845DAF4 /* StatusPanel.swift */,
 				E3B498259AC9C22E147BE42B /* VoiceManager.swift */,
+				7A2D34A3F51661609C5CD5E1 /* VoiceModeView.swift */,
 			);
 			path = Helper;
 			sourceTree = "<group>";
@@ -79,6 +100,7 @@
 			buildConfigurationList = C1545976C9469A3988423E68 /* Build configuration list for PBXNativeTarget "Helper" */;
 			buildPhases = (
 				A793B5E2B0E7243150184A77 /* Sources */,
+				8E28FB288FD4D5A3BA1D729A /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -86,6 +108,7 @@
 			);
 			name = Helper;
 			packageProductDependencies = (
+				741A8C19F9456C6742A091EA /* AppReveal */,
 			);
 			productName = Helper;
 			productReference = 7C727C7C98CB845FD7D2635F /* Helper.app */;
@@ -111,6 +134,9 @@
 			);
 			mainGroup = 9FE5B9D11F73537A47D2574E;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				FE13498B3DAAF0A86BCC97C0 /* XCRemoteSwiftPackageReference "AppReveal" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A3358CD42516EB5BFC2A23C8 /* Products */;
 			projectDirPath = "";
@@ -126,16 +152,19 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				14B5724E66ACB337FCF1F799 /* AgentSidebar.swift in Sources */,
 				C8DBEF9B834C9258F95ABB0E /* App.swift in Sources */,
 				C2A6D175432069C997303182 /* ChatView.swift in Sources */,
 				DD0D165F8688A9C962F84CAF /* ContentView.swift in Sources */,
+				79A893E35E8FA2C1E93BFDF4 /* HelperClient.swift in Sources */,
 				B3C4CA718F65E0DD01DD98AE /* HotwordDetector.swift in Sources */,
 				20DD0C26C2CC1DDF851FC9C5 /* InputBar.swift in Sources */,
 				76B93C2CC55107D70A5837A7 /* Models.swift in Sources */,
 				0F86F85CB70FE1D5DE2D6107 /* NetworkMonitor.swift in Sources */,
+				2570489A3F30784AD8321C19 /* SessionsSidebar.swift in Sources */,
 				DFBA297598C3330E25C25092 /* StatusBar.swift in Sources */,
+				F1EE884946CDE3B600AF668C /* StatusPanel.swift in Sources */,
 				EE0FAA9240DC257287DCE58B /* VoiceManager.swift in Sources */,
+				EDD81F009708EFA055C2E3D6 /* VoiceModeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -317,6 +346,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FE13498B3DAAF0A86BCC97C0 /* XCRemoteSwiftPackageReference "AppReveal" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/UnlikeOtherAI/AppReveal.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		741A8C19F9456C6742A091EA /* AppReveal */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FE13498B3DAAF0A86BCC97C0 /* XCRemoteSwiftPackageReference "AppReveal" */;
+			productName = AppReveal;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 443D189FC5675E86ECF4B828 /* Project object */;
 }

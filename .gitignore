@@ -4,3 +4,5 @@ dist/
 *.local
 .env
 .DS_Store
+macos/**/*.xcuserstate
+macos/**/xcuserdata/

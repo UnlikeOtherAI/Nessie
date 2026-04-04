@@ -234,34 +234,28 @@ final class HelperClient: @unchecked Sendable {
 
   func connectWebSocket() -> AsyncStream<ServerEvent> {
     AsyncStream { continuation in
-      let task = Task { [weak self] in
+      // Receive loop — runs until WS closes or stream is cancelled
+      let receiveTask = Task { [weak self] in
         guard let self = self else { return }
-
-        await withTaskGroup(of: Void.self) { group in
-
-          // ── Receive loop ──────────────────────────────────────────────────
-          group.addTask {
-            await self.wsReceiveLoop(continuation: continuation)
-          }
-
-          // ── Ping keepalive ────────────────────────────────────────────────
-          group.addTask {
-            while !Task.isCancelled {
-              try? await Task.sleep(for: .seconds(25))
-              self.webSocketTask?.sendPing { error in
-                if error == nil {
-                  continuation.yield(.ping(ts: Int64(Date().timeIntervalSince1970 * 1000)))
-                }
-              }
-            }
-          }
-
-          // Wait for group cancellation (when continuation terminates)
-          await group.waitForAll()
-        }
-
+        await self.wsReceiveLoop(continuation: continuation)
         continuation.finish()
       }
+
+      // Ping keepalive — runs until cancelled
+      Task { [weak self] in
+        guard let self = self else { return }
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .seconds(25))
+          self.webSocketTask?.sendPing { error in
+            if error == nil {
+              continuation.yield(.ping(ts: Int64(Date().timeIntervalSince1970 * 1000)))
+            }
+          }
+        }
+      }
+
+      // Store receiveTask so disconnect() can cancel it
+      self.wsReceiveTask = receiveTask
     }
   }
 
@@ -304,6 +298,8 @@ final class HelperClient: @unchecked Sendable {
     webSocketTask?.cancel(with: .goingAway, reason: nil)
     webSocketTask = nil
     wsReceiveTask?.cancel()
+    wsReceiveTask = nil
+    // Also nil out the session so new connections can be made
     wsReceiveTask = nil
   }
 

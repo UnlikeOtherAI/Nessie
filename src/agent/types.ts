@@ -1,8 +1,21 @@
 export type AgentMessage = {
   id: string
   role: 'user' | 'assistant' | 'system'
+  threadId: string
   content: string
   timestamp: number
+}
+
+export type ManagedAgent = {
+  id: string
+  name: string
+  type: 'orchestrator' | 'coder' | 'weather'
+  responsibility: string
+  trigger: 'main' | 'on-demand' | 'hourly'
+  tools: string[]
+  intervalMinutes?: number
+  lastRunAt?: number
+  nextRunAt?: number
 }
 
 export type SubAgentTask = {
@@ -16,6 +29,7 @@ export type SubAgentTask = {
 }
 
 export type OrchestratorState = {
+  agents: ManagedAgent[]
   messages: AgentMessage[]
   subAgents: SubAgentTask[]
   isListening: boolean
