@@ -114,8 +114,8 @@ export class Orchestrator {
         return
       }
       default: {
-        for await (const _delta of this.streamVoiceResponse('main')) {
-          // deltas are broadcast via onBroadcast; nothing to yield here
+        for await (const delta of this.streamVoiceResponse('main')) {
+          yield delta  // broadcast handles SSE delivery
         }
       }
     }
