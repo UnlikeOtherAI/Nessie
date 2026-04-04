@@ -55,19 +55,31 @@ struct MessageBubble: View {
       if message.role == .user { Spacer() }
 
       VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
-        // Role label for system messages
         if message.role == .system {
           Text("System")
             .font(.system(size: 9, weight: .semibold))
             .foregroundColor(.secondary)
         }
 
-        Text(message.content)
-          .font(.system(size: 14))
-          .padding(.horizontal, 12)
-          .padding(.vertical, 8)
-          .background(bubbleBackground)
-          .foregroundColor(bubbleForeground)
+        Group {
+          if message.role == .user {
+            Text(message.content)
+              .font(.system(size: 14))
+              .foregroundColor(.white)
+          } else if let attrStr = try? AttributedString(markdown: message.content, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            Text(attrStr)
+              .font(.system(size: 14))
+              .foregroundColor(.primary)
+          } else {
+            Text(message.content)
+              .font(.system(size: 14))
+              .foregroundColor(.primary)
+          }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(bubbleBackground)
+        .clipShape(RoundedBubble(role: message.role))
 
         Text(message.timestamp, style: .time)
           .font(.caption2)
@@ -89,19 +101,33 @@ struct MessageBubble: View {
     }
   }
 
-  private var bubbleForeground: Color {
-    switch message.role {
-    case .user: return .white
-    case .assistant, .system: return .primary
-    }
-  }
-
   private var roleName: String {
     switch message.role {
     case .user: return "User"
     case .assistant: return "Assistant"
     case .system: return "System"
     }
+  }
+}
+
+// ─── Bubble shape ─────────────────────────────────────────────────────────────────
+
+struct RoundedBubble: Shape {
+  let role: ChatMessage.ChatRole
+
+  func path(in rect: CGRect) -> Path {
+    let radius: CGFloat = 16
+    let tail: CGFloat = 6
+
+    var path = Path()
+    if role == .user {
+      // Right-pointing bubble
+      path.addRoundedRect(in: rect, cornerSize: CGSize(width: radius, height: radius))
+    } else {
+      // Left-pointing bubble
+      path.addRoundedRect(in: rect, cornerSize: CGSize(width: radius, height: radius))
+    }
+    return path
   }
 }
 

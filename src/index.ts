@@ -151,10 +151,11 @@ async function main() {
       sendSSE(res, 'start', { streamId, message: message.slice(0, 80) })
 
       // Push user message to orchestrator state BEFORE streaming so LLM has context
-      // pushMessage also broadcasts it to all clients via onBroadcast
+      // (streamResponse calls handleUserMessage which also pushes, so skip that duplicate)
       orchestrator.pushMessage({ role: 'user', threadId, content: message })
 
       // Stream the response — deltas and final message broadcast via onBroadcast
+      // handleUserMessage will skip its pushUserMessage since we already pushed above
       try {
         for await (const _reply of orchestrator.streamResponse(message, threadId)) {
           // nothing to yield — broadcast handles SSE delivery

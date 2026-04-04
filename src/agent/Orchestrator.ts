@@ -43,15 +43,13 @@ export class Orchestrator {
 
   // ─── Handle text message ────────────────────────────────────────────────────
 
-  async handleUserMessage(content: string, targetAgentId = 'main'): Promise<string> {
+  async handleUserMessage(content: string, targetAgentId = 'main', alreadyPushed = false): Promise<string> {
     const targetAgent = this.resolveTargetAgent(targetAgentId, content)
     const threadId = targetAgent.id
 
-    this.pushMessage({
-      role: 'user',
-      threadId,
-      content,
-    })
+    if (!alreadyPushed) {
+      this.pushMessage({ role: 'user', threadId, content })
+    }
 
     if (targetAgent.id === 'main') {
       const agentManagementResponse = await this.handleAgentManagement(content)
@@ -86,7 +84,7 @@ export class Orchestrator {
 
   async *streamResponse(content: string, targetAgentId: string): AsyncGenerator<string, void, undefined> {
     if (targetAgentId !== 'main') {
-      const reply = await this.handleUserMessage(content, targetAgentId)
+      const reply = await this.handleUserMessage(content, targetAgentId, true)
       yield reply
       return
     }
