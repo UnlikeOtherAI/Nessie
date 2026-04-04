@@ -84,10 +84,13 @@ export class Orchestrator {
 
   async *streamResponse(content: string, targetAgentId: string): AsyncGenerator<string, void, undefined> {
     if (targetAgentId !== 'main') {
-      const reply = await this.handleUserMessage(content, targetAgentId, true)
+      const reply = await this.handleUserMessage(content, targetAgentId)
       yield reply
       return
     }
+
+    // Push user message — broadcast to all clients including this sender
+    this.pushMessage({ role: 'user', threadId: 'main', content })
 
     const agentMgmt = await this.handleAgentManagement(content)
     if (agentMgmt) {

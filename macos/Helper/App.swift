@@ -291,20 +291,10 @@ final class AppState: ObservableObject {
 
     let threadId = selectedSession?.threadId ?? selectedAgent?.id ?? "main"
 
-    // Push user message immediately
-    let userMsg = ChatMessage(
-      id: UUID().uuidString,
-      role: .user,
-      threadId: threadId,
-      content: trimmed,
-      timestamp: Date()
-    )
-    allMessages.append(userMsg)
-
     // Cancel any existing streaming
     streamingTask?.cancel()
 
-    // Use SSE streaming
+    // Use SSE streaming — messages arrive via handleEvent from WS broadcast + SSE events
     streamingTask = Task {
       for await event in client.streamChat(message: trimmed, targetAgentId: threadId) {
         await self.handleEvent(event)
