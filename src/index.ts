@@ -4,6 +4,9 @@ import { RealtimeClient } from './voice/index.js'
 import { Orchestrator } from './agent/Orchestrator.js'
 import { createLlmClient } from './llm/client.js'
 import type { ServerEvent } from './events.js'
+import { McpServer, parseJsonRpcRequest } from './mcp/server.js'
+import { createMcpAdapter } from './mcp/adapter.js'
+import bonjour from 'bonjour'
 
 const PROVIDER = process.env.LLM_PROVIDER ?? 'openai'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? ''
@@ -61,6 +64,17 @@ async function main() {
       },
     },
   })
+
+  // ─── MCP server ────────────────────────────────────────────────────────────
+
+  const mcpAdapter = createMcpAdapter(orchestrator)
+  const mcpServer = new McpServer(mcpAdapter)
+
+  // ─── MDNS / Bonjour advertisement ─────────────────────────────────────────
+
+  const mdns = bonjour()
+  mdns.publish({ name: 'Helper Agent', type: '_helper._tcp', port: PORT })
+  console.log(`mDNS: advertising _helper._tcp on port ${PORT}`)
 
   // ─── HTTP server ────────────────────────────────────────────────────────────
 
@@ -194,6 +208,29 @@ async function main() {
         res.writeHead(500, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
       }
+      return
+    }
+
+    // ─── MCP endpoint (JSON-RPC 2.0) ──────────────────────────────────────
+    if ((req.method === 'POST' || req.method === 'GET') && (req.url === '/mcp' || req.url?.startsWith('/mcp'))) {
+      // GET /mcp → tool manifest
+      if (req.method === 'GET') {
+        const toolsResult = await mcpServer.handleRequest({ jsonrpc: '2.0', id: null, method: 'tools/list' })
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ tools: (toolsResult.result as any)?.tools ?? [] }))
+        return
+      }
+
+      const chunks: Buffer[] = []
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      }
+      const body = Buffer.concat(chunks).toString('utf8')
+
+      const requests = parseJsonRpcRequest(body)
+      const responses = await Promise.all(requests.map((r) => mcpServer.handleRequest(r)))
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(responses.length === 1 ? responses[0] : responses))
       return
     }
 
@@ -352,6 +389,7 @@ async function main() {
     for (const ws of wsClients) ws.close()
     wsClients.clear()
     sseStreams.clear()
+    mdns.destroy()
     server.close()
     orchestrator.close()
     llm?.close()
