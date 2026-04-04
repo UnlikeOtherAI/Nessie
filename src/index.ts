@@ -150,14 +150,14 @@ async function main() {
       // Send streaming start event immediately
       sendSSE(res, 'start', { streamId, message: message.slice(0, 80) })
 
-      // Also push the incoming user message
-      emit({ type: 'message', message: { id: `user-${Date.now()}`, role: 'user', threadId, content: message, timestamp: Date.now() } })
+      // Push user message to orchestrator state BEFORE streaming so LLM has context
+      // pushMessage also broadcasts it to all clients via onBroadcast
+      orchestrator.pushMessage({ role: 'user', threadId, content: message })
 
-      // Handle the message — streaming responses get broadcast via onBroadcast;
-      // we also need to collect the final reply for the SSE stream
+      // Stream the response — deltas and final message broadcast via onBroadcast
       try {
         for await (const _reply of orchestrator.streamResponse(message, threadId)) {
-          // Final reply is already broadcast via onBroadcast
+          // nothing to yield — broadcast handles SSE delivery
         }
       } catch (error) {
         emit({ type: 'error', message: error instanceof Error ? error.message : String(error) })

@@ -78,6 +78,9 @@ final class AppState: ObservableObject {
   /** The runId of the currently streaming response */
   @Published private(set) var streamingRunId: String?
 
+  /** True while a streaming response is in progress */
+  @Published private(set) var isStreaming = false
+
   // ─── Sub-agents ─────────────────────────────────────────────────────────────
 
   @Published private(set) var activeSubAgents: [SubAgentSummary] = []
@@ -151,6 +154,7 @@ final class AppState: ObservableObject {
       streamingRunId = runId
       streamingContent = ""
       isThinking = true
+      isStreaming = true
 
     case .streamingDelta(let content):
       streamingContent += content
@@ -169,6 +173,7 @@ final class AppState: ObservableObject {
       streamingContent = ""
       streamingRunId = nil
       isThinking = false
+      isStreaming = false
 
     case .subAgentStarted(let subAgent):
       if !activeSubAgents.contains(where: { $0.id == subAgent.id }) {
@@ -203,8 +208,12 @@ final class AppState: ObservableObject {
         applyState(state)
       }
 
-    case .error(let message):
-      print("[AppState] error: \(message)")
+    case .error:
+      // On any error, reset streaming state
+      streamingContent = ""
+      streamingRunId = nil
+      isThinking = false
+      isStreaming = false
 
     case .ping:
       isOnline = true

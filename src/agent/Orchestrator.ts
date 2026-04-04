@@ -362,7 +362,7 @@ export class Orchestrator {
     return content
   }
 
-  private pushMessage(input: { role: 'user' | 'assistant' | 'system'; threadId: string; content: string; timestamp?: number }) {
+  pushMessage(input: { role: 'user' | 'assistant' | 'system'; threadId: string; content: string; timestamp?: number }) {
     const msg: AgentMessage = { id: crypto.randomUUID(), role: input.role, threadId: input.threadId, content: input.content, timestamp: input.timestamp ?? Date.now() }
     this.state.messages.push(msg)
     this.broadcastState()

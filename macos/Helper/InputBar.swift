@@ -37,7 +37,7 @@ struct InputBar: View {
         systemImage: "arrow.up.circle.fill",
         accessibilityIdentifier: "send_message_button",
         accessibilityLabel: "Send message",
-        isEnabled: true
+        isEnabled: !appState.isStreaming
       ) {
         send()
       }
