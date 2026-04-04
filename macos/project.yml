@@ -6,7 +6,7 @@ options:
 packages:
   AppReveal:
     url: https://github.com/UnlikeOtherAI/AppReveal.git
-    from: "0.4.0"
+    exactVersion: "0.8.0"
 targets:
   Helper:
     type: application
