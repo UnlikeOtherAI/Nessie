@@ -5,7 +5,7 @@ import AppReveal
 #endif
 
 @main
-struct HelperApp: App {
+struct NessieApp: App {
   @StateObject private var appState = AppState()
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
@@ -52,7 +52,7 @@ final class AppState: ObservableObject {
 
   @Published private(set) var agents: [Agent] = [
     Agent(
-      id: "main", name: "Helper", type: "orchestrator",
+      id: "main", name: "Nessie", type: "orchestrator",
       responsibility: "Primary orchestrator.", trigger: "main",
       intervalMinutes: nil
     )
@@ -92,7 +92,7 @@ final class AppState: ObservableObject {
 
   // ─── Backend client ────────────────────────────────────────────────────────
 
-  private let client = HelperClient()
+  private let client = NessieClient()
   private var eventTask: Task<Void, Never>?
   private var streamingTask: Task<Void, Never>?
 

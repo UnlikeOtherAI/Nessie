@@ -1,0 +1,21 @@
+[    2751ms] [LOG] [LocaleProvider] 初始化, initialLocale: undefined @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    2751ms] [LOG] [LocaleProvider] 检测到的 locale: zh @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    2784ms] [LOG] [Testimonials] 无数据，不渲染 @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/516-48cbbd578067c528.js:0
+[    2808ms] [LOG] [Apollo API] 📡 请求 URL: https://www.minimaxi.com/setting/get_app_settings @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    2808ms] [LOG] [Apollo API] 📡 请求参数: {fe_setting_key: home_footer_navigation} @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    2812ms] [LOG] [Locale] 🔗 语言检测: zh (pathname: / ) @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    2812ms] [LOG] [LocaleProvider] SSR 已传入导航数据，跳过客户端获取 @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    2891ms] [LOG] [Track] Sensors SDK 导入成功 @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    2891ms] [LOG] [Track] Sensors SDK 导入成功 @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    2897ms] [LOG] [Track] Sensors SDK 初始化成功, env: prod @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    3131ms] [LOG] [Apollo API] 📥 响应数据: {base_resp: Object, data: Object} @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/687-9bc79f13bb830aca.js:0
+[    3131ms] [LOG] [Footer] Apollo 数据: {qrcode: Array(4), zh: Array(5), en: Array(5)} @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/516-48cbbd578067c528.js:0
+[   30016ms] [ERROR] Failed to fetch RSC payload for https://www.minimaxi.com/audio. Falling back to browser navigation. ChunkLoadError: Loading chunk 2200 failed.
+(error: https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/2200-db7b556e330e56b0.js)
+    at s.f.j (https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/webpack-ee2bd097f9650115.js:1:3285)
+    at https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/webpack-ee2bd097f9650115.js:1:1400
+    at Array.reduce (<anonymous>)
+    at s.e (https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/webpack-ee2bd097f9650115.js:1:1366)
+    at https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/945-f8b3d55c7ef9fade.js:2:18938
+    at https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/945-f8b3d55c7ef9fade.js:2:19140
+    at t (https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/945-f8b3d55c7ef9fade.js:2:19343) @ https://filecdn.minimax.chat/open_platform_web/prod-zh-minimax-0.1.22/_next/static/chunks/945-f8b3d55c7ef9fade.js:0

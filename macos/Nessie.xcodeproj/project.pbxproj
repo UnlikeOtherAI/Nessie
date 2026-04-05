@@ -1,0 +1,387 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03961BF6124F6916E0BB9718 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6875A74FCFDC93EF491BDB38 /* Assets.xcassets */; };
+		0F20C0DC4E195AB760A016DA /* SessionsSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B16B7F859ED940315372D4F /* SessionsSidebar.swift */; };
+		160074945587BEC867748C55 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF69825FDDEF5727F75AFB9F /* ChatView.swift */; };
+		2DFF7A7C9E58BE503C45FA3C /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C8858AAE5D1EA98209C968 /* NetworkMonitor.swift */; };
+		3FAE4B7C1D7BC92AC8582D5C /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5309FE993C1F0396E17B3A7D /* App.swift */; };
+		445DDB9B305675989731FB64 /* NessieClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EE834B4FF116AC0AF77CCE0 /* NessieClient.swift */; };
+		45B5EAD96A3E73CB58C19B13 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9093A1BCC14DD5F22B157F4F /* Models.swift */; };
+		63B151375EAF8E8B91F4F2A0 /* VoiceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14763C0F7859B55C57AFC460 /* VoiceManager.swift */; };
+		7B353117475444D06C1A2D17 /* AppReveal in Frameworks */ = {isa = PBXBuildFile; productRef = 9B554F7336D03492BA069182 /* AppReveal */; };
+		80C31356778ADB9F6F2FB3FF /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B682CD89AE36E326B7408F /* ContentView.swift */; };
+		8A42D59C8DE2A12BEE405D46 /* HotwordDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C0680FA4EAECBBB2FAFD9BA /* HotwordDetector.swift */; };
+		9A9C97D050E050ECC8D9684D /* StatusPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D98573A39B028237CD3F4B0 /* StatusPanel.swift */; };
+		9F4A05DF00574C828CC193E4 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39A5857AECBAAAB8546DEC5A /* VoiceModeView.swift */; };
+		C4368835006C6381330A82E3 /* StatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAC39D08C44AFC5AE16FEB62 /* StatusBar.swift */; };
+		FC33D766C823419B7B077706 /* InputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B8B919DB41542A8EEA5C28 /* InputBar.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0D98573A39B028237CD3F4B0 /* StatusPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPanel.swift; sourceTree = "<group>"; };
+		14763C0F7859B55C57AFC460 /* VoiceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceManager.swift; sourceTree = "<group>"; };
+		1B16B7F859ED940315372D4F /* SessionsSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsSidebar.swift; sourceTree = "<group>"; };
+		39A5857AECBAAAB8546DEC5A /* VoiceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeView.swift; sourceTree = "<group>"; };
+		41AB859DD773D4774E52B9B1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		45B8B919DB41542A8EEA5C28 /* InputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBar.swift; sourceTree = "<group>"; };
+		4EE834B4FF116AC0AF77CCE0 /* NessieClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NessieClient.swift; sourceTree = "<group>"; };
+		51F6147595A963A680B45CF1 /* Nessie.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nessie.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5309FE993C1F0396E17B3A7D /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		6875A74FCFDC93EF491BDB38 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		863FEA21D41EB34FDE1542AF /* Nessie.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nessie.entitlements; sourceTree = "<group>"; };
+		9093A1BCC14DD5F22B157F4F /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		9C0680FA4EAECBBB2FAFD9BA /* HotwordDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotwordDetector.swift; sourceTree = "<group>"; };
+		AAC39D08C44AFC5AE16FEB62 /* StatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBar.swift; sourceTree = "<group>"; };
+		B4B682CD89AE36E326B7408F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		C3C8858AAE5D1EA98209C968 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
+		EF69825FDDEF5727F75AFB9F /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D74A79D51C3D3DD05097DAB2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7B353117475444D06C1A2D17 /* AppReveal in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3B5E44725C7E3F7C58D3BA0D /* Nessie */ = {
+			isa = PBXGroup;
+			children = (
+				5309FE993C1F0396E17B3A7D /* App.swift */,
+				6875A74FCFDC93EF491BDB38 /* Assets.xcassets */,
+				EF69825FDDEF5727F75AFB9F /* ChatView.swift */,
+				B4B682CD89AE36E326B7408F /* ContentView.swift */,
+				9C0680FA4EAECBBB2FAFD9BA /* HotwordDetector.swift */,
+				41AB859DD773D4774E52B9B1 /* Info.plist */,
+				45B8B919DB41542A8EEA5C28 /* InputBar.swift */,
+				9093A1BCC14DD5F22B157F4F /* Models.swift */,
+				863FEA21D41EB34FDE1542AF /* Nessie.entitlements */,
+				4EE834B4FF116AC0AF77CCE0 /* NessieClient.swift */,
+				C3C8858AAE5D1EA98209C968 /* NetworkMonitor.swift */,
+				1B16B7F859ED940315372D4F /* SessionsSidebar.swift */,
+				AAC39D08C44AFC5AE16FEB62 /* StatusBar.swift */,
+				0D98573A39B028237CD3F4B0 /* StatusPanel.swift */,
+				14763C0F7859B55C57AFC460 /* VoiceManager.swift */,
+				39A5857AECBAAAB8546DEC5A /* VoiceModeView.swift */,
+			);
+			path = Nessie;
+			sourceTree = "<group>";
+		};
+		B8047B8A576EBA138A109737 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				51F6147595A963A680B45CF1 /* Nessie.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D7A4FE730EFE79E4C1CB34F8 = {
+			isa = PBXGroup;
+			children = (
+				3B5E44725C7E3F7C58D3BA0D /* Nessie */,
+				B8047B8A576EBA138A109737 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1271FA9E1E31F0CD1EB03887 /* Nessie */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C7FC304A07A358E1A76EF5AD /* Build configuration list for PBXNativeTarget "Nessie" */;
+			buildPhases = (
+				757B96078EC9F721E1317ADD /* Sources */,
+				9A3D0C3604D3E9B4173434B0 /* Resources */,
+				D74A79D51C3D3DD05097DAB2 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Nessie;
+			packageProductDependencies = (
+				9B554F7336D03492BA069182 /* AppReveal */,
+			);
+			productName = Nessie;
+			productReference = 51F6147595A963A680B45CF1 /* Nessie.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		38F9773B7AC9785C2599B984 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 298719688BCDD91F9FB10D44 /* Build configuration list for PBXProject "Nessie" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D7A4FE730EFE79E4C1CB34F8;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				748966C4FCE573C1652180B4 /* XCRemoteSwiftPackageReference "AppReveal" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B8047B8A576EBA138A109737 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1271FA9E1E31F0CD1EB03887 /* Nessie */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9A3D0C3604D3E9B4173434B0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				03961BF6124F6916E0BB9718 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		757B96078EC9F721E1317ADD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3FAE4B7C1D7BC92AC8582D5C /* App.swift in Sources */,
+				160074945587BEC867748C55 /* ChatView.swift in Sources */,
+				80C31356778ADB9F6F2FB3FF /* ContentView.swift in Sources */,
+				8A42D59C8DE2A12BEE405D46 /* HotwordDetector.swift in Sources */,
+				FC33D766C823419B7B077706 /* InputBar.swift in Sources */,
+				45B5EAD96A3E73CB58C19B13 /* Models.swift in Sources */,
+				445DDB9B305675989731FB64 /* NessieClient.swift in Sources */,
+				2DFF7A7C9E58BE503C45FA3C /* NetworkMonitor.swift in Sources */,
+				0F20C0DC4E195AB760A016DA /* SessionsSidebar.swift in Sources */,
+				C4368835006C6381330A82E3 /* StatusBar.swift in Sources */,
+				9A9C97D050E050ECC8D9684D /* StatusPanel.swift in Sources */,
+				63B151375EAF8E8B91F4F2A0 /* VoiceManager.swift in Sources */,
+				9F4A05DF00574C828CC193E4 /* VoiceModeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		236571B07B7EAD757212B4D3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Nessie/Nessie.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Nessie/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nessie.app;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		569B20C0603D389E6E68F1B9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		80A74C9CFFB3C351B6DEF5FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Nessie/Nessie.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Nessie/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nessie.app;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		FF78365E0837FDFC25FD4ED8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		298719688BCDD91F9FB10D44 /* Build configuration list for PBXProject "Nessie" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FF78365E0837FDFC25FD4ED8 /* Debug */,
+				569B20C0603D389E6E68F1B9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C7FC304A07A358E1A76EF5AD /* Build configuration list for PBXNativeTarget "Nessie" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				80A74C9CFFB3C351B6DEF5FB /* Debug */,
+				236571B07B7EAD757212B4D3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		748966C4FCE573C1652180B4 /* XCRemoteSwiftPackageReference "AppReveal" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/UnlikeOtherAI/AppReveal.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9B554F7336D03492BA069182 /* AppReveal */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 748966C4FCE573C1652180B4 /* XCRemoteSwiftPackageReference "AppReveal" */;
+			productName = AppReveal;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 38F9773B7AC9785C2599B984 /* Project object */;
+}

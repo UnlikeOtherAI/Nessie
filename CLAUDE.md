@@ -1,4 +1,4 @@
-# Helper Agent
+# Nessie
 
 Personal voice-first AI agent for macOS with multi-agent orchestration.
 
@@ -15,7 +15,7 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 - macOS accessibility / input injection for keyboard mode
 - Multi-agent orchestration with shared tool layer
 - MCP server — all app actions exposed as MCP tools (see `src/mcp/`)
-- MDNS/Bonjour — backend advertises `_helper._tcp` for local network discovery
+- MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 
 ## Linting
 
@@ -35,7 +35,7 @@ All user-facing actions are MCP tools. The backend exposes an MCP server endpoin
 
 ## MDNS
 
-The backend registers `_helper._tcp` on port 4317 via Bonjour/mDNS on launch. Clients on the same network discover it automatically without hardcoded IPs.
+The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. Clients on the same network discover it automatically without hardcoded IPs.
 
 ## Docs
 

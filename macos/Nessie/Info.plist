@@ -5,16 +5,16 @@
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
   <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-  <key>CFBundleName</key><string>Helper</string>
-  <key>CFBundleDisplayName</key><string>Helper</string>
+  <key>CFBundleName</key><string>Nessie</string>
+  <key>CFBundleDisplayName</key><string>Nessie</string>
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-  <key>NSMicrophoneUsageDescription</key><string>Helper needs microphone access for voice commands.</string>
-  <key>NSAppleEventsUsageDescription</key><string>Helper needs accessibility access to inject text into other apps.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Nessie needs microphone access for voice commands.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Nessie needs accessibility access to inject text into other apps.</string>
   <key>LSUIElement</key><false/>
-  <key>NSLocalNetworkUsageDescription</key><string>Helper uses the local network to enable AppReveal testing tools.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>Nessie uses the local network to enable AppReveal testing tools.</string>
   <key>NSBonjourServices</key>
   <array>
     <string>_appreveal._tcp</string>

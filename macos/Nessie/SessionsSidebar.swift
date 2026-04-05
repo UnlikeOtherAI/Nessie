@@ -202,7 +202,7 @@ struct SessionsSidebar: View {
         .fill(appState.isBackendReachable ? Color.green : Color.red)
         .frame(width: 6, height: 6)
 
-      Text(appState.isBackendReachable ? "Helper connected" : "Helper offline")
+      Text(appState.isBackendReachable ? "Nessie connected" : "Nessie offline")
         .font(.system(size: 11))
         .foregroundColor(.secondary)
 

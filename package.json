@@ -6,7 +6,7 @@
     "build": "bun build src/index.ts --outdir dist --target=node",
     "start": "node dist/index.js",
     "macos:project": "xcodegen generate --spec macos/project.yml",
-    "macos:build": "pnpm macos:project && xcodebuild -project macos/Helper.xcodeproj -scheme Helper -configuration Debug -destination 'platform=macOS' build"
+    "macos:build": "pnpm macos:project && xcodebuild -project macos/Nessie.xcodeproj -scheme Nessie -configuration Debug -destination 'platform=macOS' build"
   },
   "dependencies": {
     "bonjour": "^3.5.1",

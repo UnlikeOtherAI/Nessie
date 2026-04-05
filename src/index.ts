@@ -45,7 +45,7 @@ function sendSSE(res: import('node:http').ServerResponse, event: string, data: u
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`Helper Agent starting... (LLM: ${PROVIDER})`)
+  console.log(`Nessie starting... (LLM: ${PROVIDER})`)
 
   let llm = null
   try {
@@ -73,8 +73,8 @@ async function main() {
   // ─── MDNS / Bonjour advertisement ─────────────────────────────────────────
 
   const mdns = bonjour()
-  mdns.publish({ name: 'Helper Agent', type: '_helper._tcp', port: PORT })
-  console.log(`mDNS: advertising _helper._tcp on port ${PORT}`)
+  mdns.publish({ name: 'Nessie', type: '_nessie._tcp', port: PORT })
+  console.log(`mDNS: advertising _nessie._tcp on port ${PORT}`)
 
   // ─── HTTP server ────────────────────────────────────────────────────────────
 

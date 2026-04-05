@@ -66,7 +66,7 @@ struct StatusPanel: View {
               Circle()
                 .fill(appState.isBackendReachable ? Color.green : Color.red)
                 .frame(width: 8, height: 8)
-              Text(appState.isBackendReachable ? "Helper backend reachable" : "Helper backend offline")
+              Text(appState.isBackendReachable ? "Nessie backend reachable" : "Nessie backend offline")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
               Spacer()

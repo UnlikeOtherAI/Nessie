@@ -307,7 +307,7 @@ struct VoiceModeView: View {
         // Response
         if !voiceBridge.responseText.isEmpty {
           VStack(spacing: 4) {
-            Text("Helper")
+            Text("Nessie")
               .font(.system(size: 10, weight: .semibold))
               .foregroundColor(.secondary)
             Text(voiceBridge.responseText)

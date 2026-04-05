@@ -140,7 +140,7 @@ struct streamingBubble: View {
     HStack {
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 4) {
-          Text("Helper")
+          Text("Nessie")
             .font(.system(size: 10, weight: .semibold))
             .foregroundColor(.secondary)
 
@@ -192,7 +192,7 @@ struct TypingIndicator: View {
     HStack {
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 4) {
-          Text("Helper")
+          Text("Nessie")
             .font(.system(size: 10, weight: .semibold))
             .foregroundColor(.secondary)
 

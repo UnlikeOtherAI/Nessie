@@ -1,0 +1,712 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - link "MiniMax" [ref=e5] [cursor=pointer]:
+      - /url: /
+      - img "MiniMax" [ref=e6]
+    - generic [ref=e7]:
+      - generic [ref=e9] [cursor=pointer]:
+        - generic [ref=e10]: 模型
+        - generic [ref=e11]:
+          - generic [ref=e12]:
+            - generic [ref=e13]:
+              - img "文本" [ref=e14]
+              - text: 文本
+            - generic [ref=e15]:
+              - link "MiniMax M2.7" [ref=e16]:
+                - /url: /models/text/m27
+                - generic [ref=e17]: MiniMax M2.7
+              - link "MiniMax M2.5" [ref=e18]:
+                - /url: /models/text
+                - generic [ref=e19]: MiniMax M2.5
+              - link "MiniMax M2-Her" [ref=e20]:
+                - /url: /news/minimax-m2-her-技术深度解析
+                - generic [ref=e21]: MiniMax M2-Her
+              - link "MiniMax M2.1" [ref=e22]:
+                - /url: /news/minimax-m21
+                - generic [ref=e23]: MiniMax M2.1
+              - link "MiniMax M2" [ref=e24]:
+                - /url: /news/minimax-m2
+                - generic [ref=e25]: MiniMax M2
+          - generic [ref=e26]:
+            - generic [ref=e27]:
+              - img "语音" [ref=e28]
+              - text: 语音
+            - generic [ref=e29]:
+              - link "MiniMax Speech 2.6" [ref=e30]:
+                - /url: /news/minimax-speech-26
+                - generic [ref=e31]: MiniMax Speech 2.6
+              - link "MiniMax Speech 2.5" [ref=e32]:
+                - /url: /news/minimax-speech-25
+                - generic [ref=e33]: MiniMax Speech 2.5
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - img "视频" [ref=e36]
+              - text: 视频
+            - generic [ref=e37]:
+              - link "MiniMax Hailuo 2.3 / 2.3 Fast" [ref=e38]:
+                - /url: /news/minimax-hailuo-23
+                - generic [ref=e39]: MiniMax Hailuo 2.3 / 2.3 Fast
+              - link "MiniMax Hailuo 02" [ref=e40]:
+                - /url: /news/minimax-hailuo-02
+                - generic [ref=e41]: MiniMax Hailuo 02
+          - generic [ref=e42]:
+            - generic [ref=e43]:
+              - img "音乐" [ref=e44]
+              - text: 音乐
+            - generic [ref=e45]:
+              - link "MiniMax Music 2.5+" [ref=e46]:
+                - /url: /news/music-25-解锁纯音乐突破风格边界
+                - generic [ref=e47]: MiniMax Music 2.5+
+              - link "MiniMax Music 2.5" [ref=e48]:
+                - /url: /news/minimax-music-25
+                - generic [ref=e49]: MiniMax Music 2.5
+              - link "MiniMax Music 2.0" [ref=e50]:
+                - /url: /news/minimax-music-20
+                - generic [ref=e51]: MiniMax Music 2.0
+              - link "MiniMax Music 1.5" [ref=e52]:
+                - /url: /news/minimax-music-15
+                - generic [ref=e53]: MiniMax Music 1.5
+      - generic [ref=e55] [cursor=pointer]:
+        - generic [ref=e56]: 产品
+        - generic [ref=e58]:
+          - generic [ref=e59]:
+            - img "AI原生应用" [ref=e60]
+            - text: AI原生应用
+          - generic [ref=e61]:
+            - link "Agent" [ref=e62]:
+              - /url: https://agent.minimaxi.com/
+              - generic [ref=e63]: Agent
+              - img [ref=e65]
+            - link "海螺视频" [ref=e67]:
+              - /url: https://hailuoai.com/
+              - generic [ref=e68]: 海螺视频
+              - img [ref=e70]
+            - link "语音" [ref=e72]:
+              - /url: https://www.minimaxi.com/audio
+              - generic [ref=e73]: 语音
+              - img [ref=e75]
+            - link "星野" [ref=e77]:
+              - /url: https://www.xingyeai.com/
+              - generic [ref=e78]: 星野
+              - img [ref=e80]
+      - generic [ref=e83] [cursor=pointer]:
+        - generic [ref=e84]: 开放平台
+        - generic [ref=e86]:
+          - generic [ref=e87]:
+            - img "即刻接入AI能力" [ref=e88]
+            - text: 即刻接入AI能力
+          - generic [ref=e89]:
+            - link "文档中心" [ref=e90]:
+              - /url: https://platform.minimaxi.com/docs/guides/models-intro
+              - generic [ref=e91]: 文档中心
+              - img [ref=e93]
+            - link "Token Plan" [ref=e95]:
+              - /url: https://platform.minimaxi.com/subscribe/token-plan
+              - generic [ref=e96]: Token Plan
+              - img [ref=e98]
+            - link "产品定价" [ref=e100]:
+              - /url: https://platform.minimaxi.com/docs/pricing/overview
+              - generic [ref=e101]: 产品定价
+              - img [ref=e103]
+            - link "平台登录" [ref=e105]:
+              - /url: https://platform.minimaxi.com/user-center/basic-information
+              - generic [ref=e106]: 平台登录
+              - img [ref=e108]
+      - generic [ref=e112] [cursor=pointer]: 新闻动态
+      - generic [ref=e114] [cursor=pointer]:
+        - generic [ref=e115]: 关于我们
+        - generic [ref=e117]:
+          - generic [ref=e118]:
+            - img "与所有人共创智能" [ref=e119]
+            - text: 与所有人共创智能
+          - generic [ref=e120]:
+            - link "公司介绍" [ref=e121]:
+              - /url: /about
+              - generic [ref=e122]: 公司介绍
+            - link "投资者关系" [ref=e123]:
+              - /url: https://ir.minimaxi.com/
+              - generic [ref=e124]: 投资者关系
+              - img [ref=e126]
+            - link "加入我们" [ref=e128]:
+              - /url: /careers
+              - generic [ref=e129]: 加入我们
+    - generic [ref=e130]:
+      - link "EN" [ref=e131] [cursor=pointer]:
+        - /url: https://www.minimax.io/
+      - generic [ref=e132] [cursor=pointer]:
+        - generic [ref=e133]: 登录
+        - generic [ref=e134]:
+          - link "API 开放平台" [ref=e135]:
+            - /url: https://platform.minimaxi.com/login
+            - generic [ref=e136]: API 开放平台
+            - img [ref=e138]
+          - link "MiniMax Agent" [ref=e140]:
+            - /url: https://agent.minimaxi.com/
+            - generic [ref=e141]: MiniMax Agent
+            - img [ref=e143]
+          - link "海螺视频" [ref=e145]:
+            - /url: https://hailuoai.com/
+            - generic [ref=e146]: 海螺视频
+            - img [ref=e148]
+          - link "MiniMax 语音" [ref=e150]:
+            - /url: https://www.minimaxi.com/audio
+            - generic [ref=e151]: MiniMax 语音
+            - img [ref=e153]
+  - main [ref=e155]:
+    - generic [ref=e158]:
+      - button "上一张":
+        - img
+      - button "下一张":
+        - img
+      - generic [ref=e160]:
+        - generic [ref=e162]:
+          - generic [ref=e163]:
+            - generic [ref=e164]:
+              - heading "MiniMax Title Icon M2.7" [level=1] [ref=e165]:
+                - generic [ref=e166]:
+                  - generic [ref=e167]: MiniMax
+                  - img "Title Icon" [ref=e169]
+                  - generic [ref=e170]: M2.7
+              - paragraph [ref=e172]: 开启模型的自我进化，相比 M2.5 在实战能力上有显著的提升
+            - generic [ref=e174]:
+              - link "即刻接入 API" [ref=e175] [cursor=pointer]:
+                - /url: https://platform.minimaxi.com/docs/api-reference/api-overview
+                - generic [ref=e177]: 即刻接入 API
+              - link "立即体验 Agent" [ref=e180] [cursor=pointer]:
+                - /url: https://agent.minimaxi.com
+                - generic [ref=e182]: 立即体验 Agent
+              - link "了解更多" [ref=e185] [cursor=pointer]:
+                - /url: /models/text/m27
+                - generic [ref=e187]: 了解更多
+          - generic [ref=e194]:
+            - generic [ref=e198] [cursor=pointer]:
+              - paragraph [ref=e199]: Agent Harness 能力
+              - paragraph [ref=e200]: 构建自我进化的 Agent harness
+            - generic [ref=e204] [cursor=pointer]:
+              - paragraph [ref=e205]: 强工程与 Coding 能力
+              - paragraph [ref=e206]: 一个真正理解生产系统的模型
+            - generic [ref=e210] [cursor=pointer]:
+              - paragraph [ref=e211]: 复杂 Office 自动化能力
+              - paragraph [ref=e212]: 支持复杂 Excel / Word / PPT 办公任务及多轮编辑
+        - generic [ref=e214]:
+          - generic [ref=e215]:
+            - generic [ref=e216]:
+              - heading "2025年全年业绩" [level=1] [ref=e217]:
+                - generic [ref=e219]: 2025年全年业绩
+              - paragraph [ref=e221]: 迈向AI时代的平台型公司
+            - link "了解更多" [ref=e224] [cursor=pointer]:
+              - /url: https://www.minimaxi.com/news/2025%E5%85%A8%E5%B9%B4%E4%B8%9A%E7%BB%A9
+              - generic [ref=e226]: 了解更多
+          - img "Banner illustration" [ref=e232]
+        - generic [ref=e234]:
+          - generic [ref=e235]:
+            - generic [ref=e236]:
+              - heading "Token Title Icon Plan" [level=1] [ref=e237]:
+                - generic [ref=e238]:
+                  - generic [ref=e239]: Token
+                  - img "Title Icon" [ref=e241]
+                  - generic [ref=e242]: Plan
+              - paragraph [ref=e244]: 专为开发者定制的超高性价比 token 套餐
+            - generic [ref=e246]:
+              - link "即刻接入 API" [ref=e247] [cursor=pointer]:
+                - /url: https://platform.minimaxi.com/docs/token-plan/quickstart
+                - generic [ref=e249]: 即刻接入 API
+              - link "订阅" [ref=e252] [cursor=pointer]:
+                - /url: https://platform.minimaxi.com/subscribe/token-plan
+                - generic [ref=e254]: 订阅
+          - generic [ref=e261]:
+            - generic [ref=e265] [cursor=pointer]:
+              - paragraph [ref=e266]: 最强模型
+              - paragraph [ref=e267]: 生产级交付
+            - generic [ref=e271] [cursor=pointer]:
+              - paragraph [ref=e272]: 包月畅用
+              - paragraph [ref=e273]: 不焦虑，越多越划算
+            - generic [ref=e277] [cursor=pointer]:
+              - paragraph [ref=e278]: 开箱即用
+              - paragraph [ref=e279]: 一键接入主流开发工具
+        - generic [ref=e281]:
+          - generic [ref=e282]:
+            - generic [ref=e283]:
+              - heading "MiniMax Title Icon Music 2.5+" [level=1] [ref=e284]:
+                - generic [ref=e285]:
+                  - generic [ref=e286]: MiniMax
+                  - img "Title Icon" [ref=e288]
+                  - generic [ref=e289]: Music 2.5+
+              - paragraph [ref=e291]: 解锁纯音乐，突破风格边界
+            - generic [ref=e293]:
+              - link "即刻接入API" [ref=e294] [cursor=pointer]:
+                - /url: https://platform.minimaxi.com/docs/api-reference/music-generation
+                - generic [ref=e296]: 即刻接入API
+              - link "了解更多" [ref=e299] [cursor=pointer]:
+                - /url: /news/music-25-解锁纯音乐突破风格边界
+                - generic [ref=e301]: 了解更多
+          - generic [ref=e306]:
+            - generic [ref=e309] [cursor=pointer]:
+              - img "Metal" [ref=e312]
+              - img [ref=e315]
+              - generic [ref=e319]: Metal
+              - generic [ref=e320]:
+                - generic [ref=e321]: New
+                - generic [ref=e322]: Instrumental
+            - generic [ref=e325] [cursor=pointer]:
+              - img "R&B" [ref=e328]
+              - img [ref=e331]
+              - generic [ref=e335]: R&B
+              - generic [ref=e336]:
+                - generic [ref=e337]: Soul
+                - generic [ref=e338]: Vocal
+            - generic [ref=e341] [cursor=pointer]:
+              - img "Pop" [ref=e344]
+              - img [ref=e347]
+              - generic [ref=e351]: Pop
+              - generic [ref=e352]:
+                - generic [ref=e353]: Pop
+                - generic [ref=e354]: Melody
+            - generic [ref=e357] [cursor=pointer]:
+              - img "Jazz" [ref=e360]
+              - img [ref=e363]
+              - generic [ref=e367]: Jazz
+              - generic [ref=e368]:
+                - generic [ref=e369]: Jazz
+                - generic [ref=e370]: Smooth
+            - generic [ref=e373] [cursor=pointer]:
+              - img "Meditative" [ref=e376]
+              - img [ref=e379]
+              - generic [ref=e383]: Meditative
+              - generic [ref=e384]:
+                - generic [ref=e385]: New
+                - generic [ref=e386]: Instrumental
+            - generic [ref=e389] [cursor=pointer]:
+              - img "Blues" [ref=e392]
+              - img [ref=e395]
+              - generic [ref=e399]: Blues
+              - generic [ref=e400]:
+                - generic [ref=e401]: Blues
+                - generic [ref=e402]: Classic
+            - generic [ref=e405] [cursor=pointer]:
+              - img "Metal" [ref=e408]
+              - img [ref=e411]
+              - generic [ref=e415]: Metal
+              - generic [ref=e416]:
+                - generic [ref=e417]: New
+                - generic [ref=e418]: Instrumental
+            - generic [ref=e421] [cursor=pointer]:
+              - img "R&B" [ref=e424]
+              - img [ref=e427]
+              - generic [ref=e431]: R&B
+              - generic [ref=e432]:
+                - generic [ref=e433]: Soul
+                - generic [ref=e434]: Vocal
+            - generic [ref=e437] [cursor=pointer]:
+              - img "Pop" [ref=e440]
+              - img [ref=e443]
+              - generic [ref=e447]: Pop
+              - generic [ref=e448]:
+                - generic [ref=e449]: Pop
+                - generic [ref=e450]: Melody
+            - generic [ref=e453] [cursor=pointer]:
+              - img "Jazz" [ref=e456]
+              - img [ref=e459]
+              - generic [ref=e463]: Jazz
+              - generic [ref=e464]:
+                - generic [ref=e465]: Jazz
+                - generic [ref=e466]: Smooth
+            - generic [ref=e469] [cursor=pointer]:
+              - img "Meditative" [ref=e472]
+              - img [ref=e475]
+              - generic [ref=e479]: Meditative
+              - generic [ref=e480]:
+                - generic [ref=e481]: New
+                - generic [ref=e482]: Instrumental
+            - generic [ref=e485] [cursor=pointer]:
+              - img "Blues" [ref=e488]
+              - img [ref=e491]
+              - generic [ref=e495]: Blues
+              - generic [ref=e496]:
+                - generic [ref=e497]: Blues
+                - generic [ref=e498]: Classic
+            - generic [ref=e501] [cursor=pointer]:
+              - img "Metal" [ref=e504]
+              - img [ref=e507]
+              - generic [ref=e511]: Metal
+              - generic [ref=e512]:
+                - generic [ref=e513]: New
+                - generic [ref=e514]: Instrumental
+            - generic [ref=e517] [cursor=pointer]:
+              - img "R&B" [ref=e520]
+              - img [ref=e523]
+              - generic [ref=e527]: R&B
+              - generic [ref=e528]:
+                - generic [ref=e529]: Soul
+                - generic [ref=e530]: Vocal
+            - generic [ref=e533] [cursor=pointer]:
+              - img "Pop" [ref=e536]
+              - img [ref=e539]
+              - generic [ref=e543]: Pop
+              - generic [ref=e544]:
+                - generic [ref=e545]: Pop
+                - generic [ref=e546]: Melody
+            - generic [ref=e549] [cursor=pointer]:
+              - img "Jazz" [ref=e552]
+              - img [ref=e555]
+              - generic [ref=e559]: Jazz
+              - generic [ref=e560]:
+                - generic [ref=e561]: Jazz
+                - generic [ref=e562]: Smooth
+        - generic [ref=e565]:
+          - generic [ref=e566]:
+            - heading "MiniMax Title Icon Hailuo 2.3" [level=1] [ref=e567]:
+              - generic [ref=e568]:
+                - generic [ref=e569]: MiniMax
+                - img "Title Icon" [ref=e571]
+                - generic [ref=e572]: Hailuo 2.3
+            - paragraph [ref=e574]: 动静皆非凡：极致动态，入微传情
+          - generic [ref=e576]:
+            - link "即刻接入 API" [ref=e577] [cursor=pointer]:
+              - /url: https://platform.minimaxi.com/docs/api-reference/video-generation-t2v
+              - generic [ref=e579]: 即刻接入 API
+            - link "立即体验海螺" [ref=e582] [cursor=pointer]:
+              - /url: https://hailuoai.com
+              - generic [ref=e584]: 立即体验海螺
+            - link "了解更多" [ref=e587] [cursor=pointer]:
+              - /url: /news/minimax-hailuo-23
+              - generic [ref=e589]: 了解更多
+        - generic [ref=e597]:
+          - generic [ref=e598]:
+            - generic [ref=e599]:
+              - heading "MiniMax Title Icon Speech 2.6" [level=1] [ref=e600]:
+                - generic [ref=e601]:
+                  - generic [ref=e602]: MiniMax
+                  - img "Title Icon" [ref=e604]
+                  - generic [ref=e605]: Speech 2.6
+              - paragraph [ref=e607]: 为 Agent 而"声"：超低时延，智能生动
+            - generic [ref=e609]:
+              - link "即刻接入 API" [ref=e610] [cursor=pointer]:
+                - /url: https://platform.minimaxi.com/docs/api-reference/speech-t2a-http
+                - generic [ref=e612]: 即刻接入 API
+              - link "立即体验语音" [ref=e615] [cursor=pointer]:
+                - /url: https://www.minimaxi.com/audio
+                - generic [ref=e617]: 立即体验语音
+              - link "了解更多" [ref=e620] [cursor=pointer]:
+                - /url: /news/minimax-speech-26
+                - generic [ref=e622]: 了解更多
+          - generic [ref=e627]:
+            - generic:
+              - generic [ref=e630] [cursor=pointer]:
+                - img "睡前低语" [ref=e632]
+                - generic [ref=e633]:
+                  - paragraph [ref=e634]: 睡前低语
+                  - paragraph [ref=e635]: 日语 · ASMR
+              - generic [ref=e638] [cursor=pointer]:
+                - img "恐怖故事" [ref=e640]
+                - generic [ref=e641]:
+                  - paragraph [ref=e642]: 恐怖故事
+                  - paragraph [ref=e643]: 英语 · 恐怖
+              - generic [ref=e646] [cursor=pointer]:
+                - img "哥布林的交易" [ref=e648]
+                - generic [ref=e649]:
+                  - paragraph [ref=e650]: 哥布林的交易
+                  - paragraph [ref=e651]: 英语 · 角色
+        - generic [ref=e654]:
+          - generic [ref=e655]:
+            - generic [ref=e656]:
+              - heading "MiniMax Title Icon Agent" [level=1] [ref=e657]:
+                - generic [ref=e658]:
+                  - generic [ref=e659]: MiniMax
+                  - img "Title Icon" [ref=e661]
+                  - generic [ref=e662]: Agent
+              - paragraph [ref=e664]: 智能助手，为您的工作和生活提供全方位支持。
+            - generic [ref=e666]:
+              - link "立即体验 Agent" [ref=e667] [cursor=pointer]:
+                - /url: https://agent.minimaxi.com
+                - generic [ref=e669]: 立即体验 Agent
+              - link "了解更多" [ref=e672] [cursor=pointer]:
+                - /url: /news/minimax-agent
+                - generic [ref=e674]: 了解更多
+          - img "Banner illustration" [ref=e680]
+        - generic [ref=e682]:
+          - generic [ref=e683]:
+            - generic [ref=e684]:
+              - heading "MiniMax Title Icon M2-her" [level=1] [ref=e685]:
+                - generic [ref=e686]:
+                  - generic [ref=e687]: MiniMax
+                  - img "Title Icon" [ref=e689]
+                  - generic [ref=e690]: M2-her
+              - paragraph [ref=e692]: 多角色沉浸扮演，驾驭长轮次复杂场景
+            - generic [ref=e694]:
+              - link "即刻接入API" [ref=e695] [cursor=pointer]:
+                - /url: https://platform.minimaxi.com/docs/api-reference/text-chat
+                - generic [ref=e697]: 即刻接入API
+              - link "了解更多" [ref=e700] [cursor=pointer]:
+                - /url: /news/minimax-m2-her-技术深度解析
+                - generic [ref=e702]: 了解更多
+          - img "Banner illustration" [ref=e708]
+    - generic [ref=e727]:
+      - generic [ref=e728]:
+        - generic [ref=e729]:
+          - heading "全栈模型矩阵" [level=2] [ref=e730]
+          - paragraph [ref=e731]: 涵盖文本、语音、视频、图像与音乐五大方向。助力开发者高效构建智能应用
+        - generic [ref=e732]:
+          - button "上一张" [disabled] [ref=e734]
+          - button "下一张" [ref=e738] [cursor=pointer]
+      - generic [ref=e742]:
+        - link "MiniMax M2.7" [ref=e745] [cursor=pointer]:
+          - /url: /news/minimax-m27-zh
+          - img "MiniMax M2.7" [ref=e746]
+          - generic [ref=e747]: NEW
+          - generic [ref=e749]:
+            - generic [ref=e750]:
+              - generic [ref=e751]:
+                - text: MiniMax M2.7
+                - generic [ref=e752]: Text Model
+              - button "下一张" [ref=e754]
+            - generic [ref=e757]: 模型自我进化，以技术突破驱动生产力革新
+        - link "MiniMax Music 2.5+" [ref=e760] [cursor=pointer]:
+          - /url: /news/music-25-解锁纯音乐突破风格边界
+          - img "MiniMax Music 2.5+" [ref=e761]
+          - generic [ref=e762]: NEW
+          - generic [ref=e764]:
+            - generic [ref=e765]:
+              - generic [ref=e766]:
+                - text: MiniMax Music 2.5+
+                - generic [ref=e767]: Music Model
+              - button "下一张" [ref=e769]
+            - generic [ref=e772]: 解锁纯音乐，突破风格边界
+        - link "Hailuo 2.3 / 2.3 Fast" [ref=e775] [cursor=pointer]:
+          - /url: /news/minimax-hailuo-23
+          - generic [ref=e777]: NEW
+          - generic [ref=e779]:
+            - generic [ref=e780]:
+              - generic [ref=e781]:
+                - text: Hailuo 2.3 / 2.3 Fast
+                - generic [ref=e782]: Video Model
+              - button "下一张" [ref=e784]
+            - generic [ref=e787]: 动静皆非凡：极致动态，入微传情
+        - link "MiniMax Speech 2.6" [ref=e790] [cursor=pointer]:
+          - /url: /news/minimax-speech-26
+          - img "MiniMax Speech 2.6" [ref=e791]
+          - generic [ref=e792]: NEW
+          - generic [ref=e794]:
+            - generic [ref=e795]:
+              - generic [ref=e796]:
+                - text: MiniMax Speech 2.6
+                - generic [ref=e797]: Audio Model
+              - button "下一张" [ref=e799]
+            - generic [ref=e802]: 为 Agent 而"声"：超低时延，智能生动
+        - link "MiniMax M2-her" [ref=e805] [cursor=pointer]:
+          - /url: /news/minimax-m2-her-技术深度解析
+          - img "MiniMax M2-her" [ref=e806]
+          - generic [ref=e807]: NEW
+          - generic [ref=e809]:
+            - generic [ref=e810]:
+              - generic [ref=e811]:
+                - text: MiniMax M2-her
+                - generic [ref=e812]: Text Model
+              - button "下一张" [ref=e814]
+            - generic [ref=e817]: 多角色沉浸扮演，驾驭长轮次复杂场景
+        - link "MiniMax MCP Server" [ref=e820] [cursor=pointer]:
+          - /url: /news/minimax-mcp
+          - img "MiniMax MCP Server" [ref=e821]
+          - generic [ref=e823]:
+            - generic [ref=e824]:
+              - generic [ref=e825]:
+                - text: MiniMax MCP Server
+                - generic [ref=e826]: MCP
+              - button "下一张" [ref=e828]
+            - generic [ref=e831]: 视频生成、图像生成、语音生成和声音克隆工具现已向开发者开放
+    - generic [ref=e833]:
+      - generic [ref=e834]:
+        - generic [ref=e835]:
+          - heading "AI 产品矩阵" [level=2] [ref=e836]
+          - paragraph [ref=e837]: 从智能对话到视频创作，从声音合成到虚拟角色，MiniMax 为你打造全方位 AI 体验
+        - generic [ref=e838]:
+          - button "上一张" [disabled] [ref=e840]
+          - button "下一张" [ref=e844] [cursor=pointer]
+      - generic [ref=e848]:
+        - link "MiniMax Agent" [ref=e851] [cursor=pointer]:
+          - /url: https://agent.minimaxi.com
+          - img "MiniMax Agent" [ref=e852]
+          - generic [ref=e854]:
+            - generic [ref=e855]:
+              - generic [ref=e856]: MiniMax Agent
+              - button "下一张" [ref=e858]
+            - generic [ref=e861]: 简单指令，创意无限
+        - link "海螺视频" [ref=e864] [cursor=pointer]:
+          - /url: https://hailuoai.com/video
+          - img "海螺视频" [ref=e865]
+          - generic [ref=e867]:
+            - generic [ref=e868]:
+              - generic [ref=e869]: 海螺视频
+              - button "下一张" [ref=e871]
+            - generic [ref=e874]: 每个想法都是一部大片
+        - link "MiniMax Audio" [ref=e877] [cursor=pointer]:
+          - /url: https://hailuoai.com/audio
+          - img "MiniMax Audio" [ref=e878]
+          - generic [ref=e880]:
+            - generic [ref=e881]:
+              - generic [ref=e882]: MiniMax Audio
+              - button "下一张" [ref=e884]
+            - generic [ref=e887]: 超拟人AI声音创意
+        - link "海螺视频Agent" [ref=e890] [cursor=pointer]:
+          - /url: /news/video-agent
+          - img "海螺视频Agent" [ref=e891]
+          - generic [ref=e892]: NEW
+          - generic [ref=e894]:
+            - generic [ref=e895]:
+              - generic [ref=e896]: 海螺视频Agent
+              - button "下一张" [ref=e898]
+            - generic [ref=e901]: Vibe Videoing 零门槛，成片直出
+        - link "星野" [ref=e904] [cursor=pointer]:
+          - /url: https://www.xingyeai.com
+          - img "星野" [ref=e905]
+          - generic [ref=e907]:
+            - generic [ref=e908]:
+              - generic [ref=e909]: 星野
+              - button "下一张" [ref=e911]
+            - generic [ref=e914]: 骤入佳境，流连星野
+    - generic [ref=e917]:
+      - generic [ref=e918]:
+        - generic [ref=e919]:
+          - heading "MiniMax" [level=2] [ref=e920]
+          - paragraph [ref=e921]: 全球领先的通用人工智能科技公司
+        - paragraph [ref=e922]: 自2022年初成立以来，我们以"与所有人共创智能"为使命，致力于推动人工智能科技前沿发展，实现通用人工智能（AGI）。MiniMax 自主研发了一系列多模态通用大模型，具备强大的代码和 Agent 能力，以及超长上下文处理能力，能够理解、生成并整合包括文本、音频、图像、视频和音乐在内的多种模态。
+        - paragraph [ref=e923]: 基于这些自研模型，我们面向全球推出一系列 AI 原生产品，包括 MiniMax Agent、海螺AI、MiniMax Audio、星野等，以及面向企业和开发者的开放平台，共同为全球用户提供极致的智能体验。
+      - generic [ref=e924]:
+        - generic [ref=e925]:
+          - generic [ref=e926]: 0+
+          - generic [ref=e927]: 服务国家及地区
+        - generic [ref=e928]:
+          - generic [ref=e929]: 0亿+
+          - generic [ref=e930]: 全球个人用户
+        - generic [ref=e931]:
+          - generic [ref=e932]: 214,000+
+          - generic [ref=e933]: 企业客户及开发者
+        - generic [ref=e934]:
+          - generic [ref=e935]: 0+
+          - generic [ref=e936]: 企业服务覆盖国家
+  - contentinfo [ref=e937]:
+    - generic [ref=e938]:
+      - generic [ref=e939]:
+        - generic [ref=e940]:
+          - img "logo" [ref=e941]
+          - generic [ref=e942]:
+            - link "bd@minimax.io" [ref=e943] [cursor=pointer]:
+              - /url: mailto:bd@minimax.io
+              - img [ref=e944]
+            - button [ref=e947] [cursor=pointer]:
+              - img [ref=e948]
+            - link [ref=e950] [cursor=pointer]:
+              - /url: https://github.com/MiniMax-AI
+              - img [ref=e951]
+            - link [ref=e961] [cursor=pointer]:
+              - /url: https://huggingface.co/MiniMaxAI
+              - img [ref=e962]
+            - link [ref=e974] [cursor=pointer]:
+              - /url: https://discord.gg/minimax
+              - img [ref=e975]
+          - generic [ref=e977]:
+            - generic [ref=e978]:
+              - img "MiniMax 公众号" [ref=e980]
+              - generic [ref=e981]: MiniMax 公众号
+            - generic [ref=e982]:
+              - img "开平公众号" [ref=e984]
+              - generic [ref=e985]: 开平公众号
+            - generic [ref=e986]:
+              - img "官方交流群" [ref=e988]
+              - generic [ref=e989]: 官方交流群
+            - generic [ref=e990]:
+              - img "飞书交流群" [ref=e992]
+              - generic [ref=e993]: 飞书交流群
+        - generic [ref=e994]:
+          - generic [ref=e995]:
+            - heading "研究" [level=6] [ref=e996]
+            - list [ref=e997]:
+              - listitem [ref=e998]:
+                - link "MiniMax M2.7" [ref=e999] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news/minimax-m27-zh
+              - listitem [ref=e1000]:
+                - link "MiniMax M2.5" [ref=e1001] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news/minimax-m25
+              - listitem [ref=e1002]:
+                - link "MiniMax M2-her" [ref=e1003] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news/minimax-m2-her-技术深度解析
+              - listitem [ref=e1004]:
+                - link "MiniMax M2.1" [ref=e1005] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news/minimax-m21
+              - listitem [ref=e1006]:
+                - link "MiniMax M2" [ref=e1007] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news/minimax-m2
+              - listitem [ref=e1008]:
+                - link "MiniMax Speech 2.6" [ref=e1009] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news/minimax-speech-26
+              - listitem [ref=e1010]:
+                - link "MiniMax Hailuo 2.3" [ref=e1011] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news/minimax-hailuo-23
+              - listitem [ref=e1012]:
+                - link "MiniMax Music 2.5+" [ref=e1013] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news/minimax-music-25-2
+              - listitem [ref=e1014]:
+                - link "MiniMax Music 2.0" [ref=e1015] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news/minimax-music-20
+          - generic [ref=e1016]:
+            - heading "产品" [level=6] [ref=e1017]
+            - list [ref=e1018]:
+              - listitem [ref=e1019]:
+                - link "Agent" [ref=e1020] [cursor=pointer]:
+                  - /url: https://agent.minimaxi.com/
+              - listitem [ref=e1021]:
+                - link "海螺视频" [ref=e1022] [cursor=pointer]:
+                  - /url: https://hailuoai.com/video
+              - listitem [ref=e1023]:
+                - link "语音" [ref=e1024] [cursor=pointer]:
+                  - /url: https://www.minimaxi.com/audio
+              - listitem [ref=e1025]:
+                - link "星野" [ref=e1026] [cursor=pointer]:
+                  - /url: https://www.xingyeai.com/
+          - generic [ref=e1027]:
+            - heading "开放平台" [level=6] [ref=e1028]
+            - list [ref=e1029]:
+              - listitem [ref=e1030]:
+                - link "文档中心" [ref=e1031] [cursor=pointer]:
+                  - /url: https://platform.minimaxi.com/docs
+              - listitem [ref=e1032]:
+                - link "Token Plan" [ref=e1033] [cursor=pointer]:
+                  - /url: https://platform.minimaxi.com/subscribe/token-plan
+              - listitem [ref=e1034]:
+                - link "产品定价" [ref=e1035] [cursor=pointer]:
+                  - /url: https://platform.minimaxi.com/docs/pricing/overview
+              - listitem [ref=e1036]:
+                - link "平台登录" [ref=e1037] [cursor=pointer]:
+                  - /url: https://platform.minimaxi.com/user-center/basic-information
+          - generic [ref=e1038]:
+            - heading "关于我们" [level=6] [ref=e1039]
+            - list [ref=e1040]:
+              - listitem [ref=e1041]:
+                - link "公司介绍" [ref=e1042] [cursor=pointer]:
+                  - /url: https://minimaxi.com/about
+              - listitem [ref=e1043]:
+                - link "加入我们" [ref=e1044] [cursor=pointer]:
+                  - /url: https://minimaxi.com/careers
+          - generic [ref=e1045]:
+            - heading "新闻动态" [level=6] [ref=e1046]
+            - list [ref=e1047]:
+              - listitem [ref=e1048]:
+                - link "最新资讯" [ref=e1049] [cursor=pointer]:
+                  - /url: https://minimaxi.com/news
+      - generic [ref=e1050]:
+        - generic [ref=e1051]:
+          - generic [ref=e1052]: ©上海稀宇科技有限公司 2026 版权所有
+          - link "隐私条款" [ref=e1053] [cursor=pointer]:
+            - /url: https://platform.minimaxi.com/protocol/privacy-policy
+          - link "用户协议" [ref=e1054] [cursor=pointer]:
+            - /url: https://platform.minimaxi.com/protocol/user-agreement
+          - link "涉企侵权举报专用邮箱" [ref=e1055] [cursor=pointer]:
+            - /url: mailto:qinquan@minimaxi.com
+        - generic [ref=e1056]:
+          - link "沪公网安备 沪公网安备 31010402010179号" [ref=e1057] [cursor=pointer]:
+            - /url: https://www.beian.gov.cn/portal/registerSystemInfo?recordcode=31010402010179
+            - img "沪公网安备" [ref=e1058]
+            - text: 沪公网安备 31010402010179号
+          - link "沪ICP备2023003282号-38" [ref=e1059] [cursor=pointer]:
+            - /url: https://beian.miit.gov.cn/
+  - alert [ref=e1060]

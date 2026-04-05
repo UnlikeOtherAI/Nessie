@@ -80,7 +80,7 @@ struct SubAgentSummary: Codable, Sendable {
   let status: String
 }
 
-enum HelperClientError: LocalizedError, Sendable {
+enum NessieClientError: LocalizedError, Sendable {
   case invalidResponse
   case serverError(statusCode: Int, message: String)
   case webSocketError(String)
@@ -96,7 +96,7 @@ enum HelperClientError: LocalizedError, Sendable {
 
 // ─── Main client ───────────────────────────────────────────────────────────────
 
-final class HelperClient: @unchecked Sendable {
+final class NessieClient: @unchecked Sendable {
 
   // ─── Configuration ────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ final class HelperClient: @unchecked Sendable {
   private var wsReceiveTask: Task<Void, Never>?
 
   init(baseURL: URL? = nil) {
-    let rawURL = ProcessInfo.processInfo.environment["HELPER_ORCHESTRATOR_URL"]
+    let rawURL = ProcessInfo.processInfo.environment["NESSIE_ORCHESTRATOR_URL"]
       ?? "http://127.0.0.1:4317"
 
     if let provided = baseURL {
@@ -307,11 +307,11 @@ final class HelperClient: @unchecked Sendable {
 
   private func validate(response: URLResponse, data: Data) throws {
     guard let http = response as? HTTPURLResponse else {
-      throw HelperClientError.invalidResponse
+      throw NessieClientError.invalidResponse
     }
     guard (200..<300).contains(http.statusCode) else {
       let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-      throw HelperClientError.serverError(statusCode: http.statusCode, message: message)
+      throw NessieClientError.serverError(statusCode: http.statusCode, message: message)
     }
   }
 

@@ -18,7 +18,7 @@ export class Orchestrator {
       agents: [
         {
           id: 'main',
-          name: 'Helper',
+          name: 'Nessie',
           type: 'orchestrator',
           responsibility: 'Primary orchestrator for the desktop assistant.',
           trigger: 'main',

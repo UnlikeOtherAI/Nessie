@@ -1,5 +1,5 @@
 /**
- * MCP (Model Context Protocol) server for Helper Agent.
+ * MCP (Model Context Protocol) server for Nessie.
  *
  * Exposes all app actions as MCP tools: send_message, list_sessions,
  * get_state, invoke_tool, voice_start, voice_stop.
