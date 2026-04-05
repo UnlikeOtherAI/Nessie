@@ -70,10 +70,14 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
     },
 
     async callTool(name: string, args: Record<string, unknown>): Promise<string> {
-      const tool = findToolByName(allTools, name)
-      if (!tool) return `Tool not found: ${name}`
+      // invoke_tool wraps args as { name: 'Bash', input: {...} }
+      const toolName = (args.name as string | undefined) ?? name
+      const input = (args.input as Record<string, unknown> | undefined) ?? args
 
-      const parsed = tool.inputSchema.safeParse(args)
+      const tool = findToolByName(allTools, toolName)
+      if (!tool) return `Tool not found: ${toolName}`
+
+      const parsed = tool.inputSchema.safeParse(input)
       if (!parsed.success) return `Invalid input: ${parsed.error.message}`
 
       const context: ToolUseContext = {
