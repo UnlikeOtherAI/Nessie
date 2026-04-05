@@ -11,6 +11,7 @@
 		20DD0C26C2CC1DDF851FC9C5 /* InputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 364BDE297DE26C66C470A068 /* InputBar.swift */; };
 		2570489A3F30784AD8321C19 /* SessionsSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C488D9DD0B40EE8B83FDD834 /* SessionsSidebar.swift */; };
 		3B644E6CB2577368AABACBCE /* AppReveal in Frameworks */ = {isa = PBXBuildFile; productRef = 741A8C19F9456C6742A091EA /* AppReveal */; };
+		4545B5A4F9DAFD4CF2386389 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 599170604A1C6B792EA92FA2 /* Assets.xcassets */; };
 		76B93C2CC55107D70A5837A7 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048393CF5001FF96E2137698 /* Models.swift */; };
 		79A893E35E8FA2C1E93BFDF4 /* HelperClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C91D55E7E927AA25515E4BB /* HelperClient.swift */; };
 		B3C4CA718F65E0DD01DD98AE /* HotwordDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56917EEC231746BACE9EC29A /* HotwordDetector.swift */; };
@@ -30,6 +31,7 @@
 		364BDE297DE26C66C470A068 /* InputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBar.swift; sourceTree = "<group>"; };
 		4C91D55E7E927AA25515E4BB /* HelperClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperClient.swift; sourceTree = "<group>"; };
 		56917EEC231746BACE9EC29A /* HotwordDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotwordDetector.swift; sourceTree = "<group>"; };
+		599170604A1C6B792EA92FA2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7A2D34A3F51661609C5CD5E1 /* VoiceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeView.swift; sourceTree = "<group>"; };
 		7C727C7C98CB845FD7D2635F /* Helper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Helper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8696A4F8C5986B630C7F892A /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
@@ -58,6 +60,7 @@
 			isa = PBXGroup;
 			children = (
 				158F012C520BCBA790BF3D50 /* App.swift */,
+				599170604A1C6B792EA92FA2 /* Assets.xcassets */,
 				C011C58210C3D51B2ACE1DA6 /* ChatView.swift */,
 				BC37ABAF29ADA676232A9377 /* ContentView.swift */,
 				28A96C083BA7787E80EE340F /* Helper.entitlements */,
@@ -100,6 +103,7 @@
 			buildConfigurationList = C1545976C9469A3988423E68 /* Build configuration list for PBXNativeTarget "Helper" */;
 			buildPhases = (
 				A793B5E2B0E7243150184A77 /* Sources */,
+				F470ABF78CB1EB036309052F /* Resources */,
 				8E28FB288FD4D5A3BA1D729A /* Frameworks */,
 			);
 			buildRules = (
@@ -147,6 +151,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		F470ABF78CB1EB036309052F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4545B5A4F9DAFD4CF2386389 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A793B5E2B0E7243150184A77 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -178,6 +193,7 @@
 				CODE_SIGN_ENTITLEMENTS = Helper/Helper.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Helper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -314,6 +330,7 @@
 				CODE_SIGN_ENTITLEMENTS = Helper/Helper.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Helper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

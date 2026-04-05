@@ -80,6 +80,9 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
       const parsed = tool.inputSchema.safeParse(input)
       if (!parsed.success) return `Invalid input: ${parsed.error.message}`
 
+      // Broadcast tool.called event so the app UI updates
+      orchestrator.broadcastToolEvent({ type: 'tool.called', name: toolName, input })
+
       const context: ToolUseContext = {
         abortController: new AbortController(),
         messages: orchestrator.getState().messages,
@@ -95,9 +98,12 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
 
       try {
         const result = await tool.call(parsed.data, context)
+        orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: result.data })
         return JSON.stringify(result.data, null, 2)
       } catch (err) {
-        return `Error: ${err instanceof Error ? err.message : String(err)}`
+        const msg = err instanceof Error ? err.message : String(err)
+        orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: { error: msg } })
+        return `Error: ${msg}`
       }
     },
 

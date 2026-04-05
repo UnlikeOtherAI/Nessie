@@ -385,6 +385,10 @@ export class Orchestrator {
   setListening(listening: boolean) { this.state.isListening = listening; this.broadcastState() }
   setSpeaking(speaking: boolean) { this.state.isSpeaking = speaking; this.broadcastState() }
 
+  broadcastToolEvent(event: { type: 'tool.called'; name: string; input: Record<string, unknown> } | { type: 'tool.done'; name: string; output: unknown }) {
+    this.callbacks.onBroadcast?.(event as import('../events.js').ServerEvent)
+  }
+
   close() {
     for (const handle of this.schedules.values()) clearInterval(handle)
     this.schedules.clear()
