@@ -5,8 +5,9 @@ import { FileWriteTool } from './FileWriteTool.js'
 import { GlobTool } from './GlobTool.js'
 import { GrepTool } from './GrepTool.js'
 import { WebSearchTool } from './WebSearchTool.js'
-import type { Tools } from './Tool.js'
-import type { ToolUseBlock } from './types.js'
+import { findToolByName, buildTool } from './Tool.js'
+import type { Tool, ToolDef, AnyTool } from './Tool.js'
+import type { Tools, ToolUseBlock } from './types.js'
 
 export const allTools: Tools = [
   BashTool,
@@ -17,5 +18,5 @@ export const allTools: Tools = [
   WebSearchTool,
 ]
 
-export { BashTool, FileReadTool, FileWriteTool, GlobTool, GrepTool, WebSearchTool }
-export type { ToolUseBlock }
+export { BashTool, FileReadTool, FileWriteTool, GlobTool, GrepTool, WebSearchTool, findToolByName, buildTool }
+export type { Tool, ToolDef, AnyTool, Tools, ToolUseBlock }

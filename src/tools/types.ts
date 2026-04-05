@@ -30,7 +30,7 @@ export type ToolUseContext = {
   }
 }
 
-export type Tools = readonly Tool[]
+export type Tools = readonly import('./Tool.js').Tool[]
 
 export type ToolUseBlock = {
   id: string
