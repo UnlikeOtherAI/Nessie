@@ -4,6 +4,8 @@ import type { ToolUseContext, ToolUseBlock } from '../tools/types.js'
 import type { OrchestratorState, SubAgentTask, AgentMessage, ManagedAgent } from './types.js'
 import type { LlmClient } from '../llm/client.js'
 import { llmStream } from '../llm/streaming.js'
+import { insertMessage, getMessages, getThreadHistory, type PersistedMessage } from '../db/database.js'
+import { evaluateAndCompress } from '../engine/compression.js'
 
 export class Orchestrator {
   private state: OrchestratorState
@@ -31,6 +33,25 @@ export class Orchestrator {
     }
     this.callbacks = options.callbacks ?? {}
     this.llm = options.llm ?? null
+
+    // Load persisted messages from SQLite
+    this.loadFromDb()
+  }
+
+  private loadFromDb() {
+    try {
+      const history = getThreadHistory('main', 200)
+      this.state.messages = history.map(h => ({
+        id: h.id,
+        role: h.role,
+        threadId: h.threadId,
+        content: h.content,
+        timestamp: h.timestamp,
+      }))
+      console.log(`[DB] Loaded ${history.length} history entries for main thread`)
+    } catch (err) {
+      console.warn('[DB] Failed to load history:', err)
+    }
   }
 
   setLlm(llm: LlmClient) {
@@ -114,17 +135,36 @@ export class Orchestrator {
         return
       }
       default: {
-        for await (const delta of this.streamVoiceResponse('main')) {
-          yield delta  // broadcast handles SSE delivery
+        const conversation = this.state.messages
+          .filter(m => m.threadId === 'main')
+          .slice(-12)
+          .map(m => ({ role: m.role === 'assistant' ? 'assistant' as const : 'user' as const, content: m.content }))
+        const runId = crypto.randomUUID()
+        this.callbacks.onBroadcast?.({ type: 'streaming.start', runId, threadId: 'main' })
+        let full = ''
+        try {
+          for await (const delta of llmStream(conversation)) {
+            full += delta
+            this.callbacks.onBroadcast?.({ type: 'streaming.delta', content: delta })
+            yield delta
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          this.callbacks.onBroadcast?.({ type: 'error', message: msg })
+          yield `LLM error: ${msg}`
+          return
         }
+        this.callbacks.onBroadcast?.({ type: 'streaming.done', content: full, runId })
+        this.pushMessage({ role: 'assistant', threadId: 'main', content: full })
+        this.scheduleCompression('main')
       }
     }
   }
 
   // ─── Stream voice response (yields deltas for SSE) ────────────────────────────
-  // IMPORTANT: does NOT call appendAssistantReply — the message is pushed via
-  // broadcast events (streaming.start/delta/done) and the macOS app assembles it.
-  // This avoids double-pushing the final message.
+  // Returns the full response content so the caller can persist it.
+  // IMPORTANT: does NOT call pushMessage — the caller handles that to avoid
+  // double-pushing when using the SSE streaming path.
 
   async *streamVoiceResponse(threadId: string): AsyncGenerator<string, void, undefined> {
     if (!this.llm) {
@@ -191,10 +231,12 @@ export class Orchestrator {
           return this.appendAssistantReply(response, 'main')
         }
         default: {
-          // Stream voice response
+          // Stream voice response — push assistant message to state after streaming
           for await (const _delta of this.streamVoiceResponse('main')) {
             // deltas are broadcast via onBroadcast
           }
+          // After streaming, push the assistant reply (extracted from streaming.done event content)
+          // Note: for handleUserMessageStreaming, the SSE client pushes to state
           return ''
         }
       }
@@ -360,7 +402,18 @@ export class Orchestrator {
 
   private appendAssistantReply(content: string, threadId: string): string {
     this.pushMessage({ role: 'assistant', threadId, content })
+    // Fire-and-forget compression after assistant response
+    this.scheduleCompression(threadId)
     return content
+  }
+
+  private scheduleCompression(threadId: string) {
+    setTimeout(() => {
+      if (!this.llm) return
+      try {
+        void evaluateAndCompress(this.state.messages.filter(m => m.threadId === threadId), threadId, this.llm)
+      } catch { /* ignore compression errors */ }
+    }, 0)
   }
 
   pushMessage(input: { role: 'user' | 'assistant' | 'system'; threadId: string; content: string; timestamp?: number }) {
@@ -368,6 +421,12 @@ export class Orchestrator {
     this.state.messages.push(msg)
     this.broadcastState()
     this.callbacks.onBroadcast?.({ type: 'message', message: { id: msg.id, role: msg.role, threadId: msg.threadId, content: msg.content, timestamp: msg.timestamp } })
+    // Persist to SQLite
+    try {
+      insertMessage({ id: msg.id, role: msg.role, threadId: msg.threadId, content: msg.content, timestamp: msg.timestamp })
+    } catch (err) {
+      console.warn('[DB] Failed to persist message:', err)
+    }
   }
 
   private broadcastState() {
