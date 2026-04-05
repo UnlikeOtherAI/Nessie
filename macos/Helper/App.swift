@@ -159,17 +159,8 @@ final class AppState: ObservableObject {
     case .streamingDelta(let content):
       streamingContent += content
 
-    case .streamingDone(let content, _):
-      // Append the final assembled message
-      let threadId = selectedSession?.threadId ?? selectedAgent?.id ?? "main"
-      let finalMsg = ChatMessage(
-        id: UUID().uuidString,
-        role: .assistant,
-        threadId: threadId,
-        content: content,
-        timestamp: Date()
-      )
-      allMessages.append(finalMsg)
+    case .streamingDone(_, _):
+      // Message is added via the `message` broadcast event — don't double-add
       streamingContent = ""
       streamingRunId = nil
       isThinking = false
