@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { buildTool } from './Tool.js'
 import type { Tool } from './Tool.js'
-import type { ToolUseContext } from './types.js'
 
 const GrepSchema = z.object({
   pattern: z.string(),

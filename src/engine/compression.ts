@@ -43,7 +43,10 @@ export async function evaluateAndCompress(
     .join('\n')
 
   const prompt = [
-    { role: 'system' as const, content: `You are a memory compression system. Evaluate the following conversation transcript and decide whether it contains information worth preserving in long-term memory.
+    {
+      role: 'system' as const,
+      // eslint-disable-next-line max-len
+      content: `You are a memory compression system. Evaluate the following conversation transcript and decide whether it contains information worth preserving in long-term memory.
 
 Respond with ONLY valid JSON, no markdown, no explanation:
 {
@@ -61,7 +64,8 @@ Only mark worthy=true if the conversation contains:
 - Problems solved or questions answered
 - Questions that remain unanswered
 
-Skip: smalltalk, greetings, simple acknowledgments, trivial chitchat.` },
+Skip: smalltalk, greetings, simple acknowledgments, trivial chitchat.`,
+    },
     { role: 'user' as const, content: transcript },
   ]
 

@@ -4,7 +4,7 @@ import type { ToolUseContext, ToolUseBlock } from '../tools/types.js'
 import type { OrchestratorState, SubAgentTask, AgentMessage, ManagedAgent } from './types.js'
 import type { LlmClient } from '../llm/client.js'
 import { llmStream } from '../llm/streaming.js'
-import { insertMessage, getMessages, getThreadHistory, type PersistedMessage } from '../db/database.js'
+import { insertMessage, getThreadHistory } from '../db/database.js'
 import { evaluateAndCompress } from '../engine/compression.js'
 
 export class Orchestrator {
@@ -232,7 +232,8 @@ export class Orchestrator {
         }
         default: {
           // Stream voice response — push assistant message to state after streaming
-          for await (const _delta of this.streamVoiceResponse('main')) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          for await (const _ of this.streamVoiceResponse('main')) {
             // deltas are broadcast via onBroadcast
           }
           // After streaming, push the assistant reply (extracted from streaming.done event content)
@@ -255,9 +256,13 @@ export class Orchestrator {
     return this.resolveExplicitTargetAgent(content) ?? selectedAgent
   }
 
-  private decideAction(content: string): { type: 'voice' | 'inject' | 'subagent'; text?: string; task?: string; tools?: string[] } {
+  private decideAction(
+    content: string,
+  ): { type: 'voice' | 'inject' | 'subagent'; text?: string; task?: string; tools?: string[] } {
     const lower = content.toLowerCase()
-    if (lower.includes('search') || lower.includes('find') || lower.includes('look up') || lower.includes('research')) {
+    const isSearch = lower.includes('search') || lower.includes('find')
+      || lower.includes('look up') || lower.includes('research')
+    if (isSearch) {
       return { type: 'subagent', task: content, tools: ['WebSearch', 'Bash', 'FileRead', 'Glob', 'Grep'] }
     }
     if (lower.includes('type this') || lower.includes('write in') || lower.includes('fill in')) {
@@ -275,10 +280,18 @@ export class Orchestrator {
     if (wantsCreate) {
       const summaries: string[] = []
       if (lower.includes('coder')) {
-        summaries.push(this.ensureAgent({ id: 'coder', name: 'Coder', type: 'coder', responsibility: 'On-demand coding agent.', trigger: 'on-demand', tools: ['Bash', 'FileRead', 'FileWrite', 'Glob', 'Grep'] }))
+        summaries.push(this.ensureAgent({
+          id: 'coder', name: 'Coder', type: 'coder',
+          responsibility: 'On-demand coding agent.',
+          trigger: 'on-demand', tools: ['Bash', 'FileRead', 'FileWrite', 'Glob', 'Grep'],
+        }))
       }
       if (lower.includes('weather')) {
-        summaries.push(this.ensureAgent({ id: 'weather-watcher', name: 'Weather Watcher', type: 'weather', responsibility: 'Hourly weather updates.', trigger: 'hourly', tools: ['WebSearch'], intervalMinutes: 60 }))
+        summaries.push(this.ensureAgent({
+          id: 'weather-watcher', name: 'Weather Watcher', type: 'weather',
+          responsibility: 'Hourly weather updates.',
+          trigger: 'hourly', tools: ['WebSearch'], intervalMinutes: 60,
+        }))
       }
       if (summaries.length > 0) return summaries.join(' ')
     }
@@ -312,7 +325,9 @@ export class Orchestrator {
     for (const agent of this.state.agents) {
       if (agent.trigger !== 'on-demand') continue
       const name = agent.name.toLowerCase()
-      if (lower.startsWith(`@${name}`) || lower.startsWith(`${name}:`) || lower.startsWith(`${name} `) || lower.includes(`ask ${name}`)) {
+      const matchesAgent = lower.startsWith(`@${name}`) || lower.startsWith(`${name}:`)
+        || lower.startsWith(`${name} `) || lower.includes(`ask ${name}`)
+      if (matchesAgent) {
         return agent
       }
     }
@@ -321,9 +336,22 @@ export class Orchestrator {
 
   private async handleTargetedAgentMessage(agent: ManagedAgent, content: string): Promise<string> {
     if (!this.llm) return `${agent.name} is configured, but no LLM client is available.`
-    const threadMessages = this.state.messages.filter((m) => m.threadId === agent.id).slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'assistant' as const : 'user' as const, content: m.content }))
-    const prompt = content.replace(new RegExp(`^@?${agent.name}\\s*:?\\s*`, 'i'), '').replace(new RegExp(`^ask\\s+${agent.name}\\s+(to\\s+)?`, 'i'), '').trim() || content
-    const reply = await this.llm.chat([{ role: 'system', content: `You are ${agent.name}. Responsibility: ${agent.responsibility}` }, ...threadMessages, { role: 'user', content: prompt }])
+    const threadMessages = this.state.messages
+      .filter((m) => m.threadId === agent.id)
+      .slice(-12)
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
+        content: m.content,
+      }))
+    const prompt = content
+      .replace(new RegExp(`^@?${agent.name}\\s*:?\\s*`, 'i'), '')
+      .replace(new RegExp(`^ask\\s+${agent.name}\\s+(to\\s+)?`, 'i'), '')
+      .trim() || content
+    const systemMsg = {
+      role: 'system' as const,
+      content: `You are ${agent.name}. Responsibility: ${agent.responsibility}`,
+    }
+    const reply = await this.llm.chat([systemMsg, ...threadMessages, { role: 'user', content: prompt }])
     return `${agent.name}: ${reply}`
   }
 
@@ -334,17 +362,29 @@ export class Orchestrator {
 
   private async handleVoiceResponse(threadId: string): Promise<string> {
     if (!this.llm) return 'No LLM client configured.'
-    const conversation = this.state.messages.filter((m) => m.threadId === threadId).slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'assistant' as const : 'user' as const, content: m.content }))
+    const conversation = this.state.messages
+      .filter((m) => m.threadId === threadId)
+      .slice(-12)
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
+        content: m.content,
+      }))
     return await this.llm.chat(conversation)
   }
 
   private async handleSubAgentTask(task: string, toolNames: string[]): Promise<string> {
     if (!this.llm) return 'No LLM configured for sub-agent responses.'
 
-    const subAgent: SubAgentTask = { id: crypto.randomUUID(), name: `research-${Date.now()}`, task, tools: toolNames, status: 'running' }
+    const subAgent: SubAgentTask = {
+      id: crypto.randomUUID(), name: `research-${Date.now()}`,
+      task, tools: toolNames, status: 'running',
+    }
     this.state.subAgents.push(subAgent)
     this.broadcastState()
-    this.callbacks.onBroadcast?.({ type: 'subagent.started', subAgent: { id: subAgent.id, name: subAgent.name, task: subAgent.task, status: 'running' } })
+    this.callbacks.onBroadcast?.({
+      type: 'subagent.started',
+      subAgent: { id: subAgent.id, name: subAgent.name, task: subAgent.task, status: 'running' },
+    })
 
     const rawResult = await this.spawnSubAgent(subAgent)
     subAgent.status = 'done'
@@ -355,7 +395,12 @@ export class Orchestrator {
     // Synthesize a natural user-facing response from the tool result
     try {
       const response = await this.llm.chat([
-        { role: 'system', content: 'You are a helpful assistant. A research task was just completed. Summarize the results in 1-3 clear sentences for the user. Be concise and practical. Do not mention tools, JSON, or raw data.' },
+        {
+          role: 'system',
+          content: 'You are a helpful assistant. A research task was just completed. '
+            + 'Summarize the results in 1-3 clear sentences for the user. '
+            + 'Be concise and practical. Do not mention tools, JSON, or raw data.',
+        },
         { role: 'user', content: `Original question: ${task}\n\nResearch results:\n${rawResult}` },
       ], { maxTokens: 300 })
       return response
@@ -367,11 +412,14 @@ export class Orchestrator {
   private async spawnSubAgent(task: SubAgentTask): Promise<string> {
     const context = this.makeContext()
     const toolName = task.tools.includes('WebSearch') ? 'WebSearch' : 'Bash'
-    const toolUse: ToolUseBlock = { id: task.id, name: toolName, input: toolName === 'WebSearch' ? { query: task.task } : { command: task.task } }
+    const toolInput = toolName === 'WebSearch' ? { query: task.task } : { command: task.task }
+    const toolUse: ToolUseBlock = { id: task.id, name: toolName, input: toolInput }
     const tool = findToolByName(allTools, toolUse.name)
     if (!tool) return `Tool not found: ${toolUse.name}`
 
-    this.callbacks.onBroadcast?.({ type: 'tool.called', name: toolName, input: toolUse.input as Record<string, unknown> })
+    this.callbacks.onBroadcast?.({
+      type: 'tool.called', name: toolName, input: toolUse.input as Record<string, unknown>,
+    })
 
     const parsed = tool.inputSchema.safeParse(toolUse.input)
     if (!parsed.success) return `Invalid input: ${parsed.error.message}`
@@ -397,10 +445,15 @@ export class Orchestrator {
       const now = Date.now()
       agent.lastRunAt = now
       agent.nextRunAt = agent.intervalMinutes ? now + agent.intervalMinutes * 60_000 : undefined
-      this.pushMessage({ role: 'assistant', threadId: 'main', content: `${agent.name}${reason === 'initial' ? ' initial report' : ' hourly update'}: ${summary}`, timestamp: now })
+      const label = reason === 'initial' ? ' initial report' : ' hourly update'
+      this.pushMessage({
+        role: 'assistant', threadId: 'main',
+        content: `${agent.name}${label}: ${summary}`, timestamp: now,
+      })
       this.callbacks.onBroadcast?.({ type: 'agent.wake', agentId, reason })
     } catch (error) {
-      this.pushMessage({ role: 'system', threadId: 'main', content: `${agent.name} failed: ${error instanceof Error ? error.message : String(error)}` })
+      const errMsg = error instanceof Error ? error.message : String(error)
+      this.pushMessage({ role: 'system', threadId: 'main', content: `${agent.name} failed: ${errMsg}` })
     }
   }
 
@@ -428,14 +481,29 @@ export class Orchestrator {
     }, 0)
   }
 
-  pushMessage(input: { role: 'user' | 'assistant' | 'system'; threadId: string; content: string; timestamp?: number }) {
-    const msg: AgentMessage = { id: crypto.randomUUID(), role: input.role, threadId: input.threadId, content: input.content, timestamp: input.timestamp ?? Date.now() }
+  pushMessage(input: {
+    role: 'user' | 'assistant' | 'system'; threadId: string; content: string; timestamp?: number
+  }) {
+    const msg: AgentMessage = {
+      id: crypto.randomUUID(), role: input.role,
+      threadId: input.threadId, content: input.content,
+      timestamp: input.timestamp ?? Date.now(),
+    }
     this.state.messages.push(msg)
     this.broadcastState()
-    this.callbacks.onBroadcast?.({ type: 'message', message: { id: msg.id, role: msg.role, threadId: msg.threadId, content: msg.content, timestamp: msg.timestamp } })
+    this.callbacks.onBroadcast?.({
+      type: 'message',
+      message: {
+        id: msg.id, role: msg.role, threadId: msg.threadId,
+        content: msg.content, timestamp: msg.timestamp,
+      },
+    })
     // Persist to SQLite
     try {
-      insertMessage({ id: msg.id, role: msg.role, threadId: msg.threadId, content: msg.content, timestamp: msg.timestamp })
+      insertMessage({
+        id: msg.id, role: msg.role, threadId: msg.threadId,
+        content: msg.content, timestamp: msg.timestamp,
+      })
     } catch (err) {
       console.warn('[DB] Failed to persist message:', err)
     }
@@ -450,13 +518,25 @@ export class Orchestrator {
   }
 
   private makeContext(): ToolUseContext {
-    return { abortController: new AbortController(), messages: this.state.messages, getAppState: () => ({ isOnline: true, isListening: this.state.isListening, isSpeaking: this.state.isSpeaking, hotwordActive: false, activeAgentId: undefined }), setAppState: () => {}, options: { tools: allTools, debug: false } }
+    return {
+      abortController: new AbortController(),
+      messages: this.state.messages,
+      getAppState: () => ({
+        isOnline: true, isListening: this.state.isListening,
+        isSpeaking: this.state.isSpeaking, hotwordActive: false, activeAgentId: undefined,
+      }),
+      setAppState: () => {},
+      options: { tools: allTools, debug: false },
+    }
   }
 
   setListening(listening: boolean) { this.state.isListening = listening; this.broadcastState() }
   setSpeaking(speaking: boolean) { this.state.isSpeaking = speaking; this.broadcastState() }
 
-  broadcastToolEvent(event: { type: 'tool.called'; name: string; input: Record<string, unknown> } | { type: 'tool.done'; name: string; output: unknown }) {
+  broadcastToolEvent(
+    event: { type: 'tool.called'; name: string; input: Record<string, unknown> }
+      | { type: 'tool.done'; name: string; output: unknown },
+  ) {
     this.callbacks.onBroadcast?.(event as import('../events.js').ServerEvent)
   }
 

@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { buildTool } from './Tool.js'
 import type { Tool } from './Tool.js'
-import type { ToolUseContext } from './types.js'
 import { readFile } from 'fs/promises'
 
 const FileReadSchema = z.object({

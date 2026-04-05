@@ -7,8 +7,6 @@
  * Protocol: JSON-RPC 2.0 over HTTP POST /mcp.
  */
 
-import type { ServerEvent } from '../events.js'
-
 // ─── Tool definitions ─────────────────────────────────────────────────────────
 
 const TOOLS: ToolDef[] = [
@@ -81,7 +79,8 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: 'inject_message',
-    description: 'Inject a message into a thread without triggering a response. Useful for logging, system messages, or pre-loading conversation context.',
+    description: 'Inject a message into a thread without triggering a response.'
+      + ' Useful for logging, system messages, or pre-loading conversation context.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -141,7 +140,10 @@ export class McpServer {
         case 'notifications/initialized':
           return { jsonrpc: '2.0', id: req.id ?? null }
         default:
-          return { jsonrpc: '2.0', id: req.id ?? null, error: { code: -32601, message: `Method not found: ${req.method}` } }
+          return {
+            jsonrpc: '2.0', id: req.id ?? null,
+            error: { code: -32601, message: `Method not found: ${req.method}` },
+          }
       }
     } catch (err) {
       return {
@@ -189,7 +191,10 @@ export class McpServer {
     const args = params?.arguments ?? {}
 
     if (!name) {
-      return { jsonrpc: '2.0', id: req.id ?? null, error: { code: -32602, message: 'Missing tool name' } }
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        error: { code: -32602, message: 'Missing tool name' },
+      }
     }
 
     // Handle send_message — streams response back via orchestrator
@@ -197,7 +202,10 @@ export class McpServer {
       const message = args.message as string | undefined
       const threadId = (args.threadId as string | undefined) ?? 'main'
       if (!message) {
-        return { jsonrpc: '2.0', id: req.id ?? null, error: { code: -32602, message: 'message is required' } }
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'message is required' },
+        }
       }
       // Collect streaming deltas
       let response = ''
@@ -208,7 +216,10 @@ export class McpServer {
       } catch (err) {
         response = `Error: ${err instanceof Error ? err.message : String(err)}`
       }
-      return { jsonrpc: '2.0', id: req.id ?? null, result: { content: [{ type: 'text', text: response || '(no response)' }] } }
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: response || '(no response)' }] },
+      }
     }
 
     // Handle screenshot directly — uses macOS screencapture
@@ -220,15 +231,24 @@ export class McpServer {
       try {
         if (outPath) {
           execFileSync('screencapture', [outPath])
-          return { jsonrpc: '2.0', id: req.id ?? null, result: { content: [{ type: 'text', text: `Screenshot saved to ${outPath}` }] } }
+          return {
+            jsonrpc: '2.0', id: req.id ?? null,
+            result: { content: [{ type: 'text', text: `Screenshot saved to ${outPath}` }] },
+          }
         } else {
           execFileSync('screencapture', ['-x', tmpPath])
           const buf = readFileSync(tmpPath)
           const b64 = buf.toString('base64')
-          return { jsonrpc: '2.0', id: req.id ?? null, result: { content: [{ type: 'image', data: b64, mimeType: 'image/png' }] } }
+          return {
+            jsonrpc: '2.0', id: req.id ?? null,
+            result: { content: [{ type: 'image', data: b64, mimeType: 'image/png' }] },
+          }
         }
       } catch (err) {
-        return { jsonrpc: '2.0', id: req.id ?? null, error: { code: -32603, message: String(err) } }
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32603, message: String(err) },
+        }
       }
     }
 
@@ -238,13 +258,22 @@ export class McpServer {
       const content = args.content as string
       const threadId = (args.threadId as string | undefined) ?? 'main'
       if (!role || !content) {
-        return { jsonrpc: '2.0', id: req.id ?? null, error: { code: -32602, message: 'role and content are required' } }
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'role and content are required' },
+        }
       }
       if (role !== 'user' && role !== 'assistant' && role !== 'system') {
-        return { jsonrpc: '2.0', id: req.id ?? null, error: { code: -32602, message: 'role must be user, assistant, or system' } }
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'role must be user, assistant, or system' },
+        }
       }
       this.orchestrator.pushMessage({ role: role as 'user' | 'assistant' | 'system', threadId, content })
-      return { jsonrpc: '2.0', id: req.id ?? null, result: { content: [{ type: 'text', text: `Injected ${role} message into ${threadId}.` }] } }
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: `Injected ${role} message into ${threadId}.` }] },
+      }
     }
 
     // Handle list_messages
@@ -255,7 +284,10 @@ export class McpServer {
         offset: typeof args.offset === 'number' ? Math.floor(args.offset) : 0,
         direction: args.direction as 'older' | 'newer' | undefined,
       })
-      return { jsonrpc: '2.0', id: req.id ?? null, result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] } }
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
+      }
     }
 
     // Handle list_sessions — structured JSON
@@ -274,25 +306,41 @@ export class McpServer {
         id,
         name: id === 'main' ? 'Main Chat' : (info.lastMsg.content ?? '').slice(0, 60),
         messageCount: info.count,
-        lastMessage: { role: info.lastMsg.role, content: info.lastMsg.content, timestamp: info.lastMsg.timestamp },
+        lastMessage: {
+          role: info.lastMsg.role, content: info.lastMsg.content, timestamp: info.lastMsg.timestamp,
+        },
       }))
-      return { jsonrpc: '2.0', id: req.id ?? null, result: { content: [{ type: 'text', text: JSON.stringify({ sessions }, null, 2) }] } }
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify({ sessions }, null, 2) }] },
+      }
     }
 
     const result = await this.orchestrator.callTool(name, args)
-    return { jsonrpc: '2.0', id: req.id ?? null, result: { content: [{ type: 'text', text: String(result) }] } }
+    return {
+      jsonrpc: '2.0', id: req.id ?? null,
+      result: { content: [{ type: 'text', text: String(result) }] },
+    }
   }
 
   private listResources(req: JsonRpcRequest): JsonRpcResponse {
-    const state = this.orchestrator.getState()
     return {
       jsonrpc: '2.0',
       id: req.id ?? null,
       result: {
         resources: [
-          { uri: 'helper://state', name: 'Orchestrator State', mimeType: 'application/json', description: 'Current agent/session state' },
-          { uri: 'helper://sessions', name: 'Sessions', mimeType: 'application/json', description: 'All conversation sessions' },
-          { uri: 'helper://agents', name: 'Agents', mimeType: 'application/json', description: 'Active agents' },
+          {
+            uri: 'helper://state', name: 'Orchestrator State',
+            mimeType: 'application/json', description: 'Current agent/session state',
+          },
+          {
+            uri: 'helper://sessions', name: 'Sessions',
+            mimeType: 'application/json', description: 'All conversation sessions',
+          },
+          {
+            uri: 'helper://agents', name: 'Agents',
+            mimeType: 'application/json', description: 'Active agents',
+          },
         ],
       },
     }

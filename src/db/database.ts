@@ -49,16 +49,25 @@ export function insertMessage(msg: PersistedMessage): void {
 }
 
 export function getMessages(threadId: string, limit = 100, beforeTimestamp?: number): PersistedMessage[] {
+  const withCursor = 'SELECT id, role, thread_id, content, timestamp FROM messages'
+    + ' WHERE thread_id = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?'
+  const noCursor = 'SELECT id, role, thread_id, content, timestamp FROM messages'
+    + ' WHERE thread_id = ? ORDER BY timestamp DESC LIMIT ?'
   const rows = beforeTimestamp
-    ? db.prepare('SELECT id, role, thread_id, content, timestamp FROM messages WHERE thread_id = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?').all(threadId, beforeTimestamp, limit)
-    : db.prepare('SELECT id, role, thread_id, content, timestamp FROM messages WHERE thread_id = ? ORDER BY timestamp DESC LIMIT ?').all(threadId, limit)
-  return (rows as { id: string; role: string; thread_id: string; content: string; timestamp: number }[])
+    ? db.prepare(withCursor).all(threadId, beforeTimestamp, limit)
+    : db.prepare(noCursor).all(threadId, limit)
+  type Row = { id: string; role: string; thread_id: string; content: string; timestamp: number }
+  return (rows as Row[])
     .reverse()
-    .map(r => ({ id: r.id, role: r.role as PersistedMessage['role'], threadId: r.thread_id, content: r.content, timestamp: r.timestamp }))
+    .map(r => ({
+      id: r.id, role: r.role as PersistedMessage['role'],
+      threadId: r.thread_id, content: r.content, timestamp: r.timestamp,
+    }))
 }
 
 export function getThreadIds(): string[] {
-  return (db.prepare('SELECT DISTINCT thread_id FROM messages ORDER BY timestamp DESC').all() as { thread_id: string }[]).map(r => r.thread_id)
+  const rows = db.prepare('SELECT DISTINCT thread_id FROM messages ORDER BY timestamp DESC').all()
+  return (rows as { thread_id: string }[]).map(r => r.thread_id)
 }
 
 export interface DiaryEntry {
@@ -72,21 +81,40 @@ export interface DiaryEntry {
 }
 
 export function insertDiaryEntry(entry: DiaryEntry): void {
-  db.prepare('INSERT OR REPLACE INTO diary_entries (id, thread_id, summary, importance, emotional_tone, entry_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
-    entry.id, entry.threadId, entry.summary, entry.importance, entry.emotionalTone ?? null, entry.entryType, entry.createdAt)
+  const sql = 'INSERT OR REPLACE INTO diary_entries'
+    + ' (id, thread_id, summary, importance, emotional_tone, entry_type, created_at)'
+    + ' VALUES (?, ?, ?, ?, ?, ?, ?)'
+  db.prepare(sql).run(
+    entry.id, entry.threadId, entry.summary, entry.importance,
+    entry.emotionalTone ?? null, entry.entryType, entry.createdAt,
+  )
 }
 
 export function getDiaryEntries(threadId: string, limit = 100): DiaryEntry[] {
-  return (db.prepare('SELECT id, thread_id, summary, importance, emotional_tone, entry_type, created_at FROM diary_entries WHERE thread_id = ? ORDER BY created_at ASC LIMIT ?').all(threadId, limit) as {
-    id: string; thread_id: string; summary: string; importance: number; emotional_tone: string | null; entry_type: string; created_at: number
-  }[]).map(r => ({ id: r.id, threadId: r.thread_id, summary: r.summary, importance: r.importance, emotionalTone: r.emotional_tone ?? undefined, entryType: r.entry_type, createdAt: r.created_at }))
+  const sql = 'SELECT id, thread_id, summary, importance, emotional_tone, entry_type, created_at'
+    + ' FROM diary_entries WHERE thread_id = ? ORDER BY created_at ASC LIMIT ?'
+  type DiaryRow = {
+    id: string; thread_id: string; summary: string; importance: number
+    emotional_tone: string | null; entry_type: string; created_at: number
+  }
+  const rows = db.prepare(sql).all(threadId, limit) as DiaryRow[]
+  return rows.map(r => ({
+    id: r.id, threadId: r.thread_id, summary: r.summary, importance: r.importance,
+    emotionalTone: r.emotional_tone ?? undefined, entryType: r.entry_type, createdAt: r.created_at,
+  }))
 }
 
 export function compressDiary(threadId: string, maxActive = 50): number {
-  const total = (db.prepare('SELECT COUNT(*) as count FROM diary_entries WHERE thread_id = ?').get(threadId) as { count: number }).count
+  const countRow = db.prepare('SELECT COUNT(*) as count FROM diary_entries WHERE thread_id = ?')
+    .get(threadId) as { count: number }
+  const total = countRow.count
   if (total <= maxActive) return 0
   const excess = total - maxActive
-  const result = db.prepare(`UPDATE diary_entries SET summary = '[faded] ' || summary WHERE id IN (SELECT id FROM diary_entries WHERE thread_id = ? AND importance <= 2 AND summary NOT LIKE '[faded]%' ORDER BY created_at ASC LIMIT ?)`).run(threadId, excess)
+  const fadeSql = `UPDATE diary_entries SET summary = '[faded] ' || summary`
+    + ` WHERE id IN (`
+    + `SELECT id FROM diary_entries WHERE thread_id = ?`
+    + ` AND importance <= 2 AND summary NOT LIKE '[faded]%' ORDER BY created_at ASC LIMIT ?)`
+  const result = db.prepare(fadeSql).run(threadId, excess)
   return result.changes
 }
 
@@ -102,8 +130,14 @@ export interface HistoryEntry {
 export function getThreadHistory(threadId: string, recentMessageCount = 50): HistoryEntry[] {
   const diary = getDiaryEntries(threadId, 100)
   const recent = getMessages(threadId, recentMessageCount)
-  const diaryEntries: HistoryEntry[] = diary.map(d => ({ id: d.id, role: 'system' as const, threadId: d.threadId, content: `[memory] ${d.summary}`, timestamp: d.createdAt, type: 'diary' as const }))
-  const messageEntries: HistoryEntry[] = recent.map(m => ({ id: m.id, role: m.role, threadId: m.threadId, content: m.content, timestamp: m.timestamp, type: 'message' as const }))
+  const diaryEntries: HistoryEntry[] = diary.map(d => ({
+    id: d.id, role: 'system' as const, threadId: d.threadId,
+    content: `[memory] ${d.summary}`, timestamp: d.createdAt, type: 'diary' as const,
+  }))
+  const messageEntries: HistoryEntry[] = recent.map(m => ({
+    id: m.id, role: m.role, threadId: m.threadId,
+    content: m.content, timestamp: m.timestamp, type: 'message' as const,
+  }))
   return [...diaryEntries, ...messageEntries].sort((a, b) => a.timestamp - b.timestamp)
 }
 

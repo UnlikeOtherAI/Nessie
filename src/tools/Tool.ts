@@ -27,11 +27,12 @@ export function findToolByName(tools: Tools, name: string): Tool | undefined {
   return tools.find(t => t.name === name)
 }
 
+type MutableToolKeys = 'isConcurrencySafe' | 'isReadOnly' | 'isDestructive' | 'isEnabled' | 'userFacingName'
+
 export type ToolDef<
   Input extends Record<string, unknown> = Record<string, unknown>,
   Output = unknown,
-> = Omit<Tool<Input, Output>, 'isConcurrencySafe' | 'isReadOnly' | 'isDestructive' | 'isEnabled' | 'userFacingName'> &
-  Partial<Pick<Tool<Input, Output>, 'isConcurrencySafe' | 'isReadOnly' | 'isDestructive' | 'isEnabled' | 'userFacingName'>>
+> = Omit<Tool<Input, Output>, MutableToolKeys> & Partial<Pick<Tool<Input, Output>, MutableToolKeys>>
 
 export function buildTool<Input extends Record<string, unknown>, Output>(
   def: ToolDef<Input, Output> & { name: string; inputSchema: z.ZodType<Input> }

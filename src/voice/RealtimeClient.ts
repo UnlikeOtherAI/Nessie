@@ -41,7 +41,7 @@ export class RealtimeClient {
       try {
         const data = JSON.parse(event.data as string)
         this.handleMessage(data)
-      } catch (e) {
+      } catch {
         // ignore parse errors
       }
     }

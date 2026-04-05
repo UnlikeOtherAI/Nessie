@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { buildTool } from './Tool.js'
 import type { Tool } from './Tool.js'
-import type { ToolUseContext } from './types.js'
 
 const WebSearchSchema = z.object({
   query: z.string(),
@@ -9,7 +8,8 @@ const WebSearchSchema = z.object({
 
 export type WebSearchInput = z.infer<typeof WebSearchSchema>
 
-export function createWebSearchTool(): Tool<WebSearchInput, { results: Array<{ title: string; url: string; snippet: string }> }> {
+type WebSearchResult = { title: string; url: string; snippet: string }
+export function createWebSearchTool(): Tool<WebSearchInput, { results: WebSearchResult[] }> {
   return buildTool({
     name: 'WebSearch',
     description: 'Search the web for information',

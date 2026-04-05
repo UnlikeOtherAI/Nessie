@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { buildTool } from './Tool.js'
 import type { Tool } from './Tool.js'
-import type { ToolUseContext } from './types.js'
 import { glob as globAsync } from 'glob'
 
 const GlobSchema = z.object({

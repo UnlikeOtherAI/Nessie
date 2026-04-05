@@ -102,7 +102,8 @@ async function main() {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
       }
       const rawBody = Buffer.concat(chunks).toString('utf8')
-      const body = rawBody ? JSON.parse(rawBody) as { message?: unknown; targetAgentId?: unknown; threadId?: unknown } : {}
+      type ChatBody = { message?: unknown; targetAgentId?: unknown; threadId?: unknown }
+      const body = rawBody ? JSON.parse(rawBody) as ChatBody : {}
       const message = typeof body.message === 'string' ? body.message.trim() : ''
       const threadId = typeof body.threadId === 'string' ? body.threadId.trim() : 'main'
 
@@ -112,12 +113,12 @@ async function main() {
         return
       }
 
-      // Set SSE headers
+      // Set SSE headers — X-Accel-Buffering disables nginx buffering
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no', // disable nginx buffering
+        'X-Accel-Buffering': 'no',
       })
 
       // Generate a unique stream ID so the client can match events
@@ -167,7 +168,8 @@ async function main() {
       // streamResponse handles routing + pushes user message to state + broadcasts it.
       // Nothing needed here — just stream the response deltas.
       try {
-        for await (const _reply of orchestrator.streamResponse(message, threadId)) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        for await (const _ of orchestrator.streamResponse(message, threadId)) {
           // nothing to yield — broadcast handles SSE delivery
         }
       } catch (error) {
@@ -213,7 +215,8 @@ async function main() {
       if (req.method === 'GET') {
         const toolsResult = await mcpServer.handleRequest({ jsonrpc: '2.0', id: null, method: 'tools/list' })
         res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ tools: (toolsResult.result as any)?.tools ?? [] }))
+        const mcpResult = toolsResult.result as Record<string, unknown> | undefined
+        res.end(JSON.stringify({ tools: mcpResult?.tools ?? [] }))
         return
       }
 
