@@ -3,7 +3,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target=node",
+    "lint": "eslint src && tsc --noEmit",
+    "build": "pnpm lint && bun build src/index.ts --outdir dist --target=node",
     "start": "node dist/index.js",
     "macos:project": "xcodegen generate --spec macos/project.yml",
     "macos:build": "pnpm macos:project && xcodebuild -project macos/Nessie.xcodeproj -scheme Nessie -configuration Debug -destination 'platform=macOS' build"
@@ -18,7 +19,10 @@
     "@types/bonjour": "^3.5.13",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
     "bun-types": "^1.0.0",
+    "eslint": "^10.2.0",
     "typescript": "^5.0.0"
   }
 }

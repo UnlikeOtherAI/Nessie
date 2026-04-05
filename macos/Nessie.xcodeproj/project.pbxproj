@@ -102,6 +102,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = C7FC304A07A358E1A76EF5AD /* Build configuration list for PBXNativeTarget "Nessie" */;
 			buildPhases = (
+				1B45D04B25A00B94452DFF8D /* SwiftLint */,
 				757B96078EC9F721E1317ADD /* Sources */,
 				9A3D0C3604D3E9B4173434B0 /* Resources */,
 				D74A79D51C3D3DD05097DAB2 /* Frameworks */,
@@ -161,6 +162,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		1B45D04B25A00B94452DFF8D /* SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = SwiftLint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if which swiftlint > /dev/null; then\n  cd \"${SRCROOT}/..\"\n  swiftlint lint --strict --config .swiftlint.yml\nelse\n  echo \"error: SwiftLint not installed. Run: brew install swiftlint\"\n  exit 1\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		757B96078EC9F721E1317ADD /* Sources */ = {

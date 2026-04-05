@@ -153,29 +153,32 @@ final class VoiceBridge: ObservableObject {
     switch message {
     case .string(let str):
       data = str.data(using: .utf8)
-    case .data(let d):
-      data = d
+    case .data(let msgData):
+      data = msgData
     @unknown default:
       data = nil
     }
-
     guard let jsonData = data else { return }
-
     await MainActor.run {
       if let event = try? JSONDecoder().decode(VoiceStreamEvent.self, from: jsonData) {
-        switch event.type {
-        case "transcript":
-          if let t = event.text { transcription = t }
-        case "response_delta":
-          if let d = event.delta { responseText += d }
-        case "response_done":
-          if let c = event.content { responseText = c }
-        case "error":
-          errorMessage = event.message ?? "Voice session error"
-        default:
-          break
-        }
+        applyVoiceEvent(event)
       }
+    }
+  }
+
+  @MainActor
+  private func applyVoiceEvent(_ event: VoiceStreamEvent) {
+    switch event.type {
+    case "transcript":
+      if let text = event.text { transcription = text }
+    case "response_delta":
+      if let delta = event.delta { responseText += delta }
+    case "response_done":
+      if let content = event.content { responseText = content }
+    case "error":
+      errorMessage = event.message ?? "Voice session error"
+    default:
+      break
     }
   }
 
@@ -203,8 +206,8 @@ final class VoiceBridge: ObservableObject {
     guard let channelData = buffer.floatChannelData?[0] else { return 0 }
     let frameLength = Int(buffer.frameLength)
     var rms: Float = 0
-    for i in 0..<frameLength {
-      rms += channelData[i] * channelData[i]
+    for idx in 0..<frameLength {
+      rms += channelData[idx] * channelData[idx]
     }
     return sqrtf(rms / Float(frameLength))
   }

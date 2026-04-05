@@ -9,7 +9,7 @@ struct SessionsSidebar: View {
   private var groupedSessions: [(String, [Session])] {
     let calendar = Calendar.current
     let today = calendar.startOfDay(for: Date())
-    let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
+    let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
 
     var groups: [String: [Session]] = [:]
 
@@ -27,10 +27,10 @@ struct SessionsSidebar: View {
     }
 
     let order = ["Today", "Yesterday", "Earlier"]
-    return groups.sorted { a, b in
-      let ai = order.firstIndex(of: a.key) ?? 99
-      let bi = order.firstIndex(of: b.key) ?? 99
-      return ai < bi
+    return groups.sorted { lhsGroup, rhsGroup in
+      let lhsIndex = order.firstIndex(of: lhsGroup.key) ?? 99
+      let rhsIndex = order.firstIndex(of: rhsGroup.key) ?? 99
+      return lhsIndex < rhsIndex
     }
   }
 

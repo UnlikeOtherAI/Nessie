@@ -159,7 +159,7 @@ final class AppState: ObservableObject {
     case .streamingDelta(let content):
       streamingContent += content
 
-    case .streamingDone(_, _):
+    case .streamingDone:
       // Message is added via the `message` broadcast event — don't double-add
       streamingContent = ""
       streamingRunId = nil
@@ -175,7 +175,7 @@ final class AppState: ObservableObject {
       activeSubAgents.removeAll { $0.id == subAgentId }
 
     case .toolCalled(let name, let input):
-      let entry = ToolCallEntry(id: UUID().uuidString, name: name, input: input, ts: Date())
+      let entry = ToolCallEntry(id: UUID().uuidString, name: name, input: input, timestamp: Date())
       recentToolCalls.insert(entry, at: 0)
       if recentToolCalls.count > 10 {
         recentToolCalls = Array(recentToolCalls.prefix(10))
@@ -188,7 +188,7 @@ final class AppState: ObservableObject {
           id: recentToolCalls[idx].id,
           name: name,
           input: recentToolCalls[idx].input,
-          ts: recentToolCalls[idx].ts,
+          timestamp: recentToolCalls[idx].timestamp,
           doneAt: Date()
         )
       }

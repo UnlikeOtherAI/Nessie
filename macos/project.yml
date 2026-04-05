@@ -21,6 +21,17 @@ targets:
       COMBINE_HIDPI_IMAGES: YES
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       GENERATE_INFOPLIST_FILE: NO
+    preBuildScripts:
+      - name: SwiftLint
+        script: |
+          if which swiftlint > /dev/null; then
+            cd "${SRCROOT}/.."
+            swiftlint lint --strict --config .swiftlint.yml
+          else
+            echo "error: SwiftLint not installed. Run: brew install swiftlint"
+            exit 1
+          fi
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: AppReveal
         product: AppReveal

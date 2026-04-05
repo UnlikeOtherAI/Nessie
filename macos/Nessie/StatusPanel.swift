@@ -231,7 +231,7 @@ struct StatusPanel: View {
     case "fileread", "read": return "doc.text"
     case "filewrite", "write": return "pencil"
     case "glob", "find": return "folder"
-    case "grep", "search": return "magnifyingglass"
+    case "grep": return "magnifyingglass"
     case "websearch", "search": return "globe"
     default: return "gearshape"
     }

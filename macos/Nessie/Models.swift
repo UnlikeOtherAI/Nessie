@@ -40,7 +40,7 @@ struct Session: Identifiable, Hashable {
   let agentId: String
 
   func hash(into hasher: inout Hasher) { hasher.combine(id) }
-  static func == (a: Session, b: Session) -> Bool { a.id == b.id }
+  static func == (lhs: Session, rhs: Session) -> Bool { lhs.id == rhs.id }
 }
 
 // ─── Tool call entry (shown in status panel) ─────────────────────────────────
@@ -49,7 +49,7 @@ struct ToolCallEntry: Identifiable {
   let id: String
   let name: String
   let input: [String: String]
-  let ts: Date
+  let timestamp: Date
   var doneAt: Date?
 
   var isDone: Bool { doneAt != nil }

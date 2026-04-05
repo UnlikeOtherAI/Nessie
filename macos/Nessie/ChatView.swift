@@ -14,7 +14,7 @@ struct ChatView: View {
 
           // ── Streaming in-progress bubble ───────────────────────────────────
           if appState.isThinking, !appState.streamingContent.isEmpty {
-            streamingBubble(content: appState.streamingContent)
+            StreamingBubble(content: appState.streamingContent)
               .id("streaming")
           }
 
@@ -66,7 +66,10 @@ struct MessageBubble: View {
             Text(message.content)
               .font(.system(size: 14))
               .foregroundColor(.white)
-          } else if let attrStr = try? AttributedString(markdown: message.content, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+          } else if let attrStr = try? AttributedString(
+            markdown: message.content,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+          ) {
             Text(attrStr)
               .font(.system(size: 14))
               .foregroundColor(.primary)
@@ -133,7 +136,7 @@ struct RoundedBubble: Shape {
 
 // ─── Streaming bubble ───────────────────────────────────────────────────────────
 
-struct streamingBubble: View {
+struct StreamingBubble: View {
   let content: String
 
   var body: some View {
@@ -170,12 +173,12 @@ struct StreamingBadge: View {
 
   var body: some View {
     HStack(spacing: 2) {
-      ForEach(0..<3, id: \.self) { i in
+      ForEach(0..<3, id: \.self) { idx in
         Circle()
           .fill(Color.orange)
           .frame(width: 4, height: 4)
           .opacity(visible ? 0.3 : 1.0)
-          .animation(.easeInOut(duration: 0.6).repeatForever().delay(Double(i) * 0.2), value: visible)
+          .animation(.easeInOut(duration: 0.6).repeatForever().delay(Double(idx) * 0.2), value: visible)
       }
     }
     .onAppear { visible = true }
@@ -200,11 +203,11 @@ struct TypingIndicator: View {
         }
 
         HStack(spacing: 3) {
-          ForEach(0..<3, id: \.self) { i in
+          ForEach(0..<3, id: \.self) { idx in
             Capsule()
               .fill(Color.secondary.opacity(0.4))
               .frame(width: 7, height: 7)
-              .offset(y: phase == i ? -3 : 0)
+              .offset(y: phase == idx ? -3 : 0)
           }
         }
         .padding(.horizontal, 12)

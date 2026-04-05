@@ -6,8 +6,7 @@ class HotwordDetector: ObservableObject {
 
   func start() {
     isListening = true
-    // TODO: implement keyword spotting using SFSpeechRecognizer
-    // or Apple Neural Engine for low-power wake word
+    // Keyword spotting not yet implemented (SFSpeechRecognizer / Apple Neural Engine)
   }
 
   func stop() {

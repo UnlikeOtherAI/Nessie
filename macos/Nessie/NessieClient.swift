@@ -15,7 +15,7 @@ enum ServerEvent: Sendable {
   case toolDone(name: String)
   case agentWake(agentId: String, reason: String)
   case error(message: String)
-  case ping(ts: Int64)
+  case ping(timestamp: Int64)
 }
 
 // ─── REST types (unchanged) ────────────────────────────────────────────────────
@@ -117,6 +117,7 @@ final class NessieClient: @unchecked Sendable {
     if let provided = baseURL {
       self.baseURL = provided
     } else {
+      // swiftlint:disable:next force_unwrapping
       self.baseURL = URL(string: rawURL) ?? URL(string: "http://127.0.0.1:4317")!
     }
 
@@ -124,6 +125,7 @@ final class NessieClient: @unchecked Sendable {
     let wsScheme = baseURL?.scheme == "https" ? "wss" : "ws"
     let wsHost = baseURL?.host ?? URL(string: rawURL)?.host ?? "127.0.0.1"
     let wsPort = baseURL?.port ?? URL(string: rawURL)?.port ?? 4317
+    // swiftlint:disable:next force_unwrapping
     self.wsURL = URL(string: "\(wsScheme)://\(wsHost):\(wsPort)")!
 
     let cfg = URLSessionConfiguration.default
@@ -183,7 +185,7 @@ final class NessieClient: @unchecked Sendable {
         )
         request.httpBody = try? JSONEncoder().encode(body)
 
-        let task = session.dataTask(with: request) { data, response, error in
+        let task = session.dataTask(with: request) { data, _, error in
           if let error = error {
             continuation.yield(.error(message: error.localizedDescription))
             continuation.finish()
@@ -248,7 +250,7 @@ final class NessieClient: @unchecked Sendable {
           try? await Task.sleep(for: .seconds(25))
           self.webSocketTask?.sendPing { error in
             if error == nil {
-              continuation.yield(.ping(ts: Int64(Date().timeIntervalSince1970 * 1000)))
+              continuation.yield(.ping(timestamp: Int64(Date().timeIntervalSince1970 * 1000)))
             }
           }
         }
@@ -351,8 +353,8 @@ final class NessieClient: @unchecked Sendable {
       )
 
     case "subagent.started":
-      guard let sa = json["subAgent"] as? [String: Any],
-            let saData = try? JSONSerialization.data(withJSONObject: sa),
+      guard let agentPayload = json["subAgent"] as? [String: Any],
+            let saData = try? JSONSerialization.data(withJSONObject: agentPayload),
             let subAgent = try? JSONDecoder().decode(SubAgentSummary.self, from: saData)
       else { return nil }
       return .subAgentStarted(subAgent: subAgent)
@@ -382,7 +384,7 @@ final class NessieClient: @unchecked Sendable {
       return .error(message: json["message"] as? String ?? "Unknown error")
 
     case "pong":
-      return .ping(ts: json["ts"] as? Int64 ?? 0)
+      return .ping(timestamp: json["ts"] as? Int64 ?? 0)
 
     default:
       return nil
