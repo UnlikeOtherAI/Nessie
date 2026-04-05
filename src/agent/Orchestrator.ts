@@ -339,17 +339,29 @@ export class Orchestrator {
   }
 
   private async handleSubAgentTask(task: string, toolNames: string[]): Promise<string> {
+    if (!this.llm) return 'No LLM configured for sub-agent responses.'
+
     const subAgent: SubAgentTask = { id: crypto.randomUUID(), name: `research-${Date.now()}`, task, tools: toolNames, status: 'running' }
     this.state.subAgents.push(subAgent)
     this.broadcastState()
     this.callbacks.onBroadcast?.({ type: 'subagent.started', subAgent: { id: subAgent.id, name: subAgent.name, task: subAgent.task, status: 'running' } })
 
-    const result = await this.spawnSubAgent(subAgent)
+    const rawResult = await this.spawnSubAgent(subAgent)
     subAgent.status = 'done'
-    subAgent.result = result
+    subAgent.result = rawResult
     this.broadcastState()
-    this.callbacks.onBroadcast?.({ type: 'subagent.done', subAgentId: subAgent.id, result })
-    return `Research complete: ${result}`
+    this.callbacks.onBroadcast?.({ type: 'subagent.done', subAgentId: subAgent.id, result: rawResult })
+
+    // Synthesize a natural user-facing response from the tool result
+    try {
+      const response = await this.llm.chat([
+        { role: 'system', content: 'You are a helpful assistant. A research task was just completed. Summarize the results in 1-3 clear sentences for the user. Be concise and practical. Do not mention tools, JSON, or raw data.' },
+        { role: 'user', content: `Original question: ${task}\n\nResearch results:\n${rawResult}` },
+      ], { maxTokens: 300 })
+      return response
+    } catch {
+      return `Here\'s what I found: ${rawResult}`
+    }
   }
 
   private async spawnSubAgent(task: SubAgentTask): Promise<string> {
