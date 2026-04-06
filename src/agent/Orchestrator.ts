@@ -21,6 +21,14 @@ import { ApprovalGate } from '../orchestration/approvals.js'
 import type { ApprovalRequest } from '../orchestration/approvals.js'
 import { runValidators } from '../orchestration/validators.js'
 import type { ValidatorResult } from '../orchestration/validators.js'
+import { getTaskMetrics, getAggregateMetrics } from '../orchestration/metrics.js'
+import type { TaskMetrics, AggregateMetrics } from '../orchestration/metrics.js'
+import { Watcher } from '../orchestration/watcher.js'
+import type { WatcherAlert } from '../orchestration/watcher.js'
+import {
+  translateEvent, getAllAgentConfigs, toOpenClawKey, fromOpenClawKey,
+} from '../openclaw/index.js'
+import type { OpenClawEvent, OpenClawAgentConfig } from '../openclaw/index.js'
 
 export class Orchestrator {
   private state: OrchestratorState
@@ -31,6 +39,7 @@ export class Orchestrator {
   private spawnManager: SpawnManager
   private verificationGate: VerificationGate
   private approvalGate: ApprovalGate
+  private watcher: Watcher
 
   constructor(options: OrchestratorOptions) {
     this.state = {
@@ -68,6 +77,9 @@ export class Orchestrator {
     )
     // Mark orphaned in-progress tasks as failed after restart
     this.spawnManager.hydrate()
+
+    this.watcher = new Watcher((alert) => this.handleWatcherAlert(alert))
+    this.watcher.start()
 
     // Load persisted messages from SQLite
     this.loadFromDb()
@@ -847,10 +859,81 @@ export class Orchestrator {
     return results
   }
 
+  // ─── Metrics ─────────────────────────────────────────────────────────────────
+
+  getMetrics(): AggregateMetrics {
+    return getAggregateMetrics()
+  }
+
+  getTaskMetrics(taskId: string): TaskMetrics {
+    return getTaskMetrics(taskId)
+  }
+
+  getAlerts(): WatcherAlert[] {
+    return this.watcher.getAlerts()
+  }
+
+  private handleWatcherAlert(alert: WatcherAlert): void {
+    this.callbacks.onBroadcast?.({
+      type: 'watcher.alert',
+      id: alert.id,
+      taskId: alert.taskId,
+      alertType: alert.type,
+      message: alert.message,
+      createdAt: alert.createdAt,
+    })
+  }
+
+  // ─── OpenClaw interop ───────────────────────────────────────────────────────
+
+  getOpenClawAgentConfigs(): OpenClawAgentConfig[] {
+    return getAllAgentConfigs()
+  }
+
+  translateEventToOpenClaw(event: import('../events.js').ServerEvent): OpenClawEvent | null {
+    return translateEvent(event)
+  }
+
+  getOpenClawSessionKey(taskId: string): string | null {
+    const task = this.taskLedger.getTask(taskId)
+    if (!task) return null
+    return toOpenClawKey({
+      taskId: task.id,
+      threadId: task.threadId,
+      parentTaskId: task.parentId,
+    }).key
+  }
+
+  resolveOpenClawKey(key: string): Task | null {
+    const ref = fromOpenClawKey(key)
+    if (!ref) return null
+    return this.taskLedger.getTask(ref.taskId)
+  }
+
+  /**
+   * Export the full orchestration state in OpenClaw-compatible format:
+   * all tasks as sessions, all role policies as agent configs.
+   */
+  exportOpenClawState(): {
+    sessions: Array<{ key: string; taskId: string; role: string; status: string; label: string }>
+    agents: OpenClawAgentConfig[]
+    } {
+    const tasks = this.taskLedger.getAllTasks(500)
+    const sessions = tasks.map(t => ({
+      key: toOpenClawKey({ taskId: t.id, threadId: t.threadId, parentTaskId: t.parentId }).key,
+      taskId: t.id,
+      role: t.role,
+      status: t.status,
+      label: t.label,
+    }))
+    return { sessions, agents: getAllAgentConfigs() }
+  }
+
   close() {
     for (const handle of this.schedules.values()) clearInterval(handle)
     this.schedules.clear()
     this.spawnManager.close()
+    this.watcher.stop()
   }
 }
 

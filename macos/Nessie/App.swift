@@ -100,6 +100,9 @@ final class AppState: ObservableObject {
   // ─── Validators ──────────────────────────────────────────────────────
   @Published private(set) var validatorResults: [ValidatorEntry] = []
 
+  // ─── Watcher alerts ────────────────────────────────────────────────
+  @Published private(set) var watcherAlerts: [WatcherAlertItem] = []
+
   // ─── Backend client ────────────────────────────────────────────────────────
 
   private let client = NessieClient()
@@ -177,6 +180,7 @@ final class AppState: ObservableObject {
     case .approvalRequested(let tid, let reason): handleApprovalRequested(tid, reason)
     case .approvalResolved(let tid, let res): handleApprovalResolved(tid, res)
     case .validatorResult(let entry): handleValidatorResult(entry)
+    case .watcherAlert(let alert): handleWatcherAlert(alert)
     default: break
     }
   }
@@ -321,6 +325,14 @@ final class AppState: ObservableObject {
     validatorResults.insert(entry, at: 0)
     if validatorResults.count > 20 {
       validatorResults = Array(validatorResults.prefix(20))
+    }
+  }
+
+  private func handleWatcherAlert(_ alert: WatcherAlertItem) {
+    guard !watcherAlerts.contains(where: { $0.id == alert.id }) else { return }
+    watcherAlerts.insert(alert, at: 0)
+    if watcherAlerts.count > 20 {
+      watcherAlerts = Array(watcherAlerts.prefix(20))
     }
   }
 

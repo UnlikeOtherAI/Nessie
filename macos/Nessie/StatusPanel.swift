@@ -11,6 +11,15 @@ struct StatusPanel: View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 16) {
 
+          // ── Alerts ───────────────────────────────────────────────────────────
+          if !appState.watcherAlerts.isEmpty {
+            section("ALERTS") {
+              ForEach(appState.watcherAlerts) { alert in
+                alertRow(alert)
+              }
+            }
+          }
+
           // ── Tasks ───────────────────────────────────────────────────────────
           if !appState.tasks.isEmpty {
             section("TASKS") {
@@ -318,41 +327,6 @@ struct StatusPanel: View {
     .accessibilityIdentifier("task_\(task.id)")
   }
 
-  @ViewBuilder
-  private func approvalBadge(_ task: TaskItem) -> some View {
-    if task.status == "awaiting_approval" {
-      HStack(spacing: 2) {
-        Image(systemName: "hand.raised.fill")
-          .font(.system(size: 9))
-          .foregroundColor(.orange)
-        if let reason = task.approvalReason {
-          Text(reason.prefix(20))
-            .font(.system(size: 8))
-            .foregroundColor(.orange)
-            .lineLimit(1)
-        }
-      }
-      .padding(.trailing, 4)
-    }
-  }
-
-  @ViewBuilder
-  private func reviewBadge(_ task: TaskItem) -> some View {
-    if let passed = task.lastReviewPassed {
-      HStack(spacing: 2) {
-        Image(systemName: passed ? "checkmark.circle.fill" : "xmark.circle.fill")
-          .font(.system(size: 9))
-          .foregroundColor(passed ? .green : .red)
-        if task.repairCount > 0 {
-          Text("\(task.repairCount)")
-            .font(.system(size: 8, weight: .bold))
-            .foregroundColor(.red)
-        }
-      }
-      .padding(.trailing, 4)
-    }
-  }
-
 }
 
 // ─── Extracted helpers (SwiftLint type_body_length) ─────────────────────────
@@ -392,6 +366,40 @@ extension StatusPanel {
     }
   }
 
+  func alertRow(_ alert: WatcherAlertItem) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: alertIcon(for: alert.alertType))
+        .font(.system(size: 10))
+        .foregroundColor(.red)
+
+      Text(alert.message)
+        .font(.system(size: 11))
+        .foregroundColor(.primary)
+        .lineLimit(2)
+
+      Spacer()
+
+      Text(alert.alertType.uppercased())
+        .font(.system(size: 8, weight: .bold))
+        .foregroundColor(.red)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 1)
+        .background(Color.red.opacity(0.1))
+        .cornerRadius(2)
+    }
+    .padding(.vertical, 3)
+    .accessibilityIdentifier("alert_\(alert.id)")
+  }
+
+  func alertIcon(for type: String) -> String {
+    switch type {
+    case "stale": return "clock.badge.exclamationmark"
+    case "loop": return "arrow.triangle.2.circlepath"
+    case "runaway_spawn": return "exclamationmark.triangle"
+    default: return "exclamationmark.circle"
+    }
+  }
+
   func validatorRow(_ entry: ValidatorEntry) -> some View {
     HStack(spacing: 8) {
       Image(systemName: entry.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
@@ -425,6 +433,41 @@ extension StatusPanel {
     case "hourly": return .orange
     case "on-demand": return .blue
     default: return .green
+    }
+  }
+
+  @ViewBuilder
+  func approvalBadge(_ task: TaskItem) -> some View {
+    if task.status == "awaiting_approval" {
+      HStack(spacing: 2) {
+        Image(systemName: "hand.raised.fill")
+          .font(.system(size: 9))
+          .foregroundColor(.orange)
+        if let reason = task.approvalReason {
+          Text(reason.prefix(20))
+            .font(.system(size: 8))
+            .foregroundColor(.orange)
+            .lineLimit(1)
+        }
+      }
+      .padding(.trailing, 4)
+    }
+  }
+
+  @ViewBuilder
+  func reviewBadge(_ task: TaskItem) -> some View {
+    if let passed = task.lastReviewPassed {
+      HStack(spacing: 2) {
+        Image(systemName: passed ? "checkmark.circle.fill" : "xmark.circle.fill")
+          .font(.system(size: 9))
+          .foregroundColor(passed ? .green : .red)
+        if task.repairCount > 0 {
+          Text("\(task.repairCount)")
+            .font(.system(size: 8, weight: .bold))
+            .foregroundColor(.red)
+        }
+      }
+      .padding(.trailing, 4)
     }
   }
 }

@@ -26,6 +26,7 @@ enum ServerEvent: Sendable {
   case approvalRequested(taskId: String, reason: String)
   case approvalResolved(taskId: String, resolution: String)
   case validatorResult(entry: ValidatorEntry)
+  case watcherAlert(alert: WatcherAlertItem)
   case error(message: String)
   case ping(timestamp: Int64)
 }
@@ -376,8 +377,6 @@ final class NessieClient: @unchecked Sendable {
     webSocketTask = nil
     wsReceiveTask?.cancel()
     wsReceiveTask = nil
-    // Also nil out the session so new connections can be made
-    wsReceiveTask = nil
   }
 
   // ─── Internal helpers ───────────────────────────────────────────────────────
@@ -438,57 +437,49 @@ final class NessieClient: @unchecked Sendable {
   }
 
   private func parseSharedEvent(type: String, json: [String: Any]) -> ServerEvent? {
+    let str = { (key: String) in json[key] as? String ?? "" }
     switch type {
     case "streaming.start":
-      return .streamingStart(
-        runId: json["runId"] as? String ?? "", threadId: json["threadId"] as? String ?? ""
-      )
+      return .streamingStart(runId: str("runId"), threadId: str("threadId"))
     case "streaming.delta":
-      return .streamingDelta(content: json["content"] as? String ?? "")
+      return .streamingDelta(content: str("content"))
     case "streaming.done":
-      return .streamingDone(content: json["content"] as? String ?? "", runId: json["runId"] as? String ?? "")
+      return .streamingDone(content: str("content"), runId: str("runId"))
     case "subagent.started":
       let src = json["subAgent"] as? [String: Any] ?? json
-      guard let saData = try? JSONSerialization.data(withJSONObject: src),
-            let sub = try? JSONDecoder().decode(SubAgentSummary.self, from: saData)
+      guard let raw = try? JSONSerialization.data(withJSONObject: src),
+            let sub = try? JSONDecoder().decode(SubAgentSummary.self, from: raw)
       else { return nil }
       return .subAgentStarted(subAgent: sub)
     case "subagent.done":
-      return .subAgentDone(
-        subAgentId: json["subAgentId"] as? String ?? "", result: json["result"] as? String ?? ""
-      )
+      return .subAgentDone(subAgentId: str("subAgentId"), result: str("result"))
     case "tool.called":
-      return .toolCalled(
-        name: json["name"] as? String ?? "",
-        input: (json["input"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
-      )
+      let input = (json["input"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+      return .toolCalled(name: str("name"), input: input)
     case "tool.done":
-      return .toolDone(name: json["name"] as? String ?? "")
+      return .toolDone(name: str("name"))
     case "agent.wake":
-      return .agentWake(agentId: json["agentId"] as? String ?? "", reason: json["reason"] as? String ?? "")
+      return .agentWake(agentId: str("agentId"), reason: str("reason"))
     case "task.created", "task.state_changed", "task.spawned", "task.announced",
          "task.review_passed", "task.review_failed":
       return parseTaskEvent(type: type, json: json)
     case "approval.requested":
-      return .approvalRequested(
-        taskId: json["taskId"] as? String ?? "",
-        reason: json["reason"] as? String ?? ""
-      )
+      return .approvalRequested(taskId: str("taskId"), reason: str("reason"))
     case "approval.resolved":
-      return .approvalResolved(
-        taskId: json["taskId"] as? String ?? "",
-        resolution: json["resolution"] as? String ?? ""
-      )
+      return .approvalResolved(taskId: str("taskId"), resolution: str("resolution"))
     case "validator.result":
       return .validatorResult(entry: ValidatorEntry(
-        taskId: json["taskId"] as? String ?? "",
-        name: json["validatorName"] as? String ?? "",
+        taskId: str("taskId"), name: str("validatorName"),
         passed: json["passed"] as? Bool ?? false,
-        output: json["output"] as? String ?? "",
-        durationMs: json["durationMs"] as? Int ?? 0
+        output: str("output"), durationMs: json["durationMs"] as? Int ?? 0
+      ))
+    case "watcher.alert":
+      return .watcherAlert(alert: WatcherAlertItem(
+        serverId: str("id"), taskId: str("taskId"),
+        alertType: str("alertType"), message: str("message")
       ))
     case "error":
-      return .error(message: json["message"] as? String ?? "Unknown error")
+      return .error(message: str("message"))
     default:
       return nil
     }

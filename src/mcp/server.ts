@@ -272,6 +272,60 @@ const TOOLS: ToolDef[] = [
       required: ['taskId'],
     },
   },
+  {
+    name: 'get_metrics',
+    description: 'Get aggregate orchestration metrics.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_task_metrics',
+    description: 'Get metrics for a specific task.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'get_alerts',
+    description: 'Get watcher alerts (stale tasks, loops, runaway spawns).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  // ── OpenClaw interop ──────────────────────────────────────────────────────
+  {
+    name: 'openclaw_export_state',
+    description: 'Export orchestration state in OpenClaw-compatible format (sessions + agent configs).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'openclaw_agent_configs',
+    description: 'Get all Nessie role policies as OpenClaw agent configurations.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'openclaw_session_key',
+    description: 'Get the OpenClaw session key for a Nessie task.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'Nessie task ID' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'openclaw_resolve_key',
+    description: 'Resolve an OpenClaw session key to a Nessie task.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionKey: { type: 'string', description: 'OpenClaw session key' },
+      },
+      required: ['sessionKey'],
+    },
+  },
 ]
 
 interface ToolDef {
@@ -756,6 +810,97 @@ export class McpServer {
       }
     }
 
+    // Handle get_metrics
+    if (name === 'get_metrics') {
+      const metrics = this.orchestrator.getMetrics()
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(metrics, null, 2) }],
+        },
+      }
+    }
+
+    // Handle get_task_metrics
+    if (name === 'get_task_metrics') {
+      const taskId = args.taskId as string
+      if (!taskId) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'taskId is required' },
+        }
+      }
+      const metrics = this.orchestrator.getTaskMetrics(taskId)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(metrics, null, 2) }],
+        },
+      }
+    }
+
+    // Handle get_alerts
+    if (name === 'get_alerts') {
+      const alerts = this.orchestrator.getAlerts()
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(alerts, null, 2) }],
+        },
+      }
+    }
+
+    // ── OpenClaw interop tools ──────────────────────────────────────────────
+    if (name === 'openclaw_export_state') {
+      const state = this.orchestrator.exportOpenClawState()
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(state, null, 2) }],
+        },
+      }
+    }
+    if (name === 'openclaw_agent_configs') {
+      const configs = this.orchestrator.getOpenClawAgentConfigs()
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(configs, null, 2) }],
+        },
+      }
+    }
+    if (name === 'openclaw_session_key') {
+      const taskId = args.taskId as string
+      const key = this.orchestrator.getOpenClawSessionKey(taskId)
+      if (!key) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          result: { content: [{ type: 'text', text: `Task not found: ${taskId}` }], isError: true },
+        }
+      }
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify({ taskId, sessionKey: key }) }] },
+      }
+    }
+    if (name === 'openclaw_resolve_key') {
+      const sessionKey = args.sessionKey as string
+      const task = this.orchestrator.resolveOpenClawKey(sessionKey)
+      if (!task) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          result: {
+            content: [{ type: 'text', text: `No task found for key: ${sessionKey}` }],
+            isError: true,
+          },
+        }
+      }
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }] },
+      }
+    }
+
     const result = await this.orchestrator.callTool(name, args)
     return {
       jsonrpc: '2.0', id: req.id ?? null,
@@ -816,6 +961,14 @@ export interface McpOrchestrator {
   rejectTask(taskId: string, resolvedBy?: string): unknown
   listPendingApprovals(): unknown[]
   runValidators(taskId: string): Promise<unknown[]>
+  getMetrics(): unknown
+  getTaskMetrics(taskId: string): unknown
+  getAlerts(): unknown[]
+  // OpenClaw interop
+  exportOpenClawState(): unknown
+  getOpenClawAgentConfigs(): unknown[]
+  getOpenClawSessionKey(taskId: string): string | null
+  resolveOpenClawKey(key: string): unknown | null
 }
 
 export interface SpawnTaskRequest {

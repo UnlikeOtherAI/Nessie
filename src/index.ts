@@ -205,6 +205,13 @@ async function main() {
               durationMs: event.durationMs,
             })
             break
+          case 'watcher.alert':
+            sendSSE(res, 'watcher.alert', {
+              id: event.id, taskId: event.taskId,
+              alertType: event.alertType, message: event.message,
+              createdAt: event.createdAt,
+            })
+            break
           case 'error':
             sendSSE(res, 'error', { message: event.message })
             break

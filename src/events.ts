@@ -24,6 +24,7 @@ export type ServerEvent =
   | ServerEventApprovalRequested
   | ServerEventApprovalResolved
   | ServerEventValidatorResult
+  | ServerEventWatcherAlert
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -212,6 +213,17 @@ export interface ServerEventValidatorResult {
   passed: boolean
   output: string
   durationMs: number
+}
+
+// ─── Watcher ───────────────────────────────────────────────────────────────
+
+export interface ServerEventWatcherAlert {
+  type: 'watcher.alert'
+  id: string
+  taskId: string
+  alertType: 'stale' | 'loop' | 'runaway_spawn'
+  message: string
+  createdAt: number
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────

@@ -191,5 +191,34 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
     async runValidators(taskId: string) {
       return orchestrator.runValidators(taskId)
     },
+
+    getMetrics() {
+      return orchestrator.getMetrics()
+    },
+
+    getTaskMetrics(taskId: string) {
+      return orchestrator.getTaskMetrics(taskId)
+    },
+
+    getAlerts() {
+      return orchestrator.getAlerts()
+    },
+
+    // OpenClaw interop
+    exportOpenClawState() {
+      return orchestrator.exportOpenClawState()
+    },
+
+    getOpenClawAgentConfigs() {
+      return orchestrator.getOpenClawAgentConfigs()
+    },
+
+    getOpenClawSessionKey(taskId: string) {
+      return orchestrator.getOpenClawSessionKey(taskId)
+    },
+
+    resolveOpenClawKey(key: string) {
+      return orchestrator.resolveOpenClawKey(key)
+    },
   }
 }

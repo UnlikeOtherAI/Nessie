@@ -106,6 +106,24 @@ struct RemoteTask: Decodable {
   }
 }
 
+// ─── Watcher alert ──────────────────────────────────────────────────────────
+
+struct WatcherAlertItem: Identifiable, Sendable {
+  let id: String
+  let taskId: String
+  let alertType: String
+  let message: String
+  let createdAt: Date
+
+  init(serverId: String = "", taskId: String, alertType: String, message: String) {
+    self.id = serverId.isEmpty ? UUID().uuidString : serverId
+    self.taskId = taskId
+    self.alertType = alertType
+    self.message = message
+    self.createdAt = Date()
+  }
+}
+
 // ─── Streaming message (in-progress assistant bubble) ─────────────────────────
 
 struct StreamingMessage: Identifiable {
