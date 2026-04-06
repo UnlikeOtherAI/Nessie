@@ -90,6 +90,9 @@ final class AppState: ObservableObject {
   /** Last N tool invocations, most recent first */
   @Published private(set) var recentToolCalls: [ToolCallEntry] = []
 
+  // ─── Tasks (orchestration ledger) ────────────────────────────────────────
+  @Published private(set) var tasks: [TaskItem] = []
+
   // ─── Backend client ────────────────────────────────────────────────────────
 
   private let client = NessieClient()
@@ -193,6 +196,12 @@ final class AppState: ObservableObject {
         )
       }
 
+    case .taskCreated(let task):
+      handleTaskCreated(task)
+
+    case .taskStateChanged(let taskId, _, let toStatus, _):
+      handleTaskStateChanged(taskId: taskId, toStatus: toStatus)
+
     case .agentWake(let agentId, _):
       // Refresh agent state
       if let state = try? await client.fetchState() {
@@ -231,6 +240,21 @@ final class AppState: ObservableObject {
     isBackendReachable = true
     isListening = state.isListening
     isSpeaking = state.isSpeaking
+  }
+
+  // ─── Task event helpers ─────────────────────────────────────────────────────
+
+  private func handleTaskCreated(_ task: TaskItem) {
+    if !tasks.contains(where: { $0.id == task.id }) {
+      tasks.insert(task, at: 0)
+    }
+  }
+
+  private func handleTaskStateChanged(taskId: String, toStatus: String) {
+    if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
+      tasks[idx].status = toStatus
+      tasks[idx].updatedAt = Date()
+    }
   }
 
   // ─── Session management ─────────────────────────────────────────────────────

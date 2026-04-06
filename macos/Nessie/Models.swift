@@ -55,6 +55,18 @@ struct ToolCallEntry: Identifiable {
   var isDone: Bool { doneAt != nil }
 }
 
+// ─── Task item (orchestration task from ledger) ─────────────────────────────
+
+struct TaskItem: Identifiable, Sendable {
+  let id: String
+  let parentId: String?
+  let role: String
+  let label: String
+  var status: String
+  let createdAt: Date
+  var updatedAt: Date
+}
+
 // ─── Streaming message (in-progress assistant bubble) ─────────────────────────
 
 struct StreamingMessage: Identifiable {

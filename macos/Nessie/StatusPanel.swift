@@ -11,6 +11,15 @@ struct StatusPanel: View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 16) {
 
+          // ── Tasks ───────────────────────────────────────────────────────────
+          if !appState.tasks.isEmpty {
+            section("TASKS") {
+              ForEach(appState.tasks) { task in
+                taskRow(task)
+              }
+            }
+          }
+
           // ── Sub-agents ─────────────────────────────────────────────────────
           if !appState.activeSubAgents.isEmpty {
             section("SUB-AGENTS") {
@@ -221,6 +230,74 @@ struct StatusPanel: View {
     .background(active ? color.opacity(0.15) : Color.secondary.opacity(0.08))
     .foregroundColor(active ? color : .secondary)
     .cornerRadius(6)
+  }
+
+  // ─── Task row ──────────────────────────────────────────────────────────
+
+  private func taskRow(_ task: TaskItem) -> some View {
+    HStack(spacing: 8) {
+      // Parent indicator
+      if task.parentId != nil {
+        Image(systemName: "arrow.turn.down.right")
+          .font(.system(size: 9))
+          .foregroundColor(.secondary)
+          .frame(width: 12)
+      }
+
+      VStack(alignment: .leading, spacing: 1) {
+        Text(task.label)
+          .font(.system(size: 12, weight: .medium))
+          .lineLimit(2)
+
+        HStack(spacing: 4) {
+          Text(task.role.uppercased())
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Color.secondary.opacity(0.1))
+            .cornerRadius(2)
+
+          Text(taskTimeAgo(task.updatedAt))
+            .font(.system(size: 9))
+            .foregroundColor(.secondary.opacity(0.7))
+        }
+      }
+
+      Spacer()
+
+      Text(task.status.replacingOccurrences(of: "_", with: " ").uppercased())
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundColor(taskStatusColor(task.status))
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(taskStatusColor(task.status).opacity(0.1))
+        .cornerRadius(3)
+    }
+    .padding(.vertical, 4)
+    .accessibilityIdentifier("task_\(task.id)")
+  }
+
+  private func taskStatusColor(_ status: String) -> Color {
+    switch status {
+    case "inbox": return .secondary
+    case "assigned": return .blue
+    case "in_progress": return .orange
+    case "review": return .purple
+    case "done": return .green
+    case "failed": return .red
+    case "cancelled": return .gray
+    case "awaiting_approval": return .yellow
+    default: return .secondary
+    }
+  }
+
+  private func taskTimeAgo(_ date: Date) -> String {
+    let seconds = Int(Date().timeIntervalSince(date))
+    if seconds < 60 { return "just now" }
+    if seconds < 3600 { return "\(seconds / 60)m ago" }
+    if seconds < 86400 { return "\(seconds / 3600)h ago" }
+    return "\(seconds / 86400)d ago"
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────

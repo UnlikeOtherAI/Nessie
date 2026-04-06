@@ -14,6 +14,8 @@ enum ServerEvent: Sendable {
   case toolCalled(name: String, input: [String: String])
   case toolDone(name: String)
   case agentWake(agentId: String, reason: String)
+  case taskCreated(task: TaskItem)
+  case taskStateChanged(taskId: String, fromStatus: String, toStatus: String, reason: String)
   case error(message: String)
   case ping(timestamp: Int64)
 }
@@ -91,6 +93,42 @@ enum NessieClientError: LocalizedError, Sendable {
     case let .serverError(statusCode, message): return "Error \(statusCode): \(message)"
     case let .webSocketError(msg): return "WebSocket error: \(msg)"
     }
+  }
+}
+
+// ─── Task event parsing (shared by WS + SSE) ─────────────────────────────────
+
+private func parseTaskItem(from json: [String: Any]) -> TaskItem {
+  TaskItem(
+    id: json["id"] as? String ?? "",
+    parentId: json["parentId"] as? String,
+    role: json["role"] as? String ?? "",
+    label: json["label"] as? String ?? "",
+    status: json["status"] as? String ?? "inbox",
+    createdAt: Date(
+      timeIntervalSince1970: (json["createdAt"] as? Double ?? 0) / 1000
+    ),
+    updatedAt: Date(
+      timeIntervalSince1970: (json["updatedAt"] as? Double ?? 0) / 1000
+    )
+  )
+}
+private func parseTaskEvent(
+  type: String, json: [String: Any]
+) -> ServerEvent? {
+  switch type {
+  case "task.created":
+    let payload = json["task"] as? [String: Any] ?? json
+    return .taskCreated(task: parseTaskItem(from: payload))
+  case "task.state_changed":
+    return .taskStateChanged(
+      taskId: json["taskId"] as? String ?? "",
+      fromStatus: json["fromStatus"] as? String ?? "",
+      toStatus: json["toStatus"] as? String ?? "",
+      reason: json["reason"] as? String ?? ""
+    )
+  default:
+    return nil
   }
 }
 
@@ -380,6 +418,9 @@ final class NessieClient: @unchecked Sendable {
         reason: json["reason"] as? String ?? ""
       )
 
+    case "task.created", "task.state_changed":
+      return parseTaskEvent(type: type, json: json)
+
     case "error":
       return .error(message: json["message"] as? String ?? "Unknown error")
 
@@ -445,6 +486,9 @@ final class NessieClient: @unchecked Sendable {
         agentId: json["agentId"] as? String ?? "",
         reason: json["reason"] as? String ?? ""
       )
+
+    case "task.created", "task.state_changed":
+      return parseTaskEvent(type: event, json: json)
 
     case "error":
       return .error(message: json["message"] as? String ?? "Unknown error")
