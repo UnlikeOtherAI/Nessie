@@ -151,5 +151,22 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
     getSpawnStatus() {
       return orchestrator.getSpawnStatus()
     },
+
+    submitReview(
+      taskId: string,
+      verdict: 'pass' | 'fail',
+      reason: string,
+      repairInstructions?: string,
+    ) {
+      return orchestrator.submitReview(taskId, verdict, reason, repairInstructions)
+    },
+
+    getReviewHistory(taskId: string) {
+      return orchestrator.getReviewHistory(taskId)
+    },
+
+    getRolePolicies() {
+      return orchestrator.getRolePolicies()
+    },
   }
 }

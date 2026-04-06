@@ -160,6 +160,8 @@ final class AppState: ObservableObject {
     case .taskStateChanged(let tid, _, let tos, _): handleTaskStateChanged(taskId: tid, toStatus: tos)
     case .taskSpawned(let tid, let pid, let role, let label): handleSpawned(tid, pid, role, label)
     case .taskAnnounced(let tid, _, let sts, _, _, _): handleAnnounced(tid, sts)
+    case .reviewPassed(let tid, _): handleReviewPassed(taskId: tid)
+    case .reviewFailed(let tid, _, _): handleReviewFailed(taskId: tid)
     case .agentWake: await refreshState()
     case .error: resetStreaming()
     case .ping: isOnline = true
@@ -265,6 +267,23 @@ final class AppState: ObservableObject {
   private func handleTaskStateChanged(taskId: String, toStatus: String) {
     if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
       tasks[idx].status = toStatus
+      tasks[idx].updatedAt = Date()
+    }
+  }
+
+  private func handleReviewPassed(taskId: String) {
+    if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
+      tasks[idx].lastReviewPassed = true
+      tasks[idx].status = "done"
+      tasks[idx].updatedAt = Date()
+    }
+  }
+
+  private func handleReviewFailed(taskId: String) {
+    if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
+      tasks[idx].repairCount += 1
+      tasks[idx].lastReviewPassed = false
+      tasks[idx].status = "in_progress"
       tasks[idx].updatedAt = Date()
     }
   }

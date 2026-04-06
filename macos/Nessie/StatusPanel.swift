@@ -281,6 +281,8 @@ struct StatusPanel: View {
 
       Spacer()
 
+      reviewBadge(task)
+
       Text(task.status.replacingOccurrences(of: "_", with: " ").uppercased())
         .font(.system(size: 9, weight: .semibold))
         .foregroundColor(taskStatusColor(task.status))
@@ -291,10 +293,44 @@ struct StatusPanel: View {
     }
     .padding(.leading, task.parentId != nil ? 16 : 0)
     .padding(.vertical, 4)
+    .overlay(alignment: .bottomTrailing) {
+      if task.repairCount >= 3 {
+        Text("ESCALATED")
+          .font(.system(size: 8, weight: .bold))
+          .foregroundColor(.red)
+          .padding(.horizontal, 4)
+          .padding(.vertical, 1)
+          .background(Color.red.opacity(0.1))
+          .cornerRadius(2)
+          .offset(y: 2)
+      }
+    }
     .accessibilityIdentifier("task_\(task.id)")
   }
 
-  private func taskStatusColor(_ status: String) -> Color {
+  @ViewBuilder
+  private func reviewBadge(_ task: TaskItem) -> some View {
+    if let passed = task.lastReviewPassed {
+      HStack(spacing: 2) {
+        Image(systemName: passed ? "checkmark.circle.fill" : "xmark.circle.fill")
+          .font(.system(size: 9))
+          .foregroundColor(passed ? .green : .red)
+        if task.repairCount > 0 {
+          Text("\(task.repairCount)")
+            .font(.system(size: 8, weight: .bold))
+            .foregroundColor(.red)
+        }
+      }
+      .padding(.trailing, 4)
+    }
+  }
+
+}
+
+// ─── Extracted helpers (SwiftLint type_body_length) ─────────────────────────
+
+extension StatusPanel {
+  func taskStatusColor(_ status: String) -> Color {
     switch status {
     case "inbox": return .secondary
     case "assigned": return .blue
@@ -308,7 +344,7 @@ struct StatusPanel: View {
     }
   }
 
-  private func taskTimeAgo(_ date: Date) -> String {
+  func taskTimeAgo(_ date: Date) -> String {
     let seconds = Int(Date().timeIntervalSince(date))
     if seconds < 60 { return "just now" }
     if seconds < 3600 { return "\(seconds / 60)m ago" }
@@ -316,9 +352,7 @@ struct StatusPanel: View {
     return "\(seconds / 86400)d ago"
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────
-
-  private func toolIcon(for name: String) -> String {
+  func toolIcon(for name: String) -> String {
     switch name.lowercased() {
     case "bash", "shell": return "terminal"
     case "fileread", "read": return "doc.text"
@@ -330,7 +364,7 @@ struct StatusPanel: View {
     }
   }
 
-  private func agentColor(for agent: Agent) -> Color {
+  func agentColor(for agent: Agent) -> Color {
     switch agent.trigger {
     case "hourly": return .orange
     case "on-demand": return .blue

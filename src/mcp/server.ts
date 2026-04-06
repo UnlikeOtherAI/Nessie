@@ -179,6 +179,42 @@ const TOOLS: ToolDef[] = [
     description: 'Get current spawn status (active count, limit).',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'submit_review',
+    description: 'Submit a pass/fail review for a task in review status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID to review' },
+        verdict: {
+          type: 'string',
+          description: 'Review verdict: pass or fail',
+        },
+        reason: { type: 'string', description: 'Reason for the verdict' },
+        repairInstructions: {
+          type: 'string',
+          description: 'Instructions for repair (only for fail verdict)',
+        },
+      },
+      required: ['taskId', 'verdict', 'reason'],
+    },
+  },
+  {
+    name: 'get_review_history',
+    description: 'Get review history for a task.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'list_roles',
+    description: 'List all roles with their tool policies.',
+    inputSchema: { type: 'object', properties: {} },
+  },
 ]
 
 interface ToolDef {
@@ -512,6 +548,58 @@ export class McpServer {
       }
     }
 
+    // Handle submit_review
+    if (name === 'submit_review') {
+      const taskId = args.taskId as string
+      const verdict = args.verdict as string
+      const reason = args.reason as string
+      const repairInstructions = args.repairInstructions as string | undefined
+      if (!taskId || !verdict || !reason) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'taskId, verdict, and reason are required' },
+        }
+      }
+      if (verdict !== 'pass' && verdict !== 'fail') {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'verdict must be pass or fail' },
+        }
+      }
+      const review = this.orchestrator.submitReview(
+        taskId, verdict, reason, repairInstructions,
+      )
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(review, null, 2) }] },
+      }
+    }
+
+    // Handle get_review_history
+    if (name === 'get_review_history') {
+      const taskId = args.taskId as string
+      if (!taskId) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'taskId is required' },
+        }
+      }
+      const history = this.orchestrator.getReviewHistory(taskId)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(history, null, 2) }] },
+      }
+    }
+
+    // Handle list_roles
+    if (name === 'list_roles') {
+      const roles = this.orchestrator.getRolePolicies()
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(roles, null, 2) }] },
+      }
+    }
+
     const result = await this.orchestrator.callTool(name, args)
     return {
       jsonrpc: '2.0', id: req.id ?? null,
@@ -558,6 +646,14 @@ export interface McpOrchestrator {
   transitionTask(taskId: string, toStatus: string, reason: string): unknown
   spawnTask(request: SpawnTaskRequest): { taskId: string; accepted: boolean; reason?: string }
   getSpawnStatus(): { active: number; limit: number }
+  submitReview(
+    taskId: string,
+    verdict: 'pass' | 'fail',
+    reason: string,
+    repairInstructions?: string,
+  ): unknown
+  getReviewHistory(taskId: string): unknown[]
+  getRolePolicies(): Record<string, unknown>
 }
 
 export interface SpawnTaskRequest {

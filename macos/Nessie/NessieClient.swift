@@ -21,6 +21,8 @@ enum ServerEvent: Sendable {
     taskId: String, parentTaskId: String?,
     status: String, result: String, duration: Int, toolCallCount: Int
   )
+  case reviewPassed(taskId: String, reason: String)
+  case reviewFailed(taskId: String, reason: String, repairInstructions: String?)
   case error(message: String)
   case ping(timestamp: Int64)
 }
@@ -147,6 +149,17 @@ private func parseTaskEvent(
       result: json["result"] as? String ?? "",
       duration: json["duration"] as? Int ?? 0,
       toolCallCount: json["toolCallCount"] as? Int ?? 0
+    )
+  case "task.review_passed":
+    return .reviewPassed(
+      taskId: json["taskId"] as? String ?? "",
+      reason: json["reason"] as? String ?? ""
+    )
+  case "task.review_failed":
+    return .reviewFailed(
+      taskId: json["taskId"] as? String ?? "",
+      reason: json["reason"] as? String ?? "",
+      repairInstructions: json["repairInstructions"] as? String
     )
   default:
     return nil
@@ -450,7 +463,8 @@ final class NessieClient: @unchecked Sendable {
       return .toolDone(name: json["name"] as? String ?? "")
     case "agent.wake":
       return .agentWake(agentId: json["agentId"] as? String ?? "", reason: json["reason"] as? String ?? "")
-    case "task.created", "task.state_changed", "task.spawned", "task.announced":
+    case "task.created", "task.state_changed", "task.spawned", "task.announced",
+         "task.review_passed", "task.review_failed":
       return parseTaskEvent(type: type, json: json)
     case "error":
       return .error(message: json["message"] as? String ?? "Unknown error")

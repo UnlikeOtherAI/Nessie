@@ -76,6 +76,17 @@ db.exec(`
     FOREIGN KEY (task_id) REFERENCES tasks(id)
   );
   CREATE INDEX IF NOT EXISTS idx_task_artifacts_task ON task_artifacts(task_id);
+
+  CREATE TABLE IF NOT EXISTS task_reviews (
+    id                 TEXT PRIMARY KEY,
+    task_id            TEXT NOT NULL REFERENCES tasks(id),
+    reviewer_task_id   TEXT,
+    verdict            TEXT NOT NULL CHECK(verdict IN ('pass', 'fail')),
+    reason             TEXT NOT NULL,
+    repair_instructions TEXT,
+    created_at         INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_task_reviews_task_id ON task_reviews(task_id);
 `)
 
 export interface PersistedMessage {

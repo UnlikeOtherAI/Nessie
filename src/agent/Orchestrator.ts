@@ -11,6 +11,10 @@ import { TaskStatus } from '../orchestration/task-types.js'
 import type { CreateTaskInput, Task, TaskEvent as OrchestratorTaskEvent } from '../orchestration/task-types.js'
 import { SpawnManager } from '../orchestration/spawn-manager.js'
 import type { AnnouncePayload, SpawnRequest, SpawnResult } from '../orchestration/spawn-manager.js'
+import { VerificationGate } from '../orchestration/verification.js'
+import type { ReviewResult } from '../orchestration/verification.js'
+import { getRolePolicy, ROLE_POLICIES } from '../orchestration/role-registry.js'
+import type { RolePolicy } from '../orchestration/role-registry.js'
 
 export class Orchestrator {
   private state: OrchestratorState
@@ -19,6 +23,7 @@ export class Orchestrator {
   private schedules = new Map<string, TimerHandle>()
   private taskLedger: TaskLedger
   private spawnManager: SpawnManager
+  private verificationGate: VerificationGate
 
   constructor(options: OrchestratorOptions) {
     this.state = {
@@ -42,6 +47,7 @@ export class Orchestrator {
     this.callbacks = options.callbacks ?? {}
     this.llm = options.llm ?? null
     this.taskLedger = new TaskLedger()
+    this.verificationGate = new VerificationGate(this.taskLedger)
     this.spawnManager = new SpawnManager(
       this.taskLedger,
       (taskId, payload) => this.handleAnnounce(taskId, payload),
@@ -479,13 +485,16 @@ export class Orchestrator {
     try {
       const task = this.taskLedger.getTask(taskId)
       if (payload.status === 'completed') {
-        // Only completed tasks go through review state
         if (task && task.status === 'in_progress') {
           this.transitionTask(taskId, TaskStatus.Review, 'Spawn completed')
         }
-        this.transitionTask(taskId, TaskStatus.Done, payload.result)
+        const policy = task ? getRolePolicy(task.role) : null
+        if (policy?.requiresReview) {
+          // Task stays in review — a reviewer must explicitly pass it
+        } else {
+          this.transitionTask(taskId, TaskStatus.Done, payload.result)
+        }
       } else {
-        // Failed/timeout go directly to failed — no review step
         this.transitionTask(taskId, TaskStatus.Failed, payload.result)
       }
     } catch {
@@ -690,6 +699,13 @@ export class Orchestrator {
 
   transitionTask(taskId: string, toStatus: string, reason: string): Task {
     const before = this.taskLedger.getTask(taskId)
+    if (before && before.status === 'review' && toStatus === 'done') {
+      if (!this.verificationGate.hasPassingReview(taskId)) {
+        throw new Error(
+          `Task ${taskId} requires a passing review before transitioning to done`,
+        )
+      }
+    }
     const task = this.taskLedger.transition(taskId, toStatus as TaskStatus, reason)
     this.callbacks.onBroadcast?.({
       type: 'task.state_changed',
@@ -699,6 +715,45 @@ export class Orchestrator {
       reason,
     })
     return task
+  }
+
+  submitReview(
+    taskId: string,
+    verdict: 'pass' | 'fail',
+    reason: string,
+    repairInstructions?: string,
+  ): ReviewResult {
+    const review = this.verificationGate.submitReview(
+      taskId, verdict, reason, repairInstructions,
+    )
+    if (verdict === 'pass') {
+      this.callbacks.onBroadcast?.({
+        type: 'task.review_passed',
+        taskId,
+        reason,
+      })
+      this.transitionTask(taskId, TaskStatus.Done, `Review passed: ${reason}`)
+    } else {
+      this.callbacks.onBroadcast?.({
+        type: 'task.review_failed',
+        taskId,
+        reason,
+        repairInstructions: repairInstructions ?? null,
+      })
+      this.transitionTask(
+        taskId, TaskStatus.InProgress,
+        `Review failed: ${reason}`,
+      )
+    }
+    return review
+  }
+
+  getReviewHistory(taskId: string): ReviewResult[] {
+    return this.verificationGate.getReviewHistory(taskId)
+  }
+
+  getRolePolicies(): Record<string, RolePolicy> {
+    return { ...ROLE_POLICIES }
   }
 
   close() {

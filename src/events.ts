@@ -19,6 +19,8 @@ export type ServerEvent =
   | ServerEventTaskStateChanged
   | ServerEventTaskSpawned
   | ServerEventTaskAnnounced
+  | ServerEventReviewPassed
+  | ServerEventReviewFailed
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -167,6 +169,21 @@ export interface ServerEventTaskAnnounced {
   result: string
   duration: number
   toolCallCount: number
+}
+
+// ─── Reviews ────────────────────────────────────────────────────────────────
+
+export interface ServerEventReviewPassed {
+  type: 'task.review_passed'
+  taskId: string
+  reason: string
+}
+
+export interface ServerEventReviewFailed {
+  type: 'task.review_failed'
+  taskId: string
+  reason: string
+  repairInstructions: string | null
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────

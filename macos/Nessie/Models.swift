@@ -65,6 +65,8 @@ struct TaskItem: Identifiable, Sendable {
   var status: String
   let createdAt: Date
   var updatedAt: Date
+  var repairCount: Int = 0
+  var lastReviewPassed: Bool?
 }
 
 // ─── Remote task (decoded from backend state) ────────────────────────────────

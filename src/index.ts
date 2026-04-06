@@ -177,6 +177,17 @@ async function main() {
               duration: event.duration, toolCallCount: event.toolCallCount,
             })
             break
+          case 'task.review_passed':
+            sendSSE(res, 'task.review_passed', {
+              taskId: event.taskId, reason: event.reason,
+            })
+            break
+          case 'task.review_failed':
+            sendSSE(res, 'task.review_failed', {
+              taskId: event.taskId, reason: event.reason,
+              repairInstructions: event.repairInstructions,
+            })
+            break
           case 'error':
             sendSSE(res, 'error', { message: event.message })
             break
