@@ -67,6 +67,30 @@ struct TaskItem: Identifiable, Sendable {
   var updatedAt: Date
 }
 
+// ─── Remote task (decoded from backend state) ────────────────────────────────
+
+struct RemoteTask: Decodable {
+  let id: String
+  let parentId: String?
+  let role: String
+  let label: String
+  let status: String
+  let createdAt: Double
+  let updatedAt: Double
+
+  func toTaskItem() -> TaskItem {
+    TaskItem(
+      id: id,
+      parentId: parentId,
+      role: role,
+      label: label,
+      status: status,
+      createdAt: Date(timeIntervalSince1970: createdAt / 1000),
+      updatedAt: Date(timeIntervalSince1970: updatedAt / 1000)
+    )
+  }
+}
+
 // ─── Streaming message (in-progress assistant bubble) ─────────────────────────
 
 struct StreamingMessage: Identifiable {

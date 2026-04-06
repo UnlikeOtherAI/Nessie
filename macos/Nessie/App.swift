@@ -233,6 +233,11 @@ final class AppState: ObservableObject {
     allMessages = state.messages.map { $0.toAppMessage() }
     activeSubAgents = state.subAgents
 
+    // Hydrate tasks from state
+    if let remoteTasks = state.tasks {
+      tasks = remoteTasks.map { $0.toTaskItem() }
+    }
+
     // Sync session list from messages
     syncSessions()
 

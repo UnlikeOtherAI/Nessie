@@ -28,6 +28,7 @@ export interface ServerEventState {
     subAgents: SubAgentSummary[]
     isListening: boolean
     isSpeaking: boolean
+    tasks: TaskSummary[]
   }
 }
 

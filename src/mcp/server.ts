@@ -7,6 +7,8 @@
  * Protocol: JSON-RPC 2.0 over HTTP POST /mcp.
  */
 
+import { CreateTaskSchema } from '../orchestration/task-types.js'
+
 // ─── Tool definitions ─────────────────────────────────────────────────────────
 
 const TOOLS: ToolDef[] = [
@@ -379,17 +381,23 @@ export class McpServer {
 
     // Handle create_task
     if (name === 'create_task') {
-      const input = {
-        role: args.role as string,
-        label: args.label as string,
-        parentId: (args.parentId as string | undefined) ?? null,
-        threadId: (args.threadId as string | undefined) ?? 'main',
-        assignedModel: (args.assignedModel as string | undefined) ?? null,
+      const parsed = CreateTaskSchema.safeParse({
+        role: args.role,
+        label: args.label,
+        parentId: args.parentId ?? null,
+        threadId: args.threadId ?? 'main',
+        assignedModel: args.assignedModel ?? null,
         timeoutSeconds: typeof args.timeoutSeconds === 'number' ? args.timeoutSeconds : null,
         specPath: null,
         outputPath: null,
+      })
+      if (!parsed.success) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: parsed.error.message },
+        }
       }
-      const task = this.orchestrator.createTask(input)
+      const task = this.orchestrator.createTask(parsed.data)
       return {
         jsonrpc: '2.0', id: req.id ?? null,
         result: { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }] },

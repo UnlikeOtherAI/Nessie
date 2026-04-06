@@ -11,6 +11,7 @@ import {
   type TaskStatus,
   type TaskRole,
   type CreateTaskInput,
+  CreateTaskSchema,
   VALID_TRANSITIONS,
 } from './task-types.js'
 
@@ -83,65 +84,76 @@ function recordEvent(
 
 export class TaskLedger {
   createTask(input: CreateTaskInput): Task {
-    const id = crypto.randomUUID()
-    const now = Date.now()
-    const status: TaskStatus = 'inbox'
+    const validated = CreateTaskSchema.parse(input)
+    const txn = db.transaction(() => {
+      const id = crypto.randomUUID()
+      const now = Date.now()
+      const status: TaskStatus = 'inbox'
 
-    db.prepare(
-      'INSERT INTO tasks'
-      + ' (id, parent_id, thread_id, role, label, status,'
-      + ' spec_path, output_path, assigned_model, timeout_seconds,'
-      + ' created_at, updated_at, completed_at)'
-      + ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(
-      id, input.parentId, input.threadId, input.role, input.label, status,
-      input.specPath, input.outputPath, input.assignedModel, input.timeoutSeconds,
-      now, now, null,
-    )
+      db.prepare(
+        'INSERT INTO tasks'
+        + ' (id, parent_id, thread_id, role, label, status,'
+        + ' spec_path, output_path, assigned_model, timeout_seconds,'
+        + ' created_at, updated_at, completed_at)'
+        + ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ).run(
+        id, validated.parentId, validated.threadId, validated.role, validated.label, status,
+        validated.specPath, validated.outputPath, validated.assignedModel, validated.timeoutSeconds,
+        now, now, null,
+      )
 
-    recordEvent(id, null, status, 'Task created')
+      recordEvent(id, null, status, 'Task created')
 
-    return {
-      id,
-      parentId: input.parentId,
-      threadId: input.threadId,
-      role: input.role as TaskRole,
-      label: input.label,
-      status,
-      specPath: input.specPath,
-      outputPath: input.outputPath,
-      assignedModel: input.assignedModel,
-      timeoutSeconds: input.timeoutSeconds,
-      createdAt: now,
-      updatedAt: now,
-      completedAt: null,
-    }
+      return {
+        id,
+        parentId: validated.parentId,
+        threadId: validated.threadId,
+        role: validated.role as TaskRole,
+        label: validated.label,
+        status,
+        specPath: validated.specPath,
+        outputPath: validated.outputPath,
+        assignedModel: validated.assignedModel,
+        timeoutSeconds: validated.timeoutSeconds,
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null,
+      } satisfies Task
+    })
+    return txn()
   }
 
   transition(taskId: string, toStatus: TaskStatus, reason: string): Task {
-    const task = this.getTask(taskId)
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`)
-    }
+    const txn = db.transaction(() => {
+      const task = this.getTask(taskId)
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`)
+      }
 
-    const allowed = VALID_TRANSITIONS[task.status]
-    if (!allowed.includes(toStatus)) {
-      throw new Error(
-        `Invalid transition: ${task.status} -> ${toStatus}`
-        + ` (allowed: ${allowed.join(', ') || 'none'})`,
-      )
-    }
+      const allowed = VALID_TRANSITIONS[task.status]
+      if (!allowed.includes(toStatus)) {
+        throw new Error(
+          `Invalid transition: ${task.status} -> ${toStatus}`
+          + ` (allowed: ${allowed.join(', ') || 'none'})`,
+        )
+      }
 
-    const now = Date.now()
-    const completedAt = TERMINAL_STATUSES.includes(toStatus) ? now : task.completedAt
+      const now = Date.now()
+      const completedAt = TERMINAL_STATUSES.includes(toStatus) ? now : task.completedAt
 
-    db.prepare(
-      'UPDATE tasks SET status = ?, updated_at = ?, completed_at = ? WHERE id = ?',
-    ).run(toStatus, now, completedAt, taskId)
+      const result = db.prepare(
+        'UPDATE tasks SET status = ?, updated_at = ?, completed_at = ? WHERE id = ? AND status = ?',
+      ).run(toStatus, now, completedAt, taskId, task.status)
 
-    recordEvent(taskId, task.status, toStatus, reason)
+      if (result.changes === 0) {
+        throw new Error(`Concurrent modification: task ${taskId} status changed before update`)
+      }
 
-    return { ...task, status: toStatus, updatedAt: now, completedAt }
+      recordEvent(taskId, task.status, toStatus, reason)
+
+      return this.getTask(taskId)!
+    })
+    return txn()
   }
 
   getTask(taskId: string): Task | null {

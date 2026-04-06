@@ -35,4 +35,5 @@ export type OrchestratorState = {
   isListening: boolean
   isSpeaking: boolean
   currentAgent: string
+  tasks: import('../orchestration/task-types.js').Task[]
 }

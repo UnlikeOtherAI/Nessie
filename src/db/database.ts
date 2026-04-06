@@ -12,6 +12,8 @@ mkdirSync(DB_PATH.replace(/\/[^/]+$/, ''), { recursive: true })
 
 const db = new Database(DB_PATH)
 
+db.exec('PRAGMA foreign_keys = ON')
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS messages (
     id        TEXT PRIMARY KEY,

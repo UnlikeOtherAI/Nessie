@@ -11,6 +11,7 @@ import type {
 import type { Orchestrator } from '../agent/Orchestrator.js'
 import { allTools, findToolByName } from '../tools/index.js'
 import type { ToolUseContext } from '../tools/types.js'
+import { CreateTaskSchema } from '../orchestration/task-types.js'
 
 export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
   return {
@@ -130,8 +131,8 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
     },
 
     createTask(input: Record<string, unknown>) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return orchestrator.createTask(input as any)
+      const validated = CreateTaskSchema.parse(input)
+      return orchestrator.createTask(validated)
     },
 
     transitionTask(taskId: string, toStatus: string, reason: string) {

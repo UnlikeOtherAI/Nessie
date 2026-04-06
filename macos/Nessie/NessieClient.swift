@@ -31,13 +31,13 @@ struct OrchestratorChatRequest: Encodable {
 struct OrchestratorChatResponse: Decodable {
   let reply: String
 }
-
 struct RemoteState: Decodable {
   let agents: [RemoteAgent]
   let messages: [RemoteMessage]
   let subAgents: [SubAgentSummary]
   let isListening: Bool
   let isSpeaking: Bool
+  let tasks: [RemoteTask]?
 }
 
 struct RemoteAgent: Decodable {

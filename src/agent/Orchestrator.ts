@@ -34,6 +34,7 @@ export class Orchestrator {
       isListening: false,
       isSpeaking: false,
       currentAgent: options.defaultAgent ?? 'main',
+      tasks: [],
     }
     this.callbacks = options.callbacks ?? {}
     this.llm = options.llm ?? null
@@ -64,7 +65,10 @@ export class Orchestrator {
   }
 
   getState(): OrchestratorState {
-    return this.state
+    return {
+      ...this.state,
+      tasks: this.taskLedger.getAllTasks(50),
+    }
   }
 
   // ─── Handle text message ────────────────────────────────────────────────────
@@ -406,44 +410,23 @@ export class Orchestrator {
       },
     })
 
-    this.taskLedger.transition(taskRecord.id, TaskStatus.Assigned, 'Sub-agent created')
-    this.callbacks.onBroadcast?.({
-      type: 'task.state_changed',
-      taskId: taskRecord.id, fromStatus: TaskStatus.Inbox,
-      toStatus: TaskStatus.Assigned, reason: 'Sub-agent created',
-    })
-
-    this.taskLedger.transition(taskRecord.id, TaskStatus.InProgress, 'Sub-agent running')
-    this.callbacks.onBroadcast?.({
-      type: 'task.state_changed',
-      taskId: taskRecord.id, fromStatus: TaskStatus.Assigned,
-      toStatus: TaskStatus.InProgress, reason: 'Sub-agent running',
-    })
+    this.transitionTask(taskRecord.id, TaskStatus.Assigned, 'Sub-agent created')
+    this.transitionTask(taskRecord.id, TaskStatus.InProgress, 'Sub-agent running')
 
     let rawResult: string
     try {
       rawResult = await this.spawnSubAgent(subAgent)
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      this.taskLedger.transition(taskRecord.id, TaskStatus.Failed, errMsg)
-      this.callbacks.onBroadcast?.({
-        type: 'task.state_changed',
-        taskId: taskRecord.id, fromStatus: TaskStatus.InProgress,
-        toStatus: TaskStatus.Failed, reason: errMsg,
-      })
+      this.transitionTask(taskRecord.id, TaskStatus.Failed, errMsg)
       subAgent.status = 'done'
       this.broadcastState()
       return `Sub-agent failed: ${errMsg}`
     }
 
     // Mark task as review -> done
-    this.taskLedger.transition(taskRecord.id, TaskStatus.Review, 'Sub-agent completed')
-    this.taskLedger.transition(taskRecord.id, TaskStatus.Done, 'Result delivered')
-    this.callbacks.onBroadcast?.({
-      type: 'task.state_changed',
-      taskId: taskRecord.id, fromStatus: TaskStatus.Review,
-      toStatus: TaskStatus.Done, reason: 'Result delivered',
-    })
+    this.transitionTask(taskRecord.id, TaskStatus.Review, 'Sub-agent completed')
+    this.transitionTask(taskRecord.id, TaskStatus.Done, 'Result delivered')
 
     subAgent.status = 'done'
     subAgent.result = rawResult
