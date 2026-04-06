@@ -1,5 +1,7 @@
 import { db } from '../db/database.js'
 import type { TaskLedger } from './task-ledger.js'
+import { getRolePolicy } from './role-registry.js'
+import type { TaskRole } from './task-types.js'
 
 export interface ReviewResult {
   id: string
@@ -8,6 +10,7 @@ export interface ReviewResult {
   verdict: 'pass' | 'fail'
   reason: string
   repairInstructions: string | null
+  escalated: boolean
   createdAt: number
 }
 
@@ -25,7 +28,7 @@ type ReviewRow = {
   created_at: number
 }
 
-function rowToReview(row: ReviewRow): ReviewResult {
+function rowToReview(row: ReviewRow, escalated: boolean): ReviewResult {
   return {
     id: row.id,
     taskId: row.task_id,
@@ -33,6 +36,7 @@ function rowToReview(row: ReviewRow): ReviewResult {
     verdict: row.verdict as 'pass' | 'fail',
     reason: row.reason,
     repairInstructions: row.repair_instructions,
+    escalated,
     createdAt: row.created_at,
   }
 }
@@ -52,31 +56,52 @@ export class VerificationGate {
     taskId: string,
     verdict: 'pass' | 'fail',
     reason: string,
+    reviewerTaskId?: string,
     repairInstructions?: string,
   ): ReviewResult {
+    if (verdict === 'fail' && !repairInstructions) {
+      throw new Error('repairInstructions required when verdict is fail')
+    }
+
+    if (reviewerTaskId) {
+      const reviewer = this.ledger.getTask(reviewerTaskId)
+      if (!reviewer) throw new Error(`Reviewer task not found: ${reviewerTaskId}`)
+      const policy = getRolePolicy(reviewer.role as TaskRole)
+      if (policy.requiresReview) {
+        throw new Error(
+          `Task ${reviewerTaskId} (role: ${reviewer.role}) cannot act as reviewer`,
+        )
+      }
+    }
+
     const task = this.ledger.getTask(taskId)
     if (!task) throw new Error(`Task not found: ${taskId}`)
     if (task.status !== 'review') {
-      throw new Error(`Task ${taskId} is not in review status (current: ${task.status})`)
+      throw new Error(
+        `Task ${taskId} is not in review status (current: ${task.status})`,
+      )
     }
 
     const id = crypto.randomUUID()
     const now = Date.now()
     const instructions = verdict === 'fail' ? (repairInstructions ?? null) : null
+    const escalated = verdict === 'fail' && this.isEscalated(taskId)
 
     db.prepare(
       'INSERT INTO task_reviews'
-      + ' (id, task_id, reviewer_task_id, verdict, reason, repair_instructions, created_at)'
+      + ' (id, task_id, reviewer_task_id, verdict, reason,'
+      + ' repair_instructions, created_at)'
       + ' VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).run(id, taskId, null, verdict, reason, instructions, now)
+    ).run(id, taskId, reviewerTaskId ?? null, verdict, reason, instructions, now)
 
     return {
       id,
       taskId,
-      reviewerTaskId: null,
+      reviewerTaskId: reviewerTaskId ?? null,
       verdict,
       reason,
       repairInstructions: instructions,
+      escalated,
       createdAt: now,
     }
   }
@@ -85,12 +110,14 @@ export class VerificationGate {
     const rows = db.prepare(
       'SELECT * FROM task_reviews WHERE task_id = ? ORDER BY created_at ASC',
     ).all(taskId) as ReviewRow[]
-    return rows.map(rowToReview)
+    const escalated = this.isEscalated(taskId)
+    return rows.map(r => rowToReview(r, escalated))
   }
 
   getRepairCount(taskId: string): number {
     const row = db.prepare(
-      'SELECT COUNT(*) as cnt FROM task_reviews WHERE task_id = ? AND verdict = ?',
+      'SELECT COUNT(*) as cnt FROM task_reviews'
+      + ' WHERE task_id = ? AND verdict = ?',
     ).get(taskId, 'fail') as { cnt: number }
     return row.cnt
   }
@@ -101,7 +128,8 @@ export class VerificationGate {
 
   hasPassingReview(taskId: string): boolean {
     const row = db.prepare(
-      'SELECT COUNT(*) as cnt FROM task_reviews WHERE task_id = ? AND verdict = ?',
+      'SELECT COUNT(*) as cnt FROM task_reviews'
+      + ' WHERE task_id = ? AND verdict = ?',
     ).get(taskId, 'pass') as { cnt: number }
     return row.cnt > 0
   }

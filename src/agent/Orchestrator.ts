@@ -9,7 +9,7 @@ import { evaluateAndCompress } from '../engine/compression.js'
 import { TaskLedger } from '../orchestration/task-ledger.js'
 import { TaskStatus } from '../orchestration/task-types.js'
 import type {
-  CreateTaskInput, Task, TaskEvent as OrchestratorTaskEvent, TaskRole,
+  CreateTaskInput, Task, TaskEvent as OrchestratorTaskEvent,
 } from '../orchestration/task-types.js'
 import { SpawnManager } from '../orchestration/spawn-manager.js'
 import type { AnnouncePayload, SpawnRequest, SpawnResult } from '../orchestration/spawn-manager.js'
@@ -50,6 +50,9 @@ export class Orchestrator {
     this.llm = options.llm ?? null
     this.taskLedger = new TaskLedger()
     this.verificationGate = new VerificationGate(this.taskLedger)
+    this.taskLedger.setReviewGateCheck(
+      (taskId) => this.verificationGate.hasPassingReview(taskId),
+    )
     this.spawnManager = new SpawnManager(
       this.taskLedger,
       (taskId, payload) => this.handleAnnounce(taskId, payload),
@@ -701,14 +704,6 @@ export class Orchestrator {
 
   transitionTask(taskId: string, toStatus: string, reason: string): Task {
     const before = this.taskLedger.getTask(taskId)
-    if (before && before.status === 'review' && toStatus === 'done') {
-      const policy = getRolePolicy(before.role as TaskRole)
-      if (policy.requiresReview && !this.verificationGate.hasPassingReview(taskId)) {
-        throw new Error(
-          `Task ${taskId} requires a passing review before transitioning to done`,
-        )
-      }
-    }
     const task = this.taskLedger.transition(taskId, toStatus as TaskStatus, reason)
     this.callbacks.onBroadcast?.({
       type: 'task.state_changed',
@@ -724,29 +719,41 @@ export class Orchestrator {
     taskId: string,
     verdict: 'pass' | 'fail',
     reason: string,
+    reviewerTaskId?: string,
     repairInstructions?: string,
   ): ReviewResult {
     const review = this.verificationGate.submitReview(
-      taskId, verdict, reason, repairInstructions,
+      taskId, verdict, reason, reviewerTaskId, repairInstructions,
     )
     if (verdict === 'pass') {
+      this.transitionTask(taskId, TaskStatus.Done, `Review passed: ${reason}`)
       this.callbacks.onBroadcast?.({
         type: 'task.review_passed',
         taskId,
         reason,
       })
-      this.transitionTask(taskId, TaskStatus.Done, `Review passed: ${reason}`)
-    } else {
+    } else if (review.escalated) {
+      this.transitionTask(
+        taskId, TaskStatus.AwaitingApproval,
+        `Escalated after ${this.verificationGate.getRepairCount(taskId)} failed reviews`,
+      )
       this.callbacks.onBroadcast?.({
         type: 'task.review_failed',
         taskId,
         reason,
         repairInstructions: repairInstructions ?? null,
       })
+    } else {
       this.transitionTask(
         taskId, TaskStatus.InProgress,
         `Review failed: ${reason}`,
       )
+      this.callbacks.onBroadcast?.({
+        type: 'task.review_failed',
+        taskId,
+        reason,
+        repairInstructions: repairInstructions ?? null,
+      })
     }
     return review
   }
@@ -756,7 +763,11 @@ export class Orchestrator {
   }
 
   getRolePolicies(): Record<string, RolePolicy> {
-    return { ...ROLE_POLICIES }
+    return Object.fromEntries(
+      Object.entries(ROLE_POLICIES).map(([k, v]) => [
+        k, { ...v, allowedTools: [...v.allowedTools] },
+      ]),
+    )
   }
 
   close() {

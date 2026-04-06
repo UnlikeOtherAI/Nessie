@@ -156,9 +156,12 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
       taskId: string,
       verdict: 'pass' | 'fail',
       reason: string,
+      reviewerTaskId?: string,
       repairInstructions?: string,
     ) {
-      return orchestrator.submitReview(taskId, verdict, reason, repairInstructions)
+      return orchestrator.submitReview(
+        taskId, verdict, reason, reviewerTaskId, repairInstructions,
+      )
     },
 
     getReviewHistory(taskId: string) {

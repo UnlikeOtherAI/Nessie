@@ -96,7 +96,7 @@ export const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   inbox: ['assigned', 'cancelled'],
   assigned: ['in_progress', 'cancelled'],
   in_progress: ['review', 'failed', 'cancelled', 'awaiting_approval'],
-  review: ['done', 'in_progress', 'failed'],
+  review: ['done', 'in_progress', 'failed', 'awaiting_approval'],
   done: [],
   failed: ['inbox'],
   cancelled: [],

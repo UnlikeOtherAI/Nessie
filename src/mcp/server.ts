@@ -191,9 +191,13 @@ const TOOLS: ToolDef[] = [
           description: 'Review verdict: pass or fail',
         },
         reason: { type: 'string', description: 'Reason for the verdict' },
+        reviewerTaskId: {
+          type: 'string',
+          description: 'ID of the reviewer task performing the review',
+        },
         repairInstructions: {
           type: 'string',
-          description: 'Instructions for repair (only for fail verdict)',
+          description: 'Instructions for repair (required for fail verdict)',
         },
       },
       required: ['taskId', 'verdict', 'reason'],
@@ -553,6 +557,7 @@ export class McpServer {
       const taskId = args.taskId as string
       const verdict = args.verdict as string
       const reason = args.reason as string
+      const reviewerTaskId = args.reviewerTaskId as string | undefined
       const repairInstructions = args.repairInstructions as string | undefined
       if (!taskId || !verdict || !reason) {
         return {
@@ -566,8 +571,17 @@ export class McpServer {
           error: { code: -32602, message: 'verdict must be pass or fail' },
         }
       }
+      if (verdict === 'fail' && !repairInstructions) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: {
+            code: -32602,
+            message: 'repairInstructions required when verdict is fail',
+          },
+        }
+      }
       const review = this.orchestrator.submitReview(
-        taskId, verdict, reason, repairInstructions,
+        taskId, verdict, reason, reviewerTaskId, repairInstructions,
       )
       return {
         jsonrpc: '2.0', id: req.id ?? null,
@@ -650,6 +664,7 @@ export interface McpOrchestrator {
     taskId: string,
     verdict: 'pass' | 'fail',
     reason: string,
+    reviewerTaskId?: string,
     repairInstructions?: string,
   ): unknown
   getReviewHistory(taskId: string): unknown[]

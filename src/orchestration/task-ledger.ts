@@ -14,6 +14,9 @@ import {
   CreateTaskSchema,
   VALID_TRANSITIONS,
 } from './task-types.js'
+import { getRolePolicy } from './role-registry.js'
+
+export type ReviewGateCheck = (taskId: string) => boolean
 
 const TERMINAL_STATUSES: TaskStatus[] = ['done', 'failed', 'cancelled']
 
@@ -83,6 +86,12 @@ function recordEvent(
 }
 
 export class TaskLedger {
+  private reviewGateCheck: ReviewGateCheck | null = null
+
+  setReviewGateCheck(check: ReviewGateCheck): void {
+    this.reviewGateCheck = check
+  }
+
   createTask(input: CreateTaskInput): Task {
     const validated = CreateTaskSchema.parse(input)
     const txn = db.transaction(() => {
@@ -136,6 +145,19 @@ export class TaskLedger {
           `Invalid transition: ${task.status} -> ${toStatus}`
           + ` (allowed: ${allowed.join(', ') || 'none'})`,
         )
+      }
+
+      if (task.status === 'review' && toStatus === 'done') {
+        const policy = getRolePolicy(task.role as TaskRole)
+        if (policy.requiresReview) {
+          const hasPass = this.reviewGateCheck?.(taskId) ?? false
+          if (!hasPass) {
+            throw new Error(
+              `Task ${taskId} requires a passing review`
+              + ' before transitioning to done',
+            )
+          }
+        }
       }
 
       const now = Date.now()
