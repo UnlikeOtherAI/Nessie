@@ -8,7 +8,9 @@ import { insertMessage, getThreadHistory } from '../db/database.js'
 import { evaluateAndCompress } from '../engine/compression.js'
 import { TaskLedger } from '../orchestration/task-ledger.js'
 import { TaskStatus } from '../orchestration/task-types.js'
-import type { CreateTaskInput, Task, TaskEvent as OrchestratorTaskEvent } from '../orchestration/task-types.js'
+import type {
+  CreateTaskInput, Task, TaskEvent as OrchestratorTaskEvent, TaskRole,
+} from '../orchestration/task-types.js'
 import { SpawnManager } from '../orchestration/spawn-manager.js'
 import type { AnnouncePayload, SpawnRequest, SpawnResult } from '../orchestration/spawn-manager.js'
 import { VerificationGate } from '../orchestration/verification.js'
@@ -700,7 +702,8 @@ export class Orchestrator {
   transitionTask(taskId: string, toStatus: string, reason: string): Task {
     const before = this.taskLedger.getTask(taskId)
     if (before && before.status === 'review' && toStatus === 'done') {
-      if (!this.verificationGate.hasPassingReview(taskId)) {
+      const policy = getRolePolicy(before.role as TaskRole)
+      if (policy.requiresReview && !this.verificationGate.hasPassingReview(taskId)) {
         throw new Error(
           `Task ${taskId} requires a passing review before transitioning to done`,
         )
