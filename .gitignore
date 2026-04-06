@@ -6,3 +6,7 @@ dist/
 .DS_Store
 macos/**/*.xcuserstate
 macos/**/xcuserdata/
+macos/.build/
+macos/**/xcshareddata/
+.playwright-mcp/
+*.png
