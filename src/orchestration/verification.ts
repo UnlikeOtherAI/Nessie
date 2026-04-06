@@ -85,7 +85,6 @@ export class VerificationGate {
     const id = crypto.randomUUID()
     const now = Date.now()
     const instructions = verdict === 'fail' ? (repairInstructions ?? null) : null
-    const escalated = verdict === 'fail' && this.isEscalated(taskId)
 
     db.prepare(
       'INSERT INTO task_reviews'
@@ -93,6 +92,8 @@ export class VerificationGate {
       + ' repair_instructions, created_at)'
       + ' VALUES (?, ?, ?, ?, ?, ?, ?)',
     ).run(id, taskId, reviewerTaskId ?? null, verdict, reason, instructions, now)
+
+    const escalated = verdict === 'fail' && this.isEscalated(taskId)
 
     return {
       id,
