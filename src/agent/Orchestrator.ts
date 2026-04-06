@@ -754,9 +754,15 @@ export class Orchestrator {
         reason,
       })
     } else if (review.escalated) {
+      const repairCount = this.verificationGate.getRepairCount(taskId)
       this.transitionTask(
         taskId, TaskStatus.AwaitingApproval,
-        `Escalated after ${this.verificationGate.getRepairCount(taskId)} failed reviews`,
+        `Escalated after ${repairCount} failed reviews`,
+      )
+      // Create an approval record so the approval gate can be resolved
+      this.requestApproval(
+        taskId,
+        `Escalated: ${repairCount} failed reviews. Last: ${reason}`,
       )
       this.callbacks.onBroadcast?.({
         type: 'task.review_failed',
