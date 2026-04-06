@@ -17,6 +17,7 @@ import {
 import { getRolePolicy } from './role-registry.js'
 
 export type ReviewGateCheck = (taskId: string) => boolean
+export type ApprovalGateCheck = (taskId: string) => boolean
 
 const TERMINAL_STATUSES: TaskStatus[] = ['done', 'failed', 'cancelled']
 
@@ -87,9 +88,14 @@ function recordEvent(
 
 export class TaskLedger {
   private reviewGateCheck: ReviewGateCheck | null = null
+  private approvalGateCheck: ApprovalGateCheck | null = null
 
   setReviewGateCheck(check: ReviewGateCheck): void {
     this.reviewGateCheck = check
+  }
+
+  setApprovalGateCheck(check: ApprovalGateCheck): void {
+    this.approvalGateCheck = check
   }
 
   createTask(input: CreateTaskInput): Task {
@@ -157,6 +163,16 @@ export class TaskLedger {
               + ' before transitioning to done',
             )
           }
+        }
+      }
+
+      if (task.status === 'awaiting_approval') {
+        const isApproved = this.approvalGateCheck?.(taskId) ?? false
+        if (!isApproved) {
+          throw new Error(
+            `Task ${taskId} requires approval before exiting`
+            + ' awaiting_approval',
+          )
         }
       }
 

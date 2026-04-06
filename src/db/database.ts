@@ -100,6 +100,8 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_task_approvals_task ON task_approvals(task_id);
   CREATE INDEX IF NOT EXISTS idx_task_approvals_status ON task_approvals(status);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_task_approvals_pending
+    ON task_approvals(task_id) WHERE status = 'pending';
 `)
 
 export interface PersistedMessage {

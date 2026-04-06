@@ -59,6 +59,9 @@ export class Orchestrator {
     this.taskLedger.setReviewGateCheck(
       (taskId) => this.verificationGate.hasPassingReview(taskId),
     )
+    this.taskLedger.setApprovalGateCheck(
+      (taskId) => this.approvalGate.isApproved(taskId),
+    )
     this.spawnManager = new SpawnManager(
       this.taskLedger,
       (taskId, payload) => this.handleAnnounce(taskId, payload),
@@ -781,14 +784,16 @@ export class Orchestrator {
   requestApproval(
     taskId: string, reason: string, requestedBy?: string,
   ): ApprovalRequest {
-    const approval = this.approvalGate.requestApproval(
+    const { approval, created } = this.approvalGate.requestApproval(
       taskId, reason, requestedBy,
     )
-    this.callbacks.onBroadcast?.({
-      type: 'approval.requested',
-      taskId,
-      reason,
-    })
+    if (created) {
+      this.callbacks.onBroadcast?.({
+        type: 'approval.requested',
+        taskId,
+        reason,
+      })
+    }
     return approval
   }
 

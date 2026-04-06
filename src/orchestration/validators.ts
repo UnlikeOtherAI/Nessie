@@ -107,6 +107,11 @@ class TestValidator implements Validator {
 export const BUILT_IN_VALIDATORS: Validator[] = [
   new LintValidator(),
   new TypeCheckValidator(),
+]
+
+export const ALL_VALIDATORS: Validator[] = [
+  new LintValidator(),
+  new TypeCheckValidator(),
   new TestValidator(),
 ]
 

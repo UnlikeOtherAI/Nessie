@@ -53,7 +53,7 @@ export class ApprovalGate {
     taskId: string,
     reason: string,
     requestedBy?: string,
-  ): ApprovalRequest {
+  ): { approval: ApprovalRequest; created: boolean } {
     const task = this.ledger.getTask(taskId)
     if (!task) throw new Error(`Task not found: ${taskId}`)
     if (task.status !== TaskStatus.AwaitingApproval) {
@@ -63,28 +63,34 @@ export class ApprovalGate {
       )
     }
 
-    const existing = this.getPendingApproval(taskId)
-    if (existing) return existing
+    const txn = db.transaction(() => {
+      const existing = this.getPendingApproval(taskId)
+      if (existing) return { approval: existing, created: false }
 
-    const id = crypto.randomUUID()
-    const now = Date.now()
+      const id = crypto.randomUUID()
+      const now = Date.now()
 
-    db.prepare(
-      'INSERT INTO task_approvals'
-      + ' (id, task_id, reason, requested_by, status, created_at)'
-      + ' VALUES (?, ?, ?, ?, ?, ?)',
-    ).run(id, taskId, reason, requestedBy ?? null, 'pending', now)
+      db.prepare(
+        'INSERT INTO task_approvals'
+        + ' (id, task_id, reason, requested_by, status, created_at)'
+        + ' VALUES (?, ?, ?, ?, ?, ?)',
+      ).run(id, taskId, reason, requestedBy ?? null, 'pending', now)
 
-    return {
-      id,
-      taskId,
-      reason,
-      requestedBy: requestedBy ?? null,
-      status: 'pending',
-      resolvedBy: null,
-      resolvedAt: null,
-      createdAt: now,
-    }
+      return {
+        approval: {
+          id,
+          taskId,
+          reason,
+          requestedBy: requestedBy ?? null,
+          status: 'pending' as const,
+          resolvedBy: null,
+          resolvedAt: null,
+          createdAt: now,
+        },
+        created: true,
+      }
+    })
+    return txn()
   }
 
   approveTask(taskId: string, resolvedBy?: string): ApprovalRequest {
@@ -141,6 +147,14 @@ export class ApprovalGate {
       + ' ORDER BY created_at ASC',
     ).all('pending') as ApprovalRow[]
     return rows.map(rowToApproval)
+  }
+
+  isApproved(taskId: string): boolean {
+    const row = db.prepare(
+      'SELECT COUNT(*) as cnt FROM task_approvals'
+      + ' WHERE task_id = ? AND status = ?',
+    ).get(taskId, 'approved') as { cnt: number }
+    return row.cnt > 0
   }
 
   getApprovalHistory(taskId: string): ApprovalRequest[] {
