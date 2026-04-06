@@ -91,6 +91,67 @@ const TOOLS: ToolDef[] = [
       required: ['role', 'content'],
     },
   },
+  {
+    name: 'create_task',
+    description: 'Create a new task in the orchestration ledger.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        role: {
+          type: 'string',
+          description: 'Task role: orchestrator, builder, reviewer, watcher, researcher, debugger',
+        },
+        label: { type: 'string', description: 'Human-readable task description' },
+        parentId: { type: 'string', description: 'Parent task ID (for child tasks)' },
+        threadId: { type: 'string', description: 'Thread ID (defaults to main)' },
+        assignedModel: { type: 'string', description: 'Model override for this task' },
+        timeoutSeconds: { type: 'number', description: 'Timeout in seconds' },
+      },
+      required: ['role', 'label'],
+    },
+  },
+  {
+    name: 'list_tasks',
+    description: 'List tasks from the orchestration ledger, optionally filtered by status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          description: 'Filter by status: inbox, assigned, in_progress, review,'
+            + ' done, failed, cancelled, awaiting_approval',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_task',
+    description: 'Get task details including event history.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'transition_task',
+    description: 'Change a task status. Valid transitions:'
+      + ' inbox->assigned/cancelled, assigned->in_progress/cancelled,'
+      + ' in_progress->review/failed/cancelled/awaiting_approval,'
+      + ' review->done/in_progress/failed, failed->inbox,'
+      + ' awaiting_approval->in_progress/cancelled.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID' },
+        status: { type: 'string', description: 'Target status' },
+        reason: { type: 'string', description: 'Reason for the transition' },
+      },
+      required: ['taskId', 'status', 'reason'],
+    },
+  },
 ]
 
 interface ToolDef {
@@ -316,6 +377,69 @@ export class McpServer {
       }
     }
 
+    // Handle create_task
+    if (name === 'create_task') {
+      const input = {
+        role: args.role as string,
+        label: args.label as string,
+        parentId: (args.parentId as string | undefined) ?? null,
+        threadId: (args.threadId as string | undefined) ?? 'main',
+        assignedModel: (args.assignedModel as string | undefined) ?? null,
+        timeoutSeconds: typeof args.timeoutSeconds === 'number' ? args.timeoutSeconds : null,
+        specPath: null,
+        outputPath: null,
+      }
+      const task = this.orchestrator.createTask(input)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }] },
+      }
+    }
+
+    // Handle list_tasks
+    if (name === 'list_tasks') {
+      const status = args.status as string | undefined
+      const tasks = this.orchestrator.getTasks(status)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(tasks, null, 2) }] },
+      }
+    }
+
+    // Handle get_task
+    if (name === 'get_task') {
+      const taskId = args.taskId as string
+      if (!taskId) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'taskId is required' },
+        }
+      }
+      const result = this.orchestrator.getTask(taskId)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
+      }
+    }
+
+    // Handle transition_task
+    if (name === 'transition_task') {
+      const taskId = args.taskId as string
+      const status = args.status as string
+      const reason = args.reason as string
+      if (!taskId || !status || !reason) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'taskId, status, and reason are required' },
+        }
+      }
+      const task = this.orchestrator.transitionTask(taskId, status, reason)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }] },
+      }
+    }
+
     const result = await this.orchestrator.callTool(name, args)
     return {
       jsonrpc: '2.0', id: req.id ?? null,
@@ -356,6 +480,10 @@ export interface McpOrchestrator {
   pushMessage(input: { role: 'user' | 'assistant' | 'system'; threadId: string; content: string }): void
   sendMessage(message: string, threadId: string): Promise<string>
   streamResponse(message: string, threadId: string): AsyncGenerator<string, void, undefined>
+  getTasks(status?: string): unknown[]
+  getTask(taskId: string): { task: unknown; events: unknown[] }
+  createTask(input: Record<string, unknown>): unknown
+  transitionTask(taskId: string, toStatus: string, reason: string): unknown
 }
 
 export interface ListMessagesOptions {

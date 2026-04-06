@@ -120,5 +120,22 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return orchestrator.streamResponse(message, threadId) as any
     },
+
+    getTasks(status?: string) {
+      return orchestrator.getTasks(status)
+    },
+
+    getTask(taskId: string) {
+      return orchestrator.getTask(taskId)
+    },
+
+    createTask(input: Record<string, unknown>) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return orchestrator.createTask(input as any)
+    },
+
+    transitionTask(taskId: string, toStatus: string, reason: string) {
+      return orchestrator.transitionTask(taskId, toStatus, reason)
+    },
   }
 }

@@ -155,6 +155,15 @@ async function main() {
           case 'agent.wake':
             sendSSE(res, 'agent.wake', { agentId: event.agentId, reason: event.reason })
             break
+          case 'task.created':
+            sendSSE(res, 'task.created', event.task)
+            break
+          case 'task.state_changed':
+            sendSSE(res, 'task.state_changed', {
+              taskId: event.taskId, fromStatus: event.fromStatus,
+              toStatus: event.toStatus, reason: event.reason,
+            })
+            break
           case 'error':
             sendSSE(res, 'error', { message: event.message })
             break

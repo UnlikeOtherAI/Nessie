@@ -6,12 +6,16 @@ import type { LlmClient } from '../llm/client.js'
 import { llmStream } from '../llm/streaming.js'
 import { insertMessage, getThreadHistory } from '../db/database.js'
 import { evaluateAndCompress } from '../engine/compression.js'
+import { TaskLedger } from '../orchestration/task-ledger.js'
+import { TaskStatus } from '../orchestration/task-types.js'
+import type { CreateTaskInput, Task, TaskEvent as OrchestratorTaskEvent } from '../orchestration/task-types.js'
 
 export class Orchestrator {
   private state: OrchestratorState
   private callbacks: OrchestratorCallbacks
   private llm: LlmClient | null
   private schedules = new Map<string, TimerHandle>()
+  private taskLedger: TaskLedger
 
   constructor(options: OrchestratorOptions) {
     this.state = {
@@ -33,6 +37,7 @@ export class Orchestrator {
     }
     this.callbacks = options.callbacks ?? {}
     this.llm = options.llm ?? null
+    this.taskLedger = new TaskLedger()
 
     // Load persisted messages from SQLite
     this.loadFromDb()
@@ -386,7 +391,60 @@ export class Orchestrator {
       subAgent: { id: subAgent.id, name: subAgent.name, task: subAgent.task, status: 'running' },
     })
 
-    const rawResult = await this.spawnSubAgent(subAgent)
+    // Create a task record and transition through lifecycle
+    const taskRecord = this.taskLedger.createTask({
+      role: 'researcher', label: task, threadId: 'main',
+      parentId: null, specPath: null, outputPath: null,
+      assignedModel: null, timeoutSeconds: null,
+    })
+    this.callbacks.onBroadcast?.({
+      type: 'task.created',
+      task: {
+        id: taskRecord.id, parentId: taskRecord.parentId, role: taskRecord.role,
+        label: taskRecord.label, status: taskRecord.status,
+        createdAt: taskRecord.createdAt, updatedAt: taskRecord.updatedAt,
+      },
+    })
+
+    this.taskLedger.transition(taskRecord.id, TaskStatus.Assigned, 'Sub-agent created')
+    this.callbacks.onBroadcast?.({
+      type: 'task.state_changed',
+      taskId: taskRecord.id, fromStatus: TaskStatus.Inbox,
+      toStatus: TaskStatus.Assigned, reason: 'Sub-agent created',
+    })
+
+    this.taskLedger.transition(taskRecord.id, TaskStatus.InProgress, 'Sub-agent running')
+    this.callbacks.onBroadcast?.({
+      type: 'task.state_changed',
+      taskId: taskRecord.id, fromStatus: TaskStatus.Assigned,
+      toStatus: TaskStatus.InProgress, reason: 'Sub-agent running',
+    })
+
+    let rawResult: string
+    try {
+      rawResult = await this.spawnSubAgent(subAgent)
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      this.taskLedger.transition(taskRecord.id, TaskStatus.Failed, errMsg)
+      this.callbacks.onBroadcast?.({
+        type: 'task.state_changed',
+        taskId: taskRecord.id, fromStatus: TaskStatus.InProgress,
+        toStatus: TaskStatus.Failed, reason: errMsg,
+      })
+      subAgent.status = 'done'
+      this.broadcastState()
+      return `Sub-agent failed: ${errMsg}`
+    }
+
+    // Mark task as review -> done
+    this.taskLedger.transition(taskRecord.id, TaskStatus.Review, 'Sub-agent completed')
+    this.taskLedger.transition(taskRecord.id, TaskStatus.Done, 'Result delivered')
+    this.callbacks.onBroadcast?.({
+      type: 'task.state_changed',
+      taskId: taskRecord.id, fromStatus: TaskStatus.Review,
+      toStatus: TaskStatus.Done, reason: 'Result delivered',
+    })
+
     subAgent.status = 'done'
     subAgent.result = rawResult
     this.broadcastState()
@@ -538,6 +596,45 @@ export class Orchestrator {
       | { type: 'tool.done'; name: string; output: unknown },
   ) {
     this.callbacks.onBroadcast?.(event as import('../events.js').ServerEvent)
+  }
+
+  // ─── Task ledger public API ─────────────────────────────────────────────────
+
+  getTasks(status?: string): Task[] {
+    if (status) return this.taskLedger.getTasksByStatus(status as TaskStatus)
+    return this.taskLedger.getAllTasks()
+  }
+
+  getTask(taskId: string): { task: Task | null; events: OrchestratorTaskEvent[] } {
+    const task = this.taskLedger.getTask(taskId)
+    const events = task ? this.taskLedger.getTaskEvents(taskId) : []
+    return { task, events }
+  }
+
+  createTask(input: CreateTaskInput): Task {
+    const task = this.taskLedger.createTask(input)
+    this.callbacks.onBroadcast?.({
+      type: 'task.created',
+      task: {
+        id: task.id, parentId: task.parentId, role: task.role,
+        label: task.label, status: task.status,
+        createdAt: task.createdAt, updatedAt: task.updatedAt,
+      },
+    })
+    return task
+  }
+
+  transitionTask(taskId: string, toStatus: string, reason: string): Task {
+    const before = this.taskLedger.getTask(taskId)
+    const task = this.taskLedger.transition(taskId, toStatus as TaskStatus, reason)
+    this.callbacks.onBroadcast?.({
+      type: 'task.state_changed',
+      taskId: task.id,
+      fromStatus: before?.status ?? 'unknown',
+      toStatus: task.status,
+      reason,
+    })
+    return task
   }
 
   close() {
