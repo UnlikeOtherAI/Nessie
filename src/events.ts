@@ -15,6 +15,8 @@ export type ServerEvent =
   | ServerEventToolDone
   | ServerEventAgentWake
   | ServerEventError
+  | ServerEventTaskCreated
+  | ServerEventTaskStateChanged
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -117,6 +119,31 @@ export interface ServerEventAgentWake {
   type: 'agent.wake'
   agentId: string
   reason: 'initial' | 'scheduled'
+}
+
+// ─── Tasks ───────────────────────────────────────────────────────────────────
+
+export interface TaskSummary {
+  id: string
+  parentId: string | null
+  role: string
+  label: string
+  status: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ServerEventTaskCreated {
+  type: 'task.created'
+  task: TaskSummary
+}
+
+export interface ServerEventTaskStateChanged {
+  type: 'task.state_changed'
+  taskId: string
+  fromStatus: string
+  toStatus: string
+  reason: string
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────

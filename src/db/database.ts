@@ -34,6 +34,48 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_diary_thread ON diary_entries(thread_id, created_at);
 `)
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id               TEXT PRIMARY KEY,
+    parent_id        TEXT,
+    thread_id        TEXT NOT NULL,
+    role             TEXT NOT NULL,
+    label            TEXT NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'inbox',
+    spec_path        TEXT,
+    output_path      TEXT,
+    assigned_model   TEXT,
+    timeout_seconds  INTEGER,
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL,
+    completed_at     INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
+  CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+  CREATE INDEX IF NOT EXISTS idx_tasks_thread ON tasks(thread_id);
+
+  CREATE TABLE IF NOT EXISTS task_events (
+    id          TEXT PRIMARY KEY,
+    task_id     TEXT NOT NULL,
+    from_status TEXT,
+    to_status   TEXT NOT NULL,
+    reason      TEXT NOT NULL,
+    timestamp   INTEGER NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES tasks(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id);
+
+  CREATE TABLE IF NOT EXISTS task_artifacts (
+    id         TEXT PRIMARY KEY,
+    task_id    TEXT NOT NULL,
+    path       TEXT NOT NULL,
+    mime_type  TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES tasks(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_task_artifacts_task ON task_artifacts(task_id);
+`)
+
 export interface PersistedMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
