@@ -7,11 +7,13 @@ import type {
   ListMessagesOptions,
   ListMessagesResult,
   MessageForMcp,
+  SpawnTaskRequest,
 } from './server.js'
 import type { Orchestrator } from '../agent/Orchestrator.js'
 import { allTools, findToolByName } from '../tools/index.js'
 import type { ToolUseContext } from '../tools/types.js'
 import { CreateTaskSchema } from '../orchestration/task-types.js'
+import type { TaskRole } from '../orchestration/task-types.js'
 
 export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
   return {
@@ -137,6 +139,17 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
 
     transitionTask(taskId: string, toStatus: string, reason: string) {
       return orchestrator.transitionTask(taskId, toStatus, reason)
+    },
+
+    spawnTask(request: SpawnTaskRequest) {
+      return orchestrator.spawnTask({
+        ...request,
+        role: request.role as TaskRole,
+      })
+    },
+
+    getSpawnStatus() {
+      return orchestrator.getSpawnStatus()
     },
   }
 }

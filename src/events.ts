@@ -17,6 +17,8 @@ export type ServerEvent =
   | ServerEventError
   | ServerEventTaskCreated
   | ServerEventTaskStateChanged
+  | ServerEventTaskSpawned
+  | ServerEventTaskAnnounced
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -145,6 +147,26 @@ export interface ServerEventTaskStateChanged {
   fromStatus: string
   toStatus: string
   reason: string
+}
+
+// ─── Spawn / Announce ────────────────────────────────────────────────────────
+
+export interface ServerEventTaskSpawned {
+  type: 'task.spawned'
+  taskId: string
+  parentTaskId: string
+  role: string
+  label: string
+}
+
+export interface ServerEventTaskAnnounced {
+  type: 'task.announced'
+  taskId: string
+  parentTaskId: string | null
+  status: 'completed' | 'failed' | 'timeout'
+  result: string
+  duration: number
+  toolCallCount: number
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────

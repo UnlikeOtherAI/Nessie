@@ -14,6 +14,7 @@ struct StatusPanel: View {
           // ── Tasks ───────────────────────────────────────────────────────────
           if !appState.tasks.isEmpty {
             section("TASKS") {
+              spawnStatusBar
               ForEach(appState.tasks) { task in
                 taskRow(task)
               }
@@ -232,11 +233,25 @@ struct StatusPanel: View {
     .cornerRadius(6)
   }
 
+  // ─── Spawn status bar ──────────────────────────────────────────────────
+
+  private var spawnStatusBar: some View {
+    HStack(spacing: 4) {
+      Image(systemName: "bolt.fill")
+        .font(.system(size: 9))
+        .foregroundColor(.secondary)
+      Text("\(appState.spawnActive) active / \(appState.spawnLimit) limit")
+        .font(.system(size: 10))
+        .foregroundColor(.secondary)
+      Spacer()
+    }
+    .padding(.vertical, 2)
+  }
+
   // ─── Task row ──────────────────────────────────────────────────────────
 
   private func taskRow(_ task: TaskItem) -> some View {
     HStack(spacing: 8) {
-      // Parent indicator
       if task.parentId != nil {
         Image(systemName: "arrow.turn.down.right")
           .font(.system(size: 9))
@@ -274,6 +289,7 @@ struct StatusPanel: View {
         .background(taskStatusColor(task.status).opacity(0.1))
         .cornerRadius(3)
     }
+    .padding(.leading, task.parentId != nil ? 16 : 0)
     .padding(.vertical, 4)
     .accessibilityIdentifier("task_\(task.id)")
   }

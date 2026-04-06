@@ -93,6 +93,10 @@ final class AppState: ObservableObject {
   // ─── Tasks (orchestration ledger) ────────────────────────────────────────
   @Published private(set) var tasks: [TaskItem] = []
 
+  // ─── Spawn status ──────────────────────────────────────────────────────
+  @Published private(set) var spawnActive: Int = 0
+  @Published private(set) var spawnLimit: Int = 3
+
   // ─── Backend client ────────────────────────────────────────────────────────
 
   private let client = NessieClient()
@@ -143,81 +147,84 @@ final class AppState: ObservableObject {
 
   private func handleEvent(_ event: ServerEvent) async {
     switch event {
-    case .state(let state):
-      applyState(state)
-
-    case .message(let msg):
-      let chatMsg = msg.toAppMessage()
-      // Avoid duplicates
-      if !allMessages.contains(where: { $0.id == chatMsg.id }) {
-        allMessages.append(chatMsg)
-      }
-
-    case .streamingStart(let runId, _):
-      streamingRunId = runId
-      streamingContent = ""
-      isThinking = true
-      isStreaming = true
-
-    case .streamingDelta(let content):
-      streamingContent += content
-
-    case .streamingDone:
-      // Message is added via the `message` broadcast event — don't double-add
-      streamingContent = ""
-      streamingRunId = nil
-      isThinking = false
-      isStreaming = false
-
-    case .subAgentStarted(let subAgent):
-      if !activeSubAgents.contains(where: { $0.id == subAgent.id }) {
-        activeSubAgents.append(subAgent)
-      }
-
-    case .subAgentDone(let subAgentId, _):
-      activeSubAgents.removeAll { $0.id == subAgentId }
-
-    case .toolCalled(let name, let input):
-      let entry = ToolCallEntry(id: UUID().uuidString, name: name, input: input, timestamp: Date())
-      recentToolCalls.insert(entry, at: 0)
-      if recentToolCalls.count > 10 {
-        recentToolCalls = Array(recentToolCalls.prefix(10))
-      }
-
-    case .toolDone(let name):
-      // Mark the most recent matching entry as done
-      if let idx = recentToolCalls.firstIndex(where: { $0.name == name && $0.doneAt == nil }) {
-        recentToolCalls[idx] = ToolCallEntry(
-          id: recentToolCalls[idx].id,
-          name: name,
-          input: recentToolCalls[idx].input,
-          timestamp: recentToolCalls[idx].timestamp,
-          doneAt: Date()
-        )
-      }
-
-    case .taskCreated(let task):
-      handleTaskCreated(task)
-
-    case .taskStateChanged(let taskId, _, let toStatus, _):
-      handleTaskStateChanged(taskId: taskId, toStatus: toStatus)
-
-    case .agentWake(let agentId, _):
-      // Refresh agent state
-      if let state = try? await client.fetchState() {
-        applyState(state)
-      }
-
-    case .error:
-      // On any error, reset streaming state
-      streamingContent = ""
-      streamingRunId = nil
-      isThinking = false
-      isStreaming = false
-
-    case .ping:
-      isOnline = true
+    case .state(let state): applyState(state)
+    case .message(let msg): handleMessage(msg)
+    case .streamingStart(let runId, _): handleStreamingStart(runId)
+    case .streamingDelta(let content): streamingContent += content
+    case .streamingDone: resetStreaming()
+    case .subAgentStarted(let sub): handleSubAgentStarted(sub)
+    case .subAgentDone(let subId, _): activeSubAgents.removeAll { $0.id == subId }
+    case .toolCalled(let name, let input): handleToolCalled(name, input)
+    case .toolDone(let name): handleToolDone(name)
+    case .taskCreated(let task): handleTaskCreated(task)
+    case .taskStateChanged(let tid, _, let tos, _): handleTaskStateChanged(taskId: tid, toStatus: tos)
+    case .taskSpawned(let tid, let pid, let role, let label): handleSpawned(tid, pid, role, label)
+    case .taskAnnounced(let tid, _, let sts, _, _, _): handleAnnounced(tid, sts)
+    case .agentWake: await refreshState()
+    case .error: resetStreaming()
+    case .ping: isOnline = true
     }
+  }
+
+  private func handleMessage(_ msg: RemoteMessage) {
+    let chatMsg = msg.toAppMessage()
+    if !allMessages.contains(where: { $0.id == chatMsg.id }) {
+      allMessages.append(chatMsg)
+    }
+  }
+
+  private func handleStreamingStart(_ runId: String) {
+    streamingRunId = runId
+    streamingContent = ""
+    isThinking = true
+    isStreaming = true
+  }
+
+  private func resetStreaming() {
+    streamingContent = ""
+    streamingRunId = nil
+    isThinking = false
+    isStreaming = false
+  }
+
+  private func handleSubAgentStarted(_ subAgent: SubAgentSummary) {
+    if !activeSubAgents.contains(where: { $0.id == subAgent.id }) {
+      activeSubAgents.append(subAgent)
+    }
+  }
+
+  private func handleToolCalled(_ name: String, _ input: [String: String]) {
+    let entry = ToolCallEntry(id: UUID().uuidString, name: name, input: input, timestamp: Date())
+    recentToolCalls.insert(entry, at: 0)
+    if recentToolCalls.count > 10 { recentToolCalls = Array(recentToolCalls.prefix(10)) }
+  }
+
+  private func handleToolDone(_ name: String) {
+    if let idx = recentToolCalls.firstIndex(where: { $0.name == name && $0.doneAt == nil }) {
+      recentToolCalls[idx] = ToolCallEntry(
+        id: recentToolCalls[idx].id, name: name,
+        input: recentToolCalls[idx].input,
+        timestamp: recentToolCalls[idx].timestamp, doneAt: Date()
+      )
+    }
+  }
+
+  private func handleSpawned(_ taskId: String, _ parentTaskId: String, _ role: String, _ label: String) {
+    handleTaskCreated(TaskItem(
+      id: taskId, parentId: parentTaskId.isEmpty ? nil : parentTaskId,
+      role: role, label: label, status: "inbox",
+      createdAt: Date(), updatedAt: Date()
+    ))
+    spawnActive += 1
+  }
+
+  private func handleAnnounced(_ taskId: String, _ status: String) {
+    handleTaskStateChanged(taskId: taskId, toStatus: status == "completed" ? "done" : "failed")
+    spawnActive = max(0, spawnActive - 1)
+  }
+
+  private func refreshState() async {
+    if let state = try? await client.fetchState() { applyState(state) }
   }
 
   private func applyState(_ state: RemoteState) {

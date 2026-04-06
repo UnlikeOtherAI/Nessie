@@ -9,6 +9,8 @@ import { evaluateAndCompress } from '../engine/compression.js'
 import { TaskLedger } from '../orchestration/task-ledger.js'
 import { TaskStatus } from '../orchestration/task-types.js'
 import type { CreateTaskInput, Task, TaskEvent as OrchestratorTaskEvent } from '../orchestration/task-types.js'
+import { SpawnManager } from '../orchestration/spawn-manager.js'
+import type { AnnouncePayload, SpawnRequest, SpawnResult } from '../orchestration/spawn-manager.js'
 
 export class Orchestrator {
   private state: OrchestratorState
@@ -16,6 +18,7 @@ export class Orchestrator {
   private llm: LlmClient | null
   private schedules = new Map<string, TimerHandle>()
   private taskLedger: TaskLedger
+  private spawnManager: SpawnManager
 
   constructor(options: OrchestratorOptions) {
     this.state = {
@@ -39,6 +42,10 @@ export class Orchestrator {
     this.callbacks = options.callbacks ?? {}
     this.llm = options.llm ?? null
     this.taskLedger = new TaskLedger()
+    this.spawnManager = new SpawnManager(
+      this.taskLedger,
+      (taskId, payload) => this.handleAnnounce(taskId, payload),
+    )
 
     // Load persisted messages from SQLite
     this.loadFromDb()
@@ -395,45 +402,56 @@ export class Orchestrator {
       subAgent: { id: subAgent.id, name: subAgent.name, task: subAgent.task, status: 'running' },
     })
 
-    // Create a task record and transition through lifecycle
-    const taskRecord = this.taskLedger.createTask({
-      role: 'researcher', label: task, threadId: 'main',
-      parentId: null, specPath: null, outputPath: null,
-      assignedModel: null, timeoutSeconds: null,
-    })
-    this.callbacks.onBroadcast?.({
-      type: 'task.created',
-      task: {
-        id: taskRecord.id, parentId: taskRecord.parentId, role: taskRecord.role,
-        label: taskRecord.label, status: taskRecord.status,
-        createdAt: taskRecord.createdAt, updatedAt: taskRecord.updatedAt,
-      },
+    const spawnResult = this.spawnManager.spawn({
+      parentTaskId: null,
+      role: 'researcher',
+      label: task,
+      toolScope: toolNames,
+      timeoutSeconds: 300,
     })
 
-    this.transitionTask(taskRecord.id, TaskStatus.Assigned, 'Sub-agent created')
-    this.transitionTask(taskRecord.id, TaskStatus.InProgress, 'Sub-agent running')
+    if (!spawnResult.accepted) {
+      subAgent.status = 'failed'
+      subAgent.error = spawnResult.reason
+      this.broadcastState()
+      return `Spawn rejected: ${spawnResult.reason}`
+    }
+
+    const taskId = spawnResult.taskId
+    this.callbacks.onBroadcast?.({
+      type: 'task.spawned',
+      taskId,
+      parentTaskId: '',
+      role: 'researcher',
+      label: task,
+    })
+
+    this.transitionTask(taskId, TaskStatus.Assigned, 'Sub-agent created')
+    this.transitionTask(taskId, TaskStatus.InProgress, 'Sub-agent running')
 
     let rawResult: string
+    let success = true
     try {
       rawResult = await this.spawnSubAgent(subAgent)
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      this.transitionTask(taskRecord.id, TaskStatus.Failed, errMsg)
-      subAgent.status = 'done'
-      this.broadcastState()
-      return `Sub-agent failed: ${errMsg}`
+      rawResult = errMsg
+      success = false
     }
 
-    // Mark task as review -> done
-    this.transitionTask(taskRecord.id, TaskStatus.Review, 'Sub-agent completed')
-    this.transitionTask(taskRecord.id, TaskStatus.Done, 'Result delivered')
+    this.spawnManager.complete(taskId, success, rawResult, 1)
+
+    if (!success) {
+      subAgent.status = 'done'
+      this.broadcastState()
+      return `Sub-agent failed: ${rawResult}`
+    }
 
     subAgent.status = 'done'
     subAgent.result = rawResult
     this.broadcastState()
     this.callbacks.onBroadcast?.({ type: 'subagent.done', subAgentId: subAgent.id, result: rawResult })
 
-    // Synthesize a natural user-facing response from the tool result
     try {
       const response = await this.llm.chat([
         {
@@ -446,8 +464,59 @@ export class Orchestrator {
       ], { maxTokens: 300 })
       return response
     } catch {
-      return `Here\'s what I found: ${rawResult}`
+      return `Here's what I found: ${rawResult}`
     }
+  }
+
+  private handleAnnounce(taskId: string, payload: AnnouncePayload): void {
+    const status = payload.status === 'completed' ? TaskStatus.Done : TaskStatus.Failed
+    try {
+      const task = this.taskLedger.getTask(taskId)
+      if (task && task.status === 'in_progress') {
+        this.transitionTask(taskId, TaskStatus.Review, 'Spawn completed')
+      }
+      this.transitionTask(taskId, status, payload.result)
+    } catch {
+      // Task may already be in terminal state from explicit complete() call
+    }
+
+    this.callbacks.onBroadcast?.({
+      type: 'task.announced',
+      taskId: payload.taskId,
+      parentTaskId: payload.parentTaskId,
+      status: payload.status,
+      result: payload.result,
+      duration: payload.duration,
+      toolCallCount: payload.toolCallCount,
+    })
+
+    if (payload.parentTaskId) {
+      this.pushMessage({
+        role: 'system',
+        threadId: 'main',
+        content: `Task ${taskId} ${payload.status}: ${payload.result}`,
+      })
+    }
+  }
+
+  spawnTask(request: SpawnRequest): SpawnResult {
+    const result = this.spawnManager.spawn(request)
+    if (result.accepted) {
+      this.callbacks.onBroadcast?.({
+        type: 'task.spawned',
+        taskId: result.taskId,
+        parentTaskId: request.parentTaskId ?? '',
+        role: request.role,
+        label: request.label,
+      })
+      this.transitionTask(result.taskId, TaskStatus.Assigned, 'Spawned')
+      this.transitionTask(result.taskId, TaskStatus.InProgress, 'Running')
+    }
+    return result
+  }
+
+  getSpawnStatus(): { active: number; limit: number } {
+    return this.spawnManager.getSpawnStatus()
   }
 
   private async spawnSubAgent(task: SubAgentTask): Promise<string> {
@@ -623,6 +692,7 @@ export class Orchestrator {
   close() {
     for (const handle of this.schedules.values()) clearInterval(handle)
     this.schedules.clear()
+    this.spawnManager.close()
   }
 }
 

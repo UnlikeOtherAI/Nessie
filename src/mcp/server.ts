@@ -154,6 +154,31 @@ const TOOLS: ToolDef[] = [
       required: ['taskId', 'status', 'reason'],
     },
   },
+  {
+    name: 'spawn_task',
+    description: 'Spawn a child task. Returns immediately with task ID. Non-blocking.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        parentTaskId: { type: 'string', description: 'Parent task ID' },
+        role: { type: 'string', description: 'Task role' },
+        label: { type: 'string', description: 'Task description' },
+        toolScope: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Allowed tools',
+        },
+        timeoutSeconds: { type: 'number', description: 'Timeout in seconds (default 300)' },
+        modelOverride: { type: 'string', description: 'Model override' },
+      },
+      required: ['parentTaskId', 'role', 'label'],
+    },
+  },
+  {
+    name: 'get_spawn_status',
+    description: 'Get current spawn status (active count, limit).',
+    inputSchema: { type: 'object', properties: {} },
+  },
 ]
 
 interface ToolDef {
@@ -448,6 +473,40 @@ export class McpServer {
       }
     }
 
+    // Handle spawn_task
+    if (name === 'spawn_task') {
+      const parentTaskId = args.parentTaskId as string
+      const role = args.role as string
+      const label = args.label as string
+      if (!parentTaskId || !role || !label) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'parentTaskId, role, and label are required' },
+        }
+      }
+      const spawnResult = this.orchestrator.spawnTask({
+        parentTaskId,
+        role,
+        label,
+        toolScope: Array.isArray(args.toolScope) ? args.toolScope as string[] : [],
+        timeoutSeconds: typeof args.timeoutSeconds === 'number' ? args.timeoutSeconds : 300,
+        modelOverride: typeof args.modelOverride === 'string' ? args.modelOverride : undefined,
+      })
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(spawnResult, null, 2) }] },
+      }
+    }
+
+    // Handle get_spawn_status
+    if (name === 'get_spawn_status') {
+      const status = this.orchestrator.getSpawnStatus()
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(status, null, 2) }] },
+      }
+    }
+
     const result = await this.orchestrator.callTool(name, args)
     return {
       jsonrpc: '2.0', id: req.id ?? null,
@@ -492,6 +551,17 @@ export interface McpOrchestrator {
   getTask(taskId: string): { task: unknown; events: unknown[] }
   createTask(input: Record<string, unknown>): unknown
   transitionTask(taskId: string, toStatus: string, reason: string): unknown
+  spawnTask(request: SpawnTaskRequest): { taskId: string; accepted: boolean; reason?: string }
+  getSpawnStatus(): { active: number; limit: number }
+}
+
+export interface SpawnTaskRequest {
+  parentTaskId: string
+  role: string
+  label: string
+  toolScope: string[]
+  timeoutSeconds: number
+  modelOverride?: string
 }
 
 export interface ListMessagesOptions {

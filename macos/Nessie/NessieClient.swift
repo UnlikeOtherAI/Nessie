@@ -16,6 +16,11 @@ enum ServerEvent: Sendable {
   case agentWake(agentId: String, reason: String)
   case taskCreated(task: TaskItem)
   case taskStateChanged(taskId: String, fromStatus: String, toStatus: String, reason: String)
+  case taskSpawned(taskId: String, parentTaskId: String, role: String, label: String)
+  case taskAnnounced(
+    taskId: String, parentTaskId: String?,
+    status: String, result: String, duration: Int, toolCallCount: Int
+  )
   case error(message: String)
   case ping(timestamp: Int64)
 }
@@ -126,6 +131,22 @@ private func parseTaskEvent(
       fromStatus: json["fromStatus"] as? String ?? "",
       toStatus: json["toStatus"] as? String ?? "",
       reason: json["reason"] as? String ?? ""
+    )
+  case "task.spawned":
+    return .taskSpawned(
+      taskId: json["taskId"] as? String ?? "",
+      parentTaskId: json["parentTaskId"] as? String ?? "",
+      role: json["role"] as? String ?? "",
+      label: json["label"] as? String ?? ""
+    )
+  case "task.announced":
+    return .taskAnnounced(
+      taskId: json["taskId"] as? String ?? "",
+      parentTaskId: json["parentTaskId"] as? String,
+      status: json["status"] as? String ?? "",
+      result: json["result"] as? String ?? "",
+      duration: json["duration"] as? Int ?? 0,
+      toolCallCount: json["toolCallCount"] as? Int ?? 0
     )
   default:
     return nil
@@ -355,10 +376,9 @@ final class NessieClient: @unchecked Sendable {
     }
   }
 
-  // Parse a raw WS text message into a ServerEvent
   private func parseWSMessage(_ text: String) -> ServerEvent? {
-    guard let data = text.data(using: .utf8) else { return nil }
-    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+    guard let data = text.data(using: .utf8),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let type = json["type"] as? String else { return nil }
 
     switch type {
@@ -368,131 +388,72 @@ final class NessieClient: @unchecked Sendable {
             let state = try? JSONDecoder().decode(RemoteState.self, from: stateJson)
       else { return nil }
       return .state(state)
-
     case "message":
-      guard let msgData = try? JSONSerialization.data(withJSONObject: json["message"] as Any),
+      guard let msgObj = json["message"],
+            let msgData = try? JSONSerialization.data(withJSONObject: msgObj),
             let msg = try? JSONDecoder().decode(RemoteMessage.self, from: msgData)
       else { return nil }
       return .message(msg)
-
-    case "streaming.start":
-      return .streamingStart(
-        runId: json["runId"] as? String ?? "",
-        threadId: json["threadId"] as? String ?? ""
-      )
-
-    case "streaming.delta":
-      return .streamingDelta(content: json["content"] as? String ?? "")
-
-    case "streaming.done":
-      return .streamingDone(
-        content: json["content"] as? String ?? "",
-        runId: json["runId"] as? String ?? ""
-      )
-
-    case "subagent.started":
-      guard let agentPayload = json["subAgent"] as? [String: Any],
-            let saData = try? JSONSerialization.data(withJSONObject: agentPayload),
-            let subAgent = try? JSONDecoder().decode(SubAgentSummary.self, from: saData)
-      else { return nil }
-      return .subAgentStarted(subAgent: subAgent)
-
-    case "subagent.done":
-      return .subAgentDone(
-        subAgentId: json["subAgentId"] as? String ?? "",
-        result: json["result"] as? String ?? ""
-      )
-
-    case "tool.called":
-      return .toolCalled(
-        name: json["name"] as? String ?? "",
-        input: (json["input"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
-      )
-
-    case "tool.done":
-      return .toolDone(name: json["name"] as? String ?? "")
-
-    case "agent.wake":
-      return .agentWake(
-        agentId: json["agentId"] as? String ?? "",
-        reason: json["reason"] as? String ?? ""
-      )
-
-    case "task.created", "task.state_changed":
-      return parseTaskEvent(type: type, json: json)
-
-    case "error":
-      return .error(message: json["message"] as? String ?? "Unknown error")
-
     case "pong":
       return .ping(timestamp: json["ts"] as? Int64 ?? 0)
-
     default:
-      return nil
+      return parseSharedEvent(type: type, json: json)
     }
   }
 
-  // Parse a single SSE event line into a ServerEvent
   private func parseSSELine(event: String, data: String) -> ServerEvent? {
     guard let jsonData = data.data(using: .utf8),
           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
     else { return nil }
 
+    let mapped: String
     switch event {
-    case "start":
-      return .streamingStart(
-        runId: json["runId"] as? String ?? "",
-        threadId: json["threadId"] as? String ?? ""
-      )
-
-    case "delta":
-      return .streamingDelta(content: json["content"] as? String ?? "")
-
-    case "done":
-      return .streamingDone(
-        content: json["content"] as? String ?? "",
-        runId: json["runId"] as? String ?? ""
-      )
-
+    case "start": mapped = "streaming.start"
+    case "delta": mapped = "streaming.delta"
+    case "done": mapped = "streaming.done"
     case "message":
       guard let msgData = try? JSONSerialization.data(withJSONObject: json),
             let msg = try? JSONDecoder().decode(RemoteMessage.self, from: msgData)
       else { return nil }
       return .message(msg)
+    default: mapped = event
+    }
+    return parseSharedEvent(type: mapped, json: json)
+  }
 
+  private func parseSharedEvent(type: String, json: [String: Any]) -> ServerEvent? {
+    switch type {
+    case "streaming.start":
+      return .streamingStart(
+        runId: json["runId"] as? String ?? "", threadId: json["threadId"] as? String ?? ""
+      )
+    case "streaming.delta":
+      return .streamingDelta(content: json["content"] as? String ?? "")
+    case "streaming.done":
+      return .streamingDone(content: json["content"] as? String ?? "", runId: json["runId"] as? String ?? "")
     case "subagent.started":
-      guard let saData = try? JSONSerialization.data(withJSONObject: json),
-            let subAgent = try? JSONDecoder().decode(SubAgentSummary.self, from: saData)
+      let src = json["subAgent"] as? [String: Any] ?? json
+      guard let saData = try? JSONSerialization.data(withJSONObject: src),
+            let sub = try? JSONDecoder().decode(SubAgentSummary.self, from: saData)
       else { return nil }
-      return .subAgentStarted(subAgent: subAgent)
-
+      return .subAgentStarted(subAgent: sub)
     case "subagent.done":
       return .subAgentDone(
-        subAgentId: json["subAgentId"] as? String ?? "",
-        result: json["result"] as? String ?? ""
+        subAgentId: json["subAgentId"] as? String ?? "", result: json["result"] as? String ?? ""
       )
-
     case "tool.called":
       return .toolCalled(
         name: json["name"] as? String ?? "",
         input: (json["input"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
       )
-
     case "tool.done":
       return .toolDone(name: json["name"] as? String ?? "")
-
     case "agent.wake":
-      return .agentWake(
-        agentId: json["agentId"] as? String ?? "",
-        reason: json["reason"] as? String ?? ""
-      )
-
-    case "task.created", "task.state_changed":
-      return parseTaskEvent(type: event, json: json)
-
+      return .agentWake(agentId: json["agentId"] as? String ?? "", reason: json["reason"] as? String ?? "")
+    case "task.created", "task.state_changed", "task.spawned", "task.announced":
+      return parseTaskEvent(type: type, json: json)
     case "error":
       return .error(message: json["message"] as? String ?? "Unknown error")
-
     default:
       return nil
     }

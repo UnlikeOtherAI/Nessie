@@ -164,6 +164,19 @@ async function main() {
               toStatus: event.toStatus, reason: event.reason,
             })
             break
+          case 'task.spawned':
+            sendSSE(res, 'task.spawned', {
+              taskId: event.taskId, parentTaskId: event.parentTaskId,
+              role: event.role, label: event.label,
+            })
+            break
+          case 'task.announced':
+            sendSSE(res, 'task.announced', {
+              taskId: event.taskId, parentTaskId: event.parentTaskId,
+              status: event.status, result: event.result,
+              duration: event.duration, toolCallCount: event.toolCallCount,
+            })
+            break
           case 'error':
             sendSSE(res, 'error', { message: event.message })
             break
