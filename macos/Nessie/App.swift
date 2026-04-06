@@ -97,6 +97,9 @@ final class AppState: ObservableObject {
   @Published private(set) var spawnActive: Int = 0
   @Published private(set) var spawnLimit: Int = 3
 
+  // ─── Validators ──────────────────────────────────────────────────────
+  @Published private(set) var validatorResults: [ValidatorEntry] = []
+
   // ─── Backend client ────────────────────────────────────────────────────────
 
   private let client = NessieClient()
@@ -156,15 +159,25 @@ final class AppState: ObservableObject {
     case .subAgentDone(let subId, _): activeSubAgents.removeAll { $0.id == subId }
     case .toolCalled(let name, let input): handleToolCalled(name, input)
     case .toolDone(let name): handleToolDone(name)
+    case .agentWake: await refreshState()
+    case .error: resetStreaming()
+    case .ping: isOnline = true
+    default: handleTaskOrApprovalEvent(event)
+    }
+  }
+
+  private func handleTaskOrApprovalEvent(_ event: ServerEvent) {
+    switch event {
     case .taskCreated(let task): handleTaskCreated(task)
     case .taskStateChanged(let tid, _, let tos, _): handleTaskStateChanged(taskId: tid, toStatus: tos)
     case .taskSpawned(let tid, let pid, let role, let label): handleSpawned(tid, pid, role, label)
     case .taskAnnounced(let tid, _, let sts, _, _, _): handleAnnounced(tid, sts)
     case .reviewPassed(let tid, _): handleReviewPassed(taskId: tid)
     case .reviewFailed(let tid, _, _): handleReviewFailed(taskId: tid)
-    case .agentWake: await refreshState()
-    case .error: resetStreaming()
-    case .ping: isOnline = true
+    case .approvalRequested(let tid, let reason): handleApprovalRequested(tid, reason)
+    case .approvalResolved(let tid, let res): handleApprovalResolved(tid, res)
+    case .validatorResult(let entry): handleValidatorResult(entry)
+    default: break
     }
   }
 
@@ -285,6 +298,29 @@ final class AppState: ObservableObject {
       tasks[idx].lastReviewPassed = false
       tasks[idx].status = "in_progress"
       tasks[idx].updatedAt = Date()
+    }
+  }
+
+  private func handleApprovalRequested(_ taskId: String, _ reason: String) {
+    if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
+      tasks[idx].approvalReason = reason
+      tasks[idx].approvalStatus = "pending"
+      tasks[idx].status = "awaiting_approval"
+      tasks[idx].updatedAt = Date()
+    }
+  }
+
+  private func handleApprovalResolved(_ taskId: String, _ resolution: String) {
+    if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
+      tasks[idx].approvalStatus = resolution
+      tasks[idx].updatedAt = Date()
+    }
+  }
+
+  private func handleValidatorResult(_ entry: ValidatorEntry) {
+    validatorResults.insert(entry, at: 0)
+    if validatorResults.count > 20 {
+      validatorResults = Array(validatorResults.prefix(20))
     }
   }
 

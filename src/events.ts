@@ -21,6 +21,9 @@ export type ServerEvent =
   | ServerEventTaskAnnounced
   | ServerEventReviewPassed
   | ServerEventReviewFailed
+  | ServerEventApprovalRequested
+  | ServerEventApprovalResolved
+  | ServerEventValidatorResult
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -184,6 +187,31 @@ export interface ServerEventReviewFailed {
   taskId: string
   reason: string
   repairInstructions: string | null
+}
+
+// ─── Approvals ─────────────────────────────────────────────────────────────
+
+export interface ServerEventApprovalRequested {
+  type: 'approval.requested'
+  taskId: string
+  reason: string
+}
+
+export interface ServerEventApprovalResolved {
+  type: 'approval.resolved'
+  taskId: string
+  resolution: 'approved' | 'rejected'
+}
+
+// ─── Validators ────────────────────────────────────────────────────────────
+
+export interface ServerEventValidatorResult {
+  type: 'validator.result'
+  taskId: string
+  validatorName: string
+  passed: boolean
+  output: string
+  durationMs: number
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────

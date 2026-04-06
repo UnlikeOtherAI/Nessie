@@ -23,6 +23,9 @@ enum ServerEvent: Sendable {
   )
   case reviewPassed(taskId: String, reason: String)
   case reviewFailed(taskId: String, reason: String, repairInstructions: String?)
+  case approvalRequested(taskId: String, reason: String)
+  case approvalResolved(taskId: String, resolution: String)
+  case validatorResult(entry: ValidatorEntry)
   case error(message: String)
   case ping(timestamp: Int64)
 }
@@ -466,6 +469,24 @@ final class NessieClient: @unchecked Sendable {
     case "task.created", "task.state_changed", "task.spawned", "task.announced",
          "task.review_passed", "task.review_failed":
       return parseTaskEvent(type: type, json: json)
+    case "approval.requested":
+      return .approvalRequested(
+        taskId: json["taskId"] as? String ?? "",
+        reason: json["reason"] as? String ?? ""
+      )
+    case "approval.resolved":
+      return .approvalResolved(
+        taskId: json["taskId"] as? String ?? "",
+        resolution: json["resolution"] as? String ?? ""
+      )
+    case "validator.result":
+      return .validatorResult(entry: ValidatorEntry(
+        taskId: json["taskId"] as? String ?? "",
+        name: json["validatorName"] as? String ?? "",
+        passed: json["passed"] as? Bool ?? false,
+        output: json["output"] as? String ?? "",
+        durationMs: json["durationMs"] as? Int ?? 0
+      ))
     case "error":
       return .error(message: json["message"] as? String ?? "Unknown error")
     default:

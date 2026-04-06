@@ -87,6 +87,19 @@ db.exec(`
     created_at         INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_task_reviews_task_id ON task_reviews(task_id);
+
+  CREATE TABLE IF NOT EXISTS task_approvals (
+    id             TEXT PRIMARY KEY,
+    task_id        TEXT NOT NULL REFERENCES tasks(id),
+    reason         TEXT NOT NULL,
+    requested_by   TEXT,
+    status         TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')),
+    resolved_by    TEXT,
+    resolved_at    INTEGER,
+    created_at     INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_task_approvals_task ON task_approvals(task_id);
+  CREATE INDEX IF NOT EXISTS idx_task_approvals_status ON task_approvals(status);
 `)
 
 export interface PersistedMessage {

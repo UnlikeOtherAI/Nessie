@@ -188,6 +188,23 @@ async function main() {
               repairInstructions: event.repairInstructions,
             })
             break
+          case 'approval.requested':
+            sendSSE(res, 'approval.requested', {
+              taskId: event.taskId, reason: event.reason,
+            })
+            break
+          case 'approval.resolved':
+            sendSSE(res, 'approval.resolved', {
+              taskId: event.taskId, resolution: event.resolution,
+            })
+            break
+          case 'validator.result':
+            sendSSE(res, 'validator.result', {
+              taskId: event.taskId, validatorName: event.validatorName,
+              passed: event.passed, output: event.output,
+              durationMs: event.durationMs,
+            })
+            break
           case 'error':
             sendSSE(res, 'error', { message: event.message })
             break

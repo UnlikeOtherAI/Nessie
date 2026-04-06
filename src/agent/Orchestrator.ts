@@ -17,6 +17,10 @@ import { VerificationGate } from '../orchestration/verification.js'
 import type { ReviewResult } from '../orchestration/verification.js'
 import { getRolePolicy, ROLE_POLICIES } from '../orchestration/role-registry.js'
 import type { RolePolicy } from '../orchestration/role-registry.js'
+import { ApprovalGate } from '../orchestration/approvals.js'
+import type { ApprovalRequest } from '../orchestration/approvals.js'
+import { runValidators } from '../orchestration/validators.js'
+import type { ValidatorResult } from '../orchestration/validators.js'
 
 export class Orchestrator {
   private state: OrchestratorState
@@ -26,6 +30,7 @@ export class Orchestrator {
   private taskLedger: TaskLedger
   private spawnManager: SpawnManager
   private verificationGate: VerificationGate
+  private approvalGate: ApprovalGate
 
   constructor(options: OrchestratorOptions) {
     this.state = {
@@ -50,6 +55,7 @@ export class Orchestrator {
     this.llm = options.llm ?? null
     this.taskLedger = new TaskLedger()
     this.verificationGate = new VerificationGate(this.taskLedger)
+    this.approvalGate = new ApprovalGate(this.taskLedger)
     this.taskLedger.setReviewGateCheck(
       (taskId) => this.verificationGate.hasPassingReview(taskId),
     )
@@ -768,6 +774,72 @@ export class Orchestrator {
         k, { ...v, allowedTools: [...v.allowedTools] },
       ]),
     )
+  }
+
+  // ─── Approvals ──────────────────────────────────────────────────────────────
+
+  requestApproval(
+    taskId: string, reason: string, requestedBy?: string,
+  ): ApprovalRequest {
+    const approval = this.approvalGate.requestApproval(
+      taskId, reason, requestedBy,
+    )
+    this.callbacks.onBroadcast?.({
+      type: 'approval.requested',
+      taskId,
+      reason,
+    })
+    return approval
+  }
+
+  approveTask(taskId: string, resolvedBy?: string): ApprovalRequest {
+    const approval = this.approvalGate.approveTask(taskId, resolvedBy)
+    this.transitionTask(
+      taskId, TaskStatus.InProgress, 'Approval granted',
+    )
+    this.callbacks.onBroadcast?.({
+      type: 'approval.resolved',
+      taskId,
+      resolution: 'approved',
+    })
+    return approval
+  }
+
+  rejectTask(taskId: string, resolvedBy?: string): ApprovalRequest {
+    const approval = this.approvalGate.rejectTask(taskId, resolvedBy)
+    this.transitionTask(
+      taskId, TaskStatus.Cancelled, 'Approval rejected',
+    )
+    this.callbacks.onBroadcast?.({
+      type: 'approval.resolved',
+      taskId,
+      resolution: 'rejected',
+    })
+    return approval
+  }
+
+  listPendingApprovals(): ApprovalRequest[] {
+    return this.approvalGate.listPendingApprovals()
+  }
+
+  // ─── Validators ─────────────────────────────────────────────────────────────
+
+  async runValidators(taskId: string): Promise<ValidatorResult[]> {
+    const task = this.taskLedger.getTask(taskId)
+    if (!task) throw new Error(`Task not found: ${taskId}`)
+    const cwd = process.cwd()
+    const results = await runValidators(taskId, cwd)
+    for (const r of results) {
+      this.callbacks.onBroadcast?.({
+        type: 'validator.result',
+        taskId,
+        validatorName: r.name,
+        passed: r.passed,
+        output: r.output,
+        durationMs: r.durationMs,
+      })
+    }
+    return results
   }
 
   close() {

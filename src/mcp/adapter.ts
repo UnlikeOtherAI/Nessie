@@ -171,5 +171,25 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
     getRolePolicies() {
       return orchestrator.getRolePolicies()
     },
+
+    requestApproval(taskId: string, reason: string, requestedBy?: string) {
+      return orchestrator.requestApproval(taskId, reason, requestedBy)
+    },
+
+    approveTask(taskId: string, resolvedBy?: string) {
+      return orchestrator.approveTask(taskId, resolvedBy)
+    },
+
+    rejectTask(taskId: string, resolvedBy?: string) {
+      return orchestrator.rejectTask(taskId, resolvedBy)
+    },
+
+    listPendingApprovals() {
+      return orchestrator.listPendingApprovals()
+    },
+
+    async runValidators(taskId: string) {
+      return orchestrator.runValidators(taskId)
+    },
   }
 }

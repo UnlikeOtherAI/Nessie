@@ -67,6 +67,19 @@ struct TaskItem: Identifiable, Sendable {
   var updatedAt: Date
   var repairCount: Int = 0
   var lastReviewPassed: Bool?
+  var approvalReason: String?
+  var approvalStatus: String?
+}
+
+// ─── Validator result (external check output) ──────────────────────────────
+
+struct ValidatorEntry: Identifiable, Sendable {
+  let id = UUID().uuidString
+  let taskId: String
+  let name: String
+  let passed: Bool
+  let output: String
+  let durationMs: Int
 }
 
 // ─── Remote task (decoded from backend state) ────────────────────────────────

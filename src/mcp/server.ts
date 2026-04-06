@@ -219,6 +219,59 @@ const TOOLS: ToolDef[] = [
     description: 'List all roles with their tool policies.',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'request_approval',
+    description: 'Request approval for a task in awaiting_approval status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID' },
+        reason: { type: 'string', description: 'Why approval is needed' },
+        requestedBy: { type: 'string', description: 'ID of requesting task' },
+      },
+      required: ['taskId', 'reason'],
+    },
+  },
+  {
+    name: 'approve_task',
+    description: 'Approve a pending approval request. Task resumes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID to approve' },
+        resolvedBy: { type: 'string', description: 'Who approved' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'reject_task',
+    description: 'Reject a pending approval request. Task is cancelled.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID to reject' },
+        resolvedBy: { type: 'string', description: 'Who rejected' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'list_pending_approvals',
+    description: 'List all tasks awaiting approval.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'run_validators',
+    description: 'Run lint + typecheck validators against the project.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID to validate' },
+      },
+      required: ['taskId'],
+    },
+  },
 ]
 
 interface ToolDef {
@@ -614,6 +667,95 @@ export class McpServer {
       }
     }
 
+    // Handle request_approval
+    if (name === 'request_approval') {
+      const taskId = args.taskId as string
+      const reason = args.reason as string
+      const requestedBy = args.requestedBy as string | undefined
+      if (!taskId || !reason) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'taskId and reason are required' },
+        }
+      }
+      const approval = this.orchestrator.requestApproval(
+        taskId, reason, requestedBy,
+      )
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(approval, null, 2) }],
+        },
+      }
+    }
+
+    // Handle approve_task
+    if (name === 'approve_task') {
+      const taskId = args.taskId as string
+      const resolvedBy = args.resolvedBy as string | undefined
+      if (!taskId) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'taskId is required' },
+        }
+      }
+      const approval = this.orchestrator.approveTask(taskId, resolvedBy)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(approval, null, 2) }],
+        },
+      }
+    }
+
+    // Handle reject_task
+    if (name === 'reject_task') {
+      const taskId = args.taskId as string
+      const resolvedBy = args.resolvedBy as string | undefined
+      if (!taskId) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'taskId is required' },
+        }
+      }
+      const approval = this.orchestrator.rejectTask(taskId, resolvedBy)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(approval, null, 2) }],
+        },
+      }
+    }
+
+    // Handle list_pending_approvals
+    if (name === 'list_pending_approvals') {
+      const approvals = this.orchestrator.listPendingApprovals()
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(approvals, null, 2) }],
+        },
+      }
+    }
+
+    // Handle run_validators
+    if (name === 'run_validators') {
+      const taskId = args.taskId as string
+      if (!taskId) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'taskId is required' },
+        }
+      }
+      const results = await this.orchestrator.runValidators(taskId)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: {
+          content: [{ type: 'text', text: JSON.stringify(results, null, 2) }],
+        },
+      }
+    }
+
     const result = await this.orchestrator.callTool(name, args)
     return {
       jsonrpc: '2.0', id: req.id ?? null,
@@ -669,6 +811,11 @@ export interface McpOrchestrator {
   ): unknown
   getReviewHistory(taskId: string): unknown[]
   getRolePolicies(): Record<string, unknown>
+  requestApproval(taskId: string, reason: string, requestedBy?: string): unknown
+  approveTask(taskId: string, resolvedBy?: string): unknown
+  rejectTask(taskId: string, resolvedBy?: string): unknown
+  listPendingApprovals(): unknown[]
+  runValidators(taskId: string): Promise<unknown[]>
 }
 
 export interface SpawnTaskRequest {

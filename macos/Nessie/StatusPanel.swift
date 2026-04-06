@@ -21,6 +21,15 @@ struct StatusPanel: View {
             }
           }
 
+          // ── Validators ──────────────────────────────────────────────────────
+          if !appState.validatorResults.isEmpty {
+            section("VALIDATORS") {
+              ForEach(appState.validatorResults) { entry in
+                validatorRow(entry)
+              }
+            }
+          }
+
           // ── Sub-agents ─────────────────────────────────────────────────────
           if !appState.activeSubAgents.isEmpty {
             section("SUB-AGENTS") {
@@ -282,6 +291,7 @@ struct StatusPanel: View {
       Spacer()
 
       reviewBadge(task)
+      approvalBadge(task)
 
       Text(task.status.replacingOccurrences(of: "_", with: " ").uppercased())
         .font(.system(size: 9, weight: .semibold))
@@ -306,6 +316,24 @@ struct StatusPanel: View {
       }
     }
     .accessibilityIdentifier("task_\(task.id)")
+  }
+
+  @ViewBuilder
+  private func approvalBadge(_ task: TaskItem) -> some View {
+    if task.status == "awaiting_approval" {
+      HStack(spacing: 2) {
+        Image(systemName: "hand.raised.fill")
+          .font(.system(size: 9))
+          .foregroundColor(.orange)
+        if let reason = task.approvalReason {
+          Text(reason.prefix(20))
+            .font(.system(size: 8))
+            .foregroundColor(.orange)
+            .lineLimit(1)
+        }
+      }
+      .padding(.trailing, 4)
+    }
   }
 
   @ViewBuilder
@@ -362,6 +390,34 @@ extension StatusPanel {
     case "websearch", "search": return "globe"
     default: return "gearshape"
     }
+  }
+
+  func validatorRow(_ entry: ValidatorEntry) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: entry.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
+        .font(.system(size: 10))
+        .foregroundColor(entry.passed ? .green : .red)
+
+      VStack(alignment: .leading, spacing: 1) {
+        Text(entry.name)
+          .font(.system(size: 12, weight: .medium))
+        Text("\(entry.durationMs)ms")
+          .font(.system(size: 9))
+          .foregroundColor(.secondary)
+      }
+
+      Spacer()
+
+      Text(entry.passed ? "PASS" : "FAIL")
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundColor(entry.passed ? .green : .red)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background((entry.passed ? Color.green : Color.red).opacity(0.1))
+        .cornerRadius(3)
+    }
+    .padding(.vertical, 3)
+    .accessibilityIdentifier("validator_\(entry.name)")
   }
 
   func agentColor(for agent: Agent) -> Color {
