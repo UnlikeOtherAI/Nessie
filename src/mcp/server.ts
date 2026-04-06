@@ -80,6 +80,16 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'delete_history',
+    description: 'Delete conversation history. Pass threadId to delete a single thread, or omit to delete all.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        threadId: { type: 'string', description: 'Thread ID to delete. Omit to delete all history.' },
+      },
+    },
+  },
+  {
     name: 'inject_message',
     description: 'Inject a message into a thread without triggering a response.'
       + ' Useful for logging, system messages, or pre-loading conversation context.',
@@ -512,6 +522,17 @@ export class McpServer {
     }
 
     // Handle list_messages
+    // Handle delete_history
+    if (name === 'delete_history') {
+      const threadId = typeof args.threadId === 'string' ? args.threadId : undefined
+      const { deleteHistory } = await import('../db/database.js')
+      const deleted = deleteHistory(threadId)
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify({ deleted, threadId: threadId ?? 'all' }) }] },
+      }
+    }
+
     if (name === 'list_messages') {
       const result = this.orchestrator.listMessages({
         threadId: args.threadId as string | undefined,

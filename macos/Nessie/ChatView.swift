@@ -2,34 +2,86 @@ import SwiftUI
 
 struct ChatView: View {
   @EnvironmentObject var appState: AppState
+  @State private var showDeleteConfirm = false
 
   var body: some View {
-    ScrollViewReader { proxy in
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 12) {
-          ForEach(appState.visibleMessages) { message in
-            MessageBubble(message: message)
-              .id(message.id)
-          }
+    VStack(spacing: 0) {
+      // ── Toolbar ────────────────────────────────────────────────────────────
+      chatToolbar
 
-          // ── Streaming in-progress bubble ───────────────────────────────────
-          if appState.isThinking, !appState.streamingContent.isEmpty {
-            StreamingBubble(content: appState.streamingContent)
-              .id("streaming")
-          }
+      Divider()
 
-          // ── Typing indicator (no content yet) ─────────────────────────────
-          if appState.isThinking, appState.streamingContent.isEmpty {
-            TypingIndicator()
-              .id("typing")
+      // ── Messages ──────────────────────────────────────────────────────────
+      ScrollViewReader { proxy in
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 12) {
+            ForEach(appState.visibleMessages) { message in
+              MessageBubble(message: message)
+                .id(message.id)
+            }
+
+            if appState.isThinking, !appState.streamingContent.isEmpty {
+              StreamingBubble(content: appState.streamingContent)
+                .id("streaming")
+            }
+
+            if appState.isThinking, appState.streamingContent.isEmpty {
+              TypingIndicator()
+                .id("typing")
+            }
           }
+          .padding()
+          .textSelection(.enabled)
+          .accessibilityIdentifier("chat_message_list")
         }
-        .padding()
-        .accessibilityIdentifier("chat_message_list")
+        .onChange(of: appState.visibleMessages.count) { _ in scrollToBottom(proxy: proxy) }
+        .onChange(of: appState.streamingContent) { _ in scrollToBottom(proxy: proxy) }
       }
-      .onChange(of: appState.visibleMessages.count) { _ in scrollToBottom(proxy: proxy) }
-      .onChange(of: appState.streamingContent) { _ in scrollToBottom(proxy: proxy) }
     }
+    .alert("Delete History", isPresented: $showDeleteConfirm) {
+      Button("Delete", role: .destructive) { appState.deleteHistory() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This will permanently delete all conversations and context. This cannot be undone.")
+    }
+  }
+
+  // ─── Toolbar ──────────────────────────────────────────────────────────────
+
+  private var chatToolbar: some View {
+    HStack {
+      Spacer()
+
+      Button {
+        copyAllMessages()
+      } label: {
+        Image(systemName: "doc.on.doc")
+          .font(.system(size: 12))
+          .foregroundColor(.secondary)
+      }
+      .buttonStyle(.plain)
+      .help("Copy all messages")
+      .accessibilityIdentifier("copy_messages_button")
+
+      Button {
+        showDeleteConfirm = true
+      } label: {
+        Image(systemName: "trash")
+          .font(.system(size: 12))
+          .foregroundColor(.secondary)
+      }
+      .buttonStyle(.plain)
+      .help("Delete History")
+      .accessibilityIdentifier("delete_history_button")
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 6)
+  }
+
+  private func copyAllMessages() {
+    let text = formatMessagesForCopy(appState.visibleMessages)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
   }
 
   private func scrollToBottom(proxy: ScrollViewProxy) {
@@ -44,6 +96,26 @@ struct ChatView: View {
     }
   }
 }
+
+// ─── Cmd+C handler ──────────────────────────────────────────────────────────
+
+private func formatMessagesForCopy(_ messages: [ChatMessage]) -> String {
+  let formatter = DateFormatter()
+  formatter.dateFormat = "yyyy-MM-dd HH:mm"
+
+  return messages.map { msg in
+    let date = formatter.string(from: msg.timestamp)
+    let sender: String
+    switch msg.role {
+    case .user: sender = "Me"
+    case .assistant: sender = "Nessie"
+    case .system: sender = "System"
+    }
+    return "[\(date)] \(sender): \(msg.content)"
+  }.joined(separator: "\n")
+}
+
+// Empty — native .textSelection(.enabled) handles Cmd+C for selected text.
 
 // ─── Message bubble ─────────────────────────────────────────────────────────────
 
@@ -68,7 +140,9 @@ struct MessageBubble: View {
               .foregroundColor(.white)
           } else if let attrStr = try? AttributedString(
             markdown: message.content,
-            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            options: AttributedString.MarkdownParsingOptions(
+              interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
           ) {
             Text(attrStr)
               .font(.system(size: 14))
@@ -120,14 +194,11 @@ struct RoundedBubble: Shape {
 
   func path(in rect: CGRect) -> Path {
     let radius: CGFloat = 16
-    let tail: CGFloat = 6
 
     var path = Path()
     if role == .user {
-      // Right-pointing bubble
       path.addRoundedRect(in: rect, cornerSize: CGSize(width: radius, height: radius))
     } else {
-      // Left-pointing bubble
       path.addRoundedRect(in: rect, cornerSize: CGSize(width: radius, height: radius))
     }
     return path
@@ -163,7 +234,7 @@ struct StreamingBubble: View {
     .accessibilityIdentifier("streaming_message")
   }
 
-  private var cursor: String { "▊" }  // blinking cursor character
+  private var cursor: String { "\u{2588}" }
 }
 
 // ─── Streaming indicator badge ─────────────────────────────────────────────────
@@ -178,7 +249,10 @@ struct StreamingBadge: View {
           .fill(Color.orange)
           .frame(width: 4, height: 4)
           .opacity(visible ? 0.3 : 1.0)
-          .animation(.easeInOut(duration: 0.6).repeatForever().delay(Double(idx) * 0.2), value: visible)
+          .animation(
+            .easeInOut(duration: 0.6).repeatForever().delay(Double(idx) * 0.2),
+            value: visible
+          )
       }
     }
     .onAppear { visible = true }

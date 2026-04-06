@@ -231,6 +231,18 @@ final class NessieClient: @unchecked Sendable {
     return decoded.reply
   }
 
+  func deleteHistory(threadId: String? = nil) async throws {
+    var url = baseURL.appendingPathComponent("history")
+    if let tid = threadId {
+      url = URL(string: url.absoluteString + "?threadId=\(tid)") ?? url
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "DELETE"
+    request.timeoutInterval = 15
+    let (data, response) = try await session.data(for: request)
+    try validate(response: response, data: data)
+  }
+
   func fetchState() async throws -> RemoteState {
     let (data, response) = try await session.data(from: baseURL.appendingPathComponent("state"))
     try validate(response: response, data: data)

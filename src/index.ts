@@ -6,6 +6,7 @@ import { createLlmClient } from './llm/client.js'
 import type { ServerEvent } from './events.js'
 import { McpServer, parseJsonRpcRequest } from './mcp/server.js'
 import { createMcpAdapter } from './mcp/adapter.js'
+import { deleteHistory } from './db/database.js'
 import bonjour from 'bonjour'
 
 const PROVIDER = process.env.LLM_PROVIDER ?? 'openai'
@@ -91,6 +92,18 @@ async function main() {
       const state = orchestrator.getState()
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(state))
+      return
+    }
+
+    // ─── DELETE /history ───────────────────────────────────────────────────────
+    if (req.method === 'DELETE' && (req.url === '/history' || req.url?.startsWith('/history'))) {
+      const url = new URL(req.url, `http://${req.headers.host}`)
+      const threadId = url.searchParams.get('threadId') ?? undefined
+      const deleted = deleteHistory(threadId)
+      // Broadcast state refresh so connected clients clear their messages
+      broadcast({ type: 'state', data: orchestrator.getState() } as unknown as ServerEvent)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ deleted, threadId: threadId ?? 'all' }))
       return
     }
 

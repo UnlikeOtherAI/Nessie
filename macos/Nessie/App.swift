@@ -405,6 +405,19 @@ final class AppState: ObservableObject {
     isThinking = false
   }
 
+  // ─── Delete history ────────────────────────────────────────────────────────
+
+  func deleteHistory() {
+    Task {
+      try? await client.deleteHistory()
+      allMessages.removeAll()
+      sessions.removeAll()
+      selectedSession = nil
+      // Refresh state from backend to stay in sync
+      await refreshState()
+    }
+  }
+
   // ─── Agent selection ───────────────────────────────────────────────────────
 
   func selectAgent(_ agent: Agent) {

@@ -211,4 +211,15 @@ export function getThreadHistory(threadId: string, recentMessageCount = 50): His
   return [...diaryEntries, ...messageEntries].sort((a, b) => a.timestamp - b.timestamp)
 }
 
+export function deleteHistory(threadId?: string): number {
+  if (threadId) {
+    const r1 = db.prepare('DELETE FROM messages WHERE thread_id = ?').run(threadId)
+    db.prepare('DELETE FROM diary_entries WHERE thread_id = ?').run(threadId)
+    return r1.changes
+  }
+  const r1 = db.prepare('DELETE FROM messages').run()
+  db.prepare('DELETE FROM diary_entries').run()
+  return r1.changes
+}
+
 export { db }
