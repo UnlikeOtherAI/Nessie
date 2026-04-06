@@ -7,7 +7,7 @@
  * Protocol: JSON-RPC 2.0 over HTTP POST /mcp.
  */
 
-import { CreateTaskSchema } from '../orchestration/task-types.js'
+import { CreateTaskSchema, SpawnRequestSchema } from '../orchestration/task-types.js'
 
 // ─── Tool definitions ─────────────────────────────────────────────────────────
 
@@ -475,22 +475,27 @@ export class McpServer {
 
     // Handle spawn_task
     if (name === 'spawn_task') {
-      const parentTaskId = args.parentTaskId as string
-      const role = args.role as string
-      const label = args.label as string
-      if (!parentTaskId || !role || !label) {
+      const parsed = SpawnRequestSchema.safeParse({
+        parentTaskId: args.parentTaskId,
+        role: args.role,
+        label: args.label,
+        toolScope: args.toolScope,
+        timeoutSeconds: args.timeoutSeconds,
+        modelOverride: args.modelOverride,
+      })
+      if (!parsed.success) {
         return {
           jsonrpc: '2.0', id: req.id ?? null,
-          error: { code: -32602, message: 'parentTaskId, role, and label are required' },
+          error: { code: -32602, message: parsed.error.message },
         }
       }
       const spawnResult = this.orchestrator.spawnTask({
-        parentTaskId,
-        role,
-        label,
-        toolScope: Array.isArray(args.toolScope) ? args.toolScope as string[] : [],
-        timeoutSeconds: typeof args.timeoutSeconds === 'number' ? args.timeoutSeconds : 300,
-        modelOverride: typeof args.modelOverride === 'string' ? args.modelOverride : undefined,
+        parentTaskId: parsed.data.parentTaskId ?? '',
+        role: parsed.data.role,
+        label: parsed.data.label,
+        toolScope: parsed.data.toolScope,
+        timeoutSeconds: parsed.data.timeoutSeconds,
+        modelOverride: parsed.data.modelOverride,
       })
       return {
         jsonrpc: '2.0', id: req.id ?? null,

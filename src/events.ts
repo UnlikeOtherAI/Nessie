@@ -154,7 +154,7 @@ export interface ServerEventTaskStateChanged {
 export interface ServerEventTaskSpawned {
   type: 'task.spawned'
   taskId: string
-  parentTaskId: string
+  parentTaskId: string | null
   role: string
   label: string
 }

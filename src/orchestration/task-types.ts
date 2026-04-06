@@ -78,6 +78,20 @@ export const CreateTaskSchema = z.object({
 
 export type CreateTaskInput = z.infer<typeof CreateTaskSchema>
 
+export const SpawnRequestSchema = z.object({
+  parentTaskId: z.string().nullable().default(null),
+  role: z.enum([
+    'orchestrator', 'builder', 'reviewer',
+    'watcher', 'researcher', 'debugger',
+  ]),
+  label: z.string().min(1),
+  toolScope: z.array(z.string()).default([]),
+  timeoutSeconds: z.number().finite().min(1).max(3600).default(300),
+  modelOverride: z.string().optional(),
+})
+
+export type SpawnRequestInput = z.infer<typeof SpawnRequestSchema>
+
 export const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   inbox: ['assigned', 'cancelled'],
   assigned: ['in_progress', 'cancelled'],

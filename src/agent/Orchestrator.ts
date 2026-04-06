@@ -46,6 +46,8 @@ export class Orchestrator {
       this.taskLedger,
       (taskId, payload) => this.handleAnnounce(taskId, payload),
     )
+    // Mark orphaned in-progress tasks as failed after restart
+    this.spawnManager.hydrate()
 
     // Load persisted messages from SQLite
     this.loadFromDb()
@@ -421,7 +423,7 @@ export class Orchestrator {
     this.callbacks.onBroadcast?.({
       type: 'task.spawned',
       taskId,
-      parentTaskId: '',
+      parentTaskId: null,
       role: 'researcher',
       label: task,
     })
@@ -439,11 +441,15 @@ export class Orchestrator {
       success = false
     }
 
-    this.spawnManager.complete(taskId, success, rawResult, 1)
-
     if (!success) {
-      subAgent.status = 'done'
+      // Update sub-agent state BEFORE completing spawn so consumers see consistent state
+      subAgent.status = 'failed'
+      subAgent.error = rawResult
       this.broadcastState()
+      this.callbacks.onBroadcast?.({
+        type: 'subagent.done', subAgentId: subAgent.id, result: rawResult, error: rawResult,
+      })
+      this.spawnManager.complete(taskId, false, rawResult, 1)
       return `Sub-agent failed: ${rawResult}`
     }
 
@@ -451,6 +457,7 @@ export class Orchestrator {
     subAgent.result = rawResult
     this.broadcastState()
     this.callbacks.onBroadcast?.({ type: 'subagent.done', subAgentId: subAgent.id, result: rawResult })
+    this.spawnManager.complete(taskId, true, rawResult, 1)
 
     try {
       const response = await this.llm.chat([
@@ -469,13 +476,18 @@ export class Orchestrator {
   }
 
   private handleAnnounce(taskId: string, payload: AnnouncePayload): void {
-    const status = payload.status === 'completed' ? TaskStatus.Done : TaskStatus.Failed
     try {
       const task = this.taskLedger.getTask(taskId)
-      if (task && task.status === 'in_progress') {
-        this.transitionTask(taskId, TaskStatus.Review, 'Spawn completed')
+      if (payload.status === 'completed') {
+        // Only completed tasks go through review state
+        if (task && task.status === 'in_progress') {
+          this.transitionTask(taskId, TaskStatus.Review, 'Spawn completed')
+        }
+        this.transitionTask(taskId, TaskStatus.Done, payload.result)
+      } else {
+        // Failed/timeout go directly to failed — no review step
+        this.transitionTask(taskId, TaskStatus.Failed, payload.result)
       }
-      this.transitionTask(taskId, status, payload.result)
     } catch {
       // Task may already be in terminal state from explicit complete() call
     }
@@ -505,7 +517,7 @@ export class Orchestrator {
       this.callbacks.onBroadcast?.({
         type: 'task.spawned',
         taskId: result.taskId,
-        parentTaskId: request.parentTaskId ?? '',
+        parentTaskId: request.parentTaskId ?? null,
         role: request.role,
         label: request.label,
       })

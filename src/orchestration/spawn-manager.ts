@@ -1,5 +1,6 @@
 import { TaskLedger } from './task-ledger.js'
 import type { TaskRole } from './task-types.js'
+import { TaskStatus, SpawnRequestSchema } from './task-types.js'
 
 export interface SpawnRequest {
   parentTaskId: string | null
@@ -9,6 +10,8 @@ export interface SpawnRequest {
   timeoutSeconds: number
   modelOverride?: string
 }
+
+export { SpawnRequestSchema }
 
 export interface SpawnResult {
   taskId: string
@@ -40,6 +43,9 @@ const DEFAULT_CONFIG: SpawnConfig = {
 export class SpawnManager {
   private ledger: TaskLedger
   private config: SpawnConfig
+  // NOTE: activeSpawns is in-memory only. After a server restart, in-flight
+  // tasks lose their timers. Call hydrate() on startup to mark orphaned
+  // in-progress tasks as failed.
   private activeSpawns = new Map<string, { taskId: string; timer: ReturnType<typeof setTimeout> }>()
   private onComplete: (taskId: string, result: AnnouncePayload) => void
 
@@ -53,8 +59,33 @@ export class SpawnManager {
     this.config = { ...DEFAULT_CONFIG, ...config }
   }
 
+  /**
+   * Hydrate on restart: mark any in-progress tasks as failed since their
+   * timers and in-memory state were lost on server restart.
+   */
+  hydrate(): void {
+    const inProgress = this.ledger.getTasksByStatus(TaskStatus.InProgress)
+    for (const task of inProgress) {
+      try {
+        this.ledger.transition(task.id, TaskStatus.Failed, 'Server restarted')
+      } catch {
+        // Task may not allow this transition — skip silently
+      }
+    }
+  }
+
   spawn(request: SpawnRequest): SpawnResult {
     if (request.parentTaskId) {
+      // Verify parent task exists in ledger (Issue 6)
+      const parentTask = this.ledger.getTask(request.parentTaskId)
+      if (!parentTask) {
+        return {
+          taskId: '',
+          accepted: false,
+          reason: `Parent task not found: ${request.parentTaskId}`,
+        }
+      }
+
       const depth = this.getSpawnDepth(request.parentTaskId)
       if (depth >= this.config.maxSpawnDepth) {
         return {
@@ -82,20 +113,23 @@ export class SpawnManager {
       }
     }
 
+    // Clamp timeoutSeconds to [1, 3600]
+    const clampedTimeout = Math.max(1, Math.min(3600, request.timeoutSeconds))
+
     const task = this.ledger.createTask({
       parentId: request.parentTaskId,
       threadId: 'main',
       role: request.role,
       label: request.label,
       assignedModel: request.modelOverride ?? null,
-      timeoutSeconds: request.timeoutSeconds,
+      timeoutSeconds: clampedTimeout,
       specPath: null,
       outputPath: null,
     })
 
     const timer = setTimeout(() => {
       this.handleTimeout(task.id)
-    }, request.timeoutSeconds * 1000)
+    }, clampedTimeout * 1000)
 
     this.activeSpawns.set(task.id, { taskId: task.id, timer })
 
@@ -107,10 +141,12 @@ export class SpawnManager {
     if (!spawn) return
 
     clearTimeout(spawn.timer)
-    this.activeSpawns.delete(taskId)
 
     const task = this.ledger.getTask(taskId)
-    if (!task) return
+    if (!task) {
+      this.activeSpawns.delete(taskId)
+      return
+    }
 
     const duration = Date.now() - task.createdAt
 
@@ -123,17 +159,23 @@ export class SpawnManager {
       toolCallCount,
     }
 
-    this.onComplete(taskId, payload)
+    // Run callback before deleting spawn so the task is still tracked if callback throws
+    try {
+      this.onComplete(taskId, payload)
+    } finally {
+      this.activeSpawns.delete(taskId)
+    }
   }
 
   private handleTimeout(taskId: string): void {
     const spawn = this.activeSpawns.get(taskId)
     if (!spawn) return
 
-    this.activeSpawns.delete(taskId)
-
     const task = this.ledger.getTask(taskId)
-    if (!task) return
+    if (!task) {
+      this.activeSpawns.delete(taskId)
+      return
+    }
 
     const duration = Date.now() - task.createdAt
 
@@ -146,7 +188,12 @@ export class SpawnManager {
       toolCallCount: 0,
     }
 
-    this.onComplete(taskId, payload)
+    // Run callback before deleting spawn so the task is still tracked if callback throws
+    try {
+      this.onComplete(taskId, payload)
+    } finally {
+      this.activeSpawns.delete(taskId)
+    }
   }
 
   getSpawnStatus(): { active: number; limit: number } {
