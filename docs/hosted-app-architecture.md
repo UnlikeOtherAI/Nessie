@@ -133,6 +133,7 @@ Responsibilities:
 - command parsing and control-plane actions
 - job submission to workers
 - canonical persistence to Postgres
+- Fastify auth middleware validates the session, resolves `AuthorizedActionContext`, and attaches it to the request before handlers run
 
 ### Realtime gateway
 
@@ -183,6 +184,17 @@ Rules:
 - current user/session comes from one canonical backend contract,
 - actor context for agent/runtime calls is derived from that same backend session,
 - pages must not construct their own parallel auth/user state objects.
+
+### Actor context propagation rule
+
+The API must serialize the canonical shared `AuthorizedActionContext` into worker job payloads.
+
+Rules:
+
+- the API creates the context once per request
+- worker jobs receive the serialized context, not a session token
+- workers must not reconstruct actor context from ad hoc env vars or page state
+- `requestId` and `correlationId` must survive API -> queue -> worker -> ledger/audit paths
 
 ## 5) Control-plane invariants
 
@@ -255,7 +267,7 @@ These are the most important OpenClaw carry-forwards. Nessie should preserve the
 - Google Cloud Storage
 - Identity Platform
 - Cloud KMS
-- Memorystore Redis only for rate limits, ephemeral session state, and step-up verification state
+- Memorystore Redis only for rate limits, ephemeral session state, verification cooldowns/tokens, and short-lived coordination
 - Cloud Load Balancer in front of API/realtime
 - Secret Manager for infrastructure/runtime credentials only
 
@@ -265,7 +277,7 @@ These are the most important OpenClaw carry-forwards. Nessie should preserve the
 - Postgres remains the source of truth
 - Pub/Sub decouples HTTP from agent execution
 - Redis, when present, handles ephemeral coordination only
-- GCS handles uploads, generated artifacts, transcripts, and export bundles
+- in hosted GCP mode, GCS handles uploads, generated artifacts, transcripts, and export bundles
 - Cloud Run keeps ops simple for an OSS project that people can self-host in smaller environments
 
 ### Self-hosted default
@@ -303,7 +315,7 @@ Use Postgres for:
 
 Use Redis for:
 - rate limits
-- step-up verification state
+- step-up verification cooldowns and transient tokens
 - ephemeral presence
 - short-lived streaming state
 - session cursors and transient translation caches
@@ -312,6 +324,8 @@ Use Redis for:
 - short-lived distributed leases if needed
 
 Do not use Redis as the source of truth for any durable business record.
+
+Verification challenge records, approvals, and audit trails remain durable in Postgres.
 
 ### Pub/Sub and Eventarc
 
@@ -342,12 +356,16 @@ Use GCS for:
 
 ### Two transport model
 
+Phase 1 explicitly uses both realtime transports.
+
 Nessie uses two realtime transports for different purposes:
 
 - **SSE** for chat/thread streaming: ordered message deltas, run completions, and thread-scoped events. SSE is the right fit because chat is unidirectional server-to-client delivery with natural reconnect semantics (`Last-Event-ID`).
 - **WebSocket** for presence and activity: agent status changes, tool execution ticks, sub-agent lifecycle, and UI subscription management. WebSocket is justified here because the client needs to subscribe/unsubscribe to specific agent activity streams and the server needs low-latency push for high-frequency status changes.
 
 Both transports must rebuild state from Postgres on reconnect, not from in-memory process state.
+
+All realtime events must use the canonical dotted event names from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md).
 
 ### Chat/reply streaming (SSE)
 
@@ -372,35 +390,36 @@ Required subscription model:
 - server pushes events matching active subscriptions
 - client can change subscriptions without reconnecting
 
-Required event types for agent activity:
+Required Phase 1 WebSocket events for agent activity:
 
-| Event | Payload | Purpose |
-| --- | --- | --- |
-| `agent.status` | `{ agentId, status, since }` | Agent lifecycle: `idle`, `thinking`, `executing`, `waiting_approval`, `error` |
-| `agent.tool.start` | `{ agentId, runId, toolName, input_summary }` | Tool execution began — what tool, sanitized input |
-| `agent.tool.progress` | `{ agentId, runId, toolName, progress? }` | Optional progress tick for long tools |
-| `agent.tool.end` | `{ agentId, runId, toolName, duration_ms, success }` | Tool execution finished |
-| `agent.thought` | `{ agentId, runId, content_preview }` | Short preview of agent reasoning (truncated, not full context) |
-| `agent.spawn` | `{ parentAgentId, childAgentId, taskId, purpose }` | Sub-agent created |
-| `agent.spawn.done` | `{ parentAgentId, childAgentId, taskId, status }` | Sub-agent finished or failed |
-| `run.status` | `{ runId, agentId, status, step? }` | Run lifecycle updates |
-| `approval.needed` | `{ taskId, agentId, action, reason }` | Approval gate reached |
-| `message.new` | `{ agentId, messageId, role, content_preview, threadId }` | New message sent or received by agent |
+- `agent.status`
+- `agent.tool.start`
+- `agent.tool.end`
+- `agent.spawned`
+- `run.updated`
+- `approval.needed`
+- `message.new`
+
+For canonical payload shapes and the full event type definitions, see [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) section 4. Do not redefine event shapes in this document.
+
+`agent.thought` and `agent.tool.progress` are Phase 2+ events and must not be implemented in Phase 1.
 
 Rules:
 
 - `agent.status` must fire within 500ms of any status transition. This is the event that drives presence indicators.
 - `agent.tool.start` and `agent.tool.end` must always fire as a pair. If a tool crashes, `agent.tool.end` fires with `success: false`.
-- `agent.thought` must be opt-in per client subscription and rate-limited (max 2/sec per agent) to avoid flooding. Content is preview-length (max 200 chars), never full reasoning.
-- `input_summary` in `agent.tool.start` must never contain secrets, credentials, or full file contents. Sanitization happens server-side before emit.
+- `inputSummary` in `agent.tool.start` must never contain secrets, credentials, or full file contents. Sanitization happens server-side before emit.
 - All activity events carry `agentId` so the client can attribute activity to the correct agent panel without parsing.
 
 Reconnect behavior:
 
 - on WebSocket reconnect, client sends its subscription set
-- server replays current status for all subscribed agents (one `agent.status` per agent)
-- server does not replay historical activity events — only current state
-- if an agent has an active run, server replays `run.status` for the in-flight run
+- server replays current snapshot for all subscribed agents:
+  - one `agent.status` per agent (includes `currentRunId`, `currentToolName`, `currentToolStartedAt` when agent is not idle)
+  - if an agent is in `executing` state, also replay the in-flight `agent.tool.start` so the UI can show which tool is running
+  - if an agent has an active run, replay `run.updated` for the in-flight run
+- server does not replay historical activity events (completed tool calls, past spawns)
+- sub-agent tree is populated on initial load and reconnect via REST (`GET /api/agents/{agentId}/children`), then kept live via `agent.spawned` WebSocket events; the REST endpoint returns currently-active children regardless of parent status
 
 ### Interactive process sessions
 

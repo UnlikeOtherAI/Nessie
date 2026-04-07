@@ -17,19 +17,19 @@ If these get mixed together, the codebase will become hard to reason about very 
 
 These are backend/runtime adapters chosen by deployment or config.
 
-Required categories:
+Phase 1 required categories:
 
 - auth provider
 - model provider
 - object storage provider
 - queue/event provider
-- secret encryption provider
-- runtime secret store provider
-- email provider
 - observability provider
 
 Later categories:
 
+- secret encryption provider
+- runtime secret store provider
+- email provider
 - semantic search/vector provider
 - payment/billing provider
 - remote execution provider
@@ -99,6 +99,11 @@ Optional later:
 - `FeatureFlagsProvider`
 
 These are app-wide concerns, not entity-specific concerns.
+
+Phase 1 rule:
+
+- `QueryProvider` means TanStack Query's `QueryClientProvider`
+- do not build a custom query cache or a page-local fetch state system instead
 
 ### 5.2 Domain facades/services
 
@@ -303,7 +308,7 @@ Clicking on any agent in the activity panel opens a detail view showing:
 - **Current activity:** what the agent is doing right now, including tool name and sanitized input/output preview
 - **Sub-agent tree:** if this agent has spawned sub-agents, show them as a nested list with the same status indicators. Clicking a sub-agent opens its own drill-down.
 - **Tool execution log:** chronological list of tool calls for the current or most recent run, each showing tool name, duration, success/failure, and truncated output preview
-- **Thought process:** opt-in stream of agent reasoning previews (short text, not full context dumps)
+- **Thought process (Phase 2+):** opt-in stream of agent reasoning previews. In Phase 1, this section of the drill-down shows a placeholder ("reasoning trace available in a future release"). The `agent.thought` event is not emitted in Phase 1.
 - **Last 5 messages:** the five most recent messages this agent has sent or received, always visible without scrolling or navigation. This is a hard requirement — not "load on demand" but always present in the agent detail view.
 
 The drill-down view must work for sub-agents at any depth. If agent A spawned agent B which spawned agent C, clicking through A -> B -> C must show C's activity, tools, and messages.
@@ -312,7 +317,7 @@ The drill-down view must work for sub-agents at any depth. If agent A spawned ag
 
 The agent activity panel and drill-down require these data flows:
 
-- **WebSocket subscription** to `agent.status`, `agent.tool.start`, `agent.tool.end`, `agent.thought`, `agent.spawn`, `agent.spawn.done`, `run.status` events (see `hosted-app-architecture.md` section 9)
+- **WebSocket subscription** to the `WsEventMap` from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) section 4, specifically: `agent.status`, `agent.tool.start`, `agent.tool.end`, `agent.spawned`, `message.new`, and `run.updated`. Do not subscribe to SSE events on the WebSocket.
 - **Agent facade query:** `useAgents()` for the agent list with status, scoped to current channel/organization
 - **Agent detail query:** `useAgentActivity(agentId)` for tool log, sub-agent tree, and thought stream
 - **Agent messages query:** `useAgentMessages(agentId, { limit: 5 })` for the always-visible last 5 messages
@@ -323,8 +328,8 @@ Cache update rules:
 
 - WebSocket `agent.status` events update the agent list cache in place (no refetch)
 - WebSocket `agent.tool.start/end` events update the agent detail cache in place
-- WebSocket `agent.spawn/spawn.done` events update the sub-agent tree in the agent detail cache
-- `agent.thought` events append to a bounded in-memory buffer (max 50 entries per agent, oldest evicted)
+- WebSocket `agent.spawned` events update the sub-agent tree in the agent detail cache
+- sub-agent tree is populated on initial load and WebSocket reconnect via REST (`GET /api/agents/{agentId}/children`), then kept live via `agent.spawned` events
 - the last-5-messages query is a standard paginated query that also receives WebSocket-driven invalidation when a new message arrives for that agent
 
 ### 9.4 Required `/admin` components for agent activity
@@ -336,7 +341,7 @@ Add to the mandatory component list:
 - `AgentDetailDrawer` — the drill-down view opened by clicking an agent
 - `SubAgentTree` — nested sub-agent list with recursive drill-down
 - `ToolExecutionLog` — chronological tool call list with duration and status
-- `AgentThoughtStream` — opt-in reasoning preview feed
+- `AgentThoughtStream` — Phase 1 stub with placeholder; wired to `agent.thought` event in Phase 2
 - `AgentMessagePreview` — the always-visible last-5-messages list
 
 These are feature components under `components/features/agents/` and must not be built as page-local fragments.

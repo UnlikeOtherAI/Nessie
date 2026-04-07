@@ -1,0 +1,452 @@
+# Shared Type Contracts
+
+> Status: active target-state design.
+
+## 1) Canonical package
+
+Create one shared package:
+
+- `packages/schemas`
+
+Every service and frontend app must import shared contracts from here.
+
+That includes:
+
+- `/api`
+- `/admin`
+- `/worker`
+- `/runner`
+- shared domain packages
+
+This package is the single source of truth for:
+
+- API envelopes
+- pagination contracts
+- realtime event catalog
+- branded entity IDs
+- actor/action context
+- Zod validation schemas
+
+## 2) API envelope
+
+Use one success shape and one error shape everywhere.
+
+```ts
+type ApiResponse<T> = {
+  data: T;
+  meta?: PaginationMeta;
+};
+
+type ApiError = {
+  error: {
+    code: string;
+    message: string;
+    field?: string;
+    details?: unknown;
+  };
+};
+```
+
+Rules:
+
+- `code` is machine-readable
+- `message` is human-readable
+- `details` must never include secrets
+- every HTTP handler and frontend client should assume this envelope
+
+## 3) Pagination
+
+Use one cursor pagination contract everywhere.
+
+```ts
+type PaginationParams = {
+  cursor?: string;
+  limit?: number;
+  direction?: 'forward' | 'backward';
+};
+
+type PaginationMeta = {
+  cursor: string | null;
+  total?: number;
+  hasMore: boolean;
+};
+```
+
+Rules:
+
+- default `limit = 50`
+- maximum `limit = 200`
+- cursor is opaque
+- cursor should be derived from a stable `(updatedAt, id)` boundary
+- do not introduce offset pagination for new endpoints
+
+## 4) Realtime event catalog
+
+Realtime event names must come from one typed catalog. This is the single source of truth. Other documents must reference this catalog, not redefine event shapes inline.
+
+Every event has a transport annotation:
+
+- `sse` — delivered over SSE only (chat/thread streaming)
+- `ws` — delivered over WebSocket only (presence/activity)
+- `both` — delivered over both transports
+
+```ts
+type AgentStatus = 'idle' | 'thinking' | 'executing' | 'waiting_approval' | 'error' | 'offline';
+
+// SSE events — chat/thread streaming
+type SseEventMap = {
+  'stream.start': { runId: string; threadId: string };
+  'stream.delta': { runId: string; content: string };
+  'stream.done': { runId: string; messageId: string };
+};
+
+// WebSocket events — presence and agent activity
+type WsEventMap = {
+  'agent.status': {
+    agentId: string;
+    status: AgentStatus;
+    since: string;
+    currentRunId?: string;
+    currentToolName?: string;
+    currentToolStartedAt?: string;
+  };
+  'agent.tool.start': {
+    agentId: string;
+    runId: string;
+    toolName: string;
+    inputSummary: string;
+  };
+  'agent.tool.end': {
+    agentId: string;
+    runId: string;
+    toolName: string;
+    durationMs: number;
+    success: boolean;
+  };
+  'agent.spawned': { parentId: string; childId: string; taskId: string };
+  'run.updated': { runId: string; agentId: string; status: RunStatus };
+  'task.updated': { taskId: string; status: TaskStatus };
+  'approval.needed': {
+    taskId: string;
+    approvalId: string;
+    agentId: string;
+    action: string;
+    reason: string;
+  };
+  'message.new': {
+    agentId: string;
+    messageId: string;
+    role: 'user' | 'assistant' | 'system';
+    contentPreview: string;
+    threadId: string;
+  };
+};
+
+// Phase 2+ events — not required for Phase 1
+type FutureWsEventMap = {
+  'agent.thought': {
+    agentId: string;
+    runId: string;
+    contentPreview: string;
+  };
+  'agent.tool.progress': {
+    agentId: string;
+    runId: string;
+    toolName: string;
+    progress?: number | string;
+  };
+};
+```
+
+Rules:
+
+- use dot-separated names only
+- SSE events go on `SseEventMap`, WebSocket events go on `WsEventMap`
+- **do not put chat streaming events on the WebSocket**
+- **do not put agent activity events on SSE**
+- `message.new` is a WebSocket event for cache invalidation; the actual message content arrives via SSE `stream.done` or REST query — not duplicated on both transports
+- legacy event names (`streaming.start`, `subagent.started`, `task.state_changed`) are historical only and must not be used for new `/api` or `/admin` work
+- `agent.thought` and `agent.tool.progress` are Phase 2+; do not implement in Phase 1
+- `waiting_approval` is a valid Phase 1 status for display, but the approval resolution mechanism (endpoint to approve/reject) is Phase 2; in Phase 1, `waiting_approval` is display-only
+- `offline` status applies to remote-worker-backed agents (Phase 4); Phase 1 agents never emit `offline` but the type includes it so the frontend stub renders correctly when the status is added later
+
+## 5) Realtime replay and reconnection
+
+SSE reconnect must use:
+
+- `Last-Event-ID`
+- a monotonic sequence per stream
+
+Rules:
+
+- sequence must map to durable state in Postgres
+- reconnect should replay from durable events
+- frontend should resume from sequence, not infer missing state from wall-clock time
+- do not use timestamps as the replay cursor
+
+WebSocket reconnect rules:
+
+- the client reconnects with its subscription set
+- the server replies with a current snapshot for subscribed entities, then resumes live events
+- WebSocket reconnect must not depend on instance-local memory
+- if durable replay is added for a WebSocket event family later, it must still use the same monotonic sequence strategy
+
+## 5.1) Auth/session response contract
+
+`GET /api/auth/me` is the canonical source of truth for `/admin`.
+
+It returns `ApiResponse<MeResponse>`.
+
+```ts
+type MeResponse = {
+  user: {
+    id: UserId;
+    email: string;
+    displayName: string;
+    avatarUrl?: string;
+    pronouns?: string;
+    roleIds: string[];
+  };
+  session: {
+    sessionId: string;
+    issuedAt: string;
+    expiresAt?: string;
+  };
+  context: {
+    organizationId: OrganizationId;
+    projectId: ProjectId;
+    teamId: TeamId;
+    channelId?: ChannelId;
+    bootstrapMode: boolean;
+  };
+  auth: {
+    providerId: string;
+    providerType: 'oidc' | 'saml' | 'uoa' | 'local-bootstrap' | 'custom';
+    autoRedirectToSso: boolean;
+  };
+};
+```
+
+Rules:
+
+- `/admin` must not reconstruct current identity from any second endpoint
+- the same payload seeds `AuthSessionProvider` and the initial actor context used by `/api`
+- follow-up endpoints may enrich data, but they must not contradict `MeResponse`
+
+## 6) Agent activity response contracts
+
+### `GET /api/agents/{agentId}/status`
+
+Returns `ApiResponse<AgentStatusResponse>`.
+
+```ts
+type AgentStatusResponse = {
+  agentId: string;
+  status: AgentStatus;
+  since: string;
+  currentRunId?: string;
+  currentToolName?: string;
+  currentToolStartedAt?: string;
+  activeSubAgents: Array<{ agentId: string; status: AgentStatus; taskId: string }>;
+  lastActivityAt: string;
+};
+```
+
+### `GET /api/agents/{agentId}/activity`
+
+Returns `ApiResponse<AgentActivityResponse>`. This is a richer view than `/status` — it includes the recent tool execution log for the current or most recent run.
+
+```ts
+type ToolCallEntry = {
+  toolName: string;
+  runId: string;
+  startedAt: string;
+  endedAt?: string;
+  durationMs?: number;
+  success?: boolean;
+  inputSummary: string;
+  outputPreview?: string;
+};
+
+type AgentActivityResponse = {
+  agentId: string;
+  status: AgentStatus;
+  currentRun?: {
+    runId: string;
+    status: RunStatus;
+    startedAt: string;
+    toolCalls: ToolCallEntry[];
+  };
+  recentToolCalls: ToolCallEntry[];
+  subAgents: Array<{ agentId: string; name: string; status: AgentStatus; taskId: string; purpose?: string }>;
+};
+```
+
+Rules:
+
+- `recentToolCalls` returns up to 20 most recent tool calls across all runs, newest first
+- `currentRun.toolCalls` returns tool calls for the active run only
+- `outputPreview` is truncated to 200 chars and must never contain secrets
+- `subAgents` includes all children regardless of parent status (active children of idle parents are visible)
+
+### `GET /api/agents/{agentId}/messages?limit=5`
+
+Returns `ApiResponse<AgentMessage[]>` with pagination.
+
+```ts
+type AgentMessage = {
+  messageId: string;
+  role: 'user' | 'assistant' | 'system';
+  contentPreview: string;
+  fullContent: string;
+  threadId: string;
+  timestamp: string;
+};
+```
+
+Rules:
+
+- default limit is 5, max is 50
+- ordered newest-first
+- `contentPreview` is truncated to 500 chars
+- `fullContent` is the complete message
+
+### `GET /api/agents/{agentId}/children`
+
+Returns `ApiResponse<AgentChild[]>`.
+
+```ts
+type AgentChild = {
+  agentId: string;
+  name: string;
+  status: AgentStatus;
+  taskId: string;
+  purpose?: string;
+  parentAgentId: string;
+  spawnedAt: string;
+};
+```
+
+Rules:
+
+- returns currently-active and recently-completed children (last 1 hour or last 10, whichever is more)
+- used for initial sub-agent tree population and WebSocket reconnect recovery
+
+## 7) Zod as source of truth
+
+Zod schemas must live next to the shared types in `packages/schemas`.
+
+Rules:
+
+- backend request validation uses the shared Zod schema
+- frontend runtime validation uses the same schema
+- do not maintain parallel handwritten TS-only and validation-only definitions
+
+## 8) Branded entity IDs
+
+Entity IDs should be branded strings.
+
+Examples:
+
+- `OrganizationId`
+- `ProjectId`
+- `TeamId`
+- `ChannelId`
+- `AgentId`
+- `ThreadId`
+- `RunId`
+- `TaskId`
+
+Reason:
+
+- prevents accidentally passing a channel ID where an agent ID is required
+- cheap to add
+- catches a broad class of mistakes early
+
+## 9) Canonical actor and action context
+
+Do not keep separate `ControlActionEnvelope`, `AccessContext`, and `SecretAccessContext` families that need mapping glue.
+
+Use one hierarchy.
+
+```ts
+type VerificationFactorType =
+  | 'email_otp'
+  | 'email_link'
+  | 'totp'
+  | 'recovery_code'
+  | 'webauthn';
+
+type AccessActor = {
+  actorType: 'user' | 'agent' | 'service';
+  actorId: string;
+  roles?: string[];
+};
+
+type TenantContext = {
+  organizationId: string;
+  projectId?: string;
+  teamId?: string;
+  channelId?: string;
+};
+
+type ActionContext = {
+  teamId?: string;
+  channelId?: string;
+  agentId?: string;
+  toolId?: string;
+  taskId?: string;
+  sessionId?: string;
+  threadId?: string;
+  requestId: string;
+  correlationId?: string;
+  purpose?: string;
+};
+
+type AccessContext = {
+  actor: AccessActor;
+  tenant: TenantContext;
+  actionContext: ActionContext;
+};
+
+type AuthorizedActionContext = AccessContext & {
+  approval?: {
+    approverId?: string;
+    approvalId?: string;
+    approvalProof?: string;
+    approvalContext?: Record<string, string>;
+  };
+  verification?: {
+    challengeId: string;
+    proof: string;
+    factorType?: VerificationFactorType;
+  };
+};
+```
+
+Rules:
+
+- every authenticated request starts from `AccessContext`
+- actions needing approval/verification use `AuthorizedActionContext`
+- resource-specific contracts may extend this, but must not rename the base fields
+- `ControlActionEnvelope.context` must use `AuthorizedActionContext`
+- do not introduce a separate mapping layer between near-identical context types
+
+## 10) Canonical ownership
+
+This document is canonical for:
+
+- API envelope
+- pagination
+- auth/session response contract
+- realtime event catalog
+- branded IDs
+- actor/action context
+
+Other docs may reference these contracts, but should not redefine them independently.
+
+## 11) Cross-links
+
+- [hosted-app-architecture.md](./hosted-app-architecture.md)
+- [organization-governance-spec.md](./organization-governance-spec.md)
+- [functionality.md](./functionality.md)
