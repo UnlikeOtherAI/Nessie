@@ -21,6 +21,7 @@ Core delivery principles:
 - make every phase testable locally first,
 - keep React UI CSR-first from the start,
 - enforce very strict linting, formatting, typechecking, and build gates for both `/admin` and `/api` from Phase 1.
+- use reusable component primitives and domain facades in `/admin`; do not build a React Context provider per entity.
 
 ## 1.1) Mandatory end-of-phase review gate
 
@@ -74,6 +75,7 @@ Ship the first version that feels like a real product:
   - hosted default path
   - self-hosted/local configurable providers
   - optional auto-redirect
+  - one canonical `GET /api/auth/me` source for current user/session/context
 - minimal org model:
   - organization
   - default project
@@ -85,6 +87,10 @@ Ship the first version that feels like a real product:
 - Phase 1 rule:
   - `project` and `team` exist as real records from day one,
   - but the first UI may treat them as default bootstrap containers rather than exposing full project/team administration yet.
+- Phase 1 auth/runtime rule:
+  - one real authenticated owner account is enough,
+  - Phase 1 may simulate the broader org structure through deterministic default organization/project/team records,
+  - agents still receive one canonical user/actor context from the auth/session layer.
 - hidden organizer routing
 - named agents plus sub-agent spawning
 - basic agent registry and channel binding
@@ -92,6 +98,17 @@ Ship the first version that feels like a real product:
   - web search / fetch
   - deterministic knowledge/document read for local project docs
   - no shell, no SSH, no remote worker yet
+- Phase 1 frontend/data rule for tools:
+  - tools use the same facade pattern as other entities,
+  - tool state must not be managed through page-local ad hoc fetch logic,
+  - `/admin` should include a minimal tools surface for safe-tool visibility and binding where needed.
+- agent activity observability (mandatory, not optional):
+  - always-visible agent activity panel showing all agents with live status
+  - WebSocket-driven instant status updates (idle, thinking, executing, waiting, error)
+  - agent drill-down with sub-agent tree, tool execution log, and thought process stream
+  - last 5 messages per agent always visible in agent detail view
+  - sub-agent drill-down at any depth
+  - see [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md) section 9 for full spec
 - basic admin UX:
   - create channel
   - invite/add user
@@ -136,6 +153,9 @@ Phase 1 is not complete until all of these are true:
 - `/worker` production build passes
 - local `nessie local up` works in at least one supported mode
 - chat, streaming, agent creation, and sub-agent spawning work end to end
+- agent activity panel shows live status for all agents via WebSocket
+- agent drill-down shows sub-agent tree, tool log, and last 5 messages
+- WebSocket reconnect replays current agent status correctly
 - Claude CLI review pass has run
 - Codex review pass has run
 - `max` review pass has run
@@ -150,6 +170,7 @@ The UI/template refinement can run in parallel here:
 - keep `/web` intentionally minimal as the landing page,
 - keep it non-blocking on backend progress,
 - do not invent a second UI architecture.
+- follow [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md).
 
 ## Phase 2: Multi-User Hosted Beta
 
@@ -343,11 +364,15 @@ It should not wait for:
 
 1. React CSR shell:
    - `/admin`:
-     - auth entry
-     - channel list
-     - thread view
-     - agent drawer
-     - channel/user/agent administration shell
+      - auth entry
+      - one shared auth/session provider
+      - channel list
+      - thread view
+      - agent drawer
+      - basic tools surface
+      - agent activity panel (always visible, WebSocket-driven status dots)
+      - agent detail drill-down (sub-agent tree, tool log, thought stream, last 5 messages)
+      - channel/user/agent administration shell
    - `/web`:
      - landing page only
 2. API + Postgres schema:
@@ -373,17 +398,26 @@ It should not wait for:
      - `GET /api/auth/me`
      - `GET /api/channels`
      - `POST /api/channels`
-     - `GET /api/agents`
-     - `POST /api/agents`
-     - `POST /api/agents/{agentId}/bindings`
-     - `GET /api/threads/{threadId}/messages`
-     - `POST /api/threads/{threadId}/messages`
-     - `GET /api/threads/{threadId}/stream`
+    - `GET /api/agents`
+    - `POST /api/agents`
+    - `POST /api/agents/{agentId}/bindings`
+    - `GET /api/tools`
+    - `GET /api/threads/{threadId}/messages`
+    - `POST /api/threads/{threadId}/messages`
+    - `GET /api/threads/{threadId}/stream`
+   - agent activity and observability:
+    - `GET /api/agents/{agentId}/status`
+    - `GET /api/agents/{agentId}/activity`
+    - `GET /api/agents/{agentId}/messages?limit=5`
+    - `GET /api/agents/{agentId}/children`
+    - `GET /api/agents/{agentId}/runs/{runId}/tools`
+    - `WS /api/activity` (WebSocket for real-time agent status, tool execution, sub-agent lifecycle events)
 3. Worker and run model:
    - `/worker`
    - streaming
    - sub-agent spawn
    - basic task/run records
+   - canonical actor context comes from the auth/session layer, not page-local helpers
 4. Safe tools:
    - web
    - docs/knowledge read
@@ -417,6 +451,7 @@ Minimum gate set:
 
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
 - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)
 - [remote-worker-spec.md](./remote-worker-spec.md)
 - [functionality.md](./functionality.md)

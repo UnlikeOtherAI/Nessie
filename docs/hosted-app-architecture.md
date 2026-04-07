@@ -110,6 +110,7 @@ Why this stack:
 Cross-link:
 - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
 - [implementation-phases.md](./implementation-phases.md)
+- [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md)
 
 ## 4) Logical architecture
 
@@ -117,6 +118,7 @@ Cross-link:
 
 Responsibilities:
 - auth/session validation
+- one canonical current-user/session endpoint for frontend consumers
 - MVP scope:
   - user/session validation
   - default project/team bootstrap per organization
@@ -170,6 +172,17 @@ Rules:
 - remote workers heartbeat while idle and open websocket sessions only when assigned work,
 - remote workers report capability and local-policy digests during handshake and policy-sync,
 - parent policy may narrow remote worker permissions but never exceed machine-local hard policy.
+
+### Identity source-of-truth rule
+
+There must be one canonical identity/session source for the product.
+
+Rules:
+
+- `/admin` should consume one shared auth/session module,
+- current user/session comes from one canonical backend contract,
+- actor context for agent/runtime calls is derived from that same backend session,
+- pages must not construct their own parallel auth/user state objects.
 
 ## 5) Control-plane invariants
 
@@ -327,12 +340,21 @@ Use GCS for:
 
 ## 9) Realtime and session handling
 
-### Chat/reply streaming
+### Two transport model
+
+Nessie uses two realtime transports for different purposes:
+
+- **SSE** for chat/thread streaming: ordered message deltas, run completions, and thread-scoped events. SSE is the right fit because chat is unidirectional server-to-client delivery with natural reconnect semantics (`Last-Event-ID`).
+- **WebSocket** for presence and activity: agent status changes, tool execution ticks, sub-agent lifecycle, and UI subscription management. WebSocket is justified here because the client needs to subscribe/unsubscribe to specific agent activity streams and the server needs low-latency push for high-frequency status changes.
+
+Both transports must rebuild state from Postgres on reconnect, not from in-memory process state.
+
+### Chat/reply streaming (SSE)
 
 - canonical thread state lives in Postgres
-- SSE should be the default streaming transport for product UI
+- SSE is the streaming transport for chat content delivery
 - stream fanout should replay from durable events with optional short-lived Redis buffers
-- reconnect must rebuild state from Postgres, not in-memory process state
+- reconnect must rebuild state from Postgres using `Last-Event-ID` mapped to a monotonic sequence
 - client sync should prefer:
   - session previews
   - bounded history windows
@@ -340,7 +362,45 @@ Use GCS for:
   - follow/subscribe semantics
   - targeted run-state events
 
-WebSockets should be treated as optional and justified by a real bidirectional need, not assumed as the primary default on Cloud Run.
+### Agent activity and presence (WebSocket)
+
+The WebSocket connection carries all non-chat realtime state. This is the transport that makes the UI feel alive.
+
+Required subscription model:
+
+- client connects once and subscribes to scopes: `organization`, `channel`, or specific `agentId` list
+- server pushes events matching active subscriptions
+- client can change subscriptions without reconnecting
+
+Required event types for agent activity:
+
+| Event | Payload | Purpose |
+| --- | --- | --- |
+| `agent.status` | `{ agentId, status, since }` | Agent lifecycle: `idle`, `thinking`, `executing`, `waiting_approval`, `error` |
+| `agent.tool.start` | `{ agentId, runId, toolName, input_summary }` | Tool execution began — what tool, sanitized input |
+| `agent.tool.progress` | `{ agentId, runId, toolName, progress? }` | Optional progress tick for long tools |
+| `agent.tool.end` | `{ agentId, runId, toolName, duration_ms, success }` | Tool execution finished |
+| `agent.thought` | `{ agentId, runId, content_preview }` | Short preview of agent reasoning (truncated, not full context) |
+| `agent.spawn` | `{ parentAgentId, childAgentId, taskId, purpose }` | Sub-agent created |
+| `agent.spawn.done` | `{ parentAgentId, childAgentId, taskId, status }` | Sub-agent finished or failed |
+| `run.status` | `{ runId, agentId, status, step? }` | Run lifecycle updates |
+| `approval.needed` | `{ taskId, agentId, action, reason }` | Approval gate reached |
+| `message.new` | `{ agentId, messageId, role, content_preview, threadId }` | New message sent or received by agent |
+
+Rules:
+
+- `agent.status` must fire within 500ms of any status transition. This is the event that drives presence indicators.
+- `agent.tool.start` and `agent.tool.end` must always fire as a pair. If a tool crashes, `agent.tool.end` fires with `success: false`.
+- `agent.thought` must be opt-in per client subscription and rate-limited (max 2/sec per agent) to avoid flooding. Content is preview-length (max 200 chars), never full reasoning.
+- `input_summary` in `agent.tool.start` must never contain secrets, credentials, or full file contents. Sanitization happens server-side before emit.
+- All activity events carry `agentId` so the client can attribute activity to the correct agent panel without parsing.
+
+Reconnect behavior:
+
+- on WebSocket reconnect, client sends its subscription set
+- server replays current status for all subscribed agents (one `agent.status` per agent)
+- server does not replay historical activity events — only current state
+- if an agent has an active run, server replays `run.status` for the in-flight run
 
 ### Interactive process sessions
 

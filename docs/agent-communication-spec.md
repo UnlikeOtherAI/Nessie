@@ -32,6 +32,59 @@ Every agent object includes:
 - `channelId`, optional `parentAgentId`,
 - `subAgents` (IDs of children it can spawn/manage).
 
+### 2.2a Agent status model
+
+Every agent has exactly one status at any time. Status transitions are server-authoritative and pushed to clients via WebSocket.
+
+Statuses:
+
+| Status | Meaning | Visual indicator |
+| --- | --- | --- |
+| `idle` | Agent exists, no active work | dim/grey dot |
+| `thinking` | Agent is processing, model call in flight | pulsing/breathing dot |
+| `executing` | Agent is running a tool | animated/spinning dot |
+| `waiting_approval` | Agent hit an approval gate and is blocked | amber/yellow dot |
+| `error` | Agent's last run failed | red dot |
+| `offline` | Agent is registered but not reachable (remote worker down, etc.) | hollow/outline dot |
+
+Transition rules:
+
+- `idle` -> `thinking` when a run starts
+- `thinking` -> `executing` when the agent calls a tool
+- `executing` -> `thinking` when tool completes and agent resumes reasoning
+- `thinking` -> `idle` when run completes successfully
+- `thinking` -> `waiting_approval` when approval gate is reached
+- `waiting_approval` -> `thinking` when approval is granted
+- `waiting_approval` -> `idle` when approval is rejected (run cancelled)
+- any -> `error` on unrecoverable failure
+- `error` -> `idle` when error is acknowledged or next run starts
+
+Every status transition emits an `agent.status` WebSocket event within 500ms. The UI must never show stale status.
+
+### 2.2b Agent activity context
+
+When an agent is not idle, the server must track and expose:
+
+- `currentRunId`: the active run
+- `currentToolName`: if executing, which tool (null if thinking)
+- `currentToolStartedAt`: when the current tool call started
+- `activeSubAgents`: list of `{ agentId, status, taskId }` for spawned children
+- `lastActivityAt`: timestamp of most recent status change
+
+This context is returned by `GET /api/agents/{agentId}/status` and included in `agent.status` WebSocket events so the UI can show what the agent is doing without additional requests.
+
+### 2.2c Last messages contract
+
+Every agent must expose its most recent messages through a dedicated endpoint: `GET /api/agents/{agentId}/messages?limit=5`.
+
+This endpoint returns the last N messages (default 5) that the agent sent or received, ordered newest-first. The result includes:
+
+- `messageId`, `role` (user/assistant/system), `content` (truncated to 500 chars for preview), `fullContent` (complete), `threadId`, `timestamp`
+
+The `/admin` UI must display these messages in the agent detail view without requiring the user to navigate to the thread. This is not optional — the last 5 messages are always visible when viewing an agent.
+
+When a new message arrives for a subscribed agent, the WebSocket pushes a `message.new` event with `{ agentId, messageId, role, content_preview, threadId }` so the UI can update the message list without polling.
+
 ### 2.3 Channel
 
 A channel is a named audience with policy:

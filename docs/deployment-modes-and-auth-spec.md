@@ -141,6 +141,32 @@ Required behavior:
 
 This bootstrap path is mandatory for `nessie local up` to be usable on a fresh machine.
 
+### 4.3b Phase 1 single-user simulation mode
+
+Phase 1 may run in a single-user simulation mode after bootstrap.
+
+Meaning:
+
+- one real authenticated owner account exists,
+- the broader org/project/team structure exists in the data model,
+- but the install may operate with deterministic default container records instead of full multi-user setup.
+
+Allowed Phase 1 approach:
+
+- create one default organization,
+- create one default project,
+- create one default team,
+- bind the owner user into them automatically,
+- let channels and agents live inside that default containment model.
+
+These IDs may be deterministic reserved IDs for local/bootstrap installs.
+
+Guidance:
+
+- deterministic seeded IDs are acceptable,
+- avoid ad hoc per-page or per-feature fake identity generation,
+- all actor context should resolve from the same auth/session source.
+
 ### 4.4 Model/provider auth separation
 
 User authentication and model-provider authentication are separate concerns.
@@ -149,6 +175,30 @@ User authentication and model-provider authentication are separate concerns.
 - model auth = which API keys or provider accounts Nessie may use at runtime.
 
 Model-provider auth should stay in the secret system, not in end-user SSO config.
+
+### 4.5 Single source of truth for identity
+
+There must be one canonical auth/session source for the product.
+
+Rules:
+
+- login state comes from one backend auth/session contract,
+- current user identity comes from one canonical `me` endpoint,
+- current org/project/team context comes from the same canonical session payload or follow-up bootstrap payload,
+- frontend apps must consume this through one shared auth/session module.
+
+Do not do this:
+
+- every page calling its own auth helper,
+- multiple frontend-only sources of truth for current user,
+- ad hoc classes that separately reconstruct reusable auth/user objects.
+
+Required Phase 1 contract shape:
+
+- session token or equivalent credential
+- `GET /api/auth/me`
+- one shared frontend auth/session provider in `/admin`
+- one canonical actor context passed to agent/runtime calls
 
 ## 5) Local deployment and startup
 

@@ -1,0 +1,363 @@
+# Provider System and Frontend Architecture
+
+> Status: active target-state design.
+
+## 1) Core rule
+
+There are two different meanings of "provider" in this project.
+
+They must not be conflated:
+
+1. infrastructure/provider adapters
+2. frontend/domain provider facades
+
+If these get mixed together, the codebase will become hard to reason about very quickly.
+
+## 2) Infrastructure provider families
+
+These are backend/runtime adapters chosen by deployment or config.
+
+Required categories:
+
+- auth provider
+- model provider
+- object storage provider
+- queue/event provider
+- secret encryption provider
+- runtime secret store provider
+- email provider
+- observability provider
+
+Later categories:
+
+- semantic search/vector provider
+- payment/billing provider
+- remote execution provider
+
+Rule:
+
+- Phase 1 should allow one configured provider per category,
+- provider selection must happen centrally in backend config,
+- page-level or feature-level provider selection is not allowed.
+
+## 3) Frontend architecture rule
+
+The frontend should be strictly componentized and reusable.
+
+That means:
+
+- no repeated avatar markup in three places,
+- no repeated sidebar row markup,
+- no repeated badge/status-pill markup,
+- no page-local copies of entity cards, headers, forms, or list rows.
+
+The HTML template should be broken into reusable primitives and composed upward.
+
+## 4) Do not create a React Context provider for every entity
+
+This is the key correction.
+
+It is a bad architecture to create:
+
+- `AgentProvider`
+- `ProjectProvider`
+- `ChannelProvider`
+- `UserProvider`
+- `ThreadProvider`
+
+as separate React Context wrappers for the entire tree.
+
+Why this is bad:
+
+- too many nested providers,
+- unclear ownership of data fetching,
+- hard-to-debug rerenders,
+- duplicated cache logic,
+- provider composition hell.
+
+## 5) Recommended architecture instead
+
+Use three layers:
+
+1. shared app providers
+2. domain facades/services
+3. reusable UI components
+
+### 5.1 Shared app providers
+
+These are the only top-level React providers Phase 1 should need in `/admin`:
+
+- `AppProvider`
+- `AuthSessionProvider`
+- `ApiClientProvider`
+- `QueryProvider`
+- `ThemeProvider`
+
+Optional later:
+
+- `RealtimeProvider`
+- `FeatureFlagsProvider`
+
+These are app-wide concerns, not entity-specific concerns.
+
+### 5.2 Domain facades/services
+
+For each major entity, create one domain facade module, not one global React Context.
+
+Examples:
+
+- `agents`
+- `projects`
+- `teams`
+- `channels`
+- `threads`
+- `messages`
+- `runs`
+- `users`
+- `tools`
+
+Each domain facade should own:
+
+- API calls
+- request/response typing
+- cache keys
+- selectors
+- mutations
+- optimistic update rules where needed
+
+Good shape:
+
+- `agents/api.ts`
+- `agents/queries.ts`
+- `agents/mutations.ts`
+- `agents/types.ts`
+- `agents/hooks.ts`
+
+Same pattern should exist for tools:
+
+- `tools/api.ts`
+- `tools/queries.ts`
+- `tools/mutations.ts`
+- `tools/types.ts`
+- `tools/hooks.ts`
+
+This gives you an "agent provider facade" in practice without turning it into a tree-wide React Context.
+
+### 5.3 Reusable UI component layers
+
+The UI should be split into:
+
+1. primitives
+2. composed shared components
+3. feature components
+4. page shells
+
+Recommended structure under `/admin/src`:
+
+```text
+components/
+  primitives/
+    Avatar/
+    Badge/
+    Button/
+    Icon/
+    Input/
+    ScrollArea/
+    Tooltip/
+  shared/
+    ChannelRow/
+    AgentRow/
+    ToolRow/
+    ThreadListItem/
+    PresenceDot/
+    SectionHeader/
+    EmptyState/
+    AppShell/
+  features/
+    channels/
+    agents/
+    tools/
+    threads/
+    auth/
+    settings/
+pages/
+  login/
+  channels/
+  agents/
+  settings/
+providers/
+  AppProvider.tsx
+  AuthSessionProvider.tsx
+  ApiClientProvider.tsx
+  QueryProvider.tsx
+```
+
+## 6) Single source of truth rules
+
+### 6.1 Identity/session
+
+There must be one source of truth for:
+
+- current user
+- current session
+- current org/project/team bootstrap context
+
+That source is:
+
+- backend auth/session contract,
+- consumed by `AuthSessionProvider`,
+- exposed through shared hooks.
+
+Never:
+
+- instantiate auth helper classes separately per page,
+- reconstruct current user from multiple endpoints,
+- keep duplicate local identity stores.
+
+### 6.2 Domain data
+
+There must be one canonical cache path per entity family.
+
+Example:
+
+- agents come from one agent data facade,
+- channels come from one channel data facade,
+- projects come from one project data facade.
+- tools come from one tool data facade.
+
+Never:
+
+- fetch agents one way in sidebar and another way in detail pages with separate hand-rolled state,
+- duplicate mapping/transforms in three components,
+- keep hidden parallel stores for the same records.
+
+## 7) Phase 1 provider/facade set
+
+Phase 1 should implement these frontend facades:
+
+- `auth`
+- `channels`
+- `agents`
+- `tools`
+- `threads`
+- `messages`
+- `runs`
+
+Phase 1 should not need frontend facades yet for:
+
+- secrets
+- token ledger
+- translation settings
+- remote workers
+- workflow builder
+
+## 8) Template-to-component mapping
+
+From the current template, at minimum extract:
+
+- `Avatar`
+- `PresenceDot`
+- `RailButton`
+- `SidebarSection`
+- `ChannelRow`
+- `AgentRow`
+- `ToolRow`
+- `UnreadBadge`
+- `PageHeader`
+- `Composer`
+- `MessageBubble`
+- `StatusPill`
+
+Tool-specific reusable components should also exist once tools appear in `/admin`:
+
+- `ToolBadge`
+- `ToolTransportPill`
+- `ToolPermissionPill`
+- `ToolCategoryIcon`
+
+This is mandatory. Do not leave these as repeated page-local fragments.
+
+## 9) Agent activity observability (mandatory Phase 1 UI)
+
+This is a first-class product requirement, not an afterthought. The biggest failure mode of agent platforms is that users cannot see what is happening. Nessie must make agent activity visible at all times.
+
+### 9.1 Agent activity panel
+
+The `/admin` UI must always show an agent activity panel when agents exist. This panel is visible regardless of which page the user is on.
+
+Required content:
+
+- list of all agents the user has access to in the current scope (channel or organization)
+- each agent row shows:
+  - agent name and role
+  - current status indicator: `idle` (dim dot), `thinking` (pulsing dot), `executing` (animated dot), `waiting_approval` (amber dot), `error` (red dot)
+  - if active: what the agent is currently doing (tool name, short description)
+  - last activity timestamp
+
+Status indicators must update via WebSocket in real time. There is no polling. If the WebSocket disconnects, the UI must show a connection-lost state, not stale green dots.
+
+### 9.2 Agent drill-down view
+
+Clicking on any agent in the activity panel opens a detail view showing:
+
+- **Current activity:** what the agent is doing right now, including tool name and sanitized input/output preview
+- **Sub-agent tree:** if this agent has spawned sub-agents, show them as a nested list with the same status indicators. Clicking a sub-agent opens its own drill-down.
+- **Tool execution log:** chronological list of tool calls for the current or most recent run, each showing tool name, duration, success/failure, and truncated output preview
+- **Thought process:** opt-in stream of agent reasoning previews (short text, not full context dumps)
+- **Last 5 messages:** the five most recent messages this agent has sent or received, always visible without scrolling or navigation. This is a hard requirement — not "load on demand" but always present in the agent detail view.
+
+The drill-down view must work for sub-agents at any depth. If agent A spawned agent B which spawned agent C, clicking through A -> B -> C must show C's activity, tools, and messages.
+
+### 9.3 Required frontend data for agent activity
+
+The agent activity panel and drill-down require these data flows:
+
+- **WebSocket subscription** to `agent.status`, `agent.tool.start`, `agent.tool.end`, `agent.thought`, `agent.spawn`, `agent.spawn.done`, `run.status` events (see `hosted-app-architecture.md` section 9)
+- **Agent facade query:** `useAgents()` for the agent list with status, scoped to current channel/organization
+- **Agent detail query:** `useAgentActivity(agentId)` for tool log, sub-agent tree, and thought stream
+- **Agent messages query:** `useAgentMessages(agentId, { limit: 5 })` for the always-visible last 5 messages
+
+These must follow the domain facade pattern (section 5.2). Agent activity is not a separate React Context provider — it is part of the `agents` facade with WebSocket-driven cache updates.
+
+Cache update rules:
+
+- WebSocket `agent.status` events update the agent list cache in place (no refetch)
+- WebSocket `agent.tool.start/end` events update the agent detail cache in place
+- WebSocket `agent.spawn/spawn.done` events update the sub-agent tree in the agent detail cache
+- `agent.thought` events append to a bounded in-memory buffer (max 50 entries per agent, oldest evicted)
+- the last-5-messages query is a standard paginated query that also receives WebSocket-driven invalidation when a new message arrives for that agent
+
+### 9.4 Required `/admin` components for agent activity
+
+Add to the mandatory component list:
+
+- `AgentActivityPanel` — the always-visible agent list with status dots
+- `AgentStatusDot` — the animated status indicator (idle/thinking/executing/waiting/error)
+- `AgentDetailDrawer` — the drill-down view opened by clicking an agent
+- `SubAgentTree` — nested sub-agent list with recursive drill-down
+- `ToolExecutionLog` — chronological tool call list with duration and status
+- `AgentThoughtStream` — opt-in reasoning preview feed
+- `AgentMessagePreview` — the always-visible last-5-messages list
+
+These are feature components under `components/features/agents/` and must not be built as page-local fragments.
+
+## 10) Architectural judgment
+
+So the answer to your question is:
+
+- yes, every major entity should be encapsulated behind a provider-like facade,
+- no, that should not usually mean a React Context provider per entity.
+
+The right model is:
+
+- a small number of top-level app providers,
+- many domain facades/hooks,
+- reusable component primitives,
+- one canonical identity/session provider.
+
+## 11) Cross-links
+
+- [implementation-phases.md](./implementation-phases.md)
+- [hosted-app-architecture.md](./hosted-app-architecture.md)
+- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [functionality.md](./functionality.md)
