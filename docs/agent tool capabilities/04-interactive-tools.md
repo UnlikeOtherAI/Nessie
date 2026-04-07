@@ -273,3 +273,31 @@ Secret runtime events:
 
 Cross-link:
 - [secret-management-spec.md](./../secret-management-spec.md) for full schema, encryption, and API details.
+
+### 11.5) Remote-worker interactive transport
+
+The same interactive-session family should support customer-owned remote workers.
+
+Rules:
+
+- remote workers register to a parent Nessie instance and advertise capabilities plus local sandbox policy,
+- idle workers use heartbeat/poll instead of a permanent websocket,
+- when work exists, the worker opens a websocket session with a short-lived ticket,
+- `remoteWorker.session:*` actions should mirror `session:*` semantics where possible,
+- effective permission is always:
+  - local worker hard policy
+  - intersected with parent-instance policy
+  - intersected with current actor context.
+
+Recommended control actions:
+
+- `remoteWorker.register`
+- `remoteWorker.heartbeat`
+- `remoteWorker.policy.sync`
+- `remoteWorker.session.start`
+- `remoteWorker.session.send`
+- `remoteWorker.session.read`
+- `remoteWorker.session.interrupt`
+- `remoteWorker.session.close`
+
+This keeps local PTY sessions, SSH sessions, and remote-worker sessions under one coherent control model without treating customer machines as trusted hosted runners.

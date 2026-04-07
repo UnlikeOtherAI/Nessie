@@ -2,21 +2,44 @@
 
 > Status: active implementation reference plus target-state control-plane map.
 
-As of `2026-04-07`, this document captures all implemented runtime behavior in the Node backend and control-plane code that the future `UI/web` interface should mirror, then consume via mocks.
+As of `2026-04-07`, this document captures all implemented runtime behavior in the Node backend and control-plane code that the future authenticated Nessie interface should mirror, then consume via mocks.
+
+Interpretation rule:
+- the root app layout and phase-roadmap cross-links at the top of this file are target-state guidance,
+- the route and runtime sections below still describe the current legacy `src/index.ts` server unless a section explicitly says otherwise.
+- legacy runtime capabilities such as host `Bash`, `FileWrite`, and other privileged local tools must not be treated as Phase 1 MVP requirements for the new `/api` + `/admin` architecture.
+- new Phase 1 backend endpoints for the rebuilt product should be rooted under `/api/...` as defined in [implementation-phases.md](./implementation-phases.md).
 
 The checkbox-based tool policy model is documented as a separate target-state design in [agent tool capabilities](./agent%20tool%20capabilities/index.md), and is currently not fully enforced at runtime.
 
-## 1) Web interface contract
+## 1) Interface contracts
+
+`UI/admin/tag.md`:
+
+- `tag: nessie-ui-admin-v1`
+- `label: Nessie admin and product interface`
+- `scope: admin`
+- `status: planning`
+- `contract_version: 1.0.0`
 
 `UI/web/tag.md`:
 
 - `tag: nessie-ui-web-v1`
-- `label: Nessie web interface`
+- `label: Nessie web landing page`
 - `scope: web`
 - `status: planning`
 - `contract_version: 1.0.0`
 
 Use `tag` as the canonical identifier for mock stories, tests, and integration points.
+
+Roadmap cross-link:
+- [implementation-phases.md](./implementation-phases.md)
+
+Root app layout:
+- `/api` = backend/control-plane service
+- `/admin` = full Nessie product interface
+- `/web` = landing page only
+- `/worker` = async execution service
 
 ## 2) Process startup and runtime surface
 
@@ -766,6 +789,64 @@ type ControlCommandDefinition = {
   - requirements doc: [knowledge-base-requirements.md](./knowledge-base-requirements.md),
   - one-file tool family definition patterns: [agent tool capabilities](./agent%20tool%20capabilities/02-checkbox-ui-api.md).
 
+## 13.4a) Remote worker execution CLI requirement
+
+- Add a first-class `RemoteWorker` concept for customer-owned execution clients on macOS, Windows, and Linux.
+- Remote workers register to a parent Nessie control plane, which may be hosted cloud or organization-owned infrastructure.
+- The remote worker is distinct from a hosted runner:
+  - hosted runner = Nessie-owned cloud execution boundary,
+  - remote worker = customer-owned machine registered into the Nessie control plane.
+- Idle connection model:
+  - remote worker performs lightweight heartbeat/poll requests,
+  - default target interval can be around 60 seconds,
+  - heartbeat response may shorten or extend the next interval,
+  - idle workers should not keep a websocket open by default.
+- Setup/handshake model:
+  - worker is configured with parent URL + bootstrap credential,
+  - parent returns worker-scoped auth material,
+  - worker reports capabilities, local sandbox summary, and local policy digest,
+  - policy changes on either side must be synchronized to the parent instance.
+- Active connection model:
+  - when poll/heartbeat says work exists, the worker opens a websocket with a short-lived ticket,
+  - cloud agents then use that session to drive interactive command/file/process operations,
+  - when work finishes, the worker returns to heartbeat mode.
+- Remote worker capability surface should be declarative:
+  - `shell.run`,
+  - `shell.session`,
+  - `file.read`,
+  - `file.write`,
+  - `file.glob`,
+  - `ssh.run`,
+  - `ssh.session`,
+  - `cli.wrapper`,
+  - optional `mcp.proxy`.
+- Policy rule:
+  - effective permission = local hard policy on the worker
+  - intersected with cloud policy
+  - intersected with current actor context.
+- Local hard policy is non-bypassable by the cloud:
+  - allowed roots,
+  - denied roots,
+  - read-only mode,
+  - allowed commands,
+  - denied commands,
+  - interactive on/off,
+  - max runtime/output/session count,
+  - local confirmation requirements.
+- Cloud policy must support parallel restriction layers on the same remote worker:
+  - org,
+  - project,
+  - team,
+  - channel,
+  - agent,
+  - tool,
+  - remote-worker binding.
+- Remote workers must be project-scoped by default and hidden from unauthorized channels/users/agents.
+- Cross-link:
+  - [remote-worker-spec.md](./remote-worker-spec.md),
+  - [organization-governance-spec.md](./organization-governance-spec.md),
+  - [agent tool capabilities](./agent%20tool%20capabilities/04-interactive-tools.md).
+
 ## 13.5) Organization, project, and channel access control (implementation target)
 
 - `Organization`: top-level tenant boundary with owned users and teams.
@@ -794,6 +875,43 @@ type ControlCommandDefinition = {
   - broadcast is constrained by visibility and tool access checks.
 - Cross-link:
   - full governance spec: [organization-governance-spec.md](./organization-governance-spec.md).
+
+## 13.5a) Deployment modes and auth behavior
+
+- Nessie must support:
+  - hosted SaaS mode,
+  - self-hosted organization mode,
+  - single-machine local mode.
+- Hosted and self-hosted installations must share the same control-plane and data model.
+- Hosted auth default:
+  - `authentication.unlikeotherai.com` as the primary login entrypoint,
+  - optional direct auto-redirect to SSO when exactly one auth path is configured.
+- Self-hosted/local auth:
+  - configurable provider system,
+  - one or more SSO providers,
+  - provider chooser page by default,
+  - optional `autoRedirectToSso`,
+  - local installs must be able to disable auto-redirect.
+- Model/provider credentials are separate from user authentication and stay in the secret system.
+- Local install requirement:
+  - Docker-first startup,
+  - supported non-Docker startup,
+  - simple global launcher command,
+  - all state lands locally by default.
+- Target local launcher experience:
+  - `npm install -g nessie`
+  - `nessie local up`
+- Non-Docker dependency model:
+  - `Postgres` required,
+  - `Redis` optional,
+  - `MinIO` optional,
+  - local filesystem object storage should be the default simplest mode.
+- Launcher must expose dependency checks and guidance:
+  - `nessie local doctor`,
+  - missing dependency detection,
+  - degraded mode explanation when optional services are absent.
+- Cross-link:
+  - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md).
 
 ## 13.6) Secret storage and retrieval (encrypted, scoped, policy-gated)
 
@@ -1005,6 +1123,14 @@ Evals use a standard Agent node with a structured verification prompt, not a sep
 - No `invoke_workflow` tool or workflow CRUD endpoints.
 - No Human Input suspension mechanism (`waiting_for_input` run status).
 - No trigger scheduler for `scheduled`, `webhook`, or `event` trigger subtypes on workflows or agents.
+- No remote worker registration, heartbeat, websocket-connect, or effective-policy evaluation path yet.
+- No worker-scoped API-key/bootstrap generation path yet for parent-instance registration.
+- No project/channel/agent-scoped remote worker bindings yet.
+- No local-hard-policy plus cloud-policy intersection model implemented for customer-owned execution clients.
+- No deployment-mode abstraction yet for hosted versus self-hosted versus single-machine local installs.
+- No configurable auth-provider registry or local `autoRedirectToSso` behavior yet.
+- No Docker-first local launcher flow yet for `nessie local up`.
+- No documented non-Docker local dependency-check flow yet (`nessie local doctor`, required vs optional services, degraded-mode behavior).
 
 ## 15) New web UI mapping (for mock-first build)
 

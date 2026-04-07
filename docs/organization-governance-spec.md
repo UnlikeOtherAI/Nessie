@@ -27,6 +27,7 @@ This is the source of truth for organization and access-control requirements bef
 - `User` may belong to one or more teams/channels.
 - `ManagedAgent` may be owned by one team/project and surfaced in multiple channels.
 - `Tool` is capability surface (registry entry) with policy metadata and execution constraints.
+- `RemoteWorker` is a customer-owned execution client bound into project/channel/agent policy with its own local hard-policy boundary.
 - `Role` is optional semantic tag (e.g. orchestrator, reviewer, researcher) used for inherit/override policy.
 - `Session` is a thread/thread-keyed conversation context.
 
@@ -61,8 +62,8 @@ Defaults are inherited down the chain and can be narrowed by explicit deny at an
 
 Each permission is a matrix on:
 
-- `resourceType`: `agent`, `channel`, `project`, `tool`, `session`, `task`, `review`, `approval`, `admin`, `secret`.
-- `action`: `view`, `invoke`, `create`, `edit`, `assign`, `approve`, `review`, `search`, `export`, `admin`, `readSecret`, `resolveSecret`, `rotate`, `revoke`.
+- `resourceType`: `agent`, `channel`, `project`, `tool`, `remoteWorker`, `session`, `task`, `review`, `approval`, `admin`, `secret`.
+- `action`: `view`, `invoke`, `create`, `edit`, `assign`, `approve`, `review`, `search`, `export`, `admin`, `readSecret`, `resolveSecret`, `rotate`, `revoke`, `connect`, `drain`.
 - `scope`: `thread` / `team` / `channel` / `agent` / `organization` / `project`.
 - `context`: teamId, projectId, channelId, agentId, toolId, sessionId.
 
@@ -127,6 +128,39 @@ Each permission is a matrix on:
   - read-only tooling default-allowed for broader teams where safe,
   - destructive tooling requires explicit approval and elevated role.
 - Tool config values must be preserved as arbitrary JSON (`Record<string, unknown>`) per tool instance so any future CLI/tool-specific flags can be passed by CLI and marketplace manifests.
+
+### 4.3a Remote-worker access model
+
+- Remote workers are project-scoped by default and may be further bound to one or more teams/channels.
+- Remote workers must never be discoverable outside allowed project/channel scope.
+- Remote workers register to a parent Nessie instance with worker-scoped bootstrap/auth credentials.
+- Handshake and later policy-sync events must update the parent with:
+  - capability list,
+  - local sandbox summary,
+  - local hard-policy digest,
+  - current worker status.
+- Effective permission for remote execution is the intersection of:
+  - worker-local hard policy,
+  - cloud policy chain,
+  - current actor context.
+- Cloud policy may narrow remote worker access by:
+  - team,
+  - channel,
+  - agent,
+  - tool,
+  - time window,
+  - approval/verification requirement.
+- The platform must support parallel policies on the same worker:
+  - one agent may have read-only file access,
+  - another may have shell access,
+  - one channel may only inspect logs,
+  - another may not see the worker at all.
+- Local hard policy is authoritative for machine safety and is not overridable by org admins, channel admins, or agents.
+- Remote worker policy decisions must expose reason codes such as:
+  - `LOCAL_POLICY_DENY`,
+  - `REMOTE_WORKER_OFFLINE`,
+  - `MISSING_REMOTE_WORKER_BINDING`,
+  - `INTERACTIVE_SESSION_DISABLED`.
 
 ### 4.4 Slack-style routing in org context
 
@@ -206,6 +240,10 @@ Each permission is a matrix on:
 - `GET /channels/{channelId}/policy`
 - `GET /agents/{agentId}/policy`
 - `GET /tools/{toolId}/policy`
+- `GET /remote-workers`
+- `GET /remote-workers/{remoteWorkerId}`
+- `GET /remote-workers/{remoteWorkerId}/policy/effective`
+- `POST /remote-workers/{remoteWorkerId}/access/check`
 - `GET /access/check`
   - input includes actor, resource, action, scope
   - deterministic allow/deny response
@@ -237,6 +275,8 @@ Each permission is a matrix on:
   - `project.channels.create`, `project.channels.update`, `project.channels.members.search`
   - `agent.register`, `agent.update`, `agent.bind`, `agent.unbind`
   - `tool.import`, `tool.update`, `tool.bind`, `tool.unbind`
+  - `remoteWorker.register`, `remoteWorker.bind`, `remoteWorker.unbind`
+  - `remoteWorker.policy.effective`, `remoteWorker.drain`, `remoteWorker.revoke`
   - `role.assign`, `role.revoke`
   - `channel.member.add`, `channel.member.remove`
   - `policy.effective`, `policy.preview`, `policy.apply`
@@ -411,6 +451,7 @@ This section should be treated as mandatory acceptance context for later impleme
 - [agent-communication-spec.md](./agent-communication-spec.md)
 - [agent tool capabilities](./agent%20tool%20capabilities/index.md)
 - [functionality.md](./functionality.md)
+- [remote-worker-spec.md](./remote-worker-spec.md)
 - [openclaw-agent-teams-implementation.md](./openclaw-agent-teams-implementation.md)
 
 ## 11) "Codex in background" execution plan
