@@ -1,16 +1,13 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ES2022"],
-    "strict": true,
-    "skipLibCheck": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "types": ["bun-types"],
-    "outDir": "dist",
-    "noEmit": true
-  },
-  "include": ["src/**/*"]
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.legacy.json" },
+    { "path": "./packages/schemas" },
+    { "path": "./packages/config" },
+    { "path": "./api" },
+    { "path": "./worker" },
+    { "path": "./cli" },
+    { "path": "./admin" },
+    { "path": "./web" }
+  ]
 }

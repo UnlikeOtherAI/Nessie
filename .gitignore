@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.turbo/
 .pnpm-store/
 *.local
 .env
@@ -11,3 +12,5 @@ macos/**/xcshareddata/
 .playwright-mcp/
 *.png
 tmp/
+coverage/
+*.tsbuildinfo

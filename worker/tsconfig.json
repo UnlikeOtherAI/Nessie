@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
     "module": "NodeNext",
@@ -7,5 +7,9 @@
     "rootDir": "src",
     "types": ["node"]
   },
+  "references": [
+    { "path": "../packages/schemas" },
+    { "path": "../packages/config" }
+  ],
   "include": ["src/**/*.ts"]
 }

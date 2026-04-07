@@ -3,11 +3,33 @@ import tsParser from '@typescript-eslint/parser'
 
 export default [
   {
-    files: ['src/**/*.ts'],
+    ignores: [
+      '**/dist/**',
+      '**/build/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      'macos/**',
+      'remote/**',
+    ],
+  },
+  {
+    files: [
+      'src/**/*.ts',
+      'api/src/**/*.ts',
+      'admin/src/**/*.{ts,tsx}',
+      'web/src/**/*.{ts,tsx}',
+      'worker/src/**/*.ts',
+      'cli/src/**/*.ts',
+      'packages/*/src/**/*.ts',
+    ],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
-        project: './tsconfig.json',
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+        ecmaFeatures: {
+          jsx: true,
+        },
       },
     },
     plugins: {
@@ -15,6 +37,12 @@ export default [
     },
     rules: {
       'no-unused-vars': 'off',
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: ['src/*', '../src/*', '../../src/*', '../../../src/*', '../../../../src/*'],
+        },
+      ],
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'max-len': ['error', { code: 120 }],

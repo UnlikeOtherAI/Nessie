@@ -1,0 +1,7 @@
+packages:
+  - "api"
+  - "admin"
+  - "web"
+  - "worker"
+  - "cli"
+  - "packages/*"
