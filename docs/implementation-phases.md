@@ -22,6 +22,7 @@ Core delivery principles:
 - keep React UI CSR-first from the start,
 - enforce very strict linting, formatting, typechecking, and build gates for both `/admin` and `/api` from Phase 1.
 - use reusable component primitives and domain facades in `/admin`; do not build a React Context provider per entity.
+- create `packages/schemas` and `packages/config` in Phase 1 before feature code fans out.
 
 ## 1.1) Mandatory end-of-phase review gate
 
@@ -67,15 +68,21 @@ Ship the first version that feels like a real product:
 - API service in `/api`
 - worker service in `/worker`
 - Postgres-backed persistence
-- SSE streaming for chat and run updates
+- `packages/schemas` for shared API/event/context contracts
+- `packages/config` for typed startup config and capability flags
+- SSE streaming for chat and thread updates
+- WebSocket for agent activity, subscriptions, and live status
 - local launch path:
   - Docker mode
   - non-Docker mode with `nessie local doctor`
-- auth abstraction with:
+- JWT-based auth with:
+  - local bootstrap path for first-user creation (see [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 4.3a)
+  - Fastify `preHandler` auth middleware producing `AuthorizedActionContext` (see section 4.3c)
   - hosted default path
   - self-hosted/local configurable providers
   - optional auto-redirect
   - one canonical `GET /api/auth/me` source for current user/session/context
+- Postgres-backed job queue (`pgqueue`) for local mode, Pub/Sub for hosted (see [hosted-app-architecture.md](./hosted-app-architecture.md) section 4)
 - minimal org model:
   - organization
   - default project
@@ -104,8 +111,11 @@ Ship the first version that feels like a real product:
   - `/admin` should include a minimal tools surface for safe-tool visibility and binding where needed.
 - agent activity observability (mandatory, not optional):
   - always-visible agent activity panel showing all agents with live status
-  - WebSocket-driven instant status updates (idle, thinking, executing, waiting, error)
-  - agent drill-down with sub-agent tree, tool execution log, and thought process stream
+  - WebSocket-driven instant status updates (idle, thinking, executing, waiting_approval, error)
+  - `waiting_approval` is display-only in Phase 1 — the amber dot renders but there is no approval resolution endpoint; approval actions are Phase 2
+  - `offline` status exists in the type system but Phase 1 agents never emit it (it applies to remote workers in Phase 4)
+  - agent drill-down with sub-agent tree, tool execution log, and last 5 messages
+  - thought process stream (`AgentThoughtStream`) is a Phase 1 stub component with placeholder; wired to `agent.thought` event in Phase 2
   - last 5 messages per agent always visible in agent detail view
   - sub-agent drill-down at any depth
   - see [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md) section 9 for full spec
@@ -373,6 +383,7 @@ It should not wait for:
       - agent activity panel (always visible, WebSocket-driven status dots)
       - agent detail drill-down (sub-agent tree, tool log, thought stream, last 5 messages)
       - channel/user/agent administration shell
+      - TanStack Query via `QueryProvider`
    - `/web`:
      - landing page only
 2. API + Postgres schema:
@@ -391,7 +402,9 @@ It should not wait for:
     - agents
     - threads
     - messages
+   - `queue_jobs` table for pgqueue local adapter
    - minimum Phase 1 API surface:
+     - `POST /api/auth/bootstrap` (first-user creation, see [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 4.3a)
      - `GET /api/auth/providers`
      - `POST /api/auth/session`
      - `DELETE /api/auth/session`
@@ -418,6 +431,7 @@ It should not wait for:
    - sub-agent spawn
    - basic task/run records
    - canonical actor context comes from the auth/session layer, not page-local helpers
+   - worker jobs carry the same `AuthorizedActionContext` from `packages/schemas`
 4. Safe tools:
    - web
    - docs/knowledge read
@@ -428,6 +442,9 @@ It should not wait for:
    - invite user
 6. Local packaging:
    - Docker path
+7. Shared foundations:
+   - `packages/schemas`
+   - `packages/config`
    - non-Docker path
    - `nessie local doctor`
    - `nessie local up`

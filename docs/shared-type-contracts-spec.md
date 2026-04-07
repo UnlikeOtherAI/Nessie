@@ -233,6 +233,15 @@ Rules:
 - the same payload seeds `AuthSessionProvider` and the initial actor context used by `/api`
 - follow-up endpoints may enrich data, but they must not contradict `MeResponse`
 
+Phase 1 `channelId` rule:
+
+- `context.channelId` is always `null` in Phase 1
+- channel selection is a frontend routing concern, not a session concern
+- the user picks a channel by navigating the channel list in `/admin`
+- the active channel lives in React Router URL state (e.g. `/admin/channels/:channelId`), not in the session
+- when the user navigates to a channel, route handlers derive `channelId` from the URL path param and pass it into `actionContext`
+- if "last active channel" persistence is added later (Phase 2+), it can populate `channelId` as a convenience hint — but the frontend must never treat it as mandatory
+
 ## 6) Agent activity response contracts
 
 ### `GET /api/agents/{agentId}/status`
@@ -432,7 +441,32 @@ Rules:
 - `ControlActionEnvelope.context` must use `AuthorizedActionContext`
 - do not introduce a separate mapping layer between near-identical context types
 
-## 10) Canonical ownership
+## 10) Phase 1 `packages/schemas` contents
+
+Phase 1 must create `packages/schemas` before feature code fans out. This is the exhaustive list of what goes in it for Phase 1:
+
+From this document:
+
+- `ApiResponse<T>`, `ApiError` (section 2)
+- `PaginationParams`, `PaginationMeta` (section 3)
+- `SseEventMap`, `WsEventMap`, `AgentStatus`, `RunStatus`, `TaskStatus` (section 4)
+- `MeResponse` and sub-types (section 5.1)
+- Agent activity response types: `AgentStatusResponse`, `AgentActivityResponse`, `ToolCallEntry`, `AgentMessage`, `AgentChild` (section 6)
+- Branded entity IDs: `OrganizationId`, `ProjectId`, `TeamId`, `ChannelId`, `AgentId`, `ThreadId`, `RunId`, `TaskId` (section 8)
+- Actor context types: `AccessActor`, `TenantContext`, `ActionContext`, `AccessContext`, `AuthorizedActionContext` (section 9)
+- Zod validation schemas for all of the above (section 7)
+
+Not in `packages/schemas` for Phase 1 (stays in service-local code or deferred to Phase 2+):
+
+- token ledger types (`TokenLedgerEvent`, pricing profiles)
+- secret types (`SecretRecord`, `SecretBinding`)
+- translation types
+- workflow types
+- remote worker protocol types
+
+If a type is shared between `/api` and `/worker` in Phase 1, it goes in `packages/schemas`. If it only exists in one service, it stays local until Phase 2 extraction.
+
+## 11) Canonical ownership
 
 This document is canonical for:
 
@@ -442,10 +476,12 @@ This document is canonical for:
 - realtime event catalog
 - branded IDs
 - actor/action context
+- agent activity response contracts
+- Phase 1 `packages/schemas` contents
 
 Other docs may reference these contracts, but should not redefine them independently.
 
-## 11) Cross-links
+## 12) Cross-links
 
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)

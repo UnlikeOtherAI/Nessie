@@ -22,7 +22,8 @@ This is an accounting and governance feature, not just a dashboard.
 - provider/model identity must be stored as raw values, not a fixed enum.
 - if a provider exposes cached-token counts, prompt-cache hits, or similar reuse metrics, they must be captured as separate ledger fields.
 - if a provider does not expose a metric, the field remains null rather than guessed.
-- organization owners, team owners, and admins may define override pricing for estimation.
+- organization owners and admins may define override pricing for estimation.
+- team owners may view team-scoped usage and cost rollups, but they do not define pricing profiles by default.
 - canonical ledger preserves both:
   - provider-reported cost/usage fields when available,
   - Nessie-estimated cost using the active pricing profile.
@@ -42,6 +43,8 @@ type TokenLedgerEvent = {
   taskId?: string;
   agentId?: string;
   actorId?: string;
+  requestId?: string;
+  correlationId?: string;
   provider: string;   // e.g. "openai", "anthropic", "minimax", "google", "custom"
   model: string;      // provider-native model name
   operationType:
@@ -83,6 +86,12 @@ type TokenLedgerEvent = {
   metadata?: Record<string, unknown>;
 };
 ```
+
+Rules:
+
+- top-level scope fields are denormalized index fields for reporting
+- `actorId`, `requestId`, and `correlationId` must be copied from the canonical shared access context when available
+- `tool-translation` means translation work performed as part of a tool or tool-wrapper path rather than a direct user translation request
 
 ## 4) Pricing model
 
@@ -170,7 +179,7 @@ Suggested MCP/control actions:
 
 - organization owners/admins can read org-wide token and cost reports.
 - team owners can read team-scoped usage and cost reports.
-- pricing overrides should require admin or owner permissions.
+- pricing overrides should require organization owner or admin permissions.
 - reports must respect project/team/channel visibility boundaries.
 - pricing overrides must be auditable:
   - who changed it,

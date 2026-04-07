@@ -109,13 +109,20 @@ Scope resolution:
 ## 7) Data model
 
 ```ts
+type VerificationFactorRequirement = {
+  factorType: 'email_otp' | 'email_link' | 'totp' | 'recovery_code' | 'webauthn';
+  count: number;
+};
+
+type VerificationFactorGroup = {
+  mode: 'anyOf' | 'allOf';
+  factors: VerificationFactorRequirement[];
+};
+
 type VerificationPolicy = {
   policyId: string;
   actionIds: string[];
-  requiredFactors: Array<{
-    factorType: 'email_otp' | 'email_link' | 'totp' | 'recovery_code' | 'webauthn';
-    count: number;
-  }>;
+  requirements: VerificationFactorGroup[];
   challengeTtlMs: number;
   resendCooldownMs: number;
   maxAttempts: number;
@@ -149,6 +156,11 @@ type VerificationEnrollment = {
   revokedAt?: string;
 };
 ```
+
+Rules:
+
+- `requirements` is the canonical schema behind the prose `anyOf` / `allOf` model
+- a simple single-factor policy still uses one `allOf` group with one factor entry
 
 ## 8) API contracts
 

@@ -129,19 +129,205 @@ Required config behavior:
 
 Fresh local installs need a concrete first-user bootstrap path even when no external SSO is configured yet.
 
-Required behavior:
-
-- first local launch may enter `bootstrap` mode,
-- the launcher prints a bootstrap URL or one-time bootstrap token,
-- the first operator creates the initial owner account,
-- after bootstrap, the install can:
-  - keep using local auth/bootstrap mode,
-  - or switch to configured SSO providers,
-  - or expose both according to policy.
-
 This bootstrap path is mandatory for `nessie local up` to be usable on a fresh machine.
 
-### 4.3b Phase 1 single-user simulation mode
+#### Bootstrap detection
+
+The system is in bootstrap mode when the `users` table is empty. No config flag is needed — the condition is "zero users exist in the database."
+
+#### Bootstrap flow
+
+1. `nessie local up` starts the API.
+2. The API detects zero users and generates a one-time bootstrap token (a cryptographically random UUID v4).
+3. The launcher prints the token and the bootstrap URL to the console:
+   ```
+   First-time setup. Open this URL to create your owner account:
+   http://localhost:4317/admin/bootstrap?token=<uuid>
+   ```
+4. The user opens the URL. `/admin` detects `bootstrapMode: true` from `GET /api/auth/me` (which returns a limited unauthenticated response during bootstrap — see below) and shows the bootstrap form.
+5. The user enters: display name, email, password.
+6. The frontend calls `POST /api/auth/bootstrap` with:
+   ```ts
+   {
+     bootstrapToken: string;   // the UUID from the console
+     email: string;
+     displayName: string;
+     password: string;
+   }
+   ```
+7. The API validates:
+   - the token matches the generated token,
+   - no users exist yet (prevents race conditions),
+   - the token has not expired (15 minute TTL from generation).
+8. On success, the API:
+   - creates the owner user,
+   - creates the default organization (deterministic ID),
+   - creates the default project (deterministic ID),
+   - creates the default team (deterministic ID),
+   - binds the owner into all of them,
+   - issues a JWT session token,
+   - clears the bootstrap token from memory.
+9. Returns `ApiResponse<{ token: string; me: MeResponse }>`.
+10. `/admin` stores the JWT, seeds `AuthSessionProvider`, and redirects to the main UI.
+
+#### Bootstrap mode detection from `/admin`
+
+`GET /api/auth/me` during bootstrap (no `Authorization` header, no users exist) returns:
+
+```ts
+{
+  data: {
+    bootstrapMode: true,
+    bootstrapUrl: '/admin/bootstrap'
+  }
+}
+```
+
+This is the only case where `GET /api/auth/me` returns a non-error response without authentication. Once any user exists, unauthenticated calls to `/api/auth/me` return `401`.
+
+#### Bootstrap token rules
+
+- generated once at API startup when zero users exist
+- stored in memory only, never persisted to database
+- UUID v4 format
+- 15-minute TTL
+- consumed on first successful use — cannot be reused
+- if the API restarts before bootstrap completes, a new token is generated and printed
+
+#### Post-bootstrap
+
+After bootstrap, the install can:
+- keep using local auth (email + password login via `POST /api/auth/session`),
+- switch to configured SSO providers,
+- or expose both according to policy.
+
+### 4.3b Session token contract (JWT)
+
+All deployment modes use JWT for session tokens.
+
+#### Token format
+
+JWT signed with HS256 using a server-side secret.
+
+Claims:
+
+```ts
+{
+  sub: string;           // userId
+  org: string;           // organizationId
+  proj: string;          // projectId
+  team: string;          // teamId
+  roles: string[];       // role IDs
+  iat: number;           // issued at
+  exp: number;           // expiry
+}
+```
+
+#### Token lifecycle
+
+- issued by `POST /api/auth/session` (login) or `POST /api/auth/bootstrap` (first user)
+- sent by the client as `Authorization: Bearer <token>` header on every request
+- default expiry: 24 hours for local mode, configurable via `NESSIE_AUTH_TOKEN_TTL`
+- no refresh tokens in Phase 1 — user re-authenticates on expiry
+- `DELETE /api/auth/session` is a client-side token discard (the server does not track active sessions in Phase 1; JWT is stateless)
+
+#### Server-side signing secret
+
+- generated automatically on first launch if not set
+- stored as `NESSIE_AUTH_SECRET` env var or in the config file
+- if the secret changes, all existing tokens become invalid (users must re-login)
+
+#### Login flow (post-bootstrap)
+
+`POST /api/auth/session`:
+
+```ts
+// Request
+{ email: string; password: string; providerId?: string }
+
+// Response — ApiResponse<{ token: string; me: MeResponse }>
+```
+
+For SSO providers, the flow is:
+1. frontend redirects to the SSO provider's authorize URL
+2. SSO provider redirects back with an authorization code
+3. frontend calls `POST /api/auth/session` with `{ providerId, code }`
+4. API exchanges code for user info, creates or matches the user, issues JWT
+
+### 4.3c Fastify auth middleware
+
+The API uses a Fastify `preHandler` hook for authentication.
+
+#### Request decoration
+
+```ts
+// Fastify decorator
+fastify.decorateRequest('actorContext', null);
+
+// Type
+declare module 'fastify' {
+  interface FastifyRequest {
+    actorContext: AuthorizedActionContext | null;
+  }
+}
+```
+
+#### Auth hook behavior
+
+On every request:
+
+1. Check if the route is marked public (see below). If public, skip auth.
+2. Extract `Authorization: Bearer <token>` from headers.
+3. If missing or malformed: return `401 { error: { code: 'AUTH_REQUIRED', message: 'Missing or invalid authorization header' } }`.
+4. Verify and decode the JWT using the signing secret.
+5. If expired: return `401 { error: { code: 'TOKEN_EXPIRED', message: 'Session expired' } }`.
+6. If signature invalid: return `401 { error: { code: 'TOKEN_INVALID', message: 'Invalid session token' } }`.
+7. Look up the user by `sub` claim in Postgres (to ensure they still exist and are not disabled).
+8. If user not found: return `401 { error: { code: 'USER_NOT_FOUND', message: 'User no longer exists' } }`.
+9. Construct `AuthorizedActionContext` from JWT claims + generate `requestId` (UUID v4).
+10. Attach to `request.actorContext`.
+
+#### Public routes (no auth required)
+
+- `GET /api/health`
+- `GET /api/auth/providers`
+- `GET /api/auth/me` (during bootstrap mode only — returns bootstrap detection response)
+- `POST /api/auth/bootstrap`
+- `POST /api/auth/session`
+
+Mark public routes with a Fastify route option:
+
+```ts
+fastify.get('/api/health', { config: { public: true } }, handler);
+```
+
+The auth hook checks `request.routeOptions.config.public` and skips validation if true.
+
+#### Actor context construction
+
+From a decoded JWT with claims `{ sub, org, proj, team, roles }`:
+
+```ts
+const actorContext: AuthorizedActionContext = {
+  actor: {
+    actorType: 'user',
+    actorId: sub,
+    roles: roles,
+  },
+  tenant: {
+    organizationId: org,
+    projectId: proj,
+    teamId: team,
+  },
+  actionContext: {
+    requestId: generateUuid(),
+  },
+};
+```
+
+Route handlers enrich `actionContext` with request-specific fields (`channelId`, `agentId`, `threadId`, etc.) from path params or body before passing to service layer.
+
+### 4.3d Phase 1 single-user simulation mode
 
 Phase 1 may run in a single-user simulation mode after bootstrap.
 
@@ -199,6 +385,7 @@ Required Phase 1 contract shape:
 - `GET /api/auth/me`
 - one shared frontend auth/session provider in `/admin`
 - one canonical actor context passed to agent/runtime calls
+- `GET /api/auth/me` returns `ApiResponse<MeResponse>` from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
 
 ## 5) Local deployment and startup
 

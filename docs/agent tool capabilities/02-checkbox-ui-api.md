@@ -253,7 +253,7 @@ Phase 3 (execution enforcement):
 
 Phase 4:
 - Add persistence + audit events for grant changes and tool registrations.
-- Wire to `UI/web` components for live checkbox matrix.
+- Wire to `/admin` components for live checkbox matrix.
 
 ## 8) JSON flexibility (required)
 

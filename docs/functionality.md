@@ -91,6 +91,10 @@ Returns orchestrator state (`orchestrator.getState()`), currently:
 
 ### 4.4 `POST /chat` (SSE stream)
 
+This section describes the current legacy runtime behavior only.
+
+New `/api` and `/admin` work must use the canonical dotted realtime event catalog in [shared-type-contracts-spec.md](./shared-type-contracts-spec.md).
+
 - Reads JSON body fields:
   - `message` (required)
   - `threadId` (optional; defaults to `main`)
@@ -579,7 +583,7 @@ Parity matrix:
 | project safety | `POST /projects/{projectId}/safety/preflight`, `.../degrade`, `.../restore`, `.../archive`, `.../restore`, `.../delete` | `project.safety.preflight`, `project.safety.degrade`, `project.safety.restore`, `project.archive`, `project.delete` | `/project safety` | governance + project-state policy | yes | yes | blocked |
 | step-up verification | `POST /verification/challenges/*`, `GET/POST /verification/factors*` | `verification.challenge.start`, `verification.challenge.verify`, `verification.challenge.resend`, `verification.challenge.cancel`, `verification.factor.enroll`, `verification.factor.verify`, `verification.factor.revoke`, `verification.factor.list` | `/verify`, `/verify enroll` | high-risk action policy | conditional | yes | blocked |
 | language + translation | `GET/PATCH /orgs/{orgId}/language`, `GET/PATCH /users/{userId}/language`, `PATCH /threads/{threadId}/language`, `PATCH /sessions/{sessionId}/language`, `POST /translation/preview` | `translation.org.get`, `translation.org.update`, `translation.user.get`, `translation.user.update`, `translation.thread.update`, `translation.session.update`, `translation.preview` | `/language set`, `/translate preview` | org/user/thread/session policy | org default change: yes | yes | blocked |
-| token ledger + pricing | `POST /ledger/tokens/events`, `GET /ledger/tokens/events`, `GET /ledger/tokens/summary`, `GET/POST /ledger/tokens/pricing`, `DELETE /ledger/tokens/pricing/{profileId}`, `GET /ledger/tokens/monthly-estimate` | `ledger.tokens.event.ingest`, `ledger.tokens.events.list`, `ledger.tokens.summary.get`, `ledger.tokens.pricing.list`, `ledger.tokens.pricing.upsert`, `ledger.tokens.pricing.delete`, `ledger.tokens.monthly_estimate.get` | `/ledger tokens`, `/ledger pricing` | org/team/admin policy | pricing override: yes | yes | blocked |
+| token ledger + pricing | `POST /ledger/tokens/events`, `GET /ledger/tokens/events`, `GET /ledger/tokens/summary`, `GET/POST /ledger/tokens/pricing`, `DELETE /ledger/tokens/pricing/{profileId}`, `GET /ledger/tokens/monthly-estimate` | `ledger.tokens.event.ingest`, `ledger.tokens.events.list`, `ledger.tokens.summary.get`, `ledger.tokens.pricing.list`, `ledger.tokens.pricing.upsert`, `ledger.tokens.pricing.delete`, `ledger.tokens.monthly_estimate.get` | `/ledger tokens`, `/ledger pricing` | org/admin policy; team owners read usage only | pricing override: yes | yes | blocked |
 | knowledge base | `POST /knowledge-base/*` | `knowledge_base.link`, `knowledge_base.search`, `knowledge_base.read`, `knowledge_base.search_summary`, `knowledge_base.reindex`, `knowledge_base.projects.share` | `/knowledge search` | project/team/channel policy | read: no; write/share: yes | yes | blocked |
 | CLI tool imports | `POST /tools/import` | `tool.import` (cli/unified toolset manifest), `tool.update` | `/tool import` | project + role + tool policy | yes for unmanaged tools | yes | blocked |
 
@@ -593,6 +597,7 @@ Parity matrix:
 - slash-command aliases (for UX) map one-to-one to the same control action envelope.
 - destructive actions return `requires_approval` when required proof is missing.
 - `workspace` is a legacy alias for `project`; all new APIs and docs must use `project`, and legacy input must be canonicalized before policy evaluation.
+- all new `/api` control-plane routes return `ApiResponse<T>` or `ApiError` from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md).
 
 Control action envelope:
 
@@ -601,29 +606,12 @@ type ControlActionEnvelope = {
   action: string;
   commandId: string;
   commandVersion: string;
-  actionContext: {
-    requestId: string;
-    correlationId?: string;
-    actorContext: {
-      actorType: 'user' | 'agent' | 'service';
-      actorId: string;
-      organizationId: string;
-      projectId?: string;
-      teamId?: string;
-      channelId?: string;
-    };
-    approvalProof?: string;
-    verification?: {
-      challengeId: string;
-      proof: string;
-      factorType?: 'email_otp' | 'email_link' | 'totp' | 'recovery_code' | 'webauthn';
-    };
-  };
+  context: AuthorizedActionContext;
   payload: Record<string, unknown>;
 };
 ```
 
-Lower-level service contracts should normalize this control envelope into the canonical `AccessContext` defined in [organization-governance-spec.md](./organization-governance-spec.md).
+The `context` field is the canonical shared contract from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md). Lower-level services must consume it directly rather than defining a second mapping type.
 
 ```ts
 type ControlCommandDefinition = {
@@ -661,9 +649,9 @@ type ControlCommandDefinition = {
   - if no interactive login is required, system is controllable via MCP/chat immediately,
   - if bootstrap policy is restricted, initial operations are denied with explicit remediation actions.
 
-## 13.1) Tool discovery requirements for UI/web
+## 13.1) Tool discovery requirements for `/admin`
 
-- `UI/web` should treat tool selection as a scoped query operation and avoid loading all tool entries at startup.
+- `/admin` should treat tool selection as a scoped query operation and avoid loading all tool entries at startup.
 - Required tool surface fields for every registered entry:
   - `overview` (search result summary),
   - `instructions` (human-use constraints),

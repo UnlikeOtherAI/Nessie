@@ -150,8 +150,93 @@ Responsibilities:
 - coordinate model calls
 - run bounded workflow steps
 - emit task events and token-ledger events
-- consume Pub/Sub-delivered work with idempotent handlers
+- consume queue-delivered work with idempotent handlers
 - write durable outputs to Postgres/GCS
+
+### Queue abstraction
+
+The worker consumes jobs through a queue provider abstraction. The provider is selected centrally in config, not per-feature.
+
+```ts
+interface QueueProvider {
+  enqueue(topic: string, payload: unknown, options?: { delayMs?: number; idempotencyKey?: string }): Promise<string>;
+  subscribe(topic: string, handler: (job: QueueJob) => Promise<void>): void;
+  acknowledge(jobId: string): Promise<void>;
+  nack(jobId: string, reason?: string): Promise<void>;
+}
+
+interface QueueJob {
+  id: string;
+  topic: string;
+  payload: unknown;
+  attempt: number;
+  maxAttempts: number;
+  enqueuedAt: string;
+}
+```
+
+#### Hosted adapter: Pub/Sub
+
+- uses Google Cloud Pub/Sub with Eventarc-triggered Cloud Run
+- topics map 1:1 to Pub/Sub topics
+- dead-letter topics enabled for stuck workloads
+- at-least-once delivery, all handlers must be idempotent
+
+#### Local adapter: Postgres queue (`pgqueue`)
+
+The default local queue adapter. Zero additional dependencies beyond Postgres (which is already required).
+
+Schema:
+
+```sql
+CREATE TABLE queue_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  topic TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending | processing | done | failed | dead
+  idempotency_key TEXT,
+  attempt INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  locked_until TIMESTAMPTZ,
+  enqueued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  error_message TEXT,
+  UNIQUE(idempotency_key) WHERE idempotency_key IS NOT NULL
+);
+
+CREATE INDEX idx_queue_jobs_poll ON queue_jobs (topic, status, locked_until)
+  WHERE status IN ('pending', 'processing');
+```
+
+Dequeue uses `SELECT ... FOR UPDATE SKIP LOCKED`:
+
+```sql
+UPDATE queue_jobs
+SET status = 'processing', attempt = attempt + 1, locked_until = now() + interval '5 minutes', started_at = now()
+WHERE id = (
+  SELECT id FROM queue_jobs
+  WHERE topic = $1 AND status = 'pending' AND (locked_until IS NULL OR locked_until < now())
+  ORDER BY enqueued_at
+  FOR UPDATE SKIP LOCKED
+  LIMIT 1
+)
+RETURNING *;
+```
+
+Rules:
+
+- poll interval: 1 second (configurable via `NESSIE_QUEUE_POLL_INTERVAL_MS`)
+- lock duration: 5 minutes (if worker crashes, job becomes available again)
+- after `max_attempts`, job moves to `dead` status (equivalent of dead-letter in Pub/Sub)
+- `acknowledge` sets status to `done`
+- `nack` releases the lock and increments attempt
+
+In non-Docker local mode, the API and worker run in the same Node process but the queue abstraction remains the same — the worker subscribes to topics via the pgqueue adapter. This means the queue path is always exercised, even locally, preventing the "works locally, breaks in prod" class of bugs.
+
+#### Optional adapter: BullMQ on Redis
+
+If Redis is present and configured, BullMQ can be used instead of pgqueue. This is optional and provides better throughput for high-volume local installs, but pgqueue is the zero-dependency default.
 
 ### Runner service
 
@@ -495,9 +580,11 @@ admin/
 web/
 worker/
 runner/
+cli/
 packages/
-  domain/
   schemas/
+  config/
+  domain/
   orchestration/
   control-plane/
   remote-worker-protocol/
@@ -505,7 +592,6 @@ packages/
   policy/
   token-ledger/
   translation/
-  config/
 infrastructure/
   docker/
   compose/
@@ -519,6 +605,27 @@ Root layout rule:
 - `/admin` is the full Nessie product interface root
 - `/web` is the landing page / marketing site root only
 - `/worker` is the async execution service root
+- `/cli` is the local launcher (`nessie local up`, `nessie local doctor`, etc.)
+- `/packages/schemas` and `/packages/config` are Phase 1 shared packages (see section 13a)
+
+### API path prefix rule
+
+All HTTP endpoints for the new `/api` service are mounted under the `/api/` prefix. References to unprefixed paths in other documents (e.g. `GET /orgs/{orgId}/teams` in the governance spec) are logical names for conceptual clarity; the actual mount path always adds the `/api/` prefix (e.g. `GET /api/orgs/{orgId}/teams`).
+
+### Phase 1 launcher (`/cli`)
+
+The launcher is a lightweight Node.js CLI package at `/cli` in the monorepo. It is published as `nessie` on npm.
+
+Responsibilities:
+
+- `nessie local up` — start the system (Docker or non-Docker)
+- `nessie local down` — stop local services
+- `nessie local status` — show what's running
+- `nessie local logs` — tail service logs
+- `nessie local doctor` — check dependencies, report degraded capabilities
+- `nessie local reset` — wipe local data (with confirmation)
+
+In non-Docker mode, the launcher starts the API, worker, and admin dev server as child processes. In Docker mode, it orchestrates Docker Compose. The launcher imports from `packages/config` for dependency detection and config validation.
 
 ## 14) Architectural rules
 

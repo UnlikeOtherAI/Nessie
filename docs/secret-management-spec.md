@@ -121,43 +121,18 @@ type SecretBinding = {
 Deterministic authorization and secret operations require a single normalized context object.
 
 ```ts
-type SecretAccessContext = {
-  actor: {
-    actorType: 'user' | 'agent' | 'service';
-    actorId: string;
-    roles?: string[];
-  };
-  tenant: {
-    organizationId: string;
-    projectId?: string;
-    teamId?: string;
-    channelId?: string;
-  };
-  actionContext: {
-    teamId?: string;
-    channelId?: string;
-    agentId?: string;
-    toolId?: string;
-    taskId?: string;
-    threadId?: string;
-    sessionId?: string;
-    requestId: string;
-    correlationId?: string;
-    purpose?: string;
-  };
-  approval?: {
-    approverId?: string;
-    approvalId?: string;
-    approvalProof?: string;
-    approvalContext?: Record<string, string>;
-  };
-  verification?: {
-    challengeId: string;
-    proof: string;
-    factorType?: 'email_otp' | 'email_link' | 'totp' | 'webauthn';
+type SecretAccessContext = AuthorizedActionContext & {
+  actionContext: AuthorizedActionContext['actionContext'] & {
+    purpose: string;
   };
 };
 ```
+
+Rules:
+
+- `SecretAccessContext` extends the shared canonical contract from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
+- `actionContext.purpose` is mandatory for `resolve`, `rotate`, `revoke`, and `delete`
+- secret APIs must not redefine actor, tenant, approval, or verification fields independently
 
 ## 5) Encryption requirements
 

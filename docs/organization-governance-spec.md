@@ -216,6 +216,8 @@ Each permission is a matrix on:
 
 ## 5) API/contracts required
 
+All endpoint paths in this section are logical names. The actual HTTP mount path always includes the `/api/` prefix (e.g. `GET /orgs/{orgId}/teams` is served at `GET /api/orgs/{orgId}/teams`). See [hosted-app-architecture.md](./hosted-app-architecture.md) section 13 for the API path prefix rule.
+
 ### 5.1 Discovery and search
 
 - `GET /orgs/{orgId}/teams` with member filtering
@@ -330,50 +332,21 @@ Every governance action in the table above must also be callable from chat by pa
 
 ### 6.1 Canonical access context
 
-All policy operations and checks MUST include this context envelope in a deterministic order:
+All policy operations and checks MUST use the canonical shared contract from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md).
+
+The governance layer consumes `AuthorizedActionContext`.
+
+It does not redefine it.
 
 ```ts
-type AccessActor = {
-  actorType: 'user' | 'agent' | 'service';
-  actorId: string;
-  roles?: string[];
-};
-
-type AccessContext = {
-  actor: AccessActor;
-  tenant: {
-    organizationId: string;
-    projectId?: string;
-    teamId?: string;
-    channelId?: string;
-  };
-  actionContext: {
-    teamId?: string;
-    channelId?: string;
-    agentId?: string;
-    toolId?: string;
-    taskId?: string;
-    sessionId?: string;
-    threadId?: string;
-    requestId: string;
-    correlationId?: string;
-    purpose?: string;
-  };
-  approval?: {
-    approverId?: string;
-    approvalId?: string;
-    approvalProof?: string;
-    approvalContext?: Record<string, string>;
-  };
-  verification?: {
-    challengeId: string;
-    proof: string;
-    factorType?: 'email_otp' | 'email_link' | 'totp' | 'webauthn';
-  };
-};
+type AccessContext = AuthorizedActionContext;
 ```
 
-This is the canonical base envelope for policy checks. Resource-specific contracts may extend it, but they must not rename these fields.
+Governance-specific invariants:
+
+- `actionContext` scope must be equal to or narrower than `tenant`
+- verification factors must use the shared `VerificationFactorType` enum
+- project/team/channel policy evaluation must not introduce a second access-envelope shape
 
 ### 6.2 Project safety baseline contracts
 
