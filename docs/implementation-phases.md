@@ -372,82 +372,96 @@ It should not wait for:
 
 ## 4) Recommended build sequence inside Phase 1
 
-1. React CSR shell:
-   - `/admin`:
-      - auth entry
-      - one shared auth/session provider
-      - channel list
-      - thread view
-      - agent drawer
-      - basic tools surface
-      - agent activity panel (always visible, WebSocket-driven status dots)
-      - agent detail drill-down (sub-agent tree, tool log, thought stream, last 5 messages)
-      - channel/user/agent administration shell
-      - TanStack Query via `QueryProvider`
-   - `/web`:
-     - landing page only
-2. API + Postgres schema:
-   - `/api`
-   - API base path:
-     - all HTTP routes live under `/api/...`
-     - Phase 1 SSE streaming also lives under `/api/...`
-   - bootstrap data model:
-     - every organization gets one default project
-     - every default project gets one default team
-     - channels and agents bind inside that default containment model
-    - users
-    - projects
-    - teams
-    - channels
-    - agents
-    - threads
-    - messages
-   - `queue_jobs` table for pgqueue local adapter
-   - minimum Phase 1 API surface:
-     - `POST /api/auth/bootstrap` (first-user creation, see [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 4.3a)
-     - `GET /api/auth/providers`
-     - `POST /api/auth/session`
-     - `DELETE /api/auth/session`
-     - `GET /api/auth/me`
-     - `GET /api/channels`
-     - `POST /api/channels`
-    - `GET /api/agents`
-    - `POST /api/agents`
-    - `POST /api/agents/{agentId}/bindings`
-    - `GET /api/tools`
-    - `GET /api/threads/{threadId}/messages`
-    - `POST /api/threads/{threadId}/messages`
-    - `GET /api/threads/{threadId}/stream`
-   - agent activity and observability:
-    - `GET /api/agents/{agentId}/status`
-    - `GET /api/agents/{agentId}/activity`
-    - `GET /api/agents/{agentId}/messages?limit=5`
-    - `GET /api/agents/{agentId}/children`
-    - `GET /api/agents/{agentId}/runs/{runId}/tools`
-    - `WS /api/activity` (WebSocket for real-time agent status, tool execution, sub-agent lifecycle events)
-3. Worker and run model:
-   - `/worker`
-   - streaming
-   - sub-agent spawn
-   - basic task/run records
-   - canonical actor context comes from the auth/session layer, not page-local helpers
-   - worker jobs carry the same `AuthorizedActionContext` from `packages/schemas`
-4. Safe tools:
-   - web
-   - docs/knowledge read
-5. Basic admin flows:
-   - create channel
-   - create agent
-   - bind agent
-   - invite user
-6. Local packaging:
-   - Docker path
-7. Shared foundations:
-   - `packages/schemas`
-   - `packages/config`
-   - non-Docker path
-   - `nessie local doctor`
-   - `nessie local up`
+### Step 0: Monorepo and shared foundations
+
+This must be built first. Nothing else can import types or config until this exists.
+
+- `pnpm-workspace.yaml` with package globs for `api/`, `admin/`, `web/`, `worker/`, `cli/`, `packages/*`
+- `turbo.json` with build/lint/typecheck pipeline
+- root `tsconfig.json` with project references
+- root ESLint config (flat config, strict, shared across all packages)
+- `packages/schemas`:
+  - all types from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) section 10
+  - Zod schemas for each type
+  - export branded ID helpers
+- `packages/config`:
+  - typed config schema with Zod validation
+  - env-to-config mapping
+  - `RuntimeCapabilities` flags
+  - see [config-module-spec.md](./config-module-spec.md)
+
+### Step 1: Prisma schema and database
+
+- `api/prisma/schema.prisma` — see [phase1-prisma-schema.md](./phase1-prisma-schema.md)
+- raw SQL migration for `queue_jobs` table
+- bootstrap seed logic (deterministic default org/project/team/channel)
+- `npx prisma migrate dev` working locally
+
+### Step 2: API service
+
+- `/api` on Fastify
+- Fastify auth middleware with JWT validation (see [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 4.3c)
+- bootstrap endpoint: `POST /api/auth/bootstrap`
+- auth endpoints: `GET /api/auth/providers`, `POST /api/auth/session`, `DELETE /api/auth/session`, `GET /api/auth/me`
+- CRUD endpoints:
+  - `GET /api/channels`, `POST /api/channels`
+  - `GET /api/agents`, `POST /api/agents`
+  - `POST /api/agents/{agentId}/bindings`
+  - `GET /api/tools`
+  - `GET /api/threads/{threadId}/messages`, `POST /api/threads/{threadId}/messages`
+- SSE streaming: `GET /api/threads/{threadId}/stream`
+- agent activity endpoints:
+  - `GET /api/agents/{agentId}/status`
+  - `GET /api/agents/{agentId}/activity`
+  - `GET /api/agents/{agentId}/messages?limit=5`
+  - `GET /api/agents/{agentId}/children`
+  - `GET /api/agents/{agentId}/runs/{runId}/tools`
+- WebSocket: `WS /api/activity` with subscription protocol (see [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) section 5)
+- pgqueue adapter for local mode
+- job submission to worker via queue
+
+### Step 3: Worker and run model
+
+- `/worker`
+- queue consumer using `QueueProvider` interface
+- run execution: model API calls, streaming delta emission
+- sub-agent spawn: create child agent record, create task, enqueue child job
+- basic task/run state machine
+- tool execution for safe tools (web search, document read)
+- emit WebSocket events via shared event emitter (agent.status, agent.tool.start/end, agent.spawned, run.updated, message.new)
+- worker jobs carry `AuthorizedActionContext` from `packages/schemas`
+
+### Step 4: React admin UI
+
+- `/admin` on React + Vite
+- UI stack: Tailwind CSS + shadcn/ui for primitives, custom components on top
+- TanStack Query via `QueryProvider`
+- provider tree: `AppProvider` > `AuthSessionProvider` > `ApiClientProvider` > `QueryProvider` > `ThemeProvider`
+- React Router (`createBrowserRouter`) for routing, channel selection via URL state
+- domain facades: `auth`, `channels`, `agents`, `tools`, `threads`, `messages`, `runs` (see [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md) section 5.2)
+- auth flow: bootstrap detection, login form, SSO redirect
+- channel list and thread view
+- agent drawer
+- basic tools surface
+- agent activity panel (always visible, WebSocket-driven status dots)
+- agent detail drill-down (sub-agent tree, tool log, last 5 messages)
+- `AgentThoughtStream` stub with placeholder
+- channel/user/agent administration shell
+- all mandatory components from [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md) sections 8 and 9.4
+
+### Step 5: Landing page
+
+- `/web` — minimal landing page only
+- keep non-blocking on backend/admin progress
+
+### Step 6: Local packaging
+
+- `/cli` launcher package
+- `nessie local up --docker` / `--no-docker`
+- `nessie local doctor`
+- `nessie local down`, `status`, `logs`, `reset`
+- Docker Compose config at `infrastructure/compose/`
+- non-Docker child process startup
 
 ## 5) Quality gates
 
@@ -469,6 +483,9 @@ Minimum gate set:
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
 - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
 - [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md)
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
+- [phase1-prisma-schema.md](./phase1-prisma-schema.md)
+- [config-module-spec.md](./config-module-spec.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)
 - [remote-worker-spec.md](./remote-worker-spec.md)
 - [functionality.md](./functionality.md)

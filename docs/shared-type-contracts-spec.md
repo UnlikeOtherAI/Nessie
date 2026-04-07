@@ -93,6 +93,10 @@ Every event has a transport annotation:
 ```ts
 type AgentStatus = 'idle' | 'thinking' | 'executing' | 'waiting_approval' | 'error' | 'offline';
 
+type RunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+type TaskStatus = 'inbox' | 'assigned' | 'in_progress' | 'review' | 'done' | 'failed' | 'cancelled' | 'awaiting_approval';
+
 // SSE events — chat/thread streaming
 type SseEventMap = {
   'stream.start': { runId: string; threadId: string };
@@ -190,6 +194,87 @@ WebSocket reconnect rules:
 - the server replies with a current snapshot for subscribed entities, then resumes live events
 - WebSocket reconnect must not depend on instance-local memory
 - if durable replay is added for a WebSocket event family later, it must still use the same monotonic sequence strategy
+
+### WebSocket subscription protocol
+
+The WebSocket at `WS /api/activity` uses a simple JSON message protocol. All messages are JSON objects with a `type` field.
+
+Client-to-server messages:
+
+```ts
+// Subscribe to agent activity for specific scopes
+type WsSubscribe = {
+  type: 'subscribe';
+  scopes: Array<
+    | { kind: 'organization'; organizationId: string }
+    | { kind: 'channel'; channelId: string }
+    | { kind: 'agent'; agentId: string }
+  >;
+};
+
+// Replace current subscriptions entirely
+type WsSetSubscriptions = {
+  type: 'set_subscriptions';
+  scopes: WsSubscribe['scopes'];
+};
+
+// Remove specific subscriptions
+type WsUnsubscribe = {
+  type: 'unsubscribe';
+  scopes: WsSubscribe['scopes'];
+};
+
+// Keepalive
+type WsPing = { type: 'ping' };
+```
+
+Server-to-client messages:
+
+```ts
+// Subscription confirmed
+type WsSubscribed = {
+  type: 'subscribed';
+  scopes: WsSubscribe['scopes'];
+  snapshot: WsSnapshot;
+};
+
+// Current state snapshot (sent on subscribe and reconnect)
+type WsSnapshot = {
+  agents: Array<{
+    agentId: string;
+    status: AgentStatus;
+    since: string;
+    currentRunId?: string;
+    currentToolName?: string;
+    currentToolStartedAt?: string;
+  }>;
+};
+
+// Live event delivery
+type WsEvent = {
+  type: 'event';
+  event: keyof WsEventMap;
+  data: WsEventMap[keyof WsEventMap];
+  ts: string;
+};
+
+// Keepalive response
+type WsPong = { type: 'pong'; ts: string };
+
+// Error
+type WsError = { type: 'error'; code: string; message: string };
+```
+
+Rules:
+
+- the client must send `subscribe` or `set_subscriptions` after connecting; the server does not push events until a subscription exists
+- `set_subscriptions` replaces all current subscriptions atomically; use this on reconnect
+- `subscribe` and `unsubscribe` are additive/subtractive
+- on `subscribe` or `set_subscriptions`, the server replies with `subscribed` including a `snapshot` of current agent states for the subscribed scopes
+- after the snapshot, the server pushes live `event` messages as they occur
+- the server sends `pong` in response to `ping`; clients should ping every 30 seconds
+- if the JWT in the initial WebSocket upgrade request is expired, the server closes the connection with code `4001`
+- if the WebSocket is idle for 60 seconds with no ping, the server may close with code `4002`
 
 ## 5.1) Auth/session response contract
 

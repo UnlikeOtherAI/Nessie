@@ -100,10 +100,20 @@ Optional later:
 
 These are app-wide concerns, not entity-specific concerns.
 
-Phase 1 rule:
+Phase 1 rules:
 
 - `QueryProvider` means TanStack Query's `QueryClientProvider`
 - do not build a custom query cache or a page-local fetch state system instead
+- `ApiClientProvider` provides a typed fetch wrapper (not axios) configured with the JWT token from `AuthSessionProvider` and the base URL; domain facades import the client from this provider via a `useApiClient()` hook
+
+### 5.1a UI stack
+
+- **Tailwind CSS** for utility-first styling
+- **shadcn/ui** for base primitive components (Button, Input, Dialog, Tooltip, ScrollArea, etc.)
+- custom components built on top of shadcn/ui primitives for domain-specific needs (ChannelRow, AgentRow, StatusPill, etc.)
+- **React Router v7** with `createBrowserRouter` for routing; channel selection is URL state (`/admin/channels/:channelId`)
+- do not introduce a second CSS framework, CSS-in-JS library, or styled-components alongside Tailwind
+- do not use a different component library (MUI, Ant, Chakra) — shadcn/ui is the base
 
 ### 5.2 Domain facades/services
 
