@@ -1,0 +1,202 @@
+{
+  "apiVersion": "toolset.nessie.io/v1",
+  "kind": "NessieToolBundle",
+  "metadata": {
+    "id": "com.acme.ollama-tools",
+    "name": "Ollama Tools",
+    "version": "1.0.0",
+    "vendor": "Acme",
+    "source": "https://marketplace.example.com/toolsets/ollama.json",
+    "license": "MIT",
+    "signature": {
+      "type": "sha256",
+      "value": "a2f3..."
+    }
+  },
+  "policy": {
+    "defaultToolMode": "inherit",
+    "defaultSandbox": {
+      "allowOutsideReadOnly": true,
+      "allowedRoots": ["/System/Volumes/Data/.internal/projects/Projects"],
+      "deniedPaths": ["/etc", "/System/Volumes/Data/.internal/secrets"],
+      "env": {
+        "allowVars": ["PATH", "HOME", "OLLAMA_HOST"],
+        "denyVars": ["OPENAI_API_KEY"]
+      }
+    }
+  },
+  "tools": [
+    {
+      "id": "ssh",
+      "toolName": "SSH",
+      "label": "SSH",
+      "overview": "Run remote SSH commands or keep a long-lived SSH shell session open for follow-up input.",
+      "instructions": "Only connect to approved hosts, never run destructive commands without approval, and prefer explicit timeouts for unattended tasks.",
+      "source": "custom",
+      "transport": "pty",
+      "enabled": true,
+      "transportConfig": {
+        "command": "ssh",
+        "args": ["-o", "BatchMode=yes"],
+        "workdir": "/tmp",
+        "shell": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "enum": ["run", "session"] },
+          "host": { "type": "string" },
+          "user": { "type": "string" },
+          "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "identityKeySecretRef": { "type": "string" },
+          "command": { "type": "string" },
+          "knownHostsPolicy": { "type": "string", "enum": ["strict", "accept-new"] },
+          "timeoutMs": { "type": "integer", "minimum": 1000 }
+        },
+        "required": ["mode", "host"]
+      },
+      "grant": {
+        "state": "allowed",
+        "config": {
+          "allowedHosts": ["srv1.internal.example", "srv2.internal.example"],
+          "allowedKeys": ["id_ed25519_nessie"],
+          "defaultMode": "run",
+          "runTimeoutMs": 120000,
+          "keepAliveMs": 30000,
+          "maxRemoteCommandMs": 900000
+        }
+      },
+      "basePrompt": {
+        "content": "Use SSH only for approved tasks and approved hosts.",
+        "mergeMode": "append"
+      },
+      "baseSearchTerms": ["ssh", "remote", "session", "terminal"],
+      "allowSearchTerms": ["run", "session", "host", "remote shell"],
+      "tags": ["remote", "security", "ops", "session"],
+      "commonPrompt": {
+        "enabledPrompt": "Prefer the run mode for bounded actions; use session mode only when iterative follow-up is required.",
+        "overrideMode": "append"
+      },
+      "createdBy": "system",
+      "owner": "com.acme"
+    },
+    {
+      "id": "knowledge-base",
+      "toolName": "KnowledgeBase",
+      "label": "Knowledge Base",
+      "overview": "Link folders, docs, MCP endpoints, and URLs into searchable, policy-scoped knowledge sources.",
+      "instructions": "Only summarize and return compact search hits by default. Read full documents only when explicitly asked.",
+      "source": "custom",
+      "transport": "mcp",
+      "enabled": true,
+      "transportConfig": {
+        "endpoint": "mcp://knowledge-base/v1",
+        "schema": "knowledge-base-action-v1"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["link", "reindex", "summarize", "search", "read", "search.summary"]
+          },
+          "accessContext": {
+            "type": "object",
+            "properties": {
+              "actor": { "type": "object" },
+              "tenant": {
+                "type": "object",
+                "properties": {
+                  "organizationId": { "type": "string" },
+                  "projectId": { "type": "string" },
+                  "teamId": { "type": "string" },
+                  "channelId": { "type": "string" }
+                },
+                "required": ["organizationId"]
+              },
+              "actionContext": { "type": "object" }
+            }
+          },
+          "projectId": { "type": "string" },
+          "sourceUri": { "type": "string" },
+          "sourceType": { "type": "string", "enum": ["file", "folder", "url", "mcp"] },
+          "docId": { "type": "string" },
+          "query": { "type": "string", "maxLength": 8192 },
+          "topK": { "type": "integer", "minimum": 1, "maximum": 50 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "cursor": { "type": "string" },
+          "sort": { "type": "string", "enum": ["updatedAtDesc", "scoreDesc", "titleAsc"] },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "ephemeral": { "type": "boolean" },
+          "scope": { "type": "string", "enum": ["public", "protected", "private"] }
+        },
+        "required": ["action"]
+      },
+      "grant": {
+        "state": "allowed",
+        "config": {
+          "defaultTopK": 10,
+          "maxTopK": 50,
+          "ephemeralTtlMs": 600000,
+          "maxEphemeralHits": 25,
+          "summaryLength": 240,
+          "allowSemanticFallback": true
+        }
+      },
+      "basePrompt": {
+        "content": "Use compact search-first retrieval and avoid full-context injection.",
+        "mergeMode": "append"
+      },
+      "baseSearchTerms": ["knowledge", "rag", "docs", "search", "kb"],
+      "allowSearchTerms": ["summary", "mcp", "folder", "document", "index", "semantic"],
+      "tags": ["knowledge", "search", "docs", "policy", "session"],
+      "commonPrompt": {
+        "enabledPrompt": "Prefer search and search.summary, and read full text only when explicitly requested.",
+        "overrideMode": "append"
+      },
+      "createdBy": "system",
+      "owner": "com.acme"
+    },
+    {
+      "id": "ollama-invoke",
+      "toolName": "OllamaInvoke",
+      "label": "Ollama Invoke",
+      "overview": "Run local model prompts through Ollama for inference tasks.",
+      "instructions": "Use this tool only for offline/edge inference, and keep prompts deterministic.",
+      "source": "custom",
+      "transport": "http",
+      "transportConfig": {
+        "url": "http://127.0.0.1:11434/api/generate",
+        "method": "POST",
+        "headers": { "Content-Type": "application/json" }
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": { "type": "string" }
+        },
+        "required": ["prompt"]
+      },
+      "grant": {
+        "state": "allowed",
+        "config": {
+          "timeoutMs": 120000,
+          "maxOutputBytes": 262144
+        }
+      },
+      "basePrompt": {
+        "content": "Use Ollama locally for this tool call. Keep prompts short and explicit.",
+        "mergeMode": "append"
+      },
+      "baseSearchTerms": ["llm", "local", "inference", "ollama"],
+      "allowSearchTerms": ["local", "model", "generate", "completion"],
+      "tags": ["llm", "local", "inference"],
+      "commonPrompt": {
+        "enabledPrompt": "Use local Ollama for this model call.",
+        "overrideMode": "append"
+      },
+      "createdBy": "agent",
+      "owner": "com.acme"
+    }
+  ]
+}

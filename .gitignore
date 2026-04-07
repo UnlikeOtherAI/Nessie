@@ -10,3 +10,4 @@ macos/.build/
 macos/**/xcshareddata/
 .playwright-mcp/
 *.png
+tmp/

@@ -1,5 +1,7 @@
 # Helper Agent Implementation Plan
 
+> **Status**: historical implementation plan.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Build a voice-first personal AI agent for macOS with multi-agent orchestration. Voice via OpenAI Realtime API (gpt-realtime-1.5), tool layer inspired by Claude Code, native macOS UI.

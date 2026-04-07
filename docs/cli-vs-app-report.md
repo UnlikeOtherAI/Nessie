@@ -1,5 +1,7 @@
 # Nessie: CLI vs. macOS App — Functionality Audit
 
+> **Status**: snapshot report as of 2026-04-07.
+
 **Date**: 2026-04-07
 **Purpose**: Determine whether the macOS app contains only interface code, or if any core functionality has been incorrectly placed there. Identify what belongs where.
 

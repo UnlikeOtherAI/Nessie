@@ -1,5 +1,7 @@
 # Gap Analysis: Helper Agent vs OpenClaw
 
+> **Status**: historical gap-analysis note. Verify against [openclaw-reference.md](./openclaw-reference.md) and [functionality.md](./functionality.md) before using as implementation guidance.
+
 > This document maps what the Helper Agent project already has against what OpenClaw provides, identifies integration paths, and recommends how to proceed.
 
 ## What Helper Agent Has

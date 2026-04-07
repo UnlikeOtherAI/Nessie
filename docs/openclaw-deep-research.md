@@ -1,5 +1,7 @@
 # OpenClaw Deep Research for Native iOS and Android Clients
 
+> **Status**: superseded by [openclaw-reference.md](./openclaw-reference.md).
+
 ## Executive summary
 
 OpenClaw is an MIT-licensed, self-hosted "Gateway" that sits between your existing chat surfaces (messaging apps, web UI, CLI) and one or more agent runtimes, owning session state, routing, delivery, pairing, and integrations. The core control-plane transport is a typed WebSocket (default port 18789) with a mandatory `connect` handshake, role declaration (`operator` vs `node`), scopes, and device identity + signature (challenge/nonce). After first approval ("device pairing"), the Gateway issues a per-device token (`hello-ok.auth.deviceToken`) that clients persist for subsequent connects, with explicit retry guidance and stable auth/detail error codes.

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon-1024.png" width="128" height="128" alt="Nessie icon">
+  <img src="assets/icon-trimmed.png" width="128" height="128" alt="Nessie icon">
 </p>
 
 <h1 align="center">Nessie</h1>
