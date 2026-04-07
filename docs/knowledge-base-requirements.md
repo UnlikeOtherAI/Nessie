@@ -1,0 +1,178 @@
+# Knowledge Base Requirements (Deterministic + Ephemeral Retrieval)
+
+> Status: target-state design.
+
+## 1) Decision on terminology
+
+This is a **knowledge retrieval + summarization system** with optional RAG-like generation.
+
+It does not need to be full end-to-end RAG in the first phase. The practical model is:
+
+- persist sources and deterministic metadata
+- query compact summaries first
+- fetch full content only when explicitly requested
+- generate synthesized answers only in a bounded, explicit `search.summary` or task-specific path
+
+This avoids context pollution while still allowing sub-agents to discover what exists and retrieve only the needed material.
+
+## 2) Functional requirements
+
+1. The system must ingest external knowledge sources without requiring code changes.
+2. Supported source kinds:
+   - local folder
+   - local file path
+   - local MCP documentation endpoint
+   - remote URL
+3. Ingestion should capture short structured summaries at source level.
+4. Every source must expose a canonical metadata record before use:
+   - `sourceUri`
+   - `kind`
+   - `mimeType`
+   - `title`
+   - `summary`
+   - `language`
+   - `tags`
+   - `updatedAt`
+   - `checksum`
+5. Search should be available in two modes:
+   - deterministic index search (tag/keyword/path/project scoped, stable ordering)
+   - semantic search option (optional, if vector index exists)
+6. Search should be bounded and compact by default:
+   - small `k` with short snippets
+   - no automatic full-document injection
+   - explicit `read` required to get full body
+   - project-aware default scope using `projectId`
+7. Full content access should support read-level policy checks.
+   - cross-project reads require explicit sharing/allow policy.
+8. Thread-local ephemeral retrieval must be supported:
+   - short-lived shortlist by thread
+   - query-derived narrowing, TTL-limited
+   - private per-thread cache by actor/channel context
+9. Search endpoints must support deterministic pagination and tie-breakers.
+10. Tool calls need explainable provenance for UI and audit:
+    - whether content is from summary or full read
+    - result source IDs
+    - team/channel-level visibility reason
+    - project-level visibility reason must be explicit in every response
+
+## 3) Suggested tool contract
+
+Single logical tool family: `knowledge-base` with action enum.
+
+Required actions:
+
+- `link`: register a new source or a source container
+- `reindex`: refresh existing source metadata/index chunks
+- `summarize`: compute/refresh source summary at ingestion time
+- `search`: return compact hit list and provenance
+- `read`: fetch specific document content by `docId`
+- `search.summary`: return a compact synthetic answer with citations (`docId`, sentence spans, score)
+
+Recommended action payload shape:
+
+```ts
+interface KnowledgeBaseToolInput {
+  action: "link" | "reindex" | "summarize" | "search" | "read" | "search.summary";
+  accessContext: {
+    actor: {
+      actorType: "user" | "agent" | "service";
+      actorId: string;
+      roles?: string[];
+    };
+    tenant: {
+      organizationId: string;
+      projectId?: string;
+      teamId?: string;
+      channelId?: string;
+    };
+    actionContext: {
+      teamId?: string;
+      channelId?: string;
+      agentId?: string;
+      toolId?: string;
+      taskId?: string;
+      threadId?: string;
+      sessionId?: string;
+      requestId: string;
+      correlationId?: string;
+      purpose?: string;
+    };
+  };
+  projectId?: string;
+  sourceUri?: string;
+  sourceType?: "file" | "folder" | "url" | "mcp";
+  docId?: string;
+  query?: string;
+  topK?: number;
+  limit?: number;
+  cursor?: string;
+  sort?: "updatedAtDesc" | "scoreDesc" | "titleAsc";
+  tags?: string[];
+  ephemeral?: boolean;
+  scope?: "public" | "protected" | "private"; // source visibility, not channel privacy
+  ttlMs?: number;
+}
+```
+
+## 3.1) HTTP contracts
+
+Preferred interface is per-action endpoints. A shared action body schema is acceptable when client transport is constrained.
+
+- `POST /knowledge-base/link`
+- `POST /knowledge-base/reindex`
+- `POST /knowledge-base/summarize`
+- `POST /knowledge-base/search`
+  - accepts `topK`, `limit`, `cursor`, `sort`, `accessContext`, `scope`
+- `POST /knowledge-base/read`
+  - accepts `docId`, `projectId`, `accessContext`
+- `POST /knowledge-base/search-summary` (or `search.summary`)
+  - returns compact cited summary
+- `POST /knowledge-base/projects/{projectId}/share`
+  - explicit grant: `{ accessContext, targetProjectId, docIds, actions: ['search','read'], expiresAt }`
+- `POST /knowledge-base/projects/{projectId}/preflight`
+  - evaluates cross-project visibility and returns actionable deny reasons.
+
+## 4) Deterministic behavior contract
+
+- Default order: `updatedAt DESC, score DESC, title ASC, docId ASC`.
+- Full deterministic mode: explicit stable sort and cursor derived from `(sortKey, docId)`.
+- Search results should not include full docs unless `read` is requested.
+- Every response should include pagination and cache metadata to keep clients resumable.
+- Thread-level `ephemeral` search must include `ttlMs` and source cap metadata.
+- Every search/read response must include `visibilityReason` and `policyChainTrace` for explainability.
+
+## 5) Security and policy constraints
+
+- Per-team/channel/project per-action roles for search/read/summarize/reindex.
+- Source allowlist/denylist for remote URLs and MCP hosts.
+- Signed audit events for `link`, `search`, `read`, `search.summary`, and `reindex`.
+
+## 6) Fit with existing docs
+
+- `knowledge-base` tool family in [04-interactive-tools.md](./agent%20tool%20capabilities/04-interactive-tools.md)
+- `functionality.md` tool discovery and context-control sections
+- `agent-communication-spec.md` search requirements
+
+## 7) Release safety scenario
+
+- Each project can bind an isolated knowledge corpus for release workflows.
+- Searches and reads default to project namespace and may not leak across projects by default.
+- Project-specific document links can be promoted/denied to other projects through explicit grants only.
+
+## 8) Additional enterprise scenarios
+
+- Regulated industries:
+  - evidence-safe knowledge boundaries for legal/finance/health projects, with visibility reasons on every search/read result.
+- Vendor operations:
+  - customer-specific document namespaces with no cross-client leakage.
+- MLOps and research:
+  - model behavior docs and runbooks in project-local namespaces with strict read/share policy.
+- Incident response:
+  - playbook retrieval from channel-scoped sources and temporary escalation to protected project sources.
+- Corporate knowledge curation:
+  - onboarding packages can be imported once, then shared across teams only through explicit project grants.
+
+## 9) Implementation note for current code
+
+- No deterministic index/ephemeral cache exists yet.
+- Current implementation has no `knowledge-base` runtime family or shared retrieval pipeline; this is target-state only.

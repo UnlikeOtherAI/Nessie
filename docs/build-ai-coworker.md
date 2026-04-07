@@ -1,5 +1,7 @@
 # Build: Personal AI Coworker App
 
+> **Status**: historical design/proposal. Verify against [functionality.md](./functionality.md) before using as implementation guidance.
+
 ## Goal
 
 A lightweight macOS menu bar app — your own personal "AI Coworker" — built on top of the existing Helper Agent. It connects to your local Helper backend, shows your conversation threads, lets you chat via text or voice, and gives you a live view of what's running.

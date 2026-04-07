@@ -1,5 +1,7 @@
 # Helper — Personal Agent Brief
 
+> Status: historical architecture brief. For current implementation state and the active target-state docs, use [functionality.md](./functionality.md).
+
 ## Vision
 
 A personal AI agent that lives on your Mac, voice-first but keyboard-capable. You talk to it, it talks back. When you need deep research done across your computer, it spins up a sub-agent to do the work. When you're in keyboard mode, it types into whatever app you're using — no UI, no interruption, just you and the machine working together.

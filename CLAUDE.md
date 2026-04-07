@@ -24,14 +24,13 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 
 ## MCP Integration
 
-All user-facing actions are MCP tools. The backend exposes an MCP server endpoint (`GET /mcp`, `POST /mcp`) that conforms to the Model Context Protocol spec. Any MCP client (Claude Code, etc.) can connect and invoke:
+All user-facing actions are available via the MCP server (`GET /mcp`, `POST /mcp`) speaking JSON-RPC 2.0. Any MCP client (Claude Code, etc.) can connect and use:
 
-- `send_message` — push a chat message and stream the response
-- `list_sessions` — return all conversation threads
-- `get_state` — return current agent/sub-agent/tool state
-- `invoke_tool` — call a named tool (Bash, FileRead, etc.)
-- `voice_start` / `voice_stop` — start/stop voice session
-- `stream_audio` — stream PCM audio for voice mode
+- Protocol methods: `tools/list`, `tools/call`, `resources/list`, `initialize`, `notifications/initialized`.
+- Tool calls exposed by `tools/list`: chat (`send_message`), tool execution (`invoke_tool` → Bash/FileRead/FileWrite/Glob/Grep/WebSearch), conversation ops (`list_messages`, `delete_history`, `inject_message`, `list_sessions`), screenshot (`screenshot`), task lifecycle (`create_task`, `list_tasks`, `get_task`, `transition_task`, `spawn_task`, `get_spawn_status`), reviews/approvals (`submit_review`, `get_review_history`, `list_roles`, `request_approval`, `approve_task`, `reject_task`, `list_pending_approvals`), validators/metrics/alerts (`run_validators`, `get_metrics`, `get_task_metrics`, `get_alerts`), and OpenClaw interop (`openclaw_export_state`, `openclaw_agent_configs`, `openclaw_session_key`, `openclaw_resolve_key`).
+- Voice placeholders: `voice_start` / `voice_stop` are listed but not implemented; there is no `stream_audio` tool in the server today.
+
+For the full, authoritative list see [docs/functionality.md](docs/functionality.md#72-mcp-methods-available-through-tool-names).
 
 ## MDNS
 

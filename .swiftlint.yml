@@ -35,4 +35,5 @@ function_body_length:
 
 excluded:
   - .build
+  - macos/.build
   - DerivedData

@@ -1,5 +1,7 @@
 # OpenClaw Research — Implementation Status
 
+> **Status**: historical tracking note tied to the original OpenClaw research pass.
+
 > This document tracks the 11 suggested improvements from the original deep research documents and their implementation status.
 
 ## Completed

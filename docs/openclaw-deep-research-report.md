@@ -1,5 +1,7 @@
 # OpenClaw Deep Research Report
 
+> **Status**: superseded by [openclaw-reference.md](./openclaw-reference.md).
+
 ## Executive summary
 
 OpenClaw is a self-hosted, open-source "personal AI assistant" that centres on a long‑lived Gateway process acting as a control plane and multi-channel messaging hub, plus an embedded agent runtime (Pi) that executes an "agent loop" (context assembly → model inference → tool execution → reply streaming → persistence). It is designed to let you run an always-on assistant on infrastructure you control and interact with it from the chat surfaces you already use (for example WhatsApp and Telegram), while extending its capabilities via skills, plugins, webhooks, cron jobs, nodes (paired devices), and HTTP/WS APIs.
