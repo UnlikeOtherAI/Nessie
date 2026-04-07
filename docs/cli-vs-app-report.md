@@ -55,6 +55,7 @@ The TypeScript backend is the entire brain. It runs as a local Node.js process o
 | `src/tools/WebSearchTool.ts` | Web search (stub) |
 | `src/tools/Tool.ts` | Tool interface + factory |
 | `src/tools/types.ts` | Tool runtime types: `ToolUseContext` (abort controller, messages, app state, tools), `ToolResult<T>`, `ToolUseBlock` |
+| `src/tools/index.ts` | Barrel export — re-exports `allTools` array and all named tool instances |
 
 ### Orchestration / Task System
 
@@ -75,7 +76,8 @@ The TypeScript backend is the entire brain. It runs as a local Node.js process o
 | File | Responsibility |
 |---|---|
 | `src/voice/RealtimeClient.ts` | OpenAI Realtime API WebSocket client — connects to `api.openai.com`; receives transcription via `onTranscript` callback. **Note:** `sendAudio()` is defined but not wired to any caller; responses do not flow to connected clients. |
-| `src/events.ts` | Shared `ServerEvent` type system (21 event variants) — the contract between server broadcast bus and all connected clients (SSE, WebSocket) |
+| `src/voice/index.ts` | Barrel export — re-exports `RealtimeClient` and `RealtimeCallbacks` |
+| `src/events.ts` | Shared `ServerEvent` type system (22 event variants) — the contract between server broadcast bus and all connected clients (SSE, WebSocket) |
 
 ### Persistence
 
@@ -104,7 +106,8 @@ The TypeScript backend is the entire brain. It runs as a local Node.js process o
 |---|---|---|
 | `src/openclaw/session-mapper.ts` | Nessie ↔ OpenClaw session key mapping | **Live** — called by MCP tools |
 | `src/openclaw/role-agent-adapter.ts` | Role policy → OpenClaw agent config | **Live** — called by `getOpenClawAgentConfigs` MCP tool |
-| `src/openclaw/event-translator.ts` | ServerEvent → OpenClaw Gateway translation (11 of 21 event types) | **Wired but disconnected** — `translateEvent()` is imported and defined on the Orchestrator but never called in any broadcast path; the live SSE/WS pipeline never triggers it |
+| `src/openclaw/index.ts` | Barrel export — re-exports all four openclaw modules |
+| `src/openclaw/event-translator.ts` | ServerEvent → OpenClaw Gateway translation (11 of 22 event types) | **Wired but disconnected** — `translateEvent()` is called by `translateEventToOpenClaw()` on the Orchestrator (line 899), but `translateEventToOpenClaw()` itself is never called anywhere in the codebase; the live SSE/WS pipeline never triggers it |
 | `src/openclaw/announce-converter.ts` | Announce payload format conversion | **Dead code** — exported from barrel but never imported or called anywhere |
 
 > **Peer review finding:** OpenClaw interop is available via 4 MCP tools for on-demand state queries, but the live event broadcast pipeline never routes through the event translator. The translation layer is architecturally present but functionally inactive. `toOpenClawAnnounce()` is entirely unused.
@@ -235,9 +238,10 @@ The stubs (`HotwordDetector`, `VoiceManager`) are placeholders for features that
 |---|---|---|
 | MCP tool count was 36, not 31 | Minor math error | Corrected to 31 |
 | VoiceBridge audio streaming claimed but not implemented | Medium | `sendAudioLevelToBackend()` stores `pendingLevel` but never sends it; no PCM audio flows to the server; the `/voice` WS path handles text, not audio |
-| OpenClaw event translator is wired but never called | Medium | `translateEventToOpenClaw()` exists on the Orchestrator but nothing triggers it; the live SSE/WS broadcast never routes through the translation layer |
+| OpenClaw event translator is wired but never called | Medium | `translateEventToOpenClaw()` on Orchestrator (line 899) is never called anywhere; the live SSE/WS broadcast never routes through the translation layer |
 | OpenClaw `announce-converter.ts` is dead code | Low | `toOpenClawAnnounce()` is never imported or called anywhere |
-| `src/events.ts` was initially undocumented | High | Now added — this is the core event type system (21 variants) shared by all broadcast clients |
+| `src/events.ts` was initially undocumented | High | Now added — core event type system (22 variants) shared by all broadcast clients |
 | `src/orchestration/task-types.ts` was initially undocumented | Medium | Now added — defines the full task state machine vocabulary |
 | `src/tools/types.ts` was initially undocumented | Low | Now added — defines `ToolUseContext`, the runtime interface for tool execution |
-| AppReveal MCP server runs inside the app (DEBUG only) | Low | `AppReveal.start()` in `AppDelegate` launches a third-party MCP server inside the app process in DEBUG builds only — a testing tool, not production code, but worth noting |
+| AppReveal MCP server runs inside the app (DEBUG only) | Low | `AppReveal.start()` in `AppDelegate` launches a third-party MCP server inside the app process in DEBUG builds only — a testing tool, not production code |
+| 3 barrel `index.ts` files initially undocumented | Negligible | `src/tools/index.ts`, `src/voice/index.ts`, `src/openclaw/index.ts` — now added |
