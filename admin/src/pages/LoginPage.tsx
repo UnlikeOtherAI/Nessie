@@ -169,17 +169,22 @@ export const LoginPage = () => {
 
   return (
     <main className="min-h-screen px-6 py-10">
-      <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="glass-panel rounded-[2rem] p-8 md:p-10">
+      <div className="mx-auto grid max-w-6xl items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+        <section className="glass-panel relative self-start rounded-[2rem] p-8 md:p-10">
           <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
             Sign in
           </p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-tight md:text-5xl">
+          <h1 className="mt-4 max-w-[26rem] text-4xl font-semibold tracking-tight text-white md:text-5xl">
             Open the Nessie workspace.
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--muted)] md:text-base">
             Use your account to enter channels, create agents, and watch their activity live.
           </p>
+          <img
+            alt="Nessie icon"
+            className="absolute right-8 top-8 h-[100px] w-[100px] rounded-[1.75rem] object-cover shadow-[0_20px_40px_rgba(13,6,17,0.28)]"
+            src="/icon-1024.png"
+          />
 
           <div className="mt-8 grid gap-3 rounded-[1.5rem] border border-[var(--line)] bg-white/60 p-5">
             <div className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
@@ -216,10 +221,10 @@ export const LoginPage = () => {
           </div>
         </section>
 
-        <section className="glass-panel rounded-[2rem] p-8 md:p-10">
-          <h2 className="text-2xl font-semibold">Account</h2>
+        <section className="glass-panel self-start rounded-[2rem] p-8 md:p-10">
+          <h2 className="text-2xl font-semibold text-white">Account</h2>
           <form className="mt-6 grid gap-4" onSubmit={handleSubmit}>
-            <label className="grid gap-2 text-sm">
+            <label className="grid gap-2 text-sm text-white">
               <span>Email</span>
               <input
                 autoComplete="username"
@@ -230,7 +235,7 @@ export const LoginPage = () => {
                 value={email}
               />
             </label>
-            <label className="grid gap-2 text-sm">
+            <label className="grid gap-2 text-sm text-white">
               <span>Password</span>
               <input
                 autoComplete="current-password"
