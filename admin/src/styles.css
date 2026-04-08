@@ -329,6 +329,10 @@ a {
   padding: 0;
   max-width: 440px;
   width: calc(100% - 32px);
+  margin: auto;
+  position: fixed;
+  inset: 0;
+  height: fit-content;
 }
 
 .create-channel-dialog::backdrop {
