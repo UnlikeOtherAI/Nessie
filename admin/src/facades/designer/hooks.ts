@@ -65,7 +65,7 @@ export const useDesignerChat = (
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            messages: allMessages,
+            messages: allMessages.filter((m) => m.content.trim() !== ''),
             formState: {
               name: formState.name,
               role: formState.role,

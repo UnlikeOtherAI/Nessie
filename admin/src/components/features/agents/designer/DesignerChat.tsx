@@ -69,22 +69,15 @@ export const DesignerChat = ({
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3" ref={scrollRef}>
-        {messages.length === 0 && (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
-              <div className="mb-2 text-2xl">&#x1F9E0;</div>
-              <div className="text-sm text-[color:var(--tx3)]">
-                Describe the agent you want to build.
-              </div>
-              <div className="mt-1 text-xs text-[color:var(--tx3)]">
-                I'll configure the name, role, system prompt, tools, and more.
-              </div>
+        <div className="grid gap-3">
+          <div className="max-w-[90%] rounded-xl px-3 py-2 text-sm mr-auto border border-[color:var(--sep)] bg-[color:var(--panel)] text-[color:var(--tx)]">
+            <div className="whitespace-pre-wrap">
+              {
+                "Hi! I can control anything on this form — name, role, system prompt, tools, and more.\n\nTell me what you want to build and I'll configure the agent for you."
+              }
             </div>
           </div>
-        )}
-
-        <div className="grid gap-3">
-          {messages.map((msg, i) => (
+          {messages.filter((msg) => msg.content.trim() !== '').map((msg, i, arr) => (
             <div
               className={[
                 'max-w-[90%] rounded-xl px-3 py-2 text-sm',
@@ -96,12 +89,17 @@ export const DesignerChat = ({
             >
               <div className="whitespace-pre-wrap">
                 {msg.content}
-                {streaming && i === messages.length - 1 && msg.role === 'assistant' && (
+                {streaming && i === arr.length - 1 && msg.role === 'assistant' && (
                   <span className="streaming-dot" />
                 )}
               </div>
             </div>
           ))}
+          {streaming && messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.content === '' && (
+            <div className="max-w-[90%] rounded-xl px-3 py-2 text-sm mr-auto border border-[color:var(--sep)] bg-[color:var(--panel)] text-[color:var(--tx)]">
+              <span className="streaming-dot" />
+            </div>
+          )}
         </div>
 
         {error && (

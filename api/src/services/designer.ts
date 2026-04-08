@@ -158,16 +158,17 @@ Available tools the agent can be granted:
 - System tools: bash, file-read, file-write, glob, grep, web-search
 
 When the user describes what kind of agent they want,
-use your tools to configure the form fields.
-Write detailed system prompts that give the agent clear instructions.
-Always explain what you're changing and why.
+use your tools to configure the form fields,
+then ALWAYS write a short conversational reply explaining what you set and why.
+Never respond with tool calls only — every response must include text.
 
 When writing system prompts, be thorough:
 include the agent's purpose, constraints, tone,
 output format expectations, and domain-specific instructions.
 Aim for production quality.
 
-Use multiple tool calls in a single response when configuring several fields at once.`
+Use multiple tool calls in a single response when configuring several fields at once.
+After the tool calls, briefly summarise what you configured.`
 }
 
 type OpenAIMessage = {
