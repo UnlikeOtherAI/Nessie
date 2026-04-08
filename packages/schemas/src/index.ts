@@ -399,32 +399,44 @@ export const AuthProviderResponseTypeSchema = z.enum([
 ])
 export type AuthProviderResponseType = z.infer<typeof AuthProviderResponseTypeSchema>
 
+export const MeUserSchema = z.object({
+  id: UserIdSchema,
+  email: z.string().email(),
+  displayName: NonEmptyStringSchema,
+  avatarUrl: z.string().url().optional(),
+  pronouns: z.string().optional(),
+  roleIds: z.array(NonEmptyStringSchema),
+})
+export type MeUser = z.infer<typeof MeUserSchema>
+
+export const MeSessionSchema = z.object({
+  sessionId: NonEmptyStringSchema,
+  issuedAt: TimestampSchema,
+  expiresAt: TimestampSchema.optional(),
+})
+export type MeSession = z.infer<typeof MeSessionSchema>
+
+export const MeContextSchema = z.object({
+  organizationId: OrganizationIdSchema,
+  projectId: ProjectIdSchema,
+  teamId: TeamIdSchema,
+  channelId: ChannelIdSchema.nullish(),
+  bootstrapMode: z.boolean(),
+})
+export type MeContext = z.infer<typeof MeContextSchema>
+
+export const MeAuthSchema = z.object({
+  providerId: NonEmptyStringSchema,
+  providerType: AuthProviderResponseTypeSchema,
+  autoRedirectToSso: z.boolean(),
+})
+export type MeAuth = z.infer<typeof MeAuthSchema>
+
 export const MeResponseSchema = z.object({
-  user: z.object({
-    id: UserIdSchema,
-    email: z.string().email(),
-    displayName: NonEmptyStringSchema,
-    avatarUrl: z.string().url().optional(),
-    pronouns: z.string().optional(),
-    roleIds: z.array(NonEmptyStringSchema),
-  }),
-  session: z.object({
-    sessionId: NonEmptyStringSchema,
-    issuedAt: TimestampSchema,
-    expiresAt: TimestampSchema.optional(),
-  }),
-  context: z.object({
-    organizationId: OrganizationIdSchema,
-    projectId: ProjectIdSchema,
-    teamId: TeamIdSchema,
-    channelId: ChannelIdSchema.nullish(),
-    bootstrapMode: z.boolean(),
-  }),
-  auth: z.object({
-    providerId: NonEmptyStringSchema,
-    providerType: AuthProviderResponseTypeSchema,
-    autoRedirectToSso: z.boolean(),
-  }),
+  user: MeUserSchema,
+  session: MeSessionSchema,
+  context: MeContextSchema,
+  auth: MeAuthSchema,
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 

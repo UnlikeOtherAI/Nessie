@@ -1,0 +1,321 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AgentStatus {
+  idle
+  thinking
+  executing
+  waiting_approval
+  error
+  offline
+}
+
+enum RunStatus {
+  pending
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum TaskStatus {
+  inbox
+  assigned
+  in_progress
+  review
+  done
+  failed
+  cancelled
+  awaiting_approval
+}
+
+enum ChannelVisibility {
+  public
+  protected
+  private
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
+model User {
+  id                  String               @id @default(uuid()) @db.Uuid
+  email               String               @unique
+  displayName         String               @map("display_name")
+  passwordHash        String?              @map("password_hash")
+  avatarUrl           String?              @map("avatar_url")
+  pronouns            String?
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  organizationMembers OrganizationMember[]
+  projectMembers      ProjectMember[]
+  teamMembers         TeamMember[]
+  channelMembers      ChannelMember[]
+  messages            Message[]
+
+  @@map("users")
+}
+
+model Organization {
+  id        String               @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  members   OrganizationMember[]
+  projects  Project[]
+  channels  Channel[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  role           String       @default("member")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+model Project {
+  id             String          @id @default(uuid()) @db.Uuid
+  name           String
+  organizationId String          @map("organization_id") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members        ProjectMember[]
+  teams          Team[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @default("member")
+  createdAt DateTime @default(now()) @map("created_at")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model Team {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String
+  projectId String       @map("project_id") @db.Uuid
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members   TeamMember[]
+  channels  Channel[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @map("team_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @default("member")
+  createdAt DateTime @default(now()) @map("created_at")
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model Channel {
+  id             String            @id @default(uuid()) @db.Uuid
+  label          String
+  organizationId String            @map("organization_id") @db.Uuid
+  teamId         String            @map("team_id") @db.Uuid
+  visibility     ChannelVisibility @default(public)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team           Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  members        ChannelMember[]
+  agentBindings  AgentBinding[]
+  threads        Thread[]
+
+  @@map("channels")
+}
+
+model ChannelMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  channelId String   @map("channel_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@map("channel_members")
+}
+
+model Thread {
+  id        String    @id @default(uuid()) @db.Uuid
+  channelId String    @map("channel_id") @db.Uuid
+  title     String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  runs      Run[]
+
+  @@map("threads")
+}
+
+model Message {
+  id        String      @id @default(uuid()) @db.Uuid
+  threadId  String      @map("thread_id") @db.Uuid
+  agentId   String?     @map("agent_id") @db.Uuid
+  userId    String?     @map("user_id") @db.Uuid
+  role      MessageRole
+  content   String
+  createdAt DateTime    @default(now()) @map("created_at")
+  thread    Thread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  agent     Agent?      @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([threadId, createdAt])
+  @@index([agentId, createdAt])
+  @@map("messages")
+}
+
+model Agent {
+  id            String         @id @default(uuid()) @db.Uuid
+  name          String
+  role          String         @default("assistant")
+  status        AgentStatus    @default(idle)
+  systemPrompt  String?        @map("system_prompt")
+  toolPolicy    Json?          @map("tool_policy")
+  parentAgentId String?        @map("parent_agent_id") @db.Uuid
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  parentAgent   Agent?         @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
+  childAgents   Agent[]        @relation("AgentHierarchy")
+  bindings      AgentBinding[]
+  messages      Message[]
+  runs          Run[]
+  tasks         Task[]
+
+  @@map("agents")
+}
+
+model AgentBinding {
+  id        String   @id @default(uuid()) @db.Uuid
+  agentId   String   @map("agent_id") @db.Uuid
+  channelId String   @map("channel_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, channelId])
+  @@map("agent_bindings")
+}
+
+model Run {
+  id         String     @id @default(uuid()) @db.Uuid
+  agentId    String     @map("agent_id") @db.Uuid
+  threadId   String     @map("thread_id") @db.Uuid
+  status     RunStatus  @default(pending)
+  startedAt  DateTime?  @map("started_at")
+  finishedAt DateTime?  @map("finished_at")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  agent      Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread     Thread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  tasks      Task[]
+  toolCalls  ToolCall[]
+
+  @@index([agentId, status])
+  @@index([threadId, createdAt])
+  @@map("runs")
+}
+
+model Task {
+  id           String      @id @default(uuid()) @db.Uuid
+  runId        String?     @map("run_id") @db.Uuid
+  agentId      String      @map("agent_id") @db.Uuid
+  parentTaskId String?     @map("parent_task_id") @db.Uuid
+  status       TaskStatus  @default(inbox)
+  purpose      String?
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  run          Run?        @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent        Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  parentTask   Task?       @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  childTasks   Task[]      @relation("TaskHierarchy")
+  events       TaskEvent[]
+
+  @@index([agentId, status])
+  @@index([runId])
+  @@map("tasks")
+}
+
+model TaskEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @map("task_id") @db.Uuid
+  eventType String   @map("event_type")
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@map("task_events")
+}
+
+model ToolCall {
+  id            String    @id @default(uuid()) @db.Uuid
+  runId         String    @map("run_id") @db.Uuid
+  agentId       String    @map("agent_id") @db.Uuid
+  toolName      String    @map("tool_name")
+  inputSummary  String    @map("input_summary")
+  outputPreview String?   @map("output_preview")
+  success       Boolean?
+  startedAt     DateTime  @map("started_at")
+  endedAt       DateTime? @map("ended_at")
+  durationMs    Int?      @map("duration_ms")
+  run           Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, startedAt])
+  @@index([agentId, startedAt])
+  @@map("tool_calls")
+}
+
+/// This model documents the raw-SQL queue table so Prisma Migrate stays in sync
+/// with the development database. Queue polling and dequeue remain SQL-backed.
+model QueueJob {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topic          String
+  payload        Json
+  status         String    @default("pending")
+  idempotencyKey String?   @map("idempotency_key")
+  attempt        Int       @default(0)
+  maxAttempts    Int       @default(3) @map("max_attempts")
+  lockedUntil    DateTime? @map("locked_until") @db.Timestamptz(6)
+  enqueuedAt     DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz(6)
+  startedAt      DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  errorMessage   String?   @map("error_message")
+
+  @@map("queue_jobs")
+}
