@@ -387,6 +387,8 @@ Policy checks are mandatory at these access boundaries in Phase 2. Each integrat
 - **Before reading a knowledge document**: check `resourceType=knowledge_document, action=read`.
 - **Before searching knowledge**: check `resourceType=knowledge_source, action=search`.
 - **Before reindexing a source**: check `resourceType=knowledge_source, action=reindex`.
+- **Before summarizing a source**: check `resourceType=knowledge_source, action=summarize`.
+- **Before generating a search summary**: check `resourceType=knowledge_source, action=search` (search.summary reuses the `search` policy action).
 - **Before sharing a source to another project**: check `resourceType=knowledge_source, action=bind`.
 
 ### 6.8 Phase 3: Verification
@@ -414,6 +416,9 @@ Policy checks are mandatory at these access boundaries in Phase 2. Each integrat
 
 - **Before changing organization default language**: check `resourceType=translation, action=admin`.
 - **Before changing user preferred language**: check `resourceType=translation, action=edit` (users may edit their own; admin can edit others).
+- **Before setting a thread language override**: check `resourceType=translation, action=edit` scoped to the thread's channel.
+- **Before setting a session language override**: check `resourceType=translation, action=edit` for the actor's own session only.
+- **Before previewing a translation**: check `resourceType=translation, action=view`.
 
 ### 6.11 Search and discovery
 

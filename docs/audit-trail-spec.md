@@ -189,7 +189,8 @@ type AuditAction =
   | 'translation.org_language.changed'
   | 'translation.user_language.changed'
   | 'translation.thread_language.changed'
-  | 'translation.session_language.changed';
+  | 'translation.session_language.changed'
+  | 'translation.executed';              // runtime: message translated (captures provider, model, source/target language, truncation)
 ```
 
 ## 4) Audit emitter

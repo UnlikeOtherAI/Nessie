@@ -91,7 +91,7 @@ type SecretType = 'api_key' | 'password' | 'token' | 'cert' | 'other';
 type SecretStatus = 'active' | 'revoked' | 'expired';
 
 type SecretRecord = {
-  id: string;                 // SecretId
+  id: SecretId;
   ref: string;                // human-safe reference ID returned to UI/tools
   name: string;
   scopeType: SecretScopeType;
@@ -114,8 +114,8 @@ type SecretRecord = {
 
 ```ts
 type SecretBinding = {
-  id: string;              // SecretBindingId
-  secretId: string;
+  id: SecretBindingId;
+  secretId: SecretId;
   effect: 'allow' | 'deny';
   principalType:
     | 'org'
@@ -127,7 +127,7 @@ type SecretBinding = {
     | 'user'
     | 'service';
   principalId: string;
-  allowedActions: Array<'read' | 'resolve' | 'update' | 'rotate' | 'revoke' | 'delete'>;
+  allowedActions: Array<'view' | 'resolve' | 'edit' | 'rotate' | 'revoke' | 'admin'>;
   grantedBy: string;
   grantedAt: string;
   expiresAt?: string;
@@ -235,7 +235,7 @@ Rules:
     ```ts
     {
       secretRef: string;
-      action: 'read' | 'resolve' | 'rotate' | 'revoke' | 'delete';
+      action: 'view' | 'resolve' | 'edit' | 'rotate' | 'revoke' | 'admin';
       context: SecretAccessContext;
     }
     ```

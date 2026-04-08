@@ -120,7 +120,7 @@ type VerificationFactorGroup = {
 };
 
 type VerificationPolicy = {
-  policyId: string;
+  policyId: VerificationPolicyId;
   actionIds: string[];
   requirements: VerificationFactorGroup[];
   challengeTtlMs: number;
@@ -130,9 +130,9 @@ type VerificationPolicy = {
 };
 
 type VerificationChallenge = {
-  challengeId: string;
-  policyId: string;
-  factorId: string;             // references the enrolled factor being challenged
+  challengeId: VerificationChallengeId;
+  policyId: VerificationPolicyId;
+  factorId: VerificationFactorId;  // references the enrolled factor being challenged
   actorId: string;
   actorType: 'user' | 'agent' | 'service';
   organizationId: string;
@@ -153,7 +153,7 @@ type VerificationChallenge = {
 };
 
 type VerificationEnrollment = {
-  factorId: string;
+  factorId: VerificationFactorId;
   factorType: 'email_otp' | 'email_link' | 'totp' | 'recovery_code' | 'webauthn';
   ownerId: string;
   secretRef?: string; // required for TOTP/recovery material

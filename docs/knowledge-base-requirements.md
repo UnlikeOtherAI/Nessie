@@ -160,6 +160,7 @@ type KnowledgeReadPayload = {
   language?: string;
   summary?: string;
   visibilityReason: string;
+  policyChainTrace?: string[];
 };
 
 type KnowledgeSearchSummary = {
@@ -169,6 +170,8 @@ type KnowledgeSearchSummary = {
     spans: string[];
     score: number;
   }>;
+  visibilityReason: string;
+  policyChainTrace?: string[];
 };
 ```
 
@@ -204,7 +207,8 @@ interface KnowledgeBaseToolInput {
   sort?: "updatedAtDesc" | "scoreDesc" | "titleAsc";
   tags?: string[];
   ephemeral?: boolean;
-  scope?: "public" | "protected" | "private"; // source visibility, not channel privacy
+  // Visibility is enforced by the policy engine (see policy-enforcement-spec.md §6.7), not by a filter param.
+  // Callers cannot bypass policy by requesting a specific scope.
   ttlMs?: number;
 }
 ```
@@ -217,7 +221,7 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 - `POST /api/knowledge-base/reindex`
 - `POST /api/knowledge-base/summarize`
 - `POST /api/knowledge-base/search`
-  - accepts `topK`, `limit`, `cursor`, `sort`, `accessContext`, `scope`
+  - accepts `topK`, `limit`, `cursor`, `sort`, `accessContext`, `tags`
 - `POST /api/knowledge-base/read`
   - accepts `docId`, `projectId`, `accessContext`
 - `POST /api/knowledge-base/search-summary` (or `search.summary`)
@@ -241,7 +245,7 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 
 - Per-team/channel/project per-action roles for search/read/summarize/reindex.
 - Source allowlist/denylist for remote URLs and MCP hosts.
-- Signed audit events for `link`, `search`, `read`, `search.summary`, and `reindex`.
+- Audit events use the canonical `AuditAction` names from [audit-trail-spec.md](./audit-trail-spec.md): `kb.source.linked`, `kb.search.executed`, `kb.document.read`, `kb.search.summary`, `kb.source.reindexed`, `kb.source.removed`, `kb.share.granted`, `kb.share.revoked`.
 
 ## 6) Fit with existing docs
 
