@@ -1,496 +1,619 @@
-# Phase 2 GCP Deployment Spec
+# Phase 2 GCP Deployment Specification
 
-> Status: target-state design for Phase 2.
+> Status: target-state design.
 
 ## 1) Objective
 
-Deploy Nessie as a hosted multi-tenant beta on Google Cloud Platform. This spec covers the concrete deployment topology, infrastructure resources, adapter implementations, and migration path from local-first Phase 1 to hosted Phase 2.
+Define the concrete Google Cloud Platform deployment plan for Nessie Phase 2 (Multi-User Hosted Beta). This spec maps every logical component from [hosted-app-architecture.md](./hosted-app-architecture.md) to a physical GCP resource, with exact configurations, service accounts, networking, and cost estimates.
 
-Cross-links:
+Phase 2 turns the local-first MVP into a real hosted beta for teams. The deployment must support:
 
-- [hosted-app-architecture.md](./hosted-app-architecture.md) section 7 (physical topology)
-- [hosted-app-architecture.md](./hosted-app-architecture.md) section 3 (preferred stack)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 2.1 (hosted SaaS mode)
+- multi-user organizations with project/team/channel separation,
+- hosted auth via Identity Platform,
+- async agent execution via Pub/Sub-triggered workers,
+- blob storage for uploads and artifacts,
+- envelope encryption for tenant secrets,
+- observability from day one.
 
-## 2) Core rules
+## 2) Cloud Run service topology
 
-- hosted deployment must not break the local-first path -- all adapters are config-selected,
-- the core application code must remain provider-agnostic; GCP-specific code lives in adapter modules,
-- infrastructure-as-code is mandatory -- no manual console-created resources in production,
-- all services are stateless and horizontally scalable,
-- Postgres (Cloud SQL) is the single source of truth,
-- secrets and credentials must never be committed to the repository.
+| Service | Image | Min/Max instances | CPU / Memory | Trigger | Notes |
+|---|---|---|---|---|---|
+| `nessie-api` | `nessie-api` | 1 / 10 | 2 vCPU / 1 GiB | Cloud Load Balancer | HTTP API, SSE streaming, WebSocket activity |
+| `nessie-worker` | `nessie-worker` | 0 / 5 | 2 vCPU / 2 GiB | Eventarc (Pub/Sub push) | Agent execution, model calls, tool runs |
+| `nessie-realtime` | -- | -- | -- | -- | Not separate in Phase 2; SSE and WebSocket served from `nessie-api` |
+| `nessie-runner` | -- | -- | -- | -- | Phase 4 only; not deployed in Phase 2 |
 
-## 3) Service topology
+Configuration notes:
 
-### Cloud Run services
+- `nessie-api` keeps min 1 to avoid cold-start latency on the primary HTTP surface.
+- `nessie-worker` scales to zero when idle. Eventarc push subscriptions wake instances on message delivery.
+- Both services use `--cpu-boost` for faster cold starts.
+- Concurrency: `nessie-api` max 80 concurrent requests per instance, `nessie-worker` max 1 (one job per instance for isolation).
+- Request timeout: `nessie-api` 300s (SSE streams), `nessie-worker` 900s (long agent runs).
+- Both services connect to Cloud SQL and Redis via VPC connector (section 13).
 
-| Service | Source | Min Instances | Max Instances | Memory | CPU | Concurrency |
-|---------|--------|---------------|---------------|--------|-----|-------------|
-| `nessie-api` | `/api` | 1 | 10 | 512Mi | 1 | 80 |
-| `nessie-worker` | `/worker` | 0 | 10 | 1Gi | 2 | 1 |
-| `nessie-admin` | `/admin` (static) | 1 | 5 | 256Mi | 1 | 200 |
+## 3) Cloud SQL configuration
+
+- **Engine**: PostgreSQL 16
+- **Machine type**: `db-custom-2-4096` (2 vCPU, 4 GB RAM)
+- **High availability**: Regional HA (automatic failover)
+- **Storage**: SSD, 20 GB initial, auto-resize enabled
+- **Connection method**: Cloud SQL Node.js connector (`@google-cloud/cloud-sql-connector`)
+  - The connector handles IAM authentication, TLS termination, and connection pooling.
+  - Do NOT use Unix socket or Cloud SQL Auth Proxy sidecar.
+- **Database authentication**: IAM database authentication (no password-based DB auth)
+  - Each service account is granted the `cloudsql.instanceUser` role and a corresponding PostgreSQL IAM user.
+- **Backups**: Automated daily backups, 7-day retention, point-in-time recovery enabled
+- **Private IP**: Accessible only via VPC connector (no public IP)
+- **Maintenance window**: Sunday 03:00 UTC
+- **Flags**: `log_min_duration_statement=1000` (log slow queries > 1s)
+
+Connection example:
+
+```ts
+import { Connector } from '@google-cloud/cloud-sql-connector';
+
+const connector = new Connector();
+const clientOpts = await connector.getOptions({
+  instanceConnectionName: 'project:region:nessie-db',
+  ipType: 'PRIVATE',
+  authType: 'IAM',
+});
+```
+
+Prisma connects via the connector-provided socket. The `DATABASE_URL` is constructed at runtime from connector options, not hardcoded.
+
+Data model reference: [api/prisma/schema.prisma](../api/prisma/schema.prisma).
+
+## 4) Pub/Sub topic mapping
+
+Logical queue topics from [hosted-app-architecture.md](./hosted-app-architecture.md) section 8 map to physical Pub/Sub topics as follows:
+
+| Logical topic | Physical Pub/Sub topic | Subscription | Dead-letter topic | Ordering key | Max delivery attempts |
+|---|---|---|---|---|---|
+| `run.requested` | `nessie-run-requested` | `nessie-run-requested-sub` (push to `nessie-worker`) | `nessie-run-requested-dlq` | `threadId` | 5 |
+| `step.requested` | `nessie-step-requested` | `nessie-step-requested-sub` (push to `nessie-worker`) | `nessie-step-requested-dlq` | `runId` | 5 |
+| `tool.call.requested` | `nessie-tool-call-requested` | `nessie-tool-call-requested-sub` (push to `nessie-worker`) | `nessie-tool-call-requested-dlq` | `runId` | 3 |
+| `approval.requested` | `nessie-approval-requested` | `nessie-approval-requested-sub` (push to `nessie-worker`) | `nessie-approval-requested-dlq` | `taskId` | 5 |
+| `approval.sweep` | `nessie-approval-sweep` | `nessie-approval-sweep-sub` (push to `nessie-worker`) | -- | -- | 3 |
+| `audit.emit` | `nessie-audit-emit` | `nessie-audit-emit-sub` (push to `nessie-worker`) | `nessie-audit-emit-dlq` | -- | 5 |
+| `token.ledger.emit` | `nessie-token-ledger-emit` | `nessie-token-ledger-emit-sub` (push to `nessie-worker`) | `nessie-token-ledger-emit-dlq` | `organizationId` | 5 |
+
+Notes:
+
+- `approval.sweep` is triggered by Cloud Scheduler on a 60-second cron (`* * * * *`). It publishes a sweep message to the topic, which triggers the worker to check for expired or timed-out approvals.
+- `audit.emit` and `token.ledger.emit` are high-volume async write paths. They decouple audit/ledger persistence from the critical request path to avoid latency spikes.
+- Ordering keys are used only where strict sequencing matters (thread-scoped runs, run-scoped steps). Non-ordered topics get higher throughput.
+- Dead-letter topics collect messages that exceed max delivery attempts. A separate alerting rule fires when DLQ depth > 0.
+- Message retention: 7 days on all topics, 14 days on DLQ topics.
+
+## 5) PubSubQueueProvider adapter
+
+Implements the `QueueProvider` interface from [hosted-app-architecture.md](./hosted-app-architecture.md) section 4:
+
+```ts
+import { PubSub, Topic } from '@google-cloud/pubsub';
+
+const TOPIC_MAP: Record<string, string> = {
+  'run.requested': 'nessie-run-requested',
+  'step.requested': 'nessie-step-requested',
+  'tool.call.requested': 'nessie-tool-call-requested',
+  'approval.requested': 'nessie-approval-requested',
+  'approval.sweep': 'nessie-approval-sweep',
+  'audit.emit': 'nessie-audit-emit',
+  'token.ledger.emit': 'nessie-token-ledger-emit',
+};
+
+class PubSubQueueProvider implements QueueProvider {
+  private readonly pubsub: PubSub;
+
+  constructor(projectId: string) {
+    this.pubsub = new PubSub({ projectId });
+  }
+
+  async enqueue(
+    topic: string,
+    payload: unknown,
+    options?: { delayMs?: number; idempotencyKey?: string },
+  ): Promise<string> {
+    const physicalTopic = TOPIC_MAP[topic];
+    if (!physicalTopic) throw new Error(`Unknown topic: ${topic}`);
+
+    const messageId = await this.pubsub.topic(physicalTopic).publishMessage({
+      json: payload,
+      attributes: {
+        topic,
+        ...(options?.idempotencyKey && { idempotencyKey: options.idempotencyKey }),
+        publishedAt: new Date().toISOString(),
+      },
+      ...(options?.delayMs && {
+        publishTime: { seconds: Math.floor((Date.now() + options.delayMs) / 1000) },
+      }),
+    });
+
+    return messageId;
+  }
+
+  subscribe(topic: string, handler: (job: QueueJob) => Promise<void>): void {
+    // In hosted mode, subscriptions are Eventarc push endpoints.
+    // The Cloud Run service receives HTTP POST requests from Pub/Sub.
+    // This method registers the handler in an internal registry keyed by topic.
+    // The Fastify push endpoint routes incoming messages to the correct handler.
+  }
+
+  async acknowledge(jobId: string): Promise<void> {
+    // Pub/Sub push: return 200 from the push handler.
+    // The jobId maps to the Pub/Sub message ackId.
+  }
+
+  async nack(jobId: string, reason?: string): Promise<void> {
+    // Pub/Sub push: return 4xx/5xx from the push handler.
+    // Pub/Sub redelivers with exponential backoff.
+  }
+}
+```
+
+Message attributes for correlation:
+
+- `requestId` -- original API request ID from `AuthorizedActionContext`
+- `correlationId` -- ties related messages across topics (e.g., run -> steps -> tool calls)
+- `attempt` -- delivery attempt number (set by Pub/Sub)
+- `idempotencyKey` -- caller-provided dedup key
 
 Rules:
 
-- `nessie-api` serves HTTP REST, SSE streaming, and WebSocket connections,
-- `nessie-worker` is triggered by Pub/Sub via Eventarc (push subscription),
-- `nessie-admin` serves the static Vite build via a lightweight server or Cloud Run static hosting,
-- all services use the same container base image (Node.js 22 Alpine),
-- CPU is always allocated (not request-only) for `nessie-api` due to WebSocket keepalives.
+- Topic name resolution from logical to physical via the `TOPIC_MAP` config.
+- At-least-once delivery; all handlers must be idempotent.
+- Handlers must complete within the Cloud Run request timeout (900s for worker).
+- Failed handlers return non-200 status, triggering Pub/Sub redelivery with backoff.
 
-### Supporting GCP resources
+## 6) GCS configuration
 
-| Resource | Service | Purpose |
-|----------|---------|---------|
-| Cloud SQL PostgreSQL 16 | `nessie-db` | Primary data store, regional HA |
-| Pub/Sub topic: `run.execute` | queue | Worker job delivery |
-| Pub/Sub topic: `run.resume` | queue | Approval continuation |
-| Pub/Sub topic: `approval.sweep` | cron | Periodic expiry check |
-| Pub/Sub dead-letter topic | DLQ | Failed job capture |
-| Eventarc trigger | `nessie-worker` | Pub/Sub -> Cloud Run routing |
-| Cloud Storage bucket | `nessie-assets` | Uploads, artifacts, exports |
-| Cloud KMS keyring | `nessie-keys` | Tenant secret encryption |
-| Secret Manager | infrastructure | Runtime credentials (DB password, auth secret, API keys) |
-| Cloud Load Balancer | ingress | HTTPS termination, routing |
-| Identity Platform | auth | Hosted auth default (optional) |
+- **Bucket**: `nessie-{env}-artifacts` (e.g., `nessie-staging-artifacts`, `nessie-production-artifacts`)
+- **Location**: Same region as Cloud Run services
+- **Storage class**: Standard
+- **Versioning**: Disabled (artifacts are immutable; overwrites create new keys)
+- **Uniform bucket-level access**: Enabled (no per-object ACLs)
 
-## 4) Cloud SQL configuration
-
-### Instance
-
-- Engine: PostgreSQL 16
-- Tier: `db-custom-2-4096` (2 vCPU, 4GB RAM) for beta, scale as needed
-- High availability: regional (automatic failover)
-- Storage: SSD, auto-resize enabled, 20GB initial
-- Backup: automated daily with 7-day retention
-- Maintenance window: Sunday 03:00 UTC
-
-### Connectivity
-
-- Private IP via VPC connector (Cloud Run -> Cloud SQL)
-- IAM database authentication for service accounts (no password in connection string)
-- Cloud SQL Auth Proxy sidecar not needed with direct VPC + IAM auth
-- Connection pooling via PgBouncer or built-in connection limits
-
-### Connection from application
-
-```ts
-// In packages/config, when mode === 'hosted'
-{
-  database: {
-    host: '/cloudsql/PROJECT:REGION:INSTANCE', // Unix socket path
-    database: 'nessie',
-    user: 'nessie-api@PROJECT.iam',            // IAM auth
-    ssl: false,                                 // Unix socket, no SSL needed
-    pool: { min: 2, max: 10 }
-  }
-}
-```
-
-### Migration
-
-- Prisma migrations run as a Cloud Build step before deployment,
-- migration job uses a separate service account with schema-alter permissions,
-- runtime service accounts have read/write but not DDL permissions.
-
-## 5) Pub/Sub adapter implementation
-
-The `QueueProvider` interface from [hosted-app-architecture.md](./hosted-app-architecture.md) section 4 needs a Pub/Sub adapter.
-
-### Adapter: `PubSubQueueProvider`
-
-Location: `packages/queue/src/pubsub.ts` (new package or in worker)
-
-```ts
-class PubSubQueueProvider implements QueueProvider {
-  async enqueue(topic: string, payload: unknown, options?: { delayMs?: number; idempotencyKey?: string }): Promise<string>;
-  subscribe(topic: string, handler: (job: QueueJob) => Promise<void>): void;
-  async acknowledge(jobId: string): Promise<void>;
-  async nack(jobId: string, reason?: string): Promise<void>;
-}
-```
-
-Implementation rules:
-
-- `enqueue()` publishes a message to the Pub/Sub topic with the payload as JSON,
-- `subscribe()` in hosted mode is a no-op -- Eventarc push delivers messages to the Cloud Run HTTP endpoint,
-- the worker exposes `POST /worker/jobs/:topic` which Eventarc pushes to,
-- `acknowledge()` returns 200 to the Eventarc push (implicit),
-- `nack()` returns 500 to trigger Pub/Sub retry,
-- dead-letter topic captures messages after max delivery attempts (default: 5),
-- ordering keys use `taskId` or `runId` when strict sequencing is required.
-
-### Topic naming
-
-| Logical topic | Pub/Sub topic name | Ordering key |
-|---------------|-------------------|--------------|
-| `run.execute` | `nessie-run-execute` | `runId` |
-| `run.resume` | `nessie-run-resume` | `runId` |
-| `approval.sweep` | `nessie-approval-sweep` | none |
-
-### Eventarc triggers
-
-Each Pub/Sub topic gets one Eventarc trigger pointing to `nessie-worker`:
-
-```hcl
-resource "google_eventarc_trigger" "run_execute" {
-  name     = "nessie-run-execute-trigger"
-  location = var.region
-
-  matching_criteria {
-    attribute = "type"
-    value     = "google.cloud.pubsub.topic.v1.messagePublished"
-  }
-
-  transport {
-    pubsub {
-      topic = google_pubsub_topic.run_execute.id
-    }
-  }
-
-  destination {
-    cloud_run_service {
-      service = google_cloud_run_v2_service.worker.name
-      path    = "/worker/jobs/run.execute"
-      region  = var.region
-    }
-  }
-}
-```
-
-## 6) Cloud Storage adapter
-
-### Adapter: `GcsStorageProvider`
-
-Location: `packages/storage/src/gcs.ts` (new package or in API)
+### StorageProvider interface
 
 ```ts
 interface StorageProvider {
-  upload(key: string, data: Buffer | Readable, contentType: string): Promise<string>;
-  download(key: string): Promise<Buffer>;
-  getSignedUrl(key: string, expiresInSeconds: number): Promise<string>;
+  upload(key: string, data: Buffer | ReadableStream, opts?: { contentType?: string }): Promise<string>;
+  download(key: string): Promise<ReadableStream>;
+  getSignedUrl(key: string, expiresInMs: number): Promise<string>;
   delete(key: string): Promise<void>;
-  exists(key: string): Promise<boolean>;
-}
-
-class GcsStorageProvider implements StorageProvider {
-  constructor(private bucket: string) {}
-  // Implementation using @google-cloud/storage
 }
 ```
 
-### Bucket configuration
-
-- Bucket name: `nessie-assets-{env}` (e.g. `nessie-assets-beta`)
-- Location: same region as Cloud Run services
-- Storage class: Standard
-- Lifecycle: objects older than 90 days move to Nearline (configurable)
-- CORS: allow `*.unlikeotherai.com` origins
-- Public access: denied (all access via signed URLs)
-- Uniform bucket-level access: enabled
-
-### Key structure
-
-```
-uploads/{organizationId}/{year}/{month}/{filename}
-artifacts/{organizationId}/{runId}/{filename}
-exports/{organizationId}/{exportId}/{filename}
-```
-
-## 7) Cloud KMS
-
-### Keyring and keys
-
-- Keyring: `nessie-keys` in the same region
-- Symmetric encryption key: `nessie-tenant-secrets` for tenant secret encryption
-- Key rotation: automatic every 90 days
-- Key purpose: `ENCRYPT_DECRYPT`
-
-### Usage
-
-- Tenant secrets (API keys, provider credentials) are envelope-encrypted:
-  1. Generate a random DEK (data encryption key),
-  2. Encrypt the secret with the DEK (AES-256-GCM),
-  3. Encrypt the DEK with the KMS key,
-  4. Store both encrypted DEK and ciphertext in Postgres.
-- Phase 2 stores model provider API keys this way.
-- Full secrets system (Phase 3) will expand this pattern.
-
-## 8) Identity Platform (optional hosted auth)
-
-Phase 2 can use Google Identity Platform as the hosted auth default, or continue with `authentication.unlikeotherai.com`.
-
-If Identity Platform:
-
-- configure as a tenant in the GCP project,
-- enable email/password + Google OAuth,
-- OIDC token exchange mapped to Nessie JWT claims,
-- the auth abstraction treats it like any other OIDC provider.
-
-The auth provider config in `packages/config` selects which path to use:
+### GcsStorageProvider
 
 ```ts
-{
-  auth: {
-    mode: 'hosted',
-    providers: [
-      {
-        providerId: 'uoa',
-        type: 'uoa',
-        label: 'Unlike Other AI',
-        enabled: true,
-        autoRedirect: true,
-        issuerUrl: 'https://authentication.unlikeotherai.com',
-        clientId: 'nessie-hosted',
-        scopes: ['openid', 'profile', 'email']
-      }
-    ]
+import { Storage } from '@google-cloud/storage';
+
+class GcsStorageProvider implements StorageProvider {
+  private readonly storage: Storage;
+  private readonly bucketName: string;
+
+  constructor(bucketName: string) {
+    this.storage = new Storage();
+    this.bucketName = bucketName;
+  }
+
+  async upload(key: string, data: Buffer | ReadableStream, opts?: { contentType?: string }): Promise<string> {
+    const file = this.storage.bucket(this.bucketName).file(key);
+    // Stream or buffer upload
+    // Returns gs:// URI
+    return `gs://${this.bucketName}/${key}`;
+  }
+
+  async download(key: string): Promise<ReadableStream> {
+    return this.storage.bucket(this.bucketName).file(key).createReadStream();
+  }
+
+  async getSignedUrl(key: string, expiresInMs: number): Promise<string> {
+    const [url] = await this.storage.bucket(this.bucketName).file(key).getSignedUrl({
+      version: 'v4',
+      action: 'read',
+      expires: Date.now() + expiresInMs,
+    });
+    return url;
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.storage.bucket(this.bucketName).file(key).delete();
   }
 }
 ```
 
-## 9) Infrastructure-as-code
-
-### Terraform structure
+Key layout:
 
 ```
-infrastructure/
-  terraform/
-    main.tf              # Provider config, backend
-    variables.tf         # Input variables
-    outputs.tf           # Service URLs, connection strings
-    cloud-run.tf         # API, worker, admin services
-    cloud-sql.tf         # PostgreSQL instance
-    pubsub.tf            # Topics, subscriptions, DLQ
-    eventarc.tf          # Triggers
-    storage.tf           # GCS buckets
-    kms.tf               # Keyring and keys
-    iam.tf               # Service accounts and permissions
-    networking.tf        # VPC connector, load balancer
-    secrets.tf           # Secret Manager entries
-    identity.tf          # Identity Platform (optional)
+uploads/{organizationId}/{year}/{month}/{uuid}/{filename}
+exports/{organizationId}/{exportId}/{filename}
+artifacts/{organizationId}/{agentId}/{runId}/{filename}
+temp/{uuid}
 ```
 
-### Service accounts
+Rules:
 
-| Account | Purpose | Roles |
-|---------|---------|-------|
-| `nessie-api@` | API service | Cloud SQL Client, Pub/Sub Publisher, Storage Object Viewer |
-| `nessie-worker@` | Worker service | Cloud SQL Client, Pub/Sub Subscriber, Storage Object Admin |
-| `nessie-migrate@` | DB migrations | Cloud SQL Admin (DDL permissions) |
-| `nessie-deploy@` | CI/CD deployment | Cloud Run Admin, Artifact Registry Writer |
+- Signed URLs default to 15-minute expiry for both upload and download.
+- Client-side uploads use signed URLs generated by the API; the API never proxies large blob data.
+- Lifecycle policy: objects under `temp/` are auto-deleted after 7 days.
+- CORS configuration allows `PUT` from `*.nessie.unlikeotherai.com` for direct uploads.
 
-### CI/CD pipeline
+## 7) Cloud KMS
+
+- **Key ring**: `nessie-{env}` (e.g., `nessie-staging`, `nessie-production`)
+- **Encryption key**: `nessie-tenant-secrets` -- for envelope encryption of tenant secrets
+- **Key purpose**: `ENCRYPT_DECRYPT`
+- **Algorithm**: `GOOGLE_SYMMETRIC_ENCRYPTION` (AES-256-GCM, managed by Google)
+- **Rotation**: Automatic, 90-day rotation period
+- **Key ring location**: Same region as Cloud Run services
+
+Envelope encryption flow:
+
+1. API generates a random 256-bit data encryption key (DEK) per secret.
+2. API encrypts the DEK with the KMS key (key encryption key / KEK).
+3. API stores the encrypted DEK alongside the ciphertext in Postgres.
+4. On read, API decrypts the DEK via KMS, then decrypts the secret with the DEK.
+
+Service account requirement:
+
+- `nessie-api` needs `roles/cloudkms.cryptoKeyEncrypterDecrypter` to both encrypt and decrypt.
+- `nessie-worker` needs `roles/cloudkms.cryptoKeyDecrypter` (decrypt only -- workers read secrets but do not create them).
+
+Infrastructure/runtime secrets (API keys, DB credentials, signing secrets) use Secret Manager, not KMS. KMS is exclusively for tenant-owned secrets stored in the application database.
+
+## 8) Identity Platform
+
+- **Phase 2 hosted auth default**: Identity Platform replaces the Phase 1 local JWT auth for hosted deployments.
+- **Maps to**: `AuthProviderType.identityPlatform` in `packages/config`
+- **Sign-in methods enabled**:
+  - Email/password
+  - Google OIDC
+- **Multi-tenancy**: Single Identity Platform tenant per Nessie environment (staging, production). Organization-level tenancy is handled in the application layer, not Identity Platform tenants.
+- **JWT verification**: Identity Platform Admin SDK (`firebase-admin` or `google-auth-library`) verifies ID tokens server-side.
+- **Token flow**:
+  1. Client authenticates via Identity Platform (email/password or Google OIDC redirect).
+  2. Client receives an Identity Platform ID token.
+  3. Client sends the ID token as `Authorization: Bearer <idToken>` to the API.
+  4. API Fastify auth middleware verifies the token via Identity Platform Admin SDK.
+  5. API resolves the Identity Platform UID to a Nessie `User` record and constructs `AuthorizedActionContext`.
+- **User provisioning**: On first login, if no Nessie `User` record exists for the Identity Platform UID, the API creates one (JIT provisioning). The user is bound to a default organization via an invite or auto-join policy.
+
+Auth mode detection in `packages/config`:
+
+```ts
+type AuthMode = 'local' | 'identityPlatform' | 'selfHosted';
+
+// Hosted deployments set:
+// NESSIE_AUTH_MODE=identityPlatform
+// NESSIE_GCP_PROJECT_ID=<project>
+```
+
+## 9) Memorystore Redis
+
+- **Instance name**: `nessie-redis-{env}`
+- **Tier**: Basic (no replication -- acceptable for ephemeral data)
+- **Memory**: 1 GB
+- **Redis version**: 7.x
+- **Region**: Same as Cloud Run services
+- **Connection**: Private IP via VPC connector (same connector as Cloud SQL)
+
+Use cases:
+
+- **Rate limiting**: Sliding window counters for API endpoints. Key pattern: `rl:{endpoint}:{userId}`, TTL: 60s.
+- **Ephemeral session state**: Active WebSocket subscription sets, SSE cursor positions. Key pattern: `sess:{connectionId}`, TTL: 1h.
+- **Verification cooldowns**: Step-up verification rate limits. Key pattern: `verify:{userId}:{method}`, TTL: 300s.
+- **Continuation-token coordination**: Prevent duplicate approval consumptions. Key pattern: `cont:{tokenId}`, TTL: 600s.
+- **Idempotency dedup**: Short-lived dedup keys for at-least-once queue handlers. Key pattern: `idem:{idempotencyKey}`, TTL: 900s.
+
+Rules:
+
+- Every key must have an explicit TTL. No unbounded keys.
+- Redis is NOT used for durable business records. If Redis is flushed, the system must recover gracefully from Postgres.
+- Max memory policy: `allkeys-lru` (evict least recently used keys when memory is full).
+- Application code must handle Redis unavailability gracefully (degrade, not crash).
+
+## 10) Service accounts
+
+| Service | SA name | IAM roles |
+|---|---|---|
+| `nessie-api` | `nessie-api@{project}.iam.gserviceaccount.com` | `roles/cloudsql.client`, `roles/cloudsql.instanceUser`, `roles/pubsub.publisher`, `roles/storage.objectAdmin`, `roles/cloudkms.cryptoKeyEncrypterDecrypter`, `roles/firebaseauth.admin`, `roles/secretmanager.secretAccessor` |
+| `nessie-worker` | `nessie-worker@{project}.iam.gserviceaccount.com` | `roles/cloudsql.client`, `roles/cloudsql.instanceUser`, `roles/pubsub.subscriber`, `roles/storage.objectViewer`, `roles/cloudkms.cryptoKeyDecrypter`, `roles/secretmanager.secretAccessor` |
+
+Notes:
+
+- Each Cloud Run service runs as its dedicated service account. No shared SA.
+- `roles/cloudsql.instanceUser` is required for IAM database authentication.
+- `nessie-worker` has `pubsub.subscriber` (not publisher) because it only consumes messages. If the worker needs to enqueue follow-up jobs (e.g., step -> tool call), it also gets `roles/pubsub.publisher`.
+- `roles/secretmanager.secretAccessor` grants read access to infrastructure secrets stored in Secret Manager (e.g., `NESSIE_AUTH_SECRET`).
+- Principle of least privilege: the worker cannot create tenant secrets (no KMS encrypt), and cannot write to GCS (object viewer only, unless artifact upload is needed in which case `objectCreator` is added).
+
+## 11) Terraform structure
+
+```
+infrastructure/terraform/
+  main.tf                    # Root module, orchestrates all child modules
+  variables.tf               # Input variables (project_id, region, env)
+  outputs.tf                 # Output values (service URLs, DB connection)
+  terraform.tfvars.staging   # Staging variable values
+  terraform.tfvars.prod      # Production variable values
+  backend.tf                 # GCS remote state backend
+  modules/
+    cloud-run/
+      main.tf                # nessie-api and nessie-worker service definitions
+      variables.tf
+      outputs.tf
+    cloud-sql/
+      main.tf                # PostgreSQL instance, database, IAM users
+      variables.tf
+      outputs.tf
+    pubsub/
+      main.tf                # Topics, subscriptions, DLQ topics, Cloud Scheduler
+      variables.tf
+      outputs.tf
+    gcs/
+      main.tf                # Artifact bucket, lifecycle rules, CORS
+      variables.tf
+      outputs.tf
+    kms/
+      main.tf                # Key ring, encryption key, IAM bindings
+      variables.tf
+      outputs.tf
+    redis/
+      main.tf                # Memorystore instance
+      variables.tf
+      outputs.tf
+    networking/
+      main.tf                # VPC, subnet, VPC connector, Cloud LB, SSL cert
+      variables.tf
+      outputs.tf
+    iam/
+      main.tf                # Service accounts, role bindings
+      variables.tf
+      outputs.tf
+```
+
+State management:
+
+- Remote state in GCS bucket: `nessie-terraform-state-{project}`
+- State locking via GCS object versioning
+- Separate state files per environment (workspace or directory-based)
+
+Terraform version: `>= 1.5`
+Google provider version: `>= 5.0`
+
+## 12) CI/CD pipeline (GitHub Actions)
+
+### Build workflow (`.github/workflows/build.yml`)
+
+Triggers: push to `main`, pull requests.
 
 ```yaml
-# Simplified Cloud Build steps
 steps:
-  - id: build-api
-    name: gcr.io/cloud-builders/docker
-    args: ['build', '-t', '$_API_IMAGE', '-f', 'api/Dockerfile', '.']
-
-  - id: build-worker
-    name: gcr.io/cloud-builders/docker
-    args: ['build', '-t', '$_WORKER_IMAGE', '-f', 'worker/Dockerfile', '.']
-
-  - id: build-admin
-    name: gcr.io/cloud-builders/docker
-    args: ['build', '-t', '$_ADMIN_IMAGE', '-f', 'admin/Dockerfile', '.']
-
-  - id: push-images
-    # Push to Artifact Registry
-
-  - id: migrate-db
-    # Run Prisma migrations against Cloud SQL
-
-  - id: deploy-api
-    # gcloud run deploy nessie-api
-
-  - id: deploy-worker
-    # gcloud run deploy nessie-worker
-
-  - id: deploy-admin
-    # gcloud run deploy nessie-admin
+  - checkout
+  - setup-node (22.x)
+  - setup-pnpm
+  - pnpm install --frozen-lockfile
+  - pnpm lint          # All packages
+  - pnpm typecheck     # All packages
+  - pnpm build         # All packages
+  - pnpm test          # All packages
 ```
 
-## 10) Environment configuration
+### Deploy workflow (`.github/workflows/deploy.yml`)
 
-### Environment variables (via Secret Manager)
+Triggers: push to `main` (staging), manual dispatch (production).
 
-| Variable | Source | Description |
-|----------|--------|-------------|
-| `NESSIE_MODE` | config | `hosted` |
-| `NESSIE_DB_CONNECTION` | Secret Manager | Cloud SQL connection string or Unix socket path |
-| `NESSIE_AUTH_SECRET` | Secret Manager | JWT signing secret |
-| `NESSIE_QUEUE_PROVIDER` | config | `pubsub` |
-| `NESSIE_STORAGE_PROVIDER` | config | `gcs` |
-| `NESSIE_STORAGE_BUCKET` | config | GCS bucket name |
-| `NESSIE_KMS_KEY` | config | KMS key resource name |
-| `NESSIE_PUBSUB_PROJECT` | config | GCP project ID for Pub/Sub |
-| `NESSIE_MODEL_PROVIDER` | config | `openai` (or others) |
-| `NESSIE_MODEL_API_KEY` | Secret Manager | Model provider API key |
-| `NESSIE_LOG_LEVEL` | config | `info` |
+```yaml
+steps:
+  # 1. Build Docker images
+  - docker build -f infrastructure/docker/Dockerfile.api -t nessie-api .
+  - docker build -f infrastructure/docker/Dockerfile.worker -t nessie-worker .
 
-### Config resolution order
+  # 2. Push to Artifact Registry
+  - docker tag nessie-api {region}-docker.pkg.dev/{project}/nessie/nessie-api:{sha}
+  - docker tag nessie-worker {region}-docker.pkg.dev/{project}/nessie/nessie-worker:{sha}
+  - docker push {region}-docker.pkg.dev/{project}/nessie/nessie-api:{sha}
+  - docker push {region}-docker.pkg.dev/{project}/nessie/nessie-worker:{sha}
 
-1. Environment variables (highest priority)
-2. Secret Manager references (mounted as env vars by Cloud Run)
-3. Config file (`nessie.config.json` baked into container)
-4. Defaults from `packages/config`
+  # 3. Run Prisma migrations
+  - npx prisma migrate deploy
 
-## 11) Dockerfiles
-
-### API Dockerfile
-
-```dockerfile
-FROM node:22-alpine AS builder
-WORKDIR /app
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/ packages/
-COPY api/ api/
-RUN corepack enable && pnpm install --frozen-lockfile
-RUN pnpm --filter @nessie/schemas build
-RUN pnpm --filter @nessie/config build
-RUN pnpm --filter @nessie/api build
-
-FROM node:22-alpine
-WORKDIR /app
-COPY --from=builder /app/api/dist ./dist
-COPY --from=builder /app/api/node_modules ./node_modules
-COPY --from=builder /app/api/prisma ./prisma
-COPY --from=builder /app/packages ./packages
-EXPOSE 4317
-CMD ["node", "dist/index.js"]
+  # 4. Deploy to Cloud Run
+  - gcloud run deploy nessie-api --image={image} --region={region} ...
+  - gcloud run deploy nessie-worker --image={image} --region={region} ...
 ```
 
-### Worker Dockerfile
+Environments:
 
-Same pattern as API but for `/worker`.
+- **Staging**: Auto-deploy on push to `main`. Project: `nessie-staging`.
+- **Production**: Manual approval gate in GitHub Actions. Project: `nessie-production`.
 
-### Admin Dockerfile
+Artifact Registry:
 
-```dockerfile
-FROM node:22-alpine AS builder
-WORKDIR /app
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/ packages/
-COPY admin/ admin/
-RUN corepack enable && pnpm install --frozen-lockfile
-RUN pnpm --filter @nessie/admin build
+- Repository: `{region}-docker.pkg.dev/{project}/nessie`
+- Image tags: `{sha}` (immutable) and `latest` (mutable, points to most recent deploy)
+- Cleanup policy: Delete images older than 30 days except tagged releases
 
-FROM nginx:alpine
-COPY --from=builder /app/admin/dist /usr/share/nginx/html
-COPY admin/nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-```
+Authentication:
 
-## 12) Networking
+- Workload Identity Federation for GitHub Actions (no long-lived service account keys)
+- GitHub OIDC provider configured in GCP project
+
+## 13) Networking
+
+### VPC and connectivity
+
+- **VPC**: `nessie-vpc` in the deployment region
+- **Subnet**: `nessie-subnet` with `/24` range for Cloud Run connectors
+- **VPC connector**: `nessie-connector` (Serverless VPC Access connector)
+  - Used by both `nessie-api` and `nessie-worker` to reach Cloud SQL (private IP) and Redis (private IP)
+  - Machine type: `e2-micro`, min 2 / max 3 instances
+- **Egress**: Cloud Run services use VPC connector for private resources, direct egress for public internet (model API calls, external integrations)
 
 ### Load balancer
 
-- Google Cloud HTTPS Load Balancer
-- SSL certificate: managed by Google Certificate Manager for `*.unlikeotherai.com`
-- Backend services:
-  - `/api/*` -> `nessie-api` Cloud Run
-  - `/admin/*` -> `nessie-admin` Cloud Run (static)
-  - `/` -> `nessie-admin` Cloud Run (redirect)
+- **Type**: External Application Load Balancer (global)
+- **Backend**: `nessie-api` Cloud Run NEG (network endpoint group)
+- **SSL**: Google-managed SSL certificate for the custom domain
+- **Health check**: `GET /api/health` returning `200 OK`
+  - Interval: 10s, timeout: 5s, healthy threshold: 2, unhealthy threshold: 3
+- **CDN**: Disabled (API responses are not cacheable)
 
-### VPC connector
+### Custom domains
 
-- Serverless VPC Access connector for Cloud Run -> Cloud SQL private IP
-- Connector in the same region as Cloud SQL
-- `e2-micro` instances, min 2, max 3
+- **Production**: `api.nessie.unlikeotherai.com`
+- **Staging**: `api.staging.nessie.unlikeotherai.com`
+- DNS: CNAME or A record pointing to the load balancer IP
+- SSL certificates auto-provisioned and auto-renewed by Google
 
-### WebSocket support
+### Firewall rules
 
-- Cloud Run supports WebSocket natively
-- Session affinity: not required (WebSocket state is not in memory)
-- Timeout: 3600s for WebSocket connections (Cloud Run max)
+- Cloud SQL: accept connections only from VPC connector IP range
+- Redis: accept connections only from VPC connector IP range
+- Cloud Run services: no ingress restrictions (traffic arrives via LB or Eventarc)
 
-## 13) Observability
+## 14) Observability
 
-### Logging
+### Cloud Logging
 
-- Structured JSON logging to stdout (picked up by Cloud Logging automatically)
-- Log fields: `severity`, `message`, `requestId`, `organizationId`, `service`
-- Error logs include stack traces
+- All Cloud Run services emit structured JSON logs.
+- Log format: `{ severity, message, requestId, correlationId, userId, organizationId, timestamp, ...fields }`.
+- Log sinks: default Cloud Logging retention (30 days). No BigQuery export in Phase 2.
+- Error logs (`severity >= ERROR`) trigger alerting policies.
 
-### Monitoring
+### Cloud Monitoring
 
-- Cloud Monitoring dashboards for:
-  - API latency (p50, p95, p99)
-  - Worker job processing time
-  - Queue depth (pending messages per topic)
-  - Database connections and query latency
-  - Error rates by service
+Dashboards:
 
-### Alerting
+- **API dashboard**: request rate, error rate, p50/p95/p99 latency, active connections (SSE + WebSocket), instance count.
+- **Worker dashboard**: job processing rate, job error rate, job duration p50/p95/p99, DLQ depth, instance count.
+- **Infrastructure dashboard**: Cloud SQL CPU/memory/connections/replication lag, Redis memory/hit rate/evictions, Pub/Sub publish rate/ack latency/unacked messages.
 
-- Error rate > 5% sustained for 5 minutes
-- API p99 latency > 5s
-- Queue depth > 100 pending messages
-- Cloud SQL connection count > 80% of max
-- Worker job failure rate > 10%
+### Cloud Trace
 
-### Tracing
+- OpenTelemetry SDK integrated in both `nessie-api` and `nessie-worker`.
+- Traces exported to Cloud Trace via `@google-cloud/opentelemetry-cloud-trace-exporter`.
+- Trace context propagated from API -> Pub/Sub message attributes -> worker.
+- Sample rate: 100% in staging, 10% in production (adjustable).
 
-- OpenTelemetry integration for distributed tracing
-- `requestId` propagated across API -> queue -> worker
+### Alerting policies
 
-## 14) Migration path from Phase 1
+| Alert | Condition | Duration | Notification |
+|---|---|---|---|
+| API error rate high | Error rate > 5% | 5 minutes | Email + Slack webhook |
+| API latency high | p99 latency > 5s | 5 minutes | Email + Slack webhook |
+| Worker error rate high | Job failure rate > 10% | 5 minutes | Email + Slack webhook |
+| Cloud SQL CPU high | CPU utilization > 80% | 10 minutes | Email |
+| Cloud SQL connections high | Active connections > 80% of max | 5 minutes | Email |
+| Redis memory high | Memory utilization > 80% | 10 minutes | Email |
+| DLQ non-empty | Any DLQ topic message count > 0 | 1 minute | Email + Slack webhook |
+| SSL cert expiry | Certificate expires in < 14 days | -- | Email |
 
-### What changes for existing local installs
+## 15) Cost estimate (monthly, staging)
 
-Nothing. Local installs continue to use:
+| Resource | Configuration | Estimated cost |
+|---|---|---|
+| Cloud Run API | 1 instance always-on, 2 vCPU / 1 GiB | ~$25 |
+| Cloud Run Worker | 0-2 instances, 2 vCPU / 2 GiB | ~$15 |
+| Cloud SQL | `db-custom-2-4096`, regional HA | ~$120 |
+| Pub/Sub | 7 topics, low message volume | ~$5 |
+| GCS | < 10 GB storage, low egress | ~$5 |
+| Cloud KMS | 1 key, < 10K operations/month | ~$3 |
+| Memorystore Redis | Basic tier, 1 GB | ~$35 |
+| Load Balancer | External ALB, managed SSL | ~$20 |
+| Artifact Registry | < 5 GB images | ~$2 |
+| Cloud Logging/Monitoring | Included tier | ~$0 |
+| **Total staging** | | **~$230/month** |
 
-- pgqueue (Postgres-backed queue)
-- filesystem storage
-- local auth (bootstrap + optional OIDC)
-- same config, same CLI launcher
+Production cost scales with instance counts and traffic. At moderate load (5-10 concurrent users, ~1000 agent runs/day), expect roughly 2-3x staging cost (~$500-700/month).
 
-### What's new for hosted
+## 16) Dockerfiles
 
-- Pub/Sub queue adapter replaces pgqueue
-- GCS storage adapter replaces filesystem
-- Cloud SQL replaces local Postgres
-- Cloud KMS replaces local secret encryption (Phase 3)
-- Identity Platform or UOA replaces local-only auth
-- Cloud Run replaces `nessie local up`
+### `infrastructure/docker/Dockerfile.api`
 
-### Adapter selection
+```dockerfile
+# Build stage
+FROM node:22-slim AS builder
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
-Config-driven, not code-branched:
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/ ./packages/
+COPY api/ ./api/
 
-```ts
-// In packages/config
-if (config.mode === 'hosted') {
-  queueProvider = new PubSubQueueProvider(config.pubsub);
-  storageProvider = new GcsStorageProvider(config.storage.bucket);
-} else {
-  queueProvider = new PgQueueProvider(config.database);
-  storageProvider = new FilesystemStorageProvider(config.storage.path);
-}
+RUN pnpm install --frozen-lockfile --filter @nessie/api...
+RUN pnpm --filter @nessie/api... build
+RUN pnpm --filter @nessie/api deploy --prod /app/deploy
+
+# Runtime stage
+FROM node:22-slim AS runtime
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  openssl \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/deploy ./
+COPY --from=builder /app/api/prisma ./prisma/
+
+ENV NODE_ENV=production
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["node", "dist/index.js"]
 ```
 
-## 15) Cost estimate (beta)
+### `infrastructure/docker/Dockerfile.worker`
 
-Rough monthly cost for a small beta deployment:
+```dockerfile
+# Build stage
+FROM node:22-slim AS builder
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
-| Resource | Estimated cost |
-|----------|---------------|
-| Cloud Run API (1 min instance) | $30-50 |
-| Cloud Run Worker (0 min, event-driven) | $10-30 |
-| Cloud SQL (db-custom-2-4096, HA) | $120-150 |
-| Pub/Sub | $5-10 |
-| Cloud Storage (10GB) | $1-5 |
-| Cloud KMS | $1-5 |
-| Load Balancer | $20-30 |
-| **Total** | **~$200-280/month** |
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/ ./packages/
+COPY worker/ ./worker/
 
-## 16) Cross-links
+RUN pnpm install --frozen-lockfile --filter @nessie/worker...
+RUN pnpm --filter @nessie/worker... build
+RUN pnpm --filter @nessie/worker deploy --prod /app/deploy
 
-- [hosted-app-architecture.md](./hosted-app-architecture.md)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
-- [implementation-phases.md](./implementation-phases.md)
-- [config-module-spec.md](./config-module-spec.md)
+# Runtime stage
+FROM node:22-slim AS runtime
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  openssl \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/deploy ./
+
+ENV NODE_ENV=production
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["node", "dist/index.js"]
+```
+
+Notes:
+
+- Both use multi-stage builds to minimize runtime image size.
+- `node:22-slim` as runtime base (Debian bookworm-slim, ~180 MB).
+- `openssl` is required for Prisma.
+- `pnpm deploy --prod` creates a minimal production-only node_modules.
+- Images are tagged with the Git SHA for immutable deployments.
+
+## 17) Cross-links
+
+- [hosted-app-architecture.md](./hosted-app-architecture.md) -- physical deployment topology, stack decisions, queue abstraction
+- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) -- deployment modes, auth modes
+- [implementation-phases.md](./implementation-phases.md) -- Phase 2 scope and exit criteria
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) -- canonical event types and API contracts
+- [config-module-spec.md](./config-module-spec.md) -- auth mode configuration, runtime capabilities
+- [organization-governance-spec.md](./organization-governance-spec.md) -- org/project/team model extended in Phase 2
