@@ -188,33 +188,11 @@ Required actions:
 Recommended action payload shape:
 
 ```ts
+// accessContext uses the canonical AccessContext from shared-type-contracts-spec.md section 9.
+// Do not duplicate the shape here — import from packages/schemas.
 interface KnowledgeBaseToolInput {
   action: "link" | "reindex" | "summarize" | "search" | "read" | "search.summary";
-  accessContext: {
-    actor: {
-      actorType: "user" | "agent" | "service";
-      actorId: string;
-      roles?: string[];
-    };
-    tenant: {
-      organizationId: string;
-      projectId?: string;
-      teamId?: string;
-      channelId?: string;
-    };
-    actionContext: {
-      teamId?: string;
-      channelId?: string;
-      agentId?: string;
-      toolId?: string;
-      taskId?: string;
-      threadId?: string;
-      sessionId?: string;
-      requestId: string;
-      correlationId?: string;
-      purpose?: string;
-    };
-  };
+  accessContext: AccessContext;
   projectId?: string;
   sourceUri?: string;
   sourceType?: "file" | "folder" | "url" | "mcp";

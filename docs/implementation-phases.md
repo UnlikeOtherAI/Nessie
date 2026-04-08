@@ -563,6 +563,8 @@ This must be built first. All Phase 3 features depend on new data models and sha
 - [knowledge-base-requirements.md](./knowledge-base-requirements.md) -- document ingestion and scoped search
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) -- shared type contracts (Phase 3 additions)
 - [config-module-spec.md](./config-module-spec.md) -- Phase 3 config additions
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md) -- Phase 3 integration points (secret, KB, verification, tool registry)
+- [audit-trail-spec.md](./audit-trail-spec.md) -- Phase 3 audit action families
 
 ### Phase 3 exit gate
 

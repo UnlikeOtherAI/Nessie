@@ -548,7 +548,7 @@ Phase 2 adds these types when the corresponding features ship:
 - `AuditLogEntry` response type, audit query params (see [audit-trail-spec.md](./audit-trail-spec.md))
 - `TokenLedgerEvent`, `ModelPricingProfile` (see [token-ledger-spec.md](./token-ledger-spec.md))
 - `PolicyDecision`, `EffectivePolicy` response type (see [policy-enforcement-spec.md](./policy-enforcement-spec.md))
-- `ApprovalId`, `AuditLogId`, `PolicyId` branded IDs
+- `ApprovalId`, `AuditLogId`, `PolicyId`, `PolicyBindingId` branded IDs
 
 Not in `packages/schemas` for Phase 2 (deferred to Phase 3+):
 

@@ -76,10 +76,10 @@ Flow:
 6. The enrolled factor becomes available for future step-up checks.
 
 Rules:
-- the TOTP secret must be stored as a secret reference, not in chat,
+- the TOTP secret must be created via `POST /api/secrets` with `secretType: 'token'` and `scopeType: 'user'` before enrollment completes; the returned `secretRef` is stored on the `VerificationEnrollment` record,
 - the QR payload is a transient representation of the secret,
 - enrollment requires an explicit confirmation step,
-- recovery codes should be shown once and then stored hashed.
+- recovery codes must also be stored via `POST /api/secrets` (hashed) and the `secretRef` recorded on the enrollment.
 
 ## 6) Action binding
 
@@ -126,7 +126,7 @@ type VerificationPolicy = {
   challengeTtlMs: number;
   resendCooldownMs: number;
   maxAttempts: number;
-  scope: 'organization' | 'project' | 'team' | 'channel' | 'agent' | 'user' | 'service';
+  scope: 'organization' | 'project' | 'team' | 'channel' | 'agent' | 'tool' | 'user' | 'service';
 };
 
 type VerificationChallenge = {

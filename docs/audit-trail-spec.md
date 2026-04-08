@@ -69,7 +69,7 @@ model AuditLog {
 
 ```ts
 type AuditLogRecord = {
-  id: string;
+  id: AuditLogId;
   organizationId: OrganizationId;
   projectId?: ProjectId;
   teamId?: TeamId;
@@ -126,7 +126,7 @@ type AuditAction =
   | 'agent.deleted'
   | 'agent.bound'
   | 'agent.unbound'
-  // Tools
+  // Tools (Phase 2 — superseded by Phase 3 tool.grant.updated)
   | 'tool.granted'
   | 'tool.revoked'
   // Approvals
@@ -161,6 +161,7 @@ type AuditAction =
   | 'secret.revoked'
   | 'secret.deleted'
   | 'secret.resolved'
+  | 'secret.access_check'
   | 'secret.access_denied'
   | 'secret.grant.created'
   | 'secret.grant.deleted'
@@ -169,6 +170,7 @@ type AuditAction =
   | 'verification.challenge.verified'
   | 'verification.challenge.failed'
   | 'verification.challenge.expired'
+  | 'verification.challenge.cancelled'
   | 'verification.factor.enrolled'
   | 'verification.factor.revoked'
   | 'verification.policy.created'

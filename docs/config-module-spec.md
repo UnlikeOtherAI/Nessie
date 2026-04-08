@@ -228,6 +228,7 @@ Phase 3 environment variable mappings:
 - `NESSIE_VERIFICATION_EMAIL_OTP_ENABLED` -> `verification.emailOtp.enabled`
 - `NESSIE_VERIFICATION_EMAIL_LINK_ENABLED` -> `verification.emailLink.enabled`
 - `NESSIE_VERIFICATION_TOTP_ENABLED` -> `verification.totp.enabled`
+- `NESSIE_VERIFICATION_TOTP_ISSUER` -> `verification.totp.issuer`
 - `NESSIE_KB_STORAGE_PROVIDER` -> `knowledgeBase.storageProvider`
 - `NESSIE_TRANSLATION_ENABLED` -> `translation.enabled`
 - `NESSIE_TRANSLATION_PROVIDER` -> `translation.provider`

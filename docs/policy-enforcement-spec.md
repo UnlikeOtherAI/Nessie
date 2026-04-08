@@ -370,7 +370,34 @@ Policy checks are mandatory at these access boundaries in Phase 2. Each integrat
 
 - **Before any CRUD on organization, project, or team**: check `resourceType=admin, action=edit` or `action=create` or `action=admin` as appropriate.
 
-### 6.6 Search and discovery
+### 6.6 Phase 3: Secret access
+
+- **Before resolving a secret**: check `resourceType=secret, action=resolve` for the actor in the secret's scope chain.
+- **Before rotating a secret**: check `resourceType=secret, action=rotate`.
+- **Before revoking a secret**: check `resourceType=secret, action=revoke`.
+- **Before creating a secret binding**: check `resourceType=secret, action=bind`.
+
+### 6.7 Phase 3: Knowledge base access
+
+- **Before linking a knowledge source**: check `resourceType=knowledge_source, action=link`.
+- **Before reading a knowledge document**: check `resourceType=knowledge_document, action=read`.
+- **Before searching knowledge**: check `resourceType=knowledge_source, action=search`.
+- **Before reindexing a source**: check `resourceType=knowledge_source, action=reindex`.
+
+### 6.8 Phase 3: Verification policy
+
+- **Before enrolling a verification factor**: check `resourceType=verification_factor, action=enroll`.
+- **Before creating a verification policy**: check `resourceType=verification_policy, action=create`.
+- **Before updating a verification policy**: check `resourceType=verification_policy, action=edit`.
+
+### 6.9 Phase 3: Tool registry and grants
+
+- **Before importing a tool bundle**: check `resourceType=tool_bundle, action=import`.
+- **Before changing a tool grant**: check `resourceType=tool_grant, action=grant`.
+- **Before creating a prompt layer**: check `resourceType=prompt, action=create`.
+- **Before editing a prompt layer**: check `resourceType=prompt, action=edit`.
+
+### 6.10 Search and discovery
 
 - **Agent search**: filter results through `resourceType=agent, action=view` per result.
 - **Tool search**: filter results through `resourceType=tool, action=view` per result.
