@@ -235,7 +235,7 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 ## 4) Deterministic behavior contract
 
 - Default order: `updatedAt DESC, score DESC, title ASC, docId ASC`.
-- Full deterministic mode: explicit stable sort and cursor derived from `(sortKey, docId)`.
+- Full deterministic mode: cursor derived from `(updatedAt, id)` per shared-type-contracts-spec.md section 3. When a non-default sort is active (e.g. `scoreDesc`), the cursor includes `(sortValue, updatedAt, id)` for stable tie-breaking.
 - Search results should not include full docs unless `read` is requested.
 - Every response should include pagination and cache metadata to keep clients resumable.
 - Thread-level `ephemeral` search must include `ttlMs` and source cap metadata.
