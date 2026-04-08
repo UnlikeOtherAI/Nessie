@@ -44,7 +44,16 @@ If the text contains a decision, preference, architectural choice, trade-off, ev
 }
 
 If the text is a simple note, observation, or information without decision logic:
-{ "hasReasoning": false, "reasoningType": "decision", "alternatives": null, "criteria": null, "constraints": null, "tradeoffs": null, "confidence": 0, "reasoningSummary": "" }
+{
+  "hasReasoning": false,
+  "reasoningType": "decision",
+  "alternatives": null,
+  "criteria": null,
+  "constraints": null,
+  "tradeoffs": null,
+  "confidence": 0,
+  "reasoningSummary": ""
+}
 
 Text: `
 
@@ -66,7 +75,12 @@ export const extractReasoning = async (
       messages: [
         {
           role: 'system',
-          content: 'You analyze text for decision reasoning. Return valid JSON only. Be precise about what alternatives were considered and what criteria drove the decision.',
+          content: [
+            'You analyze text for decision reasoning.',
+            'Return valid JSON only.',
+            'Be precise about what alternatives were',
+            'considered and what criteria drove the decision.',
+          ].join(' '),
         },
         { role: 'user', content: `${REASONING_PROMPT}${content.slice(0, 4000)}` },
       ],

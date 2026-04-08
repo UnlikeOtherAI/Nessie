@@ -67,7 +67,10 @@ export const linkThoughts = async (
   if (input.relation === 'supersedes') {
     await pool.query(
       `UPDATE thought_reasonings
-       SET outcome = 'superseded', outcome_notes = 'Superseded by thought ' || $1, outcome_at = now(), updated_at = now()
+       SET outcome = 'superseded',
+           outcome_notes = 'Superseded by thought ' || $1,
+           outcome_at = now(),
+           updated_at = now()
        WHERE thought_id = $2 AND outcome = 'pending'`,
       [input.sourceId, input.targetId],
     )
