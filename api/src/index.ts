@@ -819,9 +819,11 @@ export const buildApp = async () => {
 
     const category = await createAgentCategory(prisma, {
       name: body.name,
+      description: body.description,
       visibility: body.visibility ?? 'public',
       organizationId: actorContext.tenant.organizationId,
       createdById: actorContext.actor.actorId,
+      authorAgentId: body.authorAgentId,
     })
 
     return reply

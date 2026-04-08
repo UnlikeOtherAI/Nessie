@@ -9,8 +9,10 @@ import type { AgentCategoryRecord } from '../contracts.js'
 
 type CategoryRow = {
   agents: Array<{ agentId: string }>
+  authorAgentId: string | null
   createdAt: Date
   createdById: string
+  description: string | null
   id: string
   name: string
   organizationId: string
@@ -21,9 +23,11 @@ type CategoryRow = {
 const mapCategory = (row: CategoryRow): AgentCategoryRecord => ({
   id: parseAgentCategoryId(row.id),
   name: row.name,
+  description: row.description,
   visibility: row.visibility,
   organizationId: parseOrganizationId(row.organizationId),
   createdById: parseUserId(row.createdById),
+  authorAgentId: row.authorAgentId ? parseAgentId(row.authorAgentId) : null,
   agentIds: row.agents.map((a) => parseAgentId(a.agentId)),
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
@@ -45,7 +49,9 @@ export const listAgentCategories = async (
 export const createAgentCategory = async (
   prisma: PrismaClient,
   input: {
+    authorAgentId?: string
     createdById: string
+    description?: string
     name: string
     organizationId: string
     visibility: 'private' | 'public'
@@ -54,9 +60,11 @@ export const createAgentCategory = async (
   const row = await prisma.agentCategory.create({
     data: {
       name: input.name,
+      description: input.description ?? null,
       visibility: input.visibility,
       organizationId: input.organizationId,
       createdById: input.createdById,
+      authorAgentId: input.authorAgentId ?? null,
     },
     include: { agents: { select: { agentId: true } } },
   })
@@ -67,7 +75,12 @@ export const createAgentCategory = async (
 export const updateAgentCategory = async (
   prisma: PrismaClient,
   categoryId: string,
-  input: { name?: string; visibility?: 'private' | 'public' },
+  input: {
+    authorAgentId?: string | null
+    description?: string | null
+    name?: string
+    visibility?: 'private' | 'public'
+  },
 ): Promise<AgentCategoryRecord | null> => {
   const exists = await prisma.agentCategory.findUnique({
     where: { id: categoryId },
@@ -78,8 +91,14 @@ export const updateAgentCategory = async (
     where: { id: categoryId },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined
+        ? { description: input.description }
+        : {}),
       ...(input.visibility !== undefined
         ? { visibility: input.visibility }
+        : {}),
+      ...(input.authorAgentId !== undefined
+        ? { authorAgentId: input.authorAgentId }
         : {}),
     },
     include: { agents: { select: { agentId: true } } },

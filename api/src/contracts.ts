@@ -102,9 +102,11 @@ export const CreateAgentBindingBodySchema = z.object({
 export const AgentCategoryRecordSchema = z.object({
   id: AgentCategoryIdSchema,
   name: NonEmptyStringSchema,
+  description: z.string().nullable(),
   visibility: AgentCategoryVisibilitySchema,
   organizationId: OrganizationIdSchema,
   createdById: UserIdSchema,
+  authorAgentId: AgentIdSchema.nullable(),
   agentIds: z.array(AgentIdSchema),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
@@ -113,12 +115,16 @@ export type AgentCategoryRecord = z.infer<typeof AgentCategoryRecordSchema>
 
 export const CreateAgentCategoryBodySchema = z.object({
   name: NonEmptyStringSchema,
+  description: z.string().optional(),
   visibility: AgentCategoryVisibilitySchema.optional(),
+  authorAgentId: AgentIdSchema.optional(),
 })
 
 export const UpdateAgentCategoryBodySchema = z.object({
   name: NonEmptyStringSchema.optional(),
+  description: z.string().nullable().optional(),
   visibility: AgentCategoryVisibilitySchema.optional(),
+  authorAgentId: AgentIdSchema.nullable().optional(),
 })
 
 export const AgentCategoryAgentBodySchema = z.object({

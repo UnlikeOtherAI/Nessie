@@ -1,9 +1,6 @@
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import type { AgentChild } from '@nessie/schemas'
-import {
-  useAgentCategories,
-  useCreateAgentCategory,
-} from '../../../facades/agent-categories/hooks'
+import { useAgentCategories } from '../../../facades/agent-categories/hooks'
 import { useAgentChildren, useAgents } from '../../../facades/agents/hooks'
 import { useMediaQuery } from '../../../hooks/useMediaQuery'
 import type {
@@ -15,6 +12,7 @@ import { AgentColumnItem } from './AgentColumnItem'
 import { AgentDetailColumn } from './AgentDetailColumn'
 import { AgentStatusDot } from './AgentStatusDot'
 import { CategoryAgentsPopup } from './CategoryAgentsPopup'
+import { CreateCategoryDialog } from './CreateCategoryDialog'
 import { SubAgentPopup } from './SubAgentPopup'
 
 // ─── Static category definitions ───────────────────────────────────────────
@@ -228,42 +226,25 @@ const CategoryItem = ({
   </button>
 )
 
-// ─── Category column with inline create ────────────────────────────────────
+// ─── Category column content ──────────────────────────────────────────────
 
 type CategoryColumnContentProps = {
   categories: AgentCategoryRecord[]
+  onCreateClick: () => void
   onSelect: (selection: CategorySelection) => void
   selected: CategorySelection | null
 }
 
 const CategoryColumnContent = ({
   categories,
+  onCreateClick,
   onSelect,
   selected,
 }: CategoryColumnContentProps) => {
-  const [showCreate, setShowCreate] = useState(false)
-  const [newName, setNewName] = useState('')
-  const createCategory = useCreateAgentCategory()
-
   const isSelected = (sel: CategorySelection): boolean => {
     if (!selected) return false
     if (selected.kind !== sel.kind) return false
     return selected.id === sel.id
-  }
-
-  const handleCreate = () => {
-    const trimmed = newName.trim()
-    if (!trimmed) return
-
-    createCategory.mutate(
-      { name: trimmed },
-      {
-        onSuccess: () => {
-          setNewName('')
-          setShowCreate(false)
-        },
-      },
-    )
   }
 
   return (
@@ -287,7 +268,10 @@ const CategoryColumnContent = ({
       {/* Custom categories */}
       {categories.map((cat) => (
         <CategoryItem
-          description={`${cat.agentIds.length} agent${cat.agentIds.length !== 1 ? 's' : ''} \u00B7 ${cat.visibility}`}
+          description={
+            cat.description
+              ?? `${cat.agentIds.length} agent${cat.agentIds.length !== 1 ? 's' : ''} \u00B7 ${cat.visibility}`
+          }
           isSelected={isSelected({ kind: 'custom', id: cat.id })}
           key={cat.id}
           name={cat.name}
@@ -295,90 +279,34 @@ const CategoryColumnContent = ({
         />
       ))}
 
-      {/* Inline create */}
+      {/* New category button */}
       <div className="mx-2 mt-2 border-t border-[color:var(--sep)] pt-2">
-        {showCreate ? (
-          <div className="space-y-2 px-1">
-            <input
-              autoFocus
-              className={[
-                'w-full rounded-lg border',
-                'border-[color:var(--border-strong)]',
-                'bg-white/5 px-3 py-2 text-sm',
-                'text-[color:var(--tx)] outline-none',
-                'placeholder:text-[color:var(--tx3)]',
-                'focus:border-[#7c3aed]',
-              ].join(' ')}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreate()
-                if (e.key === 'Escape') setShowCreate(false)
-              }}
-              placeholder="Category name"
-              value={newName}
-            />
-            <div className="flex gap-2">
-              <button
-                className={[
-                  'flex-1 rounded-lg border',
-                  'border-[rgba(124,58,237,0.3)]',
-                  'bg-[rgba(124,58,237,0.15)] px-3 py-1.5',
-                  'text-xs font-medium text-[#a78bfa]',
-                  'transition-colors',
-                  'hover:bg-[rgba(124,58,237,0.25)]',
-                  'disabled:opacity-40',
-                ].join(' ')}
-                disabled={
-                  !newName.trim() || createCategory.isPending
-                }
-                onClick={handleCreate}
-                type="button"
-              >
-                {createCategory.isPending
-                  ? 'Creating...'
-                  : 'Create'}
-              </button>
-              <button
-                className={[
-                  'rounded-lg px-3 py-1.5 text-xs',
-                  'text-[color:var(--tx3)]',
-                  'hover:bg-white/10',
-                ].join(' ')}
-                onClick={() => setShowCreate(false)}
-                type="button"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            className={[
-              'flex w-full items-center gap-2 rounded-lg',
-              'px-3 py-2 text-left text-xs',
-              'text-[color:var(--tx3)]',
-              'transition-colors hover:bg-white/5',
-              'hover:text-[color:var(--tx2)]',
-            ].join(' ')}
-            onClick={() => setShowCreate(true)}
-            type="button"
+        <button
+          className={[
+            'flex w-full items-center gap-2 rounded-lg',
+            'px-3 py-2 text-left text-xs',
+            'text-[color:var(--tx3)]',
+            'transition-colors hover:bg-white/5',
+            'hover:text-[color:var(--tx2)]',
+          ].join(' ')}
+          onClick={onCreateClick}
+          type="button"
+        >
+          <svg
+            className="h-3.5 w-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
           >
-            <svg
-              className="h-3.5 w-3.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M12 5v14M5 12h14"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            New category
-          </button>
-        )}
+            <path
+              d="M12 5v14M5 12h14"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          New category
+        </button>
       </div>
     </>
   )
@@ -400,6 +328,7 @@ export const AgentColumnBrowser = () => {
   const [categoryPopupId, setCategoryPopupId] = useState<string | null>(
     null,
   )
+  const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
 
   const isMobile = useMediaQuery('(max-width: 767px)')
   const isTablet = useMediaQuery(
@@ -501,6 +430,7 @@ export const AgentColumnBrowser = () => {
         <AgentColumn showBack={false} title="Agent Categories">
           <CategoryColumnContent
             categories={customCategories}
+            onCreateClick={() => setCreateCategoryOpen(true)}
             onSelect={selectCategory}
             selected={selectedCategory}
           />
@@ -713,6 +643,11 @@ export const AgentColumnBrowser = () => {
           onClose={() => setCategoryPopupId(null)}
         />
       )}
+
+      <CreateCategoryDialog
+        onClose={() => setCreateCategoryOpen(false)}
+        open={createCategoryOpen}
+      />
     </div>
   )
 }

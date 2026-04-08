@@ -21,6 +21,8 @@ export const useCreateAgentCategory = () => {
 
   return useMutation({
     mutationFn: (input: {
+      authorAgentId?: string
+      description?: string
       name: string
       visibility?: 'private' | 'public'
     }) =>

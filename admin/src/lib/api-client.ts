@@ -71,8 +71,10 @@ export type ThreadMessageRecord = {
 
 export type AgentCategoryRecord = {
   agentIds: string[]
+  authorAgentId: string | null
   createdAt: string
   createdById: string
+  description: string | null
   id: string
   name: string
   organizationId: string
