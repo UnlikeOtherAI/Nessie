@@ -1,26 +1,26 @@
-import type { ToolCallEntry } from '@nessie/schemas'
-import { EmptyState } from '../../shared/EmptyState'
-import { StatusPill } from '../../primitives/StatusPill'
+import type { ToolCallEntry } from '@nessie/schemas';
+import { EmptyState } from '../../shared/EmptyState';
+import { StatusPill } from '../../primitives/StatusPill';
 
 type ToolExecutionLogProps = {
-  entries: ToolCallEntry[]
-}
+  entries: ToolCallEntry[];
+};
 
 const getTone = (success: boolean | undefined) => {
   if (success === true) {
-    return 'success'
+    return 'success';
   }
 
   if (success === false) {
-    return 'danger'
+    return 'danger';
   }
 
-  return 'warning'
-}
+  return 'warning';
+};
 
 export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => (
   <section className="grid gap-3">
-    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
+    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
       Tool execution log
     </div>
     {entries.length === 0 ? (
@@ -29,22 +29,22 @@ export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => (
       entries.map((entry) => (
         <article
           key={`${entry.runId}:${entry.toolName}:${entry.startedAt}`}
-          className="rounded-[1.35rem] border border-[color:var(--line)] bg-white/75 p-4"
+          className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4"
         >
           <div className="flex items-center justify-between gap-3">
-            <div className="font-mono text-sm">{entry.toolName}</div>
+            <div className="font-mono text-sm text-[#a78bfa]">{entry.toolName}</div>
             <StatusPill tone={getTone(entry.success)}>
               {entry.success === undefined ? 'running' : entry.success ? 'success' : 'failed'}
             </StatusPill>
           </div>
-          <div className="mt-2 text-xs uppercase tracking-[0.16em] text-[color:var(--muted)]">
+          <div className="mt-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
             {entry.durationMs ? `${entry.durationMs} ms` : 'active'}
           </div>
-          <div className="mt-3 text-sm leading-6 text-[color:var(--muted)]">
+          <div className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
             {entry.outputPreview ?? entry.inputSummary}
           </div>
         </article>
       ))
     )}
   </section>
-)
+);

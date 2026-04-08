@@ -1,75 +1,149 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { ChannelRow } from '../components/shared/ChannelRow'
-import { Composer } from '../components/shared/Composer'
-import { MessageBubble } from '../components/shared/MessageBubble'
-import { PageHeader } from '../components/shared/PageHeader'
-import { RailButton } from '../components/shared/RailButton'
-import { SidebarSection } from '../components/shared/SidebarSection'
-import { StatusPill } from '../components/shared/StatusPill'
-import { ToolRow } from '../components/shared/ToolRow'
-import { UnreadBadge } from '../components/shared/UnreadBadge'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
-  useAgents,
-  useBindAgent,
-  useCreateAgent,
-} from '../facades/agents/hooks'
-import { useChannels, useCreateChannel } from '../facades/channels/hooks'
+  useNavigate,
+  useOutletContext,
+  useParams,
+} from 'react-router-dom'
+import { useAgents } from '../facades/agents/hooks'
+import { useChannels } from '../facades/channels/hooks'
 import { useSendMessage } from '../facades/messages/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { useTools } from '../facades/tools/hooks'
-import { useCreateUser, useUsers } from '../facades/users/hooks'
+import type { AgentRecord, ThreadMessageRecord } from '../lib/api-client'
+import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
-const fieldClass = [
-  'w-full rounded-2xl border border-[color:var(--line)]',
-  'bg-white/80 px-4 py-3 text-sm text-[color:var(--ink)]',
-  'outline-none transition focus:border-[color:var(--accent)]',
-  'focus:ring-2 focus:ring-[color:var(--accent-soft)]',
+type ChannelTab = 'agents' | 'messages' | 'runs'
+
+type FeedItem =
+  | { kind: 'date'; label: string }
+  | { kind: 'message'; message: ThreadMessageRecord }
+
+const toolbarButtonClass =
+  'flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-white/10'
+
+const runsCardClass = [
+  'admin-card flex items-start gap-3 p-3 text-left',
+  'hover:bg-[color:var(--main-hover)]',
 ].join(' ')
 
-const primaryButtonClass = [
-  'rounded-2xl bg-[color:var(--accent)] px-4 py-3 text-sm',
-  'font-medium text-white transition hover:opacity-90',
-].join(' ')
+const formatDayLabel = (value: string): string => {
+  const date = new Date(value)
+  const today = new Date()
+  const yesterday = new Date()
+  yesterday.setDate(today.getDate() - 1)
 
-const cardClass = 'glass-panel rounded-[2rem] p-5'
+  const sameDay = (left: Date, right: Date) =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+
+  if (sameDay(date, today)) {
+    return 'Today'
+  }
+
+  if (sameDay(date, yesterday)) {
+    return 'Yesterday'
+  }
+
+  return date.toLocaleDateString([], {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+const formatClock = (value: string): string =>
+  new Date(value).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+const userGradients = [
+  'linear-gradient(135deg,#7c3aed,#4f46e5)',
+  'linear-gradient(135deg,#0891b2,#0369a1)',
+  'linear-gradient(135deg,#047857,#065f46)',
+] as const
+
+const buildFeedItems = (messages: ThreadMessageRecord[]): FeedItem[] => {
+  const items: FeedItem[] = []
+  let previousDateLabel: string | null = null
+
+  for (const message of messages) {
+    const dateLabel = formatDayLabel(message.createdAt)
+    if (dateLabel !== previousDateLabel) {
+      items.push({ kind: 'date', label: dateLabel })
+      previousDateLabel = dateLabel
+    }
+    items.push({ kind: 'message', message })
+  }
+
+  return items
+}
+
+const getAgentGlyph = (agent?: AgentRecord | null): string => {
+  if (!agent) {
+    return '⚡'
+  }
+
+  const role = agent.role.toLowerCase()
+  if (role.includes('research')) {
+    return '🔍'
+  }
+  if (role.includes('write')) {
+    return '📝'
+  }
+  return '⚡'
+}
+
+const getDisplayName = (
+  entry: ThreadMessageRecord,
+  meDisplayName: string,
+  agentMap: Map<string, AgentRecord>,
+): string => {
+  if (entry.role === 'assistant') {
+    return agentMap.get(entry.agentId ?? '')?.name ?? 'Agent'
+  }
+
+  if (entry.role === 'system') {
+    return 'System'
+  }
+
+  return meDisplayName
+}
 
 export const ChannelsPage = () => {
   const navigate = useNavigate()
   const { channelId } = useParams()
   const { me } = useAuthSession()
+  const { onSelectAgent, scopedAgents } =
+    useOutletContext<AdminShellOutletContext>()
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
   const { data: tools = [] } = useTools()
 
-  const activeChannel = channels.find((channel) => channel.id === channelId) ?? channels[0] ?? null
-  const { data: threadMessages = [] } = useThreadMessages(activeChannel?.defaultThreadId)
+  const activeChannel =
+    channels.find((channel) => channel.id === channelId) ?? channels[0] ?? null
+  const boundAgents = useMemo(
+    () =>
+      activeChannel
+        ? agents.filter((agent) => agent.channelIds.includes(activeChannel.id))
+        : [],
+    [activeChannel, agents],
+  )
+  const agentMap = useMemo(
+    () => new Map(agents.map((agent) => [agent.id, agent])),
+    [agents],
+  )
+  const { data: threadMessages = [] } = useThreadMessages(
+    activeChannel?.defaultThreadId,
+  )
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
-
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
-  const { data: users = [] } = useUsers(isOwner)
-
-  const createChannel = useCreateChannel()
-  const createAgent = useCreateAgent()
-  const bindAgent = useBindAgent()
-  const createUser = useCreateUser()
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
 
-  const [channelLabel, setChannelLabel] = useState('')
-  const [channelVisibility, setChannelVisibility] = useState<'public' | 'protected' | 'private'>(
-    'public',
-  )
-  const [agentName, setAgentName] = useState('')
-  const [agentRole, setAgentRole] = useState('assistant')
-  const [agentPrompt, setAgentPrompt] = useState('')
-  const [bindTargetChannelId, setBindTargetChannelId] = useState('')
+  const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [message, setMessage] = useState('')
   const [selectedAgentId, setSelectedAgentId] = useState('')
-  const [userDisplayName, setUserDisplayName] = useState('')
-  const [userEmail, setUserEmail] = useState('')
-  const [userPassword, setUserPassword] = useState('')
-  const [userRole, setUserRole] = useState('member')
 
   useEffect(() => {
     if (!channelId && activeChannel) {
@@ -78,71 +152,19 @@ export const ChannelsPage = () => {
   }, [activeChannel, channelId, navigate])
 
   useEffect(() => {
-    if (!bindTargetChannelId && activeChannel) {
-      setBindTargetChannelId(activeChannel.id)
-    }
-  }, [activeChannel, bindTargetChannelId])
-
-  useEffect(() => {
-    const scopedAgents = activeChannel
-      ? agents.filter((agent) => agent.channelIds.includes(activeChannel.id))
-      : agents
-    if (!selectedAgentId && scopedAgents[0]) {
-      setSelectedAgentId(scopedAgents[0].id)
-    }
-  }, [activeChannel, agents, selectedAgentId])
-
-  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId)
-
-  const createChannelSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const created = await createChannel.mutateAsync({
-      label: channelLabel,
-      visibility: channelVisibility,
-    })
-    setChannelLabel('')
-    void navigate(`/channels/${created.id}`)
-  }
-
-  const createAgentSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const created = await createAgent.mutateAsync({
-      name: agentName,
-      role: agentRole,
-      systemPrompt: agentPrompt || undefined,
-    })
-    setAgentName('')
-    setAgentRole('assistant')
-    setAgentPrompt('')
-    setSelectedAgentId(created.id)
-  }
-
-  const bindAgentSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!selectedAgentId || !bindTargetChannelId) {
+    if (boundAgents.length === 0) {
+      setSelectedAgentId('')
       return
     }
 
-    await bindAgent.mutateAsync({
-      agentId: selectedAgentId,
-      channelId: bindTargetChannelId,
-    })
-  }
+    if (!selectedAgentId || !boundAgents.some((agent) => agent.id === selectedAgentId)) {
+      setSelectedAgentId(boundAgents[0]?.id ?? '')
+    }
+  }, [boundAgents, selectedAgentId])
 
-  const createUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    await createUser.mutateAsync({
-      channelIds: activeChannel ? [activeChannel.id] : undefined,
-      displayName: userDisplayName,
-      email: userEmail,
-      password: userPassword,
-      role: userRole,
-    })
-    setUserDisplayName('')
-    setUserEmail('')
-    setUserPassword('')
-    setUserRole('member')
-  }
+  const selectedAgent =
+    agents.find((agent) => agent.id === selectedAgentId) ?? boundAgents[0] ?? null
+  const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
 
   const sendMessageSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -150,280 +172,556 @@ export const ChannelsPage = () => {
       return
     }
 
-    await sendMessage.mutateAsync({ content: message.trim(), agentId: selectedAgent?.id })
+    await sendMessage.mutateAsync({
+      content: message.trim(),
+      agentId: selectedAgent?.id,
+    })
     setMessage('')
   }
 
-  return (
-    <div className="grid gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className={cardClass}>
-        <div className="grid gap-4">
-          <RailButton
-            icon={
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            }
-            label="Workspace settings"
-            to="/settings"
-          />
+  if (!me) {
+    return null
+  }
 
-          <SidebarSection title="Channels">
-            <div className="grid gap-2">
-              {channels.map((channel) => (
-                <ChannelRow
-                  key={channel.id}
-                  active={channel.id === activeChannel?.id}
-                  channel={channel}
-                  onClick={() => void navigate(`/channels/${channel.id}`)}
-                />
+  return (
+    <section className="flex h-full min-h-0 flex-col">
+      <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="flex-shrink-0 text-lg font-bold text-[color:var(--tx3)]">
+            #
+          </span>
+          <h1 className="truncate text-[17px] font-bold text-white">
+            {activeChannel?.label ?? 'channels'}
+          </h1>
+
+          {boundAgents.length > 0 ? (
+            <div className="ml-2 flex flex-shrink-0 items-center gap-1">
+              <span className="text-xs text-[color:var(--tx3)]">Agents:</span>
+              {boundAgents.slice(0, 3).map((agent) => (
+                <button
+                  key={agent.id}
+                  className={[
+                    'inline-flex items-center gap-1 rounded',
+                    'border border-[rgba(124,58,237,0.3)]',
+                    'bg-[rgba(124,58,237,0.15)] px-2 py-0.5',
+                    'text-xs font-semibold text-[#a78bfa]',
+                  ].join(' ')}
+                  onClick={() => onSelectAgent(agent.id)}
+                  type="button"
+                >
+                  <span>{getAgentGlyph(agent)}</span>
+                  <span>{agent.name}</span>
+                </button>
               ))}
             </div>
-          </SidebarSection>
-
-          <SidebarSection title="Create channel">
-            <form className="grid gap-3" onSubmit={createChannelSubmit}>
-              <input
-                className={fieldClass}
-                onChange={(event) => setChannelLabel(event.target.value)}
-                placeholder="Channel label"
-                value={channelLabel}
-              />
-              <select
-                className={fieldClass}
-                onChange={(event) =>
-                  setChannelVisibility(event.target.value as typeof channelVisibility)
-                }
-                value={channelVisibility}
-              >
-                <option value="public">Public</option>
-                <option value="protected">Protected</option>
-                <option value="private">Private</option>
-              </select>
-              <button className={primaryButtonClass} type="submit">
-                Create channel
-              </button>
-            </form>
-          </SidebarSection>
-
-          {isOwner ? (
-            <SidebarSection
-              action={activeChannel ? <StatusPill>{activeChannel.label}</StatusPill> : undefined}
-              title="Users"
-            >
-              <div className="grid gap-2">
-                {users.map((user) => (
-                  <div
-                    key={user.id}
-                    className="rounded-2xl border border-[color:var(--line)] bg-white/70 px-4 py-3"
-                  >
-                    <div className="font-medium">{user.displayName}</div>
-                    <div className="mt-1 text-xs text-[color:var(--muted)]">{user.email}</div>
-                  </div>
-                ))}
-              </div>
-            </SidebarSection>
           ) : null}
         </div>
-      </aside>
 
-      <section className="grid gap-6">
-        <PageHeader
-          actions={
-            <div className="grid gap-2 text-right text-sm text-[color:var(--muted)]">
-              <div>{agents.length} agents</div>
-              <div>{tools.length} safe tools</div>
-              <div className="flex items-center justify-end gap-2">
-                <span>Streaming</span>
-                <UnreadBadge count={pendingMessages.length} />
-              </div>
-            </div>
-          }
-          eyebrow="Workspace"
-          subtitle={
-            activeChannel
-              ? [
-                  `Channel visibility is ${activeChannel.visibility}.`,
-                  'Agent activity now lives in the persistent shell while',
-                  'thread replies stream over SSE.',
-                ].join(' ')
-              : 'Create a channel to start the collaboration surface.'
-          }
-          title={activeChannel ? activeChannel.label : 'No channel selected'}
-        />
-
-        <section className={cardClass}>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold">Thread</h2>
-              <div className="mt-1 text-xs uppercase tracking-[0.18em] text-[color:var(--muted)]">
-                {activeChannel?.defaultThreadId ?? 'No thread'}
-              </div>
-            </div>
-            {selectedAgent ? <StatusPill>{selectedAgent.name}</StatusPill> : null}
-          </div>
-
-          <div className="mt-5 grid gap-3">
-            {threadMessages.map((entry) => (
-              <MessageBubble
-                key={entry.id}
-                content={entry.content}
-                role={entry.role}
-                timestamp={entry.createdAt}
-              />
-            ))}
-            {pendingMessages.map((entry) => (
-              <MessageBubble
-                key={entry.runId}
-                content={entry.content || '...'}
-                role="assistant"
-                streaming
-              />
-            ))}
-            {threadMessages.length === 0 && pendingMessages.length === 0 ? (
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <div className="flex -space-x-1.5">
+            {userGradients.map((gradient, index) => (
               <div
+                key={gradient}
                 className={[
-                  'rounded-2xl border border-dashed border-[color:var(--line)]',
-                  'bg-white/50 p-6 text-sm text-[color:var(--muted)]',
+                  'h-6 w-6 rounded-full border-2 border-[color:var(--main)]',
+                  index >= 2 ? 'hidden md:block' : '',
                 ].join(' ')}
-              >
-                No messages yet. Send one to start the thread.
+                style={{ background: gradient }}
+              />
+            ))}
+          </div>
+          <span className="text-sm text-[color:var(--tx2)]">
+            {Math.max(1, boundAgents.length + 1)}
+          </span>
+          <div className="mx-1 h-5 w-px bg-[color:var(--border-strong)]" />
+          <button className={toolbarButtonClass} type="button">
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button className={toolbarButtonClass} type="button">
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M4 6h16M4 12h16M4 18h16"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div className="flex h-9 items-center border-b border-[color:var(--sep)] px-3">
+        <button
+          className={`admin-tab ${activeTab === 'messages' ? 'active' : ''}`}
+          onClick={() => setActiveTab('messages')}
+          type="button"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d={[
+                'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8',
+                'a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72',
+                'C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
+              ].join(' ')}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Messages
+        </button>
+        <button
+          className={`admin-tab ${activeTab === 'runs' ? 'active' : ''}`}
+          onClick={() => setActiveTab('runs')}
+          type="button"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 0a2 2 0 002 2h2a2 2 0 002-2m-6 9l2 2 4-4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Runs
+        </button>
+        <button
+          className={`admin-tab ${activeTab === 'agents' ? 'active' : ''}`}
+          onClick={() => setActiveTab('agents')}
+          type="button"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <circle cx="12" cy="8" r="4" />
+            <path
+              d="M4 20c0-4 3.582-7 8-7s8 3 8 7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Agents
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {activeTab === 'messages' ? (
+          <>
+            {feedItems.length === 0 && pendingMessages.length === 0 ? (
+              <div className="p-5">
+                <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
+                  No messages yet. Send the first message to start this thread.
+                </div>
               </div>
             ) : null}
-          </div>
 
-          <div className="mt-6">
-            <Composer buttonLabel="Send" onSubmit={sendMessageSubmit}>
-              <textarea
-                className={`${fieldClass} min-h-28`}
-                onChange={(event) => setMessage(event.target.value)}
-                placeholder="Write a message"
-                value={message}
-              />
-            </Composer>
-          </div>
-        </section>
+            {feedItems.map((item, index) =>
+              item.kind === 'date' ? (
+                <div key={`${item.label}:${index}`} className="admin-date-sep">
+                  <span className="admin-date-pill">
+                    {item.label}
+                    <svg
+                      className="h-3 w-3 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        d="M19 9l-7 7-7-7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
+                </div>
+              ) : (
+                <article key={item.message.id} className="admin-msg-row py-1">
+                  {item.message.role === 'assistant' ? (
+                    <div
+                      className={[
+                        'flex h-9 w-9 flex-shrink-0 items-center justify-center',
+                        'rounded-lg border border-[rgba(124,58,237,0.4)]',
+                        'bg-[rgba(124,58,237,0.1)] text-lg',
+                      ].join(' ')}
+                    >
+                      {getAgentGlyph(agentMap.get(item.message.agentId ?? ''))}
+                    </div>
+                  ) : (
+                    <div
+                      className="h-9 w-9 flex-shrink-0 rounded-md"
+                      style={{ background: userGradients[0] }}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-bold text-white">
+                        {getDisplayName(item.message, me.user.displayName, agentMap)}
+                      </span>
+                      {item.message.role === 'assistant' ? (
+                        <span
+                          className={[
+                            'inline-flex items-center gap-1 rounded',
+                            'border border-[rgba(124,58,237,0.3)]',
+                            'bg-[rgba(124,58,237,0.15)] px-1.5 py-0.5',
+                            'text-[11px] font-semibold text-[#a78bfa]',
+                          ].join(' ')}
+                        >
+                          agent
+                        </span>
+                      ) : null}
+                      <span className="text-xs text-[color:var(--tx3)]">
+                        {formatClock(item.message.createdAt)}
+                      </span>
+                    </div>
+                    <div
+                      className={
+                        item.message.role === 'assistant'
+                          ? 'mt-0.5 border-l-2 border-[rgba(124,58,237,0.5)] pl-3'
+                          : 'mt-0.5'
+                      }
+                    >
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
+                        {item.message.content}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ),
+            )}
 
-        <section className="grid gap-6 lg:grid-cols-2">
-          <div className={cardClass}>
-            <SidebarSection title="Create agent">
-              <form className="grid gap-3" onSubmit={createAgentSubmit}>
-                <input
-                  className={fieldClass}
-                  onChange={(event) => setAgentName(event.target.value)}
-                  placeholder="Agent name"
-                  value={agentName}
-                />
-                <input
-                  className={fieldClass}
-                  onChange={(event) => setAgentRole(event.target.value)}
-                  placeholder="Role"
-                  value={agentRole}
-                />
-                <textarea
-                  className={`${fieldClass} min-h-28`}
-                  onChange={(event) => setAgentPrompt(event.target.value)}
-                  placeholder="System prompt"
-                  value={agentPrompt}
-                />
-                <button className={primaryButtonClass} type="submit">
-                  Create agent
-                </button>
-              </form>
-            </SidebarSection>
-          </div>
-
-          <div className={cardClass}>
-            <SidebarSection title="Bind agent">
-              <form className="grid gap-3" onSubmit={bindAgentSubmit}>
-                <select
-                  className={fieldClass}
-                  onChange={(event) => setSelectedAgentId(event.target.value)}
-                  value={selectedAgentId}
-                >
-                  <option value="">Select agent</option>
-                  {agents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className={fieldClass}
-                  onChange={(event) => setBindTargetChannelId(event.target.value)}
-                  value={bindTargetChannelId}
-                >
-                  <option value="">Select channel</option>
-                  {channels.map((channel) => (
-                    <option key={channel.id} value={channel.id}>
-                      {channel.label}
-                    </option>
-                  ))}
-                </select>
-                <button className={primaryButtonClass} type="submit">
-                  Bind agent
-                </button>
-              </form>
-            </SidebarSection>
-          </div>
-
-          {isOwner ? (
-            <div className={cardClass}>
-              <SidebarSection title="Add user">
-                <form className="grid gap-3" onSubmit={createUserSubmit}>
-                  <input
-                    className={fieldClass}
-                    onChange={(event) => setUserDisplayName(event.target.value)}
-                    placeholder="Display name"
-                    value={userDisplayName}
-                  />
-                  <input
-                    className={fieldClass}
-                    onChange={(event) => setUserEmail(event.target.value)}
-                    placeholder="Email"
-                    type="email"
-                    value={userEmail}
-                  />
-                  <input
-                    className={fieldClass}
-                    onChange={(event) => setUserPassword(event.target.value)}
-                    placeholder="Temporary password"
-                    type="password"
-                    value={userPassword}
-                  />
-                  <select
-                    className={fieldClass}
-                    onChange={(event) => setUserRole(event.target.value)}
-                    value={userRole}
+            {pendingMessages.length > 0 ? (
+              <div className="admin-date-sep">
+                <span className="admin-date-pill">
+                  Live
+                  <svg
+                    className="h-3 w-3 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
                   >
-                    <option value="member">Member</option>
-                    <option value="owner">Owner</option>
-                  </select>
-                  <button className={primaryButtonClass} type="submit">
-                    Add user
-                  </button>
-                </form>
-              </SidebarSection>
-            </div>
-          ) : null}
-
-          <div className={cardClass}>
-            <SidebarSection title="Tools">
-              <div className="grid gap-3">
-                {tools.map((tool) => (
-                  <ToolRow key={tool.id} tool={tool} />
-                ))}
+                    <path
+                      d="M19 9l-7 7-7-7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
               </div>
-            </SidebarSection>
+            ) : null}
+
+            {pendingMessages.map((entry) => (
+              <article key={entry.runId} className="admin-msg-row py-1">
+                <div
+                  className={[
+                    'flex h-9 w-9 flex-shrink-0 items-center justify-center',
+                    'rounded-lg border border-[rgba(124,58,237,0.4)]',
+                    'bg-[rgba(124,58,237,0.1)] text-lg',
+                  ].join(' ')}
+                >
+                  {getAgentGlyph(selectedAgent)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-bold text-white">
+                      {selectedAgent?.name ?? 'Agent'}
+                    </span>
+                    <span
+                      className={[
+                        'inline-flex items-center rounded',
+                        'bg-[rgba(124,58,237,0.2)] px-2 py-0.5',
+                        'text-[11px] font-semibold text-[#a78bfa]',
+                      ].join(' ')}
+                    >
+                      running
+                    </span>
+                  </div>
+                  <div className="mt-0.5 border-l-2 border-[rgba(124,58,237,0.5)] pl-3">
+                    <p className="text-sm leading-6 text-[color:var(--tx)]">
+                      {entry.content || 'Streaming response'}
+                      <span className="streaming-dot" />
+                    </p>
+                  </div>
+                </div>
+              </article>
+            ))}
+            <div className="h-3" />
+          </>
+        ) : null}
+
+        {activeTab === 'runs' ? (
+          <div className="grid gap-4 p-5 lg:grid-cols-2">
+            <section className="admin-card p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                Active runs
+              </div>
+              <div className="mt-4 grid gap-3">
+                {scopedAgents.length > 0 ? (
+                  scopedAgents.map((agent) => (
+                    <button
+                      key={agent.id}
+                      className={runsCardClass}
+                      onClick={() => onSelectAgent(agent.id)}
+                      type="button"
+                    >
+                      <div
+                        className={[
+                          'mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center',
+                          'rounded-md bg-[rgba(124,58,237,0.14)]',
+                        ].join(' ')}
+                      >
+                        {getAgentGlyph(agent)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-semibold text-white">
+                            {agent.name}
+                          </span>
+                          <span
+                            className={[
+                              'rounded bg-white/6 px-1.5 py-0.5 text-[10px]',
+                              'uppercase tracking-[0.16em] text-[color:var(--tx3)]',
+                            ].join(' ')}
+                          >
+                            {agent.status}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-sm text-[color:var(--tx2)]">
+                          {agent.currentToolName ?? 'Idle'}
+                        </div>
+                        <div className="mt-2 text-xs text-[color:var(--tx3)]">
+                          Last activity {formatClock(agent.lastActivityAt)}
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="text-sm text-[color:var(--tx3)]">
+                    No agent runs in this channel yet.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="admin-card p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                Workspace signals
+              </div>
+              <div className="mt-4 grid gap-3 text-sm">
+                <div className="admin-card p-3">
+                  <div className="text-[color:var(--tx3)]">Safe tools</div>
+                  <div className="mt-1 text-2xl font-semibold text-white">
+                    {tools.length}
+                  </div>
+                </div>
+                <div className="admin-card p-3">
+                  <div className="text-[color:var(--tx3)]">Streaming messages</div>
+                  <div className="mt-1 text-2xl font-semibold text-white">
+                    {pendingMessages.length}
+                  </div>
+                </div>
+                <div className="admin-card p-3">
+                  <div className="text-[color:var(--tx3)]">Bound agents</div>
+                  <div className="mt-1 text-2xl font-semibold text-white">
+                    {boundAgents.length}
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
-        </section>
-      </section>
-    </div>
+        ) : null}
+
+        {activeTab === 'agents' ? (
+          <div className="grid gap-4 p-5 lg:grid-cols-2">
+            {boundAgents.length > 0 ? (
+              boundAgents.map((agent) => (
+                <article key={agent.id} className="admin-card p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={[
+                          'flex h-9 w-9 items-center justify-center rounded-lg',
+                          'bg-[rgba(124,58,237,0.14)] text-lg',
+                        ].join(' ')}
+                      >
+                        {getAgentGlyph(agent)}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-white">{agent.name}</div>
+                        <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+                          {agent.role}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      className="admin-button admin-button-secondary"
+                      onClick={() => onSelectAgent(agent.id)}
+                      type="button"
+                    >
+                      Open activity
+                    </button>
+                  </div>
+                  <div className="mt-4 text-sm leading-6 text-[color:var(--tx2)]">
+                    {agent.systemPrompt ?? 'No system prompt configured for this agent yet.'}
+                  </div>
+                  <div className="mt-4 flex items-center justify-between text-xs text-[color:var(--tx3)]">
+                    <span>Status: {agent.status}</span>
+                    <span>{agent.channelIds.length} channel bindings</span>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
+                No agents are bound to this channel yet. Use the admin page to create or
+                bind one.
+              </div>
+            )}
+
+            <div className="admin-card p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                Manage agents
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
+                Create new agents, bind them to channels, and inspect tool access from the
+                admin route.
+              </p>
+              <button
+                className="admin-button admin-button-primary mt-4"
+                onClick={() => void navigate('/settings#agents')}
+                type="button"
+              >
+                Open admin controls
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex-shrink-0 px-5 pb-[14px]">
+        <form className="admin-compose" onSubmit={sendMessageSubmit}>
+          <textarea
+            className={[
+              'min-h-[82px] w-full resize-none bg-transparent px-4 py-3 text-sm',
+              'text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]',
+            ].join(' ')}
+            onChange={(event) => setMessage(event.target.value)}
+            placeholder={`Message #${activeChannel?.label ?? 'channel'} or @mention an agent`}
+            value={message}
+          />
+          <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">
+            <div className="flex items-center gap-1">
+              <button className={toolbarButtonClass} type="button">
+                @
+              </button>
+              <button className={toolbarButtonClass} type="button">
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <button className={toolbarButtonClass} type="button">
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d={[
+                      'M15.172 7 8.586 13.586a2 2 0 102.828 2.828l6.414-6.586',
+                      'a4 4 0 00-5.656-5.656L5.757 10.757a6 6 0 108.486 8.486L20.5 13',
+                    ].join(' ')}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <div className="mx-1 h-[18px] w-px bg-[color:var(--sep)]" />
+              <select
+                className={[
+                  'rounded border border-[rgba(124,58,237,0.3)] bg-transparent',
+                  'px-2 py-1 text-xs text-[#a78bfa] outline-none',
+                ].join(' ')}
+                onChange={(event) => setSelectedAgentId(event.target.value)}
+                value={selectedAgentId}
+              >
+                <option value="">No agent</option>
+                {boundAgents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              className="flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-white"
+              disabled={!message.trim() || sendMessage.isPending}
+              type="submit"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="m12 19 9 2-9-18-9 18 9-2Zm0 0v-8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
   )
 }

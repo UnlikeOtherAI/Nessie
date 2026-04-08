@@ -26,17 +26,19 @@ export const AgentRow = ({
         <Avatar label={title} size="sm" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <div className="truncate font-medium">{title}</div>
+            <div className="truncate font-medium text-white">{title}</div>
             {statusDot}
           </div>
-          <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--muted)]">
+          <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
             {subtitle}
           </div>
           {currentTask ? (
-            <div className="mt-2 text-xs leading-5 text-[color:var(--muted)]">{currentTask}</div>
+            <div className="mt-2 text-xs leading-5 text-[color:var(--tx2)]">
+              {currentTask}
+            </div>
           ) : null}
           {footer ? (
-            <div className="mt-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--muted)]">
+            <div className="mt-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
               {footer}
             </div>
           ) : null}
@@ -46,8 +48,11 @@ export const AgentRow = ({
     </>
   )
 
-  const className =
-    'w-full rounded-[1.35rem] border border-[color:var(--line)] bg-white/75 p-4 text-left transition hover:bg-white'
+  const className = [
+    'w-full rounded-xl border border-[color:var(--sep)]',
+    'bg-[color:var(--panel)] p-4 text-left transition',
+    'hover:bg-[color:var(--main-hover)]',
+  ].join(' ')
 
   return onClick ? (
     <button className={className} onClick={onClick} type="button">

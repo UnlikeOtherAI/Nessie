@@ -7,7 +7,7 @@ type AgentMessagePreviewProps = {
 
 export const AgentMessagePreview = ({ messages }: AgentMessagePreviewProps) => (
   <section className="grid gap-3">
-    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
+    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
       Last 5 messages
     </div>
     {messages.length === 0 ? (
@@ -16,18 +16,20 @@ export const AgentMessagePreview = ({ messages }: AgentMessagePreviewProps) => (
       messages.map((message) => (
         <article
           key={message.messageId}
-          className="rounded-[1.35rem] border border-[color:var(--line)] bg-white/75 p-4"
+          className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4"
         >
           <div
             className={[
               'flex items-center justify-between gap-3 text-xs uppercase',
-              'tracking-[0.16em] text-[color:var(--muted)]',
+              'tracking-[0.16em] text-[color:var(--tx3)]',
             ].join(' ')}
           >
             <span>{message.role}</span>
             <span>{new Date(message.timestamp).toLocaleString()}</span>
           </div>
-          <div className="mt-3 text-sm leading-6">{message.contentPreview}</div>
+          <div className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
+            {message.contentPreview}
+          </div>
         </article>
       ))
     )}
