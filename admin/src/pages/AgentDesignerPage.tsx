@@ -1,12 +1,16 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
-import { useCreateAgent } from '../facades/agents/hooks'
+import { useAgents, useCreateAgent } from '../facades/agents/hooks'
 import { useDesignerChat } from '../facades/designer/hooks'
 
 export const AgentDesignerPage = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const parentId = searchParams.get('parentId') ?? undefined
+  const { data: agents = [] } = useAgents()
+  const parentAgent = parentId ? agents.find((a) => a.id === parentId) : undefined
   const { actions, state } = useAgentDesigner()
   const chat = useDesignerChat(state, actions)
   const createAgent = useCreateAgent()
@@ -25,6 +29,7 @@ export const AgentDesignerPage = () => {
       provider: state.provider || undefined,
       model: state.model || undefined,
       toolPolicy: Object.keys(enabledTools).length > 0 ? state.tools : undefined,
+      parentAgentId: parentId,
     })
 
     void navigate('/agents')
@@ -84,7 +89,7 @@ export const AgentDesignerPage = () => {
       <div className="flex min-h-0 flex-1">
         {/* Form panel */}
         <div className="flex-[7] overflow-y-auto border-r border-[color:var(--sep)] p-5">
-          <AgentDesignerForm actions={actions} state={state} />
+          <AgentDesignerForm actions={actions} parentAgentName={parentAgent?.name} state={state} />
         </div>
 
         {/* Chat panel */}
@@ -95,6 +100,7 @@ export const AgentDesignerPage = () => {
             onSend={chat.send}
             onStop={chat.stop}
             streaming={chat.streaming}
+            thinking={chat.thinking}
           />
         </div>
       </div>

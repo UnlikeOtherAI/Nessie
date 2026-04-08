@@ -266,6 +266,7 @@ export const streamDesignerChat = async (
             choices?: Array<{
               delta?: {
                 content?: string
+                reasoning_content?: string
                 tool_calls?: Array<{
                   function?: { arguments?: string; name?: string }
                   id?: string
@@ -290,6 +291,13 @@ export const streamDesignerChat = async (
 
           const delta = chunk.choices?.[0]?.delta
           if (!delta) continue
+
+          // Reasoning content (model thinking)
+          if (delta.reasoning_content) {
+            writeSseEvent(reply, 'reasoning.delta', {
+              content: delta.reasoning_content,
+            })
+          }
 
           // Text content
           if (delta.content) {

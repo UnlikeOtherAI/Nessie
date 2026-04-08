@@ -12,6 +12,7 @@ export type AgentFormState = {
 }
 
 export type AgentDesignerAction =
+  | { chunk: string; type: 'append_system_prompt' }
   | { field: string; type: 'clear_streaming' }
   | { field: string; type: 'set_streaming' }
   | { id: string | null; type: 'set_category' }
@@ -48,6 +49,8 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       return { ...state, role: action.role }
     case 'set_system_prompt':
       return { ...state, systemPrompt: action.prompt }
+    case 'append_system_prompt':
+      return { ...state, systemPrompt: state.systemPrompt + action.chunk }
     case 'set_category':
       return { ...state, categoryId: action.id }
     case 'set_provider':

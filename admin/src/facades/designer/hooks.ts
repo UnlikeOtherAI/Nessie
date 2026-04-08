@@ -15,6 +15,7 @@ type DesignerChatState = {
   error: string | null
   messages: ChatMessage[]
   streaming: boolean
+  thinking: boolean
 }
 
 // Maps tool call names to the streaming field they affect
@@ -27,6 +28,56 @@ const TOOL_TO_FIELD: Record<string, string> = {
   set_model: 'model',
 }
 
+type ActiveToolCall = {
+  argsBuffer: string
+  lastContentLen: number
+  name: string
+}
+
+/**
+ * Extract the "content" value from a partially-streamed JSON args string
+ * like `{"content":"Hello wor`. Returns null if the key hasn't appeared yet.
+ */
+const extractPartialContent = (buf: string): string | null => {
+  const marker = buf.indexOf('"content"')
+  if (marker === -1) return null
+
+  // Find the colon after "content", then the opening quote
+  const colonIdx = buf.indexOf(':', marker + 9)
+  if (colonIdx === -1) return null
+  const quoteIdx = buf.indexOf('"', colonIdx + 1)
+  if (quoteIdx === -1) return null
+
+  // Everything after the opening quote is partial content
+  let raw = buf.slice(quoteIdx + 1)
+
+  // Strip trailing "} if the JSON object closed
+  if (raw.endsWith('"}')) raw = raw.slice(0, -2)
+  else if (raw.endsWith('"')) raw = raw.slice(0, -1)
+
+  // Unescape JSON string escapes
+  try {
+    return JSON.parse('"' + raw + '"') as string
+  } catch {
+    // Incomplete escape at tail — parse everything except last char
+    if (raw.length > 0 && raw.endsWith('\\')) {
+      try {
+        return JSON.parse('"' + raw.slice(0, -1) + '"') as string
+      } catch { /* fall through */ }
+    }
+    return raw
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\')
+  }
+}
+
+const scrollSystemPromptToBottom = (): void => {
+  const el = document.getElementById('agent-system-prompt')
+  if (el) el.scrollTop = el.scrollHeight
+}
+
 export const useDesignerChat = (
   formState: AgentFormState,
   actions: AgentDesignerActions,
@@ -36,8 +87,12 @@ export const useDesignerChat = (
     error: null,
     messages: [],
     streaming: false,
+    thinking: false,
   })
   const abortRef = useRef<AbortController | null>(null)
+  const activeToolCallsRef = useRef(
+    new Map<string, ActiveToolCall>(),
+  )
 
   const send = useCallback(
     async (userMessage: string) => {
@@ -49,10 +104,16 @@ export const useDesignerChat = (
       setState((prev) => ({
         ...prev,
         error: null,
-        messages: [...prev.messages, userMsg, { role: 'assistant', content: '' }],
+        messages: [
+          ...prev.messages,
+          userMsg,
+          { role: 'assistant', content: '' },
+        ],
         streaming: true,
+        thinking: true,
       }))
 
+      activeToolCallsRef.current.clear()
       const controller = new AbortController()
       abortRef.current = controller
 
@@ -108,7 +169,13 @@ export const useDesignerChat = (
               const raw = line.slice(6).trim()
               try {
                 const data = JSON.parse(raw) as Record<string, unknown>
-                processEvent(currentEvent, data, setState, actions)
+                processEvent(
+                  currentEvent,
+                  data,
+                  setState,
+                  actions,
+                  activeToolCallsRef.current,
+                )
               } catch {
                 // ignore malformed data
               }
@@ -125,10 +192,16 @@ export const useDesignerChat = (
           ...prev,
           error: (err as Error).message,
           streaming: false,
+          thinking: false,
         }))
       } finally {
         actions.dispatch({ type: 'clear_streaming', field: '' })
-        setState((prev) => ({ ...prev, streaming: false }))
+        activeToolCallsRef.current.clear()
+        setState((prev) => ({
+          ...prev,
+          streaming: false,
+          thinking: false,
+        }))
         abortRef.current = null
       }
     },
@@ -138,7 +211,12 @@ export const useDesignerChat = (
   const stop = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
-    setState((prev) => ({ ...prev, streaming: false }))
+    activeToolCallsRef.current.clear()
+    setState((prev) => ({
+      ...prev,
+      streaming: false,
+      thinking: false,
+    }))
     actions.dispatch({ type: 'clear_streaming', field: '' })
   }, [actions])
 
@@ -150,46 +228,94 @@ const processEvent = (
   data: Record<string, unknown>,
   setState: React.Dispatch<React.SetStateAction<DesignerChatState>>,
   actions: AgentDesignerActions,
+  activeToolCalls: Map<string, ActiveToolCall>,
 ): void => {
   switch (event) {
+    case 'reasoning.delta': {
+      // Model is thinking — keep thinking state on (already set at stream start)
+      setState((prev) => (prev.thinking ? prev : { ...prev, thinking: true }))
+      break
+    }
+
     case 'text.delta': {
       const content = String(data.content ?? '')
       setState((prev) => {
         const msgs = [...prev.messages]
         const last = msgs[msgs.length - 1]
         if (last?.role === 'assistant') {
-          msgs[msgs.length - 1] = { ...last, content: last.content + content }
+          msgs[msgs.length - 1] = {
+            ...last,
+            content: last.content + content,
+          }
         }
-        return { ...prev, messages: msgs }
+        return { ...prev, messages: msgs, thinking: false }
       })
       break
     }
 
     case 'tool_call.start': {
       const name = String(data.name ?? '')
+      const id = String(data.id ?? '')
       const field = TOOL_TO_FIELD[name]
       if (field) {
         actions.dispatch({ type: 'set_streaming', field })
+      }
+      // For set_system_prompt, clear the field so tokens stream in fresh
+      if (name === 'set_system_prompt') {
+        actions.dispatch({ type: 'set_system_prompt', prompt: '' })
+      }
+      activeToolCalls.set(id, { argsBuffer: '', lastContentLen: 0, name })
+      // Thinking stops once tool calls begin
+      setState((prev) => (prev.thinking ? { ...prev, thinking: false } : prev))
+      break
+    }
+
+    case 'tool_call.delta': {
+      const id = String(data.id ?? '')
+      const argChunk = String(data.args ?? '')
+      const tc = activeToolCalls.get(id)
+      if (!tc) break
+
+      tc.argsBuffer += argChunk
+
+      // Stream content tokens into system prompt textarea
+      if (tc.name === 'set_system_prompt') {
+        const fullContent = extractPartialContent(tc.argsBuffer)
+        if (fullContent !== null && fullContent.length > tc.lastContentLen) {
+          const newChunk = fullContent.slice(tc.lastContentLen)
+          tc.lastContentLen = fullContent.length
+          actions.dispatch({ type: 'append_system_prompt', chunk: newChunk })
+          scrollSystemPromptToBottom()
+        }
       }
       break
     }
 
     case 'tool_call.done': {
       const name = String(data.name ?? '')
+      const id = String(data.id ?? '')
       const args = data.args as Record<string, unknown> | undefined
       if (args) {
-        actions.applyToolCall(name, args)
+        // For system prompt, skip the full set — we already streamed it in
+        if (name !== 'set_system_prompt') {
+          actions.applyToolCall(name, args)
+        } else {
+          // Final safety set in case streaming missed chars
+          const content = String(args.content ?? '')
+          actions.dispatch({ type: 'set_system_prompt', prompt: content })
+        }
       }
       const field = TOOL_TO_FIELD[name]
       if (field) {
         actions.dispatch({ type: 'clear_streaming', field })
       }
+      activeToolCalls.delete(id)
       break
     }
 
     case 'error': {
       const message = String(data.message ?? 'Unknown error')
-      setState((prev) => ({ ...prev, error: message }))
+      setState((prev) => ({ ...prev, error: message, thinking: false }))
       break
     }
   }

@@ -7,7 +7,18 @@ type DesignerChatProps = {
   onSend: (message: string) => void
   onStop: () => void
   streaming: boolean
+  thinking: boolean
 }
+
+const ThinkingIndicator = () => (
+  <div className="max-w-[90%] rounded-xl px-3 py-2 text-sm mr-auto border border-[color:var(--sep)] bg-[color:var(--panel)] text-[color:var(--tx)]">
+    <div className="thinking-dots">
+      <span />
+      <span />
+      <span />
+    </div>
+  </div>
+)
 
 export const DesignerChat = ({
   error,
@@ -15,6 +26,7 @@ export const DesignerChat = ({
   onSend,
   onStop,
   streaming,
+  thinking,
 }: DesignerChatProps) => {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -24,7 +36,7 @@ export const DesignerChat = ({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, thinking])
 
   useEffect(() => {
     if (!streaming) {
@@ -95,11 +107,7 @@ export const DesignerChat = ({
               </div>
             </div>
           ))}
-          {streaming && messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.content === '' && (
-            <div className="max-w-[90%] rounded-xl px-3 py-2 text-sm mr-auto border border-[color:var(--sep)] bg-[color:var(--panel)] text-[color:var(--tx)]">
-              <span className="streaming-dot" />
-            </div>
-          )}
+          {thinking && <ThinkingIndicator />}
         </div>
 
         {error && (
