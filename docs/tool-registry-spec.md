@@ -182,6 +182,8 @@ type ToolCapabilitySchema = {
   };
   defaultConfig: Record<string, unknown>;
   enabled: boolean;
+  version: string;
+  status: 'active' | 'pending_review' | 'disabled';
   createdBy: 'system' | 'role' | 'agent';
   owner: string;
   bundleId?: ToolBundleId;
@@ -385,7 +387,7 @@ Pagination uses opaque `cursor` where `cursor` maps to a stable `(updatedAt, id)
 - `q` (full-text)
 - `tags` filter (multi-value)
 - `scope` (`agent`, `task`, `global`, `mcp`, `custom`, `builtin`, `interactive`)
-- `state` (`enabled` / `disabled`)
+- `status` (`active` / `pending_review` / `disabled`)
 - `source` and `transport` filters
 - optional `limit` (<=100, default 25)
 - optional `cursor`
@@ -404,6 +406,7 @@ This field is indexed for full-text search. It is not stored as user-visible con
 ### 6.1 PromptLayer type
 
 ```ts
+// Stored prompt layer record (round-trips through API)
 type PromptLayer = {
   id: PromptLayerId;
   type: PromptLayerType;
@@ -411,6 +414,13 @@ type PromptLayer = {
   priority: number;
   mergeMode: PromptMergeMode;
   locked?: boolean;
+  roleId?: string;
+  agentId?: string;
+  toolId?: string;
+  taskId?: string;
+  organizationId: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type PromptProfile = {

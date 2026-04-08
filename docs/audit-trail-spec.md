@@ -171,12 +171,16 @@ type AuditAction =
   | 'verification.challenge.expired'
   | 'verification.factor.enrolled'
   | 'verification.factor.revoked'
+  | 'verification.policy.created'
+  | 'verification.policy.updated'
+  | 'verification.policy.deleted'
   // Phase 3 — Knowledge base
   | 'kb.source.linked'
   | 'kb.source.reindexed'
   | 'kb.source.removed'
   | 'kb.document.read'
   | 'kb.search.executed'
+  | 'kb.search.summary'
   | 'kb.share.granted'
   | 'kb.share.revoked'
   // Phase 3 — Translation

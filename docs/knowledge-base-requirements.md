@@ -245,7 +245,8 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 - `POST /api/knowledge-base/search-summary` (or `search.summary`)
   - returns compact cited summary
 - `POST /api/knowledge-base/projects/{projectId}/share`
-  - explicit grant: `{ accessContext, targetProjectId, docIds, actions: ['search','read'], expiresAt }`
+  - source-level grant: `{ accessContext, targetProjectId, sourceId, actions: ['search','read'], expiresAt }`
+  - shares an entire knowledge source to the target project; document-level sharing is not supported in Phase 3
 - `POST /api/knowledge-base/projects/{projectId}/preflight`
   - evaluates cross-project visibility and returns actionable deny reasons.
 

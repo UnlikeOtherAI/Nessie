@@ -62,8 +62,8 @@ Defaults are inherited down the chain and can be narrowed by explicit deny at an
 
 Each permission is a matrix on:
 
-- `resourceType`: `agent`, `channel`, `project`, `tool`, `remoteWorker`, `session`, `task`, `review`, `approval`, `admin`, `secret`.
-- `action`: `view`, `invoke`, `create`, `edit`, `assign`, `approve`, `review`, `search`, `export`, `admin`, `readSecret`, `resolveSecret`, `rotate`, `revoke`, `connect`, `drain`.
+- `resourceType`: canonical enum in [policy-enforcement-spec.md](./policy-enforcement-spec.md) `PolicyResourceType`. Includes: `agent`, `channel`, `project`, `tool`, `session`, `task`, `review`, `approval`, `admin`, `secret`, `tool_bundle`, `tool_grant`, `prompt`, `knowledge_source`, `knowledge_document`, `verification_factor`, `verification_policy`, `translation`.
+- `action`: canonical enum in [policy-enforcement-spec.md](./policy-enforcement-spec.md) `PolicyAction`. Includes: `view`, `invoke`, `create`, `edit`, `assign`, `approve`, `review`, `search`, `export`, `admin`, `resolve`, `rotate`, `revoke`, `bind`, `link`, `reindex`, `summarize`, `read`, `import`, `grant`, `enroll`, `challenge`.
 - `scope`: `thread` / `team` / `channel` / `agent` / `organization` / `project`.
 - `context`: teamId, projectId, channelId, agentId, toolId, sessionId.
 
@@ -234,7 +234,7 @@ All endpoint paths in this section are logical names. The actual HTTP mount path
 - `GET /agents/search`
   - query filters: `orgId`, `teamId`, `channelId`, `teamScope`, `toolIds`, `role`, `search`, `tag`
   - pagination: deterministic cursor
-- `GET /tools/search`
+- `POST /api/tools/search`
   - query filters: `orgId`, `teamId`, `channelId`, `scope`, `transport`, `permission`, `tags`, `allow`
 
 ### 5.2 Policy reads (for organizer + UI)

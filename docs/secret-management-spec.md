@@ -219,7 +219,7 @@ Rules:
 ### 6.2 Access binding endpoints
 
 - `POST /api/secrets/{secretRef}/grants`
-  - body includes `SecretAccessContext`, principal type/id, actions, scope override, optional expiry
+  - body includes `SecretAccessContext`, principal type/id, actions, effect (`allow` | `deny`), optional expiry
 - `DELETE /api/secrets/{secretRef}/grants/{grantId}`
   - requires caller authorization at binding-manager scope
 - `GET /api/secrets/{secretRef}/grants`

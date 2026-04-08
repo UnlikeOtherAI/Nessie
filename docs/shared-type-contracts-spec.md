@@ -288,7 +288,7 @@ type MeResponse = {
     email: string;
     displayName: string;
     avatarUrl?: string;
-    pronouns?: string;
+    pronouns?: string[];  // e.g. ["she", "her"] or locale-specific forms
     roleIds: string[];
   };
   session: {
