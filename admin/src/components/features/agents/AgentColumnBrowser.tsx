@@ -12,6 +12,7 @@ import { AgentColumnItem } from './AgentColumnItem'
 import { AgentDetailColumn } from './AgentDetailColumn'
 import { AgentStatusDot } from './AgentStatusDot'
 import { CategoryAgentsPopup } from './CategoryAgentsPopup'
+import { CreateAgentDialog } from './CreateAgentDialog'
 import { CreateCategoryDialog } from './CreateCategoryDialog'
 import { SubAgentPopup } from './SubAgentPopup'
 
@@ -329,6 +330,7 @@ export const AgentColumnBrowser = () => {
     null,
   )
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
+  const [createAgentOpen, setCreateAgentOpen] = useState(false)
 
   const isMobile = useMediaQuery('(max-width: 767px)')
   const isTablet = useMediaQuery(
@@ -456,6 +458,33 @@ export const AgentColumnBrowser = () => {
           style={{ width: `${100 / visibleColumns}%` }}
         >
           <AgentColumn
+            headerAction={
+              <button
+                className={[
+                  'flex h-7 w-7 items-center justify-center',
+                  'rounded text-[color:var(--tx3)]',
+                  'transition-colors hover:bg-white/10',
+                  'hover:text-white',
+                ].join(' ')}
+                onClick={() => setCreateAgentOpen(true)}
+                title="New agent"
+                type="button"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M12 5v14M5 12h14"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            }
             onBack={() => navigateBack(0)}
             showBack={isMobile}
             title={categoryLabel}
@@ -647,6 +676,11 @@ export const AgentColumnBrowser = () => {
       <CreateCategoryDialog
         onClose={() => setCreateCategoryOpen(false)}
         open={createCategoryOpen}
+      />
+
+      <CreateAgentDialog
+        onClose={() => setCreateAgentOpen(false)}
+        open={createAgentOpen}
       />
     </div>
   )

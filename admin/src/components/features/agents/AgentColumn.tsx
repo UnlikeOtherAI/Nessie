@@ -2,12 +2,13 @@ import type { ReactNode } from 'react'
 
 type AgentColumnProps = {
   children: ReactNode
+  headerAction?: ReactNode
   onBack?: () => void
   showBack?: boolean
   title: string
 }
 
-export const AgentColumn = ({ children, onBack, showBack, title }: AgentColumnProps) => (
+export const AgentColumn = ({ children, headerAction, onBack, showBack, title }: AgentColumnProps) => (
   <div className="flex h-full flex-col border-r border-[color:var(--sep)] bg-[color:var(--main)]">
     <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4">
       {showBack && onBack ? (
@@ -21,7 +22,8 @@ export const AgentColumn = ({ children, onBack, showBack, title }: AgentColumnPr
           </svg>
         </button>
       ) : null}
-      <h3 className="truncate text-sm font-semibold text-white">{title}</h3>
+      <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{title}</h3>
+      {headerAction}
     </div>
     <div className="flex-1 overflow-y-auto p-2">{children}</div>
   </div>
