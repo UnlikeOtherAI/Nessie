@@ -302,10 +302,11 @@ export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {
   const cwd = options.cwd ?? process.cwd()
   const env = options.env ?? process.env
   const argv = options.argv ?? process.argv.slice(2)
+  const configPath = options.configPath ?? env.NESSIE_CONFIG_PATH
 
   const merged = mergeObjects(
     mergeObjects(
-      mergeObjects(DEFAULT_CONFIG as JsonObject, loadConfigFile(cwd, options.configPath)),
+      mergeObjects(DEFAULT_CONFIG as JsonObject, loadConfigFile(cwd, configPath)),
       loadEnvOverrides(env),
     ),
     loadCliOverrides(argv),

@@ -14,3 +14,4 @@ macos/**/xcshareddata/
 tmp/
 coverage/
 *.tsbuildinfo
+.nessie/
