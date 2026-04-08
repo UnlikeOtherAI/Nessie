@@ -168,7 +168,7 @@ export const streamDesignerChat = async (
   reply: FastifyReply,
   input: DesignerChatInput,
 ): Promise<void> => {
-  const apiKey = process.env.OPENAI_CHAT_API_KEY ?? process.env.OPENAI_API_KEY
+  const apiKey = process.env.OPENAI_CHAT_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.STEROIDS_OPENAI
   if (!apiKey) {
     reply.code(500).send({ error: 'OPENAI_API_KEY not configured' })
     return
