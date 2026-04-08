@@ -23,7 +23,7 @@ export interface ModelClient {
   stream(messages: ModelMessage[], options?: ModelOptions): AsyncGenerator<string, void, undefined>
 }
 
-const DEFAULT_OPENAI_MODEL = 'gpt-4o'
+const DEFAULT_OPENAI_MODEL = 'gpt-5-mini'
 const DEFAULT_MINIMAX_MODEL = 'MiniMax-M2.5'
 const CONTEXT_PREFIX = 'Context:\n'
 

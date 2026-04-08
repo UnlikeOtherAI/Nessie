@@ -195,7 +195,7 @@ export const streamDesignerChat = async (
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-5',
+      model: 'gpt-5-mini',
       messages,
       tools: DESIGNER_TOOLS,
       max_tokens: 4096,

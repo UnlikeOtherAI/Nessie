@@ -15,7 +15,7 @@ export type ReasoningExtractionConfig = {
   baseUrl?: string
 }
 
-const DEFAULT_MODEL = 'gpt-4o-mini'
+const DEFAULT_MODEL = 'gpt-5-mini'
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 
 const NO_REASONING: ReasoningExtraction = {
