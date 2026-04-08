@@ -143,20 +143,20 @@ type CanonicalMessageRecord = {
 
 ## 6) API and control-plane contracts
 
-- `GET /orgs/{orgId}/language`
-- `PATCH /orgs/{orgId}/language`
+- `GET /api/orgs/{orgId}/language`
+- `PATCH /api/orgs/{orgId}/language`
   - set canonical organization language
-- `GET /users/{userId}/language`
-- `PATCH /users/{userId}/language`
+- `GET /api/users/{userId}/language`
+- `PATCH /api/users/{userId}/language`
   - set preferred delivery language
-- `GET /users/{userId}/profile`
-- `PATCH /users/{userId}/profile`
+- `GET /api/users/{userId}/profile`
+- `PATCH /api/users/{userId}/profile`
   - set preferred delivery language and pronouns/profile references
-- `PATCH /threads/{threadId}/language`
+- `PATCH /api/threads/{threadId}/language`
   - set or clear thread-level override
-- `PATCH /sessions/{sessionId}/language`
+- `PATCH /api/sessions/{sessionId}/language`
   - set or clear session-level override
-- `POST /translation/preview`
+- `POST /api/translation/preview`
   - preview translated content without mutating stored messages
   - request may include `maxPreviousMessages` override within policy limits
 
@@ -183,8 +183,16 @@ Suggested MCP/control actions:
 - exports should default to canonical organization-language content, with translated views optional.
 - audit should record whether translation used contextual history and whether that history was truncated.
 
-## 8) Cross-links
+## 9) Phase annotation
 
-- [functionality.md](./functionality.md)
+This spec targets **Phase 3**.
+
+## 10) Cross-links
+
 - [organization-governance-spec.md](./organization-governance-spec.md)
+- [audit-trail-spec.md](./audit-trail-spec.md)
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
+- [config-module-spec.md](./config-module-spec.md)
+- [implementation-phases.md](./implementation-phases.md)
 - [agent-communication-spec.md](./agent-communication-spec.md)
+- [functionality.md](./functionality.md)

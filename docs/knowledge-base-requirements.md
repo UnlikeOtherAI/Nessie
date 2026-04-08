@@ -118,18 +118,18 @@ interface KnowledgeBaseToolInput {
 
 Preferred interface is per-action endpoints. A shared action body schema is acceptable when client transport is constrained.
 
-- `POST /knowledge-base/link`
-- `POST /knowledge-base/reindex`
-- `POST /knowledge-base/summarize`
-- `POST /knowledge-base/search`
+- `POST /api/knowledge-base/link`
+- `POST /api/knowledge-base/reindex`
+- `POST /api/knowledge-base/summarize`
+- `POST /api/knowledge-base/search`
   - accepts `topK`, `limit`, `cursor`, `sort`, `accessContext`, `scope`
-- `POST /knowledge-base/read`
+- `POST /api/knowledge-base/read`
   - accepts `docId`, `projectId`, `accessContext`
-- `POST /knowledge-base/search-summary` (or `search.summary`)
+- `POST /api/knowledge-base/search-summary` (or `search.summary`)
   - returns compact cited summary
-- `POST /knowledge-base/projects/{projectId}/share`
+- `POST /api/knowledge-base/projects/{projectId}/share`
   - explicit grant: `{ accessContext, targetProjectId, docIds, actions: ['search','read'], expiresAt }`
-- `POST /knowledge-base/projects/{projectId}/preflight`
+- `POST /api/knowledge-base/projects/{projectId}/preflight`
   - evaluates cross-project visibility and returns actionable deny reasons.
 
 ## 4) Deterministic behavior contract
@@ -176,3 +176,18 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 
 - No deterministic index/ephemeral cache exists yet.
 - Current implementation has no `knowledge-base` runtime family or shared retrieval pipeline; this is target-state only.
+
+## 10) Phase annotation
+
+This spec targets **Phase 3**.
+
+## 11) Cross-links
+
+- [tool-registry-spec.md](./tool-registry-spec.md)
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md)
+- [audit-trail-spec.md](./audit-trail-spec.md)
+- [secret-management-spec.md](./secret-management-spec.md)
+- [organization-governance-spec.md](./organization-governance-spec.md)
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
+- [implementation-phases.md](./implementation-phases.md)
+- [functionality.md](./functionality.md)

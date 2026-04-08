@@ -154,28 +154,28 @@ Rules:
 
 ### 6.1 Core endpoints
 
-- `POST /secrets`
+- `POST /api/secrets`
   - accepts secret payload and scope binding
   - requires `actorContext` in request body (see Section 4.4)
   - returns `{ secretRef, id, createdAt }` only
-- `GET /secrets`
+- `GET /api/secrets`
   - metadata-only list, filter by scope/name/tags/owner
   - requires query context: `organizationId`, optional `projectId`, optional `teamId`, optional `channelId`, optional `threadId`
-- `GET /secrets/{secretRef}`
+- `GET /api/secrets/{secretRef}`
   - returns metadata only
-- `PATCH /secrets/{secretRef}`
+- `PATCH /api/secrets/{secretRef}`
   - update metadata, scope, expiry, labels
   - requires `SecretAccessContext`
-- `POST /secrets/{secretRef}/rotate`
+- `POST /api/secrets/{secretRef}/rotate`
   - replaces ciphertext; optional rotate key + audit entry
   - requires actor context and optional approval proof
-- `POST /secrets/{secretRef}/revoke`
+- `POST /api/secrets/{secretRef}/revoke`
   - mark revoked and invalidate cached in-memory copies
   - requires actor context and project-scope checks for scoped secrets
-- `DELETE /secrets/{secretRef}`
+- `DELETE /api/secrets/{secretRef}`
   - hard delete or encrypted tombstone depending on policy
   - requires actor context, explicit reason, and approval for high-impact secrets
-- `POST /secrets/{secretRef}/resolve`
+- `POST /api/secrets/{secretRef}/resolve`
   - returns plaintext only to authorized service code paths
   - never emits in SSE/chat/agent-visible event payloads
   - request body MUST include full `SecretAccessContext`
@@ -186,18 +186,18 @@ Rules:
 
 ### 6.2 Access binding endpoints
 
-- `POST /secrets/{secretRef}/grants`
+- `POST /api/secrets/{secretRef}/grants`
   - body includes `SecretAccessContext`, principal type/id, actions, scope override, optional expiry
-- `DELETE /secrets/{secretRef}/grants/{grantId}`
+- `DELETE /api/secrets/{secretRef}/grants/{grantId}`
   - requires caller authorization at binding-manager scope
-- `GET /secrets/{secretRef}/grants`
+- `GET /api/secrets/{secretRef}/grants`
   - returns explicit bindings with resolved precedence order
 
 ### 6.3 Context safety endpoints
 
-- `GET /secrets/audit`
+- `GET /api/secrets/audit`
   - immutable event list: who resolved/created/updated/revoked/rotated
-- `POST /secrets/access/check`
+- `POST /api/secrets/access/check`
   - evaluate allow/deny and reason code before tool execution
   - request body:
     ```ts
@@ -301,7 +301,17 @@ Project lifecycle tie-ins:
 - Project deletion/rotation flows must require project-scoped approvals and clear blast-radius audit before irreversible actions.
 - A project that loses access to its primary provider credentials should degrade safely and cannot auto-affect unrelated projects in the same organization.
 
-Cross-link:
-- [agent tool capabilities](./agent%20tool%20capabilities/index.md)
+## 14) Phase annotation
+
+This spec targets **Phase 3**.
+
+## 15) Cross-links
+
+- [tool-registry-spec.md](./tool-registry-spec.md)
+- [step-up-verification-spec.md](./step-up-verification-spec.md)
+- [audit-trail-spec.md](./audit-trail-spec.md)
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
+- [implementation-phases.md](./implementation-phases.md)
 - [functionality.md](./functionality.md)

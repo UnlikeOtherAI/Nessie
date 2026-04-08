@@ -402,6 +402,165 @@ At the end of phase 3, teams should be able to:
 - require step-up verification for sensitive secret use,
 - collaborate across languages.
 
+### Phase 3 code-level prerequisites (Phase 2 -> Phase 3 migration)
+
+These are Phase 2 code assumptions that **must be fixed** before or during Phase 3 feature work.
+
+#### Critical -- tool system
+
+1. **Hardcoded tool list.** `api/src/services/tools.ts` defines a static `SAFE_TOOLS` array with 3 tools. `worker/src/run/execute.ts` dispatches via if-statements in `executeSafeTool()`. Phase 3 must replace with dynamic tool registry lookup.
+2. **Tool endpoint returns unscoped list.** `GET /api/tools` (`api/src/index.ts:680`) returns all tools without filtering by agent grants, user role, or organization scope. Phase 3 must enforce grant-based visibility.
+3. **Agent `toolPolicy` field defined but unused.** `api/prisma/schema.prisma` has `toolPolicy Json?` on Agent but nothing reads or enforces it. Phase 3 must define the schema, populate it, and enforce at execution time.
+4. **No tool execution enforcement.** Worker tool dispatch (`worker/src/run/execute.ts:297-360`) does not check agent grants before invoking a tool. Phase 3 must add policy check before every tool call.
+
+#### Critical -- secrets
+
+5. **Model API keys read from raw env vars.** `packages/config/src/index.ts` reads `NESSIE_MODEL_API_KEY`, `OPENAI_API_KEY`, `MINIMAX_API_KEY` directly from environment. Phase 3 must integrate secret vault with encrypted storage, `secretRef` resolution, and audit.
+6. **OAuth client secrets unencrypted in config.** `api/src/services/external-auth.ts` stores provider credentials in plain config. Phase 3 must use `SecretRecord` for provider secrets.
+
+#### High -- verification and auth
+
+7. **No 2FA/verification fields in User model.** `api/prisma/schema.prisma` has no TOTP seed, verification factor, or challenge tables. Phase 3 Prisma migration must add `VerificationEnrollment`, `VerificationChallenge`, and `VerificationPolicy` models.
+8. **Login endpoint has no step-up flow.** `POST /api/auth/session` (`api/src/index.ts:457-575`) does credential check only. Phase 3 must add challenge/verify flow for sensitive actions.
+9. **`VerificationFactorType` schema defined but unused.** `packages/schemas/src/index.ts` defines the enum and `AuthorizedActionContext.verification` field but no auth flow uses them. Phase 3 must wire these into the approval and secret resolve paths.
+
+#### High -- knowledge base
+
+10. **Document read tool uses hardcoded filesystem path.** `worker/src/run/tools.ts:70-99` reads from a fixed `docsRoot` with `collectMarkdownFiles`. No access control, no metadata, no scoping. Phase 3 must replace with knowledge-base table lookup and policy-checked reads.
+11. **No knowledge-base data model.** No `KnowledgeSource`, `KnowledgeDocument`, or access grant tables exist. Phase 3 Prisma migration must add them.
+
+#### High -- prompt and agent system
+
+12. **Agent stores only direct `systemPrompt`.** `api/src/services/agents.ts:86` and `worker/src/run/execute.ts:466-481` build model prompt from agent's own systemPrompt with no inheritance chain. Phase 3 must resolve prompts through the org -> role -> agent -> tool layer chain.
+13. **Agent creation accepts no tool/grant parameters.** `createAgentRecord` (`api/src/services/agents.ts:449-491`) takes only name/role/systemPrompt. Phase 3 must accept tool grants, prompt inheritance config, and policy settings.
+
+#### Medium -- translation and config
+
+14. **No language or translation support.** No i18n framework, no `User.preferredLanguage` field, no message translation pipeline. Phase 3 must add language preference fields and translation service integration.
+15. **No per-tenant feature flags.** `packages/config/src/index.ts` uses global env-based config only. Phase 3 should add `RuntimeCapabilities` flags for tool registry, knowledge base, secrets vault, step-up verification, and translation features.
+
+### Recommended build sequence inside Phase 3
+
+#### Step 0: Prisma schema and shared contracts for Phase 3
+
+This must be built first. All Phase 3 features depend on new data models and shared types.
+
+- Prisma models: `ToolRegistryEntry`, `ToolGrant`, `ToolBundle`, `PromptLayer`, `SecretRecord`, `SecretBinding`, `VerificationEnrollment`, `VerificationChallenge`, `VerificationPolicy`, `KnowledgeSource`, `KnowledgeDocument`
+- Add `User.preferredLanguage`, `User.pronouns`, `Organization.defaultLanguage` fields
+- Phase 3 types in `packages/schemas` (see [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) Phase 3 additions)
+- Phase 3 config additions in `packages/config` (see [config-module-spec.md](./config-module-spec.md))
+- Run Prisma migration
+
+#### Step 1: Tool registry and search
+
+- `ToolRegistryEntry` CRUD service
+- Tool search with full-text, tags, filters, cursor pagination
+- Seed built-in tools into registry from current hardcoded list
+- `GET /api/tools` rewritten to query registry with scoping
+- `POST /api/tools`, `PATCH /api/tools/{toolId}`, `DELETE /api/tools/{toolId}`
+- `POST /api/tools/search`
+- See [tool-registry-spec.md](./tool-registry-spec.md)
+
+#### Step 2: Tool grants and execution enforcement
+
+- `ToolGrant` CRUD service with role-based and agent-override grants
+- Effective grant resolution (role merge + agent override)
+- `GET /api/roles/{roleId}/tools`, `GET /api/agents/{agentId}/tools`
+- `PATCH /api/agents/{agentId}/tools/{toolId}`
+- Execution enforcement: worker checks grants before every tool call
+- Replace hardcoded `executeSafeTool` dispatch with registry-backed dispatch
+- See [tool-registry-spec.md](./tool-registry-spec.md)
+
+#### Step 3: Tool manifest import
+
+- `NessieToolBundle` manifest parser (JSON/YAML/MD)
+- Schema and signature validation
+- `POST /api/tools/bundles/import`, bundle approval flow
+- `GET /api/tools/bundles`, `POST /api/tools/bundles/{bundleId}/approve`
+- See [tool-registry-spec.md](./tool-registry-spec.md)
+
+#### Step 4: Prompt inheritance
+
+- `PromptLayer` CRUD service
+- Prompt resolution chain: global -> role -> agent -> task -> tool-call
+- `GET /api/prompts`, `POST /api/prompts`, `PATCH /api/prompts/{promptId}`
+- `GET /api/agents/{agentId}/prompts/effective`
+- Worker prompt builder rewritten to resolve inheritance chain
+- See [tool-registry-spec.md](./tool-registry-spec.md)
+
+#### Step 5: Secret management v1
+
+- `SecretRecord` service with envelope encryption (AES-256-GCM)
+- `SecretBinding` access control with deny-first evaluation
+- `POST /api/secrets`, `GET /api/secrets`, `POST /api/secrets/{secretRef}/resolve`
+- Secret grant endpoints, audit endpoint
+- Migrate model API keys from env vars to secret vault
+- See [secret-management-spec.md](./secret-management-spec.md)
+
+#### Step 6: Step-up verification
+
+- `VerificationEnrollment` and `VerificationChallenge` services
+- Email OTP factor: send code, verify code
+- TOTP factor: enrollment with QR, verify code
+- Recovery code factor
+- `POST /api/verification/challenges`, `POST /api/verification/challenges/{challengeId}/verify`
+- `POST /api/verification/factors`, `GET /api/verification/factors`
+- Wire into secret resolve and approval paths
+- See [step-up-verification-spec.md](./step-up-verification-spec.md)
+
+#### Step 7: Knowledge base
+
+- `KnowledgeSource` and `KnowledgeDocument` services
+- Source ingestion: local file, folder, URL, MCP
+- Document summary computation
+- Scoped search with deterministic pagination
+- `POST /api/knowledge-base/link`, `POST /api/knowledge-base/search`, `POST /api/knowledge-base/read`
+- Replace hardcoded document read tool with knowledge-base-backed tool
+- See [knowledge-base-requirements.md](./knowledge-base-requirements.md)
+
+#### Step 8: Translation and language
+
+- `LanguagePreferences` service
+- Organization default language, user preferred language
+- Thread/session language override
+- Translation service integration (provider-agnostic)
+- `GET /api/orgs/{orgId}/language`, `PATCH /api/users/{userId}/language`
+- Pronoun-aware translation context
+- See [language-and-translation-spec.md](./language-and-translation-spec.md)
+
+#### Step 9: Admin UI extensions for Phase 3
+
+- Tool registry browser with search and filters
+- Tool checkbox matrix (allow/deny/inherit per agent)
+- Bundle import review UI
+- Prompt layer editor with inheritance preview
+- Secret creation modal (out-of-band from chat)
+- Verification factor enrollment (QR code for TOTP)
+- Knowledge base source management
+- Language preference settings
+- Usage of all new domain facades
+
+#### Step 10: Phase 3 validation
+
+- End-to-end: import tool bundle -> approve -> grant to agent -> agent uses tool -> audit logged
+- End-to-end: create secret -> bind to agent -> step-up verification -> resolve -> tool uses secret
+- End-to-end: ingest docs -> search -> read -> agent uses knowledge base
+- End-to-end: set language preference -> message translated -> canonical stored in org language
+- Prompt inheritance resolves correctly across all layers
+- Tool enforcement blocks denied tools
+- Secret vault encrypts at rest and redacts in logs
+- All Phase 3 audit events emitted correctly
+
+### Phase 3 spec references
+
+- [tool-registry-spec.md](./tool-registry-spec.md) -- tool registry, grants, manifests, prompt inheritance
+- [secret-management-spec.md](./secret-management-spec.md) -- secret vault, encryption, access bindings
+- [step-up-verification-spec.md](./step-up-verification-spec.md) -- email/TOTP verification factors
+- [language-and-translation-spec.md](./language-and-translation-spec.md) -- multilingual delivery model
+- [knowledge-base-requirements.md](./knowledge-base-requirements.md) -- document ingestion and scoped search
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) -- shared type contracts (Phase 3 additions)
+- [config-module-spec.md](./config-module-spec.md) -- Phase 3 config additions
+
 ### Phase 3 exit gate
 
 Phase 3 is not complete until the mandatory end-of-phase review gate in section `1.1` passes for all affected roots and capability surfaces.
@@ -628,5 +787,11 @@ Minimum gate set:
 - [approval-gating-spec.md](./approval-gating-spec.md)
 - [audit-trail-spec.md](./audit-trail-spec.md)
 - [token-ledger-spec.md](./token-ledger-spec.md)
+- [tool-registry-spec.md](./tool-registry-spec.md)
+- [secret-management-spec.md](./secret-management-spec.md)
+- [step-up-verification-spec.md](./step-up-verification-spec.md)
+- [language-and-translation-spec.md](./language-and-translation-spec.md)
+- [knowledge-base-requirements.md](./knowledge-base-requirements.md)
 - [remote-worker-spec.md](./remote-worker-spec.md)
+- [phase-review-process.md](./phase-review-process.md)
 - [functionality.md](./functionality.md)

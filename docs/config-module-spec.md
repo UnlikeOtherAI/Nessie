@@ -161,9 +161,90 @@ hasTracing: boolean;      // true when observability.tracing === true
 hasIdentityPlatform: boolean;  // true when identityPlatform is configured
 ```
 
+## 5.2) Phase 3 config additions
+
+Phase 3 extends the config schema for tooling, secrets, verification, knowledge base, and translation features. These fields are added to `NessieConfig`:
+
+```ts
+// Phase 3 additions to NessieConfig
+secrets: z
+  .object({
+    masterKey: z.string().optional(),           // NESSIE_SECRETS_MASTER_KEY for local encryption
+    kmsKeyRef: z.string().optional(),           // KMS key reference for hosted encryption
+    cacheTtlMs: z.number().default(30000),      // in-memory secret cache TTL
+  })
+  .optional(),
+toolRegistry: z
+  .object({
+    importPath: z.string().optional(),          // local path for manifest import
+    marketplaceUrl: z.string().optional(),      // marketplace index URL
+    requireSignature: z.boolean().default(false),
+  })
+  .optional(),
+verification: z
+  .object({
+    emailOtp: z.object({
+      enabled: z.boolean().default(true),
+      codeLengthDigits: z.number().default(6),
+      ttlMs: z.number().default(600000),        // 10 minutes
+      resendCooldownMs: z.number().default(60000),
+    }).optional(),
+    totp: z.object({
+      enabled: z.boolean().default(false),
+      issuer: z.string().default('Nessie'),
+    }).optional(),
+  })
+  .optional(),
+knowledgeBase: z
+  .object({
+    storageProvider: z.enum(['filesystem', 'gcs', 's3']).optional(),
+    localPath: z.string().optional(),
+    maxDocSizeMb: z.number().default(50),
+    searchDefaultLimit: z.number().default(25),
+  })
+  .optional(),
+translation: z
+  .object({
+    enabled: z.boolean().default(false),
+    provider: z.enum(['openai', 'anthropic', 'custom']).optional(),
+    model: z.string().optional(),
+    maxContextChars: z.number().default(4000),
+    maxPreviousMessages: z.number().default(2),
+  })
+  .optional(),
+```
+
+Phase 3 environment variable mappings:
+
+- `NESSIE_SECRETS_MASTER_KEY` -> `secrets.masterKey`
+- `NESSIE_SECRETS_KMS_KEY_REF` -> `secrets.kmsKeyRef`
+- `NESSIE_TOOL_REGISTRY_IMPORT_PATH` -> `toolRegistry.importPath`
+- `NESSIE_TOOL_REGISTRY_MARKETPLACE_URL` -> `toolRegistry.marketplaceUrl`
+- `NESSIE_VERIFICATION_EMAIL_OTP_ENABLED` -> `verification.emailOtp.enabled`
+- `NESSIE_VERIFICATION_TOTP_ENABLED` -> `verification.totp.enabled`
+- `NESSIE_KB_STORAGE_PROVIDER` -> `knowledgeBase.storageProvider`
+- `NESSIE_TRANSLATION_ENABLED` -> `translation.enabled`
+- `NESSIE_TRANSLATION_PROVIDER` -> `translation.provider`
+
+Phase 3 RuntimeCapabilities additions:
+
+```ts
+// Phase 3 additions to RuntimeCapabilities
+hasToolRegistry: boolean;       // true when toolRegistry config exists
+hasSecretVault: boolean;        // true when secrets config exists
+hasStepUpVerification: boolean; // true when verification config exists with at least one factor enabled
+hasKnowledgeBase: boolean;      // true when knowledgeBase config exists
+hasTranslation: boolean;        // true when translation.enabled === true
+```
+
 ## 6) Cross-links
 
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
 - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
 - [implementation-phases.md](./implementation-phases.md)
 - [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)
+- [tool-registry-spec.md](./tool-registry-spec.md)
+- [secret-management-spec.md](./secret-management-spec.md)
+- [step-up-verification-spec.md](./step-up-verification-spec.md)
+- [language-and-translation-spec.md](./language-and-translation-spec.md)
+- [knowledge-base-requirements.md](./knowledge-base-requirements.md)

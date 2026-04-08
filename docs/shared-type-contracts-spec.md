@@ -552,12 +552,58 @@ Phase 2 adds these types when the corresponding features ship:
 
 Not in `packages/schemas` for Phase 2 (deferred to Phase 3+):
 
-- secret types (`SecretRecord`, `SecretBinding`)
+- tool registry types
+- secret types
 - translation types
+- verification types
+- knowledge-base types
 - workflow types
 - remote worker protocol types
 
 If a type is shared between `/api` and `/worker` in Phase 1, it goes in `packages/schemas`. If it only exists in one service, it stays local until Phase 2 extraction.
+
+### Phase 3 additions to `packages/schemas`
+
+Phase 3 adds these types when the corresponding features ship:
+
+Tool registry (see [tool-registry-spec.md](./tool-registry-spec.md)):
+
+- `ToolId`, `ToolBundleId`, `ToolGrantId`, `PromptLayerId` branded IDs
+- `ToolSource`, `ToolTransport`, `ToolGrantState`, `ToolGrantSource`, `ToolBundleStatus`, `PromptLayerType`, `PromptMergeMode` enums
+- `ToolCapabilitySchema`, `ToolRuntimeConfig`, `ToolGrantRecord`, `EffectiveToolGrant` response types
+- `ToolSearchDocument`, `ToolSearchResult` search response types
+- `NessieToolBundle` manifest schema
+- `PromptLayer`, `PromptProfile`, `ManagedAgentProfile` prompt types
+
+Secret management (see [secret-management-spec.md](./secret-management-spec.md)):
+
+- `SecretId`, `SecretBindingId` branded IDs
+- `SecretRecord` (metadata only, never the encrypted value)
+- `SecretBinding` access binding type
+- `SecretAccessContext` extending `AuthorizedActionContext`
+
+Step-up verification (see [step-up-verification-spec.md](./step-up-verification-spec.md)):
+
+- `VerificationChallengeId`, `VerificationFactorId`, `VerificationPolicyId` branded IDs
+- `VerificationFactorRequirement`, `VerificationFactorGroup` factor model types
+- `VerificationPolicy`, `VerificationChallenge`, `VerificationEnrollment` types
+
+Language and translation (see [language-and-translation-spec.md](./language-and-translation-spec.md)):
+
+- `LanguagePreferences` type
+- `MessageTranslationMeta` type
+
+Knowledge base (see [knowledge-base-requirements.md](./knowledge-base-requirements.md)):
+
+- `KnowledgeSourceId`, `KnowledgeDocId` branded IDs
+- `KnowledgeBaseToolInput` action payload type
+
+Not in `packages/schemas` for Phase 3 (deferred to Phase 4+):
+
+- remote worker protocol types
+- interactive session types
+- SSH tool types
+- workflow builder types
 
 ## 11) Canonical ownership
 
@@ -583,4 +629,9 @@ Other docs may reference these contracts, but should not redefine them independe
 - [token-ledger-spec.md](./token-ledger-spec.md)
 - [policy-enforcement-spec.md](./policy-enforcement-spec.md)
 - [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)
+- [tool-registry-spec.md](./tool-registry-spec.md)
+- [secret-management-spec.md](./secret-management-spec.md)
+- [step-up-verification-spec.md](./step-up-verification-spec.md)
+- [language-and-translation-spec.md](./language-and-translation-spec.md)
+- [knowledge-base-requirements.md](./knowledge-base-requirements.md)
 - [functionality.md](./functionality.md)

@@ -175,14 +175,14 @@ Required actions:
 - `verification.factor.list`
 
 Suggested HTTP contracts:
-- `POST /verification/challenges`
-- `POST /verification/challenges/{challengeId}/verify`
-- `POST /verification/challenges/{challengeId}/resend`
-- `DELETE /verification/challenges/{challengeId}`
-- `POST /verification/factors`
-- `POST /verification/factors/{factorId}/verify`
-- `DELETE /verification/factors/{factorId}`
-- `GET /verification/factors`
+- `POST /api/verification/challenges`
+- `POST /api/verification/challenges/{challengeId}/verify`
+- `POST /api/verification/challenges/{challengeId}/resend`
+- `DELETE /api/verification/challenges/{challengeId}`
+- `POST /api/verification/factors`
+- `POST /api/verification/factors/{factorId}/verify`
+- `DELETE /api/verification/factors/{factorId}`
+- `GET /api/verification/factors`
 
 WebAuthn note:
 - `webauthn` remains a reserved factor type in the shared policy model.
@@ -203,8 +203,17 @@ WebAuthn note:
 - replayed challenges must be rejected,
 - factor policy must be transferable across projects, teams, channels, agents, and tools.
 
-## 11) Cross-links
+## 12) Phase annotation
 
-- [organization-governance-spec.md](./organization-governance-spec.md)
-- [functionality.md](./functionality.md)
+This spec targets **Phase 3**.
+
+## 13) Cross-links
+
 - [secret-management-spec.md](./secret-management-spec.md)
+- [audit-trail-spec.md](./audit-trail-spec.md)
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md)
+- [organization-governance-spec.md](./organization-governance-spec.md)
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
+- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [implementation-phases.md](./implementation-phases.md)
+- [functionality.md](./functionality.md)
