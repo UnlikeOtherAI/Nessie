@@ -227,6 +227,34 @@ At the end of phase 2, an organization should be able to:
 
 Phase 2 is not complete until the mandatory end-of-phase review gate in section `1.1` passes for all affected roots and hosted deployment paths.
 
+### Phase 2 code-level prerequisites (Phase 1 → Phase 2 migration)
+
+These are Phase 1 code assumptions that **must be fixed** before or during Phase 2 feature work. Identified by Codex deep review (2026-04-08).
+
+#### Critical — security / correctness
+
+1. **WebSocket subscriptions bypass channel privacy.** Events are published at org scope (`worker/src/run/execute.ts`, `api/src/index.ts`), and the hub delivers on org match alone (`api/src/realtime/hub.ts`). Phase 2 must filter WS events by channel membership/privacy before delivery.
+2. **Shared-agent REST endpoints leak cross-channel history.** Agent status/activity/messages loaders return global history without channel scoping (`api/src/services/agents.ts`). Phase 2 must scope agent data queries to the caller's accessible channels.
+3. **Agent binding has no authorization check.** Any user who can see a channel can bind any known agent (`api/src/index.ts`, `api/src/services/agents.ts:498`). Phase 2 must enforce policy check on `agent.bind`.
+4. **`NESSIE_AUTH_SECRET` fallback to per-process random breaks multi-instance.** API falls back to in-memory random (`api/src/index.ts:103`). On Cloud Run with multiple instances, tokens from one instance fail on another. Phase 2 must require a persistent shared secret or use Cloud KMS.
+
+#### High — architectural prerequisites
+
+5. **Auth/session contract cannot represent multi-membership users.** `TenantContext` holds one org/project/team. `users.ts` hard-selects first membership. Phase 2 must evolve JWT and `/me` to support project/team switching (see JWT evolution in deployment-modes-and-auth-spec.md).
+6. **Login and SSO auto-provision hardcode bootstrap org/project/team IDs.** All auth paths issue reserved bootstrap container IDs. Phase 2 must resolve user's actual memberships from DB.
+7. **Worker ignores `actorContext`.** Jobs carry context (`packages/schemas`) but `executeRunJob` never uses it for policy, approval, audit, or ledger. Phase 2 must propagate and enforce.
+8. **Run execution is not idempotent.** No idempotency key on enqueue, no "already completed" guard in worker. At-least-once queue retries can duplicate output. Phase 2 must add idempotency boundaries per control-plane invariant #2.
+9. **Agent model lacks ownership fields.** `Agent` has no org/project/team owner. `AgentBinding` is unscoped. Phase 2 Prisma migration must add ownership and enforce it.
+10. **No tenant hierarchy consistency constraints in DB.** `Channel` references org and team independently — no FK constraint that the team's project belongs to the same org. Phase 2 should add application-level invariant checks (or DB triggers).
+11. **Public channels require membership to be visible.** Channel listing filters by `channel_members` rows, hiding public channels from non-members. Phase 2 must implement privacy-level-aware listing.
+12. **Queue provider not config-switchable.** Worker always boots `PgQueueProvider`. Phase 2 must wire `config.queue.provider` to provider factory.
+
+#### Medium — operational
+
+13. **Channel listing N+1.** `listChannelsForUser` calls `ensureDefaultThread` per channel with find-then-create race. Phase 2 should use `upsert` and batch.
+14. **Activity queries don't scale.** Snapshot building does per-agent queries; activity loads full history before trimming. Phase 2 should add pagination and indexed queries.
+15. **Admin WS client missing ping.** No keepalive ping per spec (30s interval). SSE client missing `Last-Event-ID` reconnect. Phase 2 must fix both to survive Cloud Run connection cycling.
+
 ### Recommended build sequence inside Phase 2
 
 #### Step 0: GCP infrastructure and deployment pipeline
