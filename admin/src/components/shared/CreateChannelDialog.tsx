@@ -16,50 +16,43 @@ type CreateChannelDialogProps = {
   open: boolean
 }
 
-export const CreateChannelDialog = ({ onClose, open }: CreateChannelDialogProps) => {
-  const dialogRef = useRef<HTMLDialogElement>(null)
+export const CreateChannelDialog = (
+  { onClose, open }: CreateChannelDialogProps,
+) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const createChannel = useCreateChannel()
 
   const [name, setName] = useState('')
-  const [visibility, setVisibility] = useState<'private' | 'protected' | 'public'>('public')
+  const [visibility, setVisibility] = useState<
+    'private' | 'protected' | 'public'
+  >('public')
 
   const slug = toSlug(name)
 
   useEffect(() => {
-    const dialog = dialogRef.current
-    if (!dialog) return
-
-    if (open && !dialog.open) {
-      dialog.showModal()
+    if (open) {
       nameInputRef.current?.focus()
-    } else if (!open && dialog.open) {
-      dialog.close()
     }
   }, [open])
 
-  useEffect(() => {
-    const dialog = dialogRef.current
-    if (!dialog) return
+  const handleClose = () => {
+    setName('')
+    setVisibility('public')
+    onClose()
+  }
 
-    const handleClose = () => {
-      setName('')
-      setVisibility('public')
-      onClose()
-    }
-
-    dialog.addEventListener('close', handleClose)
-    return () => dialog.removeEventListener('close', handleClose)
-  }, [onClose])
-
-  const handleBackdropClick = (event: React.MouseEvent<HTMLDialogElement>) => {
-    if (event.target === dialogRef.current) {
-      dialogRef.current?.close()
+  const handleOverlayClick = (
+    event: React.MouseEvent<HTMLDivElement>,
+  ) => {
+    if (event.target === event.currentTarget) {
+      handleClose()
     }
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault()
     if (!name.trim()) return
 
@@ -67,29 +60,53 @@ export const CreateChannelDialog = ({ onClose, open }: CreateChannelDialogProps)
       label: name.trim(),
       visibility,
     })
-    dialogRef.current?.close()
+    handleClose()
     void navigate(`/channels/${created.id}`)
   }
 
+  if (!open) return null
+
   return (
-    <dialog
-      ref={dialogRef}
-      className="create-channel-dialog"
-      onClick={handleBackdropClick}
+    <div
+      onClick={handleOverlayClick}
+      role="presentation"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0, 0, 0, 0.6)',
+        backdropFilter: 'blur(4px)',
+      }}
     >
-      <div className="create-channel-dialog-content">
-        <div className="create-channel-dialog-header">
-          <h2 className="text-lg font-bold text-white">Create a channel</h2>
+      <div className="create-channel-panel">
+        <div className="create-channel-header">
+          <h2 className="text-lg font-bold text-white">
+            Create a channel
+          </h2>
           <button
             className={[
-              'flex h-7 w-7 items-center justify-center rounded',
-              'text-[color:var(--tx3)] hover:bg-white/10 hover:text-white',
+              'flex h-7 w-7 items-center justify-center',
+              'rounded text-[color:var(--tx3)]',
+              'hover:bg-white/10 hover:text-white',
             ].join(' ')}
-            onClick={() => dialogRef.current?.close()}
+            onClick={handleClose}
             type="button"
           >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M6 18L18 6M6 6l12 12"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
         </div>
@@ -97,7 +114,10 @@ export const CreateChannelDialog = ({ onClose, open }: CreateChannelDialogProps)
         <form className="grid gap-4" onSubmit={handleSubmit}>
           <div className="grid gap-1.5">
             <label
-              className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]"
+              className={[
+                'text-xs font-semibold uppercase',
+                'tracking-[0.16em] text-[color:var(--tx3)]',
+              ].join(' ')}
               htmlFor="channel-name"
             >
               Name
@@ -107,7 +127,7 @@ export const CreateChannelDialog = ({ onClose, open }: CreateChannelDialogProps)
               autoComplete="off"
               className="admin-input"
               id="channel-name"
-              onChange={(event) => setName(event.target.value)}
+              onChange={(e) => setName(e.target.value)}
               placeholder="e.g. design-reviews"
               value={name}
             />
@@ -115,7 +135,10 @@ export const CreateChannelDialog = ({ onClose, open }: CreateChannelDialogProps)
 
           <div className="grid gap-1.5">
             <label
-              className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]"
+              className={[
+                'text-xs font-semibold uppercase',
+                'tracking-[0.16em] text-[color:var(--tx3)]',
+              ].join(' ')}
               htmlFor="channel-slug"
             >
               Slug
@@ -130,7 +153,10 @@ export const CreateChannelDialog = ({ onClose, open }: CreateChannelDialogProps)
 
           <div className="grid gap-1.5">
             <label
-              className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]"
+              className={[
+                'text-xs font-semibold uppercase',
+                'tracking-[0.16em] text-[color:var(--tx3)]',
+              ].join(' ')}
               htmlFor="channel-visibility"
             >
               Visibility
@@ -138,7 +164,9 @@ export const CreateChannelDialog = ({ onClose, open }: CreateChannelDialogProps)
             <select
               className="admin-input"
               id="channel-visibility"
-              onChange={(event) => setVisibility(event.target.value as typeof visibility)}
+              onChange={(e) => setVisibility(
+                e.target.value as typeof visibility,
+              )}
               value={visibility}
             >
               <option value="public">Public</option>
@@ -150,7 +178,7 @@ export const CreateChannelDialog = ({ onClose, open }: CreateChannelDialogProps)
           <div className="flex justify-end gap-2 pt-1">
             <button
               className="admin-button admin-button-secondary"
-              onClick={() => dialogRef.current?.close()}
+              onClick={handleClose}
               type="button"
             >
               Cancel
@@ -165,6 +193,6 @@ export const CreateChannelDialog = ({ onClose, open }: CreateChannelDialogProps)
           </div>
         </form>
       </div>
-    </dialog>
+    </div>
   )
 }
