@@ -37,6 +37,8 @@ const readTextDeltas = async function* (
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let emittedDelta = false
+  let fallbackMessageContent = ''
 
   try {
     while (true) {
@@ -63,9 +65,16 @@ const readTextDeltas = async function* (
           const chunk = JSON.parse(data) as {
             choices?: { delta?: { content?: string }; message?: { content?: string } }[]
           }
-          const text = chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content
-          if (text) {
-            yield text
+          const deltaText = chunk.choices?.[0]?.delta?.content
+          if (deltaText) {
+            emittedDelta = true
+            yield deltaText
+            continue
+          }
+
+          const messageContent = chunk.choices?.[0]?.message?.content
+          if (messageContent) {
+            fallbackMessageContent = messageContent
           }
         } catch {
           // Ignore malformed streaming payloads.
@@ -74,6 +83,10 @@ const readTextDeltas = async function* (
     }
   } finally {
     reader.releaseLock()
+  }
+
+  if (!emittedDelta && fallbackMessageContent) {
+    yield fallbackMessageContent
   }
 }
 
