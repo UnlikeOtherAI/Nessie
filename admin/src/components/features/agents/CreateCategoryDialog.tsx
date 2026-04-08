@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useCreateAgentCategory } from '../../../facades/agent-categories/hooks'
-import { useAgents } from '../../../facades/agents/hooks'
-import type { AgentRecord } from '../../../lib/api-client'
 
 type CreateCategoryDialogProps = {
   onClose: () => void
@@ -14,14 +12,10 @@ export const CreateCategoryDialog = ({
 }: CreateCategoryDialogProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const createCategory = useCreateAgentCategory()
-  const { data: agents = [] } = useAgents()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [visibility, setVisibility] = useState<'private' | 'public'>('public')
-  const [authorAgentId, setAuthorAgentId] = useState('')
-
-  const rootAgents = agents.filter((a: AgentRecord) => !a.parentAgentId)
 
   useEffect(() => {
     if (open) {
@@ -33,7 +27,6 @@ export const CreateCategoryDialog = ({
     setName('')
     setDescription('')
     setVisibility('public')
-    setAuthorAgentId('')
     onClose()
   }
 
@@ -53,7 +46,6 @@ export const CreateCategoryDialog = ({
       name: name.trim(),
       description: description.trim() || undefined,
       visibility,
-      authorAgentId: authorAgentId || undefined,
     })
     handleClose()
   }
@@ -146,31 +138,6 @@ export const CreateCategoryDialog = ({
               rows={3}
               value={description}
             />
-          </div>
-
-          <div className="grid gap-1.5">
-            <label
-              className={[
-                'text-xs font-semibold uppercase',
-                'tracking-[0.16em] text-[color:var(--tx3)]',
-              ].join(' ')}
-              htmlFor="category-author"
-            >
-              Author
-            </label>
-            <select
-              className="admin-input"
-              id="category-author"
-              onChange={(e) => setAuthorAgentId(e.target.value)}
-              value={authorAgentId}
-            >
-              <option value="">You (current user)</option>
-              {rootAgents.map((agent: AgentRecord) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name} ({agent.role})
-                </option>
-              ))}
-            </select>
           </div>
 
           <div className="grid gap-1.5">
