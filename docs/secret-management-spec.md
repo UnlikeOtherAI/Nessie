@@ -18,7 +18,7 @@ This document is **target-state design**. Secret services must be implemented ou
 
 Secret scope is explicit and non-implicit:
 
-- `org`: visible within one organization boundary and governed by organization policy.
+- `organization`: visible within one organization boundary and governed by organization policy.
 - `global`: visible to users/agents allowed at organization scope.
 - `project`: dedicated release-safety boundary for deployment, keys, and documentation.
 - `team`: bounded to team membership and policies.
@@ -86,7 +86,7 @@ type SecretStorageRecord = {
 **Shared API model (in `packages/schemas`, returned by endpoints):**
 
 ```ts
-type SecretScopeType = 'org' | 'global' | 'project' | 'team' | 'channel' | 'agent' | 'thread' | 'user' | 'service';
+type SecretScopeType = 'organization' | 'global' | 'project' | 'team' | 'channel' | 'agent' | 'thread' | 'user' | 'service';
 type SecretType = 'api_key' | 'password' | 'token' | 'cert' | 'other';
 type SecretStatus = 'active' | 'revoked' | 'expired';
 
@@ -118,7 +118,7 @@ type SecretBinding = {
   secretId: SecretId;
   effect: 'allow' | 'deny';
   principalType:
-    | 'org'
+    | 'organization'
     | 'project'
     | 'team'
     | 'channel'

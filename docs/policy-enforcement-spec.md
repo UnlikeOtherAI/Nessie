@@ -400,6 +400,8 @@ Policy checks are mandatory at these access boundaries in Phase 2. Each integrat
 - **Before updating a verification policy**: check `resourceType=verification_policy, action=edit`.
 - **Before deleting a verification policy**: check `resourceType=verification_policy, action=admin`.
 
+Note: `challenge.verify`, `challenge.resend`, `challenge.cancel`, `factor.verify`, and `factor.list` are self-authenticated operations — the caller must own the challenge/factor, so access is gated by possession, not by policy rules. Listing factors requires actor-match only (callers see their own factors).
+
 ### 6.9 Phase 3: Tool registry and grants
 
 - **Before creating a tool**: check `resourceType=tool, action=create`.

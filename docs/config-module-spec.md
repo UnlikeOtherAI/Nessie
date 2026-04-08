@@ -226,6 +226,9 @@ Phase 3 environment variable mappings:
 - `NESSIE_TOOL_REGISTRY_IMPORT_PATH` -> `toolRegistry.importPath`
 - `NESSIE_TOOL_REGISTRY_MARKETPLACE_URL` -> `toolRegistry.marketplaceUrl`
 - `NESSIE_VERIFICATION_EMAIL_OTP_ENABLED` -> `verification.emailOtp.enabled`
+- `NESSIE_VERIFICATION_EMAIL_OTP_CODE_LENGTH` -> `verification.emailOtp.codeLengthDigits`
+- `NESSIE_VERIFICATION_EMAIL_OTP_TTL_MS` -> `verification.emailOtp.ttlMs`
+- `NESSIE_VERIFICATION_EMAIL_OTP_RESEND_COOLDOWN_MS` -> `verification.emailOtp.resendCooldownMs`
 - `NESSIE_VERIFICATION_EMAIL_LINK_ENABLED` -> `verification.emailLink.enabled`
 - `NESSIE_VERIFICATION_TOTP_ENABLED` -> `verification.totp.enabled`
 - `NESSIE_VERIFICATION_TOTP_ISSUER` -> `verification.totp.issuer`
