@@ -34,7 +34,7 @@
 html,
 body,
 #root {
-  height: 100vh;
+  height: 100dvh;
 }
 
 body {
@@ -98,7 +98,7 @@ a {
 
 .admin-shell {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
   background: var(--rail);
   color: var(--tx);
 }
