@@ -12,6 +12,12 @@
 - No patches on patches. No fallbacks unless required by functionality. Diagnose and fix root causes.
 - Before reusing code that hasn't been reused before: pause, plan a refactor, execute it maintaining best architectural practices, then reuse.
 
+## Verification
+
+- Every UI change must be visually verified using Playwright before considering the work complete.
+- Use `mcp__plugin_playwright` to navigate to the affected page, take a screenshot, and confirm the feature renders correctly.
+- This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
+
 ## Architecture
 
 - All standards, specs, and design decisions live in `docs/`.

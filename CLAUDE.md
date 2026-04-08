@@ -28,6 +28,11 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 - **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`
 - **Swift**: SwiftLint with strict mode, warning treated as error in CI
 
+## Verification
+
+- Every UI/frontend change must be verified using Playwright before the work is considered done.
+- Navigate to the affected page, screenshot, and confirm correct rendering.
+
 ## MCP Integration
 
 All user-facing actions are available via the MCP server (`GET /mcp`, `POST /mcp`) speaking JSON-RPC 2.0. Any MCP client (Claude Code, etc.) can connect and use:
