@@ -372,9 +372,13 @@ Policy checks are mandatory at these access boundaries in Phase 2. Each integrat
 
 ### 6.6 Phase 3: Secret access
 
+- **Before creating a secret**: check `resourceType=secret, action=create`.
+- **Before viewing secret metadata**: check `resourceType=secret, action=view`.
+- **Before updating secret metadata**: check `resourceType=secret, action=edit`.
 - **Before resolving a secret**: check `resourceType=secret, action=resolve` for the actor in the secret's scope chain.
 - **Before rotating a secret**: check `resourceType=secret, action=rotate`.
 - **Before revoking a secret**: check `resourceType=secret, action=revoke`.
+- **Before deleting a secret**: check `resourceType=secret, action=admin`.
 - **Before creating a secret binding**: check `resourceType=secret, action=bind`.
 
 ### 6.7 Phase 3: Knowledge base access
@@ -383,21 +387,35 @@ Policy checks are mandatory at these access boundaries in Phase 2. Each integrat
 - **Before reading a knowledge document**: check `resourceType=knowledge_document, action=read`.
 - **Before searching knowledge**: check `resourceType=knowledge_source, action=search`.
 - **Before reindexing a source**: check `resourceType=knowledge_source, action=reindex`.
+- **Before sharing a source to another project**: check `resourceType=knowledge_source, action=bind`.
 
-### 6.8 Phase 3: Verification policy
+### 6.8 Phase 3: Verification
 
 - **Before enrolling a verification factor**: check `resourceType=verification_factor, action=enroll`.
+- **Before revoking a verification factor**: check `resourceType=verification_factor, action=revoke`.
+- **Before starting a challenge**: check `resourceType=verification_factor, action=challenge`.
 - **Before creating a verification policy**: check `resourceType=verification_policy, action=create`.
 - **Before updating a verification policy**: check `resourceType=verification_policy, action=edit`.
+- **Before deleting a verification policy**: check `resourceType=verification_policy, action=admin`.
 
 ### 6.9 Phase 3: Tool registry and grants
 
+- **Before creating a tool**: check `resourceType=tool, action=create`.
+- **Before editing a tool**: check `resourceType=tool, action=edit`.
+- **Before deleting a tool**: check `resourceType=tool, action=admin`.
 - **Before importing a tool bundle**: check `resourceType=tool_bundle, action=import`.
+- **Before approving/rejecting a bundle**: check `resourceType=tool_bundle, action=approve`.
 - **Before changing a tool grant**: check `resourceType=tool_grant, action=grant`.
 - **Before creating a prompt layer**: check `resourceType=prompt, action=create`.
 - **Before editing a prompt layer**: check `resourceType=prompt, action=edit`.
+- **Before deleting a prompt layer**: check `resourceType=prompt, action=admin`.
 
-### 6.10 Search and discovery
+### 6.10 Phase 3: Translation
+
+- **Before changing organization default language**: check `resourceType=translation, action=admin`.
+- **Before changing user preferred language**: check `resourceType=translation, action=edit` (users may edit their own; admin can edit others).
+
+### 6.11 Search and discovery
 
 - **Agent search**: filter results through `resourceType=agent, action=view` per result.
 - **Tool search**: filter results through `resourceType=tool, action=view` per result.

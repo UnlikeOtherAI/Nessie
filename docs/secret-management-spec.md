@@ -267,7 +267,7 @@ Project-scoped guardrails:
   - no secret value in event payload
 - `secret.access_denied`
   - emits `reasonCode` for policy/debug and `policySourceIds` used to resolve the decision
-- `secret.resolve`
+- `secret.resolved`
   - emitted when plaintext is issued to service runtime
   - no secret value in event payload; only metadata and call hash
 

@@ -187,7 +187,9 @@ type AuditAction =
   | 'kb.share.revoked'
   // Phase 3 — Translation
   | 'translation.org_language.changed'
-  | 'translation.user_language.changed';
+  | 'translation.user_language.changed'
+  | 'translation.thread_language.changed'
+  | 'translation.session_language.changed';
 ```
 
 ## 4) Audit emitter

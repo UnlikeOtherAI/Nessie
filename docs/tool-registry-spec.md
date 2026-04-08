@@ -239,9 +239,12 @@ type ToolSearchDocument = {
   searchableText: string;
 };
 
-// ToolSearchResult uses the shared ApiResponse<T> + PaginationMeta contract
-// from shared-type-contracts-spec.md. Responses are ApiResponse<ToolSearchDocument[]>.
-// Additional response headers: ETag for client cache invalidation.
+// ToolSearchResult is an alias: ApiResponse<ToolSearchDocument[]> + PaginationMeta
+// from shared-type-contracts-spec.md. Additional response headers: ETag for cache invalidation.
+// Note: tool search uses limit defaults of 25/100 (not 50/200) because search results
+// carry heavier payloads (overview, instructions, searchableText). CRUD list endpoints
+// on /api/tools use the standard 50/200 pagination defaults.
+type ToolSearchResult = ApiResponse<ToolSearchDocument[]>;
 ```
 
 ### 3.3 Permission and override model
@@ -466,7 +469,7 @@ Rules:
 - MCP tool definitions auto-generated from catalog entries when `transport` is `mcp` or when custom wrappers are exposed.
 - Agent-level MCP access must be explicit through `mcpPolicy.allowedServers`; the registry must not expose unapproved servers to agents.
 - Static built-ins are first-class entries in the catalog.
-- Add versioned cache + `list`/`search` response metadata: `total`, `filtered`, `cursor`, `etag`.
+- Add versioned cache + `list`/`search` response metadata: `total`, `cursor`, `etag` (uses standard `PaginationMeta` from shared-type-contracts-spec.md).
 
 ## 8) Execution enforcement
 

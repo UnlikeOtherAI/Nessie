@@ -445,7 +445,7 @@ These are Phase 2 code assumptions that **must be fixed** before or during Phase
 
 This must be built first. All Phase 3 features depend on new data models and shared types.
 
-- Prisma models: `ToolRegistryEntry`, `ToolGrant`, `ToolBundle`, `PromptLayer`, `SecretRecord`, `SecretBinding`, `VerificationEnrollment`, `VerificationChallenge`, `VerificationPolicy`, `KnowledgeSource`, `KnowledgeDocument`, `KnowledgeShareGrant`
+- Prisma models: `ToolRegistryEntry`, `ToolGrant`, `ToolBundle`, `PromptLayer`, `Secret` (maps to `SecretStorageRecord` internally, `SecretRecord` in API), `SecretBinding`, `VerificationEnrollment`, `VerificationChallenge`, `VerificationPolicy`, `KnowledgeSource`, `KnowledgeDocument`, `KnowledgeShareGrant`
 - Add `User.preferredLanguage`, `User.pronouns`, `Organization.defaultLanguage` fields
 - Add `Thread.languageOverride` field for thread-level language overrides
 - Phase 3 types in `packages/schemas` (see [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) Phase 3 additions)
@@ -527,7 +527,11 @@ This must be built first. All Phase 3 features depend on new data models and sha
 - Organization default language, user preferred language
 - Thread/session language override
 - Translation service integration (provider-agnostic)
-- `GET /api/orgs/{orgId}/language`, `PATCH /api/users/{userId}/language`
+- `GET /api/orgs/{orgId}/language`, `PATCH /api/orgs/{orgId}/language`
+- `GET /api/users/{userId}/language`, `PATCH /api/users/{userId}/language`
+- `GET /api/users/{userId}/profile`, `PATCH /api/users/{userId}/profile`
+- `PATCH /api/threads/{threadId}/language`, `PATCH /api/sessions/{sessionId}/language`
+- `POST /api/translation/preview`
 - Pronoun-aware translation context
 - See [language-and-translation-spec.md](./language-and-translation-spec.md)
 

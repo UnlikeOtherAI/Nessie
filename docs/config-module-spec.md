@@ -229,9 +229,17 @@ Phase 3 environment variable mappings:
 - `NESSIE_VERIFICATION_EMAIL_LINK_ENABLED` -> `verification.emailLink.enabled`
 - `NESSIE_VERIFICATION_TOTP_ENABLED` -> `verification.totp.enabled`
 - `NESSIE_VERIFICATION_TOTP_ISSUER` -> `verification.totp.issuer`
+- `NESSIE_SECRETS_CACHE_TTL_MS` -> `secrets.cacheTtlMs`
+- `NESSIE_TOOL_REGISTRY_REQUIRE_SIGNATURE` -> `toolRegistry.requireSignature`
+- `NESSIE_VERIFICATION_EMAIL_OTP_TTL_MS` -> `verification.emailOtp.ttlMs`
+- `NESSIE_VERIFICATION_EMAIL_LINK_TTL_MS` -> `verification.emailLink.ttlMs`
+- `NESSIE_VERIFICATION_EMAIL_LINK_BASE_URL` -> `verification.emailLink.baseUrl`
 - `NESSIE_KB_STORAGE_PROVIDER` -> `knowledgeBase.storageProvider`
+- `NESSIE_KB_LOCAL_PATH` -> `knowledgeBase.localPath`
+- `NESSIE_KB_MAX_DOC_SIZE_MB` -> `knowledgeBase.maxDocSizeMb`
 - `NESSIE_TRANSLATION_ENABLED` -> `translation.enabled`
 - `NESSIE_TRANSLATION_PROVIDER` -> `translation.provider`
+- `NESSIE_TRANSLATION_MODEL` -> `translation.model`
 
 Phase 3 RuntimeCapabilities additions:
 

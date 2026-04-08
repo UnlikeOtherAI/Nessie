@@ -280,7 +280,7 @@ All endpoint paths in this section are logical names. The actual HTTP mount path
   - `project.create`, `project.update`, `project.members.add`, `project.members.remove`
   - `project.channels.create`, `project.channels.update`, `project.channels.members.search`
   - `agent.register`, `agent.update`, `agent.bind`, `agent.unbind`
-  - `tool.import`, `tool.update`, `tool.bind`, `tool.unbind`
+  - Phase 3 tool MCP actions are defined in [tool-registry-spec.md](./tool-registry-spec.md) section 10: `tools.*`, `tools.bundles.*`, `tools.grants.*`, `prompts.*`
   - `remoteWorker.register`, `remoteWorker.bind`, `remoteWorker.unbind`
   - `remoteWorker.policy.effective`, `remoteWorker.drain`, `remoteWorker.revoke`
   - `role.assign`, `role.revoke`
