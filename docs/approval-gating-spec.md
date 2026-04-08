@@ -253,9 +253,11 @@ New Phase 2 event:
 ```ts
 'approval.resolved': {
   approvalId: string;
+  taskId: string;
   agentId: string;
-  resolution: 'approved' | 'rejected' | 'expired';
+  outcome: 'approved' | 'rejected' | 'expired';
   resolverId?: string;
+  resolvedAt: string;
 };
 ```
 

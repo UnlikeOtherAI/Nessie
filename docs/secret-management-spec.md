@@ -50,24 +50,27 @@ If a secret is scoped narrower than the actor’s existing privilege, normal pri
 
 ### 4.1 Secret definition
 
+The secret model is split into a storage-only record (never leaves the API service) and a shared API record (safe for `packages/schemas` and frontend).
+
+**Storage model (API-internal only, never in `packages/schemas`):**
+
 ```ts
-type SecretRecord = {
-  id: string;                 // internal ID
-  ref: string;                // human-safe reference ID returned to UI/tools
+type SecretStorageRecord = {
+  id: string;
+  ref: string;
   name: string;
-  scopeType: 'org' | 'global' | 'project' | 'team' | 'channel' | 'agent' | 'thread' | 'user' | 'service';
-  organizationId: string;     // required anchor for namespace boundary
-  // one of the following is used as scopeTargetId, required for non-global scopes
+  scopeType: SecretScopeType;
+  organizationId: string;
   scopeId: string;
-  secretType: 'api_key' | 'password' | 'token' | 'cert' | 'other';
-  ownerId: string;            // user or service that registered it
+  secretType: SecretType;
+  ownerId: string;
   createdByActorId: string;
-  createdAt: string;          // ISO timestamp
+  createdAt: string;
   updatedAt: string;
   rotateAt?: string;
   expiresAt?: string;
   status: 'active' | 'revoked' | 'expired';
-  // encryptedBlob stores cipher + nonce + version + keyRef
+  // Ciphertext — never returned by any API endpoint or included in packages/schemas
   encryptedBlob: string;
   cipherMeta: {
     alg: 'aes-256-gcm' | 'xchacha20poly1305';
@@ -80,11 +83,40 @@ type SecretRecord = {
 };
 ```
 
+**Shared API model (in `packages/schemas`, returned by endpoints):**
+
+```ts
+type SecretScopeType = 'org' | 'global' | 'project' | 'team' | 'channel' | 'agent' | 'thread' | 'user' | 'service';
+type SecretType = 'api_key' | 'password' | 'token' | 'cert' | 'other';
+type SecretStatus = 'active' | 'revoked' | 'expired';
+
+type SecretRecord = {
+  id: string;                 // SecretId
+  ref: string;                // human-safe reference ID returned to UI/tools
+  name: string;
+  scopeType: SecretScopeType;
+  organizationId: string;
+  scopeId: string;
+  secretType: SecretType;
+  ownerId: string;
+  createdByActorId: string;
+  createdAt: string;
+  updatedAt: string;
+  rotateAt?: string;
+  expiresAt?: string;
+  status: SecretStatus;
+  labels?: string[];
+  // No encryptedBlob or cipherMeta — never exposed outside the API service
+};
+```
+
 ### 4.2 Access bindings
 
 ```ts
 type SecretBinding = {
+  id: string;              // SecretBindingId
   secretId: string;
+  effect: 'allow' | 'deny';
   principalType:
     | 'org'
     | 'project'

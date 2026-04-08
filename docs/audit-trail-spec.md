@@ -140,7 +140,48 @@ type AuditAction =
   | 'pricing.deleted'
   // Policy
   | 'policy.updated'
-  | 'policy.evaluated';
+  | 'policy.evaluated'
+  // Phase 3 — Tool registry
+  | 'tool.created'
+  | 'tool.updated'
+  | 'tool.deleted'
+  | 'tool.grant.updated'
+  | 'tool.bundle.imported'
+  | 'tool.bundle.approved'
+  | 'tool.bundle.rejected'
+  | 'tool.execution.denied'
+  // Phase 3 — Prompt layers
+  | 'prompt.created'
+  | 'prompt.updated'
+  | 'prompt.deleted'
+  // Phase 3 — Secrets
+  | 'secret.created'
+  | 'secret.updated'
+  | 'secret.rotated'
+  | 'secret.revoked'
+  | 'secret.deleted'
+  | 'secret.resolved'
+  | 'secret.access_denied'
+  | 'secret.grant.created'
+  | 'secret.grant.deleted'
+  // Phase 3 — Verification
+  | 'verification.challenge.started'
+  | 'verification.challenge.verified'
+  | 'verification.challenge.failed'
+  | 'verification.challenge.expired'
+  | 'verification.factor.enrolled'
+  | 'verification.factor.revoked'
+  // Phase 3 — Knowledge base
+  | 'kb.source.linked'
+  | 'kb.source.reindexed'
+  | 'kb.source.removed'
+  | 'kb.document.read'
+  | 'kb.search.executed'
+  | 'kb.share.granted'
+  | 'kb.share.revoked'
+  // Phase 3 — Translation
+  | 'translation.org_language.changed'
+  | 'translation.user_language.changed';
 ```
 
 ## 4) Audit emitter

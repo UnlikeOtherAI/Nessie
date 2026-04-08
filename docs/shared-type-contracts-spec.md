@@ -596,6 +596,8 @@ Language and translation (see [language-and-translation-spec.md](./language-and-
 Knowledge base (see [knowledge-base-requirements.md](./knowledge-base-requirements.md)):
 
 - `KnowledgeSourceId`, `KnowledgeDocId` branded IDs
+- `KnowledgeSourceRecord` source metadata type
+- `KnowledgeSearchHit`, `KnowledgeReadPayload`, `KnowledgeSearchSummary` response types
 - `KnowledgeBaseToolInput` action payload type
 
 Not in `packages/schemas` for Phase 3 (deferred to Phase 4+):

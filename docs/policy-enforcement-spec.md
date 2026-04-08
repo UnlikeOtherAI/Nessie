@@ -37,6 +37,7 @@ enum PolicyScope {
 }
 
 enum PolicyResourceType {
+  // Phase 2
   agent
   channel
   project
@@ -47,11 +48,21 @@ enum PolicyResourceType {
   approval
   admin
   secret
+  // Phase 3
+  tool_bundle
+  tool_grant
+  prompt
+  knowledge_source
+  knowledge_document
+  verification_factor
+  verification_policy
+  translation
 
   @@map("policy_resource_type")
 }
 
 enum PolicyAction {
+  // Phase 2
   view
   invoke
   create
@@ -62,6 +73,22 @@ enum PolicyAction {
   search
   export
   admin
+  // Phase 3 — secret actions
+  resolve        // secret.resolve: decrypt and return plaintext
+  rotate         // secret.rotate: replace ciphertext
+  revoke         // secret.revoke: invalidate a secret
+  bind           // secret.bind / kb.share: create access binding
+  // Phase 3 — knowledge-base actions
+  link           // kb.link: register a new source
+  reindex        // kb.reindex: refresh source index
+  summarize      // kb.summarize: compute/refresh summary
+  read           // kb.read: fetch full document content
+  // Phase 3 — tool registry actions
+  import         // tool.bundle.import: import manifest
+  grant          // tool.grant: change tool grant state
+  // Phase 3 — verification actions
+  enroll         // verification.factor.enroll
+  challenge      // verification.challenge.start
 
   @@map("policy_action")
 }

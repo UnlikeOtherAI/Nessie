@@ -128,6 +128,22 @@ type CanonicalMessageRecord = {
 };
 ```
 
+## 4.1) Persistence model for overrides
+
+Thread and session language overrides are stored differently:
+
+- **Thread overrides** are persisted on the `Thread` model as an optional `languageOverride` field (BCP-47 string or null). This survives reconnects and is visible to all participants.
+- **Session overrides** are ephemeral and stored in the user's active WebSocket/SSE session state. They do not persist across reconnects. If Redis is available, session overrides are stored in a Redis hash keyed by `session:{sessionId}:language` with a TTL matching the session lifetime.
+
+Prisma schema addition for thread overrides:
+
+```prisma
+// Add to Thread model
+languageOverride String? @map("language_override")  // BCP-47 or null
+```
+
+Session overrides require no Prisma change — they are managed in the realtime session layer.
+
 ## 5) Policy rules
 
 - translation settings are scoped:

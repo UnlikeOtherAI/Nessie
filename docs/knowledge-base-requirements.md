@@ -55,6 +55,123 @@ This avoids context pollution while still allowing sub-agents to discover what e
     - team/channel-level visibility reason
     - project-level visibility reason must be explicit in every response
 
+## 2.1) Data model
+
+### Prisma models
+
+```prisma
+model KnowledgeSource {
+  id              String   @id @default(uuid())
+  organizationId  String   @map("organization_id")
+  projectId       String   @map("project_id")
+  sourceUri       String   @map("source_uri")
+  kind            String   // 'file' | 'folder' | 'url' | 'mcp'
+  mimeType        String?  @map("mime_type")
+  title           String
+  summary         String?
+  language        String?  // BCP-47
+  tags            String[]
+  checksum        String?
+  status          String   @default("active") // 'active' | 'indexing' | 'error' | 'removed'
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  documents       KnowledgeDocument[]
+  shareGrants     KnowledgeShareGrant[]
+
+  @@index([organizationId, projectId])
+  @@index([tags], type: Gin)
+  @@index([updatedAt])
+}
+
+model KnowledgeDocument {
+  id              String   @id @default(uuid())
+  sourceId        String   @map("source_id")
+  title           String
+  summary         String?
+  body            String?  // full content, nullable for large docs stored externally
+  bodyRef         String?  @map("body_ref") // object storage reference for large docs
+  language        String?
+  checksum        String?
+  chunkIndex      Int?     @map("chunk_index") // for chunked documents
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  source          KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+  @@index([updatedAt])
+}
+
+model KnowledgeShareGrant {
+  id                String   @id @default(uuid())
+  sourceId          String   @map("source_id")
+  targetProjectId   String   @map("target_project_id")
+  actions           String[] // ['search', 'read']
+  grantedBy         String   @map("granted_by")
+  grantedAt         DateTime @default(now()) @map("granted_at")
+  expiresAt         DateTime? @map("expires_at")
+
+  source            KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, targetProjectId])
+}
+```
+
+### Response types (for `packages/schemas`)
+
+```ts
+type KnowledgeSourceId = string & { readonly __brand: 'KnowledgeSourceId' };
+type KnowledgeDocId = string & { readonly __brand: 'KnowledgeDocId' };
+
+type KnowledgeSourceRecord = {
+  id: KnowledgeSourceId;
+  projectId: string;
+  sourceUri: string;
+  kind: 'file' | 'folder' | 'url' | 'mcp';
+  mimeType?: string;
+  title: string;
+  summary?: string;
+  language?: string;
+  tags: string[];
+  checksum?: string;
+  status: 'active' | 'indexing' | 'error' | 'removed';
+  createdAt: string;
+  updatedAt: string;
+};
+
+type KnowledgeSearchHit = {
+  docId: KnowledgeDocId;
+  sourceId: KnowledgeSourceId;
+  title: string;
+  snippet: string;
+  score?: number;
+  visibilityReason: string;
+  policyChainTrace?: string[];
+};
+
+type KnowledgeReadPayload = {
+  docId: KnowledgeDocId;
+  sourceId: KnowledgeSourceId;
+  title: string;
+  body: string;
+  language?: string;
+  summary?: string;
+  visibilityReason: string;
+};
+
+type KnowledgeSearchSummary = {
+  answer: string;
+  citations: Array<{
+    docId: KnowledgeDocId;
+    spans: string[];
+    score: number;
+  }>;
+};
+```
+
 ## 3) Suggested tool contract
 
 Single logical tool family: `knowledge-base` with action enum.

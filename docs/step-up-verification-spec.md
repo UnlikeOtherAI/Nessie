@@ -132,6 +132,7 @@ type VerificationPolicy = {
 type VerificationChallenge = {
   challengeId: string;
   policyId: string;
+  factorId: string;             // references the enrolled factor being challenged
   actorId: string;
   actorType: 'user' | 'agent' | 'service';
   organizationId: string;
@@ -139,11 +140,16 @@ type VerificationChallenge = {
   teamId?: string;
   channelId?: string;
   targetActionId: string;
+  targetResourceType?: string;  // e.g. 'secret', 'tool', 'approval'
+  targetResourceId?: string;    // e.g. secretRef, toolId, approvalId
   approvalId?: string;
   factorType: 'email_otp' | 'email_link' | 'totp' | 'recovery_code' | 'webauthn';
   status: 'pending' | 'verified' | 'expired' | 'cancelled' | 'failed';
+  attemptCount: number;         // tracks failed attempts against maxAttempts
   expiresAt: string;
   proof?: string;
+  // Snapshot of the action context at challenge creation for audit binding
+  actionContextSnapshot?: Record<string, unknown>;
 };
 
 type VerificationEnrollment = {
@@ -175,14 +181,25 @@ Required actions:
 - `verification.factor.list`
 
 Suggested HTTP contracts:
+
+Challenge endpoints:
 - `POST /api/verification/challenges`
 - `POST /api/verification/challenges/{challengeId}/verify`
 - `POST /api/verification/challenges/{challengeId}/resend`
 - `DELETE /api/verification/challenges/{challengeId}`
+
+Factor enrollment endpoints:
 - `POST /api/verification/factors`
 - `POST /api/verification/factors/{factorId}/verify`
 - `DELETE /api/verification/factors/{factorId}`
 - `GET /api/verification/factors`
+
+Policy CRUD endpoints:
+- `GET /api/verification/policies` — list verification policies for the org/project scope.
+- `GET /api/verification/policies/{policyId}` — get single policy.
+- `POST /api/verification/policies` — create policy binding actions to factor requirements.
+- `PATCH /api/verification/policies/{policyId}` — update policy (requirements, TTL, max attempts).
+- `DELETE /api/verification/policies/{policyId}` — delete policy.
 
 WebAuthn note:
 - `webauthn` remains a reserved factor type in the shared policy model.

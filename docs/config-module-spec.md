@@ -189,6 +189,11 @@ verification: z
       ttlMs: z.number().default(600000),        // 10 minutes
       resendCooldownMs: z.number().default(60000),
     }).optional(),
+    emailLink: z.object({
+      enabled: z.boolean().default(true),
+      ttlMs: z.number().default(600000),        // 10 minutes
+      baseUrl: z.string().optional(),            // confirmation page base URL
+    }).optional(),
     totp: z.object({
       enabled: z.boolean().default(false),
       issuer: z.string().default('Nessie'),
@@ -221,6 +226,7 @@ Phase 3 environment variable mappings:
 - `NESSIE_TOOL_REGISTRY_IMPORT_PATH` -> `toolRegistry.importPath`
 - `NESSIE_TOOL_REGISTRY_MARKETPLACE_URL` -> `toolRegistry.marketplaceUrl`
 - `NESSIE_VERIFICATION_EMAIL_OTP_ENABLED` -> `verification.emailOtp.enabled`
+- `NESSIE_VERIFICATION_EMAIL_LINK_ENABLED` -> `verification.emailLink.enabled`
 - `NESSIE_VERIFICATION_TOTP_ENABLED` -> `verification.totp.enabled`
 - `NESSIE_KB_STORAGE_PROVIDER` -> `knowledgeBase.storageProvider`
 - `NESSIE_TRANSLATION_ENABLED` -> `translation.enabled`

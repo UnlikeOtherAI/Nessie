@@ -51,6 +51,9 @@ model ToolRegistryEntry {
   commonPrompt    Json?    // { enabledPrompt, overviewPrompt?, blockedPrompt?, overrideMode }
   defaultConfig   Json     @default("{}")
   enabled         Boolean  @default(true)
+  version         String   @default("0.0.0")
+  searchableText  String   @default("")  // derived at write time from overview+instructions+tags+searchTerms
+  status          String   @default("active") // 'active' | 'pending_review' | 'disabled'
   createdBy       String   // 'system' | 'role' | 'agent'
   owner           String
   bundleId        String?
@@ -64,7 +67,9 @@ model ToolRegistryEntry {
   @@unique([organizationId, toolName])
   @@index([organizationId, source])
   @@index([organizationId, tags], type: Gin)
+  @@index([organizationId, status])
   @@index([updatedAt])
+  // searchableText uses Postgres full-text search via raw SQL migration (tsvector index)
 }
 
 model ToolGrant {
@@ -80,7 +85,10 @@ model ToolGrant {
 
   tool      ToolRegistryEntry @relation(fields: [toolId], references: [id], onDelete: Cascade)
 
-  @@unique([toolId, roleId, agentId])
+  // Partial unique indexes via raw SQL migration:
+  // CREATE UNIQUE INDEX tool_grant_role_unique ON tool_grants(tool_id, role_id) WHERE role_id IS NOT NULL AND agent_id IS NULL;
+  // CREATE UNIQUE INDEX tool_grant_agent_unique ON tool_grants(tool_id, agent_id) WHERE agent_id IS NOT NULL AND role_id IS NULL;
+  // CHECK constraint: (role_id IS NOT NULL AND agent_id IS NULL) OR (role_id IS NULL AND agent_id IS NOT NULL)
   @@index([roleId])
   @@index([agentId])
 }
@@ -114,9 +122,10 @@ model PromptLayer {
   priority  Int
   mergeMode String   // 'append' | 'prepend' | 'replace'
   locked    Boolean  @default(false)
-  roleId    String?
-  agentId   String?
-  toolId    String?
+  roleId    String?  // set when type = 'role'
+  agentId   String?  // set when type = 'agent'
+  toolId    String?  // set when type = 'tool-call' (references ToolRegistryEntry)
+  taskId    String?  // set when type = 'task' (references Task)
   organizationId String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -126,6 +135,8 @@ model PromptLayer {
   @@index([organizationId, type])
   @@index([agentId])
   @@index([roleId])
+  @@index([toolId])
+  @@index([taskId])
 }
 ```
 
@@ -226,15 +237,9 @@ type ToolSearchDocument = {
   searchableText: string;
 };
 
-type ToolSearchResult = {
-  items: ToolSearchDocument[];
-  total: number;
-  filtered: number;
-  page: number;
-  pageSize: number;
-  cursor?: string;
-  etag: string;
-};
+// ToolSearchResult uses the shared ApiResponse<T> + PaginationMeta contract
+// from shared-type-contracts-spec.md. Responses are ApiResponse<ToolSearchDocument[]>.
+// Additional response headers: ETag for client cache invalidation.
 ```
 
 ### 3.3 Permission and override model
@@ -487,6 +492,9 @@ All endpoints use `/api/` prefix per [hosted-app-architecture.md](./hosted-app-a
 ### 9.2 Tool grant endpoints
 
 - `GET /api/roles/{roleId}/tools` — inherited role tool grants.
+- `PATCH /api/roles/{roleId}/tools/{toolId}` — set role-level grant.
+  - `state: "allowed" | "denied"` plus optional `config`.
+- `DELETE /api/roles/{roleId}/tools/{toolId}` — remove role-level grant (reverts to no opinion).
 - `GET /api/agents/{agentId}/tools` — effective tool grants for that agent.
 - `PATCH /api/agents/{agentId}/tools/{toolId}` — set agent override.
   - `mode: "inherit"` clears agent overrides.

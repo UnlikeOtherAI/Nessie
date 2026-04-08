@@ -305,7 +305,7 @@ Every governance action in the table above must also be callable from chat by pa
 
 ### 5.3 Audit and incident visibility
 
-- `GET /api/audit/logs?organizationId=&actorId=&resourceId=` with immutable event records.
+- `GET /api/audit-log?organizationId=&actorId=&resourceId=` with immutable event records.
 - Full implementation spec: [audit-trail-spec.md](./audit-trail-spec.md) (Phase 2).
 - Event fields:
   - `actor`, `actorType`,

@@ -445,8 +445,9 @@ These are Phase 2 code assumptions that **must be fixed** before or during Phase
 
 This must be built first. All Phase 3 features depend on new data models and shared types.
 
-- Prisma models: `ToolRegistryEntry`, `ToolGrant`, `ToolBundle`, `PromptLayer`, `SecretRecord`, `SecretBinding`, `VerificationEnrollment`, `VerificationChallenge`, `VerificationPolicy`, `KnowledgeSource`, `KnowledgeDocument`
+- Prisma models: `ToolRegistryEntry`, `ToolGrant`, `ToolBundle`, `PromptLayer`, `SecretRecord`, `SecretBinding`, `VerificationEnrollment`, `VerificationChallenge`, `VerificationPolicy`, `KnowledgeSource`, `KnowledgeDocument`, `KnowledgeShareGrant`
 - Add `User.preferredLanguage`, `User.pronouns`, `Organization.defaultLanguage` fields
+- Add `Thread.languageOverride` field for thread-level language overrides
 - Phase 3 types in `packages/schemas` (see [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) Phase 3 additions)
 - Phase 3 config additions in `packages/config` (see [config-module-spec.md](./config-module-spec.md))
 - Run Prisma migration
@@ -499,12 +500,14 @@ This must be built first. All Phase 3 features depend on new data models and sha
 
 #### Step 6: Step-up verification
 
-- `VerificationEnrollment` and `VerificationChallenge` services
+- `VerificationEnrollment`, `VerificationChallenge`, `VerificationPolicy` services
 - Email OTP factor: send code, verify code
+- Email link factor: send link, confirmation page, verify
 - TOTP factor: enrollment with QR, verify code
 - Recovery code factor
-- `POST /api/verification/challenges`, `POST /api/verification/challenges/{challengeId}/verify`
-- `POST /api/verification/factors`, `GET /api/verification/factors`
+- Challenge endpoints: `POST /api/verification/challenges`, `POST /api/verification/challenges/{challengeId}/verify`
+- Factor endpoints: `POST /api/verification/factors`, `GET /api/verification/factors`
+- Policy CRUD: `GET /api/verification/policies`, `POST /api/verification/policies`, `PATCH /api/verification/policies/{policyId}`
 - Wire into secret resolve and approval paths
 - See [step-up-verification-spec.md](./step-up-verification-spec.md)
 
