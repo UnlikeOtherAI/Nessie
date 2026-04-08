@@ -21,7 +21,9 @@ const OPENAI_MODEL_GROUPS: ModelGroup[] = [
   {
     label: 'GPT-5 Series',
     models: [
-      { value: 'gpt-5.1-chat-latest', label: 'gpt-5.1-chat-latest' },
+      { value: 'gpt-5', label: 'gpt-5' },
+      { value: 'gpt-5-mini', label: 'gpt-5-mini' },
+      { value: 'gpt-5-nano', label: 'gpt-5-nano' },
     ],
   },
   {
@@ -44,7 +46,9 @@ const OPENAI_MODEL_GROUPS: ModelGroup[] = [
     models: [
       { value: 'o4-mini', label: 'o4-mini' },
       { value: 'o3', label: 'o3' },
+      { value: 'o3-pro', label: 'o3-pro' },
       { value: 'o3-mini', label: 'o3-mini' },
+      { value: 'o1', label: 'o1' },
     ],
   },
 ]
