@@ -32,6 +32,12 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 - **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`
 - **Swift**: SwiftLint with strict mode, warning treated as error in CI
 
+## Ports — NON-NEGOTIABLE
+
+- **API**: `5554` — always. Do not kill or restart without restarting on the same port.
+- **Admin**: `5555` — always. Playwright verification MUST use `http://localhost:5555`.
+- Never use any other port for these services.
+
 ## Verification
 
 - Every UI/frontend change must be verified using Playwright before the work is considered done.

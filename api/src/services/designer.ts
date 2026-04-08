@@ -211,8 +211,7 @@ export const streamDesignerChat = async (
       model: 'gpt-5-mini',
       messages,
       tools: DESIGNER_TOOLS,
-      max_tokens: 4096,
-      temperature: 0.7,
+      max_completion_tokens: 4096,
       stream: true,
     }),
   })
