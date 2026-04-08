@@ -42,8 +42,8 @@ type TokenLedgerEvent = {
   sessionId?: string;
   taskId?: string;
   agentId?: string;
-  actorId?: string;
-  requestId?: string;
+  actorId: string;
+  requestId: string;
   correlationId?: string;
   provider: string;   // e.g. "openai", "anthropic", "minimax", "google", "custom"
   model: string;      // provider-native model name
@@ -90,7 +90,7 @@ type TokenLedgerEvent = {
 Rules:
 
 - top-level scope fields are denormalized index fields for reporting
-- `actorId`, `requestId`, and `correlationId` must be copied from the canonical shared access context when available
+- `actorId` and `requestId` are required — they must be copied from the canonical `AuthorizedActionContext`; `correlationId` is optional and copied when available
 - `tool-translation` means translation work performed as part of a tool or tool-wrapper path rather than a direct user translation request
 
 ## 4) Pricing model
@@ -152,18 +152,22 @@ Required metrics:
 
 ## 6) API and control-plane contracts
 
-- `POST /ledger/tokens/events`
+All endpoint paths include the `/api/` prefix per [hosted-app-architecture.md](./hosted-app-architecture.md) section 13.
+
+- `POST /api/ledger/tokens/events`
   - ingest one or more token usage events
-- `GET /ledger/tokens/summary`
+- `GET /api/ledger/tokens/summary`
   - filters: `organizationId`, `projectId`, `teamId`, `channelId`, `agentId`, `actorId`, `provider`, `model`, `from`, `to`, `groupBy`
-- `GET /ledger/tokens/events`
+- `GET /api/ledger/tokens/events`
   - raw event stream with deterministic pagination
-- `GET /ledger/tokens/pricing`
+- `GET /api/ledger/tokens/pricing`
   - list active pricing profiles
-- `POST /ledger/tokens/pricing`
+- `POST /api/ledger/tokens/pricing`
   - create or update a pricing override
-- `DELETE /ledger/tokens/pricing/{profileId}`
-- `GET /ledger/tokens/monthly-estimate`
+- `DELETE /api/ledger/tokens/pricing/{profileId}`
+- `GET /api/ledger/tokens/pricing/{profileId}/audit`
+  - immutable history of changes to a pricing profile (who changed, previous/new values, effective dates)
+- `GET /api/ledger/tokens/monthly-estimate`
   - monthly estimate and forecast by scope
 
 Suggested MCP/control actions:
@@ -173,6 +177,7 @@ Suggested MCP/control actions:
 - `ledger.tokens.pricing.list`
 - `ledger.tokens.pricing.upsert`
 - `ledger.tokens.pricing.delete`
+- `ledger.tokens.pricing.audit`
 - `ledger.tokens.monthly_estimate.get`
 
 ## 7) Governance and permissions
@@ -195,8 +200,21 @@ Suggested MCP/control actions:
 - translation calls and other helper-model calls should also be tracked in the same ledger.
 - looped or parallel agent runs should emit separate usage events and still roll up cleanly under one task/thread.
 
-## 9) Cross-links
+## 9) Audit integration
+
+Every pricing override change must emit an audit event to the audit trail (see [audit-trail-spec.md](./audit-trail-spec.md)). Audited actions:
+
+- `pricing.created` — new pricing profile created
+- `pricing.updated` — pricing profile values changed (record previous and new values)
+- `pricing.deleted` — pricing profile removed
+
+The `GET /api/ledger/tokens/pricing/{profileId}/audit` endpoint queries the audit trail filtered by `resourceType=pricing` and `resourceId={profileId}`.
+
+## 10) Cross-links
 
 - [functionality.md](./functionality.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)
 - [language-and-translation-spec.md](./language-and-translation-spec.md)
+- [audit-trail-spec.md](./audit-trail-spec.md)
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md)

@@ -109,8 +109,61 @@ Phase 1 services must import typed config from this package:
 - `/admin` build-time env mapping only
 - local launcher
 
+## 5.1) Phase 2 config additions
+
+Phase 2 extends the config schema for hosted deployment. These fields are added to `NessieConfig`:
+
+```ts
+// Phase 2 additions to NessieConfig
+kms: z
+  .object({
+    provider: z.enum(['cloudkms', 'local']),
+    keyRing: z.string().optional(),       // e.g. 'nessie-staging'
+    cryptoKey: z.string().optional(),     // e.g. 'nessie-tenant-secrets'
+    projectId: z.string().optional(),     // GCP project ID
+  })
+  .optional(),
+observability: z
+  .object({
+    tracing: z.boolean().default(false),
+    tracingExporter: z.enum(['cloudtrace', 'otlp', 'console']).default('console'),
+    otlpEndpoint: z.string().optional(),
+  })
+  .optional(),
+pubsub: z
+  .object({
+    projectId: z.string(),
+    topicPrefix: z.string().default('nessie'),  // physical topics: {prefix}-{logicalName}
+  })
+  .optional(),
+identityPlatform: z
+  .object({
+    projectId: z.string(),
+    apiKey: z.string(),
+  })
+  .optional(),
+```
+
+Phase 2 environment variable mappings:
+
+- `NESSIE_KMS_PROVIDER` -> `kms.provider`
+- `NESSIE_KMS_KEY_RING` -> `kms.keyRing`
+- `NESSIE_KMS_CRYPTO_KEY` -> `kms.cryptoKey`
+- `NESSIE_OBSERVABILITY_TRACING` -> `observability.tracing`
+- `NESSIE_PUBSUB_PROJECT_ID` -> `pubsub.projectId`
+
+Phase 2 RuntimeCapabilities additions:
+
+```ts
+// Phase 2 additions to RuntimeCapabilities
+hasKms: boolean;          // true when kms.provider !== 'local'
+hasTracing: boolean;      // true when observability.tracing === true
+hasIdentityPlatform: boolean;  // true when identityPlatform is configured
+```
+
 ## 6) Cross-links
 
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
 - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
 - [implementation-phases.md](./implementation-phases.md)
+- [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)

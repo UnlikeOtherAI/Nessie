@@ -182,6 +182,8 @@ Each permission is a matrix on:
   - who can approve,
   - who can reject,
   - expiry and reason retention.
+- Full implementation spec: [approval-gating-spec.md](./approval-gating-spec.md) (Phase 2).
+- Runtime enforcement via the policy engine: [policy-enforcement-spec.md](./policy-enforcement-spec.md) (Phase 2).
 
 ### 4.6 Step-up verification add-on
 
@@ -303,15 +305,19 @@ Every governance action in the table above must also be callable from chat by pa
 
 ### 5.3 Audit and incident visibility
 
-- `GET /audit/permissions?orgId=&actor=&resourceId=` with immutable event records.
+- `GET /api/audit/logs?organizationId=&actorId=&resourceId=` with immutable event records.
+- Full implementation spec: [audit-trail-spec.md](./audit-trail-spec.md) (Phase 2).
 - Event fields:
-  - `actor`,
-  - `resource`,
-  - `requestedAction`,
-  - `decision`,
+  - `actor`, `actorType`,
+  - `resourceType`, `resourceId`,
+  - `action`,
+  - `outcome` (allowed/denied/error),
   - `policySource`,
   - `reasonCode`,
-  - `evidence` (channel membership IDs, route candidate IDs).
+  - `correlationId` (links related entries across workflows),
+  - `requestId` (from `AuthorizedActionContext`),
+  - `evidence` (channel membership IDs, route candidate IDs, policy IDs),
+  - `previousState` (snapshot before mutation).
 
 ## 6) Data model additions
 
@@ -426,6 +432,11 @@ This section should be treated as mandatory acceptance context for later impleme
 - [functionality.md](./functionality.md)
 - [remote-worker-spec.md](./remote-worker-spec.md)
 - [openclaw-agent-teams-implementation.md](./openclaw-agent-teams-implementation.md)
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md)
+- [approval-gating-spec.md](./approval-gating-spec.md)
+- [audit-trail-spec.md](./audit-trail-spec.md)
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
+- [token-ledger-spec.md](./token-ledger-spec.md)
 
 ## 11) "Codex in background" execution plan
 

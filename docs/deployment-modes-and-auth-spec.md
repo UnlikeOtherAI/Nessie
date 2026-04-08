@@ -231,6 +231,16 @@ Claims:
 - no refresh tokens in Phase 1 — user re-authenticates on expiry
 - `DELETE /api/auth/session` is a client-side token discard (the server does not track active sessions in Phase 1; JWT is stateless)
 
+#### Phase 2 JWT evolution
+
+Phase 1 hardcodes a single project/team in JWT claims. Phase 2 must evolve to support multi-project:
+
+- `proj` and `team` claims become the user's **active** project and team, not their only one
+- `GET /api/auth/me` returns available projects and teams for the user
+- project/team switching: `POST /api/auth/context` with `{ projectId, teamId }` → issues a new JWT with updated claims
+- the active project/team determines the default scope for channel listing, agent discovery, and policy evaluation
+- refresh tokens may be introduced in Phase 2 to improve UX during context switching
+
 #### Server-side signing secret
 
 - generated automatically on first launch if not set
@@ -542,4 +552,6 @@ This keeps non-Docker installs realistic without pretending the system has zero 
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)
 - [secret-management-spec.md](./secret-management-spec.md)
+- [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md)
 - [functionality.md](./functionality.md)

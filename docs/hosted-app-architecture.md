@@ -111,6 +111,10 @@ Cross-link:
 - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
 - [implementation-phases.md](./implementation-phases.md)
 - [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md)
+- [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md)
+- [approval-gating-spec.md](./approval-gating-spec.md)
+- [audit-trail-spec.md](./audit-trail-spec.md)
 
 ## 4) Logical architecture
 
@@ -607,6 +611,9 @@ Root layout rule:
 - `/worker` is the async execution service root
 - `/cli` is the local launcher (`nessie local up`, `nessie local doctor`, etc.)
 - `/packages/schemas` and `/packages/config` are Phase 1 shared packages (see section 13a)
+- `/packages/policy` is the Phase 2 policy enforcement engine (see [policy-enforcement-spec.md](./policy-enforcement-spec.md))
+- `/packages/token-ledger` is the Phase 2 token usage tracking module (see [token-ledger-spec.md](./token-ledger-spec.md))
+- `/infrastructure/terraform/` is the Phase 2 GCP Terraform configuration (see [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md))
 
 ### API path prefix rule
 

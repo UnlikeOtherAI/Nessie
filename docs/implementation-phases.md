@@ -227,6 +227,114 @@ At the end of phase 2, an organization should be able to:
 
 Phase 2 is not complete until the mandatory end-of-phase review gate in section `1.1` passes for all affected roots and hosted deployment paths.
 
+### Recommended build sequence inside Phase 2
+
+#### Step 0: GCP infrastructure and deployment pipeline
+
+This must be built first. No hosted feature work can proceed without a deployable environment.
+
+- Terraform modules for Cloud Run, Cloud SQL, Pub/Sub, GCS, KMS, Redis, networking, IAM
+- CI/CD pipeline: build → Docker → Artifact Registry → Cloud Run deploy
+- `PubSubQueueProvider` implementing `QueueProvider` from [hosted-app-architecture.md](./hosted-app-architecture.md) section 4
+- `GcsStorageProvider` implementing `StorageProvider`
+- Cloud SQL connector integration (`@google-cloud/cloud-sql-connector`)
+- Memorystore Redis connection via VPC connector
+- Health check endpoint verification on Cloud Run
+- See [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)
+
+#### Step 1: Multi-project/team data model and auth evolution
+
+- Prisma schema additions: project CRUD, team CRUD, membership tables
+- JWT evolution: multi-project support (project/team selection, not hardcoded single project)
+- `GET /api/auth/me` returns available projects/teams for the user
+- User invitation flow: `POST /api/orgs/{orgId}/users`
+- Project creation and membership: `POST /api/projects`, `POST /api/projects/{projectId}/members`
+- Team creation and membership: `POST /api/teams`, `POST /api/teams/{teamId}/members`
+- Identity Platform integration for hosted auth default
+- See [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+
+#### Step 2: Channel privacy and membership-aware discovery
+
+- Channel privacy levels: public, protected, private
+- Channel membership enforcement at query and routing time
+- Privacy-aware channel listing: `GET /api/teams/{teamId}/channels`
+- Membership-aware agent discovery: agents filtered by channel access
+- Membership-aware tool discovery: tools filtered by policy scope
+- Private channels excluded from search for non-members
+- See [organization-governance-spec.md](./organization-governance-spec.md) section 2.2 and 4.1
+
+#### Step 3: Policy enforcement engine
+
+- Prisma models: `PolicyRule`, `PolicyBinding`
+- `PolicyEnforcer` service with chain evaluation algorithm
+- Policy check integration at: channel access, agent binding, tool visibility, admin actions
+- `GET /api/policy/effective` endpoint
+- `POST /api/policy/check` inline access check endpoint
+- Default seed policies for new organizations
+- Redis-backed effective policy cache with invalidation
+- See [policy-enforcement-spec.md](./policy-enforcement-spec.md)
+
+#### Step 4: Approval gating v1
+
+- Prisma model: `ApprovalRequest`
+- `RunStatus.waiting_approval` in Prisma enum and `packages/schemas`
+- `approval.resolved` in WsEventMap and `packages/schemas`
+- Worker pause/resume flow with continuation tokens
+- API endpoints: create, list, get, resolve approvals
+- Expiry sweep periodic job
+- Approver resolution based on policy chain
+- Frontend: pending approvals badge, approval detail view, approve/reject actions
+- See [approval-gating-spec.md](./approval-gating-spec.md)
+
+#### Step 5: Audit trail
+
+- Prisma model: `AuditLog`
+- `AuditEmitter` interface with Postgres-backed implementation
+- Audit events emitted at all Phase 2 control-plane actions
+- API endpoints: list, get, export audit logs
+- Redaction layer for sensitive fields
+- See [audit-trail-spec.md](./audit-trail-spec.md)
+
+#### Step 6: Token ledger v1
+
+- Prisma models: `TokenLedgerEvent`, `ModelPricingProfile`
+- Ledger event ingestion from worker on every model call
+- Summary and rollup endpoints by org/project/team/channel/agent/user/model
+- Monthly estimate endpoint
+- Pricing profile CRUD with audit trail
+- Admin UI: usage dashboard, pricing management
+- See [token-ledger-spec.md](./token-ledger-spec.md)
+
+#### Step 7: Admin UI extensions for Phase 2
+
+- Project and team administration pages
+- Channel privacy settings UI
+- User invitation and membership management
+- Approval queue and resolution UI
+- Token usage dashboard
+- Policy rule management (admin-only)
+- Audit log viewer
+
+#### Step 8: Hosted deployment validation
+
+- End-to-end flow on Cloud Run: signup → create project → create channel → chat → approval → audit
+- Load test: verify Cloud Run autoscaling under concurrent users
+- Pub/Sub delivery verification with dead-letter handling
+- Cloud SQL connection pooling under load
+- WebSocket reconnect across Cloud Run instance restarts
+- Cost validation against estimates
+
+### Phase 2 spec references
+
+- [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md) — GCP deployment topology and infrastructure
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md) — runtime policy enforcement engine
+- [approval-gating-spec.md](./approval-gating-spec.md) — approval gating system
+- [audit-trail-spec.md](./audit-trail-spec.md) — audit trail system
+- [token-ledger-spec.md](./token-ledger-spec.md) — token usage tracking and cost estimation
+- [organization-governance-spec.md](./organization-governance-spec.md) — multi-tenant governance model
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) — shared type contracts (Phase 2 additions)
+- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) — auth modes and deployment modes
+
 ## Phase 3: Tooling and Knowledge Platform MVP
 
 ### Goal
@@ -487,5 +595,10 @@ Minimum gate set:
 - [phase1-prisma-schema.md](./phase1-prisma-schema.md)
 - [config-module-spec.md](./config-module-spec.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)
+- [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md)
+- [approval-gating-spec.md](./approval-gating-spec.md)
+- [audit-trail-spec.md](./audit-trail-spec.md)
+- [token-ledger-spec.md](./token-ledger-spec.md)
 - [remote-worker-spec.md](./remote-worker-spec.md)
 - [functionality.md](./functionality.md)

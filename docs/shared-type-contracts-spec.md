@@ -93,7 +93,7 @@ Every event has a transport annotation:
 ```ts
 type AgentStatus = 'idle' | 'thinking' | 'executing' | 'waiting_approval' | 'error' | 'offline';
 
-type RunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+type RunStatus = 'pending' | 'running' | 'waiting_approval' | 'completed' | 'failed' | 'cancelled';
 
 type TaskStatus = 'inbox' | 'assigned' | 'in_progress' | 'review' | 'done' | 'failed' | 'cancelled' | 'awaiting_approval';
 
@@ -137,6 +137,14 @@ type WsEventMap = {
     action: string;
     reason: string;
   };
+  'approval.resolved': {
+    approvalId: string;
+    taskId: string;
+    agentId: string;
+    outcome: 'approved' | 'rejected' | 'expired';
+    resolverId?: string;
+    resolvedAt: string;
+  };
   'message.new': {
     agentId: string;
     messageId: string;
@@ -146,20 +154,11 @@ type WsEventMap = {
   };
 };
 
-// Phase 2+ events — not required for Phase 1
-type FutureWsEventMap = {
-  'agent.thought': {
-    agentId: string;
-    runId: string;
-    contentPreview: string;
-  };
-  'agent.tool.progress': {
-    agentId: string;
-    runId: string;
-    toolName: string;
-    progress?: number | string;
-  };
-};
+// Phase 2 events — listed in WsEventMap for type completeness, not implemented in Phase 1
+//
+// agent.thought:        wired in Phase 2 (stub component exists in Phase 1)
+// agent.tool.progress:  wired in Phase 2
+// approval.resolved:    Phase 2 (approval-gating-spec.md)
 ```
 
 Rules:
@@ -170,8 +169,8 @@ Rules:
 - **do not put agent activity events on SSE**
 - `message.new` is a WebSocket event for cache invalidation; the actual message content arrives via SSE `stream.done` or REST query — not duplicated on both transports
 - legacy event names (`streaming.start`, `subagent.started`, `task.state_changed`) are historical only and must not be used for new `/api` or `/admin` work
-- `agent.thought` and `agent.tool.progress` are Phase 2+; do not implement in Phase 1
-- `waiting_approval` is a valid Phase 1 status for display, but the approval resolution mechanism (endpoint to approve/reject) is Phase 2; in Phase 1, `waiting_approval` is display-only
+- `agent.thought`, `agent.tool.progress`, and `approval.resolved` are Phase 2 events; do not implement in Phase 1
+- `waiting_approval` is a valid `RunStatus` from Phase 1 for display; the approval resolution mechanism (endpoint to approve/reject, `approval.resolved` event) is Phase 2 — see [approval-gating-spec.md](./approval-gating-spec.md); in Phase 1, `waiting_approval` is display-only
 - `offline` status applies to remote-worker-backed agents (Phase 4); Phase 1 agents never emit `offline` but the type includes it so the frontend stub renders correctly when the status is added later
 
 ## 5) Realtime replay and reconnection
@@ -541,9 +540,18 @@ From this document:
 - Actor context types: `AccessActor`, `TenantContext`, `ActionContext`, `AccessContext`, `AuthorizedActionContext` (section 9)
 - Zod validation schemas for all of the above (section 7)
 
-Not in `packages/schemas` for Phase 1 (stays in service-local code or deferred to Phase 2+):
+### Phase 2 additions to `packages/schemas`
 
-- token ledger types (`TokenLedgerEvent`, pricing profiles)
+Phase 2 adds these types when the corresponding features ship:
+
+- `ApprovalRequestStatus`, `ApprovalRequest` response type, approval event payloads (see [approval-gating-spec.md](./approval-gating-spec.md))
+- `AuditLogEntry` response type, audit query params (see [audit-trail-spec.md](./audit-trail-spec.md))
+- `TokenLedgerEvent`, `ModelPricingProfile` (see [token-ledger-spec.md](./token-ledger-spec.md))
+- `PolicyDecision`, `EffectivePolicy` response type (see [policy-enforcement-spec.md](./policy-enforcement-spec.md))
+- `ApprovalId`, `AuditLogId`, `PolicyId` branded IDs
+
+Not in `packages/schemas` for Phase 2 (deferred to Phase 3+):
+
 - secret types (`SecretRecord`, `SecretBinding`)
 - translation types
 - workflow types
@@ -570,4 +578,9 @@ Other docs may reference these contracts, but should not redefine them independe
 
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)
+- [approval-gating-spec.md](./approval-gating-spec.md)
+- [audit-trail-spec.md](./audit-trail-spec.md)
+- [token-ledger-spec.md](./token-ledger-spec.md)
+- [policy-enforcement-spec.md](./policy-enforcement-spec.md)
+- [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)
 - [functionality.md](./functionality.md)
