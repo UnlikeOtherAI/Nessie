@@ -12,7 +12,7 @@ import bonjour from 'bonjour'
 const PROVIDER = process.env.LLM_PROVIDER ?? 'openai'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? ''
 const HOST = process.env.HELPER_HOST ?? '127.0.0.1'
-const PORT = Number(process.env.HELPER_PORT ?? process.env.PORT ?? '4317')
+const PORT = Number(process.env.HELPER_PORT ?? process.env.PORT ?? '5554')
 
 // ─── Event broadcast bus ───────────────────────────────────────────────────────
 // All connected WebSocket clients and active SSE streams receive these events.

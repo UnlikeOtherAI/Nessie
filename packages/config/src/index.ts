@@ -76,7 +76,7 @@ export const NessieConfigSchema = z.object({
   model: ModelConfigSchema,
   api: z.object({
     host: z.string().min(1).default('0.0.0.0'),
-    port: z.number().int().positive().default(4317),
+    port: z.number().int().positive().default(5554),
   }),
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
@@ -128,7 +128,7 @@ const DEFAULT_CONFIG: NessieConfig = {
     tokenTtlSeconds: 24 * 60 * 60,
   },
   database: {
-    url: 'postgresql://localhost:5432/nessie',
+    url: 'postgresql://dictator@localhost:5432/nessie',
     poolMin: 2,
     poolMax: 10,
   },
@@ -146,7 +146,7 @@ const DEFAULT_CONFIG: NessieConfig = {
   },
   api: {
     host: '0.0.0.0',
-    port: 4317,
+    port: 5554,
   },
 }
 
