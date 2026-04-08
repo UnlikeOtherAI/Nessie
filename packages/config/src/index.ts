@@ -38,6 +38,8 @@ export const NessieConfigSchema = z.object({
   auth: z.object({
     providers: z.array(AuthProviderConfigSchema),
     autoRedirectToSso: z.boolean().default(false),
+    secret: z.string().min(1).optional(),
+    tokenTtlSeconds: z.number().int().positive().default(24 * 60 * 60),
   }),
   database: z.object({
     url: z.string().min(1),
@@ -59,6 +61,10 @@ export const NessieConfigSchema = z.object({
     provider: QueueProviderSchema,
     projectId: z.string().min(1).optional(),
   }),
+  api: z.object({
+    host: z.string().min(1).default('0.0.0.0'),
+    port: z.number().int().positive().default(4317),
+  }),
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
 
@@ -73,6 +79,8 @@ export type RuntimeCapabilities = z.infer<typeof RuntimeCapabilitiesSchema>
 export const ConfigEnvMap = {
   NESSIE_MODE: 'mode',
   NESSIE_AUTH_AUTO_REDIRECT: 'auth.autoRedirectToSso',
+  NESSIE_AUTH_SECRET: 'auth.secret',
+  NESSIE_AUTH_TOKEN_TTL: 'auth.tokenTtlSeconds',
   NESSIE_DB_URL: 'database.url',
   NESSIE_REDIS_URL: 'redis.url',
   NESSIE_STORAGE_PROVIDER: 'storage.provider',
@@ -80,6 +88,8 @@ export const ConfigEnvMap = {
   NESSIE_STORAGE_LOCAL_PATH: 'storage.localPath',
   NESSIE_QUEUE_PROVIDER: 'queue.provider',
   NESSIE_QUEUE_PROJECT_ID: 'queue.projectId',
+  NESSIE_API_HOST: 'api.host',
+  NESSIE_API_PORT: 'api.port',
 } as const
 
 export type LoadConfigOptions = {
@@ -96,6 +106,7 @@ const DEFAULT_CONFIG: NessieConfig = {
   auth: {
     providers: [],
     autoRedirectToSso: false,
+    tokenTtlSeconds: 24 * 60 * 60,
   },
   database: {
     url: 'postgresql://localhost:5432/nessie',
@@ -108,6 +119,10 @@ const DEFAULT_CONFIG: NessieConfig = {
   },
   queue: {
     provider: 'local',
+  },
+  api: {
+    host: '0.0.0.0',
+    port: 4317,
   },
 }
 
