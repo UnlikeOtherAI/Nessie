@@ -57,11 +57,25 @@ export type SearchConfig = {
   embedding: EmbeddingConfig
 }
 
+export class SearchEmbeddingError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SearchEmbeddingError'
+  }
+}
+
 export const searchThoughts = async (
   input: SearchThoughtsInput,
   config: SearchConfig,
 ): Promise<SearchResult[]> => {
-  const queryEmbedding = await getEmbedding(input.query, config.embedding)
+  let queryEmbedding: number[]
+  try {
+    queryEmbedding = await getEmbedding(input.query, config.embedding)
+  } catch (err) {
+    throw new SearchEmbeddingError(
+      `Failed to embed search query: ${err instanceof Error ? err.message : 'unknown error'}`,
+    )
+  }
   const embeddingStr = `[${queryEmbedding.join(',')}]`
 
   const threshold = input.threshold ?? 0.3

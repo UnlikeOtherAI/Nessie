@@ -62,7 +62,10 @@ export const linkThoughts = async (
   )
 
   const insertedRow = result.rows[0] as { id: string } | undefined
-  const linkId = insertedRow?.id ?? ''
+  if (!insertedRow) {
+    return '' // Link already exists (ON CONFLICT DO NOTHING)
+  }
+  const linkId = insertedRow.id
 
   if (input.relation === 'supersedes') {
     await pool.query(

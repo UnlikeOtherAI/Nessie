@@ -25,6 +25,7 @@ export type CapturedThought = {
   metadata: ThoughtMetadata | null
   reasoning: ReasoningExtraction | null
   isDuplicate: boolean
+  embeddingFailed: boolean
   createdAt: string
 }
 
@@ -57,6 +58,7 @@ export const captureThought = async (
       metadata: dupRow.metadata as ThoughtMetadata | null,
       reasoning: null,
       isDuplicate: true,
+      embeddingFailed: false,
       createdAt: '',
     }
   }
@@ -147,6 +149,7 @@ export const captureThought = async (
     metadata,
     reasoning,
     isDuplicate: false,
+    embeddingFailed: embedding === null,
     createdAt: String(createdAt),
   }
 }

@@ -22,6 +22,15 @@ export const createThoughtService = (deps: ThoughtServiceDeps) => ({
   search: (input: Parameters<typeof searchThoughts>[0]) =>
     searchThoughts(input, deps.searchConfig),
 
+  verifyAccess: async (thoughtId: string, organizationId: string) => {
+    const result = await deps.pool.query(
+      `SELECT id FROM thoughts
+       WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [thoughtId, organizationId],
+    )
+    return result.rowCount !== null && result.rowCount > 0
+  },
+
   recordOutcome: (input: Parameters<typeof recordOutcome>[0]) =>
     recordOutcome(input, deps.pool),
 

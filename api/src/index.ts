@@ -1355,7 +1355,7 @@ export const buildApp = async () => {
       return createApiResponse(results)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Search failed'
-      return sendApiError(reply, 502, msg)
+      return sendApiError(reply, 502, 'SEARCH_FAILED', msg)
     }
   })
 
@@ -1375,7 +1375,7 @@ export const buildApp = async () => {
 
     const hasAccess = await thoughtService.verifyAccess(id, orgId)
     if (!hasAccess) {
-      return sendApiError(reply, 404, 'Thought not found')
+      return sendApiError(reply, 404, 'THOUGHT_NOT_FOUND', 'Thought not found')
     }
 
     await thoughtService.recordOutcome({
@@ -1409,7 +1409,7 @@ export const buildApp = async () => {
       thoughtService.verifyAccess(body.targetId, orgId),
     ])
     if (!sourceOk || !targetOk) {
-      return sendApiError(reply, 404, 'Thought not found')
+      return sendApiError(reply, 404, 'THOUGHT_NOT_FOUND', 'Thought not found')
     }
 
     const linkId = await thoughtService.link({
