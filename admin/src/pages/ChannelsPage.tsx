@@ -732,10 +732,10 @@ export const ChannelsPage = () => {
               </p>
               <button
                 className="admin-button admin-button-primary mt-4"
-                onClick={() => void navigate('/settings#agents')}
+                onClick={() => void navigate('/agents/new')}
                 type="button"
               >
-                Open admin controls
+                Create agent
               </button>
             </div>
           </div>
