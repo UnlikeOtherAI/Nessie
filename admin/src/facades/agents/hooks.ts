@@ -3,7 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { z } from 'zod'
 import type {
   AgentActivityResponse,
@@ -209,6 +209,8 @@ export const useAgentRealtime = (input: {
   const { me, token } = useAuthSession()
   const [connectionState, setConnectionState] = useState<RealtimeConnectionState>('disconnected')
   const [records, setRecords] = useState<Record<string, AgentRealtimeRecord>>({})
+  const threadIdRef = useRef(input.threadId)
+  threadIdRef.current = input.threadId
 
   useEffect(() => {
     if (!token || !me?.context.organizationId) {
@@ -308,7 +310,7 @@ export const useAgentRealtime = (input: {
 
       if (message.event === 'message.new') {
         invalidateAgentCaches(message.data.agentId)
-        if (message.data.threadId === input.threadId) {
+        if (message.data.threadId === threadIdRef.current) {
           void queryClient.invalidateQueries({
             queryKey: ['threads', message.data.threadId, 'messages'],
           })
@@ -367,7 +369,7 @@ export const useAgentRealtime = (input: {
       clearReconnectTimer()
       socket?.close()
     }
-  }, [input.organizationId, input.threadId, me?.context.organizationId, queryClient, token])
+  }, [me?.context.organizationId, queryClient, token])
 
   return {
     connectionState,
