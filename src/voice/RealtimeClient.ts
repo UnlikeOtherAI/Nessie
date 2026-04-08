@@ -1,3 +1,5 @@
+import WebSocket from 'ws'
+
 export type RealtimeCallbacks = {
   onAudioIn?: (audio: Uint8Array) => void
   onTranscript?: (text: string) => void
@@ -32,27 +34,33 @@ export class RealtimeClient {
       },
     })
 
-    this.ws.onopen = () => {
+    this.ws.on('open', () => {
       this.callbacks.onConnected?.()
       this.sendSessionConfig()
-    }
+    })
 
-    this.ws.onmessage = (event) => {
+    this.ws.on('message', (data) => {
       try {
-        const data = JSON.parse(event.data as string)
-        this.handleMessage(data)
+        const text = Array.isArray(data)
+          ? Buffer.concat(data).toString('utf8')
+          : Buffer.isBuffer(data)
+            ? data.toString('utf8')
+            : typeof data === 'string'
+              ? data
+              : Buffer.from(data).toString('utf8')
+        this.handleMessage(JSON.parse(text))
       } catch {
         // ignore parse errors
       }
-    }
+    })
 
-    this.ws.onerror = () => {
+    this.ws.on('error', () => {
       this.callbacks.onError?.(new Error('WebSocket error'))
-    }
+    })
 
-    this.ws.onclose = () => {
+    this.ws.on('close', () => {
       this.callbacks.onDisconnected?.()
-    }
+    })
   }
 
   disconnect() {
@@ -110,7 +118,7 @@ export class RealtimeClient {
 function base64Encode(buffer: Uint8Array): string {
   let binary = ''
   for (let i = 0; i < buffer.length; i++) {
-    binary += String.fromCharCode(buffer[i])
+    binary += String.fromCharCode(buffer[i]!)
   }
   return btoa(binary)
 }

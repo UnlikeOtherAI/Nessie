@@ -248,13 +248,10 @@ const ensureLocalDatabase = (databaseUrl: string): void => {
   )
 }
 
-const canAuthenticateToPostgres = (databaseUrl: string): boolean => {
-  const url = new URL(databaseUrl)
-  url.pathname = '/postgres'
-
+const canAuthenticateToDatabase = (databaseUrl: string): boolean => {
   const result = spawnSync(
     process.platform === 'win32' ? 'psql.exe' : 'psql',
-    [url.toString(), '-Atqc', 'select 1'],
+    [databaseUrl, '-Atqc', 'select 1'],
     {
       encoding: 'utf8',
       env: process.env,
@@ -263,6 +260,13 @@ const canAuthenticateToPostgres = (databaseUrl: string): boolean => {
   )
 
   return result.status === 0 && result.stdout.trim() === '1'
+}
+
+const canReachPostgresServer = (databaseUrl: string): boolean => {
+  const url = new URL(databaseUrl)
+  url.pathname = '/postgres'
+
+  return canAuthenticateToDatabase(url.toString())
 }
 
 const wait = async (ms: number): Promise<void> =>
@@ -354,7 +358,7 @@ const waitForPostgresReady = async (
 ): Promise<void> => {
   const startedAt = Date.now()
   while (Date.now() - startedAt < timeoutMs) {
-    if (canAuthenticateToPostgres(databaseUrl)) {
+    if (canAuthenticateToDatabase(databaseUrl)) {
       return
     }
 
@@ -513,7 +517,7 @@ const collectDoctorSummary = async (): Promise<DoctorSummary> => {
   ensureDirectories()
 
   const config = createGeneratedConfig('no-docker', env)
-  const postgresReady = canAuthenticateToPostgres(config.database.url)
+  const postgresReady = canReachPostgresServer(config.database.url)
 
   return {
     config,
@@ -841,7 +845,7 @@ export const runLocalCommand = async (args: string[]): Promise<void> => {
       return
     }
     case 'status': {
-      const state = pruneStaleState(readState())
+      const state = readState()
       if (!state) {
         console.log('Local Nessie stack is stopped.')
         return

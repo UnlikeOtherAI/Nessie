@@ -43,7 +43,7 @@ export function fromOpenClawKey(key: string): NessieRef | null {
   if (parts.length < 5 || parts[0] !== 'agent' || parts[3] !== 'group') {
     return null
   }
-  const agentId = parts[1]
+  const agentId = parts[1]!
   const groupId = parts.slice(4).join(':') // handle colons in groupId
   return {
     taskId: groupId,
