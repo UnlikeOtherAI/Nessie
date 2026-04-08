@@ -107,10 +107,14 @@ a {
   display: flex;
   align-items: center;
   gap: 4px;
+  width: 100%;
+  border: none;
+  background: none;
   padding: 10px 16px 2px;
   color: var(--tx2);
   font-size: 13px;
   font-weight: 700;
+  cursor: pointer;
 }
 
 .admin-sb-item {

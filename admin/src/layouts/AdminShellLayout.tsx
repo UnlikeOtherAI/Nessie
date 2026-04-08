@@ -8,6 +8,7 @@ import { useAgentRealtime, useAgents } from '../facades/agents/hooks';
 import { useChannels } from '../facades/channels/hooks';
 import { useUsers } from '../facades/users/hooks';
 import type { AgentRecord } from '../lib/api-client';
+import { getCookie, setCookie } from '../lib/storage';
 import { useAuthSession } from '../providers/AuthSessionProvider';
 
 const parseChannelIdFromPath = (pathname: string): string | undefined => {
@@ -64,9 +65,20 @@ export const AdminShellLayout = () => {
   });
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
+  const [channelsCollapsed, setChannelsCollapsed] = useState(
+    () => getCookie('channelsCollapsed') === '1',
+  );
 
   const openCreateChannel = useCallback(() => setCreateChannelOpen(true), []);
   const closeCreateChannel = useCallback(() => setCreateChannelOpen(false), []);
+
+  const toggleChannelsCollapsed = useCallback(() => {
+    setChannelsCollapsed((prev) => {
+      const next = !prev;
+      setCookie('channelsCollapsed', next ? '1' : '0');
+      return next;
+    });
+  }, []);
 
   const scopedAgents = useMemo(
     () =>
@@ -348,9 +360,16 @@ export const AdminShellLayout = () => {
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto py-1">
-            <div className="admin-sec-hdr">
+            <button
+              className="admin-sec-hdr"
+              onClick={toggleChannelsCollapsed}
+              type="button"
+            >
               <svg
-                className="h-3 w-3 text-[color:var(--tx3)]"
+                className={[
+                  'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                  channelsCollapsed ? '-rotate-90' : '',
+                ].join(' ')}
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2.5"
@@ -359,39 +378,43 @@ export const AdminShellLayout = () => {
                 <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               Channels
-            </div>
-
-            {channels.map((channel) => (
-              <button
-                key={channel.id}
-                className={`admin-sb-item ${channel.id === currentChannelId ? 'active' : ''}`}
-                onClick={() => void navigate(`/channels/${channel.id}`)}
-                type="button"
-              >
-                <span className={channelHashClassName}>#</span>
-                <span className="truncate">{channel.label}</span>
-                {channel.id === currentChannelId ? (
-                  <span className={unreadCountClassName}>{scopedAgents.length}</span>
-                ) : null}
-              </button>
-            ))}
-
-            <button
-              className="admin-sb-item text-[color:var(--tx3)]"
-              onClick={openCreateChannel}
-              type="button"
-            >
-              <svg
-                className="h-4 w-4 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-                <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Create channel
             </button>
+
+            {!channelsCollapsed && (
+              <>
+                {channels.map((channel) => (
+                  <button
+                    key={channel.id}
+                    className={`admin-sb-item ${channel.id === currentChannelId ? 'active' : ''}`}
+                    onClick={() => void navigate(`/channels/${channel.id}`)}
+                    type="button"
+                  >
+                    <span className={channelHashClassName}>#</span>
+                    <span className="truncate">{channel.label}</span>
+                    {channel.id === currentChannelId ? (
+                      <span className={unreadCountClassName}>{scopedAgents.length}</span>
+                    ) : null}
+                  </button>
+                ))}
+
+                <button
+                  className="admin-sb-item text-[color:var(--tx3)]"
+                  onClick={openCreateChannel}
+                  type="button"
+                >
+                  <svg
+                    className="h-4 w-4 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Create channel
+                </button>
+              </>
+            )}
 
             <AgentActivityPanel
               agents={scopedAgents}
