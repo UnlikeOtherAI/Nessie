@@ -123,6 +123,8 @@ type AuditAction =
   // Agents
   | 'agent.created'
   | 'agent.updated'
+  | 'agent.retired'
+  | 'agent.restored'
   | 'agent.deleted'
   | 'agent.bound'
   | 'agent.unbound'
@@ -293,6 +295,9 @@ Every control-plane mutation in Phase 2 must emit an audit entry. The complete l
 | Channels | `channel.created` | channel |
 | Channels | `channel.member_added` | channel |
 | Agents | `agent.created` | agent |
+| Agents | `agent.retired` | agent |
+| Agents | `agent.restored` | agent |
+| Agents | `agent.deleted` | agent |
 | Agents | `agent.bound` | agent |
 | Approvals | `approval.created` | approval |
 | Approvals | `approval.approved` | approval |

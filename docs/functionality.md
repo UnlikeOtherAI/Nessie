@@ -534,10 +534,18 @@ MCP tool registry runtime status:
   - policy chain evaluation (`organization` → `project` → `team` → `channel` → `agent` → `tool`),
   - reasoned deny output with canonical codes,
   - immutable audit record.
+- Agent lifecycle semantics:
+  - `active`: agent can be routed, bound, edited, and spawned.
+  - `retired`: default end-of-life state. Agent remains visible in history, admin views, and audit records, but cannot be routed, bound to new channels, or used for new runs until restored.
+  - `deleted`: destructive cleanup path. The live agent record is removed permanently. Historical artifacts and audit entries remain immutable and must render tombstoned attribution such as `Deleted agent` plus last known display name when available.
+- Terminology rule:
+  - use `retire` / `restore` for reversible lifecycle changes,
+  - use `delete` only for permanent destructive cleanup,
+  - never use informal labels such as `dead agent` in UI or docs.
 - Orchestrators should be able to execute MCP control commands such as:
   - create/update/delete org and project
   - create/update/delete channels
-  - create/update/deploy/disable agents
+  - create/update/deploy/retire/restore/delete agents
   - import/register/remove tools
   - set memberships and grants
   - rotate/revoke secrets
@@ -573,7 +581,7 @@ Parity matrix:
 | project lifecycle | `GET/POST /projects` | `project.create`, `project.update`, `project.delete` | `/project create` | org + project policy | yes for unsafe transitions | yes | blocked |
 | project members | `POST /projects/{projectId}/members` | `project.members.add`, `project.members.remove` | `/project members add/remove` | project policy | yes | yes | blocked |
 | channel lifecycle | `POST /channels` | `project.channels.create`, `project.channels.update`, `project.channels.members.search` | `/channel create` | project/channel policy | yes | yes | blocked |
-| agent catalog | `GET/POST /agents` | `agent.register`, `agent.update`, `agent.bind`, `agent.unbind` | `/agent register` | project/team/channel policy | yes | yes | blocked |
+| agent catalog | `GET/POST /agents` | `agent.register`, `agent.update`, `agent.retire`, `agent.restore`, `agent.delete`, `agent.bind`, `agent.unbind` | `/agent register` | project/team/channel policy | yes | yes | blocked |
 | tool catalog | `POST /tools` | `tool.import`, `tool.update`, `tool.bind`, `tool.unbind` | `/tool import` | project + transport policy | yes | yes | blocked |
 | role binding | `POST /roles` | `role.assign`, `role.revoke` | `/role assign` | admin-role policy | yes | yes | blocked |
 | channel membership | `POST /channels/{channelId}/members` | `channel.member.add`, `channel.member.remove` | `/channel member add` | channel policy | yes | yes | blocked |
