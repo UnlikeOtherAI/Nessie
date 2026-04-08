@@ -348,6 +348,22 @@ const waitForLogMatch = async (
   return null
 }
 
+const waitForPostgresReady = async (
+  databaseUrl: string,
+  timeoutMs = 20_000,
+): Promise<void> => {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    if (canAuthenticateToPostgres(databaseUrl)) {
+      return
+    }
+
+    await wait(500)
+  }
+
+  throw new Error(`Timed out waiting for Postgres readiness at ${databaseUrl}`)
+}
+
 const createGeneratedConfig = (mode: LaunchMode, env: NodeJS.ProcessEnv): NessieConfig => {
   const baseConfig = loadConfig({
     argv: [],
@@ -573,12 +589,16 @@ const pruneStaleState = (state: LocalState | null): LocalState | null => {
     return null
   }
 
-  const active = Object.values(state.services).some((service) =>
+  const statuses = Object.values(state.services).map((service) =>
     isProcessAlive(service.pid),
   )
 
-  if (active) {
+  if (statuses.every(Boolean)) {
     return state
+  }
+
+  if (statuses.some(Boolean)) {
+    downLocalStack(state, resolveEnv(), true)
   }
 
   removeState()
@@ -661,6 +681,7 @@ const upLocalStack = async (args: string[]): Promise<void> => {
       runDockerCompose(['up', '-d', 'postgres'], childEnv)
       dockerStarted = true
       await waitForTcpPort('127.0.0.1', DOCKER_POSTGRES_PORT)
+      await waitForPostgresReady(DOCKER_DB_URL)
     } else {
       const { host, port } = parseDatabaseUrl(config.database.url)
       const postgresReachable = await canReachTcpPort(host, port)
@@ -729,10 +750,13 @@ const upLocalStack = async (args: string[]): Promise<void> => {
   try {
     await waitForHttp(`${state.apiUrl}/api/auth/providers`)
     await waitForHttp(`${state.adminUrl}/login`)
-    await waitForLogMatch(
+    const workerReady = await waitForLogMatch(
       state.services.worker.logFile,
       /"status": "ready"/,
     )
+    if (!workerReady) {
+      throw new Error('Timed out waiting for worker readiness log entry.')
+    }
   } catch (error) {
     downLocalStack(state, childEnv)
     throw error
@@ -838,8 +862,12 @@ export const runLocalCommand = async (args: string[]): Promise<void> => {
       const follow = !rest.includes('--no-follow')
 
       if (service === 'postgres') {
+        if (state.mode !== 'docker') {
+          throw new Error('Postgres logs are only available when the local stack is running in docker mode.')
+        }
+
         runDockerCompose(
-          ['logs', follow ? '--follow' : '--no-log-prefix', 'postgres'],
+          ['logs', ...(follow ? ['--follow'] : []), 'postgres'],
           resolveEnv(),
         )
         return
