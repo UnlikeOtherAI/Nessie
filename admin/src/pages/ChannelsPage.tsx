@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { MentionInput, type MentionInputHandle, type MentionEntity } from '../components/shared/MentionInput'
 import {
   useNavigate,
   useOutletContext,
@@ -181,6 +182,24 @@ export const ChannelsPage = () => {
   const [selectedAgentId, setSelectedAgentId] = useState('')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const mentionRef = useRef<MentionInputHandle>(null)
+
+  const mentionEntities: MentionEntity[] = useMemo(
+    () => [
+      ...boundAgents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        type: 'agent' as const,
+        glyph: getAgentGlyph(a),
+      })),
+      ...channelUsers.map((u) => ({
+        id: u.id,
+        name: u.displayName,
+        type: 'user' as const,
+      })),
+    ],
+    [boundAgents, channelUsers],
+  )
 
   useEffect(() => {
     if (!channelId && activeChannel) {
@@ -219,17 +238,19 @@ export const ChannelsPage = () => {
     selectedAgentId,
   ])
 
-  const sendMessageSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!activeChannel || !message.trim()) {
+  const sendMessageSubmit = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault()
+    const text = mentionRef.current?.getText() ?? message
+    if (!activeChannel || !text.trim()) {
       return
     }
 
     await sendMessage.mutateAsync({
-      content: message.trim(),
+      content: text.trim(),
       agentId: selectedAgent?.id,
     })
     setMessage('')
+    mentionRef.current?.clear()
   }
 
   if (!me) {
@@ -686,18 +707,20 @@ export const ChannelsPage = () => {
 
       <div className="flex-shrink-0 px-5 pb-[14px]">
         <form className="admin-compose" onSubmit={sendMessageSubmit}>
-          <textarea
-            className={[
-              'min-h-[82px] w-full resize-none bg-transparent px-4 py-3 text-sm',
-              'text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]',
-            ].join(' ')}
-            onChange={(event) => setMessage(event.target.value)}
+          <MentionInput
+            ref={mentionRef}
+            entities={mentionEntities}
+            onChange={setMessage}
+            onSubmit={() => void sendMessageSubmit()}
             placeholder={`Message #${activeChannel?.label ?? 'channel'} or @mention an agent`}
-            value={message}
           />
           <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">
             <div className="flex items-center gap-1">
-              <button className={toolbarButtonClass} type="button">
+              <button
+                className={toolbarButtonClass}
+                onClick={() => mentionRef.current?.insertAtSign()}
+                type="button"
+              >
                 @
               </button>
               <button className={toolbarButtonClass} type="button">

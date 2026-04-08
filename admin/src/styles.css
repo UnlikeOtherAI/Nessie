@@ -202,6 +202,29 @@ a {
   color: #a7abb0;
 }
 
+.mention-editor {
+  caret-color: #f3f4f6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+}
+
+.mention-editor.is-empty::before {
+  content: attr(data-placeholder);
+  color: #a7abb0;
+  pointer-events: none;
+}
+
+.mention-tag {
+  display: inline;
+  border-radius: 3px;
+  background: rgba(124, 58, 237, 0.25);
+  color: #a78bfa;
+  padding: 1px 4px;
+  font-weight: 500;
+  user-select: all;
+}
+
 .admin-compose select {
   background: rgba(124, 58, 237, 0.08);
 }
