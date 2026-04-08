@@ -6,6 +6,13 @@ type ToolExecutionLogProps = {
   entries: ToolCallEntry[];
 };
 
+const compactPreview = (value: string, maxLength = 160): string => {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length <= maxLength
+    ? normalized
+    : `${normalized.slice(0, maxLength - 1)}…`;
+};
+
 const getTone = (success: boolean | undefined) => {
   if (success === true) {
     return 'success';
@@ -41,7 +48,7 @@ export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => (
             {entry.durationMs ? `${entry.durationMs} ms` : 'active'}
           </div>
           <div className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
-            {entry.outputPreview ?? entry.inputSummary}
+            {compactPreview(entry.outputPreview ?? entry.inputSummary)}
           </div>
         </article>
       ))
