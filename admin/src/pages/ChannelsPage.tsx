@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   useNavigate,
   useOutletContext,
@@ -144,6 +144,7 @@ export const ChannelsPage = () => {
   const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [message, setMessage] = useState('')
   const [selectedAgentId, setSelectedAgentId] = useState('')
+  const contentScrollRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!channelId && activeChannel) {
@@ -165,6 +166,22 @@ export const ChannelsPage = () => {
   const selectedAgent =
     agents.find((agent) => agent.id === selectedAgentId) ?? boundAgents[0] ?? null
   const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
+
+  useLayoutEffect(() => {
+    const container = contentScrollRef.current
+    if (!container) {
+      return
+    }
+
+    container.scrollTop = container.scrollHeight
+  }, [
+    activeChannel?.id,
+    activeTab,
+    feedItems.length,
+    pendingMessages.length,
+    scopedAgents.length,
+    selectedAgentId,
+  ])
 
   const sendMessageSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -340,7 +357,11 @@ export const ChannelsPage = () => {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto"
+        data-testid="channel-content-scroll"
+        ref={contentScrollRef}
+      >
         {activeTab === 'messages' ? (
           <>
             {feedItems.length === 0 && pendingMessages.length === 0 ? (
