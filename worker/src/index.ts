@@ -26,14 +26,6 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
   const queueProvider = new PgQueueProvider(pool)
   const realtimeTransport = new PgRealtimeTransport(pool, databaseUrl)
   const modelClient = createModelClient(config.model)
-  const embeddingApiKey =
-    process.env.OPENAI_API_KEY ??
-    process.env.OPENAI_CHAT_API_KEY ??
-    config.model.apiKey ??
-    ''
-  if (!embeddingApiKey) {
-    console.warn('No embedding API key configured — worker memory retrieval will fail')
-  }
   const abortController = new AbortController()
 
   queueProvider.subscribe(
@@ -47,7 +39,7 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
           queueProvider,
           realtimeTransport,
           searchConfig: {
-            embedding: { apiKey: embeddingApiKey },
+            modelClient,
             pool,
           },
         },

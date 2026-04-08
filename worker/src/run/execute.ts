@@ -564,7 +564,7 @@ const retrieveRelevantMemories = async (
       channelId: context.channel.id,
       includeReasoning: false,
       limit: MAX_MEMORY_RESULTS,
-      mode: deps.searchConfig.embedding.apiKey ? 'hybrid' : 'lexical',
+      mode: 'hybrid',
       organizationId: context.channel.organizationId,
       query: prompt,
       sessionId: payload.actorContext.actionContext.sessionId,

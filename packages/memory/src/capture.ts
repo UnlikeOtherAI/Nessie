@@ -1,8 +1,9 @@
+import type { ModelClient } from '@nessie/runtime'
 import type { Pool } from 'pg'
 import { computeFingerprint } from './fingerprint.js'
-import { getEmbedding, type EmbeddingConfig } from './embed.js'
-import { extractMetadata, type ThoughtMetadata, type ExtractionConfig } from './extract-metadata.js'
-import { extractReasoning, type ReasoningExtraction, type ReasoningExtractionConfig } from './extract-reasoning.js'
+import { getEmbedding } from './embed.js'
+import { extractMetadata, type ThoughtMetadata } from './extract-metadata.js'
+import { extractReasoning, type ReasoningExtraction } from './extract-reasoning.js'
 
 export type CaptureThoughtInput = {
   content: string
@@ -31,8 +32,7 @@ export type CapturedThought = {
 
 export type CaptureConfig = {
   pool: Pool
-  embedding: EmbeddingConfig
-  extraction: ExtractionConfig
+  modelClient: ModelClient
 }
 
 export const captureThought = async (
@@ -65,9 +65,9 @@ export const captureThought = async (
 
   // Run embedding + metadata extraction + reasoning extraction in parallel
   const [embedding, metadata, reasoning] = await Promise.all([
-    getEmbedding(input.content, config.embedding).catch(() => null),
-    extractMetadata(input.content, config.extraction).catch(() => null),
-    extractReasoning(input.content, config.extraction as ReasoningExtractionConfig).catch(() => null),
+    getEmbedding(input.content, config.modelClient).catch(() => null),
+    extractMetadata(input.content, config.modelClient).catch(() => null),
+    extractReasoning(input.content, config.modelClient).catch(() => null),
   ])
 
   // Insert thought

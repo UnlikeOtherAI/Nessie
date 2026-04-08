@@ -1,3 +1,5 @@
+import type { ModelClient } from '@nessie/runtime'
+
 export type ReasoningExtraction = {
   hasReasoning: boolean
   reasoningType: 'decision' | 'evaluation' | 'constraint' | 'pattern' | 'correction' | 'validation'
@@ -8,15 +10,6 @@ export type ReasoningExtraction = {
   confidence: number
   reasoningSummary: string
 }
-
-export type ReasoningExtractionConfig = {
-  apiKey: string
-  model?: string
-  baseUrl?: string
-}
-
-const DEFAULT_MODEL = 'gpt-5-mini'
-const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 
 const NO_REASONING: ReasoningExtraction = {
   hasReasoning: false,
@@ -59,20 +52,11 @@ Text: `
 
 export const extractReasoning = async (
   content: string,
-  config: ReasoningExtractionConfig,
+  client: ModelClient,
 ): Promise<ReasoningExtraction> => {
-  const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL
-  const model = config.model ?? DEFAULT_MODEL
-
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
+  try {
+    const parsed = await client.chatJson<Partial<ReasoningExtraction>>(
+      [
         {
           role: 'system',
           content: [
@@ -84,28 +68,9 @@ export const extractReasoning = async (
         },
         { role: 'user', content: `${REASONING_PROMPT}${content.slice(0, 4000)}` },
       ],
-      response_format: { type: 'json_object' },
-      max_tokens: 1024,
-      temperature: 0,
-    }),
-  })
+      { maxTokens: 1024, temperature: 0 },
+    )
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Reasoning extraction error ${response.status}: ${errorText}`)
-  }
-
-  const result = (await response.json()) as {
-    choices: { message: { content: string } }[]
-  }
-
-  const raw = result.choices[0]?.message.content
-  if (!raw) {
-    return NO_REASONING
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<ReasoningExtraction>
     if (!parsed.hasReasoning) {
       return NO_REASONING
     }

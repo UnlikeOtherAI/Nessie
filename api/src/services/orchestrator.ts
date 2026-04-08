@@ -34,21 +34,16 @@ export const decideAgentEngagement = async (
     return { action: 'none' }
   }
 
-  // Fast path: explicit @mention detection
-  const mentionPattern = /@([\w][\w\s]*[\w]|[\w]+)/g
-  const mentions: string[] = []
-  for (const match of input.content.matchAll(mentionPattern)) {
-    if (match[1]) mentions.push(match[1])
+  // Fast path: check if any agent is explicitly @mentioned
+  for (const agent of input.agents) {
+    const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    if (new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i').test(input.content)) {
+      return { action: 'reply', agentId: agent.id }
+    }
   }
 
-  if (mentions.length > 0) {
-    const mentionedAgent = input.agents.find((a) =>
-      mentions.some((name) => a.name.toLowerCase() === name.toLowerCase()),
-    )
-    if (mentionedAgent) {
-      return { action: 'reply', agentId: mentionedAgent.id }
-    }
-    // Mentions exist but none match agents -- users only
+  // If there are @mentions but no agent matched, assume user-to-user — stay silent
+  if (/@\w/.test(input.content)) {
     return { action: 'none' }
   }
 
@@ -64,16 +59,27 @@ export const decideAgentEngagement = async (
 
   const systemMsg: ModelMessage = {
     content: [
-      'You are an invisible channel orchestrator. Your ONLY job is to decide whether one of the available agents should respond to the latest user message.',
+      'You are an invisible channel orchestrator.',
+      'Your ONLY job is to decide whether one of the available',
+      'agents should respond to the latest user message.',
       '',
       'Available agents in this channel:',
       agentDescriptions,
       '',
       'Rules:',
-      '1. If the message is clearly directed at or relevant to one agent\'s expertise, return: {"action":"reply","agentId":"<id>"}',
-      '2. If the message is a general statement that doesn\'t need a full reply but an agent could acknowledge it (e.g. "thanks", "ok", "noted", "please acknowledge"), return: {"action":"acknowledge","agentId":"<id>","emoji":"<single emoji>"}',
-      '3. If the message is a conversation between users, a greeting to a specific person, or not relevant to any agent, return: {"action":"none"}',
-      '4. When in doubt, return {"action":"none"}. Agents should not intrude on human conversations.',
+      '1. If the message is clearly directed at or relevant to',
+      '   one agent\'s expertise, return:',
+      '   {"action":"reply","agentId":"<id>"}',
+      '2. If the message is a general statement that doesn\'t need',
+      '   a full reply but an agent could acknowledge it',
+      '   (e.g. "thanks", "ok", "noted"), return:',
+      '   {"action":"acknowledge","agentId":"<id>",',
+      '    "emoji":"<emoji>"}',
+      '3. If the message is a conversation between users,',
+      '   a greeting to a specific person,',
+      '   or not relevant to any agent, return: {"action":"none"}',
+      '4. When in doubt, return {"action":"none"}.',
+      '   Agents should not intrude on human conversations.',
       '',
       'Return ONLY valid JSON. No explanation.',
     ].join('\n'),

@@ -1,7 +1,8 @@
+import type { ModelClient } from '@nessie/runtime'
 import type { ThoughtSearchMode } from '@nessie/schemas'
 import type { Pool } from 'pg'
 import { logRecalls, type LoggedRecall, type RecallLogEntry } from './recalls.js'
-import { getEmbedding, type EmbeddingConfig } from './embed.js'
+import { getEmbedding } from './embed.js'
 
 type Queryable = Pick<Pool, 'query'>
 
@@ -69,12 +70,12 @@ export type SearchThoughtsOutput = {
 
 export type SearchConfig = {
   pool: Queryable
-  embedding: EmbeddingConfig
+  modelClient: ModelClient
 }
 
 export type SearchExecutionConfig = {
   pool: Pool
-  embedding: EmbeddingConfig
+  modelClient: ModelClient
 }
 
 type SearchQuerySpec = {
@@ -239,7 +240,7 @@ export const searchThoughts = async (
   let queryEmbedding: number[] | null = null
   if (mode !== 'lexical') {
     try {
-      queryEmbedding = await getEmbedding(input.query, config.embedding)
+      queryEmbedding = await getEmbedding(input.query, config.modelClient)
     } catch (err) {
       throw new SearchEmbeddingError(
         `Failed to embed search query: ${err instanceof Error ? err.message : 'unknown error'}`,

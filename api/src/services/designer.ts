@@ -1,3 +1,4 @@
+import type { ModelClient } from '@nessie/runtime'
 import type { FastifyReply } from 'fastify'
 import type { z } from 'zod'
 import type { DesignerChatBodySchema } from '../contracts.js'
@@ -77,7 +78,7 @@ const DESIGNER_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'set_model',
-      description: 'Set the LLM model name (e.g. gpt-4o, gpt-4o-mini, claude-sonnet-4-20250514)',
+      description: 'Set the LLM model name (e.g. gpt-5, gpt-5-mini, claude-sonnet-4-20250514)',
       parameters: {
         type: 'object',
         properties: { model: { type: 'string' } },
@@ -130,6 +131,8 @@ const DESIGNER_TOOLS = [
   },
 ]
 
+const DESIGNER_MODEL = 'gpt-5-mini'
+
 const buildSystemPrompt = (formState: DesignerChatInput['formState']): string => {
   const enabledTools = Object.entries(formState.tools)
     .filter(([, v]) => v)
@@ -180,13 +183,8 @@ const writeSseEvent = (reply: FastifyReply, event: string, data: unknown): void 
 export const streamDesignerChat = async (
   reply: FastifyReply,
   input: DesignerChatInput,
-  apiKey: string | undefined,
+  modelClient: ModelClient,
 ): Promise<void> => {
-  if (!apiKey) {
-    reply.code(500).send({ error: 'OPENAI_API_KEY not configured' })
-    return
-  }
-
   reply.raw.writeHead(200, {
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
@@ -201,24 +199,19 @@ export const streamDesignerChat = async (
     })),
   ]
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-5-mini',
+  let response: Response
+  try {
+    response = await modelClient.fetchCompletion({
+      model: DESIGNER_MODEL,
       messages,
       tools: DESIGNER_TOOLS,
       max_completion_tokens: 4096,
       stream: true,
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    writeSseEvent(reply, 'error', { message: `OpenAI error ${response.status}: ${errorText}` })
+      stream_options: { include_usage: true },
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Model request failed'
+    writeSseEvent(reply, 'error', { message: msg })
     reply.raw.end()
     return
   }
@@ -279,6 +272,19 @@ export const streamDesignerChat = async (
                 }>
               }
             }>
+            usage?: {
+              prompt_tokens: number
+              completion_tokens: number
+            }
+          }
+
+          // Capture usage from the final streaming chunk
+          if (chunk.usage) {
+            modelClient.usage.record(
+              DESIGNER_MODEL,
+              chunk.usage.prompt_tokens,
+              chunk.usage.completion_tokens,
+            )
           }
 
           const delta = chunk.choices?.[0]?.delta

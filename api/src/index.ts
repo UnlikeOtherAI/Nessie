@@ -20,7 +20,7 @@ import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
-import { createModelClient, createPgPool } from '@nessie/runtime'
+import { createModelClient, createPgPool, ModelUsageTracker } from '@nessie/runtime'
 import {
   CaptureThoughtBodySchema,
   LinkThoughtsBodySchema,
@@ -354,22 +354,28 @@ const buildSessionForUser = (input: {
     config.auth.tokenTtlSeconds,
   )
 
-let orchestratorModelClient: import('@nessie/runtime').ModelClient | null = null
+const apiUsageTracker = new ModelUsageTracker()
+let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
 
 export const buildApp = async () => {
   const app = Fastify({ logger: true })
 
-  // Create a cheap model client for the orchestrator LLM calls
-  const orchestratorApiKey =
+  // Create a single shared model client for all LLM calls (orchestrator, designer, memory)
+  const modelApiKey =
     process.env.OPENAI_API_KEY
     ?? process.env.OPENAI_CHAT_API_KEY
     ?? config.model.apiKey
     ?? ''
-  if (orchestratorApiKey) {
-    orchestratorModelClient = createModelClient({
-      apiKey: orchestratorApiKey,
-      provider: (config.model.provider ?? 'openai') as 'openai' | 'minimax',
-    })
+  if (modelApiKey) {
+    sharedModelClient = createModelClient(
+      {
+        apiKey: modelApiKey,
+        provider: (config.model.provider ?? 'openai') as 'openai' | 'minimax',
+      },
+      apiUsageTracker,
+    )
+  } else {
+    app.log.warn('No model API key configured — orchestrator, designer, and memory will fail')
   }
 
   const realtimeHub = await createRealtimeHub({
@@ -382,21 +388,13 @@ export const buildApp = async () => {
     max: config.database.poolMax,
     min: config.database.poolMin,
   })
-  const openaiApiKey =
-    process.env.OPENAI_API_KEY
-    ?? process.env.OPENAI_CHAT_API_KEY
-    ?? config.model.apiKey
-    ?? ''
-  if (!openaiApiKey) {
-    app.log.warn('No embedding API key configured — memory capture and search will fail')
-  }
-  const embeddingConfig = { apiKey: openaiApiKey }
-  const extractionConfig = { apiKey: openaiApiKey }
-  const thoughtService = createThoughtService({
-    pool: memoryPool,
-    captureConfig: { pool: memoryPool, embedding: embeddingConfig, extraction: extractionConfig },
-    searchConfig: { pool: memoryPool, embedding: embeddingConfig },
-  })
+  const thoughtService = sharedModelClient
+    ? createThoughtService({
+      pool: memoryPool,
+      captureConfig: { pool: memoryPool, modelClient: sharedModelClient },
+      searchConfig: { pool: memoryPool, modelClient: sharedModelClient },
+    })
+    : null
 
   await app.register(cors, { origin: true, credentials: true })
   await app.register(websocket)
@@ -1123,7 +1121,7 @@ export const buildApp = async () => {
       },
     ]
 
-    if (result.channelAgents.length > 0 && orchestratorModelClient) {
+    if (result.channelAgents.length > 0 && sharedModelClient) {
       // Fetch recent messages for context
       const recentDbMessages = await prisma.message.findMany({
         where: { threadId: thread.id },
@@ -1132,7 +1130,7 @@ export const buildApp = async () => {
         include: { agent: { select: { name: true } } },
       })
 
-      const decision = await decideAgentEngagement(orchestratorModelClient, {
+      const decision = await decideAgentEngagement(sharedModelClient, {
         agents: result.channelAgents,
         content: body.content,
         recentMessages: recentDbMessages.reverse().slice(0, -1).map((m) => ({
@@ -1479,6 +1477,14 @@ export const buildApp = async () => {
     })
   })
 
+  const requireThoughtService = (reply: FastifyReply) => {
+    if (!thoughtService) {
+      sendApiError(reply, 503, 'SERVICE_UNAVAILABLE', 'Memory service not configured')
+      return null
+    }
+    return thoughtService
+  }
+
   // ─── Memory / Thoughts Routes ────────────────────────────────────────────
 
   app.post('/api/thoughts', async (request, reply) => {
@@ -1492,7 +1498,10 @@ export const buildApp = async () => {
       return reply
     }
 
-    const result = await thoughtService.capture({
+    const ts = requireThoughtService(reply)
+    if (!ts) return reply
+
+    const result = await ts.capture({
       content: body.content,
       ownerId: actorContext.actor.actorId,
       ownerType: actorContext.actor.actorType,
@@ -1520,8 +1529,11 @@ export const buildApp = async () => {
       return reply
     }
 
+    const ts = requireThoughtService(reply)
+    if (!ts) return reply
+
     try {
-      const results = await thoughtService.search({
+      const results = await ts.search({
         query: body.query,
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
@@ -1551,15 +1563,18 @@ export const buildApp = async () => {
       return reply
     }
 
+    const ts = requireThoughtService(reply)
+    if (!ts) return reply
+
     const { id } = request.params as { id: string }
     const orgId = actorContext.tenant.organizationId
 
-    const hasAccess = await thoughtService.verifyAccess(id, orgId)
+    const hasAccess = await ts.verifyAccess(id, orgId)
     if (!hasAccess) {
       return sendApiError(reply, 404, 'THOUGHT_NOT_FOUND', 'Thought not found')
     }
 
-    await thoughtService.recordOutcome({
+    await ts.recordOutcome({
       thoughtId: id,
       outcome: body.outcome,
       outcomeNotes: body.outcomeNotes,
@@ -1581,8 +1596,11 @@ export const buildApp = async () => {
       return reply
     }
 
+    const ts = requireThoughtService(reply)
+    if (!ts) return reply
+
     const { id } = request.params as { id: string }
-    const updated = await thoughtService.recordRecallSignal({
+    const updated = await ts.recordRecallSignal({
       recallId: id,
       organizationId: actorContext.tenant.organizationId,
       userSignal: body.userSignal,
@@ -1606,19 +1624,22 @@ export const buildApp = async () => {
       return reply
     }
 
+    const ts = requireThoughtService(reply)
+    if (!ts) return reply
+
     const { id } = request.params as { id: string }
     const orgId = actorContext.tenant.organizationId
 
     // Verify both source and target belong to caller's org
     const [sourceOk, targetOk] = await Promise.all([
-      thoughtService.verifyAccess(id, orgId),
-      thoughtService.verifyAccess(body.targetId, orgId),
+      ts.verifyAccess(id, orgId),
+      ts.verifyAccess(body.targetId, orgId),
     ])
     if (!sourceOk || !targetOk) {
       return sendApiError(reply, 404, 'THOUGHT_NOT_FOUND', 'Thought not found')
     }
 
-    const linkId = await thoughtService.link({
+    const linkId = await ts.link({
       sourceId: id,
       targetId: body.targetId,
       relation: body.relation,
@@ -1640,9 +1661,12 @@ export const buildApp = async () => {
       return reply
     }
 
+    const ts = requireThoughtService(reply)
+    if (!ts) return reply
+
     const actorId = (request.query as { actorId?: string }).actorId ?? null
 
-    const stats = await thoughtService.experienceStats(
+    const stats = await ts.experienceStats(
       actorContext.tenant.organizationId,
       actorId,
     )
@@ -1659,7 +1683,12 @@ export const buildApp = async () => {
     const body = parseInput(DesignerChatBodySchema, request.body, reply)
     if (!body) return reply
 
-    await streamDesignerChat(reply, body, config.model.apiKey)
+    if (!sharedModelClient) {
+      reply.code(500).send({ error: 'Model client not configured' })
+      return reply
+    }
+
+    await streamDesignerChat(reply, body, sharedModelClient)
     return reply
   })
 
