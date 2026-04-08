@@ -26,14 +26,6 @@ const OPENAI_MODEL_GROUPS: ModelGroup[] = [
       { value: 'gpt-5-nano', label: 'gpt-5-nano' },
     ],
   },
-  {
-    label: 'Reasoning (o-series)',
-    models: [
-      { value: 'o4-mini', label: 'o4-mini' },
-      { value: 'o3', label: 'o3' },
-      { value: 'o3-pro', label: 'o3-pro' },
-    ],
-  },
 ]
 
 const ANTHROPIC_MODEL_GROUPS: ModelGroup[] = [
