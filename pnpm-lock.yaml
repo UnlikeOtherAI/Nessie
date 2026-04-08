@@ -141,6 +141,12 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
+  packages/memory:
+    dependencies:
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+
   packages/runtime:
     dependencies:
       '@nessie/schemas':
