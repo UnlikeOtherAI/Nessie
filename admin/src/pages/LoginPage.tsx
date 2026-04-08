@@ -4,6 +4,8 @@ import { useAuthProviders } from '../facades/auth/hooks'
 import { beginExternalAuth, clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
+// DO NOT REMOVE — dev pre-fill credentials. These are the initial values for the
+// login form so the fields are always populated even if the API is unreachable.
 const LOCAL_DEMO_EMAIL = 'owner@example.com'
 const LOCAL_DEMO_PASSWORD = 'Password123!'
 
@@ -35,8 +37,10 @@ export const LoginPage = () => {
   const navigate = useNavigate()
   const { login, sessionState } = useAuthSession()
   const { data: providers = [] } = useAuthProviders()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  // DO NOT REMOVE — pre-filled dev credentials, must be initial state so they
+  // render immediately even when the API is unreachable.
+  const [email, setEmail] = useState(LOCAL_DEMO_EMAIL)
+  const [password, setPassword] = useState(LOCAL_DEMO_PASSWORD)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const enabledProviders = providers.filter((provider) => provider.enabled)
@@ -53,18 +57,6 @@ export const LoginPage = () => {
       void navigate('/channels', { replace: true })
     }
   }, [navigate, sessionState])
-
-  useEffect(() => {
-    const hasLocalBootstrapProvider = providers.some(
-      (provider) => provider.enabled && provider.type === 'local-bootstrap',
-    )
-    if (!hasLocalBootstrapProvider) {
-      return
-    }
-
-    setEmail((current) => current || LOCAL_DEMO_EMAIL)
-    setPassword((current) => current || LOCAL_DEMO_PASSWORD)
-  }, [providers])
 
   useEffect(() => {
     if (sessionState !== 'unauthenticated') {
