@@ -47,6 +47,11 @@ enum MessageRole {
   system
 }
 
+enum AgentCategoryVisibility {
+  public
+  private
+}
+
 enum ThoughtOwnerType {
   user
   agent
@@ -106,19 +111,21 @@ model User {
   teamMembers         TeamMember[]
   channelMembers      ChannelMember[]
   messages            Message[]
+  agentCategories     AgentCategory[]
 
   @@map("users")
 }
 
 model Organization {
-  id        String               @id @default(uuid()) @db.Uuid
-  name      String
-  createdAt DateTime             @default(now()) @map("created_at")
-  updatedAt DateTime             @updatedAt @map("updated_at")
-  members   OrganizationMember[]
-  projects  Project[]
-  channels  Channel[]
-  thoughts  Thought[]
+  id              String               @id @default(uuid()) @db.Uuid
+  name            String
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  members         OrganizationMember[]
+  projects        Project[]
+  channels        Channel[]
+  agentCategories AgentCategory[]
+  thoughts        Thought[]
 
   @@map("organizations")
 }
@@ -248,23 +255,53 @@ model Message {
 }
 
 model Agent {
-  id            String         @id @default(uuid()) @db.Uuid
+  id            String               @id @default(uuid()) @db.Uuid
   name          String
-  role          String         @default("assistant")
-  status        AgentStatus    @default(idle)
-  systemPrompt  String?        @map("system_prompt")
-  toolPolicy    Json?          @map("tool_policy")
-  parentAgentId String?        @map("parent_agent_id") @db.Uuid
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  parentAgent   Agent?         @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
-  childAgents   Agent[]        @relation("AgentHierarchy")
+  role          String               @default("assistant")
+  status        AgentStatus          @default(idle)
+  systemPrompt  String?              @map("system_prompt")
+  toolPolicy    Json?                @map("tool_policy")
+  parentAgentId String?              @map("parent_agent_id") @db.Uuid
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+  parentAgent   Agent?               @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
+  childAgents   Agent[]              @relation("AgentHierarchy")
   bindings      AgentBinding[]
+  categoryLinks AgentCategoryAgent[]
   messages      Message[]
   runs          Run[]
   tasks         Task[]
 
   @@map("agents")
+}
+
+model AgentCategory {
+  id             String                  @id @default(uuid()) @db.Uuid
+  name           String
+  visibility     AgentCategoryVisibility @default(public)
+  organizationId String                  @map("organization_id") @db.Uuid
+  createdById    String                  @map("created_by_id") @db.Uuid
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User                    @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  agents         AgentCategoryAgent[]
+
+  @@index([organizationId, visibility])
+  @@map("agent_categories")
+}
+
+model AgentCategoryAgent {
+  id         String        @id @default(uuid()) @db.Uuid
+  categoryId String        @map("category_id") @db.Uuid
+  agentId    String        @map("agent_id") @db.Uuid
+  createdAt  DateTime      @default(now()) @map("created_at")
+  category   AgentCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  agent      Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, agentId])
+  @@index([agentId])
+  @@map("agent_category_agents")
 }
 
 model AgentBinding {

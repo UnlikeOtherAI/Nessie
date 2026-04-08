@@ -1,4 +1,6 @@
 import {
+  AgentCategoryIdSchema,
+  AgentCategoryVisibilitySchema,
   AgentIdSchema,
   AgentStatusSchema,
   AuthProviderResponseTypeSchema,
@@ -95,6 +97,32 @@ export const CreateAgentBodySchema = z.object({
 
 export const CreateAgentBindingBodySchema = z.object({
   channelId: ChannelIdSchema,
+})
+
+export const AgentCategoryRecordSchema = z.object({
+  id: AgentCategoryIdSchema,
+  name: NonEmptyStringSchema,
+  visibility: AgentCategoryVisibilitySchema,
+  organizationId: OrganizationIdSchema,
+  createdById: UserIdSchema,
+  agentIds: z.array(AgentIdSchema),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type AgentCategoryRecord = z.infer<typeof AgentCategoryRecordSchema>
+
+export const CreateAgentCategoryBodySchema = z.object({
+  name: NonEmptyStringSchema,
+  visibility: AgentCategoryVisibilitySchema.optional(),
+})
+
+export const UpdateAgentCategoryBodySchema = z.object({
+  name: NonEmptyStringSchema.optional(),
+  visibility: AgentCategoryVisibilitySchema.optional(),
+})
+
+export const AgentCategoryAgentBodySchema = z.object({
+  agentId: AgentIdSchema,
 })
 
 export const AddChannelMemberBodySchema = z.object({

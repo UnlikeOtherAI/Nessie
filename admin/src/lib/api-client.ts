@@ -69,6 +69,17 @@ export type ThreadMessageRecord = {
   userId?: string | null
 }
 
+export type AgentCategoryRecord = {
+  agentIds: string[]
+  createdAt: string
+  createdById: string
+  id: string
+  name: string
+  organizationId: string
+  updatedAt: string
+  visibility: 'private' | 'public'
+}
+
 export type ToolDescriptor = {
   description: string
   id: string

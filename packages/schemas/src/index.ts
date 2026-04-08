@@ -17,6 +17,8 @@ export const ChannelIdSchema = createUuidBrandSchema<'ChannelId'>()
 export type ChannelId = z.infer<typeof ChannelIdSchema>
 export const AgentIdSchema = createUuidBrandSchema<'AgentId'>()
 export type AgentId = z.infer<typeof AgentIdSchema>
+export const AgentCategoryIdSchema = createUuidBrandSchema<'AgentCategoryId'>()
+export type AgentCategoryId = z.infer<typeof AgentCategoryIdSchema>
 export const ThreadIdSchema = createUuidBrandSchema<'ThreadId'>()
 export type ThreadId = z.infer<typeof ThreadIdSchema>
 export const RunIdSchema = createUuidBrandSchema<'RunId'>()
@@ -33,6 +35,8 @@ export const parseProjectId = (value: string): ProjectId => ProjectIdSchema.pars
 export const parseTeamId = (value: string): TeamId => TeamIdSchema.parse(value)
 export const parseChannelId = (value: string): ChannelId => ChannelIdSchema.parse(value)
 export const parseAgentId = (value: string): AgentId => AgentIdSchema.parse(value)
+export const parseAgentCategoryId = (value: string): AgentCategoryId =>
+  AgentCategoryIdSchema.parse(value)
 export const parseThreadId = (value: string): ThreadId => ThreadIdSchema.parse(value)
 export const parseRunId = (value: string): RunId => RunIdSchema.parse(value)
 export const parseTaskId = (value: string): TaskId => TaskIdSchema.parse(value)
@@ -85,6 +89,9 @@ export const createApiResponseSchema = <TOutput>(
     data: dataSchema,
     meta: PaginationMetaSchema.optional(),
   })
+
+export const AgentCategoryVisibilitySchema = z.enum(['public', 'private'])
+export type AgentCategoryVisibility = z.infer<typeof AgentCategoryVisibilitySchema>
 
 export const AgentStatusSchema = z.enum([
   'idle',

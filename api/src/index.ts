@@ -35,20 +35,24 @@ import {
 } from './auth/session.js'
 import {
   AddChannelMemberBodySchema,
+  AgentCategoryAgentBodySchema,
+  AgentCategoryRecordSchema,
   AgentRecordSchema,
   AuthProviderAuthorizeQuerySchema,
   AuthProviderDescriptorSchema,
   BootstrapModeResponseSchema,
   BootstrapRequestSchema,
   ChannelRecordSchema,
-  CreateUserBodySchema,
   CreateAgentBindingBodySchema,
   CreateAgentBodySchema,
+  CreateAgentCategoryBodySchema,
   CreateChannelBodySchema,
   CreateThreadMessageBodySchema,
+  CreateUserBodySchema,
   LoginRequestSchema,
   ThreadMessageRecordSchema,
   ToolDescriptorSchema,
+  UpdateAgentCategoryBodySchema,
   UserRecordSchema,
 } from './contracts.js'
 import { DEFAULT_BOOTSTRAP_RECORD_IDS } from './db/bootstrap.js'
@@ -57,6 +61,14 @@ import { seedBootstrapRecords } from './db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from './lib/api.js'
 import { enqueueRunExecution } from './queue/pgqueue.js'
 import { createRealtimeHub } from './realtime/hub.js'
+import {
+  addAgentToCategory,
+  createAgentCategory,
+  deleteAgentCategory,
+  listAgentCategories,
+  removeAgentFromCategory,
+  updateAgentCategory,
+} from './services/agent-categories.js'
 import {
   bindAgentToChannel,
   buildSnapshotForScopes,
@@ -334,6 +346,9 @@ export const buildApp = async () => {
     min: config.database.poolMin,
   })
   const openaiApiKey = process.env.OPENAI_API_KEY ?? ''
+  if (!openaiApiKey) {
+    app.log.warn('OPENAI_API_KEY not set — memory capture and search will fail')
+  }
   const embeddingConfig = { apiKey: openaiApiKey }
   const extractionConfig = { apiKey: openaiApiKey }
   const thoughtService = createThoughtService({
@@ -780,6 +795,128 @@ export const buildApp = async () => {
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(cloned)))
   })
 
+  // ─── Agent Categories ─────────────────────────────────────────────────────
+
+  app.get('/api/agent-categories', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const categories = await listAgentCategories(
+      prisma,
+      actorContext.tenant.organizationId,
+    )
+    return createApiResponse(
+      AgentCategoryRecordSchema.array().parse(categories),
+    )
+  })
+
+  app.post('/api/agent-categories', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const body = parseInput(CreateAgentCategoryBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const category = await createAgentCategory(prisma, {
+      name: body.name,
+      visibility: body.visibility ?? 'public',
+      organizationId: actorContext.tenant.organizationId,
+      createdById: actorContext.actor.actorId,
+    })
+
+    return reply
+      .code(201)
+      .send(createApiResponse(AgentCategoryRecordSchema.parse(category)))
+  })
+
+  app.put('/api/agent-categories/:categoryId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const body = parseInput(
+      UpdateAgentCategoryBodySchema,
+      request.body,
+      reply,
+    )
+    if (!body) return reply
+
+    const { categoryId } = request.params as { categoryId: string }
+    const category = await updateAgentCategory(prisma, categoryId, body)
+    if (!category) {
+      sendApiError(reply, 404, 'CATEGORY_NOT_FOUND', 'Category not found')
+      return reply
+    }
+
+    return createApiResponse(AgentCategoryRecordSchema.parse(category))
+  })
+
+  app.delete('/api/agent-categories/:categoryId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { categoryId } = request.params as { categoryId: string }
+    const deleted = await deleteAgentCategory(prisma, categoryId)
+    if (!deleted) {
+      sendApiError(reply, 404, 'CATEGORY_NOT_FOUND', 'Category not found')
+      return reply
+    }
+
+    return reply.code(204).send()
+  })
+
+  app.post(
+    '/api/agent-categories/:categoryId/agents',
+    async (request, reply) => {
+      const actorContext = requireActorContext(request, reply)
+      if (!actorContext) return reply
+
+      const body = parseInput(AgentCategoryAgentBodySchema, request.body, reply)
+      if (!body) return reply
+
+      const { categoryId } = request.params as { categoryId: string }
+      const category = await addAgentToCategory(
+        prisma,
+        categoryId,
+        body.agentId,
+      )
+      if (!category) {
+        sendApiError(reply, 404, 'CATEGORY_NOT_FOUND', 'Category not found')
+        return reply
+      }
+
+      return createApiResponse(AgentCategoryRecordSchema.parse(category))
+    },
+  )
+
+  app.delete(
+    '/api/agent-categories/:categoryId/agents/:agentId',
+    async (request, reply) => {
+      const actorContext = requireActorContext(request, reply)
+      if (!actorContext) return reply
+
+      const { categoryId, agentId } = request.params as {
+        agentId: string
+        categoryId: string
+      }
+      const removed = await removeAgentFromCategory(
+        prisma,
+        categoryId,
+        agentId,
+      )
+      if (!removed) {
+        sendApiError(
+          reply,
+          404,
+          'LINK_NOT_FOUND',
+          'Agent is not in this category',
+        )
+        return reply
+      }
+
+      return reply.code(204).send()
+    },
+  )
+
   app.get('/api/tools', async () =>
     createApiResponse(ToolDescriptorSchema.array().parse(listSafeTools())),
   )
@@ -1206,16 +1343,20 @@ export const buildApp = async () => {
       return reply
     }
 
-    const results = await thoughtService.search({
-      query: body.query,
-      organizationId: actorContext.tenant.organizationId,
-      userId: actorContext.actor.actorId,
-      threshold: body.threshold,
-      limit: body.limit,
-      includeReasoning: body.includeReasoning,
-    })
-
-    return createApiResponse(results)
+    try {
+      const results = await thoughtService.search({
+        query: body.query,
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+        threshold: body.threshold,
+        limit: body.limit,
+        includeReasoning: body.includeReasoning,
+      })
+      return createApiResponse(results)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Search failed'
+      return sendApiError(reply, 502, msg)
+    }
   })
 
   app.put('/api/thoughts/:id/outcome', async (request, reply) => {
@@ -1230,6 +1371,12 @@ export const buildApp = async () => {
     }
 
     const { id } = request.params as { id: string }
+    const orgId = actorContext.tenant.organizationId
+
+    const hasAccess = await thoughtService.verifyAccess(id, orgId)
+    if (!hasAccess) {
+      return sendApiError(reply, 404, 'Thought not found')
+    }
 
     await thoughtService.recordOutcome({
       thoughtId: id,
@@ -1254,6 +1401,16 @@ export const buildApp = async () => {
     }
 
     const { id } = request.params as { id: string }
+    const orgId = actorContext.tenant.organizationId
+
+    // Verify both source and target belong to caller's org
+    const [sourceOk, targetOk] = await Promise.all([
+      thoughtService.verifyAccess(id, orgId),
+      thoughtService.verifyAccess(body.targetId, orgId),
+    ])
+    if (!sourceOk || !targetOk) {
+      return sendApiError(reply, 404, 'Thought not found')
+    }
 
     const linkId = await thoughtService.link({
       sourceId: id,
@@ -1263,6 +1420,10 @@ export const buildApp = async () => {
       actorType: actorContext.actor.actorType,
       actorId: actorContext.actor.actorId,
     })
+
+    if (!linkId) {
+      return createApiResponse({ linkId: null, alreadyExists: true })
+    }
 
     return reply.code(201).send(createApiResponse({ linkId }))
   })
