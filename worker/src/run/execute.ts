@@ -398,6 +398,9 @@ const buildModelPrompt = (
     `You are ${context.agent.name}.`,
     context.agent.systemPrompt?.trim() ?? '',
     'Respond directly to the request using the available tool results when they are relevant.',
+    'The required safe tools have already been executed.',
+    'Do not emit tool-call markup or request more tool execution.',
+    'Return plain text only.',
     'Keep the answer concise and concrete.',
   ].filter((part) => part.length > 0)
 
@@ -419,15 +422,15 @@ const buildModelPrompt = (
 
   const messages: ModelMessage[] = [{ content: systemParts.join('\n\n'), role: 'system' }]
 
-  if (conversation.length > 0) {
-    messages.push(...conversation)
-  }
-
   if (toolOutputs.length > 0 || childAgentName) {
     messages.push({
       content: promptParts.slice(1).join('\n\n'),
       role: 'system',
     })
+  }
+
+  if (conversation.length > 0) {
+    messages.push(...conversation)
   }
 
   if (conversation.length === 0 || conversation.at(-1)?.role !== 'user') {

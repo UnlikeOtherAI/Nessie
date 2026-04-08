@@ -61,9 +61,9 @@ const readTextDeltas = async function* (
 
         try {
           const chunk = JSON.parse(data) as {
-            choices?: { delta?: { content?: string } }[]
+            choices?: { delta?: { content?: string }; message?: { content?: string } }[]
           }
-          const text = chunk.choices?.[0]?.delta?.content
+          const text = chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content
           if (text) {
             yield text
           }
