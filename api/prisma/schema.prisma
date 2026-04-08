@@ -47,6 +47,51 @@ enum MessageRole {
   system
 }
 
+enum ThoughtOwnerType {
+  user
+  agent
+  service
+}
+
+enum ThoughtVisibility {
+  private
+  channel
+  team
+  project
+  organization
+}
+
+enum SensitivityTier {
+  normal
+  sensitive
+  restricted
+}
+
+enum ReasoningType {
+  decision
+  evaluation
+  constraint
+  pattern
+  correction
+  validation
+}
+
+enum OutcomeStatus {
+  pending
+  successful
+  partially
+  failed
+  superseded
+}
+
+enum ThoughtLinkRelation {
+  supersedes
+  derived_from
+  contradicts
+  supports
+  relates_to
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique
@@ -73,6 +118,7 @@ model Organization {
   members   OrganizationMember[]
   projects  Project[]
   channels  Channel[]
+  thoughts  Thought[]
 
   @@map("organizations")
 }
@@ -318,4 +364,107 @@ model QueueJob {
   errorMessage   String?   @map("error_message")
 
   @@map("queue_jobs")
+}
+
+model Thought {
+  id              String              @id @default(uuid()) @db.Uuid
+  content         String
+  contentHash     String              @map("content_hash")
+
+  // Ownership
+  ownerId         String              @map("owner_id")
+  ownerType       ThoughtOwnerType    @map("owner_type")
+
+  // Tenant scoping
+  organizationId  String              @map("organization_id") @db.Uuid
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId       String?             @map("project_id") @db.Uuid
+  teamId          String?             @map("team_id") @db.Uuid
+  channelId       String?             @map("channel_id") @db.Uuid
+  threadId        String?             @map("thread_id") @db.Uuid
+
+  // Classification
+  visibility      ThoughtVisibility   @default(private)
+  sensitivityTier SensitivityTier     @default(normal) @map("sensitivity_tier")
+  importance      Float               @default(0.5)
+
+  // LLM-extracted metadata
+  metadata        Json?
+
+  // Lifecycle
+  deletedAt       DateTime?           @map("deleted_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  reasonings      ThoughtReasoning[]
+  linksFrom       ThoughtLink[]       @relation("ThoughtLinksFrom")
+  linksTo         ThoughtLink[]       @relation("ThoughtLinksTo")
+  auditLogs       ThoughtAuditLog[]
+
+  @@index([organizationId, visibility, createdAt])
+  @@index([organizationId, ownerId, ownerType])
+  @@index([contentHash])
+  @@index([channelId, createdAt])
+  @@map("thoughts")
+}
+
+model ThoughtReasoning {
+  id              String          @id @default(uuid()) @db.Uuid
+  thoughtId       String          @map("thought_id") @db.Uuid
+  thought         Thought         @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
+
+  reasoningType   ReasoningType   @map("reasoning_type")
+  alternatives    Json?
+  criteria        Json?
+  constraints     Json?
+  tradeoffs       String?
+  confidence      Float?
+  reasoning       String
+
+  actorType       String          @map("actor_type")
+  actorId         String          @map("actor_id")
+
+  outcome         OutcomeStatus   @default(pending)
+  outcomeNotes    String?         @map("outcome_notes")
+  outcomeAt       DateTime?       @map("outcome_at")
+
+  organizationId  String          @map("organization_id") @db.Uuid
+
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  @@index([thoughtId, createdAt])
+  @@index([organizationId, outcome])
+  @@index([organizationId, actorId])
+  @@map("thought_reasonings")
+}
+
+model ThoughtLink {
+  id         String              @id @default(uuid()) @db.Uuid
+  sourceId   String              @map("source_id") @db.Uuid
+  targetId   String              @map("target_id") @db.Uuid
+  source     Thought             @relation("ThoughtLinksFrom", fields: [sourceId], references: [id], onDelete: Cascade)
+  target     Thought             @relation("ThoughtLinksTo", fields: [targetId], references: [id], onDelete: Cascade)
+  relation   ThoughtLinkRelation
+  metadata   Json?
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  @@unique([sourceId, targetId, relation])
+  @@index([targetId])
+  @@map("thought_links")
+}
+
+model ThoughtAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  thoughtId  String   @map("thought_id") @db.Uuid
+  thought    Thought  @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
+  action     String
+  actorType  String   @map("actor_type")
+  actorId    String   @map("actor_id")
+  diff       Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([thoughtId, createdAt])
+  @@map("thought_audit_logs")
 }
