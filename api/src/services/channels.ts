@@ -62,6 +62,28 @@ export const listChannelsForUser = async (
   return Promise.all(channels.map((channel) => mapChannelRecord(prisma, channel)))
 }
 
+export const addMemberToChannel = async (
+  prisma: PrismaClient,
+  channelId: string,
+  userId: string,
+): Promise<void> => {
+  await prisma.channelMember.upsert({
+    where: { channelId_userId: { channelId, userId } },
+    create: { channelId, userId },
+    update: {},
+  })
+}
+
+export const removeMemberFromChannel = async (
+  prisma: PrismaClient,
+  channelId: string,
+  userId: string,
+): Promise<void> => {
+  await prisma.channelMember.deleteMany({
+    where: { channelId, userId },
+  })
+}
+
 export const createChannelForUser = async (
   prisma: PrismaClient,
   input: {

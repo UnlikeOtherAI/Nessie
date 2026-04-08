@@ -377,4 +377,32 @@ export const useAgentRealtime = (input: {
   }
 }
 
+export const useUnbindAgent = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { agentId: string; channelId: string }) =>
+      apiClient.delete(
+        `/api/agents/${input.agentId}/bindings/${input.channelId}`,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
+export const useCloneAgent = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (agentId: string) =>
+      apiClient.post<AgentRecord>(`/api/agents/${agentId}/clone`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
 export const useAgentActivityRealtime = useAgentRealtime

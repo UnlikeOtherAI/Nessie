@@ -23,3 +23,33 @@ export const useCreateChannel = () => {
     },
   })
 }
+
+export const useAddChannelMember = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { channelId: string; userId: string }) =>
+      apiClient.post(`/api/channels/${input.channelId}/members`, {
+        userId: input.userId,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+  })
+}
+
+export const useRemoveChannelMember = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { channelId: string; userId: string }) =>
+      apiClient.delete(
+        `/api/channels/${input.channelId}/members/${input.userId}`,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+  })
+}

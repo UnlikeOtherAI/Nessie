@@ -29,6 +29,7 @@ import {
   type SessionTokenClaims,
 } from './auth/session.js'
 import {
+  AddChannelMemberBodySchema,
   AgentRecordSchema,
   AuthProviderAuthorizeQuerySchema,
   AuthProviderDescriptorSchema,
@@ -54,6 +55,7 @@ import { createRealtimeHub } from './realtime/hub.js'
 import {
   bindAgentToChannel,
   buildSnapshotForScopes,
+  cloneAgentRecord,
   createAgentRecord,
   listAgentsForUser,
   loadAgentActivity,
@@ -61,6 +63,7 @@ import {
   loadAgentMessages,
   loadAgentStatus,
   loadRunToolCalls,
+  unbindAgentFromChannel,
 } from './services/agents.js'
 import {
   LOCAL_AUTH_PROVIDER_ID,
@@ -69,7 +72,12 @@ import {
   listAuthProviders,
   resolveConfiguredAuthProvider,
 } from './services/auth.js'
-import { createChannelForUser, listChannelsForUser } from './services/channels.js'
+import {
+  addMemberToChannel,
+  createChannelForUser,
+  listChannelsForUser,
+  removeMemberFromChannel,
+} from './services/channels.js'
 import {
   buildExternalAuthAuthorizeUrl,
   exchangeExternalAuthCode,
@@ -616,6 +624,43 @@ export const buildApp = async () => {
     return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(channel)))
   })
 
+  app.post('/api/channels/:channelId/members', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, channelId))) {
+      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+
+    const body = parseInput(AddChannelMemberBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    await addMemberToChannel(prisma, channelId, body.userId)
+    return reply.code(204).send()
+  })
+
+  app.delete('/api/channels/:channelId/members/:userId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId, userId } = request.params as { channelId: string; userId: string }
+    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, channelId))) {
+      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+
+    await removeMemberFromChannel(prisma, channelId, userId)
+    return reply.code(204).send()
+  })
+
   app.get('/api/agents', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -675,6 +720,43 @@ export const buildApp = async () => {
     }
 
     return createApiResponse(AgentRecordSchema.parse(agent))
+  })
+
+  app.delete('/api/agents/:agentId/bindings/:channelId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { agentId, channelId } = request.params as { agentId: string; channelId: string }
+    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, channelId))) {
+      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+
+    await unbindAgentFromChannel(prisma, agentId, channelId)
+    return reply.code(204).send()
+  })
+
+  app.post('/api/agents/:agentId/clone', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    const cloned = await cloneAgentRecord(prisma, agentId)
+    if (!cloned) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(cloned)))
   })
 
   app.get('/api/tools', async () =>

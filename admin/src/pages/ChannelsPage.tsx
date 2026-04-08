@@ -9,9 +9,11 @@ import { useChannels } from '../facades/channels/hooks'
 import { useSendMessage } from '../facades/messages/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { useTools } from '../facades/tools/hooks'
+import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, ThreadMessageRecord } from '../lib/api-client'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
 
 type ChannelTab = 'agents' | 'messages' | 'runs'
 
@@ -59,11 +61,34 @@ const formatClock = (value: string): string =>
     minute: '2-digit',
   })
 
-const userGradients = [
+const memberGradients = [
   'linear-gradient(135deg,#7c3aed,#4f46e5)',
   'linear-gradient(135deg,#0891b2,#0369a1)',
   'linear-gradient(135deg,#047857,#065f46)',
+  'linear-gradient(135deg,#b45309,#92400e)',
+  'linear-gradient(135deg,#be185d,#9d174d)',
+  'linear-gradient(135deg,#1d4ed8,#1e40af)',
+  'linear-gradient(135deg,#dc2626,#b91c1c)',
+  'linear-gradient(135deg,#0d9488,#0f766e)',
 ] as const
+
+const agentGradient = 'linear-gradient(135deg,#7c3aed,#6d28d9)'
+
+const pickGradient = (id: string): string => {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0
+  }
+  return memberGradients[Math.abs(hash) % memberGradients.length]
+}
+
+const getInitials = (value: string): string =>
+  value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('') || '?'
 
 const buildFeedItems = (messages: ThreadMessageRecord[]): FeedItem[] => {
   const items: FeedItem[] = []
@@ -121,6 +146,8 @@ export const ChannelsPage = () => {
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
   const { data: tools = [] } = useTools()
+  const isOwner = me?.user.roleIds?.includes('owner') ?? false
+  const { data: allUsers = [] } = useUsers(isOwner)
 
   const activeChannel =
     channels.find((channel) => channel.id === channelId) ?? channels[0] ?? null
@@ -141,9 +168,18 @@ export const ChannelsPage = () => {
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
 
+  const channelUsers = useMemo(
+    () =>
+      activeChannel
+        ? allUsers.filter((user) => user.channelIds.includes(activeChannel.id))
+        : [],
+    [activeChannel, allUsers],
+  )
+
   const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [message, setMessage] = useState('')
   const [selectedAgentId, setSelectedAgentId] = useState('')
+  const [showMembersPopup, setShowMembersPopup] = useState(false)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -210,46 +246,39 @@ export const ChannelsPage = () => {
           <h1 className="truncate text-[17px] font-bold text-white">
             {activeChannel?.label ?? 'channels'}
           </h1>
-
-          {boundAgents.length > 0 ? (
-            <div className="ml-2 flex flex-shrink-0 items-center gap-1">
-              <span className="text-xs text-[color:var(--tx3)]">Agents:</span>
-              {boundAgents.slice(0, 3).map((agent) => (
-                <button
-                  key={agent.id}
-                  className={[
-                    'inline-flex items-center gap-1 rounded',
-                    'border border-[rgba(124,58,237,0.3)]',
-                    'bg-[rgba(124,58,237,0.15)] px-2 py-0.5',
-                    'text-xs font-semibold text-[#a78bfa]',
-                  ].join(' ')}
-                  onClick={() => onSelectAgent(agent.id)}
-                  type="button"
-                >
-                  <span>{getAgentGlyph(agent)}</span>
-                  <span>{agent.name}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-2">
-          <div className="flex -space-x-1.5">
-            {userGradients.map((gradient, index) => (
-              <div
-                key={gradient}
-                className={[
-                  'h-6 w-6 rounded-full border-2 border-[color:var(--main)]',
-                  index >= 2 ? 'hidden md:block' : '',
-                ].join(' ')}
-                style={{ background: gradient }}
-              />
-            ))}
-          </div>
-          <span className="text-sm text-[color:var(--tx2)]">
-            {Math.max(1, boundAgents.length + 1)}
-          </span>
+          <button
+            className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/5"
+            onClick={() => setShowMembersPopup(true)}
+            title="View channel members"
+            type="button"
+          >
+            <div className="flex -space-x-1.5">
+              {channelUsers.slice(0, 3).map((user) => (
+                <div
+                  key={user.id}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[color:var(--main)] text-[8px] font-bold text-white"
+                  style={{ background: pickGradient(user.id) }}
+                >
+                  {getInitials(user.displayName)}
+                </div>
+              ))}
+              {boundAgents.slice(0, Math.max(0, 4 - channelUsers.length)).map((agent) => (
+                <div
+                  key={agent.id}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[color:var(--main)] text-[10px]"
+                  style={{ background: agentGradient }}
+                >
+                  {getAgentGlyph(agent)}
+                </div>
+              ))}
+            </div>
+            <span className="text-sm text-[color:var(--tx2)]">
+              {channelUsers.length + boundAgents.length}
+            </span>
+          </button>
           <div className="mx-1 h-5 w-px bg-[color:var(--border-strong)]" />
           <button className={toolbarButtonClass} type="button">
             <svg
@@ -407,7 +436,7 @@ export const ChannelsPage = () => {
                   ) : (
                     <div
                       className="h-9 w-9 flex-shrink-0 rounded-md"
-                      style={{ background: userGradients[0] }}
+                      style={{ background: memberGradients[0] }}
                     />
                   )}
                   <div className="min-w-0 flex-1">
@@ -743,6 +772,20 @@ export const ChannelsPage = () => {
           </div>
         </form>
       </div>
+
+      {showMembersPopup && activeChannel ? (
+        <ChannelMembersPopup
+          allAgents={agents}
+          allUsers={allUsers}
+          boundAgents={boundAgents}
+          channelId={activeChannel.id}
+          channelLabel={activeChannel.label}
+          channelUsers={channelUsers}
+          currentUserId={me.user.id}
+          onClose={() => setShowMembersPopup(false)}
+          onSelectAgent={onSelectAgent}
+        />
+      ) : null}
     </section>
   )
 }

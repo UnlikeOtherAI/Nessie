@@ -96,6 +96,10 @@ export const CreateAgentBindingBodySchema = z.object({
   channelId: ChannelIdSchema,
 })
 
+export const AddChannelMemberBodySchema = z.object({
+  userId: UserIdSchema,
+})
+
 export const ThreadMessageRecordSchema = z.object({
   id: z.string().uuid(),
   threadId: ThreadIdSchema,

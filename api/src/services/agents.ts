@@ -490,6 +490,63 @@ export const createAgentRecord = async (
   return mapAgentRecord(agent)
 }
 
+export const unbindAgentFromChannel = async (
+  prisma: PrismaClient,
+  agentId: string,
+  channelId: string,
+): Promise<void> => {
+  await prisma.agentBinding.deleteMany({
+    where: { agentId, channelId },
+  })
+}
+
+export const cloneAgentRecord = async (
+  prisma: PrismaClient,
+  sourceAgentId: string,
+): Promise<AgentRecord | null> => {
+  const source = await prisma.agent.findUnique({
+    where: { id: sourceAgentId },
+  })
+  if (!source) {
+    return null
+  }
+
+  const agent = await prisma.agent.create({
+    data: {
+      name: `${source.name} (copy)`,
+      role: source.role,
+      systemPrompt: source.systemPrompt,
+    },
+    include: {
+      bindings: {
+        select: { channelId: true },
+      },
+      messages: {
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+        take: 1,
+      },
+      runs: {
+        include: {
+          toolCalls: {
+            orderBy: { startedAt: 'desc' },
+            select: {
+              endedAt: true,
+              startedAt: true,
+              toolName: true,
+            },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+  })
+
+  return mapAgentRecord(agent)
+}
+
 export const bindAgentToChannel = async (
   prisma: PrismaClient,
   agentId: string,
