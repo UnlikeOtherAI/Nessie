@@ -83,7 +83,7 @@ Rules:
 
 ## 6) Action binding
 
-Step-up verification attaches to a control action, not to a single product feature.
+Step-up verification attaches to a control action, not to a single product feature. `VerificationPolicy.actionIds` values use the audit/control-plane namespace (e.g. `secret.rotate`), not the MCP tool namespace (e.g. `secrets.rotate`).
 
 Examples:
 - `deploy.project` may require `totp` plus `email_otp`,

@@ -127,7 +127,7 @@ type SecretBinding = {
     | 'user'
     | 'service';
   principalId: string;
-  allowedActions: Array<'view' | 'resolve' | 'edit' | 'rotate' | 'revoke' | 'admin'>;
+  allowedActions: Array<'view' | 'resolve' | 'edit' | 'rotate' | 'revoke' | 'bind' | 'admin'>;
   grantedBy: string;
   grantedAt: string;
   expiresAt?: string;
@@ -188,7 +188,7 @@ Rules:
 
 - `POST /api/secrets`
   - accepts secret payload and scope binding
-  - requires `actorContext` in request body (see Section 4.4)
+  - requires `SecretAccessContext` in request body (see Section 4.4)
   - returns `{ secretRef, id, createdAt }` only
 - `GET /api/secrets`
   - metadata-only list, filter by scope/name/tags/owner
@@ -221,7 +221,7 @@ Rules:
 - `POST /api/secrets/{secretRef}/grants`
   - body includes `SecretAccessContext`, principal type/id, actions, effect (`allow` | `deny`), optional expiry
 - `DELETE /api/secrets/{secretRef}/grants/{grantId}`
-  - requires caller authorization at binding-manager scope
+  - requires `resourceType=secret, action=bind` policy check for the caller
 - `GET /api/secrets/{secretRef}/grants`
   - returns explicit bindings with resolved precedence order
 

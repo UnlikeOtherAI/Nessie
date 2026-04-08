@@ -393,6 +393,7 @@ Policy checks are mandatory at these access boundaries in Phase 2. Each integrat
 
 ### 6.8 Phase 3: Verification
 
+- **Before listing verification policies**: check `resourceType=verification_policy, action=view`.
 - **Before enrolling a verification factor**: check `resourceType=verification_factor, action=enroll`.
 - **Before revoking a verification factor**: check `resourceType=verification_factor, action=revoke`.
 - **Before starting a challenge**: check `resourceType=verification_factor, action=challenge`.
@@ -404,6 +405,8 @@ Note: `challenge.verify`, `challenge.resend`, `challenge.cancel`, `factor.verify
 
 ### 6.9 Phase 3: Tool registry and grants
 
+- **Before listing tool bundles**: check `resourceType=tool_bundle, action=view`.
+- **Before listing prompt layers**: check `resourceType=prompt, action=view`.
 - **Before creating a tool**: check `resourceType=tool, action=create`.
 - **Before editing a tool**: check `resourceType=tool, action=edit`.
 - **Before deleting a tool**: check `resourceType=tool, action=admin`.
@@ -416,6 +419,7 @@ Note: `challenge.verify`, `challenge.resend`, `challenge.cancel`, `factor.verify
 
 ### 6.10 Phase 3: Translation
 
+- **Before reading language preferences**: check `resourceType=translation, action=view`.
 - **Before changing organization default language**: check `resourceType=translation, action=admin`.
 - **Before changing user preferred language**: check `resourceType=translation, action=edit` (users may edit their own; admin can edit others).
 - **Before setting a thread language override**: check `resourceType=translation, action=edit` scoped to the thread's channel.
