@@ -6,6 +6,11 @@ Builds on:
 - [memory-reasoning-and-experience.md](memory-reasoning-and-experience.md) — reasoning model, outcome tracking
 - [memory-security-and-scoping.md](memory-security-and-scoping.md) — multi-tenant visibility, org hard boundaries
 
+Research backing (deep research papers informing this design):
+- [research/memory-retrieval-and-reranking-in-multi-agent-systems.md](research/memory-retrieval-and-reranking-in-multi-agent-systems.md) — retrieval architectures, reranking, cold start, negative mining, implicit feedback
+- [research/reasoning-provenance-and-decision-traceability.md](research/reasoning-provenance-and-decision-traceability.md) — 30 years of design rationale research, argumentation models, artifact linking, knowledge decay
+- [research/privacy-preserving-memory-scoping-in-multi-tenant-ai.md](research/privacy-preserving-memory-scoping-in-multi-tenant-ai.md) — information flow control, DLM, membership inference, embedding security, need-to-know
+
 ---
 
 ## Memory Taxonomy
@@ -469,3 +474,66 @@ Now "why does the phone field exist?" returns Thought D (the superseding reason)
 4. **Audience compatibility > container-based scoping.** A memory from a private channel is private not because of the channel, but because of *who was in the room*. The scoping model checks membership compatibility, not just container matching.
 
 5. **Capture everything, filter at retrieval.** Over-extraction is cheap. Under-extraction loses knowledge permanently. The recall ledger and reranker handle the "too many memories" problem at retrieval time, not at capture time.
+
+---
+
+## Research-Informed Design Updates
+
+Key findings from deep research that directly affect implementation decisions.
+
+### Retrieval Architecture (from retrieval research)
+
+**Hybrid candidate generation is mandatory, not optional.** Pure cosine similarity produces false positives on entity names, project codes, and time-specific facts. BM25/lexical search catches what embeddings miss. Fuse with Reciprocal Rank Fusion (RRF) — parameter-light, proven across retrieval benchmarks.
+
+Implementation: add a `tsvector` lexical search channel alongside pgvector cosine search. Run both in parallel, fuse results with RRF before reranking. PostgreSQL already supports both — no new infrastructure.
+
+**Cross-encoder reranking is the right second stage at our scale.** ColBERT is overkill for tens of thousands of memories. LLM listwise reranking is too expensive/non-deterministic for a core cognition loop. A cross-encoder scoring (query + context, candidate) on the top 50-200 candidates is the sweet spot.
+
+Implementation: Phase 5 reranker should be a cross-encoder (BGE reranker as initial teacher, distil to custom model as training data accumulates).
+
+**Context features are not optional.** Generative Agents, MemoryBank, and H-MEM all show that recency, importance, and agent identity must be explicit scoring factors alongside semantic similarity. Make the scoring function: `score = f(query_text, conversation_state, agent_profile, memory_text, memory_metadata)`.
+
+Implementation: add `last_accessed_at` and `access_count` columns to thoughts. Include recency decay and importance in the retrieval scoring function from Phase 1.
+
+### Cold Start Strategy (from retrieval research)
+
+**Bootstrap with synthetic queries.** Generate memory-seeking questions from each stored memory using doc2query/InPars approach. This creates initial training data without user feedback.
+
+**Use off-the-shelf rerankers as teachers.** Before we have enough signal data, use BGE reranker or Cohere rerank API on top-k results. Collect teacher scores as pseudo-labels for later student model training.
+
+**Hybrid retrieval is the cold start solution.** Combining lexical + semantic before any learned reranking already reduces the worst false positives.
+
+### Negative Mining (from retrieval research)
+
+**"Unused" is not "irrelevant".** The recall ledger must distinguish:
+- `injected + referenced` = strong positive
+- `injected + not referenced` = weak negative (may be relevant but unused due to prompt budget)
+- `retrieved + not injected` = candidate negative (system filtered it)
+- `not retrieved` = unlabelled (not negative)
+
+**Position bias exists.** Top-ranked candidates are more likely to be used regardless of quality. Consider controlled randomisation of candidate ordering during data collection, or apply IPS weighting when training the reranker.
+
+### Provenance Model (from reasoning research)
+
+**Dual graph structure is research-validated.** 30 years of design rationale work converges on: you need both a *rationale structure graph* (issues, options, criteria, decisions) AND a *provenance graph* (derivation chains, source attribution, temporal ordering). Our ThoughtLink + ThoughtReasoning + thought_sources model covers both.
+
+**Incremental formalisation, not push-button extraction.** Automated extraction should propose candidate nodes and relations. Treat LLM extraction as a drafting assistant, not the system of record. Design for human correction and progressive structuring.
+
+**Artifact links must survive refactoring.** Store multiple anchors per artifact (file path + function name + commit range + test name). If one anchor breaks on rename, others can re-resolve. The `thought_artifacts` table should support multiple anchors per link.
+
+Implementation: add `artifact_anchors JSONB` to `thought_artifacts` for storing multiple resolution paths.
+
+### Security Model (from privacy research)
+
+**Critical: our audience compatibility check has the directionality wrong.** The research confirms our approach is DLM-style "restriction" checking, but flags that the correct check is `Audience(current_channel) <= Audience(source_channel)` — everyone who can see the output was already in the source audience. NOT the reverse. Verify our `match_thoughts_scoped()` implements this correctly.
+
+**Agent state isolation is mandatory.** If an agent reads confidential memories in one channel and later responds in another, it can leak via retained state even without re-retrieving. Agent instances must be isolated per context — no shared hidden state across channels.
+
+**Embeddings are not safe representations.** Research shows 92% of 32-token inputs can be reconstructed from embeddings. Vector store compromise = data compromise. For production multi-tenant deployment, consider:
+- Database-level encryption at rest
+- Network isolation between tenant vector partitions
+- Rate limiting on search endpoints to mitigate membership inference
+
+**Automated sensitivity classification is defence-in-depth, not primary guardrail.** False negative rates of 1-14% depending on model. Use it to *tighten* labels (conservative direction), never to *loosen* them. Channel-level classification (marking a channel as confidential) is more reliable than per-message classification.
+
+**Declassification must be explicit.** "Summarise management discussion into project update" is a declassification event. It must require explicit authority and be logged in the audit trail. The agent should never implicitly declassify by paraphrasing across channels.
