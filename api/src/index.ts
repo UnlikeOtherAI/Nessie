@@ -9,6 +9,7 @@ import {
   CaptureThoughtBodySchema,
   LinkThoughtsBodySchema,
   MeResponseSchema,
+  RecordThoughtRecallSignalBodySchema,
   RecordOutcomeBodySchema,
   SearchThoughtsBodySchema,
   WsClientMessageSchema,
@@ -1353,6 +1354,10 @@ export const buildApp = async () => {
         threshold: body.threshold,
         limit: body.limit,
         includeReasoning: body.includeReasoning,
+        mode: body.mode,
+        sessionId: actorContext.actionContext.sessionId,
+        channelId:
+          actorContext.actionContext.channelId ?? actorContext.tenant.channelId,
       })
       return createApiResponse(results)
     } catch (err) {
@@ -1387,6 +1392,31 @@ export const buildApp = async () => {
       actorType: actorContext.actor.actorType,
       actorId: actorContext.actor.actorId,
     })
+
+    return createApiResponse({ ok: true })
+  })
+
+  app.put('/api/thoughts/recalls/:id/signal', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(RecordThoughtRecallSignalBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { id } = request.params as { id: string }
+    const updated = await thoughtService.recordRecallSignal({
+      recallId: id,
+      organizationId: actorContext.tenant.organizationId,
+      userSignal: body.userSignal,
+    })
+
+    if (!updated) {
+      return sendApiError(reply, 404, 'THOUGHT_RECALL_NOT_FOUND', 'Thought recall not found')
+    }
 
     return createApiResponse({ ok: true })
   })

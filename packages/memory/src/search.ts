@@ -1,5 +1,9 @@
+import type { ThoughtSearchMode } from '@nessie/schemas'
 import type { Pool } from 'pg'
+import type { RecallLogEntry } from './recalls.js'
 import { getEmbedding, type EmbeddingConfig } from './embed.js'
+
+type Queryable = Pick<Pool, 'query'>
 
 export type SearchThoughtsInput = {
   query: string
@@ -8,6 +12,9 @@ export type SearchThoughtsInput = {
   threshold?: number
   limit?: number
   includeReasoning?: boolean
+  mode?: ThoughtSearchMode
+  sessionId?: string
+  channelId?: string
 }
 
 type ThoughtRow = {
@@ -41,6 +48,9 @@ export type SearchResult = {
   metadata: unknown
   similarity: number
   createdAt: string
+  rankPosition: number
+  retrievalMode: ThoughtSearchMode
+  recallId?: string
   reasoning?: {
     reasoningType: string
     alternatives: unknown
@@ -52,9 +62,19 @@ export type SearchResult = {
   }[]
 }
 
+export type SearchThoughtsOutput = {
+  results: SearchResult[]
+  recalls: RecallLogEntry[]
+}
+
 export type SearchConfig = {
-  pool: Pool
+  pool: Queryable
   embedding: EmbeddingConfig
+}
+
+type SearchQuerySpec = {
+  sql: string
+  params: unknown[]
 }
 
 export class SearchEmbeddingError extends Error {
@@ -64,50 +84,95 @@ export class SearchEmbeddingError extends Error {
   }
 }
 
-export const searchThoughts = async (
+const buildSearchQuery = (
+  mode: ThoughtSearchMode,
   input: SearchThoughtsInput,
-  config: SearchConfig,
-): Promise<SearchResult[]> => {
-  let queryEmbedding: number[]
-  try {
-    queryEmbedding = await getEmbedding(input.query, config.embedding)
-  } catch (err) {
-    throw new SearchEmbeddingError(
-      `Failed to embed search query: ${err instanceof Error ? err.message : 'unknown error'}`,
-    )
-  }
-  const embeddingStr = `[${queryEmbedding.join(',')}]`
-
+  queryEmbedding: number[] | null,
+): SearchQuerySpec => {
   const threshold = input.threshold ?? 0.3
   const limit = input.limit ?? 10
+  const embeddingStr = queryEmbedding ? `[${queryEmbedding.join(',')}]` : null
 
-  const results = await config.pool.query(
-    `SELECT * FROM match_thoughts_scoped($1::vector, $2, $3, $4, $5)`,
-    [embeddingStr, input.organizationId, input.userId, threshold, limit],
-  )
-
-  const thoughts = results.rows as ThoughtRow[]
-
-  if (!input.includeReasoning) {
-    return thoughts.map((t) => ({
-      id: t.id,
-      content: t.content,
-      ownerType: t.owner_type,
-      visibility: t.visibility,
-      importance: t.importance,
-      metadata: t.metadata,
-      similarity: t.similarity,
-      createdAt: String(t.created_at),
-    }))
+  if (mode === 'semantic') {
+    return {
+      sql: 'SELECT * FROM match_thoughts_scoped($1::vector, $2, $3, $4, $5)',
+      params: [embeddingStr, input.organizationId, input.userId, threshold, limit],
+    }
   }
 
-  // Batch-load reasoning for all found thoughts
-  const thoughtIds = thoughts.map((t) => t.id)
+  if (mode === 'lexical') {
+    return {
+      sql: 'SELECT * FROM match_thoughts_lexical($1, $2, $3, $4)',
+      params: [input.query, input.organizationId, input.userId, limit],
+    }
+  }
+
+  return {
+    sql: 'SELECT * FROM match_thoughts_hybrid($1::vector, $2, $3, $4, $5, $6)',
+    params: [embeddingStr, input.query, input.organizationId, input.userId, threshold, limit],
+  }
+}
+
+const bumpThoughtAccess = async (
+  thoughtIds: string[],
+  db: Queryable,
+): Promise<void> => {
   if (thoughtIds.length === 0) {
-    return []
+    return
   }
 
-  const reasoningResults = await config.pool.query(
+  await db.query(
+    `UPDATE thoughts
+     SET last_accessed_at = now(),
+         access_count = access_count + 1,
+         updated_at = now()
+     WHERE id = ANY($1::uuid[])`,
+    [thoughtIds],
+  )
+}
+
+const mapThoughtRows = (
+  rows: ThoughtRow[],
+  mode: ThoughtSearchMode,
+): SearchResult[] =>
+  rows.map((thought, index) => ({
+    id: thought.id,
+    content: thought.content,
+    ownerType: thought.owner_type,
+    visibility: thought.visibility,
+    importance: thought.importance,
+    metadata: thought.metadata,
+    similarity: thought.similarity,
+    createdAt: String(thought.created_at),
+    rankPosition: index + 1,
+    retrievalMode: mode,
+  }))
+
+const buildRecallLogEntries = (
+  results: SearchResult[],
+  input: SearchThoughtsInput,
+  queryEmbedding: number[] | null,
+): RecallLogEntry[] =>
+  results.map((result) => ({
+    thoughtId: result.id,
+    sessionId: input.sessionId,
+    channelId: input.channelId,
+    queryText: input.query,
+    queryEmbedding,
+    similarity: result.similarity,
+    rankPosition: result.rankPosition,
+    retrievalMode: result.retrievalMode,
+  }))
+
+const loadReasoningByThought = async (
+  thoughtIds: string[],
+  db: Queryable,
+): Promise<Map<string, NonNullable<SearchResult['reasoning']>>> => {
+  if (thoughtIds.length === 0) {
+    return new Map()
+  }
+
+  const reasoningResults = await db.query(
     `SELECT thought_id, reasoning_type, alternatives, criteria, confidence,
             reasoning, outcome, outcome_notes
      FROM thought_reasonings
@@ -117,29 +182,65 @@ export const searchThoughts = async (
   )
 
   const reasoningByThought = new Map<string, NonNullable<SearchResult['reasoning']>>()
-  for (const r of reasoningResults.rows as ReasoningRow[]) {
-    const existing = reasoningByThought.get(r.thought_id) ?? []
-    existing.push({
-      reasoningType: r.reasoning_type,
-      alternatives: r.alternatives,
-      criteria: r.criteria,
-      confidence: r.confidence,
-      reasoning: r.reasoning,
-      outcome: r.outcome,
-      outcomeNotes: r.outcome_notes,
+  for (const row of reasoningResults.rows as ReasoningRow[]) {
+    const reasoning = reasoningByThought.get(row.thought_id) ?? []
+    reasoning.push({
+      reasoningType: row.reasoning_type,
+      alternatives: row.alternatives,
+      criteria: row.criteria,
+      confidence: row.confidence,
+      reasoning: row.reasoning,
+      outcome: row.outcome,
+      outcomeNotes: row.outcome_notes,
     })
-    reasoningByThought.set(r.thought_id, existing)
+    reasoningByThought.set(row.thought_id, reasoning)
   }
 
-  return thoughts.map((t) => ({
-    id: t.id,
-    content: t.content,
-    ownerType: t.owner_type,
-    visibility: t.visibility,
-    importance: t.importance,
-    metadata: t.metadata,
-    similarity: t.similarity,
-    createdAt: String(t.created_at),
-    reasoning: reasoningByThought.get(t.id),
-  }))
+  return reasoningByThought
+}
+
+export const searchThoughts = async (
+  input: SearchThoughtsInput,
+  config: SearchConfig,
+): Promise<SearchThoughtsOutput> => {
+  const mode = input.mode ?? 'hybrid'
+
+  let queryEmbedding: number[] | null = null
+  if (mode !== 'lexical') {
+    try {
+      queryEmbedding = await getEmbedding(input.query, config.embedding)
+    } catch (err) {
+      throw new SearchEmbeddingError(
+        `Failed to embed search query: ${err instanceof Error ? err.message : 'unknown error'}`,
+      )
+    }
+  }
+
+  const searchQuery = buildSearchQuery(mode, input, queryEmbedding)
+  const results = await config.pool.query(searchQuery.sql, searchQuery.params)
+  const thoughts = results.rows as ThoughtRow[]
+  const mappedResults = mapThoughtRows(thoughts, mode)
+  const recalls = buildRecallLogEntries(mappedResults, input, queryEmbedding)
+
+  await bumpThoughtAccess(
+    mappedResults.map((result) => result.id),
+    config.pool,
+  )
+
+  if (!input.includeReasoning || mappedResults.length === 0) {
+    return { results: mappedResults, recalls }
+  }
+
+  const reasoningByThought = await loadReasoningByThought(
+    mappedResults.map((result) => result.id),
+    config.pool,
+  )
+
+  return {
+    results: mappedResults.map((result) => ({
+      ...result,
+      reasoning: reasoningByThought.get(result.id),
+    })),
+    recalls,
+  }
 }

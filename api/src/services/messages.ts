@@ -78,6 +78,18 @@ export type CreateThreadMessageResult =
       kind: 'thread_not_found'
     }
 
+/** Extract @Name mentions from message content. */
+const extractMentions = (content: string): string[] => {
+  const results: string[] = []
+  const pattern = /@([\w][\w\s]*[\w]|[\w]+)/g
+  let m: RegExpExecArray | null = null
+  do {
+    m = pattern.exec(content)
+    if (m?.[1]) results.push(m[1])
+  } while (m)
+  return results
+}
+
 export const createThreadMessage = async (
   prisma: PrismaClient,
   input: {
@@ -93,6 +105,7 @@ export const createThreadMessage = async (
       channel: {
         include: {
           agentBindings: {
+            include: { agent: { select: { name: true } } },
             orderBy: { createdAt: 'asc' },
           },
         },
@@ -106,11 +119,28 @@ export const createThreadMessage = async (
     }
   }
 
-  const selectedBinding = input.agentId
-    ? thread.channel.agentBindings.find((binding) => binding.agentId === input.agentId)
-    : thread.channel.agentBindings[0]
+  // Determine whether an agent should respond based on @mentions
+  const mentions = extractMentions(input.content)
+  let selectedBinding: (typeof thread.channel.agentBindings)[number] | undefined =
+    input.agentId
+      ? thread.channel.agentBindings.find((b) => b.agentId === input.agentId)
+      : thread.channel.agentBindings[0]
 
-  if (input.agentId && !selectedBinding) {
+  if (mentions.length > 0) {
+    // Check if any mention targets a bound agent
+    const mentionedAgentBinding = thread.channel.agentBindings.find((b) =>
+      mentions.some((name) => b.agent.name.toLowerCase() === name.toLowerCase()),
+    )
+    if (mentionedAgentBinding) {
+      // Route to the mentioned agent
+      selectedBinding = mentionedAgentBinding
+    } else {
+      // Mentions exist but none match an agent — don't dispatch
+      selectedBinding = undefined
+    }
+  }
+
+  if (input.agentId && !thread.channel.agentBindings.some((b) => b.agentId === input.agentId)) {
     return {
       kind: 'agent_not_bound',
     }

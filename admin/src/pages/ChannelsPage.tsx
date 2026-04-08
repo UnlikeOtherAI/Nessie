@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { MentionInput, type MentionInputHandle, type MentionEntity } from '../components/shared/MentionInput'
 import {
   useNavigate,
@@ -199,6 +199,43 @@ export const ChannelsPage = () => {
       })),
     ],
     [boundAgents, channelUsers],
+  )
+
+  const mentionNames = useMemo(
+    () => new Set(mentionEntities.map((e) => e.name)),
+    [mentionEntities],
+  )
+
+  const renderContent = useCallback(
+    (text: string): ReactNode => {
+      if (!mentionNames.size) return text
+      const parts: ReactNode[] = []
+      let lastIndex = 0
+      // Match @Name where Name can contain spaces (for multi-word agent names)
+      const pattern = /@([\w][\w\s]*[\w]|[\w]+)/g
+      let match = pattern.exec(text)
+      while (match !== null) {
+        const name = match[1]
+        if (mentionNames.has(name)) {
+          if (match.index > lastIndex) {
+            parts.push(text.slice(lastIndex, match.index))
+          }
+          parts.push(
+            <span className="mention-tag" key={match.index}>
+              @{name}
+            </span>,
+          )
+          lastIndex = match.index + match[0].length
+        }
+        match = pattern.exec(text)
+      }
+      if (parts.length === 0) return text
+      if (lastIndex < text.length) {
+        parts.push(text.slice(lastIndex))
+      }
+      return <>{parts}</>
+    },
+    [mentionNames],
   )
 
   useEffect(() => {
@@ -489,7 +526,7 @@ export const ChannelsPage = () => {
                       }
                     >
                       <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
-                        {item.message.content}
+                        {renderContent(item.message.content)}
                       </p>
                     </div>
                   </div>
@@ -546,7 +583,7 @@ export const ChannelsPage = () => {
                   </div>
                   <div className="mt-0.5 border-l-2 border-[rgba(124,58,237,0.5)] pl-3">
                     <p className="text-sm leading-6 text-[color:var(--tx)]">
-                      {entry.content || 'Streaming response'}
+                      {entry.content ? renderContent(entry.content) : 'Streaming response'}
                       <span className="streaming-dot" />
                     </p>
                   </div>

@@ -27,6 +27,8 @@ export const TaskIdSchema = createUuidBrandSchema<'TaskId'>()
 export type TaskId = z.infer<typeof TaskIdSchema>
 export const ThoughtIdSchema = createUuidBrandSchema<'ThoughtId'>()
 export type ThoughtId = z.infer<typeof ThoughtIdSchema>
+export const ThoughtRecallIdSchema = createUuidBrandSchema<'ThoughtRecallId'>()
+export type ThoughtRecallId = z.infer<typeof ThoughtRecallIdSchema>
 
 export const parseOrganizationId = (value: string): OrganizationId =>
   OrganizationIdSchema.parse(value)
@@ -41,6 +43,8 @@ export const parseThreadId = (value: string): ThreadId => ThreadIdSchema.parse(v
 export const parseRunId = (value: string): RunId => RunIdSchema.parse(value)
 export const parseTaskId = (value: string): TaskId => TaskIdSchema.parse(value)
 export const parseThoughtId = (value: string): ThoughtId => ThoughtIdSchema.parse(value)
+export const parseThoughtRecallId = (value: string): ThoughtRecallId =>
+  ThoughtRecallIdSchema.parse(value)
 
 export type ApiResponse<T> = {
   data: T
@@ -650,6 +654,14 @@ export const ThoughtLinkRelationSchema = z.enum([
   'relates_to',
 ])
 export type ThoughtLinkRelation = z.infer<typeof ThoughtLinkRelationSchema>
+export const ThoughtSearchModeSchema = z.enum(['semantic', 'lexical', 'hybrid'])
+export type ThoughtSearchMode = z.infer<typeof ThoughtSearchModeSchema>
+export const ThoughtRecallUserSignalSchema = z.enum([
+  'helpful',
+  'irrelevant',
+  'harmful',
+])
+export type ThoughtRecallUserSignal = z.infer<typeof ThoughtRecallUserSignalSchema>
 
 export const CaptureThoughtBodySchema = z.object({
   content: z.string().min(1).max(50000),
@@ -668,6 +680,7 @@ export const SearchThoughtsBodySchema = z.object({
   threshold: z.number().min(0).max(1).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   includeReasoning: z.boolean().optional(),
+  mode: ThoughtSearchModeSchema.optional(),
 })
 export type SearchThoughtsBody = z.infer<typeof SearchThoughtsBodySchema>
 
@@ -683,3 +696,10 @@ export const LinkThoughtsBodySchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 })
 export type LinkThoughtsBody = z.infer<typeof LinkThoughtsBodySchema>
+
+export const RecordThoughtRecallSignalBodySchema = z.object({
+  userSignal: ThoughtRecallUserSignalSchema,
+})
+export type RecordThoughtRecallSignalBody = z.infer<
+  typeof RecordThoughtRecallSignalBodySchema
+>

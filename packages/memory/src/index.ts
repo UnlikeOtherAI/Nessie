@@ -7,9 +7,17 @@ export {
   searchThoughts,
   SearchEmbeddingError,
   type SearchThoughtsInput,
+  type SearchThoughtsOutput,
   type SearchResult,
   type SearchConfig,
 } from './search.js'
+export {
+  logRecalls,
+  recordRecallSignal,
+  type RecallLogEntry,
+  type LoggedRecall,
+  type RecordRecallSignalInput,
+} from './recalls.js'
 export {
   recordOutcome,
   type RecordOutcomeInput,
