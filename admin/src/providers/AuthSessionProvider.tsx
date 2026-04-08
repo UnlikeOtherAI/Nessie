@@ -48,6 +48,20 @@ const parseResponse = async <TData,>(response: Response): Promise<TData> => {
   return payload.data
 }
 
+const parseApiError = async (response: Response): Promise<string> => {
+  try {
+    const payload = (await response.json()) as {
+      error?: {
+        code?: string
+        message?: string
+      }
+    }
+    return payload.error?.message ?? JSON.stringify(payload)
+  } catch {
+    return await response.text()
+  }
+}
+
 const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
 
 export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
@@ -115,7 +129,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     })
 
     if (!response.ok) {
-      throw new Error(await response.text())
+      throw new Error(await parseApiError(response))
     }
 
     const payload = await response.json() as { data: { me: MeResponse; token: string } }
@@ -134,7 +148,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     })
 
     if (!response.ok) {
-      throw new Error(await response.text())
+      throw new Error(await parseApiError(response))
     }
 
     const payload = await response.json() as { data: { me: MeResponse; token: string } }
