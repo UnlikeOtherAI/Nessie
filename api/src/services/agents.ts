@@ -1,4 +1,4 @@
-import type { Agent, PrismaClient } from '@prisma/client'
+import type { Agent, Prisma, PrismaClient } from '@prisma/client'
 import {
   parseAgentId,
   parseChannelId,
@@ -326,28 +326,38 @@ export const buildSnapshotForScopes = async (
   }
 }
 
-export const listAgentsForOrganization = async (
+export const listAgentsForUser = async (
   prisma: PrismaClient,
+  userId: string,
   organizationId: string,
+  includeUnbound: boolean,
 ): Promise<AgentRecord[]> => {
-  const agents = await prisma.agent.findMany({
-    where: {
-      OR: [
-        {
-          bindings: {
-            none: {},
-          },
-        },
-        {
-          bindings: {
-            some: {
-              channel: {
-                organizationId,
-              },
+  const visibilityFilters: Prisma.AgentWhereInput[] = [
+    {
+      bindings: {
+        some: {
+          channel: {
+            organizationId,
+            members: {
+              some: { userId },
             },
           },
         },
-      ],
+      },
+    },
+  ]
+
+  if (includeUnbound) {
+    visibilityFilters.push({
+      bindings: {
+        none: {},
+      },
+    })
+  }
+
+  const agents = await prisma.agent.findMany({
+    where: {
+      OR: visibilityFilters,
     },
     include: {
       bindings: {

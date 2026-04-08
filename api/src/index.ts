@@ -49,7 +49,7 @@ import {
   bindAgentToChannel,
   buildSnapshotForScopes,
   createAgentRecord,
-  listAgentsForOrganization,
+  listAgentsForUser,
   loadAgentActivity,
   loadAgentChildren,
   loadAgentMessages,
@@ -234,14 +234,14 @@ const filterAuthorizedScopes = async (
   return authorizedScopes
 }
 
-const buildBootstrapSession = (userId: string) =>
+const buildLocalSession = (userId: string, roles: string[]) =>
   issueSessionToken(
     {
       sub: userId,
       org: '00000000-0000-4000-8000-000000000001',
       proj: '00000000-0000-4000-8000-000000000002',
       team: '00000000-0000-4000-8000-000000000003',
-      roles: ['owner'],
+      roles,
       providerId: LOCAL_AUTH_PROVIDER_ID,
       providerType: DEFAULT_LOCAL_PROVIDER_TYPE,
     },
@@ -342,7 +342,7 @@ export const buildApp = async () => {
     })
     bootstrapTokenState = null
 
-    const session = buildBootstrapSession(result.user.id)
+    const session = buildLocalSession(result.user.id, ['owner'])
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue bootstrap session')
@@ -381,6 +381,13 @@ export const buildApp = async () => {
 
     const user = await prisma.user.findUnique({
       where: { email: body.email.toLowerCase() },
+      include: {
+        organizationMembers: {
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { role: true },
+        },
+      },
     })
 
     if (!user?.passwordHash || !(await verifyPassword(body.password, user.passwordHash))) {
@@ -388,7 +395,9 @@ export const buildApp = async () => {
       return reply
     }
 
-    const session = buildBootstrapSession(user.id)
+    const primaryOrganizationMember = user.organizationMembers[0]
+    const sessionRoles = primaryOrganizationMember ? [primaryOrganizationMember.role] : ['member']
+    const session = buildLocalSession(user.id, sessionRoles)
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')
@@ -449,7 +458,13 @@ export const buildApp = async () => {
       return reply
     }
 
-    const agents = await listAgentsForOrganization(prisma, actorContext.tenant.organizationId)
+    const isOwner = actorContext.actor.roles?.includes('owner') ?? false
+    const agents = await listAgentsForUser(
+      prisma,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      isOwner,
+    )
     return createApiResponse(AgentRecordSchema.array().parse(agents))
   })
 
