@@ -329,9 +329,18 @@ a {
   padding: 0;
   max-width: 440px;
   width: calc(100% - 32px);
-  margin: auto;
+}
+
+.create-channel-dialog[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: auto;
   height: fit-content;
 }
 
