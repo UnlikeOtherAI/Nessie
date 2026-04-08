@@ -47,6 +47,7 @@ import {
   CreateAgentBindingBodySchema,
   CreateAgentBodySchema,
   CreateAgentCategoryBodySchema,
+  DesignerChatBodySchema,
   CreateChannelBodySchema,
   CreateThreadMessageBodySchema,
   CreateUserBodySchema,
@@ -83,6 +84,7 @@ import {
   loadRunToolCalls,
   unbindAgentFromChannel,
 } from './services/agents.js'
+import { streamDesignerChat } from './services/designer.js'
 import {
   LOCAL_AUTH_PROVIDER_ID,
   buildMeResponse,
@@ -724,10 +726,13 @@ export const buildApp = async () => {
     }
 
     const agent = await createAgentRecord(prisma, {
+      model: body.model,
       name: body.name,
       parentAgentId: body.parentAgentId,
+      provider: body.provider,
       role: body.role ?? 'assistant',
       systemPrompt: body.systemPrompt,
+      toolPolicy: body.toolPolicy,
     })
 
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(agent)))
@@ -1474,6 +1479,19 @@ export const buildApp = async () => {
     )
 
     return createApiResponse(stats)
+  })
+
+  // ─── Designer chat ────────────────────────────────────────────────────────
+
+  app.post('/api/designer/chat', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const body = parseInput(DesignerChatBodySchema, request.body, reply)
+    if (!body) return reply
+
+    await streamDesignerChat(reply, body)
+    return reply
   })
 
   return app

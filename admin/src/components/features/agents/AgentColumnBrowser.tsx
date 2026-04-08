@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { AgentChild } from '@nessie/schemas'
 import { useAgentCategories } from '../../../facades/agent-categories/hooks'
 import { useAgentChildren, useAgents } from '../../../facades/agents/hooks'
@@ -12,7 +13,6 @@ import { AgentColumnItem } from './AgentColumnItem'
 import { AgentDetailColumn } from './AgentDetailColumn'
 import { AgentStatusDot } from './AgentStatusDot'
 import { CategoryAgentsPopup } from './CategoryAgentsPopup'
-import { CreateAgentDialog } from './CreateAgentDialog'
 import { CreateCategoryDialog } from './CreateCategoryDialog'
 import { SubAgentPopup } from './SubAgentPopup'
 
@@ -316,6 +316,7 @@ const CategoryColumnContent = ({
 // ─── Main browser ──────────────────────────────────────────────────────────
 
 export const AgentColumnBrowser = () => {
+  const navigate = useNavigate()
   const { data: agents = [] } = useAgents()
   const { data: customCategories = [] } = useAgentCategories()
 
@@ -330,7 +331,6 @@ export const AgentColumnBrowser = () => {
     null,
   )
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
-  const [createAgentOpen, setCreateAgentOpen] = useState(false)
 
   const isMobile = useMediaQuery('(max-width: 767px)')
   const isTablet = useMediaQuery(
@@ -466,7 +466,7 @@ export const AgentColumnBrowser = () => {
                   'transition-colors hover:bg-white/10',
                   'hover:text-white',
                 ].join(' ')}
-                onClick={() => setCreateAgentOpen(true)}
+                onClick={() => void navigate('/agents/new')}
                 title="New agent"
                 type="button"
               >
@@ -676,11 +676,6 @@ export const AgentColumnBrowser = () => {
       <CreateCategoryDialog
         onClose={() => setCreateCategoryOpen(false)}
         open={createCategoryOpen}
-      />
-
-      <CreateAgentDialog
-        onClose={() => setCreateAgentOpen(false)}
-        open={createAgentOpen}
       />
     </div>
   )

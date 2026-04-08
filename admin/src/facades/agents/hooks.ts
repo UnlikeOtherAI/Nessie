@@ -100,10 +100,13 @@ export const useCreateAgent = () => {
 
   return useMutation({
     mutationFn: (input: {
+      model?: string
       name: string
       parentAgentId?: string
+      provider?: string
       role: string
       systemPrompt?: string
+      toolPolicy?: Record<string, boolean>
     }) =>
       apiClient.post<AgentRecord>('/api/agents', input),
     onSuccess: () => {

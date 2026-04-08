@@ -82,6 +82,8 @@ export const AgentRecordSchema = z.object({
   lastActivityAt: TimestampSchema,
   systemPrompt: z.string().optional(),
   parentAgentId: AgentIdSchema.nullish(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
   channelIds: z.array(ChannelIdSchema),
@@ -93,6 +95,9 @@ export const CreateAgentBodySchema = z.object({
   role: NonEmptyStringSchema.optional(),
   systemPrompt: z.string().optional(),
   parentAgentId: z.string().optional(),
+  toolPolicy: z.record(z.string(), z.boolean()).optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
 })
 
 export const CreateAgentBindingBodySchema = z.object({
@@ -158,6 +163,30 @@ export const ToolDescriptorSchema = z.object({
   safe: z.boolean(),
 })
 export type ToolDescriptor = z.infer<typeof ToolDescriptorSchema>
+
+// ─── Designer chat ────────────────────────────────────────────────────────
+
+export const DesignerChatMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string(),
+})
+
+export const DesignerFormStateSchema = z.object({
+  name: z.string(),
+  role: z.string(),
+  systemPrompt: z.string(),
+  categoryId: z.string().nullable(),
+  provider: z.string(),
+  model: z.string(),
+  tools: z.record(z.string(), z.boolean()),
+})
+
+export const DesignerChatBodySchema = z.object({
+  messages: z.array(DesignerChatMessageSchema),
+  formState: DesignerFormStateSchema,
+})
+
+// ─── Users ────────────────────────────────────────────────────────────────
 
 export const UserRecordSchema = z.object({
   id: UserIdSchema,

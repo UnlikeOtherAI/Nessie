@@ -261,6 +261,8 @@ model Agent {
   status        AgentStatus          @default(idle)
   systemPrompt  String?              @map("system_prompt")
   toolPolicy    Json?                @map("tool_policy")
+  provider      String?              @map("provider")
+  model         String?              @map("model")
   parentAgentId String?              @map("parent_agent_id") @db.Uuid
   createdAt     DateTime             @default(now()) @map("created_at")
   updatedAt     DateTime             @updatedAt @map("updated_at")

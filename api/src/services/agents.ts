@@ -52,6 +52,8 @@ const mapAgentRecord = (agent: {
     status: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running'
     toolCalls: Array<{ endedAt: Date | null; startedAt: Date; toolName: string }>
   }>
+  provider: string | null
+  model: string | null
   status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
   systemPrompt: string | null
   updatedAt: Date
@@ -85,6 +87,8 @@ const mapAgentRecord = (agent: {
     lastActivityAt: lastActivityAt.toISOString(),
     systemPrompt: agent.systemPrompt ?? undefined,
     parentAgentId: agent.parentAgentId ? parseAgentId(agent.parentAgentId) : undefined,
+    provider: agent.provider ?? undefined,
+    model: agent.model ?? undefined,
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
     channelIds: agent.bindings.map((binding) => parseChannelId(binding.channelId)),
@@ -449,18 +453,24 @@ export const listAgentsForUser = async (
 export const createAgentRecord = async (
   prisma: PrismaClient,
   input: {
+    model?: string
     name: string
     parentAgentId?: string
+    provider?: string
     role: string
     systemPrompt?: string
+    toolPolicy?: Record<string, boolean>
   },
 ): Promise<AgentRecord> => {
   const agent = await prisma.agent.create({
     data: {
+      model: input.model,
       name: input.name,
       parentAgentId: input.parentAgentId,
+      provider: input.provider,
       role: input.role,
       systemPrompt: input.systemPrompt,
+      toolPolicy: input.toolPolicy ?? undefined,
     },
     include: {
       bindings: {
@@ -515,9 +525,12 @@ export const cloneAgentRecord = async (
 
   const agent = await prisma.agent.create({
     data: {
+      model: source.model,
       name: `${source.name} (copy)`,
+      provider: source.provider,
       role: source.role,
       systemPrompt: source.systemPrompt,
+      toolPolicy: source.toolPolicy ?? undefined,
     },
     include: {
       bindings: {

@@ -41,8 +41,10 @@ export type AgentRecord = {
   currentToolStartedAt?: string
   id: string
   lastActivityAt: string
+  model?: string
   name: string
   parentAgentId?: string | null
+  provider?: string
   role: string
   status: AgentStatusResponse['status']
   systemPrompt?: string
