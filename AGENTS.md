@@ -3,6 +3,7 @@
 ## Workflow
 
 - Commit and push after every turn. No exceptions. If there is nothing to commit, skip.
+- Rebuild the admin (`pnpm --filter @nessie/admin build`) after every turn where admin code changed.
 - Package manager: **pnpm**.
 
 ## Code Quality

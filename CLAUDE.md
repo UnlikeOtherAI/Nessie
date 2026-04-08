@@ -19,6 +19,10 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 - MCP server — all app actions exposed as MCP tools (see `src/mcp/`)
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 
+## Build
+
+- Rebuild the admin after every turn where admin code changed: `pnpm --filter @nessie/admin build`
+
 ## Linting
 
 - **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`
