@@ -33,6 +33,18 @@ export type StorageProvider = z.infer<typeof StorageProviderSchema>
 export const QueueProviderSchema = z.enum(['pubsub', 'local'])
 export type QueueProvider = z.infer<typeof QueueProviderSchema>
 
+export const ModelProviderSchema = z.enum(['openai', 'minimax'])
+export type ModelProvider = z.infer<typeof ModelProviderSchema>
+
+export const ModelConfigSchema = z.object({
+  provider: ModelProviderSchema,
+  apiKey: z.string().min(1).optional(),
+  maxTokens: z.number().int().positive().default(2048),
+  modelName: z.string().min(1).optional(),
+  temperature: z.number().min(0).max(2).default(0.2),
+})
+export type ModelConfig = z.infer<typeof ModelConfigSchema>
+
 export const NessieConfigSchema = z.object({
   mode: NessieModeSchema,
   auth: z.object({
@@ -61,6 +73,7 @@ export const NessieConfigSchema = z.object({
     provider: QueueProviderSchema,
     projectId: z.string().min(1).optional(),
   }),
+  model: ModelConfigSchema,
   api: z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.number().int().positive().default(4317),
@@ -73,6 +86,7 @@ export const RuntimeCapabilitiesSchema = z.object({
   hasObjectStorage: z.boolean(),
   hasExternalAuth: z.boolean(),
   hasPubSub: z.boolean(),
+  hasModelProvider: z.boolean(),
 })
 export type RuntimeCapabilities = z.infer<typeof RuntimeCapabilitiesSchema>
 
@@ -88,6 +102,11 @@ export const ConfigEnvMap = {
   NESSIE_STORAGE_LOCAL_PATH: 'storage.localPath',
   NESSIE_QUEUE_PROVIDER: 'queue.provider',
   NESSIE_QUEUE_PROJECT_ID: 'queue.projectId',
+  NESSIE_MODEL_PROVIDER: 'model.provider',
+  NESSIE_MODEL_API_KEY: 'model.apiKey',
+  NESSIE_MODEL_MAX_TOKENS: 'model.maxTokens',
+  NESSIE_MODEL_NAME: 'model.modelName',
+  NESSIE_MODEL_TEMPERATURE: 'model.temperature',
   NESSIE_API_HOST: 'api.host',
   NESSIE_API_PORT: 'api.port',
 } as const
@@ -119,6 +138,11 @@ const DEFAULT_CONFIG: NessieConfig = {
   },
   queue: {
     provider: 'local',
+  },
+  model: {
+    provider: 'openai',
+    maxTokens: 2048,
+    temperature: 0.2,
   },
   api: {
     host: '0.0.0.0',
@@ -206,6 +230,39 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
     }
   }
 
+  if (env.NESSIE_DB_URL === undefined && env.DATABASE_URL !== undefined) {
+    setByPath(overrides, 'database.url', env.DATABASE_URL)
+  }
+
+  const modelProvider =
+    env.NESSIE_MODEL_PROVIDER ??
+    env.LLM_PROVIDER ??
+    (env.MINIMAX_API_KEY !== undefined
+      ? 'minimax'
+      : env.OPENAI_CHAT_API_KEY !== undefined || env.OPENAI_API_KEY !== undefined
+        ? 'openai'
+        : undefined)
+
+  if (modelProvider !== undefined) {
+    setByPath(overrides, 'model.provider', modelProvider)
+  }
+
+  if (env.NESSIE_MODEL_NAME !== undefined) {
+    setByPath(overrides, 'model.modelName', env.NESSIE_MODEL_NAME)
+  }
+
+  const modelApiKey =
+    env.NESSIE_MODEL_API_KEY ??
+    (modelProvider === 'minimax'
+      ? env.MINIMAX_API_KEY
+      : modelProvider === 'openai'
+        ? env.OPENAI_CHAT_API_KEY ?? env.OPENAI_API_KEY
+        : undefined)
+
+  if (modelApiKey !== undefined) {
+    setByPath(overrides, 'model.apiKey', modelApiKey)
+  }
+
   return overrides
 }
 
@@ -238,6 +295,7 @@ export const deriveRuntimeCapabilities = (config: NessieConfig): RuntimeCapabili
       (provider) => provider.enabled && provider.type !== 'local-bootstrap',
     ),
     hasPubSub: config.queue.provider === 'pubsub',
+    hasModelProvider: Boolean(config.model.apiKey),
   })
 
 export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {

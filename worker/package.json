@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@prisma/client": "^6.17.1",
     "@nessie/config": "workspace:*",
+    "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*"
   }
 }

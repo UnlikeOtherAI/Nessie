@@ -168,14 +168,17 @@ export const StreamStartEventSchema = z.object({
   runId: RunIdSchema,
   threadId: ThreadIdSchema,
 })
+export type StreamStartEvent = z.infer<typeof StreamStartEventSchema>
 export const StreamDeltaEventSchema = z.object({
   runId: RunIdSchema,
   content: z.string(),
 })
+export type StreamDeltaEvent = z.infer<typeof StreamDeltaEventSchema>
 export const StreamDoneEventSchema = z.object({
   runId: RunIdSchema,
   messageId: NonEmptyStringSchema,
 })
+export type StreamDoneEvent = z.infer<typeof StreamDoneEventSchema>
 export const SseEventNameSchema = z.enum(['stream.start', 'stream.delta', 'stream.done'])
 
 export const SseEventSchema = z.discriminatedUnion('event', [
@@ -202,12 +205,14 @@ export const AgentStatusEventSchema = z.object({
   currentToolName: z.string().optional(),
   currentToolStartedAt: TimestampSchema.optional(),
 })
+export type AgentStatusEvent = z.infer<typeof AgentStatusEventSchema>
 export const AgentToolStartEventSchema = z.object({
   agentId: AgentIdSchema,
   runId: RunIdSchema,
   toolName: NonEmptyStringSchema,
   inputSummary: z.string(),
 })
+export type AgentToolStartEvent = z.infer<typeof AgentToolStartEventSchema>
 export const AgentToolEndEventSchema = z.object({
   agentId: AgentIdSchema,
   runId: RunIdSchema,
@@ -215,16 +220,19 @@ export const AgentToolEndEventSchema = z.object({
   durationMs: z.number().int().nonnegative(),
   success: z.boolean(),
 })
+export type AgentToolEndEvent = z.infer<typeof AgentToolEndEventSchema>
 export const AgentSpawnedEventSchema = z.object({
   parentId: AgentIdSchema,
   childId: AgentIdSchema,
   taskId: TaskIdSchema,
 })
+export type AgentSpawnedEvent = z.infer<typeof AgentSpawnedEventSchema>
 export const RunUpdatedEventSchema = z.object({
   runId: RunIdSchema,
   agentId: AgentIdSchema,
   status: RunStatusSchema,
 })
+export type RunUpdatedEvent = z.infer<typeof RunUpdatedEventSchema>
 export const TaskUpdatedEventSchema = z.object({
   taskId: TaskIdSchema,
   status: TaskStatusSchema,
@@ -243,6 +251,7 @@ export const MessageNewEventSchema = z.object({
   contentPreview: z.string(),
   threadId: ThreadIdSchema,
 })
+export type MessageNewEvent = z.infer<typeof MessageNewEventSchema>
 export const WsEventNameSchema = z.enum([
   'agent.status',
   'agent.tool.start',
@@ -578,3 +587,13 @@ export const AuthorizedActionContextSchema = AccessContextSchema.extend({
     .optional(),
 })
 export type AuthorizedActionContext = z.infer<typeof AuthorizedActionContextSchema>
+
+export const RunExecuteJobPayloadSchema = z.object({
+  actorContext: AuthorizedActionContextSchema,
+  agentId: AgentIdSchema,
+  messageId: NonEmptyStringSchema,
+  runId: RunIdSchema,
+  taskId: TaskIdSchema,
+  threadId: ThreadIdSchema,
+})
+export type RunExecuteJobPayload = z.infer<typeof RunExecuteJobPayloadSchema>

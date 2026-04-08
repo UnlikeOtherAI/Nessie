@@ -4,6 +4,7 @@
     { "path": "./tsconfig.legacy.json" },
     { "path": "./packages/schemas" },
     { "path": "./packages/config" },
+    { "path": "./packages/runtime" },
     { "path": "./api" },
     { "path": "./worker" },
     { "path": "./cli" },

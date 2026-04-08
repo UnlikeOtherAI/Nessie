@@ -10,6 +10,7 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
+  parseRunId,
   parseTaskId,
   parseThreadId,
   type AuthorizedActionContext,
@@ -83,6 +84,7 @@ const config = loadConfig()
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = config.database.url
 }
+const databaseUrl = process.env.DATABASE_URL
 const prisma = getPrismaClient()
 const authSecret = config.auth.secret ?? randomUUID()
 let bootstrapTokenState: BootstrapTokenState | null = null
@@ -253,7 +255,7 @@ const buildLocalSession = (userId: string, roles: string[]) =>
 export const buildApp = async () => {
   const app = Fastify({ logger: true })
   const realtimeHub = await createRealtimeHub({
-    databaseUrl: config.database.url,
+    databaseUrl,
     poolMax: config.database.poolMax,
     poolMin: config.database.poolMin,
   })
@@ -581,6 +583,36 @@ export const buildApp = async () => {
       return reply
     }
 
+    const messageAgentId = result.run?.agentId ?? body.agentId
+    if (messageAgentId) {
+      await realtimeHub.publishWs(
+        [
+          {
+            kind: 'organization',
+            organizationId: actorContext.tenant.organizationId,
+          },
+          {
+            kind: 'channel',
+            channelId: parseChannelId(thread.channel.id),
+          },
+          {
+            kind: 'agent',
+            agentId: parseAgentId(messageAgentId),
+          },
+        ],
+        {
+          data: {
+            agentId: parseAgentId(messageAgentId),
+            contentPreview: result.message.content.slice(0, 200),
+            messageId: result.message.id,
+            role: result.message.role,
+            threadId: parseThreadId(result.message.threadId),
+          },
+          event: 'message.new',
+        },
+      )
+    }
+
     if (result.run && result.task) {
       await enqueueRunExecution(prisma, {
         actorContext: withActionContext(actorContext, {
@@ -589,11 +621,11 @@ export const buildApp = async () => {
           taskId: parseTaskId(result.task.id),
           threadId: parseThreadId(result.run.threadId),
         }),
-        agentId: result.run.agentId,
+        agentId: parseAgentId(result.run.agentId),
         messageId: result.message.id,
-        runId: result.run.id,
-        taskId: result.task.id,
-        threadId: result.run.threadId,
+        runId: parseRunId(result.run.id),
+        taskId: parseTaskId(result.task.id),
+        threadId: parseThreadId(result.run.threadId),
       })
     }
 
@@ -633,10 +665,15 @@ export const buildApp = async () => {
     })
     reply.raw.write(': stream connected\n\n')
 
+    const lastEventIdHeader = request.headers['last-event-id']
+    const lastEventId = Array.isArray(lastEventIdHeader)
+      ? lastEventIdHeader[0]
+      : lastEventIdHeader
+
     const streamConnection = await realtimeHub.addSseConnection(
       thread.id,
       reply.raw,
-      request.headers['last-event-id'],
+      lastEventId,
     )
 
     const keepAlive = setInterval(() => {
