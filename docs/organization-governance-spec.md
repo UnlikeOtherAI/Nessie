@@ -227,36 +227,38 @@ All endpoint paths in this section are logical names. The actual HTTP mount path
 - `GET /teams/{teamId}/channels` with privacy-aware search
 - `GET /projects/{projectId}/members?roleOnly=true`
 - `GET /projects/{projectId}/agents?search=...`
-- `GET /teams/{teamId}/agents?search=...`
-- `GET /channels/{channelId}/members?roleOnly=true`
-- `POST /channels/{channelId}/members`
-- `POST /channels/{channelId}/agents`
-- `GET /agents/search`
+- `GET /api/teams/{teamId}/agents?search=...`
+- `GET /api/channels/{channelId}/members?roleOnly=true`
+- `POST /api/channels/{channelId}/members`
+- `POST /api/channels/{channelId}/agents`
+- `GET /api/agents/search`
   - query filters: `orgId`, `teamId`, `channelId`, `teamScope`, `toolIds`, `role`, `search`, `tag`
   - pagination: deterministic cursor
 - `POST /api/tools/search`
-  - query filters: `orgId`, `teamId`, `channelId`, `scope`, `transport`, `permission`, `tags`, `allow`
+  - canonical filter contract defined in [tool-registry-spec.md](./tool-registry-spec.md) section 5.2
+  - filters: `q`, `tags`, `scope`, `status`, `source`, `transport`, `limit`, `cursor`, `sort`
+  - scoping (orgId, teamId, channelId) derived from caller's `AccessContext`
 
 ### 5.2 Policy reads (for organizer + UI)
 
-- `GET /orgs/{orgId}/policy/effective?teamId=&channelId=&agentId=&toolId=`
-- `GET /teams/{teamId}/policy`
-- `GET /channels/{channelId}/policy`
-- `GET /agents/{agentId}/policy`
-- `GET /tools/{toolId}/policy`
-- `GET /remote-workers`
-- `GET /remote-workers/{remoteWorkerId}`
-- `GET /remote-workers/{remoteWorkerId}/policy/effective`
-- `POST /remote-workers/{remoteWorkerId}/access/check`
-- `GET /access/check`
+- `GET /api/orgs/{orgId}/policy/effective?teamId=&channelId=&agentId=&toolId=`
+- `GET /api/teams/{teamId}/policy`
+- `GET /api/channels/{channelId}/policy`
+- `GET /api/agents/{agentId}/policy`
+- `GET /api/tools/{toolId}/policy`
+- `GET /api/remote-workers`
+- `GET /api/remote-workers/{remoteWorkerId}`
+- `GET /api/remote-workers/{remoteWorkerId}/policy/effective`
+- `POST /api/remote-workers/{remoteWorkerId}/access/check`
+- `GET /api/access/check`
   - input includes actor, resource, action, scope
   - deterministic allow/deny response
-- `POST /secrets/access/check`
+- `POST /api/secrets/access/check`
   - secret-specific access check for pre-execution path
   - reason codes aligned to secret runtime contract
-- `POST /projects/{projectId}/safety/preflight`
+- `POST /api/projects/{projectId}/safety/preflight`
   - deterministic impact graph for destructive or credential-changing actions before approval
-- `POST /projects/{projectId}/safety/degrade`
+- `POST /api/projects/{projectId}/safety/degrade`
   - force project into safe mode (deploy and write actions blocked)
 - `POST /projects/{projectId}/safety/restore`
   - restore project from safe mode after approval
@@ -311,13 +313,10 @@ Every governance action in the table above must also be callable from chat by pa
   - `actor`, `actorType`,
   - `resourceType`, `resourceId`,
   - `action`,
-  - `outcome` (allowed/denied/error),
-  - `policySource`,
-  - `reasonCode`,
-  - `correlationId` (links related entries across workflows),
-  - `requestId` (from `AuthorizedActionContext`),
-  - `evidence` (channel membership IDs, route candidate IDs, policy IDs),
-  - `previousState` (snapshot before mutation).
+  - `outcome` (`success` / `denied` / `error`) — canonical values from [audit-trail-spec.md](./audit-trail-spec.md),
+  - `correlationId` (links related entries across workflows — stored in `metadata`),
+  - `requestId` (from `AuthorizedActionContext` — stored in top-level field),
+  - governance-specific fields stored in audit `metadata`: `policySource`, `reasonCode`, `evidence` (channel membership IDs, route candidate IDs, policy IDs), `previousState` (snapshot before mutation).
 
 ## 6) Data model additions
 
