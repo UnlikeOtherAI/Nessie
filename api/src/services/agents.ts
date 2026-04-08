@@ -1,4 +1,4 @@
-import type { Agent, Prisma, PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   parseAgentId,
   parseChannelId,
@@ -38,17 +38,58 @@ const mapToolCall = (toolCall: {
   outputPreview: toolCall.outputPreview?.slice(0, 200) ?? undefined,
 })
 
-const mapAgentRecord = (agent: Agent & { bindings: Array<{ channelId: string }> }): AgentRecord => ({
-  id: parseAgentId(agent.id),
-  name: agent.name,
-  role: agent.role,
-  status: agent.status,
-  systemPrompt: agent.systemPrompt ?? undefined,
-  parentAgentId: agent.parentAgentId ? parseAgentId(agent.parentAgentId) : undefined,
-  createdAt: agent.createdAt.toISOString(),
-  updatedAt: agent.updatedAt.toISOString(),
-  channelIds: agent.bindings.map((binding) => parseChannelId(binding.channelId)),
-})
+const mapAgentRecord = (agent: {
+  bindings: Array<{ channelId: string }>
+  createdAt: Date
+  id: string
+  messages?: Array<{ createdAt: Date }>
+  name: string
+  parentAgentId: string | null
+  role: string
+  runs?: Array<{
+    createdAt: Date
+    id: string
+    status: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running'
+    toolCalls: Array<{ endedAt: Date | null; startedAt: Date; toolName: string }>
+  }>
+  status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
+  systemPrompt: string | null
+  updatedAt: Date
+}): AgentRecord => {
+  const latestRun = agent.runs?.[0]
+  const latestToolCall = latestRun?.toolCalls[0]
+  const latestMessage = agent.messages?.[0]
+  const isActiveRun =
+    latestRun !== undefined &&
+    latestRun.status !== 'completed' &&
+    latestRun.status !== 'failed' &&
+    latestRun.status !== 'cancelled'
+  const lastActivityAt =
+    latestToolCall?.startedAt ??
+    latestMessage?.createdAt ??
+    latestRun?.createdAt ??
+    agent.updatedAt
+
+  return {
+    id: parseAgentId(agent.id),
+    name: agent.name,
+    role: agent.role,
+    status: agent.status,
+    currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
+    currentToolName:
+      isActiveRun && latestToolCall?.endedAt === null ? latestToolCall.toolName : undefined,
+    currentToolStartedAt:
+      isActiveRun && latestToolCall?.endedAt === null
+        ? toTimestamp(latestToolCall.startedAt)
+        : undefined,
+    lastActivityAt: lastActivityAt.toISOString(),
+    systemPrompt: agent.systemPrompt ?? undefined,
+    parentAgentId: agent.parentAgentId ? parseAgentId(agent.parentAgentId) : undefined,
+    createdAt: agent.createdAt.toISOString(),
+    updatedAt: agent.updatedAt.toISOString(),
+    channelIds: agent.bindings.map((binding) => parseChannelId(binding.channelId)),
+  }
+}
 
 export const loadAgentStatus = async (
   prisma: PrismaClient,
@@ -378,6 +419,26 @@ export const listAgentsForUser = async (
         orderBy: { createdAt: 'asc' },
         select: { channelId: true },
       },
+      messages: {
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+        take: 1,
+      },
+      runs: {
+        include: {
+          toolCalls: {
+            orderBy: { startedAt: 'desc' },
+            select: {
+              endedAt: true,
+              startedAt: true,
+              toolName: true,
+            },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
     },
     orderBy: { createdAt: 'asc' },
   })
@@ -402,6 +463,26 @@ export const createAgentRecord = async (
     include: {
       bindings: {
         select: { channelId: true },
+      },
+      messages: {
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+        take: 1,
+      },
+      runs: {
+        include: {
+          toolCalls: {
+            orderBy: { startedAt: 'desc' },
+            select: {
+              endedAt: true,
+              startedAt: true,
+              toolName: true,
+            },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
       },
     },
   })
@@ -434,6 +515,26 @@ export const bindAgentToChannel = async (
       bindings: {
         orderBy: { createdAt: 'asc' },
         select: { channelId: true },
+      },
+      messages: {
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+        take: 1,
+      },
+      runs: {
+        include: {
+          toolCalls: {
+            orderBy: { startedAt: 'desc' },
+            select: {
+              endedAt: true,
+              startedAt: true,
+              toolName: true,
+            },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
       },
     },
   })

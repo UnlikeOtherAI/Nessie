@@ -30,10 +30,12 @@ import {
 } from './auth/session.js'
 import {
   AgentRecordSchema,
+  AuthProviderAuthorizeQuerySchema,
   AuthProviderDescriptorSchema,
   BootstrapModeResponseSchema,
   BootstrapRequestSchema,
   ChannelRecordSchema,
+  CreateUserBodySchema,
   CreateAgentBindingBodySchema,
   CreateAgentBodySchema,
   CreateChannelBodySchema,
@@ -41,7 +43,9 @@ import {
   LoginRequestSchema,
   ThreadMessageRecordSchema,
   ToolDescriptorSchema,
+  UserRecordSchema,
 } from './contracts.js'
+import { DEFAULT_BOOTSTRAP_RECORD_IDS } from './db/bootstrap.js'
 import { getPrismaClient } from './db/client.js'
 import { seedBootstrapRecords } from './db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from './lib/api.js'
@@ -63,14 +67,24 @@ import {
   buildMeResponse,
   createActorContextFromClaims,
   listAuthProviders,
+  resolveConfiguredAuthProvider,
 } from './services/auth.js'
 import { createChannelForUser, listChannelsForUser } from './services/channels.js'
+import {
+  buildExternalAuthAuthorizeUrl,
+  exchangeExternalAuthCode,
+} from './services/external-auth.js'
 import {
   createThreadMessage,
   findThreadForUser,
   listThreadMessages,
 } from './services/messages.js'
 import { listSafeTools } from './services/tools.js'
+import {
+  createUserForOrganization,
+  listUsersForOrganization,
+  loadSessionUserByEmail,
+} from './services/users.js'
 
 type AuthenticatedRequestState = {
   actorContext: AuthorizedActionContext
@@ -111,16 +125,22 @@ const logBootstrapUrl = (state: BootstrapTokenState): void => {
 
 const getAuthorizationToken = (request: FastifyRequest): string | null => {
   const header = request.headers.authorization
-  if (!header) {
-    return null
+  if (header) {
+    const [scheme, token] = header.split(' ')
+    if (scheme === 'Bearer' && token) {
+      return token
+    }
   }
 
-  const [scheme, token] = header.split(' ')
-  if (scheme !== 'Bearer' || !token) {
-    return null
+  const queryToken =
+    (request.query as { token?: string } | undefined)?.token ??
+    new URL(request.url, 'http://localhost').searchParams.get('token')
+
+  if (typeof queryToken === 'string' && queryToken.length > 0) {
+    return queryToken
   }
 
-  return token
+  return null
 }
 
 const authenticateRequest = async (
@@ -168,6 +188,18 @@ const requireActorContext = (
 
   sendApiError(reply, 401, 'AUTH_REQUIRED', 'Authentication required')
   return null
+}
+
+const requireOwner = (
+  actorContext: AuthorizedActionContext,
+  reply: FastifyReply,
+): boolean => {
+  if (actorContext.actor.roles?.includes('owner')) {
+    return true
+  }
+
+  sendApiError(reply, 403, 'FORBIDDEN', 'Owner access required')
+  return false
 }
 
 const withActionContext = (
@@ -252,6 +284,29 @@ const buildLocalSession = (userId: string, roles: string[]) =>
     config.auth.tokenTtlSeconds,
   )
 
+const buildSessionForUser = (input: {
+  organizationId: string
+  projectId: string
+  providerId: string
+  providerType: SessionTokenClaims['providerType']
+  roles: string[]
+  teamId: string
+  userId: string
+}) =>
+  issueSessionToken(
+    {
+      sub: input.userId,
+      org: input.organizationId,
+      proj: input.projectId,
+      team: input.teamId,
+      roles: input.roles,
+      providerId: input.providerId,
+      providerType: input.providerType,
+    },
+    authSecret,
+    config.auth.tokenTtlSeconds,
+  )
+
 export const buildApp = async () => {
   const app = Fastify({ logger: true })
   const realtimeHub = await createRealtimeHub({
@@ -290,6 +345,39 @@ export const buildApp = async () => {
       AuthProviderDescriptorSchema.array().parse(listAuthProviders(config)),
     ),
   )
+
+  app.get('/api/auth/providers/:providerId/authorize', { config: { public: true } }, async (request, reply) => {
+    const query = parseInput(AuthProviderAuthorizeQuerySchema, request.query, reply)
+    if (!query) {
+      return reply
+    }
+
+    const providerId = (request.params as { providerId?: string } | undefined)?.providerId
+    if (!providerId) {
+      sendApiError(reply, 400, 'PROVIDER_REQUIRED', 'Provider id is required', 'providerId')
+      return reply
+    }
+
+    const provider = resolveConfiguredAuthProvider(config, providerId)
+    if (!provider) {
+      sendApiError(reply, 404, 'PROVIDER_NOT_FOUND', 'Auth provider was not found', 'providerId')
+      return reply
+    }
+
+    try {
+      const authorizeUrl = await buildExternalAuthAuthorizeUrl(provider, query)
+      return createApiResponse({ authorizeUrl })
+    } catch (error) {
+      sendApiError(
+        reply,
+        400,
+        'PROVIDER_NOT_SUPPORTED',
+        error instanceof Error ? error.message : 'Provider is not supported',
+        'providerId',
+      )
+      return reply
+    }
+  })
 
   app.get('/api/auth/me', { config: { public: true } }, async (request, reply) => {
     const token = getAuthorizationToken(request)
@@ -373,31 +461,93 @@ export const buildApp = async () => {
     }
 
     if (body.providerId && body.providerId !== LOCAL_AUTH_PROVIDER_ID) {
-      sendApiError(
-        reply,
-        501,
-        'SSO_NOT_IMPLEMENTED',
-        'External provider session exchange is not implemented yet',
-        'providerId',
-      )
-      return reply
+      if (!body.code || !body.codeVerifier || !body.redirectUri) {
+        sendApiError(
+          reply,
+          400,
+          'EXTERNAL_AUTH_INCOMPLETE',
+          'providerId, code, codeVerifier, and redirectUri are required',
+        )
+        return reply
+      }
+
+      const provider = resolveConfiguredAuthProvider(config, body.providerId)
+      if (!provider) {
+        sendApiError(reply, 404, 'PROVIDER_NOT_FOUND', 'Auth provider was not found', 'providerId')
+        return reply
+      }
+
+      try {
+        const identity = await exchangeExternalAuthCode(provider, {
+          code: body.code,
+          codeVerifier: body.codeVerifier,
+          redirectUri: body.redirectUri,
+        })
+
+        let sessionUser = await loadSessionUserByEmail(prisma, identity.email)
+        if (!sessionUser) {
+          await createUserForOrganization(prisma, {
+            avatarUrl: identity.avatarUrl,
+            channelIds: [DEFAULT_BOOTSTRAP_RECORD_IDS.channelId],
+            displayName: identity.displayName,
+            email: identity.email,
+            organizationId: DEFAULT_BOOTSTRAP_RECORD_IDS.organizationId,
+            projectId: DEFAULT_BOOTSTRAP_RECORD_IDS.projectId,
+            role: 'member',
+            teamId: DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
+          })
+          sessionUser = await loadSessionUserByEmail(prisma, identity.email)
+        }
+
+        if (!sessionUser) {
+          sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
+          return reply
+        }
+
+        const organizationMember = sessionUser.organizationMembers[0]
+        const projectMember = sessionUser.projectMembers[0]
+        const teamMember = sessionUser.teamMembers[0]
+        if (!organizationMember || !projectMember || !teamMember) {
+          sendApiError(reply, 403, 'FORBIDDEN', 'User is missing required workspace membership')
+          return reply
+        }
+
+        const session = buildSessionForUser({
+          organizationId: organizationMember.organizationId,
+          projectId: projectMember.projectId,
+          providerId: provider.providerId,
+          providerType: provider.type,
+          roles: [organizationMember.role],
+          teamId: teamMember.teamId,
+          userId: sessionUser.id,
+        })
+        const verification = verifySessionToken(session.token, authSecret)
+        if (!verification.ok) {
+          sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue external auth session')
+          return reply
+        }
+
+        return createApiResponse({
+          token: session.token,
+          me: MeResponseSchema.parse(buildMeResponse(sessionUser, verification.claims, config)),
+        })
+      } catch (error) {
+        sendApiError(
+          reply,
+          401,
+          'EXTERNAL_AUTH_FAILED',
+          error instanceof Error ? error.message : 'External authentication failed',
+        )
+        return reply
+      }
     }
 
-    if (!body.password) {
+    if (!body.email || !body.password) {
       sendApiError(reply, 400, 'PASSWORD_REQUIRED', 'Password is required', 'password')
       return reply
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: body.email.toLowerCase() },
-      include: {
-        organizationMembers: {
-          orderBy: { createdAt: 'asc' },
-          take: 1,
-          select: { role: true },
-        },
-      },
-    })
+    const user = await loadSessionUserByEmail(prisma, body.email)
 
     if (!user?.passwordHash || !(await verifyPassword(body.password, user.passwordHash))) {
       sendApiError(reply, 401, 'INVALID_CREDENTIALS', 'Invalid email or password')
@@ -530,6 +680,64 @@ export const buildApp = async () => {
   app.get('/api/tools', async () =>
     createApiResponse(ToolDescriptorSchema.array().parse(listSafeTools())),
   )
+
+  app.get('/api/users', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const users = await listUsersForOrganization(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(UserRecordSchema.array().parse(users))
+  })
+
+  app.post('/api/users', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(CreateUserBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    try {
+      const passwordHash = await hashPassword(body.password)
+      const user = await createUserForOrganization(prisma, {
+        channelIds: body.channelIds,
+        displayName: body.displayName,
+        email: body.email,
+        organizationId: actorContext.tenant.organizationId,
+        passwordHash,
+        projectId:
+          actorContext.tenant.projectId ??
+          '00000000-0000-4000-8000-000000000002',
+        role: body.role ?? 'member',
+        teamId:
+          actorContext.tenant.teamId ??
+          actorContext.actionContext.teamId ??
+          '00000000-0000-4000-8000-000000000003',
+      })
+
+      return reply.code(201).send(createApiResponse(UserRecordSchema.parse(user)))
+    } catch (error) {
+      if (error instanceof Error && error.message === 'USER_ALREADY_EXISTS') {
+        sendApiError(reply, 409, 'USER_ALREADY_EXISTS', 'A user with that email already exists')
+        return reply
+      }
+
+      throw error
+    }
+  })
 
   app.get('/api/threads/:threadId/messages', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

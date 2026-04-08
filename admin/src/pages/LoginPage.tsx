@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuthProviders } from '../facades/auth/hooks'
+import { beginExternalAuth, clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 const fieldClass = [
@@ -35,6 +36,14 @@ export const LoginPage = () => {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const enabledProviders = providers.filter((provider) => provider.enabled)
+  const singleEnabledProvider = enabledProviders.length === 1 ? enabledProviders[0] : null
+  const autoRedirectProvider =
+    singleEnabledProvider &&
+    singleEnabledProvider.type !== 'local-bootstrap' &&
+    singleEnabledProvider.autoRedirect
+      ? singleEnabledProvider
+      : null
 
   useEffect(() => {
     if (sessionState === 'authenticated') {
@@ -42,8 +51,77 @@ export const LoginPage = () => {
     }
   }, [navigate, sessionState])
 
+  useEffect(() => {
+    if (sessionState !== 'unauthenticated') {
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const state = params.get('state')
+    if (!code || !state) {
+      return
+    }
+
+    const pendingExternalAuth = readPendingExternalAuth()
+    if (!pendingExternalAuth || pendingExternalAuth.state !== state) {
+      clearPendingExternalAuth()
+      setError('The external sign-in callback could not be verified.')
+      return
+    }
+
+    setIsSubmitting(true)
+    setError(null)
+    void login({
+      code,
+      codeVerifier: pendingExternalAuth.codeVerifier,
+      providerId: pendingExternalAuth.providerId,
+      redirectUri: `${window.location.origin}/login`,
+    })
+      .then(() => {
+        clearPendingExternalAuth()
+        void navigate('/channels', { replace: true })
+      })
+      .catch((submitError) => {
+        clearPendingExternalAuth()
+        setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
+      })
+      .finally(() => {
+        setIsSubmitting(false)
+      })
+  }, [login, navigate, sessionState])
+
+  useEffect(() => {
+    if (sessionState !== 'unauthenticated') {
+      return
+    }
+
+    if (window.location.search.includes('code=')) {
+      return
+    }
+
+    if (!autoRedirectProvider) {
+      return
+    }
+
+    setIsSubmitting(true)
+    setError(null)
+    void beginExternalAuth(autoRedirectProvider.providerId, `${window.location.origin}/login`)
+      .then((authorizeUrl) => {
+        window.location.assign(authorizeUrl)
+      })
+      .catch((submitError) => {
+        setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
+        setIsSubmitting(false)
+      })
+  }, [autoRedirectProvider, sessionState])
+
   if (sessionState === 'authenticated') {
     return <Navigate to="/channels" replace />
+  }
+
+  if (sessionState === 'bootstrap') {
+    return <Navigate to="/bootstrap" replace />
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -57,6 +135,19 @@ export const LoginPage = () => {
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Login failed')
     } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleProviderSignIn = async (providerId: string): Promise<void> => {
+    setError(null)
+    setIsSubmitting(true)
+
+    try {
+      const authorizeUrl = await beginExternalAuth(providerId, `${window.location.origin}/login`)
+      window.location.assign(authorizeUrl)
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
       setIsSubmitting(false)
     }
   }
@@ -87,9 +178,20 @@ export const LoginPage = () => {
                       <div className="font-medium">{provider.label}</div>
                       <div className="text-xs text-[color:var(--muted)]">{provider.type}</div>
                     </div>
-                    <div className="text-xs uppercase tracking-[0.18em] text-[color:var(--muted)]">
-                      {provider.enabled ? 'Enabled' : 'Disabled'}
-                    </div>
+                    {provider.type === 'local-bootstrap' ? (
+                      <div className="text-xs uppercase tracking-[0.18em] text-[color:var(--muted)]">
+                        {provider.enabled ? 'Enabled' : 'Disabled'}
+                      </div>
+                    ) : (
+                      <button
+                        className="text-xs uppercase tracking-[0.18em] text-[color:var(--accent)] disabled:opacity-50"
+                        disabled={isSubmitting || !provider.enabled}
+                        onClick={() => void handleProviderSignIn(provider.providerId)}
+                        type="button"
+                      >
+                        {provider.autoRedirect ? 'Auto redirect' : 'Continue'}
+                      </button>
+                    )}
                   </div>
                 ))
               ) : (

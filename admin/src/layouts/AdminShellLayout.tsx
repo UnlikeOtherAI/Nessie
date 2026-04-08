@@ -11,11 +11,10 @@ import { SidebarSection } from '../components/shared/SidebarSection'
 import { useAgentRealtime, useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
 import { useTools } from '../facades/tools/hooks'
-import type { AgentRecord } from '../lib/api-client'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 const parseChannelIdFromPath = (pathname: string): string | undefined => {
-  const match = pathname.match(/^\/channels\/([^/]+)$/)
+  const match = pathname.match(/^\/channels(?:\/([^/]+))?$/)
   return match?.[1]
 }
 
@@ -58,37 +57,9 @@ export const AdminShellLayout = () => {
     [agents, currentChannelId],
   )
 
-  const activityRealtime = useMemo(
-    () => ({
-      connectionState: realtime.connectionState,
-      records: scopedAgents.reduce<
-        Record<
-          string,
-          {
-            currentRunId?: string
-            currentToolName?: string
-            currentToolStartedAt?: string
-            since?: string
-            status: AgentRecord['status']
-          }
-        >
-      >((records, agent) => {
-        records[agent.id] = {
-          currentRunId: agent.currentRunId,
-          currentToolName: agent.currentToolName,
-          currentToolStartedAt: agent.currentToolStartedAt,
-          since: agent.currentToolStartedAt ?? agent.lastActivityAt,
-          status: agent.status,
-        }
-        return records
-      }, {}),
-    }),
-    [realtime.connectionState, scopedAgents],
-  )
-
   const selectedAgent = useMemo(
-    () => scopedAgents.find((agent) => agent.id === selectedAgentId) ?? null,
-    [scopedAgents, selectedAgentId],
+    () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
+    [agents, selectedAgentId],
   )
 
   useEffect(() => {
@@ -125,7 +96,7 @@ export const AdminShellLayout = () => {
           <AgentActivityPanel
             agents={scopedAgents}
             onSelectAgent={setSelectedAgentId}
-            realtime={activityRealtime}
+            realtime={realtime}
             selectedAgentId={selectedAgentId}
           />
         }

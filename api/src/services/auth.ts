@@ -1,5 +1,5 @@
 import type { User } from '@prisma/client'
-import type { NessieConfig } from '@nessie/config'
+import type { AuthProviderConfig, NessieConfig } from '@nessie/config'
 import {
   parseOrganizationId,
   parseProjectId,
@@ -35,6 +35,14 @@ export const listAuthProviders = (config: NessieConfig): AuthProviderDescriptor[
 
   return config.mode === 'local' ? [createLocalProvider(), ...configuredProviders] : configuredProviders
 }
+
+export const resolveConfiguredAuthProvider = (
+  config: NessieConfig,
+  providerId: string,
+): AuthProviderConfig | null =>
+  config.auth.providers.find(
+    (provider) => provider.providerId === providerId && provider.enabled,
+  ) ?? null
 
 export const createActorContextFromClaims = (
   claims: SessionTokenClaims,
