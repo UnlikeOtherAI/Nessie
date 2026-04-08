@@ -364,9 +364,13 @@ export const buildApp = async () => {
     max: config.database.poolMax,
     min: config.database.poolMin,
   })
-  const openaiApiKey = process.env.OPENAI_API_KEY ?? ''
+  const openaiApiKey =
+    process.env.OPENAI_API_KEY
+    ?? process.env.OPENAI_CHAT_API_KEY
+    ?? config.model.apiKey
+    ?? ''
   if (!openaiApiKey) {
-    app.log.warn('OPENAI_API_KEY not set — memory capture and search will fail')
+    app.log.warn('No embedding API key configured — memory capture and search will fail')
   }
   const embeddingConfig = { apiKey: openaiApiKey }
   const extractionConfig = { apiKey: openaiApiKey }

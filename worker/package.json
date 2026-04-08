@@ -7,9 +7,11 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint src --max-warnings 0",
+    "test": "node --test --import tsx test/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nessie/memory": "workspace:*",
     "@prisma/client": "^6.17.1",
     "@nessie/config": "workspace:*",
     "@nessie/runtime": "workspace:*",

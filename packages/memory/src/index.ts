@@ -5,15 +5,19 @@ export { extractReasoning, type ReasoningExtraction, type ReasoningExtractionCon
 export { captureThought, type CaptureThoughtInput, type CapturedThought, type CaptureConfig } from './capture.js'
 export {
   searchThoughts,
+  searchAndLogThoughts,
   SearchEmbeddingError,
   type SearchThoughtsInput,
   type SearchThoughtsOutput,
   type SearchResult,
   type SearchConfig,
+  type SearchExecutionConfig,
 } from './search.js'
 export {
   logRecalls,
   recordRecallSignal,
+  markRecallsInjected,
+  markRecallsReferenced,
   type RecallLogEntry,
   type LoggedRecall,
   type RecordRecallSignalInput,

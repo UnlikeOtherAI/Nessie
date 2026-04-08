@@ -1,4 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
+import {
+  markRecallsInjected,
+  markRecallsReferenced,
+  searchAndLogThoughts,
+  type SearchExecutionConfig,
+  type SearchResult,
+} from '@nessie/memory'
 import type {
   ModelClient,
   ModelMessage,
@@ -31,6 +38,7 @@ type ExecutionDependencies = {
   prisma: PrismaClient
   queueProvider: QueueProvider
   realtimeTransport: PgRealtimeTransport
+  searchConfig: SearchExecutionConfig
 }
 
 type RunContext = {
@@ -59,10 +67,92 @@ type StoredConversationMessage = {
 }
 
 const MAX_TOOL_CONTEXT_LENGTH = 400
+const MAX_MEMORY_RESULTS = 5
+const MAX_MEMORY_CONTEXT_LENGTH = 220
+const MIN_REFERENCE_TOKENS = 5
+
+type RetrievedMemory = Pick<SearchResult, 'content' | 'recallId'>
 
 const buildScopes = (context: RunContext): WsScope[] => [
   ...buildScopesForAgent(context.channel, context.agent.id),
 ]
+
+const truncateForContext = (value: string, maxLength: number): string =>
+  value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`
+
+const normalizeForReferenceMatch = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const buildReferencePhrases = (content: string): string[] => {
+  const normalizedContent = normalizeForReferenceMatch(content)
+  if (!normalizedContent) {
+    return []
+  }
+
+  const phrases = new Set<string>()
+  const sentenceCandidates = content
+    .split(/[\n.!?;]+/)
+    .map((part) => normalizeForReferenceMatch(part))
+    .filter((part) => part.length >= 20)
+
+  for (const phrase of sentenceCandidates.slice(0, 6)) {
+    phrases.add(phrase)
+  }
+
+  const tokens = normalizedContent.split(' ').filter(Boolean)
+  if (tokens.length < MIN_REFERENCE_TOKENS) {
+    phrases.add(normalizedContent)
+    return [...phrases]
+  }
+
+  const maxWindows = Math.min(tokens.length - MIN_REFERENCE_TOKENS + 1, 8)
+  for (let index = 0; index < maxWindows; index += 1) {
+    phrases.add(tokens.slice(index, index + MIN_REFERENCE_TOKENS).join(' '))
+  }
+
+  return [...phrases]
+}
+
+const isMemoryReferenced = (
+  responseText: string,
+  memoryContent: string,
+): boolean => {
+  const normalizedResponse = normalizeForReferenceMatch(responseText)
+  if (!normalizedResponse) {
+    return false
+  }
+
+  return buildReferencePhrases(memoryContent).some(
+    (phrase) => phrase.length > 0 && normalizedResponse.includes(phrase),
+  )
+}
+
+export const buildMemoryContext = (memories: RetrievedMemory[]): string | null => {
+  if (memories.length === 0) {
+    return null
+  }
+
+  const lines = memories.map(
+    (memory, index) =>
+      `${index + 1}. ${truncateForContext(memory.content.trim(), MAX_MEMORY_CONTEXT_LENGTH)}`,
+  )
+
+  return ['Relevant long-term memories:', ...lines].join('\n')
+}
+
+export const detectReferencedRecallIds = (
+  responseText: string,
+  memories: RetrievedMemory[],
+): string[] =>
+  memories.flatMap((memory) =>
+    memory.recallId && isMemoryReferenced(responseText, memory.content)
+      ? [memory.recallId]
+      : [],
+  )
 
 const buildScopesForAgent = (
   channel: RunContext['channel'],
@@ -463,17 +553,39 @@ const maybeSpawnChildAgent = async (
   return child.name
 }
 
+const retrieveRelevantMemories = async (
+  deps: ExecutionDependencies,
+  context: RunContext,
+  payload: RunExecuteJobPayload,
+  prompt: string,
+): Promise<SearchResult[]> =>
+  searchAndLogThoughts(
+    {
+      channelId: context.channel.id,
+      includeReasoning: false,
+      limit: MAX_MEMORY_RESULTS,
+      mode: deps.searchConfig.embedding.apiKey ? 'hybrid' : 'lexical',
+      organizationId: context.channel.organizationId,
+      query: prompt,
+      sessionId: payload.actorContext.actionContext.sessionId,
+      userId: payload.actorContext.actor.actorId,
+    },
+    deps.searchConfig,
+  )
+
 const buildModelPrompt = (
   conversation: StoredConversationMessage[],
   context: RunContext,
   prompt: string,
   toolOutputs: string[],
   childAgentName: string | null,
+  memoryContext: string | null,
 ): ModelMessage[] => {
   const systemParts = [
     `You are ${context.agent.name}.`,
     context.agent.systemPrompt?.trim() ?? '',
     'Respond directly to the request using the available tool results when they are relevant.',
+    'Use relevant memory context when it helps, but prefer the latest explicit user instructions on conflict.',
     'The required safe tools have already been executed.',
     'Do not emit tool-call markup or request more tool execution.',
     'Return plain text only.',
@@ -501,6 +613,13 @@ const buildModelPrompt = (
   if (toolOutputs.length > 0 || childAgentName) {
     messages.push({
       content: promptParts.slice(1).join('\n\n'),
+      role: 'system',
+    })
+  }
+
+  if (memoryContext) {
+    messages.push({
+      content: memoryContext,
       role: 'system',
     })
   }
@@ -595,12 +714,23 @@ export const executeRunJob = async (
 
     const childAgentName = await maybeSpawnChildAgent(deps, context, payload, prompt)
     const conversation = await loadConversation(deps.prisma, context.run.threadId)
+    const memories = await retrieveRelevantMemories(deps, context, payload, prompt)
+    const injectedRecallIds = memories.flatMap((memory) =>
+      memory.recallId ? [memory.recallId] : [],
+    )
+    const memoryContext = buildMemoryContext(memories)
+
+    if (injectedRecallIds.length > 0) {
+      await markRecallsInjected(injectedRecallIds, deps.searchConfig.pool)
+    }
+
     const modelMessages = buildModelPrompt(
       conversation,
       context,
       prompt,
       toolOutputs,
       childAgentName,
+      memoryContext,
     )
 
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.start', {
@@ -620,6 +750,11 @@ export const executeRunJob = async (
 
     if (!responseText.trim()) {
       throw new Error('Model stream produced no content')
+    }
+
+    const referencedRecallIds = detectReferencedRecallIds(responseText, memories)
+    if (referencedRecallIds.length > 0) {
+      await markRecallsReferenced(referencedRecallIds, deps.searchConfig.pool)
     }
 
     const assistantMessage = await deps.prisma.message.create({

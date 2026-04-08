@@ -34,7 +34,9 @@ const DESIGNER_TOOLS = [
     function: {
       name: 'set_system_prompt',
       description:
-        'Set or replace the agent system prompt. This is the main instruction text that defines agent behavior. Be thorough.',
+        'Set or replace the agent system prompt.'
+        + ' This is the main instruction text that defines agent behavior.'
+        + ' Be thorough.',
       parameters: {
         type: 'object',
         properties: { content: { type: 'string' } },
@@ -133,12 +135,17 @@ const buildSystemPrompt = (formState: DesignerChatInput['formState']): string =>
     .filter(([, v]) => v)
     .map(([k]) => k)
 
-  return `You are an AI agent designer assistant. You help users configure AI agents by modifying their properties through tool calls.
+  const summarizedSystemPrompt = formState.systemPrompt
+    ? `"${formState.systemPrompt.slice(0, 200)}${formState.systemPrompt.length > 200 ? '...' : ''}"`
+    : '(empty)'
+
+  return `You are an AI agent designer assistant.
+You help users configure AI agents by modifying their properties through tool calls.
 
 Current form state:
 - Name: ${formState.name || '(empty)'}
 - Role: ${formState.role || '(empty)'}
-- System prompt: ${formState.systemPrompt ? `"${formState.systemPrompt.slice(0, 200)}${formState.systemPrompt.length > 200 ? '...' : ''}"` : '(empty)'}
+- System prompt: ${summarizedSystemPrompt}
 - Category: ${formState.categoryId || 'none'}
 - Provider: ${formState.provider}
 - Model: ${formState.model}
@@ -147,9 +154,15 @@ Current form state:
 Available tools the agent can be granted:
 - System tools: bash, file-read, file-write, glob, grep, web-search
 
-When the user describes what kind of agent they want, use your tools to configure the form fields. Write detailed system prompts that give the agent clear instructions. Always explain what you're changing and why.
+When the user describes what kind of agent they want,
+use your tools to configure the form fields.
+Write detailed system prompts that give the agent clear instructions.
+Always explain what you're changing and why.
 
-When writing system prompts, be thorough: include the agent's purpose, constraints, tone, output format expectations, and domain-specific instructions. Aim for production quality.
+When writing system prompts, be thorough:
+include the agent's purpose, constraints, tone,
+output format expectations, and domain-specific instructions.
+Aim for production quality.
 
 Use multiple tool calls in a single response when configuring several fields at once.`
 }

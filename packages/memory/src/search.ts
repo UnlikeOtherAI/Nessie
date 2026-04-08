@@ -1,6 +1,6 @@
 import type { ThoughtSearchMode } from '@nessie/schemas'
 import type { Pool } from 'pg'
-import type { RecallLogEntry } from './recalls.js'
+import { logRecalls, type LoggedRecall, type RecallLogEntry } from './recalls.js'
 import { getEmbedding, type EmbeddingConfig } from './embed.js'
 
 type Queryable = Pick<Pool, 'query'>
@@ -69,6 +69,11 @@ export type SearchThoughtsOutput = {
 
 export type SearchConfig = {
   pool: Queryable
+  embedding: EmbeddingConfig
+}
+
+export type SearchExecutionConfig = {
+  pool: Pool
   embedding: EmbeddingConfig
 }
 
@@ -199,6 +204,32 @@ const loadReasoningByThought = async (
   return reasoningByThought
 }
 
+const buildRecallLookupKey = (
+  thoughtId: string,
+  rankPosition: number,
+): string => `${thoughtId}:${rankPosition}`
+
+const attachRecallIds = (
+  results: SearchResult[],
+  recalls: LoggedRecall[],
+): SearchResult[] => {
+  const recallIdByResult = new Map<string, string>()
+
+  for (const recall of recalls) {
+    recallIdByResult.set(
+      buildRecallLookupKey(recall.thoughtId, recall.rankPosition),
+      recall.id,
+    )
+  }
+
+  return results.map((result) => ({
+    ...result,
+    recallId: recallIdByResult.get(
+      buildRecallLookupKey(result.id, result.rankPosition),
+    ),
+  }))
+}
+
 export const searchThoughts = async (
   input: SearchThoughtsInput,
   config: SearchConfig,
@@ -242,5 +273,31 @@ export const searchThoughts = async (
       reasoning: reasoningByThought.get(result.id),
     })),
     recalls,
+  }
+}
+
+export const searchAndLogThoughts = async (
+  input: SearchThoughtsInput,
+  config: SearchExecutionConfig,
+): Promise<SearchResult[]> => {
+  const client = await config.pool.connect()
+
+  try {
+    await client.query('BEGIN')
+
+    const searchResult = await searchThoughts(input, {
+      ...config,
+      pool: client,
+    })
+    const loggedRecalls = await logRecalls(searchResult.recalls, client)
+
+    await client.query('COMMIT')
+
+    return attachRecallIds(searchResult.results, loggedRecalls)
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
   }
 }

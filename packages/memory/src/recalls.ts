@@ -132,3 +132,39 @@ export const recordRecallSignal = async (
 
   return result.rowCount !== null && result.rowCount > 0
 }
+
+export const markRecallsInjected = async (
+  recallIds: string[],
+  db: Queryable,
+): Promise<number> => {
+  if (recallIds.length === 0) {
+    return 0
+  }
+
+  const result = await db.query(
+    `UPDATE thought_recalls
+     SET was_injected = true
+     WHERE id = ANY($1::uuid[])`,
+    [recallIds],
+  )
+
+  return result.rowCount ?? 0
+}
+
+export const markRecallsReferenced = async (
+  recallIds: string[],
+  db: Queryable,
+): Promise<number> => {
+  if (recallIds.length === 0) {
+    return 0
+  }
+
+  const result = await db.query(
+    `UPDATE thought_recalls
+     SET was_referenced = true
+     WHERE id = ANY($1::uuid[])`,
+    [recallIds],
+  )
+
+  return result.rowCount ?? 0
+}
