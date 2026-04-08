@@ -76,6 +76,11 @@ export const loadAgentStatus = async (
             take: 1,
           },
         },
+        where: {
+          status: {
+            in: ['pending', 'running'],
+          },
+        },
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -89,6 +94,11 @@ export const loadAgentStatus = async (
   const latestRun = agent.runs[0]
   const latestToolCall = latestRun?.toolCalls[0]
   const latestMessage = agent.messages[0]
+  const isActiveRun =
+    latestRun !== undefined &&
+    latestRun.status !== 'completed' &&
+    latestRun.status !== 'failed' &&
+    latestRun.status !== 'cancelled'
   const lastActivityAt =
     latestToolCall?.startedAt ??
     latestMessage?.createdAt ??
@@ -99,9 +109,13 @@ export const loadAgentStatus = async (
     agentId: parseAgentId(agent.id),
     status: agent.status,
     since: agent.updatedAt.toISOString(),
-    currentRunId: latestRun ? parseRunId(latestRun.id) : undefined,
-    currentToolName: latestToolCall?.toolName ?? undefined,
-    currentToolStartedAt: toTimestamp(latestToolCall?.startedAt),
+    currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
+    currentToolName:
+      isActiveRun && latestToolCall?.endedAt === null ? latestToolCall.toolName : undefined,
+    currentToolStartedAt:
+      isActiveRun && latestToolCall?.endedAt === null
+        ? toTimestamp(latestToolCall.startedAt)
+        : undefined,
     activeSubAgents: agent.childAgents
       .map((childAgent) => {
         const childTask = childAgent.tasks[0]

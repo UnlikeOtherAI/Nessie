@@ -16,7 +16,7 @@ export const findThreadForUser = async (
   prisma: PrismaClient,
   threadId: string,
   userId: string,
-): Promise<(Thread & { channel: { id: string } }) | null> =>
+): Promise<(Thread & { channel: { id: string; organizationId: string } }) | null> =>
   prisma.thread.findFirst({
     where: {
       id: threadId,
@@ -28,7 +28,10 @@ export const findThreadForUser = async (
     },
     include: {
       channel: {
-        select: { id: true },
+        select: {
+          id: true,
+          organizationId: true,
+        },
       },
     },
   })
