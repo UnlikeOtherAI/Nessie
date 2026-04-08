@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { useAgents, useBindAgent, useCreateAgent } from '../facades/agents/hooks'
-import { useChannels, useCreateChannel } from '../facades/channels/hooks'
+import { useChannels } from '../facades/channels/hooks'
 import { useTools } from '../facades/tools/hooks'
 import { useCreateUser, useUsers } from '../facades/users/hooks'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
@@ -18,21 +18,16 @@ const hoverCardClass = [
 export const SettingsPage = () => {
   const navigate = useNavigate()
   const { me, logout } = useAuthSession()
-  const { onSelectAgent } = useOutletContext<AdminShellOutletContext>()
+  const { onCreateChannel, onSelectAgent } = useOutletContext<AdminShellOutletContext>()
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
   const { data: tools = [] } = useTools()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const { data: users = [] } = useUsers(isOwner)
-  const createChannel = useCreateChannel()
   const createAgent = useCreateAgent()
   const bindAgent = useBindAgent()
   const createUser = useCreateUser()
 
-  const [channelLabel, setChannelLabel] = useState('')
-  const [channelVisibility, setChannelVisibility] = useState<
-    'public' | 'protected' | 'private'
-  >('public')
   const [agentName, setAgentName] = useState('')
   const [agentRole, setAgentRole] = useState('assistant')
   const [agentPrompt, setAgentPrompt] = useState('')
@@ -66,17 +61,6 @@ export const SettingsPage = () => {
 
   if (!me) {
     return null
-  }
-
-  const createChannelSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const created = await createChannel.mutateAsync({
-      label: channelLabel,
-      visibility: channelVisibility,
-    })
-    setChannelLabel('')
-    setChannelVisibility('public')
-    void navigate(`/channels/${created.id}`)
   }
 
   const createAgentSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -216,31 +200,13 @@ export const SettingsPage = () => {
               ))}
             </div>
 
-            <form className="mt-4 grid gap-3" onSubmit={createChannelSubmit}>
-              <input
-                className="admin-input"
-                onChange={(event) => setChannelLabel(event.target.value)}
-                placeholder="Channel label"
-                value={channelLabel}
-              />
-              <select
-                className="admin-input"
-                onChange={(event) =>
-                  setChannelVisibility(event.target.value as typeof channelVisibility)
-                }
-                value={channelVisibility}
-              >
-                <option value="public">Public</option>
-                <option value="protected">Protected</option>
-                <option value="private">Private</option>
-              </select>
-              <button
-                className="admin-button admin-button-primary justify-self-start"
-                type="submit"
-              >
-                Create channel
-              </button>
-            </form>
+            <button
+              className="admin-button admin-button-primary mt-4 justify-self-start"
+              onClick={onCreateChannel}
+              type="button"
+            >
+              Create channel
+            </button>
           </section>
 
           <section className="admin-card p-4" id="agents">

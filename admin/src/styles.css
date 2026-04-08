@@ -321,3 +321,31 @@ a {
     opacity: 0.35;
   }
 }
+
+.create-channel-dialog {
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  padding: 0;
+  max-width: 440px;
+  width: calc(100% - 32px);
+}
+
+.create-channel-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.create-channel-dialog-content {
+  border: 1px solid var(--sep);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 24px;
+}
+
+.create-channel-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}

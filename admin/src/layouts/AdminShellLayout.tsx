@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AgentActivityPanel } from '../components/features/agents/AgentActivityPanel';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { PresenceDot } from '../components/primitives/PresenceDot';
+import { CreateChannelDialog } from '../components/shared/CreateChannelDialog';
 import { useAgentRealtime, useAgents } from '../facades/agents/hooks';
 import { useChannels } from '../facades/channels/hooks';
 import { useUsers } from '../facades/users/hooks';
@@ -41,6 +42,7 @@ const getDmStyle = (index: number) => ({
 });
 
 export type AdminShellOutletContext = {
+  onCreateChannel: () => void;
   onSelectAgent: (agentId: string) => void;
   scopedAgents: AgentRecord[];
 };
@@ -61,6 +63,10 @@ export const AdminShellLayout = () => {
       : undefined,
   });
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [createChannelOpen, setCreateChannelOpen] = useState(false);
+
+  const openCreateChannel = useCallback(() => setCreateChannelOpen(true), []);
+  const closeCreateChannel = useCallback(() => setCreateChannelOpen(false), []);
 
   const scopedAgents = useMemo(
     () =>
@@ -372,7 +378,7 @@ export const AdminShellLayout = () => {
 
             <button
               className="admin-sb-item text-[color:var(--tx3)]"
-              onClick={() => void navigate('/settings#channels')}
+              onClick={openCreateChannel}
               type="button"
             >
               <svg
@@ -439,9 +445,11 @@ export const AdminShellLayout = () => {
         </aside>
 
         <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
-          <Outlet context={{ onSelectAgent: selectAgent, scopedAgents }} />
+          <Outlet context={{ onCreateChannel: openCreateChannel, onSelectAgent: selectAgent, scopedAgents }} />
         </main>
       </div>
+
+      <CreateChannelDialog onClose={closeCreateChannel} open={createChannelOpen} />
 
       <AgentDetailDrawer
         agent={selectedAgent}
