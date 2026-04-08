@@ -61,6 +61,7 @@ type DoctorSummary = {
 
 const API_PORT = 4317
 const ADMIN_PORT = 4173
+const LAN_BIND_HOST = '0.0.0.0'
 const DOCKER_POSTGRES_PORT = 55432
 const STATE_VERSION = 1 as const
 const DOCKER_DB_URL = `postgresql://nessie:nessie@127.0.0.1:${DOCKER_POSTGRES_PORT}/nessie`
@@ -381,7 +382,7 @@ const createGeneratedConfig = (mode: LaunchMode, env: NodeJS.ProcessEnv): Nessie
   const config: NessieConfig = {
     ...baseConfig,
     api: {
-      host: '127.0.0.1',
+      host: LAN_BIND_HOST,
       port: API_PORT,
     },
     auth: {
@@ -716,7 +717,7 @@ const upLocalStack = async (args: string[]): Promise<void> => {
       'admin',
       paths.adminRoot,
       resolveLocalBin(paths.adminRoot, 'vite'),
-      ['--host', '127.0.0.1', '--port', String(ADMIN_PORT)],
+      ['--host', LAN_BIND_HOST, '--port', String(ADMIN_PORT)],
       childEnv,
     ),
     api: spawnDetachedService(
