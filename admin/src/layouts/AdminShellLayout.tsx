@@ -56,6 +56,7 @@ export const AdminShellLayout = () => {
   const { data: agents = [] } = useAgents();
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const { data: users = [] } = useUsers(isOwner);
+  const isAgentsRoute = location.pathname.startsWith('/agents');
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
@@ -217,10 +218,9 @@ export const AdminShellLayout = () => {
             <span className="admin-rail-btn-label">Channels</span>
           </Link>
 
-          <button
-            className="admin-rail-btn"
-            onClick={() => void navigate('/settings#agents')}
-            type="button"
+          <Link
+            className={`admin-rail-btn ${isAgentsRoute ? 'active' : ''}`}
+            to="/agents"
           >
             <svg
               className="h-5 w-5"
@@ -238,7 +238,7 @@ export const AdminShellLayout = () => {
               <circle cx="19" cy="13" r="2.5" style={{ stroke: '#a78bfa' }} />
             </svg>
             <span className="admin-rail-btn-label">Agents</span>
-          </button>
+          </Link>
 
           <button
             className="admin-rail-btn"
@@ -307,165 +307,167 @@ export const AdminShellLayout = () => {
           </button>
         </aside>
 
-        <aside
-          className={[
-            'hidden h-full w-[260px] flex-col overflow-hidden',
-            'border-r border-[color:var(--sep)] bg-[color:var(--sb)] md:flex',
-          ].join(' ')}
-        >
-          <div className="flex h-[50px] items-center justify-between px-4">
-            <button
-              className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-white/10"
-              onClick={() => void navigate('/channels')}
-              type="button"
-            >
-              <span className="text-[17px] font-black tracking-[-0.01em] text-white">Nessie</span>
-              <svg
-                className="h-4 w-4 text-[color:var(--tx2)]"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+        {!isAgentsRoute && (
+          <aside
+            className={[
+              'hidden h-full w-[260px] flex-col overflow-hidden',
+              'border-r border-[color:var(--sep)] bg-[color:var(--sb)] md:flex',
+            ].join(' ')}
+          >
+            <div className="flex h-[50px] items-center justify-between px-4">
+              <button
+                className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-white/10"
+                onClick={() => void navigate('/channels')}
+                type="button"
               >
-                <path
-                  d="M19 9l-7 7-7-7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2.5"
-                />
-              </svg>
-            </button>
-
-            <button
-              className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10"
-              onClick={() => void navigate('/settings')}
-              type="button"
-            >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  d={[
-                    'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5',
-                    'm-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
-                  ].join(' ')}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto py-1">
-            <button
-              className="admin-sec-hdr"
-              onClick={toggleChannelsCollapsed}
-              type="button"
-            >
-              <svg
-                className={[
-                  'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-                  channelsCollapsed ? '-rotate-90' : '',
-                ].join(' ')}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                viewBox="0 0 24 24"
-              >
-                <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Channels
-            </button>
-
-            {!channelsCollapsed && (
-              <>
-                {channels.map((channel) => (
-                  <button
-                    key={channel.id}
-                    className={`admin-sb-item ${channel.id === currentChannelId ? 'active' : ''}`}
-                    onClick={() => void navigate(`/channels/${channel.id}`)}
-                    type="button"
-                  >
-                    <span className={channelHashClassName}>#</span>
-                    <span className="truncate">{channel.label}</span>
-                    {channel.id === currentChannelId ? (
-                      <span className={unreadCountClassName}>{scopedAgents.length}</span>
-                    ) : null}
-                  </button>
-                ))}
-
-                <button
-                  className="admin-sb-item text-[color:var(--tx3)]"
-                  onClick={openCreateChannel}
-                  type="button"
+                <span className="text-[17px] font-black tracking-[-0.01em] text-white">Nessie</span>
+                <svg
+                  className="h-4 w-4 text-[color:var(--tx2)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <svg
-                    className="h-4 w-4 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Create channel
-                </button>
-              </>
-            )}
+                  <path
+                    d="M19 9l-7 7-7-7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.5"
+                  />
+                </svg>
+              </button>
 
-            <AgentActivityPanel
-              agents={scopedAgents}
-              onSelectAgent={selectAgent}
-              realtime={realtime}
-              selectedAgentId={selectedAgentId}
-            />
-
-            <div className="admin-sec-hdr mt-2">
-              <svg
-                className="h-3 w-3 text-[color:var(--tx3)]"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                viewBox="0 0 24 24"
+              <button
+                className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10"
+                onClick={() => void navigate('/settings')}
+                type="button"
               >
-                <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Direct messages
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d={[
+                      'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5',
+                      'm-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+                    ].join(' ')}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
             </div>
 
-            {sidebarPeople.map((person) => (
+            <div className="min-h-0 flex-1 overflow-y-auto py-1">
               <button
-                key={person.id}
-                className="admin-sb-item"
+                className="admin-sec-hdr"
+                onClick={toggleChannelsCollapsed}
+                type="button"
+              >
+                <svg
+                  className={[
+                    'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                    channelsCollapsed ? '-rotate-90' : '',
+                  ].join(' ')}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Channels
+              </button>
+
+              {!channelsCollapsed && (
+                <>
+                  {channels.map((channel) => (
+                    <button
+                      key={channel.id}
+                      className={`admin-sb-item ${channel.id === currentChannelId ? 'active' : ''}`}
+                      onClick={() => void navigate(`/channels/${channel.id}`)}
+                      type="button"
+                    >
+                      <span className={channelHashClassName}>#</span>
+                      <span className="truncate">{channel.label}</span>
+                      {channel.id === currentChannelId ? (
+                        <span className={unreadCountClassName}>{scopedAgents.length}</span>
+                      ) : null}
+                    </button>
+                  ))}
+
+                  <button
+                    className="admin-sb-item text-[color:var(--tx3)]"
+                    onClick={openCreateChannel}
+                    type="button"
+                  >
+                    <svg
+                      className="h-4 w-4 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Create channel
+                  </button>
+                </>
+              )}
+
+              <AgentActivityPanel
+                agents={scopedAgents}
+                onSelectAgent={selectAgent}
+                realtime={realtime}
+                selectedAgentId={selectedAgentId}
+              />
+
+              <div className="admin-sec-hdr mt-2">
+                <svg
+                  className="h-3 w-3 text-[color:var(--tx3)]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Direct messages
+              </div>
+
+              {sidebarPeople.map((person) => (
+                <button
+                  key={person.id}
+                  className="admin-sb-item"
+                  onClick={() => void navigate('/settings#users')}
+                  type="button"
+                >
+                  <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
+                  <span className="truncate text-sm">{person.label}</span>
+                </button>
+              ))}
+
+              <button
+                className="admin-sb-item text-[color:var(--tx3)]"
                 onClick={() => void navigate('/settings#users')}
                 type="button"
               >
-                <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
-                <span className="truncate text-sm">{person.label}</span>
+                <svg
+                  className="h-4 w-4 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {isOwner ? 'Invite people' : 'Workspace profile'}
               </button>
-            ))}
-
-            <button
-              className="admin-sb-item text-[color:var(--tx3)]"
-              onClick={() => void navigate('/settings#users')}
-              type="button"
-            >
-              <svg
-                className="h-4 w-4 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-                <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {isOwner ? 'Invite people' : 'Workspace profile'}
-            </button>
-          </div>
-        </aside>
+            </div>
+          </aside>
+        )}
 
         <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
           <Outlet context={{ onCreateChannel: openCreateChannel, onSelectAgent: selectAgent, scopedAgents }} />

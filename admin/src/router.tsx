@@ -1,5 +1,6 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
+import { AgentsPage } from './pages/AgentsPage'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { LoginPage } from './pages/LoginPage'
@@ -24,6 +25,10 @@ export const router = createBrowserRouter([
       {
         path: '/channels/:channelId?',
         element: <ChannelsPage />,
+      },
+      {
+        path: '/agents',
+        element: <AgentsPage />,
       },
       {
         path: '/settings',
