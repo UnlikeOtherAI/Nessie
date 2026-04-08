@@ -4,8 +4,13 @@ import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
+import { createPgPool } from '@nessie/runtime'
 import {
+  CaptureThoughtBodySchema,
+  LinkThoughtsBodySchema,
   MeResponseSchema,
+  RecordOutcomeBodySchema,
+  SearchThoughtsBodySchema,
   WsClientMessageSchema,
   parseAgentId,
   parseChannelId,
@@ -87,6 +92,7 @@ import {
   findThreadForUser,
   listThreadMessages,
 } from './services/messages.js'
+import { createThoughtService } from './services/thoughts.js'
 import { listSafeTools } from './services/tools.js'
 import {
   createUserForOrganization,
@@ -323,6 +329,19 @@ export const buildApp = async () => {
     poolMin: config.database.poolMin,
   })
 
+  const memoryPool = createPgPool(databaseUrl, {
+    max: config.database.poolMax,
+    min: config.database.poolMin,
+  })
+  const openaiApiKey = process.env.OPENAI_API_KEY ?? ''
+  const embeddingConfig = { apiKey: openaiApiKey }
+  const extractionConfig = { apiKey: openaiApiKey }
+  const thoughtService = createThoughtService({
+    pool: memoryPool,
+    captureConfig: { pool: memoryPool, embedding: embeddingConfig, extraction: extractionConfig },
+    searchConfig: { pool: memoryPool, embedding: embeddingConfig },
+  })
+
   await app.register(cors, { origin: true, credentials: true })
   await app.register(websocket)
 
@@ -330,6 +349,7 @@ export const buildApp = async () => {
 
   app.addHook('onClose', async () => {
     await realtimeHub.close()
+    await memoryPool.end()
     await prisma.$disconnect()
   })
 
@@ -1142,6 +1162,124 @@ export const buildApp = async () => {
       clearTimeout(idleTimer)
       realtimeHub.removeWsConnection(wsConnection)
     })
+  })
+
+  // ─── Memory / Thoughts Routes ────────────────────────────────────────────
+
+  app.post('/api/thoughts', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(CaptureThoughtBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const result = await thoughtService.capture({
+      content: body.content,
+      ownerId: actorContext.actor.actorId,
+      ownerType: actorContext.actor.actorType,
+      organizationId: actorContext.tenant.organizationId,
+      projectId: body.projectId ?? actorContext.tenant.projectId,
+      teamId: body.teamId ?? actorContext.tenant.teamId,
+      channelId: body.channelId ?? actorContext.tenant.channelId ?? undefined,
+      threadId: body.threadId ?? undefined,
+      visibility: body.visibility,
+      sensitivityTier: body.sensitivityTier,
+      importance: body.importance,
+    })
+
+    return reply.code(201).send(createApiResponse(result))
+  })
+
+  app.post('/api/thoughts/search', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(SearchThoughtsBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const results = await thoughtService.search({
+      query: body.query,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+      threshold: body.threshold,
+      limit: body.limit,
+      includeReasoning: body.includeReasoning,
+    })
+
+    return createApiResponse(results)
+  })
+
+  app.put('/api/thoughts/:id/outcome', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(RecordOutcomeBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { id } = request.params as { id: string }
+
+    await thoughtService.recordOutcome({
+      thoughtId: id,
+      outcome: body.outcome,
+      outcomeNotes: body.outcomeNotes,
+      actorType: actorContext.actor.actorType,
+      actorId: actorContext.actor.actorId,
+    })
+
+    return createApiResponse({ ok: true })
+  })
+
+  app.post('/api/thoughts/:id/link', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(LinkThoughtsBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { id } = request.params as { id: string }
+
+    const linkId = await thoughtService.link({
+      sourceId: id,
+      targetId: body.targetId,
+      relation: body.relation,
+      metadata: body.metadata,
+      actorType: actorContext.actor.actorType,
+      actorId: actorContext.actor.actorId,
+    })
+
+    return reply.code(201).send(createApiResponse({ linkId }))
+  })
+
+  app.get('/api/experience/stats', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const actorId = (request.query as { actorId?: string }).actorId ?? null
+
+    const stats = await thoughtService.experienceStats(
+      actorContext.tenant.organizationId,
+      actorId,
+    )
+
+    return createApiResponse(stats)
   })
 
   return app

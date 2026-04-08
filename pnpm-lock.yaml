@@ -109,6 +109,9 @@ importers:
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config
+      '@nessie/memory':
+        specifier: workspace:*
+        version: link:../packages/memory
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../packages/runtime
@@ -121,10 +124,16 @@ importers:
       fastify:
         specifier: ^5.8.4
         version: 5.8.4
+      pg:
+        specifier: ^8.16.3
+        version: 8.20.0
       zod:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
+      '@types/pg':
+        specifier: ^8.15.5
+        version: 8.20.0
       prisma:
         specifier: ^6.17.1
         version: 6.19.3(typescript@5.9.3)

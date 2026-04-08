@@ -23,6 +23,8 @@ export const RunIdSchema = createUuidBrandSchema<'RunId'>()
 export type RunId = z.infer<typeof RunIdSchema>
 export const TaskIdSchema = createUuidBrandSchema<'TaskId'>()
 export type TaskId = z.infer<typeof TaskIdSchema>
+export const ThoughtIdSchema = createUuidBrandSchema<'ThoughtId'>()
+export type ThoughtId = z.infer<typeof ThoughtIdSchema>
 
 export const parseOrganizationId = (value: string): OrganizationId =>
   OrganizationIdSchema.parse(value)
@@ -34,6 +36,7 @@ export const parseAgentId = (value: string): AgentId => AgentIdSchema.parse(valu
 export const parseThreadId = (value: string): ThreadId => ThreadIdSchema.parse(value)
 export const parseRunId = (value: string): RunId => RunIdSchema.parse(value)
 export const parseTaskId = (value: string): TaskId => TaskIdSchema.parse(value)
+export const parseThoughtId = (value: string): ThoughtId => ThoughtIdSchema.parse(value)
 
 export type ApiResponse<T> = {
   data: T
@@ -598,3 +601,78 @@ export const RunExecuteJobPayloadSchema = z.object({
   threadId: ThreadIdSchema,
 })
 export type RunExecuteJobPayload = z.infer<typeof RunExecuteJobPayloadSchema>
+
+// ─── Memory Schemas ─────────────────────────────────────────────────────────
+
+export const ThoughtVisibilitySchema = z.enum([
+  'private',
+  'channel',
+  'team',
+  'project',
+  'organization',
+])
+export type ThoughtVisibility = z.infer<typeof ThoughtVisibilitySchema>
+
+export const SensitivityTierSchema = z.enum(['normal', 'sensitive', 'restricted'])
+export type SensitivityTier = z.infer<typeof SensitivityTierSchema>
+
+export const ReasoningTypeSchema = z.enum([
+  'decision',
+  'evaluation',
+  'constraint',
+  'pattern',
+  'correction',
+  'validation',
+])
+export type ReasoningType = z.infer<typeof ReasoningTypeSchema>
+
+export const OutcomeStatusSchema = z.enum([
+  'pending',
+  'successful',
+  'partially',
+  'failed',
+  'superseded',
+])
+export type OutcomeStatus = z.infer<typeof OutcomeStatusSchema>
+
+export const ThoughtLinkRelationSchema = z.enum([
+  'supersedes',
+  'derived_from',
+  'contradicts',
+  'supports',
+  'relates_to',
+])
+export type ThoughtLinkRelation = z.infer<typeof ThoughtLinkRelationSchema>
+
+export const CaptureThoughtBodySchema = z.object({
+  content: z.string().min(1).max(50000),
+  visibility: ThoughtVisibilitySchema.optional(),
+  sensitivityTier: SensitivityTierSchema.optional(),
+  importance: z.number().min(0).max(1).optional(),
+  projectId: ProjectIdSchema.optional(),
+  teamId: TeamIdSchema.optional(),
+  channelId: ChannelIdSchema.optional(),
+  threadId: ThreadIdSchema.optional(),
+})
+export type CaptureThoughtBody = z.infer<typeof CaptureThoughtBodySchema>
+
+export const SearchThoughtsBodySchema = z.object({
+  query: z.string().min(1).max(2000),
+  threshold: z.number().min(0).max(1).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  includeReasoning: z.boolean().optional(),
+})
+export type SearchThoughtsBody = z.infer<typeof SearchThoughtsBodySchema>
+
+export const RecordOutcomeBodySchema = z.object({
+  outcome: z.enum(['successful', 'partially', 'failed']),
+  outcomeNotes: z.string().max(5000).optional(),
+})
+export type RecordOutcomeBody = z.infer<typeof RecordOutcomeBodySchema>
+
+export const LinkThoughtsBodySchema = z.object({
+  targetId: ThoughtIdSchema,
+  relation: ThoughtLinkRelationSchema,
+  metadata: z.record(z.string(), z.unknown()).optional(),
+})
+export type LinkThoughtsBody = z.infer<typeof LinkThoughtsBodySchema>
