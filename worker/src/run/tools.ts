@@ -1,4 +1,6 @@
+import { lookup } from 'node:dns/promises'
 import { readFile, readdir } from 'node:fs/promises'
+import { isIP } from 'node:net'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -13,9 +15,24 @@ const URL_PATTERN = /https?:\/\/[^\s)]+/i
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const docsRoot = resolve(repoRoot, 'docs')
 const docsRootPrefix = `${docsRoot}${sep}`
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  'host.docker.internal',
+  'gateway.docker.internal',
+  'metadata.google.internal',
+])
 
 const truncate = (value: string, maxLength = MAX_PREVIEW_LENGTH): string =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`
+
+const extractUrl = (prompt: string): string | null => {
+  const rawMatch = prompt.match(URL_PATTERN)?.[0]
+  if (!rawMatch) {
+    return null
+  }
+
+  return rawMatch.replace(/[.,!?;:]+$/, '')
+}
 
 const stripHtml = (value: string): string =>
   value
@@ -78,7 +95,94 @@ const selectDocumentPath = async (prompt: string): Promise<string | null> => {
     })
     .sort((left, right) => right.score - left.score)
 
-  return ranked[0]?.filePath ?? null
+  return ranked.find((entry) => entry.score > 0)?.filePath ?? null
+}
+
+const isBlockedIpv4Address = (value: string): boolean => {
+  const parts = value.split('.').map((part) => Number.parseInt(part, 10))
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) {
+    return true
+  }
+
+  const first = parts[0]
+  const second = parts[1]
+  if (first === undefined || second === undefined) {
+    return true
+  }
+
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 100 && second >= 64 && second <= 127) ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 198 && (second === 18 || second === 19))
+  )
+}
+
+const isBlockedIpv6Address = (value: string): boolean => {
+  const normalized = value.toLowerCase()
+  return (
+    normalized === '::1' ||
+    normalized === '::' ||
+    normalized.startsWith('fc') ||
+    normalized.startsWith('fd') ||
+    normalized.startsWith('fe8') ||
+    normalized.startsWith('fe9') ||
+    normalized.startsWith('fea') ||
+    normalized.startsWith('feb')
+  )
+}
+
+const isBlockedIpAddress = (value: string): boolean => {
+  const version = isIP(value)
+  if (version === 4) {
+    return isBlockedIpv4Address(value)
+  }
+
+  if (version === 6) {
+    return isBlockedIpv6Address(value)
+  }
+
+  return true
+}
+
+const assertSafeFetchUrl = async (rawUrl: string): Promise<URL> => {
+  const url = new URL(rawUrl)
+
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('Only http and https URLs are allowed.')
+  }
+
+  if (url.username || url.password) {
+    throw new Error('Authenticated URLs are not allowed.')
+  }
+
+  const hostname = url.hostname.toLowerCase()
+  if (
+    BLOCKED_HOSTNAMES.has(hostname) ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local')
+  ) {
+    throw new Error('Private or local network URLs are not allowed.')
+  }
+
+  if (isIP(hostname) !== 0) {
+    if (isBlockedIpAddress(hostname)) {
+      throw new Error('Private or local network URLs are not allowed.')
+    }
+
+    return url
+  }
+
+  const addresses = await lookup(hostname, { all: true, verbatim: true })
+  if (addresses.length === 0 || addresses.some((entry) => isBlockedIpAddress(entry.address))) {
+    throw new Error('Private or local network URLs are not allowed.')
+  }
+
+  return url
 }
 
 export const shouldUseDocumentRead = (prompt: string): boolean =>
@@ -109,7 +213,7 @@ export const runDocumentReadTool = async (prompt: string): Promise<ToolExecution
 }
 
 export const runWebFetchTool = async (prompt: string): Promise<ToolExecutionResult> => {
-  const url = prompt.match(URL_PATTERN)?.[0]
+  const url = extractUrl(prompt)
   if (!url) {
     return {
       inputSummary: 'no url provided',
@@ -118,17 +222,19 @@ export const runWebFetchTool = async (prompt: string): Promise<ToolExecutionResu
     }
   }
 
-  const response = await fetch(url, {
+  const safeUrl = await assertSafeFetchUrl(url)
+  const response = await fetch(safeUrl, {
     headers: {
       'user-agent': 'NessieWorker/0.0.0',
     },
+    redirect: 'error',
   })
   const contentType = response.headers.get('content-type') ?? 'text/plain'
   const body = await response.text()
   const outputPreview = contentType.includes('text/html') ? stripHtml(body) : body
 
   return {
-    inputSummary: url,
+    inputSummary: safeUrl.toString(),
     outputPreview: truncate(outputPreview),
     toolName: 'web_fetch',
   }

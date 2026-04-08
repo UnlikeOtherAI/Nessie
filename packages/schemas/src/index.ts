@@ -592,6 +592,7 @@ export const RunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   agentId: AgentIdSchema,
   messageId: NonEmptyStringSchema,
+  promptOverride: z.string().min(1).optional(),
   runId: RunIdSchema,
   taskId: TaskIdSchema,
   threadId: ThreadIdSchema,

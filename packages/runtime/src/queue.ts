@@ -40,6 +40,10 @@ type RawQueueJobRow = {
 const DEFAULT_LOCK_TTL_SECONDS = 5 * 60
 const DEFAULT_POLL_INTERVAL_MS = 1_000
 
+const logQueueError = (message: string, error: unknown): void => {
+  console.error(message, error)
+}
+
 const mapQueueJob = (row: RawQueueJobRow): QueueJob => ({
   attempt: row.attempt,
   enqueuedAt: row.enqueued_at.toISOString(),
@@ -142,39 +146,47 @@ export class PgQueueProvider implements QueueProvider {
 
     void (async () => {
       while (!signal?.aborted) {
-        let job: QueueJob | null
         try {
-          job = await this.claimNextJob(topic)
+          const job = await this.claimNextJob(topic)
+
+          if (!job) {
+            await delay(pollIntervalMs, undefined, { signal }).catch(() => undefined)
+            continue
+          }
+
+          try {
+            await handler(job)
+            if (signal?.aborted) {
+              return
+            }
+
+            await this.acknowledge(job.id)
+          } catch (error) {
+            if (signal?.aborted) {
+              return
+            }
+
+            const reason = error instanceof Error ? error.message : 'Unknown queue failure'
+            await this.nack(job.id, reason).catch((nackError) => {
+              logQueueError(`Failed to nack queue job ${job.id}`, nackError)
+            })
+          }
         } catch (error) {
           if (signal?.aborted) {
             return
           }
 
-          throw error
-        }
-
-        if (!job) {
+          logQueueError(`Queue subscription loop error for topic "${topic}"`, error)
           await delay(pollIntervalMs, undefined, { signal }).catch(() => undefined)
-          continue
-        }
-
-        try {
-          await handler(job)
-          if (signal?.aborted) {
-            return
-          }
-
-          await this.acknowledge(job.id)
-        } catch (error) {
-          if (signal?.aborted) {
-            return
-          }
-
-          const reason = error instanceof Error ? error.message : 'Unknown queue failure'
-          await this.nack(job.id, reason)
         }
       }
-    })()
+    })().catch((error) => {
+      if (signal?.aborted) {
+        return
+      }
+
+      logQueueError(`Queue subscription stopped unexpectedly for topic "${topic}"`, error)
+    })
   }
 
   private async claimNextJob(topic: string): Promise<QueueJob | null> {
@@ -191,9 +203,10 @@ export class PgQueueProvider implements QueueProvider {
           SELECT id
           FROM queue_jobs
           WHERE topic = $1
-            AND status = 'pending'
-            AND enqueued_at <= now()
-            AND (locked_until IS NULL OR locked_until < now())
+            AND (
+              (status = 'pending' AND enqueued_at <= now())
+              OR (status = 'processing' AND locked_until IS NOT NULL AND locked_until < now())
+            )
           ORDER BY enqueued_at
           FOR UPDATE SKIP LOCKED
           LIMIT 1

@@ -61,17 +61,24 @@ type StoredConversationMessage = {
 const MAX_TOOL_CONTEXT_LENGTH = 400
 
 const buildScopes = (context: RunContext): WsScope[] => [
+  ...buildScopesForAgent(context.channel, context.agent.id),
+]
+
+const buildScopesForAgent = (
+  channel: RunContext['channel'],
+  agentId: string,
+): WsScope[] => [
   {
     kind: 'organization',
-    organizationId: parseOrganizationId(context.channel.organizationId),
+    organizationId: parseOrganizationId(channel.organizationId),
   },
   {
     kind: 'channel',
-    channelId: parseChannelId(context.channel.id),
+    channelId: parseChannelId(channel.id),
   },
   {
     kind: 'agent',
-    agentId: parseAgentId(context.agent.id),
+    agentId: parseAgentId(agentId),
   },
 ]
 
@@ -113,6 +120,27 @@ const publishAgentStatus = async (
   })
 }
 
+const publishMessageCreated = async (
+  realtimeTransport: PgRealtimeTransport,
+  context: RunContext,
+  input: {
+    content: string
+    messageId: string
+    role: 'assistant' | 'system' | 'user'
+  },
+): Promise<void> => {
+  await realtimeTransport.publishWs(buildScopes(context), {
+    data: {
+      agentId: parseAgentId(context.agent.id),
+      contentPreview: input.content.slice(0, 200),
+      messageId: input.messageId,
+      role: input.role,
+      threadId: parseThreadId(context.run.threadId),
+    },
+    event: 'message.new',
+  })
+}
+
 const updateTaskStatus = async (
   prisma: PrismaClient,
   taskId: string,
@@ -121,6 +149,21 @@ const updateTaskStatus = async (
   await prisma.task.update({
     where: { id: taskId },
     data: { status },
+  })
+}
+
+const publishTaskUpdated = async (
+  realtimeTransport: PgRealtimeTransport,
+  scopes: WsScope[],
+  taskId: string,
+  status: TaskStatus,
+): Promise<void> => {
+  await realtimeTransport.publishWs(scopes, {
+    data: {
+      taskId: parseTaskId(taskId),
+      status,
+    },
+    event: 'task.updated',
   })
 }
 
@@ -316,6 +359,24 @@ const executeSafeTool = async (
   }
 }
 
+const deriveDelegatedTask = (prompt: string): string => {
+  const normalizedPrompt = prompt.replace(/\s+/g, ' ').trim()
+  const delegationPatterns = [
+    /\b(?:spawn|delegate)(?:\s+a)?(?:\s+sub-agent|\s+subagent)?\s+(?:to|for)\s+(.+?)(?:[.?!]|$)/i,
+    /\b(?:spawn|delegate)(?:\s+a)?(?:\s+sub-agent|\s+subagent)?\b\s+(.+?)(?:[.?!]|$)/i,
+  ]
+
+  for (const pattern of delegationPatterns) {
+    const match = normalizedPrompt.match(pattern)
+    const task = match?.[1]?.replace(/^(and|then)\s+/i, '').trim()
+    if (task) {
+      return task
+    }
+  }
+
+  return 'Summarize the parent request succinctly.'
+}
+
 const maybeSpawnChildAgent = async (
   deps: ExecutionDependencies,
   context: RunContext,
@@ -325,6 +386,8 @@ const maybeSpawnChildAgent = async (
   if (context.agent.parentAgentId || !/\b(spawn|delegate|sub-agent|subagent)\b/i.test(prompt)) {
     return null
   }
+
+  const delegatedTask = deriveDelegatedTask(prompt)
 
   const child = await deps.prisma.agent.create({
     data: {
@@ -353,11 +416,18 @@ const maybeSpawnChildAgent = async (
     data: {
       agentId: child.id,
       parentTaskId: context.task.id,
-      purpose: `Delegated from ${context.agent.name}: ${prompt.slice(0, 160)}`,
+      purpose: `Delegated task: ${delegatedTask}`.slice(0, 200),
       runId: childRun.id,
       status: 'inbox',
     },
   })
+
+  await publishTaskUpdated(
+    deps.realtimeTransport,
+    buildScopesForAgent(context.channel, child.id),
+    childTask.id,
+    childTask.status,
+  )
 
   await deps.realtimeTransport.publishWs(buildScopes(context), {
     data: {
@@ -379,6 +449,12 @@ const maybeSpawnChildAgent = async (
     },
     agentId: parseAgentId(child.id),
     messageId: payload.messageId,
+    promptOverride: [
+      `Delegated sub-task from ${context.agent.name}.`,
+      `Task: ${delegatedTask}`,
+      `Parent request context: ${prompt.trim()}`,
+      'Complete only the delegated task and report back succinctly.',
+    ].join('\n\n'),
     runId: parseRunId(childRun.id),
     taskId: parseTaskId(childTask.id),
     threadId: parseThreadId(childRun.threadId),
@@ -433,7 +509,13 @@ const buildModelPrompt = (
     messages.push(...conversation)
   }
 
-  if (conversation.length === 0 || conversation.at(-1)?.role !== 'user') {
+  const lastConversationMessage = conversation.at(-1)
+  const shouldAppendPrompt =
+    !lastConversationMessage ||
+    lastConversationMessage.role !== 'user' ||
+    lastConversationMessage.content.trim() !== prompt.trim()
+
+  if (shouldAppendPrompt) {
     messages.push({ content: prompt.trim(), role: 'user' })
   }
 
@@ -478,11 +560,20 @@ export const executeRunJob = async (
     return
   }
 
+  const prompt = payload.promptOverride?.trim() || message.content
+  let streamStarted = false
+
   try {
     await updateRunStatus(deps.prisma, context.run.id, 'running')
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')
     await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
     await publishRunUpdated(deps.realtimeTransport, context, 'running')
+    await publishTaskUpdated(
+      deps.realtimeTransport,
+      buildScopes(context),
+      context.task.id,
+      'in_progress',
+    )
     await publishAgentStatus(deps.realtimeTransport, context, {
       currentRunId: context.run.id,
       status: 'thinking',
@@ -490,24 +581,24 @@ export const executeRunJob = async (
 
     const toolOutputs: string[] = []
 
-    if (shouldUseDocumentRead(message.content)) {
-      toolOutputs.push(await executeSafeTool(deps, context, 'document_read', message.content))
+    if (shouldUseDocumentRead(prompt)) {
+      toolOutputs.push(await executeSafeTool(deps, context, 'document_read', prompt))
     }
 
-    if (shouldUseWebFetch(message.content)) {
-      toolOutputs.push(await executeSafeTool(deps, context, 'web_fetch', message.content))
+    if (shouldUseWebFetch(prompt)) {
+      toolOutputs.push(await executeSafeTool(deps, context, 'web_fetch', prompt))
     }
 
-    if (shouldUseWebSearch(message.content)) {
-      toolOutputs.push(await executeSafeTool(deps, context, 'web_search', message.content))
+    if (shouldUseWebSearch(prompt)) {
+      toolOutputs.push(await executeSafeTool(deps, context, 'web_search', prompt))
     }
 
-    const childAgentName = await maybeSpawnChildAgent(deps, context, payload, message.content)
+    const childAgentName = await maybeSpawnChildAgent(deps, context, payload, prompt)
     const conversation = await loadConversation(deps.prisma, context.run.threadId)
     const modelMessages = buildModelPrompt(
       conversation,
       context,
-      message.content,
+      prompt,
       toolOutputs,
       childAgentName,
     )
@@ -516,6 +607,7 @@ export const executeRunJob = async (
       runId: parseRunId(context.run.id),
       threadId: parseThreadId(context.run.threadId),
     })
+    streamStarted = true
 
     let responseText = ''
     for await (const chunk of deps.modelClient.stream(modelMessages)) {
@@ -544,21 +636,17 @@ export const executeRunJob = async (
       runId: parseRunId(context.run.id),
     })
 
-    await deps.realtimeTransport.publishWs(buildScopes(context), {
-      data: {
-        agentId: parseAgentId(context.agent.id),
-        contentPreview: responseText.slice(0, 200),
-        messageId: assistantMessage.id,
-        role: 'assistant',
-        threadId: parseThreadId(context.run.threadId),
-      },
-      event: 'message.new',
+    await publishMessageCreated(deps.realtimeTransport, context, {
+      content: responseText,
+      messageId: assistantMessage.id,
+      role: 'assistant',
     })
 
     await updateRunStatus(deps.prisma, context.run.id, 'completed')
     await updateTaskStatus(deps.prisma, context.task.id, 'done')
     await setAgentStatus(deps.prisma, context.agent.id, 'idle')
     await publishRunUpdated(deps.realtimeTransport, context, 'completed')
+    await publishTaskUpdated(deps.realtimeTransport, buildScopes(context), context.task.id, 'done')
     await publishAgentStatus(deps.realtimeTransport, context, {
       currentRunId: context.run.id,
       status: 'idle',
@@ -566,10 +654,51 @@ export const executeRunJob = async (
   } catch (error) {
     const messageText = error instanceof Error ? error.message : 'Run execution failed unexpectedly'
 
+    if (streamStarted) {
+      const fallbackMessageId = `run-error:${context.run.id}`
+      let terminalMessageId = fallbackMessageId
+
+      try {
+        const errorMessage = await deps.prisma.message.create({
+          data: {
+            agentId: context.agent.id,
+            content: `I hit an error while processing this request: ${messageText}`,
+            role: 'assistant',
+            threadId: context.run.threadId,
+          },
+        })
+
+        terminalMessageId = errorMessage.id
+
+        await publishMessageCreated(deps.realtimeTransport, context, {
+          content: errorMessage.content,
+          messageId: errorMessage.id,
+          role: errorMessage.role,
+        })
+      } catch (streamError) {
+        console.error('Failed to persist terminal error message', streamError)
+      }
+
+      try {
+        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
+          messageId: terminalMessageId,
+          runId: parseRunId(context.run.id),
+        })
+      } catch (streamError) {
+        console.error('Failed to publish terminal stream event', streamError)
+      }
+    }
+
     await updateRunStatus(deps.prisma, context.run.id, 'failed')
     await updateTaskStatus(deps.prisma, context.task.id, 'failed')
     await setAgentStatus(deps.prisma, context.agent.id, 'error')
     await publishRunUpdated(deps.realtimeTransport, context, 'failed')
+    await publishTaskUpdated(
+      deps.realtimeTransport,
+      buildScopes(context),
+      context.task.id,
+      'failed',
+    )
     await publishAgentStatus(deps.realtimeTransport, context, {
       currentRunId: context.run.id,
       status: 'error',
