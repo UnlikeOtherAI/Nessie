@@ -709,6 +709,7 @@ export const buildApp = async () => {
 
     const agent = await createAgentRecord(prisma, {
       name: body.name,
+      parentAgentId: body.parentAgentId,
       role: body.role ?? 'assistant',
       systemPrompt: body.systemPrompt,
     })

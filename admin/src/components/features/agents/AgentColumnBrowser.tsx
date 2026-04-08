@@ -2,9 +2,12 @@ import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import type { AgentChild } from '@nessie/schemas'
 import { useAgentChildren, useAgents } from '../../../facades/agents/hooks'
 import { useMediaQuery } from '../../../hooks/useMediaQuery'
+import type { AgentRecord } from '../../../lib/api-client'
 import { AgentColumn } from './AgentColumn'
 import { AgentColumnItem } from './AgentColumnItem'
 import { AgentDetailColumn } from './AgentDetailColumn'
+import { AgentStatusDot } from './AgentStatusDot'
+import { SubAgentPopup } from './SubAgentPopup'
 
 type AgentChildrenListProps = {
   onSelect: (child: AgentChild) => void
@@ -41,10 +44,78 @@ const AgentChildrenList = ({
   )
 }
 
+const agentGradient = 'linear-gradient(135deg,#7c3aed,#6d28d9)'
+
+const getAgentGlyph = (status: AgentChild['status']): string => {
+  if (status === 'executing' || status === 'thinking') return '\u26A1'
+  if (status === 'error') return '\u26A0'
+  return '\u{1F916}'
+}
+
+type AgentChildrenHeaderProps = {
+  onOpenPopup: () => void
+  parentAgent: AgentRecord
+  parentId: string
+}
+
+const AgentChildrenHeader = ({
+  onOpenPopup,
+  parentAgent,
+  parentId,
+}: AgentChildrenHeaderProps) => {
+  const { data: children = [] } = useAgentChildren(parentId)
+  const displayedChildren = children.slice(0, 5)
+
+  return (
+    <div className="mb-2 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AgentStatusDot status={parentAgent.status} />
+          <div>
+            <div className="text-sm font-medium text-white">{parentAgent.name}</div>
+            <div className="text-xs text-[color:var(--tx3)]">{parentAgent.role}</div>
+          </div>
+        </div>
+        <button
+          className="flex items-center gap-0.5 rounded-full px-1 py-0.5 transition-colors hover:bg-white/10"
+          onClick={onOpenPopup}
+          title="Manage sub-agents"
+          type="button"
+        >
+          <div className="flex items-center -space-x-1.5">
+            {displayedChildren.map((child) => (
+              <div
+                className="flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-[color:var(--panel)] text-[10px]"
+                key={child.agentId}
+                style={{ background: agentGradient }}
+                title={child.name}
+              >
+                {getAgentGlyph(child.status)}
+              </div>
+            ))}
+          </div>
+          <div className="flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-[color:var(--panel)] bg-white/10 text-xs text-[color:var(--tx3)]">
+            <svg
+              className="h-3 w-3"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export const AgentColumnBrowser = () => {
   const { data: agents = [] } = useAgents()
   const [selectionPath, setSelectionPath] = useState<string[]>([])
   const [activeColumn, setActiveColumn] = useState(0)
+  const [subAgentPopupAgentId, setSubAgentPopupAgentId] = useState<string | null>(null)
 
   const isMobile = useMediaQuery('(max-width: 767px)')
   const isTablet = useMediaQuery('(min-width: 768px) and (max-width: 1023px)')
@@ -115,6 +186,13 @@ export const AgentColumnBrowser = () => {
             showBack={isMobile}
             title={parentAgent?.name ?? 'Children'}
           >
+            {parentAgent && (
+              <AgentChildrenHeader
+                onOpenPopup={() => setSubAgentPopupAgentId(parentId)}
+                parentAgent={parentAgent}
+                parentId={parentId}
+              />
+            )}
             <AgentChildrenList
               onSelect={(child) => selectAtDepth(child.agentId, depth + 1)}
               parentId={parentId}
@@ -173,6 +251,10 @@ export const AgentColumnBrowser = () => {
     return -(desktopStartIndex * columnWidthPercent)
   }, [activeColumn, isMobile, totalColumns, visibleColumns])
 
+  const popupAgent = subAgentPopupAgentId
+    ? allAgentsById.get(subAgentPopupAgentId)
+    : undefined
+
   return (
     <div className="h-full w-full overflow-hidden">
       <div
@@ -181,6 +263,14 @@ export const AgentColumnBrowser = () => {
       >
         {columns}
       </div>
+
+      {subAgentPopupAgentId && popupAgent && (
+        <SubAgentPopup
+          onClose={() => setSubAgentPopupAgentId(null)}
+          parentAgentId={subAgentPopupAgentId}
+          parentAgentName={popupAgent.name}
+        />
+      )}
     </div>
   )
 }

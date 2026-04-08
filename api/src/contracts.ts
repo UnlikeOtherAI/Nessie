@@ -90,6 +90,7 @@ export const CreateAgentBodySchema = z.object({
   name: NonEmptyStringSchema,
   role: NonEmptyStringSchema.optional(),
   systemPrompt: z.string().optional(),
+  parentAgentId: z.string().optional(),
 })
 
 export const CreateAgentBindingBodySchema = z.object({

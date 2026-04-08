@@ -450,6 +450,7 @@ export const createAgentRecord = async (
   prisma: PrismaClient,
   input: {
     name: string
+    parentAgentId?: string
     role: string
     systemPrompt?: string
   },
@@ -457,6 +458,7 @@ export const createAgentRecord = async (
   const agent = await prisma.agent.create({
     data: {
       name: input.name,
+      parentAgentId: input.parentAgentId,
       role: input.role,
       systemPrompt: input.systemPrompt,
     },

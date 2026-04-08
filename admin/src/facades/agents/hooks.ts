@@ -99,7 +99,12 @@ export const useCreateAgent = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { name: string; role: string; systemPrompt?: string }) =>
+    mutationFn: (input: {
+      name: string
+      parentAgentId?: string
+      role: string
+      systemPrompt?: string
+    }) =>
       apiClient.post<AgentRecord>('/api/agents', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['agents'] })
