@@ -204,6 +204,27 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
       return orchestrator.getAlerts()
     },
 
+    // Memory — stubs until pool/config is wired into the legacy process
+    async captureThought() {
+      return { error: 'Memory tools require API connection — use POST /api/thoughts' }
+    },
+
+    async searchThoughts() {
+      return { error: 'Memory tools require API connection — use POST /api/thoughts/search' }
+    },
+
+    async recordOutcome() {
+      return { error: 'Memory tools require API connection — use PUT /api/thoughts/:id/outcome' }
+    },
+
+    async linkThoughts() {
+      return { error: 'Memory tools require API connection — use POST /api/thoughts/:id/link' }
+    },
+
+    async experienceStats() {
+      return { error: 'Memory tools require API connection — use GET /api/experience/stats' }
+    },
+
     // OpenClaw interop
     exportOpenClawState() {
       return orchestrator.exportOpenClawState()

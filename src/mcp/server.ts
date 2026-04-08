@@ -303,6 +303,101 @@ const TOOLS: ToolDef[] = [
     description: 'Get watcher alerts (stale tasks, loops, runaway spawns).',
     inputSchema: { type: 'object', properties: {} },
   },
+  // ── Memory tools ─────────────────────────────────────────────────────────
+  {
+    name: 'capture_thought',
+    description: 'Store a thought, decision, or observation in long-term memory.'
+      + ' Extracts metadata and reasoning automatically.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'The thought content to store' },
+        visibility: {
+          type: 'string',
+          enum: ['private', 'channel', 'team', 'project', 'organization'],
+          description: 'Who can see this thought (default: private)',
+        },
+        importance: {
+          type: 'number',
+          description: '0.0-1.0 importance score (default: 0.5)',
+        },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'search_thoughts',
+    description: 'Search long-term memory using natural language.'
+      + ' Returns relevant thoughts with reasoning and outcome history.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Natural language search query' },
+        limit: { type: 'number', description: 'Max results (default 10)' },
+        includeReasoning: {
+          type: 'boolean',
+          description: 'Include decision reasoning and outcomes (default: true)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'record_outcome',
+    description: 'Record whether a past decision was successful, partially successful, or failed.'
+      + ' Builds experience over time.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        thoughtId: {
+          type: 'string',
+          description: 'ID of the thought/decision to evaluate',
+        },
+        outcome: {
+          type: 'string',
+          enum: ['successful', 'partially', 'failed'],
+          description: 'How did this decision work out?',
+        },
+        outcomeNotes: {
+          type: 'string',
+          description: 'Details about the outcome',
+        },
+      },
+      required: ['thoughtId', 'outcome'],
+    },
+  },
+  {
+    name: 'link_thoughts',
+    description: 'Create a relationship between two thoughts.'
+      + ' Use "supersedes" when a new decision replaces an old one.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sourceId: { type: 'string', description: 'ID of the source thought' },
+        targetId: { type: 'string', description: 'ID of the target thought' },
+        relation: {
+          type: 'string',
+          enum: ['supersedes', 'derived_from', 'contradicts', 'supports', 'relates_to'],
+          description: 'Type of relationship',
+        },
+      },
+      required: ['sourceId', 'targetId', 'relation'],
+    },
+  },
+  {
+    name: 'experience_stats',
+    description: 'Get decision quality statistics'
+      + ' — how many decisions were successful vs failed. Shows accumulated experience.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        actorId: {
+          type: 'string',
+          description: 'Optional: filter to a specific user/agent ID',
+        },
+      },
+    },
+  },
   // ── OpenClaw interop ──────────────────────────────────────────────────────
   {
     name: 'openclaw_export_state',
@@ -871,6 +966,97 @@ export class McpServer {
       }
     }
 
+    // ── Memory tools ──────────────────────────────────────────────────────
+    if (name === 'capture_thought') {
+      const content = args.content as string | undefined
+      if (!content) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'content is required' },
+        }
+      }
+      const result = await this.orchestrator.captureThought({
+        content,
+        visibility: args.visibility as string | undefined,
+        importance: typeof args.importance === 'number' ? args.importance : undefined,
+      })
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
+      }
+    }
+
+    if (name === 'search_thoughts') {
+      const query = args.query as string | undefined
+      if (!query) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'query is required' },
+        }
+      }
+      const result = await this.orchestrator.searchThoughts({
+        query,
+        limit: typeof args.limit === 'number' ? args.limit : undefined,
+        includeReasoning: typeof args.includeReasoning === 'boolean'
+          ? args.includeReasoning : undefined,
+      })
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
+      }
+    }
+
+    if (name === 'record_outcome') {
+      const thoughtId = args.thoughtId as string | undefined
+      const outcome = args.outcome as string | undefined
+      if (!thoughtId || !outcome) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'thoughtId and outcome are required' },
+        }
+      }
+      const result = await this.orchestrator.recordOutcome({
+        thoughtId,
+        outcome,
+        outcomeNotes: args.outcomeNotes as string | undefined,
+      })
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
+      }
+    }
+
+    if (name === 'link_thoughts') {
+      const sourceId = args.sourceId as string | undefined
+      const targetId = args.targetId as string | undefined
+      const relation = args.relation as string | undefined
+      if (!sourceId || !targetId || !relation) {
+        return {
+          jsonrpc: '2.0', id: req.id ?? null,
+          error: { code: -32602, message: 'sourceId, targetId, and relation are required' },
+        }
+      }
+      const result = await this.orchestrator.linkThoughts({
+        sourceId,
+        targetId,
+        relation,
+      })
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
+      }
+    }
+
+    if (name === 'experience_stats') {
+      const result = await this.orchestrator.experienceStats(
+        args.actorId as string | undefined,
+      )
+      return {
+        jsonrpc: '2.0', id: req.id ?? null,
+        result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
+      }
+    }
+
     // ── OpenClaw interop tools ──────────────────────────────────────────────
     if (name === 'openclaw_export_state') {
       const state = this.orchestrator.exportOpenClawState()
@@ -985,6 +1171,28 @@ export interface McpOrchestrator {
   getMetrics(): unknown
   getTaskMetrics(taskId: string): unknown
   getAlerts(): unknown[]
+  // Memory
+  captureThought(input: {
+    content: string
+    visibility?: string
+    importance?: number
+  }): Promise<unknown>
+  searchThoughts(input: {
+    query: string
+    limit?: number
+    includeReasoning?: boolean
+  }): Promise<unknown>
+  recordOutcome(input: {
+    thoughtId: string
+    outcome: string
+    outcomeNotes?: string
+  }): Promise<unknown>
+  linkThoughts(input: {
+    sourceId: string
+    targetId: string
+    relation: string
+  }): Promise<unknown>
+  experienceStats(actorId?: string): Promise<unknown>
   // OpenClaw interop
   exportOpenClawState(): unknown
   getOpenClawAgentConfigs(): unknown[]
