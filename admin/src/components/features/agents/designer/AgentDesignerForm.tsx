@@ -15,6 +15,58 @@ const PROVIDERS = [
   { label: 'Custom', value: 'custom' },
 ]
 
+type ModelGroup = { label: string; models: { label: string; value: string }[] }
+
+const OPENAI_MODEL_GROUPS: ModelGroup[] = [
+  {
+    label: 'GPT-5 Series',
+    models: [
+      { value: 'gpt-5.1-chat-latest', label: 'gpt-5.1-chat-latest' },
+    ],
+  },
+  {
+    label: 'GPT-4.1 Series',
+    models: [
+      { value: 'gpt-4.1', label: 'gpt-4.1' },
+      { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
+      { value: 'gpt-4.1-nano', label: 'gpt-4.1-nano' },
+    ],
+  },
+  {
+    label: 'GPT-4o Series',
+    models: [
+      { value: 'gpt-4o', label: 'gpt-4o' },
+      { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+    ],
+  },
+  {
+    label: 'Reasoning (o-series)',
+    models: [
+      { value: 'o4-mini', label: 'o4-mini' },
+      { value: 'o3', label: 'o3' },
+      { value: 'o3-mini', label: 'o3-mini' },
+    ],
+  },
+]
+
+const ANTHROPIC_MODEL_GROUPS: ModelGroup[] = [
+  {
+    label: 'Claude 4',
+    models: [
+      { value: 'claude-opus-4-6', label: 'claude-opus-4-6' },
+      { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6' },
+    ],
+  },
+  {
+    label: 'Claude 3.5 / 3.7',
+    models: [
+      { value: 'claude-3-7-sonnet-20250219', label: 'claude-3-7-sonnet' },
+      { value: 'claude-3-5-sonnet-20241022', label: 'claude-3-5-sonnet' },
+      { value: 'claude-3-5-haiku-20241022', label: 'claude-3-5-haiku' },
+    ],
+  },
+]
+
 const fieldLabelClass = [
   'text-xs font-semibold uppercase',
   'tracking-[0.16em] text-[color:var(--tx3)]',
@@ -105,19 +157,45 @@ export const AgentDesignerForm = ({ actions, state }: AgentDesignerFormProps) =>
           <label className={fieldLabelClass} htmlFor="agent-model">
             Model
           </label>
-          <input
-            autoComplete="off"
-            className={[
-              'admin-input',
-              isStreaming('model')
-                ? 'border-[#7c3aed] shadow-[0_0_0_1px_rgba(124,58,237,0.3)]'
-                : '',
-            ].join(' ')}
-            id="agent-model"
-            onChange={(e) => actions.setModel(e.target.value)}
-            placeholder="e.g. gpt-4o"
-            value={state.model}
-          />
+          {state.provider === 'openai' || state.provider === 'anthropic' ? (
+            <select
+              className={[
+                'admin-input',
+                isStreaming('model')
+                  ? 'border-[#7c3aed] shadow-[0_0_0_1px_rgba(124,58,237,0.3)]'
+                  : '',
+              ].join(' ')}
+              id="agent-model"
+              onChange={(e) => actions.setModel(e.target.value)}
+              value={state.model}
+            >
+              {(state.provider === 'openai' ? OPENAI_MODEL_GROUPS : ANTHROPIC_MODEL_GROUPS).map(
+                (group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.models.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ),
+              )}
+            </select>
+          ) : (
+            <input
+              autoComplete="off"
+              className={[
+                'admin-input',
+                isStreaming('model')
+                  ? 'border-[#7c3aed] shadow-[0_0_0_1px_rgba(124,58,237,0.3)]'
+                  : '',
+              ].join(' ')}
+              id="agent-model"
+              onChange={(e) => actions.setModel(e.target.value)}
+              placeholder="e.g. llama3.2"
+              value={state.model}
+            />
+          )}
         </div>
       </div>
 

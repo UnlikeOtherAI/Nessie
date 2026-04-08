@@ -1,5 +1,21 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
+import { resolve } from 'node:path'
+
+// Load .env from project root (parent of api/) before config is parsed
+const envFile = resolve(import.meta.dirname, '../../.env')
+if (existsSync(envFile)) {
+  for (const line of readFileSync(envFile, 'utf8').split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eq = trimmed.indexOf('=')
+    if (eq < 1) continue
+    const key = trimmed.slice(0, eq).trim()
+    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '')
+    if (!(key in process.env)) process.env[key] = val
+  }
+}
 import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
@@ -1490,7 +1506,7 @@ export const buildApp = async () => {
     const body = parseInput(DesignerChatBodySchema, request.body, reply)
     if (!body) return reply
 
-    await streamDesignerChat(reply, body)
+    await streamDesignerChat(reply, body, config.model.apiKey)
     return reply
   })
 

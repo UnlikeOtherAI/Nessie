@@ -167,8 +167,8 @@ const writeSseEvent = (reply: FastifyReply, event: string, data: unknown): void 
 export const streamDesignerChat = async (
   reply: FastifyReply,
   input: DesignerChatInput,
+  apiKey: string | undefined,
 ): Promise<void> => {
-  const apiKey = process.env.OPENAI_CHAT_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.STEROIDS_OPENAI
   if (!apiKey) {
     reply.code(500).send({ error: 'OPENAI_API_KEY not configured' })
     return
@@ -195,7 +195,7 @@ export const streamDesignerChat = async (
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model: 'gpt-4.1',
       messages,
       tools: DESIGNER_TOOLS,
       max_tokens: 4096,

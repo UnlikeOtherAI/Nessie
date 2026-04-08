@@ -24,7 +24,7 @@ export type AgentDesignerAction =
 
 const DEFAULT_STATE: AgentFormState = {
   categoryId: null,
-  model: 'gpt-4o',
+  model: 'gpt-4.1',
   name: '',
   provider: 'openai',
   role: 'assistant',
