@@ -61,7 +61,6 @@ export const AdminShellLayout = () => {
       : undefined,
   });
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [isAgentDrawerDismissed, setIsAgentDrawerDismissed] = useState(false);
 
   const scopedAgents = useMemo(
     () =>
@@ -77,12 +76,10 @@ export const AdminShellLayout = () => {
   );
 
   const selectAgent = (agentId: string) => {
-    setIsAgentDrawerDismissed(false);
     setSelectedAgentId(agentId);
   };
 
   const closeAgentDrawer = () => {
-    setIsAgentDrawerDismissed(true);
     setSelectedAgentId(null);
   };
 
@@ -109,31 +106,19 @@ export const AdminShellLayout = () => {
   }, [me, users]);
 
   useEffect(() => {
-    setIsAgentDrawerDismissed(false);
     setSelectedAgentId(null);
   }, [currentChannelId]);
 
   useEffect(() => {
-    if (scopedAgents.length === 0) {
+    if (scopedAgents.length === 0 || !currentChannelId) {
       setSelectedAgentId(null);
       return;
     }
 
-    if (!currentChannelId) {
-      return;
+    if (selectedAgentId && !scopedAgents.some((agent) => agent.id === selectedAgentId)) {
+      setSelectedAgentId(null);
     }
-
-    if (isAgentDrawerDismissed) {
-      if (selectedAgentId && !scopedAgents.some((agent) => agent.id === selectedAgentId)) {
-        setSelectedAgentId(null);
-      }
-      return;
-    }
-
-    if (!selectedAgentId || !scopedAgents.some((agent) => agent.id === selectedAgentId)) {
-      setSelectedAgentId(scopedAgents[0]?.id ?? null);
-    }
-  }, [currentChannelId, isAgentDrawerDismissed, scopedAgents, selectedAgentId]);
+  }, [currentChannelId, scopedAgents, selectedAgentId]);
 
   if (sessionState === 'bootstrap') {
     return <Navigate to="/bootstrap" replace />;

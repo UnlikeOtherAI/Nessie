@@ -62,9 +62,9 @@ textarea {
   font: inherit;
 }
 
-input,
-select,
-textarea {
+.glass-panel input,
+.glass-panel select,
+.glass-panel textarea {
   color: var(--ink);
 }
 
@@ -183,6 +183,23 @@ a {
   border: 1px solid var(--sep);
   border-radius: 8px;
   background: var(--main-hover);
+}
+
+.admin-compose textarea,
+.admin-compose select {
+  color: #f3f4f6;
+}
+
+.admin-compose textarea {
+  caret-color: #f3f4f6;
+}
+
+.admin-compose textarea::placeholder {
+  color: #a7abb0;
+}
+
+.admin-compose select {
+  background: rgba(124, 58, 237, 0.08);
 }
 
 .admin-card {
