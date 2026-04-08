@@ -61,6 +61,7 @@ export const AdminShellLayout = () => {
       : undefined,
   });
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [isAgentDrawerDismissed, setIsAgentDrawerDismissed] = useState(false);
 
   const scopedAgents = useMemo(
     () =>
@@ -74,6 +75,16 @@ export const AdminShellLayout = () => {
     () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
     [agents, selectedAgentId],
   );
+
+  const selectAgent = (agentId: string) => {
+    setIsAgentDrawerDismissed(false);
+    setSelectedAgentId(agentId);
+  };
+
+  const closeAgentDrawer = () => {
+    setIsAgentDrawerDismissed(true);
+    setSelectedAgentId(null);
+  };
 
   const sidebarPeople = useMemo(() => {
     if (!me) {
@@ -98,15 +109,31 @@ export const AdminShellLayout = () => {
   }, [me, users]);
 
   useEffect(() => {
+    setIsAgentDrawerDismissed(false);
+    setSelectedAgentId(null);
+  }, [currentChannelId]);
+
+  useEffect(() => {
     if (scopedAgents.length === 0) {
       setSelectedAgentId(null);
+      return;
+    }
+
+    if (!currentChannelId) {
+      return;
+    }
+
+    if (isAgentDrawerDismissed) {
+      if (selectedAgentId && !scopedAgents.some((agent) => agent.id === selectedAgentId)) {
+        setSelectedAgentId(null);
+      }
       return;
     }
 
     if (!selectedAgentId || !scopedAgents.some((agent) => agent.id === selectedAgentId)) {
       setSelectedAgentId(scopedAgents[0]?.id ?? null);
     }
-  }, [scopedAgents, selectedAgentId]);
+  }, [currentChannelId, isAgentDrawerDismissed, scopedAgents, selectedAgentId]);
 
   if (sessionState === 'bootstrap') {
     return <Navigate to="/bootstrap" replace />;
@@ -377,7 +404,7 @@ export const AdminShellLayout = () => {
 
             <AgentActivityPanel
               agents={scopedAgents}
-              onSelectAgent={setSelectedAgentId}
+              onSelectAgent={selectAgent}
               realtime={realtime}
               selectedAgentId={selectedAgentId}
             />
@@ -427,14 +454,14 @@ export const AdminShellLayout = () => {
         </aside>
 
         <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
-          <Outlet context={{ onSelectAgent: setSelectedAgentId, scopedAgents }} />
+          <Outlet context={{ onSelectAgent: selectAgent, scopedAgents }} />
         </main>
       </div>
 
       <AgentDetailDrawer
         agent={selectedAgent}
-        onClose={() => setSelectedAgentId(null)}
-        onSelectAgent={setSelectedAgentId}
+        onClose={closeAgentDrawer}
+        onSelectAgent={selectAgent}
       />
     </>
   );

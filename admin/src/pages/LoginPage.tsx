@@ -182,7 +182,10 @@ export const LoginPage = () => {
           </p>
           <img
             alt="Nessie icon"
-            className="absolute right-8 top-8 h-[100px] w-[100px] rounded-[1.75rem] object-cover shadow-[0_20px_40px_rgba(13,6,17,0.28)]"
+            className={[
+              'absolute right-8 top-8 h-[100px] w-[100px] rounded-[1.75rem] object-cover',
+              'shadow-[0_20px_40px_rgba(13,6,17,0.28)]',
+            ].join(' ')}
             src="/icon-1024.png"
           />
 
