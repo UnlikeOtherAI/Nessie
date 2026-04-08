@@ -658,6 +658,46 @@ export const buildApp = async () => {
     })
   })
 
+  app.get('/api/auth/dev-login', { config: { public: true } }, async (_request, reply) => {
+    if (config.mode !== 'local') {
+      sendApiError(reply, 403, 'FORBIDDEN', 'Dev login is only available in local mode')
+      return reply
+    }
+
+    const user = await prisma.user.findFirst({
+      include: {
+        organizationMembers: true,
+        projectMembers: true,
+        teamMembers: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    if (!user) {
+      sendApiError(reply, 404, 'NO_USERS', 'No users exist yet')
+      return reply
+    }
+
+    const organizationMember = user.organizationMembers[0]
+    if (!organizationMember) {
+      sendApiError(reply, 500, 'NO_MEMBERSHIP', 'User has no organization membership')
+      return reply
+    }
+
+    const sessionRoles = [organizationMember.role]
+    const session = buildLocalSession(user.id, sessionRoles)
+    const verification = verifySessionToken(session.token, authSecret)
+    if (!verification.ok) {
+      sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue dev session')
+      return reply
+    }
+
+    return createApiResponse({
+      token: session.token,
+      me: MeResponseSchema.parse(buildMeResponse(user, verification.claims, config)),
+    })
+  })
+
   app.delete('/api/auth/session', async (_request, reply) => {
     reply.code(204)
     return null

@@ -32,6 +32,7 @@ type LoginInput = {
 type AuthSessionContextValue = {
   bootstrap: (input: BootstrapInput) => Promise<void>
   bootstrapState: BootstrapModeResponse | null
+  devLogin: () => Promise<void>
   login: (input: LoginInput) => Promise<void>
   logout: () => Promise<void>
   me: MeResponse | null
@@ -140,6 +141,21 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setSessionState('authenticated')
   }
 
+  const devLogin = async (): Promise<void> => {
+    const response = await fetch(`${baseUrl}/api/auth/dev-login`)
+
+    if (!response.ok) {
+      throw new Error(await parseApiError(response))
+    }
+
+    const payload = await response.json() as { data: { me: MeResponse; token: string } }
+    storeToken(payload.data.token)
+    setToken(payload.data.token)
+    setMe(payload.data.me)
+    setBootstrapState(null)
+    setSessionState('authenticated')
+  }
+
   const login = async (input: LoginInput): Promise<void> => {
     const response = await fetch(`${baseUrl}/api/auth/session`, {
       method: 'POST',
@@ -179,6 +195,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     () => ({
       bootstrap,
       bootstrapState,
+      devLogin,
       login,
       logout,
       me,

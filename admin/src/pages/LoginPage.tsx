@@ -4,8 +4,6 @@ import { useAuthProviders } from '../facades/auth/hooks'
 import { beginExternalAuth, clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
-// DO NOT REMOVE — dev pre-fill credentials. These are the initial values for the
-// login form so the fields are always populated even if the API is unreachable.
 const LOCAL_DEMO_EMAIL = 'owner@example.com'
 const LOCAL_DEMO_PASSWORD = 'Password123!'
 
@@ -35,10 +33,9 @@ const errorBoxClass = [
 
 export const LoginPage = () => {
   const navigate = useNavigate()
-  const { login, sessionState } = useAuthSession()
+  const { devLogin, login, sessionState } = useAuthSession()
   const { data: providers = [] } = useAuthProviders()
-  // DO NOT REMOVE — pre-filled dev credentials, must be initial state so they
-  // render immediately even when the API is unreachable.
+  // Pre-filled dev credentials for convenience.
   const [email, setEmail] = useState(LOCAL_DEMO_EMAIL)
   const [password, setPassword] = useState(LOCAL_DEMO_PASSWORD)
   const [error, setError] = useState<string | null>(null)
@@ -146,6 +143,20 @@ export const LoginPage = () => {
     }
   }
 
+  const handleDevLogin = async (): Promise<void> => {
+    setError(null)
+    setIsSubmitting(true)
+
+    try {
+      await devLogin()
+      void navigate('/channels', { replace: true })
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Dev login failed')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleProviderSignIn = async (providerId: string): Promise<void> => {
     setError(null)
     setIsSubmitting(true)
@@ -248,6 +259,22 @@ export const LoginPage = () => {
               {isSubmitting ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
+
+          <div className="mt-4 border-t border-[var(--line)] pt-4">
+            <button
+              className={[
+                'w-full rounded-2xl border border-[var(--line)]',
+                'bg-white/10 px-5 py-3 text-sm font-medium',
+                'text-[var(--muted)] transition hover:bg-white/20',
+                'hover:text-white disabled:cursor-not-allowed disabled:opacity-60',
+              ].join(' ')}
+              disabled={isSubmitting}
+              onClick={() => void handleDevLogin()}
+              type="button"
+            >
+              {isSubmitting ? 'Signing in...' : 'Dev Login (skip password)'}
+            </button>
+          </div>
         </section>
       </div>
     </main>
