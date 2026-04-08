@@ -1,15 +1,6 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
-
-export type RunExecuteJobPayload = {
-  actorContext: AuthorizedActionContext
-  agentId: string
-  messageId: string
-  runId: string
-  taskId: string
-  threadId: string
-}
+import type { RunExecuteJobPayload } from '@nessie/schemas'
 
 export const enqueueRunExecution = async (
   prisma: Pick<PrismaClient, '$executeRaw'>,

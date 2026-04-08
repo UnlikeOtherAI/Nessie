@@ -45,6 +45,7 @@ import { getPrismaClient } from './db/client.js'
 import { seedBootstrapRecords } from './db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from './lib/api.js'
 import { enqueueRunExecution } from './queue/pgqueue.js'
+import { createRealtimeHub } from './realtime/hub.js'
 import {
   bindAgentToChannel,
   buildSnapshotForScopes,
@@ -251,6 +252,11 @@ const buildLocalSession = (userId: string, roles: string[]) =>
 
 export const buildApp = async () => {
   const app = Fastify({ logger: true })
+  const realtimeHub = await createRealtimeHub({
+    databaseUrl: config.database.url,
+    poolMax: config.database.poolMax,
+    poolMin: config.database.poolMin,
+  })
 
   await app.register(cors, { origin: true, credentials: true })
   await app.register(websocket)
@@ -258,6 +264,7 @@ export const buildApp = async () => {
   app.decorateRequest('actorContext', null)
 
   app.addHook('onClose', async () => {
+    await realtimeHub.close()
     await prisma.$disconnect()
   })
 
@@ -396,7 +403,12 @@ export const buildApp = async () => {
     }
 
     const primaryOrganizationMember = user.organizationMembers[0]
-    const sessionRoles = primaryOrganizationMember ? [primaryOrganizationMember.role] : ['member']
+    if (!primaryOrganizationMember) {
+      sendApiError(reply, 401, 'INVALID_CREDENTIALS', 'Invalid email or password')
+      return reply
+    }
+
+    const sessionRoles = [primaryOrganizationMember.role]
     const session = buildLocalSession(user.id, sessionRoles)
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
@@ -621,12 +633,19 @@ export const buildApp = async () => {
     })
     reply.raw.write(': stream connected\n\n')
 
+    const streamConnection = await realtimeHub.addSseConnection(
+      thread.id,
+      reply.raw,
+      request.headers['last-event-id'],
+    )
+
     const keepAlive = setInterval(() => {
       reply.raw.write(': keepalive\n\n')
     }, 15000)
 
     request.raw.on('close', () => {
       clearInterval(keepAlive)
+      realtimeHub.removeSseConnection(streamConnection)
       reply.raw.end()
     })
   })
@@ -728,6 +747,9 @@ export const buildApp = async () => {
 
     const userId = actorContext.actor.actorId
     const tenantOrganizationId = actorContext.tenant.organizationId
+    const wsConnection = realtimeHub.registerWsConnection((message) => {
+      sendJson(message)
+    })
     let currentScopes: WsScope[] = []
     let idleTimer: NodeJS.Timeout
 
@@ -769,6 +791,7 @@ export const buildApp = async () => {
       if (parsed.data.type === 'unsubscribe') {
         const requested = new Set(parsed.data.scopes.map((scope) => JSON.stringify(scope)))
         currentScopes = currentScopes.filter((scope) => !requested.has(JSON.stringify(scope)))
+        realtimeHub.setWsScopes(wsConnection, currentScopes)
         return
       }
 
@@ -778,6 +801,7 @@ export const buildApp = async () => {
           : [...currentScopes, ...parsed.data.scopes]
 
       currentScopes = await filterAuthorizedScopes(userId, tenantOrganizationId, nextScopes)
+      realtimeHub.setWsScopes(wsConnection, currentScopes)
       const snapshot = await buildSnapshotForScopes(prisma, currentScopes)
 
       sendJson({
@@ -789,6 +813,7 @@ export const buildApp = async () => {
 
     socket.on('close', () => {
       clearTimeout(idleTimer)
+      realtimeHub.removeWsConnection(wsConnection)
     })
   })
 
