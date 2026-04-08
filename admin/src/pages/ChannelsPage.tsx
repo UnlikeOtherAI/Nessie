@@ -528,6 +528,20 @@ export const ChannelsPage = () => {
                       <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
                         {renderContent(item.message.content)}
                       </p>
+                      {item.message.reactions?.length ? (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {Object.entries(
+                            item.message.reactions.reduce<Record<string, number>>((acc, r) => {
+                              acc[r.emoji] = (acc[r.emoji] ?? 0) + 1
+                              return acc
+                            }, {}),
+                          ).map(([emoji, count]) => (
+                            <span key={emoji} className="reaction-pill">
+                              {emoji}{count > 1 ? ` ${count}` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </article>

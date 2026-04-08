@@ -108,6 +108,11 @@ export const useThreadStream = (threadId?: string): StreamState => {
                 current.filter((message) => message.runId !== data.runId),
               )
               void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+              continue
+            }
+
+            if (event === 'message.reaction') {
+              void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
             }
           }
         }

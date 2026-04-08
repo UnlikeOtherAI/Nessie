@@ -140,6 +140,16 @@ export const AddChannelMemberBodySchema = z.object({
   userId: UserIdSchema,
 })
 
+export const MessageReactionRecordSchema = z.object({
+  id: z.string().uuid(),
+  messageId: z.string().uuid(),
+  agentId: AgentIdSchema.nullish(),
+  userId: z.string().uuid().nullish(),
+  emoji: z.string(),
+  createdAt: TimestampSchema,
+})
+export type MessageReactionRecord = z.infer<typeof MessageReactionRecordSchema>
+
 export const ThreadMessageRecordSchema = z.object({
   id: z.string().uuid(),
   threadId: ThreadIdSchema,
@@ -148,6 +158,7 @@ export const ThreadMessageRecordSchema = z.object({
   role: MessageRoleSchema,
   content: z.string(),
   createdAt: TimestampSchema,
+  reactions: MessageReactionRecordSchema.array().optional(),
 })
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
 

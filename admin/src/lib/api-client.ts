@@ -61,11 +61,21 @@ export type UserRecord = {
   updatedAt: string
 }
 
+export type MessageReaction = {
+  id: string
+  messageId: string
+  agentId?: string | null
+  userId?: string | null
+  emoji: string
+  createdAt: string
+}
+
 export type ThreadMessageRecord = {
   agentId?: string | null
   content: string
   createdAt: string
   id: string
+  reactions?: MessageReaction[]
   role: 'assistant' | 'system' | 'user'
   threadId: string
   userId?: string | null

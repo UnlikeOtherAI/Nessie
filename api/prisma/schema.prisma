@@ -111,6 +111,7 @@ model User {
   teamMembers         TeamMember[]
   channelMembers      ChannelMember[]
   messages            Message[]
+  reactions           MessageReaction[]
   agentCategories     AgentCategory[]
 
   @@map("users")
@@ -248,10 +249,28 @@ model Message {
   thread    Thread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
   agent     Agent?      @relation(fields: [agentId], references: [id], onDelete: SetNull)
   user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  reactions MessageReaction[]
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
   @@map("messages")
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid()) @db.Uuid
+  messageId String   @map("message_id") @db.Uuid
+  agentId   String?  @map("agent_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  emoji     String
+  createdAt DateTime @default(now()) @map("created_at")
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  agent     Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([messageId, agentId, emoji])
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("message_reactions")
 }
 
 model Agent {
@@ -272,6 +291,7 @@ model Agent {
   categoryLinks         AgentCategoryAgent[]
   authoredCategories    AgentCategory[]        @relation("AgentCategoryAuthor")
   messages              Message[]
+  reactions             MessageReaction[]
   runs                  Run[]
   tasks                 Task[]
 

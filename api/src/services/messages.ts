@@ -2,7 +2,18 @@ import type { Message, PrismaClient, Thread } from '@prisma/client'
 import { parseAgentId, parseThreadId, parseUserId } from '@nessie/schemas'
 import type { ThreadMessageRecord } from '../contracts.js'
 
-const mapThreadMessageRecord = (message: Message): ThreadMessageRecord => ({
+type MessageWithReactions = Message & {
+  reactions: Array<{
+    id: string
+    messageId: string
+    agentId: string | null
+    userId: string | null
+    emoji: string
+    createdAt: Date
+  }>
+}
+
+const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRecord => ({
   id: message.id,
   threadId: parseThreadId(message.threadId),
   agentId: message.agentId ? parseAgentId(message.agentId) : undefined,
@@ -10,6 +21,14 @@ const mapThreadMessageRecord = (message: Message): ThreadMessageRecord => ({
   role: message.role,
   content: message.content,
   createdAt: message.createdAt.toISOString(),
+  reactions: message.reactions.map((r) => ({
+    id: r.id,
+    messageId: r.messageId,
+    agentId: r.agentId ? parseAgentId(r.agentId) : undefined,
+    userId: r.userId ? parseUserId(r.userId) : undefined,
+    emoji: r.emoji,
+    createdAt: r.createdAt.toISOString(),
+  })),
 })
 
 export const findThreadForUser = async (
@@ -52,48 +71,32 @@ export const listThreadMessages = async (
   const messages = await prisma.message.findMany({
     where: { threadId },
     orderBy: { createdAt: 'asc' },
+    include: { reactions: true },
   })
 
   return messages.map(mapThreadMessageRecord)
+}
+
+export type ChannelAgent = {
+  id: string
+  name: string
+  role: string
+  systemPrompt: string | null
 }
 
 export type CreateThreadMessageResult =
   | {
       kind: 'created'
       message: Message
-      run?: {
-        agentId: string
-        id: string
-        status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-        threadId: string
-      }
-      task?: {
-        id: string
-      }
-    }
-  | {
-      kind: 'agent_not_bound'
+      channelAgents: ChannelAgent[]
     }
   | {
       kind: 'thread_not_found'
     }
 
-/** Extract @Name mentions from message content. */
-const extractMentions = (content: string): string[] => {
-  const results: string[] = []
-  const pattern = /@([\w][\w\s]*[\w]|[\w]+)/g
-  let m: RegExpExecArray | null = null
-  do {
-    m = pattern.exec(content)
-    if (m?.[1]) results.push(m[1])
-  } while (m)
-  return results
-}
-
 export const createThreadMessage = async (
   prisma: PrismaClient,
   input: {
-    agentId?: string
     content: string
     threadId: string
     userId: string
@@ -105,7 +108,11 @@ export const createThreadMessage = async (
       channel: {
         include: {
           agentBindings: {
-            include: { agent: { select: { name: true } } },
+            include: {
+              agent: {
+                select: { id: true, name: true, role: true, systemPrompt: true },
+              },
+            },
             orderBy: { createdAt: 'asc' },
           },
         },
@@ -114,91 +121,51 @@ export const createThreadMessage = async (
   })
 
   if (!thread) {
-    return {
-      kind: 'thread_not_found',
-    }
+    return { kind: 'thread_not_found' }
   }
 
-  // Determine whether an agent should respond based on @mentions
-  const mentions = extractMentions(input.content)
-  let selectedBinding: (typeof thread.channel.agentBindings)[number] | undefined =
-    input.agentId
-      ? thread.channel.agentBindings.find((b) => b.agentId === input.agentId)
-      : thread.channel.agentBindings[0]
-
-  if (mentions.length > 0) {
-    // Check if any mention targets a bound agent
-    const mentionedAgentBinding = thread.channel.agentBindings.find((b) =>
-      mentions.some((name) => b.agent.name.toLowerCase() === name.toLowerCase()),
-    )
-    if (mentionedAgentBinding) {
-      // Route to the mentioned agent
-      selectedBinding = mentionedAgentBinding
-    } else {
-      // Mentions exist but none match an agent — don't dispatch
-      selectedBinding = undefined
-    }
-  }
-
-  if (input.agentId && !thread.channel.agentBindings.some((b) => b.agentId === input.agentId)) {
-    return {
-      kind: 'agent_not_bound',
-    }
-  }
-
-  const created = await prisma.$transaction(async (transaction) => {
-    const message = await transaction.message.create({
-      data: {
-        threadId: input.threadId,
-        userId: input.userId,
-        role: 'user',
-        content: input.content,
-      },
-    })
-
-    if (!selectedBinding) {
-      return {
-        message,
-      }
-    }
-
-    const run = await transaction.run.create({
-      data: {
-        agentId: selectedBinding.agentId,
-        threadId: input.threadId,
-        status: 'pending',
-      },
-      select: {
-        agentId: true,
-        id: true,
-        status: true,
-        threadId: true,
-      },
-    })
-
-    const task = await transaction.task.create({
-      data: {
-        runId: run.id,
-        agentId: selectedBinding.agentId,
-        status: 'inbox',
-        purpose: input.content.slice(0, 200),
-      },
-      select: {
-        id: true,
-      },
-    })
-
-    return {
-      message,
-      run,
-      task,
-    }
+  const message = await prisma.message.create({
+    data: {
+      threadId: input.threadId,
+      userId: input.userId,
+      role: 'user',
+      content: input.content,
+    },
   })
+
+  const channelAgents: ChannelAgent[] = thread.channel.agentBindings.map((b) => ({
+    id: b.agent.id,
+    name: b.agent.name,
+    role: b.agent.role,
+    systemPrompt: b.agent.systemPrompt,
+  }))
 
   return {
     kind: 'created',
-    message: created.message,
-    run: created.run,
-    task: created.task,
+    message,
+    channelAgents,
   }
+}
+
+export const addReaction = async (
+  prisma: PrismaClient,
+  input: {
+    messageId: string
+    agentId?: string
+    userId?: string
+    emoji: string
+  },
+) => {
+  return prisma.messageReaction.upsert({
+    where: input.agentId
+      ? { messageId_agentId_emoji: { messageId: input.messageId, agentId: input.agentId, emoji: input.emoji } }
+      : { messageId_userId_emoji: { messageId: input.messageId, userId: input.userId!, emoji: input.emoji } },
+    update: {},
+    create: {
+      messageId: input.messageId,
+      agentId: input.agentId ?? null,
+      userId: input.userId ?? null,
+      emoji: input.emoji,
+    },
+  })
 }

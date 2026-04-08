@@ -135,6 +135,7 @@ export type SseEventMap = {
   'stream.start': { runId: RunId; threadId: ThreadId }
   'stream.delta': { runId: RunId; content: string }
   'stream.done': { runId: RunId; messageId: string }
+  'message.reaction': { messageId: string; agentId?: AgentId; userId?: string; emoji: string }
 }
 
 export type WsEventMap = {
@@ -193,7 +194,14 @@ export const StreamDoneEventSchema = z.object({
   messageId: NonEmptyStringSchema,
 })
 export type StreamDoneEvent = z.infer<typeof StreamDoneEventSchema>
-export const SseEventNameSchema = z.enum(['stream.start', 'stream.delta', 'stream.done'])
+export const MessageReactionEventSchema = z.object({
+  messageId: NonEmptyStringSchema,
+  agentId: AgentIdSchema.optional(),
+  userId: z.string().uuid().optional(),
+  emoji: z.string(),
+})
+export type MessageReactionEvent = z.infer<typeof MessageReactionEventSchema>
+export const SseEventNameSchema = z.enum(['stream.start', 'stream.delta', 'stream.done', 'message.reaction'])
 
 export const SseEventSchema = z.discriminatedUnion('event', [
   z.object({
@@ -207,6 +215,10 @@ export const SseEventSchema = z.discriminatedUnion('event', [
   z.object({
     event: z.literal('stream.done'),
     data: StreamDoneEventSchema,
+  }),
+  z.object({
+    event: z.literal('message.reaction'),
+    data: MessageReactionEventSchema,
   }),
 ])
 export type SseEvent = z.infer<typeof SseEventSchema>

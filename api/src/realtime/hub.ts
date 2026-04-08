@@ -3,9 +3,10 @@ import {
   createPgPool,
   PgRealtimeTransport,
   type RealtimeNotificationPayload,
+  type ThreadStreamEvent,
   type WsEventMessage,
 } from '@nessie/runtime'
-import type { WsScope } from '@nessie/schemas'
+import type { SseEvent, WsScope } from '@nessie/schemas'
 
 type SseConnection = {
   lastSequence: number
@@ -129,6 +130,11 @@ export const createRealtimeHub = async (input: {
     removeSseConnection: (connection: SseConnection): void => {
       sseConnections.delete(connection)
     },
+    publishSse: async (
+      threadId: string,
+      event: SseEvent['event'],
+      data: SseEvent['data'],
+    ): Promise<ThreadStreamEvent> => transport.publishSse(threadId, event, data),
     publishWs: async (
       scopes: WsScope[],
       input: {

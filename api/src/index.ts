@@ -20,7 +20,7 @@ import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
-import { createPgPool } from '@nessie/runtime'
+import { createModelClient, createPgPool } from '@nessie/runtime'
 import {
   CaptureThoughtBodySchema,
   LinkThoughtsBodySchema,
@@ -119,10 +119,12 @@ import {
   exchangeExternalAuthCode,
 } from './services/external-auth.js'
 import {
+  addReaction,
   createThreadMessage,
   findThreadForUser,
   listThreadMessages,
 } from './services/messages.js'
+import { decideAgentEngagement } from './services/orchestrator.js'
 import { createThoughtService } from './services/thoughts.js'
 import { listSafeTools } from './services/tools.js'
 import {
@@ -352,8 +354,24 @@ const buildSessionForUser = (input: {
     config.auth.tokenTtlSeconds,
   )
 
+let orchestratorModelClient: import('@nessie/runtime').ModelClient | null = null
+
 export const buildApp = async () => {
   const app = Fastify({ logger: true })
+
+  // Create a cheap model client for the orchestrator LLM calls
+  const orchestratorApiKey =
+    process.env.OPENAI_API_KEY
+    ?? process.env.OPENAI_CHAT_API_KEY
+    ?? config.model.apiKey
+    ?? ''
+  if (orchestratorApiKey) {
+    orchestratorModelClient = createModelClient({
+      apiKey: orchestratorApiKey,
+      provider: (config.model.provider ?? 'openai') as 'openai' | 'minimax',
+    })
+  }
+
   const realtimeHub = await createRealtimeHub({
     databaseUrl,
     poolMax: config.database.poolMax,
@@ -1043,7 +1061,6 @@ export const buildApp = async () => {
     }
 
     const result = await createThreadMessage(prisma, {
-      agentId: body.agentId,
       content: body.content,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
@@ -1054,55 +1071,108 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (result.kind === 'agent_not_bound') {
-      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent is not bound to this channel')
-      return reply
-    }
+    // Use the orchestrator to decide agent engagement
+    const scopes = [
+      {
+        kind: 'organization' as const,
+        organizationId: actorContext.tenant.organizationId,
+      },
+      {
+        kind: 'channel' as const,
+        channelId: parseChannelId(thread.channel.id),
+      },
+    ]
 
-    const messageAgentId = result.run?.agentId ?? body.agentId
-    if (messageAgentId) {
-      await realtimeHub.publishWs(
-        [
-          {
-            kind: 'organization',
-            organizationId: actorContext.tenant.organizationId,
-          },
-          {
-            kind: 'channel',
-            channelId: parseChannelId(thread.channel.id),
-          },
-          {
-            kind: 'agent',
-            agentId: parseAgentId(messageAgentId),
-          },
-        ],
-        {
-          data: {
-            agentId: parseAgentId(messageAgentId),
-            contentPreview: result.message.content.slice(0, 200),
-            messageId: result.message.id,
-            role: result.message.role,
-            threadId: parseThreadId(result.message.threadId),
-          },
-          event: 'message.new',
-        },
-      )
-    }
-
-    if (result.run && result.task) {
-      await enqueueRunExecution(prisma, {
-        actorContext: withActionContext(actorContext, {
-          agentId: parseAgentId(result.run.agentId),
-          channelId: parseChannelId(thread.channel.id),
-          taskId: parseTaskId(result.task.id),
-          threadId: parseThreadId(result.run.threadId),
-        }),
-        agentId: parseAgentId(result.run.agentId),
-        messageId: result.message.id,
-        runId: parseRunId(result.run.id),
-        taskId: parseTaskId(result.task.id),
-        threadId: parseThreadId(result.run.threadId),
+    if (result.channelAgents.length > 0 && orchestratorModelClient) {
+      // Fetch recent messages for context
+      const recentDbMessages = await prisma.message.findMany({
+        where: { threadId: thread.id },
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+        include: { agent: { select: { name: true } } },
       })
+
+      const decision = await decideAgentEngagement(orchestratorModelClient, {
+        agents: result.channelAgents,
+        content: body.content,
+        recentMessages: recentDbMessages.reverse().slice(0, -1).map((m) => ({
+          role: m.role,
+          content: m.content,
+          agentName: m.agent?.name ?? undefined,
+        })),
+      })
+
+      if (decision.action === 'reply') {
+        const run = await prisma.run.create({
+          data: {
+            agentId: decision.agentId,
+            threadId: thread.id,
+            status: 'pending',
+          },
+          select: { agentId: true, id: true, status: true, threadId: true },
+        })
+
+        const task = await prisma.task.create({
+          data: {
+            runId: run.id,
+            agentId: decision.agentId,
+            status: 'inbox',
+            purpose: body.content.slice(0, 200),
+          },
+          select: { id: true },
+        })
+
+        await realtimeHub.publishWs(
+          [
+            ...scopes,
+            { kind: 'agent' as const, agentId: parseAgentId(decision.agentId) },
+          ],
+          {
+            data: {
+              agentId: parseAgentId(decision.agentId),
+              contentPreview: result.message.content.slice(0, 200),
+              messageId: result.message.id,
+              role: result.message.role,
+              threadId: parseThreadId(result.message.threadId),
+            },
+            event: 'message.new',
+          },
+        )
+
+        await enqueueRunExecution(prisma, {
+          actorContext: withActionContext(actorContext, {
+            agentId: parseAgentId(run.agentId),
+            channelId: parseChannelId(thread.channel.id),
+            taskId: parseTaskId(task.id),
+            threadId: parseThreadId(run.threadId),
+          }),
+          agentId: parseAgentId(run.agentId),
+          messageId: result.message.id,
+          runId: parseRunId(run.id),
+          taskId: parseTaskId(task.id),
+          threadId: parseThreadId(run.threadId),
+        })
+      }
+
+      if (decision.action === 'acknowledge') {
+        await addReaction(prisma, {
+          messageId: result.message.id,
+          agentId: decision.agentId,
+          emoji: decision.emoji,
+        })
+
+        const reactionData = {
+          messageId: result.message.id,
+          agentId: parseAgentId(decision.agentId),
+          emoji: decision.emoji,
+        }
+
+        await realtimeHub.publishSse(thread.id, 'message.reaction', reactionData)
+        await realtimeHub.publishWs(scopes, {
+          data: reactionData,
+          event: 'message.reaction',
+        })
+      }
     }
 
     return reply.code(201).send(
@@ -1118,6 +1188,45 @@ export const buildApp = async () => {
         }),
       ),
     )
+  })
+
+  app.post('/api/threads/:threadId/messages/:messageId/reactions', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { threadId, messageId } = request.params as { threadId: string; messageId: string }
+    const thread = await findThreadForUser(prisma, threadId, actorContext.actor.actorId)
+    if (!thread) {
+      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+
+    const body = request.body as { emoji?: string } | undefined
+    if (!body?.emoji) {
+      sendApiError(reply, 400, 'EMOJI_REQUIRED', 'Emoji is required')
+      return reply
+    }
+
+    await addReaction(prisma, {
+      messageId,
+      userId: actorContext.actor.actorId,
+      emoji: body.emoji,
+    })
+
+    await realtimeHub.publishWs(
+      [
+        { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+        { kind: 'channel', channelId: parseChannelId(thread.channel.id) },
+      ],
+      {
+        data: { messageId, userId: actorContext.actor.actorId, emoji: body.emoji },
+        event: 'message.reaction',
+      },
+    )
+
+    return reply.code(201).send(createApiResponse({ ok: true }))
   })
 
   app.get('/api/threads/:threadId/stream', async (request, reply) => {

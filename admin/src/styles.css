@@ -215,6 +215,19 @@ a {
   pointer-events: none;
 }
 
+.reaction-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--sep);
+  border-radius: 12px;
+  background: rgba(124, 58, 237, 0.08);
+  padding: 1px 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  cursor: default;
+}
+
 .mention-tag {
   display: inline;
   border-radius: 3px;
