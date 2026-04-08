@@ -27,28 +27,11 @@ const OPENAI_MODEL_GROUPS: ModelGroup[] = [
     ],
   },
   {
-    label: 'GPT-4.1 Series',
-    models: [
-      { value: 'gpt-4.1', label: 'gpt-4.1' },
-      { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
-      { value: 'gpt-4.1-nano', label: 'gpt-4.1-nano' },
-    ],
-  },
-  {
-    label: 'GPT-4o Series',
-    models: [
-      { value: 'gpt-4o', label: 'gpt-4o' },
-      { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-    ],
-  },
-  {
     label: 'Reasoning (o-series)',
     models: [
       { value: 'o4-mini', label: 'o4-mini' },
       { value: 'o3', label: 'o3' },
       { value: 'o3-pro', label: 'o3-pro' },
-      { value: 'o3-mini', label: 'o3-mini' },
-      { value: 'o1', label: 'o1' },
     ],
   },
 ]
