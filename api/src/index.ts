@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
@@ -409,6 +409,28 @@ const isTriggerTargetAccessibleToActor = async (
   }
 
   return true
+}
+
+const buildWebhookSignature = (secret: string, payload: unknown): string =>
+  `sha256=${createHmac('sha256', secret).update(payload === undefined ? '' : JSON.stringify(payload)).digest('hex')}`
+
+const isWebhookSignatureValid = (
+  providedSignature: string | undefined,
+  expectedSecret: string,
+  payload: unknown,
+): boolean => {
+  if (!providedSignature) {
+    return false
+  }
+
+  const expectedSignature = buildWebhookSignature(expectedSecret, payload)
+  const providedBuffer = Buffer.from(providedSignature)
+  const expectedBuffer = Buffer.from(expectedSignature)
+  if (providedBuffer.length !== expectedBuffer.length) {
+    return false
+  }
+
+  return timingSafeEqual(providedBuffer, expectedBuffer)
 }
 
 const filterAuthorizedScopes = async (
@@ -1419,8 +1441,10 @@ export const buildApp = async () => {
       return reply
     }
 
-    const secretHeader = request.headers['x-nessie-trigger-secret']
-    const providedSecret = Array.isArray(secretHeader) ? secretHeader[0] : secretHeader
+    const signatureHeader =
+      request.headers['x-nessie-trigger-signature'] ??
+      request.headers['x-hub-signature-256']
+    const providedSignature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader
     const dedupeHeader =
       request.headers['x-nessie-delivery-id'] ??
       request.headers['x-github-delivery'] ??
@@ -1434,8 +1458,8 @@ export const buildApp = async () => {
         ? ((trigger.config as Record<string, unknown>)['secret'] as string)
         : undefined
 
-    if (!expectedSecret || providedSecret !== expectedSecret) {
-      sendApiError(reply, 403, 'WEBHOOK_SECRET_INVALID', 'Webhook secret mismatch')
+    if (!expectedSecret || !isWebhookSignatureValid(providedSignature, expectedSecret, request.body)) {
+      sendApiError(reply, 403, 'WEBHOOK_SIGNATURE_INVALID', 'Webhook signature mismatch')
       return reply
     }
 
