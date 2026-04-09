@@ -188,6 +188,10 @@ type AuthenticatedRequestState = {
   me: MeResponse
 }
 
+type RequestWithRawBody = FastifyRequest & {
+  rawBody?: Buffer
+}
+
 const DEFAULT_LOCAL_PROVIDER_TYPE = 'local-bootstrap'
 
 const config = loadConfig()
@@ -308,6 +312,20 @@ const requireOwner = (
   return false
 }
 
+const requireUserActor = (
+  actorContext: AuthorizedActionContext,
+  reply: FastifyReply,
+): actorContext is AuthorizedActionContext & {
+  actor: AuthorizedActionContext['actor'] & { actorType: 'user' }
+} => {
+  if (actorContext.actor.actorType === 'user') {
+    return true
+  }
+
+  sendApiError(reply, 403, 'FORBIDDEN', 'User actor required')
+  return false
+}
+
 const withActionContext = (
   actorContext: AuthorizedActionContext,
   fields: Partial<AuthorizedActionContext['actionContext']>,
@@ -319,10 +337,18 @@ const withActionContext = (
   },
 })
 
-const isAgentVisibleToUser = async (userId: string, agentId: string): Promise<boolean> =>
+const isAgentVisibleToUser = async (
+  userId: string,
+  organizationId: string,
+  agentId: string,
+): Promise<boolean> =>
   (await prisma.agent.count({
     where: {
       id: agentId,
+      OR: [
+        { organizationId },
+        { bindings: { some: { channel: { organizationId } } } },
+      ],
       bindings: {
         some: {
           channel: {
@@ -340,18 +366,49 @@ const isAgentAccessibleToActor = async (
   agentId: string,
 ): Promise<boolean> => {
   if (actorContext.actor.roles?.includes('owner')) {
-    return (await prisma.agent.count({ where: { id: agentId } })) > 0
+    return (
+      await prisma.agent.count({
+        where: {
+          id: agentId,
+          OR: [
+            { organizationId: actorContext.tenant.organizationId },
+            {
+              bindings: {
+                some: {
+                  channel: {
+                    organizationId: actorContext.tenant.organizationId,
+                  },
+                },
+              },
+            },
+          ],
+        },
+      })
+    ) > 0
   }
 
-  return isAgentVisibleToUser(actorContext.actor.actorId, agentId)
+  return isAgentVisibleToUser(
+    actorContext.actor.actorId,
+    actorContext.tenant.organizationId,
+    agentId,
+  )
 }
 
-const isChannelVisibleToUser = async (userId: string, channelId: string): Promise<boolean> => {
+const isChannelVisibleToUser = async (
+  userId: string,
+  organizationId: string,
+  channelId: string,
+): Promise<boolean> => {
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
-    select: { visibility: true, members: { where: { userId }, select: { id: true }, take: 1 } },
+    select: {
+      organizationId: true,
+      visibility: true,
+      members: { where: { userId }, select: { id: true }, take: 1 },
+    },
   })
   if (!channel) return false
+  if (channel.organizationId !== organizationId) return false
   // Public channels are visible to all org members
   if (channel.visibility === 'public') return true
   // Protected and private channels require membership
@@ -361,69 +418,117 @@ const isChannelVisibleToUser = async (userId: string, channelId: string): Promis
 const isChannelMember = async (userId: string, channelId: string): Promise<boolean> =>
   (await prisma.channelMember.count({ where: { userId, channelId } })) > 0
 
-const isThreadVisibleToUser = async (userId: string, threadId: string): Promise<boolean> => {
-  const thread = await prisma.thread.findUnique({
-    where: { id: threadId },
-    select: {
-      channel: {
-        select: {
-          members: {
-            where: { userId },
-            select: { id: true },
-            take: 1,
-          },
-          visibility: true,
-        },
-      },
-    },
-  })
-
-  if (!thread) {
-    return false
-  }
-
-  if (thread.channel.visibility === 'public') {
-    return true
-  }
-
-  return thread.channel.members.length > 0
-}
-
-const isTriggerTargetAccessibleToActor = async (
+const isTriggerTargetWritableByActor = async (
   actorContext: AuthorizedActionContext,
   trigger: {
     targetChannelId?: string
-    targetThreadId?: string
   },
 ): Promise<boolean> => {
   if (actorContext.actor.roles?.includes('owner')) {
     return true
   }
 
-  if (trigger.targetChannelId && !(await isChannelVisibleToUser(actorContext.actor.actorId, trigger.targetChannelId))) {
+  if (actorContext.actor.actorType !== 'user' || !trigger.targetChannelId) {
     return false
   }
 
-  if (trigger.targetThreadId && !(await isThreadVisibleToUser(actorContext.actor.actorId, trigger.targetThreadId))) {
+  if (
+    !(await isChannelVisibleToUser(
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      trigger.targetChannelId,
+    ))
+  ) {
     return false
   }
 
-  return true
+  return isChannelMember(actorContext.actor.actorId, trigger.targetChannelId)
 }
 
-const buildWebhookSignature = (secret: string, payload: unknown): string =>
-  `sha256=${createHmac('sha256', secret).update(payload === undefined ? '' : JSON.stringify(payload)).digest('hex')}`
+const buildWebhookSignature = (secret: string, payload: Buffer, prefix: string): string =>
+  `${prefix}${createHmac('sha256', secret).update(payload).digest('hex')}`
+
+const getRawBody = (request: FastifyRequest): Buffer =>
+  (request as RequestWithRawBody).rawBody ?? Buffer.from('')
+
+const parseHeaderValue = (
+  value: string | string[] | undefined,
+): string | undefined => {
+  if (Array.isArray(value)) {
+    return value[0]
+  }
+
+  return value
+}
+
+const resolveWebhookAuthMode = (
+  config: unknown,
+): 'signature' | 'token' => {
+  if (
+    config &&
+    typeof config === 'object' &&
+    !Array.isArray(config) &&
+    (config as Record<string, unknown>)['authMode'] === 'token'
+  ) {
+    return 'token'
+  }
+
+  return 'signature'
+}
+
+const resolveWebhookHeaderNames = (
+  config: unknown,
+  key: 'signatureHeader' | 'tokenHeader' | 'deliveryIdHeader',
+  fallback: string[],
+): string[] => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return fallback
+  }
+
+  const value = (config as Record<string, unknown>)[key]
+  if (typeof value === 'string' && value.length > 0) {
+    return [value.toLowerCase()]
+  }
+
+  const pluralKey = `${key}s`
+  const pluralValue = (config as Record<string, unknown>)[pluralKey]
+  if (Array.isArray(pluralValue)) {
+    const headers = pluralValue
+      .filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+      .map((entry) => entry.toLowerCase())
+    if (headers.length > 0) {
+      return headers
+    }
+  }
+
+  return fallback
+}
+
+const readFirstHeader = (
+  request: FastifyRequest,
+  names: string[],
+): string | undefined => {
+  for (const name of names) {
+    const value = parseHeaderValue(request.headers[name])
+    if (typeof value === 'string' && value.length > 0) {
+      return value
+    }
+  }
+
+  return undefined
+}
 
 const isWebhookSignatureValid = (
   providedSignature: string | undefined,
   expectedSecret: string,
-  payload: unknown,
+  payload: Buffer,
+  prefix: string,
 ): boolean => {
   if (!providedSignature) {
     return false
   }
 
-  const expectedSignature = buildWebhookSignature(expectedSecret, payload)
+  const expectedSignature = buildWebhookSignature(expectedSecret, payload, prefix)
   const providedBuffer = Buffer.from(providedSignature)
   const expectedBuffer = Buffer.from(expectedSignature)
   if (providedBuffer.length !== expectedBuffer.length) {
@@ -458,7 +563,7 @@ const filterAuthorizedScopes = async (
       continue
     }
 
-    if (await isAgentVisibleToUser(userId, scope.agentId)) {
+    if (await isAgentVisibleToUser(userId, tenantOrganizationId, scope.agentId)) {
       authorizedScopes.push(scope)
     }
   }
@@ -525,6 +630,27 @@ let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
 
 export const buildApp = async () => {
   const app = Fastify({ logger: true })
+
+  app.addContentTypeParser(
+    /^application\/([a-z0-9.+-]+\+)?json($|;)/i,
+    { parseAs: 'buffer' },
+    (request, body, done) => {
+      ;(request as RequestWithRawBody).rawBody = Buffer.isBuffer(body)
+        ? body
+        : Buffer.from(body)
+
+      if (body.length === 0) {
+        done(null, null)
+        return
+      }
+
+      try {
+        done(null, JSON.parse(body.toString('utf8')))
+      } catch (error) {
+        done(error as Error)
+      }
+    },
+  )
 
   // Create a single shared model client for all LLM calls (orchestrator, designer, memory)
   const modelApiKey =
@@ -945,7 +1071,7 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, channelId))) {
+    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -966,7 +1092,7 @@ export const buildApp = async () => {
     }
 
     const { channelId, userId } = request.params as { channelId: string; userId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, channelId))) {
+    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1025,7 +1151,13 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, body.channelId))) {
+    if (
+      !(await isChannelVisibleToUser(
+        actorContext.actor.actorId,
+        actorContext.tenant.organizationId,
+        body.channelId,
+      ))
+    ) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1058,7 +1190,7 @@ export const buildApp = async () => {
     }
 
     const { agentId, channelId } = request.params as { agentId: string; channelId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, channelId))) {
+    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1283,6 +1415,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
     const { triggerId } = request.params as { triggerId: string }
     const trigger = await getAgentTrigger(prisma, triggerId)
     if (!trigger) {
@@ -1295,8 +1431,8 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (!(await isTriggerTargetAccessibleToActor(actorContext, trigger))) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+    if (!(await isTriggerTargetWritableByActor(actorContext, trigger))) {
+      sendApiError(reply, 403, 'FORBIDDEN', 'Trigger target is not writable by this actor')
       return reply
     }
 
@@ -1441,15 +1577,6 @@ export const buildApp = async () => {
       return reply
     }
 
-    const signatureHeader =
-      request.headers['x-nessie-trigger-signature'] ??
-      request.headers['x-hub-signature-256']
-    const providedSignature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader
-    const dedupeHeader =
-      request.headers['x-nessie-delivery-id'] ??
-      request.headers['x-github-delivery'] ??
-      request.headers['x-request-id']
-    const dedupeKey = Array.isArray(dedupeHeader) ? dedupeHeader[0] : dedupeHeader
     const expectedSecret =
       trigger.config &&
       typeof trigger.config === 'object' &&
@@ -1458,13 +1585,64 @@ export const buildApp = async () => {
         ? ((trigger.config as Record<string, unknown>)['secret'] as string)
         : undefined
 
-    if (!expectedSecret || !isWebhookSignatureValid(providedSignature, expectedSecret, request.body)) {
+    const authMode = resolveWebhookAuthMode(trigger.config)
+    const signatureHeaders = resolveWebhookHeaderNames(trigger.config, 'signatureHeader', [
+      'x-nessie-trigger-signature',
+      'x-hub-signature-256',
+    ])
+    const tokenHeaders = resolveWebhookHeaderNames(trigger.config, 'tokenHeader', [
+      'x-nessie-trigger-secret',
+      'x-gitlab-token',
+    ])
+    const deliveryIdHeaders = resolveWebhookHeaderNames(trigger.config, 'deliveryIdHeader', [
+      'x-nessie-delivery-id',
+      'x-github-delivery',
+      'x-request-id',
+    ])
+    const dedupeKey = readFirstHeader(request, deliveryIdHeaders)
+    const signaturePrefix =
+      trigger.config &&
+      typeof trigger.config === 'object' &&
+      !Array.isArray(trigger.config) &&
+      typeof (trigger.config as Record<string, unknown>)['signaturePrefix'] === 'string'
+        ? ((trigger.config as Record<string, unknown>)['signaturePrefix'] as string)
+        : 'sha256='
+
+    if (!dedupeKey) {
+      sendApiError(reply, 400, 'WEBHOOK_DELIVERY_ID_REQUIRED', 'Webhook delivery id header missing')
+      return reply
+    }
+
+    if (!expectedSecret) {
+      sendApiError(reply, 403, 'WEBHOOK_SECRET_INVALID', 'Webhook secret missing')
+      return reply
+    }
+
+    if (authMode === 'token') {
+      const providedToken = readFirstHeader(request, tokenHeaders)
+      const providedBuffer = Buffer.from(providedToken ?? '')
+      const expectedBuffer = Buffer.from(expectedSecret)
+      if (
+        providedBuffer.length !== expectedBuffer.length ||
+        !timingSafeEqual(providedBuffer, expectedBuffer)
+      ) {
+        sendApiError(reply, 403, 'WEBHOOK_TOKEN_INVALID', 'Webhook token mismatch')
+        return reply
+      }
+    } else if (
+      !isWebhookSignatureValid(
+        readFirstHeader(request, signatureHeaders),
+        expectedSecret,
+        getRawBody(request),
+        signaturePrefix,
+      )
+    ) {
       sendApiError(reply, 403, 'WEBHOOK_SIGNATURE_INVALID', 'Webhook signature mismatch')
       return reply
     }
 
     const dispatched = await dispatchAgentTrigger(prisma, {
-      dedupeKey: typeof dedupeKey === 'string' && dedupeKey.length > 0 ? dedupeKey : undefined,
+      dedupeKey,
       payload: request.body,
       source: 'webhook',
       triggerId,
@@ -2152,7 +2330,7 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, agentId))) {
+    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
@@ -2173,7 +2351,7 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, agentId))) {
+    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
@@ -2195,7 +2373,7 @@ export const buildApp = async () => {
 
     const { agentId } = request.params as { agentId: string }
     const limit = Math.min(Math.max(Number((request.query as { limit?: string }).limit ?? '5'), 1), 50)
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, agentId))) {
+    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
@@ -2210,7 +2388,7 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, agentId))) {
+    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
@@ -2225,7 +2403,7 @@ export const buildApp = async () => {
     }
 
     const { agentId, runId } = request.params as { agentId: string; runId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, agentId))) {
+    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
