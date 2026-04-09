@@ -64,9 +64,11 @@ agents
 
 **Endpoint:** `POST /api/agents`
 
-**Required:** `name`
+**Required:** `name`, `role`
 
-**Optional:** `role` (default: "assistant"), `systemPrompt`, `parentAgentId`, `toolPolicy`, `provider`, `model`
+**Optional:** `systemPrompt`, `parentAgentId`, `toolPolicy`, `provider`, `model`
+
+> While `systemPrompt` is optional, agents without one default to generic assistant behavior. For production agents, `role` + `systemPrompt` define the agent's goal and are strongly recommended.
 
 ```json
 {
@@ -100,6 +102,24 @@ idle ──→ thinking ──→ executing ──→ idle (success)
 
 Status transitions are server-authoritative. Every transition emits a WebSocket `agent.status` event within 500ms so the admin UI reflects live state.
 
+### Status and Concurrent Runs
+
+Agent status represents the agent's **most recent activity**, not a global lock. An agent bound to multiple channels may have multiple runs queued or executing simultaneously. Concurrency rules:
+
+- Runs are serialized per-agent by default (one active run at a time, others queued)
+- Per-agent concurrency can be configured: `max_concurrent_runs` (default: 1, max: 5)
+- When multiple runs are active, agent status reflects the highest-priority activity: `executing` > `thinking` > `waiting_approval` > `idle`
+- Each Run has its own independent status lifecycle. Agent status is derived, not authoritative for individual runs.
+
+### Worker Health and Offline Detection
+
+The `offline` status requires active health monitoring:
+- Workers send heartbeats every 30 seconds to a `worker_heartbeats` table
+- If no heartbeat received for 90 seconds, the worker is marked `offline`
+- All runs assigned to an offline worker are re-queued or marked `failed` based on idempotency
+- On reconnect, the worker re-registers and transitions to `idle`
+- Stale runs (status = `running` with no heartbeat for 2 minutes) are reaped by a background job
+
 ### Agent Hierarchy
 
 Agents form trees via `parentAgentId`:
@@ -131,11 +151,13 @@ runs
   id          UUID PK
   agent_id    UUID FK → agents
   thread_id   UUID FK → threads
-  status      ENUM (pending, running, completed, failed, cancelled)
+  status      ENUM (pending, queued, running, completed, failed, cancelled, timed_out)
   started_at  TIMESTAMPTZ
   finished_at TIMESTAMPTZ
   created_at  TIMESTAMPTZ
 ```
+
+Lifecycle: `pending` (created) → `queued` (enqueued to worker) → `running` (worker processing) → `completed`/`failed`/`cancelled`/`timed_out`
 
 Every run creates a `Task` record (for lifecycle tracking) and zero or more `ToolCall` records (for auditing).
 
@@ -209,7 +231,7 @@ This is what `worker/src/run/execute.ts` actually does:
 
 ### What This Gets Right
 
-- **Full auditing**: Every tool call recorded with input/output/duration/success
+- **Full auditing**: Every tool call recorded with input/output/duration/success (for the 3 safe tools that actually execute; role-defined tools like Bash/FileWrite are not yet active)
 - **Real-time status**: WebSocket events at every state transition
 - **Idempotency**: Duplicate run executions are safely skipped
 - **Memory integration**: Hybrid search with recall signal tracking
@@ -226,6 +248,7 @@ This is what `worker/src/run/execute.ts` actually does:
 - **No planning.** Complex tasks get single-shot responses instead of decomposed steps.
 - **No evaluation.** The agent doesn't know if it succeeded.
 - **Memory recall is truncated aggressively.** 5 results at 220 chars each = 1100 chars of memory context. Useful memories get cut to fragments.
+- **Agent cannot act on memory.** The system prompt says "Do not emit tool-call markup." This means recalled memories inform the response text but cannot trigger new tool calls. The agent summarizes memories; it does not act on them. This is the single biggest architectural limitation — memory-informed action requires the agentic loop (Phase 1).
 
 ---
 
@@ -359,6 +382,22 @@ Policy enforcement happens at the tool gateway — before every tool execution, 
 1. Is this tool in the role's `allowedTools`?
 2. Does the agent's `toolPolicy` override it?
 3. Is the tool's risk level acceptable for this context?
+
+### Tool Policy Override Semantics
+
+`toolPolicy` entries have three possible states:
+- `true` — explicitly allowed (overrides role denial)
+- `false` — explicitly denied (overrides role allowance)
+- absent — inherits from role policy
+
+Override rules:
+1. Role `allowedTools` establishes the baseline
+2. `toolPolicy` entries override the baseline per tool
+3. `toolPolicy` CANNOT override risk gates — a tool classified as `critical` still requires approval regardless of policy
+4. Only humans or agents with `agent-builder` access can set `toolPolicy` overrides
+5. Every override is logged in the audit trail with `set_by`, `reason`, and `expires_at`
+
+Future: Replace boolean map with structured policy entries: `{ tool: string, state: 'allowed' | 'denied' | 'inherit', risk_cap: string, set_by: UUID, reason: string, expires_at?: DateTime }`
 
 ### Future Roles
 
@@ -594,8 +633,9 @@ skills
   name             TEXT UNIQUE (within org)
   description      TEXT
   version          INT
-  status           ENUM (draft, testing, approved, deprecated)
-  visibility       ENUM (private, public)
+  status           ENUM (draft, testing, pending_review, approved, deprecated, archived)
+  visibility       ENUM (private, shared, public)
+  active_version_id UUID FK → skill_versions
 
   instructions     TEXT — how to use it
   input_schema     JSONB — JSON Schema for parameters
@@ -650,6 +690,82 @@ skill_grants
   @@unique([skill_id, scope_type, scope_id])
 ```
 
+### Skill Lifecycle State Machine
+
+```
+draft → testing → pending_review → approved → deprecated → archived
+                       │                          │
+                       └→ rejected → draft         └→ archived
+```
+
+- `draft`: Initial creation, editable, not executable by others
+- `testing`: Author or system running validation tests
+- `pending_review`: Tests passed, awaiting human/agent review
+- `approved`: Active and available per visibility rules
+- `rejected`: Review failed, returns to draft for revision
+- `deprecated`: Superseded, still executable but not recommended
+- `archived`: Removed from all queries, retained for audit
+
+Visibility is separate from status:
+- `visibility`: `private | shared | public`
+- A skill can be `approved` + `private` (only author uses it)
+- A skill can be `approved` + `shared` (scoped via `skill_grants`)
+- A skill can be `approved` + `public` (org-wide)
+
+Active version tracking:
+- `skills.active_version_id` → points to the current `skill_versions` row
+- Old versions are immutable and retained
+- Rollback = change `active_version_id` to a previous version
+
+### Skill Deletion
+
+Skills are never physically deleted. Lifecycle:
+- **Private unused**: Can be `archived` immediately
+- **Shared/public**: Must be `deprecated` first, then `archived` after a grace period
+- **Referenced by plans/runs**: Cannot be archived until all references are to `skill_versions` (immutable), not the live skill
+- Tombstoning: Archived skills return a clear "skill archived" message if referenced, not a 404
+
+### Skill Promotion Pipeline
+
+The path from procedural memory to approved skill:
+
+```
+Successful run
+  │
+  ├── 1. Self-eval identifies reusable procedure
+  │     Output: procedural memory candidate
+  │
+  ├── 2. Store as thought (memory_type = 'procedure', review_status = 'unreviewed')
+  │
+  ├── 3. Promotion trigger (manual or automatic when procedure.success_count >= threshold)
+  │     Creates: SkillCandidate record
+  │
+  ├── 4. Convert procedure to skill draft
+  │     Map: trigger_conditions → inputSchema
+  │     Map: steps → instructions + planTemplate
+  │     Map: tools_used → requiredTools
+  │     Generate: tests from success/failure history
+  │
+  ├── 5. Run generated tests in sandbox
+  │     If fail → return to draft with failure notes
+  │
+  ├── 6. Submit for review (status: pending_review)
+  │     Reviewer checks: correctness, safety, scope, tool requirements
+  │
+  ├── 7. Approve → skill becomes active
+  │     Set: active_version_id, visibility based on scope
+  │     Link: source_thought_id → original procedure
+  │
+  └── 8. Ongoing: If source procedure later fails, flag linked skill for re-review
+```
+
+Required for promotion:
+- Minimum 3 successful uses of the source procedure
+- Procedure confidence ≥ 0.7
+- All required tools available in the target scope
+- No critical-risk tools unless explicitly approved
+- Security scan passes (no raw credentials, no unbounded external calls)
+
 ---
 
 ## 8. Inter-Agent Communication
@@ -679,6 +795,19 @@ agent_mailbox
   delivered_at     TIMESTAMPTZ
   processed_at     TIMESTAMPTZ
 ```
+
+### Delivery Guarantees
+
+The mailbox provides **at-least-once delivery** with idempotency:
+
+- **Idempotency**: Every message has a `correlation_id`. Duplicate sends with the same correlation ID are silently dropped.
+- **Visibility timeout**: A message transitions from `queued` → `delivered` when the recipient agent starts processing. If not `processed` within 60 seconds, it returns to `queued` for retry.
+- **Retry policy**: Max 3 retries with exponential backoff (10s, 30s, 60s). After 3 failures → `failed` status.
+- **Dead-letter queue**: Failed messages after all retries are moved to `agent_mailbox_dlq` for manual inspection.
+- **Ordering**: Messages within a single `plan_id` + `step_id` are ordered. Cross-plan messages are unordered.
+- **Offline recipients**: Messages queue indefinitely. When the agent comes online, it drains its mailbox in order.
+- **Broadcast**: `to_agent_id = NULL` + `channel_id` set → fan-out to all agents bound to that channel. Each gets their own mailbox entry.
+- **Transactional coupling**: Plan step transitions and mailbox writes happen in the same DB transaction.
 
 ### Communication Patterns
 
@@ -750,7 +879,7 @@ plan_steps
   order            INT
   type             ENUM (tool_call, spawn_task, code_change, message, wait, approval_required, human_input)
   description      TEXT
-  status           ENUM (pending, running, done, failed, skipped)
+  status           ENUM (pending, running, done, failed, skipped, blocked, awaiting_approval, cancelled, timed_out)
 
   assigned_agent_id UUID FK → agents
   run_id           UUID FK → runs (populated when step executes)
@@ -784,6 +913,36 @@ plan_steps
 
 Plans connect to skills: if a skill has a `planTemplate`, it becomes the starting point for the plan. The agent can modify the template based on context.
 
+### Plan Failure Recovery
+
+Plans are not transactions — they can partially complete. Recovery semantics:
+
+**Step classification by side effects:**
+- `pure`: No external effects (analysis, search). Safe to retry or skip.
+- `idempotent`: External effects but repeatable (deploy with same config). Safe to retry.
+- `mutating`: Non-repeatable external effects (send email, delete resource). Requires compensation step.
+
+**Recovery rules:**
+1. Step fails → check retry policy (default: 2 retries for `pure`/`idempotent`, 0 for `mutating`)
+2. Retries exhausted → check if step has a `compensation_step_id`
+3. If compensation exists → execute it (rollback partial work)
+4. If no compensation → mark step `failed`, check plan policy:
+   - `fail_fast`: Cancel all remaining steps, mark plan `failed`
+   - `continue_on_failure`: Skip dependent steps, continue independent ones
+   - `pause_for_human`: Mark plan `blocked`, create approval request
+5. On worker crash (step `running` with no heartbeat for 2 minutes):
+   - Reaper marks step `failed`
+   - Plan applies recovery rules above
+
+**Artifact tracking:**
+- Each step that produces artifacts (files created/modified, resources provisioned) records them in `step.output.artifacts[]`
+- Compensation steps use the artifact list to know what to undo
+- Format: `{ type: "file_created" | "file_modified" | "resource_created", ref: string, rollback_data?: string }`
+
+**Plan resume:**
+- A `failed` or `blocked` plan can be resumed: skips completed steps, retries or replaces failed steps
+- Resume creates a new plan version linked to the original
+
 ---
 
 ## 10. Evaluation and Self-Correction
@@ -795,7 +954,7 @@ After execution, every significant run goes through evaluation:
 ```
 evaluations
   id               UUID PK
-  kind             ENUM (policy_check, unit_test, integration_test, critic_llm, human_review)
+  kind             ENUM (policy_check, unit_test, integration_test, critic_llm, human_review, self_eval, reflection)
   passed           BOOLEAN
   score            FLOAT (0.0–1.0)
   feedback         TEXT
@@ -850,6 +1009,34 @@ Execution completes
 ```
 
 Reflections are stored and linked to procedural memories — when the same type of failure recurs, the agent retrieves the reflection and avoids the mistake.
+
+### Unified Run Evaluation
+
+The critic loop, self-eval, and reflection produce different outputs that must flow into a single evaluation record. After every significant run:
+
+```
+Run completes
+  │
+  ├── 1. Fast critic → evaluations row (kind: policy_check)
+  │     Output: passed, score, feedback
+  │
+  ├── 2. Semantic critic → evaluations row (kind: critic_llm)
+  │     Output: passed, score, feedback, metrics
+  │
+  ├── 3. Self-eval (memory) → evaluations row (kind: self_eval)
+  │     Output: used_memories, missing_memories, new_procedural, framing_update
+  │     Stored in: evaluations.metrics JSONB
+  │
+  └── 4. Reflection (on failure) → evaluations row (kind: reflection)
+        Output: root_cause, proposed_fix, applied, confidence
+        Stored in: evaluations.metrics JSONB
+```
+
+All four evaluation types share the `evaluations` table. The `kind` field discriminates. The `metrics` JSONB holds type-specific structured data. This means:
+- `task_success` comes from the critic (deterministic), not self-eval (model opinion)
+- Self-eval `used_memories[].thought_id` must reference actual `thought_recalls` rows
+- Reflection only runs if a critic failed
+- Missing memories from self-eval are stored as `evaluations.metrics.missing_memories` and processed by the capture pipeline
 
 ---
 
@@ -909,21 +1096,23 @@ agent_prompt_changes
 
 ### Have (Working)
 
-| Component | Location | Notes |
-|---|---|---|
-| Agent CRUD + hierarchy | `api/src/services/agents.ts` | Full lifecycle |
-| Agent status model | Prisma schema + WebSocket events | 6 states, real-time push |
-| Run execution | `worker/src/run/execute.ts` | Single-shot, keyword tools |
-| 3 safe tools | `worker/src/run/tools.ts` | document_read, web_fetch, web_search |
-| Role registry | `src/orchestration/role-registry.ts` | 6 roles with tool policies |
-| Spawn system | `src/orchestration/spawn-manager.ts` | Depth/children/concurrency limits |
-| Review gates | `src/orchestration/verification.ts` | Pass/fail with repair iterations |
-| Approval gates | `src/orchestration/approvals.ts` | Human approve/reject |
-| Channel orchestrator | `api/src/services/orchestrator.ts` | LLM-based agent routing |
-| Task ledger | `src/orchestration/task-ledger.ts` | 8-state lifecycle |
-| Memory retrieval | `packages/memory/` | Hybrid search, recall ledger |
-| Tool call auditing | ToolCall table + WebSocket events | Full audit trail |
-| Watcher/monitoring | `src/orchestration/watcher.ts` | Stale task, loop, runaway detection |
+| Component | Location | Runtime | Notes |
+|---|---|---|---|
+| Agent CRUD + hierarchy | `api/src/services/agents.ts` | API/Worker | Full lifecycle |
+| Agent status model | Prisma schema + WebSocket events | API/Worker | 6 states, real-time push |
+| Run execution | `worker/src/run/execute.ts` | API/Worker | Single-shot, keyword tools |
+| 3 safe tools | `worker/src/run/tools.ts` | API/Worker | document_read, web_fetch, web_search |
+| Role registry | `src/orchestration/role-registry.ts` | Legacy (src/) | 6 roles with tool policies |
+| Spawn system | `src/orchestration/spawn-manager.ts` | Legacy (src/) | Depth/children/concurrency limits |
+| Review gates | `src/orchestration/verification.ts` | Legacy (src/) | Pass/fail with repair iterations |
+| Approval gates | `src/orchestration/approvals.ts` | Legacy (src/) | Human approve/reject |
+| Channel orchestrator | `api/src/services/orchestrator.ts` | API/Worker | LLM-based agent routing |
+| Task ledger | `src/orchestration/task-ledger.ts` | Legacy (src/) | 8-state lifecycle |
+| Memory retrieval | `packages/memory/` | API/Worker | Hybrid search, recall ledger |
+| Tool call auditing | ToolCall table + WebSocket events | API/Worker | Full audit trail |
+| Watcher/monitoring | `src/orchestration/watcher.ts` | Legacy (src/) | Stale task, loop, runaway detection |
+
+Components marked `Legacy (src/)` exist in the local orchestrator but are NOT active in the deployed API/worker architecture. They must be re-implemented in `api/` or `worker/` before they are considered production-ready.
 
 ### Need (Not Started)
 
@@ -943,6 +1132,13 @@ agent_prompt_changes
 | **Sandboxed execution** | Medium | Tool Registry | Isolation for generated/third-party code |
 | **Budget enforcement** | Medium | Agentic loop | Token/cost/time/iteration caps |
 | **Skill promotion pipeline** | Low | Skills + procedural memory | Promote memories to tested skills |
+| **Agent versioning (AgentConfigVersion)** | Medium | Agent builder | Immutable config history, rollback |
+| **Agent builder skill/workflow** | High | Skills + Tool Registry | Structured intake → deterministic agent creation |
+| **Agent discovery registry** | Medium | Skills | Capability index, cross-channel/project search |
+| **Cost ledger** | High | Agentic loop | Per-agent/run/plan/step token and dollar accounting |
+| **Rate limiting + backpressure** | High | Agentic loop | Queue, worker leases, provider rate adaptation |
+| **Worker heartbeat + health** | High | — | Stale run detection, offline transitions |
+| **Concurrent resource locks** | Medium | Plans | File/workspace locks, conflict detection |
 | **Personalization memory** | Future | — | User communication model |
 | **Local-first filtering** | Future | — | On-device memory extraction |
 
@@ -952,22 +1148,25 @@ agent_prompt_changes
 Phase 1: Native tool calling + agentic loop
   └── This unblocks everything. Without it, nothing else works.
 
-Phase 2: Plans + schema-validated router
-  └── Structured decomposition, typed routing decisions.
+Phase 2: Plans + schema-validated router + budget enforcement
+  └── Structured decomposition, typed routing decisions, cost tracking.
 
-Phase 3: Skills + inter-agent mailbox
-  └── Reusable capabilities, agent coordination.
+Phase 3: Evaluation + critic + reflection
+  └── Quality gates, self-correction, learning. Must exist before skills.
 
-Phase 4: Evaluation + critic + reflection
-  └── Quality gates, self-correction, learning.
+Phase 4: Tool Registry + sandbox + security gates
+  └── Versioned tools, safe execution. MUST precede agent-authored skills.
 
-Phase 5: Tool Registry + sandbox
-  └── Versioned tools, safe execution of generated code.
+Phase 5: Skills + inter-agent mailbox
+  └── Reusable capabilities, agent coordination. Built on safe execution substrate.
 
 Phase 6: Memory integration (procedural, framing, self-eval)
   └── System improves itself over time.
 
-Phase 7: Enterprise hardening
+Phase 7: Agent builder + self-modification
+  └── Agents creating agents, change requests, versioned configs.
+
+Phase 8: Enterprise hardening
   └── SOC2/GDPR controls, secrets, retention, audit.
 ```
 
@@ -1001,3 +1200,244 @@ Nessie integrates with OpenClaw at the gateway level. The agent model maps clean
 - Our skill model has explicit grants and scoping (OpenClaw skills are workspace-global)
 - Our review/approval gates don't exist in OpenClaw
 - We need change-request-driven self-modification (OpenClaw allows direct file overwrites)
+
+---
+
+## 14. Vocabulary
+
+Precise definitions. All documents must use these terms consistently.
+
+| Term | Definition | NOT the same as |
+|---|---|---|
+| **Tool** | A single executable action with typed input/output schema. Examples: `Bash`, `FileRead`, `WebSearch`. Tools are registered, versioned, and risk-classified. | Skill |
+| **Skill** | A reviewed, reusable runbook: instructions + input schema + plan template + tests. A skill may use multiple tools. Skills are authored, versioned, scoped, and promoted through a lifecycle. | Tool, Procedural memory |
+| **Procedural memory** | An unreviewed, auto-captured sequence of steps that worked for a task. Raw material for skills. Stored as a thought with `memory_type = 'procedure'`. Confidence-scored, not tested. | Skill |
+| **Role policy** | The baseline capability profile for an agent: which tools are allowed, spawn/mutate/review permissions. Set by the role registry. | Tool policy |
+| **Tool policy** | Per-agent overrides to role policy: allow or deny specific tools. Stored on the agent record as JSONB. | Role policy |
+| **Plan** | A structured decomposition of a goal into ordered, typed steps with dependencies and acceptance criteria. | Task |
+| **Task** | A lifecycle wrapper around work: inbox → assigned → in_progress → done. Tasks track status; plans track structure. | Plan |
+| **Run** | One complete execution cycle: perceive → think → act → evaluate. Creates tool calls, messages, and evaluations. | Task |
+| **Evaluation** | A post-run quality assessment. Types: policy_check, unit_test, critic_llm, self_eval, reflection, human_review. | Reflection |
+| **Reflection** | A specific evaluation type: root cause analysis of a failure with proposed fix. Stored and linked to procedural memories. | Evaluation |
+
+---
+
+## 15. Agent Builder
+
+How agents are created — by humans through the API, or by other agents through the builder skill.
+
+### Agent Creation Contract
+
+Minimum valid agent:
+- `name` (required) — unique within org
+- `role` (required) — from role registry or 'assistant'
+
+Recommended for production agents:
+- `systemPrompt` — without this, the agent has no specific goal
+- `provider` + `model` — without these, the system assigns defaults
+- `toolPolicy` — without this, role defaults apply
+
+### Agent Templates
+
+Templates are reusable starting points for agent creation:
+
+```
+agent_templates
+  id               UUID PK
+  name             TEXT UNIQUE (within org)
+  description      TEXT
+  role             TEXT
+  system_prompt    TEXT
+  tool_policy      JSONB
+  provider         TEXT
+  model            TEXT
+  memory_policy    JSONB — { read: string[], write: string[], visibility: string }
+  budget           JSONB — default budget for agents created from this template
+  required_tools   TEXT[]
+  tags             TEXT[]
+  organization_id  UUID FK → organizations
+  created_by       UUID
+  version          INT DEFAULT 1
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
+```
+
+System ships with built-in templates: `builder`, `reviewer`, `researcher`, `debugger`, `watcher`.
+
+### Agent Config Versioning
+
+Every agent has an immutable config history:
+
+```
+agent_config_versions
+  id               UUID PK
+  agent_id         UUID FK → agents
+  version          INT
+  system_prompt    TEXT
+  tool_policy      JSONB
+  provider         TEXT
+  model            TEXT
+  role             TEXT
+  changed_by       UUID — user or agent who made the change
+  change_reason    TEXT
+  created_at       TIMESTAMPTZ
+
+  @@unique([agent_id, version])
+```
+
+- `agents.active_config_version_id` → current version
+- Every change to prompt, policy, provider, model, or role creates a new version
+- Rollback = set `active_config_version_id` to a previous version
+- Versions are immutable — no edits, only new versions
+
+### Agent Builder Workflow (Agent-Creates-Agent)
+
+When a builder agent creates another agent:
+
+```
+Builder agent receives request (via skill or direct instruction)
+  │
+  ├── 1. Validate inputs against AgentCreationSchema
+  │     Required: name, role, goal (natural language)
+  │     Optional: domain, allowedTools, forbiddenTools, scope, budget, successCriteria
+  │
+  ├── 2. Select template (if applicable)
+  │     Match role to agent_templates, use as base
+  │
+  ├── 3. Generate system prompt
+  │     Deterministic sections (identity, role, scope) + goal-specific instructions
+  │     Builder agent drafts, does NOT inject arbitrary text
+  │
+  ├── 4. Validate policy
+  │     Tool policy must be subset of builder's own permissions
+  │     Scope must be within builder's scope (no privilege escalation)
+  │     Budget must be within builder's budget allocation
+  │
+  ├── 5. Create agent in draft state (status: offline)
+  │     Insert agents row + first agent_config_versions row
+  │     No channel bindings yet
+  │
+  ├── 6. Bind to channels (after validation)
+  │     Only channels the builder has access to
+  │
+  ├── 7. Dry-run test
+  │     Send a test message, verify the agent responds coherently
+  │     Record evaluation (kind: dry_run)
+  │
+  ├── 8. Submit for approval
+  │     If builder.requiresReview: create approval request
+  │     If approved: activate agent (status: idle)
+  │     If rejected: remain in draft with feedback
+  │
+  └── 9. Audit trail
+        agent_config_versions records: who created, from what template, why
+        Links to plan step if created as part of a plan
+```
+
+### Structured Agent Creation Schema
+
+```json
+{
+  "name": "string (required)",
+  "role": "string (required) — builder | researcher | reviewer | debugger | watcher | assistant | custom",
+  "goal": "string (required) — natural language description of purpose",
+  "domain": "string (optional) — area of expertise",
+  "templateId": "uuid (optional) — start from a template",
+  "allowedTools": ["FileRead", "Grep"],
+  "forbiddenTools": ["Bash"],
+  "scope": {
+    "organizationId": "uuid (required)",
+    "projectId": "uuid (optional)",
+    "teamId": "uuid (optional)",
+    "channelIds": ["uuid"]
+  },
+  "memoryPolicy": {
+    "read": ["semantic", "framing", "procedure"],
+    "write": ["semantic"],
+    "visibility": "project"
+  },
+  "budget": {
+    "maxTokensPerRun": 50000,
+    "maxCostCentsPerRun": 50,
+    "maxConcurrentRuns": 1
+  },
+  "successCriteria": ["string"],
+  "requiresReview": true
+}
+```
+
+### Meta-Tools for Agent Management
+
+Tools available to agents with `builder` role and `agent-builder` tool access:
+
+| Tool | Description | Risk |
+|---|---|---|
+| `create_agent` | Create a new agent from structured input | High |
+| `propose_config_change` | Submit a change request for an existing agent's config | High |
+| `rollback_agent_config` | Revert an agent to a previous config version | High |
+| `create_skill_candidate` | Create a skill from a procedural memory | Medium |
+| `promote_skill_version` | Submit a skill version for review | Medium |
+| `request_approval` | Create an approval request for any pending action | Low |
+
+These tools are never auto-granted. They require explicit human assignment via `toolPolicy`.
+
+---
+
+## 16. Operational Infrastructure
+
+### Cost Ledger
+
+Every token and dollar is tracked:
+
+```
+cost_ledger
+  id               UUID PK
+  organization_id  UUID
+  agent_id         UUID FK → agents
+  run_id           UUID FK → runs
+  plan_id          UUID (optional)
+  step_id          UUID (optional)
+  
+  provider         TEXT — "openai", "anthropic"
+  model            TEXT
+  operation        TEXT — "chat", "embedding", "extraction", "self_eval", "tool_execution"
+  
+  prompt_tokens    INT
+  completion_tokens INT
+  total_tokens     INT
+  cost_cents       FLOAT
+  
+  created_at       TIMESTAMPTZ
+```
+
+Aggregation: per-agent daily/monthly rollups. Budget enforcement checks the ledger before each LLM call. When `maxCostCents` is reached, the run terminates with a budget-exhausted error.
+
+### Rate Limiting and Backpressure
+
+```
+Run submission
+  │
+  ├── Per-org concurrency cap (default: 10 concurrent runs)
+  ├── Per-agent concurrency cap (default: 1, configurable to 5)
+  ├── Per-provider rate limit adaptation (respect 429 responses, back off)
+  ├── Queue depth limit (default: 100 per org, reject after)
+  └── Priority classes: critical > normal > background
+      Critical: approval-gated tasks, human-initiated
+      Normal: agent-initiated, plan-driven
+      Background: self-eval, memory capture, maintenance
+```
+
+When capacity is exhausted:
+- Background tasks are shed first
+- Normal tasks queue with visible position
+- Critical tasks preempt background tasks
+- Users see: "Agent is busy, your request is queued (position N)"
+
+### Concurrent Resource Access
+
+When multiple agents work in the same project:
+
+- **File locks**: Advisory locks via `resource_locks` table. Agent acquires lock before file write, releases on step completion or timeout (60s).
+- **Conflict detection**: If two agents modify the same file in overlapping runs, the second write detects the conflict and either merges (if possible) or escalates to human.
+- **Plan-level write sets**: Plans declare expected write targets upfront. The orchestrator prevents concurrent plans with overlapping write sets.
+- **External resource locks**: For deploys, migrations, and shared environments — same lock table, longer timeouts.
