@@ -76,8 +76,8 @@ mcp_server_instances
   slug             TEXT — org-unique identifier
   
   -- Connection
-  protocol         TEXT — "stdio" | "http" | "sse"
-  endpoint         TEXT — URL, command, or container reference
+  protocol         TEXT — "stdio" | "http" | "sse" | "remote"
+  endpoint         TEXT — URL, command, or container reference (null for remote)
   transport_config JSONB — protocol-specific config (timeouts, headers, etc.)
   
   -- Authentication
@@ -191,6 +191,217 @@ pending_setup → active → paused → active (or) → error
 ```
 
 Health checks run every 5 minutes. If a server fails 3 consecutive health checks, it moves to `error` and its tools are temporarily unavailable. The system retries, and if the server recovers, tools become available again without admin intervention.
+
+### Remote MCP Servers (Self-Hosted Runners)
+
+Nessie runs in the cloud, but users need agents to interact with machines behind firewalls, on-prem servers, developer laptops, or air-gapped environments. Remote MCP servers solve this by **reversing the connection direction** — the remote machine connects *to* Nessie, not the other way around.
+
+This is the same `mcp_server_instances` model with `protocol: "remote"`. Same tool discovery, same credential model, same scoping. The only difference: the machine initiates and maintains the connection.
+
+#### How It Works
+
+```
+1. Admin creates a remote MCP server registration in Nessie:
+   POST /api/mcp-servers
+   {
+     "name": "Build Server (on-prem)",
+     "protocol": "remote",
+     "scope_type": "team",
+     "scope_id": "team-engineering-uuid"
+   }
+   → Returns: { server_id: "uuid", registration_token: "nessie_reg_xxx..." }
+
+2. User installs the Nessie CLI on the remote machine:
+   $ curl -fsSL https://install.nessie.ai/cli | sh
+
+3. User registers the CLI with the token:
+   $ nessie-agent register --token nessie_reg_xxx...
+   ✓ Registered as "Build Server (on-prem)"
+   ✓ Connected to org "Acme Corp"
+   ✓ Advertising 12 tools
+
+4. CLI opens a persistent WebSocket connection to Nessie:
+   wss://api.nessie.ai/remote/{server_id}/ws
+   
+   The CLI sends:
+   - tools/list → Nessie discovers what tools this machine offers
+   - heartbeat every 30s → Nessie knows the machine is alive
+   
+   Nessie sends:
+   - tool call requests → CLI executes locally → returns result
+```
+
+#### Connection Model
+
+```
+Remote machine (behind firewall/NAT)          Nessie Cloud
+┌─────────────────────────────┐              ┌──────────────────┐
+│  nessie-agent CLI            │    outbound  │                  │
+│                              │─── WSS ────→│  /remote/{id}/ws │
+│  Exposes local tools:        │    only      │                  │
+│  - run_build                 │              │  Routes tool     │
+│  - deploy_staging            │←── calls ────│  calls to this   │
+│  - read_logs                 │              │  connection      │
+│  - restart_service           │── results ──→│                  │
+│                              │              │                  │
+│  Heartbeat every 30s         │── ping ────→│  Health tracking │
+└─────────────────────────────┘              └──────────────────┘
+
+Key: the remote machine only makes OUTBOUND connections.
+No inbound ports, no firewall rules, no VPN required.
+```
+
+#### Protocol: "remote" on mcp_server_instances
+
+No new table. Remote servers use the existing `mcp_server_instances` schema with these specifics:
+
+```
+mcp_server_instances row for a remote server:
+  protocol         = "remote"
+  endpoint         = null (the CLI connects to us, not the other way around)
+  
+  -- Remote-specific fields in transport_config:
+  transport_config = {
+    "registration_token_ref": "secret_reg_token_xxx",  -- secretRef, one-time use
+    "heartbeat_interval_s": 30,
+    "heartbeat_timeout_s": 90,        -- 3 missed heartbeats → mark as disconnected
+    "reconnect_max_backoff_s": 300,   -- CLI retries with exponential backoff
+    "max_concurrent_calls": 5,        -- limit parallel tool calls to this machine
+    "machine_id": "build-server-01",  -- reported by the CLI on connect
+    "machine_info": {                 -- reported by the CLI
+      "os": "linux",
+      "arch": "amd64",
+      "hostname": "build-01.internal.acme.com"
+    }
+  }
+  
+  -- Status reflects connection state:
+  status           = "active" (connected) | "paused" (user-paused) | "error" (disconnected)
+  health_status    = "healthy" (heartbeat received) | "degraded" (slow) | "down" (no heartbeat)
+```
+
+#### CLI Tool Discovery
+
+The CLI exposes tools to Nessie using the standard MCP `tools/list` protocol. What the CLI exposes depends on what's installed/configured on the remote machine:
+
+```
+nessie-agent can expose tools from:
+
+  1. Built-in tools (always available):
+     - remote_bash: Execute shell commands on this machine
+     - remote_file_read: Read files from this machine
+     - remote_file_write: Write files on this machine
+     - remote_process_list: List running processes
+     - remote_system_info: OS, CPU, memory, disk info
+
+  2. Declared tools (configured in nessie-agent.yaml):
+     tools:
+       - name: run_build
+         description: "Run the CI build pipeline"
+         command: "cd /app && make build"
+         timeout: 600
+         risk_level: medium
+       
+       - name: deploy_staging
+         description: "Deploy current build to staging"
+         command: "/scripts/deploy.sh staging"
+         timeout: 300
+         risk_level: high
+         requires_approval: true
+       
+       - name: read_logs
+         description: "Read application logs"
+         command: "tail -n {{lines}} /var/log/app/{{service}}.log"
+         parameters:
+           lines: { type: integer, default: 100 }
+           service: { type: string, enum: [api, worker, scheduler] }
+         risk_level: low
+
+  3. MCP servers running on the machine:
+     mcp_servers:
+       - name: local-postgres
+         command: "npx @modelcontextprotocol/server-postgres"
+         env:
+           DATABASE_URL: "{{secret:local_db_url}}"
+     
+     → The CLI proxies these MCP servers through its connection to Nessie.
+       Nessie sees them as tools on the remote server.
+```
+
+#### Security Considerations
+
+Remote servers execute commands on real machines. The security model is strict:
+
+```
+1. REGISTRATION TOKEN
+   - One-time use, expires after 24 hours
+   - Scoped to a specific mcp_server_instances record
+   - After registration, the CLI receives a long-lived client certificate
+   - The registration token is revoked immediately after use
+
+2. TOOL APPROVAL
+   - All tools discovered from a remote server start as pending_review
+   - Admin must approve each tool before agents can use it
+   - Tools with risk_level: "high" always require per-invocation approval
+   - remote_bash requires explicit admin opt-in (disabled by default)
+
+3. CREDENTIAL ISOLATION
+   - Credentials on the remote machine (DB passwords, API keys) stay on the machine
+   - The CLI resolves local secrets from its own config, not from Nessie's secret store
+   - Nessie never sees local credentials — it sends tool call args, CLI injects creds locally
+   - Exception: if a tool needs a Nessie-managed secret, the platform resolves and sends it
+     over the encrypted WebSocket (same as any other credential injection)
+
+4. NETWORK SECURITY
+   - WebSocket connection is always TLS (WSS)
+   - Client certificate authentication after registration
+   - The CLI validates Nessie's server certificate (no self-signed)
+   - Connection-level encryption for all tool call payloads
+
+5. AUDIT
+   - Every tool call on a remote server is logged in Nessie's audit system
+   - The CLI also logs locally to /var/log/nessie-agent/audit.log
+   - Remote bash commands are logged with full command text (redacted secrets)
+   - Admin can view remote execution history in the Nessie admin UI
+```
+
+#### Remote Server Lifecycle
+
+```
+Registration:
+  Admin creates server → gets token → user runs nessie-agent register
+  → CLI connects → tools discovered → admin approves tools → ready
+
+Normal operation:
+  CLI maintains WebSocket connection
+  Heartbeat every 30s
+  Nessie routes tool calls → CLI executes → returns results
+  
+Disconnection:
+  CLI loses connection (network issue, machine restart, etc.)
+  → Nessie marks server as health_status: "down" after 90s (3 missed heartbeats)
+  → Tools from this server become temporarily unavailable
+  → Agents see: "Build Server (on-prem): offline" in capability directory
+  → CLI reconnects automatically with exponential backoff
+  → On reconnect: tools/list re-run, health restored, tools available again
+
+Deregistration:
+  $ nessie-agent deregister
+  → CLI closes connection, removes local credentials
+  → Or: admin deletes the server in Nessie → CLI receives disconnect signal
+```
+
+#### CLI Management Commands
+
+```
+$ nessie-agent register --token <token>     Register with Nessie
+$ nessie-agent status                        Show connection status, registered tools
+$ nessie-agent tools                         List tools this agent exposes
+$ nessie-agent logs                          Tail local execution logs
+$ nessie-agent deregister                    Disconnect and clean up
+$ nessie-agent run                           Start the agent (foreground, for systemd/launchd)
+$ nessie-agent install-service               Install as a system service (systemd/launchd)
+```
 
 ---
 
