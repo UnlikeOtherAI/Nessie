@@ -188,9 +188,13 @@ export const streamDesignerChat = async (
 ): Promise<void> => {
   reply.raw.writeHead(200, {
     'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
+    'Connection': 'keep-alive',
     'Content-Type': 'text/event-stream',
+    'X-Accel-Buffering': 'no',
   })
+
+  // Disable Nagle's algorithm so each write() flushes immediately
+  reply.raw.socket?.setNoDelay(true)
 
   const messages: OpenAIMessage[] = [
     { role: 'system', content: buildSystemPrompt(input.formState) },
