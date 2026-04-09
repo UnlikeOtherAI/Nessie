@@ -110,28 +110,28 @@ export const getTokenUsageSummary = async (
     groupBy?: string
   },
 ) => {
-  const conditions: string[] = ['"organization_id" = $1']
+  const conditions: string[] = ['"organization_id" = $1::uuid']
   const params: unknown[] = [organizationId]
   let paramIdx = 2
 
   if (filters?.projectId) {
-    conditions.push(`"project_id" = $${paramIdx++}`)
+    conditions.push(`"project_id" = $${paramIdx++}::uuid`)
     params.push(filters.projectId)
   }
   if (filters?.teamId) {
-    conditions.push(`"team_id" = $${paramIdx++}`)
+    conditions.push(`"team_id" = $${paramIdx++}::uuid`)
     params.push(filters.teamId)
   }
   if (filters?.channelId) {
-    conditions.push(`"channel_id" = $${paramIdx++}`)
+    conditions.push(`"channel_id" = $${paramIdx++}::uuid`)
     params.push(filters.channelId)
   }
   if (filters?.agentId) {
-    conditions.push(`"agent_id" = $${paramIdx++}`)
+    conditions.push(`"agent_id" = $${paramIdx++}::uuid`)
     params.push(filters.agentId)
   }
   if (filters?.actorId) {
-    conditions.push(`"actor_id" = $${paramIdx++}`)
+    conditions.push(`"actor_id" = $${paramIdx++}::uuid`)
     params.push(filters.actorId)
   }
   if (filters?.provider) {
