@@ -866,6 +866,7 @@ Everything is discoverable, installable, and composable through a unified market
 - **Agent versioning**: Immutable config history with rollback
 - **Workflow template engine**: Graph execution, trigger binding
 - **Execution environments**: Workflow-managed local, container, and cloud coding environments for triage/build/fix jobs
+- **Generated plugins**: Agent-authored, reviewed, sandboxed connector/plugin packages with optional UI
 - **OpenAPI auto-import**: Probe + parse + generate endpoint definitions for API connectors
 
 ### Backend work
@@ -875,14 +876,28 @@ Everything is discoverable, installable, and composable through a unified market
 2. **API connector marketplace**: Browse, install, OpenAPI auto-import (`POST /api/connectors/import-openapi` — probe common spec paths, parse, auto-generate endpoint definitions, present for admin review, enable/disable per endpoint, risk classification)
 3. **Skill marketplace**: Browse, install with security scan, reviews/ratings per version
 4. **Workflow template marketplace**: Browse, install with dependency resolution
-5. **Library service** (`api/src/services/library.ts`):
+5. **Generated plugin marketplace**: Create from template, build/test in coding environment, submit for review, publish to library after approval
+6. **Library service** (`api/src/services/library.ts`):
    - `library_items` table: what's installed, home scope (`system` / organization / project / team / channel / user), status, installed_by, installed_at
    - Install-to-library flow: marketplace item → security scan → library item → available for assignment
    - Scope management: home scope + additional scope bindings with audit trail
-6. **Capability assignment service**:
+7. **Capability assignment service**:
    - `capability_assignments` table: library_item_id → agent_id, with `enabled_tools` array
    - Agent capabilities view: all assigned capabilities with enabled/disabled tools
    - Assignment API: `POST /api/agents/{id}/capabilities`, `GET /api/agents/{id}/capabilities`
+8. **Generated plugin lifecycle**:
+   - `generated_plugins`, `generated_plugin_versions`, `plugin_reviews` tables
+   - lifecycle states: `draft`, `testing`, `private_sandbox`, `shared_unreviewed`, `pending_review`, `changes_requested`, `approved`, `published`, `revoked`
+   - review is per version, not per plugin name
+   - approval split into distribution approval and runtime approval
+   - creator feedback loop uses Nessie channel/DM thread, not external tools
+9. **Plugin runtime enforcement**:
+   - generated plugins never run in-process with API/worker/realtime
+   - separate runner process/container/microVM per execution
+   - read-only rootfs + scratch-only write dir + plugin-scoped storage
+   - outbound network deny-by-default + domain allowlist
+   - brokered runtime API only: no direct DB creds, no direct internal service creds
+   - secret refs resolved at execution time with least-privilege bindings only
 
 **Agent builder:**
 1. **Prisma migration**: `agent_templates` table (from the-agents.md § 15), `agent_config_versions` table
@@ -933,8 +948,10 @@ Everything is discoverable, installable, and composable through a unified market
 ### Admin UI work
 
 - **Marketplace browser**: Tabbed view (MCP Servers | API Connectors | Skills | Workflows), search, filters, categories
+- **Generated plugin builder**: Create from template, generate icon, review manifest/permissions, launch coding environment, submit for review
 - **Install flow**: Permission grant review, security scan summary, scope selection
 - **Library page**: Installed items with status, scope, update available indicator
+- **Plugin review queue**: DevOps/platform reviewer inbox with code snapshot, manifest, requested permissions, diff, and approve/request-changes actions
 - **Capability assignment matrix**: Agent × capability grid with enable/disable per tool
 - **Agent builder wizard**: Template selection → config form → trigger setup → budget → dry-run → approval → create
 - **Agent version history**: Timeline with diff view per version, `changed_by` and `change_reason`, rollback button
@@ -957,6 +974,9 @@ Everything is discoverable, installable, and composable through a unified market
 - Roll back agent config → previous system prompt and tool policy restored, `active_config_version_id` updated
 - OpenAPI import: enter Stripe API URL → endpoints discovered → admin selects subset → tools created in registry
 - Agent uses `create_agent` meta-tool → child agent created through full builder workflow
+- User generates plugin from template → private sandbox run succeeds → submit for review
+- Reviewer requests changes → creator receives Nessie thread/DM with review notes
+- Reviewer approves next version → plugin becomes publishable to assigned scopes
 
 ### Exit criteria
 
@@ -968,6 +988,8 @@ Everything is discoverable, installable, and composable through a unified market
 - Rollback restores previous config (verified: rollback → `active_config_version_id` points to old version)
 - Workflow templates execute end-to-end with trigger binding (verified: scheduled workflow fires)
 - OpenAPI auto-import works for at least 2 real APIs (e.g., Stripe, GitHub)
+- Generated plugins stay sandboxed before approval (verified: private plugin cannot run outside isolated runner)
+- Review workflow gates publication (verified: unapproved version cannot be published org-wide)
 - Lint, typecheck, build pass
 
 ---
