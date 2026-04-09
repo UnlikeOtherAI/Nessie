@@ -4,6 +4,11 @@ Defines the universal agent contract in Nessie — what every agent is, what it 
 
 This document serves as the foundation for the agent system. Any new agent type must satisfy this contract.
 
+Related documents:
+- [the-agents.md](the-agents.md) — canonical reference for agent architecture, execution, skills, and roadmap
+- [multi-agent-memory-system.md](multi-agent-memory-system.md) — memory types, retrieval, self-eval
+- [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) — external identity (email, VOIP, WhatsApp, SMS)
+
 ---
 
 ## 1. The Six Fundamentals
@@ -126,19 +131,23 @@ Status transitions are server-authoritative, pushed via WebSocket within 500ms.
 ```typescript
 // Required
 name: string          // Agent display name
+role: string          // Agent type (default: "assistant" if omitted)
 
-// Optional (with defaults)
-role: string          // Default: "assistant"
-systemPrompt: string  // Behavioral instructions
+// Recommended
+systemPrompt: string  // Without this, agent has no specific goal
+
+// Optional
 parentAgentId: string // Parent for hierarchy
 toolPolicy: Record<string, boolean>  // { "Bash": true, "FileWrite": false }
 provider: string      // LLM provider
 model: string         // LLM model
 ```
 
-### In-Memory Types (Legacy Orchestrator)
+While only `name` + `role` are strictly required, agents without a `systemPrompt` default to generic assistant behavior. For production agents, `role` + `systemPrompt` define the goal and are strongly recommended.
 
-The `src/agent/` layer defines a parallel type system used by the local orchestrator:
+### In-Memory Types (Legacy Orchestrator — `src/` only)
+
+> **Warning**: This type exists only in the legacy local orchestrator (`src/agent/`). It is NOT active in the deployed API/worker architecture. The API-layer `agents` table is the source of truth. This legacy model will be deprecated once scheduling fields are added to the API model.
 
 ```typescript
 type ManagedAgent = {
@@ -154,7 +163,7 @@ type ManagedAgent = {
 }
 ```
 
-This will converge with the API-layer agent model as the system matures. The API model is the source of truth for persistence; the in-memory model adds runtime scheduling state.
+The `ManagedAgent.type` values (`coder`, `weather`, `custom`) do NOT correspond to the API-layer roles (`orchestrator`, `builder`, `reviewer`, `researcher`, `debugger`, `watcher`). These are two separate systems. Migration path: add `trigger`, `intervalMinutes`, and scheduling fields to the API `agents` table, then remove `ManagedAgent`.
 
 ---
 
@@ -167,7 +176,7 @@ A **Run** is one complete perceive-think-act cycle. Every agent interaction crea
 ```
 Message arrives
   │
-  ├── 1. Create Run record (status: queued)
+  ├── 1. Create Run record (status: pending → queued when enqueued to worker)
   │
   ├── 2. Load context
   │     ├── Agent record (name, role, systemPrompt, toolPolicy)
@@ -228,6 +237,8 @@ The system prompt is built dynamically from the stored `systemPrompt` field plus
 ```
 
 The stored `systemPrompt` defines WHO the agent is. The runtime additions define HOW it should behave in this specific run.
+
+> **Known limitation**: The "Do not emit tool-call markup" instruction hard-bakes single-shot execution. The agent cannot act on recalled memories or decide mid-response that it needs more information. This instruction will be removed when the agentic loop (Phase 1) replaces keyword-based tool execution.
 
 ---
 
