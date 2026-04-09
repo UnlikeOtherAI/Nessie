@@ -1020,6 +1020,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
     const { agentId } = request.params as { agentId: string }
     if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
@@ -1036,6 +1040,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
     const { agentId } = request.params as { agentId: string }
     if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
@@ -1047,9 +1055,14 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (body.type === 'webhook' && typeof body.config?.['secret'] !== 'string') {
+      sendApiError(reply, 400, 'WEBHOOK_SECRET_REQUIRED', 'Webhook triggers require a secret')
+      return reply
+    }
+
     const trigger = await createAgentTrigger(prisma, agentId, body)
     if (!trigger) {
-      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
       return reply
     }
 
@@ -1059,6 +1072,10 @@ export const buildApp = async () => {
   app.put('/api/triggers/:triggerId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -1081,7 +1098,7 @@ export const buildApp = async () => {
 
     const updated = await updateAgentTrigger(prisma, triggerId, body)
     if (!updated) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
       return reply
     }
 
@@ -1091,6 +1108,10 @@ export const buildApp = async () => {
   app.delete('/api/triggers/:triggerId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -1113,6 +1134,10 @@ export const buildApp = async () => {
   app.post('/api/triggers/:triggerId/pause', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -1140,6 +1165,10 @@ export const buildApp = async () => {
   app.post('/api/triggers/:triggerId/resume', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -1187,6 +1216,14 @@ export const buildApp = async () => {
       return reply
     }
 
+    const invokeDecision = await checkPolicy(prisma, actorContext, 'agent', 'invoke', {
+      agentId: trigger.agentId,
+    })
+    if (!invokeDecision.allowed) {
+      sendApiError(reply, 403, 'POLICY_DENIED', `Trigger fire denied: ${invokeDecision.reasonCode}`)
+      return reply
+    }
+
     const dispatched = await dispatchAgentTrigger(prisma, {
       actorContext,
       payload: body.payload,
@@ -1205,7 +1242,6 @@ export const buildApp = async () => {
       return reply
     }
 
-    await enqueueRunExecution(prisma, dispatched.queuePayload, `run:${dispatched.queuePayload.runId}`)
     return reply.code(202).send(
       createApiResponse({
         delivery: AgentTriggerDeliveryRecordSchema.parse(dispatched.delivery),
@@ -1221,6 +1257,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
     const { triggerId } = request.params as { triggerId: string }
     const trigger = await getAgentTrigger(prisma, triggerId)
     if (!trigger) {
@@ -1233,10 +1273,13 @@ export const buildApp = async () => {
       return reply
     }
 
-    const limit = Math.min(
-      Math.max(Number((request.query as { limit?: string }).limit ?? '20'), 1),
-      100,
-    )
+    const rawLimit = (request.query as { limit?: string }).limit
+    const parsedLimit = rawLimit === undefined ? 20 : Number.parseInt(rawLimit, 10)
+    if (Number.isNaN(parsedLimit)) {
+      sendApiError(reply, 400, 'INVALID_LIMIT', 'limit must be an integer')
+      return reply
+    }
+    const limit = Math.min(Math.max(parsedLimit, 1), 100)
 
     const deliveries = await listAgentTriggerDeliveries(prisma, triggerId, limit)
     return createApiResponse(AgentTriggerDeliveryRecordSchema.array().parse(deliveries))
@@ -1244,20 +1287,31 @@ export const buildApp = async () => {
 
   app.post('/api/triggers/:triggerId/webhook', async (request, reply) => {
     const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
+    const trigger = await prisma.agentTrigger.findUnique({
+      where: { id: triggerId },
+      select: {
+        agentId: true,
+        config: true,
+        id: true,
+        type: true,
+      },
+    })
     if (!trigger || trigger.type !== 'webhook') {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
 
     const secretHeader = request.headers['x-nessie-trigger-secret']
-    const providedSecret = Array.isArray(secretHeader)
-      ? secretHeader[0]
-      : secretHeader ?? (request.query as { secret?: string } | undefined)?.secret
+    const providedSecret = Array.isArray(secretHeader) ? secretHeader[0] : secretHeader
     const expectedSecret =
-      typeof trigger.config['secret'] === 'string' ? trigger.config['secret'] : undefined
+      trigger.config &&
+      typeof trigger.config === 'object' &&
+      !Array.isArray(trigger.config) &&
+      typeof (trigger.config as Record<string, unknown>)['secret'] === 'string'
+        ? ((trigger.config as Record<string, unknown>)['secret'] as string)
+        : undefined
 
-    if (expectedSecret && providedSecret !== expectedSecret) {
+    if (!expectedSecret || providedSecret !== expectedSecret) {
       sendApiError(reply, 403, 'WEBHOOK_SECRET_INVALID', 'Webhook secret mismatch')
       return reply
     }
@@ -1278,7 +1332,6 @@ export const buildApp = async () => {
       return reply
     }
 
-    await enqueueRunExecution(prisma, dispatched.queuePayload, `run:${dispatched.queuePayload.runId}`)
     return reply.code(202).send(
       createApiResponse({
         accepted: true,

@@ -17,15 +17,24 @@ import type {
   AgentTriggerStatus,
   AgentTriggerType,
 } from '../contracts.js'
+import { enqueueRunExecution } from '../queue/pgqueue.js'
 import { ensureDefaultThread } from './channels.js'
 
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
   value ? value.toISOString() : undefined
 
-const toRecordObject = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
+const redactTriggerConfig = (value: unknown): Record<string, unknown> => {
+  const config =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? { ...(value as Record<string, unknown>) }
+      : {}
+
+  if ('secret' in config) {
+    config['secret'] = '[redacted]'
+  }
+
+  return config
+}
 
 const mapTriggerRecord = (trigger: {
   agentId: string
@@ -48,7 +57,7 @@ const mapTriggerRecord = (trigger: {
   enabled: trigger.enabled,
   name: trigger.name ?? undefined,
   description: trigger.description ?? undefined,
-  config: toRecordObject(trigger.config),
+  config: redactTriggerConfig(trigger.config),
   lastFiredAt: toTimestamp(trigger.lastFiredAt),
   nextRunAt: toTimestamp(trigger.nextRunAt),
   createdAt: trigger.createdAt.toISOString(),
@@ -70,7 +79,7 @@ const mapTriggerDeliveryRecord = (delivery: {
   triggerId: delivery.triggerId,
   status: delivery.status,
   source: delivery.source ?? undefined,
-  payload: toRecordObject(delivery.payload),
+  payload: delivery.payload,
   errorMessage: delivery.errorMessage ?? undefined,
   runId: delivery.run ? parseRunId(delivery.run.id) : undefined,
   deliveredAt: toTimestamp(delivery.deliveredAt),
@@ -101,6 +110,13 @@ export const createAgentTrigger = async (
     type: AgentTriggerType
   },
 ): Promise<AgentTriggerRecord | null> => {
+  if (
+    input.type === 'webhook' &&
+    typeof input.config?.['secret'] !== 'string'
+  ) {
+    return null
+  }
+
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
     select: { id: true },
@@ -151,11 +167,28 @@ export const updateAgentTrigger = async (
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findUnique({
     where: { id: triggerId },
-    select: { id: true },
+    select: {
+      config: true,
+      id: true,
+      type: true,
+    },
   })
 
   if (!existing) {
     return null
+  }
+
+  if (existing.type === 'webhook' && input.config) {
+    const nextConfig = {
+      ...(existing.config && typeof existing.config === 'object' && !Array.isArray(existing.config)
+        ? (existing.config as Record<string, unknown>)
+        : {}),
+      ...input.config,
+    }
+
+    if (typeof nextConfig['secret'] !== 'string') {
+      return null
+    }
   }
 
   const nextStatus =
@@ -230,11 +263,9 @@ export const listAgentTriggerDeliveries = async (
   return deliveries.map(mapTriggerDeliveryRecord)
 }
 
-const normalizePayload = (
-  payload: unknown,
-): Prisma.InputJsonValue | typeof Prisma.JsonNull => {
+const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
   if (payload === null) {
-    return Prisma.JsonNull
+    return Prisma.JsonNull as unknown as Prisma.InputJsonValue
   }
 
   if (
@@ -409,7 +440,7 @@ export const dispatchAgentTrigger = async (
     const message = await tx.message.create({
       data: {
         content,
-        role: 'system',
+        role: 'user',
         threadId: threadTarget.threadId,
       },
     })
@@ -432,6 +463,26 @@ export const dispatchAgentTrigger = async (
         status: 'inbox',
       },
     })
+
+    const queuePayload = {
+      actorContext: {
+        ...actorContext,
+        actionContext: {
+          ...actorContext.actionContext,
+          agentId: parseAgentId(trigger.agentId),
+          channelId: parseChannelId(threadTarget.channelId),
+          taskId: parseTaskId(task.id),
+          threadId: parseThreadId(threadTarget.threadId),
+        },
+      },
+      agentId: parseAgentId(trigger.agentId),
+      messageId: message.id,
+      runId: parseRunId(run.id),
+      taskId: parseTaskId(task.id),
+      threadId: parseThreadId(threadTarget.threadId),
+    }
+
+    await enqueueRunExecution(tx, queuePayload, `run:${run.id}`)
 
     const completedDelivery = await tx.agentTriggerDelivery.update({
       where: { id: delivery.id },

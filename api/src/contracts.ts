@@ -163,7 +163,7 @@ export const AgentTriggerDeliveryRecordSchema = z.object({
   triggerId: z.string().uuid(),
   status: AgentTriggerDeliveryStatusSchema,
   source: z.string().optional(),
-  payload: z.record(z.unknown()),
+  payload: z.unknown(),
   errorMessage: z.string().optional(),
   runId: RunIdSchema.optional(),
   deliveredAt: TimestampSchema.optional(),
