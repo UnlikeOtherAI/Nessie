@@ -361,6 +361,56 @@ const isChannelVisibleToUser = async (userId: string, channelId: string): Promis
 const isChannelMember = async (userId: string, channelId: string): Promise<boolean> =>
   (await prisma.channelMember.count({ where: { userId, channelId } })) > 0
 
+const isThreadVisibleToUser = async (userId: string, threadId: string): Promise<boolean> => {
+  const thread = await prisma.thread.findUnique({
+    where: { id: threadId },
+    select: {
+      channel: {
+        select: {
+          members: {
+            where: { userId },
+            select: { id: true },
+            take: 1,
+          },
+          visibility: true,
+        },
+      },
+    },
+  })
+
+  if (!thread) {
+    return false
+  }
+
+  if (thread.channel.visibility === 'public') {
+    return true
+  }
+
+  return thread.channel.members.length > 0
+}
+
+const isTriggerTargetAccessibleToActor = async (
+  actorContext: AuthorizedActionContext,
+  trigger: {
+    targetChannelId?: string
+    targetThreadId?: string
+  },
+): Promise<boolean> => {
+  if (actorContext.actor.roles?.includes('owner')) {
+    return true
+  }
+
+  if (trigger.targetChannelId && !(await isChannelVisibleToUser(actorContext.actor.actorId, trigger.targetChannelId))) {
+    return false
+  }
+
+  if (trigger.targetThreadId && !(await isThreadVisibleToUser(actorContext.actor.actorId, trigger.targetThreadId))) {
+    return false
+  }
+
+  return true
+}
+
 const filterAuthorizedScopes = async (
   userId: string,
   tenantOrganizationId: string,
@@ -1219,6 +1269,11 @@ export const buildApp = async () => {
     }
 
     if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isTriggerTargetAccessibleToActor(actorContext, trigger))) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
