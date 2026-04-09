@@ -1034,7 +1034,387 @@ The agent can resolve and use multiple capabilities simultaneously. The UI shows
 └────────────────────────────────────────────┘
 ```
 
-### What Lives Where
+### Asynchronous Tools — Long-Running Operations
+
+Some tools take minutes, hours, or even half a day to complete. A deep research task, a batch data export, a CI/CD pipeline — the agent can't block waiting for a result. Async tools run in the background. The agent (and the user) can check on them, get progress updates, and eventually receive the result — including rich HTML output rendered directly in the chat.
+
+#### Sync vs Async Tool Calls
+
+```
+SYNCHRONOUS (default):
+  Agent calls tool → waits → gets result → continues
+  Latency: milliseconds to seconds
+  Example: stripe_list_charges, acme_create_contact
+
+ASYNCHRONOUS:
+  Agent calls tool → gets a job handle immediately → continues conversation
+  Job runs in the background for minutes/hours
+  Progress updates stream to the UI
+  Agent gets notified when complete
+  Example: deep_research, batch_export, run_ci_pipeline
+```
+
+A tool declares itself as async in its schema:
+
+```json
+{
+  "name": "deep_research",
+  "description": "Perform deep research on a topic. Takes 5-30 minutes.",
+  "async": true,
+  "progress": {
+    "supports_progress": true,
+    "supports_html_output": true,
+    "estimated_duration": "5m-30m"
+  },
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string", "description": "Research question" },
+      "depth": { "type": "string", "enum": ["quick", "standard", "deep", "exhaustive"] }
+    },
+    "required": ["query"]
+  }
+}
+```
+
+#### Async Job Lifecycle
+
+```
+Agent calls async tool
+  │
+  ├── 1. SUBMIT
+  │     Agent calls: deep_research({ query: "...", depth: "deep" })
+  │     Platform returns immediately:
+  │       {
+  │         job_id: "job_abc123",
+  │         status: "running",
+  │         permalink: "/jobs/job_abc123",
+  │         estimated_completion: "2026-04-09T15:30:00Z"
+  │       }
+  │     Agent receives the handle. Conversation continues.
+  │
+  ├── 2. PROGRESS (streamed to UI, not to agent context)
+  │     Job sends progress updates via SSE:
+  │       { job_id: "job_abc123", progress: 0.15, message: "Searching 12 sources..." }
+  │       { job_id: "job_abc123", progress: 0.40, message: "Found 34 relevant papers" }
+  │       { job_id: "job_abc123", progress: 0.60, message: "Cross-referencing findings..." }
+  │       { job_id: "job_abc123", progress: 0.85, message: "Synthesizing report..." }
+  │     
+  │     These go directly to the UI — not into the agent's context.
+  │     The agent doesn't burn tokens on intermediate progress.
+  │
+  ├── 3. COMPLETION
+  │     Job finishes:
+  │       {
+  │         job_id: "job_abc123",
+  │         status: "completed",
+  │         result: { ... structured data ... },
+  │         html_output: "<div class='research-report'>...</div>",
+  │         summary: "Found 34 papers across 12 sources. Key finding: ..."
+  │       }
+  │     
+  │     Platform injects the SUMMARY into the agent's context (not the full result).
+  │     The full result + HTML are available via the permalink.
+  │     Agent is notified and can reference the result in conversation.
+  │
+  └── 4. FAILURE / TIMEOUT
+        Job fails:
+          { job_id: "job_abc123", status: "failed", error: "Source API rate limited" }
+        Agent is notified. Can retry or inform the user.
+```
+
+#### Async Job Tracking
+
+```
+async_jobs
+  id               UUID PK
+  organization_id  UUID FK → organizations
+  agent_id         UUID FK → agents
+  run_id           UUID FK → agent_runs — the conversation run that started this
+  
+  tool_name        TEXT — "deep_research"
+  capability       TEXT — "capability:research"
+  input_summary    TEXT — redacted summary of the input args
+  
+  status           ENUM (submitted, running, progress, completed, failed, cancelled, timed_out)
+  progress         FLOAT — 0.0 to 1.0
+  progress_message TEXT — human-readable progress
+  
+  result           JSONB — structured result data
+  html_output      TEXT — sanitized HTML output (see § HTML Rendering)
+  summary          TEXT — compact summary for agent context injection
+  error_message    TEXT
+  
+  permalink        TEXT — "/jobs/{id}" — stable URL to view result
+  
+  submitted_at     TIMESTAMPTZ
+  started_at       TIMESTAMPTZ
+  completed_at     TIMESTAMPTZ
+  timeout_at       TIMESTAMPTZ — hard deadline, job killed if exceeded
+  
+  -- Provider info
+  provider_job_id  TEXT — external job ID from the tool provider
+  provider_status  JSONB — raw status from provider (for debugging)
+  
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
+  
+  @@index([organization_id, agent_id, status])
+  @@index([run_id])
+```
+
+#### How the Agent Interacts With Async Jobs
+
+The agent has two permanent tools for async operations:
+
+```json
+{
+  "name": "check_job",
+  "description": "Check the status of an async job. Returns current progress and result if complete.",
+  "parameters": {
+    "properties": {
+      "job_id": { "type": "string" }
+    },
+    "required": ["job_id"]
+  }
+}
+
+{
+  "name": "cancel_job",
+  "description": "Cancel a running async job.",
+  "parameters": {
+    "properties": {
+      "job_id": { "type": "string" },
+      "reason": { "type": "string" }
+    },
+    "required": ["job_id"]
+  }
+}
+```
+
+The agent doesn't need to poll. When a job completes, the platform injects a notification into the agent's context on the next turn:
+
+```
+[System notification — injected at start of next agent turn]
+
+Async job completed:
+  Job: deep_research (job_abc123)
+  Status: completed
+  Summary: "Found 34 papers across 12 sources. Key finding: ..."
+  Permalink: /jobs/job_abc123
+  
+  The full result and visual report are available at the permalink.
+  You can reference the summary in your response to the user.
+```
+
+If the user asks about the job before it completes, the agent calls `check_job` and relays the progress.
+
+#### UI Rendering — In-Chat Progress and Results
+
+Async jobs have their own visual treatment in the chat, distinct from synchronous tool calls:
+
+```
+┌────────────────────────────────────────────────────────┐
+│ User: Can you research the latest developments in       │
+│ quantum error correction?                               │
+│                                                         │
+│ Agent: I'll start a deep research task on that.         │
+│ This usually takes 10-20 minutes.                       │
+│                                                         │
+│ ┌─────────────────────────────────────────────────────┐ │
+│ │ 🔬 Deep Research: Quantum Error Correction           │ │
+│ │                                                      │ │
+│ │ ████████████░░░░░░░░░░░░░░░  40%                    │ │
+│ │ Found 34 relevant papers                             │ │
+│ │ Cross-referencing findings...                        │ │
+│ │                                                      │ │
+│ │ Started 8 minutes ago · Est. 12 min remaining        │ │
+│ │ [View details →]                                     │ │
+│ └─────────────────────────────────────────────────────┘ │
+│                                                         │
+│ User: While that's running, can you also check our       │
+│ team's sprint velocity?                                  │
+│                                                         │
+│ Agent: Sure, let me pull that from Jira...               │
+│   ⟳ Loading Jira tools...                               │
+│   ...                                                    │
+└────────────────────────────────────────────────────────┘
+```
+
+When the job completes, the progress card transforms into a result card:
+
+```
+┌─────────────────────────────────────────────────────┐
+│ ✓ Deep Research: Quantum Error Correction            │
+│                                                      │
+│ ┌──────────────────────────────────────────────────┐ │
+│ │                                                   │ │
+│ │   [Custom HTML output rendered here]              │ │
+│ │   - Designed by the tool provider                 │ │
+│ │   - Interactive charts, formatted tables,         │ │
+│ │     collapsible sections, citations               │ │
+│ │   - NOT in an iframe — native DOM elements        │ │
+│ │                                                   │ │
+│ └──────────────────────────────────────────────────┘ │
+│                                                      │
+│ Completed in 18 minutes · 34 papers · 12 sources     │
+│ [Permalink: /jobs/job_abc123]                        │
+└─────────────────────────────────────────────────────┘
+```
+
+The conversation continues below the result card. The agent can reference the findings in subsequent messages.
+
+#### Custom HTML Output — Rendering Model
+
+Async tool providers can return custom HTML that renders directly in the chat. This is **not an iframe** — the HTML is injected into the chat DOM. This gives providers full control over the visual presentation of complex results (research reports, data visualizations, interactive tables).
+
+**Why not iframe?** Iframes create scroll-within-scroll, break the chat flow, can't adapt to theme/styling, and feel disconnected from the conversation. Direct DOM injection means the output feels like a native part of the chat.
+
+**The security cost:** Every provider that returns HTML is injecting code into the user's UI. This requires strict vetting.
+
+```
+HTML output pipeline:
+
+  1. Tool provider returns html_output in the job result
+     │
+  2. Platform sanitization layer:
+     │  ├── Allowlisted tags only (see below)
+     │  ├── All attributes validated against allowlist
+     │  ├── No <script>, no event handlers (onclick, onerror, etc.)
+     │  ├── No external resource loading (img src, link href to external domains)
+     │  ├── All URLs validated (no javascript:, no data: with executable types)
+     │  ├── CSS scoped to the output container (no global style leakage)
+     │  └── DOMPurify (or equivalent) as the final sanitization pass
+     │
+  3. Platform wraps in scoped container:
+     │  <div class="async-tool-output" data-provider="{provider_id}" 
+     │       data-job="{job_id}" style="all: initial;">
+     │    {sanitized HTML}
+     │  </div>
+     │
+  4. Rendered in chat as native DOM
+```
+
+**Allowlisted HTML tags:**
+
+```
+Layout:     div, span, section, article, header, footer, nav, main, aside
+Text:       p, h1-h6, strong, em, b, i, u, s, mark, small, sub, sup, br, hr
+Lists:      ul, ol, li, dl, dt, dd
+Tables:     table, thead, tbody, tfoot, tr, th, td, caption, colgroup, col
+Code:       pre, code, kbd, samp, var
+Media:      img (src must be data: image/* or provider-hosted allowlisted domain)
+            svg (heavily restricted — no foreignObject, no script, no use with external href)
+Links:      a (href must be https:// to allowlisted domains, always target="_blank" rel="noopener")
+Semantic:   blockquote, cite, abbr, time, details, summary, figure, figcaption
+
+NEVER allowed:
+  script, style (inline only via allowlisted properties), iframe, object, embed, 
+  form, input, textarea, button, select, video, audio, canvas, 
+  template, slot, portal, dialog
+```
+
+**Allowlisted CSS properties** (inline only, via style attribute):
+
+```
+Layout:     display, flex, grid, gap, margin, padding, width, height, max-width, 
+            max-height, min-width, min-height, overflow, position (relative only)
+Text:       font-size, font-weight, font-style, font-family (system fonts only),
+            line-height, text-align, text-decoration, letter-spacing, word-spacing, color
+Visual:     background-color, border, border-radius, box-shadow, opacity
+Table:      border-collapse, border-spacing, vertical-align
+
+NEVER allowed:
+  position: fixed/absolute/sticky, z-index, content, cursor, pointer-events,
+  animation, transition, transform, filter, clip-path, background-image (url()),
+  any url() value, any expression() value, any -moz-binding value
+```
+
+#### Provider Vetting for HTML Output
+
+Any tool provider that sets `supports_html_output: true` goes through additional security review. This is not automatic — it requires manual vetting by the Nessie team or the organization's security admin.
+
+```
+async_tool_providers
+  id               UUID PK
+  organization_id  UUID FK → organizations (null for platform-level providers)
+  
+  provider_name    TEXT — "Nessie Deep Research", "Acme Analytics"
+  provider_slug    TEXT UNIQUE
+  
+  -- What this provider can do
+  supports_html    BOOLEAN DEFAULT false
+  html_approved    BOOLEAN DEFAULT false — requires explicit approval
+  html_approved_by UUID FK → users
+  html_approved_at TIMESTAMPTZ
+  
+  -- Vetting status
+  vetting_status   ENUM (pending, under_review, approved, rejected, revoked)
+  vetting_notes    TEXT — reviewer notes
+  last_audit_at    TIMESTAMPTZ — when the provider's HTML output was last reviewed
+  audit_frequency  INTERVAL DEFAULT '90 days' — how often to re-audit
+  
+  -- What domains this provider can link to / load images from
+  allowed_domains  TEXT[] — ["cdn.acme-research.com", "charts.acme.com"]
+  
+  -- Security constraints
+  max_html_size    INT DEFAULT 102400 — 100KB max per output
+  max_img_count    INT DEFAULT 20 — max images per output
+  sandbox_level    TEXT DEFAULT 'strict' — "strict" | "standard" | "permissive"
+  
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
+```
+
+**Vetting process:**
+
+```
+Provider submits tool with supports_html_output: true
+  │
+  ├── 1. AUTOMATIC CHECKS
+  │     ├── Static analysis of sample HTML outputs
+  │     ├── Sanitizer dry run — does the output survive sanitization intact?
+  │     ├── Size and complexity checks
+  │     └── Domain analysis — where do links/images point?
+  │
+  ├── 2. MANUAL REVIEW (required)
+  │     ├── Security reviewer examines sample outputs
+  │     ├── Checks for obfuscation, unusual patterns
+  │     ├── Verifies the provider's identity and reputation
+  │     ├── Reviews the provider's allowlisted domains
+  │     └── Decision: approve / reject / request changes
+  │
+  ├── 3. ONGOING MONITORING
+  │     ├── Every HTML output is sanitized at runtime (always, even for approved providers)
+  │     ├── Outputs that trigger sanitizer warnings are flagged for review
+  │     ├── Periodic re-audit per audit_frequency
+  │     └── Anomaly detection: if HTML patterns change significantly → auto-pause + review
+  │
+  └── 4. REVOCATION
+        If a provider is found to be injecting malicious content:
+        ├── Immediate revocation (html_approved = false)
+        ├── All pending/running jobs from this provider are paused
+        ├── Admin notified with details of the violation
+        └── Provider must re-submit for vetting
+```
+
+#### Async Job API
+
+```
+POST   /api/jobs                    — list async jobs (with filters: status, agent, capability)
+GET    /api/jobs/{id}               — get job details, progress, result
+GET    /api/jobs/{id}/html          — get sanitized HTML output for rendering
+POST   /api/jobs/{id}/cancel        — cancel a running job
+DELETE /api/jobs/{id}               — delete a completed/failed job
+GET    /api/jobs/{id}/events        — SSE stream of progress events for this job
+
+GET    /api/providers               — list async tool providers
+GET    /api/providers/{id}          — get provider details + vetting status
+POST   /api/providers/{id}/approve  — approve provider for HTML output (admin only)
+POST   /api/providers/{id}/revoke   — revoke provider approval (admin only)
+```
+
+#### What Lives Where
 
 Not everything goes through the resolve → load → drop cycle. Built-in tools (Bash, FileRead, Grep, WebSearch) are lightweight and frequently used — they stay in permanent context.
 
@@ -1044,13 +1424,19 @@ PERMANENT CONTEXT (always present):
   - Conversation history
   - Capability directory
   - Procedural memories
-  - resolve_capability and drop_context tools
+  - resolve_capability, drop_context, check_job, cancel_job tools
 
 TEMPORARY CONTEXT (loaded on demand, agent-managed):
   - MCP server tool schemas (loaded via resolver)
   - API connector tool schemas (loaded via resolver)
   - Companion skills for loaded capabilities
   - Dropped by agent when no longer needed
+
+ASYNC (runs outside of context entirely):
+  - Long-running jobs (deep research, batch ops, CI pipelines)
+  - Progress streamed to UI, not to agent context
+  - Summary injected into agent context only on completion
+  - Full result + HTML accessible via permalink
 ```
 
 ---
