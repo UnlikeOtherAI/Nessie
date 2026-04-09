@@ -324,6 +324,7 @@ model Channel {
   team           Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   members        ChannelMember[]
   agentBindings  AgentBinding[]
+  triggerTargets AgentTrigger[]          @relation("TriggerTargetChannel")
   threads        Thread[]
 
   @@map("channels")
@@ -350,6 +351,7 @@ model Thread {
   channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
   messages  Message[]
   runs      Run[]
+  triggerTargets AgentTrigger[]          @relation("TriggerTargetThread")
 
   @@map("threads")
 }
@@ -499,17 +501,24 @@ model AgentTrigger {
   config      Json                       @default("{}")
   targetChannelId String?                @map("target_channel_id") @db.Uuid
   targetThreadId String?                 @map("target_thread_id") @db.Uuid
+  schedulerClaimId String?               @map("scheduler_claim_id") @db.Uuid
+  schedulerClaimedAt DateTime?           @map("scheduler_claimed_at")
   lastFiredAt DateTime?                  @map("last_fired_at")
   nextRunAt   DateTime?                  @map("next_run_at")
   createdAt   DateTime                   @default(now()) @map("created_at")
   updatedAt   DateTime                   @updatedAt @map("updated_at")
   agent       Agent                      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  targetChannel Channel?                 @relation("TriggerTargetChannel", fields: [targetChannelId], references: [id], onDelete: SetNull)
+  targetThread Thread?                   @relation("TriggerTargetThread", fields: [targetThreadId], references: [id], onDelete: SetNull)
   deliveries  AgentTriggerDelivery[]
   runs        Run[]
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])
+  @@index([targetChannelId])
+  @@index([targetThreadId])
   @@index([type, enabled, status, nextRunAt])
+  @@index([type, enabled, status, nextRunAt, schedulerClaimedAt])
   @@map("agent_triggers")
 }
 

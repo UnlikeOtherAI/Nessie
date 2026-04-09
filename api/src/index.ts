@@ -115,6 +115,7 @@ import {
   listAgentTriggers,
   pauseAgentTrigger,
   resumeAgentTrigger,
+  sweepDueScheduledTriggers,
   updateAgentTrigger,
 } from './services/triggers.js'
 import { streamDesignerChat } from './services/designer.js'
@@ -1316,6 +1317,7 @@ export const buildApp = async () => {
     }
 
     const triggers = await listScheduledTriggers(prisma, {
+      organizationId: actorContext.tenant.organizationId,
       limit: Math.min(Math.max(parsedLimit, 1), 200),
     })
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
@@ -1340,6 +1342,7 @@ export const buildApp = async () => {
 
     const triggers = await listScheduledTriggers(prisma, {
       dueBefore: new Date(),
+      organizationId: actorContext.tenant.organizationId,
       limit: Math.min(Math.max(parsedLimit, 1), 200),
     })
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
@@ -2853,8 +2856,27 @@ export const buildApp = async () => {
     }
   }, 60_000)
 
+  let triggerSweepInFlight = false
+  const triggerSweepInterval = setInterval(async () => {
+    if (triggerSweepInFlight) {
+      return
+    }
+
+    triggerSweepInFlight = true
+    try {
+      await sweepDueScheduledTriggers(prisma, {
+        limit: 20,
+      })
+    } catch (error) {
+      console.error('[trigger-sweep] Failed to dispatch due triggers', error)
+    } finally {
+      triggerSweepInFlight = false
+    }
+  }, 15_000)
+
   app.addHook('onClose', () => {
     clearInterval(approvalSweepInterval)
+    clearInterval(triggerSweepInterval)
   })
 
   return app
