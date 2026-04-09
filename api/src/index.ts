@@ -110,6 +110,7 @@ import {
   dispatchAgentTrigger,
   deleteAgentTrigger,
   getAgentTrigger,
+  listScheduledTriggers,
   listAgentTriggerDeliveries,
   listAgentTriggers,
   pauseAgentTrigger,
@@ -1127,7 +1128,17 @@ export const buildApp = async () => {
       return reply
     }
 
-    await deleteAgentTrigger(prisma, triggerId)
+    const deleted = await deleteAgentTrigger(prisma, triggerId)
+    if (!deleted) {
+      sendApiError(
+        reply,
+        409,
+        'TRIGGER_DELETE_BLOCKED',
+        'Trigger with delivery history cannot be deleted',
+      )
+      return reply
+    }
+
     return reply.code(204).send()
   })
 
@@ -1226,6 +1237,7 @@ export const buildApp = async () => {
 
     const dispatched = await dispatchAgentTrigger(prisma, {
       actorContext,
+      dedupeKey: body.dedupeKey,
       payload: body.payload,
       prompt: body.prompt,
       source: body.source ?? 'manual',
@@ -1245,7 +1257,8 @@ export const buildApp = async () => {
     return reply.code(202).send(
       createApiResponse({
         delivery: AgentTriggerDeliveryRecordSchema.parse(dispatched.delivery),
-        runId: dispatched.queuePayload.runId,
+        existing: dispatched.existing,
+        runId: dispatched.runId,
         trigger: AgentTriggerRecordSchema.parse(dispatched.trigger),
       }),
     )
@@ -1285,6 +1298,53 @@ export const buildApp = async () => {
     return createApiResponse(AgentTriggerDeliveryRecordSchema.array().parse(deliveries))
   })
 
+  app.get('/api/triggers/scheduled', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const rawLimit = (request.query as { limit?: string }).limit
+    const parsedLimit = rawLimit === undefined ? 50 : Number.parseInt(rawLimit, 10)
+    if (Number.isNaN(parsedLimit)) {
+      sendApiError(reply, 400, 'INVALID_LIMIT', 'limit must be an integer')
+      return reply
+    }
+
+    const triggers = await listScheduledTriggers(prisma, {
+      limit: Math.min(Math.max(parsedLimit, 1), 200),
+    })
+    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
+  app.get('/api/triggers/upcoming', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const rawLimit = (request.query as { limit?: string }).limit
+    const parsedLimit = rawLimit === undefined ? 50 : Number.parseInt(rawLimit, 10)
+    if (Number.isNaN(parsedLimit)) {
+      sendApiError(reply, 400, 'INVALID_LIMIT', 'limit must be an integer')
+      return reply
+    }
+
+    const triggers = await listScheduledTriggers(prisma, {
+      dueBefore: new Date(),
+      limit: Math.min(Math.max(parsedLimit, 1), 200),
+    })
+    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
   app.post('/api/triggers/:triggerId/webhook', async (request, reply) => {
     const { triggerId } = request.params as { triggerId: string }
     const trigger = await prisma.agentTrigger.findUnique({
@@ -1303,6 +1363,11 @@ export const buildApp = async () => {
 
     const secretHeader = request.headers['x-nessie-trigger-secret']
     const providedSecret = Array.isArray(secretHeader) ? secretHeader[0] : secretHeader
+    const dedupeHeader =
+      request.headers['x-nessie-delivery-id'] ??
+      request.headers['x-github-delivery'] ??
+      request.headers['x-request-id']
+    const dedupeKey = Array.isArray(dedupeHeader) ? dedupeHeader[0] : dedupeHeader
     const expectedSecret =
       trigger.config &&
       typeof trigger.config === 'object' &&
@@ -1317,6 +1382,7 @@ export const buildApp = async () => {
     }
 
     const dispatched = await dispatchAgentTrigger(prisma, {
+      dedupeKey: typeof dedupeKey === 'string' && dedupeKey.length > 0 ? dedupeKey : undefined,
       payload: request.body,
       source: 'webhook',
       triggerId,
@@ -1336,7 +1402,8 @@ export const buildApp = async () => {
       createApiResponse({
         accepted: true,
         delivery: AgentTriggerDeliveryRecordSchema.parse(dispatched.delivery),
-        runId: dispatched.queuePayload.runId,
+        existing: dispatched.existing,
+        runId: dispatched.runId,
       }),
     )
   })

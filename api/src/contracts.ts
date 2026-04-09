@@ -133,6 +133,8 @@ export const AgentTriggerRecordSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   config: z.record(z.unknown()),
+  targetChannelId: ChannelIdSchema.optional(),
+  targetThreadId: ThreadIdSchema.optional(),
   lastFiredAt: TimestampSchema.optional(),
   nextRunAt: TimestampSchema.optional(),
   createdAt: TimestampSchema,
@@ -147,6 +149,8 @@ export const CreateAgentTriggerBodySchema = z.object({
   enabled: z.boolean().optional(),
   config: z.record(z.unknown()).optional(),
   nextRunAt: TimestampSchema.optional(),
+  targetChannelId: ChannelIdSchema.optional(),
+  targetThreadId: ThreadIdSchema.optional(),
 })
 
 export const UpdateAgentTriggerBodySchema = z.object({
@@ -156,11 +160,14 @@ export const UpdateAgentTriggerBodySchema = z.object({
   status: AgentTriggerStatusSchema.optional(),
   config: z.record(z.unknown()).optional(),
   nextRunAt: TimestampSchema.nullable().optional(),
+  targetChannelId: ChannelIdSchema.nullable().optional(),
+  targetThreadId: ThreadIdSchema.nullable().optional(),
 })
 
 export const AgentTriggerDeliveryRecordSchema = z.object({
   id: z.string().uuid(),
   triggerId: z.string().uuid(),
+  dedupeKey: z.string().optional(),
   status: AgentTriggerDeliveryStatusSchema,
   source: z.string().optional(),
   payload: z.unknown(),
@@ -172,6 +179,7 @@ export const AgentTriggerDeliveryRecordSchema = z.object({
 export type AgentTriggerDeliveryRecord = z.infer<typeof AgentTriggerDeliveryRecordSchema>
 
 export const FireAgentTriggerBodySchema = z.object({
+  dedupeKey: z.string().min(1).optional(),
   source: z.string().min(1).optional(),
   prompt: z.string().min(1).optional(),
   payload: z.unknown().optional(),

@@ -47,6 +47,8 @@ const mapTriggerRecord = (trigger: {
   name: string | null
   nextRunAt: Date | null
   status: 'active' | 'paused' | 'error'
+  targetChannelId: string | null
+  targetThreadId: string | null
   type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
   updatedAt: Date
 }): AgentTriggerRecord => ({
@@ -58,6 +60,8 @@ const mapTriggerRecord = (trigger: {
   name: trigger.name ?? undefined,
   description: trigger.description ?? undefined,
   config: redactTriggerConfig(trigger.config),
+  targetChannelId: trigger.targetChannelId ? parseChannelId(trigger.targetChannelId) : undefined,
+  targetThreadId: trigger.targetThreadId ? parseThreadId(trigger.targetThreadId) : undefined,
   lastFiredAt: toTimestamp(trigger.lastFiredAt),
   nextRunAt: toTimestamp(trigger.nextRunAt),
   createdAt: trigger.createdAt.toISOString(),
@@ -66,6 +70,7 @@ const mapTriggerRecord = (trigger: {
 
 const mapTriggerDeliveryRecord = (delivery: {
   createdAt: Date
+  dedupeKey: string | null
   deliveredAt: Date | null
   errorMessage: string | null
   id: string
@@ -77,6 +82,7 @@ const mapTriggerDeliveryRecord = (delivery: {
 }): AgentTriggerDeliveryRecord => ({
   id: delivery.id,
   triggerId: delivery.triggerId,
+  dedupeKey: delivery.dedupeKey ?? undefined,
   status: delivery.status,
   source: delivery.source ?? undefined,
   payload: delivery.payload,
@@ -98,6 +104,39 @@ export const listAgentTriggers = async (
   return triggers.map(mapTriggerRecord)
 }
 
+export const listScheduledTriggers = async (
+  prisma: PrismaClient,
+  input: {
+    dueBefore?: Date
+    limit: number
+  },
+): Promise<AgentTriggerRecord[]> => {
+  const triggers = await prisma.agentTrigger.findMany({
+    where: {
+      enabled: true,
+      status: 'active',
+      type: {
+        in: ['scheduled', 'interval'],
+      },
+      ...(input.dueBefore
+        ? {
+            nextRunAt: {
+              lte: input.dueBefore,
+            },
+          }
+        : {
+            nextRunAt: {
+              not: null,
+            },
+          }),
+    },
+    orderBy: [{ nextRunAt: 'asc' }, { createdAt: 'asc' }],
+    take: input.limit,
+  })
+
+  return triggers.map(mapTriggerRecord)
+}
+
 export const createAgentTrigger = async (
   prisma: PrismaClient,
   agentId: string,
@@ -107,6 +146,8 @@ export const createAgentTrigger = async (
     enabled?: boolean
     name?: string
     nextRunAt?: string
+    targetChannelId?: string
+    targetThreadId?: string
     type: AgentTriggerType
   },
 ): Promise<AgentTriggerRecord | null> => {
@@ -126,6 +167,14 @@ export const createAgentTrigger = async (
     return null
   }
 
+  const target = await resolveExecutionTarget(prisma, agentId, {
+    targetChannelId: input.targetChannelId,
+    targetThreadId: input.targetThreadId,
+  })
+  if (!target) {
+    return null
+  }
+
   const trigger = await prisma.agentTrigger.create({
     data: {
       agentId,
@@ -136,6 +185,8 @@ export const createAgentTrigger = async (
       description: input.description,
       config: (input.config ?? {}) as Prisma.InputJsonValue,
       nextRunAt: input.nextRunAt ? new Date(input.nextRunAt) : undefined,
+      targetChannelId: target.channelId,
+      targetThreadId: target.threadId,
     },
   })
 
@@ -163,13 +214,18 @@ export const updateAgentTrigger = async (
     name?: string | null
     nextRunAt?: string | null
     status?: AgentTriggerStatus
+    targetChannelId?: string | null
+    targetThreadId?: string | null
   },
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findUnique({
     where: { id: triggerId },
     select: {
+      agentId: true,
       config: true,
       id: true,
+      targetChannelId: true,
+      targetThreadId: true,
       type: true,
     },
   })
@@ -191,6 +247,25 @@ export const updateAgentTrigger = async (
     }
   }
 
+  const shouldUpdateTarget =
+    input.targetChannelId !== undefined || input.targetThreadId !== undefined
+
+  const target = shouldUpdateTarget
+    ? await resolveExecutionTarget(prisma, existing.agentId, {
+        targetChannelId:
+          input.targetChannelId === undefined ? existing.targetChannelId : input.targetChannelId,
+        targetThreadId:
+          input.targetThreadId === undefined ? existing.targetThreadId : input.targetThreadId,
+      })
+    : {
+        channelId: existing.targetChannelId,
+        threadId: existing.targetThreadId,
+      }
+
+  if (!target?.channelId || !target.threadId) {
+    return null
+  }
+
   const nextStatus =
     input.status ??
     (input.enabled === undefined ? undefined : input.enabled ? 'active' : 'paused')
@@ -203,6 +278,8 @@ export const updateAgentTrigger = async (
       enabled: input.enabled,
       status: nextStatus,
       config: input.config as Prisma.InputJsonValue | undefined,
+      targetChannelId: target.channelId,
+      targetThreadId: target.threadId,
       nextRunAt:
         input.nextRunAt === undefined
           ? undefined
@@ -219,6 +296,13 @@ export const deleteAgentTrigger = async (
   prisma: PrismaClient,
   triggerId: string,
 ): Promise<boolean> => {
+  const deliveryCount = await prisma.agentTriggerDelivery.count({
+    where: { triggerId },
+  })
+  if (deliveryCount > 0) {
+    return false
+  }
+
   const result = await prisma.agentTrigger.deleteMany({
     where: { id: triggerId },
   })
@@ -307,31 +391,71 @@ const buildTriggerPrompt = (input: {
   return `${prefix}\n\nPayload:\n${serializedPayload}`
 }
 
-const resolveTriggerThread = async (
+const resolveExecutionTarget = async (
   prisma: PrismaClient,
   agentId: string,
-): Promise<{ channelId: string; organizationId: string; threadId: string } | null> => {
-  const binding = await prisma.agentBinding.findFirst({
-    where: { agentId },
-    orderBy: { createdAt: 'asc' },
-    include: {
-      channel: {
-        select: {
-          id: true,
-          organizationId: true,
-        },
-      },
-    },
-  })
+  input: {
+    targetChannelId?: string | null
+    targetThreadId?: string | null
+  },
+): Promise<{ channelId: string; threadId: string } | null> => {
+  const targetThreadId = input.targetThreadId ?? undefined
+  const targetChannelId = input.targetChannelId ?? undefined
 
+  if (!targetThreadId && !targetChannelId) {
+    return null
+  }
+
+  if (targetThreadId) {
+    const thread = await prisma.thread.findUnique({
+      where: { id: targetThreadId },
+      select: {
+        channelId: true,
+      },
+    })
+    if (!thread) {
+      return null
+    }
+
+    if (targetChannelId && thread.channelId !== targetChannelId) {
+      return null
+    }
+
+    const binding = await prisma.agentBinding.findFirst({
+      where: {
+        agentId,
+        channelId: thread.channelId,
+      },
+      select: { id: true },
+    })
+    if (!binding) {
+      return null
+    }
+
+    return {
+      channelId: thread.channelId,
+      threadId: targetThreadId,
+    }
+  }
+
+  if (!targetChannelId) {
+    return null
+  }
+
+  const binding = await prisma.agentBinding.findFirst({
+    where: {
+      agentId,
+      channelId: targetChannelId,
+    },
+    select: { id: true },
+  })
   if (!binding) {
     return null
   }
 
   return {
-    channelId: binding.channel.id,
-    organizationId: binding.channel.organizationId,
-    threadId: await ensureDefaultThread(prisma, binding.channel.id),
+    channelId: targetChannelId,
+    threadId: await ensureDefaultThread(prisma, targetChannelId),
   }
 }
 
@@ -339,6 +463,7 @@ export const dispatchAgentTrigger = async (
   prisma: PrismaClient,
   input: {
     actorContext?: AuthorizedActionContext
+    dedupeKey?: string
     payload?: unknown
     prompt?: string
     source: string
@@ -351,15 +476,9 @@ export const dispatchAgentTrigger = async (
     }
   | {
       delivery: AgentTriggerDeliveryRecord
+      existing: boolean
       kind: 'queued'
-      queuePayload: {
-        actorContext: AuthorizedActionContext
-        agentId: ReturnType<typeof parseAgentId>
-        messageId: string
-        runId: ReturnType<typeof parseRunId>
-        taskId: ReturnType<typeof parseTaskId>
-        threadId: ReturnType<typeof parseThreadId>
-      }
+      runId: ReturnType<typeof parseRunId>
       trigger: AgentTriggerRecord
     }
 > => {
@@ -385,9 +504,64 @@ export const dispatchAgentTrigger = async (
     return { kind: 'rejected', reason: 'trigger_paused' }
   }
 
-  const threadTarget = await resolveTriggerThread(prisma, trigger.agentId)
-  if (!threadTarget) {
+  if (!trigger.targetChannelId || !trigger.targetThreadId) {
     return { kind: 'rejected', reason: 'agent_not_bound' }
+  }
+
+  const thread = await prisma.thread.findUnique({
+    where: { id: trigger.targetThreadId },
+    select: {
+      channel: {
+        select: {
+          organizationId: true,
+        },
+      },
+      id: true,
+    },
+  })
+  if (!thread) {
+    return { kind: 'rejected', reason: 'agent_not_bound' }
+  }
+
+  const binding = await prisma.agentBinding.findFirst({
+    where: {
+      agentId: trigger.agentId,
+      channelId: trigger.targetChannelId,
+    },
+    select: { id: true },
+  })
+  if (!binding) {
+    return { kind: 'rejected', reason: 'agent_not_bound' }
+  }
+
+  const threadTarget = {
+    channelId: trigger.targetChannelId,
+    organizationId: thread.channel.organizationId,
+    threadId: trigger.targetThreadId,
+  }
+
+  if (input.dedupeKey) {
+    const existingDelivery = await prisma.agentTriggerDelivery.findFirst({
+      where: {
+        dedupeKey: input.dedupeKey,
+        triggerId: input.triggerId,
+      },
+      include: {
+        run: {
+          select: { id: true },
+        },
+      },
+    })
+
+    if (existingDelivery?.run?.id) {
+      return {
+        kind: 'queued',
+        delivery: mapTriggerDeliveryRecord(existingDelivery),
+        existing: true,
+        runId: parseRunId(existingDelivery.run.id),
+        trigger: mapTriggerRecord(trigger),
+      }
+    }
   }
 
   const actorContext =
@@ -426,6 +600,7 @@ export const dispatchAgentTrigger = async (
     const delivery = await tx.agentTriggerDelivery.create({
       data: {
         payload: normalizedPayload,
+        dedupeKey: input.dedupeKey,
         source: input.source,
         status: 'pending',
         triggerId: trigger.id,
@@ -504,29 +679,14 @@ export const dispatchAgentTrigger = async (
       },
     })
 
-    return { completedDelivery, message, run, task }
+    return { completedDelivery, run }
   })
 
   return {
     kind: 'queued',
     delivery: mapTriggerDeliveryRecord(result.completedDelivery),
-    queuePayload: {
-      actorContext: {
-        ...actorContext,
-        actionContext: {
-          ...actorContext.actionContext,
-          agentId: parseAgentId(trigger.agentId),
-          channelId: parseChannelId(threadTarget.channelId),
-          taskId: parseTaskId(result.task.id),
-          threadId: parseThreadId(threadTarget.threadId),
-        },
-      },
-      agentId: parseAgentId(trigger.agentId),
-      messageId: result.message.id,
-      runId: parseRunId(result.run.id),
-      taskId: parseTaskId(result.task.id),
-      threadId: parseThreadId(threadTarget.threadId),
-    },
+    existing: false,
+    runId: parseRunId(result.run.id),
     trigger: mapTriggerRecord(trigger),
   }
 }

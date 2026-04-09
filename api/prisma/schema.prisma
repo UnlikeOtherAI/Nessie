@@ -497,6 +497,8 @@ model AgentTrigger {
   name        String?
   description String?
   config      Json                       @default("{}")
+  targetChannelId String?                @map("target_channel_id") @db.Uuid
+  targetThreadId String?                 @map("target_thread_id") @db.Uuid
   lastFiredAt DateTime?                  @map("last_fired_at")
   nextRunAt   DateTime?                  @map("next_run_at")
   createdAt   DateTime                   @default(now()) @map("created_at")
@@ -507,12 +509,14 @@ model AgentTrigger {
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])
+  @@index([type, enabled, status, nextRunAt])
   @@map("agent_triggers")
 }
 
 model AgentTriggerDelivery {
   id           String                     @id @default(uuid()) @db.Uuid
   triggerId    String                     @map("trigger_id") @db.Uuid
+  dedupeKey    String?                    @map("dedupe_key")
   status       AgentTriggerDeliveryStatus @default(pending)
   source       String?
   payload      Json                       @default("{}")
@@ -524,6 +528,7 @@ model AgentTriggerDelivery {
 
   @@index([triggerId, createdAt])
   @@index([status, createdAt])
+  @@unique([triggerId, dedupeKey])
   @@map("agent_trigger_deliveries")
 }
 
