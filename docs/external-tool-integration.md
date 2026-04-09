@@ -900,6 +900,22 @@ Every tool call result feeds back into procedural memory. Agents learn which too
 ### 5. Scope controls access
 MCP servers and API connectors are scoped to org/project/team/channel/personal. An agent can only discover and use tools visible at its scope level. Credentials can be overridden at any scope level for multi-tenant scenarios.
 
+### 6. External knowledge bases are just connectors
+Nessie is not in the business of building wikis or knowledge bases. Every company already has one — Confluence, Notion, GitHub Wiki, SharePoint, Google Docs, or something custom. These are just connectors in the marketplace, no different from a CRM or calendar connector.
+
+Agents use knowledge base connectors for **long-term, human-readable knowledge**: documentation they produce, runbooks they write, decisions they record. This is distinct from Nessie's internal memory system:
+
+| | Nessie Internal Memory | External Knowledge Base |
+|---|---|---|
+| **Purpose** | Operational agent memory — what the agent needs to do its work | Persistent, human-readable knowledge — documentation, wikis, decision records |
+| **Audience** | Agents (and humans via admin UI) | Humans (and agents via connectors) |
+| **Format** | Structured thoughts, embeddings, procedural records | Wiki pages, documents, articles |
+| **Lifetime** | Decays, garbage-collected, agent-managed | Permanent until a human deletes it |
+| **Examples** | "Deploy tool works with email+name" (procedural), "Team decided to use Valkey" (semantic) | "Valkey Migration Runbook" (Confluence page), "Q2 Architecture Decisions" (Notion doc) |
+| **How agents use it** | Automatic retrieval via memory search | Explicit tool calls via knowledge base connector |
+
+The pattern: an agent extracts intelligence from a conversation (internal memory), and if the outcome is significant enough, it writes a structured document to the company's knowledge base via a connector (Confluence, Notion, etc.). The agent doesn't store the wiki page — it stores the fact that it wrote a wiki page and where to find it.
+
 ---
 
 ## What Needs Full Design

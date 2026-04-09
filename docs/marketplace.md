@@ -4,7 +4,7 @@ One marketplace. One library. MCP servers, skills, API connectors, and workflow 
 
 This document describes the unified experience. The underlying systems are documented separately:
 - [skills.md](skills.md) — skill structure, security verification, community catalog
-- [external-tool-integration.md](external-tool-integration.md) — MCP servers, API connectors, knowledge base connectors, credential flow, context loading
+- [external-tool-integration.md](external-tool-integration.md) — MCP servers, API connectors, credential flow, context loading
 - [tool-registry-spec.md](tool-registry-spec.md) — tool registry, grants, execution enforcement
 
 ---
