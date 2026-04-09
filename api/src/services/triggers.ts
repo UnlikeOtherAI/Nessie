@@ -321,7 +321,10 @@ export const updateAgentTrigger = async (
       description: input.description === undefined ? undefined : input.description,
       enabled: input.enabled,
       status: nextStatus,
-      config: input.config as Prisma.InputJsonValue | undefined,
+      config:
+        input.config === undefined
+          ? undefined
+          : (nextConfig as Prisma.InputJsonValue),
       targetChannelId: target.channelId,
       targetThreadId: target.threadId,
       nextRunAt: normalizedNextRunAt,
@@ -691,6 +694,11 @@ export const sweepDueScheduledTriggers = async (
       })
       failed += 1
     } catch {
+      await finalizeScheduledTriggerClaim(prisma, {
+        claimId: trigger.schedulerClaimId,
+        nextRunAt: trigger.nextRunAt,
+        triggerId: trigger.id,
+      })
       failed += 1
     }
   }
