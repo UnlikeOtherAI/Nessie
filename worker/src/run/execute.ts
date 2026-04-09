@@ -558,20 +558,26 @@ const retrieveRelevantMemories = async (
   context: RunContext,
   payload: RunExecuteJobPayload,
   prompt: string,
-): Promise<SearchResult[]> =>
-  searchAndLogThoughts(
-    {
-      channelId: context.channel.id,
-      includeReasoning: false,
-      limit: MAX_MEMORY_RESULTS,
-      mode: 'hybrid',
-      organizationId: context.channel.organizationId,
-      query: prompt,
-      sessionId: payload.actorContext.actionContext.sessionId,
-      userId: payload.actorContext.actor.actorId,
-    },
-    deps.searchConfig,
-  )
+): Promise<SearchResult[]> => {
+  try {
+    return await searchAndLogThoughts(
+      {
+        channelId: context.channel.id,
+        includeReasoning: false,
+        limit: MAX_MEMORY_RESULTS,
+        mode: 'hybrid',
+        organizationId: context.channel.organizationId,
+        query: prompt,
+        sessionId: payload.actorContext.actionContext.sessionId,
+        userId: payload.actorContext.actor.actorId,
+      },
+      deps.searchConfig,
+    )
+  } catch (error) {
+    console.warn('[worker] Memory search failed, continuing without memories:', error instanceof Error ? error.message : error)
+    return []
+  }
+}
 
 const buildModelPrompt = (
   conversation: StoredConversationMessage[],

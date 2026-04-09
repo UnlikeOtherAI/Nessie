@@ -2,10 +2,14 @@ import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentsPage } from './pages/AgentsPage'
+import { ApprovalsPage } from './pages/ApprovalsPage'
+import { AuditLogPage } from './pages/AuditLogPage'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { LoginPage } from './pages/LoginPage'
+import { PolicyPage } from './pages/PolicyPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { TokenUsagePage } from './pages/TokenUsagePage'
 
 export const router = createBrowserRouter([
   {
@@ -38,6 +42,22 @@ export const router = createBrowserRouter([
       {
         path: '/settings',
         element: <SettingsPage />,
+      },
+      {
+        path: '/audit',
+        element: <AuditLogPage />,
+      },
+      {
+        path: '/approvals',
+        element: <ApprovalsPage />,
+      },
+      {
+        path: '/tokens',
+        element: <TokenUsagePage />,
+      },
+      {
+        path: '/policy',
+        element: <PolicyPage />,
       },
     ],
   },

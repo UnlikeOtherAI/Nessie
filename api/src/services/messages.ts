@@ -140,6 +140,35 @@ export const createThreadMessage = async (
     systemPrompt: b.agent.systemPrompt,
   }))
 
+  // Also resolve @mentioned agents not yet bound to this channel
+  const mentionPattern = /@([\w][\w\s]*[\w]|[\w]+)/g
+  const mentionedNames: string[] = []
+  let mentionMatch = mentionPattern.exec(input.content)
+  while (mentionMatch) {
+    if (mentionMatch[1]) mentionedNames.push(mentionMatch[1])
+    mentionMatch = mentionPattern.exec(input.content)
+  }
+
+  if (mentionedNames.length > 0) {
+    const boundIds = new Set(channelAgents.map((a) => a.id))
+    const mentionedAgents = await prisma.agent.findMany({
+      where: {
+        name: { in: mentionedNames, mode: 'insensitive' },
+        id: { notIn: [...boundIds] },
+      },
+      select: { id: true, name: true, role: true, systemPrompt: true },
+    })
+
+    for (const agent of mentionedAgents) {
+      channelAgents.push({
+        id: agent.id,
+        name: agent.name,
+        role: agent.role,
+        systemPrompt: agent.systemPrompt,
+      })
+    }
+  }
+
   return {
     kind: 'created',
     message,

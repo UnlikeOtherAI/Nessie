@@ -14,7 +14,7 @@ import {
   useOutletContext,
   useParams,
 } from 'react-router-dom'
-import { useAgents, useBindAgent } from '../facades/agents/hooks'
+import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
 import { useSendMessage } from '../facades/messages/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
@@ -156,7 +156,6 @@ export const ChannelsPage = () => {
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
   const { data: tools = [] } = useTools()
-  const bindAgent = useBindAgent()
   const isOwner = me?.user.roleIds?.includes('owner') ?? false
   const { data: allUsers = [] } = useUsers(isOwner)
 
@@ -343,25 +342,6 @@ export const ChannelsPage = () => {
     const text = mentionRef.current?.getText() ?? message
     if (!activeChannel || !text.trim()) {
       return
-    }
-
-    // Auto-bind any mentioned agents not yet in this channel
-    const mentionPattern = /@([\w][\w\s]*[\w]|[\w]+)/g
-    let mentionMatch = mentionPattern.exec(text)
-    while (mentionMatch) {
-      const name = mentionMatch[1]
-      if (!name) {
-        mentionMatch = mentionPattern.exec(text)
-        continue
-      }
-      const entity = mentionEntityMap.get(name)
-      if (entity?.type === 'agent') {
-        const agent = agents.find((a) => a.id === entity.id)
-        if (agent && !agent.channelIds.includes(activeChannel.id)) {
-          bindAgent.mutate({ agentId: agent.id, channelId: activeChannel.id })
-        }
-      }
-      mentionMatch = mentionPattern.exec(text)
     }
 
     await sendMessage.mutateAsync({
