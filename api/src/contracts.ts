@@ -163,7 +163,6 @@ export const ThreadMessageRecordSchema = z.object({
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
 
 export const CreateThreadMessageBodySchema = z.object({
-  agentId: AgentIdSchema.optional(),
   content: NonEmptyStringSchema,
 })
 

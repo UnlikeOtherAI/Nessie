@@ -7,7 +7,7 @@ export const useSendMessage = (threadId?: string) => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { agentId?: string; content: string }) =>
+    mutationFn: (input: { content: string }) =>
       apiClient.post<ThreadMessageRecord>(`/api/threads/${threadId}/messages`, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })

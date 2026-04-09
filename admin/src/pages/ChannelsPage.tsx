@@ -188,7 +188,6 @@ export const ChannelsPage = () => {
 
   const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [message, setMessage] = useState('')
-  const [selectedAgentId, setSelectedAgentId] = useState('')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const mentionRef = useRef<MentionInputHandle>(null)
@@ -213,6 +212,15 @@ export const ChannelsPage = () => {
   const mentionEntityMap = useMemo(
     () => new Map(mentionEntities.map((entity) => [entity.name, entity])),
     [mentionEntities],
+  )
+  const runAgentMap = useMemo(
+    () =>
+      new Map(
+        agents
+          .filter((agent) => agent.currentRunId)
+          .map((agent) => [agent.currentRunId, agent] as const),
+      ),
+    [agents],
   )
   const sortedMentionNames = useMemo(
     () =>
@@ -306,19 +314,6 @@ export const ChannelsPage = () => {
     }
   }, [activeChannel, channelId, navigate])
 
-  useEffect(() => {
-    if (agents.length === 0) {
-      setSelectedAgentId('')
-      return
-    }
-
-    if (!selectedAgentId || !agents.some((agent) => agent.id === selectedAgentId)) {
-      setSelectedAgentId(agents[0]?.id ?? '')
-    }
-  }, [agents, selectedAgentId])
-
-  const selectedAgent =
-    agents.find((agent) => agent.id === selectedAgentId) ?? boundAgents[0] ?? null
   const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
 
   useLayoutEffect(() => {
@@ -334,7 +329,6 @@ export const ChannelsPage = () => {
     feedItems.length,
     pendingMessages.length,
     scopedAgents.length,
-    selectedAgentId,
   ])
 
   const sendMessageSubmit = async (event?: FormEvent<HTMLFormElement>) => {
@@ -346,7 +340,6 @@ export const ChannelsPage = () => {
 
     await sendMessage.mutateAsync({
       content: text.trim(),
-      agentId: selectedAgent?.id,
     })
     setMessage('')
     mentionRef.current?.clear()
@@ -637,41 +630,45 @@ export const ChannelsPage = () => {
               </div>
             ) : null}
 
-            {pendingMessages.map((entry) => (
-              <article key={entry.runId} className="admin-msg-row py-1">
-                <div
-                  className={[
-                    'flex h-9 w-9 flex-shrink-0 items-center justify-center',
-                    'rounded-lg border border-[rgba(124,58,237,0.4)]',
-                    'bg-[rgba(124,58,237,0.1)] text-lg',
-                  ].join(' ')}
-                >
-                  {getAgentGlyph(selectedAgent)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm font-bold text-white">
-                      {selectedAgent?.name ?? 'Agent'}
-                    </span>
-                    <span
-                      className={[
-                        'inline-flex items-center rounded',
-                        'bg-[rgba(124,58,237,0.2)] px-2 py-0.5',
-                        'text-[11px] font-semibold text-[#a78bfa]',
-                      ].join(' ')}
-                    >
-                      running
-                    </span>
+            {pendingMessages.map((entry) => {
+              const pendingAgent = runAgentMap.get(entry.runId) ?? null
+
+              return (
+                <article key={entry.runId} className="admin-msg-row py-1">
+                  <div
+                    className={[
+                      'flex h-9 w-9 flex-shrink-0 items-center justify-center',
+                      'rounded-lg border border-[rgba(124,58,237,0.4)]',
+                      'bg-[rgba(124,58,237,0.1)] text-lg',
+                    ].join(' ')}
+                  >
+                    {getAgentGlyph(pendingAgent)}
                   </div>
-                  <div className="mt-0.5 border-l-2 border-[rgba(124,58,237,0.5)] pl-3">
-                    <p className="text-sm leading-6 text-[color:var(--tx)]">
-                      {entry.content ? renderContent(entry.content) : 'Streaming response'}
-                      <span className="streaming-dot" />
-                    </p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-bold text-white">
+                        {pendingAgent?.name ?? 'Agent'}
+                      </span>
+                      <span
+                        className={[
+                          'inline-flex items-center rounded',
+                          'bg-[rgba(124,58,237,0.2)] px-2 py-0.5',
+                          'text-[11px] font-semibold text-[#a78bfa]',
+                        ].join(' ')}
+                      >
+                        running
+                      </span>
+                    </div>
+                    <div className="mt-0.5 border-l-2 border-[rgba(124,58,237,0.5)] pl-3">
+                      <p className="text-sm leading-6 text-[color:var(--tx)]">
+                        {entry.content ? renderContent(entry.content) : 'Streaming response'}
+                        <span className="streaming-dot" />
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              )
+            })}
             <div className="h-3" />
           </>
         ) : null}
@@ -875,22 +872,6 @@ export const ChannelsPage = () => {
                   />
                 </svg>
               </button>
-              <div className="mx-1 h-[18px] w-px bg-[color:var(--sep)]" />
-              <select
-                className={[
-                  'rounded border border-[rgba(124,58,237,0.3)] bg-transparent',
-                  'px-2 py-1 text-xs text-[#a78bfa] outline-none',
-                ].join(' ')}
-                onChange={(event) => setSelectedAgentId(event.target.value)}
-                value={selectedAgentId}
-              >
-                <option value="">No agent</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
             </div>
             <button
               className="flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-white"
