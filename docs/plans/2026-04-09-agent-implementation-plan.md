@@ -117,6 +117,26 @@ Minimum binding audit fields:
 - `revoked_at`
 - `revoked_by`
 
+## Principal Model
+
+Placement scopes and acting principals are different concepts.
+
+Use `principal` for actors or execution targets such as:
+
+- `user`
+- `agent`
+- `service`
+- `tool`
+- `thread`
+- `role`
+
+Rules:
+
+- placement and sharing use `scope_type` / `scope_id`
+- execution and authorization use canonical actor/principal context
+- grants/bindings may target principals, but principals are never placement scopes
+- later phases should prefer explicit `principal_type` / `principal_id` wording over generic “binding target” unless a spec is intentionally broader
+
 ## Access Model
 
 The platform needs a clear distinction between configuration rights, invocation rights, and internal visibility.
@@ -375,6 +395,10 @@ Everything else depends on this. Without the agentic loop, agents can't plan, ca
 - **Multi-step loop**: Agent can call tools, observe results, call more tools, then respond
 - **Budget enforcement**: From the-agents.md § 4 defaults — `maxIterations: 12`, `maxToolCalls: 20`, `maxTokens: 50000`, `maxWallclockMs: 90000`, `maxCostCents: 50`. Defaults come from role policy, overridable per agent/plan.
 - **Model usage ledger**: `token_ledger` table/view (see token-ledger-spec.md and the-agents.md § 16) — every LLM call writes token counts and normalized cost. `maxCostCents` enforcement reads from ledger, not in-memory counters.
+- **Cost source of truth rule**:
+  - model-only work is budgeted from `token_ledger`
+  - environment/runtime infrastructure is budgeted from `execution_usage_ledger`
+  - mixed run/workflow/plugin totals come from reporting views that join both ledgers
 - **Budget/reaper threshold invariant**: Document and enforce `maxWallclockMs (90s) < stale_run_reap (120s) < worker_offline (180s)`. Per-agent budget overrides must not exceed stale_run_reap without adjusting reaper.
 - **Streaming**: Tool calls and results stream to the UI via WebSocket in real time
 - **Safe tools only**: Same tool set as current implementation (web_search, document_read, web_fetch) — no new tools added until the tool registry is live in Main Phase 3.
@@ -404,7 +428,7 @@ Everything else depends on this. Without the agentic loop, agents can't plan, ca
 3. Budget enforcement checks all 5 dimensions before each iteration
 4. Tool call records written per call (not per run)
 5. WebSocket events: `agent.tool.start`, `agent.tool.end`, `agent.iteration`
-6. Cost ledger aggregation: per-agent daily/monthly rollups query
+6. Cost reporting view: per-agent daily/monthly rollups and mixed-cost totals query
 
 ### Admin UI work
 
@@ -451,6 +475,7 @@ Agents activate automatically — on schedule, via webhook, or in response to in
 - **Trigger API**: Full CRUD for trigger configuration, pause/resume, history
 - **Trigger DB**: `agent_triggers`, `agent_trigger_deliveries`, `agent_webhooks`, `resource_scope_bindings` tables
 - **Trigger ownership model**: Triggers are first-class records linked to agents, with one home scope plus optional additional scope bindings
+- **Manual run rule**: manual execution is run creation on the executable object, not a trigger mutation
 
 ### Backend work
 
@@ -475,7 +500,9 @@ Agents activate automatically — on schedule, via webhook, or in response to in
    - Create runs for matching agents with event payload as input
    - Same concurrency guard as scheduler — skip if agent already running
 5. **Trigger API endpoints** (all from the-agents.md § 17):
-   - `POST/GET/PUT/DELETE /api/agents/{id}/triggers`
+   - `POST /api/agents/{id}/runs` for manual execution
+   - `POST/GET /api/agents/{id}/triggers`
+   - `PUT/DELETE /api/triggers/{id}`
    - `POST /api/triggers/{id}/pause`, `POST /api/triggers/{id}/resume`
    - `GET /api/triggers/{id}/history`
    - `POST /api/webhooks` (returns secret ONCE), `GET/DELETE /api/webhooks/{id}`, `POST /api/webhooks/{id}/rotate`
@@ -940,7 +967,7 @@ Everything is discoverable, installable, and composable through a unified market
 
 ### Scope
 
-- **Marketplace** (marketplace.md): Unified catalog with tabs for MCP servers, API connectors, skills, workflow templates
+- **Marketplace** (marketplace.md): Unified catalog with tabs for MCP servers, API connectors, skills, workflow templates, and generated plugins
 - **Library** (marketplace.md § 5): Installed items management with scope
 - **Capability assignments** (marketplace.md § 5): Explicit assignment of capabilities to agents
 - **Agent builder** (the-agents.md § 15): Full builder workflow with templates, dry-run, approval
@@ -1020,6 +1047,9 @@ Everything is discoverable, installable, and composable through a unified market
 1. `workflow_templates` table with `graph_json`, `triggers_json`, `variable_schema`, `binding_schema`, `required_environment_templates`
 2. `workflow_installations` table holding install-time scope, resolved bindings, activation state, and config
 3. `workflow_triggers` table for materialized event/schedule bindings generated from `triggers_json` for each active installation
+   - in this plan, `triggers_json` is the authored source-of-truth on the template
+   - `workflow_triggers` are runtime rows materialized from that source on install/activation
+   - the Phase 2 trigger engine evaluates these rows too; there is not a second independent trigger engine
 4. Step types: `skill`, `agent_task`, `action`, `condition`, `wait` (from marketplace.md § 8); these are orchestration-layer step kinds that compile to lower-level run/plan operations
 5. Typed variable resolution on install: repos, connectors, channels, environment templates, secret refs selected from already-visible resources, not arbitrary free text
 6. Execution environment actions: launch ephemeral VM/container/workspace, attach secret refs, expose terminal/xterm session where allowed, teardown on completion/TTL
@@ -1034,9 +1064,25 @@ Everything is discoverable, installable, and composable through a unified market
    - `invoke` returns final output and sanitized terminal state
    - `inspect` gates internal step visibility, logs, and intermediate state
    - `manage` gates bindings, triggers, scope, and activation
+15. Installation versioning/materialization rule:
+   - installations pin to a workflow template version
+   - trigger materialization is regenerated only when the installation is explicitly upgraded or reactivated against a new template version
+   - past runs remain linked to the installation version that produced them
+16. Step compilation map must be documented and implemented:
+   - `skill` -> agent run or skill execution record
+   - `agent_task` -> task + agent run
+   - `action` -> external action record and optionally environment/tool execution
+   - `condition` -> workflow step transition record
+   - `wait` -> timer/event wait record
 
 **Execution runtime protocol to implement in this phase:**
-15. Canonical lease lifecycle:
+17. Execution control-plane service is the owner of:
+   - runner selection
+   - lease issuance
+   - environment/job launch requests
+   - retry/reassignment after failure
+   - final usage recording orchestration
+18. Canonical lease lifecycle:
    - request execution
    - select eligible runner
    - issue short-lived lease
@@ -1044,15 +1090,28 @@ Everything is discoverable, installable, and composable through a unified market
    - launch instance/job
    - heartbeat
    - complete, terminate, or reassign after expiry/failure
-16. Scheduler/control-plane service owns runner selection, lease issuance, retry, and reassignment
-17. Runners own local launch, heartbeat, log streaming, and final usage reporting
-18. Artifact storage abstraction must be uniform across hosted and local installs:
+19. Failure/retry rules:
+   - lease expiry before start -> control plane may reassign
+   - artifact fetch failure -> runner marks lease failed, control plane retries or reassigns
+   - runner death mid-run -> control plane marks instance stale, attempts safe retry or surfaces terminal failure depending on idempotency
+   - final completion is idempotent on `(lease_id, run_id)`
+20. Runners own local launch, heartbeat, log streaming, and final usage reporting
+21. Artifact storage abstraction must be uniform across hosted and local installs:
    - hosted may use GCS/object storage
    - local installs may use a local adapter implementing the same contract
+22. Secret delivery rule:
+   - runners receive broker handles or short-lived derived credentials by default
+   - direct plaintext injection is allowed only transiently at the final execution boundary when the target process requires env/file materialization
+   - long-lived user tokens must not be mounted directly into arbitrary coding environments
+23. Plugin execution authorization rule:
+   - leases may be issued only for plugin versions in executable states (`approved`/`published`, or `private_sandbox` for creator-only sandbox runs)
+   - `runtime_policy` determines eligible runner classes (`sandbox_only`, `reviewed_sandbox`, `reviewed_hardened`, `trusted_internal`)
+   - unapproved versions never receive non-sandbox leases
 
 **Cost model to implement in this phase:**
-19. `token_ledger` and `execution_usage_ledger` are the only durable cost ledgers
-20. Add reporting views/queries that roll mixed model + environment cost up to run, workflow run, plugin version, agent, user, and scope
+24. `token_ledger` and `execution_usage_ledger` are the only durable cost ledgers
+25. Add reporting views/queries that roll mixed model + environment cost up to run, workflow run, plugin version, agent, user, and scope
+26. Budget checks on workflow/plugin execution must consult the mixed-cost reporting view, not one ledger in isolation
 
 **Example template to ship in Phase 8:**
 1. **GitHub Issue Triage → PR → Customer Follow-Up**
@@ -1067,10 +1126,16 @@ Everything is discoverable, installable, and composable through a unified market
      - coding environment chosen from visible environment templates
      - customer destination chosen from visible CRM/helpdesk resources
      - secret refs attached explicitly to the environment/job binding
+   - Durable record chain for implementation:
+     - trigger delivery -> workflow_run -> workflow_step_runs
+     - agent-task steps -> task + agent run
+     - environment launch steps -> execution_environment_instance + execution lease
+     - external actions -> auditable action/tool-call records
+     - final workflow status -> rolled up from step state plus child run state
 
 ### Admin UI work
 
-- **Marketplace browser**: Tabbed view (MCP Servers | API Connectors | Skills | Workflows), search, filters, categories
+- **Marketplace browser**: Tabbed view (MCP Servers | API Connectors | Skills | Workflows | Plugins), search, filters, categories
 - **Environment template management**: CRUD for execution environment templates, runner capability visibility, scope, pricing metadata, and allowed secret classes
 - **Generated plugin builder**: Create from template, generate icon, review manifest/permissions, launch coding environment, submit for review
 - **Plugin template catalog**: curated starter templates with examples, expected files, SDK version, and test harness
