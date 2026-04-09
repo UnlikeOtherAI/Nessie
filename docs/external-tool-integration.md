@@ -518,9 +518,9 @@ Example: GitHub MCP server is org-scoped, but each developer has their own PAT. 
 
 ---
 
-## 5. Executor Sub-Agents — Context Isolation for Tool Use
+## 5. Temporary Context and Tool Resolution
 
-Tool schemas consume context window space. An agent with access to 50 MCP tools and 30 API endpoints would waste thousands of tokens on tool definitions it doesn't need. The solution: tool execution happens in disposable sub-agents whose context is thrown away after use. The main agent's conversation context stays clean.
+Tool schemas consume context window space. An agent with access to 50 MCP tools and 30 API endpoints would waste thousands of tokens on tool definitions it doesn't need. The solution: a two-part context model where the main agent's context has a **permanent** section (conversation, reasoning, memories) and a **temporary** section (tool schemas loaded on demand and dropped when no longer needed). A cheap resolver sub-agent finds the right tools; the main agent uses them directly.
 
 ### The Problem
 
@@ -531,79 +531,228 @@ Traditional approach (wasteful):
   → Agent only uses 2-3 tools per task
   → 95% of tool context is waste
 
-Load/unload approach (better but messy):
-  Agent manually loads/unloads tool schemas into its own context
-  → Still pollutes the conversation context temporarily
-  → Agent has to manage context explicitly (cognitive overhead)
-  → Credential references still pass through the conversation context
+Executor sub-agent approach (loses conversation context):
+  Main agent spawns a sub-agent to execute tools
+  → Sub-agent doesn't have the full conversation context
+  → Can't reason about what the user actually needs
+  → Has to receive a distilled "task" — information loss
+  → Main agent can't steer or adjust mid-execution
 ```
 
-### The Pattern: Executor Sub-Agent
+### The Pattern: Resolver + Temporary Context
 
-The main agent never loads tool schemas into its own context. Instead, it spawns an invisible **executor sub-agent** that handles the tool call and returns just the result. The executor's context — tool schemas, credential references, API details — is discarded after execution.
+The main agent has the full conversation context and executes tools itself. But tool schemas are not permanently in its context — they're loaded into a **temporary context array** when needed, and the agent drops them when done.
+
+A cheap **resolver sub-agent** (cheapest LLM available) handles the selection: given the agent's intent, it picks the right tools from the available capabilities and loads their schemas + companion skills into the main agent's temporary context. The main agent then uses those tools directly, with full conversation context, and calls `drop_context` when it's finished.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  MAIN AGENT CONTEXT                                           │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ PERMANENT CONTEXT                                        │  │
+│  │  - System prompt                                         │  │
+│  │  - Conversation history with the user                    │  │
+│  │  - Capability directory (~50 tokens)                     │  │
+│  │  - Procedural memories                                   │  │
+│  │  - Built-in tools (Bash, FileRead, Grep, etc.)           │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ TEMPORARY CONTEXT (array — zero or more loaded sections)  │  │
+│  │                                                           │  │
+│  │  ┌─────────────────────────────────────────────────┐      │  │
+│  │  │ capability:stripe                                │      │  │
+│  │  │   Tool schemas: stripe_list_charges, ...         │      │  │
+│  │  │   Companion skill: "Amounts in cents, paginate"  │      │  │
+│  │  └─────────────────────────────────────────────────┘      │  │
+│  │                                                           │  │
+│  │  ┌─────────────────────────────────────────────────┐      │  │
+│  │  │ capability:acme_crm                              │      │  │
+│  │  │   Tool schemas: acme_update_deal, ...            │      │  │
+│  │  │   Companion skill: "Always check deal exists"    │      │  │
+│  │  └─────────────────────────────────────────────────┘      │  │
+│  │                                                           │  │
+│  │  Agent drops any section by calling drop_context(...)     │  │
+│  └─────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### How It Works — End to End
 
 ```
 Main agent (in conversation with user)
   │
-  │  Main agent context contains:
-  │  - Conversation history with the user
-  │  - Capability directory (compact, ~10 tokens per capability)
-  │  - Procedural memories about past tool usage
-  │  - The current task/plan
+  │  Permanent context:
+  │  - Conversation: user asked "What were last week's Stripe sales?"
+  │  - Capability directory: "stripe: Payment data (read-only)..."
+  │  - Procedural memory: "Stripe amounts are in cents"
   │
-  │  Main agent context does NOT contain:
-  │  - Tool schemas
-  │  - API endpoint details
-  │  - Credential references
-  │  - MCP server connection details
+  │  Temporary context: [] (empty — no tool schemas loaded yet)
   │
-  ├── Main agent decides: "I need last week's Stripe sales data"
+  ├── 1. Main agent decides: "I need Stripe data"
+  │     Calls: resolve_capability({ capability: "stripe", intent: "query last 7 days of charges" })
   │
-  ├── Main agent spawns executor sub-agent:
-  │     {
-  │       task: "Get total sales from the last 7 days",
-  │       capability: "stripe",              // which MCP server / connector
-  │       enabled_tools: ["stripe_list_charges", "stripe_get_balance"],  // only these
-  │       credential_ref: "{{secret:stripe_readonly}}"   // resolved by system, not the agent
-  │     }
-  │
-  ├── EXECUTOR SUB-AGENT (invisible, disposable):
+  ├── 2. RESOLVER SUB-AGENT (cheapest model, disposable)
+  │     │  Receives: intent + list of enabled tools for "stripe"
+  │     │  Loads: full tool schemas + companion skill for Stripe
+  │     │  Reasons: "For querying charges, they need stripe_list_charges. 
+  │     │            stripe_get_balance might be useful too."
+  │     │  Returns: selected tool schemas + companion skill
+  │     │  *** Sub-agent discarded — its context is gone ***
   │     │
-  │     │  Executor context contains:
-  │     │  - The task description from the main agent
-  │     │  - Full tool schemas for ONLY the enabled tools
-  │     │  - Companion skill instructions (how to use this MCP server)
-  │     │  - Procedural memory for these tools (if any)
-  │     │
-  │     ├── Executor calls stripe_list_charges({ created: { gte: "2026-04-02" } })
-  │     │   → Execution engine resolves {{secret:stripe_readonly}} → injects API key
-  │     │   → MCP server executes the call
-  │     │   → Result returned to executor
-  │     │
-  │     ├── Executor processes result, formats response
-  │     │
-  │     └── Executor returns to main agent:
-  │           { result: "Total sales last 7 days: $14,230 across 47 charges" }
-  │           (Executor context is now DISCARDED — schemas, credentials, all gone)
+  │     └── Platform injects returned schemas into main agent's temporary context:
+  │           temporary_context.push({
+  │             section: "capability:stripe",
+  │             tools: [stripe_list_charges schema, stripe_get_balance schema],
+  │             companion_skill: "Amounts in cents. Results paginated...",
+  │           })
   │
-  └── Main agent receives the result
-      Continues conversation with user: "Last week's Stripe sales were $14,230..."
-      Main agent context: unchanged except for the result string
+  ├── 3. Main agent now has Stripe tools in its temporary context
+  │     It can see the schemas. It can call the tools. It has full conversation context.
+  │     
+  │     Main agent calls stripe_list_charges({ created: { gte: "2026-04-02" } })
+  │     → Platform intercepts, resolves {{secret:stripe_readonly}}, injects credential
+  │     → MCP/HTTP call made → result returned to main agent
+  │     → Credential erased (never in agent context)
+  │     
+  │     Main agent sees: 47 charges, has_more: true
+  │     Main agent reasons: "Need to paginate" → calls again with starting_after
+  │     Main agent processes: sums amounts, converts cents to dollars
+  │
+  ├── 4. Main agent responds to user:
+  │     "Last week's Stripe sales were $14,230 across 47 charges."
+  │
+  └── 5. Main agent decides it's done with Stripe tools
+        Calls: drop_context({ sections: ["capability:stripe"] })
+        → Platform removes Stripe schemas from temporary context
+        → Context space freed for the next turn
+        
+  Temporary context: [] (clean again)
 ```
+
+### The Two Layers
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  RESOLVER SUB-AGENT (cheapest model, disposable)          │
+│  - Receives the agent's intent                            │
+│  - Has all tool schemas for the capability                │
+│  - Picks the right subset of tools                        │
+│  - Returns schemas + companion skill to the platform      │
+│  - Discarded immediately after selection                  │
+└────────────────────┬─────────────────────────────────────┘
+                     │ loads tools into
+┌────────────────────▼─────────────────────────────────────┐
+│  MAIN AGENT (expensive model, long-lived)                 │
+│  - Owns the conversation with the user                    │
+│  - Has full conversation context for reasoning            │
+│  - Executes tool calls directly (with credential inject)  │
+│  - Can paginate, retry, adapt — it's the smart model      │
+│  - Decides when to drop temporary context                 │
+│  - Calls drop_context when done with a capability         │
+└──────────────────────────────────────────────────────────┘
+
+The main agent IS the executor. It has the conversation context,
+the user's intent, and the tools — all in one place. No information 
+loss from distilling the task into a sub-agent handoff.
+```
+
+### Temporary Context Management
+
+The temporary context is an **array of capability sections**, each identified by a key (e.g., `capability:stripe`). The platform manages insertion; the agent manages removal.
+
+```
+Platform-side data structure:
+
+  agent_context = {
+    permanent: [
+      { role: "system", content: "You are agent X..." },
+      { role: "user", content: "What were last week's sales?" },
+      ...conversation history...
+    ],
+    temporary: [
+      // Each entry is a loaded capability section
+      {
+        key: "capability:stripe",
+        loaded_at: "2026-04-09T14:30:00Z",
+        messages: [
+          { role: "system", content: "TOOL SCHEMAS (stripe):\n..." },
+          { role: "system", content: "COMPANION SKILL (stripe):\n..." },
+        ],
+        tool_definitions: [...stripe tool JSON schemas...],
+      },
+      {
+        key: "capability:acme_crm",
+        loaded_at: "2026-04-09T14:30:05Z",
+        messages: [...],
+        tool_definitions: [...],
+      }
+    ]
+  }
+
+When building an LLM request:
+  messages = [...permanent, ...temporary[0].messages, ...temporary[1].messages, ...]
+  tools = [...builtin_tools, ...temporary[0].tool_definitions, ...temporary[1].tool_definitions, ...]
+
+When agent calls drop_context({ sections: ["capability:stripe"] }):
+  temporary = temporary.filter(t => !sections.includes(t.key))
+  → Next LLM request will not include those schemas or tool definitions
+```
+
+### The `drop_context` Tool
+
+The main agent always has this tool in its permanent context:
+
+```json
+{
+  "name": "drop_context",
+  "description": "Remove loaded capability sections from your temporary context. Call this when you no longer need specific tools to free up context space.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "sections": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Array of capability section keys to drop (e.g., ['capability:stripe', 'capability:acme_crm'])"
+      }
+    },
+    "required": ["sections"]
+  }
+}
+```
+
+The agent decides when to drop. The platform does not force it. This is important: the agent may want to keep Stripe tools loaded across multiple turns if the user is asking follow-up questions about payments.
+
+### Turn-by-Turn Context Hygiene
+
+On every turn, the system prompt includes a reminder when temporary context is loaded:
+
+```
+[Injected into system prompt when temporary_context.length > 0]
+
+You currently have the following capability sections loaded in temporary context:
+  - capability:stripe (loaded 2 turns ago, 4 tools, ~800 tokens)
+  - capability:acme_crm (loaded this turn, 3 tools, ~600 tokens)
+
+If you no longer need any of these, call drop_context to free up context space.
+```
+
+This nudge ensures the agent actively manages its context. But the decision is the agent's — it may decide to keep tools loaded if it anticipates needing them again.
 
 ### Why This Works
 
-1. **Zero context pollution** — Tool schemas, API details, and credential references never enter the main conversation context. The main agent's context is reserved entirely for the user conversation and reasoning.
+1. **Full conversation context for execution** — The main agent executes tools with the complete conversation history. It knows what the user asked, what was said before, what the nuances are. No information loss from distilling into a sub-agent task.
 
-2. **Automatic cleanup** — No need for explicit load/unload. The executor's context is discarded when it returns. Nothing to manage.
+2. **Agent-controlled context lifecycle** — The agent decides when to load and when to drop. It can keep Stripe tools loaded across 5 turns if the user keeps asking about payments, or drop them immediately after a single query. The platform doesn't impose arbitrary lifecycle rules.
 
-3. **Security isolation** — Credential references exist only in the executor's ephemeral context. Even if the main agent's conversation is compromised, there's no credential surface.
+3. **Cheap resolution** — The resolver sub-agent runs on the cheapest model. Its only job: given intent and available tools, pick the right ones. This is a narrow task that cheap models handle well.
 
-4. **Tool schema containment** — An MCP server with 100 tools? Only the 5 enabled ones enter the executor's context. And even those never reach the main agent.
+4. **Clean separation** — Permanent context (conversation, memories, built-in tools) is always there. Temporary context (external tool schemas) is explicitly loaded and explicitly dropped. The boundary is clear.
 
-5. **Cheaper execution** — The executor can run on a smaller/cheaper model. It's just following instructions to call tools — no complex reasoning needed.
+5. **Security isolation** — Credentials are still never in the agent's context. The platform intercepts tool calls, resolves `{{secret:...}}` placeholders, injects credentials into the HTTP/MCP request, and erases them after. The agent sees tool schemas (what args to pass) but never credentials.
 
-6. **Parallel execution** — Main agent can spawn multiple executors simultaneously for different capabilities. "Get Stripe sales AND update the CRM" → two executors in parallel, main agent waits for both results.
+6. **Parallel capability loading** — The agent can have multiple capability sections loaded simultaneously. Stripe + CRM + Jira tools all in temporary context at once if needed. Drop them independently as each task completes.
 
 ### Capability Directory
 
@@ -617,14 +766,14 @@ Available capabilities:
   - slack: Team messaging. Can send messages to channels.
   - jira: Project management. Can create/update tickets.
 
-To use any capability, describe what you need and spawn an executor.
+To use any capability, call resolve_capability with your intent.
 ```
 
-This costs ~50 tokens for 5 capabilities. Compare to loading full schemas: ~1000+ tokens per capability. The directory is the main agent's "menu" — it picks what it needs, the executor handles the details.
+This costs ~50 tokens for 5 capabilities. Compare to loading full schemas: ~1000+ tokens per capability. The directory is the main agent's "menu" — it picks what it needs, the resolver loads the details into temporary context.
 
 ### Companion Skills
 
-Each MCP server or API connector can have **companion skills** — instructions that tell the executor how to use the capability effectively. These are loaded into the executor's context, not the main agent's.
+Each MCP server or API connector can have **companion skills** — instructions that tell the agent how to use the capability effectively. These are loaded into the agent's temporary context alongside the tool schemas.
 
 ```
 companion_skills
@@ -648,11 +797,11 @@ companion_skills
   updated_at       TIMESTAMPTZ
 ```
 
-Companion skills are created when the MCP server is installed (auto-generated from tool descriptions) and refined by admins or by procedural memory from successful executor runs.
+Companion skills are created when the MCP server is installed (auto-generated from tool descriptions) and refined by admins or by procedural memory from successful tool usage.
 
 ### Credential Injection Syntax
 
-Credential references use a placeholder syntax that the execution engine resolves. The agent (main or executor) never sees the actual secret value.
+Credential references use a placeholder syntax that the platform resolves at call time. The agent never sees the actual secret value.
 
 ```
 Placeholder: {{secret:ref_name}}
@@ -661,13 +810,13 @@ Example in MCP server config:
   credential_ref: "{{secret:stripe_readonly}}"
 
 Resolution flow:
-  1. Executor spawns with credential_ref in its config (NOT in its message context)
-  2. When executor calls a tool, execution engine intercepts
-  3. Engine resolves {{secret:stripe_readonly}} via secret management API
-  4. Engine injects the resolved value into the MCP server connection / HTTP request
+  1. Credential ref is stored in the capability's config (NOT in agent context)
+  2. When the agent calls a tool, the platform intercepts the call
+  3. Platform resolves {{secret:stripe_readonly}} via secret management API
+  4. Platform injects the resolved value into the MCP server connection / HTTP request
   5. Tool executes with the real credential
-  6. Result returned to executor WITHOUT the credential
-  7. Credential erased from engine memory
+  6. Result returned to the agent WITHOUT the credential
+  7. Credential erased from platform memory
 
 The placeholder {{secret:...}} appears in:
   - MCP server instance config (transportConfig)
@@ -675,7 +824,7 @@ The placeholder {{secret:...}} appears in:
   - Credential override records
   
 The placeholder NEVER appears in:
-  - Agent message context (main or executor)
+  - Agent message context (permanent or temporary)
   - Tool call arguments
   - Tool call results
   - Conversation history
@@ -684,7 +833,7 @@ The placeholder NEVER appears in:
 
 ### Endpoint Filtering
 
-An MCP server may expose 100+ tools, but most agents only need a few. Endpoint filtering controls which tools the executor can see.
+An MCP server may expose 100+ tools, but most agents only need a few. Endpoint filtering controls which tools the resolver can select and load into temporary context.
 
 ```
 Configured at assignment time (capability_assignments.enabled_tools):
@@ -692,14 +841,14 @@ Configured at assignment time (capability_assignments.enabled_tools):
   Stripe MCP server has 47 tools
   Sales agent assignment: enabled_tools = ["stripe_list_charges", "stripe_get_balance", 
                                             "stripe_list_customers", "stripe_get_customer"]
-  → Executor for this agent only sees 4 tools, not 47
-  → Other 43 tools don't exist in the executor's context
-  → Saves ~8,600 tokens of tool schema per executor spawn
+  → Resolver can only select from these 4 tools, not 47
+  → Other 43 tools don't exist in the agent's temporary context
+  → Saves ~8,600 tokens of tool schema
 
   Different agent, different filter:
   Finance agent assignment: enabled_tools = ["stripe_list_payouts", "stripe_get_balance_transactions",
                                               "stripe_list_disputes"]
-  → Executor sees 3 different tools
+  → Resolver can select from 3 different tools
 
 When enabled_tools is null → all tools available (use with caution)
 ```
@@ -710,141 +859,199 @@ Instead of: "stripe: 47 tools available"
 Shows:      "stripe: Payment queries — charges, balances, customers (4 tools)"
 ```
 
-### Executor Lifecycle
+### Execution Lifecycle
 
 ```
-Main agent spawns executor
+Agent needs an external capability
   │
-  ├── 1. System creates executor sub-agent (invisible, no user interaction)
-  │     ├── Model: can be cheaper than main agent (e.g., gpt-4o-mini for simple tool calls)
-  │     ├── Context: task description + enabled tool schemas + companion skill + procedural memory
-  │     ├── Budget: inherited from main agent or per-capability limit
-  │     └── Timeout: configurable per capability (default: 30s)
+  ├── 1. RESOLVE PHASE
+  │     ├── Main agent calls resolve_capability({ capability: "stripe", intent: "..." })
+  │     │
+  │     ├── Platform spawns resolver sub-agent (invisible, cheapest model)
+  │     │     Context: intent + all enabled tool schemas for capability + companion skill
+  │     │     Budget: small (single pass, ~500 output tokens max)
+  │     │     Timeout: 5s
+  │     │
+  │     ├── Resolver selects relevant tools (e.g., 4 out of 47)
+  │     │     Returns: selected tool schemas + companion skill
+  │     │
+  │     └── *** RESOLVER CONTEXT DISCARDED ***
+  │           All 47 tool schemas gone. Only the 4 selected schemas survive.
+  │           Platform injects them into the main agent's temporary context.
   │
-  ├── 2. Executor runs agentic loop (if needed):
-  │     ├── Simple cases: single tool call → return result (1 iteration)
-  │     ├── Complex cases: multiple tool calls, reasoning about results (2-5 iterations)
-  │     └── Max iterations enforced by budget
+  ├── 2. EXECUTE PHASE (main agent, in conversation)
+  │     ├── Main agent now has tool schemas in temporary context
+  │     ├── Main agent calls tools directly:
+  │     │     ├── Agent reasons about what to call (has full conversation context)
+  │     │     ├── Agent makes tool call with arguments
+  │     │     ├── Platform intercepts → resolves credential → injects into request
+  │     │     ├── HTTP/MCP call executed → result returned to agent
+  │     │     ├── Credential erased
+  │     │     └── Agent can paginate, retry, adapt — it's the smart model
+  │     │
+  │     ├── Agent responds to user with results
+  │     │
+  │     └── Agent continues conversation (tools still in temporary context)
   │
-  ├── 3. Executor returns result to main agent
-  │     ├── Structured result: { success: true, data: {...}, summary: "..." }
-  │     ├── Or error: { success: false, error: "Rate limited", retry_after: 60 }
-  │     └── Result is plain text/JSON — no tool schemas, no credentials
+  ├── 3. DROP PHASE (agent-initiated)
+  │     ├── Agent calls drop_context({ sections: ["capability:stripe"] })
+  │     ├── Platform removes schemas from temporary context
+  │     ├── Context space recovered for future turns
+  │     └── Or: agent keeps tools loaded for follow-up questions
   │
-  ├── 4. Executor context DISCARDED
-  │     ├── Tool schemas: gone
-  │     ├── Credential references: gone
-  │     ├── Intermediate reasoning: gone (unless flagged for procedural memory)
-  │     └── Only the result string persists (in main agent's context)
-  │
-  └── 5. Outcome captured for procedural memory (see § 6)
-        ├── Which tools were called, success/failure, latency
-        ├── Stored in memory system (available to future executors)
-        └── Main agent doesn't need to know the details — just "Stripe worked"
+  └── 4. OUTCOME CAPTURE (see § 6)
+        ├── Platform records which tools were called, success/failure, latency
+        ├── Stored in memory system (available for future resolution)
+        └── Procedural memory updated
 ```
 
-### Executor Streaming — Visibility Into What's Happening
-
-Executors are invisible to the user in the sense that they don't participate in the conversation. But the user needs to see what's going on — otherwise it looks like the agent is frozen while the executor works. Executors stream status events back to the main agent, which can relay them to the user.
+### Cost Profile
 
 ```
-Executor runs
+Typical capability usage cost:
+
+  Resolver (cheapest model, ~200 tokens intent + ~2000 tokens schemas + ~200 output):
+    → ~$0.001 per resolution (gpt-4o-mini pricing)
+    → Full schema set discarded immediately after selection
+    → Only selected subset enters main agent context
+
+  Execution (main agent — schemas temporarily in context):
+    → Schemas add ~200 tokens per tool to the main agent's context
+    → 4 tools = ~800 extra tokens per turn while loaded
+    → At expensive model pricing: ~$0.003-0.005 per turn with tools loaded
+    → Agent drops tools when done → no ongoing cost
+
+  Compare to: keeping ALL tools permanently in context
+    → 80 tools × ~200 tokens = 16,000 tokens per turn → $0.05+ per turn
+    → Temporary context with 4 tools: 50x cheaper per turn
+
+  Key savings:
+    → Resolver filters 47 tools down to 4 (cheap model, one-shot)
+    → Agent only pays for tool context while actively using it
+    → Dropping context is free and immediate
+```
+
+### Tool Call Streaming — Visibility Into What's Happening
+
+Since the main agent executes tool calls directly, the platform streams tool call events to the UI in real time. The user sees what the agent is doing as it happens.
+
+```
+Main agent makes tool calls (tools loaded in temporary context)
   │
-  ├── Stream: status events → main agent → user UI
+  ├── Platform intercepts each tool call and streams status events to UI:
   │
   │   Event types:
-  │   ├── executor.started    { capability: "stripe", task: "Get last week's sales" }
-  │   ├── executor.tool_call  { tool: "stripe_list_charges", status: "calling" }
-  │   ├── executor.tool_result { tool: "stripe_list_charges", status: "success", summary: "47 charges found" }
-  │   ├── executor.progress   { message: "Processing 47 charges, calculating totals..." }
-  │   ├── executor.completed  { success: true, summary: "Total: $14,230" }
-  │   └── executor.failed     { error: "Rate limited by Stripe API", retry: true }
+  │   ├── tool.resolving     { capability: "stripe", intent: "Get last week's sales" }
+  │   ├── tool.loaded        { capability: "stripe", tools: ["stripe_list_charges", ...], section: "capability:stripe" }
+  │   ├── tool.calling       { tool: "stripe_list_charges", args_summary: "charges from last 7 days" }
+  │   ├── tool.result        { tool: "stripe_list_charges", status: "success", summary: "47 charges found" }
+  │   ├── tool.calling       { tool: "stripe_list_charges", args_summary: "page 2 (starting_after: ch_xyz)" }
+  │   ├── tool.result        { tool: "stripe_list_charges", status: "success", summary: "23 more charges" }
+  │   ├── tool.dropped       { section: "capability:stripe", reason: "agent called drop_context" }
+  │   └── tool.error         { tool: "stripe_list_charges", error: "Rate limited", retry: true }
   │
   └── What the user sees in the UI:
       
       ┌────────────────────────────────────────────┐
       │ Agent: Let me check Stripe for that data.   │
       │                                              │
+      │   ⟳ Loading Stripe tools...                 │
+      │     → stripe_list_charges, stripe_get_balance│
       │   ⟳ Querying Stripe...                      │
       │     → Fetching charges (last 7 days)         │
-      │     → 47 charges found                       │
-      │     → Calculating totals                     │
+      │     → 47 charges found, paginating...        │
+      │     → 70 total charges retrieved              │
       │                                              │
       │ Agent: Last week's Stripe sales totalled     │
-      │ $14,230 across 47 charges.                   │
+      │ $14,230 across 70 charges.                   │
+      │                                              │
+      │   ✓ Stripe tools unloaded                    │
       └────────────────────────────────────────────┘
 ```
 
 #### Stream Transport
 
-Executor events flow through the existing SSE (Server-Sent Events) channel that powers the chat UI:
+Tool call events flow through the existing SSE (Server-Sent Events) channel that powers the chat UI:
 
 ```
-Executor sub-agent
+Platform (intercepting agent tool calls)
   │
-  ├── Emits events to the run's event stream (same as any agent run)
-  │     event: { type: "executor.tool_call", run_id: executor_run_id, parent_run_id: main_run_id, ... }
+  ├── Each tool call generates events on the run's event stream:
+  │     event: { type: "tool.calling", run_id: main_run_id, tool: "stripe_list_charges", ... }
   │
-  ├── Main agent's run aggregates child executor events
-  │     The orchestrator tags them with the parent run ID
+  ├── Resolution events (resolver sub-agent) are also streamed:
+  │     event: { type: "tool.resolving", run_id: main_run_id, capability: "stripe", ... }
   │
-  └── SSE stream to the UI includes both:
+  └── SSE stream to the UI includes:
       - Main agent messages (the conversation)
-      - Executor status events (the progress indicators)
+      - Tool call status events (inline progress indicators)
+      - Context load/drop events (capability lifecycle indicators)
       
-      The UI renders executor events as inline progress indicators
-      within the conversation, collapsed when the executor completes.
+      The UI renders tool events as inline progress indicators
+      within the conversation, collapsed when the agent drops the context.
 ```
 
 #### What Gets Streamed vs What Stays Private
 
 ```
-STREAMED to main agent + user UI:
-  - Which capability is being used ("Querying Stripe")
-  - Which tool was called ("Fetching charges")
-  - High-level result summaries ("47 charges found")
+STREAMED to the user UI:
+  - Which capability was resolved ("Loading Stripe tools")
+  - Which tools were loaded ("stripe_list_charges, stripe_get_balance")
+  - Each tool call (tool name + argument summary)
+  - Result summaries ("47 charges found")
   - Errors and retries ("Rate limited, retrying in 5s")
-  - Final result
+  - Context drops ("Stripe tools unloaded")
 
-NOT streamed (stays in executor's ephemeral context):
-  - Full tool schemas
-  - Credential references or values
-  - Raw API responses (only summarized)
-  - Executor's intermediate reasoning
+NOT streamed (never leaves the platform):
+  - Credential values
+  - Raw API responses (only summarized in events)
+  - Resolver sub-agent reasoning
+  - Full tool schemas (user sees tool names, not the JSON schema)
   - MCP server connection details
 ```
 
-The main agent sees the streamed summaries and the final result. It does NOT see the executor's full context — that boundary is preserved. The streaming is one-way: executor → main agent (and UI). The main agent cannot inject into the executor's context mid-execution.
+#### Multiple Capabilities in Parallel
 
-#### Multi-Executor Streaming
-
-When the main agent spawns multiple executors in parallel, the UI shows them side-by-side:
+The agent can resolve and use multiple capabilities simultaneously. The UI shows them as concurrent progress streams:
 
 ```
 ┌────────────────────────────────────────────┐
 │ Agent: Let me gather that information.      │
 │                                              │
-│   ⟳ Querying Stripe...                      │
+│   ⟳ Loading Stripe tools...                 │
 │     → Fetching charges (last 7 days)         │
-│     → Done: $14,230 across 47 charges        │
+│     → Done: $14,230 across 70 charges        │
+│   ✓ Stripe tools unloaded                    │
 │                                              │
-│   ⟳ Updating Acme CRM...                    │
+│   ⟳ Loading Acme CRM tools...               │
 │     → Looking up deal "ACME-2024-Q2"         │
 │     → Updating deal stage to "closed-won"    │
 │     → Done                                   │
+│   ✓ CRM tools unloaded                       │
 │                                              │
 │ Agent: Done. Stripe shows $14,230 in sales,  │
 │ and I've updated the deal stage in the CRM.  │
 └────────────────────────────────────────────┘
 ```
 
-### When the Main Agent Calls Tools Directly
+### What Lives Where
 
-Not everything needs an executor. Built-in tools (Bash, FileRead, Grep, WebSearch) that are part of the agent's core toolset remain in the main agent's context — they're lightweight and frequently used. The executor pattern is for **external capabilities**: MCP servers, API connectors, and heavy tool sets that would bloat the context.
+Not everything goes through the resolve → load → drop cycle. Built-in tools (Bash, FileRead, Grep, WebSearch) are lightweight and frequently used — they stay in permanent context.
 
-Rule of thumb:
-- **Main agent context**: built-in tools (~6 tools, ~1,200 tokens), conversation, reasoning
-- **Executor sub-agent**: MCP servers, API connectors, external services (loaded per-task, discarded after)
+```
+PERMANENT CONTEXT (always present):
+  - Built-in tools (~6 tools, ~1,200 tokens)
+  - Conversation history
+  - Capability directory
+  - Procedural memories
+  - resolve_capability and drop_context tools
+
+TEMPORARY CONTEXT (loaded on demand, agent-managed):
+  - MCP server tool schemas (loaded via resolver)
+  - API connector tool schemas (loaded via resolver)
+  - Companion skills for loaded capabilities
+  - Dropped by agent when no longer needed
+```
 
 ---
 
@@ -957,12 +1164,14 @@ First successful call → create procedural memory (confidence: 0.5)
 
 ### What the Agent Sees (Context Efficiency)
 
-When an agent is about to use a tool, the system injects relevant procedural memories alongside the tool schema:
+When a capability is resolved and loaded into temporary context, relevant procedural memories are injected alongside the tool schemas:
 
 ```
-Agent loads "acme_create_contact"
+Resolver loads "acme_crm" into temporary context
   │
-  ├── Tier 2 schema loaded (input/output definitions)
+  ├── Tool schemas loaded (input/output definitions)
+  │
+  ├── Companion skill loaded
   │
   └── Procedural memory injected (if exists):
         "Previous experience with acme_create_contact:
@@ -972,7 +1181,7 @@ Agent loads "acme_create_contact"
          - Typical response time: ~300ms"
 ```
 
-When the agent unloads the tool, the full schema is removed but the procedural memory stays in the memory system — available for future retrieval when the agent considers using the tool again.
+When the agent drops the capability context, the tool schemas and companion skill are removed. The procedural memory stays in the permanent memory system — available for future retrieval when the agent considers using the capability again.
 
 ### Skill Promotion
 
@@ -1010,24 +1219,21 @@ Agents don't need to know upfront which tools exist. They discover tools based o
 ```
 Agent receives task: "Update John's deal stage to 'closed-won' in the CRM"
   │
+  ├── Agent checks capability directory:
+  │     "acme_crm: Customer relationship management. Can read/create/update contacts and deals."
+  │     → Agent knows which capability to resolve
+  │
   ├── Agent checks procedural memory:
   │     "I've used acme_update_deal before — it works for changing deal stages"
-  │     → Agent knows which tool to load
+  │     → Agent has context for how to use it
   │
-  ├── If no procedural memory:
-  │     Agent calls search_tools({ query: "update deal stage CRM" })
-  │     → Returns: [
-  │         { name: "acme_update_deal", overview: "Update a deal's properties in Acme CRM" },
-  │         { name: "acme_get_deal", overview: "Get deal details from Acme CRM" }
-  │       ]
-  │     → Agent loads the relevant tools
+  ├── Agent calls resolve_capability({ capability: "acme_crm", intent: "update deal stage" })
+  │     → Resolver selects acme_update_deal + acme_get_deal
+  │     → Schemas + companion skill loaded into temporary context
   │
-  ├── Agent loads: load_tools({ tools: ["acme_update_deal"] })
-  │     → Full schema + procedural memory injected
+  ├── Agent executes the tool calls directly (with full conversation context)
   │
-  ├── Agent executes the tool
-  │
-  ├── Agent unloads: unload_tools({ tools: ["acme_update_deal"] })
+  ├── Agent calls drop_context({ sections: ["capability:acme_crm"] })
   │
   └── Outcome captured → procedural memory updated
 ```
