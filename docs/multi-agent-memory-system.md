@@ -30,6 +30,28 @@ The system must:
 
 Seven memory types mapped from human cognition to AI implementation. Each type has a different storage strategy, retrieval pattern, and evaluation metric.
 
+### Taxonomy
+
+The seven types exist at different implementation stages:
+
+| Memory Type | Status | Storage | Notes |
+|---|---|---|---|
+| Working | Implicit | Context window | Not persisted — always exists |
+| Semantic | **Implemented** | `thoughts` table (memory_type: intent, reason, constraint, preference, fact) | Full hybrid search |
+| Reasoning | **Implemented** | `thought_reasonings` linked to thoughts | Structured alternatives/criteria/outcome |
+| Episodic | Partial | `thoughts` (target: memory_type = 'experience') | Reasoning+outcome exists, situation embedding missing |
+| Procedural | **Not started** | `thoughts` (target: memory_type = 'procedure') | Highest ROI gap |
+| Framing | **Not started** | `thoughts` (target: memory_type = 'framing') | Cold-start elimination |
+| Personalization | **Future** | Separate user parameter store | Not in `thoughts` table |
+
+The `memory_type` column currently supports: `intent`, `reason`, `constraint`, `preference`, `fact`. Target additions: `procedure`, `framing`, `experience`. These require a schema migration to extend the enum.
+
+**Naming clarification** — "Reason" is overloaded in these docs:
+- `memory_type = 'reason'` — a stored semantic thought categorized as a reason/rationale
+- `ThoughtReasoning` — a structured record (alternatives, criteria, constraints, outcome) attached to any thought
+- `thought_artifacts` — artifact-linked reason lookup ("why does this file exist?")
+These are three different entities. `ReasonMemory` = semantic thought, `ThoughtReasoning` = structured rationale, `ArtifactReason` = artifact-linked lookup.
+
 ### 1. Working Memory (Context Window)
 
 **What it is**: The current conversation context and active task state.
@@ -61,11 +83,16 @@ Seven memory types mapped from human cognition to AI implementation. Each type h
 - Visibility levels: private, channel, team, project, organization
 - Sensitivity tiers: normal, sensitive, restricted
 - `memory_type` column: intent, reason, constraint, preference, fact
-- `thought_artifacts` for artifact-linked reasons (file paths, components, endpoints)
+- `thought_artifacts` for artifact-linked reasons — **designed but not yet in migrations**. The table schema exists in docs but has not been created in the database.
 - `thought_links` for supersession chains (supersedes, derived_from, contradicts, supports, relates_to)
 - Metadata extraction via LLM (`gpt-4o-mini`)
 
-**What we need**: The existing system covers semantic memory comprehensively. No new work required here. See `packages/memory/src/search.ts` and `packages/memory/src/capture.ts`.
+**What we need**: 
+- Create `thought_artifacts` table and migration
+- Implement artifact-referenced search
+- Add audience compatibility checks to search functions (see Security section)
+
+See `packages/memory/src/search.ts` and `packages/memory/src/capture.ts`.
 
 **Evaluation**: Precision@K, hallucination reduction, correct information retrieval rate.
 
@@ -120,16 +147,29 @@ Seven memory types mapped from human cognition to AI implementation. Each type h
 
 ```json
 {
-  "situation": "User asked to debug failing API endpoint. Error was 500 on /api/users. Logs showed connection pool exhaustion.",
-  "action": "Identified connection leak in middleware. Added connection release in error handler. Restarted service.",
+  "situation": {
+    "summary": "User asked to debug failing API endpoint",
+    "task_type": "debugging",
+    "symptoms": ["HTTP 500 on /api/users", "connection pool exhaustion in logs"],
+    "artifacts": ["src/middleware/db-pool.ts", "api/src/routes/users.ts"],
+    "environment": ["postgres", "api worker", "production"],
+    "constraints": ["production incident — no downtime allowed"],
+    "initial_hypotheses": ["connection leak", "query timeout"]
+  },
+  "action": {
+    "summary": "Identified connection leak in middleware, added connection release in error handler",
+    "key_steps": ["Read logs", "Checked pg_stat_activity", "Grepped for pool.connect", "Found missing release in error path"],
+    "tools_used": ["Bash", "FileRead", "Grep", "FileWrite"]
+  },
   "outcome": "successful",
   "duration_seconds": 340,
-  "tools_used": ["Bash", "FileRead", "Grep", "FileWrite"],
-  "embedding": [...]
+  "lessons": "Always check error handlers for resource cleanup — happy path may work but error path leaks"
 }
 ```
 
 **Priority**: Medium. The existing reasoning + outcome tracking covers 70% of this. The remaining gap is the compressed situation embedding for "have I seen this before?" retrieval. This can be built on top of the existing `thoughts` table with `memory_type = 'experience'`.
+
+**Situation embedding**: The `situation.summary` is embedded for primary retrieval. Additionally, structured fields (`task_type`, `symptoms`, `environment`) are rendered as text and concatenated for a richer embedding that captures structural similarity, not just semantic similarity. This is what differentiates episodic from semantic memory — similar situations share structure, not just topic.
 
 **Evaluation**: Did similar situations retrieve relevant experiences? Did it improve decision-making speed?
 
@@ -189,7 +229,27 @@ Currently, when an agent figures out how to navigate a codebase, deploy a servic
   "last_used_at": "2026-04-09T...",
   "average_duration_seconds": 280,
   "domain": "backend-debugging",
-  "project_id": "..."
+  "project_id": "...",
+  "preconditions": [
+    "Service is running in Docker",
+    "Agent has Bash access",
+    "PostgreSQL is the database"
+  ],
+  "failure_modes": [
+    "Connection pool not managed by middleware (direct connections)",
+    "Error is not connection-related despite similar symptoms"
+  ],
+  "do_not_use_when": [
+    "Database is not PostgreSQL",
+    "Service runs without connection pooling"
+  ],
+  "verification": {
+    "method": "Check pg_stat_activity count returns to baseline",
+    "tool": "Bash"
+  },
+  "source_run_id": "uuid-of-originating-run",
+  "supporting_tool_call_ids": ["uuid-1", "uuid-2"],
+  "review_status": "unreviewed"
 }
 ```
 
@@ -215,6 +275,15 @@ Currently, when an agent figures out how to navigate a codebase, deploy a servic
 - Steps can be refined based on variations across uses
 - Superseded by newer procedures via `thought_links` (SUPERSEDES relation)
 - Pruned if confidence drops below threshold after N uses
+
+**Generalization challenge**: The hardest part of procedural capture is abstraction. Raw tool calls contain project-specific values (`docker logs my-service-abc`) that must be generalized (`docker logs {service_name}`) without losing critical context. The extraction prompt must:
+1. Identify values that are instance-specific vs. pattern-essential
+2. Parameterize instance-specific values with descriptive names
+3. Preserve environmental constraints (OS, database type, framework)
+4. Include verification steps (how to confirm the procedure worked)
+5. Attach contraindications (when NOT to use this procedure)
+
+A one-off success should NOT become a reusable procedure. Minimum threshold: the procedure must succeed at least twice across different runs before it is considered reliable. Until then, `review_status = 'unreviewed'` and `confidence` starts at 0.3.
 
 **Evaluation**:
 - Task success rate (with vs. without procedural memory)
@@ -297,10 +366,23 @@ Currently, when an agent figures out how to navigate a codebase, deploy a servic
 3. Subsequent runs: validate and refine framing (files may have moved, patterns may have changed)
 4. Staleness check: if `last_validated_at` is older than N days, re-validate entry points before trusting
 
-**Validation**: Framing memories contain file paths and patterns that can go stale. Before injecting a framing memory, the system should verify:
-- Referenced files still exist
-- Key patterns still hold (quick grep/read check)
-- If validation fails, mark framing as stale and trigger re-exploration
+**Validation**: Framing memories can become harmful even when all referenced files still exist — entry points may no longer own the behavior, patterns may be deprecated, navigation strategies may optimize for old architecture.
+
+Validation levels:
+1. **Existence check** (fast, always): Do referenced files exist?
+2. **Pattern check** (moderate, on load): Do key patterns still appear via targeted grep?
+3. **Recency check** (moderate, on load): Have the referenced files changed since `last_validated_at`? If yes, the framing may be stale.
+4. **Structural check** (expensive, periodic): Run a lightweight exploration of the domain and compare against the framing. Major divergence triggers re-generation.
+
+Framing metadata must include:
+- `validated_against_commit` — git SHA at last validation
+- `last_validated_at` — timestamp
+- `validation_method` — which level was last applied
+- `staleness_score` — 0.0 (fresh) to 1.0 (likely stale), computed from file change rate and time since validation
+- `invalidated_by` — if manually or automatically invalidated, who/what
+
+If `staleness_score > 0.7`, the framing is injected with a warning: "This framing may be outdated. Verify entry points before relying on them."
+If `staleness_score > 0.9`, the framing is not injected and a re-exploration is triggered.
 
 **Evaluation**:
 - Time to first useful action (with vs. without framing)
@@ -354,6 +436,15 @@ Output parameters:
 
 **Capture**: Background analysis of message patterns over time. No single-message extraction. Updated after every N interactions or significant behavior shift.
 
+**Consent and Risk**: Personalization involves behavioral profiling, which is sensitive:
+- Users must be informed that communication style adaptation is active (settings page, not buried in ToS)
+- Users can opt out entirely — disable personalization for their account
+- Users can view their personalization model and correct it
+- `stress_indicators` are particularly sensitive — they must NEVER be surfaced to managers, used in performance reviews, or shared outside the agent-user interaction
+- Personalization affects response STYLE only, never response CONTENT or decision-making
+- Retention: personalization models are deleted when a user leaves the organization
+- Audit: every personalization model update is logged with the triggering signal
+
 **Evaluation**:
 - Reduced corrections from user
 - Reduced friction (fewer "that's not what I meant" cycles)
@@ -381,7 +472,10 @@ Scoping applied at query time:
 - Organization hard boundary (required)
 - Visibility level check (private/channel/team/project/org)
 - Sensitivity tier filtering
-- Audience compatibility (channel membership superset check)
+- Audience compatibility: A memory can be surfaced into output audience B ONLY IF every member of B was a member of the source audience A. The rule is `Audience(current_channel) ⊆ Audience(source_channel)` — the current audience must be equal to or a subset of the original audience. Surfacing a memory into a LARGER audience is information leakage and is blocked. Surfacing into a SMALLER audience (subset) is safe.
+  - Example: A memory from a 5-person #core-team channel CAN be surfaced in a 3-person #core-leads channel if all 3 leads are members of #core-team
+  - Example: A memory from a 3-person #core-leads channel CANNOT be surfaced in a 10-person #engineering channel — 7 members of #engineering were not in the original audience
+  - Exception: An explicit declassification record can override this check (see Declassification below)
 
 ### Retrieval by Memory Type
 
@@ -435,10 +529,29 @@ Agent starts task
 - Hard negative: user-flagged harmful
 
 **Phase 3 (planned — Phase 5 of pipeline design)**: Learned reranker
-- Cross-encoder model trained on accumulated signals
-- Input: (query_embedding, memory_embedding, memory_type, channel_context, similarity_score)
-- Output: relevance probability
-- Deployed between initial search and context injection
+
+Two architecture options (decision deferred until sufficient training data):
+
+**Option A: Cross-encoder** (higher quality, higher latency)
+- Input: query TEXT + candidate memory TEXT + metadata (type, age, confidence, scope)
+- Model: Fine-tuned small cross-encoder (e.g., MiniLM-L6 or similar, ~25M params)
+- Output: relevance probability 0.0–1.0
+- Latency: ~10ms per candidate, applied to top-20 candidates from initial search
+- Training: Positive pairs from `positive_explicit` + `positive_cited` signals. Negatives from `negative_harmful` + random sampling. Minimum 10K labeled pairs before training.
+
+**Option B: Feature ranker** (lower quality, lower latency, simpler)
+- Input: Numeric features derived from retrieval (similarity_score, recency, access_count, confidence, memory_type, scope_match)
+- Model: LambdaMART or XGBoost
+- Output: relevance score
+- Latency: <1ms per candidate
+- Training: Same signal data, feature-engineered
+
+**Requirements before either option:**
+- Minimum 10K recall events with labels (estimated: ~3 months of production usage)
+- Offline evaluation set: 500 hand-labeled query-memory pairs
+- Debiasing: Adjust for position bias (memories injected first are more likely referenced)
+- Cold-start: Until the reranker is trained, use heuristic ranking (current Phase 1)
+- A/B framework: Compare reranker vs heuristic on held-out traffic
 
 ---
 
@@ -499,6 +612,18 @@ After each agent run, inject a hidden evaluation prompt that produces structured
 }
 ```
 
+### Self-Eval Output Schema (Enforceable)
+
+The self-eval output must be validated against a Zod schema. Invalid output is discarded, not stored.
+
+Validation rules:
+- `used_memories[].thought_id` must match actual `thought_recalls` rows from this run (rejects hallucinated IDs)
+- `impact` must be one of: `high`, `medium`, `low`, `none`
+- `missing_memories[].suggested_type` must be one of: `procedure`, `framing`, `semantic`, `experience`
+- `confidence` must be 0.0–1.0
+- `task_success` is informational only — the authoritative success signal comes from the critic/evaluation loop
+- If the model returns invalid JSON or fails validation, the self-eval is skipped for this run (logged, not retried)
+
 ### Self-Eval Flow
 
 ```
@@ -535,9 +660,32 @@ The self-eval LLM call adds cost. Mitigations:
 - Batch self-evals for tasks within the same session
 - Cap self-eval prompt size — summarize tool call history, don't include raw output
 
+### Cost Envelope
+
+Assumptions for budgeting:
+- Average tasks per org per day: 100
+- Self-eval eligibility (> N tool calls): ~40% of tasks
+- Self-eval model: gpt-4o-mini (~$0.15/1M input, ~$0.60/1M output)
+- Average self-eval input: ~2000 tokens (summarized history + recalled memories)
+- Average self-eval output: ~500 tokens
+- Cost per self-eval: ~$0.0006
+- Daily cost per org (40 evals): ~$0.024
+- Monthly cost per org: ~$0.72
+
+**Degradation mode**: When monthly self-eval budget is exhausted:
+- Stop running self-eval on `background` priority tasks
+- Continue on `critical` and `normal` tasks only
+- Log skipped evaluations for later batch processing
+
+**Sampling policy by role**:
+- `builder` agents: always evaluate (highest value)
+- `researcher` agents: evaluate 50% (moderate value)
+- `assistant` agents: evaluate 25% (lower value)
+- `watcher` agents: never evaluate (monitoring only)
+
 ### What This Enables
 
-The self-eval is the **secret sauce** that makes the system self-improving:
+The self-eval is the **growth engine** — but it is model output, not ground truth. Self-eval signals are WEAK until validated by outcomes (task success, user feedback, procedure reuse). Treat self-eval as a drafting assistant, not an oracle:
 - **Procedural memory grows organically** — every successful multi-step task can become a procedure
 - **Framing memory stays current** — entry points and patterns are validated and updated
 - **Retrieval quality improves** — missing memory signals identify what to capture next
@@ -552,7 +700,11 @@ The self-eval is the **secret sauce** that makes the system self-improving:
 
 1. **User explicit signal** (strongest): User flags memory as helpful/irrelevant/harmful via UI thumbs up/down
 2. **Agent self-eval** (strong): Structured eval after task completion (see above)
-3. **Reference tracking** (moderate): `was_referenced` — did the agent cite the memory in its response?
+3. **Reference tracking** (moderate, multi-source):
+   - `referenced_by_phrase`: String/phrase match between memory content and response (current implementation — noisy)
+   - `referenced_by_self_report`: Agent's self-eval explicitly lists the memory as used (stronger but model-dependent)
+   - `reference_confidence`: Composite score (0.0–1.0) combining both signals
+   - Known limitations: Phrase matching has false positives (common domain language) and false negatives (paraphrasing). Self-report has hallucination risk. Neither alone is reliable training signal.
 4. **Injection tracking** (weak): `was_injected` — was the memory put into context?
 5. **Session outcome** (contextual): Did the task succeed or fail? All recalled memories get associated signal.
 6. **Access patterns** (ambient): `access_count` and `last_accessed_at` — frequently accessed memories are likely useful
@@ -575,16 +727,57 @@ Signal sources
 ### Signal Aggregation Rules
 
 ```
-For each recall:
-  if was_referenced AND (user_signal = 'helpful' OR user_signal IS NULL):
-    signal = 'positive'
-  if NOT was_referenced AND NOT was_injected:
-    signal = 'negative_ignored'  (system filtered it out — may be correct)
-  if was_injected AND NOT was_referenced:
-    signal = 'negative_unhelpful'  (agent had it, didn't use it)
+For each recall event:
+
+  # Strong positive signals
+  if user_signal = 'helpful':
+    signal = 'positive_explicit' (confidence: 0.95)
+  if referenced_by_self_report AND referenced_by_phrase:
+    signal = 'positive_cited' (confidence: 0.85)
+  if was_referenced AND task_success:
+    signal = 'positive_outcome_correlated' (confidence: 0.6)
+
+  # Neutral signals (DO NOT use as training negatives)
+  if was_injected AND NOT was_referenced AND another_memory_covers_same_topic:
+    signal = 'neutral_redundant' (confidence: 0.3)
+  if was_injected AND NOT was_referenced AND prompt_budget_exceeded:
+    signal = 'neutral_budget' (confidence: 0.2)
+  if NOT was_injected:
+    signal = 'neutral_filtered' (confidence: 0.1) — system excluded it, not agent
+
+  # Negative signals
   if user_signal = 'harmful':
-    signal = 'negative_harmful'  (actively wrong/misleading)
+    signal = 'negative_harmful' (confidence: 0.95)
+  if was_injected AND NOT was_referenced AND task_failed:
+    signal = 'negative_unhelpful' (confidence: 0.5)
+  if scope_mismatch_detected:
+    signal = 'negative_wrong_scope' (confidence: 0.9)
+  if memory_superseded_since_retrieval:
+    signal = 'negative_stale' (confidence: 0.8)
 ```
+
+Key principle: **"Unused" is NOT the same as "irrelevant."** Position bias, prompt budget, redundancy, and paraphrasing all cause useful memories to appear unused. Only negative signals with strong evidence should be used for training.
+
+Training data rows include: `label`, `label_confidence`, `label_source`, `exposure_rank` (position in prompt), `injected_position`, `prompt_tokens_visible`, `verifier_version`.
+
+### Adversarial Feedback Model
+
+The feedback loop assumes honest signals. In a multi-tenant system, that assumption fails.
+
+**Attack paths:**
+- User repeatedly flags poisoned memory as helpful → inflates importance
+- User crafts prompts to trigger phrase matching on specific memories → fabricates positive signal
+- Agent self-eval hallucinates a procedure from one success → bad procedure enters the system
+- Compromised channel creates high-confidence procedures shared across agents → lateral contamination
+- Negative feedback weaponized to suppress true but inconvenient memories
+
+**Mitigations:**
+- **Rate limiting**: Max N feedback signals per user per day per memory
+- **Anomaly detection**: Flag memories whose signal pattern deviates significantly from similar memories
+- **Actor trust**: Weight signals by actor history (new users / recently created agents have lower weight)
+- **Label provenance**: Every training label tracks source (user, self-eval, phrase_match) — tainted sources can be excluded
+- **Promotion gates**: Procedural memories need ≥2 independent successes before promotion eligibility. A single run, no matter how confident, is insufficient.
+- **Moderation queue**: Memories flagged for org-wide promotion go through human review
 
 ### What Feedback Drives
 
@@ -628,9 +821,97 @@ For each recall:
 
 ### Volume Policy
 
-Capture everything at ingestion. Dedup prevents redundancy. Storage is cheap. A memory nobody searches for costs nothing. A missing memory when someone needs it costs days of re-discovery.
+**Ingestion policy**: Process every eligible conversation turn through the extraction classifier. The classifier decides what is worth persisting — not everything is.
 
-Pruning happens based on feedback signals, not upfront filtering.
+**Persistence filters**: Only store compressed, scoped, typed memory records that pass:
+1. Novelty check (SHA-256 dedup against existing content)
+2. Type classification (must map to a known memory_type)
+3. Minimum signal threshold (corrections, decisions, and procedures always pass; trivial acknowledgments do not)
+4. Scope assignment (must have a valid org + visibility level)
+
+**Cost reality**: "Storage is cheap" is misleading. Each stored memory costs:
+- Embedding generation (~$0.00002 per 1K tokens via text-embedding-3-small)
+- Vector storage + HNSW index maintenance
+- Lexical index (GIN) growth
+- Backup size increase
+- Search candidate noise (more memories = more false positives in retrieval)
+- Privacy exposure surface
+- Recall ledger growth (every search that considers this memory logs a row)
+
+Pruning and decay (see Memory Lifecycle below) are essential, not optional.
+
+---
+
+## Memory Lifecycle
+
+Memories are not permanent. They have a lifecycle:
+
+```
+created → active → stale → deprecated → archived → deleted
+                     │
+                     └→ superseded (via thought_links SUPERSEDES)
+```
+
+### Decay Rules
+
+| Memory Type | Decay Trigger | Action |
+|---|---|---|
+| Semantic | No access in 90 days + confidence < 0.3 | Mark `stale` |
+| Procedural | 3 consecutive failures | Mark `deprecated`, flag for review |
+| Framing | `staleness_score > 0.9` | Mark `stale`, trigger re-exploration |
+| Episodic | No retrieval in 180 days | Mark `stale` |
+| Reasoning | Linked thought is deprecated/deleted | Mark `stale` |
+
+### Garbage Collection
+
+A background job runs daily:
+1. `stale` memories with no access for 30 additional days → `archived`
+2. `archived` memories with no references (no thought_links, no skill source) → soft `deleted`
+3. `deleted` memories are physically removed after 90-day grace period (for regulatory holds)
+4. `thought_recalls` rows older than 90 days are aggregated into `recall_training_signals` then purged
+
+### Conflict Resolution
+
+When the system detects contradictory memories (via `thought_links` CONTRADICTS relation):
+1. Both memories are retrieved with conflict context: "Note: this memory contradicts [other memory]"
+2. The agent must acknowledge the conflict in its response
+3. Resolution options:
+   - Newer memory supersedes older (automatic if confidence difference > 0.3)
+   - Human curator resolves (flagged in curation queue)
+   - Both retained with conflict marker (for genuinely contested knowledge)
+4. An agent CANNOT silently store a contradictory memory and outrank a true one — the CONTRADICTS link triggers review.
+
+### Memory Inheritance (Agent Cloning/Forking)
+
+When a child agent is spawned or an agent is cloned:
+- **Inherited-read**: Child can read parent's project/org-scoped memories (no copy)
+- **Copied**: Framing memories for the relevant domain are copied to the child's scope
+- **Excluded**: Parent's private/channel-scoped memories are NOT visible to the child
+- **Promoted**: If a child discovers a procedure, it's captured in the child's scope. Promotion to parent scope requires review.
+
+### Declassification
+
+Memory-derived content can escape its original audience through summaries, agent configs, skills, and procedures. Every scope widening is a declassification event:
+
+```
+declassification_events
+  id               UUID PK
+  source_scope     JSONB — { type: "channel", id: "uuid" }
+  target_scope     JSONB — { type: "project", id: "uuid" }
+  actor_id         UUID — user or agent who authorized
+  authority         TEXT — "org_admin", "channel_owner", "automated_promotion"
+  source_memory_ids UUID[] — memories being declassified
+  derived_artifact_id UUID — skill, agent config, or summary that received the content
+  justification    TEXT
+  approved_at      TIMESTAMPTZ
+  created_at       TIMESTAMPTZ
+```
+
+Rules:
+- Procedural memory → skill promotion = declassification (channel scope → org scope)
+- Memory content embedded in agent system prompt = declassification
+- Memory-informed summary shared to wider audience = declassification
+- Each event requires explicit authority and creates an audit record
 
 ---
 
@@ -677,6 +958,17 @@ In Nessie's multi-agent orchestration:
 - **Procedural memories** are shared across agents of the same role — a procedure discovered by one builder agent benefits all builder agents
 - **Framing memories** are project-scoped — all agents working in the same project share domain knowledge
 - **Personalization** is per-user, not per-agent — the user's communication style is consistent regardless of which agent they talk to
+
+### Agent State Isolation
+
+Query-time memory filtering is necessary but insufficient. An agent that reads confidential memories in one channel can carry that knowledge into a different channel's run via its conversation summaries or reflection memories.
+
+**Isolation rules:**
+- Every run's loaded memories, tool results, and generated reflections are tagged with `output_audience_id` (the channel/thread where results will be visible)
+- Summaries and reflections generated during a run inherit the run's `output_audience_id`
+- A subsequent run with a different `output_audience_id` cannot load memories, summaries, or reflections from the previous run UNLESS audience compatibility is satisfied
+- Agents are stateless between runs by default — no hidden state carries over. All persistent state is in the `thoughts` table (subject to scoping) or the `messages` table (subject to thread/channel access)
+- If an agent needs cross-channel context, it must explicitly recall memories (subject to audience compatibility) rather than relying on conversational carryover
 
 ---
 
@@ -757,7 +1049,7 @@ After the core memory types are working and the extraction pipeline is proven. T
 
 ### What We Don't Have (Gaps)
 
-| Component | Priority | Status |
+| Component | Priority | Implementation Status |
 |---|---|---|
 | **Procedural memory** (how-to steps) | HIGH | Not started |
 | **Framing memory** (cold-start elimination) | HIGH | Not started |
@@ -767,6 +1059,13 @@ After the core memory types are working and the extraction pipeline is proven. T
 | Recall scoping (audience compatibility at query time) | MEDIUM | Designed, not implemented |
 | Signal → training data pipeline | LOW | Designed (Phase 4), not started |
 | Learned reranker | LOW | Designed (Phase 5), not started |
+| **Memory garbage collection** (decay, pruning) | HIGH | Not started — memories grow unbounded |
+| **Conflict resolution** (contradicting memories) | MEDIUM | CONTRADICTS link exists, resolution logic missing |
+| **Declassification model** | MEDIUM | Not started — scope widening unaudited |
+| **Source attribution** (`thought_sources` table) | MEDIUM | Designed in pipeline doc, not in implementation phases |
+| **Human memory curation** (review, correct, curate) | MEDIUM | No UI or API for memory correction |
+| **Evaluation benchmarks** (regression test sets) | MEDIUM | No test sets for retrieval quality |
+| **Agent state isolation** (cross-channel) | HIGH | Not started — agents can leak context across channels |
 | **Personalization memory** (user model) | FUTURE | Not started |
 | **Local-first filtering** (edge pre-filter) | FUTURE | Not started |
 
@@ -808,6 +1107,10 @@ After the core memory types are working and the extraction pipeline is proven. T
    - Cheap model only
    - Summarized input (not full tool call output)
    - Batch within session
+8. Add source attribution:
+   - Create `thought_sources` table
+   - Link every extracted memory to source messages, tool calls, or files
+   - Required for debugging bad memories and supporting human correction
 
 ### Phase C: Episodic Memory
 
@@ -824,6 +1127,17 @@ After the core memory types are working and the extraction pipeline is proven. T
 1. Create `thought_artifacts` table
 2. Implement artifact-referenced search
 3. Add audience compatibility checks to `match_thoughts_scoped()`
+4. Implement audience compatibility with CORRECT directionality: `Audience(current) ⊆ Audience(source)`
+5. Add `output_audience_id` to runs and evaluations for agent state isolation
+
+### Phase D.5: Memory Lifecycle
+
+1. Implement decay rules by memory type
+2. Add garbage collection background job
+3. Add conflict detection and resolution logic
+4. Add declassification event tracking
+5. Add human curation API (view, correct, approve, reject memories)
+6. Create initial evaluation benchmark sets
 
 ### Phase E: Personalization (Future)
 
@@ -849,9 +1163,9 @@ After the core memory types are working and the extraction pipeline is proven. T
 
 4. **Framing eliminates cold starts.** Every dollar spent on exploration that could have been skipped is waste.
 
-5. **Self-eval is the growth engine.** Without active feedback, the system doesn't improve. Passive tracking (was_referenced) is necessary but insufficient.
+5. **Self-eval is the growth engine, not an oracle.** Self-eval produces hypotheses about what helped and what's missing. These hypotheses are WEAK until validated by outcomes, user feedback, or repeated success. Treat self-eval output as draft intelligence, not ground truth.
 
-6. **Feedback loops close themselves.** No user forms. The system evaluates itself, captures what's missing, and improves retrieval. User signals are a bonus, not a requirement.
+6. **Feedback loops are multi-signal.** The system evaluates itself AND accepts human correction. Auto-captured memories below confidence threshold are provisional — they enter a curation queue, not the active memory pool. User signals are the strongest signal source. Self-eval is the most scalable. Both are needed.
 
 7. **Multi-tenant boundaries are non-negotiable.** Every query includes `organization_id`. No cross-org memory access. Ever.
 
@@ -859,4 +1173,4 @@ After the core memory types are working and the extraction pipeline is proven. T
 
 9. **Local-first saves cost at scale.** Filter early on the device, process on the server only when there's signal worth extracting. But this is an optimization, not a requirement.
 
-10. **One table, many types.** All memory types live in the `thoughts` table with type discrimination. No parallel infrastructure. The unified model with `memory_type` + `metadata` JSONB is simpler and more maintainable than separate tables per type.
+10. **One table, many types — with typed side tables where needed.** All memory types live in the `thoughts` table with `memory_type` discrimination. However, complex structured data (procedural steps, framing entry points, episodic situation triples) are stored in `metadata` JSONB with enforced schemas. If query patterns diverge significantly (e.g., procedural step execution tracking), typed side tables may be introduced. The unified model is the default, not a dogma.
