@@ -365,20 +365,36 @@ const filterAuthorizedScopes = async (
   return authorizedScopes
 }
 
-const buildLocalSession = (userId: string, roles: string[]) =>
-  issueSessionToken(
+const buildLocalSession = async (userId: string, roles: string[]) => {
+  // Resolve user's actual memberships from DB instead of hardcoded bootstrap IDs
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      organizationMembers: { orderBy: { createdAt: 'asc' }, select: { organizationId: true, role: true } },
+      projectMembers: { orderBy: { createdAt: 'asc' }, select: { projectId: true } },
+      teamMembers: { orderBy: { createdAt: 'asc' }, select: { teamId: true } },
+    },
+  })
+
+  const orgId = user?.organizationMembers[0]?.organizationId ?? DEFAULT_BOOTSTRAP_RECORD_IDS.organizationId
+  const projId = user?.projectMembers[0]?.projectId ?? DEFAULT_BOOTSTRAP_RECORD_IDS.projectId
+  const teamId = user?.teamMembers[0]?.teamId ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId
+  const resolvedRoles = roles.length > 0 ? roles : [user?.organizationMembers[0]?.role ?? 'member']
+
+  return issueSessionToken(
     {
       sub: userId,
-      org: '00000000-0000-4000-8000-000000000001',
-      proj: '00000000-0000-4000-8000-000000000002',
-      team: '00000000-0000-4000-8000-000000000003',
-      roles,
+      org: orgId,
+      proj: projId,
+      team: teamId,
+      roles: resolvedRoles,
       providerId: LOCAL_AUTH_PROVIDER_ID,
       providerType: DEFAULT_LOCAL_PROVIDER_TYPE,
     },
     authSecret,
     config.auth.tokenTtlSeconds,
   )
+}
 
 const buildSessionForUser = (input: {
   organizationId: string
@@ -571,7 +587,7 @@ export const buildApp = async () => {
     await seedDefaultPolicies(prisma, result.organizationId, result.user.id)
     bootstrapTokenState = null
 
-    const session = buildLocalSession(result.user.id, ['owner'])
+    const session = await buildLocalSession(result.user.id, ['owner'])
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue bootstrap session')
@@ -618,15 +634,35 @@ export const buildApp = async () => {
 
         let sessionUser = await loadSessionUserByEmail(prisma, identity.email)
         if (!sessionUser) {
+          // Resolve the default org/project/team from DB for SSO auto-provisioning
+          const defaultOrg = await prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } })
+          const defaultProject = defaultOrg
+            ? await prisma.project.findFirst({ where: { organizationId: defaultOrg.id }, orderBy: { createdAt: 'asc' } })
+            : null
+          const defaultTeam = defaultProject
+            ? await prisma.team.findFirst({ where: { projectId: defaultProject.id }, orderBy: { createdAt: 'asc' } })
+            : null
+          const defaultChannel = defaultOrg
+            ? await prisma.channel.findFirst({
+                where: { organizationId: defaultOrg.id, visibility: 'public' },
+                orderBy: { createdAt: 'asc' },
+              })
+            : null
+
+          if (!defaultOrg || !defaultProject || !defaultTeam) {
+            sendApiError(reply, 500, 'NO_DEFAULT_ORG', 'No organization configured for SSO provisioning')
+            return reply
+          }
+
           await createUserForOrganization(prisma, {
             avatarUrl: identity.avatarUrl,
-            channelIds: [DEFAULT_BOOTSTRAP_RECORD_IDS.channelId],
+            channelIds: defaultChannel ? [defaultChannel.id] : [],
             displayName: identity.displayName,
             email: identity.email,
-            organizationId: DEFAULT_BOOTSTRAP_RECORD_IDS.organizationId,
-            projectId: DEFAULT_BOOTSTRAP_RECORD_IDS.projectId,
+            organizationId: defaultOrg.id,
+            projectId: defaultProject.id,
             role: 'member',
-            teamId: DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
+            teamId: defaultTeam.id,
           })
           sessionUser = await loadSessionUserByEmail(prisma, identity.email)
         }
@@ -693,7 +729,7 @@ export const buildApp = async () => {
     }
 
     const sessionRoles = [primaryOrganizationMember.role]
-    const session = buildLocalSession(user.id, sessionRoles)
+    const session = await buildLocalSession(user.id, sessionRoles)
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')
@@ -733,7 +769,7 @@ export const buildApp = async () => {
     }
 
     const sessionRoles = [organizationMember.role]
-    const session = buildLocalSession(user.id, sessionRoles)
+    const session = await buildLocalSession(user.id, sessionRoles)
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue dev session')
@@ -784,6 +820,11 @@ export const buildApp = async () => {
       teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? '00000000-0000-4000-8000-000000000003',
       userId: actorContext.actor.actorId,
     })
+
+    if (!channel) {
+      sendApiError(reply, 400, 'HIERARCHY_VIOLATION', 'Team does not belong to this organization')
+      return reply
+    }
 
     return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(channel)))
   })
@@ -1250,7 +1291,7 @@ export const buildApp = async () => {
           runId: parseRunId(run.id),
           taskId: parseTaskId(task.id),
           threadId: parseThreadId(run.threadId),
-        })
+        }, `run:${run.id}`)
       }
 
       if (decision.action === 'acknowledge') {

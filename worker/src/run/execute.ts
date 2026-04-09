@@ -665,6 +665,16 @@ export const executeRunJob = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
 ): Promise<void> => {
+  // Idempotency guard: skip if this run is already completed or failed
+  const existingRun = await deps.prisma.run.findUnique({
+    where: { id: payload.runId },
+    select: { status: true, finishedAt: true },
+  })
+  if (existingRun && (existingRun.status === 'completed' || existingRun.status === 'failed' || existingRun.status === 'cancelled')) {
+    console.log(`[worker] Skipping already-${existingRun.status} run ${payload.runId}`)
+    return
+  }
+
   const context = await loadRunContext(deps.prisma, payload)
   if (!context) {
     return

@@ -28,21 +28,18 @@ const sessionUserInclude = {
       organizationId: true,
       role: true,
     },
-    take: 1,
   },
   projectMembers: {
     orderBy: { createdAt: 'asc' },
     select: {
       projectId: true,
     },
-    take: 1,
   },
   teamMembers: {
     orderBy: { createdAt: 'asc' },
     select: {
       teamId: true,
     },
-    take: 1,
   },
 } satisfies Prisma.UserInclude
 

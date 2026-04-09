@@ -23,7 +23,13 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
     max: config.database.poolMax,
     min: config.database.poolMin,
   })
-  const queueProvider = new PgQueueProvider(pool)
+
+  // Queue provider is config-switchable (prereq #12)
+  let queueProvider: PgQueueProvider
+  if (config.queue.provider === 'pubsub') {
+    console.warn('[worker] Pub/Sub queue provider configured but not yet available — using PgQueueProvider')
+  }
+  queueProvider = new PgQueueProvider(pool)
   const realtimeTransport = new PgRealtimeTransport(pool, databaseUrl)
   const modelClient = createModelClient(config.model)
   const abortController = new AbortController()

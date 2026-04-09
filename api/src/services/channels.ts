@@ -52,9 +52,10 @@ export const listChannelsForUser = async (
   const channels = await prisma.channel.findMany({
     where: {
       organizationId,
-      members: {
-        some: { userId },
-      },
+      OR: [
+        { visibility: 'public' },
+        { members: { some: { userId } } },
+      ],
     },
     orderBy: { createdAt: 'asc' },
   })
@@ -84,6 +85,19 @@ export const removeMemberFromChannel = async (
   })
 }
 
+export const validateTenantHierarchy = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  teamId: string,
+): Promise<boolean> => {
+  // Verify team belongs to a project that belongs to the organization
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    include: { project: { select: { organizationId: true } } },
+  })
+  return team?.project?.organizationId === organizationId
+}
+
 export const createChannelForUser = async (
   prisma: PrismaClient,
   input: {
@@ -93,7 +107,12 @@ export const createChannelForUser = async (
     userId: string
     visibility: 'public' | 'protected' | 'private'
   },
-): Promise<ChannelRecord> => {
+): Promise<ChannelRecord | null> => {
+  // Enforce tenant hierarchy: team's project must belong to the same org
+  if (!(await validateTenantHierarchy(prisma, input.organizationId, input.teamId))) {
+    return null
+  }
+
   const channel = await prisma.channel.create({
     data: {
       label: input.label,

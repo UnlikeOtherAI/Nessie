@@ -527,6 +527,7 @@ model QueueJob {
   completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
   errorMessage   String?   @map("error_message")
 
+  @@unique([idempotencyKey])
   @@map("queue_jobs")
 }
 
