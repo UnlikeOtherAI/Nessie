@@ -10,9 +10,9 @@ Related documents:
 - [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) — external identity, VOIP, email, WhatsApp
 - [conversation-intelligence-platform.md § 10](conversation-intelligence-platform.md#10-reference-plugin-implementation--twilio-voice) — Twilio voice connector
 - [conversation-intelligence-platform.md](conversation-intelligence-platform.md) — event-driven platform, plugin architecture, trigger system
-- [external-tool-integration.md](external-tool-integration.md) — MCP servers, custom API connectors, credential flow, context loading
+- [external-tool-integration.md](external-tool-integration.md) — MCP servers, API connectors, remote workers, temporary context, async tools
 - [skills.md](skills.md) — skills marketplace, security verification, community catalog
-- [marketplace.md](marketplace.md) — unified marketplace UI, library, agent capability assignment
+- [marketplace.md](marketplace.md) — unified marketplace, library, agent editor integration
 
 ---
 
@@ -50,6 +50,7 @@ agents
   provider         TEXT — LLM provider: "openai", "anthropic", etc.
   model            TEXT — LLM model: "gpt-4o", "claude-sonnet-4-5-20250514", etc.
   parent_agent_id  UUID FK → agents — parent in hierarchy (null = root agent)
+  active_config_version_id UUID FK → agent_config_versions (nullable) — null until first version is created
   organization_id  UUID — hard org boundary
   project_id       UUID — project scope
   team_id          UUID — team scope
@@ -120,11 +121,12 @@ Agent status represents the agent's **most recent activity**, not a global lock.
 ### Worker Health and Offline Detection
 
 The `offline` status requires active health monitoring:
-- Workers send heartbeats every 30 seconds to a `worker_heartbeats` table
-- If no heartbeat received for 90 seconds, the worker is marked `offline`
+- Workers send heartbeats every 60 seconds to a `worker_heartbeats` table
+- If no heartbeat received for 180 seconds (3 missed heartbeats), the worker is marked `offline`
 - All runs assigned to an offline worker are re-queued or marked `failed` based on idempotency
 - On reconnect, the worker re-registers and transitions to `idle`
 - Stale runs (status = `running` with no heartbeat for 2 minutes) are reaped by a background job
+- Remote workers (protocol: "remote" on `mcp_server_instances`) extend the base status set with: idle, busy, draining, offline, revoked. See external-tool-integration.md section 2 for the full `mcp_server_instances` status enum.
 
 ### Agent Hierarchy
 
@@ -592,6 +594,8 @@ skill_grants
   created_at  TIMESTAMPTZ
 ```
 
+`skill_grants` is the scope-level sharing table: it makes a skill visible within a channel, project, team, or organization. `skill_assignments` (defined in skills.md) handles direct per-agent and per-role assignment. For the full skill assignment model including per-agent config overrides, see skills.md section 1.
+
 When an agent searches for available skills, the query checks:
 1. Skills owned by the requesting user/agent (private, always visible)
 2. Skills granted to the current channel
@@ -765,6 +769,8 @@ Successful run
   └── 8. Ongoing: If source procedure later fails, flag linked skill for re-review
 ```
 
+The self-evaluation loop that captures procedural memory is specified in multi-agent-memory-system.md section Self-Evaluation Loop.
+
 Required for promotion:
 - Minimum 3 successful uses of the source procedure
 - Procedure confidence ≥ 0.7
@@ -791,6 +797,7 @@ agent_mailbox
   plan_id          UUID (optional — for plan-driven coordination)
   step_id          UUID (optional)
   correlation_id   UUID (for request/response pairing)
+  channel_id       UUID FK → channels (nullable — set for broadcast, null for direct)
 
   kind             TEXT — "request", "result", "event", "handoff"
   content          TEXT
@@ -1225,6 +1232,10 @@ Precise definitions. All documents must use these terms consistently.
 | **Run** | One complete execution cycle: perceive → think → act → evaluate. Creates tool calls, messages, and evaluations. | Task |
 | **Evaluation** | A post-run quality assessment. Types: policy_check, unit_test, critic_llm, self_eval, reflection, human_review. | Reflection |
 | **Reflection** | A specific evaluation type: root cause analysis of a failure with proposed fix. Stored and linked to procedural memories. | Evaluation |
+| **Capability** | Umbrella term for anything an agent can use: MCP servers, API connectors, skills, and workflow templates. See marketplace.md for the unified model. | Tool, Skill |
+| **ToolRegistryEntry** | A registered tool with typed schema, risk classification, and versioning. All MCP tools and API connector endpoints produce registry entries. See tool-registry-spec.md. | Tool |
+| **Temporary context** | Agent context section loaded on demand with external tool schemas. Agent controls lifecycle via `resolve_capability` (load) and `drop_context` (drop). See external-tool-integration.md section 5. | Memory |
+| **Resolver sub-agent** | Cheap disposable LLM that selects the right tools for the main agent's temporary context. See external-tool-integration.md section 5. | Orchestrator |
 
 ---
 
