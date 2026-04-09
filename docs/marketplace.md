@@ -1,26 +1,27 @@
 # Marketplace and Agent Library
 
-One marketplace. One library. MCP servers, skills, API connectors, and workflow templates are all capabilities that agents can use. The marketplace is where you discover them. The library is where you manage what's installed. The agent editor is where you assign them.
+One marketplace. One library. MCP servers, skills, and workflow templates are all capabilities that agents can use. The marketplace is where you discover them. The library is where you manage what's installed. The agent editor is where you assign them.
 
 This document describes the unified experience. The underlying systems are documented separately:
 - [skills.md](skills.md) — skill structure, security verification, community catalog
-- [external-tool-integration.md](external-tool-integration.md) — MCP servers, API connectors, credential flow, context loading
+- [external-tool-integration.md](external-tool-integration.md) — MCP servers, credential flow, context loading
 - [tool-registry-spec.md](tool-registry-spec.md) — tool registry, grants, execution enforcement
 
 ---
 
 ## 1. Unified Capability Model
 
-From the user's perspective, there are four types of capabilities — but they all behave the same way: you find them, add them to your library, and assign them to agents.
+From the user's perspective, there are three types of capabilities — and they all behave the same way: you find them, add them to your library, and assign them to agents.
 
 | Capability | What It Is | Source | Example |
 |---|---|---|---|
 | **MCP Server** | A service that exposes tools via the MCP protocol | Marketplace catalog or self-hosted URL | "PostgreSQL", "Stripe", "GitHub" |
-| **Skill** | A packaged behaviour — instructions + tools + plan | Platform, community, or org-created | "Deploy to Staging", "Generate Minutes" |
-| **API Connector** | A custom HTTP API with defined endpoints | Admin-built from OpenAPI spec or manual definition | "Acme CRM API", "Internal Billing" |
-| **Workflow Template** | An orchestrated pipeline: trigger + agents + skills + connectors | Platform, community, or org-created | "Sales Call Follow-Up", "Sprint Standup Pipeline" |
+| **Skill** | A packaged behaviour — instructions + tools + plan | Platform, community, or org-created | "Deploy to Staging", "Generate Minutes", "Acme CRM Integration" |
+| **Workflow Template** | An orchestrated pipeline: trigger + agents + skills | Platform, community, or org-created | "Sales Call Follow-Up", "Sprint Standup Pipeline" |
 
-MCP servers, skills, and API connectors produce entries in the tool registry that agents can discover, load, and use. Workflow templates are different — they are complete orchestrations that wire together triggers, agents, skills, and connectors into an end-to-end automated pipeline. Installing a workflow template sets up the full chain.
+MCP servers expose tools. Skills use tools to accomplish tasks. Workflow templates compose skills and agents into automated pipelines.
+
+**API Connectors** are not a separate system — they are a UI category in the marketplace. Under the hood, an API connector is a **library item that groups related tools together** with a credential binding. When you add a "Stripe API" connector, its 24 endpoints become 24 tools in the tool registry — same as MCP server tools. The execution engine handles the HTTP calls directly (no LLM overhead for the request itself). The agent just calls `stripe_create_customer` with arguments, same as any other tool. See [external-tool-integration.md § 3](external-tool-integration.md) for how the endpoint-to-tool mapping and credential injection work.
 
 ---
 
@@ -34,7 +35,7 @@ The marketplace is a single page with tabs. Every tab has the same layout: brows
 ┌──────────────────────────────────────────────────────────────┐
 │  MARKETPLACE                                                  │
 │                                                                │
-│  [ All ]  [ MCP Servers ]  [ Skills ]  [ API Connectors ]  [ Workflows ]     │
+│  [ All ]  [ MCP Servers ]  [ API Connectors ]  [ Skills ]  [ Workflows ]     │
 │                                                                │
 │  Search: [_________________________________] [Filter ▾] [Sort ▾]│
 │                                                                │
@@ -70,7 +71,7 @@ Every capability card shows the same structure regardless of type:
 ```
 ┌────────────────────────────────────┐
 │ [icon] Name                        │
-│ Type badge: MCP Server | Skill | API Connector | Workflow
+│ Type badge: MCP Server | API Connector | Skill | Workflow
 │                                    │
 │ One-line description               │
 │                                    │
@@ -141,7 +142,7 @@ The library is what the organization has installed. Marketplace items become lib
 ┌──────────────────────────────────────────────────────────────┐
 │  MY LIBRARY                                                   │
 │                                                                │
-│  [ All ]  [ MCP Servers ]  [ Skills ]  [ API Connectors ]  [ Workflows ]     │
+│  [ All ]  [ MCP Servers ]  [ API Connectors ]  [ Skills ]  [ Workflows ]     │
 │                                                                │
 │  Search: [_________________________________] [Filter ▾]        │
 │                                                                │
@@ -314,8 +315,11 @@ library_items
   organization_id  UUID FK → organizations
   
   -- What this is
-  item_type        TEXT — "mcp_server" | "skill" | "api_connector" | "workflow"
-  item_id          UUID — FK to mcp_server_instances, skills, api_connectors, or workflow_templates
+  item_type        TEXT — "mcp_server" | "api_connector" | "skill" | "workflow"
+  item_id          UUID — FK to mcp_server_instances, api_connectors, skills, or workflow_templates
+  -- NOTE: MCP servers and API connectors both produce tools in the tool registry.
+  -- API connectors are backed by endpoint-to-tool mappings (see external-tool-integration.md § 3),
+  -- not a separate connector system. They exist as a marketplace category for discoverability.
   
   -- Marketplace source
   catalog_ref      TEXT — marketplace catalog ID (null if org-created)
@@ -382,7 +386,7 @@ Marketplace catalog
   │
   ├── User clicks "Add to Library"
   │   → Creates: library_items row (status: pending_setup)
-  │   → Creates: underlying record (mcp_server_instances, skills, api_connectors, or workflow_templates)
+  │   → Creates: underlying record (mcp_server_instances, api_connectors, skills, or workflow_templates)
   │
   ├── Admin configures + approves
   │   → library_items status: active
@@ -407,7 +411,7 @@ Marketplace catalog
 
 ```
 GET /api/marketplace
-  ?type=mcp_server|skill|api_connector|workflow — filter by type
+  ?type=mcp_server|api_connector|skill|workflow — filter by type
   &category=devtools                        — filter by category
   &q=search+terms                           — full-text + semantic search
   &source=platform|community|org            — filter by source
@@ -458,8 +462,8 @@ GET    /api/agents/{id}/capabilities         — all capabilities for an agent (
 
 ## 7. Design Principles
 
-### 1. One marketplace, four types
-Users don't care about the technical distinction between MCP servers, skills, API connectors, and workflows. They care about what they can do. The marketplace presents capabilities uniformly.
+### 1. One marketplace, consistent UX
+Users don't care about the technical distinction between MCP servers, API connectors, skills, and workflows. They care about what they can do. The marketplace presents all capabilities uniformly. MCP servers and API connectors are both "apps that provide tools" — the difference is just how they connect (standardized protocol vs HTTP endpoint definitions). Both produce tools in the same registry.
 
 ### 2. Library is the gate
 Nothing reaches an agent without going through the library. The library is where scoping, configuration, approval, and credential management happen. The marketplace is just discovery.
