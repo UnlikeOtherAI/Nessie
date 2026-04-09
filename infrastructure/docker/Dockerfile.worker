@@ -1,0 +1,26 @@
+FROM node:22-slim AS builder
+
+WORKDIR /app
+
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
+COPY packages/ packages/
+COPY worker/ worker/
+
+RUN corepack enable && pnpm install --frozen-lockfile
+
+RUN pnpm --filter @nessie/schemas build
+RUN pnpm --filter @nessie/config build
+RUN pnpm --filter @nessie/runtime build
+RUN pnpm --filter @nessie/worker build
+
+RUN pnpm deploy --filter @nessie/worker --prod /prod/worker
+
+FROM node:22-slim
+
+WORKDIR /app
+
+COPY --from=builder /prod/worker .
+
+ENV NODE_ENV=production
+
+CMD ["node", "dist/index.js"]

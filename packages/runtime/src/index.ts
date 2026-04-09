@@ -1,5 +1,7 @@
 export * from './db.js'
+export * from './gcs-storage.js'
 export * from './model.js'
+export * from './pubsub-queue.js'
 export * from './queue.js'
 export * from './realtime.js'
 export * from './usage.js'
