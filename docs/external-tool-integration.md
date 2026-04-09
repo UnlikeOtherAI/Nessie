@@ -743,6 +743,101 @@ Main agent spawns executor
         └── Main agent doesn't need to know the details — just "Stripe worked"
 ```
 
+### Executor Streaming — Visibility Into What's Happening
+
+Executors are invisible to the user in the sense that they don't participate in the conversation. But the user needs to see what's going on — otherwise it looks like the agent is frozen while the executor works. Executors stream status events back to the main agent, which can relay them to the user.
+
+```
+Executor runs
+  │
+  ├── Stream: status events → main agent → user UI
+  │
+  │   Event types:
+  │   ├── executor.started    { capability: "stripe", task: "Get last week's sales" }
+  │   ├── executor.tool_call  { tool: "stripe_list_charges", status: "calling" }
+  │   ├── executor.tool_result { tool: "stripe_list_charges", status: "success", summary: "47 charges found" }
+  │   ├── executor.progress   { message: "Processing 47 charges, calculating totals..." }
+  │   ├── executor.completed  { success: true, summary: "Total: $14,230" }
+  │   └── executor.failed     { error: "Rate limited by Stripe API", retry: true }
+  │
+  └── What the user sees in the UI:
+      
+      ┌────────────────────────────────────────────┐
+      │ Agent: Let me check Stripe for that data.   │
+      │                                              │
+      │   ⟳ Querying Stripe...                      │
+      │     → Fetching charges (last 7 days)         │
+      │     → 47 charges found                       │
+      │     → Calculating totals                     │
+      │                                              │
+      │ Agent: Last week's Stripe sales totalled     │
+      │ $14,230 across 47 charges.                   │
+      └────────────────────────────────────────────┘
+```
+
+#### Stream Transport
+
+Executor events flow through the existing SSE (Server-Sent Events) channel that powers the chat UI:
+
+```
+Executor sub-agent
+  │
+  ├── Emits events to the run's event stream (same as any agent run)
+  │     event: { type: "executor.tool_call", run_id: executor_run_id, parent_run_id: main_run_id, ... }
+  │
+  ├── Main agent's run aggregates child executor events
+  │     The orchestrator tags them with the parent run ID
+  │
+  └── SSE stream to the UI includes both:
+      - Main agent messages (the conversation)
+      - Executor status events (the progress indicators)
+      
+      The UI renders executor events as inline progress indicators
+      within the conversation, collapsed when the executor completes.
+```
+
+#### What Gets Streamed vs What Stays Private
+
+```
+STREAMED to main agent + user UI:
+  - Which capability is being used ("Querying Stripe")
+  - Which tool was called ("Fetching charges")
+  - High-level result summaries ("47 charges found")
+  - Errors and retries ("Rate limited, retrying in 5s")
+  - Final result
+
+NOT streamed (stays in executor's ephemeral context):
+  - Full tool schemas
+  - Credential references or values
+  - Raw API responses (only summarized)
+  - Executor's intermediate reasoning
+  - MCP server connection details
+```
+
+The main agent sees the streamed summaries and the final result. It does NOT see the executor's full context — that boundary is preserved. The streaming is one-way: executor → main agent (and UI). The main agent cannot inject into the executor's context mid-execution.
+
+#### Multi-Executor Streaming
+
+When the main agent spawns multiple executors in parallel, the UI shows them side-by-side:
+
+```
+┌────────────────────────────────────────────┐
+│ Agent: Let me gather that information.      │
+│                                              │
+│   ⟳ Querying Stripe...                      │
+│     → Fetching charges (last 7 days)         │
+│     → Done: $14,230 across 47 charges        │
+│                                              │
+│   ⟳ Updating Acme CRM...                    │
+│     → Looking up deal "ACME-2024-Q2"         │
+│     → Updating deal stage to "closed-won"    │
+│     → Done                                   │
+│                                              │
+│ Agent: Done. Stripe shows $14,230 in sales,  │
+│ and I've updated the deal stage in the CRM.  │
+└────────────────────────────────────────────┘
+```
+
 ### When the Main Agent Calls Tools Directly
 
 Not everything needs an executor. Built-in tools (Bash, FileRead, Grep, WebSearch) that are part of the agent's core toolset remain in the main agent's context — they're lightweight and frequently used. The executor pattern is for **external capabilities**: MCP servers, API connectors, and heavy tool sets that would bloat the context.
