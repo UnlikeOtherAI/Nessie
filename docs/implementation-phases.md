@@ -223,37 +223,72 @@ At the end of phase 2, an organization should be able to:
 - see token usage and cost estimates,
 - gate sensitive actions with approval.
 
+### Phase 2 entry gate — memory system review
+
+Before beginning Phase 2 implementation, the memory system (`packages/memory`) must be reviewed:
+
+1. Identify any Phase 2 features that would benefit from memory system integration (e.g., audit events for thought creation, policy scoping for thought visibility).
+2. Identify any conflicts between memory system models and new Phase 2 models (e.g., `ThoughtAuditLog` vs `AuditLog`).
+3. Document integration points or confirm the two systems remain fully independent.
+4. Do not modify `packages/memory` without completing this review.
+
 ### Phase 2 exit gate
 
 Phase 2 is not complete until the mandatory end-of-phase review gate in section `1.1` passes for all affected roots and hosted deployment paths.
 
+Additionally, all 15 Phase 1 → Phase 2 prerequisites must be verified as resolved:
+
+- All critical prerequisites (#1–#4) must be fixed and tested under multi-instance conditions.
+- All high prerequisites (#5–#12) must be fixed.
+- All medium prerequisites (#13–#15) must be fixed or have documented deferral justification.
+
+### Phase 2 starting state (carried from Phase 1)
+
+Phase 1 shipped several extras beyond its spec. These are established, canonical features. Phase 2 must account for them.
+
+#### Keep as-is — review before modifying
+
+- **Memory system** (`packages/memory`): custom episodic memory with `Thought`, `ThoughtReasoning`, `ThoughtLink`, `ThoughtAuditLog`, `ThoughtRecall` models and pgvector semantic search. Not in any phase spec — this is a standalone capability layer. **Must be reviewed for Phase 2 compatibility before any Phase 2 work touches memory-adjacent code.** The memory system's `ThoughtAuditLog` is distinct from the Phase 2 control-plane `AuditLog` — these are separate systems and must remain so.
+
+#### Already in schema — needs enforcement in Phase 2
+
+- **`ChannelVisibility` enum** (`public`, `protected`, `private`) and `Channel.visibility` field — schema matches Phase 2 Step 2 requirements. Enforcement logic not yet implemented.
+- **`AgentCategory` and `AgentCategoryAgent` models** — not in the phase spec but established and in use (column browser). Has `organizationId`. Phase 2 policy engine must include category visibility in policy scoping.
+- **`User.pronouns` field** — Phase 3 scope, added early. No action needed in Phase 2.
+
+#### Partially built — needs completion in Phase 2
+
+- **`ModelUsageTracker` and `ModelClient`** (`packages/runtime`): tracks token usage per model call in memory. Phase 2 Step 6 must add the flush-to-DB step via `TokenLedgerEvent` Prisma model and worker ingestion at run completion.
+- **`QueueJob.idempotencyKey` field** exists in schema. Phase 2 must add the "already completed" guard in worker to use it (prerequisite #8).
+- **`Agent.provider` and `Agent.model` fields**: per-agent model selection works. Phase 3 prompt inheritance must account for these.
+
 ### Phase 2 code-level prerequisites (Phase 1 → Phase 2 migration)
 
-These are Phase 1 code assumptions that **must be fixed** before or during Phase 2 feature work. Identified by Codex deep review (2026-04-08).
+These are Phase 1 code assumptions that **must be fixed** before or during Phase 2 feature work. Identified by Codex deep review (2026-04-08). Status updated 2026-04-09.
 
 #### Critical — security / correctness
 
-1. **WebSocket subscriptions bypass channel privacy.** Events are published at org scope (`worker/src/run/execute.ts`, `api/src/index.ts`), and the hub delivers on org match alone (`api/src/realtime/hub.ts`). Phase 2 must filter WS events by channel membership/privacy before delivery.
-2. **Shared-agent REST endpoints leak cross-channel history.** Agent status/activity/messages loaders return global history without channel scoping (`api/src/services/agents.ts`). Phase 2 must scope agent data queries to the caller's accessible channels.
-3. **Agent binding has no authorization check.** Any user who can see a channel can bind any known agent (`api/src/index.ts`, `api/src/services/agents.ts:498`). Phase 2 must enforce policy check on `agent.bind`.
-4. **`NESSIE_AUTH_SECRET` fallback to per-process random breaks multi-instance.** API falls back to in-memory random (`api/src/index.ts:103`). On Cloud Run with multiple instances, tokens from one instance fail on another. Phase 2 must require a persistent shared secret or use Cloud KMS.
+1. **WebSocket subscriptions bypass channel privacy.** Events are published at org scope (`worker/src/run/execute.ts`, `api/src/index.ts`), and the hub delivers on org match alone (`api/src/realtime/hub.ts`). Phase 2 must filter WS events by channel membership/privacy before delivery. **Status: NOT FIXED.**
+2. **Shared-agent REST endpoints leak cross-channel history.** Agent status/activity/messages loaders return global history without channel scoping (`api/src/services/agents.ts`). Phase 2 must scope agent data queries to the caller's accessible channels. **Status: NOT FIXED.**
+3. **Agent binding has no authorization check.** Any user who can see a channel can bind any known agent (`api/src/index.ts`, `api/src/services/agents.ts:498`). Phase 2 must enforce policy check on `agent.bind`. **Status: NOT FIXED.**
+4. **`NESSIE_AUTH_SECRET` fallback to per-process random breaks multi-instance.** API falls back to in-memory random (`api/src/index.ts:150`). On Cloud Run with multiple instances, tokens from one instance fail on another. Phase 2 must require a persistent shared secret or use Cloud KMS. **Status: NOT FIXED.**
 
 #### High — architectural prerequisites
 
-5. **Auth/session contract cannot represent multi-membership users.** `TenantContext` holds one org/project/team. `users.ts` hard-selects first membership. Phase 2 must evolve JWT and `/me` to support project/team switching (see JWT evolution in deployment-modes-and-auth-spec.md).
-6. **Login and SSO auto-provision hardcode bootstrap org/project/team IDs.** All auth paths issue reserved bootstrap container IDs. Phase 2 must resolve user's actual memberships from DB.
-7. **Worker ignores `actorContext`.** Jobs carry context (`packages/schemas`) but `executeRunJob` never uses it for policy, approval, audit, or ledger. Phase 2 must propagate and enforce.
-8. **Run execution is not idempotent.** No idempotency key on enqueue, no "already completed" guard in worker. At-least-once queue retries can duplicate output. Phase 2 must add idempotency boundaries per control-plane invariant #2.
-9. **Agent model lacks ownership fields.** `Agent` has no org/project/team owner. `AgentBinding` is unscoped. Phase 2 Prisma migration must add ownership and enforce it.
-10. **No tenant hierarchy consistency constraints in DB.** `Channel` references org and team independently — no FK constraint that the team's project belongs to the same org. Phase 2 should add application-level invariant checks (or DB triggers).
-11. **Public channels require membership to be visible.** Channel listing filters by `channel_members` rows, hiding public channels from non-members. Phase 2 must implement privacy-level-aware listing.
-12. **Queue provider not config-switchable.** Worker always boots `PgQueueProvider`. Phase 2 must wire `config.queue.provider` to provider factory.
+5. **Auth/session contract cannot represent multi-membership users.** `TenantContext` holds one org/project/team. `users.ts` hard-selects first membership. Phase 2 must evolve JWT and `/me` to support project/team switching (see JWT evolution in deployment-modes-and-auth-spec.md). **Status: NOT FIXED.**
+6. **Login and SSO auto-provision hardcode bootstrap org/project/team IDs.** All auth paths issue reserved bootstrap container IDs. Phase 2 must resolve user's actual memberships from DB. **Status: NOT FIXED.**
+7. **Worker ignores `actorContext`.** Jobs carry context (`packages/schemas`) but `executeRunJob` only unpacks `sessionId`/`userId` (`worker/src/run/execute.ts:532–571`) — never uses it for policy, approval, audit, or ledger. Phase 2 must propagate and enforce. **Status: PARTIAL — carried but unused.**
+8. **Run execution is not idempotent.** `QueueJob.idempotencyKey` field exists in Prisma schema but no "already completed" guard in worker. At-least-once queue retries can duplicate output. Phase 2 must add idempotency boundaries per control-plane invariant #2. **Status: PARTIAL — schema field exists, enforcement missing.**
+9. **Agent model lacks ownership fields.** `Agent` has no org/project/team owner. `AgentBinding` is unscoped. Phase 2 Prisma migration must add ownership and enforce it. **Status: NOT FIXED.**
+10. **No tenant hierarchy consistency constraints in DB.** `Channel` references org and team independently — no FK constraint that the team's project belongs to the same org. Phase 2 should add application-level invariant checks (or DB triggers). **Status: NOT FIXED.**
+11. **Public channels require membership to be visible.** Channel listing filters by `channel_members` rows, hiding public channels from non-members. Phase 2 must implement privacy-level-aware listing (uses existing `ChannelVisibility` enum). **Status: NOT FIXED — enum exists, enforcement missing.**
+12. **Queue provider not config-switchable.** Worker always boots `PgQueueProvider`. Phase 2 must wire `config.queue.provider` to provider factory. **Status: NOT FIXED.**
 
 #### Medium — operational
 
-13. **Channel listing N+1.** `listChannelsForUser` calls `ensureDefaultThread` per channel with find-then-create race. Phase 2 should use `upsert` and batch.
-14. **Activity queries don't scale.** Snapshot building does per-agent queries; activity loads full history before trimming. Phase 2 should add pagination and indexed queries.
-15. **Admin WS client missing ping.** No keepalive ping per spec (30s interval). SSE client missing `Last-Event-ID` reconnect. Phase 2 must fix both to survive Cloud Run connection cycling.
+13. **Channel listing N+1.** `listChannelsForUser` calls `ensureDefaultThread` per channel with find-then-create race. Phase 2 should use `upsert` and batch. **Status: NOT FIXED.**
+14. **Activity queries don't scale.** Snapshot building does per-agent queries; activity loads full history before trimming. Phase 2 should add pagination and indexed queries. **Status: NOT FIXED.**
+15. **Admin WS client missing ping.** No keepalive ping per spec (30s interval). SSE client missing `Last-Event-ID` reconnect. Phase 2 must fix both to survive Cloud Run connection cycling. **Status: NOT FIXED.**
 
 ### Recommended build sequence inside Phase 2
 
@@ -272,30 +307,41 @@ This must be built first. No hosted feature work can proceed without a deployabl
 
 #### Step 1: Multi-project/team data model and auth evolution
 
-- Prisma schema additions: project CRUD, team CRUD, membership tables
+Schema partially done: `Project`, `Team`, `ProjectMember`, `TeamMember` models exist from Phase 1. Remaining work:
+
+- ~~Prisma schema additions: project CRUD, team CRUD, membership tables~~ (done in Phase 1)
+- Add ownership fields to `Agent` model: `organizationId`, `projectId`, `teamId` (prerequisite #9)
 - JWT evolution: multi-project support (project/team selection, not hardcoded single project)
 - `GET /api/auth/me` returns available projects/teams for the user
 - User invitation flow: `POST /api/orgs/{orgId}/users`
 - Project creation and membership: `POST /api/projects`, `POST /api/projects/{projectId}/members`
 - Team creation and membership: `POST /api/teams`, `POST /api/teams/{teamId}/members`
 - Identity Platform integration for hosted auth default
+- Fix `NESSIE_AUTH_SECRET` random fallback (prerequisite #4): require persistent shared secret or Cloud KMS
+- Fix bootstrap org/project/team ID hardcoding in login/SSO paths (prerequisite #6)
 - See [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
 
 #### Step 2: Channel privacy and membership-aware discovery
 
-- Channel privacy levels: public, protected, private
+`ChannelVisibility` enum and `Channel.visibility` field already exist in schema. Remaining work is enforcement:
+
+- ~~Channel privacy levels: public, protected, private~~ (enum exists)
 - Channel membership enforcement at query and routing time
-- Privacy-aware channel listing: `GET /api/teams/{teamId}/channels`
+- Privacy-aware channel listing: `GET /api/teams/{teamId}/channels` (prerequisite #11 — public channels must be visible without membership)
+- WebSocket event filtering by channel membership/privacy (prerequisite #1)
+- Scope agent REST endpoints to caller's accessible channels (prerequisite #2)
 - Membership-aware agent discovery: agents filtered by channel access
 - Membership-aware tool discovery: tools filtered by policy scope
 - Private channels excluded from search for non-members
+- `AgentCategory` visibility scoping through policy engine
 - See [organization-governance-spec.md](./organization-governance-spec.md) section 2.2 and 4.1
 
 #### Step 3: Policy enforcement engine
 
 - Prisma models: `PolicyRule`, `PolicyBinding`
 - `PolicyEnforcer` service with chain evaluation algorithm
-- Policy check integration at: channel access, agent binding, tool visibility, admin actions
+- Policy check integration at: channel access, agent binding (prerequisite #3), tool visibility, admin actions
+- Enforce tenant hierarchy consistency (prerequisite #10) — application-level invariant checks
 - `GET /api/policy/effective` endpoint
 - `POST /api/policy/check` inline access check endpoint
 - Default seed policies for new organizations
@@ -304,10 +350,13 @@ This must be built first. No hosted feature work can proceed without a deployabl
 
 #### Step 4: Approval gating v1
 
+Note: `AgentStatus.waiting_approval` already exists in the Prisma enum (Phase 1 — display-only). What must be added here is `RunStatus.waiting_approval` so runs themselves can be paused. Both coexist: the agent shows the status in the UI, the run holds the state for worker pause/resume.
+
 - Prisma model: `ApprovalRequest`
-- `RunStatus.waiting_approval` in Prisma enum and `packages/schemas`
+- Add `waiting_approval` to `RunStatus` Prisma enum and `packages/schemas` (distinct from the existing `AgentStatus.waiting_approval`)
 - `approval.resolved` in WsEventMap and `packages/schemas`
 - Worker pause/resume flow with continuation tokens
+- Wire `actorContext` into approval checks (prerequisite #7)
 - API endpoints: create, list, get, resolve approvals
 - Expiry sweep periodic job
 - Approver resolution based on policy chain
@@ -316,7 +365,9 @@ This must be built first. No hosted feature work can proceed without a deployabl
 
 #### Step 5: Audit trail
 
-- Prisma model: `AuditLog`
+Note: `ThoughtAuditLog` already exists for the memory system — that is a separate audit surface for thought lifecycle events. This step adds control-plane audit for org/project/channel/agent/policy actions. The two systems must remain distinct.
+
+- Prisma model: `AuditLog` (control-plane, not to be confused with `ThoughtAuditLog`)
 - `AuditEmitter` interface with Postgres-backed implementation
 - Audit events emitted at all Phase 2 control-plane actions
 - API endpoints: list, get, export audit logs
@@ -325,8 +376,10 @@ This must be built first. No hosted feature work can proceed without a deployabl
 
 #### Step 6: Token ledger v1
 
+`ModelUsageTracker` and `ModelClient` in `packages/runtime` already track token usage per model call in memory. What's missing is DB persistence and API surface.
+
 - Prisma models: `TokenLedgerEvent`, `ModelPricingProfile`
-- Ledger event ingestion from worker on every model call
+- Flush-to-DB step: worker writes `ModelUsageTracker.getUsage()` to `TokenLedgerEvent` rows at run completion
 - Summary and rollup endpoints by org/project/team/channel/agent/user/model
 - Monthly estimate endpoint
 - Pricing profile CRUD with audit trail
@@ -335,6 +388,8 @@ This must be built first. No hosted feature work can proceed without a deployabl
 
 #### Step 7: Admin UI extensions for Phase 2
 
+The agent column browser, agent designer studio, and agent categories UI are already built from Phase 1 extras. Remaining Phase 2 admin work:
+
 - Project and team administration pages
 - Channel privacy settings UI
 - User invitation and membership management
@@ -342,6 +397,8 @@ This must be built first. No hosted feature work can proceed without a deployabl
 - Token usage dashboard
 - Policy rule management (admin-only)
 - Audit log viewer
+- Admin WS client keepalive ping (prerequisite #15) — 30s interval per spec
+- SSE client `Last-Event-ID` reconnect (prerequisite #15)
 
 #### Step 8: Hosted deployment validation
 
@@ -349,8 +406,11 @@ This must be built first. No hosted feature work can proceed without a deployabl
 - Load test: verify Cloud Run autoscaling under concurrent users
 - Pub/Sub delivery verification with dead-letter handling
 - Cloud SQL connection pooling under load
-- WebSocket reconnect across Cloud Run instance restarts
+- WebSocket reconnect across Cloud Run instance restarts (requires prerequisite #15)
 - Cost validation against estimates
+- Verify `NESSIE_AUTH_SECRET` is shared across all Cloud Run instances (prerequisite #4)
+- Verify queue provider config-switches to Pub/Sub in hosted mode (prerequisite #12)
+- Verify idempotency guard prevents duplicate run output on queue retry (prerequisite #8)
 
 ### Phase 2 spec references
 
