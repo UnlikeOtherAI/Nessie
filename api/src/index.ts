@@ -67,6 +67,7 @@ import {
   CreateAgentTriggerBodySchema,
   CreateAgentCategoryBodySchema,
   DesignerChatBodySchema,
+  FireAgentTriggerBodySchema,
   CreateChannelBodySchema,
   CreateThreadMessageBodySchema,
   CreateUserBodySchema,
@@ -106,6 +107,7 @@ import {
 } from './services/agents.js'
 import {
   createAgentTrigger,
+  dispatchAgentTrigger,
   deleteAgentTrigger,
   getAgentTrigger,
   listAgentTriggerDeliveries,
@@ -1162,6 +1164,57 @@ export const buildApp = async () => {
     return createApiResponse(AgentTriggerRecordSchema.parse(updated))
   })
 
+  app.post('/api/triggers/:triggerId/fire', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const body = parseInput(FireAgentTriggerBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const dispatched = await dispatchAgentTrigger(prisma, {
+      actorContext,
+      payload: body.payload,
+      prompt: body.prompt,
+      source: body.source ?? 'manual',
+      triggerId,
+    })
+
+    if (dispatched.kind === 'rejected') {
+      if (dispatched.reason === 'agent_not_bound') {
+        sendApiError(reply, 409, 'AGENT_NOT_BOUND', 'Agent must be bound to a channel before firing')
+        return reply
+      }
+
+      sendApiError(reply, 409, 'TRIGGER_UNAVAILABLE', 'Trigger is not available for execution')
+      return reply
+    }
+
+    await enqueueRunExecution(prisma, dispatched.queuePayload, `run:${dispatched.queuePayload.runId}`)
+    return reply.code(202).send(
+      createApiResponse({
+        delivery: AgentTriggerDeliveryRecordSchema.parse(dispatched.delivery),
+        runId: dispatched.queuePayload.runId,
+        trigger: AgentTriggerRecordSchema.parse(dispatched.trigger),
+      }),
+    )
+  })
+
   app.get('/api/triggers/:triggerId/history', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -1187,6 +1240,52 @@ export const buildApp = async () => {
 
     const deliveries = await listAgentTriggerDeliveries(prisma, triggerId, limit)
     return createApiResponse(AgentTriggerDeliveryRecordSchema.array().parse(deliveries))
+  })
+
+  app.post('/api/triggers/:triggerId/webhook', async (request, reply) => {
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger || trigger.type !== 'webhook') {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const secretHeader = request.headers['x-nessie-trigger-secret']
+    const providedSecret = Array.isArray(secretHeader)
+      ? secretHeader[0]
+      : secretHeader ?? (request.query as { secret?: string } | undefined)?.secret
+    const expectedSecret =
+      typeof trigger.config['secret'] === 'string' ? trigger.config['secret'] : undefined
+
+    if (expectedSecret && providedSecret !== expectedSecret) {
+      sendApiError(reply, 403, 'WEBHOOK_SECRET_INVALID', 'Webhook secret mismatch')
+      return reply
+    }
+
+    const dispatched = await dispatchAgentTrigger(prisma, {
+      payload: request.body,
+      source: 'webhook',
+      triggerId,
+    })
+
+    if (dispatched.kind === 'rejected') {
+      if (dispatched.reason === 'agent_not_bound') {
+        sendApiError(reply, 409, 'AGENT_NOT_BOUND', 'Agent must be bound to a channel before firing')
+        return reply
+      }
+
+      sendApiError(reply, 409, 'TRIGGER_UNAVAILABLE', 'Trigger is not available for execution')
+      return reply
+    }
+
+    await enqueueRunExecution(prisma, dispatched.queuePayload, `run:${dispatched.queuePayload.runId}`)
+    return reply.code(202).send(
+      createApiResponse({
+        accepted: true,
+        delivery: AgentTriggerDeliveryRecordSchema.parse(dispatched.delivery),
+        runId: dispatched.queuePayload.runId,
+      }),
+    )
   })
 
   // ─── Agent Categories ─────────────────────────────────────────────────────

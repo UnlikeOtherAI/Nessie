@@ -171,6 +171,12 @@ export const AgentTriggerDeliveryRecordSchema = z.object({
 })
 export type AgentTriggerDeliveryRecord = z.infer<typeof AgentTriggerDeliveryRecordSchema>
 
+export const FireAgentTriggerBodySchema = z.object({
+  source: z.string().min(1).optional(),
+  prompt: z.string().min(1).optional(),
+  payload: z.unknown().optional(),
+})
+
 export const AgentCategoryRecordSchema = z.object({
   id: AgentCategoryIdSchema,
   name: NonEmptyStringSchema,

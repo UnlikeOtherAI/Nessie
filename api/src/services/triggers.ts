@@ -1,11 +1,23 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
-import { parseAgentId, parseRunId } from '@nessie/schemas'
+import { randomUUID } from 'node:crypto'
+import { Prisma, type PrismaClient } from '@prisma/client'
+import {
+  parseAgentId,
+  parseChannelId,
+  parseOrganizationId,
+  parseProjectId,
+  parseRunId,
+  parseTaskId,
+  parseTeamId,
+  parseThreadId,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
   AgentTriggerStatus,
   AgentTriggerType,
 } from '../contracts.js'
+import { ensureDefaultThread } from './channels.js'
 
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
   value ? value.toISOString() : undefined
@@ -216,4 +228,254 @@ export const listAgentTriggerDeliveries = async (
   })
 
   return deliveries.map(mapTriggerDeliveryRecord)
+}
+
+const normalizePayload = (
+  payload: unknown,
+): Prisma.InputJsonValue | typeof Prisma.JsonNull => {
+  if (payload === null) {
+    return Prisma.JsonNull
+  }
+
+  if (
+    typeof payload === 'string' ||
+    typeof payload === 'number' ||
+    typeof payload === 'boolean'
+  ) {
+    return payload
+  }
+
+  if (Array.isArray(payload)) {
+    return payload as Prisma.InputJsonValue
+  }
+
+  if (payload && typeof payload === 'object') {
+    return payload as Prisma.InputJsonValue
+  }
+
+  return {}
+}
+
+const buildTriggerPrompt = (input: {
+  payload: unknown
+  prompt?: string
+  source: string
+  triggerType: AgentTriggerType
+}): string => {
+  const explicitPrompt = input.prompt?.trim()
+  if (explicitPrompt) {
+    return explicitPrompt
+  }
+
+  const prefix = `A ${input.triggerType} trigger fired from ${input.source}.`
+  if (input.payload === undefined) {
+    return `${prefix}\n\nNo payload was provided.`
+  }
+
+  const serializedPayload = JSON.stringify(input.payload, null, 2)
+  return `${prefix}\n\nPayload:\n${serializedPayload}`
+}
+
+const resolveTriggerThread = async (
+  prisma: PrismaClient,
+  agentId: string,
+): Promise<{ channelId: string; organizationId: string; threadId: string } | null> => {
+  const binding = await prisma.agentBinding.findFirst({
+    where: { agentId },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      channel: {
+        select: {
+          id: true,
+          organizationId: true,
+        },
+      },
+    },
+  })
+
+  if (!binding) {
+    return null
+  }
+
+  return {
+    channelId: binding.channel.id,
+    organizationId: binding.channel.organizationId,
+    threadId: await ensureDefaultThread(prisma, binding.channel.id),
+  }
+}
+
+export const dispatchAgentTrigger = async (
+  prisma: PrismaClient,
+  input: {
+    actorContext?: AuthorizedActionContext
+    payload?: unknown
+    prompt?: string
+    source: string
+    triggerId: string
+  },
+): Promise<
+  | {
+      reason: 'agent_not_bound' | 'trigger_not_found' | 'trigger_paused' | 'webhook_secret_mismatch'
+      kind: 'rejected'
+    }
+  | {
+      delivery: AgentTriggerDeliveryRecord
+      kind: 'queued'
+      queuePayload: {
+        actorContext: AuthorizedActionContext
+        agentId: ReturnType<typeof parseAgentId>
+        messageId: string
+        runId: ReturnType<typeof parseRunId>
+        taskId: ReturnType<typeof parseTaskId>
+        threadId: ReturnType<typeof parseThreadId>
+      }
+      trigger: AgentTriggerRecord
+    }
+> => {
+  const trigger = await prisma.agentTrigger.findUnique({
+    where: { id: input.triggerId },
+    include: {
+      agent: {
+        select: {
+          id: true,
+          organizationId: true,
+          projectId: true,
+          teamId: true,
+        },
+      },
+    },
+  })
+
+  if (!trigger) {
+    return { kind: 'rejected', reason: 'trigger_not_found' }
+  }
+
+  if (!trigger.enabled || trigger.status !== 'active') {
+    return { kind: 'rejected', reason: 'trigger_paused' }
+  }
+
+  const threadTarget = await resolveTriggerThread(prisma, trigger.agentId)
+  if (!threadTarget) {
+    return { kind: 'rejected', reason: 'agent_not_bound' }
+  }
+
+  const actorContext =
+    input.actorContext ??
+    ({
+      actor: {
+        actorId: trigger.agentId,
+        actorType: 'agent',
+        roles: ['system'],
+      },
+      actionContext: {
+        agentId: parseAgentId(trigger.agentId),
+        channelId: parseChannelId(threadTarget.channelId),
+        requestId: randomUUID(),
+        sessionId: undefined,
+        threadId: parseThreadId(threadTarget.threadId),
+      },
+      tenant: {
+        organizationId: parseOrganizationId(
+          trigger.agent.organizationId ?? threadTarget.organizationId,
+        ),
+        projectId: trigger.agent.projectId ? parseProjectId(trigger.agent.projectId) : undefined,
+        teamId: trigger.agent.teamId ? parseTeamId(trigger.agent.teamId) : undefined,
+      },
+    })
+
+  const normalizedPayload = normalizePayload(input.payload)
+  const content = buildTriggerPrompt({
+    payload: input.payload,
+    prompt: input.prompt,
+    source: input.source,
+    triggerType: trigger.type,
+  })
+
+  const result = await prisma.$transaction(async (tx) => {
+    const delivery = await tx.agentTriggerDelivery.create({
+      data: {
+        payload: normalizedPayload,
+        source: input.source,
+        status: 'pending',
+        triggerId: trigger.id,
+      },
+      include: {
+        run: {
+          select: { id: true },
+        },
+      },
+    })
+
+    const message = await tx.message.create({
+      data: {
+        content,
+        role: 'system',
+        threadId: threadTarget.threadId,
+      },
+    })
+
+    const run = await tx.run.create({
+      data: {
+        agentId: trigger.agentId,
+        status: 'pending',
+        threadId: threadTarget.threadId,
+        triggerId: trigger.id,
+        triggerDeliveryId: delivery.id,
+      },
+    })
+
+    const task = await tx.task.create({
+      data: {
+        agentId: trigger.agentId,
+        purpose: content.slice(0, 200),
+        runId: run.id,
+        status: 'inbox',
+      },
+    })
+
+    const completedDelivery = await tx.agentTriggerDelivery.update({
+      where: { id: delivery.id },
+      data: {
+        deliveredAt: new Date(),
+        status: 'delivered',
+      },
+      include: {
+        run: {
+          select: { id: true },
+        },
+      },
+    })
+
+    await tx.agentTrigger.update({
+      where: { id: trigger.id },
+      data: {
+        lastFiredAt: new Date(),
+      },
+    })
+
+    return { completedDelivery, message, run, task }
+  })
+
+  return {
+    kind: 'queued',
+    delivery: mapTriggerDeliveryRecord(result.completedDelivery),
+    queuePayload: {
+      actorContext: {
+        ...actorContext,
+        actionContext: {
+          ...actorContext.actionContext,
+          agentId: parseAgentId(trigger.agentId),
+          channelId: parseChannelId(threadTarget.channelId),
+          taskId: parseTaskId(result.task.id),
+          threadId: parseThreadId(threadTarget.threadId),
+        },
+      },
+      agentId: parseAgentId(trigger.agentId),
+      messageId: result.message.id,
+      runId: parseRunId(result.run.id),
+      taskId: parseTaskId(result.task.id),
+      threadId: parseThreadId(threadTarget.threadId),
+    },
+    trigger: mapTriggerRecord(trigger),
+  }
 }
