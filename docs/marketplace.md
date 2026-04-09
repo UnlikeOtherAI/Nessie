@@ -693,6 +693,88 @@ Secret injection must use secret refs, not plaintext:
 - secrets may be mounted as env vars, files, SSH keys, or cloud credentials
 - audit logs record the binding and mount target, never the secret value
 
+### Execution Environment Templates, Instances, and Usage
+
+Execution environments are directly billable infrastructure. The platform must track what was launched, by whom, for what run/workflow/plugin, and how long it ran.
+
+Use three layers:
+
+- `execution_environment_templates` — reusable definitions users may bind to workflows/plugins
+- `execution_environment_instances` — actual launched environments
+- `execution_usage_ledger` — normalized cost and usage records
+
+Example schema:
+
+```
+execution_environment_templates
+  id               UUID PK
+  organization_id  UUID FK → organizations
+  name             TEXT
+  slug             TEXT
+  provider         TEXT — "docker" | "gcloud"
+  mode             TEXT — "container" | "vm" | "function"
+  home_scope_type  TEXT
+  home_scope_id    TEXT
+  image_ref        TEXT
+  capability_tags  TEXT[]
+  pricing_model    JSONB
+  created_by       UUID FK → users
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
+
+execution_environment_instances
+  id               UUID PK
+  template_id      UUID FK → execution_environment_templates
+  status           TEXT — launching/ready/running/stopping/terminated/failed
+  provider_instance_ref TEXT
+  launched_by_actor_type TEXT — "user" | "agent" | "system"
+  launched_by_actor_id TEXT
+  user_id          UUID FK → users
+  agent_id         UUID FK → agents
+  workflow_id      UUID FK → workflow_templates
+  run_id           UUID FK → runs
+  plugin_version_id UUID FK → generated_plugin_versions
+  started_at       TIMESTAMPTZ
+  ready_at         TIMESTAMPTZ
+  stopped_at       TIMESTAMPTZ
+  terminated_at    TIMESTAMPTZ
+  last_heartbeat_at TIMESTAMPTZ
+  teardown_reason  TEXT
+  created_at       TIMESTAMPTZ
+
+execution_usage_ledger
+  id               UUID PK
+  instance_id      UUID FK → execution_environment_instances
+  template_id      UUID FK → execution_environment_templates
+  provider         TEXT
+  meter_type       TEXT — "uptime_min" | "cpu_sec" | "memory_gb_hr" | "storage_gb_hr" | "network_egress_gb" | "invocation"
+  quantity         DOUBLE PRECISION
+  unit_price       DOUBLE PRECISION
+  cost_amount      DOUBLE PRECISION
+  currency         TEXT
+  actor_type       TEXT
+  actor_id         TEXT
+  organization_id  UUID FK → organizations
+  project_id       UUID
+  team_id          UUID
+  channel_id       UUID
+  user_id          UUID FK → users
+  agent_id         UUID FK → agents
+  workflow_id      UUID FK → workflow_templates
+  run_id           UUID FK → runs
+  recorded_at      TIMESTAMPTZ
+```
+
+Rules:
+
+- every environment launch creates an instance row
+- every termination writes final billable duration and teardown reason
+- usage ledger stores both raw meter quantity and normalized cost
+- provider-specific billing details belong in `pricing_model`, not scattered across workflow/plugin records
+- broad usage rollups should be sliceable by organization, project, team, channel, user, agent, workflow, and plugin version
+
+This should align with the existing token ledger mindset: environments are billable execution, not incidental logs.
+
 ### Example: Sales Call Follow-Up Workflow
 
 ```json

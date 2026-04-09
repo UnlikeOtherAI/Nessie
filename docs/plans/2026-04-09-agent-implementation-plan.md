@@ -898,6 +898,12 @@ Everything is discoverable, installable, and composable through a unified market
    - outbound network deny-by-default + domain allowlist
    - brokered runtime API only: no direct DB creds, no direct internal service creds
    - secret refs resolved at execution time with least-privilege bindings only
+10. **Execution environment tracking and billing**:
+   - `execution_environment_templates`, `execution_environment_instances`, `execution_usage_ledger` tables
+   - every launch records template, provider instance ref, triggering actor, run/workflow/plugin attribution, and lifecycle timestamps
+   - ledger records raw usage meters plus normalized cost for per-minute/per-second/provider-specific billing
+   - reporting slices by organization/project/team/channel/user/agent/workflow/plugin version
+   - template pricing metadata stored centrally, not duplicated in workflow/plugin configs
 
 **Agent builder:**
 1. **Prisma migration**: `agent_templates` table (from the-agents.md § 15), `agent_config_versions` table
@@ -952,6 +958,7 @@ Everything is discoverable, installable, and composable through a unified market
 - **Install flow**: Permission grant review, security scan summary, scope selection
 - **Library page**: Installed items with status, scope, update available indicator
 - **Plugin review queue**: DevOps/platform reviewer inbox with code snapshot, manifest, requested permissions, diff, and approve/request-changes actions
+- **Execution environment usage page**: active environments, launch history, billable duration, cost breakdown, actor attribution
 - **Capability assignment matrix**: Agent × capability grid with enable/disable per tool
 - **Agent builder wizard**: Template selection → config form → trigger setup → budget → dry-run → approval → create
 - **Agent version history**: Timeline with diff view per version, `changed_by` and `change_reason`, rollback button
@@ -977,6 +984,7 @@ Everything is discoverable, installable, and composable through a unified market
 - User generates plugin from template → private sandbox run succeeds → submit for review
 - Reviewer requests changes → creator receives Nessie thread/DM with review notes
 - Reviewer approves next version → plugin becomes publishable to assigned scopes
+- Launch coding environment from workflow/plugin → instance row created, usage ledger accrues, termination writes final cost
 
 ### Exit criteria
 
@@ -990,6 +998,7 @@ Everything is discoverable, installable, and composable through a unified market
 - OpenAPI auto-import works for at least 2 real APIs (e.g., Stripe, GitHub)
 - Generated plugins stay sandboxed before approval (verified: private plugin cannot run outside isolated runner)
 - Review workflow gates publication (verified: unapproved version cannot be published org-wide)
+- Execution usage ledger attributes cost correctly (verified: environment run linked to actor + run + final billable duration)
 - Lint, typecheck, build pass
 
 ---
