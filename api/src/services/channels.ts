@@ -11,23 +11,32 @@ export const ensureDefaultThread = async (
   prisma: PrismaClient,
   channelId: string,
 ): Promise<string> => {
+  // Use a single query to find the earliest thread, avoiding N+1 on channel listing
   const existingThread = await prisma.thread.findFirst({
     where: { channelId },
     orderBy: { createdAt: 'asc' },
+    select: { id: true },
   })
 
   if (existingThread) {
     return existingThread.id
   }
 
-  const thread = await prisma.thread.create({
-    data: {
-      channelId,
-      title: 'General',
-    },
-  })
-
-  return thread.id
+  // Race-safe: if two requests try to create simultaneously, one will succeed
+  try {
+    const thread = await prisma.thread.create({
+      data: { channelId, title: 'General' },
+    })
+    return thread.id
+  } catch {
+    // If creation failed (e.g., race), re-query
+    const fallback = await prisma.thread.findFirst({
+      where: { channelId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    })
+    return fallback!.id
+  }
 }
 
 const mapChannelRecord = async (

@@ -327,8 +327,18 @@ export const useAgentRealtime = (input: {
       }
     }
 
+    let pingInterval: number | undefined
+
+    const clearPingInterval = () => {
+      if (pingInterval !== undefined) {
+        window.clearInterval(pingInterval)
+        pingInterval = undefined
+      }
+    }
+
     const connect = () => {
       clearReconnectTimer()
+      clearPingInterval()
       setConnectionState('connecting')
 
       socket = new WebSocket(resolveWebSocketUrl(token))
@@ -345,6 +355,13 @@ export const useAgentRealtime = (input: {
             ],
           }),
         )
+
+        // 30-second keepalive ping to survive Cloud Run connection cycling
+        pingInterval = window.setInterval(() => {
+          if (socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ping' }))
+          }
+        }, 30_000)
       })
 
       socket.addEventListener('message', (event) => {
@@ -357,6 +374,7 @@ export const useAgentRealtime = (input: {
       })
 
       socket.addEventListener('close', () => {
+        clearPingInterval()
         if (closed) {
           return
         }
@@ -375,6 +393,7 @@ export const useAgentRealtime = (input: {
     return () => {
       closed = true
       clearReconnectTimer()
+      clearPingInterval()
       socket?.close()
     }
   }, [me?.context.organizationId, queryClient, token])

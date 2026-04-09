@@ -193,14 +193,17 @@ export const loadAgentActivity = async (
             take: 1,
           },
         },
+        take: 20,
       },
       runs: {
         include: {
           toolCalls: {
             orderBy: { startedAt: 'desc' },
+            take: 20,
           },
         },
         orderBy: { createdAt: 'desc' },
+        take: 10,
       },
     },
   })

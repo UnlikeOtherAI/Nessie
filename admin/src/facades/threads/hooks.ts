@@ -34,93 +34,123 @@ export const useThreadStream = (threadId?: string): StreamState => {
       return
     }
 
-    const controller = new AbortController()
-    const decoder = new TextDecoder()
-    let buffer = ''
+    let cancelled = false
+    let lastEventId = ''
 
-    void fetch(`${baseUrl}/api/threads/${threadId}/stream`, {
-      headers: {
-        authorization: `Bearer ${token}`,
-      },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok || !response.body) {
-          return
-        }
+    const connectStream = async () => {
+      while (!cancelled) {
+        const controller = new AbortController()
+        const decoder = new TextDecoder()
+        let buffer = ''
 
-        const reader = response.body.getReader()
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) {
+        try {
+          const headers: Record<string, string> = {
+            authorization: `Bearer ${token}`,
+          }
+          // Resume from last known event ID on reconnect
+          if (lastEventId) {
+            headers['Last-Event-ID'] = lastEventId
+          }
+
+          const response = await fetch(`${baseUrl}/api/threads/${threadId}/stream`, {
+            headers,
+            signal: controller.signal,
+          })
+
+          if (!response.ok || !response.body) {
             break
           }
 
-          buffer += decoder.decode(value, { stream: true })
-          const frames = buffer.split('\n\n')
-          buffer = frames.pop() ?? ''
-
-          for (const frame of frames) {
-            const trimmed = frame.trim()
-            if (!trimmed || trimmed.startsWith(':')) {
-              continue
+          const reader = response.body.getReader()
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done || cancelled) {
+              break
             }
 
-            const event = trimmed
-              .split('\n')
-              .find((line) => line.startsWith('event: '))
-              ?.slice(7)
-            const dataLine = trimmed
-              .split('\n')
-              .find((line) => line.startsWith('data: '))
-              ?.slice(6)
+            buffer += decoder.decode(value, { stream: true })
+            const frames = buffer.split('\n\n')
+            buffer = frames.pop() ?? ''
 
-            if (!event || !dataLine) {
-              continue
-            }
+            for (const frame of frames) {
+              const trimmed = frame.trim()
+              if (!trimmed || trimmed.startsWith(':')) {
+                continue
+              }
 
-            const data = JSON.parse(dataLine) as {
-              content?: string
-              runId: string
-            }
+              // Track Last-Event-ID for reconnection
+              const idLine = trimmed
+                .split('\n')
+                .find((line) => line.startsWith('id: '))
+              if (idLine) {
+                lastEventId = idLine.slice(4)
+              }
 
-            if (event === 'stream.start') {
-              setPendingMessages((current) => [...current, { content: '', runId: data.runId }])
-              continue
-            }
+              const event = trimmed
+                .split('\n')
+                .find((line) => line.startsWith('event: '))
+                ?.slice(7)
+              const dataLine = trimmed
+                .split('\n')
+                .find((line) => line.startsWith('data: '))
+                ?.slice(6)
 
-            if (event === 'stream.delta') {
-              setPendingMessages((current) =>
-                current.map((message) =>
-                  message.runId === data.runId
-                    ? {
-                        ...message,
-                        content: `${message.content}${data.content ?? ''}`,
-                      }
-                    : message,
-                ),
-              )
-              continue
-            }
+              if (!event || !dataLine) {
+                continue
+              }
 
-            if (event === 'stream.done') {
-              setPendingMessages((current) =>
-                current.filter((message) => message.runId !== data.runId),
-              )
-              void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
-              continue
-            }
+              const data = JSON.parse(dataLine) as {
+                content?: string
+                runId: string
+              }
 
-            if (event === 'message.reaction') {
-              void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+              if (event === 'stream.start') {
+                setPendingMessages((current) => [...current, { content: '', runId: data.runId }])
+                continue
+              }
+
+              if (event === 'stream.delta') {
+                setPendingMessages((current) =>
+                  current.map((message) =>
+                    message.runId === data.runId
+                      ? {
+                          ...message,
+                          content: `${message.content}${data.content ?? ''}`,
+                        }
+                      : message,
+                  ),
+                )
+                continue
+              }
+
+              if (event === 'stream.done') {
+                setPendingMessages((current) =>
+                  current.filter((message) => message.runId !== data.runId),
+                )
+                void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+                continue
+              }
+
+              if (event === 'message.reaction') {
+                void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+              }
             }
           }
+        } catch {
+          // Connection lost — will reconnect
         }
-      })
-      .catch(() => undefined)
+
+        // Reconnect after 2 seconds unless cancelled
+        if (!cancelled) {
+          await new Promise((resolve) => setTimeout(resolve, 2_000))
+        }
+      }
+    }
+
+    void connectStream()
 
     return () => {
-      controller.abort()
+      cancelled = true
     }
   }, [queryClient, threadId, token])
 
