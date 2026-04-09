@@ -11,6 +11,7 @@ Related documents:
 - [conversation-intelligence-platform.md § 10](conversation-intelligence-platform.md#10-reference-plugin-implementation--twilio-voice) — Twilio voice connector
 - [conversation-intelligence-platform.md](conversation-intelligence-platform.md) — event-driven platform, plugin architecture, trigger system
 - [external-tool-integration.md](external-tool-integration.md) — MCP servers, custom API connectors, credential flow, context loading
+- [skills.md](skills.md) — skills marketplace, security verification, community catalog
 
 ---
 
