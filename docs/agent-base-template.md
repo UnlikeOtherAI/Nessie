@@ -469,6 +469,11 @@ For the omnipotent agent template, every agent — regardless of type — must d
 - Trigger type (`main`, `on-demand`, `hourly`)
 - Schedule (if trigger = `hourly`, when and how often)
 
+### Security Invariants
+- **System prompt immutability** — an agent CANNOT modify its own `systemPrompt`. This field is read-only to the agent that owns it. Only agents with `builder` role and `agent-builder` tool access may modify other agents' prompts, and only via change requests requiring approval. See `the-agents.md` § 11 for the full policy.
+- **Tool access is externally granted** — an agent cannot grant itself additional tools or escalate its own permissions
+- **Org boundary is absolute** — all operations are scoped by `organizationId` with no bypass mechanism
+
 ### Lifecycle Hooks
 - On run start: load framing memory, search procedures, load personalization
 - On run complete: self-eval, capture memories, update signals

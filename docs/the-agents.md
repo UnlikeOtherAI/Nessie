@@ -853,7 +853,59 @@ Reflections are stored and linked to procedural memories — when the same type 
 
 ---
 
-## 11. What We Have vs What We Need
+## 11. Security Invariants
+
+Hard rules that apply to all agents regardless of role, scope, or capabilities.
+
+### System Prompt Immutability
+
+**An agent CANNOT modify its own system prompt.** This is a non-negotiable invariant.
+
+The `system_prompt` field defines who an agent is — its purpose, personality, constraints, and behavioral boundaries. Allowing self-modification of this field would let an agent rewrite its own constraints, remove safety guardrails, or drift from its intended purpose. This is the AI equivalent of letting a process overwrite its own access control list.
+
+**Rules:**
+1. No agent may read or write its own `system_prompt` field through any tool or API call
+2. No agent may instruct another agent to modify the first agent's `system_prompt`
+3. The `system_prompt` column must be excluded from all agent-accessible write operations at the API level — this is enforced in code, not by policy
+
+**Exception — Agent Builder Role:**
+Agents with the explicit `builder` role and `agent-builder` tool access may modify **other** agents' system prompts — never their own. Even then:
+- Changes go through a **change request** (not direct writes)
+- Change requests require approval from a human or a designated reviewer agent
+- The change request captures: what changed, why, who requested it, who approved it
+- A full diff of the old vs new prompt is stored in the audit log
+- Rollback is always possible (prompt versioning)
+
+```
+agent_prompt_changes
+  id               UUID PK
+  agent_id         UUID FK → agents — the agent being modified
+  requested_by     UUID FK → agents — the builder agent
+  approved_by      UUID — agent or user who approved
+  old_prompt       TEXT
+  new_prompt       TEXT
+  reason           TEXT
+  status           ENUM (pending, approved, rejected, applied, rolled_back)
+  created_at       TIMESTAMPTZ
+  applied_at       TIMESTAMPTZ
+```
+
+### Tool Access Scoping
+
+- Agents can only use tools granted by their role + `toolPolicy` overrides
+- No agent can grant itself additional tool access
+- Tool access changes require the same change-request flow as prompt changes
+- The `agent-builder` tool is never auto-granted — it requires explicit human assignment
+
+### Org Boundary Enforcement
+
+- All queries are scoped by `organization_id` — no exceptions, no admin bypass
+- An agent cannot access data, memories, threads, or other agents outside its org
+- Cross-org communication requires an explicit bridge mechanism (not yet designed)
+
+---
+
+## 12. What We Have vs What We Need
 
 ### Have (Working)
 
@@ -923,7 +975,7 @@ Each phase produces something usable. No phase is pure infrastructure.
 
 ---
 
-## 12. OpenClaw Alignment
+## 13. OpenClaw Alignment
 
 Nessie integrates with OpenClaw at the gateway level. The agent model maps cleanly:
 
