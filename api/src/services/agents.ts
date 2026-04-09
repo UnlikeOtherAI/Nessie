@@ -404,6 +404,7 @@ export const listAgentsForUser = async (
   includeUnbound: boolean,
 ): Promise<AgentRecord[]> => {
   const visibilityFilters: Prisma.AgentWhereInput[] = [
+    // Agents bound to channels the user is a member of
     {
       bindings: {
         some: {
@@ -412,6 +413,17 @@ export const listAgentsForUser = async (
             members: {
               some: { userId },
             },
+          },
+        },
+      },
+    },
+    // Agents bound to public channels in the org (visible to all org members)
+    {
+      bindings: {
+        some: {
+          channel: {
+            organizationId,
+            visibility: 'public',
           },
         },
       },

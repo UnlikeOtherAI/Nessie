@@ -57,15 +57,21 @@ export const listChannelsForUser = async (
   prisma: PrismaClient,
   userId: string,
   organizationId: string,
+  teamId?: string,
 ): Promise<ChannelRecord[]> => {
+  const where: Record<string, unknown> = {
+    organizationId,
+    OR: [
+      { visibility: 'public' },
+      { members: { some: { userId } } },
+    ],
+  }
+  if (teamId) {
+    where['teamId'] = teamId
+  }
+
   const channels = await prisma.channel.findMany({
-    where: {
-      organizationId,
-      OR: [
-        { visibility: 'public' },
-        { members: { some: { userId } } },
-      ],
-    },
+    where,
     orderBy: { createdAt: 'asc' },
   })
 

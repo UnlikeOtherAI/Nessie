@@ -793,10 +793,12 @@ export const buildApp = async () => {
       return reply
     }
 
+    const query = request.query as { teamId?: string }
     const channels = await listChannelsForUser(
       prisma,
       actorContext.actor.actorId,
       actorContext.tenant.organizationId,
+      query.teamId,
     )
 
     return createApiResponse(ChannelRecordSchema.array().parse(channels))
