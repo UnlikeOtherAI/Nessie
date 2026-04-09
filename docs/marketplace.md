@@ -379,6 +379,8 @@ capability_assignments
   @@unique([library_item_id, target_type, target_id])
 ```
 
+For skills specifically, the `skill_assignments` table in skills.md provides additional per-agent config overrides. `capability_assignments` is the unified model; `skill_assignments` extends it with skill-specific fields (config_overrides, enabled flag).
+
 ### How It Connects
 
 ```

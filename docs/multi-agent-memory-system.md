@@ -9,6 +9,7 @@ Builds on:
 - [research/memory-retrieval-and-reranking-in-multi-agent-systems.md](research/memory-retrieval-and-reranking-in-multi-agent-systems.md) — retrieval architectures, reranking, negative mining
 - [research/reasoning-provenance-and-decision-traceability.md](research/reasoning-provenance-and-decision-traceability.md) — design rationale research
 - [research/privacy-preserving-memory-scoping-in-multi-tenant-ai.md](research/privacy-preserving-memory-scoping-in-multi-tenant-ai.md) — embedding security, need-to-know
+- [conversation-intelligence-platform.md](conversation-intelligence-platform.md) — § 6 Memory Capture pipeline feeds into this memory system
 
 ---
 

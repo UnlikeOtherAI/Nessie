@@ -6,10 +6,10 @@ The foundational skill model (structure, visibility, lifecycle, database schema)
 
 Related documents:
 - [the-agents.md § 7](the-agents.md) — skill structure, visibility, lifecycle, database schema, promotion pipeline
-- [multi-agent-memory-system.md](multi-agent-memory-system.md) — procedural memory (raw material for skills)
-- [external-tool-integration.md](external-tool-integration.md) — tool integration, context loading (skills depend on tools)
+- [multi-agent-memory-system.md](multi-agent-memory-system.md) — procedural memory, self-evaluation loop
+- [external-tool-integration.md](external-tool-integration.md) — tool outcome memory, companion skills
 - [marketplace.md](marketplace.md) — unified marketplace, library, agent editor integration
-- [tool-registry-spec.md](tool-registry-spec.md) — tool registry, grants, execution enforcement
+- [tool-registry-spec.md](tool-registry-spec.md) — sandbox constraints for security verification Stage 4
 - [secret-management-spec.md](secret-management-spec.md) — credential handling for skills that use external services
 
 ---
@@ -116,6 +116,8 @@ Agent receives task that needs a skill
   │
   └── Outcome captured → procedural memory updated
 ```
+
+For external tools (MCP servers, API connectors), the equivalent mechanism is `resolve_capability` / `drop_context` described in external-tool-integration.md § 5. Skills use `load_skill` / `unload_skill` which follow the same temporary context pattern — the skill definition is loaded into the agent's temporary context and dropped when no longer needed.
 
 ### Assigning Skills to Agents
 

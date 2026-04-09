@@ -15,6 +15,9 @@ Related documents:
 - [multi-agent-memory-system.md](multi-agent-memory-system.md) — memory types, retrieval, feedback
 - [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) — agent external identity
 - Section 10 below — Twilio voice connector (reference plugin implementation)
+- [marketplace.md](marketplace.md) — workflow templates register triggers via § 4
+- [skills.md](skills.md) — conversation intelligence triggers skills
+- [external-tool-integration.md](external-tool-integration.md) — action layer uses connectors
 
 ---
 

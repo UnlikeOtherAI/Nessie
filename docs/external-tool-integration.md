@@ -90,7 +90,7 @@ mcp_server_instances
   installed_by     UUID FK → users
   
   -- State
-  status           ENUM (active, paused, error, pending_setup, pending_approval)
+  status           ENUM (active, idle, busy, draining, paused, error, pending_setup, pending_approval, offline, revoked) — idle through revoked apply only to protocol = 'remote'
   health_status    ENUM (healthy, degraded, down, unknown)
   last_health_at   TIMESTAMPTZ
   error_message    TEXT
@@ -1299,6 +1299,7 @@ An MCP server may expose 100+ tools, but most agents only need a few. Endpoint f
 
 ```
 Configured at assignment time (capability_assignments.enabled_tools):
+(see marketplace.md § 5 for the capability_assignments schema)
 
   Stripe MCP server has 47 tools
   Sales agent assignment: enabled_tools = ["stripe_list_charges", "stripe_get_balance", 
