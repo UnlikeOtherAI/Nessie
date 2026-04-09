@@ -11,13 +11,31 @@ It follows the project's planning rules from [implementation-phases.md](../imple
 
 ## Relationship to Existing Phases
 
-The main [implementation-phases.md](../implementation-phases.md) covers the full platform (auth, org model, channels, policy, tools, secrets, etc.). This plan is a focused **agent-track overlay** that maps to the same phase timeline but zooms in on agent-specific work.
+The main [implementation-phases.md](../implementation-phases.md) remains the source of truth for platform-core delivery:
+
+- auth and tenancy
+- org/project/team/channel model
+- policy engine
+- shared schemas/config
+- deployment/runtime foundations
+- non-agent platform administration
+
+This document is the source of truth for agent-specific delivery:
+
+- agent execution and orchestration
+- triggers and scheduler behavior
+- plans, mailbox, and inter-agent coordination
+- tool registry and temporary context as consumed by agents
+- skills, workflow templates, generated plugins, and marketplace agent UX
+- execution environments, runners, remote workers, and agent builder flows
+
+When the two plans overlap, this document wins for anything agent-, workflow-, trigger-, runner-, or marketplace-related.
 
 | Main Phase | Agent Track Focus |
 |---|---|
 | Phase 1 | Core agent CRUD, safe tools, sub-agent spawning (DONE) |
 | Phase 2 | Multi-user, policy, approvals (in progress) |
-| **This plan** | Agent-specific capabilities that weave through Phases 3–5+ |
+| Phase 3+ | All further agent/workflow/runtime execution work is defined here |
 
 ### Phase ordering rationale
 
@@ -99,6 +117,50 @@ Minimum binding audit fields:
 - `revoked_at`
 - `revoked_by`
 
+## Access Model
+
+The platform needs a clear distinction between configuration rights, invocation rights, and internal visibility.
+
+### Access levels
+
+- `manage`
+  - configure internals, bindings, triggers, policies, scope, approvals, and assignments
+- `invoke`
+  - start an agent or workflow and always receive final output/result plus final success/failure state
+- `inspect`
+  - see internal execution details such as step logs, intermediate state, internal tool calls, and hidden dependency wiring
+- `none`
+
+`invoke` always includes final output. There is no separate “observe final output” permission.
+
+### Black-box mode
+
+Inherited or delegated capabilities may execute in `black_box` mode:
+
+- caller may invoke the agent or workflow
+- caller may receive allowed final output and sanitized terminal state
+- caller may not inspect internal steps, logs, triggers, secret bindings, hidden connectors, or protected intermediate data
+- caller may not manage internals
+
+This is the default handling for inherited protected dependencies that should be usable without being inspectable.
+
+### Trigger attachment rule
+
+Agent templates do not define `supported_triggers` or `recommended_triggers`.
+
+Rules:
+
+- any trigger type may be attached to any agent if scope/policy allows it
+- trigger compatibility is a policy/access problem, not a payload-shape problem
+- raw trigger payload may be passed through even if sparse or provider-specific
+- optional input mapping/normalization is allowed but not required for trigger attachment
+
+Configuration and runtime permissions are evaluated separately:
+
+- to configure/attach a trigger, the acting user must have permission to use that trigger and to manage the target agent/workflow
+- to execute after firing, the target agent/workflow must have permission to run with that trigger
+- explicit black-box delegation may allow invoke-only access without exposing hidden trigger internals
+
 ---
 
 ## Agent Phase 0: Visual Prototype (Design Track)
@@ -151,6 +213,13 @@ Build the complete agent admin experience with fake data. Every page, every pane
    - Show all node types: Trigger, Agent, Tool, Router, Fork, Join, Human Input
    - Trigger config node, condition editor skeleton, step config panel skeleton
    - Validates the visual language — not functional yet
+
+**Permissions UX to model from the start:**
+
+- transparent management view for actors with `manage`
+- black-box invocation view for actors with `invoke` but not `inspect`
+- internal logs/steps panel visible only with `inspect`
+- final output always visible to invokers
 
 **Mock data provider pattern:**
 
@@ -958,6 +1027,32 @@ Everything is discoverable, installable, and composable through a unified market
 8. Compensation steps for failure handling
 9. Workflow API: `POST /api/workflows`, `GET /api/workflows`, `POST /api/workflows/{id}/install`, `GET /api/workflow-installations/{id}/runs`, `POST /api/workflow-installations/{id}/run`
 10. `invoke_workflow` MCP tool
+11. `workflow_runs` table as the canonical workflow execution record
+12. `workflow_step_runs` table for per-step execution state, retries, intermediate outputs, and environment/tool references
+13. Link `workflow_runs` to workflow installation, trigger source/delivery, and any parent task/plan/run where execution is nested
+14. Black-box workflow invocation model:
+   - `invoke` returns final output and sanitized terminal state
+   - `inspect` gates internal step visibility, logs, and intermediate state
+   - `manage` gates bindings, triggers, scope, and activation
+
+**Execution runtime protocol to implement in this phase:**
+15. Canonical lease lifecycle:
+   - request execution
+   - select eligible runner
+   - issue short-lived lease
+   - fetch artifact/policy/bindings
+   - launch instance/job
+   - heartbeat
+   - complete, terminate, or reassign after expiry/failure
+16. Scheduler/control-plane service owns runner selection, lease issuance, retry, and reassignment
+17. Runners own local launch, heartbeat, log streaming, and final usage reporting
+18. Artifact storage abstraction must be uniform across hosted and local installs:
+   - hosted may use GCS/object storage
+   - local installs may use a local adapter implementing the same contract
+
+**Cost model to implement in this phase:**
+19. `token_ledger` and `execution_usage_ledger` are the only durable cost ledgers
+20. Add reporting views/queries that roll mixed model + environment cost up to run, workflow run, plugin version, agent, user, and scope
 
 **Example template to ship in Phase 8:**
 1. **GitHub Issue Triage → PR → Customer Follow-Up**
@@ -1025,6 +1120,8 @@ Everything is discoverable, installable, and composable through a unified market
 - Review workflow gates publication (verified: unapproved version cannot be published org-wide)
 - Execution usage ledger attributes cost correctly (verified: environment run linked to actor + run + final billable duration)
 - Plugin builder system is deterministic (verified: template-based plugin passes schema validation and harness tests before review)
+- Black-box invocation works (verified: invoker receives final output but cannot see hidden logs/steps/bindings)
+- Workflow runs are first-class records with step history (verified: run + step rows created and linked to installation + trigger source)
 - Lint, typecheck, build pass
 
 ---

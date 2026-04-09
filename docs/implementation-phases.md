@@ -427,7 +427,7 @@ The agent column browser, agent designer studio, and agent categories UI are alr
 
 ### Goal
 
-Make Nessie useful as a serious agent platform rather than only a chat surface.
+Ship the shared platform primitives that the agent system depends on.
 
 ### Scope
 
@@ -450,6 +450,17 @@ Make Nessie useful as a serious agent platform rather than only a chat surface.
   - secret grants
   - runtime resolve path
 
+Agent-specific implementation from Phase 3 onward is owned by [plans/2026-04-09-agent-implementation-plan.md](./plans/2026-04-09-agent-implementation-plan.md), including:
+
+- agentic loop enhancements
+- triggers and scheduler behavior
+- plans and inter-agent coordination
+- workflow templates and installations
+- marketplace agent capabilities
+- generated plugins
+- execution environments, runners, and remote workers
+- agent builder UX and APIs
+
 ### What makes it workable
 
 At the end of phase 3, teams should be able to:
@@ -460,7 +471,8 @@ At the end of phase 3, teams should be able to:
 - search docs safely,
 - store scoped secrets,
 - require step-up verification for sensitive secret use,
-- collaborate across languages.
+- collaborate across languages,
+- provide the shared control-plane primitives consumed by the agent plan.
 
 ### Phase 3 code-level prerequisites (Phase 2 -> Phase 3 migration)
 
@@ -657,6 +669,8 @@ Add privileged and interactive execution in a controlled way.
   - command allow/deny
   - no-interactive mode
 
+Detailed sequencing for agent-facing runners, execution environments, workflow-launched coding environments, generated-plugin runtime, and remote-worker UX is owned by [plans/2026-04-09-agent-implementation-plan.md](./plans/2026-04-09-agent-implementation-plan.md). This phase keeps only the platform/runtime milestone.
+
 ### What makes it workable
 
 At the end of phase 4, a team should be able to:
@@ -691,6 +705,8 @@ Make the system safe for serious company use.
 - budget alerts and cost governance
 - better runner isolation and scale tuning
 - self-hosted operational docs and upgrade paths
+
+Agent-specific release workflows, black-box invocation behavior, marketplace execution controls, and higher-risk operational workflow sequencing are owned by [plans/2026-04-09-agent-implementation-plan.md](./plans/2026-04-09-agent-implementation-plan.md). This phase keeps only the enterprise platform hardening milestone.
 
 ### What makes it workable
 
