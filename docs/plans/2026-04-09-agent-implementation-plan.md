@@ -1235,6 +1235,239 @@ Phase 8: Marketplace + Agent Builder + Workflow Templates
 
 ---
 
+## Build Checklist
+
+This section turns the plan into an execution checklist with likely file/module targets. It is intentionally concrete enough to code against.
+
+### Track A: Agent Runtime
+
+1. **Agent run loop**
+   - Targets:
+     - [worker/src/run](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src/run)
+     - [worker/src/index.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src/index.ts)
+     - [api/src/services/agents.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/agents.ts)
+     - [api/src/services/token-ledger.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/token-ledger.ts)
+   - Deliver:
+     - iterative perceive-think-act loop
+     - token ledger writes per iteration
+     - tool-call audit records
+     - budget enforcement on all dimensions
+
+2. **Run status + activity streaming**
+   - Targets:
+     - [api/src/realtime](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/realtime)
+     - [admin/src/facades/runs](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/runs)
+     - [admin/src/components/features/agents](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/components/features/agents)
+   - Deliver:
+     - `agent.tool.start`, `agent.tool.end`, iteration events
+     - budget bar and run-cost UI
+     - live run detail wiring
+
+### Track B: Triggers and Scheduler
+
+3. **Trigger data model + APIs**
+   - Targets:
+     - [api/prisma/schema.prisma](/System/Volumes/Data/.internal/projects/Projects/nessie/api/prisma/schema.prisma)
+     - [api/src/services/agents.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/agents.ts)
+     - new module: [api/src/services/triggers.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/triggers.ts)
+     - API entrypoints in [api/src/index.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/index.ts)
+   - Deliver:
+     - `agent_triggers`
+     - `agent_trigger_deliveries`
+     - `agent_webhooks`
+     - CRUD, pause/resume, history, manual run endpoints
+
+4. **Scheduler + event router**
+   - Targets:
+     - new module: [worker/src/scheduler](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src/scheduler)
+     - [worker/src/index.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src/index.ts)
+   - Deliver:
+     - cron/interval scheduler
+     - pg_notify event subscription
+     - trigger delivery writes
+     - concurrency guard and retry/disable rules
+
+5. **Trigger UI**
+   - Targets:
+     - [admin/src/facades/agents](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/agents)
+     - new module: [admin/src/facades/triggers](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/triggers)
+     - [admin/src/components/features/agents](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/components/features/agents)
+   - Deliver:
+     - Trigger tab wiring
+     - Trigger Management page
+     - trigger history, cron preview, webhook rotation
+
+### Track C: Plans and Coordination
+
+6. **Plans + mailbox + locks**
+   - Targets:
+     - new modules:
+       - [api/src/services/plans.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/plans.ts)
+       - [api/src/services/mailbox.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/mailbox.ts)
+       - [api/src/services/resource-locks.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/resource-locks.ts)
+     - [worker/src/run](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src/run)
+   - Deliver:
+     - `plans`, `plan_steps`
+     - `agent_mailbox`, DLQ
+     - `resource_locks`
+     - orchestration of spawn/message/approval/wait steps
+
+7. **Evaluation + reflection**
+   - Targets:
+     - new module: [api/src/services/evaluations.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/evaluations.ts)
+     - [worker/src/run](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src/run)
+     - [api/src/services/thoughts.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/thoughts.ts)
+   - Deliver:
+     - evaluation records
+     - reflection capture
+     - wiring from failed runs to procedural memory candidates
+
+### Track D: Tool Registry and Temporary Context
+
+8. **Registry-backed tool model**
+   - Targets:
+     - [api/src/services/tools.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/tools.ts)
+     - [worker/src/run](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src/run)
+     - shared schemas under [packages/schemas](/System/Volumes/Data/.internal/projects/Projects/nessie/packages/schemas)
+   - Deliver:
+     - dynamic tool registry
+     - grant enforcement
+     - replacement of hardcoded safe-tool dispatch
+
+9. **Temporary context + resolver**
+   - Targets:
+     - new module: [api/src/services/capabilities.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/capabilities.ts)
+     - [worker/src/run](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src/run)
+     - [admin/src/facades/tools](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/tools)
+   - Deliver:
+     - capability directory
+     - load/drop temporary context sections
+     - cheap resolver sub-agent selection path
+
+### Track E: Skills and Memory Integration
+
+10. **Skill lifecycle + security pipeline**
+    - Targets:
+      - new module: [api/src/services/skills.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/skills.ts)
+      - [api/src/services/policy.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/policy.ts)
+      - [admin/src/facades](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades)
+    - Deliver:
+      - skill CRUD/versioning
+      - grant/share flow
+      - security scan pipeline
+      - promotion from procedural memory
+
+11. **Memory integration**
+    - Targets:
+      - [api/src/services/thoughts.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/thoughts.ts)
+      - [worker/src/run](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src/run)
+    - Deliver:
+      - recall integration into runs
+      - reflection/procedure to skill-candidate path
+      - memory visibility respecting scope/principal rules
+
+### Track F: Remote Workers and Async Jobs
+
+12. **Remote worker control plane**
+    - Targets:
+      - new modules:
+        - [api/src/services/remote-workers.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/remote-workers.ts)
+        - [api/src/services/async-jobs.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/async-jobs.ts)
+      - [api/src/index.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/index.ts)
+    - Deliver:
+      - worker registration/heartbeat
+      - policy sync
+      - async job records and progress endpoints
+
+13. **Worker/CLI side**
+    - Targets:
+      - [cli](/System/Volumes/Data/.internal/projects/Projects/nessie/cli)
+      - new worker-side remote execution modules as needed
+    - Deliver:
+      - `nessie-agent` register/run/install-service/status
+      - local tool discovery
+      - WebSocket execution loop
+
+### Track G: Marketplace, Workflows, Plugins, Environments
+
+14. **Library + capability assignment**
+    - Targets:
+      - new modules:
+        - [api/src/services/library.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/library.ts)
+        - [api/src/services/workflows.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/workflows.ts)
+        - [api/src/services/execution-environments.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/execution-environments.ts)
+      - [api/src/services/tools.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/tools.ts)
+    - Deliver:
+      - `library_items`
+      - `capability_assignments`
+      - `workflow_installations`
+      - `workflow_runs`
+      - `workflow_step_runs`
+      - `execution_environment_templates`
+      - `execution_environment_instances`
+      - `execution_runners`
+      - `execution_leases`
+      - `execution_usage_ledger`
+
+15. **Execution control plane**
+    - Targets:
+      - new module: [api/src/services/execution-control-plane.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/execution-control-plane.ts)
+      - worker-side launch integration under [worker/src](/System/Volumes/Data/.internal/projects/Projects/nessie/worker/src)
+    - Deliver:
+      - runner selection
+      - lease issuance
+      - artifact/policy delivery
+      - retry/reassignment logic
+      - final usage recording orchestration
+
+16. **Generated plugin system**
+    - Targets:
+      - new module: [api/src/services/generated-plugins.ts](/System/Volumes/Data/.internal/projects/Projects/nessie/api/src/services/generated-plugins.ts)
+      - [admin/src/facades/designer](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/designer)
+      - [admin/src/components/features](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/components/features)
+    - Deliver:
+      - `generated_plugins`, versions, reviews
+      - template catalog
+      - review queue
+      - runtime policy enforcement and sandbox-only pre-approval
+
+17. **Marketplace/admin UI**
+    - Targets:
+      - [admin/src/facades/agents](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/agents)
+      - [admin/src/facades/designer](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/designer)
+      - add new facades as needed:
+        - [admin/src/facades/workflows](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/workflows)
+        - [admin/src/facades/library](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/library)
+        - [admin/src/facades/resources](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/facades/resources)
+      - [admin/src/components/features/agents](/System/Volumes/Data/.internal/projects/Projects/nessie/admin/src/components/features/agents)
+    - Deliver:
+      - marketplace browser
+      - library page
+      - workflow builder
+      - generated plugin builder
+      - execution environment usage page
+      - black-box vs inspect UI states
+
+### Execution Order
+
+1. Track A
+2. Tracks B and C in parallel
+3. Track D
+4. Track E
+5. Tracks F and G in parallel, with execution control plane starting before workflow/plugin runtime
+
+### Definition of Ready for Coding
+
+Before implementation starts on any checklist item:
+
+- schema/data-model references for that item exist in docs
+- owning service/module is named
+- API surface is named or intentionally deferred
+- admin facade target is named if the item has UI
+- validation path is identified in the phase exit criteria
+
+---
+
 ## Deferred Items
 
 These are documented in specs but explicitly deferred beyond this plan:
