@@ -147,7 +147,7 @@ While only `name` + `role` are strictly required, agents without a `systemPrompt
 
 ### In-Memory Types (Legacy Orchestrator — `src/` only)
 
-> **Warning**: This type exists only in the legacy local orchestrator (`src/agent/`). It is NOT active in the deployed API/worker architecture. The API-layer `agents` table is the source of truth. This legacy model will be deprecated once scheduling fields are added to the API model.
+> **Warning**: This type exists only in the legacy local orchestrator (`src/agent/`). It is NOT active in the deployed API/worker architecture. The API-layer `agents` table is the source of truth. Scheduling fields (`trigger_type`, `trigger_config`) have been added to the API model — see the-agents.md § 17 for the full trigger system. This legacy type should be removed once migration is complete.
 
 ```typescript
 type ManagedAgent = {
@@ -163,7 +163,7 @@ type ManagedAgent = {
 }
 ```
 
-The `ManagedAgent.type` values (`coder`, `weather`, `custom`) do NOT correspond to the API-layer roles (`orchestrator`, `builder`, `reviewer`, `researcher`, `debugger`, `watcher`). These are two separate systems. Migration path: add `trigger`, `intervalMinutes`, and scheduling fields to the API `agents` table, then remove `ManagedAgent`.
+The `ManagedAgent.type` values (`coder`, `weather`, `custom`) do NOT correspond to the API-layer roles (`orchestrator`, `builder`, `reviewer`, `researcher`, `debugger`, `watcher`). These are two separate systems. Migration path: the API `agents` table now has `trigger_type` and `trigger_config` columns (see the-agents.md § 17). Remove `ManagedAgent` once all legacy orchestrator code is migrated.
 
 ---
 

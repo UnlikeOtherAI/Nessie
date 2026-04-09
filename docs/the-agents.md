@@ -51,6 +51,8 @@ agents
   model            TEXT — LLM model: "gpt-4o", "claude-sonnet-4-5-20250514", etc.
   parent_agent_id  UUID FK → agents — parent in hierarchy (null = root agent)
   active_config_version_id UUID FK → agent_config_versions (nullable) — null until first version is created
+  trigger_type     TEXT DEFAULT 'on-demand' — how this agent is activated (see § 17)
+  trigger_config   JSONB — trigger-type-specific configuration (cron expression, webhook secret, event filters)
   organization_id  UUID — hard org boundary
   project_id       UUID — project scope
   team_id          UUID — team scope
@@ -73,7 +75,7 @@ agents
 
 **Required:** `name`, `role`
 
-**Optional:** `systemPrompt`, `parentAgentId`, `toolPolicy`, `provider`, `model`
+**Optional:** `systemPrompt`, `parentAgentId`, `toolPolicy`, `provider`, `model`, `triggerType`, `triggerConfig`
 
 > While `systemPrompt` is optional, agents without one default to generic assistant behavior. For production agents, `role` + `systemPrompt` define the agent's goal and are strongly recommended.
 
@@ -93,7 +95,7 @@ agents
 }
 ```
 
-The service creates the agent record and returns it with a generated UUID. The agent starts in `idle` status and does nothing until bound to a channel and triggered by a message.
+The service creates the agent record and returns it with a generated UUID. The agent starts in `idle` status. Agents with `triggerType: "on-demand"` (default) do nothing until bound to a channel and triggered by a message. Agents with other trigger types are registered with the scheduler service on creation (see § 17).
 
 ### Agent Status Lifecycle
 
@@ -1151,6 +1153,9 @@ Components marked `Legacy (src/)` exist in the local orchestrator but are NOT ac
 | **Cost ledger** | High | Agentic loop | Per-agent/run/plan/step token and dollar accounting |
 | **Rate limiting + backpressure** | High | Agentic loop | Queue, worker leases, provider rate adaptation |
 | **Worker heartbeat + health** | High | — | Stale run detection, offline transitions |
+| **Trigger scheduler service** | High | Agentic loop | Cron, interval, webhook, event-driven agent activation (§ 17) |
+| **Webhook ingest endpoint** | High | Trigger scheduler | External systems fire agents via signed HTTP |
+| **Event bus + subscriptions** | High | Trigger scheduler | Internal events trigger agents reactively |
 | **Concurrent resource locks** | Medium | Plans | File/workspace locks, conflict detection |
 | **Personalization memory** | Future | — | User communication model |
 | **Local-first filtering** | Future | — | On-device memory extraction |
@@ -1236,6 +1241,8 @@ Precise definitions. All documents must use these terms consistently.
 | **ToolRegistryEntry** | A registered tool with typed schema, risk classification, and versioning. All MCP tools and API connector endpoints produce registry entries. See tool-registry-spec.md. | Tool |
 | **Temporary context** | Agent context section loaded on demand with external tool schemas. Agent controls lifecycle via `resolve_capability` (load) and `drop_context` (drop). See external-tool-integration.md section 5. | Memory |
 | **Resolver sub-agent** | Cheap disposable LLM that selects the right tools for the main agent's temporary context. See external-tool-integration.md section 5. | Orchestrator |
+| **Trigger** | The activation mechanism for an agent: on-demand, manual, scheduled, webhook, event, or interval. Stored as `trigger_type` + `trigger_config` on the agent record. See § 17. | Run |
+| **Scheduler service** | Background process that evaluates cron/interval triggers and creates runs. Uses `pg_advisory_lock` for leader election. See § 17. | Worker |
 
 ---
 
@@ -1458,3 +1465,294 @@ When multiple agents work in the same project:
 - **Conflict detection**: If two agents modify the same file in overlapping runs, the second write detects the conflict and either merges (if possible) or escalates to human.
 - **Plan-level write sets**: Plans declare expected write targets upfront. The orchestrator prevents concurrent plans with overlapping write sets.
 - **External resource locks**: For deploys, migrations, and shared environments — same lock table, longer timeouts.
+
+---
+
+## 17. Agent Triggers & Scheduling
+
+Agents need to activate on more than just messages. A monitoring agent should wake at 9am daily. A deploy agent should fire when GitHub sends a webhook. An audit agent should react when a task transitions to `review_passed`.
+
+### Trigger Types
+
+Every agent has exactly one `trigger_type`. Default is `on-demand`.
+
+| Type | Activation | `trigger_config` shape |
+|------|-----------|----------------------|
+| `on-demand` | @mention, direct message, or parent agent delegation | `{}` (no config needed) |
+| `manual` | Explicit API call: `POST /api/agents/{id}/trigger` or UI "Run" button | `{}` |
+| `scheduled` | Cron expression evaluated by the scheduler service | `{ "cron": "0 9 * * 1-5", "timezone": "Europe/London", "input": { ... } }` |
+| `webhook` | Inbound HTTP: `POST /api/webhooks/{webhook_id}` | `{ "secret": "auto-generated", "input_mapping": { ... }, "allowed_ips": [] }` |
+| `event` | Internal event bus subscription | `{ "events": ["task.review_passed", "agent.run.failed"], "filter": { "project_id": "..." } }` |
+| `interval` | Fixed-interval timer (simpler than cron for "every N minutes" patterns) | `{ "interval_minutes": 30, "input": { ... } }` |
+
+> An agent with `trigger_type: "scheduled"` can still be triggered manually via `POST /api/agents/{id}/trigger`. The trigger type controls *automatic* activation, not exclusive activation.
+
+### Trigger Config Examples
+
+**Scheduled — daily standup digest at 9am London time:**
+```json
+{
+  "triggerType": "scheduled",
+  "triggerConfig": {
+    "cron": "0 9 * * 1-5",
+    "timezone": "Europe/London",
+    "input": {
+      "prompt": "Generate the daily standup digest for all active projects."
+    }
+  }
+}
+```
+
+**Webhook — GitHub push events:**
+```json
+{
+  "triggerType": "webhook",
+  "triggerConfig": {
+    "secret": "whsec_auto_generated_on_create",
+    "input_mapping": {
+      "repo": "$.repository.full_name",
+      "branch": "$.ref",
+      "commits": "$.commits[*].message",
+      "pusher": "$.pusher.name"
+    },
+    "allowed_ips": ["140.82.112.0/20"]
+  }
+}
+```
+
+**Event — react to task review passing:**
+```json
+{
+  "triggerType": "event",
+  "triggerConfig": {
+    "events": ["task.review_passed"],
+    "filter": {
+      "project_id": "proj_abc123"
+    }
+  }
+}
+```
+
+**Interval — health check every 15 minutes:**
+```json
+{
+  "triggerType": "interval",
+  "triggerConfig": {
+    "interval_minutes": 15,
+    "input": {
+      "prompt": "Check all monitored services and report any that are degraded."
+    }
+  }
+}
+```
+
+### Database Tables
+
+```
+agent_triggers
+  id               UUID PK
+  agent_id         UUID FK → agents UNIQUE — one active trigger record per agent
+  trigger_type     TEXT NOT NULL — mirrors agents.trigger_type (denormalized for scheduler queries)
+  trigger_config   JSONB NOT NULL — full config
+  enabled          BOOLEAN DEFAULT true — pause without deleting
+  next_run_at      TIMESTAMPTZ — next scheduled activation (null for webhook/event/on-demand)
+  last_run_at      TIMESTAMPTZ — last successful activation
+  last_error       TEXT — last trigger-level error (not run-level)
+  run_count        INT DEFAULT 0 — total activations
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
+```
+
+```
+agent_trigger_log
+  id               UUID PK
+  agent_id         UUID FK → agents
+  trigger_type     TEXT
+  trigger_source   TEXT — "scheduler", "webhook", "event_bus", "manual", "api"
+  run_id           UUID FK → runs (nullable — null if trigger fired but run creation failed)
+  webhook_id       UUID (nullable — set for webhook triggers)
+  event_name       TEXT (nullable — set for event triggers)
+  payload          JSONB — the input that was passed to the agent
+  status           ENUM (fired, run_created, failed, skipped)
+  error            TEXT (nullable)
+  fired_at         TIMESTAMPTZ
+  created_at       TIMESTAMPTZ
+```
+
+```
+agent_webhooks
+  id               UUID PK
+  agent_id         UUID FK → agents
+  secret_hash      TEXT NOT NULL — bcrypt hash of the webhook secret
+  allowed_ips      TEXT[] — CIDR ranges, empty = allow all
+  enabled          BOOLEAN DEFAULT true
+  last_used_at     TIMESTAMPTZ
+  created_at       TIMESTAMPTZ
+  expires_at       TIMESTAMPTZ (nullable — null = never expires)
+```
+
+### Scheduler Service
+
+A background service that manages all time-based triggers (scheduled + interval).
+
+```
+Scheduler loop (runs every 15 seconds):
+  │
+  ├── 1. SELECT * FROM agent_triggers
+  │      WHERE enabled = true
+  │        AND trigger_type IN ('scheduled', 'interval')
+  │        AND next_run_at <= NOW()
+  │        AND agent_id NOT IN (SELECT agent_id FROM runs WHERE status IN ('running', 'queued'))
+  │      FOR UPDATE SKIP LOCKED
+  │      LIMIT 50
+  │
+  ├── 2. For each trigger:
+  │     ├── Create Run record (trigger_source: 'scheduler')
+  │     ├── Inject trigger_config.input as the run input
+  │     ├── Enqueue to worker queue
+  │     ├── Update next_run_at:
+  │     │     scheduled → compute from cron expression
+  │     │     interval  → NOW() + interval_minutes
+  │     ├── Update last_run_at, increment run_count
+  │     └── Write agent_trigger_log entry (status: run_created)
+  │
+  └── 3. On failure:
+        ├── Write agent_trigger_log entry (status: failed, error: ...)
+        ├── Update agent_triggers.last_error
+        └── Do NOT disable — transient failures should not stop the schedule
+            (after 10 consecutive failures, set enabled = false and alert)
+```
+
+**Concurrency guard:** The scheduler skips agents that already have a running or queued run. This prevents pile-up if a scheduled agent takes longer than its interval. The skipped activation is logged with `status: skipped`.
+
+**Leader election:** In multi-instance deployments, only one scheduler instance should be active. Use `pg_advisory_lock` on a well-known lock ID. If the lock holder dies, another instance acquires it automatically.
+
+**Cron parsing:** Standard 5-field cron syntax (`minute hour day-of-month month day-of-week`). Extended with optional 6th field for seconds if sub-minute scheduling is ever needed. Timezone stored per-trigger, evaluated at fire time (handles DST transitions).
+
+### Webhook Ingest
+
+```
+POST /api/webhooks/{webhook_id}
+  │
+  ├── 1. Look up agent_webhooks record by webhook_id
+  │     ├── Not found → 404
+  │     ├── Disabled → 403
+  │     ├── Expired → 410
+  │     └── IP check against allowed_ips (if set)
+  │
+  ├── 2. Verify signature
+  │     ├── Header: X-Nessie-Signature: sha256=<HMAC of body using secret>
+  │     ├── Compute HMAC, constant-time compare
+  │     └── Mismatch → 401
+  │
+  ├── 3. Apply input_mapping (JSONPath expressions against request body)
+  │     └── Produces the structured input for the agent run
+  │
+  ├── 4. Create Run record (trigger_source: 'webhook')
+  │     ├── Enqueue to worker queue
+  │     └── Write agent_trigger_log entry
+  │
+  └── 5. Return 202 Accepted { "run_id": "...", "status": "queued" }
+```
+
+**Rate limiting:** Per-webhook rate limit of 60 requests/minute. Excess requests return 429 with `Retry-After` header.
+
+**Replay protection:** Each webhook request must include `X-Nessie-Delivery: <unique-id>`. Duplicate delivery IDs within a 24-hour window are rejected (409 Conflict).
+
+### Event Bus Integration
+
+Internal events are emitted by the system during normal operation. Agents can subscribe to these events.
+
+**Event taxonomy:**
+
+| Category | Events |
+|----------|--------|
+| **Task** | `task.created`, `task.transitioned`, `task.review_passed`, `task.review_failed`, `task.completed`, `task.failed` |
+| **Agent** | `agent.run.completed`, `agent.run.failed`, `agent.status_changed`, `agent.spawned` |
+| **Channel** | `channel.message_received`, `channel.member_joined`, `channel.member_left` |
+| **System** | `system.deploy_completed`, `system.error_rate_spike`, `system.budget_exceeded` |
+| **Workflow** | `workflow.completed`, `workflow.failed`, `workflow.step_completed` |
+
+**Subscription model:**
+
+```
+Event occurs (e.g., task.review_passed)
+  │
+  ├── 1. Event bus publishes to pg_notify channel 'agent_events'
+  │
+  ├── 2. Event router (in scheduler service) receives notification
+  │     ├── SELECT * FROM agent_triggers
+  │     │   WHERE trigger_type = 'event'
+  │     │     AND enabled = true
+  │     │     AND trigger_config->'events' ? 'task.review_passed'
+  │     └── For each matching trigger:
+  │           ├── Evaluate filter (e.g., project_id matches)
+  │           ├── Create Run with event payload as input
+  │           └── Write agent_trigger_log entry
+  │
+  └── 3. Same concurrency guard as scheduler — skip if agent already running
+```
+
+**Event payload:** Every event carries a standard envelope:
+```json
+{
+  "event": "task.review_passed",
+  "timestamp": "2026-04-09T14:30:00Z",
+  "actor": { "type": "agent", "id": "agent_xyz" },
+  "subject": { "type": "task", "id": "task_abc" },
+  "data": { "review_score": 0.95, "reviewer_id": "agent_reviewer" },
+  "organization_id": "org_123",
+  "project_id": "proj_456"
+}
+```
+
+### Trigger API Endpoints
+
+```
+POST   /api/agents/{id}/trigger           — manually trigger any agent (creates a run)
+GET    /api/agents/{id}/trigger            — get trigger configuration
+PUT    /api/agents/{id}/trigger            — update trigger config (type + config)
+DELETE /api/agents/{id}/trigger            — remove trigger (revert to on-demand)
+POST   /api/agents/{id}/trigger/pause      — disable without deleting
+POST   /api/agents/{id}/trigger/resume     — re-enable
+GET    /api/agents/{id}/trigger/history     — paginated trigger log
+
+POST   /api/webhooks                       — create webhook for an agent (returns secret ONCE)
+GET    /api/webhooks/{id}                   — webhook metadata (no secret)
+DELETE /api/webhooks/{id}                   — revoke webhook
+POST   /api/webhooks/{id}/rotate           — rotate secret (returns new secret ONCE)
+
+GET    /api/triggers/scheduled              — list all scheduled agents (admin view)
+GET    /api/triggers/upcoming               — next N scheduled activations across all agents
+```
+
+### MCP Tools
+
+The trigger system is also available as MCP tools for agent self-management:
+
+| Tool | Purpose |
+|------|---------|
+| `set_trigger` | Configure an agent's trigger (requires agent ownership or admin) |
+| `pause_trigger` | Pause an agent's automatic trigger |
+| `resume_trigger` | Resume a paused trigger |
+| `list_scheduled` | List upcoming scheduled activations |
+| `trigger_agent` | Manually fire another agent (subject to permissions) |
+
+### Admin UI
+
+The agent detail page in admin shows:
+
+- **Trigger badge** next to agent name: icon indicating trigger type (clock for scheduled, webhook icon, lightning bolt for event, play button for manual/on-demand)
+- **Trigger config panel**: edit cron expression with human-readable preview ("Every weekday at 9:00 AM London time"), manage webhook URLs, select events
+- **Next activation**: countdown to next scheduled run
+- **Trigger history**: table of recent activations with status, duration, and link to run details
+- **Quick actions**: Pause/Resume trigger, Trigger Now button
+
+### Security
+
+- **Webhook secrets** are generated server-side (32 bytes, base64url), returned once on creation, stored as bcrypt hash. Cannot be retrieved — only rotated.
+- **Event subscriptions** respect org/project boundaries. An agent in project A cannot subscribe to events from project B.
+- **Scheduled agents** inherit all existing permission constraints: tool policy, budget limits, approval gates.
+- **Manual trigger** via API requires the caller to have `agent:trigger` permission on the target agent.
+- **Webhook IP allowlisting** is optional but recommended for known sources (GitHub, Stripe, etc.).
+- **Rate limits** prevent webhook flood attacks from creating unbounded runs.

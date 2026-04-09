@@ -1118,7 +1118,7 @@ Evals use a standard Agent node with a structured verification prompt, not a sep
 - No workflow builder UI or workflow graph executor.
 - No `invoke_workflow` tool or workflow CRUD endpoints.
 - No Human Input suspension mechanism (`waiting_for_input` run status).
-- No trigger scheduler for `scheduled`, `webhook`, or `event` trigger subtypes on workflows or agents.
+- No trigger scheduler for `scheduled`, `webhook`, or `event` trigger subtypes on workflows. Agent-level triggers are specified in the-agents.md § 17 but not yet implemented.
 - No remote worker registration, heartbeat, websocket-connect, or effective-policy evaluation path yet.
 - No worker-scoped API-key/bootstrap generation path yet for parent-instance registration.
 - No project/channel/agent-scoped remote worker bindings yet.
