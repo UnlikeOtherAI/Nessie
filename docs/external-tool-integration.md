@@ -518,9 +518,9 @@ Example: GitHub MCP server is org-scoped, but each developer has their own PAT. 
 
 ---
 
-## 5. Context Loading and Unloading
+## 5. Executor Sub-Agents — Context Isolation for Tool Use
 
-Tool schemas consume context window space. An agent with access to 50 MCP tools and 30 API endpoints would waste thousands of tokens on tool definitions it doesn't need for the current task. The solution: load tool schemas on demand and unload them when done.
+Tool schemas consume context window space. An agent with access to 50 MCP tools and 30 API endpoints would waste thousands of tokens on tool definitions it doesn't need. The solution: tool execution happens in disposable sub-agents whose context is thrown away after use. The main agent's conversation context stays clean.
 
 ### The Problem
 
@@ -530,105 +530,226 @@ Traditional approach (wasteful):
   → 80 tools × ~200 tokens per tool schema = 16,000 tokens burned
   → Agent only uses 2-3 tools per task
   → 95% of tool context is waste
+
+Load/unload approach (better but messy):
+  Agent manually loads/unloads tool schemas into its own context
+  → Still pollutes the conversation context temporarily
+  → Agent has to manage context explicitly (cognitive overhead)
+  → Credential references still pass through the conversation context
 ```
 
-### Two-Tier Tool Awareness
+### The Pattern: Executor Sub-Agent
 
-Agents operate with two levels of tool knowledge:
-
-**Tier 1 — Tool Directory (always in context)**
-A compact list of available tools with just name + one-line description. Costs ~10 tokens per tool.
+The main agent never loads tool schemas into its own context. Instead, it spawns an invisible **executor sub-agent** that handles the tool call and returns just the result. The executor's context — tool schemas, credential references, API details — is discarded after execution.
 
 ```
-Available tool categories:
-  - CRM: acme_create_contact, acme_update_deal, acme_list_contacts (3 tools)
-  - DevTools: github_create_issue, github_list_prs, jira_create_ticket (3 tools)
-  - Database: postgres_query, postgres_list_tables (2 tools)
-  - Communication: slack_send_message, email_send (2 tools)
-  
-  Use 'load_tools' to load full schemas before calling any tool.
-  Use 'unload_tools' to free context when done with a tool category.
-```
-
-**Tier 2 — Full Tool Schemas (loaded on demand)**
-Complete input/output schemas, usage notes, examples. Only loaded when the agent decides to use a tool.
-
-```
-Agent thinks: "I need to create a contact in the CRM"
+Main agent (in conversation with user)
   │
-  ├── Agent calls: load_tools({ tools: ["acme_create_contact"] })
+  │  Main agent context contains:
+  │  - Conversation history with the user
+  │  - Capability directory (compact, ~10 tokens per capability)
+  │  - Procedural memories about past tool usage
+  │  - The current task/plan
   │
-  ├── System injects into context:
-  │     acme_create_contact:
-  │       description: "Create a new contact in Acme CRM"
-  │       input: { email: string (required), name: string, phone: string, company: string }
-  │       usage_notes: "Requires at least email. Returns created contact with ID."
-  │       example: { email: "...", name: "..." } → { id: "...", status: "created" }
+  │  Main agent context does NOT contain:
+  │  - Tool schemas
+  │  - API endpoint details
+  │  - Credential references
+  │  - MCP server connection details
   │
-  ├── Agent calls: acme_create_contact({ email: "john@acme.com", name: "John" })
-  │     → Response: { id: "contact-123", status: "created" }
+  ├── Main agent decides: "I need last week's Stripe sales data"
   │
-  ├── Agent calls: unload_tools({ tools: ["acme_create_contact"] })
-  │     → Full schema removed from context, only directory entry remains
+  ├── Main agent spawns executor sub-agent:
+  │     {
+  │       task: "Get total sales from the last 7 days",
+  │       capability: "stripe",              // which MCP server / connector
+  │       enabled_tools: ["stripe_list_charges", "stripe_get_balance"],  // only these
+  │       credential_ref: "{{secret:stripe_readonly}}"   // resolved by system, not the agent
+  │     }
   │
-  └── Context freed for the next task step
+  ├── EXECUTOR SUB-AGENT (invisible, disposable):
+  │     │
+  │     │  Executor context contains:
+  │     │  - The task description from the main agent
+  │     │  - Full tool schemas for ONLY the enabled tools
+  │     │  - Companion skill instructions (how to use this MCP server)
+  │     │  - Procedural memory for these tools (if any)
+  │     │
+  │     ├── Executor calls stripe_list_charges({ created: { gte: "2026-04-02" } })
+  │     │   → Execution engine resolves {{secret:stripe_readonly}} → injects API key
+  │     │   → MCP server executes the call
+  │     │   → Result returned to executor
+  │     │
+  │     ├── Executor processes result, formats response
+  │     │
+  │     └── Executor returns to main agent:
+  │           { result: "Total sales last 7 days: $14,230 across 47 charges" }
+  │           (Executor context is now DISCARDED — schemas, credentials, all gone)
+  │
+  └── Main agent receives the result
+      Continues conversation with user: "Last week's Stripe sales were $14,230..."
+      Main agent context: unchanged except for the result string
 ```
 
-### Meta-Tools for Context Management
+### Why This Works
+
+1. **Zero context pollution** — Tool schemas, API details, and credential references never enter the main conversation context. The main agent's context is reserved entirely for the user conversation and reasoning.
+
+2. **Automatic cleanup** — No need for explicit load/unload. The executor's context is discarded when it returns. Nothing to manage.
+
+3. **Security isolation** — Credential references exist only in the executor's ephemeral context. Even if the main agent's conversation is compromised, there's no credential surface.
+
+4. **Tool schema containment** — An MCP server with 100 tools? Only the 5 enabled ones enter the executor's context. And even those never reach the main agent.
+
+5. **Cheaper execution** — The executor can run on a smaller/cheaper model. It's just following instructions to call tools — no complex reasoning needed.
+
+6. **Parallel execution** — Main agent can spawn multiple executors simultaneously for different capabilities. "Get Stripe sales AND update the CRM" → two executors in parallel, main agent waits for both results.
+
+### Capability Directory
+
+The main agent always has a compact capability directory in its context — just enough to know what it can delegate:
 
 ```
-load_tools
-  Input: { tools: string[] }  — tool names to load
-  Effect: Injects full schemas for specified tools into the agent's context
-  Output: { loaded: string[], token_cost: number }
-  
-  The loaded schemas become available as callable tools.
-  If a tool is already loaded, this is a no-op for that tool.
-  
-  Budget guard: if loading would exceed the agent's context budget,
-  the system suggests unloading other tools first.
+Available capabilities:
+  - stripe: Payment data (read-only). Can query charges, balances, customers.
+  - acme_crm: Customer relationship management. Can read/create/update contacts and deals.
+  - github: Code repositories. Can read issues, PRs, files.
+  - slack: Team messaging. Can send messages to channels.
+  - jira: Project management. Can create/update tickets.
 
-unload_tools
-  Input: { tools: string[] }  — tool names to unload
-  Effect: Removes full schemas from context, keeps directory entry
-  Output: { unloaded: string[], tokens_freed: number }
-  
-  After unloading, the agent can still see the tool in the directory
-  but cannot call it until re-loaded.
-
-search_tools
-  Input: { query: string, tags?: string[], limit?: number }
-  Effect: Searches the tool registry (see tool-registry-spec.md § 5)
-  Output: { results: ToolSearchDocument[] }
-  
-  For discovering tools the agent doesn't know about yet.
-  Results include overview but NOT full schemas (Tier 1 info only).
+To use any capability, describe what you need and spawn an executor.
 ```
 
-### Automatic Unloading
+This costs ~50 tokens for 5 capabilities. Compare to loading full schemas: ~1000+ tokens per capability. The directory is the main agent's "menu" — it picks what it needs, the executor handles the details.
 
-The system can auto-unload tools that haven't been used for N turns:
+### Companion Skills
+
+Each MCP server or API connector can have **companion skills** — instructions that tell the executor how to use the capability effectively. These are loaded into the executor's context, not the main agent's.
 
 ```
-Context management policy (per agent or org-wide):
-  auto_unload_after_turns: 3      — unload if not used for 3 consecutive turns
-  max_loaded_tools: 10            — hard cap on simultaneously loaded tools
-  context_budget_tokens: 8000     — max tokens allocated to tool schemas
+companion_skills
+  id               UUID PK
+  library_item_id  UUID FK → library_items — the MCP server or connector
   
-When auto-unloading:
-  1. Rank loaded tools by last_used_turn (oldest first)
-  2. Unload until within budget
-  3. Log which tools were unloaded (agent is informed)
+  name             TEXT — "Stripe Usage Guide"
+  instructions     TEXT — "When querying charges, always include a date range filter.
+                          Use stripe_list_charges for transaction lists.
+                          Use stripe_get_balance for current balance.
+                          Results are paginated — use 'has_more' field to check."
+  
+  tips             TEXT — "Stripe returns amounts in cents. Divide by 100 for dollars."
+  
+  common_patterns  JSONB — [
+                     { task: "Get recent sales", tools: ["stripe_list_charges"], example_args: { limit: 100 } },
+                     { task: "Check balance", tools: ["stripe_get_balance"], example_args: {} }
+                   ]
+  
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
 ```
 
-### What Gets Preserved After Unloading
+Companion skills are created when the MCP server is installed (auto-generated from tool descriptions) and refined by admins or by procedural memory from successful executor runs.
 
-When a tool is unloaded, the agent loses the schema details but keeps:
-- The tool name and one-line description (Tier 1)
-- Any procedural memories about using the tool (see § 6)
-- Outcome history: "Last time I used `acme_create_contact`, it succeeded with email+name"
+### Credential Injection Syntax
 
-This means the agent can reason about which tool to load without having the full schema. It knows "I've used this before and it worked for X" from procedural memory.
+Credential references use a placeholder syntax that the execution engine resolves. The agent (main or executor) never sees the actual secret value.
+
+```
+Placeholder: {{secret:ref_name}}
+
+Example in MCP server config:
+  credential_ref: "{{secret:stripe_readonly}}"
+
+Resolution flow:
+  1. Executor spawns with credential_ref in its config (NOT in its message context)
+  2. When executor calls a tool, execution engine intercepts
+  3. Engine resolves {{secret:stripe_readonly}} via secret management API
+  4. Engine injects the resolved value into the MCP server connection / HTTP request
+  5. Tool executes with the real credential
+  6. Result returned to executor WITHOUT the credential
+  7. Credential erased from engine memory
+
+The placeholder {{secret:...}} appears in:
+  - MCP server instance config (transportConfig)
+  - API connector auth config
+  - Credential override records
+  
+The placeholder NEVER appears in:
+  - Agent message context (main or executor)
+  - Tool call arguments
+  - Tool call results
+  - Conversation history
+  - Logs or audit events (replaced with "***" in all logging)
+```
+
+### Endpoint Filtering
+
+An MCP server may expose 100+ tools, but most agents only need a few. Endpoint filtering controls which tools the executor can see.
+
+```
+Configured at assignment time (capability_assignments.enabled_tools):
+
+  Stripe MCP server has 47 tools
+  Sales agent assignment: enabled_tools = ["stripe_list_charges", "stripe_get_balance", 
+                                            "stripe_list_customers", "stripe_get_customer"]
+  → Executor for this agent only sees 4 tools, not 47
+  → Other 43 tools don't exist in the executor's context
+  → Saves ~8,600 tokens of tool schema per executor spawn
+
+  Different agent, different filter:
+  Finance agent assignment: enabled_tools = ["stripe_list_payouts", "stripe_get_balance_transactions",
+                                              "stripe_list_disputes"]
+  → Executor sees 3 different tools
+
+When enabled_tools is null → all tools available (use with caution)
+```
+
+The main agent's capability directory reflects the filtered set:
+```
+Instead of: "stripe: 47 tools available"
+Shows:      "stripe: Payment queries — charges, balances, customers (4 tools)"
+```
+
+### Executor Lifecycle
+
+```
+Main agent spawns executor
+  │
+  ├── 1. System creates executor sub-agent (invisible, no user interaction)
+  │     ├── Model: can be cheaper than main agent (e.g., gpt-4o-mini for simple tool calls)
+  │     ├── Context: task description + enabled tool schemas + companion skill + procedural memory
+  │     ├── Budget: inherited from main agent or per-capability limit
+  │     └── Timeout: configurable per capability (default: 30s)
+  │
+  ├── 2. Executor runs agentic loop (if needed):
+  │     ├── Simple cases: single tool call → return result (1 iteration)
+  │     ├── Complex cases: multiple tool calls, reasoning about results (2-5 iterations)
+  │     └── Max iterations enforced by budget
+  │
+  ├── 3. Executor returns result to main agent
+  │     ├── Structured result: { success: true, data: {...}, summary: "..." }
+  │     ├── Or error: { success: false, error: "Rate limited", retry_after: 60 }
+  │     └── Result is plain text/JSON — no tool schemas, no credentials
+  │
+  ├── 4. Executor context DISCARDED
+  │     ├── Tool schemas: gone
+  │     ├── Credential references: gone
+  │     ├── Intermediate reasoning: gone (unless flagged for procedural memory)
+  │     └── Only the result string persists (in main agent's context)
+  │
+  └── 5. Outcome captured for procedural memory (see § 6)
+        ├── Which tools were called, success/failure, latency
+        ├── Stored in memory system (available to future executors)
+        └── Main agent doesn't need to know the details — just "Stripe worked"
+```
+
+### When the Main Agent Calls Tools Directly
+
+Not everything needs an executor. Built-in tools (Bash, FileRead, Grep, WebSearch) that are part of the agent's core toolset remain in the main agent's context — they're lightweight and frequently used. The executor pattern is for **external capabilities**: MCP servers, API connectors, and heavy tool sets that would bloat the context.
+
+Rule of thumb:
+- **Main agent context**: built-in tools (~6 tools, ~1,200 tokens), conversation, reasoning
+- **Executor sub-agent**: MCP servers, API connectors, external services (loaded per-task, discarded after)
 
 ---
 
