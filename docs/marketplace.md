@@ -1,6 +1,6 @@
 # Marketplace and Agent Library
 
-One marketplace. One library. MCP servers, skills, and workflow templates are all capabilities that agents can use. The marketplace is where you discover them. The library is where you manage what's installed. The agent editor is where you assign them.
+One marketplace. One library. MCP servers, API connectors, skills, workflow templates, and generated plugins all enter through the same marketplace/library flow. The marketplace is where you discover them. The library is where you manage what's installed. Agents consume assignable capabilities from the library, while workflows and plugins are installed, activated, and invoked by the platform.
 
 This document describes the unified experience. The underlying systems are documented separately:
 - [skills.md](skills.md) — skill structure, security verification, community catalog
@@ -11,15 +11,29 @@ This document describes the unified experience. The underlying systems are docum
 
 ## 1. Unified Capability Model
 
-From the user's perspective, there are three types of capabilities — and they all behave the same way: you find them, add them to your library, and assign them to agents.
+The docs need four layers to stay buildable:
 
-| Capability | What It Is | Source | Example |
+- marketplace category — how an item is presented in browse/search UI
+- library item type — what durable thing is installed into the org library
+- agent capability kind — what an agent can directly call or load
+- runtime object — what the platform executes or activates
+
+From the user's perspective, the marketplace initially presents five top-level categories:
+
+| Marketplace Category | What It Is | Library Item Type | Example |
 |---|---|---|---|
-| **MCP Server** | A service that exposes tools via the MCP protocol | Marketplace catalog or self-hosted URL | "PostgreSQL", "Stripe", "GitHub" |
-| **Skill** | A packaged behaviour — instructions + tools + plan | Platform, community, or org-created | "Deploy to Staging", "Generate Minutes", "Acme CRM Integration" |
-| **Workflow Template** | An orchestrated pipeline: trigger + agents + skills | Platform, community, or org-created | "Sales Call Follow-Up", "Sprint Standup Pipeline" |
+| **MCP Server** | A service that exposes tools via the MCP protocol | `mcp_server` | "PostgreSQL", "Stripe", "GitHub" |
+| **API Connector** | A grouped set of HTTP endpoint-backed tools | `api_connector` | "Stripe API", "HubSpot API" |
+| **Skill** | A packaged behaviour: instructions + tools + plan | `skill` | "Deploy to Staging", "Generate Minutes" |
+| **Workflow Template** | An orchestration blueprint: triggers + steps + bindings | `workflow` | "Sales Call Follow-Up", "Sprint Standup Pipeline" |
+| **Generated Plugin** | Reviewed custom code produced from a platform template | `generated_plugin` | "Acme ERP CLI Wrapper" |
 
-MCP servers expose tools. Skills use tools to accomplish tasks. Workflow templates compose skills and agents into automated pipelines.
+Agent-facing capability kinds are narrower:
+
+- MCP servers and API connectors expose tools
+- skills expose reusable runbooks
+- workflows are installed/activated runtime blueprints and are invoked via explicit workflow actions, not assigned to agents like a normal tool bundle
+- generated plugins may expose tools, UI surfaces, or both, depending on their manifest
 
 **API Connectors** are not a separate system — they are a UI category in the marketplace. Under the hood, an API connector is a **library item that groups related tools together** with a credential binding. When you add a "Stripe API" connector, its 24 endpoints become 24 tools in the tool registry — same as MCP server tools. The execution engine handles the HTTP calls directly (no LLM overhead for the request itself). The agent just calls `stripe_create_customer` with arguments, same as any other tool. See [external-tool-integration.md § 3](external-tool-integration.md) for how the endpoint-to-tool mapping and credential injection work.
 
@@ -35,7 +49,7 @@ The marketplace is a single page with tabs. Every tab has the same layout: brows
 ┌──────────────────────────────────────────────────────────────┐
 │  MARKETPLACE                                                  │
 │                                                                │
-│  [ All ]  [ MCP Servers ]  [ API Connectors ]  [ Skills ]  [ Workflows ]     │
+│  [ All ]  [ MCP Servers ]  [ API Connectors ]  [ Skills ]  [ Workflows ]  [ Plugins ] │
 │                                                                │
 │  Search: [_________________________________] [Filter ▾] [Sort ▾]│
 │                                                                │
@@ -71,7 +85,7 @@ Every capability card shows the same structure regardless of type:
 ```
 ┌────────────────────────────────────┐
 │ [icon] Name                        │
-│ Type badge: MCP Server | API Connector | Skill | Workflow
+│ Type badge: MCP Server | API Connector | Skill | Workflow | Plugin
 │                                    │
 │ One-line description               │
 │                                    │
@@ -80,6 +94,7 @@ Every capability card shows the same structure regardless of type:
 │   Skill → "Tools: Bash, WebFetch"  │
 │   API Connector → "24 endpoints"   │
 │   Workflow → "3 steps, 2 agents"   │
+│   Plugin → "CLI wrapper" or "UI widget" │
 │                                    │
 │ Rating: ★ 4.8 (142 reviews)       │
 │ Security: ✓ Verified | ⚠ Review Required | ✕ Blocked
@@ -109,6 +124,7 @@ Clicking any card opens the detail page with the same structure:
 │   MCP Server → list of tools it exposes                       │
 │   Skill → step-by-step plan preview                           │
 │   API Connector → list of endpoints with methods              │
+│   Plugin → manifest summary, runtime policy, exposed tools/UI │
 │                                                               │
 │ Security:                                                     │
 │   Security scan results                                       │
@@ -122,13 +138,13 @@ Clicking any card opens the detail page with the same structure:
 
 ### "All" Tab — Unified Search
 
-The "All" tab searches across all three types simultaneously. Results are ranked by relevance regardless of type. A search for "create contact" might return:
+The "All" tab searches across all categories simultaneously. Results are ranked by relevance regardless of type. A search for "create contact" might return:
 
 1. **Acme CRM API** (connector) — has `acme_create_contact` endpoint
-2. **Sales Workflow** (skill) — creates contacts as part of a larger flow
+2. **Sales Workflow** (workflow) — creates contacts as part of a larger flow
 3. **HubSpot** (MCP server) — has contact creation tools
 
-This is the most useful view for agents and users who know what they want to accomplish but don't know which type of capability provides it.
+This is the most useful view for agents and users who know what they want to accomplish but don't know which category provides it.
 
 ---
 
@@ -136,13 +152,19 @@ This is the most useful view for agents and users who know what they want to acc
 
 The library is what the organization has installed. Marketplace items become library items when you click "Add to Library."
 
+Important distinction:
+
+- MCP servers, API connectors, skills, and some generated plugins can be assigned to agents or roles
+- workflow templates are installed as workflow installations and activated by the platform
+- agents interact with workflows through explicit workflow actions/tools, not ordinary capability assignment rows
+
 ### Library Page
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  MY LIBRARY                                                   │
 │                                                                │
-│  [ All ]  [ MCP Servers ]  [ API Connectors ]  [ Skills ]  [ Workflows ]     │
+│  [ All ]  [ MCP Servers ]  [ API Connectors ]  [ Skills ]  [ Workflows ]  [ Plugins ] │
 │                                                                │
 │  Search: [_________________________________] [Filter ▾]        │
 │                                                                │
@@ -156,7 +178,7 @@ The library is what the organization has installed. Marketplace items become lib
 │  ├──────────────────────────────────────────────────────────┤ │
 │  │ ◆ Deploy to Staging   Active    #engineering  v3         │ │
 │  │   Last used: 1d ago   ★ 4.9    Assigned to: 2 agents    │ │
-│  │   [ Edit ] [ View Runs ] [ Assign to Agent ]              │ │
+│  │   [ Edit ] [ View Runs ] [ Activate ]                     │ │
 │  ├──────────────────────────────────────────────────────────┤ │
 │  │ ⬢ Acme CRM API        Active    Sales team   24 endpts  │ │
 │  │   Last used: 30m ago  ★ 4.6    Assigned to: 1 agent     │ │
@@ -164,7 +186,7 @@ The library is what the organization has installed. Marketplace items become lib
 │  ├──────────────────────────────────────────────────────────┤ │
 │  │ ◆ Generate Minutes     Active    Org-wide    v2          │ │
 │  │   Last used: 3h ago   ★ 4.7    Assigned to: 5 agents    │ │
-│  │   [ View Runs ] [ Assign to Agent ]                       │ │
+│  │   [ View Runs ] [ Activate ]                              │ │
 │  └──────────────────────────────────────────────────────────┘ │
 │                                                                │
 │  [+ Browse Marketplace]  [+ Create Custom Connector]           │
@@ -315,8 +337,8 @@ library_items
   organization_id  UUID FK → organizations
   
   -- What this is
-  item_type        TEXT — "mcp_server" | "api_connector" | "skill" | "workflow"
-  item_id          UUID — FK to mcp_server_instances, api_connectors, skills, or workflow_templates
+  item_type        TEXT — "mcp_server" | "api_connector" | "skill" | "workflow" | "generated_plugin"
+  item_id          UUID — FK to mcp_server_instances, api_connectors, skills, workflow_templates, or generated_plugins
   -- NOTE: MCP servers and API connectors both produce tools in the tool registry.
   -- API connectors are backed by endpoint-to-tool mappings (see external-tool-integration.md § 3),
   -- not a separate connector system. They exist as a marketplace category for discoverability.
@@ -325,7 +347,7 @@ library_items
   catalog_ref      TEXT — marketplace catalog ID (null if org-created)
   
   -- Scoping
-  scope_type       TEXT — "system" | "organization" | "project" | "team" | "channel" | "user"
+  scope_type       TEXT — home scope: "system" | "organization" | "project" | "team" | "channel" | "user"
   scope_id         TEXT
   
   -- State
@@ -353,6 +375,8 @@ library_items
   @@index([organization_id, scope_type, scope_id])
 ```
 
+Additional multi-scope visibility for library items is represented through the shared `resource_scope_bindings` table described in the agent implementation plan. `scope_type/scope_id` on `library_items` is the home scope, not the entire visibility model.
+
 ### Unified Assignment Table
 
 ```
@@ -379,7 +403,9 @@ capability_assignments
   @@unique([library_item_id, target_type, target_id])
 ```
 
-For skills specifically, the `skill_assignments` table in skills.md provides additional per-agent config overrides. `capability_assignments` is the unified model; `skill_assignments` extends it with skill-specific fields (config_overrides, enabled flag).
+`capability_assignments` is the canonical assignment model. Any type-specific tables such as `skill_assignments` are extension records for extra config, not a second assignment source of truth.
+
+`workflow` library items are the main exception: they are installed into `workflow_installations` and activated by the platform instead of being attached through `capability_assignments`.
 
 ### How It Connects
 
@@ -388,15 +414,19 @@ Marketplace catalog
   │
   ├── User clicks "Add to Library"
   │   → Creates: library_items row (status: pending_setup)
-  │   → Creates: underlying record (mcp_server_instances, api_connectors, skills, or workflow_templates)
+  │   → Creates: underlying record (mcp_server_instances, api_connectors, skills, workflow_templates, or generated_plugins)
   │
   ├── Admin configures + approves
   │   → library_items status: active
   │   → Tools registered in ToolRegistryEntry
   │
-  ├── Admin assigns to agent
+  ├── Admin assigns to agent (MCP/API/skill/assignable plugin only)
   │   → Creates: capability_assignments row
   │   → Creates: ToolGrant rows for each enabled tool
+  │
+  ├── Admin installs/activates workflow
+  │   → Creates: workflow_installations row
+  │   → Materializes workflow_triggers
   │
   └── Agent uses capability
       → Agent discovers via Tier 1 directory
@@ -413,7 +443,7 @@ Marketplace catalog
 
 ```
 GET /api/marketplace
-  ?type=mcp_server|api_connector|skill|workflow — filter by type
+  ?type=mcp_server|api_connector|skill|workflow|generated_plugin — filter by type
   &category=devtools                        — filter by category
   &q=search+terms                           — full-text + semantic search
   &source=platform|community|org            — filter by source
@@ -456,6 +486,8 @@ DELETE /api/library/{id}                    — remove from library (soft delete
 POST   /api/library/{id}/assign             — assign to agent/role
 DELETE /api/library/{id}/assign/{aid}        — remove assignment
 GET    /api/library/{id}/assignments         — list assignments
+
+Note: `workflow` items are installed/activated through workflow installation endpoints, not `/assign`.
 
 GET    /api/agents/{id}/capabilities         — all capabilities for an agent (unified view)
 ```
@@ -670,11 +702,14 @@ Example schema:
 
 ### Execution Environment Bindings
 
-Workflow steps may request interactive or non-interactive execution environments:
+Workflow steps may request interactive or non-interactive execution environments.
 
-- `localhost` folder/process
+Phase 8 intentionally supports only:
+
 - `docker` container
-- cloud VM or job provider such as GCE, EC2, or Droplet
+- `gcloud` VM or function/job
+
+`localhost`, `aws`, and other providers can be added later through the same provider interface, but they are not part of the initial template contract.
 
 The workflow never hardcodes provider credentials or raw machine IDs. It binds to an allowed environment template and launches an instance through the platform.
 
@@ -722,9 +757,36 @@ execution_environment_templates
   created_at       TIMESTAMPTZ
   updated_at       TIMESTAMPTZ
 
+execution_runners
+  id               UUID PK
+  organization_id  UUID FK → organizations
+  name             TEXT
+  status           TEXT — online/offline/draining
+  provider         TEXT — "docker" | "gcloud"
+  capability_tags  TEXT[]
+  supported_modes  TEXT[] — container/vm/function
+  heartbeat_at     TIMESTAMPTZ
+  metadata_json    JSONB
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
+
+execution_leases
+  id               UUID PK
+  runner_id        UUID FK → execution_runners
+  instance_id      UUID FK → execution_environment_instances
+  artifact_ref     TEXT
+  policy_bundle    JSONB
+  secret_binding_ids UUID[]
+  lease_token_hash TEXT
+  leased_at        TIMESTAMPTZ
+  expires_at       TIMESTAMPTZ
+  completed_at     TIMESTAMPTZ
+  revoked_at       TIMESTAMPTZ
+
 execution_environment_instances
   id               UUID PK
   template_id      UUID FK → execution_environment_templates
+  runner_id        UUID FK → execution_runners
   status           TEXT — launching/ready/running/stopping/terminated/failed
   provider_instance_ref TEXT
   launched_by_actor_type TEXT — "user" | "agent" | "system"
@@ -768,12 +830,38 @@ execution_usage_ledger
 Rules:
 
 - every environment launch creates an instance row
+- environment templates resolve to runner capabilities, not raw instance IDs
+- scheduler/control plane chooses an eligible runner, issues a short-lived execution lease, and the runner fetches artifacts plus policy from central storage
+- runners heartbeat and can be drained without changing workflow/plugin definitions
 - every termination writes final billable duration and teardown reason
 - usage ledger stores both raw meter quantity and normalized cost
 - provider-specific billing details belong in `pricing_model`, not scattered across workflow/plugin records
 - broad usage rollups should be sliceable by organization, project, team, channel, user, agent, workflow, and plugin version
 
 This should align with the existing token ledger mindset: environments are billable execution, not incidental logs.
+
+### Workflow Installations
+
+`workflow_templates` are blueprints. Actual activation state, resolved bindings, chosen scope, and trigger materialization belong to a durable installation record.
+
+```
+workflow_installations
+  id               UUID PK
+  workflow_template_id UUID FK → workflow_templates
+  organization_id  UUID FK → organizations
+  home_scope_type  TEXT — "system" | "organization" | "project" | "team" | "channel" | "user"
+  home_scope_id    TEXT
+  status           TEXT — draft/testing/active/paused/archived
+  config_json      JSONB
+  resolved_bindings JSONB
+  installed_by     UUID FK → users
+  activated_at     TIMESTAMPTZ
+  paused_at        TIMESTAMPTZ
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
+```
+
+`workflow_triggers` are materialized runtime records derived from an installation, not authored directly on the template.
 
 ### Example: Sales Call Follow-Up Workflow
 
@@ -1021,7 +1109,10 @@ Example shape:
       "action_config": {
         "template": "{{config.coding_environment}}",
         "mode": "ephemeral",
-        "attach_secrets": ["github_token_ref", "package_registry_ref"]
+        "attach_secrets": [
+          "binding:github_repo_installation_token",
+          "binding:package_registry_read_token"
+        ]
       },
       "output_key": "triage_env"
     },
@@ -1080,8 +1171,8 @@ User clicks [+ Add to Library] on a workflow template
   │     └── Select scope (which agents/teams this workflow applies to)
   │
   ├── 3. Trigger registration:
-  │     ├── For each trigger in the template → create workflow_triggers record
-  │     │   (see conversation-intelligence-platform.md § 4)
+  │     ├── Create workflow_installations record with resolved bindings + chosen home scope
+  │     ├── Materialize workflow_triggers from template triggers onto that installation
   │     └── Triggers are initially disabled until admin activates
   │
   ├── 4. Security scan:
@@ -1092,8 +1183,8 @@ User clicks [+ Add to Library] on a workflow template
   │
   ├── 5. Review + activate:
   │     ├── Admin reviews workflow steps, triggers, and security scan
-  │     ├── Activates → triggers become live
-  │     └── Workflow runs automatically when triggers fire
+  │     ├── Activates installation → triggers become live
+  │     └── Workflow runs automatically when installation triggers fire
   │
   └── 6. Monitoring:
         ├── Each workflow run creates a parent task with child tasks per step
@@ -1123,12 +1214,14 @@ GET    /api/workflows/{id}                  — get workflow detail
 PATCH  /api/workflows/{id}                  — update workflow
 DELETE /api/workflows/{id}                  — archive workflow
 
-POST   /api/workflows/{id}/activate         — enable triggers
-POST   /api/workflows/{id}/pause            — disable triggers
-POST   /api/workflows/{id}/run              — manual trigger (for testing)
+POST   /api/workflows/{id}/install          — create workflow installation
+GET    /api/workflow-installations/{id}     — get installation detail
+POST   /api/workflow-installations/{id}/activate  — enable materialized triggers
+POST   /api/workflow-installations/{id}/pause     — disable materialized triggers
+POST   /api/workflow-installations/{id}/run       — manual trigger (for testing)
 
-GET    /api/workflows/{id}/runs             — execution history
-GET    /api/workflows/{id}/runs/{rid}       — specific run detail with step results
+GET    /api/workflow-installations/{id}/runs       — execution history
+GET    /api/workflow-installations/{id}/runs/{rid} — specific run detail with step results
 ```
 
 ## 9. Generated Plugins
@@ -1295,6 +1388,18 @@ All privileged actions go through a brokered runtime API:
 - read/write plugin-scoped storage
 - request OAuth flow
 - resolve explicitly bound secret refs
+
+### Artifact Distribution and Runner Execution
+
+Generated plugins are immutable artifacts, not node-local files. In multi-node deployments:
+
+1. Build outputs are stored in central object storage
+2. Control plane issues an execution lease for one exact plugin version
+3. Selected runner fetches the artifact and policy bundle using the lease
+4. Runner heartbeats during execution and reports completion back to control plane
+5. UI bundles are served from versioned object storage, not the runner filesystem
+
+This keeps plugin execution horizontally scalable without trusting any individual app node as the source of truth.
 
 This is how we ensure sandboxing is real:
 

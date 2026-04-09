@@ -111,7 +111,7 @@ mcp_server_instances
 MCP servers are installed at a scope level. Agents can only use servers visible at their scope or above.
 
 ```
-Scope hierarchy (most restrictive → least restrictive):
+Placement hierarchy (most restrictive → least restrictive):
   user → channel → team → project → organization → system
 
 Rules:
@@ -122,7 +122,7 @@ Rules:
   - "channel" scope → only agents in that channel
   - "user" scope → only one specific user's agents
 
-An agent sees the UNION of all servers visible at its scope level and above.
+By default, placement visibility follows that hierarchy. Additional explicit grants or bindings are a union on top of placement. Do not treat all visibility as inheritance-only; shared resources may also be made visible through binding rows.
 
 Example:
   Agent bound to #sales-team channel sees:
@@ -961,13 +961,13 @@ A single MCP server or API connector can use different credentials depending on 
 mcp_server_credential_overrides
   id               UUID PK
   server_id        UUID FK → mcp_server_instances
-  scope_type       TEXT — "user" | "agent" | "channel" | "team"
-  scope_id         TEXT
+  principal_type   TEXT — "user" | "agent" | "channel" | "team" | "project" | "organization"
+  principal_id     TEXT
   credential_ref   TEXT — secretRef
   
   created_at       TIMESTAMPTZ
   
-  @@unique([server_id, scope_type, scope_id])
+  @@unique([server_id, principal_type, principal_id])
 ```
 
 Resolution order:
@@ -975,9 +975,13 @@ Resolution order:
 2. Agent-specific credential (agent's own Stripe account)
 3. Channel-specific credential
 4. Team-specific credential
-5. Connector/server default credential (organization-wide)
+5. Project-specific credential
+6. Organization-specific credential
+7. Connector/server default credential (organization-wide)
 
 Example: GitHub MCP server is org-scoped, but each developer has their own PAT. The org installs GitHub MCP once, and each user adds their own credential override. When an agent acts on behalf of user A, it uses user A's PAT. When acting on behalf of user B, it uses user B's PAT.
+
+Generated plugins and execution environments are part of the same capability system. Initial platform-managed execution providers are `docker` and `gcloud`; integrations that need coded runtime behavior should bind to those execution environments rather than assuming direct host execution.
 
 ---
 

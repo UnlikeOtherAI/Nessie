@@ -397,12 +397,13 @@ No polling. Everything is webhook-first. Events are pushed to triggers, not pull
 
 ### Trigger Definitions
 
-Triggers are the "Zapier triggers" of the platform. They match events to agent workflows.
+Triggers are the "Zapier triggers" of the platform. They match events to agent workflows. In this document, the authored definition record is named `workflow_trigger_definitions` to distinguish it from installation-time `workflow_triggers` materialized by the marketplace/runtime layer.
 
 ```
-workflow_triggers
+workflow_trigger_definitions
   id               UUID PK
   organization_id  UUID FK → organizations
+  workflow_installation_id UUID (nullable — set when this trigger activates a workflow installation)
   name             TEXT
   description      TEXT
   
@@ -424,6 +425,12 @@ workflow_triggers
                      "skill_id": "uuid",        // optional — run this specific skill
                      "priority": "normal",
                      "context_override": {}      // additional context for the agent
+                   }
+                   or:
+                   {
+                     "type": "invoke_workflow_installation",
+                     "workflow_installation_id": "uuid",
+                     "priority": "normal"
                    }
   
   enabled          BOOLEAN DEFAULT true
@@ -447,9 +454,10 @@ Event arrives on bus
   │     └── Custom conditions: evaluated as expressions
   │
   ├── 3. For each trigger that passes conditions
-  │     ├── Create agent task from trigger.action
+  │     ├── If trigger.action.type = "route_to_agent" → create agent task from trigger.action
+  │     ├── If trigger.action.type = "invoke_workflow_installation" → create workflow run from trigger.action
   │     ├── Inject conversation data as context
-  │     └── Enqueue for agent execution
+  │     └── Enqueue for execution
   │
   └── 4. Multiple triggers can fire for the same event
         (e.g., a sales call triggers both a note-taker and a CRM updater)
@@ -507,6 +515,19 @@ Event arrives on bus
 }
 ```
 
+```json
+{
+  "name": "GitHub issue opened → triage workflow",
+  "event_type": "github.issue.opened",
+  "source_filter": ["github"],
+  "conditions": {},
+  "action": {
+    "type": "invoke_workflow_installation",
+    "workflow_installation_id": "issue-triage-installation-uuid"
+  }
+}
+```
+
 ---
 
 ## 5. Agent Routing
@@ -516,17 +537,22 @@ When a trigger fires, the conversation must be routed to the right agent. This c
 ### Routing Decisions
 
 ```
-Trigger fires with action { agent_id, skill_id }
+Trigger fires with action { type, agent_id?, skill_id?, workflow_installation_id? }
   │
-  ├── If agent_id specified → route directly to that agent
+  ├── If action.type = "route_to_agent" and agent_id specified → route directly to that agent
   │
-  ├── If agent_id is null → intelligent routing
+  ├── If action.type = "route_to_agent" and agent_id is null → intelligent routing
   │     ├── Analyze conversation content (type, topic, participants)
   │     ├── Match against agent capabilities and skills
   │     ├── Consider agent load and budget
   │     └── Select best agent (LLM-based, same as channel orchestrator)
   │
-  └── Create run
+  ├── If action.type = "invoke_workflow_installation"
+  │   ├── Load workflow installation and resolved bindings
+  │   ├── Create workflow run linked to that installation
+  │   └── Execute materialized workflow steps
+  │
+  └── Otherwise create run
         ├── Thread: create or find thread for this conversation
         ├── Message: inject normalized conversation as agent input
         ├── Context: include trigger metadata, participant info, conversation history
@@ -1431,7 +1457,7 @@ Voice selection considerations:
 - **Allowlist**: Outbound calls only to approved numbers/patterns
 - **Alerts**: Notify org admin when agent reaches 80% of monthly cap
 
-All costs flow into the `cost_ledger` with `operation = 'voice_call'`.
+All voice/model-derived costs flow into the `token_ledger` reporting layer with `operation = 'voice_call'`.
 
 ### Provider Abstraction
 

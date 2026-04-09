@@ -16,21 +16,18 @@ This document is **target-state design**. Secret services must be implemented ou
 
 ## 2) Scope model
 
-Secret scope is explicit and non-implicit:
+Secret placement scope is explicit and non-implicit and uses the same canonical scope enum as other reusable resources:
 
-- `organization`: visible within one organization boundary and governed by organization policy.
 - `system`: platform-wide and only mutable by superusers.
+- `organization`: visible within one organization boundary and governed by organization policy.
 - `project`: dedicated release-safety boundary for deployment, keys, and documentation.
 - `team`: bounded to team membership and policies.
 - `channel`: bounded to channel membership and policies.
-- `agent`: visible only to that agent and allowed managers/operators.
-- `thread`: bounded to a specific conversation/thread.
 - `user`: user-only secret.
-- `service`: bounded to non-human callers (CI, orchestrator service, worker service).
 
 `workspace` is accepted only through legacy compatibility parsing and mapped internally to `project` before policy evaluation.
 
-Only one scope (or a hierarchy of scopes) may be chosen at secret creation time.
+Secrets have one home scope plus optional additional bindings. `agent`, `thread`, and `service` are not placement scopes; they are binding targets or principals.
 
 ## 3) Lifecycle behavior
 
@@ -59,9 +56,9 @@ type SecretStorageRecord = {
   id: string;
   ref: string;
   name: string;
-  scopeType: SecretScopeType;
+  homeScopeType: SecretScopeType;
   organizationId: string;
-  scopeId: string;
+  homeScopeId: string;
   secretType: SecretType;
   ownerId: string;
   createdByActorId: string;
@@ -86,7 +83,7 @@ type SecretStorageRecord = {
 **Shared API model (in `packages/schemas`, returned by endpoints):**
 
 ```ts
-type SecretScopeType = 'system' | 'organization' | 'project' | 'team' | 'channel' | 'agent' | 'thread' | 'user' | 'service';
+type SecretScopeType = 'system' | 'organization' | 'project' | 'team' | 'channel' | 'user';
 type SecretType = 'api_key' | 'password' | 'token' | 'cert' | 'other';
 type SecretStatus = 'active' | 'revoked' | 'expired';
 
@@ -94,9 +91,9 @@ type SecretRecord = {
   id: SecretId;
   ref: string;                // human-safe reference ID returned to UI/tools
   name: string;
-  scopeType: SecretScopeType;
+  homeScopeType: SecretScopeType;
   organizationId: string;
-  scopeId: string;
+  homeScopeId: string;
   secretType: SecretType;
   ownerId: string;
   createdByActorId: string;
@@ -219,7 +216,7 @@ Rules:
 ### 6.2 Access binding endpoints
 
 - `POST /api/secrets/{secretRef}/grants`
-  - body includes `SecretAccessContext`, principal type/id, actions, effect (`allow` | `deny`), optional expiry
+  - body includes `SecretAccessContext`, `principalType`, `principalId`, actions, effect (`allow` | `deny`), optional expiry
 - `DELETE /api/secrets/{secretRef}/grants/{grantId}`
   - requires `resourceType=secret, action=bind` policy check for the caller
 - `GET /api/secrets/{secretRef}/grants`
@@ -289,7 +286,7 @@ Project lifecycle tie-ins:
 
 - Secret creation UI must be out-of-band from chat input.
 - Dialog must include scope selector:
-  - system/organization/project/team/channel/agent/thread/user/service
+  - system/organization/project/team/channel/user
 - Must show explicit recipient set (agents + channels + operators allowed).
 - Should support copy of secret reference only (never full secret).
 - Should show last-used + last-rotated status with risk warning on stale/expiring secrets.

@@ -162,8 +162,8 @@ export const MOCK_AGENTS: AgentRecord[] = [
     name: 'Project Orchestrator',
     role: 'orchestrator',
     status: 'idle',
-    triggerType: 'on-demand',
-    triggerConfig: {},
+    triggerSummary: { type: 'on-demand' },
+    triggers: [],
     // ... full record
   },
   {
@@ -171,12 +171,15 @@ export const MOCK_AGENTS: AgentRecord[] = [
     name: 'Morning Digest',
     role: 'researcher',
     status: 'idle',
-    triggerType: 'scheduled',
-    triggerConfig: {
-      cron: '0 9 * * 1-5',
-      timezone: 'Europe/London',
-      input: { prompt: 'Generate the daily standup digest.' }
-    },
+    triggerSummary: { type: 'scheduled' },
+    triggers: [{
+      type: 'scheduled',
+      config: {
+        cron: '0 9 * * 1-5',
+        timezone: 'Europe/London',
+        input: { prompt: 'Generate the daily standup digest.' }
+      }
+    }],
     nextRunAt: '2026-04-10T09:00:00Z',
     // ...
   },
@@ -185,12 +188,15 @@ export const MOCK_AGENTS: AgentRecord[] = [
     name: 'Deploy Watcher',
     role: 'watcher',
     status: 'idle',
-    triggerType: 'webhook',
-    triggerConfig: {
-      secret: 'whsec_mock_xxx',
-      input_mapping: { repo: '$.repository.full_name', branch: '$.ref' },
-      allowed_ips: ['140.82.112.0/20']
-    },
+    triggerSummary: { type: 'webhook' },
+    triggers: [{
+      type: 'webhook',
+      config: {
+        secret: 'whsec_mock_xxx',
+        input_mapping: { repo: '$.repository.full_name', branch: '$.ref' },
+        allowed_ips: ['140.82.112.0/20']
+      }
+    }],
     // ...
   },
   {
@@ -198,11 +204,14 @@ export const MOCK_AGENTS: AgentRecord[] = [
     name: 'Review Reactor',
     role: 'reviewer',
     status: 'idle',
-    triggerType: 'event',
-    triggerConfig: {
-      events: ['task.review_passed'],
-      filter: { project_id: 'proj_mock_001' }
-    },
+    triggerSummary: { type: 'event' },
+    triggers: [{
+      type: 'event',
+      config: {
+        events: ['task.review_passed'],
+        filter: { project_id: 'proj_mock_001' }
+      }
+    }],
     // ...
   },
   {
@@ -210,8 +219,11 @@ export const MOCK_AGENTS: AgentRecord[] = [
     name: 'Health Checker',
     role: 'watcher',
     status: 'busy',
-    triggerType: 'interval',
-    triggerConfig: { interval_minutes: 15, input: { prompt: 'Check all services.' } },
+    triggerSummary: { type: 'interval' },
+    triggers: [{
+      type: 'interval',
+      config: { interval_minutes: 15, input: { prompt: 'Check all services.' } }
+    }],
     lastRunAt: '2026-04-09T14:15:00Z',
     nextRunAt: '2026-04-09T14:30:00Z',
     // ...
@@ -293,7 +305,7 @@ Everything else depends on this. Without the agentic loop, agents can't plan, ca
 - **Worker rewrite**: Replace `executeSafeTool()` keyword dispatch with model-driven tool calling
 - **Multi-step loop**: Agent can call tools, observe results, call more tools, then respond
 - **Budget enforcement**: From the-agents.md § 4 defaults — `maxIterations: 12`, `maxToolCalls: 20`, `maxTokens: 50000`, `maxWallclockMs: 90000`, `maxCostCents: 50`. Defaults come from role policy, overridable per agent/plan.
-- **Cost ledger**: `cost_ledger` table (the-agents.md § 16) — every LLM call writes a ledger row with token counts and cost. `maxCostCents` enforcement reads from ledger, not in-memory counters.
+- **Model usage ledger**: `token_ledger` table/view (see token-ledger-spec.md and the-agents.md § 16) — every LLM call writes token counts and normalized cost. `maxCostCents` enforcement reads from ledger, not in-memory counters.
 - **Budget/reaper threshold invariant**: Document and enforce `maxWallclockMs (90s) < stale_run_reap (120s) < worker_offline (180s)`. Per-agent budget overrides must not exceed stale_run_reap without adjusting reaper.
 - **Streaming**: Tool calls and results stream to the UI via WebSocket in real time
 - **Safe tools only**: Same tool set as current implementation (web_search, document_read, web_fetch) — no new tools added until the tool registry is live in Main Phase 3.
@@ -305,7 +317,7 @@ Everything else depends on this. Without the agentic loop, agents can't plan, ca
    ```
    while (iterations < budget.maxIterations && toolCalls < budget.maxToolCalls) {
      if (tokensUsed >= budget.maxTokens) break
-     if (costCents >= budget.maxCostCents) break   // reads from cost_ledger
+     if (costCents >= budget.maxCostCents) break   // reads from token_ledger reporting view
      if (elapsed >= budget.maxWallclockMs) break
      response = await llm.chat(messages, { tools })
      writeCostLedgerRow(run, response.usage)        // persist immediately
@@ -319,7 +331,7 @@ Everything else depends on this. Without the agentic loop, agents can't plan, ca
      iterations++
    }
    ```
-2. **Prisma migration**: `cost_ledger` table with columns per the-agents.md § 16 (id, organization_id, agent_id, run_id, plan_id, step_id, provider, model, operation, prompt_tokens, completion_tokens, total_tokens, cost_cents, created_at)
+2. **Prisma migration**: model usage ledger tables/views per token-ledger-spec.md, with run/agent attribution exposed through a reporting view consumed by budgets and admin UI
 3. Budget enforcement checks all 5 dimensions before each iteration
 4. Tool call records written per call (not per run)
 5. WebSocket events: `agent.tool.start`, `agent.tool.end`, `agent.iteration`
@@ -340,14 +352,14 @@ Everything else depends on this. Without the agentic loop, agents can't plan, ca
 - Watch it: think → call web_search → observe results → think again → synthesize answer
 - See tool calls streaming in the activity panel
 - Budget bar shows all 5 dimensions updating in real time
-- Cost ledger row visible in DB: `SELECT * FROM cost_ledger WHERE run_id = '...'`
+- Model usage row visible in DB/reporting view for the run
 - Set `maxIterations: 2` on an agent, ask a complex question → agent terminates at budget with explanation
 
 ### Exit criteria
 
 - Agentic loop executes multi-step tool sequences (verified: 3+ iterations in a single run)
 - Budget enforcement stops runaway agents on all 5 dimensions
-- Cost ledger rows written for every LLM call (verified: row count = iteration count)
+- Token ledger rows written for every LLM call (verified: row count = iteration count)
 - Tool calls audited in DB and visible in UI
 - WebSocket streams tool activity in real time (verified: `agent.tool.start` and `agent.tool.end` events)
 - Budget/reaper invariant documented and enforced
@@ -415,21 +427,21 @@ Agents activate automatically — on schedule, via webhook, or in response to in
 
 ### Testable outcome
 
-- Create an agent with `triggerType: "scheduled"`, cron: `*/2 * * * *` (every 2 minutes)
+- Create an agent, then `POST /api/agents/{id}/triggers` with `{ "type": "scheduled", "config": { "cron": "*/2 * * * *" } }`
 - Watch it fire automatically, see run in history with `trigger_source: scheduler`
 - Create a webhook agent, `curl -X POST /api/webhooks/{id} -H "X-Nessie-Signature: sha256=..." -d '{"ref":"main"}'`
 - Watch it create a run from the webhook payload, input_mapping applied
 - Create an event agent subscribing to `task.completed`
-- Complete a task → `agent_trigger_log` row with `status: fired`, run created
+- Complete a task → `agent_trigger_deliveries` row with `status: fired`, run created
 - Pause the scheduled agent → next-run countdown disappears, scheduler skips it
 - Resume → countdown reappears, next fire on schedule
-- Verify: `SELECT * FROM agent_trigger_log WHERE agent_id = '...' ORDER BY fired_at DESC` shows complete history
+- Verify: `SELECT * FROM agent_trigger_deliveries WHERE agent_id = '...' ORDER BY fired_at DESC` shows complete history
 
 ### Exit criteria
 
 - Scheduler fires cron/interval agents within 15s of scheduled time
 - Webhooks: valid signature → 202, bad signature → 401, duplicate delivery → 409, rate exceeded → 429
-- Events trigger subscribed agents (verified: event emitted → `agent_trigger_log` row → run created)
+- Events trigger subscribed agents (verified: event emitted → `agent_trigger_deliveries` row → run created)
 - Pause/resume toggles work and persist across scheduler restarts
 - pg_notify subscriber reconnects after connection drop (verified: kill connection, observe reconnect in logs)
 - Trigger history visible in admin with all status types
@@ -901,10 +913,12 @@ Everything is discoverable, installable, and composable through a unified market
    - secret refs resolved at execution time with least-privilege bindings only
 10. **Execution environment tracking and billing**:
    - `execution_environment_templates`, `execution_environment_instances`, `execution_usage_ledger` tables
+   - `execution_runners` and `execution_leases` tables for runner registration, capability matching, artifact retrieval, and short-lived execution authorization
    - every launch records template, provider instance ref, triggering actor, run/workflow/plugin attribution, and lifecycle timestamps
    - ledger records raw usage meters plus normalized cost for per-minute/per-second/provider-specific billing
    - reporting slices by organization/project/team/channel/user/agent/workflow/plugin version
    - template pricing metadata stored centrally, not duplicated in workflow/plugin configs
+   - Phase 8 supported providers are `docker` and `gcloud` only; other providers remain future work
 11. **Plugin builder system**:
    - platform-owned template catalog: OAuth connector, CLI wrapper, HTML widget, webhook normalizer, custom plugin
    - strict manifest schemas for plugin metadata, config schema, permissions, actions, and UI bridge
@@ -934,15 +948,16 @@ Everything is discoverable, installable, and composable through a unified market
    - `GET /api/agents/{id}/versions`, `POST /api/agents/{id}/versions/{versionId}/rollback`
 
 **Workflow templates:**
-1. `workflow_templates` table with `graph_json`, `trigger_type`, `trigger_config`, `variable_schema`, `binding_schema`, `required_environment_templates`
-2. `workflow_triggers` table for event/schedule bindings
-3. Step types: `skill`, `agent_task`, `action`, `condition`, `wait` (from marketplace.md § 8)
-4. Typed variable resolution on install: repos, connectors, channels, environment templates, secret refs selected from already-visible resources, not arbitrary free text
-5. Execution environment actions: launch ephemeral VM/container/workspace, attach secret refs, expose terminal/xterm session where allowed, teardown on completion/TTL
-6. Dependency resolution on install
-7. Compensation steps for failure handling
-8. Workflow API: `POST /api/workflows`, `GET /api/workflows`, `GET /api/workflows/{id}/runs`, `POST /api/workflows/{id}/run`
-9. `invoke_workflow` MCP tool
+1. `workflow_templates` table with `graph_json`, `triggers_json`, `variable_schema`, `binding_schema`, `required_environment_templates`
+2. `workflow_installations` table holding install-time scope, resolved bindings, activation state, and config
+3. `workflow_triggers` table for materialized event/schedule bindings generated from `triggers_json` for each active installation
+4. Step types: `skill`, `agent_task`, `action`, `condition`, `wait` (from marketplace.md § 8); these are orchestration-layer step kinds that compile to lower-level run/plan operations
+5. Typed variable resolution on install: repos, connectors, channels, environment templates, secret refs selected from already-visible resources, not arbitrary free text
+6. Execution environment actions: launch ephemeral VM/container/workspace, attach secret refs, expose terminal/xterm session where allowed, teardown on completion/TTL
+7. Dependency resolution on install
+8. Compensation steps for failure handling
+9. Workflow API: `POST /api/workflows`, `GET /api/workflows`, `POST /api/workflows/{id}/install`, `GET /api/workflow-installations/{id}/runs`, `POST /api/workflow-installations/{id}/run`
+10. `invoke_workflow` MCP tool
 
 **Example template to ship in Phase 8:**
 1. **GitHub Issue Triage → PR → Customer Follow-Up**
@@ -961,6 +976,7 @@ Everything is discoverable, installable, and composable through a unified market
 ### Admin UI work
 
 - **Marketplace browser**: Tabbed view (MCP Servers | API Connectors | Skills | Workflows), search, filters, categories
+- **Environment template management**: CRUD for execution environment templates, runner capability visibility, scope, pricing metadata, and allowed secret classes
 - **Generated plugin builder**: Create from template, generate icon, review manifest/permissions, launch coding environment, submit for review
 - **Plugin template catalog**: curated starter templates with examples, expected files, SDK version, and test harness
 - **Install flow**: Permission grant review, security scan summary, scope selection
@@ -997,7 +1013,7 @@ Everything is discoverable, installable, and composable through a unified market
 
 ### Exit criteria
 
-- Marketplace tabs show all 4 capability types (verified: at least 2 items per tab)
+- Marketplace tabs show all 5 capability categories (verified: at least 2 items per tab)
 - Install flow runs security scan and adds to library (verified: install → `library_items` row + scan)
 - Capability assignment controls tool access per agent (verified: unassigned capability → tool unavailable)
 - Agent builder dry-run catches config errors before creation (verified: invalid tool policy → dry-run fails)

@@ -51,8 +51,6 @@ agents
   model            TEXT — LLM model: "gpt-4o", "claude-sonnet-4-5-20250514", etc.
   parent_agent_id  UUID FK → agents — parent in hierarchy (null = root agent)
   active_config_version_id UUID FK → agent_config_versions (nullable) — null until first version is created
-  trigger_type     TEXT DEFAULT 'on-demand' — how this agent is activated (see § 17)
-  trigger_config   JSONB — trigger-type-specific configuration (cron expression, webhook secret, event filters)
   organization_id  UUID — hard org boundary
   project_id       UUID — project scope
   team_id          UUID — team scope
@@ -75,7 +73,9 @@ agents
 
 **Required:** `name`, `role`
 
-**Optional:** `systemPrompt`, `parentAgentId`, `toolPolicy`, `provider`, `model`, `triggerType`, `triggerConfig`
+**Optional:** `systemPrompt`, `parentAgentId`, `toolPolicy`, `provider`, `model`
+
+Automatic activation is configured through first-class trigger records in § 17, not embedded on the `agents` row.
 
 > While `systemPrompt` is optional, agents without one default to generic assistant behavior. For production agents, `role` + `systemPrompt` define the agent's goal and are strongly recommended.
 
@@ -95,7 +95,7 @@ agents
 }
 ```
 
-The service creates the agent record and returns it with a generated UUID. The agent starts in `idle` status. Agents with `triggerType: "on-demand"` (default) do nothing until bound to a channel and triggered by a message. Agents with other trigger types are registered with the scheduler service on creation (see § 17).
+The service creates the agent record and returns it with a generated UUID. The agent starts in `idle` status. Agents without automatic trigger records remain on-demand until bound to a channel and triggered by a message. Automatic activation is configured separately through `agent_triggers` (see § 17).
 
 ### Agent Status Lifecycle
 
@@ -590,13 +590,13 @@ This mirrors the memory scoping model: audience compatibility, not container inh
 skill_grants
   id          UUID PK
   skill_id    UUID FK → skills
-  scope_type  ENUM (channel, project, team, organization)
-  scope_id    UUID — the channel/project/team/org ID
+  scope_type  ENUM (system, channel, project, team, organization, user)
+  scope_id    UUID — null only for system-scoped grants
   granted_by  UUID FK → users — who included it
   created_at  TIMESTAMPTZ
 ```
 
-`skill_grants` is the scope-level sharing table: it makes a skill visible within a channel, project, team, or organization. `skill_assignments` (defined in skills.md) handles direct per-agent and per-role assignment. For the full skill assignment model including per-agent config overrides, see skills.md section 1.
+`skill_grants` is the skill-specific compatibility view over the shared `resource_scope_bindings` model: it makes a skill visible within system, organization, project, team, channel, or user scopes. A skill's private ownership is represented by its home scope; grants add additional visibility. `capability_assignments` is the canonical assignment table for agent/role assignment, and any `skill_assignments` table is skill-specific extension data rather than a separate source of truth.
 
 When an agent searches for available skills, the query checks:
 1. Skills owned by the requesting user/agent (private, always visible)
@@ -694,8 +694,8 @@ skill_versions
 skill_grants
   id               UUID PK
   skill_id         UUID FK → skills
-  scope_type       ENUM (channel, project, team, organization)
-  scope_id         UUID
+  scope_type       ENUM (system, channel, project, team, organization, user)
+  scope_id         UUID — null only for system-scoped grants
   granted_by       UUID FK → users
   created_at       TIMESTAMPTZ
 
@@ -1237,11 +1237,11 @@ Precise definitions. All documents must use these terms consistently.
 | **Run** | One complete execution cycle: perceive → think → act → evaluate. Creates tool calls, messages, and evaluations. | Task |
 | **Evaluation** | A post-run quality assessment. Types: policy_check, unit_test, critic_llm, self_eval, reflection, human_review. | Reflection |
 | **Reflection** | A specific evaluation type: root cause analysis of a failure with proposed fix. Stored and linked to procedural memories. | Evaluation |
-| **Capability** | Umbrella term for anything an agent can use: MCP servers, API connectors, skills, and workflow templates. See marketplace.md for the unified model. | Tool, Skill |
+| **Capability** | Umbrella term for anything an agent can directly load or invoke: MCP servers, API connectors, skills, explicit workflow-invocation tools, and eligible generated plugins. See marketplace.md for the unified model. | Tool, Skill |
 | **ToolRegistryEntry** | A registered tool with typed schema, risk classification, and versioning. All MCP tools and API connector endpoints produce registry entries. See tool-registry-spec.md. | Tool |
 | **Temporary context** | Agent context section loaded on demand with external tool schemas. Agent controls lifecycle via `resolve_capability` (load) and `drop_context` (drop). See external-tool-integration.md section 5. | Memory |
 | **Resolver sub-agent** | Cheap disposable LLM that selects the right tools for the main agent's temporary context. See external-tool-integration.md section 5. | Orchestrator |
-| **Trigger** | The activation mechanism for an agent: on-demand, manual, scheduled, webhook, event, or interval. Stored as `trigger_type` + `trigger_config` on the agent record. See § 17. | Run |
+| **Trigger** | A first-class activation record linked to an agent. Types include manual, scheduled, webhook, event, and interval. See § 17. | Run |
 | **Scheduler service** | Background process that evaluates cron/interval triggers and creates runs. Uses `pg_advisory_lock` for leader election. See § 17. | Worker |
 
 ---
@@ -1409,32 +1409,14 @@ These tools are never auto-granted. They require explicit human assignment via `
 
 ## 16. Operational Infrastructure
 
-### Cost Ledger
+### Usage Ledgers
 
-Every token and dollar is tracked:
+Usage is tracked through two durable ledgers:
 
-```
-cost_ledger
-  id               UUID PK
-  organization_id  UUID
-  agent_id         UUID FK → agents
-  run_id           UUID FK → runs
-  plan_id          UUID (optional)
-  step_id          UUID (optional)
-  
-  provider         TEXT — "openai", "anthropic"
-  model            TEXT
-  operation        TEXT — "chat", "embedding", "extraction", "self_eval", "tool_execution"
-  
-  prompt_tokens    INT
-  completion_tokens INT
-  total_tokens     INT
-  cost_cents       FLOAT
-  
-  created_at       TIMESTAMPTZ
-```
+- `token_ledger` for model calls and translation/model-derived cost
+- `execution_usage_ledger` for billable execution environments and runner-backed jobs
 
-Aggregation: per-agent daily/monthly rollups. Budget enforcement checks the ledger before each LLM call. When `maxCostCents` is reached, the run terminates with a budget-exhausted error.
+`cost_ledger` is a legacy name and should not be used for new implementation. Budget enforcement and reporting roll up from these durable ledgers into reporting views rather than introducing a third source of truth.
 
 ### Rate Limiting and Backpressure
 
@@ -1474,26 +1456,25 @@ Agents need to activate on more than just messages. A monitoring agent should wa
 
 ### Trigger Types
 
-Every agent has exactly one `trigger_type`. Default is `on-demand`.
+Triggers are first-class records. An agent may have zero, one, or many triggers. `on-demand` is not stored as a trigger row unless the platform needs explicit metadata for it; it is the default behavior when no automatic triggers are configured.
 
-| Type | Activation | `trigger_config` shape |
+| Type | Activation | `config` shape |
 |------|-----------|----------------------|
-| `on-demand` | @mention, direct message, or parent agent delegation | `{}` (no config needed) |
-| `manual` | Explicit API call: `POST /api/agents/{id}/trigger` or UI "Run" button | `{}` |
+| `manual` | Explicit API call or UI "Run" button | `{}` |
 | `scheduled` | Cron expression evaluated by the scheduler service | `{ "cron": "0 9 * * 1-5", "timezone": "Europe/London", "input": { ... } }` |
 | `webhook` | Inbound HTTP: `POST /api/webhooks/{webhook_id}` | `{ "secret": "auto-generated", "input_mapping": { ... }, "allowed_ips": [] }` |
 | `event` | Internal event bus subscription | `{ "events": ["task.review_passed", "agent.run.failed"], "filter": { "project_id": "..." } }` |
-| `interval` | Fixed-interval timer (simpler than cron for "every N minutes" patterns) | `{ "interval_minutes": 30, "input": { ... } }` |
+| `interval` | Fixed-interval timer | `{ "interval_minutes": 30, "input": { ... } }` |
 
-> An agent with `trigger_type: "scheduled"` can still be triggered manually via `POST /api/agents/{id}/trigger`. The trigger type controls *automatic* activation, not exclusive activation.
+> An agent with one or more automatic triggers can still be triggered manually. Trigger rows control automatic activation, not exclusive activation.
 
 ### Trigger Config Examples
 
 **Scheduled — daily standup digest at 9am London time:**
 ```json
 {
-  "triggerType": "scheduled",
-  "triggerConfig": {
+  "type": "scheduled",
+  "config": {
     "cron": "0 9 * * 1-5",
     "timezone": "Europe/London",
     "input": {
@@ -1506,8 +1487,8 @@ Every agent has exactly one `trigger_type`. Default is `on-demand`.
 **Webhook — GitHub push events:**
 ```json
 {
-  "triggerType": "webhook",
-  "triggerConfig": {
+  "type": "webhook",
+  "config": {
     "secret": "whsec_auto_generated_on_create",
     "input_mapping": {
       "repo": "$.repository.full_name",
@@ -1523,8 +1504,8 @@ Every agent has exactly one `trigger_type`. Default is `on-demand`.
 **Event — react to task review passing:**
 ```json
 {
-  "triggerType": "event",
-  "triggerConfig": {
+  "type": "event",
+  "config": {
     "events": ["task.review_passed"],
     "filter": {
       "project_id": "proj_abc123"
@@ -1536,8 +1517,8 @@ Every agent has exactly one `trigger_type`. Default is `on-demand`.
 **Interval — health check every 15 minutes:**
 ```json
 {
-  "triggerType": "interval",
-  "triggerConfig": {
+  "type": "interval",
+  "config": {
     "interval_minutes": 15,
     "input": {
       "prompt": "Check all monitored services and report any that are degraded."
@@ -1551,9 +1532,11 @@ Every agent has exactly one `trigger_type`. Default is `on-demand`.
 ```
 agent_triggers
   id               UUID PK
-  agent_id         UUID FK → agents UNIQUE — one active trigger record per agent
-  trigger_type     TEXT NOT NULL — mirrors agents.trigger_type (denormalized for scheduler queries)
-  trigger_config   JSONB NOT NULL — full config
+  agent_id         UUID FK → agents
+  scope_type       ENUM (system, organization, project, team, channel, user)
+  scope_id         UUID — null only for system-scoped triggers
+  trigger_type     TEXT NOT NULL
+  config           JSONB NOT NULL
   enabled          BOOLEAN DEFAULT true — pause without deleting
   next_run_at      TIMESTAMPTZ — next scheduled activation (null for webhook/event/on-demand)
   last_run_at      TIMESTAMPTZ — last successful activation
@@ -1564,8 +1547,9 @@ agent_triggers
 ```
 
 ```
-agent_trigger_log
+agent_trigger_deliveries
   id               UUID PK
+  trigger_id       UUID FK → agent_triggers
   agent_id         UUID FK → agents
   trigger_type     TEXT
   trigger_source   TEXT — "scheduler", "webhook", "event_bus", "manual", "api"
@@ -1608,16 +1592,16 @@ Scheduler loop (runs every 15 seconds):
   │
   ├── 2. For each trigger:
   │     ├── Create Run record (trigger_source: 'scheduler')
-  │     ├── Inject trigger_config.input as the run input
+  │     ├── Inject config.input as the run input
   │     ├── Enqueue to worker queue
   │     ├── Update next_run_at:
   │     │     scheduled → compute from cron expression
   │     │     interval  → NOW() + interval_minutes
   │     ├── Update last_run_at, increment run_count
-  │     └── Write agent_trigger_log entry (status: run_created)
+  │     └── Write agent_trigger_deliveries entry (status: run_created)
   │
   └── 3. On failure:
-        ├── Write agent_trigger_log entry (status: failed, error: ...)
+        ├── Write agent_trigger_deliveries entry (status: failed, error: ...)
         ├── Update agent_triggers.last_error
         └── Do NOT disable — transient failures should not stop the schedule
             (after 10 consecutive failures, set enabled = false and alert)
@@ -1650,7 +1634,7 @@ POST /api/webhooks/{webhook_id}
   │
   ├── 4. Create Run record (trigger_source: 'webhook')
   │     ├── Enqueue to worker queue
-  │     └── Write agent_trigger_log entry
+  │     └── Write agent_trigger_deliveries entry
   │
   └── 5. Return 202 Accepted { "run_id": "...", "status": "queued" }
 ```
@@ -1684,11 +1668,11 @@ Event occurs (e.g., task.review_passed)
   │     ├── SELECT * FROM agent_triggers
   │     │   WHERE trigger_type = 'event'
   │     │     AND enabled = true
-  │     │     AND trigger_config->'events' ? 'task.review_passed'
+  │     │     AND config->'events' ? 'task.review_passed'
   │     └── For each matching trigger:
   │           ├── Evaluate filter (e.g., project_id matches)
   │           ├── Create Run with event payload as input
-  │           └── Write agent_trigger_log entry
+  │           └── Write agent_trigger_deliveries entry
   │
   └── 3. Same concurrency guard as scheduler — skip if agent already running
 ```
@@ -1709,13 +1693,14 @@ Event occurs (e.g., task.review_passed)
 ### Trigger API Endpoints
 
 ```
-POST   /api/agents/{id}/trigger           — manually trigger any agent (creates a run)
-GET    /api/agents/{id}/trigger            — get trigger configuration
-PUT    /api/agents/{id}/trigger            — update trigger config (type + config)
-DELETE /api/agents/{id}/trigger            — remove trigger (revert to on-demand)
-POST   /api/agents/{id}/trigger/pause      — disable without deleting
-POST   /api/agents/{id}/trigger/resume     — re-enable
-GET    /api/agents/{id}/trigger/history     — paginated trigger log
+POST   /api/agents/{id}/runs              — manually trigger any agent (creates a run)
+GET    /api/agents/{id}/triggers          — list trigger records for the agent
+POST   /api/agents/{id}/triggers          — create trigger record
+PUT    /api/triggers/{triggerId}          — update trigger `type` + `config`
+DELETE /api/triggers/{triggerId}          — remove trigger
+POST   /api/triggers/{triggerId}/pause    — disable without deleting
+POST   /api/triggers/{triggerId}/resume   — re-enable
+GET    /api/triggers/{triggerId}/history  — paginated trigger delivery history
 
 POST   /api/webhooks                       — create webhook for an agent (returns secret ONCE)
 GET    /api/webhooks/{id}                   — webhook metadata (no secret)

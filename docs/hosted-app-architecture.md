@@ -251,6 +251,14 @@ Responsibilities:
 
 This should be a separate service boundary from the API. Do not let the API process execute shell-like tools directly.
 
+Runner contract:
+
+- runners register with the control plane and advertise provider, supported modes, and capability tags
+- control plane schedules work by issuing short-lived execution leases, not by handing out raw infrastructure coordinates
+- runners fetch artifacts, policy bundles, and declared secret bindings from central storage/services using the lease
+- runners heartbeat while executing and report final status, logs, and usage back to the control plane
+- any node may execute an artifact if it has the required capabilities; node-local caches are optimization only, never source of truth
+
 ### Remote worker boundary
 
 The hosted product should also support customer-installed remote workers that register to a parent Nessie control plane.
