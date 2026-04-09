@@ -19,13 +19,13 @@ This document is **target-state design**. Secret services must be implemented ou
 Secret scope is explicit and non-implicit:
 
 - `organization`: visible within one organization boundary and governed by organization policy.
-- `global`: visible to users/agents allowed at organization scope.
+- `system`: platform-wide and only mutable by superusers.
 - `project`: dedicated release-safety boundary for deployment, keys, and documentation.
 - `team`: bounded to team membership and policies.
 - `channel`: bounded to channel membership and policies.
 - `agent`: visible only to that agent and allowed managers/operators.
 - `thread`: bounded to a specific conversation/thread.
-- `user`: personal operator-only secret.
+- `user`: user-only secret.
 - `service`: bounded to non-human callers (CI, orchestrator service, worker service).
 
 `workspace` is accepted only through legacy compatibility parsing and mapped internally to `project` before policy evaluation.
@@ -86,7 +86,7 @@ type SecretStorageRecord = {
 **Shared API model (in `packages/schemas`, returned by endpoints):**
 
 ```ts
-type SecretScopeType = 'organization' | 'global' | 'project' | 'team' | 'channel' | 'agent' | 'thread' | 'user' | 'service';
+type SecretScopeType = 'system' | 'organization' | 'project' | 'team' | 'channel' | 'agent' | 'thread' | 'user' | 'service';
 type SecretType = 'api_key' | 'password' | 'token' | 'cert' | 'other';
 type SecretStatus = 'active' | 'revoked' | 'expired';
 
@@ -289,7 +289,7 @@ Project lifecycle tie-ins:
 
 - Secret creation UI must be out-of-band from chat input.
 - Dialog must include scope selector:
-  - global/project/team/channel/agent/thread/user/service
+  - system/organization/project/team/channel/agent/thread/user/service
 - Must show explicit recipient set (agents + channels + operators allowed).
 - Should support copy of secret reference only (never full secret).
 - Should show last-used + last-rotated status with risk warning on stale/expiring secrets.

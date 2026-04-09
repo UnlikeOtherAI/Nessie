@@ -38,6 +38,67 @@ All other ordering aligns with the canonical sequence.
 - [conversation-intelligence-platform.md](../conversation-intelligence-platform.md) — event-driven platform, plugin architecture
 - [agent-base-template.md](../agent-base-template.md) — agent contract and field definitions
 
+## Shared Scope Model
+
+The platform needs one canonical placement scope enum for shareable resources:
+
+- `system`
+- `organization`
+- `project`
+- `team`
+- `channel`
+- `user`
+
+Rules:
+
+- `system` is platform-wide and only mutable by superusers.
+- `system` is the only scope that does not require a `scope_id`.
+- All other scopes require a concrete `scope_id`.
+- `global` is not used. Use `organization`.
+- `personal` is not used. Use `user`.
+- `agent`, `tool`, `thread`, and `service` are not scopes. They are policy targets, principals, or execution contexts.
+
+This enum applies to placement and sharing for reusable objects:
+
+- agents
+- triggers
+- skills
+- resources / remote workers
+- secrets
+- library items
+- workflow templates
+
+Execution artifacts are still gated, but usually inherit access from parent resources and policy rather than having their own share bindings:
+
+- runs
+- evaluations
+- approvals
+- tool calls
+- activity logs
+- messages
+
+### Multi-Scope Binding Model
+
+Resources may be visible in more than one scope. Do not model this as a JSON array on the primary record.
+
+- Each shareable resource has one home scope: `scope_type`, `scope_id`
+- Additional visibility is represented through scope binding rows
+- Effective access is the union of matching bindings, subject to policy
+
+Minimum binding audit fields:
+
+- `id`
+- `resource_type`
+- `resource_id`
+- `scope_type`
+- `scope_id`
+- `created_at`
+- `created_by`
+- `updated_at`
+- `updated_by`
+- `revoked_at`
+- `revoked_by`
+
 ---
 
 ## Agent Phase 0: Visual Prototype (Design Track)
@@ -76,7 +137,7 @@ Build the complete agent admin experience with fake data. Every page, every pane
    - Event subscriptions matrix (agent × event type)
    - Trigger history log (fired, skipped, failed) with run links
 4. **Resources Page** — remote workers:
-   - Worker list with status, scope (org/project/team/channel/personal), tools, last heartbeat
+   - Worker list with status, scope (`system`/organization/project/team/channel/user), tools, last heartbeat
    - Worker detail with policy viewer (three-layer: local hard × cloud × actor), tool bindings, activity log
    - Register new worker flow (shows CLI command to run on target machine)
 5. **Agent Designer** — enhanced version:
@@ -307,11 +368,12 @@ Agents activate automatically — on schedule, via webhook, or in response to in
 - **Webhook ingest**: `POST /api/webhooks/{webhook_id}` with HMAC verification, IP allowlisting, rate limiting
 - **Event bus**: `pg_notify` based event routing with agent subscription matching
 - **Trigger API**: Full CRUD for trigger configuration, pause/resume, history
-- **Trigger DB**: `agent_triggers`, `agent_trigger_log`, `agent_webhooks` tables
+- **Trigger DB**: `agent_triggers`, `agent_trigger_deliveries`, `agent_webhooks`, `resource_scope_bindings` tables
+- **Trigger ownership model**: Triggers are first-class records linked to agents, with one home scope plus optional additional scope bindings
 
 ### Backend work
 
-1. **Prisma migration**: Validate `trigger_type`, `trigger_config` on `agents` table (columns defined in spec, may need backfill of existing agents to `on-demand`). Create `agent_triggers`, `agent_trigger_log`, `agent_webhooks` tables.
+1. **Prisma migration**: Create first-class trigger tables instead of embedding trigger config on `agents`. Create `agent_triggers`, `agent_trigger_deliveries`, `agent_webhooks`, and `resource_scope_bindings`. `agent_triggers` includes `agent_id`, `scope_type`, `scope_id`, `trigger_type`, `enabled`, `config`, `last_fired_at`, `next_run_at`, and audit fields. Trigger payloads and outcomes are recorded in `agent_trigger_deliveries`.
 2. **Scheduler service** (`worker/src/scheduler/`):
    - 15-second evaluation loop
    - `pg_advisory_lock` for leader election in multi-instance deployments
@@ -332,9 +394,9 @@ Agents activate automatically — on schedule, via webhook, or in response to in
    - Create runs for matching agents with event payload as input
    - Same concurrency guard as scheduler — skip if agent already running
 5. **Trigger API endpoints** (all from the-agents.md § 17):
-   - `POST/GET/PUT/DELETE /api/agents/{id}/trigger`
-   - `POST /api/agents/{id}/trigger/pause`, `POST /api/agents/{id}/trigger/resume`
-   - `GET /api/agents/{id}/trigger/history`
+   - `POST/GET/PUT/DELETE /api/agents/{id}/triggers`
+   - `POST /api/triggers/{id}/pause`, `POST /api/triggers/{id}/resume`
+   - `GET /api/triggers/{id}/history`
    - `POST /api/webhooks` (returns secret ONCE), `GET/DELETE /api/webhooks/{id}`, `POST /api/webhooks/{id}/rotate`
    - `GET /api/triggers/scheduled`, `GET /api/triggers/upcoming`
 6. **MCP tools**: `set_trigger`, `pause_trigger`, `resume_trigger`, `trigger_agent`, `list_scheduled`
@@ -628,7 +690,7 @@ Skills as first-class capabilities with a full security verification pipeline. P
    - `load_skill` / `unload_skill` tools (parallels `resolve_capability` / `drop_context`)
    - Skill search with Tier 1 (built-in, high trust) / Tier 2 (community, scan required) discovery model
    - Dependency resolution: skill requires other skills or tools → check availability before assignment
-   - Scoped sharing: personal, team, project, organization, public
+   - Scoped sharing: system, organization, project, team, channel, user, plus marketplace/public visibility where applicable
    - Version lifecycle: draft → scanning → active → deprecated → archived
    - Reviews/ratings per skill version
 4. **Procedural memory capture** (`worker/src/memory/procedural.ts`):
@@ -749,7 +811,7 @@ Agents execute on remote machines and run long-lived async operations that take 
 1. `GET /api/remote-workers` (list with status, scope, tools)
 2. `GET /api/remote-workers/{id}` (detail with policy, bindings, activity)
 3. `PATCH /api/remote-workers/{id}` (update scope, bindings)
-4. Scope assignment: org/project/team/channel/personal level
+4. Scope assignment: `system` / organization / project / team / channel / user
 
 ### Admin UI work
 
@@ -813,9 +875,9 @@ Everything is discoverable, installable, and composable through a unified market
 3. **Skill marketplace**: Browse, install with security scan, reviews/ratings per version
 4. **Workflow template marketplace**: Browse, install with dependency resolution
 5. **Library service** (`api/src/services/library.ts`):
-   - `library_items` table: what's installed, scope (org/project/team), status, installed_by, installed_at
+   - `library_items` table: what's installed, home scope (`system` / organization / project / team / channel / user), status, installed_by, installed_at
    - Install-to-library flow: marketplace item → security scan → library item → available for assignment
-   - Scope management: change visibility/access level
+   - Scope management: home scope + additional scope bindings with audit trail
 6. **Capability assignment service**:
    - `capability_assignments` table: library_item_id → agent_id, with `enabled_tools` array
    - Agent capabilities view: all assigned capabilities with enabled/disabled tools
@@ -829,8 +891,8 @@ Everything is discoverable, installable, and composable through a unified market
      2. Template selection (optional)
      3. System prompt generation or validation
      4. Role assignment + tool policy resolution
-     5. Budget validation against org limits
-     6. Scope validation (org/project/team placement)
+     5. Budget validation against organization limits
+     6. Scope validation (`system` / organization / project / team / channel / user placement)
      7. Dry-run test execution (simulated run with mock input)
      8. Approval submission (for agents with privileged tools)
      9. Creation + initial config version

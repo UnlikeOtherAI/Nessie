@@ -147,7 +147,7 @@ The library is what the organization has installed. Marketplace items become lib
 │  Search: [_________________________________] [Filter ▾]        │
 │                                                                │
 │  Scope: [ Organization ▾ ]                                     │
-│         (or: specific project, team, channel, personal)        │
+│         (or: specific project, team, channel, user)            │
 │                                                                │
 │  ┌──────────────────────────────────────────────────────────┐ │
 │  │ ⬡ PostgreSQL          Active    Org-wide    12/12 tools  │ │
@@ -325,7 +325,7 @@ library_items
   catalog_ref      TEXT — marketplace catalog ID (null if org-created)
   
   -- Scoping
-  scope_type       TEXT — "organization" | "project" | "team" | "channel" | "personal"
+  scope_type       TEXT — "system" | "organization" | "project" | "team" | "channel" | "user"
   scope_id         TEXT
   
   -- State
@@ -477,7 +477,7 @@ The agent editor doesn't install or configure capabilities — it assigns librar
 Every capability type goes through the same security pipeline. MCP servers have their tools scanned. Skills go through the 4-stage verification. API connectors have their endpoints risk-classified. The security tab on the detail page shows the same structure regardless of type.
 
 ### 5. Scope flows down, assignment is explicit
-Library items are scoped (org/project/team/channel/personal). An agent in scope can see available capabilities. But seeing is not having — capabilities must be explicitly assigned to an agent before the agent can use them. Scope makes them available; assignment makes them active.
+Library items are scoped (system/organization/project/team/channel/user). An agent in scope can see available capabilities. But seeing is not having — capabilities must be explicitly assigned to an agent before the agent can use them. Scope makes them available; assignment makes them active.
 
 ---
 

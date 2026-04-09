@@ -85,7 +85,7 @@ mcp_server_instances
   credential_ref   TEXT — secretRef from secret-management-spec.md (NEVER plaintext)
   
   -- Scoping
-  scope_type       TEXT — "organization" | "project" | "team" | "channel" | "personal"
+  scope_type       TEXT — "system" | "organization" | "project" | "team" | "channel" | "user"
   scope_id         TEXT — the specific scope entity ID
   installed_by     UUID FK → users
   
@@ -112,14 +112,15 @@ MCP servers are installed at a scope level. Agents can only use servers visible 
 
 ```
 Scope hierarchy (most restrictive → least restrictive):
-  personal → channel → team → project → organization
+  user → channel → team → project → organization → system
 
 Rules:
+  - "system" scope → platform-managed and visible everywhere
   - "organization" scope → all agents in the org can discover this server
   - "project" scope → only agents bound to that project
   - "team" scope → only agents bound to that team
   - "channel" scope → only agents in that channel
-  - "personal" scope → only one specific user's agents
+  - "user" scope → only one specific user's agents
 
 An agent sees the UNION of all servers visible at its scope level and above.
 
@@ -650,9 +651,9 @@ Scoping works the same as all other capabilities:
 - **Project** scope → only agents in that project
 - **Team** scope → only agents bound to that team
 - **Channel** scope → only agents in that channel
-- **Personal** scope → only one user's agents
+- **User** scope → only one user's agents
 
-Resources that are **global** (org-scoped) are visible to everyone but may have read-only or restricted tool access via cloud policy. Resources scoped to a team or channel are only discoverable by agents in that scope. The admin who registered the resource controls the scope; the machine owner controls the local policy.
+Resources that are **system** scoped are visible everywhere and should be platform-managed. Organization-scoped resources are visible within one organization and may still have read-only or restricted tool access via cloud policy. Resources scoped to a team or channel are only discoverable by agents in that scope. The admin who registered the resource controls the scope; the machine owner controls the local policy.
 
 ---
 
@@ -678,7 +679,7 @@ api_connectors
   credential_ref   TEXT — secretRef (NEVER plaintext)
   
   -- Scoping (same as MCP servers)
-  scope_type       TEXT — "organization" | "project" | "team" | "channel" | "personal"
+  scope_type       TEXT — "system" | "organization" | "project" | "team" | "channel" | "user"
   scope_id         TEXT
   
   -- Default request config
@@ -844,7 +845,7 @@ auth_config: {
    ├── 4. Admin configures auth method + enters credentials via secure modal
    │     → Returns secretRef
    │
-   ├── 5. Admin selects scope (org/project/team/channel/personal)
+   ├── 5. Admin selects scope (system/organization/project/team/channel/user)
    │
    ├── 6. System registers all endpoints as ToolRegistryEntry records
    │     status = 'pending_review'
@@ -2169,7 +2170,7 @@ No code changes to add a new MCP server or API endpoint. Admins configure in the
 Every tool call result feeds back into procedural memory. Agents learn which tools work, how they fail, and how to use them effectively. This knowledge persists across runs and can be shared across agents within scope.
 
 ### 5. Scope controls access
-MCP servers and API connectors are scoped to org/project/team/channel/personal. An agent can only discover and use tools visible at its scope level. Credentials can be overridden at any scope level for multi-tenant scenarios.
+MCP servers and API connectors are scoped to system/organization/project/team/channel/user. An agent can only discover and use tools visible at its scope level. Credentials can be overridden at any scope level for multi-tenant scenarios.
 
 ### 6. External knowledge bases are just connectors
 Nessie is not in the business of building wikis or knowledge bases. Every company already has one — Confluence, Notion, GitHub Wiki, SharePoint, Google Docs, or something custom. These are just connectors in the marketplace, no different from a CRM or calendar connector.
