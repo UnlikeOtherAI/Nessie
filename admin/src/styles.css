@@ -238,6 +238,21 @@ a {
   user-select: all;
 }
 
+.mention-tag-link {
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.mention-tag-link:hover,
+.mention-tag-link:focus-visible {
+  background: rgba(124, 58, 237, 0.36);
+  color: #ddd6fe;
+  outline: none;
+}
+
 .admin-compose select {
   background: rgba(124, 58, 237, 0.08);
 }

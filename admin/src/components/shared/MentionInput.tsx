@@ -73,7 +73,7 @@ function getMentionContext(): { query: string; range: Range } | null {
   const match = text.match(/(^|[\s\u00A0])@([^\s\u00A0]*)$/)
   if (!match) return null
 
-  const query = match[2]
+  const query = match[2] ?? ''
   const atPos = offset - query.length - 1
 
   const range = document.createRange()
@@ -286,7 +286,11 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
               }
               if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault()
-                insertMentionRef.current(f[idx])
+                const entity = f[idx]
+                if (!entity) {
+                  return
+                }
+                insertMentionRef.current(entity)
                 return
               }
               if (e.key === 'Escape') {

@@ -1,11 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import { MentionInput, type MentionInputHandle, type MentionEntity } from '../components/shared/MentionInput'
 import {
   useNavigate,
   useOutletContext,
   useParams,
 } from 'react-router-dom'
-import { useAgents } from '../facades/agents/hooks'
+import { useAgents, useBindAgent } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
 import { useSendMessage } from '../facades/messages/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
@@ -80,7 +89,7 @@ const pickGradient = (id: string): string => {
   for (let i = 0; i < id.length; i++) {
     hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0
   }
-  return memberGradients[Math.abs(hash) % memberGradients.length]
+  return memberGradients[Math.abs(hash) % memberGradients.length] ?? memberGradients[0]
 }
 
 const getInitials = (value: string): string =>
@@ -147,6 +156,7 @@ export const ChannelsPage = () => {
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
   const { data: tools = [] } = useTools()
+  const bindAgent = useBindAgent()
   const isOwner = me?.user.roleIds?.includes('owner') ?? false
   const { data: allUsers = [] } = useUsers(isOwner)
 
@@ -186,7 +196,7 @@ export const ChannelsPage = () => {
 
   const mentionEntities: MentionEntity[] = useMemo(
     () => [
-      ...boundAgents.map((a) => ({
+      ...agents.map((a) => ({
         id: a.id,
         name: a.name,
         type: 'agent' as const,
@@ -198,44 +208,97 @@ export const ChannelsPage = () => {
         type: 'user' as const,
       })),
     ],
-    [boundAgents, channelUsers],
+    [agents, channelUsers],
   )
 
-  const mentionNames = useMemo(
-    () => new Set(mentionEntities.map((e) => e.name)),
+  const mentionEntityMap = useMemo(
+    () => new Map(mentionEntities.map((entity) => [entity.name, entity])),
     [mentionEntities],
+  )
+  const sortedMentionNames = useMemo(
+    () =>
+      [...mentionEntityMap.keys()].sort(
+        (left, right) => right.length - left.length,
+      ),
+    [mentionEntityMap],
   )
 
   const renderContent = useCallback(
     (text: string): ReactNode => {
-      if (!mentionNames.size) return text
+      if (!mentionEntityMap.size) return text
       const parts: ReactNode[] = []
-      let lastIndex = 0
-      // Match @Name where Name can contain spaces (for multi-word agent names)
-      const pattern = /@([\w][\w\s]*[\w]|[\w]+)/g
-      let match = pattern.exec(text)
-      while (match !== null) {
-        const name = match[1]
-        if (mentionNames.has(name)) {
-          if (match.index > lastIndex) {
-            parts.push(text.slice(lastIndex, match.index))
+      let cursor = 0
+
+      while (cursor < text.length) {
+        const atIndex = text.indexOf('@', cursor)
+        if (atIndex === -1) {
+          parts.push(text.slice(cursor))
+          break
+        }
+
+        const hasMentionBoundaryBefore =
+          atIndex === 0 || /\s/.test(text[atIndex - 1] ?? '')
+
+        if (!hasMentionBoundaryBefore) {
+          parts.push(text.slice(cursor, atIndex + 1))
+          cursor = atIndex + 1
+          continue
+        }
+
+        const entityName = sortedMentionNames.find((candidate) => {
+          if (!text.startsWith(candidate, atIndex + 1)) {
+            return false
+          }
+
+          const boundaryChar = text[atIndex + 1 + candidate.length]
+          return boundaryChar === undefined || /[\s.,!?;:()[\]{}]/.test(boundaryChar)
+        })
+
+        if (!entityName) {
+          parts.push(text.slice(cursor, atIndex + 1))
+          cursor = atIndex + 1
+          continue
+        }
+
+        const entity = mentionEntityMap.get(entityName)
+        if (entity) {
+          if (atIndex > cursor) {
+            parts.push(text.slice(cursor, atIndex))
           }
           parts.push(
-            <span className="mention-tag" key={match.index}>
-              @{name}
-            </span>,
+            <button
+              className="mention-tag mention-tag-link"
+              key={`${entity.id}:${atIndex}`}
+              onClick={() => {
+                if (entity.type === 'agent') {
+                  onSelectAgent(entity.id)
+                  return
+                }
+
+                void navigate('/settings#users')
+              }}
+              title={
+                entity.type === 'agent'
+                  ? `Open ${entity.name}`
+                  : `Open ${entity.name} in workspace users`
+              }
+              type="button"
+            >
+              @{entityName}
+            </button>,
           )
-          lastIndex = match.index + match[0].length
+          cursor = atIndex + 1 + entityName.length
+          continue
         }
-        match = pattern.exec(text)
+
+        parts.push(text.slice(cursor, atIndex + 1))
+        cursor = atIndex + 1
       }
+
       if (parts.length === 0) return text
-      if (lastIndex < text.length) {
-        parts.push(text.slice(lastIndex))
-      }
       return <>{parts}</>
     },
-    [mentionNames],
+    [mentionEntityMap, navigate, onSelectAgent, sortedMentionNames],
   )
 
   useEffect(() => {
@@ -245,15 +308,15 @@ export const ChannelsPage = () => {
   }, [activeChannel, channelId, navigate])
 
   useEffect(() => {
-    if (boundAgents.length === 0) {
+    if (agents.length === 0) {
       setSelectedAgentId('')
       return
     }
 
-    if (!selectedAgentId || !boundAgents.some((agent) => agent.id === selectedAgentId)) {
-      setSelectedAgentId(boundAgents[0]?.id ?? '')
+    if (!selectedAgentId || !agents.some((agent) => agent.id === selectedAgentId)) {
+      setSelectedAgentId(agents[0]?.id ?? '')
     }
-  }, [boundAgents, selectedAgentId])
+  }, [agents, selectedAgentId])
 
   const selectedAgent =
     agents.find((agent) => agent.id === selectedAgentId) ?? boundAgents[0] ?? null
@@ -280,6 +343,25 @@ export const ChannelsPage = () => {
     const text = mentionRef.current?.getText() ?? message
     if (!activeChannel || !text.trim()) {
       return
+    }
+
+    // Auto-bind any mentioned agents not yet in this channel
+    const mentionPattern = /@([\w][\w\s]*[\w]|[\w]+)/g
+    let mentionMatch = mentionPattern.exec(text)
+    while (mentionMatch) {
+      const name = mentionMatch[1]
+      if (!name) {
+        mentionMatch = mentionPattern.exec(text)
+        continue
+      }
+      const entity = mentionEntityMap.get(name)
+      if (entity?.type === 'agent') {
+        const agent = agents.find((a) => a.id === entity.id)
+        if (agent && !agent.channelIds.includes(activeChannel.id)) {
+          bindAgent.mutate({ agentId: agent.id, channelId: activeChannel.id })
+        }
+      }
+      mentionMatch = mentionPattern.exec(text)
     }
 
     await sendMessage.mutateAsync({
@@ -317,7 +399,10 @@ export const ChannelsPage = () => {
               {channelUsers.slice(0, 3).map((user) => (
                 <div
                   key={user.id}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[color:var(--main)] text-[8px] font-bold text-white"
+                  className={[
+                    'flex h-6 w-6 items-center justify-center rounded-full border-2',
+                    'border-[color:var(--main)] text-[8px] font-bold text-white',
+                  ].join(' ')}
                   style={{ background: pickGradient(user.id) }}
                 >
                   {getInitials(user.displayName)}
@@ -326,7 +411,10 @@ export const ChannelsPage = () => {
               {boundAgents.slice(0, Math.max(0, 4 - channelUsers.length)).map((agent) => (
                 <div
                   key={agent.id}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-[color:var(--main)] text-[10px]"
+                  className={[
+                    'flex h-6 w-6 items-center justify-center rounded-full border-2',
+                    'border-[color:var(--main)] text-[10px]',
+                  ].join(' ')}
                   style={{ background: agentGradient }}
                 >
                   {getAgentGlyph(agent)}
@@ -817,7 +905,7 @@ export const ChannelsPage = () => {
                 value={selectedAgentId}
               >
                 <option value="">No agent</option>
-                {boundAgents.map((agent) => (
+                {agents.map((agent) => (
                   <option key={agent.id} value={agent.id}>
                     {agent.name}
                   </option>
