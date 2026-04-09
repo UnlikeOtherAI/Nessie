@@ -887,6 +887,7 @@ Everything is discoverable, installable, and composable through a unified market
    - Assignment API: `POST /api/agents/{id}/capabilities`, `GET /api/agents/{id}/capabilities`
 8. **Generated plugin lifecycle**:
    - `generated_plugins`, `generated_plugin_versions`, `plugin_reviews` tables
+   - `plugin_templates` table for platform-owned starter templates
    - lifecycle states: `draft`, `testing`, `private_sandbox`, `shared_unreviewed`, `pending_review`, `changes_requested`, `approved`, `published`, `revoked`
    - review is per version, not per plugin name
    - approval split into distribution approval and runtime approval
@@ -904,6 +905,12 @@ Everything is discoverable, installable, and composable through a unified market
    - ledger records raw usage meters plus normalized cost for per-minute/per-second/provider-specific billing
    - reporting slices by organization/project/team/channel/user/agent/workflow/plugin version
    - template pricing metadata stored centrally, not duplicated in workflow/plugin configs
+11. **Plugin builder system**:
+   - platform-owned template catalog: OAuth connector, CLI wrapper, HTML widget, webhook normalizer, custom plugin
+   - strict manifest schemas for plugin metadata, config schema, permissions, actions, and UI bridge
+   - plugin SDK for brokered actions, OAuth, storage, and iframe bridge messaging
+   - deterministic builder tools: `create_from_template`, `validate_manifest`, `run_template_tests`, `package_plugin`, `submit_for_review`
+   - reference implementations and golden tests so agents build against known working patterns
 
 **Agent builder:**
 1. **Prisma migration**: `agent_templates` table (from the-agents.md § 15), `agent_config_versions` table
@@ -955,6 +962,7 @@ Everything is discoverable, installable, and composable through a unified market
 
 - **Marketplace browser**: Tabbed view (MCP Servers | API Connectors | Skills | Workflows), search, filters, categories
 - **Generated plugin builder**: Create from template, generate icon, review manifest/permissions, launch coding environment, submit for review
+- **Plugin template catalog**: curated starter templates with examples, expected files, SDK version, and test harness
 - **Install flow**: Permission grant review, security scan summary, scope selection
 - **Library page**: Installed items with status, scope, update available indicator
 - **Plugin review queue**: DevOps/platform reviewer inbox with code snapshot, manifest, requested permissions, diff, and approve/request-changes actions
@@ -985,6 +993,7 @@ Everything is discoverable, installable, and composable through a unified market
 - Reviewer requests changes → creator receives Nessie thread/DM with review notes
 - Reviewer approves next version → plugin becomes publishable to assigned scopes
 - Launch coding environment from workflow/plugin → instance row created, usage ledger accrues, termination writes final cost
+- Agent builds plugin from template → manifest validates → template tests pass → package submitted for review
 
 ### Exit criteria
 
@@ -999,6 +1008,7 @@ Everything is discoverable, installable, and composable through a unified market
 - Generated plugins stay sandboxed before approval (verified: private plugin cannot run outside isolated runner)
 - Review workflow gates publication (verified: unapproved version cannot be published org-wide)
 - Execution usage ledger attributes cost correctly (verified: environment run linked to actor + run + final billable duration)
+- Plugin builder system is deterministic (verified: template-based plugin passes schema validation and harness tests before review)
 - Lint, typecheck, build pass
 
 ---

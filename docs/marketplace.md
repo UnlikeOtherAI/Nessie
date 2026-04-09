@@ -1144,6 +1144,39 @@ Some integrations will never fit cleanly into declarative OAuth + endpoint confi
 5. Plugin runs only in a sandbox until promoted
 6. Reviewers can request changes or approve publication to broader scopes
 
+### How Agents Build Plugins Reliably
+
+Agents should not invent plugin architecture from scratch on a blank VM. The platform must give them a constrained build system.
+
+Required building blocks:
+
+- `template catalog` — curated plugin starter templates with metadata, required inputs, expected files, tests, and build commands
+- `manifest schemas` — strict schemas for `plugin.json`, `config.schema.json`, `permissions.json`, action schemas, and UI metadata
+- `plugin SDK` — platform-owned helpers for brokered actions, OAuth flows, storage, state, and UI bridge messaging
+- `validation pipeline` — schema validation, dependency policy checks, static analysis, test execution, packaging, and review bundle creation
+- `reference implementations` — approved example plugins by type
+
+The build flow must be deterministic:
+
+1. Select plugin template
+2. Gather structured inputs
+3. Scaffold files from template
+4. Fill manifest/config/permissions through schema-aware generation
+5. Generate implementation code only within template boundaries
+6. Run tests and validators
+7. Package artifact
+8. Submit review bundle
+
+Platform builder tools:
+
+- `create_from_template(template_id, spec)`
+- `validate_manifest(workspace)`
+- `run_template_tests(template_id, workspace)`
+- `package_plugin(workspace)`
+- `submit_for_review(plugin_version_id)`
+
+The agent therefore learns by using the platform’s template + SDK + validator loop, not by guessing the entire system design from prose.
+
 ### Plugin Lifecycle
 
 Every generated plugin version moves through an explicit trust lifecycle:
@@ -1186,6 +1219,17 @@ Typical flow:
 ### Plugin Schema
 
 ```
+plugin_templates
+  id               UUID PK
+  name             TEXT
+  slug             TEXT
+  category         TEXT — "oauth_connector" | "cli_wrapper" | "html_widget" | "webhook_normalizer" | "custom"
+  template_bundle_ref TEXT
+  manifest_schema_ref TEXT
+  sdk_version      TEXT
+  test_harness_ref TEXT
+  created_at       TIMESTAMPTZ
+
 generated_plugins
   id               UUID PK
   organization_id  UUID FK → organizations
