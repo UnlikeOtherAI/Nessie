@@ -81,13 +81,7 @@ export const AdminShellLayout = () => {
     });
   }, []);
 
-  const scopedAgents = useMemo(
-    () =>
-      currentChannelId
-        ? agents.filter((agent) => agent.channelIds.includes(currentChannelId))
-        : agents,
-    [agents, currentChannelId],
-  );
+  const scopedAgents = agents;
 
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
@@ -392,8 +386,11 @@ export const AdminShellLayout = () => {
                     >
                       <span className={channelHashClassName}>#</span>
                       <span className="truncate">{channel.label}</span>
-                      {channel.id === currentChannelId ? (
-                        <span className={unreadCountClassName}>{scopedAgents.length}</span>
+                      {channel.id === currentChannelId &&
+                        agents.filter((a) => a.channelIds.includes(channel.id)).length > 0 ? (
+                        <span className={unreadCountClassName}>
+                          {agents.filter((a) => a.channelIds.includes(channel.id)).length}
+                        </span>
                       ) : null}
                     </button>
                   ))}
@@ -419,6 +416,7 @@ export const AdminShellLayout = () => {
 
               <AgentActivityPanel
                 agents={scopedAgents}
+                currentChannelId={currentChannelId}
                 onSelectAgent={selectAgent}
                 realtime={realtime}
                 selectedAgentId={selectedAgentId}

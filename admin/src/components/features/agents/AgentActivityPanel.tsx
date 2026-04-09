@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { AgentRecord } from '../../../lib/api-client';
 import { getCookie, setCookie } from '../../../lib/storage';
+import { useBindAgent } from '../../../facades/agents/hooks';
 import { AgentStatusDot } from './AgentStatusDot';
 
 export type AgentRealtimeState = {
@@ -19,6 +20,7 @@ export type AgentRealtimeState = {
 
 type AgentActivityPanelProps = {
   agents: AgentRecord[];
+  currentChannelId?: string | null;
   onSelectAgent: (agentId: string) => void;
   realtime: AgentRealtimeState;
   selectedAgentId?: string | null;
@@ -60,11 +62,13 @@ const getAgentIcon = (agent: AgentRecord): string => {
 
 export const AgentActivityPanel = ({
   agents,
+  currentChannelId,
   onSelectAgent,
   realtime,
   selectedAgentId,
 }: AgentActivityPanelProps) => {
   const [collapsed, setCollapsed] = useState(() => getCookie('agentsCollapsed') === '1');
+  const bindAgent = useBindAgent();
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((prev) => {
@@ -75,6 +79,13 @@ export const AgentActivityPanel = ({
   }, []);
 
   const sortedAgents = [...agents].sort((left, right) => {
+    // Channel-bound agents first when viewing a channel
+    if (currentChannelId) {
+      const leftBound = left.channelIds.includes(currentChannelId) ? 1 : 0;
+      const rightBound = right.channelIds.includes(currentChannelId) ? 1 : 0;
+      if (leftBound !== rightBound) return rightBound - leftBound;
+    }
+
     const leftRecord = realtime.records[left.id];
     const rightRecord = realtime.records[right.id];
     const leftStatus = leftRecord?.status ?? left.status;
@@ -93,6 +104,12 @@ export const AgentActivityPanel = ({
     );
     return rightTs - leftTs;
   });
+
+  const handleAddToChannel = (e: React.MouseEvent, agentId: string) => {
+    e.stopPropagation();
+    if (!currentChannelId) return;
+    bindAgent.mutate({ agentId, channelId: currentChannelId });
+  };
 
   return (
     <section id="activity">
@@ -139,6 +156,9 @@ export const AgentActivityPanel = ({
             sortedAgents.map((agent, index) => {
               const record = realtime.records[agent.id];
               const status = record?.status ?? agent.status;
+              const isBound = currentChannelId
+                ? agent.channelIds.includes(currentChannelId)
+                : false;
               const currentTask =
                 record?.currentToolName ??
                 agent.currentToolName ??
@@ -154,17 +174,22 @@ export const AgentActivityPanel = ({
                 <button
                   key={agent.id}
                   className={[
-                    'mx-2 flex w-[calc(100%-1rem)] items-start gap-2 rounded-md px-2 py-2',
+                    'group mx-2 flex w-[calc(100%-1rem)] items-start gap-2 rounded-md px-2 py-2',
                     'text-left transition hover:bg-white/8',
                     selectedAgentId === agent.id
                       ? 'bg-[color:var(--sb-active)] text-white'
-                      : 'text-[color:var(--tx2)]',
+                      : currentChannelId && !isBound
+                        ? 'text-[color:var(--tx3)]'
+                        : 'text-[color:var(--tx2)]',
                   ].join(' ')}
                   onClick={() => onSelectAgent(agent.id)}
                   type="button"
                 >
                   <div
-                    className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-[10px]"
+                    className={[
+                      'mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-[10px]',
+                      currentChannelId && !isBound ? 'opacity-50' : '',
+                    ].join(' ')}
                     style={{ background: iconPalette[index % iconPalette.length] }}
                   >
                     {getAgentIcon(agent)}
@@ -188,7 +213,19 @@ export const AgentActivityPanel = ({
                       {lastActivity}
                     </div>
                   </div>
-                  <div className="mt-1">
+                  <div className="mt-1 flex items-center gap-1">
+                    {currentChannelId && !isBound ? (
+                      <span
+                        className="hidden rounded p-0.5 text-[color:var(--tx3)] hover:bg-white/10 hover:text-white group-hover:inline-flex"
+                        onClick={(e) => handleAddToChannel(e, agent.id)}
+                        role="button"
+                        title="Add to this channel"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                    ) : null}
                     <AgentStatusDot status={status} />
                   </div>
                 </button>
