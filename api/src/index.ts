@@ -55,6 +55,8 @@ import {
   AgentCategoryAgentBodySchema,
   AgentCategoryRecordSchema,
   AgentRecordSchema,
+  AgentTriggerDeliveryRecordSchema,
+  AgentTriggerRecordSchema,
   AuthProviderAuthorizeQuerySchema,
   AuthProviderDescriptorSchema,
   BootstrapModeResponseSchema,
@@ -62,6 +64,7 @@ import {
   ChannelRecordSchema,
   CreateAgentBindingBodySchema,
   CreateAgentBodySchema,
+  CreateAgentTriggerBodySchema,
   CreateAgentCategoryBodySchema,
   DesignerChatBodySchema,
   CreateChannelBodySchema,
@@ -70,6 +73,7 @@ import {
   LoginRequestSchema,
   ThreadMessageRecordSchema,
   ToolDescriptorSchema,
+  UpdateAgentTriggerBodySchema,
   UpdateAgentCategoryBodySchema,
   UserRecordSchema,
 } from './contracts.js'
@@ -100,6 +104,16 @@ import {
   loadRunToolCalls,
   unbindAgentFromChannel,
 } from './services/agents.js'
+import {
+  createAgentTrigger,
+  deleteAgentTrigger,
+  getAgentTrigger,
+  listAgentTriggerDeliveries,
+  listAgentTriggers,
+  pauseAgentTrigger,
+  resumeAgentTrigger,
+  updateAgentTrigger,
+} from './services/triggers.js'
 import { streamDesignerChat } from './services/designer.js'
 import {
   LOCAL_AUTH_PROVIDER_ID,
@@ -316,6 +330,17 @@ const isAgentVisibleToUser = async (userId: string, agentId: string): Promise<bo
       },
     },
   })) > 0
+
+const isAgentAccessibleToActor = async (
+  actorContext: AuthorizedActionContext,
+  agentId: string,
+): Promise<boolean> => {
+  if (actorContext.actor.roles?.includes('owner')) {
+    return (await prisma.agent.count({ where: { id: agentId } })) > 0
+  }
+
+  return isAgentVisibleToUser(actorContext.actor.actorId, agentId)
+}
 
 const isChannelVisibleToUser = async (userId: string, channelId: string): Promise<boolean> => {
   const channel = await prisma.channel.findUnique({
@@ -637,10 +662,16 @@ export const buildApp = async () => {
           // Resolve the default org/project/team from DB for SSO auto-provisioning
           const defaultOrg = await prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } })
           const defaultProject = defaultOrg
-            ? await prisma.project.findFirst({ where: { organizationId: defaultOrg.id }, orderBy: { createdAt: 'asc' } })
+            ? await prisma.project.findFirst({
+                where: { organizationId: defaultOrg.id },
+                orderBy: { createdAt: 'asc' },
+              })
             : null
           const defaultTeam = defaultProject
-            ? await prisma.team.findFirst({ where: { projectId: defaultProject.id }, orderBy: { createdAt: 'asc' } })
+            ? await prisma.team.findFirst({
+                where: { projectId: defaultProject.id },
+                orderBy: { createdAt: 'asc' },
+              })
             : null
           const defaultChannel = defaultOrg
             ? await prisma.channel.findFirst({
@@ -967,7 +998,7 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, agentId))) {
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
@@ -979,6 +1010,183 @@ export const buildApp = async () => {
     }
 
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(cloned)))
+  })
+
+  app.get('/api/agents/:agentId/triggers', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    const triggers = await listAgentTriggers(prisma, agentId)
+    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
+  app.post('/api/agents/:agentId/triggers', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    const body = parseInput(CreateAgentTriggerBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const trigger = await createAgentTrigger(prisma, agentId, body)
+    if (!trigger) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    return reply.code(201).send(createApiResponse(AgentTriggerRecordSchema.parse(trigger)))
+  })
+
+  app.put('/api/triggers/:triggerId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const body = parseInput(UpdateAgentTriggerBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const updated = await updateAgentTrigger(prisma, triggerId, body)
+    if (!updated) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
+  })
+
+  app.delete('/api/triggers/:triggerId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    await deleteAgentTrigger(prisma, triggerId)
+    return reply.code(204).send()
+  })
+
+  app.post('/api/triggers/:triggerId/pause', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const updated = await pauseAgentTrigger(prisma, triggerId)
+    if (!updated) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
+  })
+
+  app.post('/api/triggers/:triggerId/resume', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const updated = await resumeAgentTrigger(prisma, triggerId)
+    if (!updated) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
+  })
+
+  app.get('/api/triggers/:triggerId/history', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const limit = Math.min(
+      Math.max(Number((request.query as { limit?: string }).limit ?? '20'), 1),
+      100,
+    )
+
+    const deliveries = await listAgentTriggerDeliveries(prisma, triggerId, limit)
+    return createApiResponse(AgentTriggerDeliveryRecordSchema.array().parse(deliveries))
   })
 
   // ─── Agent Categories ─────────────────────────────────────────────────────
@@ -2115,10 +2323,14 @@ export const buildApp = async () => {
     if (!requireOwner(actorContext, reply)) return reply
 
     const query = request.query as Record<string, string | undefined>
+    type ListPolicyRulesFilters = Parameters<typeof listPolicyRules>[2]
     const result = await listPolicyRules(prisma, actorContext.tenant.organizationId, {
-      scope: query['scope'] as Parameters<typeof listPolicyRules>[2] extends { scope?: infer S } ? S : never,
+      scope: query['scope'] as ListPolicyRulesFilters extends { scope?: infer S } ? S : never,
       scopeId: query['scopeId'],
-      resourceType: query['resourceType'] as Parameters<typeof listPolicyRules>[2] extends { resourceType?: infer R } ? R : never,
+      resourceType:
+        query['resourceType'] as ListPolicyRulesFilters extends { resourceType?: infer R }
+          ? R
+          : never,
       cursor: query['cursor'],
       limit: query['limit'] ? parseInt(query['limit'], 10) : undefined,
     })

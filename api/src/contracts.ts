@@ -104,6 +104,73 @@ export const CreateAgentBindingBodySchema = z.object({
   channelId: ChannelIdSchema,
 })
 
+export const AgentTriggerTypeSchema = z.enum([
+  'manual',
+  'scheduled',
+  'webhook',
+  'event',
+  'interval',
+])
+export type AgentTriggerType = z.infer<typeof AgentTriggerTypeSchema>
+
+export const AgentTriggerStatusSchema = z.enum(['active', 'paused', 'error'])
+export type AgentTriggerStatus = z.infer<typeof AgentTriggerStatusSchema>
+
+export const AgentTriggerDeliveryStatusSchema = z.enum([
+  'pending',
+  'delivered',
+  'failed',
+  'skipped',
+])
+export type AgentTriggerDeliveryStatus = z.infer<typeof AgentTriggerDeliveryStatusSchema>
+
+export const AgentTriggerRecordSchema = z.object({
+  id: z.string().uuid(),
+  agentId: AgentIdSchema,
+  type: AgentTriggerTypeSchema,
+  status: AgentTriggerStatusSchema,
+  enabled: z.boolean(),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  config: z.record(z.unknown()),
+  lastFiredAt: TimestampSchema.optional(),
+  nextRunAt: TimestampSchema.optional(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type AgentTriggerRecord = z.infer<typeof AgentTriggerRecordSchema>
+
+export const CreateAgentTriggerBodySchema = z.object({
+  type: AgentTriggerTypeSchema,
+  name: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
+  enabled: z.boolean().optional(),
+  config: z.record(z.unknown()).optional(),
+  nextRunAt: TimestampSchema.optional(),
+})
+
+export const UpdateAgentTriggerBodySchema = z.object({
+  name: z.string().min(1).nullable().optional(),
+  description: z.string().min(1).nullable().optional(),
+  enabled: z.boolean().optional(),
+  status: AgentTriggerStatusSchema.optional(),
+  config: z.record(z.unknown()).optional(),
+  nextRunAt: TimestampSchema.nullable().optional(),
+})
+
+export const AgentTriggerDeliveryRecordSchema = z.object({
+  id: z.string().uuid(),
+  triggerId: z.string().uuid(),
+  status: AgentTriggerDeliveryStatusSchema,
+  source: z.string().optional(),
+  payload: z.record(z.unknown()),
+  errorMessage: z.string().optional(),
+  runId: RunIdSchema.optional(),
+  deliveredAt: TimestampSchema.optional(),
+  createdAt: TimestampSchema,
+})
+export type AgentTriggerDeliveryRecord = z.infer<typeof AgentTriggerDeliveryRecordSchema>
+
 export const AgentCategoryRecordSchema = z.object({
   id: AgentCategoryIdSchema,
   name: NonEmptyStringSchema,

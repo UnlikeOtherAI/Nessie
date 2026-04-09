@@ -25,6 +25,27 @@ enum RunStatus {
   cancelled
 }
 
+enum AgentTriggerType {
+  manual
+  scheduled
+  webhook
+  event
+  interval
+}
+
+enum AgentTriggerStatus {
+  active
+  paused
+  error
+}
+
+enum AgentTriggerDeliveryStatus {
+  pending
+  delivered
+  failed
+  skipped
+}
+
 enum TaskStatus {
   inbox
   assigned
@@ -391,6 +412,7 @@ model Agent {
   messages              Message[]
   reactions             MessageReaction[]
   runs                  Run[]
+  triggers              AgentTrigger[]
   tasks                 Task[]
   approvalRequests      ApprovalRequest[]
 
@@ -447,18 +469,62 @@ model Run {
   id         String     @id @default(uuid()) @db.Uuid
   agentId    String     @map("agent_id") @db.Uuid
   threadId   String     @map("thread_id") @db.Uuid
+  triggerId  String?    @map("trigger_id") @db.Uuid
+  triggerDeliveryId String? @unique @map("trigger_delivery_id") @db.Uuid
   status     RunStatus  @default(pending)
   startedAt  DateTime?  @map("started_at")
   finishedAt DateTime?  @map("finished_at")
   createdAt  DateTime   @default(now()) @map("created_at")
   agent      Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread     Thread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  trigger    AgentTrigger? @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  triggerDelivery AgentTriggerDelivery? @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
   tasks      Task[]
   toolCalls  ToolCall[]
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
+  @@index([triggerId, createdAt])
   @@map("runs")
+}
+
+model AgentTrigger {
+  id          String                     @id @default(uuid()) @db.Uuid
+  agentId     String                     @map("agent_id") @db.Uuid
+  type        AgentTriggerType
+  status      AgentTriggerStatus         @default(active)
+  enabled     Boolean                    @default(true)
+  name        String?
+  description String?
+  config      Json                       @default("{}")
+  lastFiredAt DateTime?                  @map("last_fired_at")
+  nextRunAt   DateTime?                  @map("next_run_at")
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  updatedAt   DateTime                   @updatedAt @map("updated_at")
+  agent       Agent                      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  deliveries  AgentTriggerDelivery[]
+  runs        Run[]
+
+  @@index([agentId, createdAt])
+  @@index([agentId, enabled, status])
+  @@map("agent_triggers")
+}
+
+model AgentTriggerDelivery {
+  id           String                     @id @default(uuid()) @db.Uuid
+  triggerId    String                     @map("trigger_id") @db.Uuid
+  status       AgentTriggerDeliveryStatus @default(pending)
+  source       String?
+  payload      Json                       @default("{}")
+  errorMessage String?                    @map("error_message")
+  deliveredAt  DateTime?                  @map("delivered_at")
+  createdAt    DateTime                   @default(now()) @map("created_at")
+  trigger      AgentTrigger               @relation(fields: [triggerId], references: [id], onDelete: Cascade)
+  run          Run?                       @relation("RunTriggerDelivery")
+
+  @@index([triggerId, createdAt])
+  @@index([status, createdAt])
+  @@map("agent_trigger_deliveries")
 }
 
 model Task {

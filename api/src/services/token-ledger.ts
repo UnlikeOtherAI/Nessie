@@ -21,6 +21,8 @@ export type IngestTokenEventInput = {
   metadata?: Record<string, unknown>
 }
 
+type TokenLedgerEventCreateData = Parameters<PrismaClient['tokenLedgerEvent']['create']>[0]['data']
+
 export const ingestTokenEvent = async (
   prisma: PrismaClient,
   input: IngestTokenEventInput,
@@ -70,7 +72,7 @@ export const ingestTokenEvent = async (
       correlationId: input.actorContext.actionContext.correlationId ?? null,
       provider: input.provider,
       model: input.model,
-      operationType: input.operationType as Parameters<typeof prisma.tokenLedgerEvent.create>[0]['data']['operationType'],
+      operationType: input.operationType as TokenLedgerEventCreateData['operationType'],
       inputTokens: input.usage.inputTokens ?? null,
       outputTokens: input.usage.outputTokens ?? null,
       cachedInputTokens: input.usage.cachedInputTokens ?? null,
