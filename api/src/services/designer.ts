@@ -36,8 +36,7 @@ const DESIGNER_TOOLS = [
       name: 'set_system_prompt',
       description:
         'Set or replace the agent system prompt.'
-        + ' This is the main instruction text that defines agent behavior.'
-        + ' Be thorough.',
+        + ' This is the main instruction text that defines agent behavior.',
       parameters: {
         type: 'object',
         properties: { content: { type: 'string' } },
@@ -78,7 +77,9 @@ const DESIGNER_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'set_model',
-      description: 'Set the LLM model name (e.g. gpt-5, gpt-5-mini, claude-sonnet-4-20250514)',
+      description:
+        'Set the LLM model name'
+        + ' (e.g. gpt-5, gpt-5-mini, claude-sonnet-4-20250514)',
       parameters: {
         type: 'object',
         properties: { model: { type: 'string' } },
@@ -97,7 +98,8 @@ const DESIGNER_TOOLS = [
           toolId: {
             type: 'string',
             description:
-              'Tool identifier: bash, file-read, file-write, glob, grep, web-search',
+              'Tool identifier: bash, file-read, file-write,'
+              + ' glob, grep, web-search',
           },
           enabled: { type: 'boolean' },
         },
@@ -129,110 +131,184 @@ const DESIGNER_TOOLS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'web_search',
+      description:
+        'Search the web for information relevant to designing this agent.'
+        + ' Use this to research topics, verify facts, or find domain'
+        + ' knowledge before writing the system prompt.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'The search query',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
 ]
 
 const DESIGNER_MODEL = 'gpt-5-mini'
+const MAX_TOOL_ROUNDS = 5
 
-const buildSystemPrompt = (formState: DesignerChatInput['formState']): string => {
+const buildSystemPrompt = (
+  formState: DesignerChatInput['formState'],
+): string => {
   const enabledTools = Object.entries(formState.tools)
     .filter(([, v]) => v)
     .map(([k]) => k)
 
   const summarizedSystemPrompt = formState.systemPrompt
-    ? `"${formState.systemPrompt.slice(0, 200)}${formState.systemPrompt.length > 200 ? '...' : ''}"`
+    ? `"${formState.systemPrompt.slice(0, 200)}`
+      + `${formState.systemPrompt.length > 200 ? '...' : ''}"`
     : '(empty)'
 
-  return `You are an AI agent designer assistant.
-You help users configure AI agents by modifying their properties through tool calls.
-
-Current form state:
-- Name: ${formState.name || '(empty)'}
-- Role: ${formState.role || '(empty)'}
-- System prompt: ${summarizedSystemPrompt}
-- Category: ${formState.categoryId || 'none'}
-- Provider: ${formState.provider}
-- Model: ${formState.model}
-- Tools enabled: ${enabledTools.length > 0 ? enabledTools.join(', ') : 'none'}
-
-Available tools the agent can be granted:
-- System tools: bash, file-read, file-write, glob, grep, web-search
-
-When the user describes what kind of agent they want,
-use your tools to configure the form fields,
-then ALWAYS write a short conversational reply explaining what you set and why.
-Never respond with tool calls only — every response must include text.
-
-When writing system prompts, be thorough:
-include the agent's purpose, constraints, tone,
-output format expectations, and domain-specific instructions.
-Aim for production quality.
-
-Use multiple tool calls in a single response when configuring several fields at once.
-After the tool calls, briefly summarise what you configured.`
+  return [
+    'You are an expert AI agent designer.',
+    'You help users create agents by configuring form fields via tool calls.',
+    '',
+    'Current form state:',
+    `- Name: ${formState.name || '(empty)'}`,
+    `- Role: ${formState.role || '(empty)'}`,
+    `- System prompt: ${summarizedSystemPrompt}`,
+    `- Category: ${formState.categoryId || 'none'}`,
+    `- Provider: ${formState.provider}`,
+    `- Model: ${formState.model}`,
+    `- Tools enabled: ${enabledTools.length > 0 ? enabledTools.join(', ') : 'none'}`,
+    '',
+    'Grantable agent tools: bash, file-read, file-write, glob, grep, web-search',
+    '',
+    '# Your principles',
+    '',
+    '1. START SIMPLE. Match the complexity of the system prompt to the task.',
+    '   - A "name day checker" needs 3-5 lines, not 50.',
+    '   - A code reviewer with linting rules needs more depth.',
+    '   - Default to concise. Only add detail when the domain demands it.',
+    '',
+    '2. BE CONVERSATIONAL. You are a collaborator, not a form-filler.',
+    '   - If the user says "make a bot that tells jokes" — set it up, done.',
+    '   - If the user says "I need a medical triage assistant" — that\'s',
+    '     complex. Suggest what you plan to include and ask if they want',
+    '     to refine before you write it.',
+    '',
+    '3. DO NOT ASK UNNECESSARY QUESTIONS.',
+    '   - If you can infer a reasonable answer, just do it.',
+    '   - Only ask when the answer genuinely changes the output AND you',
+    '     cannot infer it. One question max per turn, never a list.',
+    '   - Never ask questions just to seem thorough.',
+    '',
+    '4. RESEARCH WHEN USEFUL. You have web_search.',
+    '   - If the user asks for a domain-specific agent (Czech name days,',
+    '     Japanese tax law, etc.), search first, then write a grounded',
+    '     prompt based on real information.',
+    '   - Do NOT search for generic topics you already know well.',
+    '',
+    '5. ITERATE. The first version does not need to be final.',
+    '   - Set up a working agent quickly.',
+    '   - The user can refine in follow-up messages.',
+    '',
+    '# Output rules',
+    '',
+    '- Use multiple tool calls in one response when setting several fields.',
+    '- ALWAYS include a short text reply explaining what you did.',
+    '  Never respond with only tool calls.',
+    '- System prompts should be direct instructions to the agent.',
+    '  No preamble, no meta-commentary. Write as if you ARE the system.',
+  ].join('\n')
 }
 
 type OpenAIMessage = {
   content: string | null
-  role: 'assistant' | 'system' | 'user'
+  role: 'assistant' | 'system' | 'tool' | 'user'
   tool_call_id?: string
+  tool_calls?: Array<{
+    id: string
+    type: 'function'
+    function: { name: string; arguments: string }
+  }>
 }
 
-const writeSseEvent = (reply: FastifyReply, event: string, data: unknown): void => {
+const writeSseEvent = (
+  reply: FastifyReply,
+  event: string,
+  data: unknown,
+): void => {
   reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }
 
-export const streamDesignerChat = async (
-  reply: FastifyReply,
-  input: DesignerChatInput,
-  modelClient: ModelClient,
-): Promise<void> => {
-  reply.raw.writeHead(200, {
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Content-Type': 'text/event-stream',
-    'X-Accel-Buffering': 'no',
+const stripHtml = (value: string): string =>
+  value
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const executeWebSearch = async (query: string): Promise<string> => {
+  const searchUrl
+    = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+  const response = await fetch(searchUrl, {
+    headers: { 'user-agent': 'NessieDesigner/1.0' },
   })
+  const html = await response.text()
+  const matches = Array.from(
+    html.matchAll(
+      /result__a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>[\s\S]*?result__snippet[^>]*>(.*?)<\/a/g,
+    ),
+  ).slice(0, 5)
 
-  // Disable Nagle's algorithm so each write() flushes immediately
-  reply.raw.socket?.setNoDelay(true)
-
-  const messages: OpenAIMessage[] = [
-    { role: 'system', content: buildSystemPrompt(input.formState) },
-    ...input.messages.map((m) => ({
-      role: m.role as 'assistant' | 'user',
-      content: m.content,
-    })),
-  ]
-
-  let response: Response
-  try {
-    response = await modelClient.fetchCompletion({
-      model: DESIGNER_MODEL,
-      messages,
-      tools: DESIGNER_TOOLS,
-      max_completion_tokens: 4096,
-      stream: true,
-      stream_options: { include_usage: true },
-    })
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Model request failed'
-    writeSseEvent(reply, 'error', { message: msg })
-    reply.raw.end()
-    return
+  if (matches.length === 0) {
+    return `No results found for "${query}".`
   }
+
+  return matches
+    .map((m, i) => {
+      const title = stripHtml(m[2] ?? 'Result')
+      const snippet = stripHtml(m[3] ?? '')
+      return `${i + 1}. ${title}\n   ${snippet}`
+    })
+    .join('\n\n')
+}
+
+/**
+ * Stream a single model turn. Returns collected tool calls (if any)
+ * so the caller can execute them and continue the loop.
+ */
+const streamModelTurn = async (
+  reply: FastifyReply,
+  messages: OpenAIMessage[],
+  modelClient: ModelClient,
+): Promise<Array<{ argsBuffer: string; id: string; name: string }>> => {
+  const response = await modelClient.fetchCompletion({
+    model: DESIGNER_MODEL,
+    messages,
+    tools: DESIGNER_TOOLS,
+    max_completion_tokens: 4096,
+    stream: true,
+    stream_options: { include_usage: true },
+  })
 
   if (!response.body) {
     writeSseEvent(reply, 'error', { message: 'No response body' })
-    reply.raw.end()
-    return
+    return []
   }
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-
-  // Track tool calls: index -> { id, name, argsBuffer }
-  const toolCalls = new Map<number, { argsBuffer: string; id: string; name: string }>()
+  const toolCalls = new Map<
+    number,
+    { argsBuffer: string; id: string; name: string }
+  >()
 
   try {
     while (true) {
@@ -247,11 +323,15 @@ export const streamDesignerChat = async (
         if (!line.startsWith('data: ')) continue
         const data = line.slice(6).trim()
         if (data === '[DONE]') {
-          // Finalize any open tool calls
+          // Finalize open tool calls
           for (const [, tc] of toolCalls) {
             try {
               const args = JSON.parse(tc.argsBuffer) as Record<string, unknown>
-              writeSseEvent(reply, 'tool_call.done', { id: tc.id, name: tc.name, args })
+              writeSseEvent(reply, 'tool_call.done', {
+                id: tc.id,
+                name: tc.name,
+                args,
+              })
             } catch {
               writeSseEvent(reply, 'tool_call.done', {
                 id: tc.id,
@@ -260,9 +340,7 @@ export const streamDesignerChat = async (
               })
             }
           }
-          writeSseEvent(reply, 'done', {})
-          reply.raw.end()
-          return
+          return Array.from(toolCalls.values())
         }
 
         try {
@@ -284,7 +362,6 @@ export const streamDesignerChat = async (
             }
           }
 
-          // Capture usage from the final streaming chunk
           if (chunk.usage) {
             modelClient.usage.record(
               DESIGNER_MODEL,
@@ -296,27 +373,27 @@ export const streamDesignerChat = async (
           const delta = chunk.choices?.[0]?.delta
           if (!delta) continue
 
-          // Reasoning content (model thinking)
           if (delta.reasoning_content) {
             writeSseEvent(reply, 'reasoning.delta', {
               content: delta.reasoning_content,
             })
           }
 
-          // Text content
           if (delta.content) {
             writeSseEvent(reply, 'text.delta', { content: delta.content })
           }
 
-          // Tool calls
           if (delta.tool_calls) {
             for (const tc of delta.tool_calls) {
               const idx = tc.index
               let existing = toolCalls.get(idx)
 
               if (tc.id && tc.function?.name) {
-                // New tool call starting
-                existing = { argsBuffer: '', id: tc.id, name: tc.function.name }
+                existing = {
+                  argsBuffer: '',
+                  id: tc.id,
+                  name: tc.function.name,
+                }
                 toolCalls.set(idx, existing)
                 writeSseEvent(reply, 'tool_call.start', {
                   id: tc.id,
@@ -342,15 +419,100 @@ export const streamDesignerChat = async (
     reader.releaseLock()
   }
 
-  // If we reach here without [DONE], still close
-  for (const [, tc] of toolCalls) {
-    try {
-      const args = JSON.parse(tc.argsBuffer) as Record<string, unknown>
-      writeSseEvent(reply, 'tool_call.done', { id: tc.id, name: tc.name, args })
-    } catch {
-      writeSseEvent(reply, 'tool_call.done', { id: tc.id, name: tc.name, args: tc.argsBuffer })
+  return Array.from(toolCalls.values())
+}
+
+export const streamDesignerChat = async (
+  reply: FastifyReply,
+  input: DesignerChatInput,
+  modelClient: ModelClient,
+): Promise<void> => {
+  reply.raw.writeHead(200, {
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Content-Type': 'text/event-stream',
+    'X-Accel-Buffering': 'no',
+  })
+
+  reply.raw.socket?.setNoDelay(true)
+
+  const messages: OpenAIMessage[] = [
+    { role: 'system', content: buildSystemPrompt(input.formState) },
+    ...input.messages.map((m) => ({
+      role: m.role as 'assistant' | 'user',
+      content: m.content,
+    })),
+  ]
+
+  try {
+    // Multi-turn loop: if the model calls web_search, execute it
+    // and feed results back for another turn.
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const toolCalls = await streamModelTurn(reply, messages, modelClient)
+
+      // No tool calls — model is done
+      if (toolCalls.length === 0) break
+
+      // Check if any tool call needs backend execution (web_search)
+      const needsContinuation = toolCalls.some(
+        (tc) => tc.name === 'web_search',
+      )
+
+      if (!needsContinuation) break
+
+      // Build assistant message with all tool calls for conversation history
+      const assistantToolCalls = toolCalls.map((tc) => ({
+        id: tc.id,
+        type: 'function' as const,
+        function: { name: tc.name, arguments: tc.argsBuffer },
+      }))
+      messages.push({
+        role: 'assistant',
+        content: null,
+        tool_calls: assistantToolCalls,
+      })
+
+      // Execute web_search calls and add tool result messages
+      for (const tc of toolCalls) {
+        if (tc.name === 'web_search') {
+          let query = ''
+          try {
+            const args = JSON.parse(tc.argsBuffer) as { query?: string }
+            query = args.query ?? ''
+          } catch {
+            query = tc.argsBuffer
+          }
+
+          writeSseEvent(reply, 'status', {
+            message: `Searching: ${query}`,
+          })
+
+          const results = await executeWebSearch(query)
+          messages.push({
+            role: 'tool',
+            content: results,
+            tool_call_id: tc.id,
+          })
+        } else {
+          // Non-search tool calls get a simple ack so the model can continue
+          messages.push({
+            role: 'tool',
+            content: 'Done.',
+            tool_call_id: tc.id,
+          })
+        }
+      }
+
+      // Signal that search is complete and model will continue
+      writeSseEvent(reply, 'status', { message: 'Processing results...' })
     }
+  } catch (error) {
+    const msg = error instanceof Error
+      ? error.message
+      : 'Model request failed'
+    writeSseEvent(reply, 'error', { message: msg })
   }
+
   writeSseEvent(reply, 'done', {})
   reply.raw.end()
 }

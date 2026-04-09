@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   useAgentActivity,
   useAgentMessages,
@@ -26,6 +27,7 @@ const getStatusTone = (status: AgentRecord['status']) => {
 }
 
 export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumnProps) => {
+  const navigate = useNavigate()
   const { data: status } = useAgentStatus(agent.id)
   const { data: activity } = useAgentActivity(agent.id)
   const { data: messages = [] } = useAgentMessages(agent.id, 5)
@@ -52,9 +54,19 @@ export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumn
               </svg>
             </button>
           ) : null}
-          <h2 className="text-xl font-semibold text-white">{agent.name}</h2>
+          <h2 className="flex-1 text-xl font-semibold text-white">{agent.name}</h2>
           <AgentStatusDot status={agent.status} />
           <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
+          <button
+            className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10 hover:text-white"
+            onClick={() => void navigate(`/agents/new?parentId=${agent.id}`)}
+            title="Add child agent"
+            type="button"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
         <div className="mt-2 text-sm text-[color:var(--tx2)]">{agent.role}</div>
         <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">

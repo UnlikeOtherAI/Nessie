@@ -560,6 +560,18 @@ export const AgentColumnBrowser = () => {
           style={{ width: `${100 / visibleColumns}%` }}
         >
           <AgentColumn
+            headerAction={
+              <button
+                className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10 hover:text-white"
+                onClick={() => void navigate(`/agents/new?parentId=${parentId}`)}
+                title="Add child agent"
+                type="button"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            }
             onBack={() => navigateBack(depth + 1)}
             showBack={isMobile}
             title={parentAgent?.name ?? 'Children'}

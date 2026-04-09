@@ -14,6 +14,7 @@ export type ChatMessage = {
 type DesignerChatState = {
   error: string | null
   messages: ChatMessage[]
+  status: string | null
   streaming: boolean
   thinking: boolean
 }
@@ -86,6 +87,7 @@ export const useDesignerChat = (
   const [state, setState] = useState<DesignerChatState>({
     error: null,
     messages: [],
+    status: null,
     streaming: false,
     thinking: false,
   })
@@ -109,6 +111,7 @@ export const useDesignerChat = (
           userMsg,
           { role: 'assistant', content: '' },
         ],
+        status: null,
         streaming: true,
         thinking: true,
       }))
@@ -191,6 +194,7 @@ export const useDesignerChat = (
         setState((prev) => ({
           ...prev,
           error: (err as Error).message,
+          status: null,
           streaming: false,
           thinking: false,
         }))
@@ -199,6 +203,7 @@ export const useDesignerChat = (
         activeToolCallsRef.current.clear()
         setState((prev) => ({
           ...prev,
+          status: null,
           streaming: false,
           thinking: false,
         }))
@@ -214,6 +219,7 @@ export const useDesignerChat = (
     activeToolCallsRef.current.clear()
     setState((prev) => ({
       ...prev,
+      status: null,
       streaming: false,
       thinking: false,
     }))
@@ -248,8 +254,18 @@ const processEvent = (
             content: last.content + content,
           }
         }
-        return { ...prev, messages: msgs, thinking: false }
+        return { ...prev, messages: msgs, status: null, thinking: false }
       })
+      break
+    }
+
+    case 'status': {
+      const message = String(data.message ?? '')
+      setState((prev) => ({
+        ...prev,
+        status: message,
+        thinking: true,
+      }))
       break
     }
 
@@ -265,8 +281,17 @@ const processEvent = (
         actions.dispatch({ type: 'set_system_prompt', prompt: '' })
       }
       activeToolCalls.set(id, { argsBuffer: '', lastContentLen: 0, name })
-      // Thinking stops once tool calls begin
-      setState((prev) => (prev.thinking ? { ...prev, thinking: false } : prev))
+      // Show status for known tool actions
+      const statusMap: Record<string, string> = {
+        set_system_prompt: 'Writing system prompt...',
+        web_search: 'Searching the web...',
+      }
+      const status = statusMap[name] ?? null
+      setState((prev) => ({
+        ...prev,
+        thinking: false,
+        status: status ?? prev.status,
+      }))
       break
     }
 
@@ -315,7 +340,12 @@ const processEvent = (
 
     case 'error': {
       const message = String(data.message ?? 'Unknown error')
-      setState((prev) => ({ ...prev, error: message, thinking: false }))
+      setState((prev) => ({
+        ...prev,
+        error: message,
+        status: null,
+        thinking: false,
+      }))
       break
     }
   }

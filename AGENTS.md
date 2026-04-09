@@ -5,6 +5,7 @@
 - Work directly on `main`. Never create branches or PRs.
 - Commit and push to `main` after every turn. No exceptions. If there is nothing to commit, skip.
 - Rebuild the admin (`pnpm --filter @nessie/admin build`) after every turn where admin code changed.
+- After every build or server restart, verify the new version is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 
 ## Code Quality

@@ -152,6 +152,9 @@ importers:
 
   packages/memory:
     dependencies:
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../schemas

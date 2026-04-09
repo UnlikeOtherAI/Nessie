@@ -6,16 +6,22 @@ type DesignerChatProps = {
   messages: ChatMessage[]
   onSend: (message: string) => void
   onStop: () => void
+  status: string | null
   streaming: boolean
   thinking: boolean
 }
 
-const ThinkingIndicator = () => (
+const ThinkingIndicator = ({ status }: { status: string | null }) => (
   <div className="max-w-[90%] rounded-xl px-3 py-2 text-sm mr-auto border border-[color:var(--sep)] bg-[color:var(--panel)] text-[color:var(--tx)]">
-    <div className="thinking-dots">
-      <span />
-      <span />
-      <span />
+    <div className="flex items-center gap-2">
+      <div className="thinking-dots">
+        <span />
+        <span />
+        <span />
+      </div>
+      {status && (
+        <span className="text-xs text-[color:var(--tx3)]">{status}</span>
+      )}
     </div>
   </div>
 )
@@ -25,6 +31,7 @@ export const DesignerChat = ({
   messages,
   onSend,
   onStop,
+  status,
   streaming,
   thinking,
 }: DesignerChatProps) => {
@@ -107,7 +114,7 @@ export const DesignerChat = ({
               </div>
             </div>
           ))}
-          {thinking && <ThinkingIndicator />}
+          {thinking && <ThinkingIndicator status={status} />}
         </div>
 
         {error && (

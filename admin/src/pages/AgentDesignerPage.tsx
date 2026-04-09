@@ -99,6 +99,7 @@ export const AgentDesignerPage = () => {
             messages={chat.messages}
             onSend={chat.send}
             onStop={chat.stop}
+            status={chat.status}
             streaming={chat.streaming}
             thinking={chat.thinking}
           />

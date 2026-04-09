@@ -4,6 +4,7 @@ import { TOOL_CATEGORIES, ToolCategorySection } from './ToolCategorySection'
 
 type AgentDesignerFormProps = {
   actions: AgentDesignerActions
+  parentAgentName?: string
   state: AgentFormState
 }
 
@@ -51,12 +52,20 @@ const fieldLabelClass = [
   'tracking-[0.16em] text-[color:var(--tx3)]',
 ].join(' ')
 
-export const AgentDesignerForm = ({ actions, state }: AgentDesignerFormProps) => {
+export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesignerFormProps) => {
   const { data: categories = [] } = useAgentCategories()
   const isStreaming = (field: string) => state.streamingField === field
 
   return (
     <div className="grid gap-5">
+      {/* Parent agent (read-only, shown only when creating a child) */}
+      {parentAgentName !== undefined && (
+        <div className="grid gap-1.5">
+          <div className={fieldLabelClass}>Parent Agent</div>
+          <div className="admin-input cursor-default opacity-60">{parentAgentName}</div>
+        </div>
+      )}
+
       {/* Name */}
       <div className="grid gap-1.5">
         <label className={fieldLabelClass} htmlFor="agent-name">
