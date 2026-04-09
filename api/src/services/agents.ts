@@ -49,7 +49,7 @@ const mapAgentRecord = (agent: {
   runs?: Array<{
     createdAt: Date
     id: string
-    status: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running'
+    status: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running' | 'waiting_approval'
     toolCalls: Array<{ endedAt: Date | null; startedAt: Date; toolName: string }>
   }>
   provider: string | null

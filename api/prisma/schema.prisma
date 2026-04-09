@@ -19,6 +19,7 @@ enum AgentStatus {
 enum RunStatus {
   pending
   running
+  waiting_approval
   completed
   failed
   cancelled
@@ -51,6 +52,100 @@ enum AgentCategoryVisibility {
   public
   private
 }
+
+// ─── Phase 2 Enums ──────────────────────────────────────────────────────────
+
+enum PolicyScope {
+  organization
+  project
+  team
+  channel
+  agent
+  tool
+  user
+}
+
+enum PolicyResourceType {
+  agent
+  channel
+  project
+  tool
+  session
+  task
+  review
+  approval
+  admin
+  secret
+}
+
+enum PolicyAction {
+  view
+  invoke
+  create
+  edit
+  assign
+  approve
+  review
+  search
+  export_action @map("export")
+  admin
+  resolve
+  rotate
+  revoke
+  bind
+  link
+  reindex
+  summarize
+  read
+  import_action @map("import")
+  grant
+  enroll
+  challenge
+}
+
+enum PolicyEffect {
+  allow
+  deny
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  expired
+}
+
+enum AuditActorType {
+  user
+  agent
+  service
+  system
+}
+
+enum AuditOutcome {
+  success
+  denied
+  error
+}
+
+enum PricingSource {
+  provider_default @map("provider-default")
+  org_override     @map("org-override")
+  team_override    @map("team-override")
+  manual
+}
+
+enum OperationType {
+  chat
+  completion
+  embedding
+  translation
+  reasoning
+  tool_translation @map("tool-translation")
+  other
+}
+
+// ─── Memory Enums ───────────────────────────────────────────────────────────
 
 enum ThoughtOwnerType {
   user
@@ -274,19 +369,22 @@ model MessageReaction {
 }
 
 model Agent {
-  id            String               @id @default(uuid()) @db.Uuid
-  name          String
-  role          String               @default("assistant")
-  status        AgentStatus          @default(idle)
-  systemPrompt  String?              @map("system_prompt")
-  toolPolicy    Json?                @map("tool_policy")
-  provider      String?              @map("provider")
-  model         String?              @map("model")
-  parentAgentId String?              @map("parent_agent_id") @db.Uuid
-  createdAt     DateTime             @default(now()) @map("created_at")
-  updatedAt     DateTime             @updatedAt @map("updated_at")
-  parentAgent   Agent?               @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
-  childAgents   Agent[]              @relation("AgentHierarchy")
+  id             String               @id @default(uuid()) @db.Uuid
+  name           String
+  role           String               @default("assistant")
+  status         AgentStatus          @default(idle)
+  systemPrompt   String?              @map("system_prompt")
+  toolPolicy     Json?                @map("tool_policy")
+  provider       String?              @map("provider")
+  model          String?              @map("model")
+  parentAgentId  String?              @map("parent_agent_id") @db.Uuid
+  organizationId String?              @map("organization_id") @db.Uuid
+  projectId      String?              @map("project_id") @db.Uuid
+  teamId         String?              @map("team_id") @db.Uuid
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  parentAgent    Agent?               @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
+  childAgents    Agent[]              @relation("AgentHierarchy")
   bindings              AgentBinding[]
   categoryLinks         AgentCategoryAgent[]
   authoredCategories    AgentCategory[]        @relation("AgentCategoryAuthor")
@@ -294,7 +392,10 @@ model Agent {
   reactions             MessageReaction[]
   runs                  Run[]
   tasks                 Task[]
+  approvalRequests      ApprovalRequest[]
 
+  @@index([organizationId])
+  @@index([organizationId, projectId])
   @@map("agents")
 }
 
@@ -428,6 +529,162 @@ model QueueJob {
 
   @@map("queue_jobs")
 }
+
+// ─── Phase 2 Models ─────────────────────────────────────────────────────────
+
+model PolicyRule {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  scope          PolicyScope
+  scopeId        String             @map("scope_id")
+  resourceType   PolicyResourceType @map("resource_type")
+  action         PolicyAction
+  effect         PolicyEffect
+  priority       Int                @default(0)
+  conditions     Json?
+  createdBy      String             @map("created_by")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  bindings       PolicyBinding[]
+
+  @@index([organizationId, scope, resourceType])
+  @@index([organizationId, scopeId])
+  @@map("policy_rules")
+}
+
+model PolicyBinding {
+  id           String     @id @default(uuid()) @db.Uuid
+  policyRuleId String     @map("policy_rule_id") @db.Uuid
+  actorType    String     @map("actor_type")
+  actorId      String     @map("actor_id")
+  policyRule   PolicyRule @relation(fields: [policyRuleId], references: [id], onDelete: Cascade)
+
+  @@unique([policyRuleId, actorType, actorId])
+  @@index([actorType, actorId])
+  @@map("policy_bindings")
+}
+
+model ApprovalRequest {
+  id                String         @id @default(uuid()) @db.Uuid
+  organizationId    String         @map("organization_id") @db.Uuid
+  projectId         String?        @map("project_id") @db.Uuid
+  teamId            String?        @map("team_id") @db.Uuid
+  channelId         String?        @map("channel_id") @db.Uuid
+  taskId            String?        @map("task_id") @db.Uuid
+  runId             String?        @map("run_id") @db.Uuid
+  agentId           String         @map("agent_id") @db.Uuid
+  requesterId       String         @map("requester_id")
+  action            String
+  reason            String
+  context           Json?
+  status            ApprovalStatus @default(pending)
+  resolverId        String?        @map("resolver_id")
+  resolvedAt        DateTime?      @map("resolved_at")
+  resolution        String?
+  resolutionNote    String?        @map("resolution_note")
+  continuationToken String         @map("continuation_token")
+  expiresAt         DateTime       @map("expires_at") @db.Timestamptz(6)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  agent             Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([agentId, status])
+  @@index([status, expiresAt])
+  @@map("approval_requests")
+}
+
+model AuditLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  projectId      String?      @map("project_id") @db.Uuid
+  teamId         String?      @map("team_id") @db.Uuid
+  channelId      String?      @map("channel_id") @db.Uuid
+  actorType      AuditActorType @map("actor_type")
+  actorId        String       @map("actor_id")
+  action         String
+  resourceType   String       @map("resource_type")
+  resourceId     String?      @map("resource_id")
+  outcome        AuditOutcome
+  reason         String?
+  metadata       Json?
+  requestId      String       @map("request_id")
+  ipAddress      String?      @map("ip_address")
+  userAgent      String?      @map("user_agent")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, action, createdAt(sort: Desc)])
+  @@index([organizationId, actorId, createdAt(sort: Desc)])
+  @@index([organizationId, resourceType, resourceId])
+  @@map("audit_logs")
+}
+
+model TokenLedgerEvent {
+  id                   String        @id @default(uuid()) @db.Uuid
+  occurredAt           DateTime      @map("occurred_at") @db.Timestamptz(6)
+  organizationId       String        @map("organization_id") @db.Uuid
+  projectId            String?       @map("project_id") @db.Uuid
+  teamId               String?       @map("team_id") @db.Uuid
+  channelId            String?       @map("channel_id") @db.Uuid
+  threadId             String?       @map("thread_id") @db.Uuid
+  sessionId            String?       @map("session_id")
+  taskId               String?       @map("task_id") @db.Uuid
+  agentId              String?       @map("agent_id") @db.Uuid
+  actorId              String        @map("actor_id")
+  requestId            String        @map("request_id")
+  correlationId        String?       @map("correlation_id")
+  provider             String
+  model                String
+  operationType        OperationType @map("operation_type")
+  inputTokens          Int?          @map("input_tokens")
+  outputTokens         Int?          @map("output_tokens")
+  cachedInputTokens    Int?          @map("cached_input_tokens")
+  cachedOutputTokens   Int?          @map("cached_output_tokens")
+  cacheReadTokens      Int?          @map("cache_read_tokens")
+  cacheWriteTokens     Int?          @map("cache_write_tokens")
+  totalTokens          Int?          @map("total_tokens")
+  providerCostAmount   Float?        @map("provider_cost_amount")
+  providerCostCurrency String?       @map("provider_cost_currency")
+  pricingProfileId     String?       @map("pricing_profile_id") @db.Uuid
+  pricingSource        PricingSource? @map("pricing_source")
+  pricingCurrency      String?       @map("pricing_currency")
+  pricingInputPerM     Float?        @map("pricing_input_per_m")
+  pricingOutputPerM    Float?        @map("pricing_output_per_m")
+  estimatedCostAmount  Float?        @map("estimated_cost_amount")
+  estimatedCostCurrency String?      @map("estimated_cost_currency")
+  metadata             Json?
+
+  @@index([organizationId, occurredAt(sort: Desc)])
+  @@index([organizationId, provider, model, occurredAt(sort: Desc)])
+  @@index([organizationId, agentId, occurredAt(sort: Desc)])
+  @@index([organizationId, actorId, occurredAt(sort: Desc)])
+  @@map("token_ledger_events")
+}
+
+model ModelPricingProfile {
+  id                     String        @id @default(uuid()) @db.Uuid
+  organizationId         String        @map("organization_id") @db.Uuid
+  provider               String
+  modelPattern           String        @map("model_pattern")
+  currency               String        @default("USD")
+  source                 PricingSource
+  inputPerMillion        Float?        @map("input_per_million")
+  outputPerMillion       Float?        @map("output_per_million")
+  cachedInputPerMillion  Float?        @map("cached_input_per_million")
+  cachedOutputPerMillion Float?        @map("cached_output_per_million")
+  cacheReadPerMillion    Float?        @map("cache_read_per_million")
+  cacheWritePerMillion   Float?        @map("cache_write_per_million")
+  effectiveFrom          DateTime      @map("effective_from") @db.Timestamptz(6)
+  effectiveTo            DateTime?     @map("effective_to") @db.Timestamptz(6)
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
+
+  @@index([organizationId, provider, modelPattern])
+  @@map("model_pricing_profiles")
+}
+
+// ─── Memory Models ──────────────────────────────────────────────────────────
 
 model Thought {
   id              String              @id @default(uuid()) @db.Uuid
