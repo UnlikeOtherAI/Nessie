@@ -8,7 +8,7 @@ Related documents:
 - [agent-communication-spec.md](agent-communication-spec.md) — routing, threads, status model
 - [research/evolving-agent-runtime-enterprise-grade.md](research/evolving-agent-runtime-enterprise-grade.md) — enterprise evolution research
 - [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) — external identity, VOIP, email, WhatsApp
-- [research/voip-twilio-implementation.md](research/voip-twilio-implementation.md) — Twilio voice implementation
+- [conversation-intelligence-platform.md § 10](conversation-intelligence-platform.md#10-reference-plugin-implementation--twilio-voice) — Twilio voice connector
 - [conversation-intelligence-platform.md](conversation-intelligence-platform.md) — event-driven platform, plugin architecture, trigger system
 
 ---

@@ -14,7 +14,7 @@ Related documents:
 - [the-agents.md](the-agents.md) — agent architecture, execution, skills
 - [multi-agent-memory-system.md](multi-agent-memory-system.md) — memory types, retrieval, feedback
 - [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) — agent external identity
-- [research/voip-twilio-implementation.md](research/voip-twilio-implementation.md) — Twilio VOIP (one connector implementation)
+- Section 10 below — Twilio voice connector (reference plugin implementation)
 
 ---
 
@@ -147,7 +147,7 @@ Nessie ships with connectors for common platforms. Enterprises can also build cu
 
 | Connector | Capabilities | Status |
 |---|---|---|
-| **Twilio Voice** | inbound_voice, outbound_voice, real_time_stream | Designed — see [voip-twilio-implementation.md](research/voip-twilio-implementation.md) |
+| **Twilio Voice** | inbound_voice, outbound_voice, real_time_stream | Designed — see § 10 below |
 | **Email (SES/SMTP)** | inbound_message, outbound_message, file_attachment, thread | Planned |
 | **WhatsApp (Meta Cloud API)** | inbound_message, outbound_message, file_attachment | Planned |
 | **Slack** | inbound_message, outbound_message, reaction, thread, presence | Planned |
@@ -552,41 +552,55 @@ If the same external conversation produces multiple events (e.g., real-time mess
 
 ---
 
-## 6. Memory Integration
+## 6. Conversation Intelligence Pipeline
 
-Conversations from external sources are first-class memory inputs. The agent processes them through the same memory pipeline as any interaction.
+This is the core of the platform. When a normalized conversation arrives, the intelligence pipeline breaks it apart, extracts structured knowledge into every applicable memory type, scopes it to the right channels/projects/teams, and makes it available to all agents that should see it.
 
-### Memory Flow from External Conversations
+The pipeline runs per-conversation, not per-message. A completed meeting or call is processed as a whole. Real-time conversations (chat, ongoing threads) can be processed incrementally on `conversation.message` events, but the full extraction runs on `conversation.completed`.
+
+### Pipeline Overview
 
 ```
-Conversation arrives (via trigger)
+Normalized conversation arrives (from trigger)
   │
-  ├── 1. Agent processes conversation
-  │     ├── Extract: decisions, action items, commitments, entities
-  │     ├── Reason: why were decisions made, what tradeoffs discussed
-  │     └── Summarize: compressed intelligence, not raw transcript
+  ├── STAGE 1: INTAKE — Store raw, create thread mapping
   │
-  ├── 2. Memory capture (via existing pipeline)
-  │     ├── Semantic: facts, decisions, key information
-  │     ├── Reasoning: why decisions were made, alternatives considered
-  │     ├── Episodic: situation-action-outcome for the meeting/call
-  │     ├── Procedural: if agent discovered a workflow, capture it
-  │     └── Framing: if agent learned about a new domain/project
+  ├── STAGE 2: SCOPE RESOLUTION — Who was in this conversation? What channels/projects does it belong to?
   │
-  ├── 3. Scope assignment
-  │     ├── Organization: always set
-  │     ├── Channel: if conversation maps to a Nessie channel
-  │     ├── Project: if conversation relates to a known project
-  │     ├── Visibility: based on participant list (audience = participants)
-  │     └── Sensitivity: auto-classified or manually set
+  ├── STAGE 3: EXTRACTION — LLM-driven multi-pass extraction into memory types
   │
-  └── 4. Memory is available to ALL agents
-        Subject to normal scoping rules (org boundary, audience compatibility)
+  ├── STAGE 4: MEMORY CAPTURE — Write extracted intelligence into the memory system
+  │
+  ├── STAGE 5: ACTION DISPATCH — Create tasks, send follow-ups, update external systems
+  │
+  └── STAGE 6: SELF-EVAL — Did the extraction produce useful output? What's missing?
+```
+
+### Stage 1: Intake
+
+```
+Conversation arrives
+  │
+  ├── Store raw transcript (compliance artifact, not memory)
+  │     → conversation_transcripts table
+  │
+  ├── Create or find Nessie thread for this conversation
+  │     → conversation_thread_mappings table
+  │     If same conversation_id already has a thread, reuse it
+  │
+  ├── Create or find Nessie channel
+  │     Mapping rules:
+  │     ├── Twilio call from agent's VOIP number → agent's default channel
+  │     ├── Email to agent's address → agent's email channel
+  │     ├── Teams meeting → mapped Teams channel (if configured)
+  │     ├── Zoom meeting → mapped project channel (if configured)
+  │     └── Unknown → org default intake channel
+  │
+  └── Create Run record for the processing agent
+        The agent assigned by the trigger handles all extraction
 ```
 
 ### Raw Transcript Storage
-
-Raw transcripts are stored separately from memory:
 
 ```
 conversation_transcripts
@@ -596,7 +610,8 @@ conversation_transcripts
   source           TEXT
   
   content          TEXT — full transcript text
-  structured       JSONB — speaker-attributed segments
+  structured       JSONB — speaker-attributed segments with timestamps
+  participant_map  JSONB — { speaker_label → resolved user_id/contact_id }
   
   retention_days   INT — org-configurable, default 90
   expires_at       TIMESTAMPTZ
@@ -604,7 +619,384 @@ conversation_transcripts
   created_at       TIMESTAMPTZ
 ```
 
-Raw transcripts are **not** memory. They are audit/compliance artifacts. Memory is the compressed intelligence extracted by agents. The transcript is the evidence trail.
+Raw transcripts are NOT memory. They are audit/compliance artifacts with a retention window. Memory is the compressed intelligence extracted by the pipeline. The transcript is the evidence trail — it stays around for compliance and can be re-processed if the extraction pipeline improves.
+
+### Stage 2: Scope Resolution
+
+Every piece of extracted intelligence must be scoped correctly. The scope determines who can see it.
+
+```
+Conversation participants (resolved via identity layer)
+  │
+  ├── Determine AUDIENCE
+  │     The audience is the set of all resolved internal users in the conversation.
+  │     This becomes the visibility boundary for extracted memories.
+  │     
+  │     Rules:
+  │     ├── All-internal meeting (e.g., 3 engineers) → audience = those 3 people
+  │     ├── Meeting with external participants → audience = internal participants only
+  │     │   (external participants don't get memory access)
+  │     ├── 1:1 call with agent → audience = the user + the agent
+  │     └── Large company all-hands → audience = org-wide
+  │
+  ├── Determine CHANNEL
+  │     ├── If conversation maps to an existing Nessie channel → use that channel
+  │     ├── If participants all belong to one team → scope to team channel
+  │     ├── If conversation relates to a known project → scope to project channel
+  │     └── Otherwise → org-level intake channel
+  │
+  ├── Determine PROJECT
+  │     ├── If conversation title/content references a known project → associate
+  │     ├── If participants are all in one project → associate
+  │     └── Otherwise → null (org-scoped only)
+  │
+  ├── Determine SENSITIVITY
+  │     Auto-classification based on content:
+  │     ├── Contains PII, financial data, legal terms → "restricted"
+  │     ├── Contains personnel info, salary, performance → "sensitive"
+  │     └── General business discussion → "normal"
+  │     Org can override with manual rules per source/participant/keyword
+  │
+  └── Determine VISIBILITY
+        Based on audience size and channel:
+        ├── 1:1 conversation → "private" (only those 2 people)
+        ├── Small group (2-10) → "channel" (scoped to the mapped channel)
+        ├── Team meeting → "team"
+        ├── Cross-team meeting → "project" (if project-associated) or "organization"
+        └── All-hands → "organization"
+```
+
+The scope resolution output is a `MemoryScope` object that gets attached to every extracted memory:
+
+```typescript
+interface MemoryScope {
+  organization_id: string       // always set
+  channel_id?: string           // if channel-scoped
+  project_id?: string           // if project-associated
+  team_id?: string              // if team-scoped
+  visibility: "private" | "channel" | "team" | "project" | "organization"
+  sensitivity: "normal" | "sensitive" | "restricted"
+  audience_user_ids: string[]   // the resolved participants — audience compatibility source
+}
+```
+
+### Stage 3: Extraction
+
+The extraction stage runs the conversation through multiple LLM passes to extract different types of intelligence. Each pass targets a specific memory type.
+
+```
+Conversation + scope
+  │
+  ├── PASS 1: Semantic extraction (facts, decisions, key information)
+  │     Input: full transcript (or summary if too long)
+  │     Prompt: "Extract facts, decisions, commitments, and key information from this conversation."
+  │     Output: array of semantic memory candidates
+  │     
+  │     Each candidate:
+  │     {
+  │       content: "The team decided to migrate from Redis to Valkey by end of Q2",
+  │       memory_type: "intent",        // or "reason", "constraint", "preference", "fact"
+  │       confidence: 0.9,
+  │       source_message_ids: ["msg-1", "msg-5"],    // which parts of the transcript
+  │       participants_involved: ["user-a", "user-b"]  // who said/decided this
+  │     }
+  │
+  ├── PASS 2: Reasoning extraction (why decisions were made)
+  │     Input: transcript + decisions from Pass 1
+  │     Prompt: "For each decision, extract the reasoning: what alternatives were considered,
+  │              what criteria were applied, what constraints existed, what tradeoffs were made."
+  │     Output: array of reasoning records linked to semantic memories
+  │     
+  │     Each candidate:
+  │     {
+  │       linked_to: "semantic-candidate-1",   // the decision this reasoning explains
+  │       reasoning_type: "decision",
+  │       alternatives: ["Keep Redis", "Move to Valkey", "Move to DragonflyDB"],
+  │       criteria: ["OSS license", "drop-in compatible", "performance"],
+  │       constraints: ["Must complete before Q3 feature freeze"],
+  │       tradeoffs: "Valkey is less mature but fully OSS. DragonflyDB is faster but different API.",
+  │       confidence: 0.85
+  │     }
+  │
+  ├── PASS 3: Action item extraction (who needs to do what by when)
+  │     Input: transcript
+  │     Prompt: "Extract all action items, commitments, and follow-ups. 
+  │              For each: who owns it, what exactly needs to be done, any deadline mentioned."
+  │     Output: array of action items
+  │     
+  │     Each candidate:
+  │     {
+  │       description: "Set up Valkey staging cluster for testing",
+  │       owner_id: "user-b",           // resolved participant
+  │       deadline: "2026-04-18",        // extracted or null
+  │       priority: "high",
+  │       status: "pending",
+  │       source_message_ids: ["msg-12"]
+  │     }
+  │
+  ├── PASS 4: Episodic compression (what happened, what was the outcome)
+  │     Input: transcript + extracted decisions + action items
+  │     Prompt: "Summarize this conversation as a situation-action-outcome experience."
+  │     Output: one episodic memory record
+  │     
+  │     {
+  │       situation: {
+  │         summary: "Team meeting to decide Redis replacement strategy",
+  │         task_type: "planning",
+  │         context: ["infrastructure", "database", "migration"],
+  │         participants: ["user-a", "user-b", "user-c"],
+  │         constraints: ["Q2 deadline", "must be drop-in compatible"]
+  │       },
+  │       action: {
+  │         summary: "Evaluated three alternatives, decided on Valkey",
+  │         key_decisions: ["Migrate to Valkey", "Complete by end of Q2", "Start with staging cluster"],
+  │         tools_used: []  // no tools in a meeting, but included for schema consistency
+  │       },
+  │       outcome: "successful",
+  │       duration_seconds: 1800,
+  │       lessons: "Team prefers OSS-licensed alternatives even when performance isn't best-in-class"
+  │     }
+  │
+  ├── PASS 5: Procedural detection (did the conversation describe or discover a process?)
+  │     Input: transcript
+  │     Prompt: "Did this conversation describe, discover, or refine any reusable process or workflow?
+  │              Only extract if participants explicitly walked through steps or agreed on a procedure."
+  │     Output: procedural memory candidate (often null — most conversations don't contain procedures)
+  │     
+  │     Only fires if the conversation contains step-by-step discussion. Example:
+  │     "When we onboard a new vendor, first we need legal review, then procurement sets up the PO,
+  │      then IT provisions access..." → procedural memory candidate.
+  │
+  └── PASS 6: Entity and relationship extraction
+        Input: transcript
+        Prompt: "Extract named entities (people, companies, products, projects) and their relationships."
+        Output: entities and relationships for the contact model and knowledge graph
+        
+        {
+          entities: [
+            { type: "company", name: "ACME Corp", role: "client" },
+            { type: "product", name: "Valkey", role: "technology" }
+          ],
+          relationships: [
+            { from: "user-b", to: "ACME Corp", type: "account_owner" }
+          ]
+        }
+```
+
+**Pass optimization**: Not every conversation needs every pass. The pipeline uses a lightweight classifier first:
+
+```
+Classifier (cheap model, ~100 tokens output):
+  Input: conversation summary (first 500 tokens)
+  Output: { 
+    has_decisions: bool, 
+    has_action_items: bool, 
+    has_procedures: bool,
+    has_entities: bool,
+    conversation_type: "planning" | "status" | "brainstorm" | "support" | "social" | "other"
+  }
+  
+  → Only run passes that the classifier says are likely to produce results
+  → "social" conversations skip most passes (minimal extraction)
+  → "planning" conversations run all passes
+```
+
+**Cost control**: Extraction uses `gpt-4o-mini` for all passes. For conversations longer than 8K tokens, the transcript is summarized first (one cheap LLM call) and the summary is used as input for all passes. Total cost per conversation: ~$0.01–0.05 depending on length and number of passes.
+
+### Stage 4: Memory Capture
+
+Each extraction candidate goes through the existing memory pipeline with the scope from Stage 2.
+
+```
+For each extraction candidate:
+  │
+  ├── 1. Dedup check
+  │     SHA-256 fingerprint against existing thoughts in this scope
+  │     If duplicate → skip (don't store the same decision twice)
+  │
+  ├── 2. Create thought record
+  │     ├── content: the extracted text
+  │     ├── memory_type: determined by extraction pass
+  │     ├── embedding: generated via text-embedding-3-small
+  │     ├── organization_id, channel_id, project_id, team_id: from scope
+  │     ├── visibility: from scope
+  │     ├── sensitivity: from scope
+  │     └── metadata: pass-specific structured data (JSONB)
+  │
+  ├── 3. Create source attribution
+  │     thought_sources record linking to:
+  │     ├── conversation_id
+  │     ├── source_message_ids (which transcript segments)
+  │     ├── participant_ids (who said it)
+  │     └── extraction_pass (which pass produced this)
+  │
+  ├── 4. Create reasoning records (Pass 2 output)
+  │     thought_reasonings linked to the semantic thought
+  │     With: alternatives, criteria, constraints, tradeoffs, confidence
+  │
+  ├── 5. Create thought links
+  │     ├── If this decision contradicts an existing memory → CONTRADICTS link
+  │     ├── If this supersedes a prior decision → SUPERSEDES link
+  │     └── If this supports/extends existing knowledge → SUPPORTS / RELATES_TO link
+  │
+  └── 6. Create episodic record (Pass 4 output)
+        One per conversation, memory_type = 'experience'
+        Linked to all semantic memories from this conversation
+```
+
+### Stage 5: Action Dispatch
+
+Action items from Pass 3 become real tasks and outbound actions.
+
+```
+For each action item:
+  │
+  ├── 1. Create Nessie task
+  │     ├── agent_id: assigned to the agent responsible for follow-up
+  │     ├── purpose: the action item description
+  │     ├── status: inbox (or assigned if owner is clear)
+  │     └── metadata: { deadline, priority, source_conversation_id }
+  │
+  ├── 2. External system sync (if configured)
+  │     ├── Jira/Linear: create ticket
+  │     ├── Calendar: schedule follow-up meeting (if deadline implies one)
+  │     ├── CRM: update deal stage, log activity
+  │     └── Email: send action item summary to participants
+  │
+  └── 3. Follow-up scheduling
+        If deadline exists → schedule reminder at deadline - 1 day
+        If no deadline → schedule gentle nudge at owner's next working day
+```
+
+### Stage 6: Self-Eval
+
+After extraction, the processing agent evaluates its own work (see multi-agent-memory-system.md § Self-Eval).
+
+```
+Self-eval on conversation extraction:
+  │
+  ├── Did the extraction cover all substantive points?
+  │     Compare: number of decisions extracted vs. conversation length and complexity
+  │
+  ├── Were any participants' contributions missed?
+  │     Check: each participant with significant speaking time has at least one attributed memory
+  │
+  ├── Was the scope correct?
+  │     Check: audience matches actual participants, channel/project mapping makes sense
+  │
+  ├── Were action items concrete enough?
+  │     Check: each action item has an owner and a description clear enough to act on
+  │
+  └── What was missing?
+        Missing memories: "No existing framing memory for the Valkey migration project — 
+        should create one so future agents have context"
+```
+
+### Scope Routing Examples
+
+**Example 1: Engineering standup on Zoom**
+```
+Participants: 5 engineers, all in #backend-team channel
+Source: Zoom transcript
+  │
+  ├── Scope: team-level, visibility = "team", channel = #backend-team
+  ├── Decisions extracted → scoped to #backend-team
+  ├── Action items → assigned to specific engineers
+  └── Episodic memory → "The team discussed migration blockers and reassigned the DB task"
+      Available to: all agents bound to #backend-team or #backend project
+```
+
+**Example 2: Sales call via Twilio**
+```
+Participants: 1 sales rep (internal) + 1 prospect (external)
+Source: Twilio voice call
+  │
+  ├── Scope: private, visibility = "private", no channel mapping
+  ├── Audience: only the sales rep (external prospect has no memory access)
+  ├── Decisions extracted → private to the sales rep
+  ├── Entity extraction → "ACME Corp" contact updated, deal stage updated
+  ├── Action items → "Send proposal by Friday" → sales rep's task list
+  └── Episodic memory → available to sales agents in this org
+      (if sales agents have access to the sales rep's private scope)
+      
+  NOTE: If the org wants sales memories visible to the whole sales team,
+  an admin or the sales rep can promote the channel scope:
+    private → team (sales team)
+  This is a declassification event and creates an audit record.
+```
+
+**Example 3: All-hands meeting on Teams**
+```
+Participants: 50 people, cross-department
+Source: Teams transcript
+  │
+  ├── Scope: org-level, visibility = "organization"
+  ├── Decisions extracted → org-scoped, all agents can see them
+  ├── Action items → assigned to specific department leads
+  ├── Episodic memory → "Q2 priorities announced: hire 3 engineers, launch v2, enter EU market"
+  └── Available to: every agent in the organization
+```
+
+**Example 4: Confidential HR meeting**
+```
+Participants: 1 manager + 1 HR rep
+Source: Zoom transcript
+  │
+  ├── Scope: private, visibility = "private", sensitivity = "restricted"
+  ├── Audience: only the manager and HR rep
+  ├── Sensitivity override: "restricted" → additional access controls
+  ├── NO action items sent to external systems (restricted conversations don't sync to Jira)
+  └── Memory available ONLY to agents with restricted access in the audience
+      No declassification possible without org admin approval
+```
+
+### Multi-Channel Memory Distribution
+
+When a conversation touches multiple teams or projects, extracted memories may need to land in multiple channels:
+
+```
+Cross-team planning meeting
+  Participants: 2 from backend, 2 from frontend, 1 PM
+  Topics discussed: API changes (backend), UI redesign (frontend), timeline (PM)
+  │
+  ├── Extraction produces 8 semantic memories
+  │
+  ├── Topic classification (LLM pass):
+  │     ├── "New REST endpoint for user profiles" → backend
+  │     ├── "Profile page redesign with new components" → frontend
+  │     ├── "API contract: JSON schema for profile response" → backend + frontend
+  │     └── "Ship by May 15" → project-level
+  │
+  └── Scope assignment per memory:
+        ├── Backend-specific → channel: #backend, visibility: team
+        ├── Frontend-specific → channel: #frontend, visibility: team
+        ├── Shared contract → channel: #api-contracts, visibility: project
+        └── Timeline → project-level, visibility: project
+```
+
+The topic classifier determines which channel each memory belongs to. Cross-cutting memories (like shared API contracts) go to a shared scope. The audience compatibility rule still applies — a memory scoped to #backend cannot be surfaced in #frontend unless all #frontend members were in the original meeting.
+
+### Incremental Processing (Real-Time Conversations)
+
+For ongoing conversations (Slack threads, long email chains), the pipeline runs incrementally:
+
+```
+conversation.message event arrives
+  │
+  ├── Lightweight check: is this message substantive?
+  │     ├── "ok" / "thanks" / "👍" → skip
+  │     └── Contains decision, question, or information → process
+  │
+  ├── If substantive:
+  │     ├── Run semantic extraction on this message only
+  │     ├── Check if it contradicts or supersedes existing memories from this thread
+  │     └── Store with source attribution to this specific message
+  │
+  └── On conversation.completed (thread goes quiet for N minutes):
+        ├── Run full multi-pass extraction on the entire thread
+        ├── Dedup against incrementally extracted memories
+        └── Store episodic summary of the full conversation
+```
 
 ---
 
@@ -711,6 +1103,387 @@ The platform is not locked to any provider. Enterprises choose:
 - Calendar: Google, Outlook, CalDAV
 
 The connector layer abstracts all of this. Swapping providers means changing a connector config, not rewriting agent logic.
+
+---
+
+## 10. Reference Plugin Implementation — Twilio Voice
+
+This section documents the Twilio voice connector end-to-end as a reference for how plugins integrate with the platform. Twilio is a CPaaS (Communications Platform as a Service) that provides phone numbers, PSTN access, and call control APIs. For Nessie, Twilio is the telecom layer — a dumb pipe with provisioning. The intelligence lives in the agents, not Twilio.
+
+**What Twilio handles:** phone number provisioning (global DID inventory), PSTN connectivity, call routing and signaling, regulatory compliance per country, carrier-grade reliability (~99.95% uptime SLA).
+
+**What the platform handles:** AI agent logic and decision-making, transcription pipeline (cheaper than Twilio's built-in), meeting intelligence (notes, minutes, tasks, calendar), memory integration (episodic memory from calls), cost optimization.
+
+### Global Availability
+
+Twilio provides local numbers in 100+ countries with voice coverage across nearly 200 destinations.
+
+Key markets:
+- US — local and toll-free numbers, full voice
+- UK — local numbers, full voice
+- EU — local numbers across member states (including Czech Republic)
+- Most Western world countries covered
+
+Number types:
+- **Local** — standard geographic number, best caller ID trust
+- **Toll-free** — 1-800 style, no charge to caller
+- **Mobile** — limited in EU, often SMS-only, not reliable for voice
+
+Numbers are rented monthly (~$1/month typical). Users select a number from any supported country.
+
+### Plugin Configuration
+
+The Twilio voice connector implements `ConversationPlugin` with capabilities: `inbound_voice`, `outbound_voice`, `real_time_stream`.
+
+```
+connector_plugins entry:
+  source:        "twilio"
+  capabilities:  ["inbound_voice", "outbound_voice", "real_time_stream"]
+  config: {
+    account_sid:     "AC...",
+    auth_token:      "encrypted",
+    trunking_domain: "nessie.pstn.twilio.com",   // if SIP trunking
+    default_region:  "us1",
+    webhook_secret:  "encrypted"
+  }
+```
+
+### Call Flows
+
+#### Inbound Call
+
+```
+External caller dials agent's Twilio number
+  │
+  ├── 1. Twilio receives call on PSTN
+  │
+  ├── 2. Twilio sends webhook to Nessie gateway
+  │     POST /api/voice/incoming
+  │     Body: { From, To, CallSid, ... }
+  │
+  ├── 3. Gateway looks up agent_identity by (channel_type='voip', address=To)
+  │
+  ├── 4. Gateway returns TwiML instructions:
+  │     <Response>
+  │       <Connect>
+  │         <Stream url="wss://nessie.example.com/voice/stream/{agentId}" />
+  │       </Connect>
+  │     </Response>
+  │
+  ├── 5. Twilio opens WebSocket to Nessie voice server
+  │     Bidirectional audio stream (mulaw 8kHz or PCM 16kHz)
+  │
+  ├── 6. Voice server connects to AI pipeline:
+  │     ├── Audio → ASR (Whisper/Deepgram) → text
+  │     ├── Text → Agent runtime (process as message in thread)
+  │     └── Agent response → TTS → audio → WebSocket → Twilio → caller
+  │
+  └── 7. On hang-up:
+        ├── End stream
+        ├── Emit conversation.completed event → normalization layer → pipeline
+        ├── Generate call summary
+        └── Store as episodic memory
+```
+
+#### Outbound Call
+
+```
+Agent initiates outbound call (via `call_initiate` tool)
+  │
+  ├── 1. Validate: agent has VOIP identity, recipient in allowlist, budget available
+  │
+  ├── 2. Twilio REST API: POST /2010-04-01/Accounts/{sid}/Calls.json
+  │     From: agent's Twilio number
+  │     To: recipient number
+  │     Url: callback URL for call control
+  │
+  ├── 3. Twilio places call on PSTN
+  │
+  ├── 4. On answer: same WebSocket stream flow as inbound
+  │
+  └── 5. Same post-call processing and event emission
+```
+
+#### Meeting Join
+
+```
+Agent joins a conference call (via `meeting_join` tool)
+  │
+  ├── 1. Extract dial-in details from calendar invite or manual input
+  │     Phone number + meeting ID + passcode
+  │
+  ├── 2. Twilio outbound call to the conference bridge number
+  │
+  ├── 3. DTMF injection for meeting ID and passcode
+  │     TwiML: <Play digits="w123456#ww7890#" />
+  │     (w = wait 0.5s, # = pound key)
+  │
+  ├── 4. Once connected to conference:
+  │     ├── Announce agent presence (configurable per org policy)
+  │     ├── Begin bidirectional audio stream
+  │     └── Start transcription pipeline
+  │
+  ├── 5. During meeting:
+  │     ├── Real-time transcription with speaker diarization
+  │     ├── Running context in working memory (topics, decisions, action items)
+  │     ├── If addressed: TTS response through audio stream
+  │     └── Tool calls for data lookups if asked
+  │
+  └── 6. Post-meeting:
+        ├── Emit conversation.completed → full pipeline extraction
+        ├── Generate minutes, extract tasks, update calendar
+        └── Distribute via email to attendees
+```
+
+### SIP Trunking (Production Architecture)
+
+For high call volume, SIP trunking is preferred over per-call WebSocket streaming:
+
+```
+Twilio SIP Trunk
+  │
+  ├── SIP INVITE → Nessie Media Server (FreeSWITCH or Otelco)
+  │
+  ├── Media server handles:
+  │     ├── Codec negotiation
+  │     ├── Audio mixing (for conferences)
+  │     ├── Recording
+  │     └── RTP stream management
+  │
+  └── Media server forwards audio to AI pipeline via internal API
+```
+
+**Why SIP trunking:** lower latency (direct media path, no WebSocket overhead), full media control (recording, mixing, codec selection), multi-provider support (can add Telnyx, local carriers alongside Twilio), cost optimization (SIP is cheaper per minute at volume).
+
+**When to use WebSocket streaming instead:** low volume (< 100 calls/day), quick prototyping, no media server infrastructure available.
+
+### Transcription Pipeline
+
+Twilio offers built-in transcription but it's expensive. The platform runs its own:
+
+```
+Audio stream (from Twilio WebSocket or SIP media server)
+  │
+  ├── Buffer: collect audio chunks (configurable window: 1-5 seconds)
+  │
+  ├── ASR Engine (choose one):
+  │     ├── Whisper (OpenAI) — best accuracy, higher latency (~2s)
+  │     ├── Deepgram — fast, good accuracy, streaming support
+  │     └── Google Speech-to-Text — good for multilingual
+  │
+  ├── Speaker diarization:
+  │     ├── Voice activity detection (VAD) per audio channel
+  │     ├── Speaker embedding (voice fingerprint) per detected speaker
+  │     └── Map speakers to known contacts (if available) or Speaker 1/2/N
+  │
+  └── Output: timestamped, speaker-attributed transcript segments
+        { speaker: "Speaker 1", text: "Let's discuss the Q3 roadmap", start: 12.4, end: 15.1 }
+```
+
+#### Transcription Cost Comparison
+
+| Provider | Cost per minute | Latency | Notes |
+|---|---|---|---|
+| Twilio built-in | ~$0.05/min | Real-time | Convenient but expensive |
+| Whisper API | ~$0.006/min | ~2s batch | 8x cheaper, slight delay |
+| Deepgram | ~$0.0043/min | Streaming | Cheapest, real-time capable |
+| Self-hosted Whisper | ~$0.001/min (compute) | ~2s batch | Cheapest, requires GPU infra |
+
+**Recommendation**: Deepgram for real-time transcription during calls (streaming, low latency). Whisper for post-call processing where accuracy matters more than speed.
+
+### Recording and Consent
+
+```
+call_recordings
+  id               UUID PK
+  agent_id         UUID FK → agents
+  call_sid         TEXT — Twilio call identifier
+  thread_id        UUID FK → threads — the conversation thread this call maps to
+  
+  recording_url    TEXT — Twilio-hosted recording URL (temporary)
+  storage_url      TEXT — our permanent storage (GCS/S3)
+  duration_seconds INT
+  
+  transcript_id    UUID — link to processed transcript
+  consent_status   ENUM (all_party, one_party, unknown, refused)
+  
+  created_at       TIMESTAMPTZ
+  expires_at       TIMESTAMPTZ — Twilio recording retention
+```
+
+#### Consent Model
+
+Recording consent varies by jurisdiction:
+- **One-party consent** (most US states, UK): Agent's announcement at call start is sufficient
+- **All-party consent** (California, EU countries): All participants must consent
+- **Meeting recording**: Announcement at join + opt-out mechanism
+
+The system must:
+1. Check jurisdiction of caller (via phone number country code)
+2. Play appropriate consent announcement
+3. Record consent status per call
+4. If consent refused: disable recording, continue call without it
+5. Retention: follow org policy (default 90 days, configurable)
+
+### Number Provisioning
+
+When an agent needs a phone number:
+
+```
+POST /api/agents/{id}/identities
+{
+  "channel_type": "voip",
+  "country": "US",
+  "number_type": "local",
+  "area_code": "415",
+  "display_name": "Alex, Project Manager"
+}
+
+Flow:
+1. Validate agent has VOIP capability in their role/toolPolicy
+2. Check org budget for number provisioning
+3. Search Twilio for available numbers matching criteria
+4. Purchase number via Twilio API
+5. Configure incoming call webhook to Nessie gateway
+6. Create agent_identity record
+7. Number is immediately active
+```
+
+#### Number Lifecycle
+
+```
+provisioned → active → suspended → deprovisioned
+                │
+                └→ ported_out (number transferred to another provider)
+```
+
+- **Suspended**: Org can temporarily disable incoming/outgoing without releasing the number
+- **Deprovisioned**: Number released back to Twilio. After release, number may be reassigned.
+- **Porting**: If org moves to another provider, the number can be ported out (takes 2-4 weeks)
+
+### Calendar Integration for Auto-Join
+
+Agents with VOIP identity + calendar access can auto-join meetings:
+
+```
+Background job: every 5 minutes
+  │
+  ├── For each agent with auto_join = true:
+  │     ├── Check upcoming calendar events (next 10 minutes)
+  │     ├── For each event with dial-in info:
+  │     │     ├── Parse dial-in number + meeting ID + passcode
+  │     │     ├── At T-1 minute: initiate meeting_join
+  │     │     └── Agent dials in and begins transcription
+  │     └── For events without dial-in: skip (no way to join)
+  │
+  └── On meeting end (scheduled time or hang-up detection):
+        ├── Emit conversation.completed → pipeline processes full meeting
+        ├── Generate minutes, extract tasks
+        ├── Distribute minutes via email to attendees
+        └── Store as episodic memory
+```
+
+### Agent Voice Personality
+
+Each agent can have a distinct voice:
+
+```
+agent_voice_config
+  id               UUID PK
+  agent_id         UUID FK → agents
+  tts_provider     TEXT — "openai", "elevenlabs", "google"
+  tts_voice_id     TEXT — provider-specific voice identifier
+  tts_speed        FLOAT DEFAULT 1.0
+  language         TEXT DEFAULT "en-US"
+  
+  greeting         TEXT — "Hello, this is Alex from the engineering team"
+  voicemail_greeting TEXT — played when agent can't take a call
+  hold_music_url   TEXT — optional
+  
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
+```
+
+Voice selection considerations:
+- Match voice to agent persona (professional, friendly, neutral)
+- Language and accent matching for the org's primary market
+- Consistent voice across all calls (users recognize the agent)
+
+### Per-Call Cost Model
+
+| Component | Cost | Notes |
+|---|---|---|
+| Twilio number rental | ~$1/month | Per number |
+| Twilio inbound voice | ~$0.0085/min (US) | Varies by country |
+| Twilio outbound voice | ~$0.013/min (US) | Varies by destination |
+| Transcription (Deepgram) | ~$0.0043/min | Real-time streaming |
+| TTS (OpenAI) | ~$0.015/1K chars | Agent speaking |
+| AI processing | ~$0.01-0.05/min | Depends on model and tool calls |
+
+#### Budget Controls
+
+- **Per-agent monthly cap**: Max spend on VOIP per agent (e.g., $50/month)
+- **Per-call cap**: Max duration per call (e.g., 60 minutes)
+- **Rate limiting**: Max concurrent calls per agent (default: 1)
+- **Allowlist**: Outbound calls only to approved numbers/patterns
+- **Alerts**: Notify org admin when agent reaches 80% of monthly cap
+
+All costs flow into the `cost_ledger` with `operation = 'voice_call'`.
+
+### Provider Abstraction
+
+Twilio is the initial provider, but the architecture supports provider switching:
+
+```typescript
+interface VoiceProvider {
+  // Number management
+  searchNumbers(criteria: NumberSearchCriteria): Promise<AvailableNumber[]>
+  provisionNumber(number: string): Promise<ProvisionedNumber>
+  releaseNumber(number: string): Promise<void>
+  
+  // Call control
+  initiateCall(from: string, to: string, callbackUrl: string): Promise<CallSession>
+  endCall(callSid: string): Promise<void>
+  sendDtmf(callSid: string, digits: string): Promise<void>
+  
+  // Media
+  startStream(callSid: string, wsUrl: string): Promise<void>
+  startRecording(callSid: string): Promise<string>
+  stopRecording(callSid: string): Promise<void>
+}
+```
+
+Future providers: **Telnyx** (cheaper per-minute, SIP-native), **Vonage** (good EU coverage, WebRTC), **local carriers** (cheapest, per-country integration), **self-hosted FreeSWITCH/Asterisk** (full control, lowest cost, highest ops overhead).
+
+### Multi-Provider Phasing
+
+```
+Phase 1 (now): Twilio only
+  └── Fast to market, global coverage, one integration
+
+Phase 2 (scale): Twilio + Telnyx
+  └── Least Cost Routing (LCR) — route each call to cheapest provider
+  └── Telnyx for high-volume markets (US, UK)
+  └── Twilio for long-tail countries
+
+Phase 3 (optimize): Multi-provider + self-hosted
+  └── FreeSWITCH media server for calls staying within infrastructure
+  └── Twilio/Telnyx for PSTN origination/termination only
+  └── Provider-agnostic interface — agents don't know which provider handles their calls
+```
+
+### Twilio Plugin — What Needs Implementation
+
+1. **Voice gateway** — webhook handler for Twilio incoming/outgoing calls, WebSocket stream manager
+2. **Transcription service** — audio → text pipeline with speaker diarization, pluggable ASR backends
+3. **Voice agent runtime** — integration between audio stream and agent execution loop (bidirectional)
+4. **Number provisioning API** — CRUD for agent VOIP identities via Twilio
+5. **Recording service** — record, store, manage consent, enforce retention
+6. **Calendar connector** — Google Calendar + Outlook integration for auto-join
+7. **DTMF handler** — meeting code/passcode injection for conference bridge dialing
+8. **Cost tracking** — per-call cost calculation and budget enforcement
+9. **Provider abstraction** — interface layer to support multiple VOIP providers
+10. **Voice config** — TTS voice selection, greetings, voicemail per agent
 
 ---
 
