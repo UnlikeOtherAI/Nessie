@@ -30,6 +30,20 @@ export type ThoughtId = z.infer<typeof ThoughtIdSchema>
 export const ThoughtRecallIdSchema = createUuidBrandSchema<'ThoughtRecallId'>()
 export type ThoughtRecallId = z.infer<typeof ThoughtRecallIdSchema>
 
+// ─── Phase 2 Branded IDs ────────────────────────────────────────────────────
+export const ApprovalIdSchema = createUuidBrandSchema<'ApprovalId'>()
+export type ApprovalId = z.infer<typeof ApprovalIdSchema>
+export const AuditLogIdSchema = createUuidBrandSchema<'AuditLogId'>()
+export type AuditLogId = z.infer<typeof AuditLogIdSchema>
+export const PolicyIdSchema = createUuidBrandSchema<'PolicyId'>()
+export type PolicyId = z.infer<typeof PolicyIdSchema>
+export const PolicyBindingIdSchema = createUuidBrandSchema<'PolicyBindingId'>()
+export type PolicyBindingId = z.infer<typeof PolicyBindingIdSchema>
+export const TokenLedgerEventIdSchema = createUuidBrandSchema<'TokenLedgerEventId'>()
+export type TokenLedgerEventId = z.infer<typeof TokenLedgerEventIdSchema>
+export const ModelPricingProfileIdSchema = createUuidBrandSchema<'ModelPricingProfileId'>()
+export type ModelPricingProfileId = z.infer<typeof ModelPricingProfileIdSchema>
+
 export const parseOrganizationId = (value: string): OrganizationId =>
   OrganizationIdSchema.parse(value)
 export const parseUserId = (value: string): UserId => UserIdSchema.parse(value)
@@ -45,6 +59,17 @@ export const parseTaskId = (value: string): TaskId => TaskIdSchema.parse(value)
 export const parseThoughtId = (value: string): ThoughtId => ThoughtIdSchema.parse(value)
 export const parseThoughtRecallId = (value: string): ThoughtRecallId =>
   ThoughtRecallIdSchema.parse(value)
+export const parseApprovalId = (value: string): ApprovalId =>
+  ApprovalIdSchema.parse(value)
+export const parseAuditLogId = (value: string): AuditLogId =>
+  AuditLogIdSchema.parse(value)
+export const parsePolicyId = (value: string): PolicyId => PolicyIdSchema.parse(value)
+export const parsePolicyBindingId = (value: string): PolicyBindingId =>
+  PolicyBindingIdSchema.parse(value)
+export const parseTokenLedgerEventId = (value: string): TokenLedgerEventId =>
+  TokenLedgerEventIdSchema.parse(value)
+export const parseModelPricingProfileId = (value: string): ModelPricingProfileId =>
+  ModelPricingProfileIdSchema.parse(value)
 
 export type ApiResponse<T> = {
   data: T
@@ -110,6 +135,7 @@ export type AgentStatus = z.infer<typeof AgentStatusSchema>
 export const RunStatusSchema = z.enum([
   'pending',
   'running',
+  'waiting_approval',
   'completed',
   'failed',
   'cancelled',
@@ -169,6 +195,14 @@ export type WsEventMap = {
     agentId: AgentId
     action: string
     reason: string
+  }
+  'approval.resolved': {
+    approvalId: string
+    taskId: TaskId
+    agentId: AgentId
+    outcome: 'approved' | 'rejected' | 'expired'
+    resolverId?: string
+    resolvedAt: string
   }
   'message.new': {
     agentId: AgentId
@@ -278,6 +312,16 @@ export const MessageNewEventSchema = z.object({
   threadId: ThreadIdSchema,
 })
 export type MessageNewEvent = z.infer<typeof MessageNewEventSchema>
+export const ApprovalResolvedEventSchema = z.object({
+  approvalId: NonEmptyStringSchema,
+  taskId: TaskIdSchema,
+  agentId: AgentIdSchema,
+  outcome: z.enum(['approved', 'rejected', 'expired']),
+  resolverId: NonEmptyStringSchema.optional(),
+  resolvedAt: TimestampSchema,
+})
+export type ApprovalResolvedEvent = z.infer<typeof ApprovalResolvedEventSchema>
+
 export const WsEventNameSchema = z.enum([
   'agent.status',
   'agent.tool.start',
@@ -286,6 +330,7 @@ export const WsEventNameSchema = z.enum([
   'run.updated',
   'task.updated',
   'approval.needed',
+  'approval.resolved',
   'message.new',
 ])
 
@@ -402,6 +447,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('approval.needed'),
     data: ApprovalNeededEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('approval.resolved'),
+    data: ApprovalResolvedEventSchema,
     ts: TimestampSchema,
   }),
   z.object({
@@ -624,6 +675,392 @@ export const RunExecuteJobPayloadSchema = z.object({
   threadId: ThreadIdSchema,
 })
 export type RunExecuteJobPayload = z.infer<typeof RunExecuteJobPayloadSchema>
+
+// ─── Phase 2: Policy Enforcement ────────────────────────────────────────────
+
+export const PolicyScopeSchema = z.enum([
+  'organization',
+  'project',
+  'team',
+  'channel',
+  'agent',
+  'tool',
+  'user',
+])
+export type PolicyScope = z.infer<typeof PolicyScopeSchema>
+
+export const PolicyResourceTypeSchema = z.enum([
+  'agent',
+  'channel',
+  'project',
+  'tool',
+  'session',
+  'task',
+  'review',
+  'approval',
+  'admin',
+  'secret',
+])
+export type PolicyResourceType = z.infer<typeof PolicyResourceTypeSchema>
+
+export const PolicyActionSchema = z.enum([
+  'view',
+  'invoke',
+  'create',
+  'edit',
+  'assign',
+  'approve',
+  'review',
+  'search',
+  'export',
+  'admin',
+  'resolve',
+  'rotate',
+  'revoke',
+  'bind',
+  'link',
+  'reindex',
+  'summarize',
+  'read',
+  'import',
+  'grant',
+  'enroll',
+  'challenge',
+])
+export type PolicyAction = z.infer<typeof PolicyActionSchema>
+
+export const PolicyEffectSchema = z.enum(['allow', 'deny'])
+export type PolicyEffect = z.infer<typeof PolicyEffectSchema>
+
+export const PolicyConditionsSchema = z.object({
+  timeWindow: z
+    .object({
+      startHour: z.number().int().min(0).max(23),
+      endHour: z.number().int().min(0).max(23),
+      daysOfWeek: z.array(z.number().int().min(0).max(6)),
+    })
+    .optional(),
+  ipRanges: z.array(z.string()).optional(),
+  requiresApproval: z.boolean().optional(),
+  approvalActionType: z.string().optional(),
+  maxUsagePerHour: z.number().int().positive().optional(),
+})
+export type PolicyConditions = z.infer<typeof PolicyConditionsSchema>
+
+export const PolicyDecisionSchema = z.object({
+  allowed: z.boolean(),
+  policyRuleId: z.string().optional(),
+  policySource: z.string(),
+  reasonCode: z.enum([
+    'EXPLICIT_DENY',
+    'NO_MATCHING_ALLOW',
+    'CHANNEL_MEMBERSHIP_REQUIRED',
+    'APPROVAL_REQUIRED',
+    'CONDITIONS_NOT_MET',
+    'SCOPE_NOT_AVAILABLE',
+    'ALLOWED',
+  ]),
+  requiresApproval: z.boolean().optional(),
+  approvalActionType: z.string().optional(),
+})
+export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>
+
+export const PolicyRuleResponseSchema = z.object({
+  id: PolicyIdSchema,
+  organizationId: OrganizationIdSchema,
+  scope: PolicyScopeSchema,
+  scopeId: NonEmptyStringSchema,
+  resourceType: PolicyResourceTypeSchema,
+  action: PolicyActionSchema,
+  effect: PolicyEffectSchema,
+  priority: z.number().int(),
+  conditions: PolicyConditionsSchema.nullable(),
+  createdBy: NonEmptyStringSchema,
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+  bindings: z.array(
+    z.object({
+      id: PolicyBindingIdSchema,
+      actorType: z.enum(['user', 'agent', 'service', 'role']),
+      actorId: NonEmptyStringSchema,
+    }),
+  ),
+})
+export type PolicyRuleResponse = z.infer<typeof PolicyRuleResponseSchema>
+
+export const EffectivePolicySchema = z.object({
+  decisions: z.array(
+    z.object({
+      resourceType: PolicyResourceTypeSchema,
+      action: PolicyActionSchema,
+      decision: PolicyDecisionSchema,
+    }),
+  ),
+})
+export type EffectivePolicy = z.infer<typeof EffectivePolicySchema>
+
+// ─── Phase 2: Approval Gating ──────────────────────────────────────────────
+
+export const ApprovalStatusSchema = z.enum([
+  'pending',
+  'approved',
+  'rejected',
+  'expired',
+])
+export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>
+
+export const ApprovalRequestResponseSchema = z.object({
+  id: ApprovalIdSchema,
+  organizationId: OrganizationIdSchema,
+  projectId: ProjectIdSchema.optional(),
+  teamId: TeamIdSchema.optional(),
+  channelId: ChannelIdSchema.optional(),
+  taskId: TaskIdSchema.optional(),
+  runId: RunIdSchema.optional(),
+  agentId: AgentIdSchema,
+  requesterId: NonEmptyStringSchema,
+  action: NonEmptyStringSchema,
+  reason: z.string(),
+  context: z.record(z.string(), z.unknown()).optional(),
+  status: ApprovalStatusSchema,
+  resolverId: NonEmptyStringSchema.optional(),
+  resolvedAt: TimestampSchema.optional(),
+  resolution: z.enum(['approved', 'rejected']).optional(),
+  resolutionNote: z.string().optional(),
+  continuationToken: NonEmptyStringSchema,
+  expiresAt: TimestampSchema,
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type ApprovalRequestResponse = z.infer<typeof ApprovalRequestResponseSchema>
+
+export const ResolveApprovalBodySchema = z.object({
+  resolution: z.enum(['approved', 'rejected']),
+  note: z.string().max(2000).optional(),
+})
+export type ResolveApprovalBody = z.infer<typeof ResolveApprovalBodySchema>
+
+// ─── Phase 2: Audit Trail ──────────────────────────────────────────────────
+
+export const AuditActionSchema = z.enum([
+  'auth.bootstrap',
+  'auth.login',
+  'auth.logout',
+  'auth.login_failed',
+  'user.created',
+  'user.updated',
+  'user.deleted',
+  'user.role_changed',
+  'organization.updated',
+  'project.created',
+  'project.updated',
+  'project.deleted',
+  'project.member_added',
+  'project.member_removed',
+  'team.created',
+  'team.updated',
+  'team.deleted',
+  'team.member_added',
+  'team.member_removed',
+  'channel.created',
+  'channel.updated',
+  'channel.deleted',
+  'channel.member_added',
+  'channel.member_removed',
+  'channel.visibility_changed',
+  'agent.created',
+  'agent.updated',
+  'agent.retired',
+  'agent.restored',
+  'agent.deleted',
+  'agent.bound',
+  'agent.unbound',
+  'tool.granted',
+  'tool.revoked',
+  'approval.created',
+  'approval.approved',
+  'approval.rejected',
+  'approval.expired',
+  'pricing.created',
+  'pricing.updated',
+  'pricing.deleted',
+  'policy.created',
+  'policy.updated',
+  'policy.deleted',
+  'policy.evaluated',
+])
+export type AuditAction = z.infer<typeof AuditActionSchema>
+
+export const AuditOutcomeSchema = z.enum(['success', 'denied', 'error'])
+export type AuditOutcome = z.infer<typeof AuditOutcomeSchema>
+
+export const AuditActorTypeSchema = z.enum(['user', 'agent', 'service', 'system'])
+export type AuditActorType = z.infer<typeof AuditActorTypeSchema>
+
+export const AuditLogResponseSchema = z.object({
+  id: AuditLogIdSchema,
+  organizationId: OrganizationIdSchema,
+  projectId: ProjectIdSchema.optional(),
+  teamId: TeamIdSchema.optional(),
+  channelId: ChannelIdSchema.optional(),
+  actorType: AuditActorTypeSchema,
+  actorId: NonEmptyStringSchema,
+  action: AuditActionSchema,
+  resourceType: NonEmptyStringSchema,
+  resourceId: NonEmptyStringSchema.optional(),
+  outcome: AuditOutcomeSchema,
+  reason: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  requestId: NonEmptyStringSchema,
+  ipAddress: z.string().optional(),
+  userAgent: z.string().optional(),
+  createdAt: TimestampSchema,
+})
+export type AuditLogResponse = z.infer<typeof AuditLogResponseSchema>
+
+export const AuditLogSummarySchema = z.object({
+  groupBy: NonEmptyStringSchema,
+  entries: z.array(
+    z.object({
+      key: NonEmptyStringSchema,
+      count: z.number().int().nonnegative(),
+    }),
+  ),
+})
+export type AuditLogSummary = z.infer<typeof AuditLogSummarySchema>
+
+// ─── Phase 2: Token Ledger ─────────────────────────────────────────────────
+
+export const TokenUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative().optional(),
+  outputTokens: z.number().int().nonnegative().optional(),
+  cachedInputTokens: z.number().int().nonnegative().optional(),
+  cachedOutputTokens: z.number().int().nonnegative().optional(),
+  cacheReadTokens: z.number().int().nonnegative().optional(),
+  cacheWriteTokens: z.number().int().nonnegative().optional(),
+  totalTokens: z.number().int().nonnegative().optional(),
+})
+export type TokenUsage = z.infer<typeof TokenUsageSchema>
+
+export const OperationTypeSchema = z.enum([
+  'chat',
+  'completion',
+  'embedding',
+  'translation',
+  'reasoning',
+  'tool-translation',
+  'other',
+])
+export type OperationType = z.infer<typeof OperationTypeSchema>
+
+export const PricingSourceSchema = z.enum([
+  'provider-default',
+  'org-override',
+  'team-override',
+  'manual',
+])
+export type PricingSource = z.infer<typeof PricingSourceSchema>
+
+export const PricingSnapshotSchema = z.object({
+  profileId: NonEmptyStringSchema,
+  source: PricingSourceSchema,
+  currency: NonEmptyStringSchema,
+  inputPerMillion: z.number().nonnegative().optional(),
+  outputPerMillion: z.number().nonnegative().optional(),
+  cachedInputPerMillion: z.number().nonnegative().optional(),
+  cachedOutputPerMillion: z.number().nonnegative().optional(),
+  cacheReadPerMillion: z.number().nonnegative().optional(),
+  cacheWritePerMillion: z.number().nonnegative().optional(),
+})
+export type PricingSnapshot = z.infer<typeof PricingSnapshotSchema>
+
+export const TokenLedgerEventResponseSchema = z.object({
+  eventId: TokenLedgerEventIdSchema,
+  occurredAt: TimestampSchema,
+  organizationId: OrganizationIdSchema,
+  projectId: ProjectIdSchema.optional(),
+  teamId: TeamIdSchema.optional(),
+  channelId: ChannelIdSchema.optional(),
+  threadId: ThreadIdSchema.optional(),
+  sessionId: NonEmptyStringSchema.optional(),
+  taskId: TaskIdSchema.optional(),
+  agentId: AgentIdSchema.optional(),
+  actorId: NonEmptyStringSchema,
+  requestId: NonEmptyStringSchema,
+  correlationId: NonEmptyStringSchema.optional(),
+  provider: NonEmptyStringSchema,
+  model: NonEmptyStringSchema,
+  operationType: OperationTypeSchema,
+  usage: TokenUsageSchema,
+  providerReportedCost: z
+    .object({
+      amount: z.number().nonnegative(),
+      currency: NonEmptyStringSchema,
+    })
+    .optional(),
+  pricingSnapshot: PricingSnapshotSchema.optional(),
+  estimatedCost: z
+    .object({
+      amount: z.number().nonnegative(),
+      currency: NonEmptyStringSchema,
+    })
+    .optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+})
+export type TokenLedgerEventResponse = z.infer<typeof TokenLedgerEventResponseSchema>
+
+export const TokenUsageSummarySchema = z.object({
+  totalInputTokens: z.number().int().nonnegative(),
+  totalOutputTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+  totalEstimatedCost: z.number().nonnegative(),
+  totalProviderReportedCost: z.number().nonnegative(),
+  currency: NonEmptyStringSchema,
+  breakdowns: z.array(
+    z.object({
+      key: NonEmptyStringSchema,
+      inputTokens: z.number().int().nonnegative(),
+      outputTokens: z.number().int().nonnegative(),
+      totalTokens: z.number().int().nonnegative(),
+      estimatedCost: z.number().nonnegative(),
+      providerReportedCost: z.number().nonnegative(),
+    }),
+  ),
+})
+export type TokenUsageSummary = z.infer<typeof TokenUsageSummarySchema>
+
+export const MonthlyEstimateSchema = z.object({
+  currentMonthUsage: z.number().nonnegative(),
+  currentMonthCost: z.number().nonnegative(),
+  projectedMonthlyCost: z.number().nonnegative(),
+  currency: NonEmptyStringSchema,
+  daysElapsed: z.number().int().positive(),
+  daysInMonth: z.number().int().positive(),
+})
+export type MonthlyEstimate = z.infer<typeof MonthlyEstimateSchema>
+
+export const ModelPricingProfileResponseSchema = z.object({
+  profileId: ModelPricingProfileIdSchema,
+  organizationId: OrganizationIdSchema,
+  provider: NonEmptyStringSchema,
+  modelPattern: NonEmptyStringSchema,
+  currency: NonEmptyStringSchema,
+  source: PricingSourceSchema,
+  inputPerMillion: z.number().nonnegative().optional(),
+  outputPerMillion: z.number().nonnegative().optional(),
+  cachedInputPerMillion: z.number().nonnegative().optional(),
+  cachedOutputPerMillion: z.number().nonnegative().optional(),
+  cacheReadPerMillion: z.number().nonnegative().optional(),
+  cacheWritePerMillion: z.number().nonnegative().optional(),
+  effectiveFrom: TimestampSchema,
+  effectiveTo: TimestampSchema.optional(),
+})
+export type ModelPricingProfileResponse = z.infer<typeof ModelPricingProfileResponseSchema>
+
+// ─── Phase 2: Channel Visibility ───────────────────────────────────────────
+
+export const ChannelVisibilitySchema = z.enum(['public', 'protected', 'private'])
+export type ChannelVisibility = z.infer<typeof ChannelVisibilitySchema>
 
 // ─── Memory Schemas ─────────────────────────────────────────────────────────
 
