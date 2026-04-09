@@ -1,25 +1,26 @@
 # Marketplace and Agent Library
 
-One marketplace. One library. MCP servers, skills, and API connectors are all capabilities that agents can use. The marketplace is where you discover them. The library is where you manage what's installed. The agent editor is where you assign them.
+One marketplace. One library. MCP servers, skills, API connectors, and workflow templates are all capabilities that agents can use. The marketplace is where you discover them. The library is where you manage what's installed. The agent editor is where you assign them.
 
 This document describes the unified experience. The underlying systems are documented separately:
 - [skills.md](skills.md) — skill structure, security verification, community catalog
-- [external-tool-integration.md](external-tool-integration.md) — MCP servers, API connectors, credential flow, context loading
+- [external-tool-integration.md](external-tool-integration.md) — MCP servers, API connectors, knowledge base connectors, credential flow, context loading
 - [tool-registry-spec.md](tool-registry-spec.md) — tool registry, grants, execution enforcement
 
 ---
 
 ## 1. Unified Capability Model
 
-From the user's perspective, there are three types of capabilities — but they all behave the same way: you find them, add them to your library, and assign them to agents.
+From the user's perspective, there are four types of capabilities — but they all behave the same way: you find them, add them to your library, and assign them to agents.
 
 | Capability | What It Is | Source | Example |
 |---|---|---|---|
 | **MCP Server** | A service that exposes tools via the MCP protocol | Marketplace catalog or self-hosted URL | "PostgreSQL", "Stripe", "GitHub" |
 | **Skill** | A packaged behaviour — instructions + tools + plan | Platform, community, or org-created | "Deploy to Staging", "Generate Minutes" |
 | **API Connector** | A custom HTTP API with defined endpoints | Admin-built from OpenAPI spec or manual definition | "Acme CRM API", "Internal Billing" |
+| **Workflow Template** | An orchestrated pipeline: trigger + agents + skills + connectors | Platform, community, or org-created | "Sales Call Follow-Up", "Sprint Standup Pipeline" |
 
-All three produce the same thing downstream: entries in the tool registry that agents can discover, load, and use. The difference is how they get there.
+MCP servers, skills, and API connectors produce entries in the tool registry that agents can discover, load, and use. Workflow templates are different — they are complete orchestrations that wire together triggers, agents, skills, and connectors into an end-to-end automated pipeline. Installing a workflow template sets up the full chain.
 
 ---
 
@@ -33,7 +34,7 @@ The marketplace is a single page with tabs. Every tab has the same layout: brows
 ┌──────────────────────────────────────────────────────────────┐
 │  MARKETPLACE                                                  │
 │                                                                │
-│  [ All ]  [ MCP Servers ]  [ Skills ]  [ API Connectors ]     │
+│  [ All ]  [ MCP Servers ]  [ Skills ]  [ API Connectors ]  [ Workflows ]     │
 │                                                                │
 │  Search: [_________________________________] [Filter ▾] [Sort ▾]│
 │                                                                │
@@ -69,7 +70,7 @@ Every capability card shows the same structure regardless of type:
 ```
 ┌────────────────────────────────────┐
 │ [icon] Name                        │
-│ Type badge: MCP Server | Skill | API Connector
+│ Type badge: MCP Server | Skill | API Connector | Workflow
 │                                    │
 │ One-line description               │
 │                                    │
@@ -77,6 +78,7 @@ Every capability card shows the same structure regardless of type:
 │   MCP Server → "12 tools"          │
 │   Skill → "Tools: Bash, WebFetch"  │
 │   API Connector → "24 endpoints"   │
+│   Workflow → "3 steps, 2 agents"   │
 │                                    │
 │ Rating: ★ 4.8 (142 reviews)       │
 │ Security: ✓ Verified | ⚠ Review Required | ✕ Blocked
@@ -139,7 +141,7 @@ The library is what the organization has installed. Marketplace items become lib
 ┌──────────────────────────────────────────────────────────────┐
 │  MY LIBRARY                                                   │
 │                                                                │
-│  [ All ]  [ MCP Servers ]  [ Skills ]  [ API Connectors ]     │
+│  [ All ]  [ MCP Servers ]  [ Skills ]  [ API Connectors ]  [ Workflows ]     │
 │                                                                │
 │  Search: [_________________________________] [Filter ▾]        │
 │                                                                │
@@ -312,8 +314,8 @@ library_items
   organization_id  UUID FK → organizations
   
   -- What this is
-  item_type        TEXT — "mcp_server" | "skill" | "api_connector"
-  item_id          UUID — FK to mcp_server_instances, skills, or api_connectors
+  item_type        TEXT — "mcp_server" | "skill" | "api_connector" | "workflow"
+  item_id          UUID — FK to mcp_server_instances, skills, api_connectors, or workflow_templates
   
   -- Marketplace source
   catalog_ref      TEXT — marketplace catalog ID (null if org-created)
@@ -380,7 +382,7 @@ Marketplace catalog
   │
   ├── User clicks "Add to Library"
   │   → Creates: library_items row (status: pending_setup)
-  │   → Creates: underlying record (mcp_server_instances, skills, or api_connectors)
+  │   → Creates: underlying record (mcp_server_instances, skills, api_connectors, or workflow_templates)
   │
   ├── Admin configures + approves
   │   → library_items status: active
@@ -405,7 +407,7 @@ Marketplace catalog
 
 ```
 GET /api/marketplace
-  ?type=mcp_server|skill|api_connector     — filter by type
+  ?type=mcp_server|skill|api_connector|workflow — filter by type
   &category=devtools                        — filter by category
   &q=search+terms                           — full-text + semantic search
   &source=platform|community|org            — filter by source
@@ -456,8 +458,8 @@ GET    /api/agents/{id}/capabilities         — all capabilities for an agent (
 
 ## 7. Design Principles
 
-### 1. One marketplace, three types
-Users don't care about the technical distinction between MCP servers, skills, and API connectors. They care about what they can do. The marketplace presents capabilities uniformly.
+### 1. One marketplace, four types
+Users don't care about the technical distinction between MCP servers, skills, API connectors, and workflows. They care about what they can do. The marketplace presents capabilities uniformly.
 
 ### 2. Library is the gate
 Nothing reaches an agent without going through the library. The library is where scoping, configuration, approval, and credential management happen. The marketplace is just discovery.
@@ -470,6 +472,363 @@ Every capability type goes through the same security pipeline. MCP servers have 
 
 ### 5. Scope flows down, assignment is explicit
 Library items are scoped (org/project/team/channel/personal). An agent in scope can see available capabilities. But seeing is not having — capabilities must be explicitly assigned to an agent before the agent can use them. Scope makes them available; assignment makes them active.
+
+---
+
+## 8. Workflow Templates
+
+Workflow templates are the highest-level capability in the marketplace. While MCP servers, skills, and API connectors give agents individual capabilities, workflow templates wire everything together into end-to-end automated pipelines.
+
+### What a Workflow Template Is
+
+A workflow template is a blueprint that combines:
+- **Trigger(s)** — what event starts the workflow
+- **Steps** — an ordered sequence of agent tasks, each using skills and/or tools
+- **Routing** — which agent handles each step (or "best available")
+- **Connectors** — which MCP servers / API connectors the workflow requires
+- **Output actions** — what happens when the workflow completes
+
+### Workflow Template Schema
+
+```
+workflow_templates
+  id               UUID PK
+  organization_id  UUID FK → organizations
+  
+  name             TEXT
+  description      TEXT
+  version          INT
+  status           ENUM (draft, testing, active, paused, deprecated, archived)
+  
+  -- The blueprint
+  triggers         JSONB — array of trigger definitions (event type + conditions)
+  steps            JSONB — ordered execution steps (see below)
+  
+  -- Dependencies
+  required_skills  TEXT[] — skills this workflow uses
+  required_tools   TEXT[] — tools needed (from MCP servers or connectors)
+  required_connectors TEXT[] — connectors by slug
+  
+  -- Configuration
+  default_config   JSONB — default parameters for the workflow
+  config_schema    JSONB — JSON Schema for configurable parameters
+  
+  -- Security
+  security_scan_id UUID FK → skill_security_scans (same scan pipeline as skills)
+  risk_level       TEXT — "low" | "medium" | "high"
+  
+  -- Metadata
+  category         TEXT
+  tags             TEXT[]
+  author_id        UUID FK → users
+  source           TEXT — "platform" | "community" | "org"
+  
+  -- Stats
+  run_count        INT DEFAULT 0
+  success_rate     FLOAT
+  avg_duration_s   FLOAT
+  last_run_at      TIMESTAMPTZ
+  
+  created_at       TIMESTAMPTZ
+  updated_at       TIMESTAMPTZ
+  
+  @@unique([organization_id, name])
+```
+
+### Step Definition
+
+Each step in a workflow defines what happens:
+
+```typescript
+type WorkflowStep = {
+  id: string                     // unique step identifier
+  name: string                   // "Extract action items"
+  order: number                  // execution order (steps with same order run in parallel)
+  
+  // What to execute
+  type: "skill" | "agent_task" | "action" | "condition" | "wait"
+  
+  // For type: "skill"
+  skill_name?: string            // which skill to run
+  skill_input?: Record<string, unknown>  // parameters (can reference prior step outputs)
+  
+  // For type: "agent_task"
+  agent_id?: string              // specific agent, or null for intelligent routing
+  agent_role?: string            // route to any agent with this role
+  task_description?: string      // what the agent should do
+  
+  // For type: "action"
+  action_type?: string           // "send_email" | "create_task" | "update_crm" | "post_message"
+  action_config?: Record<string, unknown>
+  
+  // For type: "condition"
+  condition?: {                  // branch based on prior step output
+    field: string                // e.g., "steps.extract_items.output.action_count"
+    operator: "eq" | "gt" | "lt" | "contains" | "exists"
+    value: unknown
+    then_step: string            // step ID to jump to if true
+    else_step?: string           // step ID if false (or skip to next)
+  }
+  
+  // For type: "wait"
+  wait_config?: {
+    duration_minutes?: number    // wait N minutes
+    until_event?: string         // wait for specific event type
+    timeout_minutes?: number     // max wait time before failing
+  }
+  
+  // Error handling
+  on_failure: "stop" | "skip" | "retry" | "fallback"
+  retry_count?: number
+  fallback_step?: string         // step ID to run on failure
+  
+  // Output
+  output_key?: string            // key name for this step's output (referenced by later steps)
+}
+```
+
+### Example: Sales Call Follow-Up Workflow
+
+```json
+{
+  "name": "Sales Call Follow-Up",
+  "description": "After a sales call completes, extract action items, update CRM, send follow-up email, and schedule next meeting",
+  
+  "triggers": [
+    {
+      "event_type": "conversation.completed",
+      "source_filter": ["twilio", "zoom"],
+      "conditions": {
+        "conversation_type": ["call", "meeting"],
+        "has_external_participants": true
+      }
+    }
+  ],
+  
+  "steps": [
+    {
+      "id": "generate_minutes",
+      "name": "Generate meeting minutes",
+      "order": 1,
+      "type": "skill",
+      "skill_name": "generate-minutes",
+      "skill_input": { "transcript": "{{trigger.conversation}}" },
+      "on_failure": "stop",
+      "output_key": "minutes"
+    },
+    {
+      "id": "extract_items",
+      "name": "Extract action items",
+      "order": 1,
+      "type": "skill",
+      "skill_name": "extract-action-items",
+      "skill_input": { "transcript": "{{trigger.conversation}}" },
+      "on_failure": "skip",
+      "output_key": "action_items"
+    },
+    {
+      "id": "check_items",
+      "name": "Check if there are action items",
+      "order": 2,
+      "type": "condition",
+      "condition": {
+        "field": "steps.extract_items.output.count",
+        "operator": "gt",
+        "value": 0,
+        "then_step": "update_crm",
+        "else_step": "send_minutes"
+      }
+    },
+    {
+      "id": "update_crm",
+      "name": "Update CRM with call notes and action items",
+      "order": 3,
+      "type": "agent_task",
+      "agent_role": "sales-assistant",
+      "task_description": "Update the CRM deal record with call notes and action items: {{steps.minutes.output}} / {{steps.action_items.output}}",
+      "on_failure": "skip",
+      "output_key": "crm_update"
+    },
+    {
+      "id": "schedule_followup",
+      "name": "Schedule follow-up meeting",
+      "order": 3,
+      "type": "action",
+      "action_type": "create_calendar_event",
+      "action_config": {
+        "title": "Follow-up: {{trigger.conversation.title}}",
+        "attendees": "{{trigger.conversation.participants}}",
+        "when": "next_available_slot",
+        "duration_minutes": 30
+      },
+      "on_failure": "skip"
+    },
+    {
+      "id": "send_minutes",
+      "name": "Email minutes to participants",
+      "order": 4,
+      "type": "action",
+      "action_type": "send_email",
+      "action_config": {
+        "to": "{{trigger.conversation.participants[role=internal].email}}",
+        "subject": "Minutes: {{trigger.conversation.title}}",
+        "body": "{{steps.minutes.output.formatted}}"
+      },
+      "on_failure": "retry",
+      "retry_count": 2
+    }
+  ],
+  
+  "required_skills": ["generate-minutes", "extract-action-items"],
+  "required_connectors": ["crm", "email", "calendar"],
+  "category": "sales",
+  "tags": ["sales", "follow-up", "crm", "meetings"]
+}
+```
+
+### Example: Sprint Standup Pipeline
+
+```json
+{
+  "name": "Sprint Standup Pipeline",
+  "description": "After standup meeting, generate notes, create tasks for blockers, and post summary to team channel",
+  
+  "triggers": [
+    {
+      "event_type": "conversation.completed",
+      "conditions": {
+        "conversation_type": ["meeting"],
+        "metadata.title_contains": ["standup", "daily sync", "daily scrum"]
+      }
+    }
+  ],
+  
+  "steps": [
+    {
+      "id": "summarize",
+      "name": "Generate standup summary",
+      "order": 1,
+      "type": "agent_task",
+      "agent_role": "meeting-assistant",
+      "task_description": "Summarize this standup. For each participant: what they did yesterday, what they're doing today, any blockers.",
+      "output_key": "summary"
+    },
+    {
+      "id": "extract_blockers",
+      "name": "Extract blockers as tasks",
+      "order": 2,
+      "type": "skill",
+      "skill_name": "extract-action-items",
+      "skill_input": { "transcript": "{{trigger.conversation}}", "filter": "blockers" },
+      "on_failure": "skip",
+      "output_key": "blockers"
+    },
+    {
+      "id": "create_tickets",
+      "name": "Create Jira tickets for blockers",
+      "order": 3,
+      "type": "action",
+      "action_type": "create_task",
+      "action_config": {
+        "system": "jira",
+        "project": "{{config.jira_project}}",
+        "items": "{{steps.blockers.output}}"
+      },
+      "on_failure": "skip"
+    },
+    {
+      "id": "post_summary",
+      "name": "Post summary to team channel",
+      "order": 4,
+      "type": "action",
+      "action_type": "post_message",
+      "action_config": {
+        "channel": "{{config.team_channel}}",
+        "message": "{{steps.summary.output.formatted}}"
+      },
+      "on_failure": "retry",
+      "retry_count": 1
+    }
+  ],
+  
+  "required_skills": ["extract-action-items"],
+  "required_connectors": ["jira", "slack"],
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "jira_project": { "type": "string", "description": "Jira project key for blocker tickets" },
+      "team_channel": { "type": "string", "description": "Slack channel for standup summaries" }
+    },
+    "required": ["jira_project", "team_channel"]
+  }
+}
+```
+
+### Installing a Workflow Template
+
+```
+User clicks [+ Add to Library] on a workflow template
+  │
+  ├── 1. Dependency check:
+  │     ├── Are all required_skills in the library? If not → "Install these skills first: ..."
+  │     ├── Are all required_connectors in the library? If not → "Install these connectors first: ..."
+  │     └── Are all required_tools available? If not → "Missing tools: ..."
+  │
+  ├── 2. Configuration:
+  │     ├── Show config_schema form (e.g., "Which Jira project?", "Which Slack channel?")
+  │     ├── User fills in org-specific parameters
+  │     └── Select scope (which agents/teams this workflow applies to)
+  │
+  ├── 3. Trigger registration:
+  │     ├── For each trigger in the template → create workflow_triggers record
+  │     │   (see conversation-intelligence-platform.md § 4)
+  │     └── Triggers are initially disabled until admin activates
+  │
+  ├── 4. Security scan:
+  │     ├── Workflow steps scanned same as skill instructions
+  │     ├── Cross-step data flow analyzed for leaks (does data flow to unexpected places?)
+  │     └── External action targets validated
+  │
+  ├── 5. Review + activate:
+  │     ├── Admin reviews workflow steps, triggers, and security scan
+  │     ├── Activates → triggers become live
+  │     └── Workflow runs automatically when triggers fire
+  │
+  └── 6. Monitoring:
+        ├── Each workflow run creates a parent task with child tasks per step
+        ├── Visible in workflow run history
+        └── Stats feed back into marketplace ratings
+```
+
+### Workflow vs Skill
+
+| | Skill | Workflow Template |
+|---|---|---|
+| **Scope** | Single agent performs a task | Multiple agents, triggers, and actions orchestrated |
+| **Trigger** | Agent decides to use it | Automatic — event-driven via trigger system |
+| **Dependencies** | Requires tools | Requires skills + tools + connectors |
+| **Execution** | Agent follows instructions | Platform orchestrates step-by-step |
+| **Configuration** | Input parameters | Org-specific config (channels, projects, systems) |
+| **Example** | "Extract action items from a transcript" | "When a sales call ends, extract items, update CRM, email participants, schedule follow-up" |
+
+Skills are building blocks. Workflow templates compose them into automated pipelines.
+
+### Workflow Template API
+
+```
+POST   /api/workflows                       — create workflow template
+GET    /api/workflows                       — list workflows
+GET    /api/workflows/{id}                  — get workflow detail
+PATCH  /api/workflows/{id}                  — update workflow
+DELETE /api/workflows/{id}                  — archive workflow
+
+POST   /api/workflows/{id}/activate         — enable triggers
+POST   /api/workflows/{id}/pause            — disable triggers
+POST   /api/workflows/{id}/run              — manual trigger (for testing)
+
+GET    /api/workflows/{id}/runs             — execution history
+GET    /api/workflows/{id}/runs/{rid}       — specific run detail with step results
+```
 
 ---
 
