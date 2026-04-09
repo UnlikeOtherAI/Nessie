@@ -492,6 +492,8 @@ A workflow template is a blueprint that combines:
 - **Steps** — an ordered sequence of agent tasks, each using skills and/or tools
 - **Routing** — which agent handles each step (or "best available")
 - **Connectors** — which MCP servers / API connectors the workflow requires
+- **Variables** — typed workflow inputs and resource selectors resolved at install time or run time
+- **Execution environments** — optional VM/container/workspace templates for coding, triage, test, and deploy steps
 - **Output actions** — what happens when the workflow completes
 
 ### Workflow Template Schema
@@ -514,7 +516,12 @@ workflow_templates
   required_skills  TEXT[] — skills this workflow uses
   required_tools   TEXT[] — tools needed (from MCP servers or connectors)
   required_connectors TEXT[] — connectors by slug
+  required_environment_templates TEXT[] — environment templates by slug
   
+  -- Typed variables / bindings
+  variable_schema  JSONB — typed workflow variables and selectors
+  binding_schema   JSONB — constrained bindings to installed capabilities/resources
+
   -- Configuration
   default_config   JSONB — default parameters for the workflow
   config_schema    JSONB — JSON Schema for configurable parameters
@@ -592,6 +599,99 @@ type WorkflowStep = {
   output_key?: string            // key name for this step's output (referenced by later steps)
 }
 ```
+
+### Typed Variables and Secure Resource Selection
+
+Workflow configuration must not rely on arbitrary free-text identifiers for sensitive resources. A workflow needs typed variables that resolve only to resources already visible to the installing user and already allowed by scope/policy.
+
+Use two layers:
+
+- `variable_schema`: typed values used by the workflow at runtime
+- `binding_schema`: constrained selectors that bind a workflow to installed connectors, repos, boards, mailboxes, environment templates, channels, and secret refs
+
+Example variable kinds:
+
+- `string`, `number`, `boolean`
+- `enum`
+- `json`
+- `secret_ref`
+- `connector_ref`
+- `connector_resource_ref`
+- `environment_template_ref`
+- `agent_ref`
+- `channel_ref`
+- `repo_ref`
+
+Example binding rule:
+
+- A `repo_ref` for GitHub is not entered as free text
+- The install UI queries the assigned GitHub connector under the current actor context
+- The user can only pick repositories the connector can already see and the current policy allows
+- The saved binding stores provider metadata such as `{ connector_slug, external_id, display_name }`, not arbitrary text
+
+This is how workflows stay universal while still secure:
+
+- the template declares what kind of thing it needs
+- the install flow resolves candidates from assigned capabilities
+- the user selects from an allowlisted set
+- runtime uses the saved binding, not fresh free-text input
+
+Example schema:
+
+```json
+{
+  "variable_schema": {
+    "type": "object",
+    "properties": {
+      "target_repo": {
+        "type": "repo_ref",
+        "provider": "github",
+        "source": "connector_binding",
+        "description": "Repository the workflow may act on"
+      },
+      "issue_label_to_start_fix": {
+        "type": "string",
+        "default": "do-pr"
+      },
+      "customer_contact": {
+        "type": "connector_resource_ref",
+        "provider": "crm",
+        "resource_type": "contact"
+      },
+      "coding_environment": {
+        "type": "environment_template_ref",
+        "capabilities": ["shell", "git", "node", "codex"]
+      }
+    },
+    "required": ["target_repo", "coding_environment"]
+  }
+}
+```
+
+### Execution Environment Bindings
+
+Workflow steps may request interactive or non-interactive execution environments:
+
+- `localhost` folder/process
+- `docker` container
+- cloud VM or job provider such as GCE, EC2, or Droplet
+
+The workflow never hardcodes provider credentials or raw machine IDs. It binds to an allowed environment template and launches an instance through the platform.
+
+Environment bindings should support:
+
+- template selection from visible environment templates
+- provider-neutral capability requirements
+- secret ref attachments as explicit bindings
+- terminal/SSH observability where enabled
+- ephemeral lease + teardown policy
+
+Secret injection must use secret refs, not plaintext:
+
+- workflow stores `secret_ref` bindings
+- launch resolves them at attach time
+- secrets may be mounted as env vars, files, SSH keys, or cloud credentials
+- audit logs record the binding and mount target, never the secret value
 
 ### Example: Sales Call Follow-Up Workflow
 
@@ -770,6 +870,116 @@ type WorkflowStep = {
 }
 ```
 
+### Example: GitHub Issue Triage → Fix → Customer Follow-Up
+
+This is the canonical software-delivery workflow template:
+
+1. GitHub issue webhook arrives
+2. Triage agent classifies the issue and attempts repro in a disposable environment
+3. Agent comments back with findings and labels the issue
+4. User applies `do-pr`
+5. Fix agent launches a coding environment, implements the fix, and opens a PR
+6. PR merge event fires
+7. Customer-facing agent sends a tailored notification through email/CRM/helpdesk
+
+Example shape:
+
+```json
+{
+  "name": "Issue Triage to PR to Customer Follow-Up",
+  "required_connectors": ["github", "email", "crm"],
+  "required_environment_templates": ["coding-vm"],
+  "variable_schema": {
+    "type": "object",
+    "properties": {
+      "target_repo": {
+        "type": "repo_ref",
+        "provider": "github",
+        "source": "connector_binding"
+      },
+      "triage_label_bug": { "type": "string", "default": "bug" },
+      "triage_label_needs_info": { "type": "string", "default": "needs-info" },
+      "fix_label": { "type": "string", "default": "do-pr" },
+      "coding_environment": {
+        "type": "environment_template_ref",
+        "capabilities": ["shell", "git", "codex", "claude"]
+      },
+      "notify_channel": {
+        "type": "channel_ref"
+      }
+    },
+    "required": ["target_repo", "coding_environment"]
+  },
+  "triggers": [
+    {
+      "event_type": "github.issue.opened"
+    },
+    {
+      "event_type": "github.issue.labeled",
+      "conditions": {
+        "label": "{{config.fix_label}}"
+      }
+    },
+    {
+      "event_type": "github.pull_request.merged"
+    }
+  ],
+  "steps": [
+    {
+      "id": "triage_issue",
+      "type": "agent_task",
+      "agent_role": "issue-triage",
+      "task_description": "Assess the issue, decide whether it is a real bug, and decide whether repro is required.",
+      "output_key": "triage"
+    },
+    {
+      "id": "launch_triage_env",
+      "type": "action",
+      "action_type": "launch_environment",
+      "action_config": {
+        "template": "{{config.coding_environment}}",
+        "mode": "ephemeral",
+        "attach_secrets": ["github_token_ref", "package_registry_ref"]
+      },
+      "output_key": "triage_env"
+    },
+    {
+      "id": "attempt_repro",
+      "type": "agent_task",
+      "agent_role": "issue-triage",
+      "task_description": "Use the launched environment to reproduce the issue and capture exact findings.",
+      "output_key": "repro"
+    },
+    {
+      "id": "comment_and_label",
+      "type": "action",
+      "action_type": "github_issue_update",
+      "action_config": {
+        "repo": "{{config.target_repo}}",
+        "comment": "{{steps.repro.output.summary}}",
+        "labels": "{{steps.triage.output.labels}}"
+      }
+    },
+    {
+      "id": "fix_and_open_pr",
+      "type": "agent_task",
+      "agent_role": "issue-fixer",
+      "task_description": "When the fix label arrives, use a coding environment to implement the fix, run checks, and open a PR.",
+      "output_key": "fix_result"
+    },
+    {
+      "id": "notify_customer",
+      "type": "action",
+      "action_type": "send_customer_update",
+      "action_config": {
+        "issue_repo": "{{config.target_repo}}",
+        "message": "We fixed the issue you reported. A build will be with you shortly."
+      }
+    }
+  ]
+}
+```
+
 ### Installing a Workflow Template
 
 ```
@@ -782,7 +992,9 @@ User clicks [+ Add to Library] on a workflow template
   │
   ├── 2. Configuration:
   │     ├── Show config_schema form (e.g., "Which Jira project?", "Which Slack channel?")
-  │     ├── User fills in org-specific parameters
+  │     ├── Show typed selectors from variable_schema / binding_schema
+  │     ├── User picks from allowed resources already visible through assigned connectors and scope
+  │     ├── User fills in non-sensitive workflow parameters
   │     └── Select scope (which agents/teams this workflow applies to)
   │
   ├── 3. Trigger registration:
@@ -793,7 +1005,8 @@ User clicks [+ Add to Library] on a workflow template
   ├── 4. Security scan:
   │     ├── Workflow steps scanned same as skill instructions
   │     ├── Cross-step data flow analyzed for leaks (does data flow to unexpected places?)
-  │     └── External action targets validated
+  │     ├── External action targets validated
+  │     └── Variable bindings verified: no unresolved free-text bindings for protected resources
   │
   ├── 5. Review + activate:
   │     ├── Admin reviews workflow steps, triggers, and security scan

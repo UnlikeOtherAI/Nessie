@@ -865,6 +865,7 @@ Everything is discoverable, installable, and composable through a unified market
 - **Agent builder** (the-agents.md § 15): Full builder workflow with templates, dry-run, approval
 - **Agent versioning**: Immutable config history with rollback
 - **Workflow template engine**: Graph execution, trigger binding
+- **Execution environments**: Workflow-managed local, container, and cloud coding environments for triage/build/fix jobs
 - **OpenAPI auto-import**: Probe + parse + generate endpoint definitions for API connectors
 
 ### Backend work
@@ -905,13 +906,29 @@ Everything is discoverable, installable, and composable through a unified market
    - `GET /api/agents/{id}/versions`, `POST /api/agents/{id}/versions/{versionId}/rollback`
 
 **Workflow templates:**
-1. `workflow_templates` table with `graph_json`, `trigger_type`, `trigger_config`
+1. `workflow_templates` table with `graph_json`, `trigger_type`, `trigger_config`, `variable_schema`, `binding_schema`, `required_environment_templates`
 2. `workflow_triggers` table for event/schedule bindings
 3. Step types: `skill`, `agent_task`, `action`, `condition`, `wait` (from marketplace.md § 8)
-4. Dependency resolution on install
-5. Compensation steps for failure handling
-6. Workflow API: `POST /api/workflows`, `GET /api/workflows`, `GET /api/workflows/{id}/runs`, `POST /api/workflows/{id}/run`
-7. `invoke_workflow` MCP tool
+4. Typed variable resolution on install: repos, connectors, channels, environment templates, secret refs selected from already-visible resources, not arbitrary free text
+5. Execution environment actions: launch ephemeral VM/container/workspace, attach secret refs, expose terminal/xterm session where allowed, teardown on completion/TTL
+6. Dependency resolution on install
+7. Compensation steps for failure handling
+8. Workflow API: `POST /api/workflows`, `GET /api/workflows`, `GET /api/workflows/{id}/runs`, `POST /api/workflows/{id}/run`
+9. `invoke_workflow` MCP tool
+
+**Example template to ship in Phase 8:**
+1. **GitHub Issue Triage → PR → Customer Follow-Up**
+   - Trigger 1: `github.issue.opened` or `github.issue.updated`
+   - Triage agent classifies issue, launches disposable coding environment, attempts repro, comments back, applies labels
+   - Trigger 2: issue labeled `do-pr`
+   - Fix agent launches coding environment, uses assigned repo binding + secret refs, implements fix, runs checks, opens PR
+   - Trigger 3: `github.pull_request.merged`
+   - Customer-facing agent sends tailored update through configured email/CRM/helpdesk connector
+   - Variables are typed selectors, not text:
+     - target repo chosen from GitHub repos visible through the installer's assigned GitHub connector
+     - coding environment chosen from visible environment templates
+     - customer destination chosen from visible CRM/helpdesk resources
+     - secret refs attached explicitly to the environment/job binding
 
 ### Admin UI work
 
