@@ -132,6 +132,36 @@ import {
   listUsersForOrganization,
   loadSessionUserByEmail,
 } from './services/users.js'
+import {
+  emitAuditEvent,
+  getAuditLogEntry,
+  getAuditLogSummary,
+  listAuditLogs,
+} from './services/audit.js'
+import {
+  checkPolicy,
+  createPolicyRule,
+  deletePolicyRule,
+  getEffectivePolicy,
+  listPolicyRules,
+  updatePolicyRule,
+  addPolicyBinding,
+  removePolicyBinding,
+} from './services/policy.js'
+import {
+  getApprovalRequest,
+  getPendingApprovalCount,
+  listApprovalRequests,
+  resolveApprovalRequest,
+  sweepExpiredApprovals,
+} from './services/approvals.js'
+import {
+  createPricingProfile,
+  deletePricingProfile,
+  getMonthlyEstimate,
+  getTokenUsageSummary,
+  listPricingProfiles,
+} from './services/token-ledger.js'
 
 type AuthenticatedRequestState = {
   actorContext: AuthorizedActionContext
@@ -1690,6 +1720,414 @@ export const buildApp = async () => {
 
     await streamDesignerChat(reply, body, sharedModelClient)
     return reply
+  })
+
+  // ─── Phase 2: Audit Log Routes ──────────────────────────────────────────
+
+  app.get('/api/audit-log', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const result = await listAuditLogs(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      action: query['action'],
+      actorId: query['actorId'],
+      resourceType: query['resourceType'],
+      resourceId: query['resourceId'],
+      projectId: query['projectId'],
+      teamId: query['teamId'],
+      channelId: query['channelId'],
+      outcome: query['outcome'],
+      from: query['from'],
+      to: query['to'],
+      cursor: query['cursor'],
+      limit: query['limit'] ? parseInt(query['limit'], 10) : undefined,
+    })
+
+    return { data: result.data, meta: result.meta }
+  })
+
+  app.get('/api/audit-log/summary', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const groupBy = (query['groupBy'] ?? 'action') as 'action' | 'actorId' | 'resourceType' | 'outcome'
+
+    const result = await getAuditLogSummary(
+      prisma,
+      actorContext.tenant.organizationId,
+      groupBy,
+      query['from'],
+      query['to'],
+    )
+
+    return createApiResponse(result)
+  })
+
+  app.get('/api/audit-log/:entryId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { entryId } = request.params as { entryId: string }
+    const entry = await getAuditLogEntry(prisma, entryId, actorContext.tenant.organizationId)
+    if (!entry) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Audit log entry not found')
+      return reply
+    }
+
+    return createApiResponse(entry)
+  })
+
+  // ─── Phase 2: Policy Routes ─────────────────────────────────────────────
+
+  app.get('/api/policy/effective', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const result = await getEffectivePolicy(prisma, actorContext)
+    return createApiResponse(result)
+  })
+
+  app.post('/api/policy/check', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const body = request.body as { resourceType?: string; action?: string } | undefined
+    if (!body?.resourceType || !body?.action) {
+      sendApiError(reply, 400, 'INVALID_INPUT', 'resourceType and action are required')
+      return reply
+    }
+
+    const decision = await checkPolicy(
+      prisma,
+      actorContext,
+      body.resourceType as Parameters<typeof checkPolicy>[2],
+      body.action as Parameters<typeof checkPolicy>[3],
+    )
+
+    return createApiResponse(decision)
+  })
+
+  app.get('/api/policy/rules', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const result = await listPolicyRules(prisma, actorContext.tenant.organizationId, {
+      scope: query['scope'] as Parameters<typeof listPolicyRules>[2] extends { scope?: infer S } ? S : never,
+      scopeId: query['scopeId'],
+      resourceType: query['resourceType'] as Parameters<typeof listPolicyRules>[2] extends { resourceType?: infer R } ? R : never,
+      cursor: query['cursor'],
+      limit: query['limit'] ? parseInt(query['limit'], 10) : undefined,
+    })
+
+    return { data: result.data, meta: result.meta }
+  })
+
+  app.post('/api/policy/rules', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const body = request.body as {
+      scope: string
+      scopeId: string
+      resourceType: string
+      action: string
+      effect: string
+      priority?: number
+      conditions?: Record<string, unknown>
+      bindings?: Array<{ actorType: string; actorId: string }>
+    }
+
+    const rule = await createPolicyRule(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      scope: body.scope as Parameters<typeof createPolicyRule>[1]['scope'],
+      scopeId: body.scopeId,
+      resourceType: body.resourceType as Parameters<typeof createPolicyRule>[1]['resourceType'],
+      action: body.action as Parameters<typeof createPolicyRule>[1]['action'],
+      effect: body.effect as Parameters<typeof createPolicyRule>[1]['effect'],
+      priority: body.priority,
+      conditions: body.conditions,
+      createdBy: actorContext.actor.actorId,
+      bindings: body.bindings,
+    })
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'policy.created',
+      resourceType: 'policy',
+      resourceId: rule.id,
+      outcome: 'success',
+    })
+
+    return reply.code(201).send(createApiResponse(rule))
+  })
+
+  app.put('/api/policy/rules/:ruleId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { ruleId } = request.params as { ruleId: string }
+    const body = request.body as {
+      effect?: string
+      priority?: number
+      conditions?: Record<string, unknown> | null
+    }
+
+    const rule = await updatePolicyRule(prisma, ruleId, actorContext.tenant.organizationId, {
+      effect: body.effect as Parameters<typeof updatePolicyRule>[3]['effect'],
+      priority: body.priority,
+      conditions: body.conditions,
+    })
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'policy.updated',
+      resourceType: 'policy',
+      resourceId: ruleId,
+      outcome: 'success',
+    })
+
+    return createApiResponse(rule)
+  })
+
+  app.delete('/api/policy/rules/:ruleId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { ruleId } = request.params as { ruleId: string }
+    await deletePolicyRule(prisma, ruleId, actorContext.tenant.organizationId)
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'policy.deleted',
+      resourceType: 'policy',
+      resourceId: ruleId,
+      outcome: 'success',
+    })
+
+    return reply.code(204).send()
+  })
+
+  app.post('/api/policy/rules/:ruleId/bindings', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { ruleId } = request.params as { ruleId: string }
+    const body = request.body as { actorType: string; actorId: string }
+
+    const binding = await addPolicyBinding(prisma, ruleId, body.actorType, body.actorId)
+    return reply.code(201).send(createApiResponse(binding))
+  })
+
+  app.delete('/api/policy/rules/:ruleId/bindings/:bindingId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { bindingId } = request.params as { ruleId: string; bindingId: string }
+    await removePolicyBinding(prisma, bindingId)
+    return reply.code(204).send()
+  })
+
+  // ─── Phase 2: Approval Routes ───────────────────────────────────────────
+
+  app.get('/api/approvals', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const result = await listApprovalRequests(prisma, actorContext.tenant.organizationId, {
+      status: query['status'],
+      agentId: query['agentId'],
+      channelId: query['channelId'],
+      cursor: query['cursor'],
+      limit: query['limit'] ? parseInt(query['limit'], 10) : undefined,
+    })
+
+    return { data: result.data, meta: result.meta }
+  })
+
+  app.get('/api/approvals/pending/count', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const count = await getPendingApprovalCount(prisma, actorContext.tenant.organizationId)
+    return createApiResponse({ count })
+  })
+
+  app.get('/api/approvals/:approvalId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { approvalId } = request.params as { approvalId: string }
+    const approval = await getApprovalRequest(prisma, approvalId, actorContext.tenant.organizationId)
+    if (!approval) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
+      return reply
+    }
+
+    return createApiResponse(approval)
+  })
+
+  app.post('/api/approvals/:approvalId/resolve', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { approvalId } = request.params as { approvalId: string }
+    const body = request.body as { resolution: 'approved' | 'rejected'; note?: string }
+
+    if (!body?.resolution || !['approved', 'rejected'].includes(body.resolution)) {
+      sendApiError(reply, 400, 'INVALID_INPUT', 'resolution must be "approved" or "rejected"')
+      return reply
+    }
+
+    const result = await resolveApprovalRequest(
+      prisma,
+      approvalId,
+      actorContext,
+      body.resolution,
+      body.note,
+    )
+
+    if (!result) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
+      return reply
+    }
+
+    if ('error' in result && result.error) {
+      const errorMap: Record<string, { code: number; message: string }> = {
+        ALREADY_RESOLVED: { code: 409, message: 'Approval already resolved' },
+        SELF_APPROVAL: { code: 403, message: 'Cannot approve your own request' },
+        EXPIRED: { code: 410, message: 'Approval request has expired' },
+      }
+      const err = errorMap[result.error] ?? { code: 400, message: 'Unknown error' }
+      sendApiError(reply, err.code, result.error, err.message)
+      return reply
+    }
+
+    // Publish WS event for approval resolution
+    await realtimeHub.publishWs(
+      [{ kind: 'organization', organizationId: actorContext.tenant.organizationId }],
+      {
+        data: {
+          approvalId,
+          taskId: parseTaskId(result.approval.taskId ?? '00000000-0000-4000-8000-000000000000'),
+          agentId: parseAgentId(result.approval.agentId),
+          outcome: body.resolution,
+          resolverId: actorContext.actor.actorId,
+          resolvedAt: new Date().toISOString(),
+        },
+        event: 'approval.resolved',
+      },
+    )
+
+    return createApiResponse(result.approval)
+  })
+
+  // ─── Phase 2: Token Ledger Routes ───────────────────────────────────────
+
+  app.get('/api/ledger/tokens/summary', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const summary = await getTokenUsageSummary(prisma, actorContext.tenant.organizationId, {
+      projectId: query['projectId'],
+      teamId: query['teamId'],
+      channelId: query['channelId'],
+      agentId: query['agentId'],
+      actorId: query['actorId'],
+      provider: query['provider'],
+      model: query['model'],
+      from: query['from'],
+      to: query['to'],
+      groupBy: query['groupBy'],
+    })
+
+    return createApiResponse(summary)
+  })
+
+  app.get('/api/ledger/tokens/monthly-estimate', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const estimate = await getMonthlyEstimate(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(estimate)
+  })
+
+  app.get('/api/ledger/tokens/pricing', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const profiles = await listPricingProfiles(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(profiles)
+  })
+
+  app.post('/api/ledger/tokens/pricing', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const body = request.body as {
+      provider: string
+      modelPattern: string
+      currency?: string
+      source: string
+      inputPerMillion?: number
+      outputPerMillion?: number
+    }
+
+    const profile = await createPricingProfile(
+      prisma,
+      actorContext.tenant.organizationId,
+      {
+        provider: body.provider,
+        modelPattern: body.modelPattern,
+        currency: body.currency,
+        source: body.source as Parameters<typeof createPricingProfile>[2]['source'],
+        inputPerMillion: body.inputPerMillion,
+        outputPerMillion: body.outputPerMillion,
+      },
+      actorContext,
+    )
+
+    return reply.code(201).send(createApiResponse(profile))
+  })
+
+  app.delete('/api/ledger/tokens/pricing/:profileId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { profileId } = request.params as { profileId: string }
+    await deletePricingProfile(prisma, profileId, actorContext.tenant.organizationId, actorContext)
+    return reply.code(204).send()
+  })
+
+  // ─── Phase 2: Approval sweep (periodic) ─────────────────────────────────
+
+  // Run approval expiry sweep every 60 seconds
+  const approvalSweepInterval = setInterval(async () => {
+    try {
+      await sweepExpiredApprovals(prisma)
+    } catch {
+      console.error('[approval-sweep] Failed to sweep expired approvals')
+    }
+  }, 60_000)
+
+  app.addHook('onClose', () => {
+    clearInterval(approvalSweepInterval)
   })
 
   return app
