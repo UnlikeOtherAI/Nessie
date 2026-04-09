@@ -144,6 +144,7 @@ import {
   deletePolicyRule,
   getEffectivePolicy,
   listPolicyRules,
+  seedDefaultPolicies,
   updatePolicyRule,
   addPolicyBinding,
   removePolicyBinding,
@@ -177,7 +178,17 @@ if (!process.env.DATABASE_URL) {
 }
 const databaseUrl = process.env.DATABASE_URL
 const prisma = getPrismaClient()
-const authSecret = config.auth.secret ?? randomUUID()
+const authSecret = (() => {
+  if (config.auth.secret) return config.auth.secret
+  if (config.mode === 'local') {
+    // Local dev: generate a stable per-process secret with a warning
+    console.warn('[auth] NESSIE_AUTH_SECRET not set — using ephemeral secret (tokens will not survive restarts)')
+    return randomUUID()
+  }
+  console.error('[FATAL] NESSIE_AUTH_SECRET is required for hosted/selfHosted modes.')
+  console.error('Multi-instance deployments WILL fail without a shared persistent secret.')
+  process.exit(1)
+})()
 let bootstrapTokenState: BootstrapTokenState | null = null
 
 const resolveBootstrapState = async (): Promise<BootstrapTokenState | null> => {
@@ -306,15 +317,20 @@ const isAgentVisibleToUser = async (userId: string, agentId: string): Promise<bo
     },
   })) > 0
 
-const isChannelVisibleToUser = async (userId: string, channelId: string): Promise<boolean> =>
-  (await prisma.channel.count({
-    where: {
-      id: channelId,
-      members: {
-        some: { userId },
-      },
-    },
-  })) > 0
+const isChannelVisibleToUser = async (userId: string, channelId: string): Promise<boolean> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: { visibility: true, members: { where: { userId }, select: { id: true }, take: 1 } },
+  })
+  if (!channel) return false
+  // Public channels are visible to all org members
+  if (channel.visibility === 'public') return true
+  // Protected and private channels require membership
+  return channel.members.length > 0
+}
+
+const isChannelMember = async (userId: string, channelId: string): Promise<boolean> =>
+  (await prisma.channelMember.count({ where: { userId, channelId } })) > 0
 
 const filterAuthorizedScopes = async (
   userId: string,
@@ -332,7 +348,10 @@ const filterAuthorizedScopes = async (
     }
 
     if (scope.kind === 'channel') {
-      if (await isChannelVisibleToUser(userId, scope.channelId)) {
+      // WS event delivery requires channel membership for private/protected channels.
+      // Public channels allow visibility but WS events still require membership
+      // to prevent leaking real-time content to non-participants.
+      if (await isChannelMember(userId, scope.channelId)) {
         authorizedScopes.push(scope)
       }
       continue
@@ -549,6 +568,7 @@ export const buildApp = async () => {
       displayName: body.displayName,
       passwordHash,
     })
+    await seedDefaultPolicies(prisma, result.organizationId, result.user.id)
     bootstrapTokenState = null
 
     const session = buildLocalSession(result.user.id, ['owner'])
@@ -861,6 +881,17 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
+
+    // Policy check: user must be allowed to bind agents
+    const bindDecision = await checkPolicy(prisma, actorContext, 'agent', 'bind', {
+      agentId,
+      channelId: body.channelId,
+    })
+    if (!bindDecision.allowed) {
+      sendApiError(reply, 403, 'POLICY_DENIED', `Agent binding denied: ${bindDecision.reasonCode}`)
+      return reply
+    }
+
     const agent = await bindAgentToChannel(prisma, agentId, body.channelId)
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
@@ -1395,7 +1426,7 @@ export const buildApp = async () => {
       return reply
     }
 
-    return createApiResponse(await loadAgentMessages(prisma, agentId, limit))
+    return createApiResponse(await loadAgentMessages(prisma, agentId, limit, actorContext.actor.actorId))
   })
 
   app.get('/api/agents/:agentId/children', async (request, reply) => {

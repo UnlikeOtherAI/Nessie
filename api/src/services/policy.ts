@@ -429,6 +429,19 @@ export const seedDefaultPolicies = async (
     bindings: [{ actorType: 'role', actorId: '*' }],
   })
 
+  // Allow binding agents to channels
+  await createPolicyRule(prisma, {
+    organizationId,
+    scope: 'organization',
+    scopeId: organizationId,
+    resourceType: 'agent',
+    action: 'bind',
+    effect: 'allow',
+    priority: 100,
+    createdBy,
+    bindings: [{ actorType: 'role', actorId: '*' }],
+  })
+
   // Allow viewing tools
   await createPolicyRule(prisma, {
     organizationId,

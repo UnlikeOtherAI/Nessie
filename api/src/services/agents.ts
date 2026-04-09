@@ -250,16 +250,25 @@ export const loadAgentMessages = async (
   prisma: PrismaClient,
   agentId: string,
   limit: number,
+  callerUserId?: string,
 ): Promise<AgentMessage[]> => {
+  // Build channel membership filter to prevent cross-channel data leakage
+  const channelFilter = callerUserId
+    ? { thread: { channel: { members: { some: { userId: callerUserId } } } } }
+    : {}
+
   const messages = await prisma.message.findMany({
     where: {
       OR: [
-        { agentId },
+        { agentId, ...channelFilter },
         {
           thread: {
             runs: {
               some: { agentId },
             },
+            ...(callerUserId
+              ? { channel: { members: { some: { userId: callerUserId } } } }
+              : {}),
           },
         },
       ],
