@@ -262,7 +262,7 @@ const authenticateRequest = async (
   return {
     actorContext,
     claims: verification.claims,
-    me: buildMeResponse(user, verification.claims, config),
+    me: await buildMeResponse(prisma, user, verification.claims, config),
   }
 }
 
@@ -597,7 +597,7 @@ export const buildApp = async () => {
     return reply.code(201).send(
       createApiResponse({
         token: session.token,
-        me: MeResponseSchema.parse(buildMeResponse(result.user, verification.claims, config)),
+        me: MeResponseSchema.parse(await buildMeResponse(prisma,result.user, verification.claims, config)),
       }),
     )
   })
@@ -697,7 +697,7 @@ export const buildApp = async () => {
 
         return createApiResponse({
           token: session.token,
-          me: MeResponseSchema.parse(buildMeResponse(sessionUser, verification.claims, config)),
+          me: MeResponseSchema.parse(await buildMeResponse(prisma,sessionUser, verification.claims, config)),
         })
       } catch (error) {
         sendApiError(
@@ -738,7 +738,7 @@ export const buildApp = async () => {
 
     return createApiResponse({
       token: session.token,
-      me: MeResponseSchema.parse(buildMeResponse(user, verification.claims, config)),
+      me: MeResponseSchema.parse(await buildMeResponse(prisma,user, verification.claims, config)),
     })
   })
 
@@ -778,7 +778,7 @@ export const buildApp = async () => {
 
     return createApiResponse({
       token: session.token,
-      me: MeResponseSchema.parse(buildMeResponse(user, verification.claims, config)),
+      me: MeResponseSchema.parse(await buildMeResponse(prisma,user, verification.claims, config)),
     })
   })
 
@@ -1163,6 +1163,228 @@ export const buildApp = async () => {
 
       throw error
     }
+  })
+
+  // ─── Project CRUD ──────────────────────────────────────────────────────────
+
+  app.get('/api/projects', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const projects = await prisma.project.findMany({
+      where: { organizationId: actorContext.tenant.organizationId },
+      include: { members: { select: { userId: true, role: true } } },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    return createApiResponse(projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      organizationId: p.organizationId,
+      memberCount: p.members.length,
+      createdAt: p.createdAt.toISOString(),
+    })))
+  })
+
+  app.post('/api/projects', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const body = request.body as { name?: string } | undefined
+    if (!body?.name) {
+      sendApiError(reply, 400, 'NAME_REQUIRED', 'Project name is required')
+      return reply
+    }
+
+    const project = await prisma.project.create({
+      data: {
+        name: body.name,
+        organizationId: actorContext.tenant.organizationId,
+        members: {
+          create: { userId: actorContext.actor.actorId, role: 'owner' },
+        },
+      },
+    })
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'project.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+      resourceType: 'project',
+      resourceId: project.id,
+      outcome: 'success',
+    })
+
+    return reply.code(201).send(createApiResponse({
+      id: project.id,
+      name: project.name,
+      organizationId: project.organizationId,
+      createdAt: project.createdAt.toISOString(),
+    }))
+  })
+
+  app.post('/api/projects/:projectId/members', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { projectId } = request.params as { projectId: string }
+    const body = request.body as { userId?: string; role?: string } | undefined
+    if (!body?.userId) {
+      sendApiError(reply, 400, 'USER_ID_REQUIRED', 'userId is required')
+      return reply
+    }
+
+    await prisma.projectMember.create({
+      data: {
+        projectId,
+        userId: body.userId,
+        role: body.role ?? 'member',
+      },
+    })
+
+    return reply.code(201).send(createApiResponse({ ok: true }))
+  })
+
+  // ─── Team CRUD ─────────────────────────────────────────────────────────────
+
+  app.get('/api/teams', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const query = request.query as { projectId?: string }
+    const where: Record<string, unknown> = {
+      project: { organizationId: actorContext.tenant.organizationId },
+    }
+    if (query.projectId) {
+      where['projectId'] = query.projectId
+    }
+
+    const teams = await prisma.team.findMany({
+      where,
+      include: { members: { select: { userId: true, role: true } } },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    return createApiResponse(teams.map((t) => ({
+      id: t.id,
+      name: t.name,
+      projectId: t.projectId,
+      memberCount: t.members.length,
+      createdAt: t.createdAt.toISOString(),
+    })))
+  })
+
+  app.post('/api/teams', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const body = request.body as { name?: string; projectId?: string } | undefined
+    if (!body?.name || !body?.projectId) {
+      sendApiError(reply, 400, 'INVALID_INPUT', 'name and projectId are required')
+      return reply
+    }
+
+    const team = await prisma.team.create({
+      data: {
+        name: body.name,
+        projectId: body.projectId,
+        members: {
+          create: { userId: actorContext.actor.actorId, role: 'owner' },
+        },
+      },
+    })
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'team.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+      resourceType: 'team',
+      resourceId: team.id,
+      outcome: 'success',
+    })
+
+    return reply.code(201).send(createApiResponse({
+      id: team.id,
+      name: team.name,
+      projectId: team.projectId,
+      createdAt: team.createdAt.toISOString(),
+    }))
+  })
+
+  app.post('/api/teams/:teamId/members', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { teamId } = request.params as { teamId: string }
+    const body = request.body as { userId?: string; role?: string } | undefined
+    if (!body?.userId) {
+      sendApiError(reply, 400, 'USER_ID_REQUIRED', 'userId is required')
+      return reply
+    }
+
+    await prisma.teamMember.create({
+      data: {
+        teamId,
+        userId: body.userId,
+        role: body.role ?? 'member',
+      },
+    })
+
+    return reply.code(201).send(createApiResponse({ ok: true }))
+  })
+
+  // ─── Context Switching ─────────────────────────────────────────────────────
+
+  app.post('/api/auth/switch-context', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const body = request.body as {
+      organizationId?: string
+      projectId?: string
+      teamId?: string
+    } | undefined
+
+    if (!body?.organizationId || !body?.projectId || !body?.teamId) {
+      sendApiError(reply, 400, 'INVALID_INPUT', 'organizationId, projectId, and teamId are required')
+      return reply
+    }
+
+    // Verify membership
+    const orgMember = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: body.organizationId, userId: actorContext.actor.actorId } },
+    })
+    if (!orgMember) {
+      sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this organization')
+      return reply
+    }
+
+    const session = buildSessionForUser({
+      organizationId: body.organizationId,
+      projectId: body.projectId,
+      providerId: LOCAL_AUTH_PROVIDER_ID,
+      providerType: DEFAULT_LOCAL_PROVIDER_TYPE as SessionTokenClaims['providerType'],
+      roles: [orgMember.role],
+      teamId: body.teamId,
+      userId: actorContext.actor.actorId,
+    })
+
+    const verification = verifySessionToken(session.token, authSecret)
+    if (!verification.ok) {
+      sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue new session')
+      return reply
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: actorContext.actor.actorId } })
+    if (!user) {
+      sendApiError(reply, 500, 'USER_NOT_FOUND', 'User not found')
+      return reply
+    }
+
+    return createApiResponse({
+      token: session.token,
+      me: MeResponseSchema.parse(await buildMeResponse(prisma, user, verification.claims, config)),
+    })
   })
 
   app.get('/api/threads/:threadId/messages', async (request, reply) => {

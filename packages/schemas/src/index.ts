@@ -518,11 +518,27 @@ export const MeAuthSchema = z.object({
 })
 export type MeAuth = z.infer<typeof MeAuthSchema>
 
+export const MeMembershipSchema = z.object({
+  organizationId: OrganizationIdSchema,
+  organizationName: z.string().optional(),
+  role: z.string(),
+  projects: z.array(z.object({
+    projectId: ProjectIdSchema,
+    projectName: z.string().optional(),
+    teams: z.array(z.object({
+      teamId: TeamIdSchema,
+      teamName: z.string().optional(),
+    })),
+  })),
+})
+export type MeMembership = z.infer<typeof MeMembershipSchema>
+
 export const MeResponseSchema = z.object({
   user: MeUserSchema,
   session: MeSessionSchema,
   context: MeContextSchema,
   auth: MeAuthSchema,
+  memberships: z.array(MeMembershipSchema).optional(),
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 
