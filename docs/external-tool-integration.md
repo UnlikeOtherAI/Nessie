@@ -4,6 +4,7 @@ How Nessie agents connect to third-party services — both MCP servers and arbit
 
 Related documents:
 - [the-agents.md](the-agents.md) — agent architecture, tool policy, execution loop
+- [marketplace.md](marketplace.md) — unified marketplace, library, agent editor integration
 - [tool-registry-spec.md](tool-registry-spec.md) — tool registry, grants, bundles, prompt layers
 - [secret-management-spec.md](secret-management-spec.md) — credential storage, scoping, resolution
 - [multi-agent-memory-system.md](multi-agent-memory-system.md) — procedural memory, outcome tracking

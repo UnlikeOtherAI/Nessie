@@ -12,6 +12,7 @@ Related documents:
 - [conversation-intelligence-platform.md](conversation-intelligence-platform.md) — event-driven platform, plugin architecture, trigger system
 - [external-tool-integration.md](external-tool-integration.md) — MCP servers, custom API connectors, credential flow, context loading
 - [skills.md](skills.md) — skills marketplace, security verification, community catalog
+- [marketplace.md](marketplace.md) — unified marketplace UI, library, agent capability assignment
 
 ---
 

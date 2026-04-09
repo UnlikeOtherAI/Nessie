@@ -8,6 +8,7 @@ Related documents:
 - [the-agents.md § 7](the-agents.md) — skill structure, visibility, lifecycle, database schema, promotion pipeline
 - [multi-agent-memory-system.md](multi-agent-memory-system.md) — procedural memory (raw material for skills)
 - [external-tool-integration.md](external-tool-integration.md) — tool integration, context loading (skills depend on tools)
+- [marketplace.md](marketplace.md) — unified marketplace, library, agent editor integration
 - [tool-registry-spec.md](tool-registry-spec.md) — tool registry, grants, execution enforcement
 - [secret-management-spec.md](secret-management-spec.md) — credential handling for skills that use external services
 
