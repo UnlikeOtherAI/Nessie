@@ -429,7 +429,7 @@ This section should be treated as mandatory acceptance context for later impleme
 - [agent-communication-spec.md](./agent-communication-spec.md)
 - [agent tool capabilities](./agent%20tool%20capabilities/index.md)
 - [functionality.md](./functionality.md)
-- [remote-worker-spec.md](./remote-worker-spec.md)
+- [external-tool-integration.md § Remote MCP Servers](./external-tool-integration.md#remote-mcp-servers-self-hosted-runners)
 - [openclaw-agent-teams-implementation.md](./openclaw-agent-teams-implementation.md)
 - [policy-enforcement-spec.md](./policy-enforcement-spec.md)
 - [approval-gating-spec.md](./approval-gating-spec.md)

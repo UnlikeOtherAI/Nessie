@@ -839,7 +839,7 @@ type ControlCommandDefinition = {
   - remote-worker binding.
 - Remote workers must be project-scoped by default and hidden from unauthorized channels/users/agents.
 - Cross-link:
-  - [remote-worker-spec.md](./remote-worker-spec.md),
+  - [external-tool-integration.md § Remote MCP Servers](./external-tool-integration.md#remote-mcp-servers-self-hosted-runners),
   - [organization-governance-spec.md](./organization-governance-spec.md),
   - [agent tool capabilities](./agent%20tool%20capabilities/04-interactive-tools.md).
 

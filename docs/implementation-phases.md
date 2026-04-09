@@ -861,6 +861,6 @@ Minimum gate set:
 - [step-up-verification-spec.md](./step-up-verification-spec.md)
 - [language-and-translation-spec.md](./language-and-translation-spec.md)
 - [knowledge-base-requirements.md](./knowledge-base-requirements.md)
-- [remote-worker-spec.md](./remote-worker-spec.md)
+- [external-tool-integration.md § Remote MCP Servers](./external-tool-integration.md#remote-mcp-servers-self-hosted-runners)
 - [phase-review-process.md](./phase-review-process.md)
 - [functionality.md](./functionality.md)

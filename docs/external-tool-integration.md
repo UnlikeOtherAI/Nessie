@@ -198,6 +198,8 @@ Nessie runs in the cloud, but users need agents to interact with machines behind
 
 This is the same `mcp_server_instances` model with `protocol: "remote"`. Same tool discovery, same credential model, same scoping. The only difference: the machine initiates and maintains the connection.
 
+> **Canonical spec.** This section is the single source of truth for remote workers. The previous standalone `remote-worker-spec.md` has been merged here.
+
 #### How It Works
 
 ```
@@ -220,35 +222,57 @@ This is the same `mcp_server_instances` model with `protocol: "remote"`. Same to
    ✓ Connected to org "Acme Corp"
    ✓ Advertising 12 tools
 
-4. CLI opens a persistent WebSocket connection to Nessie:
-   wss://api.nessie.ai/remote/{server_id}/ws
+4. CLI starts heartbeat polling:
+   POST /api/remote-workers/{server_id}/heartbeat  (every 60s)
+   → Server responds: { hasWork: false, retryAfterMs: 60000 }
    
-   The CLI sends:
-   - tools/list → Nessie discovers what tools this machine offers
-   - heartbeat every 30s → Nessie knows the machine is alive
-   
-   Nessie sends:
-   - tool call requests → CLI executes locally → returns result
+   When work arrives:
+   → Server responds: { hasWork: true, wsTicket: "...", retryAfterMs: 5000 }
+   → CLI opens WebSocket: wss://api.nessie.ai/remote/{server_id}/ws?ticket=...
+   → Tool calls flow over the WebSocket
+   → When work completes, WebSocket closes, CLI returns to polling
 ```
 
-#### Connection Model
+#### Connection Model — Poll When Idle, WebSocket When Active
+
+The CLI does **not** hold a permanent WebSocket open. Instead:
+
+- **Idle**: HTTP heartbeat poll every 60s (server may adjust via `retryAfterMs`)
+- **Active**: WebSocket opened only when there's pending work, closed when done
+- **Why**: Permanent WebSocket wastes resources on machines that may go hours between tool calls. Poll is cheap and keeps the machine discoverable.
 
 ```
-Remote machine (behind firewall/NAT)          Nessie Cloud
-┌─────────────────────────────┐              ┌──────────────────┐
-│  nessie-agent CLI            │    outbound  │                  │
-│                              │─── WSS ────→│  /remote/{id}/ws │
-│  Exposes local tools:        │    only      │                  │
-│  - run_build                 │              │  Routes tool     │
-│  - deploy_staging            │←── calls ────│  calls to this   │
-│  - read_logs                 │              │  connection      │
-│  - restart_service           │── results ──→│                  │
-│                              │              │                  │
-│  Heartbeat every 30s         │── ping ────→│  Health tracking │
-└─────────────────────────────┘              └──────────────────┘
+Remote machine (behind firewall/NAT)              Nessie Cloud
+┌───────────────────────────────┐                ┌──────────────────────┐
+│  nessie-agent CLI              │                │                      │
+│                                │                │                      │
+│  IDLE MODE:                    │   HTTP POST    │                      │
+│  heartbeat every 60s           │───────────────→│  /heartbeat          │
+│  "I'm alive, no policy change" │←──── 200 ─────│  { hasWork: false }  │
+│                                │                │                      │
+│  ACTIVE MODE (work pending):   │   WSS outbound │                      │
+│  opens WebSocket               │───────────────→│  /ws?ticket=...      │
+│  receives tool calls           │←── tool call ──│                      │
+│  executes locally              │── result ─────→│                      │
+│  WebSocket closes when done    │                │                      │
+│  returns to idle polling       │                │                      │
+└───────────────────────────────┘                └──────────────────────┘
 
 Key: the remote machine only makes OUTBOUND connections.
 No inbound ports, no firewall rules, no VPN required.
+```
+
+Heartbeat response shape:
+
+```json
+{
+  "hasWork": true,
+  "retryAfterMs": 5000,
+  "wsTicket": "short-lived-ticket-abc",
+  "sessionId": "sess_123",
+  "policyChanged": false,
+  "policyVersion": "pol_v12"
+}
 ```
 
 #### Protocol: "remote" on mcp_server_instances
@@ -263,106 +287,224 @@ mcp_server_instances row for a remote server:
   -- Remote-specific fields in transport_config:
   transport_config = {
     "registration_token_ref": "secret_reg_token_xxx",  -- secretRef, one-time use
-    "heartbeat_interval_s": 30,
-    "heartbeat_timeout_s": 90,        -- 3 missed heartbeats → mark as disconnected
-    "reconnect_max_backoff_s": 300,   -- CLI retries with exponential backoff
-    "max_concurrent_calls": 5,        -- limit parallel tool calls to this machine
-    "machine_id": "build-server-01",  -- reported by the CLI on connect
-    "machine_info": {                 -- reported by the CLI
+    "heartbeat_interval_s": 60,                         -- default, server may adjust
+    "heartbeat_timeout_s": 180,                         -- 3 missed heartbeats → disconnected
+    "reconnect_max_backoff_s": 300,                     -- CLI retries with exponential backoff
+    "max_concurrent_calls": 5,                          -- limit parallel tool calls
+    "machine_id": "build-server-01",                    -- reported by CLI on connect
+    "machine_info": {                                   -- reported by CLI
       "os": "linux",
       "arch": "amd64",
-      "hostname": "build-01.internal.acme.com"
-    }
+      "hostname": "build-01.internal.acme.com",
+      "platform": "linux"
+    },
+    "local_policy_version": "pol_v12",                  -- current local policy digest
+    "cloud_policy_version": "pol_v15"                   -- last synced cloud policy
   }
   
-  -- Status reflects connection state:
-  status           = "active" (connected) | "paused" (user-paused) | "error" (disconnected)
-  health_status    = "healthy" (heartbeat received) | "degraded" (slow) | "down" (no heartbeat)
+  -- Status reflects connection state (extended for remote):
+  status = "active"    -- heartbeat received, accepting work
+         | "idle"      -- heartbeat received, no active sessions
+         | "busy"      -- WebSocket open, executing tool calls
+         | "draining"  -- finishing current work, not accepting new
+         | "paused"    -- user-paused
+         | "offline"   -- no heartbeat within timeout
+         | "revoked"   -- admin revoked, CLI must re-register
+         | "error"     -- connection or policy error
+  
+  health_status = "healthy" | "degraded" | "down"
 ```
+
+#### Three-Layer Policy Model
+
+Every remote tool call is authorized by the intersection of three policy layers. If **any** layer denies, the action is denied. The local machine owner's policy is a hard floor that the cloud can never expand beyond.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 1. LOCAL HARD POLICY (machine owner controls)            │
+│    Set in nessie-agent.yaml on the remote machine.       │
+│    Cloud CANNOT override or expand these limits.         │
+│                                                          │
+│    Examples:                                             │
+│    - allowed_roots: ["/app", "/var/log"]                 │
+│    - denied_roots: ["/etc", "/root", "/home"]            │
+│    - command_allowlist: ["make", "npm", "docker"]        │
+│    - command_denylist: ["rm -rf", "dd", "mkfs"]          │
+│    - disable_write_tools: false                          │
+│    - disable_ssh: true                                   │
+│    - disable_interactive_sessions: false                 │
+│    - max_runtime_s: 3600                                 │
+│    - max_output_bytes: 10485760 (10MB)                   │
+│    - max_concurrent_sessions: 3                          │
+│    - working_hours_only: false                           │
+│    - env_allowlist: ["NODE_ENV", "PATH"]                 │
+│    - env_denylist: ["AWS_SECRET_*"]                      │
+└─────────────────────┬───────────────────────────────────┘
+                      │ intersected with
+┌─────────────────────▼───────────────────────────────────┐
+│ 2. CLOUD POLICY (Nessie admin controls)                  │
+│    Set per org/project/team/channel/agent in Nessie.     │
+│    Can only NARROW, never expand local policy.           │
+│                                                          │
+│    Examples:                                             │
+│    - agent "deploy-bot" may use shell.run on this worker │
+│    - channel "incident-response" gets read-only access   │
+│    - project "backend" can discover this worker          │
+│    - project "frontend" cannot discover this worker      │
+│    - all write operations require approval               │
+└─────────────────────┬───────────────────────────────────┘
+                      │ intersected with
+┌─────────────────────▼───────────────────────────────────┐
+│ 3. ACTOR CONTEXT (runtime — who's asking, why)           │
+│    Evaluated at execution time per request.              │
+│                                                          │
+│    Inputs: agent ID, user ID, channel, project,          │
+│    tool being called, arguments, time of day             │
+│                                                          │
+│    Decision: allowed | denied | requires_approval        │
+│              | requires_step_up_verification             │
+│                                                          │
+│    Reason codes:                                         │
+│    - REMOTE_WORKER_OFFLINE                               │
+│    - LOCAL_POLICY_DENY                                   │
+│    - CLOUD_POLICY_DENY                                   │
+│    - MISSING_AGENT_BINDING                               │
+│    - TOOL_NOT_EXPOSED                                    │
+│    - PATH_OUTSIDE_ALLOWED_ROOT                           │
+│    - COMMAND_NOT_IN_ALLOWLIST                             │
+│    - MAX_CONCURRENT_SESSIONS_REACHED                     │
+│    - OUTSIDE_WORKING_HOURS                               │
+└─────────────────────────────────────────────────────────┘
+```
+
+Policy sync happens on every heartbeat. The CLI sends its local policy digest; the server sends the current cloud policy. If either has changed, capabilities and bindings are re-evaluated before any new work is dispatched.
 
 #### CLI Tool Discovery
 
-The CLI exposes tools to Nessie using the standard MCP `tools/list` protocol. What the CLI exposes depends on what's installed/configured on the remote machine:
+The CLI exposes tools to Nessie using the standard MCP `tools/list` protocol. What the CLI exposes depends on what's installed/configured on the remote machine and what local policy allows:
 
 ```
-nessie-agent can expose tools from:
+nessie-agent can expose these capability surfaces:
 
-  1. Built-in tools (always available):
-     - remote_bash: Execute shell commands on this machine
-     - remote_file_read: Read files from this machine
-     - remote_file_write: Write files on this machine
-     - remote_process_list: List running processes
-     - remote_system_info: OS, CPU, memory, disk info
+  1. Shell execution:
+     - shell.run: One-shot command execution
+     - shell.session: Long-lived interactive terminal session (if enabled by local policy)
 
-  2. Declared tools (configured in nessie-agent.yaml):
-     tools:
-       - name: run_build
-         description: "Run the CI build pipeline"
-         command: "cd /app && make build"
-         timeout: 600
-         risk_level: medium
-       
-       - name: deploy_staging
-         description: "Deploy current build to staging"
-         command: "/scripts/deploy.sh staging"
-         timeout: 300
-         risk_level: high
-         requires_approval: true
-       
-       - name: read_logs
-         description: "Read application logs"
-         command: "tail -n {{lines}} /var/log/app/{{service}}.log"
-         parameters:
-           lines: { type: integer, default: 100 }
-           service: { type: string, enum: [api, worker, scheduler] }
-         risk_level: low
+  2. File operations:
+     - file.read: Read files (within allowed_roots)
+     - file.write: Write files (within allowed_roots, if write enabled)
+     - file.glob: Search for files by pattern
 
-  3. MCP servers running on the machine:
-     mcp_servers:
-       - name: local-postgres
-         command: "npx @modelcontextprotocol/server-postgres"
-         env:
-           DATABASE_URL: "{{secret:local_db_url}}"
+  3. Process management:
+     - process.list: List running processes
+     - process.signal: Send signals to processes (if enabled)
+
+  4. SSH (if enabled):
+     - ssh.run: Execute commands on another machine via SSH
+     - ssh.session: Interactive SSH session
+
+  5. MCP proxy:
+     - mcp.proxy: Proxy local MCP servers through the connection to Nessie
      
-     → The CLI proxies these MCP servers through its connection to Nessie.
-       Nessie sees them as tools on the remote server.
+  6. CLI wrappers (declared in nessie-agent.yaml):
+     - Named commands with parameters, timeouts, risk levels
+
+All surfaces are filtered by local hard policy before being advertised.
+If local policy says disable_ssh: true, ssh.* surfaces are never exposed.
 ```
 
-#### Security Considerations
+Declared tools in `nessie-agent.yaml`:
 
-Remote servers execute commands on real machines. The security model is strict:
+```yaml
+# Local hard policy
+policy:
+  allowed_roots: ["/app", "/var/log", "/tmp/builds"]
+  denied_roots: ["/etc/shadow", "/root"]
+  command_allowlist: ["make", "npm", "docker", "kubectl"]
+  disable_ssh: true
+  disable_interactive_sessions: false
+  max_runtime_s: 3600
+  max_output_bytes: 10485760
+  max_concurrent_sessions: 3
+
+# Custom tool declarations
+tools:
+  - name: run_build
+    description: "Run the CI build pipeline"
+    command: "cd /app && make build"
+    timeout: 600
+    risk_level: medium
+  
+  - name: deploy_staging
+    description: "Deploy current build to staging"
+    command: "/scripts/deploy.sh staging"
+    timeout: 300
+    risk_level: high
+    requires_approval: true
+  
+  - name: read_logs
+    description: "Read application logs"
+    command: "tail -n {{lines}} /var/log/app/{{service}}.log"
+    parameters:
+      lines: { type: integer, default: 100 }
+      service: { type: string, enum: [api, worker, scheduler] }
+    risk_level: low
+
+# Local MCP servers to proxy
+mcp_servers:
+  - name: local-postgres
+    command: "npx @modelcontextprotocol/server-postgres"
+    env:
+      DATABASE_URL: "{{secret:local_db_url}}"
+```
+
+#### Security Model
+
+Remote servers execute commands on real machines. The security model has multiple layers:
 
 ```
-1. REGISTRATION TOKEN
-   - One-time use, expires after 24 hours
-   - Scoped to a specific mcp_server_instances record
-   - After registration, the CLI receives a long-lived client certificate
-   - The registration token is revoked immediately after use
+1. REGISTRATION
+   - One-time token, expires after 24 hours, scoped to one server record
+   - After registration, CLI receives short-lived access token + refresh policy
+   - Registration token revoked immediately after use
+   - Worker-scoped API key — never org-level keys on the machine
+   - Long-lived org keys must NEVER be embedded in worker config
 
 2. TOOL APPROVAL
    - All tools discovered from a remote server start as pending_review
    - Admin must approve each tool before agents can use it
    - Tools with risk_level: "high" always require per-invocation approval
-   - remote_bash requires explicit admin opt-in (disabled by default)
+   - shell.run requires explicit admin opt-in (disabled by default)
+   - shell.session (interactive) requires separate opt-in
 
 3. CREDENTIAL ISOLATION
-   - Credentials on the remote machine (DB passwords, API keys) stay on the machine
-   - The CLI resolves local secrets from its own config, not from Nessie's secret store
-   - Nessie never sees local credentials — it sends tool call args, CLI injects creds locally
-   - Exception: if a tool needs a Nessie-managed secret, the platform resolves and sends it
-     over the encrypted WebSocket (same as any other credential injection)
+   - Local credentials (DB passwords, API keys) stay on the machine
+   - CLI resolves local secrets from its own config, not Nessie's secret store
+   - Nessie never sees local credentials — sends tool call args, CLI injects locally
+   - Exception: Nessie-managed secrets resolved and sent over encrypted WebSocket
+   - Secrets NEVER pushed in plaintext over chat — only secretRef resolution at execution time
 
 4. NETWORK SECURITY
-   - WebSocket connection is always TLS (WSS)
-   - Client certificate authentication after registration
-   - The CLI validates Nessie's server certificate (no self-signed)
-   - Connection-level encryption for all tool call payloads
+   - All connections are outbound TLS (WSS for active, HTTPS for heartbeat)
+   - Client certificate or short-lived token authentication
+   - CLI validates Nessie's server certificate (no self-signed)
+   - Worker does NOT accept inbound connections from the public internet
 
-5. AUDIT
-   - Every tool call on a remote server is logged in Nessie's audit system
-   - The CLI also logs locally to /var/log/nessie-agent/audit.log
-   - Remote bash commands are logged with full command text (redacted secrets)
-   - Admin can view remote execution history in the Nessie admin UI
+5. POLICY ENFORCEMENT
+   - Three-layer policy evaluated on every tool call (see above)
+   - Local policy changes are integrity-protected before parent accepts them
+   - Policy version mismatch → re-sync before accepting new work
+
+6. AUDIT
+   - Every tool call logged in Nessie's audit system with full context:
+     actor, project, channel, agent, tool, arguments (redacted secrets)
+   - CLI also logs locally to /var/log/nessie-agent/audit.log
+   - Admin can view remote execution history in Nessie admin UI
+
+7. REVOCATION
+   - Admin can revoke a worker immediately
+   - Revocation blocks new sessions and invalidates reconnect tokens
+   - Active sessions can be interrupted or drained per policy
 ```
 
 #### Remote Server Lifecycle
@@ -370,38 +512,147 @@ Remote servers execute commands on real machines. The security model is strict:
 ```
 Registration:
   Admin creates server → gets token → user runs nessie-agent register
-  → CLI connects → tools discovered → admin approves tools → ready
+  → CLI starts heartbeat polling → tools discovered → admin approves → ready
 
-Normal operation:
-  CLI maintains WebSocket connection
-  Heartbeat every 30s
-  Nessie routes tool calls → CLI executes → returns results
-  
+Idle:
+  CLI polls heartbeat endpoint every 60s
+  Server responds: { hasWork: false }
+  Nessie knows the machine is alive
+
+Active:
+  Server responds: { hasWork: true, wsTicket: "..." }
+  CLI opens WebSocket with ticket
+  Tool calls flow over WebSocket
+  CLI executes → returns results
+  When done, WebSocket closes → returns to idle polling
+
+Draining:
+  Admin or policy triggers drain
+  → CLI finishes current work
+  → Does not accept new WebSocket sessions
+  → Returns to idle (or offline if deregistering)
+
 Disconnection:
-  CLI loses connection (network issue, machine restart, etc.)
-  → Nessie marks server as health_status: "down" after 90s (3 missed heartbeats)
+  CLI stops heartbeating (network issue, machine restart, crash)
+  → Nessie marks as offline after 180s (3 missed heartbeats)
   → Tools from this server become temporarily unavailable
   → Agents see: "Build Server (on-prem): offline" in capability directory
-  → CLI reconnects automatically with exponential backoff
-  → On reconnect: tools/list re-run, health restored, tools available again
+  → CLI reconnects automatically with exponential backoff (max 300s)
+  → On reconnect: tools/list re-run, policy synced, health restored
+
+Revocation:
+  Admin revokes the worker
+  → CLI receives revocation on next heartbeat or active WebSocket
+  → All sessions terminated
+  → Reconnect tokens invalidated
+  → CLI must re-register with a new token to resume
 
 Deregistration:
   $ nessie-agent deregister
   → CLI closes connection, removes local credentials
-  → Or: admin deletes the server in Nessie → CLI receives disconnect signal
+  → Or: admin deletes the server in Nessie → CLI receives deregister signal
+```
+
+#### Remote Worker API
+
+```
+POST   /api/remote-workers/register                     — bootstrap registration
+POST   /api/remote-workers/{id}/heartbeat               — heartbeat poll (returns hasWork)
+POST   /api/remote-workers/{id}/policy-sync             — sync local ↔ cloud policy
+GET    /api/remote-workers/{id}/ws?ticket=...            — WebSocket for active work
+POST   /api/remote-workers/{id}/drain                   — graceful drain
+POST   /api/remote-workers/{id}/revoke                  — immediate revocation
+GET    /api/remote-workers                              — list all workers (admin)
+GET    /api/remote-workers/{id}                         — get worker details
+GET    /api/remote-workers/{id}/policy/effective         — computed effective policy
+POST   /api/remote-workers/{id}/access/check            — test whether a specific call would be allowed
 ```
 
 #### CLI Management Commands
 
 ```
 $ nessie-agent register --token <token>     Register with Nessie
-$ nessie-agent status                        Show connection status, registered tools
+$ nessie-agent status                        Show connection status, registered tools, policy
 $ nessie-agent tools                         List tools this agent exposes
 $ nessie-agent logs                          Tail local execution logs
+$ nessie-agent policy                        Show effective policy (local + cloud)
 $ nessie-agent deregister                    Disconnect and clean up
 $ nessie-agent run                           Start the agent (foreground, for systemd/launchd)
 $ nessie-agent install-service               Install as a system service (systemd/launchd)
 ```
+
+#### Admin UI — Resources Page
+
+Remote workers appear in the admin as **Resources** — a dedicated page showing all connected machines, their status, tools, and policy.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Admin > Resources                                                    │
+│                                                                      │
+│ Scope: [Organization ▾]  [All statuses ▾]  [Search...]              │
+│                                                                      │
+│ ┌──────────────────┬──────────┬────────┬───────┬──────────────────┐  │
+│ │ Name             │ Status   │ Scope  │ Tools │ Last Seen        │  │
+│ ├──────────────────┼──────────┼────────┼───────┼──────────────────┤  │
+│ │ Build Server 01  │ 🟢 idle  │ Org    │ 12    │ 30s ago          │  │
+│ │ Staging Deploy   │ 🔵 busy  │ Team   │ 5     │ active now       │  │
+│ │ Dev Laptop (Joe) │ 🟢 idle  │ Personal│ 8    │ 2m ago           │  │
+│ │ GPU Cluster      │ ⚫ offline│ Project│ 3    │ 4h ago           │  │
+│ │ Ops Monitor      │ 🟢 idle  │ Channel│ 4    │ 1m ago           │  │
+│ └──────────────────┴──────────┴────────┴───────┴──────────────────┘  │
+│                                                                      │
+│ [+ Register New Resource]                                            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Resource detail page:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Build Server 01                                    [Drain] [Revoke] │
+│                                                                      │
+│ Status: 🟢 idle          Machine: linux/amd64                        │
+│ Scope: Organization      Hostname: build-01.internal.acme.com        │
+│ Registered: 2026-03-15   Last heartbeat: 30s ago                     │
+│                                                                      │
+│ ┌─ Tools (12) ──────────────────────────────────────────────────┐    │
+│ │ ✓ run_build          medium    approved                       │    │
+│ │ ✓ deploy_staging     high      approved (requires approval)   │    │
+│ │ ✓ read_logs          low       approved                       │    │
+│ │ ○ shell.run          high      pending review                 │    │
+│ │ ...                                                           │    │
+│ └───────────────────────────────────────────────────────────────┘    │
+│                                                                      │
+│ ┌─ Policy ──────────────────────────────────────────────────────┐    │
+│ │ Local policy version: pol_v12                                 │    │
+│ │ Cloud policy version: pol_v15                                 │    │
+│ │ Allowed roots: /app, /var/log, /tmp/builds                    │    │
+│ │ Command allowlist: make, npm, docker, kubectl                 │    │
+│ │ SSH: disabled   Interactive: enabled   Write: enabled         │    │
+│ └───────────────────────────────────────────────────────────────┘    │
+│                                                                      │
+│ ┌─ Bindings ────────────────────────────────────────────────────┐    │
+│ │ Agent: deploy-bot         → shell.run, deploy_staging         │    │
+│ │ Channel: #incident-resp   → read_logs (read-only)             │    │
+│ │ Team: Engineering         → all approved tools                │    │
+│ └───────────────────────────────────────────────────────────────┘    │
+│                                                                      │
+│ ┌─ Recent Activity ─────────────────────────────────────────────┐    │
+│ │ 14:30  deploy-bot called deploy_staging → success (42s)       │    │
+│ │ 14:25  build-agent called run_build → success (3m12s)         │    │
+│ │ 13:50  ops-agent called read_logs → success (1s)              │    │
+│ └───────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Scoping works the same as all other capabilities:
+- **Organization** scope → all agents in the org can use this resource
+- **Project** scope → only agents in that project
+- **Team** scope → only agents bound to that team
+- **Channel** scope → only agents in that channel
+- **Personal** scope → only one user's agents
+
+Resources that are **global** (org-scoped) are visible to everyone but may have read-only or restricted tool access via cloud policy. Resources scoped to a team or channel are only discoverable by agents in that scope. The admin who registered the resource controls the scope; the machine owner controls the local policy.
 
 ---
 
