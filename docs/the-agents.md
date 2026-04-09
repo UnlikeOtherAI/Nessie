@@ -7,6 +7,8 @@ Related documents:
 - [multi-agent-memory-system.md](multi-agent-memory-system.md) — memory types, retrieval, self-eval
 - [agent-communication-spec.md](agent-communication-spec.md) — routing, threads, status model
 - [research/evolving-agent-runtime-enterprise-grade.md](research/evolving-agent-runtime-enterprise-grade.md) — enterprise evolution research
+- [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) — external identity, VOIP, email, WhatsApp
+- [research/voip-twilio-implementation.md](research/voip-twilio-implementation.md) — Twilio voice implementation
 
 ---
 

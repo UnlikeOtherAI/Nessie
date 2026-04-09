@@ -4,6 +4,11 @@ Agents are not just internal entities. They have real-world identity — email a
 
 This is a design brief, not a finalized spec. It captures the concept and maps out what needs to be designed.
 
+Related documents:
+- [voip-twilio-implementation.md](voip-twilio-implementation.md) — Twilio VOIP implementation: call flows, SIP trunking, transcription, recording, cost model
+- [../the-agents.md](../the-agents.md) — agent architecture and execution
+- [../agent-base-template.md](../agent-base-template.md) — universal agent contract
+
 ---
 
 ## Core Concept
