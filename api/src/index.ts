@@ -67,6 +67,7 @@ import {
   CreateMailboxMessageBodySchema,
   CreateExecutionEnvironmentTemplateBodySchema,
   CreateAgentBindingBodySchema,
+  BlockWorkflowStepRunBodySchema,
   CancelWorkflowRunBodySchema,
   CreateAgentBodySchema,
   CreateAgentTriggerBodySchema,
@@ -76,6 +77,9 @@ import {
   CreateWorkflowRunBodySchema,
   CreateWorkflowTemplateBodySchema,
   CreateWorkflowTriggerBodySchema,
+  RetryWorkflowRunBodySchema,
+  SkipWorkflowStepRunBodySchema,
+  UnblockWorkflowStepRunBodySchema,
   CreateTemporaryContextSessionBodySchema,
   CreateToolRegistryEntryBodySchema,
   DesignerChatBodySchema,
@@ -214,6 +218,7 @@ import {
   registerToolRegistryEntry,
 } from './services/tools.js'
 import {
+  blockWorkflowStepRun,
   cancelWorkflowRun,
   createWorkflowRun,
   createWorkflowTemplate,
@@ -223,6 +228,10 @@ import {
   listWorkflowInstallations,
   listWorkflowRuns,
   listWorkflowTemplates,
+  retryWorkflowRun,
+  skipWorkflowStepRun,
+  unblockWorkflowStepRun,
+  WorkflowActionError,
 } from './services/workflows.js'
 import {
   createUserForOrganization,
@@ -2539,6 +2548,145 @@ export const buildApp = async () => {
     }
 
     return createApiResponse(WorkflowRunRecordSchema.parse(cancelled))
+  })
+
+  app.post('/api/workflow-runs/:workflowRunId/retry', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(RetryWorkflowRunBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowRunId } = request.params as { workflowRunId: string }
+    try {
+      const retried = await retryWorkflowRun(prisma, actorContext, workflowRunId, body)
+      if (!retried) {
+        sendApiError(reply, 404, 'WORKFLOW_RUN_NOT_FOUND', 'Workflow run not found')
+        return reply
+      }
+      return reply.code(202).send(createApiResponse(WorkflowRunRecordSchema.parse(retried)))
+    } catch (error) {
+      if (error instanceof WorkflowActionError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
+  })
+
+  app.post('/api/workflow-step-runs/:workflowStepRunId/skip', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(SkipWorkflowStepRunBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowStepRunId } = request.params as { workflowStepRunId: string }
+    try {
+      const updated = await skipWorkflowStepRun({
+        prisma,
+        actorContext,
+        workflowStepRunId,
+        reason: body.reason,
+      })
+      if (!updated) {
+        sendApiError(reply, 404, 'WORKFLOW_STEP_RUN_NOT_FOUND', 'Workflow step run not found')
+        return reply
+      }
+      return createApiResponse(WorkflowStepRunRecordSchema.parse(updated))
+    } catch (error) {
+      if (error instanceof WorkflowActionError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
+  })
+
+  app.post('/api/workflow-step-runs/:workflowStepRunId/block', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(BlockWorkflowStepRunBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowStepRunId } = request.params as { workflowStepRunId: string }
+    try {
+      const updated = await blockWorkflowStepRun({
+        prisma,
+        actorContext,
+        workflowStepRunId,
+        reason: body.reason,
+      })
+      if (!updated) {
+        sendApiError(reply, 404, 'WORKFLOW_STEP_RUN_NOT_FOUND', 'Workflow step run not found')
+        return reply
+      }
+      return createApiResponse(WorkflowStepRunRecordSchema.parse(updated))
+    } catch (error) {
+      if (error instanceof WorkflowActionError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
+  })
+
+  app.post('/api/workflow-step-runs/:workflowStepRunId/unblock', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(UnblockWorkflowStepRunBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowStepRunId } = request.params as { workflowStepRunId: string }
+    try {
+      const updated = await unblockWorkflowStepRun({
+        prisma,
+        actorContext,
+        workflowStepRunId,
+        reason: body.reason,
+      })
+      if (!updated) {
+        sendApiError(reply, 404, 'WORKFLOW_STEP_RUN_NOT_FOUND', 'Workflow step run not found')
+        return reply
+      }
+      return createApiResponse(WorkflowStepRunRecordSchema.parse(updated))
+    } catch (error) {
+      if (error instanceof WorkflowActionError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
   })
 
   app.get('/api/execution-environment-templates', async (request, reply) => {

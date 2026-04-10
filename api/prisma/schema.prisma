@@ -1023,6 +1023,7 @@ model WorkflowRun {
   triggerId        String?           @map("trigger_id") @db.Uuid
   triggerDeliveryId String?          @map("trigger_delivery_id") @db.Uuid
   parentRunId      String?           @map("parent_run_id") @db.Uuid
+  retriedFromWorkflowRunId String?   @map("retried_from_workflow_run_id") @db.Uuid
   planId           String?           @map("plan_id") @db.Uuid
   planStepId       String?           @map("plan_step_id") @db.Uuid
   status           WorkflowRunStatus @default(pending)
@@ -1040,6 +1041,8 @@ model WorkflowRun {
   trigger          AgentTrigger?     @relation(fields: [triggerId], references: [id], onDelete: SetNull)
   triggerDelivery  AgentTriggerDelivery? @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
   parentRun        Run?              @relation("WorkflowParentRun", fields: [parentRunId], references: [id], onDelete: SetNull)
+  retriedFromWorkflowRun WorkflowRun? @relation("WorkflowRunRetry", fields: [retriedFromWorkflowRunId], references: [id], onDelete: SetNull)
+  retries          WorkflowRun[]     @relation("WorkflowRunRetry")
   plan             Plan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
   planStep         PlanStep?         @relation(fields: [planStepId], references: [id], onDelete: SetNull)
   stepRuns         WorkflowStepRun[]
@@ -1050,6 +1053,7 @@ model WorkflowRun {
   @@index([organizationId, status, createdAt(sort: Desc)])
   @@index([triggerId, createdAt(sort: Desc)])
   @@index([parentRunId, createdAt(sort: Desc)])
+  @@index([retriedFromWorkflowRunId, createdAt(sort: Desc)])
   @@map("workflow_runs")
 }
 

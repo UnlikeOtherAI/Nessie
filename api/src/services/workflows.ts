@@ -63,6 +63,7 @@ type WorkflowRunRow = {
   organizationId: string
   output: unknown
   parentRunId: string | null
+  retriedFromWorkflowRunId: string | null
   planId: string | null
   planStepId: string | null
   startedAt: Date | null
@@ -303,6 +304,7 @@ const mapWorkflowRun = (run: WorkflowRunRow): WorkflowRunRecord => ({
   triggerId: run.triggerId ?? undefined,
   triggerDeliveryId: run.triggerDeliveryId ?? undefined,
   parentRunId: parseOptional(run.parentRunId, parseRunId),
+  retriedFromWorkflowRunId: run.retriedFromWorkflowRunId ?? undefined,
   planId: run.planId ?? undefined,
   planStepId: run.planStepId ?? undefined,
   status: run.status,
@@ -603,6 +605,330 @@ export const cancelWorkflowRun = async (
   })
 
   return result ? mapWorkflowRun(result) : null
+}
+
+type WorkflowRunStatusValue = 'cancelled' | 'completed' | 'failed' | 'pending' | 'running'
+type WorkflowStepRunStatusValue =
+  | 'blocked'
+  | 'completed'
+  | 'failed'
+  | 'pending'
+  | 'running'
+  | 'skipped'
+
+export const isTerminalWorkflowRunStatus = (status: WorkflowRunStatusValue): boolean =>
+  status === 'cancelled' || status === 'completed' || status === 'failed'
+
+export const isActiveWorkflowRunStatus = (status: WorkflowRunStatusValue): boolean =>
+  status === 'pending' || status === 'running'
+
+export const canRetryWorkflowRun = (status: WorkflowRunStatusValue): boolean =>
+  isTerminalWorkflowRunStatus(status)
+
+export const canSkipWorkflowStepRun = (input: {
+  runStatus: WorkflowRunStatusValue
+  stepStatus: WorkflowStepRunStatusValue
+}): boolean =>
+  isActiveWorkflowRunStatus(input.runStatus) &&
+  (input.stepStatus === 'pending' || input.stepStatus === 'blocked')
+
+export const canBlockWorkflowStepRun = (input: {
+  runStatus: WorkflowRunStatusValue
+  stepStatus: WorkflowStepRunStatusValue
+}): boolean => isActiveWorkflowRunStatus(input.runStatus) && input.stepStatus === 'pending'
+
+export const canUnblockWorkflowStepRun = (input: {
+  runStatus: WorkflowRunStatusValue
+  stepStatus: WorkflowStepRunStatusValue
+}): boolean => isActiveWorkflowRunStatus(input.runStatus) && input.stepStatus === 'blocked'
+
+export class WorkflowActionError extends Error {
+  constructor(
+    public code:
+      | 'WORKFLOW_RUN_NOT_TERMINAL'
+      | 'WORKFLOW_INSTALLATION_INACTIVE'
+      | 'WORKFLOW_RUN_NOT_ACTIVE'
+      | 'WORKFLOW_STEP_RUN_NOT_SKIPPABLE'
+      | 'WORKFLOW_STEP_RUN_NOT_BLOCKABLE'
+      | 'WORKFLOW_STEP_RUN_NOT_UNBLOCKABLE',
+    message: string,
+  ) {
+    super(message)
+    this.name = 'WorkflowActionError'
+  }
+}
+
+export const retryWorkflowRun = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  workflowRunId: string,
+  input: { reason?: string } = {},
+): Promise<WorkflowRunRecord | null> => {
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.workflowRun.findFirst({
+      where: {
+        id: workflowRunId,
+        organizationId: actorContext.tenant.organizationId,
+      },
+      select: {
+        id: true,
+        status: true,
+        input: true,
+        installationId: true,
+        triggerId: true,
+      },
+    })
+    if (!existing) {
+      return null
+    }
+    if (!canRetryWorkflowRun(existing.status)) {
+      throw new WorkflowActionError(
+        'WORKFLOW_RUN_NOT_TERMINAL',
+        'Only terminal workflow runs can be retried',
+      )
+    }
+
+    const installation = await tx.workflowInstallation.findFirst({
+      where: {
+        id: existing.installationId,
+        organizationId: actorContext.tenant.organizationId,
+        active: true,
+        status: { in: ['active', 'draft'] },
+      },
+      select: { id: true, organizationId: true },
+    })
+    if (!installation) {
+      throw new WorkflowActionError(
+        'WORKFLOW_INSTALLATION_INACTIVE',
+        'Workflow installation is inactive and cannot accept retries',
+      )
+    }
+
+    const summary = input.reason?.trim() || `Retry of workflow run ${existing.id}`
+
+    const run = await tx.workflowRun.create({
+      data: {
+        installationId: installation.id,
+        organizationId: installation.organizationId,
+        triggerId: existing.triggerId,
+        retriedFromWorkflowRunId: existing.id,
+        input: (existing.input ?? {}) as Prisma.InputJsonValue,
+        summary,
+        startedByActorType: actorContext.actor.actorType,
+        startedByActorId: actorContext.actor.actorId,
+      },
+    })
+
+    const payload: WorkflowRunExecuteJobPayload = {
+      actorContext,
+      workflowRunId: run.id,
+    }
+    await enqueueQueueJob(tx, {
+      idempotencyKey: `workflow-run:start:${run.id}`,
+      payload,
+      topic: 'workflow.run.execute',
+    })
+
+    return run
+  })
+
+  return result ? mapWorkflowRun(result) : null
+}
+
+type StepActionContext = {
+  prisma: PrismaClient
+  actorContext: AuthorizedActionContext
+  workflowStepRunId: string
+  reason?: string
+}
+
+type StepRunSelection = {
+  id: string
+  status: 'blocked' | 'completed' | 'failed' | 'pending' | 'running' | 'skipped'
+  workflowRun: {
+    id: string
+    organizationId: string
+    status: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running'
+  }
+}
+
+const loadWorkflowStepRunForAction = async (
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  workflowStepRunId: string,
+): Promise<StepRunSelection | null> => {
+  const row = await tx.workflowStepRun.findFirst({
+    where: {
+      id: workflowStepRunId,
+      workflowRun: { organizationId },
+    },
+    select: {
+      id: true,
+      status: true,
+      workflowRun: {
+        select: {
+          id: true,
+          organizationId: true,
+          status: true,
+        },
+      },
+    },
+  })
+  return row
+}
+
+const enqueueWorkflowExecute = async (
+  tx: Prisma.TransactionClient,
+  actorContext: AuthorizedActionContext,
+  workflowRunId: string,
+  suffix: string,
+): Promise<void> => {
+  const payload: WorkflowRunExecuteJobPayload = {
+    actorContext,
+    workflowRunId,
+  }
+  await enqueueQueueJob(tx, {
+    idempotencyKey: `workflow-run:${suffix}:${workflowRunId}:${Date.now()}`,
+    payload,
+    topic: 'workflow.run.execute',
+  })
+}
+
+export const skipWorkflowStepRun = async (
+  ctx: StepActionContext,
+): Promise<WorkflowStepRunRecord | null> => {
+  const result = await ctx.prisma.$transaction(async (tx) => {
+    const existing = await loadWorkflowStepRunForAction(
+      tx,
+      ctx.actorContext.tenant.organizationId,
+      ctx.workflowStepRunId,
+    )
+    if (!existing) {
+      return null
+    }
+    if (
+      !canSkipWorkflowStepRun({
+        runStatus: existing.workflowRun.status,
+        stepStatus: existing.status,
+      })
+    ) {
+      if (!isActiveWorkflowRunStatus(existing.workflowRun.status)) {
+        throw new WorkflowActionError('WORKFLOW_RUN_NOT_ACTIVE', 'Workflow run is not active')
+      }
+      throw new WorkflowActionError(
+        'WORKFLOW_STEP_RUN_NOT_SKIPPABLE',
+        'Only pending or blocked steps can be skipped',
+      )
+    }
+
+    const summary = ctx.reason?.trim() || 'Workflow step skipped by operator.'
+    const updated = await tx.workflowStepRun.update({
+      where: { id: ctx.workflowStepRunId },
+      data: {
+        status: 'skipped',
+        errorMessage: summary,
+        finishedAt: new Date(),
+      },
+      include: {
+        environmentInstance: { select: { id: true } },
+      },
+    })
+
+    await enqueueWorkflowExecute(tx, ctx.actorContext, existing.workflowRun.id, 'step-skip')
+
+    return updated
+  })
+
+  return result ? mapWorkflowStepRun(result) : null
+}
+
+export const blockWorkflowStepRun = async (
+  ctx: StepActionContext,
+): Promise<WorkflowStepRunRecord | null> => {
+  const result = await ctx.prisma.$transaction(async (tx) => {
+    const existing = await loadWorkflowStepRunForAction(
+      tx,
+      ctx.actorContext.tenant.organizationId,
+      ctx.workflowStepRunId,
+    )
+    if (!existing) {
+      return null
+    }
+    if (
+      !canBlockWorkflowStepRun({
+        runStatus: existing.workflowRun.status,
+        stepStatus: existing.status,
+      })
+    ) {
+      if (!isActiveWorkflowRunStatus(existing.workflowRun.status)) {
+        throw new WorkflowActionError('WORKFLOW_RUN_NOT_ACTIVE', 'Workflow run is not active')
+      }
+      throw new WorkflowActionError(
+        'WORKFLOW_STEP_RUN_NOT_BLOCKABLE',
+        'Only pending steps can be blocked',
+      )
+    }
+
+    const summary = ctx.reason?.trim() || 'Workflow step blocked by operator.'
+    return tx.workflowStepRun.update({
+      where: { id: ctx.workflowStepRunId },
+      data: {
+        status: 'blocked',
+        errorMessage: summary,
+      },
+      include: {
+        environmentInstance: { select: { id: true } },
+      },
+    })
+  })
+
+  return result ? mapWorkflowStepRun(result) : null
+}
+
+export const unblockWorkflowStepRun = async (
+  ctx: StepActionContext,
+): Promise<WorkflowStepRunRecord | null> => {
+  const result = await ctx.prisma.$transaction(async (tx) => {
+    const existing = await loadWorkflowStepRunForAction(
+      tx,
+      ctx.actorContext.tenant.organizationId,
+      ctx.workflowStepRunId,
+    )
+    if (!existing) {
+      return null
+    }
+    if (
+      !canUnblockWorkflowStepRun({
+        runStatus: existing.workflowRun.status,
+        stepStatus: existing.status,
+      })
+    ) {
+      if (!isActiveWorkflowRunStatus(existing.workflowRun.status)) {
+        throw new WorkflowActionError('WORKFLOW_RUN_NOT_ACTIVE', 'Workflow run is not active')
+      }
+      throw new WorkflowActionError(
+        'WORKFLOW_STEP_RUN_NOT_UNBLOCKABLE',
+        'Only blocked steps can be unblocked',
+      )
+    }
+
+    const updated = await tx.workflowStepRun.update({
+      where: { id: ctx.workflowStepRunId },
+      data: {
+        status: 'pending',
+        errorMessage: null,
+      },
+      include: {
+        environmentInstance: { select: { id: true } },
+      },
+    })
+
+    await enqueueWorkflowExecute(tx, ctx.actorContext, existing.workflowRun.id, 'step-unblock')
+
+    return updated
+  })
+
+  return result ? mapWorkflowStepRun(result) : null
 }
 
 export const getWorkflowRun = async (

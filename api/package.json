@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "db:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://localhost:5432/nessie} prisma validate --schema prisma/schema.prisma",
     "lint": "eslint src --max-warnings 0",
+    "test": "node --test --import tsx test/**/*.test.ts",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",

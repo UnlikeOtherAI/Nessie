@@ -533,6 +533,7 @@ export const WorkflowRunRecordSchema = z.object({
   triggerId: z.string().uuid().nullish(),
   triggerDeliveryId: z.string().uuid().nullish(),
   parentRunId: RunIdSchema.nullish(),
+  retriedFromWorkflowRunId: z.string().uuid().nullish(),
   planId: z.string().uuid().nullish(),
   planStepId: z.string().uuid().nullish(),
   status: WorkflowRunStatusSchema,
@@ -581,6 +582,22 @@ export const CreateWorkflowRunBodySchema = z.object({
 })
 
 export const CancelWorkflowRunBodySchema = z.object({
+  reason: z.string().min(1).optional(),
+})
+
+export const RetryWorkflowRunBodySchema = z.object({
+  reason: z.string().min(1).optional(),
+})
+
+export const SkipWorkflowStepRunBodySchema = z.object({
+  reason: z.string().min(1).optional(),
+})
+
+export const BlockWorkflowStepRunBodySchema = z.object({
+  reason: z.string().min(1).optional(),
+})
+
+export const UnblockWorkflowStepRunBodySchema = z.object({
   reason: z.string().min(1).optional(),
 })
 
