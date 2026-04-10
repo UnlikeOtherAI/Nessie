@@ -71,6 +71,40 @@ export const useResumeTrigger = () => {
   })
 }
 
+export const useCreateWorkflowInstallationTrigger = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      installationId: string
+      type: AgentTriggerRecord['type']
+      name?: string
+      description?: string
+      enabled?: boolean
+      config?: Record<string, unknown>
+      nextRunAt?: string
+    }) =>
+      apiClient.post<AgentTriggerRecord>(
+        `/api/workflow-installations/${input.installationId}/triggers`,
+        {
+          type: input.type,
+          name: input.name,
+          description: input.description,
+          enabled: input.enabled,
+          config: input.config,
+          nextRunAt: input.nextRunAt,
+        },
+      ),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['workflow-installations', variables.installationId, 'triggers'],
+      })
+    },
+  })
+}
+
 export const useFireTrigger = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

@@ -11,6 +11,7 @@ import { PolicyPage } from './pages/PolicyPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
 import { TriggersPage } from './pages/TriggersPage'
+import { WorkflowsPage } from './pages/WorkflowsPage'
 
 export const router = createBrowserRouter([
   {
@@ -39,6 +40,10 @@ export const router = createBrowserRouter([
       {
         path: '/triggers',
         element: <TriggersPage />,
+      },
+      {
+        path: '/workflows',
+        element: <WorkflowsPage />,
       },
       {
         path: '/agents/new',

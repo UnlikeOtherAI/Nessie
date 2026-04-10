@@ -8,6 +8,16 @@ const sectionTitle =
 const formatTimestamp = (value?: string) =>
   value ? new Date(value).toLocaleString() : '—'
 
+const formatTriggerTarget = (trigger: {
+  agentId?: string
+  workflowInstallationId?: string
+}): string => {
+  if (trigger.agentId) return `agent ${trigger.agentId.slice(0, 8)}`
+  if (trigger.workflowInstallationId)
+    return `workflow ${trigger.workflowInstallationId.slice(0, 8)}`
+  return 'unassigned'
+}
+
 export const TriggersPage = () => {
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
@@ -52,7 +62,7 @@ export const TriggersPage = () => {
                         {trigger.name ?? trigger.type}
                       </div>
                       <div className="text-xs text-[color:var(--tx3)]">
-                        {trigger.agentId.slice(0, 8)} · {trigger.type}
+                        {formatTriggerTarget(trigger)} · {trigger.type}
                       </div>
                     </div>
                     <span className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">

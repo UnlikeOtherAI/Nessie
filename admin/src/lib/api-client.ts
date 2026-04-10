@@ -106,7 +106,8 @@ export type ToolDescriptor = {
 
 export type AgentTriggerRecord = {
   id: string
-  agentId: string
+  agentId?: string
+  workflowInstallationId?: string
   type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
   status: 'active' | 'paused' | 'error'
   enabled: boolean
@@ -119,6 +120,92 @@ export type AgentTriggerRecord = {
   nextRunAt?: string
   createdAt: string
   updatedAt: string
+}
+
+export type WorkflowRunStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export type WorkflowStepRunStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+  | 'blocked'
+
+export type WorkflowTemplateRecord = {
+  id: string
+  organizationId: string
+  name: string
+  description?: string | null
+  version: number
+  graph: { steps: Array<{ id: string; type: string; title?: string }> }
+  requiredEnvironmentTemplateIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type WorkflowInstallationRecord = {
+  id: string
+  workflowTemplateId: string
+  workflowTemplateVersion: number
+  organizationId: string
+  channelId?: string | null
+  status: 'active' | 'paused' | 'archived'
+  active: boolean
+  resolvedBindings: Record<string, unknown>
+  config: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export type WorkflowRunRecord = {
+  id: string
+  installationId: string
+  organizationId: string
+  triggerId?: string | null
+  retriedFromWorkflowRunId?: string | null
+  status: WorkflowRunStatus
+  input: unknown
+  output: unknown
+  summary?: string | null
+  errorMessage?: string | null
+  startedByActorType: string
+  startedByActorId: string
+  startedAt?: string | null
+  finishedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type WorkflowStepRunRecord = {
+  id: string
+  workflowRunId: string
+  stepKey: string
+  stepType: string
+  title: string
+  sequence: number
+  status: WorkflowStepRunStatus
+  input: unknown
+  output: unknown
+  errorMessage?: string | null
+  assignedAgentId?: string | null
+  agentRunId?: string | null
+  taskId?: string | null
+  environmentInstanceId?: string | null
+  startedAt?: string | null
+  finishedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type WorkflowRunDetail = {
+  run: WorkflowRunRecord
+  steps: WorkflowStepRunRecord[]
 }
 
 export type AgentTriggerDeliveryRecord = {

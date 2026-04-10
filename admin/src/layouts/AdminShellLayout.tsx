@@ -58,6 +58,7 @@ export const AdminShellLayout = () => {
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
   const isTriggersRoute = location.pathname.startsWith('/triggers');
+  const isWorkflowsRoute = location.pathname.startsWith('/workflows');
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
@@ -253,6 +254,34 @@ export const AdminShellLayout = () => {
               <circle cx="12" cy="12" r="3.5" />
             </svg>
             <span className="admin-rail-btn-label">Triggers</span>
+          </Link>
+
+          <Link
+            className={`admin-rail-btn ${isWorkflowsRoute ? 'active' : ''}`}
+            to="/workflows"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <rect height="4" rx="1" width="6" x="4" y="4" />
+              <rect height="4" rx="1" width="6" x="14" y="10" />
+              <rect height="4" rx="1" width="6" x="4" y="16" />
+              <path
+                d="M10 6h2a2 2 0 012 2v4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M14 12h-2a2 2 0 00-2 2v4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="admin-rail-btn-label">Workflows</span>
           </Link>
 
           <button

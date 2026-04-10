@@ -50,16 +50,15 @@ const parseResponse = async <TData,>(response: Response): Promise<TData> => {
 }
 
 const parseApiError = async (response: Response): Promise<string> => {
+  const text = await response.text()
+  if (!text) {
+    return `${response.status} ${response.statusText}`
+  }
   try {
-    const payload = (await response.json()) as {
-      error?: {
-        code?: string
-        message?: string
-      }
-    }
-    return payload.error?.message ?? JSON.stringify(payload)
+    const payload = JSON.parse(text) as { error?: { code?: string; message?: string } }
+    return payload.error?.message ?? text
   } catch {
-    return await response.text()
+    return text
   }
 }
 
