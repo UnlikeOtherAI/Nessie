@@ -387,81 +387,49 @@ Use when a provider is preferred but not required.
 
 Rules:
 
-- fallback is for availability or hard incompatibility, not for silent
-  answer shopping.
-- every attempted provider call still produces its own invocation
-  record.
+- fallback is for availability or hard incompatibility, not for silent answer shopping.
+- executor stages run in order. Only the first successful stage may produce the final answer.
+- every attempted provider call produces its own invocation record.
+- **mid-turn fallback**: if primary fails mid-turn before consuming a tool call, the fallback re-receives the full conversation including the tool-result block from the turn that failed.
 
 ### 9.3 Committee
 
-Use when one agent should receive input from several providers before one
-final model answers.
+Use when multiple providers contribute to one answer before the terminal stage synthesizes.
 
 Rules:
 
-- run advisor stages in parallel against the same normalized request.
-- normalize each advisor output into a canonical candidate shape before
-  handing it to the terminal stage.
+- advisor stages run in parallel against the same normalized request.
+- each advisor normalizes its output into a `CandidateOutput` before the terminal stage.
 - only one terminal stage may produce the user-facing answer.
-- if a judge stage exists, it ranks or filters candidate outputs but
-  does not stream directly to the user.
-- record every advisor, synthesizer, and judge invocation separately.
-
-Recommended candidate shape:
-
-```ts
-type CandidateOutput = {
-  stageId: string
-  summary: string
-  answer: string
-  toolIntent?: ToolCallIntent
-  confidence?: number
-  citations?: string[]
-}
-```
+- if a judge stage exists, it ranks or filters candidate outputs but does not stream.
+- record every advisor and judge invocation separately.
 
 ### 9.4 Pipeline
 
-Use when provider outputs are intentionally sequential rather than
-parallel.
-
-Examples:
-
-- planner -> executor
-- generator -> critic -> reviser
-- retrieval summarizer -> answer model
+Use when provider outputs are intentionally sequential rather than parallel: planner → executor, generator → critic → reviser, retrieval summarizer → answer model.
 
 Rules:
-
 - each stage consumes normalized output from named upstream stages.
 - only the terminal stage may emit the final user-facing answer.
 - keep pipeline width narrow in v1. Linear flows are enough.
 
 ### 9.5 Shadow
 
-Use when another provider should observe the same request without owning
-the user-facing answer.
+Use when another provider should observe the same request without owning the user-facing answer.
 
 Rules:
-
 - the visible stage owns the answer.
 - shadow stages never affect the live transcript in v1.
-- shadow stages are for evaluation, telemetry, and route comparison.
+- for evaluation, telemetry, or regression comparison only.
 
 ### 9.6 Tool execution ownership
 
-Tool execution must have one owner per turn.
+Tool execution must have exactly one owner per turn. Rules:
 
-Rules:
-
-- by default, only one executor or synthesizer stage may execute tools.
-- advisor and shadow stages should default to `toolCallingMode =
-  'disabled'`.
-- if a non-native-tools provider owns tool execution, use the
-  prompt-translated mediation path and log that translation separately.
-- do not let multiple stages execute tools against the same turn unless
-  the workflow explicitly requires it and the result merge behavior is
-  defined.
+- only executor and synthesizer stages may execute tools by default.
+- advisor and shadow stages should default to `toolCallingMode = 'disabled'`.
+- if a non-native-tools provider owns tool execution, use the prompt-translated mediation path and log that translation as a separate invocation.
+- do not let multiple stages execute tools in the same turn unless the workflow explicitly defines result-merge behavior.
 
 ### 9.7 Streaming policy
 
@@ -481,39 +449,53 @@ candidate stages are semantically equivalent.
 
 ## 10) Invocation accounting and ledger integration
 
-The current `ModelUsageTracker` is too narrow because it groups only by
-model name and assumes one provider path.
+Replace the runtime output with an invocation array returned from `InferenceService`. Every physical call gets its own `InvocationRecord` with the shared `requestId`. A `correlationId` groups helper calls under the same turn.
 
-Replace that runtime output with an invocation array returned from `InferenceService`.
+### 10.1 Step categorization via metadata
 
-Rules:
+```ts
+type StepMetadata = {
+  step: 'primary' | 'fallback' | 'advisor' | 'synthesizer' | 'shadow' | 'judge' | 'tool-translation'
+  stageRole: StageRole
+  stageId?: string
+  committeeMode?: 'shadow' | 'pipeline' | 'parallel-assist'
+  killed?: boolean  // true when first-complete killed a peer
+}
+```
 
-- one user request may produce many invocation records.
-- each invocation record flushes to one `TokenLedgerEvent`.
-- all events from one top-level request share the same `requestId`.
-- `correlationId` groups helper calls such as tool translation, judge
-  calls, and fallback attempts under the same run.
-- use `metadata.stageId` and `metadata.stageRole` on every invocation.
-- use metadata to distinguish steps:
-  - `step = primary`
-  - `step = fallback`
-  - `step = advisor`
-  - `step = synthesizer`
-  - `step = shadow`
-  - `step = judge`
-  - `step = tool-translation`
+### 10.2 Ledger mapping
 
-This fits the existing token-ledger design cleanly:
+| What ran | operationType | metadata.step |
+|---|---|---|
+| Primary/fallback answer | `chat` | `primary` / `fallback` |
+| Advisor in committee | `chat` | `advisor` |
+| Shadow peer | `chat` or `reasoning` | `shadow` |
+| Judge selection | `reasoning` | `judge` |
+| Tool translator | `tool-translation` | `tool-translation` |
+| Embedding | `embedding` | `primary` |
 
-- primary answer generation: `operationType = 'chat'`
-- tool translation helper: `operationType = 'tool-translation'`
-- judge/ranking helper: `operationType = 'reasoning'`
-- embeddings: `operationType = 'embedding'`
-- shadow evaluation calls: `operationType = 'reasoning'` or `chat`,
-  depending on what the stage actually did
+Each invocation record flushes to one `TokenLedgerEvent` at run completion.
 
-Do not collapse multi-provider runs into one synthetic usage record.
-That destroys billing, debugging, and governance value.
+### 10.3 Final result shape
+
+```ts
+type MultiProviderResult = {
+  requestId: string
+  correlationId?: string
+  finalAnswer: string
+  answerOwner: {
+    stageId: string
+    stageRole: StageRole
+    provider: string
+    model: string
+    invocationId: string
+  }
+  toolExecutionOwner: { stageId: string; provider: string; model: string } | null
+  invocations: InvocationRecord[]
+}
+```
+
+All downstream consumers (UI, audit, billing) derive from `invocations[]`. The owner fields are metadata on that array. Do not collapse multi-provider runs into a synthetic rollup record — that destroys billing, debugging, and governance value.
 
 ## 11) Admin and policy surface
 
