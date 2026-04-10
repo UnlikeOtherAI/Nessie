@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import type { ModelConfig, ModelProvider } from '@nessie/config'
-import { createModelClient, type ModelMessage, type ModelOptions } from '@nessie/runtime'
+import {
+  createInferenceService,
+  type ModelProviderConfig,
+  type ModelMessage,
+} from '@nessie/runtime'
 import type {
   AuthorizedActionContext,
   CandidateOutput,
@@ -19,6 +23,8 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<ModelProvider, string> = {
   minimax: 'MiniMax-M2.5',
   openai: 'gpt-5-mini',
 }
+
+type RunnableProvider = ModelProvider | 'openai-compatible'
 
 type RunInferenceGraphInput = {
   actorContext: AuthorizedActionContext
@@ -54,8 +60,10 @@ type StageExecutionSuccess = {
 
 type ResolvedProviderConfig = {
   apiKey: string
+  baseUrl?: string
+  connectorKind?: 'compiled' | 'openai-compatible'
   model: string
-  provider: ModelProvider
+  providerKey: string
 }
 
 type InvocationPricingProfile = {
@@ -93,10 +101,13 @@ const createStageFailure = (
   return error
 }
 
-const resolveRuntimeProvider = (providerKey: string): ModelProvider | null => {
+const resolveRuntimeProvider = (providerKey: string): RunnableProvider | null => {
   const normalized = providerKey.trim().toLowerCase()
   if (normalized === 'openai') {
     return 'openai'
+  }
+  if (normalized === 'openai-compatible') {
+    return 'openai-compatible'
   }
   if (normalized === 'minimax') {
     return 'minimax'
@@ -107,7 +118,7 @@ const resolveRuntimeProvider = (providerKey: string): ModelProvider | null => {
 const resolveModelName = (provider: ModelProvider, requestedModel?: string | null): string =>
   requestedModel?.trim() || DEFAULT_MODEL_BY_PROVIDER[provider]
 
-const resolveApiKey = (provider: ModelProvider, modelConfig: ModelConfig): string => {
+const resolveLegacyApiKey = (provider: ModelProvider, modelConfig: ModelConfig): string => {
   if (provider === 'openai') {
     return (
       process.env.OPENAI_CHAT_API_KEY ??
@@ -119,6 +130,9 @@ const resolveApiKey = (provider: ModelProvider, modelConfig: ModelConfig): strin
 
   return process.env.MINIMAX_API_KEY ?? (modelConfig.provider === 'minimax' ? modelConfig.apiKey : undefined) ?? ''
 }
+
+const resolveBoundApiKey = (authSecretRef: string | null | undefined): string =>
+  authSecretRef ? process.env[authSecretRef] ?? '' : ''
 
 const buildVisibleStageMessages = (
   baseMessages: ModelMessage[],
@@ -183,27 +197,6 @@ const resolveStepMetadata = (
 const resolveOperationType = (stage: RouteStage): OperationType =>
   stage.role === 'judge' ? 'reasoning' : 'chat'
 
-const getLastUsageRecord = (
-  inputTokens: number,
-  outputTokens: number,
-): InvocationRecord['usage'] => ({
-  inputTokens,
-  outputTokens,
-  totalTokens: inputTokens + outputTokens,
-})
-
-const resolveTrackedUsage = (
-  model: string,
-  trackerUsage: Array<{ model: string; inputTokens: number; outputTokens: number }>,
-): InvocationRecord['usage'] => {
-  const record = trackerUsage.find((entry) => entry.model === model)
-  if (!record) {
-    return {}
-  }
-
-  return getLastUsageRecord(record.inputTokens, record.outputTokens)
-}
-
 const toFailure = (
   input: {
     code: string
@@ -255,9 +248,15 @@ const buildDirectRoute = (
   },
   modelConfig: ModelConfig,
 ): ResolvedRoute => {
-  const runtimeProvider = resolveRuntimeProvider(input.provider ?? modelConfig.provider)
-  if (!runtimeProvider) {
-    throw new Error(`Unsupported direct model provider: ${input.provider ?? modelConfig.provider}`)
+  const providerKey = input.provider?.trim() || modelConfig.provider
+  const runtimeProvider = resolveRuntimeProvider(providerKey)
+  const model =
+    runtimeProvider && runtimeProvider !== 'openai-compatible'
+      ? resolveModelName(runtimeProvider, input.model ?? modelConfig.modelName)
+      : input.model?.trim() || modelConfig.modelName
+
+  if (!model) {
+    throw new Error(`Direct route ${providerKey} is missing a model`)
   }
 
   return {
@@ -265,9 +264,9 @@ const buildDirectRoute = (
     stages: [
       {
         id: 'direct',
+        model,
+        provider: providerKey,
         role: 'executor',
-        provider: input.provider ?? runtimeProvider,
-        model: resolveModelName(runtimeProvider, input.model ?? modelConfig.modelName),
         userVisible: true,
       },
     ],
@@ -426,39 +425,37 @@ const resolveStageProviderConfig = async (
   },
 ): Promise<ResolvedProviderConfig> => {
   const runtimeProvider = resolveRuntimeProvider(input.providerKey)
-  if (!runtimeProvider) {
-    throw new Error(`Unsupported inference provider: ${input.providerKey}`)
+  const providerRows = await prisma.$queryRaw<
+    Array<{
+      authSecretRef: string | null
+      baseUrl: string | null
+      connectorKind: 'compiled' | 'openai_compatible'
+      id: string
+    }>
+  >(
+    Prisma.sql`
+      SELECT
+        p.id,
+        p.connector_kind::text AS "connectorKind",
+        p.base_url AS "baseUrl",
+        b.auth_secret_ref AS "authSecretRef"
+      FROM inference_providers p
+      LEFT JOIN inference_credential_bindings b
+        ON b.id = p.active_credential_binding_id
+      WHERE p.organization_id = ${input.organizationId}::uuid
+        AND p.provider_key = ${input.providerKey}
+        AND p.enabled = true
+        AND p.lifecycle_status = 'approved'
+      LIMIT 1
+    `,
+  )
+
+  const providerRecord = providerRows[0]
+  if (input.routeSource === 'routing-profile' && !providerRecord) {
+    throw new Error(`Routing profile provider ${input.providerKey} is not runnable`)
   }
 
-  if (input.routeSource === 'routing-profile') {
-    const providerRows = await prisma.$queryRaw<
-      Array<{ connectorKind: 'compiled' | 'openai_compatible'; id: string }>
-    >(
-      Prisma.sql`
-        SELECT
-          id,
-          connector_kind::text AS "connectorKind"
-        FROM inference_providers
-        WHERE organization_id = ${input.organizationId}::uuid
-          AND provider_key = ${input.providerKey}
-          AND enabled = true
-          AND lifecycle_status = 'approved'
-        LIMIT 1
-      `,
-    )
-
-    const providerRecord = providerRows[0]
-
-    if (!providerRecord) {
-      throw new Error(`Routing profile provider ${input.providerKey} is not runnable`)
-    }
-
-    if (providerRecord.connectorKind !== 'compiled') {
-      throw new Error(
-        `Routing profile provider ${input.providerKey} uses unsupported connector kind ${providerRecord.connectorKind}`,
-      )
-    }
-
+  if (providerRecord) {
     const modelRows = await prisma.$queryRaw<Array<{ id: string }>>(
       Prisma.sql`
         SELECT id
@@ -474,22 +471,36 @@ const resolveStageProviderConfig = async (
 
     const modelRecord = modelRows[0]
 
-    if (!modelRecord) {
+    if (!modelRecord && input.routeSource === 'routing-profile') {
       throw new Error(
         `Routing profile model ${input.requestedModel} for provider ${input.providerKey} is not runnable`,
       )
     }
   }
 
-  const apiKey = resolveApiKey(runtimeProvider, input.modelConfig)
+  const connectorKind =
+    providerRecord?.connectorKind === 'openai_compatible'
+      ? 'openai-compatible'
+      : 'compiled'
+
+  const apiKey =
+    resolveBoundApiKey(providerRecord?.authSecretRef) ||
+    (runtimeProvider && runtimeProvider !== 'openai-compatible'
+      ? resolveLegacyApiKey(runtimeProvider, input.modelConfig)
+      : '')
+
   if (!apiKey) {
     throw new Error(`Missing API key for provider ${input.providerKey}`)
   }
 
   return {
     apiKey,
-    model: resolveModelName(runtimeProvider, input.requestedModel),
-    provider: runtimeProvider,
+    baseUrl: providerRecord?.baseUrl ?? undefined,
+    connectorKind,
+    model: runtimeProvider && runtimeProvider !== 'openai-compatible'
+      ? resolveModelName(runtimeProvider, input.requestedModel)
+      : input.requestedModel,
+    providerKey: input.providerKey,
   }
 }
 
@@ -512,7 +523,6 @@ const executeStage = async (
   },
 ): Promise<StageExecutionSuccess> => {
   const startedAt = Date.now()
-  const invocationId = randomUUID()
   const requestId = input.actorContext.actionContext.requestId
   const correlationId = input.actorContext.actionContext.correlationId
   const step = resolveStepMetadata(input.mode, input.stage, input.stageIndex)
@@ -520,9 +530,7 @@ const executeStage = async (
   const messages = buildVisibleStageMessages(input.baseMessages, input.upstream)
 
   let providerConfig: ResolvedProviderConfig | null = null
-  let client:
-    | ReturnType<typeof createModelClient>
-    | null = null
+  let service: ReturnType<typeof createInferenceService> | null = null
 
   try {
     providerConfig = await resolveStageProviderConfig(prisma, {
@@ -533,28 +541,56 @@ const executeStage = async (
       routeSource: input.routeSource,
     })
 
-    client = createModelClient({
-      apiKey: providerConfig.apiKey,
-      modelName: providerConfig.model,
-      provider: providerConfig.provider,
-    })
-
-    const options: ModelOptions = {
-      maxTokens: input.modelConfig.maxTokens,
-      model: providerConfig.model,
-      temperature: input.modelConfig.temperature,
+    const runtimeProvider =
+      resolveRuntimeProvider(providerConfig.providerKey)
+      ?? (providerConfig.connectorKind === 'openai-compatible' ? 'openai-compatible' : null)
+    if (!runtimeProvider) {
+      throw new Error(`Provider ${providerConfig.providerKey} is not runnable`)
     }
 
+    const serviceConfig: ModelProviderConfig = {
+      apiKey: providerConfig.apiKey,
+      baseUrl: providerConfig.baseUrl,
+      modelName: providerConfig.model,
+      provider: runtimeProvider,
+    }
+    service = createInferenceService(serviceConfig)
+
     let outputText = ''
+    let invocation: InvocationRecord | undefined
     if (input.stream) {
-      for await (const chunk of client.stream(messages, options)) {
-        outputText += chunk
-        if (chunk && input.onVisibleTextDelta) {
-          await input.onVisibleTextDelta(chunk)
-        }
+      const source = service.stream?.({
+        actorContext: input.actorContext,
+        maxOutputTokens: input.modelConfig.maxTokens,
+        messages,
+        model: providerConfig.model,
+        requestId,
+        temperature: input.modelConfig.temperature,
+      })
+      if (!source) {
+        throw new Error(`Provider ${providerConfig.providerKey} does not support streaming`)
       }
+
+      let next = await source.next()
+      while (!next.done) {
+        outputText += next.value.text
+        if (next.value.text && input.onVisibleTextDelta) {
+          await input.onVisibleTextDelta(next.value.text)
+        }
+        next = await source.next()
+      }
+      invocation = next.value.invocations.at(-1)
     } else {
-      outputText = await client.chat(messages, options)
+      const result = await service.run({
+        actorContext: input.actorContext,
+        maxOutputTokens: input.modelConfig.maxTokens,
+        messages,
+        model: providerConfig.model,
+        requestId,
+        temperature: input.modelConfig.temperature,
+      })
+      outputText = result.outputText
+      invocation = result.invocations.at(-1)
       if (outputText && input.emitBufferedOutput && input.onVisibleTextDelta) {
         await input.onVisibleTextDelta(outputText)
       }
@@ -563,14 +599,16 @@ const executeStage = async (
     if (!outputText.trim()) {
       throw new Error(`Stage ${input.stage.id} produced no content`)
     }
+    if (!invocation) {
+      throw new Error(`Stage ${input.stage.id} produced no invocation record`)
+    }
 
-    const usage = resolveTrackedUsage(providerConfig.model, client.usage.getUsage())
-    const invocation: InvocationRecord = {
-      correlationId: correlationId ?? undefined,
-      finishReason: 'stop',
-      invocationId,
-      latencyMs: Math.max(0, Date.now() - startedAt),
+    const enrichedInvocation: InvocationRecord = {
+      ...invocation,
+      correlationId: correlationId ?? invocation.correlationId,
+      latencyMs: Math.max(invocation.latencyMs, Date.now() - startedAt),
       metadata: {
+        ...(invocation.metadata ?? {}),
         profileId: input.profileId,
         routeSource: input.routeSource,
         routingMode: input.mode,
@@ -578,55 +616,67 @@ const executeStage = async (
         stageRole: input.stage.role,
         step,
       },
-      model: providerConfig.model,
       operationType,
-      provider: input.stage.provider,
+      provider: providerConfig.providerKey,
       requestId,
-      usage,
     }
 
     return {
       candidate: {
-        finishReason: invocation.finishReason,
-        invocationIds: [invocation.invocationId],
-        metadata: invocation.metadata,
+        finishReason: enrichedInvocation.finishReason,
+        invocationIds: [enrichedInvocation.invocationId],
+        metadata: enrichedInvocation.metadata,
         outputText,
         stageId: input.stage.id,
         stageRole: input.stage.role,
       },
-      invocation,
+      invocation: enrichedInvocation,
     }
   } catch (error) {
-    const invocation: InvocationRecord | undefined =
-      providerConfig && client
-        ? {
-            correlationId: correlationId ?? undefined,
+    const maybeInvocation =
+      isObject(error) && 'invocation' in error && isObject(error.invocation)
+        ? (error.invocation as InvocationRecord)
+        : undefined
+
+    const invocation: InvocationRecord | undefined = providerConfig
+      ? {
+          ...(maybeInvocation ?? {
             finishReason: 'error',
-            invocationId,
+            invocationId: randomUUID(),
             latencyMs: Math.max(0, Date.now() - startedAt),
-            metadata: {
-              errorMessage: toErrorMessage(error),
-              profileId: input.profileId,
-              routeSource: input.routeSource,
-              routingMode: input.mode,
-              stageId: input.stage.id,
-              stageRole: input.stage.role,
-              step,
-            },
             model: providerConfig.model,
             operationType,
-            provider: input.stage.provider,
+            provider: providerConfig.providerKey,
             requestId,
-            usage: resolveTrackedUsage(providerConfig.model, client.usage.getUsage()),
-          }
-        : undefined
+            usage: {},
+          }),
+          correlationId: correlationId ?? maybeInvocation?.correlationId,
+          latencyMs: Math.max(
+            maybeInvocation?.latencyMs ?? 0,
+            Math.max(0, Date.now() - startedAt),
+          ),
+          metadata: {
+            ...(maybeInvocation?.metadata ?? {}),
+            errorMessage: toErrorMessage(error),
+            profileId: input.profileId,
+            routeSource: input.routeSource,
+            routingMode: input.mode,
+            stageId: input.stage.id,
+            stageRole: input.stage.role,
+            step,
+          },
+          operationType,
+          provider: providerConfig.providerKey,
+          requestId,
+        }
+      : undefined
 
     throw createStageFailure(toErrorMessage(error), {
       invocation,
       stageId: input.stage.id,
     })
   } finally {
-    client?.close()
+    service?.close()
   }
 }
 

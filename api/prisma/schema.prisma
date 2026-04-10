@@ -253,6 +253,64 @@ enum OperationType {
   other
 }
 
+enum InferenceConnectorKind {
+  compiled
+  openai_compatible @map("openai-compatible")
+}
+
+enum InferenceLifecycleStatus {
+  draft
+  approved
+  deprecated
+}
+
+enum InferenceHealthStatus {
+  healthy
+  degraded
+  unreachable
+  unknown
+}
+
+enum InferenceCapabilitySource {
+  static
+  live
+  manual
+}
+
+enum InferenceExposure {
+  standard
+  admin_only @map("admin-only")
+}
+
+enum InferenceRoutingMode {
+  single
+  fallback
+  committee
+  pipeline
+  shadow
+}
+
+enum InferenceStageRole {
+  advisor
+  executor
+  synthesizer
+  judge
+  shadow
+}
+
+enum InferenceStreamPolicy {
+  primary_only @map("primary-only")
+  buffered_judge @map("buffered-judge")
+}
+
+enum InferenceEvalStatus {
+  queued
+  running
+  completed
+  failed
+  cancelled
+}
+
 // ─── Memory Enums ───────────────────────────────────────────────────────────
 
 enum ThoughtOwnerType {
@@ -488,6 +546,7 @@ model Agent {
   toolPolicy     Json?                @map("tool_policy")
   provider       String?              @map("provider")
   model          String?              @map("model")
+  routingProfileId String?            @map("routing_profile_id") @db.Uuid
   parentAgentId  String?              @map("parent_agent_id") @db.Uuid
   organizationId String?              @map("organization_id") @db.Uuid
   projectId      String?              @map("project_id") @db.Uuid
@@ -499,6 +558,7 @@ model Agent {
   bindings              AgentBinding[]
   categoryLinks         AgentCategoryAgent[]
   authoredCategories    AgentCategory[]        @relation("AgentCategoryAuthor")
+  routingProfile        InferenceRoutingProfile? @relation(fields: [routingProfileId], references: [id], onDelete: SetNull)
   messages              Message[]
   reactions             MessageReaction[]
   runs                  Run[]
@@ -510,7 +570,200 @@ model Agent {
 
   @@index([organizationId])
   @@index([organizationId, projectId])
+  @@index([routingProfileId])
   @@map("agents")
+}
+
+model InferenceProvider {
+  id                     String                    @id @default(uuid()) @db.Uuid
+  organizationId         String                    @map("organization_id") @db.Uuid
+  providerKey            String                    @map("provider_key")
+  connectorKind          InferenceConnectorKind     @map("connector_kind")
+  displayName            String                    @map("display_name")
+  enabled                Boolean                   @default(false)
+  lifecycleStatus        InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
+  baseUrl                String?                   @map("base_url")
+  supportsModelDiscovery Boolean                   @default(true) @map("supports_model_discovery")
+  activeCredentialBindingId String?                @unique @map("active_credential_binding_id") @db.Uuid
+  healthStatus           InferenceHealthStatus      @default(unknown) @map("health_status")
+  lastCheckedAt          DateTime?                 @map("last_checked_at")
+  createdByActorId       String                    @map("created_by_actor_id")
+  updatedByActorId       String                    @map("updated_by_actor_id")
+  approvedByActorId      String?                   @map("approved_by_actor_id")
+  approvedAt             DateTime?                 @map("approved_at")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+  activeCredentialBinding InferenceCredentialBinding? @relation("ProviderActiveCredentialBinding", fields: [activeCredentialBindingId], references: [id], onDelete: SetNull)
+  credentialBindings     InferenceCredentialBinding[] @relation("ProviderCredentialBindings")
+  models                 InferenceModel[]
+  capabilityOverrides    InferenceCapabilityOverride[]
+
+  @@index([organizationId, providerKey])
+  @@index([organizationId, enabled, lifecycleStatus])
+  @@index([organizationId, healthStatus])
+  @@map("inference_providers")
+}
+
+model InferenceCredentialBinding {
+  id              String               @id @default(uuid()) @db.Uuid
+  organizationId  String               @map("organization_id") @db.Uuid
+  providerId      String               @map("provider_id") @db.Uuid
+  label           String
+  authSecretRef   String               @map("auth_secret_ref")
+  createdByActorId String              @map("created_by_actor_id")
+  revokedAt       DateTime?            @map("revoked_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  provider        InferenceProvider    @relation("ProviderCredentialBindings", fields: [providerId], references: [id], onDelete: Cascade)
+  activeForProvider InferenceProvider? @relation("ProviderActiveCredentialBinding")
+
+  @@unique([providerId, label])
+  @@index([organizationId, providerId, createdAt(sort: Desc)])
+  @@map("inference_credential_bindings")
+}
+
+model InferenceModel {
+  id                     String                    @id @default(uuid()) @db.Uuid
+  organizationId         String                    @map("organization_id") @db.Uuid
+  providerId            String                    @map("provider_id") @db.Uuid
+  model                  String
+  displayName            String?                   @map("display_name")
+  enabled                Boolean                   @default(false)
+  lifecycleStatus        InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
+  capabilitySnapshot     Json                      @default("{}") @map("capability_snapshot_json")
+  source                 InferenceCapabilitySource  @default(static)
+  discoveredAt           DateTime                  @default(now()) @map("discovered_at")
+  lastVerifiedAt         DateTime?                 @map("last_verified_at")
+  createdByActorId       String                    @map("created_by_actor_id")
+  updatedByActorId       String                    @map("updated_by_actor_id")
+  approvedByActorId      String?                   @map("approved_by_actor_id")
+  approvedAt             DateTime?                 @map("approved_at")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+  provider               InferenceProvider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, model])
+  @@index([organizationId, providerId, enabled, lifecycleStatus])
+  @@map("inference_models")
+}
+
+model InferenceCapabilityOverride {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  organizationId       String                    @map("organization_id") @db.Uuid
+  providerId          String                    @map("provider_id") @db.Uuid
+  model                String
+  lifecycleStatus      InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
+  overrideSnapshot    Json                      @default("{}") @map("override_snapshot_json")
+  createdByActorId     String                    @map("created_by_actor_id")
+  updatedByActorId     String                    @map("updated_by_actor_id")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  clearedAt            DateTime?                 @map("cleared_at")
+  approvedByActorId    String?                   @map("approved_by_actor_id")
+  approvedAt           DateTime?                 @map("approved_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  provider             InferenceProvider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, model])
+  @@index([organizationId, providerId, lifecycleStatus])
+  @@map("inference_capability_overrides")
+}
+
+model ToolMediatorProfile {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  organizationId       String                    @map("organization_id") @db.Uuid
+  label                String
+  enabled              Boolean                   @default(false)
+  lifecycleStatus      InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
+  translatorProvider   String                    @map("translator_provider")
+  translatorModel      String                    @map("translator_model")
+  mediatorConfig       Json                      @default("{}") @map("mediator_config_json")
+  createdByActorId     String                    @map("created_by_actor_id")
+  updatedByActorId     String                    @map("updated_by_actor_id")
+  approvedByActorId    String?                   @map("approved_by_actor_id")
+  approvedAt           DateTime?                 @map("approved_at")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  routingProfiles      InferenceRoutingProfile[]
+
+  @@unique([organizationId, label])
+  @@index([organizationId, enabled, lifecycleStatus])
+  @@map("tool_mediator_profiles")
+}
+
+model InferenceRoutingProfile {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  organizationId       String                    @map("organization_id") @db.Uuid
+  label                String
+  enabled              Boolean                   @default(false)
+  exposure             InferenceExposure         @default(standard)
+  lifecycleStatus      InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
+  mode                 InferenceRoutingMode
+  streamPolicy         InferenceStreamPolicy     @default(primary_only) @map("stream_policy")
+  toolMediatorProfileId String?                  @map("tool_mediator_profile_id") @db.Uuid
+  routeGraph           Json                      @default("{}") @map("route_graph_json")
+  createdByActorId     String                    @map("created_by_actor_id")
+  updatedByActorId     String                    @map("updated_by_actor_id")
+  approvedByActorId    String?                   @map("approved_by_actor_id")
+  approvedAt           DateTime?                 @map("approved_at")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  toolMediatorProfile  ToolMediatorProfile?      @relation(fields: [toolMediatorProfileId], references: [id], onDelete: SetNull)
+  agents               Agent[]
+  targetEvalSuites     InferenceEvalSuite[]      @relation("EvalSuiteTargetRoute")
+  judgeEvalSuites      InferenceEvalSuite[]      @relation("EvalSuiteJudgeRoute")
+
+  @@unique([organizationId, label])
+  @@index([organizationId, enabled, lifecycleStatus])
+  @@index([organizationId, exposure, lifecycleStatus])
+  @@map("inference_routing_profiles")
+}
+
+model InferenceEvalSuite {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  organizationId       String                    @map("organization_id") @db.Uuid
+  label                String
+  exposure             InferenceExposure         @default(standard)
+  enabled              Boolean                   @default(false)
+  datasetRef           Json                      @map("dataset_ref_json")
+  targetRoutingProfileId String                   @map("target_routing_profile_id") @db.Uuid
+  judgeRoutingProfileId String?                  @map("judge_routing_profile_id") @db.Uuid
+  lifecycleStatus      InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
+  createdByActorId     String                    @map("created_by_actor_id")
+  updatedByActorId     String                    @map("updated_by_actor_id")
+  approvedByActorId    String?                   @map("approved_by_actor_id")
+  approvedAt           DateTime?                 @map("approved_at")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  targetRoutingProfile InferenceRoutingProfile    @relation("EvalSuiteTargetRoute", fields: [targetRoutingProfileId], references: [id], onDelete: Restrict)
+  judgeRoutingProfile  InferenceRoutingProfile?   @relation("EvalSuiteJudgeRoute", fields: [judgeRoutingProfileId], references: [id], onDelete: SetNull)
+  runs                 InferenceEvalRun[]
+
+  @@unique([organizationId, label])
+  @@index([organizationId, enabled, lifecycleStatus])
+  @@index([organizationId, exposure, lifecycleStatus])
+  @@map("inference_eval_suites")
+}
+
+model InferenceEvalRun {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  organizationId       String                    @map("organization_id") @db.Uuid
+  evalSuiteId          String                    @map("eval_suite_id") @db.Uuid
+  startedByActorId     String                    @map("started_by_actor_id")
+  startedAt            DateTime                  @default(now()) @map("started_at")
+  finishedAt           DateTime?                 @map("finished_at")
+  status               InferenceEvalStatus       @default(queued)
+  summary              Json                      @default("{}") @map("summary_json")
+  result               Json                      @default("{}") @map("result_json")
+  caseResults          Json                      @default("[]") @map("case_results_json")
+  targetProfileSnapshot Json                      @default("{}") @map("target_profile_snapshot_json")
+  judgeProfileSnapshot  Json?                     @map("judge_profile_snapshot_json")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  evalSuite            InferenceEvalSuite        @relation(fields: [evalSuiteId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, startedAt(sort: Desc)])
+  @@index([evalSuiteId, startedAt(sort: Desc)])
+  @@map("inference_eval_runs")
 }
 
 model AgentCategory {
