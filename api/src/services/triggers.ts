@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { CronExpressionParser } from 'cron-parser'
 import {
   parseAgentId,
   parseChannelId,
@@ -21,6 +22,7 @@ import { enqueueRunExecution } from '../queue/pgqueue.js'
 import { ensureDefaultThread } from './channels.js'
 
 const DEFAULT_SCHEDULER_LEASE_MS = 60_000
+const DEFAULT_SCHEDULER_RETRY_DELAY_MS = 30_000
 const SCHEDULER_TRIGGER_TYPES: AgentTriggerType[] = ['scheduled', 'interval']
 
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
@@ -289,10 +291,17 @@ export const updateAgentTrigger = async (
           ...(isJsonRecord(existing.config) ? existing.config : {}),
           ...input.config,
         }
+  const shouldRecomputeSchedulerNextRun =
+    input.nextRunAt === undefined && input.config !== undefined
   const normalizedNextRunAt =
     existing.type === 'scheduled' || existing.type === 'interval'
       ? input.nextRunAt === undefined
-        ? undefined
+        ? shouldRecomputeSchedulerNextRun
+          ? normalizeNextRunAt({
+              config: isJsonRecord(nextConfig) ? nextConfig : undefined,
+              type: existing.type,
+            })
+          : undefined
         : input.nextRunAt === null
           ? null
           : normalizeNextRunAt({
@@ -307,9 +316,17 @@ export const updateAgentTrigger = async (
           : new Date(input.nextRunAt)
 
   if (
+    existing.type === 'scheduled' &&
+    input.config !== undefined &&
+    !parseScheduledCronConfig(nextConfig)
+  ) {
+    return null
+  }
+
+  if (
     existing.type === 'interval' &&
     input.config !== undefined &&
-    !parseIntervalSeconds(nextConfig)
+    !parseIntervalMinutes(nextConfig)
   ) {
     return null
   }
@@ -416,21 +433,75 @@ const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
 const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const parseIntervalSeconds = (config: unknown): number | null => {
-  if (!isJsonRecord(config)) {
-    return null
-  }
-
-  const intervalSeconds = config['intervalSeconds']
+const parsePositiveInteger = (value: unknown): number | null => {
   if (
-    typeof intervalSeconds !== 'number' ||
-    !Number.isFinite(intervalSeconds) ||
-    intervalSeconds <= 0
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    !Number.isInteger(value)
   ) {
     return null
   }
 
-  return Math.floor(intervalSeconds)
+  return value
+}
+
+const parseScheduledCronConfig = (
+  config: unknown,
+): { cron: string; timezone?: string } | null => {
+  if (!isJsonRecord(config)) {
+    return null
+  }
+
+  const cron = config['cron']
+  if (typeof cron !== 'string' || cron.trim().length === 0) {
+    return null
+  }
+
+  const timezone =
+    typeof config['timezone'] === 'string' && config['timezone'].trim().length > 0
+      ? config['timezone']
+      : undefined
+
+  try {
+    CronExpressionParser.parse(cron, {
+      currentDate: new Date(),
+      ...(timezone ? { tz: timezone } : {}),
+    })
+  } catch {
+    return null
+  }
+
+  return { cron, timezone }
+}
+
+const parseIntervalMinutes = (config: unknown): number | null => {
+  if (!isJsonRecord(config)) {
+    return null
+  }
+
+  return parsePositiveInteger(config['interval_minutes'])
+}
+
+const computeNextCronRunAt = (input: {
+  config: unknown
+  currentDate: Date
+}): Date | null => {
+  const scheduled = parseScheduledCronConfig(input.config)
+  if (!scheduled) {
+    return null
+  }
+
+  try {
+    return CronExpressionParser.parse(scheduled.cron, {
+      currentDate: input.currentDate,
+      ...(scheduled.timezone ? { tz: scheduled.timezone } : {}),
+    })
+      .next()
+      .toDate()
+  } catch {
+    return null
+  }
 }
 
 const buildNextScheduledRunAt = (input: {
@@ -440,20 +511,23 @@ const buildNextScheduledRunAt = (input: {
   type: AgentTriggerType
 }): Date | null => {
   if (input.type === 'scheduled') {
-    return null
+    return computeNextCronRunAt({
+      config: input.config,
+      currentDate: input.from,
+    })
   }
 
   if (input.type !== 'interval') {
     return input.from
   }
 
-  const intervalSeconds = parseIntervalSeconds(input.config)
-  if (!intervalSeconds) {
+  const intervalMinutes = parseIntervalMinutes(input.config)
+  if (!intervalMinutes) {
     return null
   }
 
   const base = input.from.getTime() > input.now.getTime() ? input.from : input.now
-  return new Date(base.getTime() + intervalSeconds * 1000)
+  return new Date(base.getTime() + intervalMinutes * 60_000)
 }
 
 const normalizeNextRunAt = (input: {
@@ -466,15 +540,24 @@ const normalizeNextRunAt = (input: {
   }
 
   if (input.type === 'scheduled') {
-    return input.nextRunAt ? new Date(input.nextRunAt) : null
+    if (input.nextRunAt) {
+      return new Date(input.nextRunAt)
+    }
+
+    return computeNextCronRunAt({
+      config: input.config,
+      currentDate: new Date(),
+    })
   }
 
-  const intervalSeconds = parseIntervalSeconds(input.config)
-  if (!intervalSeconds) {
+  const intervalMinutes = parseIntervalMinutes(input.config)
+  if (!intervalMinutes) {
     return null
   }
 
-  return input.nextRunAt ? new Date(input.nextRunAt) : new Date()
+  return input.nextRunAt
+    ? new Date(input.nextRunAt)
+    : new Date(Date.now() + intervalMinutes * 60_000)
 }
 
 const buildTriggerPrompt = (input: {
@@ -571,6 +654,21 @@ type ClaimedScheduledTrigger = {
   nextRunAt: Date
   schedulerClaimId: string
   type: AgentTriggerType
+}
+
+const isTriggerDeliveryDedupeConflict = (
+  error: Prisma.PrismaClientKnownRequestError,
+): boolean => {
+  if (error.code !== 'P2002') {
+    return false
+  }
+
+  const target = error.meta?.target
+  if (!Array.isArray(target)) {
+    return false
+  }
+
+  return target.includes('trigger_id') && target.includes('dedupe_key')
 }
 
 const claimDueScheduledTriggers = async (
@@ -679,7 +777,7 @@ export const sweepDueScheduledTriggers = async (
         await finalizeScheduledTriggerClaim(prisma, {
           claimId: trigger.schedulerClaimId,
           nextRunAt,
-          status: trigger.type === 'interval' && !nextRunAt ? 'error' : 'active',
+          status: !nextRunAt ? 'error' : 'active',
           triggerId: trigger.id,
         })
         dispatched += 1
@@ -688,7 +786,10 @@ export const sweepDueScheduledTriggers = async (
 
       await finalizeScheduledTriggerClaim(prisma, {
         claimId: trigger.schedulerClaimId,
-        nextRunAt: trigger.nextRunAt,
+        nextRunAt:
+          result.reason === 'agent_not_bound'
+            ? trigger.nextRunAt
+            : new Date(now.getTime() + DEFAULT_SCHEDULER_RETRY_DELAY_MS),
         status: result.reason === 'agent_not_bound' ? 'error' : 'active',
         triggerId: trigger.id,
       })
@@ -696,7 +797,7 @@ export const sweepDueScheduledTriggers = async (
     } catch {
       await finalizeScheduledTriggerClaim(prisma, {
         claimId: trigger.schedulerClaimId,
-        nextRunAt: trigger.nextRunAt,
+        nextRunAt: new Date(now.getTime() + DEFAULT_SCHEDULER_RETRY_DELAY_MS),
         triggerId: trigger.id,
       })
       failed += 1
@@ -952,7 +1053,7 @@ export const dispatchAgentTrigger = async (
     if (
       input.dedupeKey &&
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
+      isTriggerDeliveryDedupeConflict(error)
     ) {
       const existingDelivery = await prisma.agentTriggerDelivery.findFirst({
         where: {

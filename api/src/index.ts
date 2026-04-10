@@ -451,14 +451,28 @@ const buildWebhookSignature = (secret: string, payload: Buffer, prefix: string):
 const getRawBody = (request: FastifyRequest): Buffer =>
   (request as RequestWithRawBody).rawBody ?? Buffer.from('')
 
+const isJsonContentType = (request: FastifyRequest): boolean => {
+  const contentType = parseHeaderValue(request.headers['content-type'])
+  if (!contentType) {
+    return false
+  }
+
+  return /^application\/([a-z0-9.+-]+\+)?json($|;)/i.test(contentType)
+}
+
 const parseHeaderValue = (
   value: string | string[] | undefined,
 ): string | undefined => {
   if (Array.isArray(value)) {
-    return value[0]
+    return parseHeaderValue(value[0])
   }
 
-  return value
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
 }
 
 const resolveWebhookAuthMode = (
@@ -478,7 +492,7 @@ const resolveWebhookAuthMode = (
 
 const resolveWebhookHeaderNames = (
   config: unknown,
-  key: 'signatureHeader' | 'tokenHeader' | 'deliveryIdHeader',
+  key: 'deliveryIdHeader' | 'signatureHeader' | 'timestampHeader' | 'tokenHeader',
   fallback: string[],
 ): string[] => {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
@@ -504,6 +518,25 @@ const resolveWebhookHeaderNames = (
   return fallback
 }
 
+const resolveWebhookTimestampToleranceSeconds = (config: unknown): number | null => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return null
+  }
+
+  const value = (config as Record<string, unknown>)['timestampToleranceSeconds']
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return null
+  }
+
+  return Math.floor(value)
+}
+
+const shouldBindWebhookTimestampToSignature = (config: unknown): boolean =>
+  !!config &&
+  typeof config === 'object' &&
+  !Array.isArray(config) &&
+  (config as Record<string, unknown>)['bindTimestampToSignature'] === true
+
 const readFirstHeader = (
   request: FastifyRequest,
   names: string[],
@@ -516,6 +549,48 @@ const readFirstHeader = (
   }
 
   return undefined
+}
+
+const parseWebhookTimestamp = (value: string): Date | null => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    const numericValue = Number.parseInt(trimmed, 10)
+    if (!Number.isFinite(numericValue)) {
+      return null
+    }
+
+    const milliseconds = trimmed.length >= 13 ? numericValue : numericValue * 1000
+    const parsed = new Date(milliseconds)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+
+  const parsed = new Date(trimmed)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+const buildWebhookSignaturePayload = (input: {
+  config: unknown
+  request: FastifyRequest
+}): Buffer | null => {
+  const rawBody = getRawBody(input.request)
+  if (!shouldBindWebhookTimestampToSignature(input.config)) {
+    return rawBody
+  }
+
+  const timestampHeaders = resolveWebhookHeaderNames(input.config, 'timestampHeader', [
+    'x-nessie-trigger-timestamp',
+    'x-request-timestamp',
+  ])
+  const timestampValue = readFirstHeader(input.request, timestampHeaders)
+  if (!timestampValue) {
+    return null
+  }
+
+  return Buffer.concat([Buffer.from(`${timestampValue}.`), rawBody])
 }
 
 const isWebhookSignatureValid = (
@@ -536,6 +611,36 @@ const isWebhookSignatureValid = (
   }
 
   return timingSafeEqual(providedBuffer, expectedBuffer)
+}
+
+const isWebhookTimestampFresh = (input: {
+  config: unknown
+  now?: Date
+  request: FastifyRequest
+}): boolean => {
+  const toleranceSeconds = resolveWebhookTimestampToleranceSeconds(input.config)
+  if (!toleranceSeconds) {
+    return true
+  }
+
+  if (!shouldBindWebhookTimestampToSignature(input.config)) {
+    return false
+  }
+
+  const timestampHeaders = resolveWebhookHeaderNames(input.config, 'timestampHeader', [
+    'x-nessie-trigger-timestamp',
+    'x-request-timestamp',
+  ])
+  const timestampValue = readFirstHeader(input.request, timestampHeaders)
+  const parsedTimestamp = timestampValue ? parseWebhookTimestamp(timestampValue) : null
+  if (!parsedTimestamp) {
+    return false
+  }
+
+  return (
+    Math.abs((input.now ?? new Date()).getTime() - parsedTimestamp.getTime()) <=
+    toleranceSeconds * 1000
+  )
 }
 
 const filterAuthorizedScopes = async (
@@ -1441,6 +1546,18 @@ export const buildApp = async () => {
       return reply
     }
 
+    const dedupeKey =
+      body.dedupeKey?.trim() || parseHeaderValue(request.headers['idempotency-key'])
+    if (!dedupeKey) {
+      sendApiError(
+        reply,
+        400,
+        'IDEMPOTENCY_KEY_REQUIRED',
+        'Manual trigger fire requires a dedupe key or Idempotency-Key header',
+      )
+      return reply
+    }
+
     const invokeDecision = await checkPolicy(prisma, actorContext, 'agent', 'invoke', {
       agentId: trigger.agentId,
     })
@@ -1451,7 +1568,7 @@ export const buildApp = async () => {
 
     const dispatched = await dispatchAgentTrigger(prisma, {
       actorContext,
-      dedupeKey: body.dedupeKey,
+      dedupeKey,
       payload: body.payload,
       prompt: body.prompt,
       source: body.source ?? 'manual',
@@ -1618,6 +1735,11 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!isJsonContentType(request)) {
+      sendApiError(reply, 415, 'WEBHOOK_CONTENT_TYPE_INVALID', 'Webhook requests must use JSON')
+      return reply
+    }
+
     if (authMode === 'token') {
       const providedToken = readFirstHeader(request, tokenHeaders)
       const providedBuffer = Buffer.from(providedToken ?? '')
@@ -1629,15 +1751,36 @@ export const buildApp = async () => {
         sendApiError(reply, 403, 'WEBHOOK_TOKEN_INVALID', 'Webhook token mismatch')
         return reply
       }
-    } else if (
-      !isWebhookSignatureValid(
-        readFirstHeader(request, signatureHeaders),
-        expectedSecret,
-        getRawBody(request),
-        signaturePrefix,
-      )
-    ) {
-      sendApiError(reply, 403, 'WEBHOOK_SIGNATURE_INVALID', 'Webhook signature mismatch')
+    } else {
+      const signaturePayload = buildWebhookSignaturePayload({
+        config: trigger.config,
+        request,
+      })
+      if (!signaturePayload) {
+        sendApiError(
+          reply,
+          403,
+          'WEBHOOK_TIMESTAMP_INVALID',
+          'Webhook timestamp is missing for signed verification',
+        )
+        return reply
+      }
+
+      if (
+        !isWebhookSignatureValid(
+          readFirstHeader(request, signatureHeaders),
+          expectedSecret,
+          signaturePayload,
+          signaturePrefix,
+        )
+      ) {
+        sendApiError(reply, 403, 'WEBHOOK_SIGNATURE_INVALID', 'Webhook signature mismatch')
+        return reply
+      }
+    }
+
+    if (!isWebhookTimestampFresh({ config: trigger.config, request })) {
+      sendApiError(reply, 403, 'WEBHOOK_TIMESTAMP_INVALID', 'Webhook timestamp is missing or stale')
       return reply
     }
 
