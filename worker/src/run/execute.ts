@@ -6,6 +6,7 @@ import {
   type SearchExecutionConfig,
   type SearchResult,
 } from '@nessie/memory'
+import { loadConfig } from '@nessie/config'
 import type {
   ModelClient,
   ModelMessage,
@@ -42,6 +43,9 @@ import {
   markRunPlanStarted,
 } from './plans.js'
 import { markWorkflowStepRunFinished } from './workflows.js'
+import { persistInvocationLedgerEvents, runInferenceGraph } from './inference.js'
+
+const runtimeModelConfig = loadConfig().model
 
 type ExecutionDependencies = {
   modelClient: ModelClient
@@ -55,7 +59,9 @@ type RunContext = {
   agent: {
     id: string
     name: string
+    model: string | null
     parentAgentId: string | null
+    provider: string | null
     systemPrompt: string | null
   }
   channel: {
@@ -446,8 +452,10 @@ const loadRunContext = async (
       agent: {
         select: {
           id: true,
+          model: true,
           name: true,
           parentAgentId: true,
+          provider: true,
           systemPrompt: true,
         },
       },
@@ -911,17 +919,40 @@ export const executeRunJob = async (
     streamStarted = true
 
     let responseText = ''
-    for await (const chunk of deps.modelClient.stream(modelMessages)) {
-      responseText += chunk
-      await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
-        content: chunk,
-        runId: parseRunId(context.run.id),
-      })
+
+    const inferenceResult = await runInferenceGraph(deps.prisma, {
+      actorContext: payload.actorContext,
+      agent: {
+        id: context.agent.id,
+        model: context.agent.model,
+        provider: context.agent.provider,
+        routingProfileId: null,
+      },
+      baseMessages: modelMessages,
+      modelConfig: runtimeModelConfig,
+      onVisibleTextDelta: async (chunk) => {
+        responseText += chunk
+        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+          content: chunk,
+          runId: parseRunId(context.run.id),
+        })
+      },
+      organizationId: context.channel.organizationId,
+    })
+
+    if (inferenceResult.status !== 'completed' || !inferenceResult.finalAnswer?.trim()) {
+      throw new Error(
+        inferenceResult.failure?.message ?? 'Inference execution produced no final answer',
+      )
     }
 
-    if (!responseText.trim()) {
-      throw new Error('Model stream produced no content')
-    }
+    responseText = inferenceResult.finalAnswer
+
+    await persistInvocationLedgerEvents(deps.prisma, {
+      actorContext: payload.actorContext,
+      agentId: context.agent.id,
+      invocations: inferenceResult.invocations,
+    })
 
     const referencedRecallIds = detectReferencedRecallIds(responseText, memories)
     if (referencedRecallIds.length > 0) {
