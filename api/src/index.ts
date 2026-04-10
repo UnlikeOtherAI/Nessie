@@ -196,8 +196,8 @@ import {
   listExecutionRunners,
   listExecutionUsageLedger,
   requestExecutionEnvironmentLaunch,
-  terminateExecutionEnvironmentInstance,
 } from './services/execution-environments.js'
+import { requestExecutionEnvironmentTermination } from './services/execution-control-plane.js'
 import {
   acquireResourceLock,
   listResourceLocks,
@@ -2566,11 +2566,9 @@ export const buildApp = async () => {
     }
 
     const { instanceId } = request.params as { instanceId: string }
-    const instance = await terminateExecutionEnvironmentInstance(
-      prisma,
-      actorContext.tenant.organizationId,
+    const instance = await requestExecutionEnvironmentTermination(prisma, actorContext, {
       instanceId,
-    )
+    })
     if (!instance) {
       sendApiError(
         reply,
@@ -2581,7 +2579,9 @@ export const buildApp = async () => {
       return reply
     }
 
-    return createApiResponse(ExecutionEnvironmentInstanceRecordSchema.parse(instance))
+    return reply
+      .code(202)
+      .send(createApiResponse(ExecutionEnvironmentInstanceRecordSchema.parse(instance)))
   })
 
   app.get('/api/execution-usage-ledger', async (request, reply) => {

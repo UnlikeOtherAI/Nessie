@@ -767,6 +767,14 @@ export type ExecutionEnvironmentAllocateJobPayload = z.infer<
   typeof ExecutionEnvironmentAllocateJobPayloadSchema
 >
 
+export const ExecutionEnvironmentTerminateJobPayloadSchema = z.object({
+  actorContext: AuthorizedActionContextSchema,
+  instanceId: z.string().uuid(),
+})
+export type ExecutionEnvironmentTerminateJobPayload = z.infer<
+  typeof ExecutionEnvironmentTerminateJobPayloadSchema
+>
+
 export const TriggerEventDispatchJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   dedupeKey: NonEmptyStringSchema.optional(),

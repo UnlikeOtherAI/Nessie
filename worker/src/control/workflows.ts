@@ -1,5 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { allocateExecutionEnvironmentInstance } from './execution.js'
+import {
+  parseChannelId,
+  parseOrganizationId,
+  parseProjectId,
+  parseTeamId,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
+import { enqueueQueueJob } from '../queue.js'
 import {
   ensureWorkflowStepRuns,
   listWorkflowStepRuns,
@@ -42,6 +49,45 @@ const buildAgentTaskBody = (stepInput: Record<string, unknown>, workflowInput: u
     2,
   )
 }
+
+const parseWorkflowStartedByActorType = (
+  value: string,
+): 'agent' | 'service' | 'user' => {
+  if (value === 'agent' || value === 'service' || value === 'user') {
+    return value
+  }
+
+  throw new Error(`WORKFLOW_ACTOR_TYPE_INVALID:${value}`)
+}
+
+const buildWorkflowExecutionActorContext = (input: {
+  channelId?: string | null
+  organizationId: string
+  projectId?: string | null
+  stepRunId: string
+  teamId?: string | null
+  workflowRunId: string
+  workflowStartedByActorId: string
+  workflowStartedByActorType: string
+}): AuthorizedActionContext => ({
+  actor: {
+    actorId: input.workflowStartedByActorId,
+    actorType: parseWorkflowStartedByActorType(input.workflowStartedByActorType),
+  },
+  tenant: {
+    organizationId: parseOrganizationId(input.organizationId),
+    ...(input.projectId ? { projectId: parseProjectId(input.projectId) } : {}),
+    ...(input.teamId ? { teamId: parseTeamId(input.teamId) } : {}),
+    ...(input.channelId ? { channelId: parseChannelId(input.channelId) } : {}),
+  },
+  actionContext: {
+    requestId: `workflow-environment:${input.stepRunId}`,
+    correlationId: input.workflowRunId,
+    ...(input.channelId ? { channelId: parseChannelId(input.channelId) } : {}),
+    purpose: 'workflow.environment.allocate',
+    sessionId: input.workflowRunId,
+  },
+})
 
 const createWorkflowMailboxMessage = async (
   prisma: PrismaClient,
@@ -308,8 +354,6 @@ export const executeWorkflowRun = async (
     }
 
     if (stepDefinition.type === 'environment_launch') {
-      await markWorkflowStepRunStarted(prisma, { stepRunId: nextStep.id })
-
       const boundTemplateId = resolveBoundValue(
         workflow.installation.resolvedBindings,
         stepInput['templateBindingKey'],
@@ -355,54 +399,53 @@ export const executeWorkflowRun = async (
         return
       }
 
-      const instance = await prisma.executionEnvironmentInstance.create({
-        data: {
-          templateId,
-          organizationId: workflow.run.organizationId,
-          projectId: workflow.installation.projectId,
-          teamId: workflow.installation.teamId,
-          channelId: resolvedChannelId,
+      const actorContext = buildWorkflowExecutionActorContext({
+        channelId: resolvedChannelId,
+        organizationId: workflow.run.organizationId,
+        projectId: workflow.installation.projectId,
+        stepRunId: nextStep.id,
+        teamId: workflow.installation.teamId,
+        workflowRunId,
+        workflowStartedByActorId: workflow.run.startedByActorId,
+        workflowStartedByActorType: workflow.run.startedByActorType,
+      })
+
+      await prisma.$transaction(async (tx) => {
+        const created = await tx.executionEnvironmentInstance.create({
+          data: {
+            templateId,
+            organizationId: workflow.run.organizationId,
+            projectId: workflow.installation.projectId,
+            teamId: workflow.installation.teamId,
+            channelId: resolvedChannelId,
+            workflowRunId,
+            workflowStepRunId: nextStep.id,
+            launchedByActorType: workflow.run.startedByActorType,
+            launchedByActorId: workflow.run.startedByActorId,
+            launchConfig: stepInput as Prisma.InputJsonValue,
+          },
+          select: { id: true },
+        })
+
+        await markWorkflowStepRunQueued(tx, {
           workflowRunId,
           workflowStepRunId: nextStep.id,
-          launchedByActorType: workflow.run.startedByActorType,
-          launchedByActorId: workflow.run.startedByActorId,
-          launchConfig: stepInput as Prisma.InputJsonValue,
-        },
-        select: { id: true },
-      })
-
-      const allocated = await allocateExecutionEnvironmentInstance(prisma, instance.id)
-      if (!allocated) {
-        await markWorkflowStepRunFinished(prisma, {
-          workflowRunId,
-          stepRunId: nextStep.id,
-          success: false,
-          summary: 'Execution environment allocation failed.',
+          output: {
+            environmentInstanceId: created.id,
+            status: 'pending',
+          },
         })
-        return
-      }
 
-      const environmentInstance = await prisma.executionEnvironmentInstance.findUnique({
-        where: { id: instance.id },
-        select: {
-          metadata: true,
-          providerInstanceRef: true,
-          status: true,
-        },
+        await enqueueQueueJob(tx, {
+          idempotencyKey: `execution-environment:${created.id}`,
+          payload: {
+            actorContext,
+            instanceId: created.id,
+          },
+          topic: 'execution.environment.allocate',
+        })
       })
-
-      await markWorkflowStepRunFinished(prisma, {
-        workflowRunId,
-        stepRunId: nextStep.id,
-        success: true,
-        output: {
-          environmentInstanceId: instance.id,
-          providerInstanceRef: environmentInstance?.providerInstanceRef ?? undefined,
-          status: environmentInstance?.status ?? 'ready',
-          ...(asObject(environmentInstance?.metadata)),
-        },
-      })
-      continue
+      return
     }
 
     await markWorkflowStepRunStarted(prisma, { stepRunId: nextStep.id })

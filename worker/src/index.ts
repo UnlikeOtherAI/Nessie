@@ -8,12 +8,19 @@ import {
 } from '@nessie/runtime'
 import {
   ExecutionEnvironmentAllocateJobPayloadSchema,
+  ExecutionEnvironmentTerminateJobPayloadSchema,
   RunExecuteJobPayloadSchema,
   TriggerEventDispatchJobPayloadSchema,
   WorkflowRunExecuteJobPayloadSchema,
 } from '@nessie/schemas'
 import { getPrismaClient } from './db/client.js'
-import { allocateExecutionEnvironmentInstance, registerExecutionRunners } from './control/execution.js'
+import {
+  allocateExecutionEnvironmentInstance,
+  expireExecutionLeases,
+  registerExecutionRunners,
+  renewExecutionLeases,
+  terminateExecutionEnvironmentInstance,
+} from './control/execution.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
 import { dispatchEventTriggers, sweepDueScheduledTriggers } from './control/triggers.js'
 import { executeWorkflowRun } from './control/workflows.js'
@@ -42,6 +49,7 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
   const realtimeTransport = new PgRealtimeTransport(pool, databaseUrl)
   const modelClient = createModelClient(config.model)
   const abortController = new AbortController()
+  const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`
 
   queueProvider.subscribe(
     'run.execute',
@@ -92,14 +100,27 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
     'execution.environment.allocate',
     async (job) => {
       const payload = ExecutionEnvironmentAllocateJobPayloadSchema.parse(job.payload)
-      await allocateExecutionEnvironmentInstance(prisma, payload.instanceId)
+      await allocateExecutionEnvironmentInstance(prisma, {
+        instanceId: payload.instanceId,
+        runnerLabelPrefix,
+      })
     },
     {
       signal: abortController.signal,
     },
   )
 
-  const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`
+  queueProvider.subscribe(
+    'execution.environment.terminate',
+    async (job) => {
+      const payload = ExecutionEnvironmentTerminateJobPayloadSchema.parse(job.payload)
+      await terminateExecutionEnvironmentInstance(prisma, payload.instanceId)
+    },
+    {
+      signal: abortController.signal,
+    },
+  )
+
   await registerExecutionRunners(prisma, {
     labelPrefix: runnerLabelPrefix,
   })
@@ -154,10 +175,25 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
       await registerExecutionRunners(prisma, {
         labelPrefix: runnerLabelPrefix,
       })
+      await renewExecutionLeases(prisma, {
+        runnerLabelPrefix,
+      })
     } catch (error) {
       console.error('[worker.execution-runners] heartbeat failed', error)
     }
   }, 30_000)
+
+  const executionLeaseSweepInterval = setInterval(async () => {
+    if (abortController.signal.aborted) {
+      return
+    }
+
+    try {
+      await expireExecutionLeases(prisma)
+    } catch (error) {
+      console.error('[worker.execution-leases] reconcile failed', error)
+    }
+  }, 15_000)
 
   console.log(
     JSON.stringify(
@@ -178,6 +214,7 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
     clearInterval(triggerSweepInterval)
     clearInterval(mailboxSweepInterval)
     clearInterval(runnerHeartbeatInterval)
+    clearInterval(executionLeaseSweepInterval)
     modelClient.close()
     await realtimeTransport.close()
     await pool.end()

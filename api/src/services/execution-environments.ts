@@ -19,9 +19,6 @@ const asObject = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {}
 
-const parseNonNegativeNumber = (value: unknown): number | null =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
-
 const mapExecutionEnvironmentTemplate = (template: {
   channelId: string | null
   createdAt: Date
@@ -60,7 +57,7 @@ const mapExecutionEnvironmentTemplate = (template: {
   updatedAt: template.updatedAt.toISOString(),
 })
 
-const mapExecutionEnvironmentInstance = (instance: {
+export const mapExecutionEnvironmentInstance = (instance: {
   agentId: string | null
   channelId: string | null
   createdAt: Date
@@ -203,25 +200,6 @@ const mapExecutionUsageLedger = (entry: {
   metadata: asObject(entry.metadata),
   recordedAt: entry.recordedAt.toISOString(),
 })
-
-const computeUsageCost = (input: {
-  pricingConfig: unknown
-  quantity: number
-}): { costAmount?: number; currency?: string; unitPrice?: number } => {
-  const pricing = asObject(input.pricingConfig)
-  const unitPrice = parseNonNegativeNumber(pricing['unitPrice'])
-  const currency = typeof pricing['currency'] === 'string' ? pricing['currency'] : undefined
-
-  if (unitPrice === null) {
-    return { currency }
-  }
-
-  return {
-    unitPrice,
-    costAmount: Number((unitPrice * input.quantity).toFixed(6)),
-    currency,
-  }
-}
 
 const validateChannelOwnership = async (
   prisma: Prisma.TransactionClient | PrismaClient,
@@ -456,96 +434,6 @@ export const requestExecutionEnvironmentLaunch = async (
     })
 
     return instanceRow
-  })
-
-  return instance ? mapExecutionEnvironmentInstance(instance) : null
-}
-
-export const terminateExecutionEnvironmentInstance = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  instanceId: string,
-): Promise<ExecutionEnvironmentInstanceRecord | null> => {
-  const now = new Date()
-
-  const instance = await prisma.$transaction(async (tx) => {
-    const existing = await tx.executionEnvironmentInstance.findFirst({
-      where: {
-        id: instanceId,
-        organizationId,
-      },
-      include: {
-        template: {
-          select: {
-            id: true,
-            pricingConfig: true,
-          },
-        },
-      },
-    })
-    if (!existing) {
-      return null
-    }
-
-    const updated = await tx.executionEnvironmentInstance.update({
-      where: { id: existing.id },
-      data: {
-        status: 'terminated',
-        terminatedAt: now,
-      },
-    })
-
-    const billableMinutes =
-      existing.startedAt && now.getTime() > existing.startedAt.getTime()
-        ? Math.max(1, Math.ceil((now.getTime() - existing.startedAt.getTime()) / 60_000))
-        : 0
-
-    if (billableMinutes > 0) {
-      const pricing = computeUsageCost({
-        pricingConfig: existing.template.pricingConfig,
-        quantity: billableMinutes,
-      })
-
-      await tx.executionUsageLedger.create({
-        data: {
-          instanceId: existing.id,
-          templateId: existing.template.id,
-          organizationId: existing.organizationId,
-          projectId: existing.projectId,
-          teamId: existing.teamId,
-          channelId: existing.channelId,
-          workflowRunId: existing.workflowRunId,
-          workflowStepRunId: existing.workflowStepRunId,
-          runId: existing.runId,
-          agentId: existing.agentId,
-          actorType: existing.launchedByActorType,
-          actorId: existing.launchedByActorId,
-          meterType: 'uptime_min',
-          quantity: billableMinutes,
-          unitPrice: pricing.unitPrice,
-          costAmount: pricing.costAmount,
-          currency: pricing.currency,
-          metadata: {
-            terminatedAt: now.toISOString(),
-          } as Prisma.InputJsonValue,
-        },
-      })
-    }
-
-    await tx.executionLease.updateMany({
-      where: {
-        instanceId: existing.id,
-        status: {
-          in: ['issued', 'acknowledged'],
-        },
-      },
-      data: {
-        status: 'completed',
-        completedAt: now,
-      },
-    })
-
-    return updated
   })
 
   return instance ? mapExecutionEnvironmentInstance(instance) : null
