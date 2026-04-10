@@ -65,12 +65,15 @@ import {
   BootstrapRequestSchema,
   ChannelRecordSchema,
   CreateMailboxMessageBodySchema,
+  CreateExecutionEnvironmentTemplateBodySchema,
   CreateAgentBindingBodySchema,
   CreateAgentBodySchema,
   CreateAgentTriggerBodySchema,
   CreateAgentCategoryBodySchema,
   CreatePlanBodySchema,
   CreatePlanStepBodySchema,
+  CreateWorkflowRunBodySchema,
+  CreateWorkflowTemplateBodySchema,
   CreateTemporaryContextSessionBodySchema,
   CreateToolRegistryEntryBodySchema,
   DesignerChatBodySchema,
@@ -84,6 +87,13 @@ import {
   PlanStepRecordSchema,
   PublishEventBodySchema,
   ResourceLockRecordSchema,
+  ExecutionEnvironmentInstanceRecordSchema,
+  ExecutionEnvironmentTemplateRecordSchema,
+  ExecutionLeaseRecordSchema,
+  ExecutionRunnerRecordSchema,
+  ExecutionUsageLedgerRecordSchema,
+  InstallWorkflowTemplateBodySchema,
+  LaunchExecutionEnvironmentBodySchema,
   TemporaryContextSessionSchema,
   ThreadMessageRecordSchema,
   ToolDescriptorSchema,
@@ -91,6 +101,10 @@ import {
   UpdateAgentTriggerBodySchema,
   UpdateAgentCategoryBodySchema,
   UserRecordSchema,
+  WorkflowInstallationRecordSchema,
+  WorkflowRunRecordSchema,
+  WorkflowStepRunRecordSchema,
+  WorkflowTemplateRecordSchema,
 } from './contracts.js'
 import { DEFAULT_BOOTSTRAP_RECORD_IDS } from './db/bootstrap.js'
 import { getPrismaClient } from './db/client.js'
@@ -175,6 +189,16 @@ import {
   listPlans,
 } from './services/plans.js'
 import {
+  createExecutionEnvironmentTemplate,
+  listExecutionEnvironmentInstances,
+  listExecutionEnvironmentTemplates,
+  listExecutionLeases,
+  listExecutionRunners,
+  listExecutionUsageLedger,
+  requestExecutionEnvironmentLaunch,
+  terminateExecutionEnvironmentInstance,
+} from './services/execution-environments.js'
+import {
   acquireResourceLock,
   listResourceLocks,
   releaseResourceLock,
@@ -185,6 +209,16 @@ import {
   listToolRegistryEntries,
   registerToolRegistryEntry,
 } from './services/tools.js'
+import {
+  createWorkflowRun,
+  createWorkflowTemplate,
+  getWorkflowRun,
+  getWorkflowTemplate,
+  installWorkflowTemplate,
+  listWorkflowInstallations,
+  listWorkflowRuns,
+  listWorkflowTemplates,
+} from './services/workflows.js'
 import {
   createUserForOrganization,
   listUsersForOrganization,
@@ -1891,7 +1925,7 @@ export const buildApp = async () => {
       ? `trigger-event:${actorContext.tenant.organizationId}:${payload.dedupeKey}`
       : undefined
 
-    await enqueueQueueJob(prisma, {
+    const enqueued = await enqueueQueueJob(prisma, {
       idempotencyKey: queueIdempotencyKey,
       payload,
       topic: 'trigger.event.dispatch',
@@ -1899,8 +1933,9 @@ export const buildApp = async () => {
 
     return reply.code(202).send(
       createApiResponse({
-        accepted: true,
+        accepted: enqueued,
         eventType: payload.eventType,
+        existing: !enqueued,
         source: payload.source,
       }),
     )
@@ -2130,6 +2165,471 @@ export const buildApp = async () => {
     return reply.code(201).send(createApiResponse(PlanStepRecordSchema.parse(step)))
   })
 
+  app.get('/api/workflows', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const workflows = await listWorkflowTemplates(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(WorkflowTemplateRecordSchema.array().parse(workflows))
+  })
+
+  app.post('/api/workflows', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(CreateWorkflowTemplateBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    let workflow
+    try {
+      workflow = await createWorkflowTemplate(prisma, actorContext, body)
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND'
+      ) {
+        sendApiError(
+          reply,
+          404,
+          'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND',
+          'One or more required execution environment templates were not found',
+        )
+        return reply
+      }
+      throw error
+    }
+
+    return reply.code(201).send(createApiResponse(WorkflowTemplateRecordSchema.parse(workflow)))
+  })
+
+  app.get('/api/workflows/:workflowTemplateId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { workflowTemplateId } = request.params as { workflowTemplateId: string }
+    const workflow = await getWorkflowTemplate(
+      prisma,
+      actorContext.tenant.organizationId,
+      workflowTemplateId,
+    )
+    if (!workflow) {
+      sendApiError(reply, 404, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
+      return reply
+    }
+
+    return createApiResponse(WorkflowTemplateRecordSchema.parse(workflow))
+  })
+
+  app.post('/api/workflows/:workflowTemplateId/install', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(InstallWorkflowTemplateBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowTemplateId } = request.params as { workflowTemplateId: string }
+    let installation
+    try {
+      installation = await installWorkflowTemplate(
+        prisma,
+        actorContext,
+        workflowTemplateId,
+        body,
+      )
+    } catch (error) {
+      if (error instanceof Error && error.message === 'WORKFLOW_INSTALLATION_CHANNEL_NOT_FOUND') {
+        sendApiError(
+          reply,
+          404,
+          'WORKFLOW_INSTALLATION_CHANNEL_NOT_FOUND',
+          'Workflow installation channel not found',
+        )
+        return reply
+      }
+      throw error
+    }
+
+    if (!installation) {
+      sendApiError(reply, 404, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
+      return reply
+    }
+
+    return reply
+      .code(201)
+      .send(createApiResponse(WorkflowInstallationRecordSchema.parse(installation)))
+  })
+
+  app.get('/api/workflow-installations', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const installations = await listWorkflowInstallations(
+      prisma,
+      actorContext.tenant.organizationId,
+    )
+    return createApiResponse(WorkflowInstallationRecordSchema.array().parse(installations))
+  })
+
+  app.post('/api/workflow-installations/:installationId/run', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(CreateWorkflowRunBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { installationId } = request.params as { installationId: string }
+    let workflowRun
+    try {
+      workflowRun = await createWorkflowRun(prisma, actorContext, installationId, body)
+    } catch (error) {
+      if (error instanceof Error) {
+        const workflowRunErrorMap: Record<string, { code: string; message: string }> = {
+          WORKFLOW_RUN_PARENT_RUN_NOT_FOUND: {
+            code: 'WORKFLOW_RUN_PARENT_RUN_NOT_FOUND',
+            message: 'Parent run not found',
+          },
+          WORKFLOW_RUN_PLAN_NOT_FOUND: {
+            code: 'WORKFLOW_RUN_PLAN_NOT_FOUND',
+            message: 'Plan not found',
+          },
+          WORKFLOW_RUN_PLAN_STEP_MISMATCH: {
+            code: 'WORKFLOW_RUN_PLAN_STEP_MISMATCH',
+            message: 'Plan step does not belong to the requested plan',
+          },
+          WORKFLOW_RUN_PLAN_STEP_NOT_FOUND: {
+            code: 'WORKFLOW_RUN_PLAN_STEP_NOT_FOUND',
+            message: 'Plan step not found',
+          },
+          WORKFLOW_RUN_TRIGGER_DELIVERY_MISMATCH: {
+            code: 'WORKFLOW_RUN_TRIGGER_DELIVERY_MISMATCH',
+            message: 'Trigger delivery does not belong to the requested trigger',
+          },
+          WORKFLOW_RUN_TRIGGER_DELIVERY_NOT_FOUND: {
+            code: 'WORKFLOW_RUN_TRIGGER_DELIVERY_NOT_FOUND',
+            message: 'Trigger delivery not found',
+          },
+          WORKFLOW_RUN_TRIGGER_NOT_FOUND: {
+            code: 'WORKFLOW_RUN_TRIGGER_NOT_FOUND',
+            message: 'Trigger not found',
+          },
+        }
+        const mapped = workflowRunErrorMap[error.message]
+        if (mapped) {
+          sendApiError(reply, 404, mapped.code, mapped.message)
+          return reply
+        }
+      }
+      throw error
+    }
+
+    if (!workflowRun) {
+      sendApiError(
+        reply,
+        404,
+        'WORKFLOW_INSTALLATION_NOT_FOUND',
+        'Workflow installation not found or inactive',
+      )
+      return reply
+    }
+
+    return reply.code(202).send(createApiResponse(WorkflowRunRecordSchema.parse(workflowRun)))
+  })
+
+  app.get('/api/workflow-installations/:installationId/runs', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { installationId } = request.params as { installationId: string }
+    const runs = await listWorkflowRuns(prisma, actorContext.tenant.organizationId, {
+      installationId,
+    })
+    return createApiResponse(WorkflowRunRecordSchema.array().parse(runs))
+  })
+
+  app.get('/api/workflow-runs/:workflowRunId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { workflowRunId } = request.params as { workflowRunId: string }
+    const workflowRun = await getWorkflowRun(prisma, actorContext.tenant.organizationId, workflowRunId)
+    if (!workflowRun) {
+      sendApiError(reply, 404, 'WORKFLOW_RUN_NOT_FOUND', 'Workflow run not found')
+      return reply
+    }
+
+    return createApiResponse({
+      run: WorkflowRunRecordSchema.parse(workflowRun.run),
+      steps: WorkflowStepRunRecordSchema.array().parse(workflowRun.steps),
+    })
+  })
+
+  app.get('/api/execution-environment-templates', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const templates = await listExecutionEnvironmentTemplates(
+      prisma,
+      actorContext.tenant.organizationId,
+    )
+    return createApiResponse(
+      ExecutionEnvironmentTemplateRecordSchema.array().parse(templates),
+    )
+  })
+
+  app.post('/api/execution-environment-templates', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(CreateExecutionEnvironmentTemplateBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    let template
+    try {
+      template = await createExecutionEnvironmentTemplate(prisma, actorContext, body)
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND'
+      ) {
+        sendApiError(
+          reply,
+          404,
+          'EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND',
+          'Execution environment channel not found',
+        )
+        return reply
+      }
+      throw error
+    }
+
+    return reply
+      .code(201)
+      .send(createApiResponse(ExecutionEnvironmentTemplateRecordSchema.parse(template)))
+  })
+
+  app.get('/api/execution-environment-instances', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const query = request.query as { workflowRunId?: string }
+    const instances = await listExecutionEnvironmentInstances(
+      prisma,
+      actorContext.tenant.organizationId,
+      {
+        workflowRunId: query.workflowRunId,
+      },
+    )
+    return createApiResponse(
+      ExecutionEnvironmentInstanceRecordSchema.array().parse(instances),
+    )
+  })
+
+  app.post('/api/execution-environment-instances', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(LaunchExecutionEnvironmentBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    let instance
+    try {
+      instance = await requestExecutionEnvironmentLaunch(prisma, actorContext, body)
+    } catch (error) {
+      if (error instanceof Error) {
+        const executionErrorMap: Record<string, { code: string; message: string }> = {
+          EXECUTION_ENVIRONMENT_AGENT_NOT_FOUND: {
+            code: 'EXECUTION_ENVIRONMENT_AGENT_NOT_FOUND',
+            message: 'Execution environment agent not found',
+          },
+          EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND: {
+            code: 'EXECUTION_ENVIRONMENT_CHANNEL_NOT_FOUND',
+            message: 'Execution environment channel not found',
+          },
+          EXECUTION_ENVIRONMENT_RUN_NOT_FOUND: {
+            code: 'EXECUTION_ENVIRONMENT_RUN_NOT_FOUND',
+            message: 'Execution environment run not found',
+          },
+          EXECUTION_ENVIRONMENT_WORKFLOW_RUN_NOT_FOUND: {
+            code: 'EXECUTION_ENVIRONMENT_WORKFLOW_RUN_NOT_FOUND',
+            message: 'Execution environment workflow run not found',
+          },
+          EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_MISMATCH: {
+            code: 'EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_MISMATCH',
+            message: 'Execution environment workflow step run does not belong to the workflow run',
+          },
+          EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_NOT_FOUND: {
+            code: 'EXECUTION_ENVIRONMENT_WORKFLOW_STEP_RUN_NOT_FOUND',
+            message: 'Execution environment workflow step run not found',
+          },
+        }
+        const mapped = executionErrorMap[error.message]
+        if (mapped) {
+          sendApiError(reply, 404, mapped.code, mapped.message)
+          return reply
+        }
+      }
+      throw error
+    }
+
+    if (!instance) {
+      sendApiError(
+        reply,
+        404,
+        'EXECUTION_ENVIRONMENT_TEMPLATE_NOT_FOUND',
+        'Execution environment template not found or disabled',
+      )
+      return reply
+    }
+
+    return reply
+      .code(202)
+      .send(createApiResponse(ExecutionEnvironmentInstanceRecordSchema.parse(instance)))
+  })
+
+  app.post('/api/execution-environment-instances/:instanceId/terminate', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { instanceId } = request.params as { instanceId: string }
+    const instance = await terminateExecutionEnvironmentInstance(
+      prisma,
+      actorContext.tenant.organizationId,
+      instanceId,
+    )
+    if (!instance) {
+      sendApiError(
+        reply,
+        404,
+        'EXECUTION_ENVIRONMENT_INSTANCE_NOT_FOUND',
+        'Execution environment instance not found',
+      )
+      return reply
+    }
+
+    return createApiResponse(ExecutionEnvironmentInstanceRecordSchema.parse(instance))
+  })
+
+  app.get('/api/execution-usage-ledger', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const query = request.query as { instanceId?: string; workflowRunId?: string }
+    const usage = await listExecutionUsageLedger(prisma, actorContext.tenant.organizationId, {
+      instanceId: query.instanceId,
+      workflowRunId: query.workflowRunId,
+    })
+    return createApiResponse(ExecutionUsageLedgerRecordSchema.array().parse(usage))
+  })
+
+  app.get('/api/execution-runners', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const runners = await listExecutionRunners(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(ExecutionRunnerRecordSchema.array().parse(runners))
+  })
+
+  app.get('/api/execution-leases', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const query = request.query as { instanceId?: string }
+    const leases = await listExecutionLeases(prisma, actorContext.tenant.organizationId, {
+      instanceId: query.instanceId,
+    })
+    return createApiResponse(ExecutionLeaseRecordSchema.array().parse(leases))
+  })
+
   app.get('/api/mailbox', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -2175,6 +2675,15 @@ export const buildApp = async () => {
         )
         return reply
       }
+      if (error instanceof Error && error.message === 'MAILBOX_CORRELATION_CONFLICT') {
+        sendApiError(
+          reply,
+          409,
+          'MAILBOX_CORRELATION_CONFLICT',
+          'Correlation ID already belongs to a different mailbox message',
+        )
+        return reply
+      }
       throw error
     }
     return reply.code(201).send(createApiResponse(MailboxMessageRecordSchema.parse(message)))
@@ -2190,12 +2699,16 @@ export const buildApp = async () => {
     }
 
     const { messageId } = request.params as { messageId: string }
-    const message = await markMailboxMessageDelivered(
+    const delivery = await markMailboxMessageDelivered(
       prisma,
       actorContext.tenant.organizationId,
       messageId,
     )
-    if (!message) {
+    if (delivery.kind === 'not_found') {
+      sendApiError(reply, 404, 'MAILBOX_MESSAGE_NOT_FOUND', 'Mailbox message not found')
+      return reply
+    }
+    if (delivery.kind === 'not_deliverable') {
       sendApiError(
         reply,
         409,
@@ -2205,7 +2718,7 @@ export const buildApp = async () => {
       return reply
     }
 
-    return createApiResponse(MailboxMessageRecordSchema.parse(message))
+    return createApiResponse(MailboxMessageRecordSchema.parse(delivery.message))
   })
 
   app.post('/api/mailbox/:messageId/claim', async (request, reply) => {
@@ -2218,12 +2731,16 @@ export const buildApp = async () => {
     }
 
     const { messageId } = request.params as { messageId: string }
-    const message = await claimMailboxMessage(
+    const claim = await claimMailboxMessage(
       prisma,
       actorContext.tenant.organizationId,
       messageId,
     )
-    if (!message) {
+    if (claim.kind === 'not_found') {
+      sendApiError(reply, 404, 'MAILBOX_MESSAGE_NOT_FOUND', 'Mailbox message not found')
+      return reply
+    }
+    if (claim.kind === 'not_claimable') {
       sendApiError(
         reply,
         409,
@@ -2233,7 +2750,7 @@ export const buildApp = async () => {
       return reply
     }
 
-    return createApiResponse(MailboxMessageRecordSchema.parse(message))
+    return createApiResponse(MailboxMessageRecordSchema.parse(claim.message))
   })
 
   app.get('/api/resource-locks', async (request, reply) => {

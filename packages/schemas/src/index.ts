@@ -696,12 +696,28 @@ export const RunExecuteJobPayloadSchema = z.object({
   messageId: NonEmptyStringSchema,
   parentPlanId: z.string().uuid().optional(),
   parentPlanStepId: z.string().uuid().optional(),
+  parentWorkflowRunId: z.string().uuid().optional(),
+  parentWorkflowStepRunId: z.string().uuid().optional(),
   promptOverride: z.string().min(1).optional(),
   runId: RunIdSchema,
   taskId: TaskIdSchema,
   threadId: ThreadIdSchema,
 })
 export type RunExecuteJobPayload = z.infer<typeof RunExecuteJobPayloadSchema>
+
+export const WorkflowRunExecuteJobPayloadSchema = z.object({
+  actorContext: AuthorizedActionContextSchema,
+  workflowRunId: z.string().uuid(),
+})
+export type WorkflowRunExecuteJobPayload = z.infer<typeof WorkflowRunExecuteJobPayloadSchema>
+
+export const ExecutionEnvironmentAllocateJobPayloadSchema = z.object({
+  actorContext: AuthorizedActionContextSchema,
+  instanceId: z.string().uuid(),
+})
+export type ExecutionEnvironmentAllocateJobPayload = z.infer<
+  typeof ExecutionEnvironmentAllocateJobPayloadSchema
+>
 
 export const TriggerEventDispatchJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,

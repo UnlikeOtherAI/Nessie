@@ -21,6 +21,8 @@ const mapMailboxMessage = (message: {
   organizationId: string
   planId: string | null
   planStepId: string | null
+  workflowRunId: string | null
+  workflowStepRunId: string | null
   status: 'dead_letter' | 'delivered' | 'processing' | 'queued'
   subject: string | null
   threadId: string | null
@@ -32,6 +34,8 @@ const mapMailboxMessage = (message: {
   organizationId: parseOrganizationId(message.organizationId),
   planId: message.planId ?? undefined,
   planStepId: message.planStepId ?? undefined,
+  workflowRunId: message.workflowRunId ?? undefined,
+  workflowStepRunId: message.workflowStepRunId ?? undefined,
   fromAgentId: parseOptional(message.fromAgentId, parseAgentId),
   toAgentId: parseOptional(message.toAgentId, parseAgentId),
   channelId: parseOptional(message.channelId, parseChannelId),
@@ -78,6 +82,8 @@ export const createMailboxMessage = async (
     fromAgentId?: string
     planId?: string
     planStepId?: string
+    workflowRunId?: string
+    workflowStepRunId?: string
     subject?: string
     threadId?: string
     toAgentId?: string
@@ -114,6 +120,8 @@ export const createMailboxMessage = async (
         organizationId,
         planId: input.planId,
         planStepId: input.planStepId,
+        workflowRunId: input.workflowRunId,
+        workflowStepRunId: input.workflowStepRunId,
         fromAgentId: input.fromAgentId,
         toAgentId: input.toAgentId,
         channelId: resolvedChannelId,
@@ -139,6 +147,21 @@ export const createMailboxMessage = async (
         },
       })
       if (existing) {
+        const matchesExistingRequest =
+          existing.body === input.body &&
+          existing.channelId === (resolvedChannelId ?? null) &&
+          existing.fromAgentId === (input.fromAgentId ?? null) &&
+          existing.planId === (input.planId ?? null) &&
+          existing.planStepId === (input.planStepId ?? null) &&
+          existing.workflowRunId === (input.workflowRunId ?? null) &&
+          existing.workflowStepRunId === (input.workflowStepRunId ?? null) &&
+          existing.subject === (input.subject ?? null) &&
+          existing.threadId === (input.threadId ?? null)
+
+        if (!matchesExistingRequest) {
+          throw new Error('MAILBOX_CORRELATION_CONFLICT')
+        }
+
         return mapMailboxMessage(existing)
       }
     }
@@ -148,11 +171,27 @@ export const createMailboxMessage = async (
   return mapMailboxMessage(message)
 }
 
+export type MailboxClaimResult =
+  | { kind: 'claimed'; message: MailboxMessageRecord }
+  | { kind: 'not_claimable' }
+  | { kind: 'not_found' }
+
 export const claimMailboxMessage = async (
   prisma: PrismaClient,
   organizationId: string,
   messageId: string,
-): Promise<MailboxMessageRecord | null> => {
+): Promise<MailboxClaimResult> => {
+  const existing = await prisma.agentMailboxMessage.findFirst({
+    where: {
+      id: messageId,
+      organizationId,
+    },
+  })
+
+  if (!existing) {
+    return { kind: 'not_found' }
+  }
+
   const now = new Date()
 
   const claimed = await prisma.agentMailboxMessage.updateMany({
@@ -176,24 +215,43 @@ export const claimMailboxMessage = async (
   })
 
   if (claimed.count === 0) {
-    return null
+    return { kind: 'not_claimable' }
   }
 
   const message = await prisma.agentMailboxMessage.findUnique({
     where: { id: messageId },
   })
   if (!message) {
-    return null
+    return { kind: 'not_found' }
   }
 
-  return mapMailboxMessage(message)
+  return {
+    kind: 'claimed',
+    message: mapMailboxMessage(message),
+  }
 }
+
+export type MailboxDeliveryResult =
+  | { kind: 'delivered'; message: MailboxMessageRecord }
+  | { kind: 'not_deliverable' }
+  | { kind: 'not_found' }
 
 export const markMailboxMessageDelivered = async (
   prisma: PrismaClient,
   organizationId: string,
   messageId: string,
-): Promise<MailboxMessageRecord | null> => {
+): Promise<MailboxDeliveryResult> => {
+  const existing = await prisma.agentMailboxMessage.findFirst({
+    where: {
+      id: messageId,
+      organizationId,
+    },
+  })
+
+  if (!existing) {
+    return { kind: 'not_found' }
+  }
+
   const delivered = await prisma.agentMailboxMessage.updateMany({
     where: {
       id: messageId,
@@ -211,15 +269,18 @@ export const markMailboxMessageDelivered = async (
   })
 
   if (delivered.count === 0) {
-    return null
+    return { kind: 'not_deliverable' }
   }
 
   const message = await prisma.agentMailboxMessage.findUnique({
     where: { id: messageId },
   })
   if (!message) {
-    return null
+    return { kind: 'not_found' }
   }
 
-  return mapMailboxMessage(message)
+  return {
+    kind: 'delivered',
+    message: mapMailboxMessage(message),
+  }
 }

@@ -71,6 +71,63 @@ enum MailboxMessageStatus {
   dead_letter
 }
 
+enum WorkflowInstallationStatus {
+  draft
+  active
+  paused
+  disabled
+}
+
+enum WorkflowRunStatus {
+  pending
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum WorkflowStepRunStatus {
+  pending
+  running
+  completed
+  failed
+  skipped
+  blocked
+}
+
+enum ExecutionProvider {
+  docker
+  gcloud
+}
+
+enum ExecutionMode {
+  container
+  vm
+  function
+}
+
+enum ExecutionEnvironmentInstanceStatus {
+  pending
+  provisioning
+  ready
+  failed
+  terminated
+}
+
+enum ExecutionRunnerStatus {
+  active
+  draining
+  offline
+}
+
+enum ExecutionLeaseStatus {
+  issued
+  acknowledged
+  completed
+  revoked
+  expired
+}
+
 enum ResourceLockType {
   exclusive
   shared
@@ -379,6 +436,7 @@ model Thread {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  mailboxMessages AgentMailboxMessage[]
   messages  Message[]
   runs      Run[]
   triggerTargets AgentTrigger[]          @relation("TriggerTargetThread")
@@ -447,6 +505,8 @@ model Agent {
   triggers              AgentTrigger[]
   tasks                 Task[]
   approvalRequests      ApprovalRequest[]
+  workflowStepRuns      WorkflowStepRun[] @relation("WorkflowStepAssignedAgent")
+  executionEnvironmentInstances ExecutionEnvironmentInstance[]
 
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -513,6 +573,9 @@ model Run {
   triggerDelivery AgentTriggerDelivery? @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
   tasks      Task[]
   toolCalls  ToolCall[]
+  workflowRuns WorkflowRun[] @relation("WorkflowParentRun")
+  workflowStepRuns WorkflowStepRun[] @relation("WorkflowAgentRun")
+  executionEnvironmentInstances ExecutionEnvironmentInstance[]
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
@@ -542,6 +605,7 @@ model AgentTrigger {
   targetThread Thread?                   @relation("TriggerTargetThread", fields: [targetThreadId], references: [id], onDelete: SetNull)
   deliveries  AgentTriggerDelivery[]
   runs        Run[]
+  workflowRuns WorkflowRun[]
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])
@@ -564,6 +628,7 @@ model AgentTriggerDelivery {
   createdAt    DateTime                   @default(now()) @map("created_at")
   trigger      AgentTrigger               @relation(fields: [triggerId], references: [id], onDelete: Cascade)
   run          Run?                       @relation("RunTriggerDelivery")
+  workflowRuns WorkflowRun[]
 
   @@index([triggerId, createdAt])
   @@index([status, createdAt])
@@ -586,6 +651,7 @@ model Plan {
   createdByActorId   String     @map("created_by_actor_id")
   createdAt          DateTime   @default(now()) @map("created_at")
   updatedAt          DateTime   @updatedAt @map("updated_at")
+  workflowRuns       WorkflowRun[]
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
@@ -605,6 +671,7 @@ model PlanStep {
   artifacts       Json?          @default("{}")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
+  workflowRuns    WorkflowRun[]
 
   @@unique([planId, sequence])
   @@index([planId, sequence])
@@ -617,6 +684,8 @@ model AgentMailboxMessage {
   organizationId String               @map("organization_id") @db.Uuid
   planId         String?              @map("plan_id") @db.Uuid
   planStepId     String?              @map("plan_step_id") @db.Uuid
+  workflowRunId  String?              @map("workflow_run_id") @db.Uuid
+  workflowStepRunId String?           @map("workflow_step_run_id") @db.Uuid
   fromAgentId    String?              @map("from_agent_id") @db.Uuid
   toAgentId      String?              @map("to_agent_id") @db.Uuid
   channelId      String?              @map("channel_id") @db.Uuid
@@ -631,13 +700,263 @@ model AgentMailboxMessage {
   deliveredAt    DateTime?            @map("delivered_at")
   createdAt      DateTime             @default(now()) @map("created_at")
   updatedAt      DateTime             @updatedAt @map("updated_at")
+  thread         Thread?              @relation(fields: [threadId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status, visibleAt])
   @@index([toAgentId, status, visibleAt])
   @@index([planId, createdAt])
+  @@index([workflowRunId, createdAt])
   @@index([threadId, status, visibleAt])
   @@unique([toAgentId, correlationId])
   @@map("agent_mailbox_messages")
+}
+
+model WorkflowTemplate {
+  id                           String   @id @default(uuid()) @db.Uuid
+  organizationId               String   @map("organization_id") @db.Uuid
+  name                         String
+  description                  String?
+  version                      Int      @default(1)
+  graphJson                    Json     @default("{}") @map("graph_json")
+  triggersJson                 Json     @default("{}") @map("triggers_json")
+  variableSchema               Json     @default("{}") @map("variable_schema")
+  bindingSchema                Json     @default("{}") @map("binding_schema")
+  requiredEnvironmentTemplateIds Json   @default("[]") @map("required_environment_template_ids")
+  createdByActorType           String   @map("created_by_actor_type")
+  createdByActorId             String   @map("created_by_actor_id")
+  createdAt                    DateTime @default(now()) @map("created_at")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+  installations                WorkflowInstallation[]
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, name])
+  @@map("workflow_templates")
+}
+
+model WorkflowInstallation {
+  id                      String                     @id @default(uuid()) @db.Uuid
+  workflowTemplateId      String                     @map("workflow_template_id") @db.Uuid
+  workflowTemplateVersion Int                        @map("workflow_template_version")
+  organizationId          String                     @map("organization_id") @db.Uuid
+  projectId               String?                    @map("project_id") @db.Uuid
+  teamId                  String?                    @map("team_id") @db.Uuid
+  channelId               String?                    @map("channel_id") @db.Uuid
+  status                  WorkflowInstallationStatus @default(draft)
+  active                  Boolean                    @default(true)
+  resolvedBindings        Json                       @default("{}") @map("resolved_bindings")
+  config                  Json                       @default("{}")
+  createdByActorType      String                     @map("created_by_actor_type")
+  createdByActorId        String                     @map("created_by_actor_id")
+  createdAt               DateTime                   @default(now()) @map("created_at")
+  updatedAt               DateTime                   @updatedAt @map("updated_at")
+  workflowTemplate        WorkflowTemplate           @relation(fields: [workflowTemplateId], references: [id], onDelete: Cascade)
+  runs                    WorkflowRun[]
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, status, createdAt(sort: Desc)])
+  @@index([workflowTemplateId, createdAt(sort: Desc)])
+  @@map("workflow_installations")
+}
+
+model WorkflowRun {
+  id               String            @id @default(uuid()) @db.Uuid
+  installationId   String            @map("installation_id") @db.Uuid
+  organizationId   String            @map("organization_id") @db.Uuid
+  triggerId        String?           @map("trigger_id") @db.Uuid
+  triggerDeliveryId String?          @map("trigger_delivery_id") @db.Uuid
+  parentRunId      String?           @map("parent_run_id") @db.Uuid
+  planId           String?           @map("plan_id") @db.Uuid
+  planStepId       String?           @map("plan_step_id") @db.Uuid
+  status           WorkflowRunStatus @default(pending)
+  input            Json              @default("{}")
+  output           Json?             @default("{}")
+  summary          String?
+  errorMessage     String?           @map("error_message")
+  startedByActorType String          @map("started_by_actor_type")
+  startedByActorId String            @map("started_by_actor_id")
+  startedAt        DateTime?         @map("started_at")
+  finishedAt       DateTime?         @map("finished_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  installation     WorkflowInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  trigger          AgentTrigger?     @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  triggerDelivery  AgentTriggerDelivery? @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
+  parentRun        Run?              @relation("WorkflowParentRun", fields: [parentRunId], references: [id], onDelete: SetNull)
+  plan             Plan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
+  planStep         PlanStep?         @relation(fields: [planStepId], references: [id], onDelete: SetNull)
+  stepRuns         WorkflowStepRun[]
+  executionEnvironmentInstances ExecutionEnvironmentInstance[]
+  executionUsageEntries ExecutionUsageLedger[]
+
+  @@index([installationId, createdAt(sort: Desc)])
+  @@index([organizationId, status, createdAt(sort: Desc)])
+  @@index([triggerId, createdAt(sort: Desc)])
+  @@index([parentRunId, createdAt(sort: Desc)])
+  @@map("workflow_runs")
+}
+
+model WorkflowStepRun {
+  id                    String                @id @default(uuid()) @db.Uuid
+  workflowRunId         String                @map("workflow_run_id") @db.Uuid
+  stepKey               String                @map("step_key")
+  stepType              String                @map("step_type")
+  title                 String
+  sequence              Int
+  status                WorkflowStepRunStatus @default(pending)
+  input                 Json                  @default("{}")
+  output                Json?                 @default("{}")
+  errorMessage          String?               @map("error_message")
+  assignedAgentId       String?               @map("assigned_agent_id") @db.Uuid
+  agentRunId            String?               @map("agent_run_id") @db.Uuid
+  taskId                String?               @map("task_id") @db.Uuid
+  startedAt             DateTime?             @map("started_at")
+  finishedAt            DateTime?             @map("finished_at")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  workflowRun           WorkflowRun           @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  assignedAgent         Agent?                @relation("WorkflowStepAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  agentRun              Run?                  @relation("WorkflowAgentRun", fields: [agentRunId], references: [id], onDelete: SetNull)
+  task                  Task?                 @relation("WorkflowTask", fields: [taskId], references: [id], onDelete: SetNull)
+  environmentInstance   ExecutionEnvironmentInstance? @relation("WorkflowStepEnvironment")
+  executionUsageEntries ExecutionUsageLedger[]
+
+  @@unique([workflowRunId, sequence])
+  @@index([workflowRunId, status])
+  @@index([assignedAgentId, status])
+  @@map("workflow_step_runs")
+}
+
+model ExecutionEnvironmentTemplate {
+  id                 String            @id @default(uuid()) @db.Uuid
+  organizationId     String            @map("organization_id") @db.Uuid
+  projectId          String?           @map("project_id") @db.Uuid
+  teamId             String?           @map("team_id") @db.Uuid
+  channelId          String?           @map("channel_id") @db.Uuid
+  name               String
+  description        String?
+  provider           ExecutionProvider
+  mode               ExecutionMode
+  image              String?
+  launchConfig       Json              @default("{}") @map("launch_config")
+  pricingConfig      Json              @default("{}") @map("pricing_config")
+  enabled            Boolean           @default(true)
+  createdByActorType String            @map("created_by_actor_type")
+  createdByActorId   String            @map("created_by_actor_id")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  instances          ExecutionEnvironmentInstance[]
+  usageEntries       ExecutionUsageLedger[]
+
+  @@index([organizationId, enabled, createdAt(sort: Desc)])
+  @@index([organizationId, provider, mode])
+  @@map("execution_environment_templates")
+}
+
+model ExecutionEnvironmentInstance {
+  id                 String                           @id @default(uuid()) @db.Uuid
+  templateId         String                           @map("template_id") @db.Uuid
+  organizationId     String                           @map("organization_id") @db.Uuid
+  projectId          String?                          @map("project_id") @db.Uuid
+  teamId             String?                          @map("team_id") @db.Uuid
+  channelId          String?                          @map("channel_id") @db.Uuid
+  workflowRunId      String?                          @map("workflow_run_id") @db.Uuid
+  workflowStepRunId  String?                          @unique @map("workflow_step_run_id") @db.Uuid
+  runId              String?                          @map("run_id") @db.Uuid
+  agentId            String?                          @map("agent_id") @db.Uuid
+  status             ExecutionEnvironmentInstanceStatus @default(pending)
+  launchedByActorType String                          @map("launched_by_actor_type")
+  launchedByActorId  String                           @map("launched_by_actor_id")
+  providerInstanceRef String?                         @map("provider_instance_ref")
+  launchConfig       Json                             @default("{}") @map("launch_config")
+  metadata           Json                             @default("{}")
+  errorMessage       String?                          @map("error_message")
+  startedAt          DateTime?                        @map("started_at")
+  readyAt            DateTime?                        @map("ready_at")
+  terminatedAt       DateTime?                        @map("terminated_at")
+  lastHeartbeatAt    DateTime?                        @map("last_heartbeat_at")
+  createdAt          DateTime                         @default(now()) @map("created_at")
+  updatedAt          DateTime                         @updatedAt @map("updated_at")
+  template           ExecutionEnvironmentTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  workflowRun        WorkflowRun?                     @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  workflowStepRun    WorkflowStepRun?                 @relation("WorkflowStepEnvironment", fields: [workflowStepRunId], references: [id], onDelete: SetNull)
+  run                Run?                             @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent              Agent?                           @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  leases             ExecutionLease[]
+  usageEntries       ExecutionUsageLedger[]
+
+  @@index([organizationId, status, createdAt(sort: Desc)])
+  @@index([templateId, createdAt(sort: Desc)])
+  @@index([workflowRunId, createdAt(sort: Desc)])
+  @@map("execution_environment_instances")
+}
+
+model ExecutionRunner {
+  id          String                @id @default(uuid()) @db.Uuid
+  organizationId String?            @map("organization_id") @db.Uuid
+  provider    ExecutionProvider
+  label       String
+  capabilities Json                 @default("{}")
+  status      ExecutionRunnerStatus @default(active)
+  heartbeatAt DateTime?             @map("heartbeat_at")
+  metadata    Json                  @default("{}")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+  leases      ExecutionLease[]
+
+  @@unique([provider, label])
+  @@index([organizationId, provider, status])
+  @@map("execution_runners")
+}
+
+model ExecutionLease {
+  id            String               @id @default(uuid()) @db.Uuid
+  instanceId     String              @map("instance_id") @db.Uuid
+  runnerId       String              @map("runner_id") @db.Uuid
+  status         ExecutionLeaseStatus @default(issued)
+  leaseToken     String              @unique @map("lease_token")
+  expiresAt      DateTime            @map("expires_at")
+  acknowledgedAt DateTime?           @map("acknowledged_at")
+  completedAt    DateTime?           @map("completed_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  instance       ExecutionEnvironmentInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  runner         ExecutionRunner     @relation(fields: [runnerId], references: [id], onDelete: Cascade)
+
+  @@index([instanceId, status, createdAt(sort: Desc)])
+  @@index([runnerId, status, createdAt(sort: Desc)])
+  @@map("execution_leases")
+}
+
+model ExecutionUsageLedger {
+  id                 String   @id @default(uuid()) @db.Uuid
+  instanceId         String   @map("instance_id") @db.Uuid
+  templateId         String   @map("template_id") @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  projectId          String?  @map("project_id") @db.Uuid
+  teamId             String?  @map("team_id") @db.Uuid
+  channelId          String?  @map("channel_id") @db.Uuid
+  workflowRunId      String?  @map("workflow_run_id") @db.Uuid
+  workflowStepRunId  String?  @map("workflow_step_run_id") @db.Uuid
+  runId              String?  @map("run_id") @db.Uuid
+  agentId            String?  @map("agent_id") @db.Uuid
+  actorType          String   @map("actor_type")
+  actorId            String   @map("actor_id")
+  meterType          String   @map("meter_type")
+  quantity           Float
+  unitPrice          Float?   @map("unit_price")
+  costAmount         Float?   @map("cost_amount")
+  currency           String?
+  metadata           Json     @default("{}")
+  recordedAt         DateTime @default(now()) @map("recorded_at")
+  instance           ExecutionEnvironmentInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  template           ExecutionEnvironmentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  workflowRun        WorkflowRun? @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  workflowStepRun    WorkflowStepRun? @relation(fields: [workflowStepRunId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, recordedAt(sort: Desc)])
+  @@index([instanceId, recordedAt(sort: Desc)])
+  @@index([workflowRunId, recordedAt(sort: Desc)])
+  @@map("execution_usage_ledger")
 }
 
 model ResourceLock {
@@ -713,6 +1032,7 @@ model Task {
   parentTask   Task?       @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
   childTasks   Task[]      @relation("TaskHierarchy")
   events       TaskEvent[]
+  workflowStepRuns WorkflowStepRun[] @relation("WorkflowTask")
 
   @@index([agentId, status])
   @@index([runId])

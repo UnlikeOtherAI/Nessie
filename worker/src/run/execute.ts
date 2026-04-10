@@ -33,6 +33,7 @@ import {
   shouldUseWebFetch,
   shouldUseWebSearch,
 } from './tools.js'
+import { enqueueQueueJob } from '../queue.js'
 import {
   appendDelegationStep,
   markDelegationStepFinished,
@@ -40,6 +41,7 @@ import {
   markRunPlanFinished,
   markRunPlanStarted,
 } from './plans.js'
+import { markWorkflowStepRunFinished } from './workflows.js'
 
 type ExecutionDependencies = {
   modelClient: ModelClient
@@ -90,6 +92,37 @@ type RetrievedMemory = Pick<SearchResult, 'content' | 'recallId'>
 const buildScopes = (context: RunContext): WsScope[] => [
   ...buildScopesForAgent(context.channel, context.agent.id),
 ]
+
+const maybeContinueParentWorkflow = async (
+  deps: Pick<ExecutionDependencies, 'prisma'>,
+  payload: RunExecuteJobPayload,
+  input: {
+    output?: Record<string, unknown>
+    success: boolean
+    summary?: string
+  },
+): Promise<void> => {
+  const result = await markWorkflowStepRunFinished(deps.prisma, {
+    output: input.output,
+    stepRunId: payload.parentWorkflowStepRunId,
+    success: input.success,
+    summary: input.summary,
+    workflowRunId: payload.parentWorkflowRunId,
+  })
+
+  if (!result.continueWorkflow || !payload.parentWorkflowRunId) {
+    return
+  }
+
+  await enqueueQueueJob(deps.prisma, {
+    idempotencyKey: `workflow-run:continue:${payload.parentWorkflowRunId}:${payload.parentWorkflowStepRunId}`,
+    payload: {
+      actorContext: payload.actorContext,
+      workflowRunId: payload.parentWorkflowRunId,
+    },
+    topic: 'workflow.run.execute',
+  })
+}
 
 const loadAllowedToolIds = async (
   prisma: PrismaClient,
@@ -939,6 +972,16 @@ export const executeRunJob = async (
       planStepId: payload.parentPlanStepId,
       success: true,
     })
+    await maybeContinueParentWorkflow(deps, payload, {
+      output: {
+        childAgentName,
+        responseText,
+        runId: context.run.id,
+        taskId: context.task.id,
+        toolOutputs,
+      },
+      success: true,
+    })
     await setAgentStatus(deps.prisma, context.agent.id, 'idle')
     await publishRunUpdated(deps.realtimeTransport, context, 'completed')
     await publishTaskUpdated(deps.realtimeTransport, buildScopes(context), context.task.id, 'done')
@@ -1005,6 +1048,15 @@ export const executeRunJob = async (
       },
       planId: payload.parentPlanId,
       planStepId: payload.parentPlanStepId,
+      success: false,
+      summary: messageText.slice(0, 500),
+    })
+    await maybeContinueParentWorkflow(deps, payload, {
+      output: {
+        error: messageText,
+        runId: context.run.id,
+        taskId: context.task.id,
+      },
       success: false,
       summary: messageText.slice(0, 500),
     })

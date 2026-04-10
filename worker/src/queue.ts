@@ -10,12 +10,12 @@ export const enqueueQueueJob = async (
     payload: unknown
     topic: string
   },
-): Promise<void> => {
+): Promise<boolean> => {
   const encodedPayload = JSON.stringify(input.payload)
   const maxAttempts = input.maxAttempts ?? 3
 
   if (input.idempotencyKey) {
-    await prisma.$executeRaw(
+    const inserted = await prisma.$executeRaw(
       Prisma.sql`
         INSERT INTO queue_jobs (
           topic,
@@ -38,7 +38,8 @@ export const enqueueQueueJob = async (
         ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
       `,
     )
-    return
+
+    return Number(inserted) > 0
   }
 
   await prisma.$executeRaw(
@@ -61,14 +62,16 @@ export const enqueueQueueJob = async (
       )
     `,
   )
+
+  return true
 }
 
 export const enqueueRunExecution = async (
   prisma: Pick<PrismaClient, '$executeRaw'>,
   payload: RunExecuteJobPayload,
   idempotencyKey?: string,
-): Promise<void> => {
-  await enqueueQueueJob(prisma, {
+): Promise<boolean> => {
+  return enqueueQueueJob(prisma, {
     idempotencyKey,
     payload,
     topic: 'run.execute',

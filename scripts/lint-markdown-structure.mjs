@@ -81,6 +81,12 @@ function extractOverviewLinkTargets(overviewPath, content) {
   return links;
 }
 
+function expectedOverviewPath(file) {
+  const directory = path.dirname(file);
+  const baseName = path.basename(file, '.md');
+  return path.join(directory, baseName, 'overview.md').replace(/\\/g, '/');
+}
+
 function main() {
   const markdownFiles = getTrackedMarkdownFiles();
   const markdownSet = new Set(markdownFiles);
@@ -90,7 +96,10 @@ function main() {
   for (const file of markdownFiles) {
     const lines = markdownLineCount(file);
     if (lines > MAX_LINES && !baseline.has(file)) {
-      violations.push(`${file}: ${lines} lines (limit ${MAX_LINES})`);
+      const overviewPath = expectedOverviewPath(file);
+      violations.push(
+        `${file}: ${lines} lines (limit ${MAX_LINES}); split into ${overviewPath} plus chapter files`,
+      );
     }
   }
 

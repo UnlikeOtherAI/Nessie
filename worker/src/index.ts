@@ -7,12 +7,16 @@ import {
   PgRealtimeTransport,
 } from '@nessie/runtime'
 import {
+  ExecutionEnvironmentAllocateJobPayloadSchema,
   RunExecuteJobPayloadSchema,
   TriggerEventDispatchJobPayloadSchema,
+  WorkflowRunExecuteJobPayloadSchema,
 } from '@nessie/schemas'
 import { getPrismaClient } from './db/client.js'
+import { allocateExecutionEnvironmentInstance, registerExecutionRunners } from './control/execution.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
 import { dispatchEventTriggers, sweepDueScheduledTriggers } from './control/triggers.js'
+import { executeWorkflowRun } from './control/workflows.js'
 import { executeRunJob } from './run/execute.js'
 
 const config = loadConfig()
@@ -73,6 +77,33 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
     },
   )
 
+  queueProvider.subscribe(
+    'workflow.run.execute',
+    async (job) => {
+      const payload = WorkflowRunExecuteJobPayloadSchema.parse(job.payload)
+      await executeWorkflowRun(prisma, payload.workflowRunId)
+    },
+    {
+      signal: abortController.signal,
+    },
+  )
+
+  queueProvider.subscribe(
+    'execution.environment.allocate',
+    async (job) => {
+      const payload = ExecutionEnvironmentAllocateJobPayloadSchema.parse(job.payload)
+      await allocateExecutionEnvironmentInstance(prisma, payload.instanceId)
+    },
+    {
+      signal: abortController.signal,
+    },
+  )
+
+  const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`
+  await registerExecutionRunners(prisma, {
+    labelPrefix: runnerLabelPrefix,
+  })
+
   let triggerSweepInFlight = false
   const triggerSweepInterval = setInterval(async () => {
     if (triggerSweepInFlight || abortController.signal.aborted) {
@@ -114,6 +145,20 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
     }
   }, 5_000)
 
+  const runnerHeartbeatInterval = setInterval(async () => {
+    if (abortController.signal.aborted) {
+      return
+    }
+
+    try {
+      await registerExecutionRunners(prisma, {
+        labelPrefix: runnerLabelPrefix,
+      })
+    } catch (error) {
+      console.error('[worker.execution-runners] heartbeat failed', error)
+    }
+  }, 30_000)
+
   console.log(
     JSON.stringify(
       {
@@ -132,6 +177,7 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
     abortController.abort()
     clearInterval(triggerSweepInterval)
     clearInterval(mailboxSweepInterval)
+    clearInterval(runnerHeartbeatInterval)
     modelClient.close()
     await realtimeTransport.close()
     await pool.end()

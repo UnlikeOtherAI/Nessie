@@ -39,7 +39,7 @@ This system must:
   - primary answer generation,
   - tool-translation helper calls,
   - judge calls,
-  - shadow/fanout calls,
+  - committee/shadow calls,
   - embeddings or other helper calls tied to the request.
 - the top-level request result may contain one final answer but it must
   still expose all underlying invocation records.

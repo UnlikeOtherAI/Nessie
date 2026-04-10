@@ -14,6 +14,7 @@ import {
 } from '@nessie/schemas'
 import { ensureDefaultThread } from './channels.js'
 import { markDelegationStepQueued } from '../run/plans.js'
+import { markWorkflowStepRunQueued } from '../run/workflows.js'
 import { enqueueRunExecution } from '../queue.js'
 
 const CLAIM_TIMEOUT_MS = 60_000
@@ -21,6 +22,7 @@ const CLAIM_TIMEOUT_MS = 60_000
 type ClaimedMailboxMessage = {
   body: string
   channelId: string | null
+  claimedAt: Date
   correlationId: string | null
   fromAgentId: string | null
   id: string
@@ -30,6 +32,8 @@ type ClaimedMailboxMessage = {
   subject: string | null
   threadId: string | null
   toAgentId: string
+  workflowRunId: string | null
+  workflowStepRunId: string | null
 }
 
 const buildMailboxActorContext = (input: {
@@ -103,6 +107,7 @@ const claimNextMailboxMessage = async (
       RETURNING
         amm."body" AS "body",
         amm."channel_id" AS "channelId",
+        amm."claimed_at" AS "claimedAt",
         amm."correlation_id" AS "correlationId",
         amm."from_agent_id" AS "fromAgentId",
         amm."id" AS "id",
@@ -111,7 +116,9 @@ const claimNextMailboxMessage = async (
         amm."plan_step_id" AS "planStepId",
         amm."subject" AS "subject",
         amm."thread_id" AS "threadId",
-        amm."to_agent_id" AS "toAgentId"
+        amm."to_agent_id" AS "toAgentId",
+        amm."workflow_run_id" AS "workflowRunId",
+        amm."workflow_step_run_id" AS "workflowStepRunId"
     `,
   )
 
@@ -120,15 +127,41 @@ const claimNextMailboxMessage = async (
 
 const deadLetterMailboxMessage = async (
   prisma: PrismaClient,
-  messageId: string,
-): Promise<void> => {
-  await prisma.agentMailboxMessage.update({
-    where: { id: messageId },
+  message: Pick<ClaimedMailboxMessage, 'claimedAt' | 'id'>,
+): Promise<boolean> => {
+  const result = await prisma.agentMailboxMessage.updateMany({
+    where: {
+      claimedAt: message.claimedAt,
+      deliveredAt: null,
+      id: message.id,
+      status: 'processing',
+    },
     data: {
       claimedAt: null,
       status: 'dead_letter',
     },
   })
+
+  return result.count === 1
+}
+
+const lockClaimedMailboxMessage = async (
+  prisma: Pick<PrismaClient, '$queryRaw'>,
+  message: Pick<ClaimedMailboxMessage, 'claimedAt' | 'id'>,
+): Promise<boolean> => {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`
+      SELECT amm."id" AS "id"
+      FROM "agent_mailbox_messages" AS amm
+      WHERE amm."id" = ${message.id}
+        AND amm."status" = 'processing'::"MailboxMessageStatus"
+        AND amm."delivered_at" IS NULL
+        AND amm."claimed_at" = ${message.claimedAt}
+      FOR UPDATE
+    `,
+  )
+
+  return rows.length === 1
 }
 
 export const reclaimExpiredMailboxMessages = async (
@@ -172,7 +205,7 @@ export const dispatchNextMailboxMessage = async (
     (message.channelId ? await ensureDefaultThread(prisma, message.channelId) : null)
 
   if (!targetThreadId) {
-    await deadLetterMailboxMessage(prisma, message.id)
+    await deadLetterMailboxMessage(prisma, message)
     return true
   }
 
@@ -188,15 +221,15 @@ export const dispatchNextMailboxMessage = async (
     },
   })
   if (!thread) {
-    await deadLetterMailboxMessage(prisma, message.id)
+    await deadLetterMailboxMessage(prisma, message)
     return true
   }
   if (thread.channel.organizationId !== message.organizationId) {
-    await deadLetterMailboxMessage(prisma, message.id)
+    await deadLetterMailboxMessage(prisma, message)
     return true
   }
   if (message.channelId && message.channelId !== thread.channelId) {
-    await deadLetterMailboxMessage(prisma, message.id)
+    await deadLetterMailboxMessage(prisma, message)
     return true
   }
 
@@ -208,7 +241,7 @@ export const dispatchNextMailboxMessage = async (
     select: { id: true },
   })
   if (!binding) {
-    await deadLetterMailboxMessage(prisma, message.id)
+    await deadLetterMailboxMessage(prisma, message)
     return true
   }
 
@@ -222,6 +255,11 @@ export const dispatchNextMailboxMessage = async (
     } as const)
 
   const publishPayload = await prisma.$transaction(async (tx) => {
+    const claimStillOwned = await lockClaimedMailboxMessage(tx, message)
+    if (!claimStillOwned) {
+      return null
+    }
+
     const promptMessage = await tx.message.create({
       data: {
         content: message.body,
@@ -265,6 +303,8 @@ export const dispatchNextMailboxMessage = async (
         messageId: promptMessage.id,
         parentPlanId: message.planId ?? undefined,
         parentPlanStepId: message.planStepId ?? undefined,
+        parentWorkflowRunId: message.workflowRunId ?? undefined,
+        parentWorkflowStepRunId: message.workflowStepRunId ?? undefined,
         promptOverride: message.body,
         runId: parseRunId(run.id),
         taskId: parseTaskId(task.id),
@@ -290,6 +330,16 @@ export const dispatchNextMailboxMessage = async (
       planId: message.planId,
       planStepId: message.planStepId,
     })
+    await markWorkflowStepRunQueued(tx, {
+      output: {
+        childRunId: run.id,
+        mailboxMessageId: message.id,
+        targetAgentId: message.toAgentId,
+        taskId: task.id,
+      },
+      workflowRunId: message.workflowRunId,
+      workflowStepRunId: message.workflowStepRunId,
+    })
 
     const childAgent = await tx.agent.findUnique({
       where: { id: message.toAgentId },
@@ -309,6 +359,10 @@ export const dispatchNextMailboxMessage = async (
           : null,
     }
   })
+
+  if (!publishPayload) {
+    return true
+  }
 
   await realtimeTransport.publishWs(
     buildScopes({
