@@ -17,6 +17,11 @@ If these get mixed together, the codebase will become hard to reason about very 
 
 These are backend/runtime adapters chosen by deployment or config.
 
+The detailed target-state design for inference/model providers lives in
+[model-provider-connector-spec.md](./model-provider-connector-spec.md).
+That document extends this one for the model-provider category only. It
+does not change the frontend facade rules in this file.
+
 Phase 1 required categories:
 
 - auth provider
@@ -39,6 +44,20 @@ Rule:
 - Phase 1 should allow one configured provider per category,
 - provider selection must happen centrally in backend config,
 - page-level or feature-level provider selection is not allowed.
+
+Important clarification for later phases:
+
+- the "one configured provider per category" rule remains true for most
+  infrastructure categories.
+- model providers are the exception once multi-provider inference is
+  introduced.
+- even then, raw provider selection still does not move into page-level
+  or feature-level code.
+- later-phase model routing must still be centrally defined in backend
+  control-plane configuration as approved connectors and routing
+  profiles.
+- agents may reference an admin-defined routing profile, but they should
+  not hold provider credentials or ad hoc provider-specific logic.
 
 ## 3) Frontend architecture rule
 

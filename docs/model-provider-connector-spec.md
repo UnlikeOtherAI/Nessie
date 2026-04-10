@@ -9,6 +9,11 @@ between model providers, route one request across multiple providers
 when needed, and account for every physical model call in the token
 ledger.
 
+This document is the model-provider specialization of
+[provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md)
+section 2. It refines the infrastructure/provider rules for inference
+without changing the frontend facade rules in that document.
+
 This system must:
 
 - support swappable providers and provider-native model names without worker rewrites,
