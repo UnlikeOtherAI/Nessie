@@ -1,6 +1,7 @@
 export * from './builtin-tools.js'
 export * from './db.js'
 export * from './gcs-storage.js'
+export * from './inference/index.js'
 export * from './model.js'
 export * from './pubsub-queue.js'
 export * from './queue.js'

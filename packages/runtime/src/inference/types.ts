@@ -1,0 +1,241 @@
+import type { AuthorizedActionContext } from '@nessie/schemas'
+
+export type ModelProviderName = 'openai' | 'minimax' | 'openai-compatible'
+
+export type ModelProviderConfig = {
+  apiKey?: string
+  baseUrl?: string
+  modelName?: string
+  provider: ModelProviderName
+}
+
+export type ProviderHealthStatus =
+  | 'healthy'
+  | 'degraded'
+  | 'unreachable'
+  | 'unknown'
+
+export type ToolCallingMode = 'native' | 'prompt-translated' | 'disabled'
+export type StructuredOutputMode = 'native-json' | 'prompt-json' | 'text-only'
+export type SystemPromptMode = 'native' | 'fold-into-user'
+export type ToolResultMode = 'native-tool-message' | 'context-block'
+
+export type NormalizedFinishReason =
+  | 'stop'
+  | 'length'
+  | 'tool-call'
+  | 'content-filter'
+  | 'error'
+  | 'other'
+
+export type JsonObjectResponseFormat = {
+  type: 'json_object'
+}
+
+export type ProviderMessage = {
+  role: 'assistant' | 'system' | 'tool' | 'user'
+  content: string
+  name?: string
+  toolCallId?: string
+}
+
+export type UsageReporting = {
+  cacheReadTokens: boolean
+  cacheWriteTokens: boolean
+  cachedInputTokens: boolean
+  cachedOutputTokens: boolean
+  inputTokens: boolean
+  outputTokens: boolean
+  providerReportedCost: boolean
+}
+
+export type ModelCapabilitySnapshot = {
+  provider: ModelProviderName
+  model: string
+  displayName?: string
+  supportsChat: boolean
+  supportsEmbeddings: boolean
+  supportsModelDiscovery: boolean
+  supportsStreaming: boolean
+  supportsVision: boolean
+  structuredOutputMode: StructuredOutputMode
+  systemPromptMode: SystemPromptMode
+  toolCallingMode: ToolCallingMode
+  toolResultMode: ToolResultMode
+  usageReporting: UsageReporting
+  maxInputTokens?: number
+  maxOutputTokens?: number
+  source: 'static' | 'live' | 'manual'
+  discoveredAt: string
+  lastVerifiedAt?: string
+}
+
+export type CapabilityResolution = {
+  effectiveSnapshot: ModelCapabilitySnapshot
+  effectiveSource: 'manual' | 'static'
+  overrideActive: boolean
+}
+
+export type InvocationUsage = {
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  cachedInputTokens?: number
+  cachedOutputTokens?: number
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+}
+
+export type InvocationRecord = {
+  invocationId: string
+  requestId: string
+  correlationId?: string
+  provider: ModelProviderName
+  model: string
+  operationType: 'chat' | 'completion' | 'embedding' | 'other'
+  usage: InvocationUsage
+  providerReportedCost?: { amount: number; currency: string }
+  latencyMs: number
+  finishReason?: NormalizedFinishReason
+  metadata?: Record<string, unknown>
+}
+
+export type ProviderInvocationRequest = {
+  requestId: string
+  correlationId?: string
+  messages: ProviderMessage[]
+  maxOutputTokens?: number
+  metadata?: Record<string, unknown>
+  model: string
+  responseFormat?: JsonObjectResponseFormat
+  temperature?: number
+}
+
+export type ProviderInvocationResult = {
+  finishReason?: NormalizedFinishReason
+  invocation: InvocationRecord
+  outputText: string
+}
+
+export type ProviderStreamEvent = {
+  type: 'output_text.delta'
+  text: string
+}
+
+export type ProviderEmbeddingRequest = {
+  requestId: string
+  correlationId?: string
+  input: string
+  metadata?: Record<string, unknown>
+  model?: string
+}
+
+export type ProviderEmbeddingResult = {
+  embedding: number[]
+  invocation: InvocationRecord
+}
+
+export type ProviderHealthReport = {
+  status: ProviderHealthStatus
+  checkedAt: string
+  latencyMs?: number
+  message?: string
+}
+
+export interface ProviderConnector {
+  readonly provider: ModelProviderName
+  checkHealth(): Promise<ProviderHealthReport>
+  close(): void
+  embed?(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResult>
+  fetchCompletion(body: Record<string, unknown>): Promise<Response>
+  getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot>
+  getProviderMeta(): Promise<{
+    displayName: string
+    provider: ModelProviderName
+    supportsModelDiscovery: boolean
+  }>
+  invoke(request: ProviderInvocationRequest): Promise<ProviderInvocationResult>
+  listModels(): Promise<ModelCapabilitySnapshot[]>
+  stream?(
+    request: ProviderInvocationRequest,
+  ): AsyncGenerator<ProviderStreamEvent, ProviderInvocationResult, undefined>
+}
+
+export type ProviderConnectorFactory = (
+  config: ModelProviderConfig,
+) => ProviderConnector
+
+export interface ConnectorRegistry {
+  getConfigured(config: ModelProviderConfig): ProviderConnector
+  listRegistered(): ModelProviderName[]
+  register(
+    provider: ModelProviderName,
+    factory: ProviderConnectorFactory,
+  ): void
+}
+
+export interface CapabilityCatalog {
+  invalidate(provider: ModelProviderName, model?: string): void
+  resolve(
+    config: ModelProviderConfig,
+    model?: string,
+  ): Promise<CapabilityResolution>
+}
+
+export type InferenceRequest = {
+  actorContext?: AuthorizedActionContext
+  correlationId?: string
+  maxOutputTokens?: number
+  messages: ProviderMessage[]
+  metadata?: Record<string, unknown>
+  model?: string
+  requestId?: string
+  responseFormat?: JsonObjectResponseFormat
+  temperature?: number
+}
+
+export type InferenceResult = {
+  correlationId?: string
+  finishReason?: NormalizedFinishReason
+  invocations: InvocationRecord[]
+  model: string
+  outputText: string
+  provider: ModelProviderName
+  requestId: string
+}
+
+export type InferenceStreamEvent = ProviderStreamEvent
+
+export type InferenceEmbedRequest = {
+  actorContext?: AuthorizedActionContext
+  correlationId?: string
+  metadata?: Record<string, unknown>
+  model?: string
+  requestId?: string
+}
+
+export interface InferenceService {
+  checkHealth(): Promise<ProviderHealthReport>
+  close(): void
+  embed(
+    input: string,
+    request?: InferenceEmbedRequest,
+  ): Promise<ProviderEmbeddingResult>
+  fetchCompletion(body: Record<string, unknown>): Promise<Response>
+  getCapabilities(model?: string): Promise<CapabilityResolution>
+  run(request: InferenceRequest): Promise<InferenceResult>
+  stream?(
+    request: InferenceRequest,
+  ): AsyncGenerator<InferenceStreamEvent, InferenceResult, undefined>
+}
+
+export class ProviderInvocationError extends Error {
+  readonly invocation: InvocationRecord
+
+  constructor(message: string, invocation: InvocationRecord, cause?: unknown) {
+    super(message)
+    this.name = 'ProviderInvocationError'
+    this.invocation = invocation
+    this.cause = cause
+  }
+}
