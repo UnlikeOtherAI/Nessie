@@ -620,6 +620,7 @@ model AgentMailboxMessage {
   fromAgentId    String?              @map("from_agent_id") @db.Uuid
   toAgentId      String?              @map("to_agent_id") @db.Uuid
   channelId      String?              @map("channel_id") @db.Uuid
+  threadId       String?              @map("thread_id") @db.Uuid
   subject        String?
   body           String
   correlationId  String?              @map("correlation_id")
@@ -634,6 +635,7 @@ model AgentMailboxMessage {
   @@index([organizationId, status, visibleAt])
   @@index([toAgentId, status, visibleAt])
   @@index([planId, createdAt])
+  @@index([threadId, status, visibleAt])
   @@unique([toAgentId, correlationId])
   @@map("agent_mailbox_messages")
 }

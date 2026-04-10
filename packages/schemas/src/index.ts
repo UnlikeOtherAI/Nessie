@@ -132,6 +132,15 @@ export const AgentStatusSchema = z.enum([
 ])
 export type AgentStatus = z.infer<typeof AgentStatusSchema>
 
+export const AgentTriggerTypeSchema = z.enum([
+  'manual',
+  'scheduled',
+  'webhook',
+  'event',
+  'interval',
+])
+export type AgentTriggerType = z.infer<typeof AgentTriggerTypeSchema>
+
 export const RunStatusSchema = z.enum([
   'pending',
   'running',
@@ -691,6 +700,15 @@ export const RunExecuteJobPayloadSchema = z.object({
   threadId: ThreadIdSchema,
 })
 export type RunExecuteJobPayload = z.infer<typeof RunExecuteJobPayloadSchema>
+
+export const TriggerEventDispatchJobPayloadSchema = z.object({
+  actorContext: AuthorizedActionContextSchema,
+  dedupeKey: NonEmptyStringSchema.optional(),
+  eventType: NonEmptyStringSchema,
+  payload: z.record(z.unknown()),
+  source: z.string().min(1),
+})
+export type TriggerEventDispatchJobPayload = z.infer<typeof TriggerEventDispatchJobPayloadSchema>
 
 // ─── Phase 2: Policy Enforcement ────────────────────────────────────────────
 

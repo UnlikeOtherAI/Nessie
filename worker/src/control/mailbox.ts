@@ -1,0 +1,320 @@
+import { randomUUID } from 'node:crypto'
+import type { PrismaClient } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import type { PgRealtimeTransport } from '@nessie/runtime'
+import {
+  parseAgentId,
+  parseChannelId,
+  parseOrganizationId,
+  parseRunId,
+  parseTaskId,
+  parseThreadId,
+  type AuthorizedActionContext,
+  type WsScope,
+} from '@nessie/schemas'
+import { ensureDefaultThread } from './channels.js'
+import { markDelegationStepQueued } from '../run/plans.js'
+import { enqueueRunExecution } from '../queue.js'
+
+const CLAIM_TIMEOUT_MS = 60_000
+
+type ClaimedMailboxMessage = {
+  body: string
+  channelId: string | null
+  correlationId: string | null
+  fromAgentId: string | null
+  id: string
+  organizationId: string
+  planId: string | null
+  planStepId: string | null
+  subject: string | null
+  threadId: string | null
+  toAgentId: string
+}
+
+const buildMailboxActorContext = (input: {
+  actorId: string
+  channelId: string
+  organizationId: string
+  targetAgentId: string
+  taskId: string
+  threadId: string
+}): AuthorizedActionContext => ({
+  actor: {
+    actorId: input.actorId,
+    actorType: 'agent',
+    roles: ['system'],
+  },
+  actionContext: {
+    agentId: parseAgentId(input.targetAgentId),
+    channelId: parseChannelId(input.channelId),
+    correlationId: undefined,
+    purpose: 'mailbox.delivery',
+    requestId: randomUUID(),
+    taskId: parseTaskId(input.taskId),
+    threadId: parseThreadId(input.threadId),
+  },
+  tenant: {
+    organizationId: parseOrganizationId(input.organizationId),
+  },
+})
+
+const buildScopes = (input: {
+  agentId: string
+  channelId: string
+  organizationId: string
+}): WsScope[] => [
+  {
+    kind: 'organization',
+    organizationId: parseOrganizationId(input.organizationId),
+  },
+  {
+    kind: 'channel',
+    channelId: parseChannelId(input.channelId),
+  },
+  {
+    kind: 'agent',
+    agentId: parseAgentId(input.agentId),
+  },
+]
+
+const claimNextMailboxMessage = async (
+  prisma: PrismaClient,
+): Promise<ClaimedMailboxMessage | null> => {
+  const rows = await prisma.$queryRaw<ClaimedMailboxMessage[]>(
+    Prisma.sql`
+      WITH next_message AS (
+        SELECT amm.id
+        FROM "agent_mailbox_messages" AS amm
+        WHERE amm."status" = 'queued'::"MailboxMessageStatus"
+          AND amm."visible_at" <= now()
+          AND amm."to_agent_id" IS NOT NULL
+        ORDER BY amm."visible_at" ASC, amm."created_at" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      )
+      UPDATE "agent_mailbox_messages" AS amm
+      SET
+        "status" = 'processing'::"MailboxMessageStatus",
+        "claimed_at" = now(),
+        "attempts" = amm."attempts" + 1
+      FROM next_message
+      WHERE amm."id" = next_message."id"
+      RETURNING
+        amm."body" AS "body",
+        amm."channel_id" AS "channelId",
+        amm."correlation_id" AS "correlationId",
+        amm."from_agent_id" AS "fromAgentId",
+        amm."id" AS "id",
+        amm."organization_id" AS "organizationId",
+        amm."plan_id" AS "planId",
+        amm."plan_step_id" AS "planStepId",
+        amm."subject" AS "subject",
+        amm."thread_id" AS "threadId",
+        amm."to_agent_id" AS "toAgentId"
+    `,
+  )
+
+  return rows[0] ?? null
+}
+
+const deadLetterMailboxMessage = async (
+  prisma: PrismaClient,
+  messageId: string,
+): Promise<void> => {
+  await prisma.agentMailboxMessage.update({
+    where: { id: messageId },
+    data: {
+      claimedAt: null,
+      status: 'dead_letter',
+    },
+  })
+}
+
+export const reclaimExpiredMailboxMessages = async (
+  prisma: PrismaClient,
+): Promise<number> => {
+  const rows = await prisma.$executeRaw(
+    Prisma.sql`
+      UPDATE "agent_mailbox_messages"
+      SET
+        "status" = CASE
+          WHEN "attempts" >= 3 THEN 'dead_letter'::"MailboxMessageStatus"
+          ELSE 'queued'::"MailboxMessageStatus"
+        END,
+        "claimed_at" = NULL,
+        "visible_at" = CASE
+          WHEN "attempts" >= 3 THEN "visible_at"
+          WHEN "attempts" = 1 THEN now() + interval '10 seconds'
+          WHEN "attempts" = 2 THEN now() + interval '30 seconds'
+          ELSE now() + interval '60 seconds'
+        END
+      WHERE "status" = 'processing'::"MailboxMessageStatus"
+        AND "delivered_at" IS NULL
+        AND "claimed_at" < ${new Date(Date.now() - CLAIM_TIMEOUT_MS)}
+    `,
+  )
+
+  return Number(rows)
+}
+
+export const dispatchNextMailboxMessage = async (
+  prisma: PrismaClient,
+  realtimeTransport: PgRealtimeTransport,
+): Promise<boolean> => {
+  const message = await claimNextMailboxMessage(prisma)
+  if (!message) {
+    return false
+  }
+
+  const targetThreadId =
+    message.threadId ??
+    (message.channelId ? await ensureDefaultThread(prisma, message.channelId) : null)
+
+  if (!targetThreadId) {
+    await deadLetterMailboxMessage(prisma, message.id)
+    return false
+  }
+
+  const thread = await prisma.thread.findUnique({
+    where: { id: targetThreadId },
+    select: {
+      channelId: true,
+      channel: {
+        select: {
+          organizationId: true,
+        },
+      },
+    },
+  })
+  if (!thread) {
+    await deadLetterMailboxMessage(prisma, message.id)
+    return false
+  }
+  if (thread.channel.organizationId !== message.organizationId) {
+    await deadLetterMailboxMessage(prisma, message.id)
+    return false
+  }
+  if (message.channelId && message.channelId !== thread.channelId) {
+    await deadLetterMailboxMessage(prisma, message.id)
+    return false
+  }
+
+  const binding = await prisma.agentBinding.findFirst({
+    where: {
+      agentId: message.toAgentId,
+      channelId: thread.channelId,
+    },
+    select: { id: true },
+  })
+  if (!binding) {
+    await deadLetterMailboxMessage(prisma, message.id)
+    return false
+  }
+
+  const spawnedEvent =
+    message.fromAgentId &&
+    thread.channel.organizationId &&
+    ({
+      agentId: message.fromAgentId,
+      channelId: thread.channelId,
+      organizationId: thread.channel.organizationId,
+    } as const)
+
+  const publishPayload = await prisma.$transaction(async (tx) => {
+    const promptMessage = await tx.message.create({
+      data: {
+        content: message.body,
+        role: 'user',
+        threadId: targetThreadId,
+      },
+      select: { id: true },
+    })
+
+    const run = await tx.run.create({
+      data: {
+        agentId: message.toAgentId,
+        status: 'pending',
+        threadId: targetThreadId,
+      },
+      select: { id: true },
+    })
+
+    const task = await tx.task.create({
+      data: {
+        agentId: message.toAgentId,
+        purpose: (message.subject ?? message.body).slice(0, 200),
+        runId: run.id,
+        status: 'inbox',
+      },
+      select: { id: true },
+    })
+
+    await enqueueRunExecution(
+      tx,
+      {
+        actorContext: buildMailboxActorContext({
+          actorId: message.fromAgentId ?? message.toAgentId,
+          channelId: thread.channelId,
+          organizationId: message.organizationId,
+          targetAgentId: message.toAgentId,
+          taskId: task.id,
+          threadId: targetThreadId,
+        }),
+        agentId: parseAgentId(message.toAgentId),
+        messageId: promptMessage.id,
+        promptOverride: message.body,
+        runId: parseRunId(run.id),
+        taskId: parseTaskId(task.id),
+        threadId: parseThreadId(targetThreadId),
+      },
+      `mailbox:${message.id}`,
+    )
+
+    await tx.agentMailboxMessage.update({
+      where: { id: message.id },
+      data: {
+        deliveredAt: new Date(),
+        status: 'delivered',
+      },
+    })
+
+    await markDelegationStepQueued(tx, {
+      artifacts: {
+        childRunId: run.id,
+        mailboxMessageId: message.id,
+        targetAgentId: message.toAgentId,
+      },
+      planId: message.planId,
+      planStepId: message.planStepId,
+    })
+
+    const childAgent = await tx.agent.findUnique({
+      where: { id: message.toAgentId },
+      select: { parentAgentId: true },
+    })
+    if (childAgent?.parentAgentId !== message.fromAgentId || !spawnedEvent) {
+      return null
+    }
+
+    return {
+      childId: parseAgentId(message.toAgentId),
+      parentId: parseAgentId(spawnedEvent.agentId),
+      scopes: buildScopes(spawnedEvent),
+      taskId: parseTaskId(task.id),
+    }
+  })
+
+  if (publishPayload) {
+    await realtimeTransport.publishWs(publishPayload.scopes, {
+      data: {
+        childId: publishPayload.childId,
+        parentId: publishPayload.parentId,
+        taskId: publishPayload.taskId,
+      },
+      event: 'agent.spawned',
+    })
+  }
+
+  return true
+}

@@ -3,6 +3,7 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
+  parseThreadId,
 } from '@nessie/schemas'
 import type { MailboxMessageRecord } from '../contracts.js'
 import { parseOptional } from './contract-helpers.js'
@@ -22,6 +23,7 @@ const mapMailboxMessage = (message: {
   planStepId: string | null
   status: 'dead_letter' | 'delivered' | 'processing' | 'queued'
   subject: string | null
+  threadId: string | null
   toAgentId: string | null
   updatedAt: Date
   visibleAt: Date
@@ -33,6 +35,7 @@ const mapMailboxMessage = (message: {
   fromAgentId: parseOptional(message.fromAgentId, parseAgentId),
   toAgentId: parseOptional(message.toAgentId, parseAgentId),
   channelId: parseOptional(message.channelId, parseChannelId),
+  threadId: parseOptional(message.threadId, parseThreadId),
   subject: message.subject ?? undefined,
   body: message.body,
   correlationId: message.correlationId ?? undefined,
@@ -76,9 +79,34 @@ export const createMailboxMessage = async (
     planId?: string
     planStepId?: string
     subject?: string
+    threadId?: string
     toAgentId?: string
   },
 ): Promise<MailboxMessageRecord> => {
+  let resolvedChannelId = input.channelId
+  if (input.threadId) {
+    const thread = await prisma.thread.findUnique({
+      where: { id: input.threadId },
+      select: {
+        channel: {
+          select: {
+            organizationId: true,
+          },
+        },
+        channelId: true,
+      },
+    })
+
+    if (!thread || thread.channel.organizationId !== organizationId) {
+      throw new Error('MAILBOX_THREAD_NOT_FOUND')
+    }
+    if (resolvedChannelId && resolvedChannelId !== thread.channelId) {
+      throw new Error('MAILBOX_THREAD_CHANNEL_MISMATCH')
+    }
+
+    resolvedChannelId = thread.channelId
+  }
+
   let message
   try {
     message = await prisma.agentMailboxMessage.create({
@@ -88,7 +116,8 @@ export const createMailboxMessage = async (
         planStepId: input.planStepId,
         fromAgentId: input.fromAgentId,
         toAgentId: input.toAgentId,
-        channelId: input.channelId,
+        channelId: resolvedChannelId,
+        threadId: input.threadId,
         subject: input.subject,
         body: input.body,
         correlationId: input.correlationId,

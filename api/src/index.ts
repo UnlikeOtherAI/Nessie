@@ -37,6 +37,7 @@ import {
   parseThreadId,
   type AuthorizedActionContext,
   type MeResponse,
+  type TriggerEventDispatchJobPayload,
   type WsScope,
 } from '@nessie/schemas'
 import {
@@ -95,7 +96,7 @@ import { DEFAULT_BOOTSTRAP_RECORD_IDS } from './db/bootstrap.js'
 import { getPrismaClient } from './db/client.js'
 import { seedBootstrapRecords } from './db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from './lib/api.js'
-import { enqueueRunExecution } from './queue/pgqueue.js'
+import { enqueueQueueJob, enqueueRunExecution } from './queue/pgqueue.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import {
   addAgentToCategory,
@@ -120,7 +121,6 @@ import {
 } from './services/agents.js'
 import {
   createAgentTrigger,
-  dispatchEventTriggers,
   dispatchAgentTrigger,
   deleteAgentTrigger,
   getAgentTrigger,
@@ -130,7 +130,6 @@ import {
   listAgentTriggers,
   pauseAgentTrigger,
   resumeAgentTrigger,
-  sweepDueScheduledTriggers,
   updateAgentTrigger,
 } from './services/triggers.js'
 import {
@@ -1881,22 +1880,25 @@ export const buildApp = async () => {
       return reply
     }
 
-    const results = await dispatchEventTriggers(prisma, {
+    const payload: TriggerEventDispatchJobPayload = {
       actorContext,
+      dedupeKey: body.dedupeKey,
       eventType: body.eventType,
       payload: body.payload ?? {},
       source: body.source ?? `event:${body.eventType}`,
+    }
+
+    await enqueueQueueJob(prisma, {
+      idempotencyKey: payload.dedupeKey,
+      payload,
+      topic: 'trigger.event.dispatch',
     })
 
     return reply.code(202).send(
       createApiResponse({
-        count: results.length,
-        deliveries: results.map((result) => ({
-          delivery: AgentTriggerDeliveryRecordSchema.parse(result.delivery),
-          existing: result.existing,
-          runId: result.runId,
-          trigger: AgentTriggerRecordSchema.parse(result.trigger),
-        })),
+        accepted: true,
+        eventType: payload.eventType,
+        source: payload.source,
       }),
     )
   })
@@ -2153,7 +2155,25 @@ export const buildApp = async () => {
       return reply
     }
 
-    const message = await createMailboxMessage(prisma, actorContext.tenant.organizationId, body)
+    let message
+    try {
+      message = await createMailboxMessage(prisma, actorContext.tenant.organizationId, body)
+    } catch (error) {
+      if (error instanceof Error && error.message === 'MAILBOX_THREAD_NOT_FOUND') {
+        sendApiError(reply, 404, 'MAILBOX_THREAD_NOT_FOUND', 'Mailbox thread not found')
+        return reply
+      }
+      if (error instanceof Error && error.message === 'MAILBOX_THREAD_CHANNEL_MISMATCH') {
+        sendApiError(
+          reply,
+          400,
+          'MAILBOX_THREAD_CHANNEL_MISMATCH',
+          'Mailbox thread does not belong to the requested channel',
+        )
+        return reply
+      }
+      throw error
+    }
     return reply.code(201).send(createApiResponse(MailboxMessageRecordSchema.parse(message)))
   })
 
@@ -3751,27 +3771,8 @@ export const buildApp = async () => {
     }
   }, 60_000)
 
-  let triggerSweepInFlight = false
-  const triggerSweepInterval = setInterval(async () => {
-    if (triggerSweepInFlight) {
-      return
-    }
-
-    triggerSweepInFlight = true
-    try {
-      await sweepDueScheduledTriggers(prisma, {
-        limit: 20,
-      })
-    } catch (error) {
-      console.error('[trigger-sweep] Failed to dispatch due triggers', error)
-    } finally {
-      triggerSweepInFlight = false
-    }
-  }, 15_000)
-
   app.addHook('onClose', () => {
     clearInterval(approvalSweepInterval)
-    clearInterval(triggerSweepInterval)
   })
 
   return app

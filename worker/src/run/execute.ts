@@ -33,6 +33,12 @@ import {
   shouldUseWebFetch,
   shouldUseWebSearch,
 } from './tools.js'
+import {
+  appendDelegationStep,
+  ensureRunPlanContext,
+  markRunPlanFinished,
+  markRunPlanStarted,
+} from './plans.js'
 
 type ExecutionDependencies = {
   modelClient: ModelClient
@@ -60,6 +66,11 @@ type RunContext = {
   task: {
     id: string
   }
+}
+
+type RunPlanContext = {
+  planId: string
+  rootStepId: string
 }
 
 type StoredConversationMessage = {
@@ -578,8 +589,8 @@ const deriveDelegatedTask = (prompt: string): string => {
 const maybeSpawnChildAgent = async (
   deps: ExecutionDependencies,
   context: RunContext,
-  payload: RunExecuteJobPayload,
   prompt: string,
+  planContext: RunPlanContext,
 ): Promise<string | null> => {
   if (context.agent.parentAgentId || !/\b(spawn|delegate|sub-agent|subagent)\b/i.test(prompt)) {
     return null
@@ -602,60 +613,36 @@ const maybeSpawnChildAgent = async (
     },
   })
 
-  const childRun = await deps.prisma.run.create({
-    data: {
-      agentId: child.id,
-      status: 'pending',
-      threadId: context.run.threadId,
-    },
-  })
-
-  const childTask = await deps.prisma.task.create({
-    data: {
-      agentId: child.id,
+  const delegationStep = await appendDelegationStep(deps.prisma, {
+    assignedAgentId: child.id,
+    payload: {
+      delegatedTask,
+      parentAgentId: context.agent.id,
+      parentRunId: context.run.id,
       parentTaskId: context.task.id,
-      purpose: `Delegated task: ${delegatedTask}`.slice(0, 200),
-      runId: childRun.id,
-      status: 'inbox',
     },
+    planId: planContext.planId,
+    title: `Delegate to ${child.name}: ${delegatedTask}`,
   })
 
-  await publishTaskUpdated(
-    deps.realtimeTransport,
-    buildScopesForAgent(context.channel, child.id),
-    childTask.id,
-    childTask.status,
-  )
-
-  await deps.realtimeTransport.publishWs(buildScopes(context), {
+  await deps.prisma.agentMailboxMessage.create({
     data: {
-      childId: parseAgentId(child.id),
-      parentId: parseAgentId(context.agent.id),
-      taskId: parseTaskId(childTask.id),
+      body: [
+        `Delegated sub-task from ${context.agent.name}.`,
+        `Task: ${delegatedTask}`,
+        `Parent request context: ${prompt.trim()}`,
+        'Complete only the delegated task and report back succinctly.',
+      ].join('\n\n'),
+      channelId: context.channel.id,
+      correlationId: `spawn:${context.run.id}:${child.id}`,
+      fromAgentId: context.agent.id,
+      organizationId: context.channel.organizationId,
+      planId: planContext.planId,
+      planStepId: delegationStep.stepId,
+      subject: `Delegated task for ${child.name}`,
+      threadId: context.run.threadId,
+      toAgentId: child.id,
     },
-    event: 'agent.spawned',
-  })
-
-  await deps.queueProvider.enqueue('run.execute', {
-    actorContext: {
-      ...payload.actorContext,
-      actionContext: {
-        ...payload.actorContext.actionContext,
-        agentId: parseAgentId(child.id),
-        taskId: parseTaskId(childTask.id),
-      },
-    },
-    agentId: parseAgentId(child.id),
-    messageId: payload.messageId,
-    promptOverride: [
-      `Delegated sub-task from ${context.agent.name}.`,
-      `Task: ${delegatedTask}`,
-      `Parent request context: ${prompt.trim()}`,
-      'Complete only the delegated task and report back succinctly.',
-    ].join('\n\n'),
-    runId: parseRunId(childRun.id),
-    taskId: parseTaskId(childTask.id),
-    threadId: parseThreadId(childRun.threadId),
   })
 
   return child.name
@@ -682,7 +669,10 @@ const retrieveRelevantMemories = async (
       deps.searchConfig,
     )
   } catch (error) {
-    console.warn('[worker] Memory search failed, continuing without memories:', error instanceof Error ? error.message : error)
+    console.warn(
+      '[worker] Memory search failed, continuing without memories:',
+      error instanceof Error ? error.message : error,
+    )
     return []
   }
 }
@@ -784,7 +774,12 @@ export const executeRunJob = async (
     where: { id: payload.runId },
     select: { status: true, finishedAt: true },
   })
-  if (existingRun && (existingRun.status === 'completed' || existingRun.status === 'failed' || existingRun.status === 'cancelled')) {
+  if (
+    existingRun &&
+    (existingRun.status === 'completed' ||
+      existingRun.status === 'failed' ||
+      existingRun.status === 'cancelled')
+  ) {
     console.log(`[worker] Skipping already-${existingRun.status} run ${payload.runId}`)
     return
   }
@@ -805,10 +800,22 @@ export const executeRunJob = async (
 
   const prompt = payload.promptOverride?.trim() || message.content
   let streamStarted = false
+  let planContext: RunPlanContext | null = null
 
   try {
+    planContext = await ensureRunPlanContext(deps.prisma, {
+      agentId: context.agent.id,
+      channelId: context.channel.id,
+      createdByActorId: payload.actorContext.actor.actorId,
+      createdByActorType: payload.actorContext.actor.actorType,
+      goal: prompt,
+      organizationId: context.channel.organizationId,
+      runId: context.run.id,
+    })
+
     await updateRunStatus(deps.prisma, context.run.id, 'running')
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')
+    await markRunPlanStarted(deps.prisma, planContext)
     await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
     await publishRunUpdated(deps.realtimeTransport, context, 'running')
     await publishTaskUpdated(
@@ -837,7 +844,12 @@ export const executeRunJob = async (
       toolOutputs.push(await executeSafeTool(deps, context, 'web_search', prompt))
     }
 
-    const childAgentName = await maybeSpawnChildAgent(deps, context, payload, prompt)
+    const childAgentName = await maybeSpawnChildAgent(
+      deps,
+      context,
+      prompt,
+      planContext,
+    )
     const conversation = await loadConversation(deps.prisma, context.run.threadId)
     const memories = await retrieveRelevantMemories(deps, context, payload, prompt)
     const injectedRecallIds = memories.flatMap((memory) =>
@@ -904,6 +916,16 @@ export const executeRunJob = async (
 
     await updateRunStatus(deps.prisma, context.run.id, 'completed')
     await updateTaskStatus(deps.prisma, context.task.id, 'done')
+    await markRunPlanFinished(deps.prisma, {
+      artifacts: {
+        childAgentName,
+        toolOutputs,
+      },
+      planId: planContext.planId,
+      rootStepId: planContext.rootStepId,
+      success: true,
+      summary: responseText.slice(0, 500),
+    })
     await setAgentStatus(deps.prisma, context.agent.id, 'idle')
     await publishRunUpdated(deps.realtimeTransport, context, 'completed')
     await publishTaskUpdated(deps.realtimeTransport, buildScopes(context), context.task.id, 'done')
@@ -951,6 +973,17 @@ export const executeRunJob = async (
 
     await updateRunStatus(deps.prisma, context.run.id, 'failed')
     await updateTaskStatus(deps.prisma, context.task.id, 'failed')
+    if (planContext) {
+      await markRunPlanFinished(deps.prisma, {
+        artifacts: {
+          error: messageText,
+        },
+        planId: planContext.planId,
+        rootStepId: planContext.rootStepId,
+        success: false,
+        summary: messageText.slice(0, 500),
+      })
+    }
     await setAgentStatus(deps.prisma, context.agent.id, 'error')
     await publishRunUpdated(deps.realtimeTransport, context, 'failed')
     await publishTaskUpdated(

@@ -3,6 +3,7 @@ import {
   AgentCategoryVisibilitySchema,
   AgentIdSchema,
   AgentStatusSchema,
+  AgentTriggerTypeSchema,
   AuthProviderResponseTypeSchema,
   ChannelIdSchema,
   MessageRoleSchema,
@@ -104,13 +105,6 @@ export const CreateAgentBindingBodySchema = z.object({
   channelId: ChannelIdSchema,
 })
 
-export const AgentTriggerTypeSchema = z.enum([
-  'manual',
-  'scheduled',
-  'webhook',
-  'event',
-  'interval',
-])
 export type AgentTriggerType = z.infer<typeof AgentTriggerTypeSchema>
 
 export const AgentTriggerStatusSchema = z.enum(['active', 'paused', 'error'])
@@ -395,6 +389,7 @@ export const MailboxMessageRecordSchema = z.object({
   fromAgentId: AgentIdSchema.nullish(),
   toAgentId: AgentIdSchema.nullish(),
   channelId: ChannelIdSchema.nullish(),
+  threadId: ThreadIdSchema.nullish(),
   subject: z.string().nullish(),
   body: z.string(),
   correlationId: z.string().nullish(),
@@ -416,6 +411,7 @@ export const CreateMailboxMessageBodySchema = z.object({
   planId: z.string().uuid().optional(),
   planStepId: z.string().uuid().optional(),
   subject: z.string().optional(),
+  threadId: ThreadIdSchema.optional(),
   toAgentId: AgentIdSchema.optional(),
 })
 
@@ -446,6 +442,7 @@ export const AcquireResourceLockBodySchema = z.object({
 })
 
 export const PublishEventBodySchema = z.object({
+  dedupeKey: z.string().min(1).optional(),
   eventType: NonEmptyStringSchema,
   payload: z.record(z.unknown()).default({}),
   source: z.string().min(1).optional(),

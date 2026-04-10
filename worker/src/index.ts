@@ -6,8 +6,13 @@ import {
   PgQueueProvider,
   PgRealtimeTransport,
 } from '@nessie/runtime'
-import { RunExecuteJobPayloadSchema } from '@nessie/schemas'
+import {
+  RunExecuteJobPayloadSchema,
+  TriggerEventDispatchJobPayloadSchema,
+} from '@nessie/schemas'
 import { getPrismaClient } from './db/client.js'
+import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
+import { dispatchEventTriggers, sweepDueScheduledTriggers } from './control/triggers.js'
 import { executeRunJob } from './run/execute.js'
 
 const config = loadConfig()
@@ -57,6 +62,58 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
     },
   )
 
+  queueProvider.subscribe(
+    'trigger.event.dispatch',
+    async (job) => {
+      const payload = TriggerEventDispatchJobPayloadSchema.parse(job.payload)
+      await dispatchEventTriggers(prisma, payload)
+    },
+    {
+      signal: abortController.signal,
+    },
+  )
+
+  let triggerSweepInFlight = false
+  const triggerSweepInterval = setInterval(async () => {
+    if (triggerSweepInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    triggerSweepInFlight = true
+    try {
+      await sweepDueScheduledTriggers(prisma, {
+        limit: 20,
+      })
+    } catch (error) {
+      console.error('[worker.trigger-sweep] failed', error)
+    } finally {
+      triggerSweepInFlight = false
+    }
+  }, 15_000)
+
+  let mailboxSweepInFlight = false
+  const mailboxSweepInterval = setInterval(async () => {
+    if (mailboxSweepInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    mailboxSweepInFlight = true
+    try {
+      await reclaimExpiredMailboxMessages(prisma)
+
+      let dispatched = true
+      let iterations = 0
+      while (dispatched && iterations < 10) {
+        dispatched = await dispatchNextMailboxMessage(prisma, realtimeTransport)
+        iterations += 1
+      }
+    } catch (error) {
+      console.error('[worker.mailbox-sweep] failed', error)
+    } finally {
+      mailboxSweepInFlight = false
+    }
+  }, 5_000)
+
   console.log(
     JSON.stringify(
       {
@@ -73,6 +130,8 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
 
   const stop = async () => {
     abortController.abort()
+    clearInterval(triggerSweepInterval)
+    clearInterval(mailboxSweepInterval)
     modelClient.close()
     await realtimeTransport.close()
     await pool.end()
