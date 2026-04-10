@@ -10,6 +10,7 @@ import { EmptyState } from '../../shared/EmptyState'
 import { StatusPill } from '../../primitives/StatusPill'
 import { AgentStatusDot } from './AgentStatusDot'
 import { AgentThoughtStream } from './AgentThoughtStream'
+import { AgentTriggerPanel } from './AgentTriggerPanel'
 import { AgentMessagePreview } from './AgentMessagePreview'
 import { ToolExecutionLog } from './ToolExecutionLog'
 
@@ -58,7 +59,10 @@ export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumn
           <AgentStatusDot status={agent.status} />
           <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
           <button
-            className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10 hover:text-white"
+            className={[
+              'flex h-7 w-7 items-center justify-center rounded',
+              'text-[color:var(--tx2)] hover:bg-white/10 hover:text-white',
+            ].join(' ')}
             onClick={() => void navigate(`/agents/new?parentId=${agent.id}`)}
             title="Add child agent"
             type="button"
@@ -93,6 +97,7 @@ export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumn
             )}
           </section>
 
+          <AgentTriggerPanel agent={agent} />
           <ToolExecutionLog entries={toolEntries} />
           <AgentThoughtStream />
           <AgentMessagePreview messages={messages} />

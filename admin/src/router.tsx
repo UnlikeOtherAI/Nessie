@@ -10,6 +10,7 @@ import { LoginPage } from './pages/LoginPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
+import { TriggersPage } from './pages/TriggersPage'
 
 export const router = createBrowserRouter([
   {
@@ -34,6 +35,10 @@ export const router = createBrowserRouter([
       {
         path: '/agents',
         element: <AgentsPage />,
+      },
+      {
+        path: '/triggers',
+        element: <TriggersPage />,
       },
       {
         path: '/agents/new',

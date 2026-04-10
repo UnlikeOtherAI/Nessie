@@ -46,6 +46,36 @@ enum AgentTriggerDeliveryStatus {
   skipped
 }
 
+enum PlanStatus {
+  draft
+  active
+  waiting
+  completed
+  failed
+  cancelled
+}
+
+enum PlanStepStatus {
+  pending
+  running
+  completed
+  failed
+  skipped
+  blocked
+}
+
+enum MailboxMessageStatus {
+  queued
+  processing
+  delivered
+  dead_letter
+}
+
+enum ResourceLockType {
+  exclusive
+  shared
+}
+
 enum TaskStatus {
   inbox
   assigned
@@ -539,6 +569,129 @@ model AgentTriggerDelivery {
   @@index([status, createdAt])
   @@unique([triggerId, dedupeKey])
   @@map("agent_trigger_deliveries")
+}
+
+model Plan {
+  id                 String     @id @default(uuid()) @db.Uuid
+  organizationId     String     @map("organization_id") @db.Uuid
+  projectId          String?    @map("project_id") @db.Uuid
+  teamId             String?    @map("team_id") @db.Uuid
+  channelId          String?    @map("channel_id") @db.Uuid
+  runId              String?    @map("run_id") @db.Uuid
+  agentId            String?    @map("agent_id") @db.Uuid
+  goal               String
+  summary            String?
+  status             PlanStatus @default(draft)
+  createdByActorType String     @map("created_by_actor_type")
+  createdByActorId   String     @map("created_by_actor_id")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, status, createdAt(sort: Desc)])
+  @@index([agentId, status])
+  @@map("plans")
+}
+
+model PlanStep {
+  id              String         @id @default(uuid()) @db.Uuid
+  planId          String         @map("plan_id") @db.Uuid
+  assignedAgentId String?        @map("assigned_agent_id") @db.Uuid
+  type            String
+  title           String
+  sequence        Int
+  status          PlanStepStatus @default(pending)
+  payload         Json?          @default("{}")
+  artifacts       Json?          @default("{}")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@index([planId, sequence])
+  @@index([assignedAgentId, status])
+  @@map("plan_steps")
+}
+
+model AgentMailboxMessage {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  planId         String?              @map("plan_id") @db.Uuid
+  planStepId     String?              @map("plan_step_id") @db.Uuid
+  fromAgentId    String?              @map("from_agent_id") @db.Uuid
+  toAgentId      String?              @map("to_agent_id") @db.Uuid
+  channelId      String?              @map("channel_id") @db.Uuid
+  subject        String?
+  body           String
+  correlationId  String?              @map("correlation_id")
+  status         MailboxMessageStatus @default(queued)
+  attempts       Int                  @default(0)
+  visibleAt      DateTime             @default(now()) @map("visible_at")
+  claimedAt      DateTime?            @map("claimed_at")
+  deliveredAt    DateTime?            @map("delivered_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  @@index([organizationId, status, visibleAt])
+  @@index([toAgentId, status, visibleAt])
+  @@index([planId, createdAt])
+  @@unique([toAgentId, correlationId])
+  @@map("agent_mailbox_messages")
+}
+
+model ResourceLock {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  planId         String?          @map("plan_id") @db.Uuid
+  runId          String?          @map("run_id") @db.Uuid
+  agentId        String           @map("agent_id") @db.Uuid
+  resourcePath   String           @map("resource_path")
+  lockType       ResourceLockType @default(exclusive) @map("lock_type")
+  acquiredAt     DateTime         @default(now()) @map("acquired_at")
+  expiresAt      DateTime         @map("expires_at")
+  releasedAt     DateTime?        @map("released_at")
+
+  @@index([organizationId, resourcePath, releasedAt])
+  @@index([agentId, releasedAt])
+  @@map("resource_locks")
+}
+
+model ToolRegistryEntry {
+  id           String   @id @default(uuid()) @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  toolId       String   @unique @map("tool_id")
+  label        String
+  description  String
+  safe         Boolean  @default(false)
+  builtin      Boolean  @default(false)
+  enabled      Boolean  @default(true)
+  handlerKind  String   @default("builtin") @map("handler_kind")
+  metadata     Json?    @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId, enabled])
+  @@index([builtin, enabled])
+  @@map("tool_registry_entries")
+}
+
+model TemporaryContextSession {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  agentId            String?   @map("agent_id") @db.Uuid
+  runId              String?   @map("run_id") @db.Uuid
+  threadId           String?   @map("thread_id") @db.Uuid
+  title              String?
+  toolIds            Json      @default("[]") @map("tool_ids")
+  createdByActorType String    @map("created_by_actor_type")
+  createdByActorId   String    @map("created_by_actor_id")
+  droppedAt          DateTime? @map("dropped_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([organizationId, droppedAt, createdAt(sort: Desc)])
+  @@index([agentId, droppedAt])
+  @@index([runId, droppedAt])
+  @@index([threadId, droppedAt])
+  @@map("temporary_context_sessions")
 }
 
 model Task {

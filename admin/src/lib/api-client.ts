@@ -95,10 +95,43 @@ export type AgentCategoryRecord = {
 }
 
 export type ToolDescriptor = {
+  builtin?: boolean
   description: string
+  enabled?: boolean
+  handlerKind?: string
   id: string
   label: string
   safe: boolean
+}
+
+export type AgentTriggerRecord = {
+  id: string
+  agentId: string
+  type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
+  status: 'active' | 'paused' | 'error'
+  enabled: boolean
+  name?: string
+  description?: string
+  config: Record<string, unknown>
+  targetChannelId?: string
+  targetThreadId?: string
+  lastFiredAt?: string
+  nextRunAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type AgentTriggerDeliveryRecord = {
+  id: string
+  triggerId: string
+  dedupeKey?: string
+  status: 'pending' | 'delivered' | 'failed' | 'skipped'
+  source?: string
+  payload: unknown
+  errorMessage?: string
+  runId?: string
+  deliveredAt?: string
+  createdAt: string
 }
 
 export type SessionState =

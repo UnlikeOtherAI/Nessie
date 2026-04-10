@@ -252,8 +252,204 @@ export const ToolDescriptorSchema = z.object({
   label: NonEmptyStringSchema,
   description: NonEmptyStringSchema,
   safe: z.boolean(),
+  builtin: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  handlerKind: z.string().optional(),
 })
 export type ToolDescriptor = z.infer<typeof ToolDescriptorSchema>
+
+export const ToolRegistryEntrySchema = z.object({
+  id: z.string().uuid(),
+  organizationId: OrganizationIdSchema.nullish(),
+  toolId: NonEmptyStringSchema,
+  label: NonEmptyStringSchema,
+  description: NonEmptyStringSchema,
+  safe: z.boolean(),
+  builtin: z.boolean(),
+  enabled: z.boolean(),
+  handlerKind: NonEmptyStringSchema,
+  metadata: z.record(z.unknown()).default({}),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type ToolRegistryEntry = z.infer<typeof ToolRegistryEntrySchema>
+
+export const CreateToolRegistryEntryBodySchema = z.object({
+  toolId: NonEmptyStringSchema,
+  label: NonEmptyStringSchema,
+  description: NonEmptyStringSchema,
+  safe: z.boolean().optional(),
+  builtin: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  handlerKind: NonEmptyStringSchema.optional(),
+  metadata: z.record(z.unknown()).optional(),
+})
+
+export const TemporaryContextSessionSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: OrganizationIdSchema,
+  agentId: AgentIdSchema.nullish(),
+  runId: RunIdSchema.nullish(),
+  threadId: ThreadIdSchema.nullish(),
+  title: z.string().nullish(),
+  toolIds: z.array(NonEmptyStringSchema),
+  createdByActorType: NonEmptyStringSchema,
+  createdByActorId: NonEmptyStringSchema,
+  droppedAt: TimestampSchema.nullish(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type TemporaryContextSession = z.infer<typeof TemporaryContextSessionSchema>
+
+export const CreateTemporaryContextSessionBodySchema = z.object({
+  agentId: AgentIdSchema.optional(),
+  runId: RunIdSchema.optional(),
+  threadId: ThreadIdSchema.optional(),
+  title: z.string().optional(),
+  toolIds: z.array(NonEmptyStringSchema).min(1),
+})
+
+export const PlanStatusSchema = z.enum([
+  'draft',
+  'active',
+  'waiting',
+  'completed',
+  'failed',
+  'cancelled',
+])
+export type PlanStatus = z.infer<typeof PlanStatusSchema>
+
+export const PlanStepStatusSchema = z.enum([
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'skipped',
+  'blocked',
+])
+export type PlanStepStatus = z.infer<typeof PlanStepStatusSchema>
+
+export const PlanRecordSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: OrganizationIdSchema,
+  projectId: z.string().uuid().nullish(),
+  teamId: z.string().uuid().nullish(),
+  channelId: ChannelIdSchema.nullish(),
+  runId: RunIdSchema.nullish(),
+  agentId: AgentIdSchema.nullish(),
+  goal: NonEmptyStringSchema,
+  summary: z.string().nullish(),
+  status: PlanStatusSchema,
+  createdByActorType: NonEmptyStringSchema,
+  createdByActorId: NonEmptyStringSchema,
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type PlanRecord = z.infer<typeof PlanRecordSchema>
+
+export const PlanStepRecordSchema = z.object({
+  id: z.string().uuid(),
+  planId: z.string().uuid(),
+  assignedAgentId: AgentIdSchema.nullish(),
+  type: NonEmptyStringSchema,
+  title: NonEmptyStringSchema,
+  sequence: z.number().int().nonnegative(),
+  status: PlanStepStatusSchema,
+  payload: z.record(z.unknown()).default({}),
+  artifacts: z.record(z.unknown()).default({}),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type PlanStepRecord = z.infer<typeof PlanStepRecordSchema>
+
+export const CreatePlanBodySchema = z.object({
+  agentId: AgentIdSchema.optional(),
+  channelId: ChannelIdSchema.optional(),
+  goal: NonEmptyStringSchema,
+  runId: RunIdSchema.optional(),
+  summary: z.string().optional(),
+})
+
+export const CreatePlanStepBodySchema = z.object({
+  assignedAgentId: AgentIdSchema.optional(),
+  artifacts: z.record(z.unknown()).optional(),
+  payload: z.record(z.unknown()).optional(),
+  sequence: z.number().int().nonnegative().optional(),
+  title: NonEmptyStringSchema,
+  type: NonEmptyStringSchema,
+})
+
+export const MailboxMessageStatusSchema = z.enum([
+  'queued',
+  'processing',
+  'delivered',
+  'dead_letter',
+])
+export type MailboxMessageStatus = z.infer<typeof MailboxMessageStatusSchema>
+
+export const MailboxMessageRecordSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: OrganizationIdSchema,
+  planId: z.string().uuid().nullish(),
+  planStepId: z.string().uuid().nullish(),
+  fromAgentId: AgentIdSchema.nullish(),
+  toAgentId: AgentIdSchema.nullish(),
+  channelId: ChannelIdSchema.nullish(),
+  subject: z.string().nullish(),
+  body: z.string(),
+  correlationId: z.string().nullish(),
+  status: MailboxMessageStatusSchema,
+  attempts: z.number().int().nonnegative(),
+  visibleAt: TimestampSchema,
+  claimedAt: TimestampSchema.nullish(),
+  deliveredAt: TimestampSchema.nullish(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type MailboxMessageRecord = z.infer<typeof MailboxMessageRecordSchema>
+
+export const CreateMailboxMessageBodySchema = z.object({
+  body: NonEmptyStringSchema,
+  channelId: ChannelIdSchema.optional(),
+  correlationId: NonEmptyStringSchema.optional(),
+  fromAgentId: AgentIdSchema.optional(),
+  planId: z.string().uuid().optional(),
+  planStepId: z.string().uuid().optional(),
+  subject: z.string().optional(),
+  toAgentId: AgentIdSchema.optional(),
+})
+
+export const ResourceLockTypeSchema = z.enum(['exclusive', 'shared'])
+export type ResourceLockType = z.infer<typeof ResourceLockTypeSchema>
+
+export const ResourceLockRecordSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: OrganizationIdSchema,
+  planId: z.string().uuid().nullish(),
+  runId: RunIdSchema.nullish(),
+  agentId: AgentIdSchema,
+  resourcePath: NonEmptyStringSchema,
+  lockType: ResourceLockTypeSchema,
+  acquiredAt: TimestampSchema,
+  expiresAt: TimestampSchema,
+  releasedAt: TimestampSchema.nullish(),
+})
+export type ResourceLockRecord = z.infer<typeof ResourceLockRecordSchema>
+
+export const AcquireResourceLockBodySchema = z.object({
+  agentId: AgentIdSchema,
+  expiresAt: TimestampSchema.optional(),
+  lockType: ResourceLockTypeSchema.optional(),
+  planId: z.string().uuid().optional(),
+  resourcePath: NonEmptyStringSchema,
+  runId: RunIdSchema.optional(),
+})
+
+export const PublishEventBodySchema = z.object({
+  eventType: NonEmptyStringSchema,
+  payload: z.record(z.unknown()).default({}),
+  source: z.string().min(1).optional(),
+})
 
 // ─── Designer chat ────────────────────────────────────────────────────────
 

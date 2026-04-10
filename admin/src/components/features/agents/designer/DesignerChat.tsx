@@ -12,7 +12,12 @@ type DesignerChatProps = {
 }
 
 const ThinkingIndicator = ({ status }: { status: string | null }) => (
-  <div className="max-w-[90%] rounded-xl px-3 py-2 text-sm mr-auto border border-[color:var(--sep)] bg-[color:var(--panel)] text-[color:var(--tx)]">
+  <div
+    className={[
+      'mr-auto max-w-[90%] rounded-xl border border-[color:var(--sep)]',
+      'bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--tx)]',
+    ].join(' ')}
+  >
     <div className="flex items-center gap-2">
       <div className="thinking-dots">
         <span />
@@ -89,36 +94,52 @@ export const DesignerChat = ({
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3" ref={scrollRef}>
         <div className="grid gap-3">
-          <div className="max-w-[90%] rounded-xl px-3 py-2 text-sm mr-auto border border-[color:var(--sep)] bg-[color:var(--panel)] text-[color:var(--tx)]">
+          <div
+            className={[
+              'mr-auto max-w-[90%] rounded-xl border border-[color:var(--sep)]',
+              'bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--tx)]',
+            ].join(' ')}
+          >
             <div className="whitespace-pre-wrap">
-              {
-                "Hi! I can control anything on this form — name, role, system prompt, tools, and more.\n\nTell me what you want to build and I'll configure the agent for you."
-              }
+              {[
+                "Hi! I can control anything on this form — name, role, system prompt, tools, and more.",
+                "Tell me what you want to build and I'll configure the agent for you.",
+              ].join('\n\n')}
             </div>
           </div>
-          {messages.filter((msg) => msg.content.trim() !== '').map((msg, i, arr) => (
-            <div
-              className={[
-                'max-w-[90%] rounded-xl px-3 py-2 text-sm',
-                msg.role === 'user'
-                  ? 'ml-auto bg-[color:var(--accent)] text-white'
-                  : 'mr-auto border border-[color:var(--sep)] bg-[color:var(--panel)] text-[color:var(--tx)]',
-              ].join(' ')}
-              key={i}
-            >
-              <div className="whitespace-pre-wrap">
-                {msg.content}
-                {streaming && i === arr.length - 1 && msg.role === 'assistant' && (
-                  <span className="streaming-dot" />
-                )}
+          {messages
+            .filter((msg) => msg.content.trim() !== '')
+            .map((msg, i, arr) => (
+              <div
+                className={[
+                  'max-w-[90%] rounded-xl px-3 py-2 text-sm',
+                  msg.role === 'user'
+                    ? 'ml-auto bg-[color:var(--accent)] text-white'
+                    : [
+                        'mr-auto border border-[color:var(--sep)]',
+                        'bg-[color:var(--panel)] text-[color:var(--tx)]',
+                      ].join(' '),
+                ].join(' ')}
+                key={i}
+              >
+                <div className="whitespace-pre-wrap">
+                  {msg.content}
+                  {streaming &&
+                    i === arr.length - 1 &&
+                    msg.role === 'assistant' && <span className="streaming-dot" />}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
           {thinking && <ThinkingIndicator status={status} />}
         </div>
 
         {error && (
-          <div className="mt-2 rounded-lg border border-[color:var(--danger)]/30 bg-[color:var(--danger)]/10 px-3 py-2 text-xs text-[color:var(--danger)]">
+          <div
+            className={[
+              'mt-2 rounded-lg border border-[color:var(--danger)]/30',
+              'bg-[color:var(--danger)]/10 px-3 py-2 text-xs text-[color:var(--danger)]',
+            ].join(' ')}
+          >
             {error}
           </div>
         )}

@@ -57,6 +57,7 @@ export const AdminShellLayout = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
+  const isTriggersRoute = location.pathname.startsWith('/triggers');
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
@@ -234,6 +235,26 @@ export const AdminShellLayout = () => {
             <span className="admin-rail-btn-label">Agents</span>
           </Link>
 
+          <Link
+            className={`admin-rail-btn ${isTriggersRoute ? 'active' : ''}`}
+            to="/triggers"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path d="M12 4v6" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M12 16v4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M20 12h-4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M8 12H4" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="12" cy="12" r="3.5" />
+            </svg>
+            <span className="admin-rail-btn-label">Triggers</span>
+          </Link>
+
           <button
             className="admin-rail-btn"
             onClick={() => void navigate('/settings#activity')}
@@ -292,8 +313,18 @@ export const AdminShellLayout = () => {
                 className={`admin-rail-btn ${location.pathname === '/approvals' ? 'active' : ''}`}
                 to="/approvals"
               >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                  <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
                 <span className="admin-rail-btn-label">Approvals</span>
               </Link>
@@ -302,28 +333,77 @@ export const AdminShellLayout = () => {
                 className={`admin-rail-btn ${location.pathname === '/audit' ? 'active' : ''}`}
                 to="/audit"
               >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                  <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d={[
+                      'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2',
+                      '0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2',
+                      'a2 2 0 012 2',
+                    ].join(' ')}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
                 <span className="admin-rail-btn-label">Audit</span>
               </Link>
 
               <Link
-                className={`admin-rail-btn ${location.pathname === '/tokens' ? 'active' : ''}`}
+                className={[
+                  'admin-rail-btn',
+                  location.pathname === '/tokens' ? 'active' : '',
+                ].join(' ')}
                 to="/tokens"
               >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                  <path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d={[
+                      'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343',
+                      '2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1',
+                      'c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+                    ].join(' ')}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
                 <span className="admin-rail-btn-label">Tokens</span>
               </Link>
 
               <Link
-                className={`admin-rail-btn ${location.pathname === '/policy' ? 'active' : ''}`}
+                className={[
+                  'admin-rail-btn',
+                  location.pathname === '/policy' ? 'active' : '',
+                ].join(' ')}
                 to="/policy"
               >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d={[
+                      'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112',
+                      '2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0',
+                      '5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042',
+                      '-.133-2.052-.382-3.016z',
+                    ].join(' ')}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
                 <span className="admin-rail-btn-label">Policy</span>
               </Link>

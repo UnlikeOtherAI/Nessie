@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import type {
   AuthorizedActionContext,
   PolicyAction,
@@ -85,22 +85,19 @@ export const checkPolicy = async (
   scopeIds.push({ scope: 'user', scopeId: actorId })
 
   // Fetch all matching rules
-  const rules = await prisma.$queryRawUnsafe<PolicyRuleRow[]>(
-    `SELECT pr.id, pr.scope, pr.scope_id as "scopeId", pr.resource_type as "resourceType",
-            pr.action, pr.effect, pr.priority, pr.conditions,
-            pb.actor_type as "actorType", pb.actor_id as "actorId"
-     FROM policy_rules pr
-     JOIN policy_bindings pb ON pb.policy_rule_id = pr.id
-     WHERE pr.organization_id = $1
-       AND pr.resource_type = $2
-       AND pr.action = $3
-       AND pr.scope_id = ANY($4::text[])
-     ORDER BY pr.priority ASC`,
-    orgId,
-    resourceType,
-    action,
-    scopeIds.map((s) => s.scopeId),
-  )
+  const scopeIdList = scopeIds.map((scopeEntry) => scopeEntry.scopeId)
+  const rules = await prisma.$queryRaw<PolicyRuleRow[]>(Prisma.sql`
+    SELECT pr.id, pr.scope, pr.scope_id as "scopeId", pr.resource_type as "resourceType",
+           pr.action, pr.effect, pr.priority, pr.conditions,
+           pb.actor_type as "actorType", pb.actor_id as "actorId"
+    FROM policy_rules pr
+    JOIN policy_bindings pb ON pb.policy_rule_id = pr.id
+    WHERE pr.organization_id = ${orgId}::uuid
+      AND pr.resource_type = ${resourceType}::"PolicyResourceType"
+      AND pr.action = ${action}::"PolicyAction"
+      AND pr.scope_id IN (${Prisma.join(scopeIdList)})
+    ORDER BY pr.priority ASC
+  `)
 
   // Filter by actor match
   const matchingRules = rules.filter((rule) => {

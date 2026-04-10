@@ -51,6 +51,7 @@ import {
   type SessionTokenClaims,
 } from './auth/session.js'
 import {
+  AcquireResourceLockBodySchema,
   AddChannelMemberBodySchema,
   AgentCategoryAgentBodySchema,
   AgentCategoryRecordSchema,
@@ -62,18 +63,30 @@ import {
   BootstrapModeResponseSchema,
   BootstrapRequestSchema,
   ChannelRecordSchema,
+  CreateMailboxMessageBodySchema,
   CreateAgentBindingBodySchema,
   CreateAgentBodySchema,
   CreateAgentTriggerBodySchema,
   CreateAgentCategoryBodySchema,
+  CreatePlanBodySchema,
+  CreatePlanStepBodySchema,
+  CreateTemporaryContextSessionBodySchema,
+  CreateToolRegistryEntryBodySchema,
   DesignerChatBodySchema,
   FireAgentTriggerBodySchema,
   CreateChannelBodySchema,
   CreateThreadMessageBodySchema,
   CreateUserBodySchema,
   LoginRequestSchema,
+  MailboxMessageRecordSchema,
+  PlanRecordSchema,
+  PlanStepRecordSchema,
+  PublishEventBodySchema,
+  ResourceLockRecordSchema,
+  TemporaryContextSessionSchema,
   ThreadMessageRecordSchema,
   ToolDescriptorSchema,
+  ToolRegistryEntrySchema,
   UpdateAgentTriggerBodySchema,
   UpdateAgentCategoryBodySchema,
   UserRecordSchema,
@@ -107,9 +120,11 @@ import {
 } from './services/agents.js'
 import {
   createAgentTrigger,
+  dispatchEventTriggers,
   dispatchAgentTrigger,
   deleteAgentTrigger,
   getAgentTrigger,
+  listOrganizationTriggers,
   listScheduledTriggers,
   listAgentTriggerDeliveries,
   listAgentTriggers,
@@ -118,6 +133,11 @@ import {
   sweepDueScheduledTriggers,
   updateAgentTrigger,
 } from './services/triggers.js'
+import {
+  createTemporaryContextSession,
+  dropTemporaryContextSession,
+  listTemporaryContextSessions,
+} from './services/capabilities.js'
 import { streamDesignerChat } from './services/designer.js'
 import {
   LOCAL_AUTH_PROVIDER_ID,
@@ -142,9 +162,29 @@ import {
   findThreadForUser,
   listThreadMessages,
 } from './services/messages.js'
+import {
+  createMailboxMessage,
+  listMailboxMessages,
+  markMailboxMessageDelivered,
+} from './services/mailbox.js'
 import { decideAgentEngagement } from './services/orchestrator.js'
+import {
+  addPlanStep,
+  createPlan,
+  getPlan,
+  listPlans,
+} from './services/plans.js'
+import {
+  acquireResourceLock,
+  listResourceLocks,
+  releaseResourceLock,
+} from './services/resource-locks.js'
 import { createThoughtService } from './services/thoughts.js'
-import { listSafeTools } from './services/tools.js'
+import {
+  listAvailableTools,
+  listToolRegistryEntries,
+  registerToolRegistryEntry,
+} from './services/tools.js'
 import {
   createUserForOrganization,
   listUsersForOrganization,
@@ -1629,6 +1669,20 @@ export const buildApp = async () => {
     return createApiResponse(AgentTriggerDeliveryRecordSchema.array().parse(deliveries))
   })
 
+  app.get('/api/triggers', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const triggers = await listOrganizationTriggers(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
   app.get('/api/triggers/scheduled', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -1811,6 +1865,41 @@ export const buildApp = async () => {
     )
   })
 
+  app.post('/api/events', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(PublishEventBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const results = await dispatchEventTriggers(prisma, {
+      actorContext,
+      eventType: body.eventType,
+      payload: body.payload ?? {},
+      source: body.source ?? `event:${body.eventType}`,
+    })
+
+    return reply.code(202).send(
+      createApiResponse({
+        count: results.length,
+        deliveries: results.map((result) => ({
+          delivery: AgentTriggerDeliveryRecordSchema.parse(result.delivery),
+          existing: result.existing,
+          runId: result.runId,
+          trigger: AgentTriggerRecordSchema.parse(result.trigger),
+        })),
+      }),
+    )
+  })
+
   // ─── Agent Categories ─────────────────────────────────────────────────────
 
   app.get('/api/agent-categories', async (request, reply) => {
@@ -1935,9 +2024,274 @@ export const buildApp = async () => {
     },
   )
 
-  app.get('/api/tools', async () =>
-    createApiResponse(ToolDescriptorSchema.array().parse(listSafeTools())),
-  )
+  app.get('/api/plans', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const query = request.query as { agentId?: string; status?: string }
+    const plans = await listPlans(prisma, actorContext.tenant.organizationId, {
+      agentId: query.agentId,
+      status:
+        query.status &&
+        ['draft', 'active', 'waiting', 'completed', 'failed', 'cancelled'].includes(query.status)
+          ? (query.status as 'active' | 'cancelled' | 'completed' | 'draft' | 'failed' | 'waiting')
+          : undefined,
+    })
+    return createApiResponse(PlanRecordSchema.array().parse(plans))
+  })
+
+  app.post('/api/plans', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(CreatePlanBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const plan = await createPlan(prisma, actorContext, body)
+    return reply.code(201).send(createApiResponse(PlanRecordSchema.parse(plan)))
+  })
+
+  app.get('/api/plans/:planId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { planId } = request.params as { planId: string }
+    const plan = await getPlan(prisma, actorContext.tenant.organizationId, planId)
+    if (!plan) {
+      sendApiError(reply, 404, 'PLAN_NOT_FOUND', 'Plan not found')
+      return reply
+    }
+
+    return createApiResponse({
+      plan: PlanRecordSchema.parse(plan.plan),
+      steps: PlanStepRecordSchema.array().parse(plan.steps),
+    })
+  })
+
+  app.post('/api/plans/:planId/steps', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(CreatePlanStepBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { planId } = request.params as { planId: string }
+    const step = await addPlanStep(prisma, actorContext.tenant.organizationId, planId, body)
+    if (!step) {
+      sendApiError(reply, 404, 'PLAN_NOT_FOUND', 'Plan not found')
+      return reply
+    }
+
+    return reply.code(201).send(createApiResponse(PlanStepRecordSchema.parse(step)))
+  })
+
+  app.get('/api/mailbox', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const query = request.query as { planId?: string; toAgentId?: string }
+    const messages = await listMailboxMessages(prisma, actorContext.tenant.organizationId, query)
+    return createApiResponse(MailboxMessageRecordSchema.array().parse(messages))
+  })
+
+  app.post('/api/mailbox', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(CreateMailboxMessageBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const message = await createMailboxMessage(prisma, actorContext.tenant.organizationId, body)
+    return reply.code(201).send(createApiResponse(MailboxMessageRecordSchema.parse(message)))
+  })
+
+  app.post('/api/mailbox/:messageId/deliver', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { messageId } = request.params as { messageId: string }
+    const message = await markMailboxMessageDelivered(
+      prisma,
+      actorContext.tenant.organizationId,
+      messageId,
+    )
+    if (!message) {
+      sendApiError(reply, 404, 'MAILBOX_MESSAGE_NOT_FOUND', 'Mailbox message not found')
+      return reply
+    }
+
+    return createApiResponse(MailboxMessageRecordSchema.parse(message))
+  })
+
+  app.get('/api/resource-locks', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const query = request.query as { agentId?: string }
+    const locks = await listResourceLocks(prisma, actorContext.tenant.organizationId, query)
+    return createApiResponse(ResourceLockRecordSchema.array().parse(locks))
+  })
+
+  app.post('/api/resource-locks/acquire', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(AcquireResourceLockBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const lock = await acquireResourceLock(prisma, actorContext.tenant.organizationId, body)
+    if (!lock) {
+      sendApiError(reply, 409, 'RESOURCE_LOCK_CONFLICT', 'Resource is already locked')
+      return reply
+    }
+
+    return reply.code(201).send(createApiResponse(ResourceLockRecordSchema.parse(lock)))
+  })
+
+  app.post('/api/resource-locks/:lockId/release', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { lockId } = request.params as { lockId: string }
+    const lock = await releaseResourceLock(prisma, actorContext.tenant.organizationId, lockId)
+    if (!lock) {
+      sendApiError(reply, 404, 'RESOURCE_LOCK_NOT_FOUND', 'Resource lock not found')
+      return reply
+    }
+
+    return createApiResponse(ResourceLockRecordSchema.parse(lock))
+  })
+
+  app.get('/api/tools', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const tools = await listAvailableTools(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(ToolDescriptorSchema.array().parse(tools))
+  })
+
+  app.get('/api/tools/registry', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const entries = await listToolRegistryEntries(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(ToolRegistryEntrySchema.array().parse(entries))
+  })
+
+  app.post('/api/tools/registry', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(CreateToolRegistryEntryBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const entry = await registerToolRegistryEntry(
+      prisma,
+      actorContext.tenant.organizationId,
+      body,
+    )
+    return reply.code(201).send(createApiResponse(ToolRegistryEntrySchema.parse(entry)))
+  })
+
+  app.get('/api/capabilities/sessions', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const query = request.query as {
+      agentId?: string
+      includeDropped?: string
+      runId?: string
+      threadId?: string
+    }
+    const sessions = await listTemporaryContextSessions(prisma, actorContext.tenant.organizationId, {
+      agentId: query.agentId,
+      includeDropped: query.includeDropped === 'true',
+      runId: query.runId,
+      threadId: query.threadId,
+    })
+    return createApiResponse(TemporaryContextSessionSchema.array().parse(sessions))
+  })
+
+  app.post('/api/capabilities/sessions', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(CreateTemporaryContextSessionBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const session = await createTemporaryContextSession(prisma, actorContext, body)
+    return reply.code(201).send(createApiResponse(TemporaryContextSessionSchema.parse(session)))
+  })
+
+  app.delete('/api/capabilities/sessions/:sessionId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { sessionId } = request.params as { sessionId: string }
+    const session = await dropTemporaryContextSession(
+      prisma,
+      actorContext.tenant.organizationId,
+      sessionId,
+    )
+    if (!session) {
+      sendApiError(reply, 404, 'TEMP_CONTEXT_NOT_FOUND', 'Temporary context session not found')
+      return reply
+    }
+
+    return createApiResponse(TemporaryContextSessionSchema.parse(session))
+  })
 
   app.get('/api/users', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

@@ -33,7 +33,7 @@ const pickGradient = (id: string): string => {
   for (let i = 0; i < id.length; i++) {
     hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0
   }
-  return memberGradients[Math.abs(hash) % memberGradients.length]
+  return memberGradients[Math.abs(hash) % memberGradients.length] ?? memberGradients[0]
 }
 
 const getInitials = (value: string): string =>
@@ -162,7 +162,10 @@ export const ChannelMembersPopup = ({
       }}
     >
       <div
-        className="flex max-h-[80vh] w-full max-w-[480px] flex-col rounded-xl border border-[color:var(--sep)] bg-[color:var(--main)]"
+        className={[
+          'flex max-h-[80vh] w-full max-w-[480px] flex-col rounded-xl',
+          'border border-[color:var(--sep)] bg-[color:var(--main)]',
+        ].join(' ')}
         style={{ boxShadow: '0 24px 48px rgba(0,0,0,0.4)' }}
       >
         {/* Header */}
@@ -176,7 +179,10 @@ export const ChannelMembersPopup = ({
             </p>
           </div>
           <button
-            className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-white/10 hover:text-white"
+            className={[
+              'flex h-7 w-7 items-center justify-center rounded',
+              'text-[color:var(--tx3)] hover:bg-white/10 hover:text-white',
+            ].join(' ')}
             onClick={onClose}
             type="button"
           >
@@ -198,7 +204,12 @@ export const ChannelMembersPopup = ({
 
         {/* Search */}
         <div className="border-b border-[color:var(--sep)] px-5 py-3">
-          <div className="flex items-center gap-2 rounded-lg border border-[color:var(--border-strong)] bg-white/5 px-3 py-2">
+          <div
+            className={[
+              'flex items-center gap-2 rounded-lg border',
+              'border-[color:var(--border-strong)] bg-white/5 px-3 py-2',
+            ].join(' ')}
+          >
             <svg
               className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
               fill="none"
@@ -214,7 +225,10 @@ export const ChannelMembersPopup = ({
             </svg>
             <input
               autoFocus
-              className="w-full bg-transparent text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+              className={[
+                'w-full bg-transparent text-sm text-[color:var(--tx)] outline-none',
+                'placeholder:text-[color:var(--tx3)]',
+              ].join(' ')}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search members or agents..."
               value={search}
@@ -227,14 +241,22 @@ export const ChannelMembersPopup = ({
           {/* Current members */}
           {(filteredUsers.length > 0 || filteredAgents.length > 0) && (
             <div>
-              <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+              <div
+                className={[
+                  'px-3 py-1.5 text-[11px] font-semibold uppercase',
+                  'tracking-[0.16em] text-[color:var(--tx3)]',
+                ].join(' ')}
+              >
                 In this channel
               </div>
 
               {filteredUsers.map((user) => (
                 <div key={user.id} className={rowClass}>
                   <div
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
+                    className={[
+                      'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
+                      'text-xs font-semibold text-white',
+                    ].join(' ')}
                     style={{ background: pickGradient(user.id) }}
                   >
                     {getInitials(user.displayName)}
@@ -252,7 +274,12 @@ export const ChannelMembersPopup = ({
                       {user.email}
                     </div>
                   </div>
-                  <span className="rounded bg-white/6 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[color:var(--tx3)]">
+                  <span
+                    className={[
+                      'rounded bg-white/6 px-1.5 py-0.5 text-[10px] uppercase',
+                      'tracking-[0.12em] text-[color:var(--tx3)]',
+                    ].join(' ')}
+                  >
                     user
                   </span>
                   {user.id !== currentUserId && (
@@ -302,12 +329,22 @@ export const ChannelMembersPopup = ({
                       {agent.role}
                     </div>
                   </div>
-                  <span className="rounded border border-[rgba(124,58,237,0.3)] bg-[rgba(124,58,237,0.15)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a78bfa]">
+                  <span
+                    className={[
+                      'rounded border border-[rgba(124,58,237,0.3)]',
+                      'bg-[rgba(124,58,237,0.15)] px-1.5 py-0.5',
+                      'text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a78bfa]',
+                    ].join(' ')}
+                  >
                     agent
                   </span>
                   <div className="flex items-center gap-1">
                     <button
-                      className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)] hover:text-[#a78bfa]`}
+                      className={[
+                        actionBtnClass,
+                        'text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)]',
+                        'hover:text-[#a78bfa]',
+                      ].join(' ')}
                       disabled={cloneAgent.isPending}
                       onClick={() => cloneAgent.mutate(agent.id)}
                       title="Clone to personal collection"
@@ -328,14 +365,20 @@ export const ChannelMembersPopup = ({
                           y="9"
                         />
                         <path
-                          d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
+                          d={[
+                            'M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1',
+                          ].join(' ')}
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         />
                       </svg>
                     </button>
                     <button
-                      className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)] hover:text-[#a78bfa]`}
+                      className={[
+                        actionBtnClass,
+                        'text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)]',
+                        'hover:text-[#a78bfa]',
+                      ].join(' ')}
                       onClick={() => {
                         onSelectAgent(agent.id)
                         onClose()
@@ -356,7 +399,11 @@ export const ChannelMembersPopup = ({
                           strokeLinejoin="round"
                         />
                         <path
-                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                          d={[
+                            'M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943',
+                            '9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943',
+                            '-9.542-7z',
+                          ].join(' ')}
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         />
@@ -397,14 +444,22 @@ export const ChannelMembersPopup = ({
           {/* Available to add */}
           {hasAvailable && (
             <div className="mt-2">
-              <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+              <div
+                className={[
+                  'px-3 py-1.5 text-[11px] font-semibold uppercase',
+                  'tracking-[0.16em] text-[color:var(--tx3)]',
+                ].join(' ')}
+              >
                 Add to channel
               </div>
 
               {availableUsers.map((user) => (
                 <div key={user.id} className={rowClass}>
                   <div
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white/60"
+                    className={[
+                      'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
+                      'text-xs font-semibold text-white/60',
+                    ].join(' ')}
                     style={{
                       background: pickGradient(user.id),
                       opacity: 0.6,
@@ -421,7 +476,11 @@ export const ChannelMembersPopup = ({
                     </div>
                   </div>
                   <button
-                    className={`${actionBtnClass} border border-[color:var(--border-strong)] text-[color:var(--tx2)] hover:border-white/20 hover:text-white`}
+                    className={[
+                      actionBtnClass,
+                      'border border-[color:var(--border-strong)] text-[color:var(--tx2)]',
+                      'hover:border-white/20 hover:text-white',
+                    ].join(' ')}
                     disabled={addMember.isPending}
                     onClick={() =>
                       addMember.mutate({ channelId, userId: user.id })
@@ -451,7 +510,11 @@ export const ChannelMembersPopup = ({
                   </div>
                   <div className="flex items-center gap-1">
                     <button
-                      className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)] hover:text-[#a78bfa]`}
+                      className={[
+                        actionBtnClass,
+                        'text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)]',
+                        'hover:text-[#a78bfa]',
+                      ].join(' ')}
                       disabled={cloneAgent.isPending}
                       onClick={() => cloneAgent.mutate(agent.id)}
                       title="Clone to personal collection"
@@ -479,7 +542,11 @@ export const ChannelMembersPopup = ({
                       </svg>
                     </button>
                     <button
-                      className={`${actionBtnClass} border border-[rgba(124,58,237,0.3)] text-[#a78bfa] hover:bg-[rgba(124,58,237,0.15)]`}
+                      className={[
+                        actionBtnClass,
+                        'border border-[rgba(124,58,237,0.3)] text-[#a78bfa]',
+                        'hover:bg-[rgba(124,58,237,0.15)]',
+                      ].join(' ')}
                       disabled={bindAgent.isPending}
                       onClick={() =>
                         bindAgent.mutate({

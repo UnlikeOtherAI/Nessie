@@ -80,7 +80,10 @@ export const SubAgentPopup = ({
       }}
     >
       <div
-        className="flex max-h-[80vh] w-full max-w-[480px] flex-col rounded-xl border border-[color:var(--sep)] bg-[color:var(--main)]"
+        className={[
+          'flex max-h-[80vh] w-full max-w-[480px] flex-col rounded-xl border',
+          'border-[color:var(--sep)] bg-[color:var(--main)]',
+        ].join(' ')}
         style={{ boxShadow: '0 24px 48px rgba(0,0,0,0.4)' }}
       >
         {/* Header */}
@@ -94,7 +97,10 @@ export const SubAgentPopup = ({
             </p>
           </div>
           <button
-            className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-white/10 hover:text-white"
+            className={[
+              'flex h-7 w-7 items-center justify-center rounded',
+              'text-[color:var(--tx3)] hover:bg-white/10 hover:text-white',
+            ].join(' ')}
             onClick={onClose}
             type="button"
           >
@@ -118,7 +124,12 @@ export const SubAgentPopup = ({
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
           {children.length > 0 && (
             <div>
-              <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+              <div
+                className={[
+                  'px-3 py-1.5 text-[11px] font-semibold uppercase',
+                  'tracking-[0.16em] text-[color:var(--tx3)]',
+                ].join(' ')}
+              >
                 Current sub-agents
               </div>
 
@@ -143,7 +154,13 @@ export const SubAgentPopup = ({
                       </div>
                     )}
                   </div>
-                  <span className="rounded border border-[rgba(124,58,237,0.3)] bg-[rgba(124,58,237,0.15)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a78bfa]">
+                  <span
+                    className={[
+                      'rounded border border-[rgba(124,58,237,0.3)]',
+                      'bg-[rgba(124,58,237,0.15)] px-1.5 py-0.5',
+                      'text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a78bfa]',
+                    ].join(' ')}
+                  >
                     agent
                   </span>
                 </div>
@@ -165,21 +182,34 @@ export const SubAgentPopup = ({
 
             <div className="space-y-2 px-3 py-2">
               <input
-                className="w-full rounded-lg border border-[color:var(--border-strong)] bg-white/5 px-3 py-2 text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)] focus:border-[#7c3aed]"
+                className={[
+                  'w-full rounded-lg border border-[color:var(--border-strong)] bg-white/5',
+                  'px-3 py-2 text-sm text-[color:var(--tx)] outline-none',
+                  'placeholder:text-[color:var(--tx3)] focus:border-[#7c3aed]',
+                ].join(' ')}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Agent name"
                 value={name}
               />
               <input
-                className="w-full rounded-lg border border-[color:var(--border-strong)] bg-white/5 px-3 py-2 text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)] focus:border-[#7c3aed]"
+                className={[
+                  'w-full rounded-lg border border-[color:var(--border-strong)] bg-white/5',
+                  'px-3 py-2 text-sm text-[color:var(--tx)] outline-none',
+                  'placeholder:text-[color:var(--tx3)] focus:border-[#7c3aed]',
+                ].join(' ')}
                 onChange={(e) => setRole(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Role (default: assistant)"
                 value={role}
               />
               <button
-                className="flex w-full items-center justify-center rounded-lg border border-[rgba(124,58,237,0.3)] bg-[rgba(124,58,237,0.15)] px-3 py-2 text-sm font-medium text-[#a78bfa] transition-colors hover:bg-[rgba(124,58,237,0.25)] disabled:opacity-40"
+                className={[
+                  'flex w-full items-center justify-center rounded-lg',
+                  'border border-[rgba(124,58,237,0.3)] bg-[rgba(124,58,237,0.15)]',
+                  'px-3 py-2 text-sm font-medium text-[#a78bfa] transition-colors',
+                  'hover:bg-[rgba(124,58,237,0.25)] disabled:opacity-40',
+                ].join(' ')}
                 disabled={!name.trim() || createAgent.isPending}
                 onClick={handleCreate}
                 type="button"

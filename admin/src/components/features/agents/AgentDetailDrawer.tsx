@@ -9,6 +9,7 @@ import type { AgentRecord } from '../../../lib/api-client'
 import { EmptyState } from '../../shared/EmptyState'
 import { StatusPill } from '../../primitives/StatusPill'
 import { AgentThoughtStream } from './AgentThoughtStream'
+import { AgentTriggerPanel } from './AgentTriggerPanel'
 import { AgentMessagePreview } from './AgentMessagePreview'
 import { AgentStatusDot } from './AgentStatusDot'
 import { SubAgentTree } from './SubAgentTree'
@@ -117,6 +118,7 @@ export const AgentDetailDrawer = ({
               )}
             </section>
 
+            <AgentTriggerPanel agent={agent} />
             <SubAgentTree
               onSelect={onSelectAgent}
               selectedAgentId={agent.id}

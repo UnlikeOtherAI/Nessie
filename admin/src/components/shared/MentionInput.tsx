@@ -238,7 +238,12 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
                 onMouseEnter={() => setSelectedIdx(i)}
                 type="button"
               >
-                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs">
+                <span
+                  className={[
+                    'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full',
+                    'bg-white/10 text-xs',
+                  ].join(' ')}
+                >
                   {entity.type === 'agent'
                     ? (entity.glyph ?? '⚡')
                     : (entity.name[0]?.toUpperCase() ?? '?')}

@@ -109,6 +109,31 @@ export const listAgentTriggers = async (
   return triggers.map(mapTriggerRecord)
 }
 
+export const listOrganizationTriggers = async (
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<AgentTriggerRecord[]> => {
+  const triggers = await prisma.agentTrigger.findMany({
+    where: {
+      agent: {
+        OR: [
+          { organizationId },
+          {
+            bindings: {
+              some: {
+                channel: { organizationId },
+              },
+            },
+          },
+        ],
+      },
+    },
+    orderBy: [{ createdAt: 'desc' }],
+  })
+
+  return triggers.map(mapTriggerRecord)
+}
+
 export const listScheduledTriggers = async (
   prisma: PrismaClient,
   input: {
@@ -578,6 +603,30 @@ const buildTriggerPrompt = (input: {
 
   const serializedPayload = JSON.stringify(input.payload, null, 2)
   return `${prefix}\n\nPayload:\n${serializedPayload}`
+}
+
+const matchesEventTriggerConfig = (
+  config: unknown,
+  eventType: string,
+  payload: Record<string, unknown>,
+): boolean => {
+  if (!isJsonRecord(config)) {
+    return false
+  }
+
+  const configuredEvents = Array.isArray(config['events'])
+    ? config['events'].filter((value): value is string => typeof value === 'string')
+    : []
+  if (!configuredEvents.includes(eventType)) {
+    return false
+  }
+
+  const filter = isJsonRecord(config['filter']) ? config['filter'] : null
+  if (!filter) {
+    return true
+  }
+
+  return Object.entries(filter).every(([key, value]) => payload[key] === value)
 }
 
 const resolveExecutionTarget = async (
@@ -1085,4 +1134,59 @@ export const dispatchAgentTrigger = async (
 
     throw error
   }
+}
+
+export const dispatchEventTriggers = async (
+  prisma: PrismaClient,
+  input: {
+    actorContext?: AuthorizedActionContext
+    eventType: string
+    payload: Record<string, unknown>
+    source: string
+  },
+): Promise<
+  Array<{
+    delivery: AgentTriggerDeliveryRecord
+    existing: boolean
+    runId: ReturnType<typeof parseRunId>
+    trigger: AgentTriggerRecord
+  }>
+> => {
+  const triggers = await prisma.agentTrigger.findMany({
+    where: {
+      enabled: true,
+      status: 'active',
+      type: 'event',
+    },
+  })
+
+  const matches = triggers.filter((trigger) =>
+    matchesEventTriggerConfig(trigger.config, input.eventType, input.payload),
+  )
+
+  const results = await Promise.all(
+    matches.map(async (trigger) => {
+      const dispatched = await dispatchAgentTrigger(prisma, {
+        actorContext: input.actorContext,
+        dedupeKey: `${input.eventType}:${trigger.id}:${JSON.stringify(input.payload)}`,
+        payload: {
+          eventType: input.eventType,
+          ...input.payload,
+        },
+        source: input.source,
+        triggerId: trigger.id,
+      })
+
+      return dispatched.kind === 'queued'
+        ? {
+            delivery: dispatched.delivery,
+            existing: dispatched.existing,
+            runId: dispatched.runId,
+            trigger: dispatched.trigger,
+          }
+        : null
+    }),
+  )
+
+  return results.filter((result): result is NonNullable<typeof result> => result !== null)
 }

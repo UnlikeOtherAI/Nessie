@@ -414,10 +414,10 @@ export const AgentColumnBrowser = () => {
     [],
   )
 
-  const deepestSelected =
-    selectionPath.length > 0
-      ? allAgentsById.get(selectionPath[selectionPath.length - 1])
-      : undefined
+  const deepestSelectedId = selectionPath.at(-1)
+  const deepestSelected = deepestSelectedId
+    ? allAgentsById.get(deepestSelectedId)
+    : undefined
 
   const columns = useMemo(() => {
     const result: ReactNode[] = []
@@ -550,6 +550,9 @@ export const AgentColumnBrowser = () => {
     // Columns 2..N: children of each agent in the selection path
     for (let depth = 0; depth < selectionPath.length; depth++) {
       const parentId = selectionPath[depth]
+      if (!parentId) {
+        continue
+      }
       const parentAgent = allAgentsById.get(parentId)
       const nextSelectedId = selectionPath[depth + 1]
 
@@ -562,13 +565,26 @@ export const AgentColumnBrowser = () => {
           <AgentColumn
             headerAction={
               <button
-                className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10 hover:text-white"
+                className={[
+                  'flex h-7 w-7 items-center justify-center rounded',
+                  'text-[color:var(--tx2)] hover:bg-white/10 hover:text-white',
+                ].join(' ')}
                 onClick={() => void navigate(`/agents/new?parentId=${parentId}`)}
                 title="Add child agent"
                 type="button"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M12 5v14M5 12h14"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               </button>
             }

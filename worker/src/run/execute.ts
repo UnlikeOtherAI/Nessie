@@ -12,6 +12,7 @@ import type {
   PgRealtimeTransport,
   QueueProvider,
 } from '@nessie/runtime'
+import { BUILTIN_TOOL_DEFINITIONS, BUILTIN_TOOL_IDS } from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
@@ -76,6 +77,82 @@ type RetrievedMemory = Pick<SearchResult, 'content' | 'recallId'>
 const buildScopes = (context: RunContext): WsScope[] => [
   ...buildScopesForAgent(context.channel, context.agent.id),
 ]
+
+const loadAllowedToolIds = async (
+  prisma: PrismaClient,
+  context: RunContext,
+): Promise<Set<string>> => {
+  await Promise.all(
+    BUILTIN_TOOL_DEFINITIONS.map((tool) =>
+      prisma.toolRegistryEntry.upsert({
+        where: { toolId: tool.id },
+        create: {
+          builtin: true,
+          description: tool.description,
+          enabled: true,
+          handlerKind: 'builtin',
+          label: tool.label,
+          safe: tool.safe,
+          toolId: tool.id,
+        },
+        update: {
+          builtin: true,
+          description: tool.description,
+          handlerKind: 'builtin',
+          label: tool.label,
+          safe: tool.safe,
+        },
+      }),
+    ),
+  )
+
+  const enabledRegistryEntries = await prisma.toolRegistryEntry.findMany({
+    where: {
+      builtin: true,
+      enabled: true,
+      OR: [{ organizationId: null }, { organizationId: context.channel.organizationId }],
+    },
+    select: { toolId: true },
+  })
+
+  const enabledToolIds = new Set(
+    enabledRegistryEntries
+      .map((entry) => entry.toolId)
+      .filter((toolId) => BUILTIN_TOOL_IDS.has(toolId as 'document_read' | 'web_fetch' | 'web_search')),
+  )
+
+  const activeSessions = await prisma.temporaryContextSession.findMany({
+    where: {
+      organizationId: context.channel.organizationId,
+      droppedAt: null,
+      OR: [
+        { runId: context.run.id },
+        { threadId: context.run.threadId },
+        { agentId: context.agent.id },
+      ],
+    },
+    select: { toolIds: true },
+    orderBy: [{ createdAt: 'desc' }],
+  })
+
+  const sessionToolIds = new Set<string>()
+  for (const session of activeSessions) {
+    if (!Array.isArray(session.toolIds)) {
+      continue
+    }
+    for (const value of session.toolIds) {
+      if (typeof value === 'string') {
+        sessionToolIds.add(value)
+      }
+    }
+  }
+
+  if (sessionToolIds.size === 0) {
+    return enabledToolIds
+  }
+
+  return new Set([...enabledToolIds].filter((toolId) => sessionToolIds.has(toolId)))
+}
 
 const truncateForContext = (value: string, maxLength: number): string =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`
@@ -714,17 +791,18 @@ export const executeRunJob = async (
       status: 'thinking',
     })
 
+    const allowedToolIds = await loadAllowedToolIds(deps.prisma, context)
     const toolOutputs: string[] = []
 
-    if (shouldUseDocumentRead(prompt)) {
+    if (allowedToolIds.has('document_read') && shouldUseDocumentRead(prompt)) {
       toolOutputs.push(await executeSafeTool(deps, context, 'document_read', prompt))
     }
 
-    if (shouldUseWebFetch(prompt)) {
+    if (allowedToolIds.has('web_fetch') && shouldUseWebFetch(prompt)) {
       toolOutputs.push(await executeSafeTool(deps, context, 'web_fetch', prompt))
     }
 
-    if (shouldUseWebSearch(prompt)) {
+    if (allowedToolIds.has('web_search') && shouldUseWebSearch(prompt)) {
       toolOutputs.push(await executeSafeTool(deps, context, 'web_search', prompt))
     }
 
