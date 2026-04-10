@@ -208,6 +208,11 @@ Turn the local-first MVP into a real hosted beta for teams.
   - usage ingestion
   - summaries
   - monthly estimates
+- model-provider inference control plane:
+  - provider connectors and credential bindings
+  - manual/discovered model catalog and capability overrides
+  - routing profiles and tool mediators
+  - routing/profile eval suites and eval runs
 - approval gating v1 for sensitive actions
 - audit trail for control-plane actions
 
@@ -221,6 +226,7 @@ At the end of phase 2, an organization should be able to:
 - create shared agents,
 - control which agents appear in which channels,
 - see token usage and cost estimates,
+- configure approved inference providers, models, routing profiles, and evals,
 - gate sensitive actions with approval.
 
 ### Phase 2 entry gate — memory system review
@@ -386,7 +392,16 @@ Note: `ThoughtAuditLog` already exists for the memory system — that is a separ
 - Admin UI: usage dashboard, pricing management
 - See [token-ledger-spec.md](./token-ledger-spec.md)
 
-#### Step 7: Admin UI extensions for Phase 2
+#### Step 7: Inference control plane and evals
+
+- `ProviderConnector` registry and capability catalog from [model-provider-connector-spec.md](./model-provider-connector-spec.md)
+- `InferenceProvider`, `InferenceCredentialBinding`, `InferenceModel`, `InferenceCapabilityOverride` admin APIs
+- `RoutingProfile` and `ToolMediatorProfile` admin APIs with approval lifecycle
+- `InferenceEvalSuite` and `InferenceEvalRun` APIs with stored result snapshots
+- Worker/runtime integration on `InferenceService.run()` and `MultiProviderResult`
+- Admin-only execution policy for connectors, models, routing profiles, tool mediators, eval suites, and eval runs
+
+#### Step 8: Admin UI extensions for Phase 2
 
 The agent column browser, agent designer studio, and agent categories UI are already built from Phase 1 extras. Remaining Phase 2 admin work:
 
@@ -395,12 +410,13 @@ The agent column browser, agent designer studio, and agent categories UI are alr
 - User invitation and membership management
 - Approval queue and resolution UI
 - Token usage dashboard
+- Inference provider/model/routing/eval administration
 - Policy rule management (admin-only)
 - Audit log viewer
 - Admin WS client keepalive ping (prerequisite #15) — 30s interval per spec
 - SSE client `Last-Event-ID` reconnect (prerequisite #15)
 
-#### Step 8: Hosted deployment validation
+#### Step 9: Hosted deployment validation
 
 - End-to-end flow on Cloud Run: signup → create project → create channel → chat → approval → audit
 - Load test: verify Cloud Run autoscaling under concurrent users
@@ -419,6 +435,7 @@ The agent column browser, agent designer studio, and agent categories UI are alr
 - [approval-gating-spec.md](./approval-gating-spec.md) — approval gating system
 - [audit-trail-spec.md](./audit-trail-spec.md) — audit trail system
 - [token-ledger-spec.md](./token-ledger-spec.md) — token usage tracking and cost estimation
+- [model-provider-connector-spec.md](./model-provider-connector-spec.md) — inference connectors, routing, mediation, and evals
 - [organization-governance-spec.md](./organization-governance-spec.md) — multi-tenant governance model
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) — shared type contracts (Phase 2 additions)
 - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) — auth modes and deployment modes

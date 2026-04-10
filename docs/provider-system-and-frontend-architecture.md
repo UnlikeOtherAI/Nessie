@@ -11,7 +11,8 @@ They must not be conflated:
 1. infrastructure/provider adapters
 2. frontend/domain provider facades
 
-If these get mixed together, the codebase will become hard to reason about very quickly.
+If these get mixed together, the codebase will become hard to reason
+about very quickly.
 
 ## 2) Infrastructure provider families
 
@@ -58,6 +59,12 @@ Important clarification for later phases:
   profiles.
 - agents may reference an admin-defined routing profile, but they should
   not hold provider credentials or ad hoc provider-specific logic.
+- the model-provider connector/orchestration system is a Phase 2
+  backend/admin control-plane deliverable. Phase 1 may keep a
+  single-route compatibility path so long as it does not block the later
+  contract.
+- `admin-only` for model-provider routing is a server-enforced policy
+  boundary, not just a hidden picker option in `/admin`.
 
 ## 3) Frontend architecture rule
 
@@ -122,17 +129,27 @@ These are app-wide concerns, not entity-specific concerns.
 Phase 1 rules:
 
 - `QueryProvider` means TanStack Query's `QueryClientProvider`
-- do not build a custom query cache or a page-local fetch state system instead
-- `ApiClientProvider` provides a typed fetch wrapper (not axios) configured with the JWT token from `AuthSessionProvider` and the base URL; domain facades import the client from this provider via a `useApiClient()` hook
+- do not build a custom query cache or a page-local fetch state system
+  instead
+- `ApiClientProvider` provides a typed fetch wrapper, not axios,
+  configured with the JWT token from `AuthSessionProvider` and the base
+  URL. Domain facades import the client from this provider through a
+  `useApiClient()` hook.
 
 ### 5.1a UI stack
 
 - **Tailwind CSS** for utility-first styling
-- **shadcn/ui** for base primitive components (Button, Input, Dialog, Tooltip, ScrollArea, etc.)
-- custom components built on top of shadcn/ui primitives for domain-specific needs (ChannelRow, AgentRow, StatusPill, etc.)
-- **React Router v7** with `createBrowserRouter` for routing; channel selection is URL state (`/admin/channels/:channelId`)
-- do not introduce a second CSS framework, CSS-in-JS library, or styled-components alongside Tailwind
-- do not use a different component library (MUI, Ant, Chakra) — shadcn/ui is the base
+- **shadcn/ui** for base primitive components such as Button, Input,
+  Dialog, Tooltip, and ScrollArea
+- custom components built on top of shadcn/ui primitives for
+  domain-specific needs such as `ChannelRow`, `AgentRow`, and
+  `StatusPill`
+- **React Router v7** with `createBrowserRouter` for routing. Channel
+  selection is URL state at `/admin/channels/:channelId`
+- do not introduce a second CSS framework, CSS-in-JS library, or
+  styled-components alongside Tailwind
+- do not use a different component library such as MUI, Ant, or Chakra.
+  shadcn/ui is the base
 
 ### 5.2 Domain facades/services
 
@@ -175,7 +192,8 @@ Same pattern should exist for tools:
 - `tools/types.ts`
 - `tools/hooks.ts`
 
-This gives you an "agent provider facade" in practice without turning it into a tree-wide React Context.
+This gives you an "agent provider facade" in practice without turning it
+into a tree-wide React Context.
 
 ### 5.3 Reusable UI component layers
 
@@ -261,7 +279,8 @@ Example:
 
 Never:
 
-- fetch agents one way in sidebar and another way in detail pages with separate hand-rolled state,
+- fetch agents one way in sidebar and another way in detail pages with
+  separate hand-rolled state,
 - duplicate mapping/transforms in three components,
 - keep hidden parallel stores for the same records.
 
@@ -285,6 +304,21 @@ Phase 1 should not need frontend facades yet for:
 - remote workers
 - workflow builder
 
+Later-phase admin facades for the model-provider control plane should be:
+
+- `inferenceProviders`
+- `inferenceCredentialBindings`
+- `inferenceModels`
+- `inferenceCapabilityOverrides`
+- `routingProfiles`
+- `toolMediators`
+- `inferenceEvals`
+- `inferenceEvalRuns`
+- `tokenLedger`
+
+These are admin/backend control-plane surfaces. They are not part of the
+standard user-facing Phase 1 facade set.
+
 ## 8) Template-to-component mapping
 
 From the current template, at minimum extract:
@@ -302,7 +336,8 @@ From the current template, at minimum extract:
 - `MessageBubble`
 - `StatusPill`
 
-Tool-specific reusable components should also exist once tools appear in `/admin`:
+Tool-specific reusable components should also exist once tools appear in
+`/admin`:
 
 - `ToolBadge`
 - `ToolTransportPill`
@@ -313,67 +348,107 @@ This is mandatory. Do not leave these as repeated page-local fragments.
 
 ## 9) Agent activity observability (mandatory Phase 1 UI)
 
-This is a first-class product requirement, not an afterthought. The biggest failure mode of agent platforms is that users cannot see what is happening. Nessie must make agent activity visible at all times.
+This is a first-class product requirement, not an afterthought. The
+biggest failure mode of agent platforms is that users cannot see what is
+happening. Nessie must make agent activity visible at all times.
 
 ### 9.1 Agent activity panel
 
-The `/admin` UI must always show an agent activity panel when agents exist. This panel is visible regardless of which page the user is on.
+The `/admin` UI must always show an agent activity panel when agents
+exist. This panel is visible regardless of which page the user is on.
 
 Required content:
 
-- list of all agents the user has access to in the current scope (channel or organization)
+- list of all agents the user has access to in the current scope,
+  channel or organization
 - each agent row shows:
   - agent name and role
-  - current status indicator: `idle` (dim dot), `thinking` (pulsing dot), `executing` (animated dot), `waiting_approval` (amber dot), `error` (red dot)
+  - current status indicator: `idle` (dim dot), `thinking` (pulsing
+    dot), `executing` (animated dot), `waiting_approval` (amber dot),
+    `error` (red dot)
   - if active: what the agent is currently doing (tool name, short description)
   - last activity timestamp
 
-Status indicators must update via WebSocket in real time. There is no polling. If the WebSocket disconnects, the UI must show a connection-lost state, not stale green dots.
+Status indicators must update via WebSocket in real time. There is no
+polling. If the WebSocket disconnects, the UI must show a
+connection-lost state, not stale green dots.
 
 ### 9.2 Agent drill-down view
 
 Clicking on any agent in the activity panel opens a detail view showing:
 
-- **Current activity:** what the agent is doing right now, including tool name and sanitized input/output preview
-- **Sub-agent tree:** if this agent has spawned sub-agents, show them as a nested list with the same status indicators. Clicking a sub-agent opens its own drill-down.
-- **Tool execution log:** chronological list of tool calls for the current or most recent run, each showing tool name, duration, success/failure, and truncated output preview
-- **Thought process (Phase 2+):** opt-in stream of agent reasoning previews. In Phase 1, this section of the drill-down shows a placeholder ("reasoning trace available in a future release"). The `agent.thought` event is not emitted in Phase 1.
-- **Last 5 messages:** the five most recent messages this agent has sent or received, always visible without scrolling or navigation. This is a hard requirement — not "load on demand" but always present in the agent detail view.
+- **Current activity:** what the agent is doing right now, including
+  tool name and sanitized input/output preview
+- **Sub-agent tree:** if this agent has spawned sub-agents, show them
+  as a nested list with the same status indicators. Clicking a
+  sub-agent opens its own drill-down
+- **Tool execution log:** chronological list of tool calls for the
+  current or most recent run, each showing tool name, duration,
+  success/failure, and truncated output preview
+- **Thought process (Phase 2+):** opt-in stream of agent reasoning
+  previews. In Phase 1, this section of the drill-down shows a
+  placeholder, "reasoning trace available in a future release". The
+  `agent.thought` event is not emitted in Phase 1
+- **Last 5 messages:** the five most recent messages this agent has sent
+  or received, always visible without scrolling or navigation. This is
+  a hard requirement, not "load on demand" but always present in the
+  agent detail view
 
-The drill-down view must work for sub-agents at any depth. If agent A spawned agent B which spawned agent C, clicking through A -> B -> C must show C's activity, tools, and messages.
+The drill-down view must work for sub-agents at any depth. If agent A
+spawned agent B which spawned agent C, clicking through A -> B -> C
+must show C's activity, tools, and messages.
 
 ### 9.3 Required frontend data for agent activity
 
 The agent activity panel and drill-down require these data flows:
 
-- **WebSocket subscription** to the `WsEventMap` from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) section 4, specifically: `agent.status`, `agent.tool.start`, `agent.tool.end`, `agent.spawned`, `message.new`, and `run.updated`. Do not subscribe to SSE events on the WebSocket.
-- **Agent facade query:** `useAgents()` for the agent list with status, scoped to current channel/organization
-- **Agent detail query:** `useAgentActivity(agentId)` for tool log, sub-agent tree, and thought stream
-- **Agent messages query:** `useAgentMessages(agentId, { limit: 5 })` for the always-visible last 5 messages
+- **WebSocket subscription** to the `WsEventMap` from
+  [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
+  section 4, specifically: `agent.status`, `agent.tool.start`,
+  `agent.tool.end`, `agent.spawned`, `message.new`, and `run.updated`.
+  Do not subscribe to SSE events on the WebSocket
+- **Agent facade query:** `useAgents()` for the agent list with status,
+  scoped to current channel or organization
+- **Agent detail query:** `useAgentActivity(agentId)` for tool log,
+  sub-agent tree, and thought stream
+- **Agent messages query:** `useAgentMessages(agentId, { limit: 5 })`
+  for the always-visible last 5 messages
 
-These must follow the domain facade pattern (section 5.2). Agent activity is not a separate React Context provider — it is part of the `agents` facade with WebSocket-driven cache updates.
+These must follow the domain facade pattern from section 5.2. Agent
+activity is not a separate React Context provider. It is part of the
+`agents` facade with WebSocket-driven cache updates.
 
 Cache update rules:
 
-- WebSocket `agent.status` events update the agent list cache in place (no refetch)
-- WebSocket `agent.tool.start/end` events update the agent detail cache in place
-- WebSocket `agent.spawned` events update the sub-agent tree in the agent detail cache
-- sub-agent tree is populated on initial load and WebSocket reconnect via REST (`GET /api/agents/{agentId}/children`), then kept live via `agent.spawned` events
-- the last-5-messages query is a standard paginated query that also receives WebSocket-driven invalidation when a new message arrives for that agent
+- WebSocket `agent.status` events update the agent list cache in place.
+  No refetch
+- WebSocket `agent.tool.start/end` events update the agent detail cache
+  in place
+- WebSocket `agent.spawned` events update the sub-agent tree in the
+  agent detail cache
+- sub-agent tree is populated on initial load and on WebSocket
+  reconnect via REST, `GET /api/agents/{agentId}/children`, then kept
+  live via `agent.spawned` events
+- the last-5-messages query is a standard paginated query that also
+  receives WebSocket-driven invalidation when a new message arrives for
+  that agent
 
 ### 9.4 Required `/admin` components for agent activity
 
 Add to the mandatory component list:
 
 - `AgentActivityPanel` — the always-visible agent list with status dots
-- `AgentStatusDot` — the animated status indicator (idle/thinking/executing/waiting/error)
+- `AgentStatusDot` — the animated status indicator:
+  idle/thinking/executing/waiting/error
 - `AgentDetailDrawer` — the drill-down view opened by clicking an agent
 - `SubAgentTree` — nested sub-agent list with recursive drill-down
 - `ToolExecutionLog` — chronological tool call list with duration and status
-- `AgentThoughtStream` — Phase 1 stub with placeholder; wired to `agent.thought` event in Phase 2
+- `AgentThoughtStream` — Phase 1 stub with placeholder; wired to
+  `agent.thought` event in Phase 2
 - `AgentMessagePreview` — the always-visible last-5-messages list
 
-These are feature components under `components/features/agents/` and must not be built as page-local fragments.
+These are feature components under `components/features/agents/` and
+must not be built as page-local fragments.
 
 ## 10) Architectural judgment
 
@@ -395,3 +470,5 @@ The right model is:
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
 - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
 - [functionality.md](./functionality.md)
+- [model-provider-connector-spec.md](./model-provider-connector-spec.md)
+- [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
