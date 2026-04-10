@@ -8,7 +8,9 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react'
+import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { MentionInput, type MentionInputHandle, type MentionEntity } from '../components/shared/MentionInput'
+import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 
 type OptimisticMessage = {
   clientId: string
@@ -197,6 +199,7 @@ export const ChannelsPage = () => {
   const [message, setMessage] = useState('')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
+  const [oversizePaste, setOversizePaste] = useState<string | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const mentionRef = useRef<MentionInputHandle>(null)
 
@@ -366,6 +369,14 @@ export const ChannelsPage = () => {
     async (rawText: string) => {
       const text = rawText.trim()
       if (!activeChannel || !text) {
+        return
+      }
+
+      if (text.length > CHAT_MESSAGE_MAX_CHARS) {
+        // Typed-past-the-limit path: show the same dialog so the user can
+        // trim or cancel instead of getting a server 413 after the round
+        // trip.
+        setOversizePaste(text)
         return
       }
 
@@ -932,7 +943,9 @@ export const ChannelsPage = () => {
           <MentionInput
             ref={mentionRef}
             entities={mentionEntities}
+            maxLength={CHAT_MESSAGE_MAX_CHARS}
             onChange={setMessage}
+            onOversizePaste={(paste) => setOversizePaste(paste)}
             onSubmit={(text) => void sendText(text)}
             placeholder={`Message #${activeChannel?.label ?? 'channel'} or @mention an agent`}
           />
@@ -1015,6 +1028,17 @@ export const ChannelsPage = () => {
           onSelectAgent={onSelectAgent}
         />
       ) : null}
+
+      <OversizePasteDialog
+        limit={CHAT_MESSAGE_MAX_CHARS}
+        onCancel={() => setOversizePaste(null)}
+        onInsertTrimmed={(trimmed) => {
+          setOversizePaste(null)
+          mentionRef.current?.insertText(trimmed)
+        }}
+        open={oversizePaste !== null}
+        pastedText={oversizePaste ?? ''}
+      />
     </section>
   )
 }

@@ -6,6 +6,7 @@ import {
   AgentTriggerTypeSchema,
   AuthProviderResponseTypeSchema,
   ChannelIdSchema,
+  CHAT_MESSAGE_MAX_CHARS,
   MessageRoleSchema,
   OrganizationIdSchema,
   RunIdSchema,
@@ -250,7 +251,7 @@ export const ThreadMessageRecordSchema = z.object({
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
 
 export const CreateThreadMessageBodySchema = z.object({
-  content: NonEmptyStringSchema,
+  content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
 })
 
 export const ToolDescriptorSchema = z.object({

@@ -23,6 +23,7 @@ import { loadConfig } from '@nessie/config'
 import { createModelClient, createPgPool, ModelUsageTracker } from '@nessie/runtime'
 import {
   CaptureThoughtBodySchema,
+  CHAT_MESSAGE_MAX_CHARS,
   LinkThoughtsBodySchema,
   MeResponseSchema,
   RecordThoughtRecallSignalBodySchema,
@@ -3577,6 +3578,30 @@ export const buildApp = async () => {
   app.post('/api/threads/:threadId/messages', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+
+    // Guard oversized chat bodies BEFORE Zod validation so the client can
+    // distinguish "too large, offer file upload" from generic validation
+    // failures. Checked on the raw body.
+    const rawContent =
+      typeof request.body === 'object' &&
+      request.body !== null &&
+      'content' in request.body &&
+      typeof (request.body as { content: unknown }).content === 'string'
+        ? (request.body as { content: string }).content
+        : null
+    if (rawContent !== null && rawContent.length > CHAT_MESSAGE_MAX_CHARS) {
+      reply.status(413).send({
+        error: {
+          code: 'MESSAGE_TOO_LARGE',
+          message:
+            `Message is ${rawContent.length} characters; the chat limit is ${CHAT_MESSAGE_MAX_CHARS}.` +
+            ' Send as a file instead.',
+          limit: CHAT_MESSAGE_MAX_CHARS,
+          length: rawContent.length,
+        },
+      })
       return reply
     }
 

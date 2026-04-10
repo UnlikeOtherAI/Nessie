@@ -24,11 +24,14 @@ export type MentionInputHandle = {
   focus: () => void
   getText: () => string
   insertAtSign: () => void
+  insertText: (text: string) => void
 }
 
 type Props = {
   entities: MentionEntity[]
+  maxLength?: number
   onChange?: (text: string) => void
+  onOversizePaste?: (paste: string) => void
   onSubmit: (text: string) => void
   placeholder: string
 }
@@ -87,7 +90,10 @@ function getMentionContext(): { query: string; range: Range } | null {
 /* ------------------------------------------------------------------ */
 
 export const MentionInput = forwardRef<MentionInputHandle, Props>(
-  ({ entities, onChange, onSubmit, placeholder }, ref) => {
+  (
+    { entities, maxLength, onChange, onOversizePaste, onSubmit, placeholder },
+    ref,
+  ) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const popupRef = useRef<HTMLDivElement>(null)
     const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -209,6 +215,21 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         el.focus()
         document.execCommand('insertText', false, '@')
       },
+      insertText(text: string) {
+        const el = editorRef.current
+        if (!el) return
+        el.focus()
+        // Place the cursor at the end so the insertion lands predictably
+        // instead of wherever the last selection happened to be.
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        range.collapse(false)
+        const sel = window.getSelection()
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+        document.execCommand('insertText', false, text)
+        sync()
+      },
     }))
 
     return (
@@ -260,8 +281,8 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         <div
           ref={editorRef}
           className={[
-            'mention-editor min-h-[82px] w-full bg-transparent px-4 py-3 text-sm',
-            'text-[#f3f4f6] outline-none',
+            'mention-editor min-h-[82px] max-h-[220px] w-full overflow-y-auto',
+            'bg-transparent px-4 py-3 text-sm text-[#f3f4f6] outline-none',
             !hasContent ? 'is-empty' : '',
           ].join(' ')}
           contentEditable
@@ -323,6 +344,15 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           onPaste={(e) => {
             e.preventDefault()
             const text = e.clipboardData.getData('text/plain')
+            if (maxLength && onOversizePaste) {
+              const currentLength = editorRef.current
+                ? extractText(editorRef.current).length
+                : 0
+              if (currentLength + text.length > maxLength) {
+                onOversizePaste(text)
+                return
+              }
+            }
             document.execCommand('insertText', false, text)
           }}
           role="textbox"
