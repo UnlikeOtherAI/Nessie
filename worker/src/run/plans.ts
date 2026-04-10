@@ -228,3 +228,62 @@ export const markDelegationStepQueued = async (
     data: { status: 'waiting' },
   })
 }
+
+export const markDelegationStepFinished = async (
+  prisma: PrismaLike,
+  input: {
+    artifacts?: Record<string, unknown>
+    planId?: string | null
+    planStepId?: string | null
+    success: boolean
+    summary?: string
+  },
+): Promise<void> => {
+  if (!input.planId || !input.planStepId) {
+    return
+  }
+
+  const existingStep = await prisma.planStep.findUnique({
+    where: { id: input.planStepId },
+    select: {
+      artifacts: true,
+      id: true,
+      planId: true,
+    },
+  })
+  if (!existingStep || existingStep.planId !== input.planId) {
+    return
+  }
+
+  const mergedArtifacts =
+    existingStep.artifacts &&
+    typeof existingStep.artifacts === 'object' &&
+    !Array.isArray(existingStep.artifacts)
+      ? {
+          ...(existingStep.artifacts as Record<string, unknown>),
+          ...(input.artifacts ?? {}),
+        }
+      : (input.artifacts ?? {})
+
+  const planStatus = await computePlanTerminalStatus(prisma, {
+    excludeStepId: input.planStepId,
+    planId: input.planId,
+    success: input.success,
+  })
+
+  await prisma.planStep.update({
+    where: { id: input.planStepId },
+    data: {
+      artifacts: mergedArtifacts as Prisma.InputJsonValue,
+      status: input.success ? 'completed' : 'failed',
+    },
+  })
+
+  await prisma.plan.update({
+    where: { id: input.planId },
+    data: {
+      status: planStatus,
+      ...(input.summary ? { summary: input.summary } : {}),
+    },
+  })
+}

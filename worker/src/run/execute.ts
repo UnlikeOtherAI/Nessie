@@ -35,6 +35,7 @@ import {
 } from './tools.js'
 import {
   appendDelegationStep,
+  markDelegationStepFinished,
   ensureRunPlanContext,
   markRunPlanFinished,
   markRunPlanStarted,
@@ -926,6 +927,18 @@ export const executeRunJob = async (
       success: true,
       summary: responseText.slice(0, 500),
     })
+    await markDelegationStepFinished(deps.prisma, {
+      artifacts: {
+        childAgentName,
+        responseText,
+        runId: context.run.id,
+        taskId: context.task.id,
+        toolOutputs,
+      },
+      planId: payload.parentPlanId,
+      planStepId: payload.parentPlanStepId,
+      success: true,
+    })
     await setAgentStatus(deps.prisma, context.agent.id, 'idle')
     await publishRunUpdated(deps.realtimeTransport, context, 'completed')
     await publishTaskUpdated(deps.realtimeTransport, buildScopes(context), context.task.id, 'done')
@@ -984,6 +997,17 @@ export const executeRunJob = async (
         summary: messageText.slice(0, 500),
       })
     }
+    await markDelegationStepFinished(deps.prisma, {
+      artifacts: {
+        error: messageText,
+        runId: context.run.id,
+        taskId: context.task.id,
+      },
+      planId: payload.parentPlanId,
+      planStepId: payload.parentPlanStepId,
+      success: false,
+      summary: messageText.slice(0, 500),
+    })
     await setAgentStatus(deps.prisma, context.agent.id, 'error')
     await publishRunUpdated(deps.realtimeTransport, context, 'failed')
     await publishTaskUpdated(

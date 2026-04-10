@@ -173,7 +173,7 @@ export const dispatchNextMailboxMessage = async (
 
   if (!targetThreadId) {
     await deadLetterMailboxMessage(prisma, message.id)
-    return false
+    return true
   }
 
   const thread = await prisma.thread.findUnique({
@@ -189,15 +189,15 @@ export const dispatchNextMailboxMessage = async (
   })
   if (!thread) {
     await deadLetterMailboxMessage(prisma, message.id)
-    return false
+    return true
   }
   if (thread.channel.organizationId !== message.organizationId) {
     await deadLetterMailboxMessage(prisma, message.id)
-    return false
+    return true
   }
   if (message.channelId && message.channelId !== thread.channelId) {
     await deadLetterMailboxMessage(prisma, message.id)
-    return false
+    return true
   }
 
   const binding = await prisma.agentBinding.findFirst({
@@ -209,7 +209,7 @@ export const dispatchNextMailboxMessage = async (
   })
   if (!binding) {
     await deadLetterMailboxMessage(prisma, message.id)
-    return false
+    return true
   }
 
   const spawnedEvent =
@@ -263,6 +263,8 @@ export const dispatchNextMailboxMessage = async (
         }),
         agentId: parseAgentId(message.toAgentId),
         messageId: promptMessage.id,
+        parentPlanId: message.planId ?? undefined,
+        parentPlanStepId: message.planStepId ?? undefined,
         promptOverride: message.body,
         runId: parseRunId(run.id),
         taskId: parseTaskId(task.id),
@@ -293,24 +295,47 @@ export const dispatchNextMailboxMessage = async (
       where: { id: message.toAgentId },
       select: { parentAgentId: true },
     })
-    if (childAgent?.parentAgentId !== message.fromAgentId || !spawnedEvent) {
-      return null
-    }
-
     return {
-      childId: parseAgentId(message.toAgentId),
-      parentId: parseAgentId(spawnedEvent.agentId),
-      scopes: buildScopes(spawnedEvent),
-      taskId: parseTaskId(task.id),
+      messageId: promptMessage.id,
+      spawned:
+        childAgent?.parentAgentId === message.fromAgentId && spawnedEvent
+          ? {
+              childId: parseAgentId(message.toAgentId),
+              parentId: parseAgentId(spawnedEvent.agentId),
+              scopes: buildScopes(spawnedEvent),
+              taskId: parseTaskId(task.id),
+              threadId: parseThreadId(targetThreadId),
+            }
+          : null,
     }
   })
 
-  if (publishPayload) {
-    await realtimeTransport.publishWs(publishPayload.scopes, {
+  await realtimeTransport.publishWs(
+    buildScopes({
+      agentId: message.toAgentId,
+      channelId: thread.channelId,
+      organizationId: message.organizationId,
+    }),
+    {
       data: {
-        childId: publishPayload.childId,
-        parentId: publishPayload.parentId,
-        taskId: publishPayload.taskId,
+        agentId: parseAgentId(message.toAgentId),
+        contentPreview: message.body.slice(0, 200),
+        messageId: publishPayload.messageId,
+        role: 'user',
+        threadId: parseThreadId(targetThreadId),
+      },
+      event: 'message.new',
+    },
+  )
+
+  if (publishPayload.spawned) {
+    await realtimeTransport.publishWs(publishPayload.spawned.scopes, {
+      data: {
+        childId: publishPayload.spawned.childId,
+        messageId: publishPayload.messageId,
+        parentId: publishPayload.spawned.parentId,
+        taskId: publishPayload.spawned.taskId,
+        threadId: publishPayload.spawned.threadId,
       },
       event: 'agent.spawned',
     })

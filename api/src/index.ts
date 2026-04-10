@@ -1887,9 +1887,12 @@ export const buildApp = async () => {
       payload: body.payload ?? {},
       source: body.source ?? `event:${body.eventType}`,
     }
+    const queueIdempotencyKey = payload.dedupeKey
+      ? `trigger-event:${actorContext.tenant.organizationId}:${payload.dedupeKey}`
+      : undefined
 
     await enqueueQueueJob(prisma, {
-      idempotencyKey: payload.dedupeKey,
+      idempotencyKey: queueIdempotencyKey,
       payload,
       topic: 'trigger.event.dispatch',
     })

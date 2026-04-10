@@ -545,9 +545,14 @@ export const dispatchEventTriggers = async (
     where: {
       enabled: true,
       status: 'active',
+      targetChannel: {
+        is: {
+          organizationId: input.actorContext.tenant.organizationId,
+        },
+      },
       type: 'event',
     },
-      select: {
+    select: {
       agent: {
         select: {
           organizationId: true,
