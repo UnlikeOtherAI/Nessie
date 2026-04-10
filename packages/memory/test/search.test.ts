@@ -23,23 +23,12 @@ const createPoolStub = (
 
 test('searchAndLogThoughts logs hybrid recalls and attaches recall ids', async () => {
   const queries: { params: unknown[] | undefined; sql: string }[] = []
-  const originalFetch = globalThis.fetch
-
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({
-        data: [{ embedding: [0.25, 0.5, 0.75] }],
-      }),
-      {
-        headers: { 'Content-Type': 'application/json' },
-        status: 200,
-      },
-    )
+  let embeddedText: string | null = null
 
   const pool = createPoolStub((sql, params) => {
     queries.push({ params, sql })
 
-    if (sql === 'BEGIN' || sql === 'COMMIT') {
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
       return { rows: [] }
     }
 
@@ -81,46 +70,42 @@ test('searchAndLogThoughts logs hybrid recalls and attaches recall ids', async (
     throw new Error(`Unexpected query: ${sql}`)
   })
 
-  try {
-    const results = await searchAndLogThoughts(
-      {
-        organizationId: '33333333-3333-3333-3333-333333333333',
-        query: 'Why do we require phone verification?',
-        userId: 'user-1',
+  const results = await searchAndLogThoughts(
+    {
+      organizationId: '33333333-3333-3333-3333-333333333333',
+      query: 'Why do we require phone verification?',
+      userId: 'user-1',
+    },
+    {
+      modelClient: {
+        embed: async (text) => {
+          embeddedText = text
+          return [0.25, 0.5, 0.75]
+        },
       },
-      {
-        embedding: { apiKey: 'test-key' },
-        pool,
-      },
-    )
+      pool,
+    },
+  )
 
-    assert.equal(results.length, 1)
-    assert.equal(results[0]?.recallId, '22222222-2222-2222-2222-222222222222')
-    assert.ok(queries.some((query) => query.sql.includes('match_thoughts_hybrid')))
-    assert.ok(
-      queries.some(
-        (query) =>
-          query.sql.includes('INSERT INTO thought_recalls')
-          && Array.isArray(query.params?.[7])
-          && (query.params?.[7] as string[])[0] === 'hybrid',
-      ),
-    )
-  } finally {
-    globalThis.fetch = originalFetch
-  }
+  assert.equal(embeddedText, 'Why do we require phone verification?')
+  assert.equal(results.length, 1)
+  assert.equal(results[0]?.recallId, '22222222-2222-2222-2222-222222222222')
+  assert.ok(queries.some((query) => query.sql.includes('match_thoughts_hybrid')))
+  assert.ok(
+    queries.some(
+      (query) =>
+        query.sql.includes('INSERT INTO thought_recalls')
+        && Array.isArray(query.params?.[7])
+        && (query.params?.[7] as string[])[0] === 'hybrid',
+    ),
+  )
 })
 
 test('searchAndLogThoughts skips embeddings for lexical mode', async () => {
-  let fetchCalled = false
-  const originalFetch = globalThis.fetch
-
-  globalThis.fetch = async () => {
-    fetchCalled = true
-    throw new Error('fetch should not be called for lexical search')
-  }
+  let embedCalled = false
 
   const pool = createPoolStub((sql) => {
-    if (sql === 'BEGIN' || sql === 'COMMIT') {
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
       return { rows: [] }
     }
 
@@ -162,23 +147,24 @@ test('searchAndLogThoughts skips embeddings for lexical mode', async () => {
     throw new Error(`Unexpected query: ${sql}`)
   })
 
-  try {
-    const results = await searchAndLogThoughts(
-      {
-        mode: 'lexical',
-        organizationId: '33333333-3333-3333-3333-333333333333',
-        query: 'deploy pipeline actions',
-        userId: 'user-1',
+  const results = await searchAndLogThoughts(
+    {
+      mode: 'lexical',
+      organizationId: '33333333-3333-3333-3333-333333333333',
+      query: 'deploy pipeline actions',
+      userId: 'user-1',
+    },
+    {
+      modelClient: {
+        embed: async () => {
+          embedCalled = true
+          return [0.25, 0.5, 0.75]
+        },
       },
-      {
-        embedding: { apiKey: 'test-key' },
-        pool,
-      },
-    )
+      pool,
+    },
+  )
 
-    assert.equal(fetchCalled, false)
-    assert.equal(results[0]?.retrievalMode, 'lexical')
-  } finally {
-    globalThis.fetch = originalFetch
-  }
+  assert.equal(embedCalled, false)
+  assert.equal(results[0]?.retrievalMode, 'lexical')
 })

@@ -50,6 +50,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm --filter @nessie/api prisma:generate
+
       - name: Build shared packages
         run: |
           pnpm --filter @nessie/schemas build
@@ -78,6 +81,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @nessie/api prisma:generate
 
       - name: Build all packages
         run: pnpm build
@@ -120,11 +126,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm --filter @nessie/api prisma:generate
+
       - name: Build shared packages
         run: |
           pnpm --filter @nessie/schemas build
           pnpm --filter @nessie/config build
           pnpm --filter @nessie/runtime build
+          pnpm --filter @nessie/memory build
 
       - name: Run tests
         run: pnpm -r --if-present test

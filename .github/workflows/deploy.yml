@@ -14,9 +14,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  deploy-disabled:
+    name: Deploy Disabled
+    runs-on: ubuntu-latest
+    if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER == '' || vars.GCP_SERVICE_ACCOUNT == '' || vars.GCP_PROJECT_ID == '' }}
+    steps:
+      - name: Report missing deployment configuration
+        run: |
+          echo "Skipping deploy workflow."
+          echo "Configure GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT, and GCP_PROJECT_ID repository variables to enable deployment."
+
   build-and-push:
     name: Build & Push Images
     runs-on: ubuntu-latest
+    if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' && vars.GCP_PROJECT_ID != '' }}
     permissions:
       contents: read
       id-token: write
@@ -84,6 +95,7 @@ jobs:
     name: Deploy to Staging
     needs: build-and-push
     runs-on: ubuntu-latest
+    if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' && vars.GCP_PROJECT_ID != '' }}
     environment: staging
     permissions:
       contents: read
@@ -129,6 +141,7 @@ jobs:
     name: Deploy to Production
     needs: [build-and-push, deploy-staging]
     runs-on: ubuntu-latest
+    if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' && vars.GCP_PROJECT_ID != '' }}
     environment: production
     permissions:
       contents: read
