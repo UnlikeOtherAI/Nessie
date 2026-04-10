@@ -43,7 +43,12 @@ function loadBaseline() {
 
 function markdownLineCount(file) {
   const content = fs.readFileSync(path.resolve(process.cwd(), file), 'utf8');
-  return content.split(/\r?\n/).length;
+  if (content.length === 0) {
+    return 0;
+  }
+
+  const lineBreaks = content.match(/\r?\n/g)?.length ?? 0;
+  return content.endsWith('\n') ? lineBreaks : lineBreaks + 1;
 }
 
 function extractOverviewLinkTargets(overviewPath, content) {
@@ -122,8 +127,8 @@ function main() {
       }
     }
 
-    const conflict = `${directory}/${path.basename(directory)}.md`.replace(/\\/g, '/');
-    if (directory !== '.' && markdownSet.has(conflict)) {
+    const conflict = `${directory}.md`.replace(/\\/g, '/');
+    if (markdownSet.has(conflict)) {
       violations.push(`${overviewFile}: conflict with sibling collection file ${conflict}`);
     }
   }
