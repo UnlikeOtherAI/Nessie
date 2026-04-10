@@ -260,6 +260,7 @@ import {
   getTokenUsageSummary,
   listPricingProfiles,
 } from './services/token-ledger.js'
+import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
 
 type AuthenticatedRequestState = {
   actorContext: AuthorizedActionContext
@@ -4409,6 +4410,13 @@ export const buildApp = async () => {
     const { profileId } = request.params as { profileId: string }
     await deletePricingProfile(prisma, profileId, actorContext.tenant.organizationId, actorContext)
     return reply.code(204).send()
+  })
+
+  // ─── Inference control plane routes ─────────────────────────────────────
+  registerInferenceControlPlaneRoutes(app, {
+    prisma,
+    requireActorContext,
+    requireOwner,
   })
 
   // ─── Phase 2: Approval sweep (periodic) ─────────────────────────────────
