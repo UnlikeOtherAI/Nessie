@@ -5,7 +5,8 @@
   "packageManager": "pnpm@10.22.0",
   "scripts": {
     "dev": "pnpm legacy:dev",
-    "lint": "pnpm legacy:lint && turbo run lint",
+    "lint": "pnpm legacy:lint && node scripts/lint-markdown-structure.mjs && turbo run lint",
+    "lint:markdown-structure": "node scripts/lint-markdown-structure.mjs",
     "typecheck": "pnpm legacy:typecheck && turbo run typecheck",
     "build": "pnpm legacy:build && turbo run build",
     "legacy:dev": "bun run src/index.ts",
