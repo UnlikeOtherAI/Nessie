@@ -67,6 +67,7 @@ import {
   CreateMailboxMessageBodySchema,
   CreateExecutionEnvironmentTemplateBodySchema,
   CreateAgentBindingBodySchema,
+  CancelWorkflowRunBodySchema,
   CreateAgentBodySchema,
   CreateAgentTriggerBodySchema,
   CreateAgentCategoryBodySchema,
@@ -74,6 +75,7 @@ import {
   CreatePlanStepBodySchema,
   CreateWorkflowRunBodySchema,
   CreateWorkflowTemplateBodySchema,
+  CreateWorkflowTriggerBodySchema,
   CreateTemporaryContextSessionBodySchema,
   CreateToolRegistryEntryBodySchema,
   DesignerChatBodySchema,
@@ -135,6 +137,7 @@ import {
 } from './services/agents.js'
 import {
   createAgentTrigger,
+  createWorkflowTrigger,
   dispatchAgentTrigger,
   deleteAgentTrigger,
   getAgentTrigger,
@@ -142,6 +145,7 @@ import {
   listScheduledTriggers,
   listAgentTriggerDeliveries,
   listAgentTriggers,
+  listWorkflowInstallationTriggers,
   pauseAgentTrigger,
   resumeAgentTrigger,
   updateAgentTrigger,
@@ -210,6 +214,7 @@ import {
   registerToolRegistryEntry,
 } from './services/tools.js'
 import {
+  cancelWorkflowRun,
   createWorkflowRun,
   createWorkflowTemplate,
   getWorkflowRun,
@@ -496,10 +501,15 @@ const isTriggerTargetWritableByActor = async (
   actorContext: AuthorizedActionContext,
   trigger: {
     targetChannelId?: string
+    workflowInstallationId?: string
   },
 ): Promise<boolean> => {
   if (actorContext.actor.roles?.includes('owner')) {
     return true
+  }
+
+  if (trigger.workflowInstallationId) {
+    return false
   }
 
   if (actorContext.actor.actorType !== 'user' || !trigger.targetChannelId) {
@@ -517,6 +527,33 @@ const isTriggerTargetWritableByActor = async (
   }
 
   return isChannelMember(actorContext.actor.actorId, trigger.targetChannelId)
+}
+
+const isWorkflowInstallationAccessibleToActor = async (
+  actorContext: AuthorizedActionContext,
+  workflowInstallationId: string,
+): Promise<boolean> =>
+  (await prisma.workflowInstallation.count({
+    where: {
+      id: workflowInstallationId,
+      organizationId: actorContext.tenant.organizationId,
+    },
+  })) > 0
+
+const isTriggerAccessibleToActor = async (
+  actorContext: AuthorizedActionContext,
+  trigger: { agentId?: string; workflowInstallationId?: string },
+): Promise<boolean> => {
+  if (trigger.agentId) {
+    return isAgentAccessibleToActor(actorContext, trigger.agentId)
+  }
+  if (trigger.workflowInstallationId) {
+    return isWorkflowInstallationAccessibleToActor(
+      actorContext,
+      trigger.workflowInstallationId,
+    )
+  }
+  return false
 }
 
 const buildWebhookSignature = (secret: string, payload: Buffer, prefix: string): string =>
@@ -1471,7 +1508,7 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
@@ -1507,7 +1544,7 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
@@ -1543,7 +1580,7 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
@@ -1574,7 +1611,7 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
@@ -1605,7 +1642,7 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
@@ -1632,12 +1669,19 @@ export const buildApp = async () => {
       return reply
     }
 
-    const invokeDecision = await checkPolicy(prisma, actorContext, 'agent', 'invoke', {
-      agentId: trigger.agentId,
-    })
-    if (!invokeDecision.allowed) {
-      sendApiError(reply, 403, 'POLICY_DENIED', `Trigger fire denied: ${invokeDecision.reasonCode}`)
-      return reply
+    if (trigger.agentId) {
+      const invokeDecision = await checkPolicy(prisma, actorContext, 'agent', 'invoke', {
+        agentId: trigger.agentId,
+      })
+      if (!invokeDecision.allowed) {
+        sendApiError(
+          reply,
+          403,
+          'POLICY_DENIED',
+          `Trigger fire denied: ${invokeDecision.reasonCode}`,
+        )
+        return reply
+      }
     }
 
     const dispatched = await dispatchAgentTrigger(prisma, {
@@ -1654,6 +1698,15 @@ export const buildApp = async () => {
         sendApiError(reply, 409, 'AGENT_NOT_BOUND', 'Agent must be bound to a channel before firing')
         return reply
       }
+      if (dispatched.reason === 'workflow_installation_not_ready') {
+        sendApiError(
+          reply,
+          409,
+          'WORKFLOW_INSTALLATION_NOT_READY',
+          'Workflow installation is not active',
+        )
+        return reply
+      }
 
       sendApiError(reply, 409, 'TRIGGER_UNAVAILABLE', 'Trigger is not available for execution')
       return reply
@@ -1665,6 +1718,7 @@ export const buildApp = async () => {
         existing: dispatched.existing,
         runId: dispatched.runId,
         trigger: AgentTriggerRecordSchema.parse(dispatched.trigger),
+        workflowRunId: dispatched.workflowRunId,
       }),
     )
   })
@@ -1686,7 +1740,7 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (!(await isAgentAccessibleToActor(actorContext, trigger.agentId))) {
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
@@ -2387,6 +2441,59 @@ export const buildApp = async () => {
     return createApiResponse(WorkflowRunRecordSchema.array().parse(runs))
   })
 
+  app.get('/api/workflow-installations/:installationId/triggers', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { installationId } = request.params as { installationId: string }
+    if (!(await isWorkflowInstallationAccessibleToActor(actorContext, installationId))) {
+      sendApiError(reply, 404, 'WORKFLOW_INSTALLATION_NOT_FOUND', 'Workflow installation not found')
+      return reply
+    }
+
+    const triggers = await listWorkflowInstallationTriggers(prisma, installationId)
+    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
+  app.post('/api/workflow-installations/:installationId/triggers', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { installationId } = request.params as { installationId: string }
+    if (!(await isWorkflowInstallationAccessibleToActor(actorContext, installationId))) {
+      sendApiError(reply, 404, 'WORKFLOW_INSTALLATION_NOT_FOUND', 'Workflow installation not found')
+      return reply
+    }
+
+    const body = parseInput(CreateWorkflowTriggerBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    if (body.type === 'webhook' && typeof body.config?.['secret'] !== 'string') {
+      sendApiError(reply, 400, 'WEBHOOK_SECRET_REQUIRED', 'Webhook triggers require a secret')
+      return reply
+    }
+
+    const trigger = await createWorkflowTrigger(prisma, installationId, body)
+    if (!trigger) {
+      sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
+      return reply
+    }
+
+    return reply.code(201).send(createApiResponse(AgentTriggerRecordSchema.parse(trigger)))
+  })
+
   app.get('/api/workflow-runs/:workflowRunId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -2407,6 +2514,30 @@ export const buildApp = async () => {
       run: WorkflowRunRecordSchema.parse(workflowRun.run),
       steps: WorkflowStepRunRecordSchema.array().parse(workflowRun.steps),
     })
+  })
+
+  app.post('/api/workflow-runs/:workflowRunId/cancel', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(CancelWorkflowRunBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowRunId } = request.params as { workflowRunId: string }
+    const cancelled = await cancelWorkflowRun(prisma, actorContext, workflowRunId, body)
+    if (!cancelled) {
+      sendApiError(reply, 404, 'WORKFLOW_RUN_NOT_FOUND', 'Workflow run not found')
+      return reply
+    }
+
+    return createApiResponse(WorkflowRunRecordSchema.parse(cancelled))
   })
 
   app.get('/api/execution-environment-templates', async (request, reply) => {

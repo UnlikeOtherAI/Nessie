@@ -553,6 +553,58 @@ export const listWorkflowRuns = async (
   return runs.map(mapWorkflowRun)
 }
 
+export const cancelWorkflowRun = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  workflowRunId: string,
+  input: { reason?: string } = {},
+): Promise<WorkflowRunRecord | null> => {
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.workflowRun.findFirst({
+      where: {
+        id: workflowRunId,
+        organizationId: actorContext.tenant.organizationId,
+      },
+      select: { id: true, status: true },
+    })
+    if (!existing) {
+      return null
+    }
+    if (existing.status === 'completed' || existing.status === 'cancelled') {
+      return tx.workflowRun.findUnique({ where: { id: workflowRunId } })
+    }
+
+    const now = new Date()
+    const summary = input.reason?.trim() || 'Workflow run cancelled.'
+
+    await tx.workflowStepRun.updateMany({
+      where: {
+        workflowRunId,
+        status: {
+          in: ['pending', 'running', 'blocked'],
+        },
+      },
+      data: {
+        status: 'skipped',
+        finishedAt: now,
+        errorMessage: summary,
+      },
+    })
+
+    return tx.workflowRun.update({
+      where: { id: workflowRunId },
+      data: {
+        status: 'cancelled',
+        summary,
+        errorMessage: summary,
+        finishedAt: now,
+      },
+    })
+  })
+
+  return result ? mapWorkflowRun(result) : null
+}
+
 export const getWorkflowRun = async (
   prisma: PrismaClient,
   organizationId: string,

@@ -122,7 +122,8 @@ export type AgentTriggerDeliveryStatus = z.infer<typeof AgentTriggerDeliveryStat
 
 export const AgentTriggerRecordSchema = z.object({
   id: z.string().uuid(),
-  agentId: AgentIdSchema,
+  agentId: AgentIdSchema.optional(),
+  workflowInstallationId: z.string().uuid().optional(),
   type: AgentTriggerTypeSchema,
   status: AgentTriggerStatusSchema,
   enabled: z.boolean(),
@@ -147,6 +148,15 @@ export const CreateAgentTriggerBodySchema = z.object({
   nextRunAt: TimestampSchema.optional(),
   targetChannelId: ChannelIdSchema.optional(),
   targetThreadId: ThreadIdSchema.optional(),
+})
+
+export const CreateWorkflowTriggerBodySchema = z.object({
+  type: AgentTriggerTypeSchema,
+  name: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
+  enabled: z.boolean().optional(),
+  config: z.record(z.unknown()).optional(),
+  nextRunAt: TimestampSchema.optional(),
 })
 
 export const UpdateAgentTriggerBodySchema = z.object({
@@ -568,6 +578,10 @@ export const CreateWorkflowRunBodySchema = z.object({
   parentRunId: RunIdSchema.optional(),
   planId: z.string().uuid().optional(),
   planStepId: z.string().uuid().optional(),
+})
+
+export const CancelWorkflowRunBodySchema = z.object({
+  reason: z.string().min(1).optional(),
 })
 
 export const ExecutionProviderSchema = z.enum(['docker', 'gcloud'])

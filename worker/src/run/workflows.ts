@@ -27,6 +27,45 @@ const withTransaction = async <T>(
 const normalizeJsonInput = (value: Record<string, unknown> | undefined): Prisma.InputJsonValue =>
   (value ?? {}) as Prisma.InputJsonValue
 
+export const mergeStepRunOutput = (
+  existing: unknown,
+  incoming: Record<string, unknown> | undefined,
+): Record<string, unknown> => {
+  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+    return {
+      ...(existing as Record<string, unknown>),
+      ...(incoming ?? {}),
+    }
+  }
+  return incoming ?? {}
+}
+
+export type WorkflowStepFinishTransition = {
+  continueWorkflow: boolean
+  nextRunStatus: 'completed' | 'failed' | 'running'
+  nextStepStatus: 'completed' | 'failed'
+  workflowRunCompleted: boolean
+}
+
+export const computeWorkflowStepFinishTransition = (input: {
+  remainingSteps: number
+  success: boolean
+}): WorkflowStepFinishTransition => {
+  const nextStepStatus: 'completed' | 'failed' = input.success ? 'completed' : 'failed'
+  const nextRunStatus: 'completed' | 'failed' | 'running' = !input.success
+    ? 'failed'
+    : input.remainingSteps > 0
+      ? 'running'
+      : 'completed'
+
+  return {
+    continueWorkflow: input.success && input.remainingSteps > 0,
+    nextRunStatus,
+    nextStepStatus,
+    workflowRunCompleted: input.success && input.remainingSteps === 0,
+  }
+}
+
 export const ensureWorkflowStepRuns = async (
   prisma: PrismaLike,
   input: {
@@ -318,53 +357,47 @@ export const markWorkflowStepRunFinished = async (
       }
     }
 
-    const mergedOutput =
-      existing.output && typeof existing.output === 'object' && !Array.isArray(existing.output)
-        ? {
-            ...(existing.output as Record<string, unknown>),
-            ...(input.output ?? {}),
-          }
-        : (input.output ?? {})
+    const mergedOutput = mergeStepRunOutput(existing.output, input.output)
 
-    await tx.workflowStepRun.update({
-      where: { id: stepRunId },
-      data: {
-        status: input.success ? 'completed' : 'failed',
-        output: mergedOutput as Prisma.InputJsonValue,
-        errorMessage: input.success ? null : input.summary,
-        finishedAt: new Date(),
-      },
-    })
-
-    const remaining = await tx.workflowStepRun.count({
+    const remainingBeforeUpdate = await tx.workflowStepRun.count({
       where: {
         workflowRunId,
+        id: { not: stepRunId },
         status: {
           in: ['pending', 'running', 'blocked'],
         },
       },
     })
 
-    const nextStatus = !input.success
-      ? 'failed'
-      : remaining > 0
-        ? 'running'
-        : 'completed'
+    const transition = computeWorkflowStepFinishTransition({
+      remainingSteps: remainingBeforeUpdate,
+      success: input.success,
+    })
+
+    await tx.workflowStepRun.update({
+      where: { id: stepRunId },
+      data: {
+        status: transition.nextStepStatus,
+        output: mergedOutput as Prisma.InputJsonValue,
+        errorMessage: input.success ? null : input.summary,
+        finishedAt: new Date(),
+      },
+    })
 
     await tx.workflowRun.update({
       where: { id: workflowRunId },
       data: {
-        status: nextStatus,
+        status: transition.nextRunStatus,
         summary: input.summary,
-        ...(nextStatus === 'completed' || nextStatus === 'failed'
+        ...(transition.nextRunStatus === 'completed' || transition.nextRunStatus === 'failed'
           ? { finishedAt: new Date() }
           : {}),
       },
     })
 
     return {
-      continueWorkflow: input.success && remaining > 0,
-      workflowRunCompleted: input.success && remaining === 0,
+      continueWorkflow: transition.continueWorkflow,
+      workflowRunCompleted: transition.workflowRunCompleted,
     }
   })
 }

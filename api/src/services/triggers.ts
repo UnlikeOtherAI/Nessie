@@ -11,6 +11,7 @@ import {
   parseTeamId,
   parseThreadId,
   type AuthorizedActionContext,
+  type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
 import type {
   AgentTriggerDeliveryRecord,
@@ -18,11 +19,9 @@ import type {
   AgentTriggerStatus,
   AgentTriggerType,
 } from '../contracts.js'
-import { enqueueRunExecution } from '../queue/pgqueue.js'
+import { enqueueQueueJob, enqueueRunExecution } from '../queue/pgqueue.js'
 import { ensureDefaultThread } from './channels.js'
 
-const DEFAULT_SCHEDULER_LEASE_MS = 60_000
-const DEFAULT_SCHEDULER_RETRY_DELAY_MS = 30_000
 const SCHEDULER_TRIGGER_TYPES: AgentTriggerType[] = ['scheduled', 'interval']
 
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
@@ -42,7 +41,7 @@ const redactTriggerConfig = (value: unknown): Record<string, unknown> => {
 }
 
 const mapTriggerRecord = (trigger: {
-  agentId: string
+  agentId: string | null
   config: unknown
   createdAt: Date
   description: string | null
@@ -56,9 +55,11 @@ const mapTriggerRecord = (trigger: {
   targetThreadId: string | null
   type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
   updatedAt: Date
+  workflowInstallationId: string | null
 }): AgentTriggerRecord => ({
   id: trigger.id,
-  agentId: parseAgentId(trigger.agentId),
+  agentId: trigger.agentId ? parseAgentId(trigger.agentId) : undefined,
+  workflowInstallationId: trigger.workflowInstallationId ?? undefined,
   type: trigger.type,
   status: trigger.status,
   enabled: trigger.enabled,
@@ -115,20 +116,41 @@ export const listOrganizationTriggers = async (
 ): Promise<AgentTriggerRecord[]> => {
   const triggers = await prisma.agentTrigger.findMany({
     where: {
-      agent: {
-        OR: [
-          { organizationId },
-          {
-            bindings: {
-              some: {
-                channel: { organizationId },
+      OR: [
+        {
+          agent: {
+            OR: [
+              { organizationId },
+              {
+                bindings: {
+                  some: {
+                    channel: { organizationId },
+                  },
+                },
               },
-            },
+            ],
           },
-        ],
-      },
+        },
+        {
+          workflowInstallation: {
+            organizationId,
+          },
+        },
+      ],
     },
     orderBy: [{ createdAt: 'desc' }],
+  })
+
+  return triggers.map(mapTriggerRecord)
+}
+
+export const listWorkflowInstallationTriggers = async (
+  prisma: PrismaClient,
+  workflowInstallationId: string,
+): Promise<AgentTriggerRecord[]> => {
+  const triggers = await prisma.agentTrigger.findMany({
+    where: { workflowInstallationId },
+    orderBy: [{ createdAt: 'asc' }],
   })
 
   return triggers.map(mapTriggerRecord)
@@ -144,9 +166,10 @@ export const listScheduledTriggers = async (
 ): Promise<AgentTriggerRecord[]> => {
   const triggers = await prisma.agentTrigger.findMany({
     where: {
-      agent: {
-        organizationId: input.organizationId,
-      },
+      OR: [
+        { agent: { organizationId: input.organizationId } },
+        { workflowInstallation: { organizationId: input.organizationId } },
+      ],
       enabled: true,
       status: 'active',
       type: {
@@ -233,6 +256,55 @@ export const createAgentTrigger = async (
   return mapTriggerRecord(trigger)
 }
 
+export const createWorkflowTrigger = async (
+  prisma: PrismaClient,
+  workflowInstallationId: string,
+  input: {
+    config?: Record<string, unknown>
+    description?: string
+    enabled?: boolean
+    name?: string
+    nextRunAt?: string
+    type: AgentTriggerType
+  },
+): Promise<AgentTriggerRecord | null> => {
+  if (input.type === 'webhook' && typeof input.config?.['secret'] !== 'string') {
+    return null
+  }
+
+  const normalizedNextRunAt = normalizeNextRunAt({
+    config: input.config,
+    nextRunAt: input.nextRunAt,
+    type: input.type,
+  })
+  if (SCHEDULER_TRIGGER_TYPES.includes(input.type) && !normalizedNextRunAt) {
+    return null
+  }
+
+  const installation = await prisma.workflowInstallation.findUnique({
+    where: { id: workflowInstallationId },
+    select: { id: true },
+  })
+  if (!installation) {
+    return null
+  }
+
+  const trigger = await prisma.agentTrigger.create({
+    data: {
+      workflowInstallationId,
+      type: input.type,
+      enabled: input.enabled ?? true,
+      status: input.enabled === false ? 'paused' : 'active',
+      name: input.name,
+      description: input.description,
+      config: (input.config ?? {}) as Prisma.InputJsonValue,
+      nextRunAt: normalizedNextRunAt ?? undefined,
+    },
+  })
+
+  return mapTriggerRecord(trigger)
+}
+
 export const getAgentTrigger = async (
   prisma: PrismaClient,
   triggerId: string,
@@ -267,6 +339,7 @@ export const updateAgentTrigger = async (
       targetChannelId: true,
       targetThreadId: true,
       type: true,
+      workflowInstallationId: true,
     },
   })
 
@@ -290,20 +363,28 @@ export const updateAgentTrigger = async (
   const shouldUpdateTarget =
     input.targetChannelId !== undefined || input.targetThreadId !== undefined
 
-  const target = shouldUpdateTarget
-    ? await resolveExecutionTarget(prisma, existing.agentId, {
-        targetChannelId:
-          input.targetChannelId === undefined ? existing.targetChannelId : input.targetChannelId,
-        targetThreadId:
-          input.targetThreadId === undefined ? existing.targetThreadId : input.targetThreadId,
-      })
-    : {
-        channelId: existing.targetChannelId,
-        threadId: existing.targetThreadId,
-      }
-
-  if (!target?.channelId || !target.threadId) {
-    return null
+  let target: { channelId: string | null; threadId: string | null }
+  if (existing.agentId) {
+    const resolved = shouldUpdateTarget
+      ? await resolveExecutionTarget(prisma, existing.agentId, {
+          targetChannelId:
+            input.targetChannelId === undefined ? existing.targetChannelId : input.targetChannelId,
+          targetThreadId:
+            input.targetThreadId === undefined ? existing.targetThreadId : input.targetThreadId,
+        })
+      : {
+          channelId: existing.targetChannelId,
+          threadId: existing.targetThreadId,
+        }
+    if (!resolved?.channelId || !resolved.threadId) {
+      return null
+    }
+    target = resolved
+  } else {
+    if (shouldUpdateTarget) {
+      return null
+    }
+    target = { channelId: null, threadId: null }
   }
 
   const nextStatus =
@@ -367,8 +448,12 @@ export const updateAgentTrigger = async (
         input.config === undefined
           ? undefined
           : (nextConfig as Prisma.InputJsonValue),
-      targetChannelId: target.channelId,
-      targetThreadId: target.threadId,
+      ...(shouldUpdateTarget
+        ? {
+            targetChannelId: target.channelId,
+            targetThreadId: target.threadId,
+          }
+        : {}),
       nextRunAt: normalizedNextRunAt,
     },
   })
@@ -529,32 +614,6 @@ const computeNextCronRunAt = (input: {
   }
 }
 
-const buildNextScheduledRunAt = (input: {
-  config: unknown
-  from: Date
-  now: Date
-  type: AgentTriggerType
-}): Date | null => {
-  if (input.type === 'scheduled') {
-    return computeNextCronRunAt({
-      config: input.config,
-      currentDate: input.from,
-    })
-  }
-
-  if (input.type !== 'interval') {
-    return input.from
-  }
-
-  const intervalMinutes = parseIntervalMinutes(input.config)
-  if (!intervalMinutes) {
-    return null
-  }
-
-  const base = input.from.getTime() > input.now.getTime() ? input.from : input.now
-  return new Date(base.getTime() + intervalMinutes * 60_000)
-}
-
 const normalizeNextRunAt = (input: {
   config?: Record<string, unknown>
   nextRunAt?: string
@@ -603,30 +662,6 @@ const buildTriggerPrompt = (input: {
 
   const serializedPayload = JSON.stringify(input.payload, null, 2)
   return `${prefix}\n\nPayload:\n${serializedPayload}`
-}
-
-const matchesEventTriggerConfig = (
-  config: unknown,
-  eventType: string,
-  payload: Record<string, unknown>,
-): boolean => {
-  if (!isJsonRecord(config)) {
-    return false
-  }
-
-  const configuredEvents = Array.isArray(config['events'])
-    ? config['events'].filter((value): value is string => typeof value === 'string')
-    : []
-  if (!configuredEvents.includes(eventType)) {
-    return false
-  }
-
-  const filter = isJsonRecord(config['filter']) ? config['filter'] : null
-  if (!filter) {
-    return true
-  }
-
-  return Object.entries(filter).every(([key, value]) => payload[key] === value)
 }
 
 const resolveExecutionTarget = async (
@@ -697,14 +732,6 @@ const resolveExecutionTarget = async (
   }
 }
 
-type ClaimedScheduledTrigger = {
-  config: unknown
-  id: string
-  nextRunAt: Date
-  schedulerClaimId: string
-  type: AgentTriggerType
-}
-
 const isTriggerDeliveryDedupeConflict = (
   error: Prisma.PrismaClientKnownRequestError,
 ): boolean => {
@@ -720,145 +747,68 @@ const isTriggerDeliveryDedupeConflict = (
   return target.includes('trigger_id') && target.includes('dedupe_key')
 }
 
-const claimDueScheduledTriggers = async (
+const loadExistingDeliveryRun = async (
   prisma: PrismaClient,
-  input: {
-    leaseMs?: number
-    limit: number
-    now?: Date
-  },
-): Promise<ClaimedScheduledTrigger[]> => {
-  const now = input.now ?? new Date()
-  const claimId = randomUUID()
-  const leaseExpiry = new Date(now.getTime() - (input.leaseMs ?? DEFAULT_SCHEDULER_LEASE_MS))
-
-  return prisma.$queryRaw<ClaimedScheduledTrigger[]>(
-    Prisma.sql`
-      WITH due AS (
-        SELECT at.id
-        FROM "agent_triggers" AS at
-        WHERE at."enabled" = true
-          AND at."status" = 'active'::"AgentTriggerStatus"
-          AND at."type" IN ('scheduled'::"AgentTriggerType", 'interval'::"AgentTriggerType")
-          AND at."next_run_at" IS NOT NULL
-          AND at."next_run_at" <= ${now}
-          AND (
-            at."scheduler_claimed_at" IS NULL
-            OR at."scheduler_claimed_at" < ${leaseExpiry}
-          )
-        ORDER BY at."next_run_at" ASC, at."created_at" ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT ${input.limit}
-      )
-      UPDATE "agent_triggers" AS at
-      SET
-        "scheduler_claim_id" = ${claimId}::uuid,
-        "scheduler_claimed_at" = ${now}
-      FROM due
-      WHERE at."id" = due."id"
-      RETURNING
-        at."id",
-        at."config",
-        at."next_run_at" AS "nextRunAt",
-        at."scheduler_claim_id" AS "schedulerClaimId",
-        at."type"
-    `,
-  )
-}
-
-const finalizeScheduledTriggerClaim = async (
-  prisma: PrismaClient,
-  input: {
-    claimId: string
-    nextRunAt: Date | null
-    status?: AgentTriggerStatus
-    triggerId: string
-  },
-): Promise<void> => {
-  await prisma.$executeRaw(
-    Prisma.sql`
-      UPDATE "agent_triggers"
-      SET
-        "next_run_at" = ${input.nextRunAt},
-        "scheduler_claim_id" = NULL,
-        "scheduler_claimed_at" = NULL,
-        "status" = COALESCE(${input.status}::"AgentTriggerStatus", "status")
-      WHERE "id" = ${input.triggerId}::uuid
-        AND "scheduler_claim_id" = ${input.claimId}::uuid
-    `,
-  )
-}
-
-export const sweepDueScheduledTriggers = async (
-  prisma: PrismaClient,
-  input: {
-    leaseMs?: number
-    limit: number
-    now?: Date
-  },
-): Promise<{ claimed: number; dispatched: number; failed: number }> => {
-  const now = input.now ?? new Date()
-  const claimedTriggers = await claimDueScheduledTriggers(prisma, input)
-  let dispatched = 0
-  let failed = 0
-
-  for (const trigger of claimedTriggers) {
-    const dedupeKey = `scheduled:${trigger.id}:${trigger.nextRunAt.toISOString()}`
-
-    try {
-      const result = await dispatchAgentTrigger(prisma, {
-        dedupeKey,
-        payload: {
-          scheduledFor: trigger.nextRunAt.toISOString(),
-          triggerId: trigger.id,
-        },
-        source: 'scheduler',
-        triggerId: trigger.id,
-      })
-
-      if (result.kind === 'queued') {
-        const nextRunAt = buildNextScheduledRunAt({
-          config: trigger.config,
-          from: trigger.nextRunAt,
-          now,
-          type: trigger.type,
-        })
-        await finalizeScheduledTriggerClaim(prisma, {
-          claimId: trigger.schedulerClaimId,
-          nextRunAt,
-          status: !nextRunAt ? 'error' : 'active',
-          triggerId: trigger.id,
-        })
-        dispatched += 1
-        continue
-      }
-
-      await finalizeScheduledTriggerClaim(prisma, {
-        claimId: trigger.schedulerClaimId,
-        nextRunAt:
-          result.reason === 'agent_not_bound'
-            ? trigger.nextRunAt
-            : new Date(now.getTime() + DEFAULT_SCHEDULER_RETRY_DELAY_MS),
-        status: result.reason === 'agent_not_bound' ? 'error' : 'active',
-        triggerId: trigger.id,
-      })
-      failed += 1
-    } catch {
-      await finalizeScheduledTriggerClaim(prisma, {
-        claimId: trigger.schedulerClaimId,
-        nextRunAt: new Date(now.getTime() + DEFAULT_SCHEDULER_RETRY_DELAY_MS),
-        triggerId: trigger.id,
-      })
-      failed += 1
+  input: { dedupeKey: string; triggerId: string },
+): Promise<
+  | null
+  | {
+      delivery: Parameters<typeof mapTriggerDeliveryRecord>[0]
+      runId?: string
+      workflowRunId?: string
     }
+> => {
+  const existingDelivery = await prisma.agentTriggerDelivery.findFirst({
+    where: {
+      dedupeKey: input.dedupeKey,
+      triggerId: input.triggerId,
+    },
+    include: {
+      run: {
+        select: { id: true },
+      },
+      workflowRuns: {
+        select: { id: true },
+        take: 1,
+      },
+    },
+  })
+
+  if (!existingDelivery) {
+    return null
+  }
+
+  const runId = existingDelivery.run?.id
+  const workflowRunId = existingDelivery.workflowRuns[0]?.id
+  if (!runId && !workflowRunId) {
+    return null
   }
 
   return {
-    claimed: claimedTriggers.length,
-    dispatched,
-    failed,
+    delivery: existingDelivery,
+    runId,
+    workflowRunId,
   }
 }
+
+export type DispatchTriggerResult =
+  | {
+      kind: 'rejected'
+      reason:
+        | 'agent_not_bound'
+        | 'trigger_not_found'
+        | 'trigger_paused'
+        | 'workflow_installation_not_ready'
+        | 'webhook_secret_mismatch'
+    }
+  | {
+      delivery: AgentTriggerDeliveryRecord
+      existing: boolean
+      kind: 'queued'
+      runId?: ReturnType<typeof parseRunId>
+      trigger: AgentTriggerRecord
+      workflowRunId?: string
+    }
 
 export const dispatchAgentTrigger = async (
   prisma: PrismaClient,
@@ -870,19 +820,7 @@ export const dispatchAgentTrigger = async (
     source: string
     triggerId: string
   },
-): Promise<
-  | {
-      reason: 'agent_not_bound' | 'trigger_not_found' | 'trigger_paused' | 'webhook_secret_mismatch'
-      kind: 'rejected'
-    }
-  | {
-      delivery: AgentTriggerDeliveryRecord
-      existing: boolean
-      kind: 'queued'
-      runId: ReturnType<typeof parseRunId>
-      trigger: AgentTriggerRecord
-    }
-> => {
+): Promise<DispatchTriggerResult> => {
   const loadTrigger = () =>
     prisma.agentTrigger.findUnique({
       where: { id: input.triggerId },
@@ -892,6 +830,17 @@ export const dispatchAgentTrigger = async (
             id: true,
             organizationId: true,
             projectId: true,
+            teamId: true,
+          },
+        },
+        workflowInstallation: {
+          select: {
+            active: true,
+            channelId: true,
+            id: true,
+            organizationId: true,
+            projectId: true,
+            status: true,
             teamId: true,
           },
         },
@@ -907,6 +856,24 @@ export const dispatchAgentTrigger = async (
   if (!trigger.enabled || trigger.status !== 'active') {
     return { kind: 'rejected', reason: 'trigger_paused' }
   }
+
+  if (trigger.workflowInstallationId) {
+    return dispatchWorkflowTrigger(prisma, {
+      actorContext: input.actorContext,
+      dedupeKey: input.dedupeKey,
+      loadTrigger,
+      payload: input.payload,
+      prompt: input.prompt,
+      source: input.source,
+      trigger,
+    })
+  }
+
+  if (!trigger.agentId || !trigger.agent) {
+    return { kind: 'rejected', reason: 'agent_not_bound' }
+  }
+  const agentId = trigger.agentId
+  const agent = trigger.agent
 
   if (!trigger.targetChannelId || !trigger.targetThreadId) {
     return { kind: 'rejected', reason: 'agent_not_bound' }
@@ -933,7 +900,7 @@ export const dispatchAgentTrigger = async (
 
   const binding = await prisma.agentBinding.findFirst({
     where: {
-      agentId: trigger.agentId,
+      agentId,
       channelId: trigger.targetChannelId,
     },
     select: { id: true },
@@ -949,24 +916,20 @@ export const dispatchAgentTrigger = async (
   }
 
   if (input.dedupeKey) {
-    const existingDelivery = await prisma.agentTriggerDelivery.findFirst({
-      where: {
-        dedupeKey: input.dedupeKey,
-        triggerId: input.triggerId,
-      },
-      include: {
-        run: {
-          select: { id: true },
-        },
-      },
+    const existing = await loadExistingDeliveryRun(prisma, {
+      dedupeKey: input.dedupeKey,
+      triggerId: input.triggerId,
     })
 
-    if (existingDelivery?.run?.id) {
+    if (existing?.runId) {
       return {
         kind: 'queued',
-        delivery: mapTriggerDeliveryRecord(existingDelivery),
+        delivery: mapTriggerDeliveryRecord({
+          ...existing.delivery,
+          run: existing.delivery.run,
+        }),
         existing: true,
-        runId: parseRunId(existingDelivery.run.id),
+        runId: parseRunId(existing.runId),
         trigger: mapTriggerRecord(trigger),
       }
     }
@@ -976,12 +939,12 @@ export const dispatchAgentTrigger = async (
     input.actorContext ??
     ({
       actor: {
-        actorId: trigger.agentId,
+        actorId: agentId,
         actorType: 'agent',
         roles: ['system'],
       },
       actionContext: {
-        agentId: parseAgentId(trigger.agentId),
+        agentId: parseAgentId(agentId),
         channelId: parseChannelId(threadTarget.channelId),
         requestId: randomUUID(),
         sessionId: undefined,
@@ -989,10 +952,10 @@ export const dispatchAgentTrigger = async (
       },
       tenant: {
         organizationId: parseOrganizationId(
-          trigger.agent.organizationId ?? threadTarget.organizationId,
+          agent.organizationId ?? threadTarget.organizationId,
         ),
-        projectId: trigger.agent.projectId ? parseProjectId(trigger.agent.projectId) : undefined,
-        teamId: trigger.agent.teamId ? parseTeamId(trigger.agent.teamId) : undefined,
+        projectId: agent.projectId ? parseProjectId(agent.projectId) : undefined,
+        teamId: agent.teamId ? parseTeamId(agent.teamId) : undefined,
       },
     })
 
@@ -1031,7 +994,7 @@ export const dispatchAgentTrigger = async (
 
       const run = await tx.run.create({
         data: {
-          agentId: trigger.agentId,
+          agentId,
           status: 'pending',
           threadId: threadTarget.threadId,
           triggerId: trigger.id,
@@ -1041,7 +1004,7 @@ export const dispatchAgentTrigger = async (
 
       const task = await tx.task.create({
         data: {
-          agentId: trigger.agentId,
+          agentId,
           purpose: content.slice(0, 200),
           runId: run.id,
           status: 'inbox',
@@ -1053,13 +1016,13 @@ export const dispatchAgentTrigger = async (
           ...actorContext,
           actionContext: {
             ...actorContext.actionContext,
-            agentId: parseAgentId(trigger.agentId),
+            agentId: parseAgentId(agentId),
             channelId: parseChannelId(threadTarget.channelId),
             taskId: parseTaskId(task.id),
             threadId: parseThreadId(threadTarget.threadId),
           },
         },
-        agentId: parseAgentId(trigger.agentId),
+        agentId: parseAgentId(agentId),
         messageId: message.id,
         runId: parseRunId(run.id),
         taskId: parseTaskId(task.id),
@@ -1104,19 +1067,12 @@ export const dispatchAgentTrigger = async (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       isTriggerDeliveryDedupeConflict(error)
     ) {
-      const existingDelivery = await prisma.agentTriggerDelivery.findFirst({
-        where: {
-          dedupeKey: input.dedupeKey,
-          triggerId: input.triggerId,
-        },
-        include: {
-          run: {
-            select: { id: true },
-          },
-        },
+      const existing = await loadExistingDeliveryRun(prisma, {
+        dedupeKey: input.dedupeKey,
+        triggerId: input.triggerId,
       })
 
-      if (existingDelivery?.run?.id) {
+      if (existing?.runId) {
         const latestTrigger = await loadTrigger()
         if (!latestTrigger) {
           return { kind: 'rejected', reason: 'trigger_not_found' }
@@ -1124,9 +1080,12 @@ export const dispatchAgentTrigger = async (
 
         return {
           kind: 'queued',
-          delivery: mapTriggerDeliveryRecord(existingDelivery),
+          delivery: mapTriggerDeliveryRecord({
+            ...existing.delivery,
+            run: existing.delivery.run,
+          }),
           existing: true,
-          runId: parseRunId(existingDelivery.run.id),
+          runId: parseRunId(existing.runId),
           trigger: mapTriggerRecord(latestTrigger),
         }
       }
@@ -1136,57 +1095,180 @@ export const dispatchAgentTrigger = async (
   }
 }
 
-export const dispatchEventTriggers = async (
+const dispatchWorkflowTrigger = async (
   prisma: PrismaClient,
   input: {
     actorContext?: AuthorizedActionContext
-    eventType: string
-    payload: Record<string, unknown>
+    dedupeKey?: string
+    loadTrigger: () => Promise<
+      Awaited<ReturnType<PrismaClient['agentTrigger']['findUnique']>>
+    >
+    payload?: unknown
+    prompt?: string
     source: string
+    trigger: {
+      id: string
+      type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
+      workflowInstallation: {
+        active: boolean
+        channelId: string | null
+        id: string
+        organizationId: string
+        projectId: string | null
+        status: 'active' | 'disabled' | 'draft' | 'paused'
+        teamId: string | null
+      } | null
+    } & Parameters<typeof mapTriggerRecord>[0]
   },
-): Promise<
-  Array<{
-    delivery: AgentTriggerDeliveryRecord
-    existing: boolean
-    runId: ReturnType<typeof parseRunId>
-    trigger: AgentTriggerRecord
-  }>
-> => {
-  const triggers = await prisma.agentTrigger.findMany({
-    where: {
-      enabled: true,
-      status: 'active',
-      type: 'event',
-    },
-  })
+): Promise<DispatchTriggerResult> => {
+  const installation = input.trigger.workflowInstallation
+  if (!installation || !installation.active || installation.status === 'disabled') {
+    return { kind: 'rejected', reason: 'workflow_installation_not_ready' }
+  }
 
-  const matches = triggers.filter((trigger) =>
-    matchesEventTriggerConfig(trigger.config, input.eventType, input.payload),
-  )
+  if (input.dedupeKey) {
+    const existing = await loadExistingDeliveryRun(prisma, {
+      dedupeKey: input.dedupeKey,
+      triggerId: input.trigger.id,
+    })
+    if (existing?.workflowRunId) {
+      return {
+        kind: 'queued',
+        delivery: mapTriggerDeliveryRecord({
+          ...existing.delivery,
+          run: existing.delivery.run,
+        }),
+        existing: true,
+        trigger: mapTriggerRecord(input.trigger),
+        workflowRunId: existing.workflowRunId,
+      }
+    }
+  }
 
-  const results = await Promise.all(
-    matches.map(async (trigger) => {
-      const dispatched = await dispatchAgentTrigger(prisma, {
-        actorContext: input.actorContext,
-        dedupeKey: `${input.eventType}:${trigger.id}:${JSON.stringify(input.payload)}`,
-        payload: {
-          eventType: input.eventType,
-          ...input.payload,
+  const actorContext =
+    input.actorContext ??
+    ({
+      actor: {
+        actorId: installation.id,
+        actorType: 'service',
+        roles: ['system'],
+      },
+      actionContext: {
+        ...(installation.channelId
+          ? { channelId: parseChannelId(installation.channelId) }
+          : {}),
+        purpose: `trigger:${input.trigger.type}`,
+        requestId: randomUUID(),
+        sessionId: undefined,
+      },
+      tenant: {
+        organizationId: parseOrganizationId(installation.organizationId),
+        projectId: installation.projectId ? parseProjectId(installation.projectId) : undefined,
+        teamId: installation.teamId ? parseTeamId(installation.teamId) : undefined,
+      },
+    })
+
+  const normalizedPayload = normalizePayload(input.payload)
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const delivery = await tx.agentTriggerDelivery.create({
+        data: {
+          payload: normalizedPayload,
+          dedupeKey: input.dedupeKey,
+          source: input.source,
+          status: 'pending',
+          triggerId: input.trigger.id,
         },
-        source: input.source,
-        triggerId: trigger.id,
+        include: {
+          run: {
+            select: { id: true },
+          },
+        },
       })
 
-      return dispatched.kind === 'queued'
-        ? {
-            delivery: dispatched.delivery,
-            existing: dispatched.existing,
-            runId: dispatched.runId,
-            trigger: dispatched.trigger,
-          }
-        : null
-    }),
-  )
+      const workflowRun = await tx.workflowRun.create({
+        data: {
+          installationId: installation.id,
+          organizationId: installation.organizationId,
+          triggerId: input.trigger.id,
+          triggerDeliveryId: delivery.id,
+          input: (input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
+            ? (input.payload as Record<string, unknown>)
+            : { payload: input.payload ?? null }) as Prisma.InputJsonValue,
+          startedByActorType: actorContext.actor.actorType,
+          startedByActorId: actorContext.actor.actorId,
+        },
+      })
 
-  return results.filter((result): result is NonNullable<typeof result> => result !== null)
+      const jobPayload: WorkflowRunExecuteJobPayload = {
+        actorContext,
+        workflowRunId: workflowRun.id,
+      }
+      await enqueueQueueJob(tx, {
+        idempotencyKey: `workflow-run:start:${workflowRun.id}`,
+        payload: jobPayload,
+        topic: 'workflow.run.execute',
+      })
+
+      const completedDelivery = await tx.agentTriggerDelivery.update({
+        where: { id: delivery.id },
+        data: {
+          deliveredAt: new Date(),
+          status: 'delivered',
+        },
+        include: {
+          run: {
+            select: { id: true },
+          },
+        },
+      })
+
+      await tx.agentTrigger.update({
+        where: { id: input.trigger.id },
+        data: {
+          lastFiredAt: new Date(),
+        },
+      })
+
+      return { completedDelivery, workflowRun }
+    })
+
+    return {
+      kind: 'queued',
+      delivery: mapTriggerDeliveryRecord(result.completedDelivery),
+      existing: false,
+      trigger: mapTriggerRecord(input.trigger),
+      workflowRunId: result.workflowRun.id,
+    }
+  } catch (error) {
+    if (
+      input.dedupeKey &&
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      isTriggerDeliveryDedupeConflict(error)
+    ) {
+      const existing = await loadExistingDeliveryRun(prisma, {
+        dedupeKey: input.dedupeKey,
+        triggerId: input.trigger.id,
+      })
+      if (existing?.workflowRunId) {
+        const latestTrigger = await input.loadTrigger()
+        if (!latestTrigger) {
+          return { kind: 'rejected', reason: 'trigger_not_found' }
+        }
+        return {
+          kind: 'queued',
+          delivery: mapTriggerDeliveryRecord({
+            ...existing.delivery,
+            run: existing.delivery.run,
+          }),
+          existing: true,
+          trigger: mapTriggerRecord(latestTrigger),
+          workflowRunId: existing.workflowRunId,
+        }
+      }
+    }
+
+    throw error
+  }
 }

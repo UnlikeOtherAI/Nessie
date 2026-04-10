@@ -838,7 +838,8 @@ model Run {
 
 model AgentTrigger {
   id          String                     @id @default(uuid()) @db.Uuid
-  agentId     String                     @map("agent_id") @db.Uuid
+  agentId     String?                    @map("agent_id") @db.Uuid
+  workflowInstallationId String?         @map("workflow_installation_id") @db.Uuid
   type        AgentTriggerType
   status      AgentTriggerStatus         @default(active)
   enabled     Boolean                    @default(true)
@@ -853,7 +854,8 @@ model AgentTrigger {
   nextRunAt   DateTime?                  @map("next_run_at")
   createdAt   DateTime                   @default(now()) @map("created_at")
   updatedAt   DateTime                   @updatedAt @map("updated_at")
-  agent       Agent                      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent       Agent?                     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workflowInstallation WorkflowInstallation? @relation(fields: [workflowInstallationId], references: [id], onDelete: Cascade)
   targetChannel Channel?                 @relation("TriggerTargetChannel", fields: [targetChannelId], references: [id], onDelete: SetNull)
   targetThread Thread?                   @relation("TriggerTargetThread", fields: [targetThreadId], references: [id], onDelete: SetNull)
   deliveries  AgentTriggerDelivery[]
@@ -862,6 +864,8 @@ model AgentTrigger {
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])
+  @@index([workflowInstallationId, createdAt])
+  @@index([workflowInstallationId, enabled, status])
   @@index([targetChannelId])
   @@index([targetThreadId])
   @@index([type, enabled, status, nextRunAt])
@@ -1004,6 +1008,7 @@ model WorkflowInstallation {
   updatedAt               DateTime                   @updatedAt @map("updated_at")
   workflowTemplate        WorkflowTemplate           @relation(fields: [workflowTemplateId], references: [id], onDelete: Cascade)
   runs                    WorkflowRun[]
+  triggers                AgentTrigger[]
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
