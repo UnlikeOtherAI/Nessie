@@ -917,6 +917,29 @@ export const buildApp = async () => {
   await app.register(cors, { origin: true, credentials: true })
   await app.register(websocket)
 
+  // Self-heal: ensure every pre-existing organization has the default policy
+  // rules seeded. Bootstrap only runs on first install, so orgs provisioned
+  // through migrations or older installs otherwise hit NO_MATCHING_ALLOW on
+  // every agent bind / invoke. seedDefaultPolicies is idempotent per-org.
+  try {
+    const orgs = await prisma.organization.findMany({
+      select: {
+        id: true,
+        members: {
+          where: { role: 'owner' },
+          select: { userId: true },
+          take: 1,
+        },
+      },
+    })
+    for (const org of orgs) {
+      const createdBy = org.members[0]?.userId ?? org.id
+      await seedDefaultPolicies(prisma, org.id, createdBy)
+    }
+  } catch (error) {
+    app.log.error({ err: error }, 'Failed to seed default policies on startup')
+  }
+
   app.decorateRequest('actorContext', null)
 
   app.addHook('onClose', async () => {
@@ -3601,7 +3624,7 @@ export const buildApp = async () => {
         include: { agent: { select: { name: true } } },
       })
 
-      const decision = await decideAgentEngagement(sharedModelClient, {
+      const decisions = await decideAgentEngagement(sharedModelClient, {
         agents: result.channelAgents,
         content: body.content,
         recentMessages: recentDbMessages.reverse().slice(0, -1).map((m) => ({
@@ -3611,76 +3634,78 @@ export const buildApp = async () => {
         })),
       })
 
-      if (decision.action === 'reply') {
-        const run = await prisma.run.create({
-          data: {
-            agentId: decision.agentId,
-            threadId: thread.id,
-            status: 'pending',
-          },
-          select: { agentId: true, id: true, status: true, threadId: true },
-        })
-
-        const task = await prisma.task.create({
-          data: {
-            runId: run.id,
-            agentId: decision.agentId,
-            status: 'inbox',
-            purpose: body.content.slice(0, 200),
-          },
-          select: { id: true },
-        })
-
-        await realtimeHub.publishWs(
-          [
-            ...scopes,
-            { kind: 'agent' as const, agentId: parseAgentId(decision.agentId) },
-          ],
-          {
+      for (const decision of decisions) {
+        if (decision.action === 'reply') {
+          const run = await prisma.run.create({
             data: {
-              agentId: parseAgentId(decision.agentId),
-              contentPreview: result.message.content.slice(0, 200),
-              messageId: result.message.id,
-              role: result.message.role,
-              threadId: parseThreadId(result.message.threadId),
+              agentId: decision.agentId,
+              threadId: thread.id,
+              status: 'pending',
             },
-            event: 'message.new',
-          },
-        )
+            select: { agentId: true, id: true, status: true, threadId: true },
+          })
 
-        await enqueueRunExecution(prisma, {
-          actorContext: withActionContext(actorContext, {
+          const task = await prisma.task.create({
+            data: {
+              runId: run.id,
+              agentId: decision.agentId,
+              status: 'inbox',
+              purpose: body.content.slice(0, 200),
+            },
+            select: { id: true },
+          })
+
+          await realtimeHub.publishWs(
+            [
+              ...scopes,
+              { kind: 'agent' as const, agentId: parseAgentId(decision.agentId) },
+            ],
+            {
+              data: {
+                agentId: parseAgentId(decision.agentId),
+                contentPreview: result.message.content.slice(0, 200),
+                messageId: result.message.id,
+                role: result.message.role,
+                threadId: parseThreadId(result.message.threadId),
+              },
+              event: 'message.new',
+            },
+          )
+
+          await enqueueRunExecution(prisma, {
+            actorContext: withActionContext(actorContext, {
+              agentId: parseAgentId(run.agentId),
+              channelId: parseChannelId(thread.channel.id),
+              taskId: parseTaskId(task.id),
+              threadId: parseThreadId(run.threadId),
+            }),
             agentId: parseAgentId(run.agentId),
-            channelId: parseChannelId(thread.channel.id),
+            messageId: result.message.id,
+            runId: parseRunId(run.id),
             taskId: parseTaskId(task.id),
             threadId: parseThreadId(run.threadId),
-          }),
-          agentId: parseAgentId(run.agentId),
-          messageId: result.message.id,
-          runId: parseRunId(run.id),
-          taskId: parseTaskId(task.id),
-          threadId: parseThreadId(run.threadId),
-        }, `run:${run.id}`)
-      }
-
-      if (decision.action === 'acknowledge') {
-        await addReaction(prisma, {
-          messageId: result.message.id,
-          agentId: decision.agentId,
-          emoji: decision.emoji,
-        })
-
-        const reactionData = {
-          messageId: result.message.id,
-          agentId: parseAgentId(decision.agentId),
-          emoji: decision.emoji,
+          }, `run:${run.id}`)
         }
 
-        await realtimeHub.publishSse(thread.id, 'message.reaction', reactionData)
-        await realtimeHub.publishWs(scopes, {
-          data: reactionData,
-          event: 'message.reaction',
-        })
+        if (decision.action === 'acknowledge') {
+          await addReaction(prisma, {
+            messageId: result.message.id,
+            agentId: decision.agentId,
+            emoji: decision.emoji,
+          })
+
+          const reactionData = {
+            messageId: result.message.id,
+            agentId: parseAgentId(decision.agentId),
+            emoji: decision.emoji,
+          }
+
+          await realtimeHub.publishSse(thread.id, 'message.reaction', reactionData)
+          await realtimeHub.publishWs(scopes, {
+            data: reactionData,
+            event: 'message.reaction',
+          })
+        }
       }
     }
 

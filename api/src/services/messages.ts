@@ -140,32 +140,31 @@ export const createThreadMessage = async (
     systemPrompt: b.agent.systemPrompt,
   }))
 
-  // Also resolve @mentioned agents not yet bound to this channel
-  const mentionPattern = /@([\w][\w\s]*[\w]|[\w]+)/g
-  const mentionedNames: string[] = []
-  let mentionMatch = mentionPattern.exec(input.content)
-  while (mentionMatch) {
-    if (mentionMatch[1]) mentionedNames.push(mentionMatch[1])
-    mentionMatch = mentionPattern.exec(input.content)
-  }
-
-  if (mentionedNames.length > 0) {
+  // Also resolve @mentioned agents not yet bound to this channel. Agent
+  // names can contain spaces, so we can't split them out of free text with
+  // a regex alone — we fetch the candidate list first and then match each
+  // name against the content with the same escape rule the orchestrator
+  // uses, so parsing is identical on both sides.
+  if (input.content.includes('@')) {
     const boundIds = new Set(channelAgents.map((a) => a.id))
-    const mentionedAgents = await prisma.agent.findMany({
+    const candidates = await prisma.agent.findMany({
       where: {
-        name: { in: mentionedNames, mode: 'insensitive' },
         id: { notIn: [...boundIds] },
       },
       select: { id: true, name: true, role: true, systemPrompt: true },
     })
 
-    for (const agent of mentionedAgents) {
-      channelAgents.push({
-        id: agent.id,
-        name: agent.name,
-        role: agent.role,
-        systemPrompt: agent.systemPrompt,
-      })
+    for (const agent of candidates) {
+      const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const mentionRe = new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i')
+      if (mentionRe.test(input.content)) {
+        channelAgents.push({
+          id: agent.id,
+          name: agent.name,
+          role: agent.role,
+          systemPrompt: agent.systemPrompt,
+        })
+      }
     }
   }
 

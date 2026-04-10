@@ -62,6 +62,18 @@ const DEFAULT_MINIMAX_MODEL = 'MiniMax-M2.5'
 const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small'
 const MINIMAX_CONTEXT_PREFIX = 'Context:\n'
 
+// OpenAI reasoning-era models (gpt-5 family, o1/o3/o4) only accept the
+// default temperature. Sending any other value returns HTTP 400
+// "Unsupported value: 'temperature' does not support X with this model".
+// We drop the field for those models so callers can pass temperature
+// freely without having to know the provider matrix.
+const OPENAI_REASONING_MODEL_PREFIX_RE = /^(?:gpt-5|o1|o3|o4)(?:[-_]|$)/i
+const resolveOpenAiTemperature = (
+  model: string,
+  temperature: number | undefined,
+): number | undefined =>
+  OPENAI_REASONING_MODEL_PREFIX_RE.test(model) ? undefined : temperature
+
 const nowIso = (): string => new Date().toISOString()
 
 const normalizeFinishReason = (
@@ -513,7 +525,7 @@ const createOpenAiLikeConnector = (
           messages: request.messages,
           model,
           response_format: request.responseFormat,
-          temperature: request.temperature,
+          temperature: resolveOpenAiTemperature(model, request.temperature),
         })
 
         const json = (await response.json()) as OpenAiChatResponse
@@ -569,7 +581,7 @@ const createOpenAiLikeConnector = (
           response_format: request.responseFormat,
           stream: true,
           stream_options: { include_usage: true },
-          temperature: request.temperature,
+          temperature: resolveOpenAiTemperature(model, request.temperature),
         })
 
         const stream = collectChatStream(response)

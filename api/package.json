@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "predev": "lsof -ti :5554 | xargs kill -9 2>/dev/null || true",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file=../.env src/index.ts",
     "db:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://localhost:5432/nessie} prisma validate --schema prisma/schema.prisma",
     "lint": "eslint src --max-warnings 0",
     "test": "node --test --import tsx test/**/*.test.ts",

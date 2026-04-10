@@ -17,9 +17,12 @@ export type OrchestratorDecision =
  * bound agents are present and what they do, and decides if/how an agent
  * should engage.
  *
+ * Returns an array of decisions so a single message can @mention multiple
+ * agents and have each one respond. An empty array means no action.
+ *
  * Rules:
- * - If the message @mentions only users (no agents): action = 'none'
- * - If the message @mentions an agent by name: action = 'reply' for that agent
+ * - If the message @mentions only users (no agents): no action
+ * - If the message @mentions one or more agents by name: reply for each
  * - Otherwise: ask the LLM which agent (if any) should engage
  */
 export const decideAgentEngagement = async (
@@ -29,22 +32,30 @@ export const decideAgentEngagement = async (
     content: string
     recentMessages: Array<{ role: string; content: string; agentName?: string }>
   },
-): Promise<OrchestratorDecision> => {
+): Promise<OrchestratorDecision[]> => {
   if (input.agents.length === 0) {
-    return { action: 'none' }
+    return []
   }
 
-  // Fast path: check if any agent is explicitly @mentioned
+  // Fast path: collect every agent explicitly @mentioned.
+  const mentionedReplies: OrchestratorDecision[] = []
+  const mentionedIds = new Set<string>()
   for (const agent of input.agents) {
     const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     if (new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i').test(input.content)) {
-      return { action: 'reply', agentId: agent.id }
+      if (!mentionedIds.has(agent.id)) {
+        mentionedIds.add(agent.id)
+        mentionedReplies.push({ action: 'reply', agentId: agent.id })
+      }
     }
+  }
+  if (mentionedReplies.length > 0) {
+    return mentionedReplies
   }
 
   // If there are @mentions but no agent matched, assume user-to-user — stay silent
   if (/@\w/.test(input.content)) {
-    return { action: 'none' }
+    return []
   }
 
   // LLM decision: should any agent engage?
@@ -99,13 +110,13 @@ export const decideAgentEngagement = async (
   try {
     const parsed = JSON.parse(raw.trim()) as { action?: string; agentId?: string; emoji?: string }
     if (parsed.action === 'reply' && input.agents.some((a) => a.id === parsed.agentId)) {
-      return { action: 'reply', agentId: parsed.agentId! }
+      return [{ action: 'reply', agentId: parsed.agentId! }]
     }
     if (parsed.action === 'acknowledge' && parsed.emoji && input.agents.some((a) => a.id === parsed.agentId)) {
-      return { action: 'acknowledge', agentId: parsed.agentId!, emoji: String(parsed.emoji) }
+      return [{ action: 'acknowledge', agentId: parsed.agentId!, emoji: String(parsed.emoji) }]
     }
-    return { action: 'none' }
+    return []
   } catch {
-    return { action: 'none' }
+    return []
   }
 }
