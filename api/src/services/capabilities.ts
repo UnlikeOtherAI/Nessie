@@ -9,6 +9,23 @@ import {
 import type { TemporaryContextSession } from '../contracts.js'
 import { parseOptional } from './contract-helpers.js'
 
+const ensureSingleCapabilityScope = (input: {
+  agentId?: string
+  runId?: string
+  threadId?: string
+}): void => {
+  const providedScopeCount = [input.agentId, input.runId, input.threadId].filter(
+    (value) => typeof value === 'string' && value.length > 0,
+  ).length
+
+  if (providedScopeCount === 0) {
+    throw new Error('TEMP_CONTEXT_SCOPE_REQUIRED')
+  }
+  if (providedScopeCount > 1) {
+    throw new Error('TEMP_CONTEXT_SCOPE_AMBIGUOUS')
+  }
+}
+
 const mapTemporaryContextSession = (session: {
   agentId: string | null
   createdAt: Date
@@ -50,6 +67,64 @@ export const createTemporaryContextSession = async (
     toolIds: string[]
   },
 ): Promise<TemporaryContextSession> => {
+  ensureSingleCapabilityScope(input)
+
+  if (input.runId) {
+    const run = await prisma.run.findFirst({
+      where: {
+        id: input.runId,
+        thread: {
+          channel: {
+            organizationId: actorContext.tenant.organizationId,
+          },
+        },
+      },
+      select: { id: true },
+    })
+    if (!run) {
+      throw new Error('TEMP_CONTEXT_RUN_NOT_FOUND')
+    }
+  }
+
+  if (input.threadId) {
+    const thread = await prisma.thread.findFirst({
+      where: {
+        id: input.threadId,
+        channel: {
+          organizationId: actorContext.tenant.organizationId,
+        },
+      },
+      select: { id: true },
+    })
+    if (!thread) {
+      throw new Error('TEMP_CONTEXT_THREAD_NOT_FOUND')
+    }
+  }
+
+  if (input.agentId) {
+    const agent = await prisma.agent.findFirst({
+      where: {
+        id: input.agentId,
+        OR: [
+          { organizationId: actorContext.tenant.organizationId },
+          {
+            bindings: {
+              some: {
+                channel: {
+                  organizationId: actorContext.tenant.organizationId,
+                },
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    })
+    if (!agent) {
+      throw new Error('TEMP_CONTEXT_AGENT_NOT_FOUND')
+    }
+  }
+
   const session = await prisma.temporaryContextSession.create({
     data: {
       organizationId: actorContext.tenant.organizationId,

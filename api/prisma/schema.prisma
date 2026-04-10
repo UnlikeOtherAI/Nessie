@@ -606,6 +606,7 @@ model PlanStep {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
+  @@unique([planId, sequence])
   @@index([planId, sequence])
   @@index([assignedAgentId, status])
   @@map("plan_steps")
@@ -655,21 +656,23 @@ model ResourceLock {
 }
 
 model ToolRegistryEntry {
-  id           String   @id @default(uuid()) @db.Uuid
-  organizationId String? @map("organization_id") @db.Uuid
-  toolId       String   @unique @map("tool_id")
-  label        String
-  description  String
-  safe         Boolean  @default(false)
-  builtin      Boolean  @default(false)
-  enabled      Boolean  @default(true)
-  handlerKind  String   @default("builtin") @map("handler_kind")
-  metadata     Json?    @default("{}")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  scopeKey       String   @map("scope_key")
+  toolId         String   @map("tool_id")
+  label          String
+  description    String
+  safe           Boolean  @default(false)
+  builtin        Boolean  @default(false)
+  enabled        Boolean  @default(true)
+  handlerKind    String   @default("builtin") @map("handler_kind")
+  metadata       Json?    @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@index([organizationId, enabled])
   @@index([builtin, enabled])
+  @@unique([scopeKey, toolId])
   @@map("tool_registry_entries")
 }
 

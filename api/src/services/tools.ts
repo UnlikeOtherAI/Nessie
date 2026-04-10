@@ -10,6 +10,13 @@ import {
   toJsonRecord,
 } from './contract-helpers.js'
 
+const BUILTIN_TOOL_SCOPE_KEY = 'builtin'
+
+const toToolRegistryScopeKey = (
+  organizationId: string,
+  builtin: boolean,
+): string => (builtin ? BUILTIN_TOOL_SCOPE_KEY : organizationId)
+
 const mapToolRegistryEntry = (entry: {
   builtin: boolean
   createdAt: Date
@@ -54,13 +61,19 @@ export const ensureBuiltinToolsRegistered = async (
   await Promise.all(
     BUILTIN_TOOL_DEFINITIONS.map((tool) =>
       prisma.toolRegistryEntry.upsert({
-        where: { toolId: tool.id },
+        where: {
+          scopeKey_toolId: {
+            scopeKey: BUILTIN_TOOL_SCOPE_KEY,
+            toolId: tool.id,
+          },
+        },
         create: {
           builtin: true,
           description: tool.description,
           enabled: true,
           handlerKind: 'builtin',
           label: tool.label,
+          scopeKey: BUILTIN_TOOL_SCOPE_KEY,
           safe: tool.safe,
           toolId: tool.id,
         },
@@ -69,6 +82,7 @@ export const ensureBuiltinToolsRegistered = async (
           description: tool.description,
           handlerKind: 'builtin',
           label: tool.label,
+          scopeKey: BUILTIN_TOOL_SCOPE_KEY,
           safe: tool.safe,
         },
       }),
@@ -114,25 +128,49 @@ export const registerToolRegistryEntry = async (
     toolId: string
   },
 ): Promise<ToolRegistryEntry> => {
+  const builtin = input.builtin ?? false
+  const scopeKey = toToolRegistryScopeKey(organizationId, builtin)
+
+  if (!builtin) {
+    const builtinEntry = await prisma.toolRegistryEntry.findUnique({
+      where: {
+        scopeKey_toolId: {
+          scopeKey: BUILTIN_TOOL_SCOPE_KEY,
+          toolId: input.toolId,
+        },
+      },
+      select: { id: true },
+    })
+    if (builtinEntry) {
+      throw new Error('BUILTIN_TOOL_ID_RESERVED')
+    }
+  }
+
   const entry = await prisma.toolRegistryEntry.upsert({
-    where: { toolId: input.toolId },
+    where: {
+      scopeKey_toolId: {
+        scopeKey,
+        toolId: input.toolId,
+      },
+    },
     create: {
-      organizationId: input.builtin ? null : organizationId,
+      organizationId: builtin ? null : organizationId,
+      scopeKey,
       toolId: input.toolId,
       label: input.label,
       description: input.description,
       safe: input.safe ?? false,
-      builtin: input.builtin ?? false,
+      builtin,
       enabled: input.enabled ?? true,
       handlerKind: input.handlerKind ?? 'builtin',
       metadata: (toInputJsonObject(input.metadata) ?? {}) as Prisma.InputJsonValue,
     },
     update: {
-      organizationId: input.builtin ? null : organizationId,
+      organizationId: builtin ? null : organizationId,
       label: input.label,
       description: input.description,
       safe: input.safe ?? false,
-      builtin: input.builtin ?? false,
+      builtin,
       enabled: input.enabled ?? true,
       handlerKind: input.handlerKind ?? 'builtin',
       metadata: (toInputJsonObject(input.metadata) ?? {}) as Prisma.InputJsonValue,

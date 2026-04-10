@@ -74,38 +74,47 @@ export const acquireResourceLock = async (
     ? new Date(input.expiresAt)
     : new Date(now.getTime() + DEFAULT_LOCK_TTL_MS)
 
-  const conflictingLock = await prisma.resourceLock.findFirst({
-    where: {
-      organizationId,
-      resourcePath: input.resourcePath,
-      releasedAt: null,
-      expiresAt: {
-        gt: now,
+  const lock = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext(${organizationId}),
+        hashtext(${input.resourcePath})
+      )
+    `
+
+    const conflictingLock = await tx.resourceLock.findFirst({
+      where: {
+        organizationId,
+        resourcePath: input.resourcePath,
+        releasedAt: null,
+        expiresAt: {
+          gt: now,
+        },
+        ...(lockType === 'shared'
+          ? { lockType: 'exclusive' }
+          : {}),
       },
-      ...(lockType === 'shared'
-        ? { lockType: 'exclusive' }
-        : {}),
-    },
-    orderBy: [{ acquiredAt: 'asc' }],
+      orderBy: [{ acquiredAt: 'asc' }],
+    })
+
+    if (conflictingLock) {
+      return null
+    }
+
+    return tx.resourceLock.create({
+      data: {
+        organizationId,
+        planId: input.planId,
+        runId: input.runId,
+        agentId: input.agentId,
+        resourcePath: input.resourcePath,
+        lockType,
+        expiresAt,
+      },
+    })
   })
 
-  if (conflictingLock) {
-    return null
-  }
-
-  const lock = await prisma.resourceLock.create({
-    data: {
-      organizationId,
-      planId: input.planId,
-      runId: input.runId,
-      agentId: input.agentId,
-      resourcePath: input.resourcePath,
-      lockType,
-      expiresAt,
-    },
-  })
-
-  return mapResourceLock(lock)
+  return lock ? mapResourceLock(lock) : null
 }
 
 export const releaseResourceLock = async (

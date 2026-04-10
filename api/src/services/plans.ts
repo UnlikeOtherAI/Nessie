@@ -160,34 +160,55 @@ export const addPlanStep = async (
     type: string
   },
 ): Promise<PlanStepRecord | null> => {
-  const plan = await prisma.plan.findFirst({
-    where: {
-      id: planId,
-      organizationId,
-    },
-    select: { id: true },
+  const step = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext(${planId}),
+        hashtext('plan_steps')
+      )
+    `
+
+    const plan = await tx.plan.findFirst({
+      where: {
+        id: planId,
+        organizationId,
+      },
+      select: { id: true },
+    })
+    if (!plan) {
+      return null
+    }
+
+    const sequence =
+      input.sequence ??
+      (((await tx.planStep.aggregate({
+        where: { planId },
+        _max: { sequence: true },
+      }))._max.sequence ?? -1) + 1)
+
+    try {
+      return await tx.planStep.create({
+        data: {
+          planId,
+          assignedAgentId: input.assignedAgentId,
+          type: input.type,
+          title: input.title,
+          sequence,
+          payload: toInputJsonObjectWithDefault(input.payload) as Prisma.InputJsonValue,
+          artifacts: toInputJsonObjectWithDefault(input.artifacts) as Prisma.InputJsonValue,
+        },
+      })
+    }
+    catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new Error('PLAN_STEP_SEQUENCE_CONFLICT')
+      }
+      throw error
+    }
   })
-  if (!plan) {
-    return null
-  }
 
-  const sequence =
-    input.sequence ??
-    (await prisma.planStep.count({
-      where: { planId },
-    }))
-
-  const step = await prisma.planStep.create({
-    data: {
-      planId,
-      assignedAgentId: input.assignedAgentId,
-      type: input.type,
-      title: input.title,
-      sequence,
-      payload: toInputJsonObjectWithDefault(input.payload) as Prisma.InputJsonValue,
-      artifacts: toInputJsonObjectWithDefault(input.artifacts) as Prisma.InputJsonValue,
-    },
-  })
-
-  return mapPlanStepRecord(step)
+  return step ? mapPlanStepRecord(step) : null
 }

@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   parseAgentId,
   parseChannelId,
@@ -79,19 +79,83 @@ export const createMailboxMessage = async (
     toAgentId?: string
   },
 ): Promise<MailboxMessageRecord> => {
-  const message = await prisma.agentMailboxMessage.create({
-    data: {
+  let message
+  try {
+    message = await prisma.agentMailboxMessage.create({
+      data: {
+        organizationId,
+        planId: input.planId,
+        planStepId: input.planStepId,
+        fromAgentId: input.fromAgentId,
+        toAgentId: input.toAgentId,
+        channelId: input.channelId,
+        subject: input.subject,
+        body: input.body,
+        correlationId: input.correlationId,
+      },
+    })
+  }
+  catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      input.toAgentId &&
+      input.correlationId
+    ) {
+      const existing = await prisma.agentMailboxMessage.findFirst({
+        where: {
+          organizationId,
+          toAgentId: input.toAgentId,
+          correlationId: input.correlationId,
+        },
+      })
+      if (existing) {
+        return mapMailboxMessage(existing)
+      }
+    }
+    throw error
+  }
+
+  return mapMailboxMessage(message)
+}
+
+export const claimMailboxMessage = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  messageId: string,
+): Promise<MailboxMessageRecord | null> => {
+  const now = new Date()
+
+  const claimed = await prisma.agentMailboxMessage.updateMany({
+    where: {
+      id: messageId,
       organizationId,
-      planId: input.planId,
-      planStepId: input.planStepId,
-      fromAgentId: input.fromAgentId,
-      toAgentId: input.toAgentId,
-      channelId: input.channelId,
-      subject: input.subject,
-      body: input.body,
-      correlationId: input.correlationId,
+      status: 'queued',
+      claimedAt: null,
+      deliveredAt: null,
+      visibleAt: {
+        lte: now,
+      },
+    },
+    data: {
+      status: 'processing',
+      claimedAt: now,
+      attempts: {
+        increment: 1,
+      },
     },
   })
+
+  if (claimed.count === 0) {
+    return null
+  }
+
+  const message = await prisma.agentMailboxMessage.findUnique({
+    where: { id: messageId },
+  })
+  if (!message) {
+    return null
+  }
 
   return mapMailboxMessage(message)
 }
@@ -101,28 +165,32 @@ export const markMailboxMessageDelivered = async (
   organizationId: string,
   messageId: string,
 ): Promise<MailboxMessageRecord | null> => {
-  const message = await prisma.agentMailboxMessage.findFirst({
+  const delivered = await prisma.agentMailboxMessage.updateMany({
     where: {
       id: messageId,
       organizationId,
+      status: 'processing',
+      claimedAt: {
+        not: null,
+      },
+      deliveredAt: null,
     },
-    select: { id: true },
+    data: {
+      status: 'delivered',
+      deliveredAt: new Date(),
+    },
+  })
+
+  if (delivered.count === 0) {
+    return null
+  }
+
+  const message = await prisma.agentMailboxMessage.findUnique({
+    where: { id: messageId },
   })
   if (!message) {
     return null
   }
 
-  const delivered = await prisma.agentMailboxMessage.update({
-    where: { id: messageId },
-    data: {
-      status: 'delivered',
-      deliveredAt: new Date(),
-      claimedAt: new Date(),
-      attempts: {
-        increment: 1,
-      },
-    },
-  })
-
-  return mapMailboxMessage(delivered)
+  return mapMailboxMessage(message)
 }

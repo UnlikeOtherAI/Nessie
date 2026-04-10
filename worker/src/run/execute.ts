@@ -71,6 +71,7 @@ const MAX_TOOL_CONTEXT_LENGTH = 400
 const MAX_MEMORY_RESULTS = 5
 const MAX_MEMORY_CONTEXT_LENGTH = 220
 const MIN_REFERENCE_TOKENS = 5
+const BUILTIN_TOOL_SCOPE_KEY = 'builtin'
 
 type RetrievedMemory = Pick<SearchResult, 'content' | 'recallId'>
 
@@ -85,13 +86,19 @@ const loadAllowedToolIds = async (
   await Promise.all(
     BUILTIN_TOOL_DEFINITIONS.map((tool) =>
       prisma.toolRegistryEntry.upsert({
-        where: { toolId: tool.id },
+        where: {
+          scopeKey_toolId: {
+            scopeKey: BUILTIN_TOOL_SCOPE_KEY,
+            toolId: tool.id,
+          },
+        },
         create: {
           builtin: true,
           description: tool.description,
           enabled: true,
           handlerKind: 'builtin',
           label: tool.label,
+          scopeKey: BUILTIN_TOOL_SCOPE_KEY,
           safe: tool.safe,
           toolId: tool.id,
         },
@@ -100,6 +107,7 @@ const loadAllowedToolIds = async (
           description: tool.description,
           handlerKind: 'builtin',
           label: tool.label,
+          scopeKey: BUILTIN_TOOL_SCOPE_KEY,
           safe: tool.safe,
         },
       }),
@@ -121,19 +129,42 @@ const loadAllowedToolIds = async (
       .filter((toolId) => BUILTIN_TOOL_IDS.has(toolId as 'document_read' | 'web_fetch' | 'web_search')),
   )
 
-  const activeSessions = await prisma.temporaryContextSession.findMany({
-    where: {
-      organizationId: context.channel.organizationId,
-      droppedAt: null,
-      OR: [
-        { runId: context.run.id },
-        { threadId: context.run.threadId },
-        { agentId: context.agent.id },
-      ],
-    },
-    select: { toolIds: true },
-    orderBy: [{ createdAt: 'desc' }],
-  })
+  const [runScopedSessions, threadScopedSessions, agentScopedSessions] = await Promise.all([
+    prisma.temporaryContextSession.findMany({
+      where: {
+        organizationId: context.channel.organizationId,
+        droppedAt: null,
+        runId: context.run.id,
+      },
+      select: { toolIds: true },
+      orderBy: [{ createdAt: 'desc' }],
+    }),
+    prisma.temporaryContextSession.findMany({
+      where: {
+        organizationId: context.channel.organizationId,
+        droppedAt: null,
+        threadId: context.run.threadId,
+      },
+      select: { toolIds: true },
+      orderBy: [{ createdAt: 'desc' }],
+    }),
+    prisma.temporaryContextSession.findMany({
+      where: {
+        organizationId: context.channel.organizationId,
+        droppedAt: null,
+        agentId: context.agent.id,
+      },
+      select: { toolIds: true },
+      orderBy: [{ createdAt: 'desc' }],
+    }),
+  ])
+
+  const activeSessions =
+    runScopedSessions.length > 0
+      ? runScopedSessions
+      : threadScopedSessions.length > 0
+        ? threadScopedSessions
+        : agentScopedSessions
 
   const sessionToolIds = new Set<string>()
   for (const session of activeSessions) {

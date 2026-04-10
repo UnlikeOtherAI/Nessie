@@ -163,6 +163,7 @@ import {
   listThreadMessages,
 } from './services/messages.js'
 import {
+  claimMailboxMessage,
   createMailboxMessage,
   listMailboxMessages,
   markMailboxMessageDelivered,
@@ -2029,6 +2030,9 @@ export const buildApp = async () => {
     if (!actorContext) {
       return reply
     }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
 
     const query = request.query as { agentId?: string; status?: string }
     const plans = await listPlans(prisma, actorContext.tenant.organizationId, {
@@ -2047,6 +2051,9 @@ export const buildApp = async () => {
     if (!actorContext) {
       return reply
     }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
 
     const body = parseInput(CreatePlanBodySchema, request.body, reply)
     if (!body) {
@@ -2060,6 +2067,9 @@ export const buildApp = async () => {
   app.get('/api/plans/:planId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -2081,6 +2091,9 @@ export const buildApp = async () => {
     if (!actorContext) {
       return reply
     }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
 
     const body = parseInput(CreatePlanStepBodySchema, request.body, reply)
     if (!body) {
@@ -2088,7 +2101,22 @@ export const buildApp = async () => {
     }
 
     const { planId } = request.params as { planId: string }
-    const step = await addPlanStep(prisma, actorContext.tenant.organizationId, planId, body)
+    let step
+    try {
+      step = await addPlanStep(prisma, actorContext.tenant.organizationId, planId, body)
+    }
+    catch (error) {
+      if (error instanceof Error && error.message === 'PLAN_STEP_SEQUENCE_CONFLICT') {
+        sendApiError(
+          reply,
+          409,
+          'PLAN_STEP_SEQUENCE_CONFLICT',
+          'A step with this sequence already exists for the plan',
+        )
+        return reply
+      }
+      throw error
+    }
     if (!step) {
       sendApiError(reply, 404, 'PLAN_NOT_FOUND', 'Plan not found')
       return reply
@@ -2102,6 +2130,9 @@ export const buildApp = async () => {
     if (!actorContext) {
       return reply
     }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
 
     const query = request.query as { planId?: string; toAgentId?: string }
     const messages = await listMailboxMessages(prisma, actorContext.tenant.organizationId, query)
@@ -2111,6 +2142,9 @@ export const buildApp = async () => {
   app.post('/api/mailbox', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -2128,6 +2162,9 @@ export const buildApp = async () => {
     if (!actorContext) {
       return reply
     }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
 
     const { messageId } = request.params as { messageId: string }
     const message = await markMailboxMessageDelivered(
@@ -2136,7 +2173,40 @@ export const buildApp = async () => {
       messageId,
     )
     if (!message) {
-      sendApiError(reply, 404, 'MAILBOX_MESSAGE_NOT_FOUND', 'Mailbox message not found')
+      sendApiError(
+        reply,
+        409,
+        'MAILBOX_MESSAGE_NOT_DELIVERABLE',
+        'Mailbox message must be claimed before it can be marked delivered',
+      )
+      return reply
+    }
+
+    return createApiResponse(MailboxMessageRecordSchema.parse(message))
+  })
+
+  app.post('/api/mailbox/:messageId/claim', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { messageId } = request.params as { messageId: string }
+    const message = await claimMailboxMessage(
+      prisma,
+      actorContext.tenant.organizationId,
+      messageId,
+    )
+    if (!message) {
+      sendApiError(
+        reply,
+        409,
+        'MAILBOX_MESSAGE_NOT_CLAIMABLE',
+        'Mailbox message is not currently claimable',
+      )
       return reply
     }
 
@@ -2148,6 +2218,9 @@ export const buildApp = async () => {
     if (!actorContext) {
       return reply
     }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
 
     const query = request.query as { agentId?: string }
     const locks = await listResourceLocks(prisma, actorContext.tenant.organizationId, query)
@@ -2157,6 +2230,9 @@ export const buildApp = async () => {
   app.post('/api/resource-locks/acquire', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -2177,6 +2253,9 @@ export const buildApp = async () => {
   app.post('/api/resource-locks/:lockId/release', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -2229,17 +2308,35 @@ export const buildApp = async () => {
       return reply
     }
 
-    const entry = await registerToolRegistryEntry(
-      prisma,
-      actorContext.tenant.organizationId,
-      body,
-    )
+    let entry
+    try {
+      entry = await registerToolRegistryEntry(
+        prisma,
+        actorContext.tenant.organizationId,
+        body,
+      )
+    }
+    catch (error) {
+      if (error instanceof Error && error.message === 'BUILTIN_TOOL_ID_RESERVED') {
+        sendApiError(
+          reply,
+          409,
+          'BUILTIN_TOOL_ID_RESERVED',
+          'Built-in tool ids are reserved and cannot be overridden by organization-local entries',
+        )
+        return reply
+      }
+      throw error
+    }
     return reply.code(201).send(createApiResponse(ToolRegistryEntrySchema.parse(entry)))
   })
 
   app.get('/api/capabilities/sessions', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -2263,19 +2360,63 @@ export const buildApp = async () => {
     if (!actorContext) {
       return reply
     }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
 
     const body = parseInput(CreateTemporaryContextSessionBodySchema, request.body, reply)
     if (!body) {
       return reply
     }
 
-    const session = await createTemporaryContextSession(prisma, actorContext, body)
+    let session
+    try {
+      session = await createTemporaryContextSession(prisma, actorContext, body)
+    }
+    catch (error) {
+      if (error instanceof Error) {
+        if (error.message === 'TEMP_CONTEXT_SCOPE_REQUIRED') {
+          sendApiError(
+            reply,
+            400,
+            'TEMP_CONTEXT_SCOPE_REQUIRED',
+            'A temporary context session must target exactly one of agentId, runId, or threadId',
+          )
+          return reply
+        }
+        if (error.message === 'TEMP_CONTEXT_SCOPE_AMBIGUOUS') {
+          sendApiError(
+            reply,
+            400,
+            'TEMP_CONTEXT_SCOPE_AMBIGUOUS',
+            'A temporary context session may target only one of agentId, runId, or threadId',
+          )
+          return reply
+        }
+        if (error.message === 'TEMP_CONTEXT_AGENT_NOT_FOUND') {
+          sendApiError(reply, 404, 'TEMP_CONTEXT_AGENT_NOT_FOUND', 'Agent not found')
+          return reply
+        }
+        if (error.message === 'TEMP_CONTEXT_RUN_NOT_FOUND') {
+          sendApiError(reply, 404, 'TEMP_CONTEXT_RUN_NOT_FOUND', 'Run not found')
+          return reply
+        }
+        if (error.message === 'TEMP_CONTEXT_THREAD_NOT_FOUND') {
+          sendApiError(reply, 404, 'TEMP_CONTEXT_THREAD_NOT_FOUND', 'Thread not found')
+          return reply
+        }
+      }
+      throw error
+    }
     return reply.code(201).send(createApiResponse(TemporaryContextSessionSchema.parse(session)))
   })
 
   app.delete('/api/capabilities/sessions/:sessionId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
