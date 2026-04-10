@@ -93,7 +93,42 @@ export class PgRealtimeTransport {
     this.listenerClient = null
   }
 
-  async listThreadEvents(threadId: string, afterSequence = 0): Promise<ThreadStreamEvent[]> {
+  async listThreadEvents(
+    threadId: string,
+    afterSequence = 0,
+    options: { activeRunsOnly?: boolean } = {},
+  ): Promise<ThreadStreamEvent[]> {
+    // On fresh connects (afterSequence=0), only replay events tied to runs
+    // that are still active (pending/running). Historical events from
+    // completed/failed/cancelled runs should not come back to life as
+    // "pending" stream entries in the client. On reconnect (afterSequence>0)
+    // we always replay everything since `afterSequence` so the client can
+    // resume state without gaps.
+    const shouldFilterToActive = options.activeRunsOnly ?? afterSequence === 0
+
+    if (shouldFilterToActive) {
+      const result = await this.pool.query<ThreadStreamEventRow>(
+        `
+          SELECT e.id, e.thread_id, e.event_name, e.data, e.created_at
+          FROM thread_stream_events e
+          WHERE e.thread_id = $1
+            AND e.id > $2
+            AND (
+              (e.data->>'runId') IS NULL
+              OR EXISTS (
+                SELECT 1 FROM runs r
+                WHERE r.id::text = e.data->>'runId'
+                  AND r.status IN ('pending', 'running')
+              )
+            )
+          ORDER BY e.id ASC
+        `,
+        [threadId, afterSequence],
+      )
+
+      return result.rows.map(mapThreadStreamEvent)
+    }
+
     const result = await this.pool.query<ThreadStreamEventRow>(
       `
         SELECT id, thread_id, event_name, data, created_at

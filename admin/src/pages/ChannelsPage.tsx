@@ -9,6 +9,13 @@ import {
   type ReactNode,
 } from 'react'
 import { MentionInput, type MentionInputHandle, type MentionEntity } from '../components/shared/MentionInput'
+
+type OptimisticMessage = {
+  clientId: string
+  content: string
+  createdAt: string
+  status: 'sending' | 'failed'
+}
 import {
   useNavigate,
   useOutletContext,
@@ -189,8 +196,31 @@ export const ChannelsPage = () => {
   const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [message, setMessage] = useState('')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const mentionRef = useRef<MentionInputHandle>(null)
+
+  // Clear optimistic bubble once the real message from the server arrives.
+  // Match on content + proximity: any optimistic entry whose content equals
+  // a persisted user message can be dropped.
+  useEffect(() => {
+    if (optimisticMessages.length === 0) return
+    const persistedContents = new Set(
+      threadMessages
+        .filter((m) => m.role === 'user' && m.userId === me?.user.id)
+        .map((m) => m.content),
+    )
+    if ([...optimisticMessages].some((o) => persistedContents.has(o.content))) {
+      setOptimisticMessages((current) =>
+        current.filter((o) => !persistedContents.has(o.content) || o.status === 'failed'),
+      )
+    }
+  }, [threadMessages, optimisticMessages, me?.user.id])
+
+  // Reset optimistic state when switching channels.
+  useEffect(() => {
+    setOptimisticMessages([])
+  }, [activeChannel?.id])
 
   const mentionEntities: MentionEntity[] = useMemo(
     () => [
@@ -327,22 +357,53 @@ export const ChannelsPage = () => {
     activeChannel?.id,
     activeTab,
     feedItems.length,
+    optimisticMessages.length,
     pendingMessages.length,
     scopedAgents.length,
   ])
 
+  const sendText = useCallback(
+    async (rawText: string) => {
+      const text = rawText.trim()
+      if (!activeChannel || !text) {
+        return
+      }
+
+      const clientId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random()}`
+      const optimistic: OptimisticMessage = {
+        clientId,
+        content: text,
+        createdAt: new Date().toISOString(),
+        status: 'sending',
+      }
+      setOptimisticMessages((current) => [...current, optimistic])
+      setMessage('')
+      mentionRef.current?.clear()
+
+      try {
+        await sendMessage.mutateAsync({ content: text })
+      } catch {
+        setOptimisticMessages((current) =>
+          current.map((entry) =>
+            entry.clientId === clientId ? { ...entry, status: 'failed' } : entry,
+          ),
+        )
+      }
+    },
+    [activeChannel, sendMessage],
+  )
+
   const sendMessageSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
     const text = mentionRef.current?.getText() ?? message
-    if (!activeChannel || !text.trim()) {
-      return
-    }
-
-    await sendMessage.mutateAsync({
-      content: text.trim(),
-    })
-    setMessage('')
+    // Clear synchronously before awaiting the network mutation so a
+    // second submit (double-enter, double-click) can't re-read the
+    // same contentEditable text.
     mentionRef.current?.clear()
+    await sendText(text)
   }
 
   if (!me) {
@@ -512,7 +573,9 @@ export const ChannelsPage = () => {
       >
         {activeTab === 'messages' ? (
           <>
-            {feedItems.length === 0 && pendingMessages.length === 0 ? (
+            {feedItems.length === 0 &&
+            pendingMessages.length === 0 &&
+            optimisticMessages.length === 0 ? (
               <div className="p-5">
                 <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
                   No messages yet. Send the first message to start this thread.
@@ -608,6 +671,49 @@ export const ChannelsPage = () => {
                 </article>
               ),
             )}
+
+            {optimisticMessages.map((entry) => (
+              <article
+                key={entry.clientId}
+                className="admin-msg-row py-1"
+                data-testid="optimistic-message"
+              >
+                <div
+                  className="h-9 w-9 flex-shrink-0 rounded-md"
+                  style={{ background: memberGradients[0] }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-bold text-white">
+                      {me.user.displayName}
+                    </span>
+                    {entry.status === 'failed' ? (
+                      <span
+                        className={[
+                          'inline-flex items-center rounded px-1.5 py-0.5',
+                          'bg-[rgba(239,68,68,0.18)] text-[11px] font-semibold text-[#fca5a5]',
+                        ].join(' ')}
+                      >
+                        failed
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs text-[color:var(--tx3)]"
+                        title="Sending…"
+                      >
+                        sending
+                        <span className="streaming-dot" />
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-0.5">
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
+                      {renderContent(entry.content)}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            ))}
 
             {pendingMessages.length > 0 ? (
               <div className="admin-date-sep">
@@ -827,7 +933,7 @@ export const ChannelsPage = () => {
             ref={mentionRef}
             entities={mentionEntities}
             onChange={setMessage}
-            onSubmit={() => void sendMessageSubmit()}
+            onSubmit={(text) => void sendText(text)}
             placeholder={`Message #${activeChannel?.label ?? 'channel'} or @mention an agent`}
           />
           <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">

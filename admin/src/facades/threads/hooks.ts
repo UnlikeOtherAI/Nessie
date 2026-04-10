@@ -29,8 +29,12 @@ export const useThreadStream = (threadId?: string): StreamState => {
   const [pendingMessages, setPendingMessages] = useState<StreamState['pendingMessages']>([])
 
   useEffect(() => {
+    // Always reset on threadId/token change: without this, pending stream
+    // entries from a previous channel leak into the next one when the user
+    // navigates mid-replay.
+    setPendingMessages([])
+
     if (!threadId || !token) {
-      setPendingMessages([])
       return
     }
 

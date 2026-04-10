@@ -29,7 +29,7 @@ export type MentionInputHandle = {
 type Props = {
   entities: MentionEntity[]
   onChange?: (text: string) => void
-  onSubmit: () => void
+  onSubmit: (text: string) => void
   placeholder: string
 }
 
@@ -307,7 +307,17 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
 
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              onSubmit()
+              const editor = editorRef.current
+              if (!editor) return
+              const text = extractText(editor).trim()
+              if (!text) return
+              // Clear synchronously BEFORE notifying the caller so a second
+              // Enter keystroke can't re-read the same text.
+              clearChildren(editor)
+              setHasContent(false)
+              setMentionQuery(null)
+              onChange?.('')
+              onSubmit(text)
             }
           }}
           onPaste={(e) => {

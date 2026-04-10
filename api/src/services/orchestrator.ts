@@ -81,16 +81,26 @@ export const decideAgentEngagement = async (
       '1. If the message is clearly directed at or relevant to',
       '   one agent\'s expertise, return:',
       '   {"action":"reply","agentId":"<id>"}',
-      '2. If the message is a general statement that doesn\'t need',
-      '   a full reply but an agent could acknowledge it',
-      '   (e.g. "thanks", "ok", "noted"), return:',
-      '   {"action":"acknowledge","agentId":"<id>",',
-      '    "emoji":"<emoji>"}',
-      '3. If the message is a conversation between users,',
-      '   a greeting to a specific person,',
+      '2. If the latest message is a direct question',
+      '   (e.g. ends with "?", or starts with what/why/how/when/where/who)',
+      '   AND any agent has participated in the recent conversation OR',
+      '   has expertise matching the question\'s topic, return',
+      '   {"action":"reply","agentId":"<id>"}',
+      '   — pick the agent most recently active on that topic.',
+      '   Treat a leading filler like "hey" as throat-clearing,',
+      '   not as addressing a specific human.',
+      '3. If the message is a short acknowledgement of agent work',
+      '   (e.g. "thanks", "ok", "noted") that does not need a full',
+      '   reply, return:',
+      '   {"action":"acknowledge","agentId":"<id>","emoji":"<emoji>"}',
+      '4. If the message is clearly a conversation between users,',
+      '   a greeting to a specific named human,',
       '   or not relevant to any agent, return: {"action":"none"}',
-      '4. When in doubt, return {"action":"none"}.',
-      '   Agents should not intrude on human conversations.',
+      '5. When the topic is unclear AND no agent is contextually',
+      '   relevant, return: {"action":"none"}.',
+      '   Agents should not intrude on purely human conversations,',
+      '   but they SHOULD answer direct questions in their own',
+      '   working channels.',
       '',
       'Return ONLY valid JSON. No explanation.',
     ].join('\n'),
@@ -105,7 +115,18 @@ export const decideAgentEngagement = async (
     role: 'user',
   }
 
-  const raw = await modelClient.chat([systemMsg, userMsg], { maxTokens: 128, temperature: 0.1 })
+  // Reasoning models (gpt-5-mini etc.) spend most of the budget on hidden
+  // thinking tokens before they emit the final JSON. 128 is nowhere near
+  // enough — the call errors out with "max_tokens reached". Give it real
+  // headroom; the visible output is still only ~40 tokens.
+  let raw: string
+  try {
+    raw = await modelClient.chat([systemMsg, userMsg], { maxTokens: 2048, temperature: 0.1 })
+  } catch {
+    // A router failure must never block a user message from being stored.
+    // Fall back to "no action" and let the user re-prompt or @mention.
+    return []
+  }
 
   try {
     const parsed = JSON.parse(raw.trim()) as { action?: string; agentId?: string; emoji?: string }
