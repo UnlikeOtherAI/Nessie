@@ -50,6 +50,8 @@ This system must:
   provider/model pair can do.
 - **routing profile**: what an agent actually selects. Can point to one
   model or an orchestration plan.
+- **stage**: one node in a routing profile that calls one provider/model
+  for one role in the flow.
 - **tool mediator**: logic that turns model intent into executable tool
   calls when native tools are unavailable.
 - **invocation record**: one physical call to one provider/model with
@@ -220,8 +222,29 @@ Agents should not directly own secrets or orchestration logic.
 They should reference a routing profile:
 
 ```ts
-export type RoutingMode = 'single' | 'fallback' | 'fanout'
+export type RoutingMode =
+  | 'single'
+  | 'fallback'
+  | 'committee'
+  | 'pipeline'
+  | 'shadow'
 export type StreamPolicy = 'primary-only' | 'buffered-judge' | 'first-complete'
+export type StageRole =
+  | 'advisor'
+  | 'executor'
+  | 'synthesizer'
+  | 'judge'
+  | 'shadow'
+
+export type RouteStage = {
+  id: string
+  role: StageRole
+  provider: string
+  model?: string
+  toolCallingMode?: ToolCallingMode
+  inputFrom?: string[]
+  userVisible?: boolean
+}
 
 export type RoutingProfile = {
   id: string
@@ -229,23 +252,34 @@ export type RoutingProfile = {
   enabled: boolean
   exposure: 'standard' | 'admin-only'
   mode: RoutingMode
-  primary: { provider: string; model?: string }
-  fallbacks?: Array<{ provider: string; model?: string }>
-  peers?: Array<{ provider: string; model?: string }>
   streamPolicy: StreamPolicy
   toolMediatorId?: string
-  judge?: { provider: string; model?: string }
+  stages: RouteStage[]
 }
 ```
 
 Rules:
 
-- `single`: one provider/model path.
-- `fallback`: try the primary route, then fail over on outage,
-  rate-limit, or hard capability mismatch.
-- `fanout`: run multiple peers for the same request.
+- `single`: one stage produces the final answer.
+- `fallback`: ordered executor stages. Only the first successful stage
+  may produce the final answer.
+- `committee`: multiple advisor stages run in parallel and feed one
+  synthesizer or executor stage.
+- `pipeline`: one stage feeds the next intentionally, for example
+  planner -> executor -> judge.
+- `shadow`: one visible execution stage plus one or more shadow stages
+  used for evaluation, telemetry, or regression comparison.
 - `exposure = admin-only` hides the profile from normal users and
   standard agent creation flows.
+- `stages` is the canonical representation. Simple routes are just small
+  graphs.
+
+Minimum-complexity rule:
+
+- all multi-provider profiles should still end in exactly one
+  user-visible terminal stage.
+- that stage owns the final answer shown to the user.
+- upstream stages are inputs, not competing visible transcripts.
 
 For current schema compatibility:
 
@@ -353,35 +387,97 @@ Use when a provider is preferred but not required.
 
 Rules:
 
-- fallback is for availability or hard incompatibility, not for silent answer shopping.
-- every attempted provider call still produces its own invocation record.
+- fallback is for availability or hard incompatibility, not for silent
+  answer shopping.
+- every attempted provider call still produces its own invocation
+  record.
 
-### 9.3 Fanout
+### 9.3 Committee
 
-Use for admin-only high-reliability profiles.
+Use when one agent should receive input from several providers before one
+final model answers.
 
 Rules:
 
-- send the same normalized request to all peers.
-- keep peer prompts and tool access identical unless the routing
-  profile explicitly says otherwise.
-- record every peer invocation separately.
-- if a judge model is used, record the judge call separately as
-  `operationType = 'reasoning'` with metadata marking it as a judge
-  step.
+- run advisor stages in parallel against the same normalized request.
+- normalize each advisor output into a canonical candidate shape before
+  handing it to the terminal stage.
+- only one terminal stage may produce the user-facing answer.
+- if a judge stage exists, it ranks or filters candidate outputs but
+  does not stream directly to the user.
+- record every advisor, synthesizer, and judge invocation separately.
 
-### 9.4 Streaming rule for fanout
+Recommended candidate shape:
+
+```ts
+type CandidateOutput = {
+  stageId: string
+  summary: string
+  answer: string
+  toolIntent?: ToolCallIntent
+  confidence?: number
+  citations?: string[]
+}
+```
+
+### 9.4 Pipeline
+
+Use when provider outputs are intentionally sequential rather than
+parallel.
+
+Examples:
+
+- planner -> executor
+- generator -> critic -> reviser
+- retrieval summarizer -> answer model
+
+Rules:
+
+- each stage consumes normalized output from named upstream stages.
+- only the terminal stage may emit the final user-facing answer.
+- keep pipeline width narrow in v1. Linear flows are enough.
+
+### 9.5 Shadow
+
+Use when another provider should observe the same request without owning
+the user-facing answer.
+
+Rules:
+
+- the visible stage owns the answer.
+- shadow stages never affect the live transcript in v1.
+- shadow stages are for evaluation, telemetry, and route comparison.
+
+### 9.6 Tool execution ownership
+
+Tool execution must have one owner per turn.
+
+Rules:
+
+- by default, only one executor or synthesizer stage may execute tools.
+- advisor and shadow stages should default to `toolCallingMode =
+  'disabled'`.
+- if a non-native-tools provider owns tool execution, use the
+  prompt-translated mediation path and log that translation separately.
+- do not let multiple stages execute tools against the same turn unless
+  the workflow explicitly requires it and the result merge behavior is
+  defined.
+
+### 9.7 Streaming policy
 
 For interactive chat, the only sane default is:
 
-- stream from one designated primary peer,
-- run the others in shadow,
+- stream only from the terminal user-visible stage,
+- allow upstream advisor or shadow stages to run in parallel,
 - surface divergence and traces in admin telemetry,
 - do not splice multiple token streams together.
 
 If the use case needs "best final answer" rather than live
 interactivity, use `streamPolicy = 'buffered-judge'` and do not stream
 partial user-facing text until selection is complete.
+
+`first-complete` should be limited to fallback-style routes where all
+candidate stages are semantically equivalent.
 
 ## 10) Invocation accounting and ledger integration
 
@@ -397,9 +493,12 @@ Rules:
 - all events from one top-level request share the same `requestId`.
 - `correlationId` groups helper calls such as tool translation, judge
   calls, and fallback attempts under the same run.
+- use `metadata.stageId` and `metadata.stageRole` on every invocation.
 - use metadata to distinguish steps:
   - `step = primary`
   - `step = fallback`
+  - `step = advisor`
+  - `step = synthesizer`
   - `step = shadow`
   - `step = judge`
   - `step = tool-translation`
@@ -410,6 +509,8 @@ This fits the existing token-ledger design cleanly:
 - tool translation helper: `operationType = 'tool-translation'`
 - judge/ranking helper: `operationType = 'reasoning'`
 - embeddings: `operationType = 'embedding'`
+- shadow evaluation calls: `operationType = 'reasoning'` or `chat`,
+  depending on what the stage actually did
 
 Do not collapse multi-provider runs into one synthetic usage record.
 That destroys billing, debugging, and governance value.
@@ -470,7 +571,7 @@ InferenceRoutingProfile
   enabled
   exposure
   mode
-  route_config_json
+  route_graph_json
 
 ToolMediatorProfile
   id
@@ -484,8 +585,8 @@ ToolMediatorProfile
 Notes:
 
 - `capability_snapshot_json` is correct here. It will evolve.
-- `route_config_json` is correct here. Fanout/fallback trees do not
-  need a dozen join tables in v1.
+- `route_graph_json` is correct here. Committee and pipeline flows do
+  not need a dozen join tables in v1.
 - if pricing or provider metadata becomes first-class later, split it later.
 
 ## 13) Runtime integration plan
@@ -506,7 +607,7 @@ Initial scope:
 - native-tool providers,
 - prompt-translated tool calling for providers like MiniMax,
 - manual model entry for providers without model discovery,
-- single, fallback, and fanout routing,
+- single, fallback, committee, pipeline, and shadow routing,
 - per-invocation ledger output.
 
 Non-goals for v1:
