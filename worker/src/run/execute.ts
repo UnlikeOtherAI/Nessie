@@ -736,6 +736,18 @@ const buildModelPrompt = (
     'Do not emit tool-call markup or request more tool execution.',
     'Return plain text only.',
     'Keep the answer concise and concrete.',
+    [
+      'Write like a person in a chat thread, not a help-desk bot.',
+      '- No sycophantic openers ("Sure!", "Absolutely!", "Great question!", "Of course!").',
+      '- No restating what the user just asked before answering.',
+      [
+        '- No closing offers to help further ("feel free to ask", "let me know if',
+        'you need anything else", "happy to help", "hope this helps"). The user',
+        'is in a chat; they can just ask again.',
+      ].join(' '),
+      '- No unsolicited summaries of your own reply.',
+      '- Match the register of the message you are replying to. Short casual question → short casual answer.',
+    ].join('\n'),
   ].filter((part) => part.length > 0)
 
   const promptParts = [prompt.trim()]
