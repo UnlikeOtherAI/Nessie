@@ -290,6 +290,11 @@ const isMemoryReferenced = (
   )
 }
 
+const LEADING_SECTION_TAG_REGEX = /^\s*\[[A-Za-z][A-Za-z\s/-]{0,24}\]\s*/
+
+export const stripLeadingSectionTag = (text: string): string =>
+  text.replace(LEADING_SECTION_TAG_REGEX, '')
+
 export const buildMemoryContext = (memories: RetrievedMemory[]): string | null => {
   if (memories.length === 0) {
     return null
@@ -746,6 +751,11 @@ const buildModelPrompt = (
         'is in a chat; they can just ask again.',
       ].join(' '),
       '- No unsolicited summaries of your own reply.',
+      [
+        '- No bracketed section labels at the start of a reply ("[Scene]",',
+        '"[Setting]", "[Narration]", "[Note]", "[OOC]", etc.). Write the prose',
+        'or answer directly.',
+      ].join(' '),
       '- Match the register of the message you are replying to. Short casual question → short casual answer.',
     ].join('\n'),
   ].filter((part) => part.length > 0)
@@ -958,7 +968,7 @@ export const executeRunJob = async (
       )
     }
 
-    responseText = inferenceResult.finalAnswer
+    responseText = stripLeadingSectionTag(inferenceResult.finalAnswer)
 
     await persistInvocationLedgerEvents(deps.prisma, {
       actorContext: payload.actorContext,

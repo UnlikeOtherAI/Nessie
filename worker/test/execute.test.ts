@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   buildMemoryContext,
   detectReferencedRecallIds,
+  stripLeadingSectionTag,
 } from '../src/run/execute.js'
 
 test('buildMemoryContext formats retrieved memories for prompt injection', () => {
@@ -57,4 +58,26 @@ test('detectReferencedRecallIds ignores unrelated memories', () => {
   )
 
   assert.deepEqual(recallIds, [])
+})
+
+test('stripLeadingSectionTag removes bracketed section labels from the start of a reply', () => {
+  assert.equal(
+    stripLeadingSectionTag('[Scene] The tavern is dim and smoky.'),
+    'The tavern is dim and smoky.',
+  )
+  assert.equal(stripLeadingSectionTag('  [Setting]\nA moonlit road.'), 'A moonlit road.')
+  assert.equal(stripLeadingSectionTag('[OOC] quick check — is this right?'), 'quick check — is this right?')
+  assert.equal(stripLeadingSectionTag('[Narrator] You wake up.'), 'You wake up.')
+})
+
+test('stripLeadingSectionTag leaves mid-prose brackets and non-label content alone', () => {
+  assert.equal(
+    stripLeadingSectionTag('The value is [ok] but needs review.'),
+    'The value is [ok] but needs review.',
+  )
+  assert.equal(
+    stripLeadingSectionTag('[Note: remember to verify] before sending.'),
+    '[Note: remember to verify] before sending.',
+  )
+  assert.equal(stripLeadingSectionTag('No label here, just a direct answer.'), 'No label here, just a direct answer.')
 })
