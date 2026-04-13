@@ -377,6 +377,8 @@ model User {
   projectMembers      ProjectMember[]
   teamMembers         TeamMember[]
   channelMembers      ChannelMember[]
+  callsStarted        Call[]               @relation("CallStarter")
+  callParticipants    CallParticipant[]    @relation("CallParticipation")
   messages            Message[]
   reactions           MessageReaction[]
   agentCategories     AgentCategory[]
@@ -475,6 +477,7 @@ model Channel {
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   team           Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   members        ChannelMember[]
+  calls          Call[]
   agentBindings  AgentBinding[]
   triggerTargets AgentTrigger[]          @relation("TriggerTargetChannel")
   threads        Thread[]
@@ -1642,4 +1645,34 @@ model ThoughtRecall {
   @@index([sessionId, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("thought_recalls")
+}
+
+model Call {
+  id           String            @id @default(uuid()) @db.Uuid
+  channelId    String            @map("channel_id") @db.Uuid
+  roomId       String            @unique @map("room_id")
+  status       String            @default("active")
+  startedById  String            @map("started_by_id") @db.Uuid
+  startedAt    DateTime          @default(now()) @map("started_at")
+  endedAt      DateTime?         @map("ended_at")
+  channel      Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  startedBy    User              @relation("CallStarter", fields: [startedById], references: [id], onDelete: Cascade)
+  participants CallParticipant[]
+
+  @@index([channelId])
+  @@index([status])
+  @@map("calls")
+}
+
+model CallParticipant {
+  id       String    @id @default(uuid()) @db.Uuid
+  callId   String    @map("call_id") @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  joinedAt DateTime  @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+  call     Call      @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user     User      @relation("CallParticipation", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, userId])
+  @@map("call_participants")
 }

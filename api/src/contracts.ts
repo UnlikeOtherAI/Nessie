@@ -69,6 +69,27 @@ export const ChannelRecordSchema = z.object({
 })
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
 
+export const CallParticipantRecordSchema = z.object({
+  userId: UserIdSchema,
+  displayName: z.string(),
+  joinedAt: TimestampSchema,
+  leftAt: TimestampSchema.nullable(),
+})
+
+export const CallRecordSchema = z.object({
+  id: z.string().uuid(),
+  channelId: ChannelIdSchema,
+  roomId: z.string(),
+  status: z.enum(['active', 'ended']),
+  startedById: UserIdSchema,
+  startedAt: TimestampSchema,
+  endedAt: TimestampSchema.nullable(),
+  participants: z.array(CallParticipantRecordSchema),
+})
+export type CallRecord = z.infer<typeof CallRecordSchema>
+
+export const EmptyBodySchema = z.object({})
+
 export const CreateChannelBodySchema = z.object({
   label: NonEmptyStringSchema,
   visibility: z.enum(['public', 'protected', 'private']).optional(),
