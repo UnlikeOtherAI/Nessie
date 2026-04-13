@@ -5,7 +5,7 @@ import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDraw
 import { PresenceDot } from '../components/primitives/PresenceDot';
 import { CreateChannelDialog } from '../components/shared/CreateChannelDialog';
 import { useAgentRealtime, useAgents } from '../facades/agents/hooks';
-import { useChannels } from '../facades/channels/hooks';
+import { useChannels, useOpenDm } from '../facades/channels/hooks';
 import { useUsers } from '../facades/users/hooks';
 import type { AgentRecord } from '../lib/api-client';
 import { getCookie, setCookie } from '../lib/storage';
@@ -66,6 +66,10 @@ export const AdminShellLayout = () => {
       ? channels.find((channel) => channel.id === currentChannelId)?.defaultThreadId
       : undefined,
   });
+  const openDm = useOpenDm();
+  const activeDmChannel = currentChannelId
+    ? channels.find((c) => c.id === currentChannelId && c.type === 'dm')
+    : undefined;
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
   const [channelsCollapsed, setChannelsCollapsed] = useState(
@@ -347,6 +351,8 @@ export const AdminShellLayout = () => {
             <span className="admin-rail-btn-label">Activity</span>
           </button>
 
+          <div className="my-2 h-px w-8 bg-white/15" />
+
           <Link
             className={`admin-rail-btn ${location.pathname.startsWith('/settings') ? 'active' : ''}`}
             to="/settings"
@@ -615,8 +621,14 @@ export const AdminShellLayout = () => {
                       return (
                         <button
                           key={`starred-usr-${item.id}`}
-                          className="admin-sb-item group"
-                          onClick={() => void navigate('/settings#users')}
+                          className={`admin-sb-item group ${activeDmChannel?.label === person.label ? 'active' : ''}`}
+                          onClick={() => {
+                            openDm.mutate(item.id, {
+                              onSuccess: (channel) => {
+                                void navigate(`/channels/${channel.id}`);
+                              },
+                            });
+                          }}
                           type="button"
                         >
                           <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
@@ -658,7 +670,7 @@ export const AdminShellLayout = () => {
 
               {!channelsCollapsed && (
                 <>
-                  {channels.map((channel) => {
+                  {channels.filter((c) => c.type !== 'dm').map((channel) => {
                     const isStarredChannel = starred.some(
                       (s) => s.type === 'channel' && s.id === channel.id,
                     );
@@ -743,8 +755,14 @@ export const AdminShellLayout = () => {
                     return (
                       <button
                         key={person.id}
-                        className="admin-sb-item group"
-                        onClick={() => void navigate('/settings#users')}
+                        className={`admin-sb-item group ${activeDmChannel?.label === person.label ? 'active' : ''}`}
+                        onClick={() => {
+                          openDm.mutate(person.id, {
+                            onSuccess: (channel) => {
+                              void navigate(`/channels/${channel.id}`);
+                            },
+                          });
+                        }}
                         type="button"
                       >
                         <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
