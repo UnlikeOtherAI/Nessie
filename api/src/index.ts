@@ -4973,6 +4973,13 @@ export const startApiServer = async () => {
     port: config.api.port,
   })
 
+  // In local mode, start the worker in-process so agents always work
+  if (config.mode === 'local') {
+    const { startWorker } = await import('@nessie/worker')
+    await startWorker()
+    console.log('[api] embedded worker started (local mode)')
+  }
+
   return app
 }
 
