@@ -1,19 +1,8 @@
-import { useMemo } from 'react'
-import {
-  useAgentActivity,
-  useAgentChildren,
-  useAgentMessages,
-  useAgentStatus,
-} from '../../../facades/agents/hooks'
+import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
-import { EmptyState } from '../../shared/EmptyState'
 import { StatusPill } from '../../primitives/StatusPill'
-import { AgentThoughtStream } from './AgentThoughtStream'
-import { AgentTriggerPanel } from './AgentTriggerPanel'
-import { AgentMessagePreview } from './AgentMessagePreview'
 import { AgentStatusDot } from './AgentStatusDot'
-import { SubAgentTree } from './SubAgentTree'
-import { ToolExecutionLog } from './ToolExecutionLog'
+import { AgentDetailTabs } from './AgentDetailTabs'
 
 type AgentDetailDrawerProps = {
   agent: AgentRecord | null
@@ -42,21 +31,7 @@ export const AgentDetailDrawer = ({
   onClose,
   onSelectAgent,
 }: AgentDetailDrawerProps) => {
-  const agentId = agent?.id
-  const { data: status } = useAgentStatus(agentId)
-  const { data: activity } = useAgentActivity(agentId)
-  const { data: childAgents = [] } = useAgentChildren(agentId)
-  const { data: messages = [] } = useAgentMessages(agentId, 5)
-
-  const toolEntries = useMemo(() => {
-    if (!activity) {
-      return []
-    }
-
-    return activity.recentToolCalls.length > 0
-      ? activity.recentToolCalls
-      : activity.currentRun?.toolCalls ?? []
-  }, [activity])
+  const { data: status } = useAgentStatus(agent?.id)
 
   if (!agent) {
     return null
@@ -75,7 +50,7 @@ export const AgentDetailDrawer = ({
       >
         <header
           className={[
-            'flex items-start justify-between gap-4',
+            'flex-shrink-0 flex items-start justify-between gap-4',
             'border-b border-[color:var(--sep)] px-6 py-5',
           ].join(' ')}
         >
@@ -101,34 +76,7 @@ export const AgentDetailDrawer = ({
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          <div className="grid gap-6">
-            <section className="admin-card p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                Current activity
-              </div>
-              {status?.currentToolName || activity?.currentRun ? (
-                <div className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
-                  {status?.currentToolName
-                    ? `${agent.name} is running ${status.currentToolName}.`
-                    : `Run ${activity?.currentRun?.runId ?? agent.currentRunId ?? 'pending'} is active.`}
-                </div>
-              ) : (
-                <EmptyState>This agent is currently idle.</EmptyState>
-              )}
-            </section>
-
-            <AgentTriggerPanel agent={agent} />
-            <SubAgentTree
-              onSelect={onSelectAgent}
-              selectedAgentId={agent.id}
-              subAgents={childAgents}
-            />
-            <ToolExecutionLog entries={toolEntries} />
-            <AgentThoughtStream />
-            <AgentMessagePreview messages={messages} />
-          </div>
-        </div>
+        <AgentDetailTabs key={agent.id} agent={agent} onSelectAgent={onSelectAgent} />
       </aside>
     </>
   )

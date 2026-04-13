@@ -254,6 +254,7 @@ export const loadAgentMessages = async (
   agentId: string,
   limit: number,
   callerUserId?: string,
+  offset = 0,
 ): Promise<AgentMessage[]> => {
   // Build channel membership filter to prevent cross-channel data leakage
   const channelFilter = callerUserId
@@ -278,6 +279,7 @@ export const loadAgentMessages = async (
     },
     orderBy: { createdAt: 'desc' },
     take: limit,
+    skip: offset,
   })
 
   return messages.map((message) => ({

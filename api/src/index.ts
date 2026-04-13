@@ -3880,13 +3880,15 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    const limit = Math.min(Math.max(Number((request.query as { limit?: string }).limit ?? '5'), 1), 50)
+    const query = request.query as { limit?: string; offset?: string }
+    const limit = Math.min(Math.max(Number(query.limit ?? '5'), 1), 50)
+    const offset = Math.max(Number(query.offset ?? '0'), 0)
     if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    return createApiResponse(await loadAgentMessages(prisma, agentId, limit, actorContext.actor.actorId))
+    return createApiResponse(await loadAgentMessages(prisma, agentId, limit, actorContext.actor.actorId, offset))
   })
 
   app.get('/api/agents/:agentId/children', async (request, reply) => {

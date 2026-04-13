@@ -1,18 +1,9 @@
-import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  useAgentActivity,
-  useAgentMessages,
-  useAgentStatus,
-} from '../../../facades/agents/hooks'
+import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
-import { EmptyState } from '../../shared/EmptyState'
 import { StatusPill } from '../../primitives/StatusPill'
 import { AgentStatusDot } from './AgentStatusDot'
-import { AgentThoughtStream } from './AgentThoughtStream'
-import { AgentTriggerPanel } from './AgentTriggerPanel'
-import { AgentMessagePreview } from './AgentMessagePreview'
-import { ToolExecutionLog } from './ToolExecutionLog'
+import { AgentDetailTabs } from './AgentDetailTabs'
 
 type AgentDetailColumnProps = {
   agent: AgentRecord
@@ -30,15 +21,6 @@ const getStatusTone = (status: AgentRecord['status']) => {
 export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumnProps) => {
   const navigate = useNavigate()
   const { data: status } = useAgentStatus(agent.id)
-  const { data: activity } = useAgentActivity(agent.id)
-  const { data: messages = [] } = useAgentMessages(agent.id, 5)
-
-  const toolEntries = useMemo(() => {
-    if (!activity) return []
-    return activity.recentToolCalls.length > 0
-      ? activity.recentToolCalls
-      : activity.currentRun?.toolCalls ?? []
-  }, [activity])
 
   return (
     <div className="flex h-full flex-col bg-[color:var(--main)]">
@@ -80,29 +62,7 @@ export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumn
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        <div className="grid gap-6">
-          <section className="admin-card p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-              Current activity
-            </div>
-            {status?.currentToolName || activity?.currentRun ? (
-              <div className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
-                {status?.currentToolName
-                  ? `${agent.name} is running ${status.currentToolName}.`
-                  : `Run ${activity?.currentRun?.runId ?? agent.currentRunId ?? 'pending'} is active.`}
-              </div>
-            ) : (
-              <EmptyState>This agent is currently idle.</EmptyState>
-            )}
-          </section>
-
-          <AgentTriggerPanel agent={agent} />
-          <ToolExecutionLog entries={toolEntries} />
-          <AgentThoughtStream />
-          <AgentMessagePreview messages={messages} />
-        </div>
-      </div>
+      <AgentDetailTabs key={agent.id} agent={agent} />
     </div>
   )
 }

@@ -14,9 +14,6 @@ const compactPreview = (value: string, maxLength = 180): string => {
 
 export const AgentMessagePreview = ({ messages }: AgentMessagePreviewProps) => (
   <section className="grid gap-3">
-    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-      Last 5 messages
-    </div>
     {messages.length === 0 ? (
       <EmptyState>No recent messages for this agent yet.</EmptyState>
     ) : (

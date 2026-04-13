@@ -150,12 +150,12 @@ export const useAgentActivity = (agentId?: string) => {
   })
 }
 
-export const useAgentMessages = (agentId?: string, limit = 5) => {
+export const useAgentMessages = (agentId?: string, limit = 5, offset = 0) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentMessage[]>({
-    queryKey: ['agents', agentId, 'messages', limit],
-    queryFn: () => apiClient.get(`/api/agents/${agentId}/messages?limit=${limit}`),
+    queryKey: ['agents', agentId, 'messages', limit, offset],
+    queryFn: () => apiClient.get(`/api/agents/${agentId}/messages?limit=${limit}&offset=${offset}`),
     enabled: Boolean(agentId),
   })
 }

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && (lsof -ti :5555 | xargs kill -9 2>/dev/null; true) && vite preview &",
     "predev": "lsof -ti :5555 | xargs kill -9 2>/dev/null || true",
     "dev": "vite",
     "lint": "eslint src --max-warnings 0",
