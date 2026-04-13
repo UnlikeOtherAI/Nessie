@@ -110,10 +110,10 @@ a {
   width: 100%;
   border: none;
   background: none;
-  padding: 10px 16px 2px;
+  padding: 8px 10px 2px;
   color: var(--tx2);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 400;
   cursor: pointer;
 }
 
@@ -125,7 +125,7 @@ a {
   min-height: 28px;
   cursor: pointer;
   border-radius: 6px;
-  padding: 4px 8px;
+  padding: 4px 8px 4px 20px;
   color: var(--tx2);
   font-size: 15px;
   text-align: left;

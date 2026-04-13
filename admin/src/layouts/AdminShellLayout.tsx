@@ -32,10 +32,10 @@ const statusIndicatorClassName =
   'absolute bottom-0 right-0 rounded-full border-2 border-[color:var(--rail)] bg-green-500 p-[3px]';
 
 const channelHashClassName =
-  'w-[14px] flex-shrink-0 text-center text-base font-bold leading-none text-[color:var(--tx3)]';
+  'w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]';
 
 const unreadCountClassName =
-  'ml-auto flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ' +
+  'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ' +
   'bg-[color:var(--accent)] text-[10px] font-bold text-white';
 
 const getDmStyle = (index: number) => ({
@@ -71,6 +71,21 @@ export const AdminShellLayout = () => {
   const [channelsCollapsed, setChannelsCollapsed] = useState(
     () => getCookie('channelsCollapsed') === '1',
   );
+  const [starredCollapsed, setStarredCollapsed] = useState(
+    () => getCookie('starredCollapsed') === '1',
+  );
+  const [dmCollapsed, setDmCollapsed] = useState(() => getCookie('dmCollapsed') === '1');
+  const [starred, setStarred] = useState<Array<{ type: 'channel' | 'user'; id: string }>>(
+    () => {
+      try {
+        return JSON.parse(
+          localStorage.getItem('nessie-starred') ?? '[]',
+        ) as Array<{ type: 'channel' | 'user'; id: string }>;
+      } catch {
+        return [];
+      }
+    },
+  );
 
   const openCreateChannel = useCallback(() => setCreateChannelOpen(true), []);
   const closeCreateChannel = useCallback(() => setCreateChannelOpen(false), []);
@@ -79,6 +94,33 @@ export const AdminShellLayout = () => {
     setChannelsCollapsed((prev) => {
       const next = !prev;
       setCookie('channelsCollapsed', next ? '1' : '0');
+      return next;
+    });
+  }, []);
+
+  const toggleStarredCollapsed = useCallback(() => {
+    setStarredCollapsed((prev) => {
+      const next = !prev;
+      setCookie('starredCollapsed', next ? '1' : '0');
+      return next;
+    });
+  }, []);
+
+  const toggleDmCollapsed = useCallback(() => {
+    setDmCollapsed((prev) => {
+      const next = !prev;
+      setCookie('dmCollapsed', next ? '1' : '0');
+      return next;
+    });
+  }, []);
+
+  const toggleStar = useCallback((type: 'channel' | 'user', id: string) => {
+    setStarred((prev) => {
+      const exists = prev.some((s) => s.type === type && s.id === id);
+      const next = exists
+        ? prev.filter((s) => !(s.type === type && s.id === id))
+        : [...prev, { type, id }];
+      localStorage.setItem('nessie-starred', JSON.stringify(next));
       return next;
     });
   }, []);
@@ -508,6 +550,88 @@ export const AdminShellLayout = () => {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto py-1">
+              {starred.length > 0 && (
+                <>
+                  <button
+                    className="admin-sec-hdr"
+                    onClick={toggleStarredCollapsed}
+                    type="button"
+                  >
+                    <svg
+                      className={[
+                        'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                        starredCollapsed ? '-rotate-90' : '',
+                      ].join(' ')}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <svg
+                      className="h-3.5 w-3.5 flex-shrink-0 text-yellow-400"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                    Starred
+                  </button>
+                  {!starredCollapsed &&
+                    starred.map((item) => {
+                      if (item.type === 'channel') {
+                        const channel = channels.find((c) => c.id === item.id);
+                        if (!channel) return null;
+                        return (
+                          <button
+                            key={`starred-ch-${item.id}`}
+                            className={`admin-sb-item group ${channel.id === currentChannelId ? 'active' : ''}`}
+                            onClick={() => void navigate(`/channels/${channel.id}`)}
+                            type="button"
+                          >
+                            <span className={channelHashClassName}>#</span>
+                            <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+                            <span
+                              className="ml-auto flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleStar('channel', item.id);
+                              }}
+                            >
+                              ★
+                            </span>
+                          </button>
+                        );
+                      }
+                      const person = sidebarPeople.find((p) => p.id === item.id);
+                      if (!person) return null;
+                      return (
+                        <button
+                          key={`starred-usr-${item.id}`}
+                          className="admin-sb-item group"
+                          onClick={() => void navigate('/settings#users')}
+                          type="button"
+                        >
+                          <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
+                          <span className="min-w-0 flex-1 truncate text-sm">{person.label}</span>
+                          <span
+                            className="ml-auto flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleStar('user', item.id);
+                            }}
+                          >
+                            ★
+                          </span>
+                        </button>
+                      );
+                    })}
+                </>
+              )}
+
               <button
                 className="admin-sec-hdr"
                 onClick={toggleChannelsCollapsed}
@@ -530,23 +654,42 @@ export const AdminShellLayout = () => {
 
               {!channelsCollapsed && (
                 <>
-                  {channels.map((channel) => (
-                    <button
-                      key={channel.id}
-                      className={`admin-sb-item ${channel.id === currentChannelId ? 'active' : ''}`}
-                      onClick={() => void navigate(`/channels/${channel.id}`)}
-                      type="button"
-                    >
-                      <span className={channelHashClassName}>#</span>
-                      <span className="truncate">{channel.label}</span>
-                      {channel.id === currentChannelId &&
-                        agents.filter((a) => a.channelIds.includes(channel.id)).length > 0 ? (
-                        <span className={unreadCountClassName}>
-                          {agents.filter((a) => a.channelIds.includes(channel.id)).length}
+                  {channels.map((channel) => {
+                    const isStarredChannel = starred.some(
+                      (s) => s.type === 'channel' && s.id === channel.id,
+                    );
+                    const agentCount = agents.filter((a) =>
+                      a.channelIds.includes(channel.id),
+                    ).length;
+                    return (
+                      <button
+                        key={channel.id}
+                        className={`admin-sb-item group ${channel.id === currentChannelId ? 'active' : ''}`}
+                        onClick={() => void navigate(`/channels/${channel.id}`)}
+                        type="button"
+                      >
+                        <span className={channelHashClassName}>#</span>
+                        <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+                        {channel.id === currentChannelId && agentCount > 0 ? (
+                          <span className={unreadCountClassName}>{agentCount}</span>
+                        ) : null}
+                        <span
+                          className={[
+                            'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+                            isStarredChannel
+                              ? 'ml-1 text-yellow-400 opacity-100'
+                              : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+                          ].join(' ')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleStar('channel', channel.id);
+                          }}
+                        >
+                          {isStarredChannel ? '★' : '☆'}
                         </span>
-                      ) : null}
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
 
                   <button
                     className="admin-sb-item text-[color:var(--tx3)]"
@@ -567,17 +710,16 @@ export const AdminShellLayout = () => {
                 </>
               )}
 
-              <AgentActivityPanel
-                agents={scopedAgents}
-                currentChannelId={currentChannelId}
-                onSelectAgent={selectAgent}
-                realtime={realtime}
-                selectedAgentId={selectedAgentId}
-              />
-
-              <div className="admin-sec-hdr mt-2">
+              <button
+                className="admin-sec-hdr mt-2"
+                onClick={toggleDmCollapsed}
+                type="button"
+              >
                 <svg
-                  className="h-3 w-3 text-[color:var(--tx3)]"
+                  className={[
+                    'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                    dmCollapsed ? '-rotate-90' : '',
+                  ].join(' ')}
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2.5"
@@ -586,36 +728,67 @@ export const AdminShellLayout = () => {
                   <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 Direct messages
-              </div>
-
-              {sidebarPeople.map((person) => (
-                <button
-                  key={person.id}
-                  className="admin-sb-item"
-                  onClick={() => void navigate('/settings#users')}
-                  type="button"
-                >
-                  <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
-                  <span className="truncate text-sm">{person.label}</span>
-                </button>
-              ))}
-
-              <button
-                className="admin-sb-item text-[color:var(--tx3)]"
-                onClick={() => void navigate('/settings#users')}
-                type="button"
-              >
-                <svg
-                  className="h-4 w-4 flex-shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                {isOwner ? 'Invite people' : 'Workspace profile'}
               </button>
+
+              {!dmCollapsed && (
+                <>
+                  {sidebarPeople.map((person) => {
+                    const isStarredUser = starred.some(
+                      (s) => s.type === 'user' && s.id === person.id,
+                    );
+                    return (
+                      <button
+                        key={person.id}
+                        className="admin-sb-item group"
+                        onClick={() => void navigate('/settings#users')}
+                        type="button"
+                      >
+                        <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
+                        <span className="min-w-0 flex-1 truncate text-sm">{person.label}</span>
+                        <span
+                          className={[
+                            'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+                            isStarredUser
+                              ? 'ml-1 text-yellow-400 opacity-100'
+                              : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+                          ].join(' ')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleStar('user', person.id);
+                          }}
+                        >
+                          {isStarredUser ? '★' : '☆'}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  <button
+                    className="admin-sb-item text-[color:var(--tx3)]"
+                    onClick={() => void navigate('/settings#users')}
+                    type="button"
+                  >
+                    <svg
+                      className="h-4 w-4 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    {isOwner ? 'Invite people' : 'Workspace profile'}
+                  </button>
+                </>
+              )}
+
+              <AgentActivityPanel
+                agents={scopedAgents}
+                currentChannelId={currentChannelId}
+                onSelectAgent={selectAgent}
+                realtime={realtime}
+                selectedAgentId={selectedAgentId}
+              />
             </div>
           </aside>
         )}
