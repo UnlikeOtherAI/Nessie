@@ -43,11 +43,12 @@ export const useAddChannelMember = () => {
 
   return useMutation({
     mutationFn: (input: { channelId: string; userId: string }) =>
-      apiClient.post(`/api/channels/${input.channelId}/members`, {
+      apiClient.post<ChannelRecord | undefined>(`/api/channels/${input.channelId}/members`, {
         userId: input.userId,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
   })
 }

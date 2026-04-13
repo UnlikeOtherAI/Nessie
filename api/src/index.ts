@@ -174,6 +174,7 @@ import {
 import {
   addMemberToChannel,
   createChannelForUser,
+  createGroupFromDm,
   findOrCreateDmChannel,
   listChannelsForUser,
   removeMemberFromChannel,
@@ -1360,6 +1361,17 @@ export const buildApp = async () => {
     const body = parseInput(AddChannelMemberBodySchema, request.body, reply)
     if (!body) {
       return reply
+    }
+
+    // If the channel is a DM, create a new group channel instead of mutating the DM
+    const channel = await prisma.channel.findUnique({ where: { id: channelId }, select: { type: true } })
+    if (channel?.type === 'dm') {
+      const group = await createGroupFromDm(prisma, {
+        dmChannelId: channelId,
+        newUserId: body.userId,
+        currentUserId: actorContext.actor.actorId,
+      })
+      return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(group)))
     }
 
     await addMemberToChannel(prisma, channelId, body.userId)

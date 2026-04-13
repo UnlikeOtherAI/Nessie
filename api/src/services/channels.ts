@@ -169,6 +169,58 @@ export const findOrCreateDmChannel = async (
   return mapChannelRecord(prisma, channel)
 }
 
+export const createGroupFromDm = async (
+  prisma: PrismaClient,
+  input: {
+    dmChannelId: string
+    newUserId: string
+    currentUserId: string
+  },
+): Promise<ChannelRecord> => {
+  // Get all current members of the DM
+  const existingMembers = await prisma.channelMember.findMany({
+    where: { channelId: input.dmChannelId },
+    select: { userId: true },
+  })
+  const allUserIds = [
+    ...new Set([
+      ...existingMembers.map((m) => m.userId),
+      input.newUserId,
+    ]),
+  ]
+
+  // Get the DM channel for org/team context
+  const dmChannel = await prisma.channel.findUniqueOrThrow({
+    where: { id: input.dmChannelId },
+  })
+
+  // Build the label from display names of all members except current user
+  const users = await prisma.user.findMany({
+    where: { id: { in: allUserIds } },
+    select: { id: true, displayName: true },
+  })
+  const otherNames = users
+    .filter((u) => u.id !== input.currentUserId)
+    .map((u) => u.displayName)
+    .sort()
+  const label = otherNames.join(', ')
+
+  const channel = await prisma.channel.create({
+    data: {
+      label: label || 'Group',
+      type: 'standard',
+      organizationId: dmChannel.organizationId,
+      teamId: dmChannel.teamId,
+      visibility: 'private',
+      members: {
+        create: allUserIds.map((userId) => ({ userId })),
+      },
+    },
+  })
+
+  return mapChannelRecord(prisma, channel)
+}
+
 export const createChannelForUser = async (
   prisma: PrismaClient,
   input: {
