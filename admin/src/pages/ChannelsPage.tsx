@@ -417,9 +417,18 @@ export const ChannelsPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="flex-shrink-0 text-lg font-bold text-[color:var(--tx3)]">
-            #
-          </span>
+          {activeChannel?.type === 'dm' ? (
+            <div
+              className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
+              style={{ background: 'linear-gradient(135deg,#6d28d9,#4f46e5)' }}
+            >
+              {activeChannel.label.slice(0, 1).toUpperCase()}
+            </div>
+          ) : (
+            <span className="flex-shrink-0 text-lg font-bold text-[color:var(--tx3)]">
+              #
+            </span>
+          )}
           <h1 className="truncate text-[17px] font-bold text-white">
             {activeChannel?.label ?? 'channels'}
           </h1>

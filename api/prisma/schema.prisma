@@ -144,6 +144,11 @@ enum TaskStatus {
   awaiting_approval
 }
 
+enum ChannelType {
+  standard
+  dm
+}
+
 enum ChannelVisibility {
   public
   protected
@@ -461,6 +466,7 @@ model TeamMember {
 model Channel {
   id             String            @id @default(uuid()) @db.Uuid
   label          String
+  type           ChannelType       @default(standard)
   organizationId String            @map("organization_id") @db.Uuid
   teamId         String            @map("team_id") @db.Uuid
   visibility     ChannelVisibility @default(public)

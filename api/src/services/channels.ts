@@ -45,6 +45,7 @@ const mapChannelRecord = async (
 ): Promise<ChannelRecord> => ({
   id: parseChannelId(channel.id),
   label: channel.label,
+  type: channel.type,
   visibility: channel.visibility,
   organizationId: parseOrganizationId(channel.organizationId),
   teamId: parseTeamId(channel.teamId),
@@ -111,6 +112,61 @@ export const validateTenantHierarchy = async (
     include: { project: { select: { organizationId: true } } },
   })
   return team?.project?.organizationId === organizationId
+}
+
+export const findOrCreateDmChannel = async (
+  prisma: PrismaClient,
+  input: {
+    organizationId: string
+    teamId: string
+    currentUserId: string
+    targetUserId: string
+  },
+): Promise<ChannelRecord> => {
+  // Find an existing DM channel where both users are members
+  const existing = await prisma.channel.findFirst({
+    where: {
+      type: 'dm',
+      organizationId: input.organizationId,
+      members: {
+        every: {
+          userId: { in: [input.currentUserId, input.targetUserId] },
+        },
+      },
+      AND: [
+        { members: { some: { userId: input.currentUserId } } },
+        { members: { some: { userId: input.targetUserId } } },
+      ],
+    },
+  })
+
+  if (existing) {
+    return mapChannelRecord(prisma, existing)
+  }
+
+  // Look up the target user's display name for the channel label
+  const targetUser = await prisma.user.findUnique({
+    where: { id: input.targetUserId },
+    select: { displayName: true },
+  })
+
+  const channel = await prisma.channel.create({
+    data: {
+      label: targetUser?.displayName ?? 'Direct Message',
+      type: 'dm',
+      organizationId: input.organizationId,
+      teamId: input.teamId,
+      visibility: 'private',
+      members: {
+        create: [
+          { userId: input.currentUserId },
+          { userId: input.targetUserId },
+        ],
+      },
+    },
+  })
+
+  return mapChannelRecord(prisma, channel)
 }
 
 export const createChannelForUser = async (

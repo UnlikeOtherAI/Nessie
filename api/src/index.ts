@@ -172,6 +172,7 @@ import {
 import {
   addMemberToChannel,
   createChannelForUser,
+  findOrCreateDmChannel,
   listChannelsForUser,
   removeMemberFromChannel,
 } from './services/channels.js'
@@ -1370,6 +1371,24 @@ export const buildApp = async () => {
 
     await removeMemberFromChannel(prisma, channelId, userId)
     return reply.code(204).send()
+  })
+
+  app.post('/api/dm/:userId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { userId } = request.params as { userId: string }
+
+    const channel = await findOrCreateDmChannel(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? '00000000-0000-4000-8000-000000000003',
+      currentUserId: actorContext.actor.actorId,
+      targetUserId: userId,
+    })
+
+    return createApiResponse(ChannelRecordSchema.parse(channel))
   })
 
   app.get('/api/agents', async (request, reply) => {

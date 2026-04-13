@@ -11,6 +11,19 @@ export const useChannels = () => {
   })
 }
 
+export const useOpenDm = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (userId: string) =>
+      apiClient.post<ChannelRecord>(`/api/dm/${userId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}
+
 export const useCreateChannel = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

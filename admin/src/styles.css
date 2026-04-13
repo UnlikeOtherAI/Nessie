@@ -121,10 +121,11 @@ a {
   display: flex;
   align-items: center;
   gap: 7px;
+  width: calc(100% - 16px);
   margin: 0 8px;
   min-height: 28px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 5px;
   padding: 4px 8px 4px 20px;
   color: var(--tx2);
   font-size: 15px;

@@ -59,6 +59,7 @@ export const LoginRequestSchema = z.object({
 export const ChannelRecordSchema = z.object({
   id: ChannelIdSchema,
   label: NonEmptyStringSchema,
+  type: z.enum(['standard', 'dm']),
   visibility: z.enum(['public', 'protected', 'private']),
   organizationId: OrganizationIdSchema,
   teamId: TeamIdSchema,
