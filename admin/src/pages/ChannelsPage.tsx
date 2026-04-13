@@ -32,7 +32,10 @@ import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, ThreadMessageRecord } from '../lib/api-client'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { CallBanner } from '../components/shared/CallBanner'
+import { CallOverlay } from '../components/shared/CallOverlay'
 import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
+import { useActiveCall, useJoinCall, useLeaveCall, useStartCall } from '../facades/calls/hooks'
 
 type ChannelTab = 'agents' | 'messages' | 'runs'
 
@@ -200,8 +203,23 @@ export const ChannelsPage = () => {
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
+  const [showCallOverlay, setShowCallOverlay] = useState(false)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const mentionRef = useRef<MentionInputHandle>(null)
+
+  const { data: activeCall } = useActiveCall(activeChannel?.id)
+  const startCall = useStartCall()
+  const joinCall = useJoinCall()
+  const leaveCall = useLeaveCall()
+  const callEligible = channelUsers.length >= 2
+  const activeParticipants = useMemo(
+    () => (activeCall?.participants ?? []).filter((p) => !p.leftAt),
+    [activeCall],
+  )
+  const isInCall = useMemo(
+    () => activeParticipants.some((p) => p.userId === me?.user.id),
+    [activeParticipants, me],
+  )
 
   // Clear optimistic bubble once the real message from the server arrives.
   // Match on content + proximity: any optimistic entry whose content equals
@@ -471,6 +489,61 @@ export const ChannelsPage = () => {
               {channelUsers.length + boundAgents.length}
             </span>
           </button>
+          <button
+            className={[
+              'relative flex h-7 w-7 items-center justify-center rounded',
+              callEligible
+                ? isInCall
+                  ? 'text-emerald-400 hover:bg-white/10'
+                  : 'text-[color:var(--tx3)] hover:bg-white/10'
+                : 'cursor-not-allowed text-[color:var(--tx3)] opacity-40',
+            ].join(' ')}
+            disabled={!callEligible}
+            onClick={() => {
+              if (!callEligible || !activeChannel) return
+              if (!activeCall) {
+                startCall.mutate(activeChannel.id, {
+                  onSuccess: () => setShowCallOverlay(true),
+                })
+              } else if (!isInCall) {
+                joinCall.mutate(activeCall.id, {
+                  onSuccess: () => setShowCallOverlay(true),
+                })
+              } else {
+                setShowCallOverlay((v) => !v)
+              }
+            }}
+            title={
+              callEligible
+                ? activeCall
+                  ? isInCall
+                    ? 'Toggle call overlay'
+                    : 'Join call'
+                  : 'Start a call'
+                : 'You can only start a call with humans for now'
+            }
+            type="button"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {activeCall && !isInCall && (
+              <span className="absolute right-0.5 top-0.5 flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+            )}
+          </button>
           <div className="mx-1 h-5 w-px bg-[color:var(--border-strong)]" />
           <button className={toolbarButtonClass} type="button">
             <svg
@@ -504,6 +577,17 @@ export const ChannelsPage = () => {
           </button>
         </div>
       </header>
+
+      {activeCall && !isInCall && callEligible && activeParticipants.length > 0 && (
+        <CallBanner
+          participants={activeParticipants}
+          onJoin={() => {
+            joinCall.mutate(activeCall.id, {
+              onSuccess: () => setShowCallOverlay(true),
+            })
+          }}
+        />
+      )}
 
       <div className="flex h-9 items-center border-b border-[color:var(--sep)] px-3">
         <button
@@ -1023,9 +1107,14 @@ export const ChannelsPage = () => {
           boundAgents={boundAgents}
           channelId={activeChannel.id}
           channelLabel={activeChannel.label}
+          channelType={activeChannel.type}
           channelUsers={channelUsers}
           currentUserId={me.user.id}
           onClose={() => setShowMembersPopup(false)}
+          onGroupCreated={(newChannelId) => {
+            setShowMembersPopup(false)
+            navigate(`/channels/${newChannelId}`)
+          }}
           onSelectAgent={onSelectAgent}
         />
       ) : null}
@@ -1040,6 +1129,17 @@ export const ChannelsPage = () => {
         open={oversizePaste !== null}
         pastedText={oversizePaste ?? ''}
       />
+
+      {showCallOverlay && activeCall && isInCall && (
+        <CallOverlay
+          displayName={me?.user.displayName ?? 'User'}
+          onLeave={() => {
+            leaveCall.mutate(activeCall.id)
+            setShowCallOverlay(false)
+          }}
+          roomId={activeCall.roomId}
+        />
+      )}
     </section>
   )
 }

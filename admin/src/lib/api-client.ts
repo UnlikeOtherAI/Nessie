@@ -34,6 +34,24 @@ export type ChannelRecord = {
   visibility: 'private' | 'protected' | 'public'
 }
 
+export type CallParticipantRecord = {
+  displayName: string
+  joinedAt: string
+  leftAt: string | null
+  userId: string
+}
+
+export type CallRecord = {
+  channelId: string
+  endedAt: string | null
+  id: string
+  participants: CallParticipantRecord[]
+  roomId: string
+  startedAt: string
+  startedById: string
+  status: 'active' | 'ended'
+}
+
 export type AgentRecord = {
   channelIds: string[]
   createdAt: string
