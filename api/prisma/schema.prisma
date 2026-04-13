@@ -482,6 +482,8 @@ model Channel {
   triggerTargets AgentTrigger[]          @relation("TriggerTargetChannel")
   threads        Thread[]
 
+  @@index([organizationId, type])
+  @@index([organizationId])
   @@map("channels")
 }
 
@@ -494,6 +496,7 @@ model ChannelMember {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([channelId, userId])
+  @@index([userId])
   @@map("channel_members")
 }
 
@@ -509,6 +512,7 @@ model Thread {
   runs      Run[]
   triggerTargets AgentTrigger[]          @relation("TriggerTargetThread")
 
+  @@index([channelId])
   @@map("threads")
 }
 

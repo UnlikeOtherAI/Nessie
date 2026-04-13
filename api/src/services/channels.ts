@@ -74,9 +74,49 @@ export const listChannelsForUser = async (
   const channels = await prisma.channel.findMany({
     where,
     orderBy: { createdAt: 'asc' },
+    include: {
+      threads: {
+        orderBy: { createdAt: 'asc' },
+        take: 1,
+        select: { id: true },
+      },
+    },
   })
 
-  return Promise.all(channels.map((channel) => mapChannelRecord(prisma, channel)))
+  // Create default threads only for channels that don't have one (batch)
+  const needsThread = channels.filter((c) => c.threads.length === 0)
+  if (needsThread.length > 0) {
+    await prisma.thread.createMany({
+      data: needsThread.map((c) => ({ channelId: c.id, title: 'General' })),
+      skipDuplicates: true,
+    })
+    // Re-fetch threads for those channels
+    const createdThreads = await prisma.thread.findMany({
+      where: { channelId: { in: needsThread.map((c) => c.id) } },
+      orderBy: { createdAt: 'asc' },
+      distinct: ['channelId'],
+      select: { id: true, channelId: true },
+    })
+    const threadMap = new Map(createdThreads.map((t) => [t.channelId, t.id]))
+    for (const channel of needsThread) {
+      const threadId = threadMap.get(channel.id)
+      if (threadId) {
+        channel.threads = [{ id: threadId }]
+      }
+    }
+  }
+
+  return channels.map((channel) => ({
+    id: parseChannelId(channel.id),
+    label: channel.label,
+    type: channel.type,
+    visibility: channel.visibility,
+    organizationId: parseOrganizationId(channel.organizationId),
+    teamId: parseTeamId(channel.teamId),
+    defaultThreadId: parseThreadId(channel.threads[0]!.id),
+    createdAt: channel.createdAt.toISOString(),
+    updatedAt: channel.updatedAt.toISOString(),
+  }))
 }
 
 export const addMemberToChannel = async (

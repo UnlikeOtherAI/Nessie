@@ -148,6 +148,24 @@ export const AdminShellLayout = () => {
     setSelectedAgentId(null);
   };
 
+  const navigateToDm = useCallback((userId: string) => {
+    const targetUser = users.find((u) => u.id === userId);
+    if (targetUser) {
+      const dmChannel = channels.find(
+        (c) => c.type === 'dm' && targetUser.channelIds.includes(c.id),
+      );
+      if (dmChannel) {
+        void navigate(`/channels/${dmChannel.id}`);
+        return;
+      }
+    }
+    openDm.mutate(userId, {
+      onSuccess: (channel) => {
+        void navigate(`/channels/${channel.id}`);
+      },
+    });
+  }, [channels, navigate, openDm, users]);
+
   const sidebarPeople = useMemo(() => {
     if (!me) {
       return [];
@@ -622,13 +640,7 @@ export const AdminShellLayout = () => {
                         <button
                           key={`starred-usr-${item.id}`}
                           className={`admin-sb-item group ${activeDmChannel?.label === person.label ? 'active' : ''}`}
-                          onClick={() => {
-                            openDm.mutate(item.id, {
-                              onSuccess: (channel) => {
-                                void navigate(`/channels/${channel.id}`);
-                              },
-                            });
-                          }}
+                          onClick={() => navigateToDm(item.id)}
                           type="button"
                         >
                           <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
@@ -756,13 +768,7 @@ export const AdminShellLayout = () => {
                       <button
                         key={person.id}
                         className={`admin-sb-item group ${activeDmChannel?.label === person.label ? 'active' : ''}`}
-                        onClick={() => {
-                          openDm.mutate(person.id, {
-                            onSuccess: (channel) => {
-                              void navigate(`/channels/${channel.id}`);
-                            },
-                          });
-                        }}
+                        onClick={() => navigateToDm(person.id)}
                         type="button"
                       >
                         <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />

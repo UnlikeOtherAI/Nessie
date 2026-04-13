@@ -8,6 +8,7 @@ export const useChannels = () => {
   return useQuery<ChannelRecord[]>({
     queryKey: ['channels'],
     queryFn: () => apiClient.get('/api/channels'),
+    staleTime: Infinity,
   })
 }
 
