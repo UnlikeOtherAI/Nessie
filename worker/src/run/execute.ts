@@ -935,6 +935,7 @@ export const executeRunJob = async (
     )
 
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.start', {
+      agentId: parseAgentId(context.agent.id),
       runId: parseRunId(context.run.id),
       threadId: parseThreadId(context.run.threadId),
     })

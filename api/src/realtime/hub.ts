@@ -96,6 +96,15 @@ export const createRealtimeHub = async (input: {
             continue
           }
 
+          // stream.start and stream.delta are ephemeral — don't replay from backlog.
+          // A reconnecting client missed the live stream; the final message is already
+          // in the messages table. Replaying start/delta would show a zombie pending
+          // message until stream.done arrives.
+          if (event.event === 'stream.start' || event.event === 'stream.delta') {
+            connection.lastSequence = event.sequence
+            continue
+          }
+
           response.write(formatSseEvent({ kind: 'sse', ...event }))
           connection.lastSequence = event.sequence
         }

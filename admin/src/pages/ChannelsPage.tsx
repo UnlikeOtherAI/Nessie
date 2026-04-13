@@ -246,15 +246,7 @@ export const ChannelsPage = () => {
     () => new Map(mentionEntities.map((entity) => [entity.name, entity])),
     [mentionEntities],
   )
-  const runAgentMap = useMemo(
-    () =>
-      new Map(
-        agents
-          .filter((agent) => agent.currentRunId)
-          .map((agent) => [agent.currentRunId, agent] as const),
-      ),
-    [agents],
-  )
+  const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
   const sortedMentionNames = useMemo(
     () =>
       [...mentionEntityMap.keys()].sort(
@@ -748,7 +740,7 @@ export const ChannelsPage = () => {
             ) : null}
 
             {pendingMessages.map((entry) => {
-              const pendingAgent = runAgentMap.get(entry.runId) ?? null
+              const pendingAgent = agentById.get(entry.agentId) ?? null
 
               return (
                 <article key={entry.runId} className="admin-msg-row py-1">

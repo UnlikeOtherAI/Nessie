@@ -223,7 +223,7 @@ export const MessageRoleSchema = z.enum(['user', 'assistant', 'system'])
 export type MessageRole = z.infer<typeof MessageRoleSchema>
 
 export type SseEventMap = {
-  'stream.start': { runId: RunId; threadId: ThreadId }
+  'stream.start': { runId: RunId; threadId: ThreadId; agentId: AgentId }
   'stream.delta': { runId: RunId; content: string }
   'stream.done': { runId: RunId; messageId: string }
   'message.reaction': { messageId: string; agentId?: AgentId; userId?: string; emoji: string }
@@ -279,6 +279,7 @@ export type WsEventMap = {
 }
 
 export const StreamStartEventSchema = z.object({
+  agentId: AgentIdSchema,
   runId: RunIdSchema,
   threadId: ThreadIdSchema,
 })

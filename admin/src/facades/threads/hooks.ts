@@ -6,6 +6,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 
 type StreamState = {
   pendingMessages: Array<{
+    agentId: string
     content: string
     runId: string
   }>
@@ -104,12 +105,13 @@ export const useThreadStream = (threadId?: string): StreamState => {
               }
 
               const data = JSON.parse(dataLine) as {
+                agentId?: string
                 content?: string
                 runId: string
               }
 
               if (event === 'stream.start') {
-                setPendingMessages((current) => [...current, { content: '', runId: data.runId }])
+                setPendingMessages((current) => [...current, { agentId: data.agentId ?? '', content: '', runId: data.runId }])
                 continue
               }
 
