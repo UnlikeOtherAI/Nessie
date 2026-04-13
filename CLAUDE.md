@@ -35,13 +35,14 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 ## Ports — NON-NEGOTIABLE
 
 - **API**: `5554` — always. Do not kill or restart without restarting on the same port.
-- **Admin**: `5555` — always. Playwright verification MUST use `http://localhost:5555`.
+- **Admin**: `5555` — always. Kelpie verification MUST use `http://localhost:5555`.
 - Never use any other port for these services.
 
 ## Verification
 
-- Every UI/frontend change must be verified using Playwright before the work is considered done.
-- Navigate to the affected page, screenshot, and confirm correct rendering.
+- Every UI/frontend change must be verified using kelpie before the work is considered done.
+- Run `kelpie "http://localhost:5555/<path>"` to screenshot the affected page and confirm correct rendering.
+- Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched.
 
 ## MCP Integration
 
