@@ -298,38 +298,17 @@ export const loadAgentChildren = async (
 ): Promise<AgentChild[]> => {
   const agents = await prisma.agent.findMany({
     where: { parentAgentId: agentId },
-    include: {
-      tasks: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-    },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: 'asc' },
   })
 
-  const cutoff = Date.now() - 60 * 60 * 1000
-  const recentAgents = agents.filter((agent) => agent.createdAt.getTime() >= cutoff)
-  const selectedAgents = recentAgents.length >= 10 ? recentAgents : agents.slice(0, 10)
-
-  return selectedAgents
-    .map((agent) => {
-      const task = agent.tasks[0]
-      if (!task) {
-        return null
-      }
-
-      return {
-        agentId: parseAgentId(agent.id),
-        name: agent.name,
-        status: agent.status,
-        taskId: parseTaskId(task.id),
-        purpose: task.purpose ?? undefined,
-        parentAgentId: parseAgentId(agentId),
-        spawnedAt: agent.createdAt.toISOString(),
-      }
-    })
-    .filter((value): value is NonNullable<typeof value> => value !== null)
-    .reverse()
+  return agents.map((agent) => ({
+    agentId: parseAgentId(agent.id),
+    name: agent.name,
+    status: agent.status,
+    purpose: agent.role ?? undefined,
+    parentAgentId: parseAgentId(agentId),
+    createdAt: agent.createdAt.toISOString(),
+  }))
 }
 
 export const loadRunToolCalls = async (

@@ -90,10 +90,10 @@ export const SubAgentPopup = ({
         <div className="flex items-center justify-between border-b border-[color:var(--sep)] px-5 py-4">
           <div>
             <h2 className="text-lg font-bold text-white">
-              Sub-agents of {parentAgentName}
+              Team under {parentAgentName}
             </h2>
             <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
-              {children.length} sub-agent{children.length !== 1 ? 's' : ''}
+              {children.length} team member{children.length !== 1 ? 's' : ''}
             </p>
           </div>
           <button
@@ -130,7 +130,7 @@ export const SubAgentPopup = ({
                   'tracking-[0.16em] text-[color:var(--tx3)]',
                 ].join(' ')}
               >
-                Current sub-agents
+                Team members
               </div>
 
               {children.map((child) => (
@@ -170,14 +170,14 @@ export const SubAgentPopup = ({
 
           {children.length === 0 && (
             <div className="px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
-              No sub-agents yet.
+              No team members yet.
             </div>
           )}
 
           {/* Create sub-agent */}
           <div className="mt-2 border-t border-[color:var(--sep)] pt-2">
             <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-              Create sub-agent
+              Add team member
             </div>
 
             <div className="space-y-2 px-3 py-2">

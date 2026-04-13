@@ -675,10 +675,10 @@ export const AgentChildSchema = z.object({
   agentId: AgentIdSchema,
   name: NonEmptyStringSchema,
   status: AgentStatusSchema,
-  taskId: TaskIdSchema,
+  taskId: TaskIdSchema.optional(),
   purpose: z.string().optional(),
   parentAgentId: AgentIdSchema,
-  spawnedAt: TimestampSchema,
+  createdAt: TimestampSchema,
 })
 export type AgentChild = z.infer<typeof AgentChildSchema>
 

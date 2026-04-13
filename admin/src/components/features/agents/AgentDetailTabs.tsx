@@ -17,10 +17,10 @@ import { ToolExecutionLog } from './ToolExecutionLog'
 type Tab = 'activity' | 'sub-agents' | 'tools' | 'messages'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'activity', label: 'Current Activity' },
-  { id: 'sub-agents', label: 'Sub Agent Tree' },
-  { id: 'tools', label: 'Available Tools' },
-  { id: 'messages', label: 'Last Messages' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'sub-agents', label: 'Sub-Agents' },
+  { id: 'tools', label: 'Tools' },
+  { id: 'messages', label: 'Messages' },
 ]
 
 const PAGE_SIZE = 10
@@ -59,19 +59,20 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
     setMessagePage(0)
   }
 
+  const activeIndex = TABS.findIndex((t) => t.id === activeTab)
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-shrink-0 overflow-x-auto border-b border-[color:var(--sep)]">
+      <div className="relative flex-shrink-0 border-b border-[color:var(--sep)]">
         <div className="flex">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               className={[
-                'flex-shrink-0 border-b-2 px-4 py-3 text-xs font-semibold',
-                'uppercase tracking-[0.12em] transition-colors',
+                'flex-1 py-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] transition-colors',
                 activeTab === tab.id
-                  ? 'border-[#7c3aed] text-white'
-                  : 'border-transparent text-[color:var(--tx3)] hover:text-[color:var(--tx2)]',
+                  ? 'text-white'
+                  : 'text-[color:var(--tx3)] hover:text-[color:var(--tx2)]',
               ].join(' ')}
               onClick={() => handleTabChange(tab.id)}
               type="button"
@@ -79,6 +80,15 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
               {tab.label}
             </button>
           ))}
+        </div>
+        <div
+          className="absolute bottom-0 left-0 flex transition-transform duration-200 ease-out"
+          style={{
+            width: `${100 / TABS.length}%`,
+            transform: `translateX(${activeIndex * 100}%)`,
+          }}
+        >
+          <div className="mx-4 h-[2px] flex-1 rounded-full bg-[#7c3aed]" />
         </div>
       </div>
 

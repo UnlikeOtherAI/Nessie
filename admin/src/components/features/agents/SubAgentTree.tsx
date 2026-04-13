@@ -15,7 +15,7 @@ export const SubAgentTree = ({ onSelect, selectedAgentId, subAgents }: SubAgentT
       Sub-agent tree
     </div>
     {subAgents.length === 0 ? (
-      <EmptyState>No sub-agents have been spawned from this agent yet.</EmptyState>
+      <EmptyState>This agent has no team members yet.</EmptyState>
     ) : (
       subAgents.map((agent) => (
         <div
@@ -28,10 +28,10 @@ export const SubAgentTree = ({ onSelect, selectedAgentId, subAgents }: SubAgentT
         >
           <AgentRow
             currentTask={agent.purpose}
-            footer={`spawned ${new Date(agent.spawnedAt).toLocaleString()}`}
+            footer={agent.purpose ?? 'team member'}
             onClick={() => onSelect(agent.agentId)}
             statusDot={<AgentStatusDot status={agent.status} />}
-            subtitle="sub-agent"
+            subtitle="team member"
             title={agent.name}
           />
         </div>
