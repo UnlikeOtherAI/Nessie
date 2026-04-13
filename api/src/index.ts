@@ -29,6 +29,7 @@ import {
   RecordThoughtRecallSignalBodySchema,
   RecordOutcomeBodySchema,
   SearchThoughtsBodySchema,
+  UpdatePreferencesSchema,
   WsClientMessageSchema,
   parseAgentId,
   parseChannelId,
@@ -1024,6 +1025,26 @@ export const buildApp = async () => {
     }
 
     return createApiResponse(MeResponseSchema.parse(authenticatedState.me))
+  })
+
+  app.patch('/api/auth/me/preferences', async (request, reply) => {
+    const authenticatedState = await authenticateRequest(request, reply)
+    if (!authenticatedState) {
+      return reply
+    }
+
+    const body = parseInput(UpdatePreferencesSchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: authenticatedState.claims.sub },
+      data: { preferences: body },
+    })
+
+    const me = await buildMeResponse(prisma, updatedUser, authenticatedState.claims, config)
+    return createApiResponse(MeResponseSchema.parse(me))
   })
 
   app.post('/api/auth/bootstrap', { config: { public: true } }, async (request, reply) => {

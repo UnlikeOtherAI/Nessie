@@ -51,7 +51,7 @@ export type AdminShellOutletContext = {
 export const AdminShellLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, me, sessionState } = useAuthSession();
+  const { logout, me, sessionState, token } = useAuthSession();
   const { data: channels = [] } = useChannels();
   const { data: agents = [] } = useAgents();
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
@@ -76,15 +76,7 @@ export const AdminShellLayout = () => {
   );
   const [dmCollapsed, setDmCollapsed] = useState(() => getCookie('dmCollapsed') === '1');
   const [starred, setStarred] = useState<Array<{ type: 'channel' | 'user'; id: string }>>(
-    () => {
-      try {
-        return JSON.parse(
-          localStorage.getItem('nessie-starred') ?? '[]',
-        ) as Array<{ type: 'channel' | 'user'; id: string }>;
-      } catch {
-        return [];
-      }
-    },
+    () => me?.user.preferences?.starred ?? [],
   );
 
   const openCreateChannel = useCallback(() => setCreateChannelOpen(true), []);
@@ -114,16 +106,28 @@ export const AdminShellLayout = () => {
     });
   }, []);
 
+  useEffect(() => {
+    setStarred(me?.user.preferences?.starred ?? []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.user.id]);
+
   const toggleStar = useCallback((type: 'channel' | 'user', id: string) => {
     setStarred((prev) => {
       const exists = prev.some((s) => s.type === type && s.id === id);
       const next = exists
         ? prev.filter((s) => !(s.type === type && s.id === id))
         : [...prev, { type, id }];
-      localStorage.setItem('nessie-starred', JSON.stringify(next));
+      if (token) {
+        const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
+        void fetch(`${baseUrl}/api/auth/me/preferences`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ starred: next }),
+        });
+      }
       return next;
     });
-  }, []);
+  }, [token]);
 
   const scopedAgents = agents;
 

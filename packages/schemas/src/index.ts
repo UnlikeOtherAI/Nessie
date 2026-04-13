@@ -550,6 +550,14 @@ export const AuthProviderResponseTypeSchema = z.enum([
 ])
 export type AuthProviderResponseType = z.infer<typeof AuthProviderResponseTypeSchema>
 
+export const UserPreferencesSchema = z.object({
+  starred: z.array(z.object({
+    type: z.enum(['channel', 'user']),
+    id: z.string(),
+  })).optional(),
+})
+export type UserPreferences = z.infer<typeof UserPreferencesSchema>
+
 export const MeUserSchema = z.object({
   id: UserIdSchema,
   email: z.string().email(),
@@ -557,8 +565,11 @@ export const MeUserSchema = z.object({
   avatarUrl: z.string().url().optional(),
   pronouns: z.string().optional(),
   roleIds: z.array(NonEmptyStringSchema),
+  preferences: UserPreferencesSchema.optional(),
 })
 export type MeUser = z.infer<typeof MeUserSchema>
+
+export const UpdatePreferencesSchema = UserPreferencesSchema
 
 export const MeSessionSchema = z.object({
   sessionId: NonEmptyStringSchema,

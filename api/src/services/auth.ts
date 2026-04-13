@@ -130,6 +130,7 @@ export const buildMeResponse = async (
       avatarUrl: user.avatarUrl ?? undefined,
       pronouns: user.pronouns ?? undefined,
       roleIds: claims.roles,
+      preferences: (user.preferences as Record<string, unknown> | null) ?? undefined,
     },
     session: {
       sessionId: claims.sid,
