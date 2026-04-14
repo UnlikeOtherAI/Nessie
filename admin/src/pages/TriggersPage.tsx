@@ -54,6 +54,7 @@ export const TriggersPage = () => {
               {triggers.map((trigger) => (
                 <div
                   key={trigger.id}
+                  id={`trigger-${trigger.id}`}
                   className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-3"
                 >
                   <div className="flex items-center justify-between gap-3">

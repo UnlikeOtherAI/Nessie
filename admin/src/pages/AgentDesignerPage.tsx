@@ -1,5 +1,10 @@
 import { useMemo } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
@@ -17,6 +22,7 @@ const DEFAULT_TOOLS: Record<string, boolean> = {
 }
 
 export const AgentDesignerPage = () => {
+  const location = useLocation()
   const navigate = useNavigate()
   const { agentId } = useParams<{ agentId?: string }>()
   const [searchParams] = useSearchParams()
@@ -44,6 +50,38 @@ export const AgentDesignerPage = () => {
   const updateAgent = useUpdateAgent()
 
   const isSaving = createAgent.isPending || updateAgent.isPending
+
+  const returnTo = useMemo(() => {
+    const state = location.state
+    if (
+      state &&
+      typeof state === 'object' &&
+      'returnTo' in state &&
+      typeof state.returnTo === 'string'
+    ) {
+      return state.returnTo
+    }
+    return null
+  }, [location.state])
+
+  const handleBack = () => {
+    const historyIndex =
+      typeof window.history.state?.idx === 'number'
+        ? window.history.state.idx
+        : 0
+
+    if (historyIndex > 0) {
+      void navigate(-1)
+      return
+    }
+
+    if (returnTo) {
+      void navigate(returnTo, { replace: true })
+      return
+    }
+
+    void navigate('/agents', { replace: true })
+  }
 
   const handleSave = async () => {
     if (!state.name.trim()) return
@@ -77,10 +115,6 @@ export const AgentDesignerPage = () => {
     void navigate('/agents')
   }
 
-  const handleCancel = () => {
-    void navigate('/agents')
-  }
-
   return (
     <div className="flex h-full flex-col">
       {/* Top bar */}
@@ -92,7 +126,7 @@ export const AgentDesignerPage = () => {
               'text-[color:var(--tx3)] transition-colors',
               'hover:bg-white/10 hover:text-white',
             ].join(' ')}
-            onClick={handleCancel}
+            onClick={handleBack}
             title="Back to agents"
             type="button"
           >
@@ -113,7 +147,7 @@ export const AgentDesignerPage = () => {
         <div className="flex items-center gap-2">
           <button
             className="admin-button admin-button-secondary"
-            onClick={handleCancel}
+            onClick={handleBack}
             type="button"
           >
             Cancel
