@@ -45,6 +45,24 @@ export const ModelConfigSchema = z.object({
 })
 export type ModelConfig = z.infer<typeof ModelConfigSchema>
 
+export const TransportTypeSchema = z.enum(['stdio', 'http'])
+export type TransportType = z.infer<typeof TransportTypeSchema>
+
+export const McpServerConfigSchema = z.object({
+  name: z.string().min(1),
+  command: z.string().min(1).optional(),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string()).optional(),
+  transport: TransportTypeSchema.default('stdio'),
+  url: z.string().url().optional(),
+})
+export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
+
+export const McpConfigSchema = z.object({
+  servers: z.array(McpServerConfigSchema).default([]),
+})
+export type McpConfig = z.infer<typeof McpConfigSchema>
+
 export const NessieConfigSchema = z.object({
   mode: NessieModeSchema,
   auth: z.object({
@@ -74,6 +92,7 @@ export const NessieConfigSchema = z.object({
     projectId: z.string().min(1).optional(),
   }),
   model: ModelConfigSchema,
+  mcp: McpConfigSchema.default({ servers: [] }),
   api: z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.number().int().positive().default(5554),
@@ -87,6 +106,7 @@ export const RuntimeCapabilitiesSchema = z.object({
   hasExternalAuth: z.boolean(),
   hasPubSub: z.boolean(),
   hasModelProvider: z.boolean(),
+  hasMcpClient: z.boolean(),
 })
 export type RuntimeCapabilities = z.infer<typeof RuntimeCapabilitiesSchema>
 
@@ -143,6 +163,9 @@ const DEFAULT_CONFIG: NessieConfig = {
     provider: 'openai',
     maxTokens: 2048,
     temperature: 0.2,
+  },
+  mcp: {
+    servers: [],
   },
   api: {
     host: '0.0.0.0',
@@ -296,6 +319,7 @@ export const deriveRuntimeCapabilities = (config: NessieConfig): RuntimeCapabili
     ),
     hasPubSub: config.queue.provider === 'pubsub',
     hasModelProvider: Boolean(config.model.apiKey),
+    hasMcpClient: config.mcp.servers.length > 0,
   })
 
 export const loadConfig = (options: LoadConfigOptions = {}): NessieConfig => {
