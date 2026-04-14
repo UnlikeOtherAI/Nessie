@@ -10,6 +10,7 @@ import { ChannelsPage } from './pages/ChannelsPage'
 import { LoginPage } from './pages/LoginPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ToolsPage } from './pages/ToolsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
 import { TriggersPage } from './pages/TriggersPage'
 import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
@@ -66,6 +67,10 @@ export const router = createBrowserRouter([
       {
         path: '/agents/workflows',
         element: <WorkflowsPage />,
+      },
+      {
+        path: '/agents/tools',
+        element: <ToolsPage />,
       },
       {
         path: '/settings',

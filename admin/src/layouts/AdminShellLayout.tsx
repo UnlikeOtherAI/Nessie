@@ -60,6 +60,7 @@ export const AdminShellLayout = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
+  const isToolsRoute = location.pathname.startsWith('/tools');
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
@@ -312,6 +313,41 @@ export const AdminShellLayout = () => {
             <span className="admin-rail-btn-label">Agents</span>
           </Link>
 
+          <Link
+            className={`admin-rail-btn ${isToolsRoute ? 'active' : ''}`}
+            to="/tools"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M14.7 6.3a3 3 0 104.243 4.243l-3.18 3.18-4.243-4.243 3.18-3.18z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M4 20l5.25-5.25"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M9.75 14.25L12 16.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M5 16l3 3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="admin-rail-btn-label">Tools</span>
+          </Link>
+
           <div className="my-2 h-px w-8 bg-white/15" />
 
           <Link
@@ -527,6 +563,16 @@ export const AdminShellLayout = () => {
                   ),
                 },
                 {
+                  path: '/agents/tools',
+                  label: 'Tools',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path d="M14.7 6.3a4 4 0 105 5l-6.9 6.9a2 2 0 11-2.8-2.8l6.9-6.9a4 4 0 00-2.2-2.2z" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M7 17l-1.5 1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+                {
                   path: '/agents/activity',
                   label: 'Activity',
                   icon: (
@@ -557,7 +603,59 @@ export const AdminShellLayout = () => {
           </aside>
         )}
 
-        {!isAgentsRoute && (
+        {isToolsRoute && (
+          <aside
+            className={[
+              'hidden h-full w-[220px] flex-col overflow-hidden',
+              'border-r border-[color:var(--sep)] bg-[color:var(--sb)] md:flex',
+            ].join(' ')}
+          >
+            <div className="flex h-[50px] items-center px-4">
+              <span className="text-[15px] font-bold text-white">Tools</span>
+            </div>
+            <nav className="flex flex-1 flex-col gap-0.5 px-2 py-1">
+              <Link
+                className={[
+                  'admin-sb-item flex items-center gap-2.5 px-3 py-2 text-[13px]',
+                  location.pathname === '/tools' ? 'active' : '',
+                ].join(' ')}
+                to="/tools"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M14.7 6.3a3 3 0 104.243 4.243l-3.18 3.18-4.243-4.243 3.18-3.18z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M4 20l5.25-5.25"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M9.75 14.25L12 16.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M5 16l3 3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Tools
+              </Link>
+            </nav>
+          </aside>
+        )}
+
+        {!isAgentsRoute && !isToolsRoute && (
           <aside
             className={[
               'hidden h-full w-[260px] flex-col overflow-hidden',
