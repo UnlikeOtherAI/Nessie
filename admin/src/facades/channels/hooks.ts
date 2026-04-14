@@ -21,6 +21,7 @@ export const useOpenDm = () => {
       apiClient.post<ChannelRecord>(`/api/dm/${userId}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
     },
   })
 }
