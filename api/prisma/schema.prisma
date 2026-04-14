@@ -1625,8 +1625,11 @@ model ThoughtRecall {
   id            String                      @id @default(uuid()) @db.Uuid
   thoughtId      String                     @map("thought_id") @db.Uuid
   thought        Thought                    @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
+  requesterUserId String?                   @map("requester_user_id") @db.Uuid
   sessionId      String?                    @map("session_id")
   channelId      String?                    @map("channel_id") @db.Uuid
+  outputAudienceType ThoughtAudienceType?   @map("output_audience_type")
+  outputAudienceId String?                  @map("output_audience_id") @db.Uuid
   queryText      String                     @map("query_text")
   queryEmbedding Unsupported("vector(1536)")? @map("query_embedding")
   similarity     Float?
@@ -1638,7 +1641,9 @@ model ThoughtRecall {
   createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([thoughtId])
+  @@index([requesterUserId, createdAt(sort: Desc)])
   @@index([sessionId, createdAt(sort: Desc)])
+  @@index([outputAudienceType, outputAudienceId, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("thought_recalls")
 }

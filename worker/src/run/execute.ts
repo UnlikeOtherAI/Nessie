@@ -549,6 +549,8 @@ const retrieveRelevantMemories = async (
         limit: MAX_MEMORY_RESULTS,
         mode: 'hybrid',
         organizationId: context.channel.organizationId,
+        outputAudienceId: context.channel.id,
+        outputAudienceType: 'channel',
         query: prompt,
         sessionId: payload.actorContext.actionContext.sessionId,
         userId: payload.actorContext.actor.actorId,

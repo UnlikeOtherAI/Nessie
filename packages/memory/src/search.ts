@@ -1,5 +1,5 @@
 import type { ModelClient } from '@nessie/runtime'
-import type { ThoughtSearchMode } from '@nessie/schemas'
+import type { ThoughtAudienceType, ThoughtSearchMode } from '@nessie/schemas'
 import type { Pool } from 'pg'
 import { logRecalls, type LoggedRecall, type RecallLogEntry } from './recalls.js'
 import { getEmbedding } from './embed.js'
@@ -10,6 +10,8 @@ export type SearchThoughtsInput = {
   query: string
   organizationId: string
   userId: string
+  outputAudienceType: ThoughtAudienceType
+  outputAudienceId: string
   threshold?: number
   limit?: number
   includeReasoning?: boolean
@@ -101,21 +103,45 @@ const buildSearchQuery = (
 
   if (mode === 'semantic') {
     return {
-      sql: 'SELECT * FROM match_thoughts_scoped($1::vector, $2, $3, $4, $5)',
-      params: [embeddingStr, input.organizationId, input.userId, threshold, limit],
+      sql: 'SELECT * FROM match_thoughts_scoped($1::vector, $2::uuid, $3::uuid, $4::"ThoughtAudienceType", $5::uuid, $6, $7)',
+      params: [
+        embeddingStr,
+        input.organizationId,
+        input.userId,
+        input.outputAudienceType,
+        input.outputAudienceId,
+        threshold,
+        limit,
+      ],
     }
   }
 
   if (mode === 'lexical') {
     return {
-      sql: 'SELECT * FROM match_thoughts_lexical($1, $2, $3, $4)',
-      params: [input.query, input.organizationId, input.userId, limit],
+      sql: 'SELECT * FROM match_thoughts_lexical($1, $2::uuid, $3::uuid, $4::"ThoughtAudienceType", $5::uuid, $6)',
+      params: [
+        input.query,
+        input.organizationId,
+        input.userId,
+        input.outputAudienceType,
+        input.outputAudienceId,
+        limit,
+      ],
     }
   }
 
   return {
-    sql: 'SELECT * FROM match_thoughts_hybrid($1::vector, $2, $3, $4, $5, $6)',
-    params: [embeddingStr, input.query, input.organizationId, input.userId, threshold, limit],
+    sql: 'SELECT * FROM match_thoughts_hybrid($1::vector, $2, $3::uuid, $4::uuid, $5::"ThoughtAudienceType", $6::uuid, $7, $8)',
+    params: [
+      embeddingStr,
+      input.query,
+      input.organizationId,
+      input.userId,
+      input.outputAudienceType,
+      input.outputAudienceId,
+      threshold,
+      limit,
+    ],
   }
 }
 
@@ -161,8 +187,11 @@ const buildRecallLogEntries = (
 ): RecallLogEntry[] =>
   results.map((result) => ({
     thoughtId: result.id,
+    requesterUserId: input.userId,
     sessionId: input.sessionId,
     channelId: input.channelId,
+    outputAudienceType: input.outputAudienceType,
+    outputAudienceId: input.outputAudienceId,
     queryText: input.query,
     queryEmbedding,
     similarity: result.similarity,

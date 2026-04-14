@@ -1,4 +1,5 @@
 import type { ModelClient } from '@nessie/runtime'
+import type { ThoughtAudienceType, ThoughtVisibility } from '@nessie/schemas'
 import type { Pool } from 'pg'
 import { computeFingerprint } from './fingerprint.js'
 import { getEmbedding } from './embed.js'
@@ -9,11 +10,14 @@ export type CaptureThoughtInput = {
   content: string
   ownerId: string
   ownerType: 'user' | 'agent' | 'service'
+  audienceType?: ThoughtAudienceType
+  audienceId?: string
   organizationId: string
   projectId?: string
   teamId?: string
   channelId?: string
   threadId?: string
+  userId?: string
   visibility?: 'private' | 'channel' | 'team' | 'project' | 'organization'
   sensitivityTier?: 'normal' | 'sensitive' | 'restricted'
   importance?: number
@@ -35,18 +39,121 @@ export type CaptureConfig = {
   modelClient: ModelClient
 }
 
+const AUDIENCE_TYPE_BY_VISIBILITY: Record<ThoughtVisibility, ThoughtAudienceType> = {
+  private: 'user',
+  channel: 'channel',
+  team: 'team',
+  project: 'project',
+  organization: 'organization',
+}
+
+const VISIBILITY_BY_AUDIENCE_TYPE: Record<ThoughtAudienceType, ThoughtVisibility> = {
+  user: 'private',
+  channel: 'channel',
+  team: 'team',
+  project: 'project',
+  organization: 'organization',
+}
+
+const resolveAudience = (
+  input: CaptureThoughtInput,
+): { audienceId: string; audienceType: ThoughtAudienceType; userId: string | null } => {
+  const audienceType = input.audienceType
+    ?? AUDIENCE_TYPE_BY_VISIBILITY[input.visibility ?? 'private']
+
+  switch (audienceType) {
+    case 'user': {
+      const userId = input.audienceId
+        ?? input.userId
+        ?? (input.ownerType === 'user' ? input.ownerId : undefined)
+      if (!userId) {
+        throw new Error('User-scoped memory requires a user audience ID')
+      }
+
+      return {
+        audienceType,
+        audienceId: userId,
+        userId,
+      }
+    }
+    case 'channel': {
+      const audienceId = input.audienceId ?? input.channelId
+      if (!audienceId) {
+        throw new Error('Channel-scoped memory requires a channel ID')
+      }
+
+      return { audienceType, audienceId, userId: null }
+    }
+    case 'team': {
+      const audienceId = input.audienceId ?? input.teamId
+      if (!audienceId) {
+        throw new Error('Team-scoped memory requires a team ID')
+      }
+
+      return { audienceType, audienceId, userId: null }
+    }
+    case 'project': {
+      const audienceId = input.audienceId ?? input.projectId
+      if (!audienceId) {
+        throw new Error('Project-scoped memory requires a project ID')
+      }
+
+      return { audienceType, audienceId, userId: null }
+    }
+    case 'organization':
+      return {
+        audienceType,
+        audienceId: input.audienceId ?? input.organizationId,
+        userId: null,
+      }
+  }
+}
+
 export const captureThought = async (
   input: CaptureThoughtInput,
   config: CaptureConfig,
 ): Promise<CapturedThought> => {
   const contentHash = computeFingerprint(input.content)
+  const resolvedAudience = resolveAudience(input)
+  const visibility = VISIBILITY_BY_AUDIENCE_TYPE[resolvedAudience.audienceType]
 
   // Check for duplicate
   const dupCheck = await config.pool.query(
     `SELECT id, metadata FROM thoughts
-     WHERE content_hash = $1 AND organization_id = $2 AND deleted_at IS NULL
+     WHERE content_hash = $1
+       AND organization_id = $2
+       AND deleted_at IS NULL
+       AND resolve_thought_audience_type(
+         audience_type,
+         visibility,
+         owner_type,
+         owner_id,
+         user_id
+       ) = $3::"ThoughtAudienceType"
+       AND resolve_thought_audience_id(
+         audience_id,
+         resolve_thought_audience_type(
+           audience_type,
+           visibility,
+           owner_type,
+           owner_id,
+           user_id
+         ),
+         organization_id,
+         project_id,
+         team_id,
+         channel_id,
+         user_id,
+         owner_type,
+         owner_id
+       ) = $4::uuid
      LIMIT 1`,
-    [contentHash, input.organizationId],
+    [
+      contentHash,
+      input.organizationId,
+      resolvedAudience.audienceType,
+      resolvedAudience.audienceId,
+    ],
   )
 
   const dupRow = dupCheck.rows[0] as { id: string; metadata: unknown } | undefined
@@ -71,19 +178,20 @@ export const captureThought = async (
   ])
 
   // Insert thought
-  const visibility = input.visibility ?? 'private'
   const sensitivityTier = input.sensitivityTier ?? 'normal'
   const importance = input.importance ?? 0.5
 
   const insertResult = await config.pool.query(
     `INSERT INTO thoughts (
       id, content, content_hash, embedding, owner_id, owner_type,
-      organization_id, project_id, team_id, channel_id, thread_id,
+      audience_type, audience_id,
+      organization_id, project_id, team_id, channel_id, thread_id, user_id,
       visibility, sensitivity_tier, importance, metadata, created_at, updated_at
     ) VALUES (
       gen_random_uuid(), $1, $2, $3::vector, $4, $5,
-      $6, $7, $8, $9, $10,
-      $11, $12, $13, $14, now(), now()
+      $6::"ThoughtAudienceType", $7::uuid,
+      $8, $9, $10, $11, $12, $13,
+      $14, $15, $16, $17, now(), now()
     ) RETURNING id, created_at`,
     [
       input.content,
@@ -91,11 +199,14 @@ export const captureThought = async (
       embedding ? `[${embedding.join(',')}]` : null,
       input.ownerId,
       input.ownerType,
+      resolvedAudience.audienceType,
+      resolvedAudience.audienceId,
       input.organizationId,
       input.projectId ?? null,
       input.teamId ?? null,
       input.channelId ?? null,
       input.threadId ?? null,
+      resolvedAudience.userId,
       visibility,
       sensitivityTier,
       importance,

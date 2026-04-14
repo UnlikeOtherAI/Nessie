@@ -1944,6 +1944,15 @@ export const ThoughtVisibilitySchema = z.enum([
 ])
 export type ThoughtVisibility = z.infer<typeof ThoughtVisibilitySchema>
 
+export const ThoughtAudienceTypeSchema = z.enum([
+  'user',
+  'channel',
+  'team',
+  'project',
+  'organization',
+])
+export type ThoughtAudienceType = z.infer<typeof ThoughtAudienceTypeSchema>
+
 export const SensitivityTierSchema = z.enum(['normal', 'sensitive', 'restricted'])
 export type SensitivityTier = z.infer<typeof SensitivityTierSchema>
 
@@ -1985,6 +1994,7 @@ export type ThoughtRecallUserSignal = z.infer<typeof ThoughtRecallUserSignalSche
 
 export const CaptureThoughtBodySchema = z.object({
   content: z.string().min(1).max(50000),
+  audienceType: ThoughtAudienceTypeSchema.optional(),
   visibility: ThoughtVisibilitySchema.optional(),
   sensitivityTier: SensitivityTierSchema.optional(),
   importance: z.number().min(0).max(1).optional(),

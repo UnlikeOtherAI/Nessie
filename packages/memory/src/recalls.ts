@@ -1,12 +1,19 @@
-import type { ThoughtRecallUserSignal, ThoughtSearchMode } from '@nessie/schemas'
+import type {
+  ThoughtAudienceType,
+  ThoughtRecallUserSignal,
+  ThoughtSearchMode,
+} from '@nessie/schemas'
 import type { Pool } from 'pg'
 
 type Queryable = Pick<Pool, 'query'>
 
 export type RecallLogEntry = {
   thoughtId: string
+  requesterUserId: string
   sessionId?: string
   channelId?: string
+  outputAudienceType: ThoughtAudienceType
+  outputAudienceId: string
   queryText: string
   queryEmbedding: number[] | null
   similarity: number
@@ -26,6 +33,7 @@ export type LoggedRecall = {
 export type RecordRecallSignalInput = {
   recallId: string
   organizationId: string
+  requesterUserId: string
   userSignal: ThoughtRecallUserSignal
 }
 
@@ -44,8 +52,11 @@ export const logRecalls = async (
     `INSERT INTO thought_recalls (
        id,
        thought_id,
+       requester_user_id,
        session_id,
        channel_id,
+       output_audience_type,
+       output_audience_id,
        query_text,
        query_embedding,
        similarity,
@@ -57,8 +68,11 @@ export const logRecalls = async (
      SELECT
        gen_random_uuid(),
        recall.thought_id,
+       recall.requester_user_id,
        recall.session_id,
        recall.channel_id,
+       recall.output_audience_type,
+       recall.output_audience_id,
        recall.query_text,
        CASE
          WHEN recall.query_embedding IS NULL THEN NULL
@@ -71,19 +85,25 @@ export const logRecalls = async (
        recall.was_referenced
      FROM unnest(
        $1::uuid[],
-       $2::text[],
-       $3::uuid[],
-       $4::text[],
-       $5::text[],
-       $6::float8[],
-       $7::int[],
+       $2::uuid[],
+       $3::text[],
+       $4::uuid[],
+       $5::"ThoughtAudienceType"[],
+       $6::uuid[],
+       $7::text[],
        $8::text[],
-       $9::boolean[],
-       $10::boolean[]
+       $9::float8[],
+       $10::int[],
+       $11::text[],
+       $12::boolean[],
+       $13::boolean[]
      ) AS recall(
        thought_id,
+       requester_user_id,
        session_id,
        channel_id,
+       output_audience_type,
+       output_audience_id,
        query_text,
        query_embedding,
        similarity,
@@ -99,8 +119,11 @@ export const logRecalls = async (
        retrieval_mode AS "retrievalMode"`,
     [
       entries.map((entry) => entry.thoughtId),
+      entries.map((entry) => entry.requesterUserId),
       entries.map((entry) => entry.sessionId ?? null),
       entries.map((entry) => entry.channelId ?? null),
+      entries.map((entry) => entry.outputAudienceType),
+      entries.map((entry) => entry.outputAudienceId),
       entries.map((entry) => entry.queryText),
       entries.map((entry) => toVectorLiteral(entry.queryEmbedding)),
       entries.map((entry) => entry.similarity),
@@ -125,9 +148,76 @@ export const recordRecallSignal = async (
      WHERE tr.id = $2
        AND tr.thought_id = t.id
        AND t.organization_id = $3
+       AND (tr.requester_user_id IS NULL OR tr.requester_user_id = $4::uuid)
+       AND thought_requester_has_access(
+         $4::uuid,
+         resolve_thought_audience_type(
+           t.audience_type,
+           t.visibility,
+           t.owner_type,
+           t.owner_id,
+           t.user_id
+         ),
+         resolve_thought_audience_id(
+           t.audience_id,
+           resolve_thought_audience_type(
+             t.audience_type,
+             t.visibility,
+             t.owner_type,
+             t.owner_id,
+             t.user_id
+           ),
+           t.organization_id,
+           t.project_id,
+           t.team_id,
+           t.channel_id,
+           t.user_id,
+           t.owner_type,
+           t.owner_id
+         ),
+         t.organization_id
+       )
+       AND (
+         tr.output_audience_type IS NULL
+         OR tr.output_audience_id IS NULL
+         OR thought_audience_compatible_with_output(
+           resolve_thought_audience_type(
+             t.audience_type,
+             t.visibility,
+             t.owner_type,
+             t.owner_id,
+             t.user_id
+           ),
+           resolve_thought_audience_id(
+             t.audience_id,
+             resolve_thought_audience_type(
+               t.audience_type,
+               t.visibility,
+               t.owner_type,
+               t.owner_id,
+               t.user_id
+             ),
+             t.organization_id,
+             t.project_id,
+             t.team_id,
+             t.channel_id,
+             t.user_id,
+             t.owner_type,
+             t.owner_id
+           ),
+           tr.output_audience_type,
+           tr.output_audience_id,
+           t.organization_id
+         )
+       )
        AND t.deleted_at IS NULL
      RETURNING tr.id`,
-    [input.userSignal, input.recallId, input.organizationId],
+    [
+      input.userSignal,
+      input.recallId,
+      input.organizationId,
+      input.requesterUserId,
+    ],
   )
 
   return result.rowCount !== null && result.rowCount > 0

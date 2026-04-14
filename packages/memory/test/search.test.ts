@@ -73,8 +73,10 @@ test('searchAndLogThoughts logs hybrid recalls and attaches recall ids', async (
   const results = await searchAndLogThoughts(
     {
       organizationId: '33333333-3333-3333-3333-333333333333',
+      outputAudienceId: '66666666-6666-6666-6666-666666666666',
+      outputAudienceType: 'channel',
       query: 'Why do we require phone verification?',
-      userId: 'user-1',
+      userId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
     },
     {
       modelClient: {
@@ -90,13 +92,24 @@ test('searchAndLogThoughts logs hybrid recalls and attaches recall ids', async (
   assert.equal(embeddedText, 'Why do we require phone verification?')
   assert.equal(results.length, 1)
   assert.equal(results[0]?.recallId, '22222222-2222-2222-2222-222222222222')
-  assert.ok(queries.some((query) => query.sql.includes('match_thoughts_hybrid')))
+  assert.ok(
+    queries.some(
+      (query) =>
+        query.sql.includes('match_thoughts_hybrid')
+        && query.params?.[4] === 'channel'
+        && query.params?.[5] === '66666666-6666-6666-6666-666666666666',
+    ),
+  )
   assert.ok(
     queries.some(
       (query) =>
         query.sql.includes('INSERT INTO thought_recalls')
-        && Array.isArray(query.params?.[7])
-        && (query.params?.[7] as string[])[0] === 'hybrid',
+        && Array.isArray(query.params?.[1])
+        && (query.params?.[1] as string[])[0] === 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        && Array.isArray(query.params?.[4])
+        && (query.params?.[4] as string[])[0] === 'channel'
+        && Array.isArray(query.params?.[10])
+        && (query.params?.[10] as string[])[0] === 'hybrid',
     ),
   )
 })
@@ -151,8 +164,10 @@ test('searchAndLogThoughts skips embeddings for lexical mode', async () => {
     {
       mode: 'lexical',
       organizationId: '33333333-3333-3333-3333-333333333333',
+      outputAudienceId: '77777777-7777-7777-7777-777777777777',
+      outputAudienceType: 'user',
       query: 'deploy pipeline actions',
-      userId: 'user-1',
+      userId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     },
     {
       modelClient: {

@@ -214,6 +214,10 @@ import {
   listResourceLocks,
   releaseResourceLock,
 } from './services/resource-locks.js'
+import {
+  resolveThoughtCaptureAudience,
+  resolveThoughtOutputAudience,
+} from './services/thought-audiences.js'
 import { createThoughtService } from './services/thoughts.js'
 import {
   listAvailableTools,
@@ -4267,16 +4271,40 @@ export const buildApp = async () => {
     const ts = requireThoughtService(reply)
     if (!ts) return reply
 
+    const projectId = body.projectId ?? actorContext.tenant.projectId
+    const teamId = body.teamId
+      ?? actorContext.actionContext.teamId
+      ?? actorContext.tenant.teamId
+    const channelId = body.channelId
+      ?? actorContext.actionContext.channelId
+      ?? actorContext.tenant.channelId
+      ?? undefined
+    const captureAudience = resolveThoughtCaptureAudience(actorContext, {
+      audienceType: body.audienceType,
+      visibility: body.visibility,
+      projectId,
+      teamId,
+      channelId,
+    })
+    if (!captureAudience.audience) {
+      return sendApiError(reply, 400, 'INVALID_MEMORY_AUDIENCE', captureAudience.error)
+    }
+
     const result = await ts.capture({
       content: body.content,
       ownerId: actorContext.actor.actorId,
       ownerType: actorContext.actor.actorType,
+      audienceType: captureAudience.audience.audienceType,
+      audienceId: captureAudience.audience.audienceId,
       organizationId: actorContext.tenant.organizationId,
-      projectId: body.projectId ?? actorContext.tenant.projectId,
-      teamId: body.teamId ?? actorContext.tenant.teamId,
-      channelId: body.channelId ?? actorContext.tenant.channelId ?? undefined,
+      projectId,
+      teamId,
+      channelId,
       threadId: body.threadId ?? undefined,
-      visibility: body.visibility,
+      userId: captureAudience.audience.audienceType === 'user'
+        ? captureAudience.audience.audienceId
+        : undefined,
+      visibility: captureAudience.audience.visibility,
       sensitivityTier: body.sensitivityTier,
       importance: body.importance,
     })
@@ -4290,6 +4318,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
     const body = parseInput(SearchThoughtsBodySchema, request.body, reply)
     if (!body) {
       return reply
@@ -4298,11 +4330,18 @@ export const buildApp = async () => {
     const ts = requireThoughtService(reply)
     if (!ts) return reply
 
+    const outputAudience = resolveThoughtOutputAudience(actorContext)
+    if (!outputAudience.audience) {
+      return sendApiError(reply, 400, 'INVALID_MEMORY_AUDIENCE', outputAudience.error)
+    }
+
     try {
       const results = await ts.search({
         query: body.query,
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
+        outputAudienceType: outputAudience.audience.audienceType,
+        outputAudienceId: outputAudience.audience.audienceId,
         threshold: body.threshold,
         limit: body.limit,
         includeReasoning: body.includeReasoning,
@@ -4324,6 +4363,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
     const body = parseInput(RecordOutcomeBodySchema, request.body, reply)
     if (!body) {
       return reply
@@ -4333,9 +4376,18 @@ export const buildApp = async () => {
     if (!ts) return reply
 
     const { id } = request.params as { id: string }
-    const orgId = actorContext.tenant.organizationId
+    const outputAudience = resolveThoughtOutputAudience(actorContext)
+    if (!outputAudience.audience) {
+      return sendApiError(reply, 400, 'INVALID_MEMORY_AUDIENCE', outputAudience.error)
+    }
 
-    const hasAccess = await ts.verifyAccess(id, orgId)
+    const hasAccess = await ts.verifyAccess({
+      thoughtId: id,
+      organizationId: actorContext.tenant.organizationId,
+      requesterUserId: actorContext.actor.actorId,
+      outputAudienceType: outputAudience.audience.audienceType,
+      outputAudienceId: outputAudience.audience.audienceId,
+    })
     if (!hasAccess) {
       return sendApiError(reply, 404, 'THOUGHT_NOT_FOUND', 'Thought not found')
     }
@@ -4357,6 +4409,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
     const body = parseInput(RecordThoughtRecallSignalBodySchema, request.body, reply)
     if (!body) {
       return reply
@@ -4369,6 +4425,7 @@ export const buildApp = async () => {
     const updated = await ts.recordRecallSignal({
       recallId: id,
       organizationId: actorContext.tenant.organizationId,
+      requesterUserId: actorContext.actor.actorId,
       userSignal: body.userSignal,
     })
 
@@ -4385,6 +4442,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
     const body = parseInput(LinkThoughtsBodySchema, request.body, reply)
     if (!body) {
       return reply
@@ -4394,12 +4455,27 @@ export const buildApp = async () => {
     if (!ts) return reply
 
     const { id } = request.params as { id: string }
-    const orgId = actorContext.tenant.organizationId
+    const outputAudience = resolveThoughtOutputAudience(actorContext)
+    if (!outputAudience.audience) {
+      return sendApiError(reply, 400, 'INVALID_MEMORY_AUDIENCE', outputAudience.error)
+    }
 
-    // Verify both source and target belong to caller's org
+    // Verify both source and target are readable in the caller's current audience.
     const [sourceOk, targetOk] = await Promise.all([
-      ts.verifyAccess(id, orgId),
-      ts.verifyAccess(body.targetId, orgId),
+      ts.verifyAccess({
+        thoughtId: id,
+        organizationId: actorContext.tenant.organizationId,
+        requesterUserId: actorContext.actor.actorId,
+        outputAudienceType: outputAudience.audience.audienceType,
+        outputAudienceId: outputAudience.audience.audienceId,
+      }),
+      ts.verifyAccess({
+        thoughtId: body.targetId,
+        organizationId: actorContext.tenant.organizationId,
+        requesterUserId: actorContext.actor.actorId,
+        outputAudienceType: outputAudience.audience.audienceType,
+        outputAudienceId: outputAudience.audience.audienceId,
+      }),
     ])
     if (!sourceOk || !targetOk) {
       return sendApiError(reply, 404, 'THOUGHT_NOT_FOUND', 'Thought not found')

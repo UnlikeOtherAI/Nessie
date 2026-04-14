@@ -442,11 +442,10 @@ export const WorkflowsPage = () => {
 
   const sortedInstallations = useMemo(
     () =>
-      [...installations].sort((left, right) => {
-        const leftLabel = `${left.workflowTemplateId}:${left.updatedAt}`
-        const rightLabel = `${right.workflowTemplateId}:${right.updatedAt}`
-        return rightLabel.localeCompare(leftLabel)
-      }),
+      [...installations].sort(
+        (left, right) =>
+          new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+      ),
     [installations],
   )
 
@@ -619,7 +618,13 @@ export const WorkflowsPage = () => {
   return (
     <div className="h-full w-full">
       <ColumnBrowserViewport
-        activeColumn={selectedRunId ? 2 : selectedInstallation ? 1 : 0}
+        activeColumn={
+          selectedRunId
+            ? 2
+            : selectedInstallationId && selectedInstallation
+              ? 1
+              : 0
+        }
         columns={columns}
       />
     </div>
