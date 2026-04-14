@@ -5,7 +5,8 @@ import type { ModelConfig, ModelProvider } from '@nessie/config'
 import {
   createInferenceService,
   type ModelProviderConfig,
-  type ModelMessage,
+  type ProviderMessage,
+  type ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import type {
   AuthorizedActionContext,
@@ -34,10 +35,12 @@ type RunInferenceGraphInput = {
     provider: string | null
     routingProfileId: string | null
   }
-  baseMessages: ModelMessage[]
+  baseMessages: ProviderMessage[]
   modelConfig: ModelConfig
   onVisibleTextDelta?: (delta: string) => Promise<void>
   organizationId: string
+  tools?: ToolSchemaDescriptor[]
+  toolChoice?: 'auto' | 'none' | 'required'
 }
 
 type PersistInvocationLedgerInput = {
@@ -135,9 +138,9 @@ const resolveBoundApiKey = (authSecretRef: string | null | undefined): string =>
   authSecretRef ? process.env[authSecretRef] ?? '' : ''
 
 const buildVisibleStageMessages = (
-  baseMessages: ModelMessage[],
+  baseMessages: ProviderMessage[],
   upstream: CandidateOutput[],
-): ModelMessage[] => {
+): ProviderMessage[] => {
   if (upstream.length === 0) {
     return baseMessages
   }
@@ -166,7 +169,7 @@ const buildVisibleStageMessages = (
         'Use them as intermediate context when producing the final answer.',
         upstreamContext,
       ].join('\n\n'),
-      role: 'system',
+      role: 'system' as const,
     },
   ]
 }
@@ -508,7 +511,7 @@ const executeStage = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     emitBufferedOutput?: boolean
     mode: RoutingMode
     modelConfig: ModelConfig
@@ -519,6 +522,8 @@ const executeStage = async (
     stage: RouteStage
     stageIndex: number
     stream: boolean
+    toolChoice?: 'auto' | 'none' | 'required'
+    tools?: ToolSchemaDescriptor[]
     upstream: CandidateOutput[]
   },
 ): Promise<StageExecutionSuccess> => {
@@ -566,6 +571,8 @@ const executeStage = async (
         model: providerConfig.model,
         requestId,
         temperature: input.modelConfig.temperature,
+        tools: input.tools,
+        toolChoice: input.toolChoice,
       })
       if (!source) {
         throw new Error(`Provider ${providerConfig.providerKey} does not support streaming`)
@@ -590,6 +597,8 @@ const executeStage = async (
         model: providerConfig.model,
         requestId,
         temperature: input.modelConfig.temperature,
+        tools: input.tools,
+        toolChoice: input.toolChoice,
       })
       outputText = result.outputText
       invocation = result.invocations.at(-1)
@@ -686,12 +695,14 @@ const executeSingleMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
     routeSource: 'direct' | 'routing-profile'
+    tools?: ToolSchemaDescriptor[]
+    toolChoice?: 'auto' | 'none' | 'required'
   },
 ): Promise<MultiProviderResult> => {
   const stage = input.route.stages[0]
@@ -722,6 +733,8 @@ const executeSingleMode = async (
     stage,
     stageIndex: 0,
     stream: input.route.streamLive,
+    toolChoice: input.toolChoice,
+    tools: input.tools,
     upstream: [],
   })
 
@@ -746,7 +759,7 @@ const executeFallbackMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
@@ -819,7 +832,7 @@ const executeCommitteeMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
@@ -969,7 +982,7 @@ const executePipelineMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
@@ -1088,7 +1101,7 @@ const executeShadowMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
@@ -1293,6 +1306,8 @@ export const runInferenceGraph = async (
         organizationId: input.organizationId,
         route,
         routeSource,
+        toolChoice: input.toolChoice,
+        tools: input.tools,
       })
     case 'fallback':
       return executeFallbackMode(prisma, {

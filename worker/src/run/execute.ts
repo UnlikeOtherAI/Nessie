@@ -10,7 +10,6 @@ import { loadConfig } from '@nessie/config'
 import type {
   InvocationRecord,
   ModelClient,
-  ModelMessage,
   PgRealtimeTransport,
   ProviderMessage,
   QueueProvider,
@@ -820,7 +819,7 @@ export const executeRunJob = async (
             provider: context.agent.provider,
             routingProfileId: null,
           },
-          baseMessages: messages as unknown as ModelMessage[],
+          baseMessages: messages,
           modelConfig: runtimeModelConfig,
           organizationId: context.channel.organizationId,
         })
