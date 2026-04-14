@@ -45,8 +45,25 @@ export const ModelConfigSchema = z.object({
 })
 export type ModelConfig = z.infer<typeof ModelConfigSchema>
 
+export const ExecProxyConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  binary: z.string().min(1).default('rtk'),
+  commands: z.array(z.string().min(1)).default([]),
+})
+export type ExecProxyConfig = z.infer<typeof ExecProxyConfigSchema>
+
+export const AgentConfigSchema = z.object({
+  execProxy: ExecProxyConfigSchema.default({
+    enabled: false,
+    binary: 'rtk',
+    commands: [],
+  }),
+})
+export type AgentConfig = z.infer<typeof AgentConfigSchema>
+
 export const NessieConfigSchema = z.object({
   mode: NessieModeSchema,
+  agent: AgentConfigSchema.default({}),
   auth: z.object({
     providers: z.array(AuthProviderConfigSchema),
     autoRedirectToSso: z.boolean().default(false),
@@ -92,6 +109,8 @@ export type RuntimeCapabilities = z.infer<typeof RuntimeCapabilitiesSchema>
 
 export const ConfigEnvMap = {
   NESSIE_MODE: 'mode',
+  NESSIE_AGENT_EXEC_PROXY_ENABLED: 'agent.execProxy.enabled',
+  NESSIE_AGENT_EXEC_PROXY_BINARY: 'agent.execProxy.binary',
   NESSIE_AUTH_AUTO_REDIRECT: 'auth.autoRedirectToSso',
   NESSIE_AUTH_SECRET: 'auth.secret',
   NESSIE_AUTH_TOKEN_TTL: 'auth.tokenTtlSeconds',
@@ -122,6 +141,13 @@ type JsonObject = Record<string, unknown>
 
 const DEFAULT_CONFIG: NessieConfig = {
   mode: 'local',
+  agent: {
+    execProxy: {
+      enabled: false,
+      binary: 'rtk',
+      commands: [],
+    },
+  },
   auth: {
     providers: [],
     autoRedirectToSso: false,
@@ -226,7 +252,12 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
   for (const [envKey, configPath] of Object.entries(ConfigEnvMap)) {
     const value = env[envKey]
     if (value !== undefined) {
-      setByPath(overrides, configPath, coerceScalar(value))
+      // Special handling for array-type env vars (e.g., commands)
+      if (configPath.endsWith('.commands') && value.includes(',')) {
+        setByPath(overrides, configPath, value.split(',').map(s => s.trim()))
+      } else {
+        setByPath(overrides, configPath, coerceScalar(value))
+      }
     }
   }
 
