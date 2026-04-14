@@ -640,7 +640,7 @@ export const AdminShellLayout = () => {
                       return (
                         <button
                           key={`starred-usr-${item.id}`}
-                          className={`admin-sb-item group ${activeDmChannel?.id === person.dmChannelId ? 'active' : ''}`}
+                          className={`admin-sb-item group ${person.dmChannelId && activeDmChannel?.id === person.dmChannelId ? 'active' : ''}`}
                           onClick={() => navigateToDm(item.id)}
                           type="button"
                         >
@@ -768,7 +768,7 @@ export const AdminShellLayout = () => {
                     return (
                       <button
                         key={person.id}
-                        className={`admin-sb-item group ${activeDmChannel?.id === person.dmChannelId ? 'active' : ''}`}
+                        className={`admin-sb-item group ${person.dmChannelId && activeDmChannel?.id === person.dmChannelId ? 'active' : ''}`}
                         onClick={() => navigateToDm(person.id)}
                         type="button"
                       >
