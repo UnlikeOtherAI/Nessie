@@ -327,6 +327,14 @@ enum ThoughtVisibility {
   organization
 }
 
+enum ThoughtAudienceType {
+  user
+  channel
+  team
+  project
+  organization
+}
+
 enum SensitivityTier {
   normal
   sensitive
@@ -1509,6 +1517,10 @@ model Thought {
   ownerId         String              @map("owner_id")
   ownerType       ThoughtOwnerType    @map("owner_type")
 
+  // Canonical audience
+  audienceType    ThoughtAudienceType? @map("audience_type")
+  audienceId      String?              @map("audience_id") @db.Uuid
+
   // Tenant scoping
   organizationId  String              @map("organization_id") @db.Uuid
   organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -1516,6 +1528,7 @@ model Thought {
   teamId          String?             @map("team_id") @db.Uuid
   channelId       String?             @map("channel_id") @db.Uuid
   threadId        String?             @map("thread_id") @db.Uuid
+  userId          String?             @map("user_id") @db.Uuid
 
   // Classification
   visibility      ThoughtVisibility   @default(private)
@@ -1540,9 +1553,11 @@ model Thought {
   recalls         ThoughtRecall[]
 
   @@index([organizationId, visibility, createdAt])
+  @@index([organizationId, audienceType, audienceId, createdAt])
   @@index([organizationId, ownerId, ownerType])
   @@index([contentHash])
   @@index([channelId, createdAt])
+  @@index([userId, createdAt])
   @@map("thoughts")
 }
 

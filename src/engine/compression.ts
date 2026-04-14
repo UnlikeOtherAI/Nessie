@@ -45,7 +45,6 @@ export async function evaluateAndCompress(
   const prompt = [
     {
       role: 'system' as const,
-      // eslint-disable-next-line max-len
       content: `You are a memory compression system. Evaluate the following conversation transcript and decide whether it contains information worth preserving in long-term memory.
 
 Respond with ONLY valid JSON, no markdown, no explanation:

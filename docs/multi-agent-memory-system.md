@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD009 MD013 MD029 MD031 MD032 MD040 MD060 -->
 # Multi-Agent Memory System
 
 Complete design document for Nessie's memory system — covering all memory types, retrieval strategies, feedback loops, and implementation priorities. This is the canonical reference that replaces ad-hoc notes and ChatGPT briefs.
@@ -81,15 +82,19 @@ These are three different entities. `ReasonMemory` = semantic thought, `ThoughtR
 - GIN index for full-text search
 - Deduplication via SHA-256 content fingerprint
 - Multi-tenant scoping with org hard boundary
-- Visibility levels: private, channel, team, project, organization
+- Current visibility levels: `private`, `channel`, `team`, `project`,
+  `organization`
+- Target audience model: replace canonical `private` with explicit
+  user-scoped audience (`audience_type = 'user'`) while keeping a
+  compatibility alias during migration
 - Sensitivity tiers: normal, sensitive, restricted
 - `memory_type` column: intent, reason, constraint, preference, fact
-- `thought_artifacts` for artifact-linked reasons — **designed but not yet in migrations**. The table schema exists in docs but has not been created in the database.
 - `thought_links` for supersession chains (supersedes, derived_from, contradicts, supports, relates_to)
 - Metadata extraction via LLM (`gpt-4o-mini`)
 
 **What we need**: 
-- Create `thought_artifacts` table and migration
+- Create `thought_artifacts` table and migration (already designed in
+  docs, not yet implemented)
 - Implement artifact-referenced search
 - Add audience compatibility checks to search functions (see Security section)
 
@@ -470,13 +475,79 @@ Query
 ```
 
 Scoping applied at query time:
-- Organization hard boundary (required)
-- Visibility level check (private/channel/team/project/org)
-- Sensitivity tier filtering
-- Audience compatibility: A memory can be surfaced into output audience B ONLY IF every member of B was a member of the source audience A. The rule is `Audience(current_channel) ⊆ Audience(source_channel)` — the current audience must be equal to or a subset of the original audience. Surfacing a memory into a LARGER audience is information leakage and is blocked. Surfacing into a SMALLER audience (subset) is safe.
-  - Example: A memory from a 5-person #core-team channel CAN be surfaced in a 3-person #core-leads channel if all 3 leads are members of #core-team
-  - Example: A memory from a 3-person #core-leads channel CANNOT be surfaced in a 10-person #engineering channel — 7 members of #engineering were not in the original audience
-  - Exception: An explicit declassification record can override this check (see Declassification below)
+- Current state: org hard boundary, current visibility filter, and
+  sensitivity tier filtering are implemented
+- Target state: source audience membership check
+  (`user`/`channel`/`team`/`project`/`organization`)
+- Target state: audience compatibility. A memory can be surfaced into
+  output audience B only if every member of B was a member of the source
+  audience A. The rule is `Audience(current) ⊆ Audience(source)`.
+  Surfacing a memory into a larger audience is information leakage and is
+  blocked. Surfacing into a smaller audience (subset) is safe.
+  - Example: A memory from a 5-person `#core-team` channel can be
+    surfaced in a 3-person `#core-leads` channel if all 3 leads are
+    members of `#core-team`
+  - Example: A memory from a 3-person `#core-leads` channel cannot be
+    surfaced in a 10-person `#engineering` channel
+  - Declassification does not override raw retrieval safety. It creates a
+    new broader-scope artifact or memory that may then be recalled
+    normally.
+
+### Audience Model
+
+All assistants should use the same runtime model:
+
+- shared config: prompt, tools, markdown docs, routing/model
+- scoped installation: `user`, `channel`, `team`, `project`
+- audience-bound memory: every memory belongs to the concrete audience it
+  was learned within
+
+That means:
+
+- the same assistant config can be installed in multiple scopes
+- those installations do not automatically share hidden memory
+- a built-in `Personal Assistant` later is just the user-scoped version
+  of this model
+
+The governing rule is:
+
+```text
+shared config is fine
+shared hidden memory is not
+```
+
+Two identity concepts must stay separate:
+
+- `ownerId` / `ownerType`: who created or owns the memory record
+- `audienceId` / `audienceType`: who may safely learn from that memory
+
+Examples:
+
+- a user's private note -> owner = user, audience = same user
+- an agent-generated project summary -> owner = agent, audience = project
+- a system-generated runbook -> owner = system, audience = organization
+
+The current viewer matters as well, but it is not enough on its own. A
+current requester may personally know a fact from a private project and
+still be
+blocked from recalling it into a broader channel where other viewers do
+not have that access. Retrieval must be safe for the output audience, not
+just the requester.
+
+At the SQL layer this maps cleanly to explicit output-audience
+parameters such as:
+
+- `p_output_audience_type`
+- `p_output_audience_id`
+
+The current `match_thoughts_scoped` implementation does not yet enforce
+that full contract. Audience compatibility remains a target-state
+security gate until the Phase A work ships.
+
+Agent-created memory should therefore inherit the current run's output
+audience by default. The assistant runtime never gets a separate hidden
+"agent-wide" memory namespace just because the same config is reused in
+many places.
 
 ### Retrieval by Memory Type
 
@@ -618,7 +689,10 @@ After each agent run, inject a hidden evaluation prompt that produces structured
 The self-eval output must be validated against a Zod schema. Invalid output is discarded, not stored.
 
 Validation rules:
-- `used_memories[].thought_id` must match actual `thought_recalls` rows from this run (rejects hallucinated IDs)
+- `used_memories[].thought_id` must match actual `thought_recalls` rows
+  from this run, and the referenced recall row must carry the expected
+  `memory_type` / `retrieval_family` metadata (rejects hallucinated IDs
+  and mismatched retrieval paths)
 - `impact` must be one of: `high`, `medium`, `low`, `none`
 - `missing_memories[].suggested_type` must be one of: `procedure`, `framing`, `semantic`, `experience`
 - `confidence` must be 0.0–1.0
@@ -636,7 +710,8 @@ Agent completes task
   │
   ├── 2. Update recall signals
   │     For each used_memory: update thought_recalls with impact score
-  │     For each unused recalled memory: mark as negative signal
+  │     For each unused recalled memory: attach diagnostic metadata only;
+  │     do not auto-create a training negative
   │
   ├── 3. Process missing memories
   │     For each missing_memory:
@@ -716,7 +791,9 @@ The self-eval is the **growth engine** — but it is model output, not ground tr
 Signal sources
   │
   ├── thought_recalls (operational — every retrieval event)
-  │     Fields: thought_id, session_id, query, similarity, rank, was_injected, was_referenced, user_signal
+  │     Fields: thought_id, memory_type, retrieval_family, session_id,
+  │             query, similarity, rank, was_injected, was_referenced,
+  │             user_signal
   │
   ├── Self-eval output (per task)
   │     Fields: used_memories with impact, missing_memories, task_success
@@ -740,11 +817,12 @@ For each recall event:
 
   # Neutral signals (DO NOT use as training negatives)
   if was_injected AND NOT was_referenced AND another_memory_covers_same_topic:
-    signal = 'neutral_redundant' (confidence: 0.3)
+    signal = 'neutral_redundant' (confidence: 0.3) — diagnostics only
   if was_injected AND NOT was_referenced AND prompt_budget_exceeded:
-    signal = 'neutral_budget' (confidence: 0.2)
+    signal = 'neutral_budget' (confidence: 0.2) — diagnostics only
   if NOT was_injected:
-    signal = 'neutral_filtered' (confidence: 0.1) — system excluded it, not agent
+    signal = 'neutral_filtered' (confidence: 0.1) — diagnostics only;
+    system excluded it, not agent
 
   # Negative signals
   if user_signal = 'harmful':
@@ -757,7 +835,11 @@ For each recall event:
     signal = 'negative_stale' (confidence: 0.8)
 ```
 
-Key principle: **"Unused" is NOT the same as "irrelevant."** Position bias, prompt budget, redundancy, and paraphrasing all cause useful memories to appear unused. Only negative signals with strong evidence should be used for training.
+Key principle: **"Unused" is NOT the same as "irrelevant."** Position
+bias, prompt budget, redundancy, and paraphrasing all cause useful
+memories to appear unused. Neutral signals are logged for diagnostics and
+benchmarking, not emitted as training negatives. Only negative signals
+with strong evidence should be used for training.
 
 Training data rows include: `label`, `label_confidence`, `label_source`, `exposure_rank` (position in prompt), `injected_position`, `prompt_tokens_visible`, `verifier_version`.
 
@@ -885,10 +967,17 @@ When the system detects contradictory memories (via `thought_links` CONTRADICTS 
 ### Memory Inheritance (Agent Cloning/Forking)
 
 When a child agent is spawned or an agent is cloned:
-- **Inherited-read**: Child can read parent's project/org-scoped memories (no copy)
-- **Copied**: Framing memories for the relevant domain are copied to the child's scope
-- **Excluded**: Parent's private/channel-scoped memories are NOT visible to the child
-- **Promoted**: If a child discovers a procedure, it's captured in the child's scope. Promotion to parent scope requires review.
+- **Inherited-read**: Child can read only memories compatible with the
+  child's current output audience. There is no blanket read of the
+  parent's project/org memories.
+- **Initial audience**: Child output audience inherits from the parent's
+  current run unless the spawning plan or policy explicitly narrows it.
+- **Copied**: Nothing is copied into a broader scope by default.
+- **Excluded**: Parent memories from incompatible audiences are not
+  visible to the child, even if the requester overlaps.
+- **Promoted**: If a child discovers a useful procedure, it is captured in
+  the child's audience. Promotion to a broader audience requires explicit
+  review/declassification.
 
 ### Declassification
 
@@ -910,9 +999,22 @@ declassification_events
 
 Rules:
 - Procedural memory → skill promotion = declassification (channel scope → org scope)
-- Memory content embedded in agent system prompt = declassification
+- Memory content embedded in an agent system prompt is declassification
+  only when the prompt's audience is broader than the source audience
 - Memory-informed summary shared to wider audience = declassification
 - Each event requires explicit authority and creates an audit record
+- Org-scoped memories captured directly inside an org-scoped run are not
+  declassification. Only widening from a narrower source audience counts.
+
+`declassification_events` and `thought_artifacts` are different:
+
+- `thought_artifacts` stores links between memories and artifacts for
+  retrieval and provenance
+- `declassification_events` stores the audited act of widening scope
+
+Both are required. Artifact linkage without declassification leaves scope
+widening unaudited. Declassification without artifact linkage makes the
+derived output hard to inspect later.
 
 ---
 
@@ -953,23 +1055,47 @@ OpenClaw's session model (`agent:<agentId>:<channel>:group:<id>`) maps to Nessie
 ### Multi-Agent Memory Sharing
 
 In Nessie's multi-agent orchestration:
-- **Orchestrator** has read access to all memories within its org/project scope
-- **Sub-agents** (builder, researcher, reviewer, debugger) create memories scoped to their task
-- **Memory visibility** follows the existing channel/team/project/org hierarchy
-- **Procedural memories** are shared across agents of the same role — a procedure discovered by one builder agent benefits all builder agents
-- **Framing memories** are project-scoped — all agents working in the same project share domain knowledge
-- **Personalization** is per-user, not per-agent — the user's communication style is consistent regardless of which agent they talk to
+- **Orchestrator** has no blanket memory entitlement. It can recall only
+  memories compatible with the current run's output audience.
+- **Sub-agents** (builder, researcher, reviewer, debugger) create
+  memories scoped to the audience of the task they are executing in.
+- **Memory visibility** follows the existing user/channel/team/project/org
+  hierarchy plus audience compatibility.
+- **Procedural memories** are not shared across agents of the same role
+  by default. They become reusable only after promotion to a broader
+  audience or promotion into a reviewed skill/doc artifact.
+- **Framing memories** can be project-scoped, but only when the run is
+  already allowed to operate at project scope.
+- **Personalization** is per-user, not per-agent — the user's
+  communication style is consistent regardless of which agent they talk
+  to. It lives in a separate user parameter store, not in a shared
+  cross-channel thought namespace.
 
 ### Agent State Isolation
 
 Query-time memory filtering is necessary but insufficient. An agent that reads confidential memories in one channel can carry that knowledge into a different channel's run via its conversation summaries or reflection memories.
 
 **Isolation rules:**
-- Every run's loaded memories, tool results, and generated reflections are tagged with `output_audience_id` (the channel/thread where results will be visible)
-- Summaries and reflections generated during a run inherit the run's `output_audience_id`
-- A subsequent run with a different `output_audience_id` cannot load memories, summaries, or reflections from the previous run UNLESS audience compatibility is satisfied
-- Agents are stateless between runs by default — no hidden state carries over. All persistent state is in the `thoughts` table (subject to scoping) or the `messages` table (subject to thread/channel access)
-- If an agent needs cross-channel context, it must explicitly recall memories (subject to audience compatibility) rather than relying on conversational carryover
+- Every run's loaded memories, tool results, and generated reflections are
+  tagged with `output_audience_id` (the channel/thread where results will
+  be visible)
+- Summaries and reflections generated during a run inherit the run's
+  `output_audience_id`
+- A subsequent run with a different `output_audience_id` cannot load
+  memories, summaries, or reflections from the previous run unless
+  audience compatibility is satisfied
+- Agents are stateless between runs by default — no hidden state carries
+  over. All persistent state is in the `thoughts` table (subject to
+  scoping) or the `messages` table (subject to thread/channel access)
+- If an agent needs cross-channel or cross-project context, it must
+  explicitly recall memories and pass both requester access and
+  output-audience compatibility
+- If no compatible recall path exists, the agent should behave as if that
+  hidden context does not exist until it is promoted or the conversation
+  moves into a compatible audience
+- If a follow-up would require incompatible memory, the agent should deny
+  the recall with a scope-aware response rather than hinting at hidden
+  content
 
 ---
 
@@ -1057,12 +1183,14 @@ After the core memory types are working and the extraction pipeline is proven. T
 | **Self-eval loop** (active feedback) | HIGH | Not started |
 | **Episodic memory** (compressed experiences) | MEDIUM | Partial — reasoning+outcome exists, situation embedding missing |
 | Artifact-linked reasons (`thought_artifacts` table) | MEDIUM | Designed in pipeline doc, not yet in migrations |
-| Recall scoping (audience compatibility at query time) | MEDIUM | Designed, not implemented |
+| Canonical audience model (`audience_type`, `audience_id`) | HIGH | Not started |
+| Recall scoping (audience compatibility at query time) | HIGH | Designed, not implemented |
+| Run output audience tagging | HIGH | Not started |
 | Signal → training data pipeline | LOW | Designed (Phase 4), not started |
 | Learned reranker | LOW | Designed (Phase 5), not started |
 | **Memory garbage collection** (decay, pruning) | HIGH | Not started — memories grow unbounded |
 | **Conflict resolution** (contradicting memories) | MEDIUM | CONTRADICTS link exists, resolution logic missing |
-| **Declassification model** | MEDIUM | Not started — scope widening unaudited |
+| **Declassification model** | HIGH | Not started — scope widening unaudited |
 | **Source attribution** (`thought_sources` table) | MEDIUM | Designed in pipeline doc, not in implementation phases |
 | **Human memory curation** (review, correct, curate) | MEDIUM | No UI or API for memory correction |
 | **Evaluation benchmarks** (regression test sets) | MEDIUM | No test sets for retrieval quality |
@@ -1074,7 +1202,26 @@ After the core memory types are working and the extraction pipeline is proven. T
 
 ## Implementation Sequence
 
-### Phase A: Procedural + Framing Memory (Next)
+### Phase A: Audience and Scope Foundation (First)
+
+1. Add canonical audience fields to thoughts:
+   - `audience_type`
+   - `audience_id`
+   - retain ancestry columns (`organization_id`, `project_id`, `team_id`,
+     `channel_id`, `user_id`) for filtering and audits
+2. Add `output_audience_id` / `output_audience_type` to runs,
+   evaluations, and any summary/reflection generation path
+3. Update retrieval functions so they accept both requester identity and
+   current output audience
+4. Implement audience compatibility with the correct directionality:
+   `Audience(current) ⊆ Audience(source)`
+5. Make capture default to the current run's output audience
+6. Ensure summaries, reflections, and procedural captures inherit the
+   run audience by default
+7. Add scope-aware denial behavior for blocked recalls
+8. Add audit hooks for future declassification events
+
+### Phase B: Procedural + Framing Memory
 
 1. Add `procedure` and `framing` to `memory_type` enum in thoughts schema
 2. Define JSONB structure for procedural steps in `packages/schemas`
@@ -1092,12 +1239,15 @@ After the core memory types are working and the extraction pipeline is proven. T
    - At session start: load framing + search procedures
    - At task completion: trigger capture if applicable
 
-### Phase B: Self-Eval Loop
+### Phase C: Self-Eval Loop
 
 1. Define self-eval prompt template (for `gpt-4o-mini`)
 2. Define self-eval output schema in `packages/schemas`
 3. Add `selfEvaluate(sessionContext)` to `packages/memory`
-4. Extend `thought_recalls` with impact_score column
+4. Extend `thought_recalls` with:
+   - `impact_score`
+   - `memory_type`
+   - `retrieval_family`
 5. Add missing_memory capture flow:
    - If suggested_type = 'procedure': call `captureProcedure()`
    - If suggested_type = 'framing': call `captureFraming()` or update existing
@@ -1113,7 +1263,7 @@ After the core memory types are working and the extraction pipeline is proven. T
    - Link every extracted memory to source messages, tool calls, or files
    - Required for debugging bad memories and supporting human correction
 
-### Phase C: Episodic Memory
+### Phase D: Episodic Memory
 
 1. Add `experience` to `memory_type` enum
 2. Define experience structure (situation/action/outcome) in `packages/schemas`
@@ -1121,32 +1271,30 @@ After the core memory types are working and the extraction pipeline is proven. T
 4. Add situation-similarity search
 5. Wire into self-eval — when self-eval produces a task summary, also store as experience
 
-### Phase D: Artifact Links + Recall Scoping
-
-(Already designed in pipeline doc, implementation deferred)
+### Phase E: Artifact Links + Declassification
 
 1. Create `thought_artifacts` table
 2. Implement artifact-referenced search
-3. Add audience compatibility checks to `match_thoughts_scoped()`
-4. Implement audience compatibility with CORRECT directionality: `Audience(current) ⊆ Audience(source)`
-5. Add `output_audience_id` to runs and evaluations for agent state isolation
+3. Add declassification event tracking
+4. Make memory-informed prompt updates, summaries, and skill promotion
+   create declassification records
+5. Add human review for promotions into wider audiences
 
-### Phase D.5: Memory Lifecycle
+### Phase F: Memory Lifecycle
 
 1. Implement decay rules by memory type
 2. Add garbage collection background job
 3. Add conflict detection and resolution logic
-4. Add declassification event tracking
-5. Add human curation API (view, correct, approve, reject memories)
-6. Create initial evaluation benchmark sets
+4. Add human curation API (view, correct, approve, reject memories)
+5. Create initial evaluation benchmark sets
 
-### Phase E: Personalization (Future)
+### Phase G: Personalization (Future)
 
 1. Add personalization parameters to user model
 2. Implement background signal analysis
 3. Wire into response generation
 
-### Phase F: Local-First Filtering (Future)
+### Phase H: Local-First Filtering (Future)
 
 1. Define on-device classification protocol
 2. Implement server-side "should extract?" endpoint for non-edge clients
