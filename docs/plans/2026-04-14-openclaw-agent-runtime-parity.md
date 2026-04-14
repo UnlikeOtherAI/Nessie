@@ -1,4 +1,4 @@
-# OpenClaw Agent Runtime Parity — Implementation Plan (v2, hardened)
+# OpenClaw Agent Runtime Parity — Implementation Plan (v3, hardened)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -10,7 +10,7 @@
 
 **Source document:** `docs/openclaw-architecture.md` (the overnight OpenClaw deep-dive)
 
-**Review notes:** This plan was reviewed by 12 parallel reviewers (10 max, 1 Codex, 1 Claude sub-agent). All findings were verified against the codebase. This v2 addresses 18 confirmed gaps from the review, marked with `[v2]` annotations.
+**Review notes:** This plan has been through 2 review rounds. Round 1 (12 reviewers): 18 gaps addressed in v2. Round 2 (15 reviewers — 5 Claude explore agents + 10 max, each reading actual source): 15 additional gaps addressed in v3. Changes marked with `[v3]` annotations. All findings verified against code.
 
 ---
 
@@ -82,6 +82,35 @@ Before implementing, the engineer must understand these structural realities:
 
 `packages/runtime/src/builtin-tools.ts:3` — `id: 'document_read' | 'web_fetch' | 'web_search'`. Adding `spawn_subtask` requires widening this to `string` or extending the union.
 
+### 9. [v3] `toolCallId` type mismatch between packages
+
+`api/src/contracts.ts:1041` defines `toolCallId: z.string().uuid()` (strict UUID). `packages/schemas/src/index.ts:1365` defines `toolCallId: NonEmptyStringSchema` (any non-empty string). **OpenAI sends tool call IDs like `call_abc123xyz` — NOT UUIDs.** The api/contracts UUID validation will reject real tool calls from OpenAI. Must fix `api/contracts.ts` to use `NonEmptyStringSchema` before implementing tool calling.
+
+### 10. [v3] `tools`/`toolChoice` must propagate through `executeStage`
+
+`worker/src/run/inference.ts:530` — `executeStage` receives messages via `buildVisibleStageMessages` but its input type has no `tools`/`toolChoice` fields. The service calls at lines 582-598 (`service.stream`/`service.run`) don't forward tools. The full propagation chain is: `RunInferenceGraphInput.tools` → mode executor → `executeStage` input → `service.stream/run` → `buildProviderRequest` → connector. Every link must be updated.
+
+### 11. [v3] `executeRunJob` has calls the plan must preserve
+
+The plan's pseudocode omits several calls that exist in the current `executeRunJob`:
+- `markDelegationStepFinished` (execute.ts:1017, 1097) — called in both success and error paths
+- `markRecallsInjected` (execute.ts:925) — after loading memories
+- `detectReferencedRecallIds` + `markRecallsReferenced` (execute.ts:980-982) — after getting response
+- `taskEvent.create` with `eventType: 'run.failed'` (execute.ts:1130) — in error handler
+- `memoryContext` injection as system message (execute.ts:788-793) — into model prompt
+
+### 12. [v3] `recordToolEnd` requires `inputSummary` and `startedAt`
+
+`worker/src/run/execute.ts:502-512` — `recordToolEnd` requires `inputSummary: string` and `startedAt: Date` params. The plan's `onToolCallEnd` callback signature `(name, result, duration, success)` omits both. Must be extended.
+
+### 13. [v3] `WsEventSchema` is a closed Zod union
+
+New WebSocket events like `agent.iteration` must be added to `WsEventSchema` in `packages/schemas/src/index.ts` (and its handlers in admin hooks), or `publishWs` will reject them at the transport validation layer.
+
+### 14. [v3] Tool functions expect prompt strings, not structured args
+
+`runWebFetchTool` calls `extractUrl(prompt)` to regex-match URLs from a natural language string. `runDocumentReadTool` calls `selectDocumentPath(prompt)` which tokenizes for semantic matching. The plan's `executeBuiltinTool` passes `String(args.url)` and `String(args.query)` — these work but produce different behavior than the current prompt-based path. `runWebFetchTool` should be refactored to accept a direct URL parameter.
+
 ---
 
 ## Task 1: Native Tool Calling in the Inference Layer
@@ -95,6 +124,7 @@ Before implementing, the engineer must understand these structural realities:
 - Modify: `packages/runtime/src/inference/connectors.ts`
 - Modify: `packages/runtime/src/inference/service.ts`
 - Modify: `packages/runtime/src/model.ts`
+- Modify: `api/src/contracts.ts` (fix toolCallId UUID → string) [v3]
 - Test: `packages/runtime/src/__tests__/inference-tool-calling.test.ts` (create)
 
 ### Step 1: Extend runtime `ProviderMessage` to a discriminated union
@@ -302,7 +332,61 @@ const buildInferenceResult = (
 
 3. Update both `run()` and `stream()` to pass `toolCalls` through from connector result to inference result.
 
-### Step 5: Write tests
+### Step 5: [v3] Fix `toolCallId` UUID validation in api/contracts.ts
+
+**Prerequisite fix** — `api/src/contracts.ts:1041` has `toolCallId: z.string().uuid()` but OpenAI sends non-UUID IDs like `call_abc123xyz`. Change to match `packages/schemas`:
+
+```typescript
+// api/src/contracts.ts — fix line 1041
+toolCallId: z.string().min(1),  // was z.string().uuid() — OpenAI sends non-UUID IDs
+```
+
+### Step 6: [v3] Add OpenAI format mapping in the connector
+
+The connector must map between Nessie's `ToolSchemaDescriptor` format and OpenAI's wire format:
+
+```typescript
+// In the OpenAI connector, before building the request body:
+const mapToolsToOpenAi = (tools: ToolSchemaDescriptor[]): OpenAiToolDef[] =>
+  tools.map((tool) => ({
+    type: 'function' as const,
+    function: {
+      name: tool.toolName,
+      description: tool.description,
+      parameters: tool.inputSchema,
+    },
+  }))
+
+// And the reverse — mapping OpenAI response tool_calls to ProviderToolCall:
+const mapToolCallsFromOpenAi = (
+  toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }>,
+): ProviderToolCall[] =>
+  toolCalls.map((tc) => ({
+    toolCallId: tc.id,           // OpenAI's "call_abc123" format
+    toolName: tc.function.name,
+    arguments: safeParseJson(tc.function.arguments),
+  }))
+```
+
+### Step 7: [v3] Add `toolCallingMode` guard in service.ts
+
+The guard belongs in `service.ts` (not the connector), because `service.ts` has access to capabilities:
+
+```typescript
+// In service.ts run() and stream(), after resolving capabilities:
+const effectiveTools = capabilities.effectiveSnapshot.toolCallingMode === 'disabled'
+  ? undefined
+  : capabilities.effectiveSnapshot.toolCallingMode === 'prompt-translated'
+    ? undefined  // MiniMax — don't send tools in request body; Phase 2 adds prompt injection
+    : request.tools
+
+const providerRequest = buildProviderRequest(request, requestId, model)
+// Override tools based on capability check:
+providerRequest.tools = effectiveTools
+providerRequest.toolChoice = effectiveTools ? request.toolChoice : undefined
+```
+
+### Step 8: Write tests
 
 Test file: `packages/runtime/src/__tests__/inference-tool-calling.test.ts`
 
@@ -313,10 +397,13 @@ Tests:
 - When no tools are provided, request body has no `tools` field
 - Malformed tool call arguments (invalid JSON) fall back to `{ _raw: ... }`
 - `toolCallingMode: 'disabled'` strips tools from request
+- `toolCallingMode: 'prompt-translated'` strips tools from request (defers to Phase 2)
 - Streaming accumulates incremental tool call deltas correctly
 - Empty `toolCalls` array (not undefined) when model doesn't call tools
+- [v3] OpenAI non-UUID tool call IDs (`call_abc123`) are accepted
+- [v3] `mapToolsToOpenAi` correctly maps `toolName` → `function.name` and `inputSchema` → `function.parameters`
 
-### Step 6: Commit
+### Step 9: Commit
 
 ```
 feat(runtime): add native tool calling support to inference layer
@@ -471,35 +558,47 @@ const truncateToolResult = (output: string): string =>
     ? output.slice(0, MAX_TOOL_RESULT_CHARS) + '\n\n[output truncated]'
     : output
 
-export type ToolExecutionResult = {
+// [v3] New result type — the existing ToolExecutionResult (inputSummary, outputPreview, toolName)
+// is kept for the old call path. This new type is for the agentic loop.
+export type AgenticToolResult = {
+  inputSummary: string   // [v3] needed by recordToolEnd
   output: string
   success: boolean
 }
 
+// [v3] Tool functions expect natural-language prompt strings internally.
+// The dispatcher converts structured args back to the format each tool expects.
+// This is intentional — refactoring the tool internals is a separate task.
 export const executeBuiltinTool = async (
   toolName: string,
   args: Record<string, unknown>,
-): Promise<ToolExecutionResult> => {
+): Promise<AgenticToolResult> => {
+  const inputSummary = JSON.stringify(args).slice(0, 200)
+
   switch (toolName) {
     case 'web_search':
-      return wrapTool(() => runWebSearchTool(String(args.query ?? '')))
+      return wrapTool(inputSummary, () => runWebSearchTool(String(args.query ?? '')))
     case 'web_fetch':
-      return wrapTool(() => runWebFetchTool(String(args.url ?? '')))
+      // [v3] Pass URL directly — extractUrl will regex-match it.
+      // SSRF protection in assertSafeFetchUrl is preserved.
+      return wrapTool(inputSummary, () => runWebFetchTool(String(args.url ?? '')))
     case 'document_read':
-      return wrapTool(() => runDocumentReadTool(String(args.query ?? '')))
+      return wrapTool(inputSummary, () => runDocumentReadTool(String(args.query ?? '')))
     default:
-      return { output: `Unknown tool: ${toolName}`, success: false }
+      return { inputSummary, output: `Unknown tool: ${toolName}`, success: false }
   }
 }
 
 const wrapTool = async (
+  inputSummary: string,
   fn: () => Promise<{ outputPreview: string }>,
-): Promise<ToolExecutionResult> => {
+): Promise<AgenticToolResult> => {
   try {
     const result = await fn()
-    return { output: truncateToolResult(result.outputPreview), success: true }
+    return { inputSummary, output: truncateToolResult(result.outputPreview), success: true }
   } catch (error) {
     return {
+      inputSummary,
       output: `Tool error: ${error instanceof Error ? error.message : String(error)}`,
       success: false,
     }
@@ -558,7 +657,8 @@ export const DEFAULT_BUDGET: BudgetLimits = {
 export type LoopCallbacks = {
   onIterationStart: (iteration: number) => Promise<void>
   onToolCallStart: (toolName: string, args: Record<string, unknown>) => Promise<void>
-  onToolCallEnd: (toolName: string, result: string, durationMs: number, success: boolean) => Promise<void>
+  // [v3] Added inputSummary and startedAt — required by recordToolEnd
+  onToolCallEnd: (toolName: string, result: string, durationMs: number, success: boolean, inputSummary: string, startedAt: Date) => Promise<void>
   onTextDelta: (delta: string) => Promise<void>
   onBudgetExhausted: (reason: BudgetExhaustionReason) => Promise<void>
 }
@@ -707,10 +807,11 @@ export const runAgenticLoop = async (input: {
       }
 
       await callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
-      const toolStart = Date.now()
+      const toolStartDate = new Date()  // [v3] Date object for recordToolEnd
+      const toolStartMs = Date.now()
 
       // [v2] Per-tool timeout
-      let toolResult: { output: string; success: boolean }
+      let toolResult: { output: string; success: boolean; inputSummary: string }
       try {
         toolResult = await withTimeout(
           executeTool(toolCall.toolName, toolCall.arguments),
@@ -721,15 +822,19 @@ export const runAgenticLoop = async (input: {
         toolResult = {
           output: `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
           success: false,
+          inputSummary: JSON.stringify(toolCall.arguments).slice(0, 200),
         }
       }
 
-      const toolDuration = Date.now() - toolStart
+      const toolDuration = Date.now() - toolStartMs
+      // [v3] Pass inputSummary and startedAt for recordToolEnd
       await callbacks.onToolCallEnd(
         toolCall.toolName,
         toolResult.output,
         toolDuration,
         toolResult.success,
+        toolResult.inputSummary,
+        toolStartDate,
       )
 
       toolCallsUsed += 1
@@ -863,10 +968,12 @@ const loopResult = await runAgenticLoop({
         data: { agentId, toolName: name, runId: context.run.id },
       })
     },
-    onToolCallEnd: async (name, result, duration, success) => {
-      // [v2] Record tool call in DB — add iterationNumber for timeline reconstruction
+    // [v3] Extended callback with inputSummary + startedAt for recordToolEnd
+    onToolCallEnd: async (name, result, duration, success, inputSummary, startedAt) => {
       await recordToolEnd(deps, context, {
         toolName: name, durationMs: duration, success, outputPreview: result,
+        inputSummary,   // [v3] was missing
+        startedAt,      // [v3] was missing
       })
       await setAgentStatus(prisma, agentId, 'thinking')
       await publishAgentStatus(transport, context, { status: 'thinking' })
@@ -917,9 +1024,55 @@ await persistInvocationLedgerEvents(prisma, {
   invocations: loopResult.invocations,
 })
 
-// 10. Plan/workflow integration (keep as-is)
+// 10. [v3] Memory recall tracking — MUST be preserved
+const referencedRecallIds = detectReferencedRecallIds(responseText, memories)
+if (referencedRecallIds.length > 0) {
+  await markRecallsReferenced(referencedRecallIds, deps.searchConfig.pool)
+}
+
+// 11. [v3] Plan/workflow integration — MUST include markDelegationStepFinished
 await markRunPlanFinished(...)
+await markDelegationStepFinished(deps.prisma, {
+  artifacts: { childAgentName, responseText, runId, taskId, toolOutputs: [] },
+  planId: payload.parentPlanId,
+  planStepId: payload.parentPlanStepId,
+  success: true,
+})
 await maybeContinueParentWorkflow(...)
+```
+
+**[v3] Also add to the INITIAL setup, before the loop:**
+```typescript
+// After loading memories, before building initial messages:
+if (injectedRecallIds.length > 0) {
+  await markRecallsInjected(injectedRecallIds, deps.searchConfig.pool)
+}
+
+// [v3] memoryContext MUST be injected as a system message:
+const initialMessages: ProviderMessage[] = [
+  { role: 'system', content: systemPrompt },
+  ...(memoryContext ? [{ role: 'system' as const, content: memoryContext }] : []),
+  ...conversationHistory,
+  { role: 'user', content: prompt },
+]
+```
+
+**[v3] Also add to the ERROR handler:**
+```typescript
+// In the catch block, preserve existing error handling:
+await markDelegationStepFinished(deps.prisma, {
+  artifacts: { error: messageText },
+  planId: payload.parentPlanId,
+  planStepId: payload.parentPlanStepId,
+  success: false,
+})
+await deps.prisma.taskEvent.create({
+  data: {
+    eventType: 'run.failed',
+    payload: { message: messageText },
+    taskId: context.task.id,
+  },
+})
 ```
 
 ### Step 3: Update the system prompt builder
@@ -953,9 +1106,34 @@ export const AgentBudgetConfigSchema = z.object({
   maxToolCalls: z.number().int().positive().optional(),
   maxWallclockMs: z.number().int().positive().optional(),
   maxTokens: z.number().int().positive().optional(),
-  maxCostCents: z.number().nonnegative().optional(),
+  maxCostCents: z.number().nonnegative().optional(),  // [v3] declared but NOT enforced — no pricing lookup exists yet. Deferred to Phase 2.
 })
 export type AgentBudgetConfig = z.infer<typeof AgentBudgetConfigSchema>
+```
+
+**[v3] Add `agent.iteration` to `WsEventSchema`:**
+
+The `WsEventSchema` in `packages/schemas/src/index.ts` is a closed `z.union`. `agent.iteration` must be added as a variant or `publishWs` will reject the event:
+
+```typescript
+// Add to WsEventSchema union:
+z.object({
+  event: z.literal('agent.iteration'),
+  data: z.object({
+    agentId: z.string(),
+    iteration: z.number().int().positive(),
+    runId: z.string(),
+  }),
+}),
+```
+
+Also add handler in `admin/src/facades/agents/hooks.ts` `handleServerMessage`:
+```typescript
+if (message.event === 'agent.iteration') {
+  // Update iteration state for UI progress indicator
+  invalidateAgentCaches(message.data.agentId)
+  return
+}
 ```
 
 ### Step 5: [v2] Add concurrent run protection
@@ -1485,8 +1663,20 @@ export const runSpawnSubtaskTool = async (
     }
   }
 
-  // Create child agent, run, task, enqueue job
-  // ... (implementation details same as existing maybeSpawnChildAgent but using structured args)
+  // [v3] CRITICAL: Must create the full entity chain that executeRunJob expects.
+  // Reference existing maybeSpawnChildAgent (execute.ts:636-696) for the pattern:
+  //
+  // 1. Create child Agent record (with parentAgentId, role from args, org/project/team from parent)
+  // 2. Create AgentBinding (links child agent to parent's channel)
+  // 3. Create Message record (the spawn instruction — needed for RunExecuteJobPayload.messageId)
+  // 4. Create Task record (linked to child agent)
+  // 5. Create Run record (linked to child agent, thread, task)
+  // 6. Create AgentMailboxMessage (for inter-agent tracking)
+  // 7. Enqueue run.execute job with payload: { actorContext, agentId, messageId, runId, taskId, threadId }
+  //
+  // All 7 steps are required. The existing maybeSpawnChildAgent does steps 1, 2, 6 directly
+  // and the mailbox consumer creates 3-5-7. For spawn_subtask, do all inline to avoid
+  // the asynchronous mailbox round-trip.
 
   return {
     output: `Sub-agent spawned to handle: ${args.task}`,
@@ -1521,7 +1711,7 @@ feat(worker): replace keyword-based spawn with model-driven spawn_subtask tool
 - Remove dead code from `worker/src/run/tools.ts`
 - Modify: `packages/runtime/src/model.ts` (bridge `ModelMessage` ↔ `ProviderMessage`)
 
-### Step 1: Extend RunInferenceGraphInput
+### Step 1: Extend RunInferenceGraphInput and the full propagation chain
 
 `worker/src/run/inference.ts:29-41` — The `RunInferenceGraphInput` type must accept tools and use `ProviderMessage[]` instead of `ModelMessage[]`:
 
@@ -1553,6 +1743,66 @@ export const modelMessageToProvider = (msg: ModelMessage): ProviderMessage => ({
   role: msg.role,
   content: msg.content,
 })
+```
+
+**[v3] CRITICAL — Full propagation chain for tools through `executeStage`:**
+
+The tools must flow through every link. This is the most error-prone part of the implementation:
+
+```
+RunInferenceGraphInput.tools
+  → mode executor (executeSingleMode, etc.) — forward tools to executeStage
+  → executeStage input type — add tools/toolChoice fields
+  → service.stream/run call (inference.ts:582-598) — pass tools in InferenceRequest
+  → buildProviderRequest (service.ts:34-47) — forward tools/toolChoice
+  → connector.invoke/stream — map to OpenAI wire format
+```
+
+Modify `executeStage` input type in inference.ts:
+```typescript
+// Current executeStage input (around line 507):
+type StageExecutionInput = {
+  // ... existing fields ...
+  tools?: ToolSchemaDescriptor[]    // [v3] NEW
+  toolChoice?: string               // [v3] NEW
+}
+```
+
+Then in `executeStage` body, pass through to service calls:
+```typescript
+// inference.ts:582-598 — add tools to service.stream/run calls:
+const source = service.stream?.({
+  actorContext: input.actorContext,
+  maxOutputTokens: input.modelConfig.maxTokens,
+  messages,
+  model: providerConfig.model,
+  requestId,
+  temperature: input.modelConfig.temperature,
+  tools: input.tools,         // [v3] NEW
+  toolChoice: input.toolChoice, // [v3] NEW
+})
+```
+
+Each mode executor must forward tools to its `executeStage` calls. For this phase, **only `executeSingleMode` is fully supported** — the other modes pass `tools: undefined`:
+
+```typescript
+// executeSingleMode: forward tools
+await executeStage({ ...existingInput, tools: input.tools, toolChoice: input.toolChoice })
+
+// executeFallbackMode, executeCommitteeMode, executePipelineMode, executeShadowMode:
+// [v3] Pass tools: undefined for now. These modes don't support tool calling yet.
+// The guard is: if toolCallingMode check passes, tools flow through single mode only.
+// Document this limitation in the plan.
+```
+
+**[v3] Also update `buildVisibleStageMessages`** to accept `ProviderMessage[]` instead of `ModelMessage[]`:
+```typescript
+const buildVisibleStageMessages = (
+  baseMessages: ProviderMessage[],   // was ModelMessage[]
+  upstream: CandidateOutput[],
+): ProviderMessage[] => {            // was ModelMessage[]
+  // ... body unchanged for single mode (upstream empty)
+}
 ```
 
 ### Step 2: Extend MultiProviderResult with toolCalls
@@ -1717,7 +1967,7 @@ Tasks 4, 5, 6 can run in parallel after Task 3.
 
 ---
 
-## [v2] Review Findings Addressed
+## [v2] Review Round 1 Findings Addressed
 
 | # | Finding | Severity | Addressed In |
 |---|---|---|---|
@@ -1728,7 +1978,7 @@ Tasks 4, 5, 6 can run in parallel after Task 3.
 | 5 | `runInferenceGraph` returns `MultiProviderResult` | CRITICAL | Task 7 Step 2 — add `toolCalls` to schema, adapt in loop |
 | 6 | `TemporaryContextSession` scoping dropped | HIGH | Task 3 Step 2 — preserve `loadAllowedToolIds` with session queries |
 | 7 | No concurrent run protection | HIGH | Task 3 Step 5 — PostgreSQL advisory lock |
-| 8 | `prompt-translated` mode ignored | HIGH | Task 1 Step 3 item 7 — guard added, full impl deferred |
+| 8 | `prompt-translated` mode ignored | HIGH | Task 1 Step 7 — guard in service.ts, full impl deferred |
 | 9 | Plan/workflow calls missing from pseudocode | HIGH | Task 3 Step 2 — explicitly listed in pipeline |
 | 10 | `compact_and_retry` never wired | HIGH | Task 4 Step 2 — `callInferenceWithRetry` wired into loop |
 | 11 | Tool-result truncation missing | HIGH | Task 2 Step 3 — `MAX_TOOL_RESULT_CHARS = 32_000` |
@@ -1739,6 +1989,29 @@ Tasks 4, 5, 6 can run in parallel after Task 3.
 | 16 | ToolCall table too lossy | HIGH | Task 7 Step 3 — add `providerToolCallId`, `iterationNumber` |
 | 17 | No per-agent budget overrides | HIGH | Task 3 Step 4 — `budgetConfig` JSON on Agent |
 | 18 | Spawn: no depth/maxChildren/cancellation | HIGH | Task 6 Step 2 — guards added |
+
+## [v3] Review Round 2 Findings Addressed
+
+15 reviewers (5 Claude explore agents + 10 max) reading actual source code.
+
+| # | Finding | Severity | Addressed In |
+|---|---|---|---|
+| 19 | `toolCallId: z.string().uuid()` in api/contracts — rejects OpenAI's non-UUID IDs | CRITICAL | Task 1 Step 5 — fix to `z.string().min(1)` |
+| 20 | `markDelegationStepFinished` missing from success/error paths | CRITICAL | Task 3 Step 2 — added to pipeline pseudocode |
+| 21 | `tools`/`toolChoice` not threaded through `executeStage` to service calls | CRITICAL | Task 7 Step 1 — full propagation chain documented |
+| 22 | `agent.iteration` event has no schema in `WsEventSchema` | CRITICAL | Task 3 Step 4 — schema + admin handler added |
+| 23 | `spawn_subtask` omits Task/Run/Message/AgentBinding creation | CRITICAL | Task 6 Step 2 — 7-step entity chain documented |
+| 24 | Memory recall tracking omitted (markRecallsInjected, detectReferencedRecallIds) | HIGH | Task 3 Step 2 — added to pipeline pseudocode |
+| 25 | `memoryContext` not injected into agentic prompt messages | HIGH | Task 3 Step 2 — added as system message |
+| 26 | `taskEvent.create` on failure missing | HIGH | Task 3 Step 2 — added to error handler |
+| 27 | `recordToolEnd` needs `inputSummary` + `startedAt` — callback didn't provide | HIGH | Task 3 Step 1 — callback signature extended |
+| 28 | `maxCostCents` declared but never enforced — no pricing lookup | HIGH | Task 3 Step 4 — noted as deferred to Phase 2 |
+| 29 | Tool functions expect prompt strings, not structured args | HIGH | Task 2 Step 3 — dispatcher adapts args to prompt format |
+| 30 | Only `single` routing mode supports tools — 4 others silently drop them | HIGH | Task 7 Step 1 — documented as known limitation |
+| 31 | `toolCallingMode` parsed but never enforced in execution path | HIGH | Task 1 Step 7 — guard added in service.ts |
+| 32 | Argument repair is just `{ _raw: raw }` — no streaming corruption recovery | HIGH | Acknowledged — deferred to Phase 2 (OpenClaw has full repair pipeline) |
+| 33 | Role-based tool filtering absent — ROLE_POLICIES not consulted | HIGH | Acknowledged — legacy `src/` code, not imported by worker. Phase 2 task. |
+| 34 | OpenAI format mapping (ToolSchemaDescriptor ↔ wire format) missing from pseudocode | HIGH | Task 1 Step 6 — mapToolsToOpenAi/mapToolCallsFromOpenAi added |
 
 ---
 
