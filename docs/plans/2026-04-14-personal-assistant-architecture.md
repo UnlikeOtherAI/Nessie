@@ -574,6 +574,24 @@ These are real issues in the current codebase that block a safe multi-user rollo
 
 - **Workflow step agent references are unvalidated** (`api/src/services/workflows.ts`): `graphJson` step definitions can reference any agent ID. Must validate that referenced agents are not `personal_assistant` kind.
 
+- **`buildSnapshotForScopes()` org-scope fallback leaks PA agents** (`api/src/services/agents.ts`): This function loads all agents bound to any channel in the org when building an org-scoped snapshot. If a PA DM channel exists, its agent appears in the snapshot broadcast to all org subscribers. Must filter out `agentKind = 'personal_assistant'` from org-scoped snapshots.
+
+- **`listAgentsForUser()` has no `agentKind` filter** (`api/src/services/agents.ts`): Returns any agent bound to a channel the user is a member of, or any public channel. PA agents must be excluded from this listing entirely — they should only surface through the dedicated PA endpoint.
+
+- **`captureThought()` accepts `ownerId` without validation** (`packages/memory/src/capture.ts`): The function writes `ownerId`, `ownerType`, `channelId`, `visibility` directly from caller input with no backend check that `ownerId` matches the calling actor or that `channelId` matches the session's tenant. A misconfigured caller could write thoughts attributed to any assistant instance.
+
+- **`match_thoughts_scoped` SQL function scopes on user, not agent** (`api/prisma/migrations/`): The function checks `t.visibility = 'private' AND t.owner_id = match_user_id`, which resolves to the human user ID. For PA agents, memory must be scoped to `(owner_id = assistant_agent_id, owner_type = 'agent')`, not the human's identity.
+
+- **`thoughtService.verifyAccess()` checks org only** (`api/src/services/thoughts.ts`): Only verifies the thought belongs to the organization, not that the caller is the thought's owner or a member of its channel. A user in the same org could access another user's PA agent thoughts.
+
+- **`loadAgentMessages()` OR query has membership gap** (`api/src/services/agents.ts`): The second branch of the OR clause (matching via `thread.runs.some`) has an optional `callerUserId` filter. If an agent has a run in a private channel the caller isn't a member of, this branch could expose thread context.
+
+- **`AgentCategoryAgent` has no kind enforcement** (`api/prisma/schema.prisma`): Nothing prevents a PA agent from being added to a category and appearing in shared category listings. Either the join table insert must check `agentKind`, or the `listAgentCategories` query must filter out PA agents.
+
+- **`WorkflowInstallation` channel picker has no PA exclusion** (`api/src/services/workflows.ts`, `admin/src/pages/WorkflowsPage.tsx`): The channel dropdown for workflow installation targets includes all channels. PA DM channels must be excluded.
+
+- **`ChannelRecordSchema` and `mapChannelRecord` need `dmTargetType`** (`api/src/contracts.ts`, `api/src/services/channels.ts`): The contract schema and the mapping function do not surface `dmTargetType` or `dmTargetAgentId`. The admin client cannot distinguish PA DMs from user DMs without these fields.
+
 ## 17. Recommended Rollout Order
 
 1. **Schema migration** — Add `agentKind`, `ownerUserId`, `managedByTemplateId` to `Agent`. Create `PersonalAssistantTemplate` and `PersonalAssistantInstance` models. Add `dmTargetType`, `dmTargetAgentId` to `Channel`.
