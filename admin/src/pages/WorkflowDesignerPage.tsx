@@ -848,6 +848,9 @@ export const WorkflowDesignerPage = () => {
 
         {nodes.map((node) => {
           const theme = nodeThemes[node.type]
+          const hasIncomingConnection = connections.some(
+            (connection) => connection.toNodeId === node.id,
+          )
           const isHoveredInput = hoveredInputNodeId === node.id
           const isInvalidDraftTarget = invalidDraftTargetNodeId === node.id
 
@@ -879,6 +882,8 @@ export const WorkflowDesignerPage = () => {
                       ? isInvalidDraftTarget
                         ? '#dc2626'
                         : theme.border
+                      : hasIncomingConnection
+                        ? 'transparent'
                       : '#ffffff',
                     borderColor: isInvalidDraftTarget ? '#dc2626' : theme.border,
                     color: isInvalidDraftTarget ? '#dc2626' : theme.border,
