@@ -12,6 +12,7 @@ import { PolicyPage } from './pages/PolicyPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
 import { TriggersPage } from './pages/TriggersPage'
+import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 
 export const router = createBrowserRouter([
@@ -49,6 +50,10 @@ export const router = createBrowserRouter([
       {
         path: '/agents/designer/:agentId',
         element: <AgentDesignerPage />,
+      },
+      {
+        path: '/agents/workflow-designer',
+        element: <WorkflowDesignerPage />,
       },
       {
         path: '/agents/triggers',

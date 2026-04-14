@@ -491,7 +491,7 @@ export const AdminShellLayout = () => {
                   ),
                 },
                 {
-                  path: '/agents/designer',
+                  path: '/agents/workflow-designer',
                   label: 'Designer',
                   icon: (
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
