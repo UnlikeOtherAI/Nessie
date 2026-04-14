@@ -118,10 +118,38 @@ Add fields to the existing `Agent` model:
 ```prisma
 model Agent {
   // ... existing fields ...
-  agentKind          String  @default("shared")  // "shared" | "personal_assistant"
-  ownerUserId        String?                     // required when agentKind = personal_assistant
-  managedByTemplateId String?                    // links to PersonalAssistantTemplate.id
+  agentKind            String  @default("shared")  // "shared" | "personal_assistant"
+  ownerUserId          String?                     // required when agentKind = personal_assistant
+  managedByTemplateId  String?
+  managedByTemplate    PersonalAssistantTemplate? @relation(fields: [managedByTemplateId], references: [id])
+  ownerUser            User?                      @relation("ownedAgents", fields: [ownerUserId], references: [id])
   personalAssistantInstance PersonalAssistantInstance?
+}
+```
+
+Add opposite-side relation fields to existing models (required by Prisma):
+
+```prisma
+model Organization {
+  // ... existing fields ...
+  personalAssistantTemplates PersonalAssistantTemplate[]
+  personalAssistantInstances PersonalAssistantInstance[]
+}
+
+model User {
+  // ... existing fields ...
+  personalAssistantInstances PersonalAssistantInstance[]
+  ownedAgents                Agent[] @relation("ownedAgents")
+}
+
+model Channel {
+  // ... existing fields ...
+  personalAssistantInstance PersonalAssistantInstance?
+}
+
+model InferenceRoutingProfile {
+  // ... existing fields ...
+  personalAssistantTemplates PersonalAssistantTemplate[]
 }
 ```
 
@@ -340,7 +368,10 @@ export const PersonalAssistantInstanceSchema = z.object({
 
 // Note: BootstrapPersonalAssistantResponseSchema lives in api/src/contracts.ts
 // (not packages/schemas) because it references AgentRecordSchema, ChannelRecordSchema,
-// and ThreadRecordSchema which are api-level contracts.
+// and thread contracts which are api-level.
+// Note: there is no ThreadRecordSchema in the codebase today — the closest is
+// ThreadMessageRecordSchema. A minimal ThreadRecordSchema (id, title, channelId,
+// createdAt) should be added to api/src/contracts.ts as part of this feature.
 // The schemas above (Template, Instance, ErrorCode, AgentKind, DmTargetType)
 // belong in packages/schemas because they have no api-level dependencies.
 
@@ -467,9 +498,17 @@ These existing events apply to personal assistant channels without modification:
 
 ### New event types to add
 
+These must be added to `WsEventMap`, `WsEventNameSchema`, and `WsEventSchema` in `packages/schemas/src/index.ts`:
+
 - `personal_assistant.bootstrapped` — emitted to the user when their PA instance is created for the first time
+  - payload: `{ instanceId, agentId, channelId, threadId }`
+  - scope: `{kind: 'channel', channelId}`
 - `personal_assistant.template_updated` — emitted to all active PA channels when a rotation applies a template change
+  - payload: `{ instanceId, previousVersion, newVersion }`
+  - scope: `{kind: 'channel', channelId}` (emitted per-instance, not broadcast)
 - `personal_assistant.suspended` — emitted when the template is deactivated and instances are suspended
+  - payload: `{ instanceId, reason: 'template_deactivated' | 'user_deactivated' | 'admin_action' }`
+  - scope: `{kind: 'channel', channelId}`
 
 ### Subscription authorization
 
@@ -480,11 +519,20 @@ These existing events apply to personal assistant channels without modification:
 ```text
 User opens DM list
 -> client requests POST /api/personal-assistant/bootstrap
--> API loads active template
--> API upserts personal assistant instance for current user
--> API upserts private DM channel for that instance
--> API ensures one default thread
--> API returns { agent, channel, thread }
+-> API loads active template (404 if none, 409 if inactive)
+-> API checks for existing instance by (organizationId, userId)
+   -> if found: return existing { instance, agent, channel, thread }
+   -> if not found: begin $transaction:
+      -> create Agent (agentKind=personal_assistant, ownerUserId, managedByTemplateId)
+      -> create Channel (type=dm, visibility=private, dmKey=pa:org:user, dmTargetType=assistant)
+      -> create ChannelMember (userId=caller)
+      -> create AgentBinding (agentId, channelId)
+      -> upsert default Thread (title=General)
+      -> create PersonalAssistantInstance (userId, agentId, channelId, templateId, templateVersion)
+      -> seed policy rules (deny-all on agent, allow for owner)
+      -> commit transaction
+      -> emit personal_assistant.bootstrapped event
+-> API returns { instance, agent, channel, thread }
 -> client navigates to /admin/channels/:channelId
 -> user sends message
 -> normal thread message flow persists message
@@ -657,19 +705,25 @@ These are real issues in the current codebase that block a safe multi-user rollo
 
 - **Admin shell `useOpenDm()` and `navigateToDm()` model DMs as user-to-user** (`admin/src/layouts/AdminShellLayout.tsx`): The DM flow uses `useUsers()` and `navigateToDm()` which assume two human users. PA DMs need a separate launcher path that calls the bootstrap endpoint instead of the user-to-user DM flow.
 
+- **`DELETE /api/agents/:agentId/bindings/:channelId` has no kind guard** (`api/src/index.ts`): The unbind route goes directly to `unbindAgentFromChannel()`. Must reject unbinding PA agents from their designated DM — the binding is managed by the system, not by users.
+
+- **Category create/update accepts any `authorAgentId`** (`api/src/contracts.ts`, `api/src/index.ts`): `CreateAgentCategoryBodySchema` and `UpdateAgentCategoryBodySchema` accept an `authorAgentId` field. Must reject PA agent IDs to prevent PA agents from appearing as category authors.
+
+- **Plan creation and step assignment accept any `agentId`** (`api/src/contracts.ts`, `api/src/services/plans.ts`): `CreatePlanBodySchema` and `CreatePlanStepBodySchema` accept `agentId` / `assignedAgentId`. Must reject PA agent IDs to prevent PA agents from being assigned to org-visible plans through the generic plan API.
+
 ## 17. Recommended Rollout Order
 
 1. **Schema migration** — Add `agentKind`, `ownerUserId`, `managedByTemplateId` to `Agent`. Create `PersonalAssistantTemplate` and `PersonalAssistantInstance` models. Add `dmTargetType`, `dmTargetAgentId` to `Channel`.
 2. **Agent tenancy fix** — `createAgentRecord()` must stamp `organizationId`. Add `agentKind` checks to `isAgentAccessibleToActor()`, `cloneAgentRecord()`, `bindAgentToChannel()`.
 3. **Service guards** — Add `agentKind` rejection guards to `createAgentTrigger()`, workflow step validation, and generic agent create/bind endpoints (`POST /api/agents`, `PUT /api/agents/:agentId`). **Must ship before step 4** — otherwise the bootstrap endpoint creates PA agents but the generic agent API remains an unguarded creation path.
 4. **Thread uniqueness** — Fix `ensureDefaultThread()` race: add `@@unique([channelId, title])` or use an upsert. Required before bootstrap can safely create threads under concurrency.
-5. **Bootstrap endpoint** — `POST /api/personal-assistant/bootstrap` with transaction, idempotency, DM key format, and policy seed rules.
+5. **Bootstrap endpoint** — `POST /api/personal-assistant/bootstrap` with transaction, idempotency, DM key format. **Must include policy seed rules in the same transaction** — bootstrap without policy seeding creates an insecure intermediate state where the PA agent is visible to other org members.
 6. **Realtime scoping** — Suppress org-scoped WS broadcasts for personal assistant channels. Ensure `filterAuthorizedScopes()` rejects cross-user channel subscriptions.
 7. **Admin template CRUD** — `GET/PUT/DELETE /api/admin/personal-assistant-template` endpoints + rotation endpoint.
 8. **Admin template editor page** — New page in `/admin` for template name, prompt, provider/model/routing profile, tool policy.
 9. **User DM entry** — Assistant-first entry in the DM list in `/admin`. Bootstrap call on first tap, navigate to returned channel.
 10. **Memory scoping** — Filter `Thought` queries by `agentId` for personal assistant contexts. Ensure `ThoughtRecall` signals are instance-scoped.
-11. **Policy seed rules** — Auto-create deny-all + owner-allow policy rules when bootstrapping an instance.
+11. **Policy seed rules** — Already folded into step 5 (bootstrap transaction). Listed here as a verification checkpoint: confirm deny-all + owner-allow rules are created for every instance.
 12. **Audit integration** — Log lifecycle events (create, suspend, reactivate, wipe) without transcript content. Add PA-specific actions to `AuditActionSchema`.
 13. **Token attribution** — Wire `ingestTokenEvent()` into the execution path (prerequisite: this function exists but has zero call sites today). Ensure `TokenLedgerEvent` records use instance `agentId`. Add aggregate PA usage view to admin tokens page.
 
