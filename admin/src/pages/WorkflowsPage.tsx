@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type {
   WorkflowInstallationRecord,
   WorkflowRunRecord,
@@ -84,6 +85,7 @@ const isTerminalRun = (status: WorkflowRunRecord['status']): boolean =>
 type WorkflowsPageProps = Record<string, never>
 
 export const WorkflowsPage = (_props: WorkflowsPageProps) => {
+  const navigate = useNavigate()
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
 
@@ -95,6 +97,16 @@ export const WorkflowsPage = (_props: WorkflowsPageProps) => {
     for (const template of templates) map.set(template.id, template)
     return map
   }, [templates])
+
+  const latestInstallationByTemplateId = useMemo(() => {
+    const map = new Map<string, WorkflowInstallationRecord>()
+    for (const installation of installations) {
+      if (!map.has(installation.workflowTemplateId)) {
+        map.set(installation.workflowTemplateId, installation)
+      }
+    }
+    return map
+  }, [installations])
 
   const [selectedInstallationId, setSelectedInstallationId] = useState<
     string | undefined
@@ -121,54 +133,115 @@ export const WorkflowsPage = (_props: WorkflowsPageProps) => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
-        <div className={sectionTitle}>Workflows</div>
-        <div className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-[color:var(--tx2)]">
-          {installations.length} installed
+      <header className="flex h-[50px] items-center justify-between gap-4 border-b border-[color:var(--sep)] px-5">
+        <div className="flex items-center gap-4">
+          <div className={sectionTitle}>Workflows</div>
+          <div className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-[color:var(--tx2)]">
+            {templates.length} saved
+          </div>
+          <div className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-[color:var(--tx2)]">
+            {installations.length} installed
+          </div>
         </div>
+        <button
+          className="admin-button admin-button-primary"
+          onClick={() => void navigate('/agents/workflow-designer')}
+          type="button"
+        >
+          New workflow
+        </button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="grid gap-4 lg:grid-cols-[0.9fr_2.1fr]">
-          <div className="admin-card p-4">
-            <div className={sectionTitle}>Installations</div>
-            <div className="mt-3 grid gap-2">
-              {installations.map((installation) => {
-                const template = templatesById.get(installation.workflowTemplateId)
-                const selected = installation.id === effectiveInstallationId
-                return (
-                  <button
-                    key={installation.id}
-                    className={`admin-card cursor-pointer rounded-xl border px-3 py-2 text-left transition ${
-                      selected
-                        ? 'border-emerald-400/60 bg-emerald-400/10'
-                        : 'border-[color:var(--sep)] bg-black/10 hover:bg-black/20'
-                    }`}
-                    onClick={() => {
-                      setSelectedInstallationId(installation.id)
-                      setSelectedRunId(undefined)
-                    }}
-                    type="button"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-white">
-                        {template?.name ?? installation.workflowTemplateId.slice(0, 8)}
+          <div className="grid gap-4">
+            <div className="admin-card p-4">
+              <div className={sectionTitle}>Saved workflows</div>
+              <div className="mt-3 grid gap-2">
+                {templates.map((template) => {
+                  const linkedInstallation = latestInstallationByTemplateId.get(template.id)
+                  const isSelected =
+                    linkedInstallation?.id !== undefined &&
+                    linkedInstallation.id === effectiveInstallationId
+
+                  return (
+                    <button
+                      key={template.id}
+                      className={`admin-card rounded-xl border px-3 py-2 text-left transition ${
+                        isSelected
+                          ? 'border-sky-400/60 bg-sky-400/10'
+                          : 'border-[color:var(--sep)] bg-black/10 hover:bg-black/20'
+                      }`}
+                      onClick={() => {
+                        if (!linkedInstallation) {
+                          return
+                        }
+
+                        setSelectedInstallationId(linkedInstallation.id)
+                        setSelectedRunId(undefined)
+                      }}
+                      type="button"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-semibold text-white">{template.name}</div>
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                          {linkedInstallation ? 'installed' : 'saved'}
+                        </span>
                       </div>
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                        {installation.status}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-xs text-[color:var(--tx3)]">
-                      v{installation.workflowTemplateVersion} · {installation.id.slice(0, 8)}
-                    </div>
-                  </button>
-                )
-              })}
-              {installations.length === 0 && (
-                <div className="py-6 text-center text-[color:var(--tx3)]">
-                  No workflow installations yet
-                </div>
-              )}
+                      <div className="mt-1 text-xs text-[color:var(--tx3)]">
+                        v{template.version} · updated {formatTimestamp(template.updatedAt)}
+                      </div>
+                    </button>
+                  )
+                })}
+                {templates.length === 0 && (
+                  <div className="py-6 text-center text-[color:var(--tx3)]">
+                    No workflows saved yet
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="admin-card p-4">
+              <div className={sectionTitle}>Installations</div>
+              <div className="mt-3 grid gap-2">
+                {installations.map((installation) => {
+                  const template = templatesById.get(installation.workflowTemplateId)
+                  const selected = installation.id === effectiveInstallationId
+                  return (
+                    <button
+                      key={installation.id}
+                      className={`admin-card cursor-pointer rounded-xl border px-3 py-2 text-left transition ${
+                        selected
+                          ? 'border-emerald-400/60 bg-emerald-400/10'
+                          : 'border-[color:var(--sep)] bg-black/10 hover:bg-black/20'
+                      }`}
+                      onClick={() => {
+                        setSelectedInstallationId(installation.id)
+                        setSelectedRunId(undefined)
+                      }}
+                      type="button"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-semibold text-white">
+                          {template?.name ?? installation.workflowTemplateId.slice(0, 8)}
+                        </div>
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                          {installation.status}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-[color:var(--tx3)]">
+                        v{installation.workflowTemplateVersion} · {installation.id.slice(0, 8)}
+                      </div>
+                    </button>
+                  )
+                })}
+                {installations.length === 0 && (
+                  <div className="py-6 text-center text-[color:var(--tx3)]">
+                    No workflow installations yet
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

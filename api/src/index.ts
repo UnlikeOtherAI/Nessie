@@ -103,6 +103,7 @@ import {
   ExecutionUsageLedgerRecordSchema,
   EmptyBodySchema,
   InstallWorkflowTemplateBodySchema,
+  UpdateWorkflowTemplateBodySchema,
   LaunchExecutionEnvironmentBodySchema,
   TemporaryContextSessionSchema,
   ThreadMessageRecordSchema,
@@ -245,6 +246,7 @@ import {
   retryWorkflowRun,
   skipWorkflowStepRun,
   unblockWorkflowStepRun,
+  updateWorkflowTemplate,
   WorkflowActionError,
 } from './services/workflows.js'
 import {
@@ -2689,6 +2691,53 @@ export const buildApp = async () => {
       actorContext.tenant.organizationId,
       workflowTemplateId,
     )
+    if (!workflow) {
+      sendApiError(reply, 404, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
+      return reply
+    }
+
+    return createApiResponse(WorkflowTemplateRecordSchema.parse(workflow))
+  })
+
+  app.put('/api/workflows/:workflowTemplateId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(UpdateWorkflowTemplateBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowTemplateId } = request.params as { workflowTemplateId: string }
+    let workflow
+    try {
+      workflow = await updateWorkflowTemplate(
+        prisma,
+        actorContext,
+        workflowTemplateId,
+        body,
+      )
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND'
+      ) {
+        sendApiError(
+          reply,
+          404,
+          'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND',
+          'One or more required execution environment templates were not found',
+        )
+        return reply
+      }
+      throw error
+    }
+
     if (!workflow) {
       sendApiError(reply, 404, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
       return reply

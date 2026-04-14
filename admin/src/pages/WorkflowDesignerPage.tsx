@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import {
   faBolt,
+  faCheck,
   faChevronDown,
   faPlus,
   faRobot,
@@ -10,10 +11,15 @@ import {
   faTrashCan,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useTriggers } from '../facades/triggers/hooks'
 import { useTools } from '../facades/tools/hooks'
+import {
+  useCreateWorkflowTemplate,
+  useUpdateWorkflowTemplate,
+  useWorkflowTemplate,
+} from '../facades/workflows/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 type WorkflowCanvasNodeType = 'agent' | 'tool' | 'trigger'
@@ -42,6 +48,7 @@ type WorkflowCanvasNode = {
   id: string
   label: string
   meta?: string
+  sourceId: string
   type: WorkflowCanvasNodeType
   x: number
   y: number
@@ -80,6 +87,22 @@ type WorkflowHoveredHandle = {
   nodeId: string
 }
 
+type WorkflowDesignerDraft = {
+  connections: WorkflowConnection[]
+  nodes: WorkflowCanvasNode[]
+  workflowName: string
+}
+
+type WorkflowDesignerSerializedNode = {
+  meta?: string
+  outgoingNodeIds: string[]
+  position?: {
+    x?: number
+    y?: number
+  }
+  sourceId?: string
+}
+
 const toolbarButtonClass = [
   'inline-flex h-8 items-center gap-1.5 rounded-md border border-black/10',
   'bg-white px-2.5 text-[11px] font-medium text-[#433349] transition-colors',
@@ -109,6 +132,8 @@ const CANVAS_NODE_HANDLE_Y = 48
 const CANVAS_NODE_HANDLE_OFFSET_Y = -5
 const CANVAS_NODE_INSERT_OFFSET = 28
 const CANVAS_NODE_INSERT_STEPS = 6
+const DEFAULT_WORKFLOW_NAME = 'Untitled workflow'
+const WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY = 'nessie.admin.workflow-designer.draft'
 
 const nodeThemes: Record<
   WorkflowCanvasNodeType,
@@ -141,6 +166,9 @@ const nodeThemes: Record<
 
 const normalizeReturnTo = (pathname: string, search: string, hash: string) =>
   `${pathname}${search}${hash}`
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
@@ -195,6 +223,31 @@ const getConnectionGeometry = (
 
 const getOppositeHandleKind = (handleKind: 'input' | 'output') =>
   handleKind === 'input' ? 'output' : 'input'
+
+const readSerializedNode = (value: unknown): WorkflowDesignerSerializedNode => {
+  if (!isRecord(value)) {
+    return {
+      outgoingNodeIds: [],
+    }
+  }
+
+  const positionValue = isRecord(value.position) ? value.position : undefined
+  return {
+    meta: typeof value.meta === 'string' ? value.meta : undefined,
+    outgoingNodeIds: Array.isArray(value.outgoingNodeIds)
+      ? value.outgoingNodeIds.filter(
+          (nodeId): nodeId is string => typeof nodeId === 'string',
+        )
+      : [],
+    position: positionValue
+      ? {
+          x: typeof positionValue.x === 'number' ? positionValue.x : undefined,
+          y: typeof positionValue.y === 'number' ? positionValue.y : undefined,
+        }
+      : undefined,
+    sourceId: typeof value.sourceId === 'string' ? value.sourceId : undefined,
+  }
+}
 
 const getDraftConnectionCandidate = (
   draftConnection: WorkflowDraftConnection,
@@ -267,16 +320,230 @@ const getCanvasInsertionPoint = (canvasElement: HTMLDivElement | null, offset: n
   }
 }
 
+const loadWorkflowDraft = (): WorkflowDesignerDraft | null => {
+  try {
+    const rawDraft = window.localStorage.getItem(WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY)
+    if (!rawDraft) {
+      return null
+    }
+
+    const parsedDraft = JSON.parse(rawDraft) as unknown
+    if (!isRecord(parsedDraft)) {
+      return null
+    }
+
+    const workflowName =
+      typeof parsedDraft.workflowName === 'string' && parsedDraft.workflowName.trim()
+        ? parsedDraft.workflowName
+        : DEFAULT_WORKFLOW_NAME
+
+    const nodes = Array.isArray(parsedDraft.nodes)
+      ? parsedDraft.nodes.flatMap((entry) => {
+          if (!isRecord(entry)) {
+            return []
+          }
+
+          const type = entry.type
+          if (type !== 'agent' && type !== 'tool' && type !== 'trigger') {
+            return []
+          }
+
+          return [
+            {
+              id: typeof entry.id === 'string' ? entry.id : crypto.randomUUID(),
+              label:
+                typeof entry.label === 'string' && entry.label.trim()
+                  ? entry.label
+                  : 'Untitled node',
+              meta: typeof entry.meta === 'string' ? entry.meta : undefined,
+              sourceId:
+                typeof entry.sourceId === 'string' && entry.sourceId.trim()
+                  ? entry.sourceId
+                  : typeof entry.id === 'string'
+                    ? entry.id
+                    : crypto.randomUUID(),
+              type,
+              x: typeof entry.x === 'number' ? entry.x : CANVAS_PADDING,
+              y: typeof entry.y === 'number' ? entry.y : CANVAS_PADDING,
+            } satisfies WorkflowCanvasNode,
+          ]
+        })
+      : []
+
+    const connections = Array.isArray(parsedDraft.connections)
+      ? parsedDraft.connections.flatMap((entry) => {
+          if (!isRecord(entry)) {
+            return []
+          }
+
+          if (
+            typeof entry.id !== 'string' ||
+            typeof entry.fromNodeId !== 'string' ||
+            typeof entry.toNodeId !== 'string'
+          ) {
+            return []
+          }
+
+          return [
+            {
+              id: entry.id,
+              fromNodeId: entry.fromNodeId,
+              toNodeId: entry.toNodeId,
+            } satisfies WorkflowConnection,
+          ]
+        })
+      : []
+
+    return {
+      connections,
+      nodes,
+      workflowName,
+    }
+  } catch {
+    return null
+  }
+}
+
+const storeWorkflowDraft = (draft: WorkflowDesignerDraft) => {
+  window.localStorage.setItem(
+    WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY,
+    JSON.stringify(draft),
+  )
+}
+
+const clearWorkflowDraft = () => {
+  window.localStorage.removeItem(WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY)
+}
+
+const buildWorkflowGraph = (
+  nodes: WorkflowCanvasNode[],
+  connections: WorkflowConnection[],
+) => ({
+  steps: nodes.map((node) => ({
+    id: node.id,
+    input: {
+      workflowDesigner: {
+        meta: node.meta,
+        outgoingNodeIds: connections
+          .filter((connection) => connection.fromNodeId === node.id)
+          .map((connection) => connection.toNodeId),
+        position: {
+          x: Math.round(node.x),
+          y: Math.round(node.y),
+        },
+        sourceId: node.sourceId,
+      },
+    },
+    title: node.label,
+    type: node.type,
+  })),
+})
+
+const buildWorkflowTriggers = (
+  nodes: WorkflowCanvasNode[],
+  connections: WorkflowConnection[],
+) =>
+  nodes
+    .filter((node) => node.type === 'trigger')
+    .map((node) => ({
+      id: node.id,
+      meta: node.meta,
+      sourceId: node.sourceId,
+      targetNodeIds: connections
+        .filter((connection) => connection.fromNodeId === node.id)
+        .map((connection) => connection.toNodeId),
+      title: node.label,
+    }))
+
+const parseWorkflowTemplate = (
+  graph: {
+    steps: Array<{
+      id: string
+      input?: Record<string, unknown>
+      title?: string
+      type: string
+    }>
+  },
+  canvasElement: HTMLDivElement | null,
+): Pick<WorkflowDesignerDraft, 'connections' | 'nodes'> => {
+  const parsedNodes = graph.steps.flatMap((step, index) => {
+    const stepType = step.type
+    if (stepType !== 'agent' && stepType !== 'tool' && stepType !== 'trigger') {
+      return []
+    }
+
+    const serializedNode = readSerializedNode(
+      isRecord(step.input) ? step.input.workflowDesigner : undefined,
+    )
+    const fallbackPosition = getCanvasInsertionPoint(
+      canvasElement,
+      (index % CANVAS_NODE_INSERT_STEPS) * CANVAS_NODE_INSERT_OFFSET,
+    )
+
+    return [
+      {
+        id: step.id,
+        label: step.title?.trim() || 'Untitled node',
+        meta: serializedNode.meta,
+        sourceId: serializedNode.sourceId ?? step.id,
+        type: stepType,
+        x:
+          typeof serializedNode.position?.x === 'number'
+            ? serializedNode.position.x
+            : fallbackPosition.x,
+        y:
+          typeof serializedNode.position?.y === 'number'
+            ? serializedNode.position.y
+            : fallbackPosition.y,
+      } satisfies WorkflowCanvasNode,
+    ]
+  })
+
+  const parsedConnections = parsedNodes.flatMap((node) => {
+    const step = graph.steps.find((candidate) => candidate.id === node.id)
+    const serializedNode = readSerializedNode(
+      isRecord(step?.input) ? step.input.workflowDesigner : undefined,
+    )
+
+    return serializedNode.outgoingNodeIds.flatMap((toNodeId) =>
+      parsedNodes.some((candidate) => candidate.id === toNodeId)
+        ? [
+            {
+              id: crypto.randomUUID(),
+              fromNodeId: node.id,
+              toNodeId,
+            } satisfies WorkflowConnection,
+          ]
+        : [],
+    )
+  })
+
+  return {
+    connections: parsedConnections,
+    nodes: parsedNodes,
+  }
+}
+
 export const WorkflowDesignerPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { workflowTemplateId } = useParams<{ workflowTemplateId?: string }>()
   const { me } = useAuthSession()
   const { data: agents = [] } = useAgents()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const { data: triggers = [] } = useTriggers(isOwner)
   const { data: tools = [] } = useTools()
+  const {
+    data: workflowTemplate,
+    isLoading: isWorkflowTemplateLoading,
+  } = useWorkflowTemplate(workflowTemplateId, isOwner)
+  const createWorkflowTemplate = useCreateWorkflowTemplate()
+  const updateWorkflowTemplate = useUpdateWorkflowTemplate()
 
   const canvasRef = useRef<HTMLDivElement | null>(null)
+  const hydratedWorkflowIdRef = useRef<string | null>(null)
+  const lastSavedWorkflowSignatureRef = useRef<string | null>(null)
+  const lastStoredDraftSignatureRef = useRef<string | null>(null)
   const dragStateRef = useRef<{
     offsetX: number
     offsetY: number
@@ -284,18 +551,38 @@ export const WorkflowDesignerPage = () => {
   } | null>(null)
   const nextInsertOffsetRef = useRef(0)
 
+  const [autoSaveDraft, setAutoSaveDraft] = useState(true)
   const [connections, setConnections] = useState<WorkflowConnection[]>([])
   const [draftConnection, setDraftConnection] = useState<WorkflowDraftConnection | null>(null)
   const [hoveredHandle, setHoveredHandle] = useState<WorkflowHoveredHandle | null>(null)
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null)
   const [nodes, setNodes] = useState<WorkflowCanvasNode[]>([])
   const [openMenu, setOpenMenu] = useState<string | null>(null)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [workflowName, setWorkflowName] = useState(DEFAULT_WORKFLOW_NAME)
 
   const returnTo = normalizeReturnTo(
     location.pathname,
     location.search,
     location.hash,
   )
+
+  const workflowSignature = useMemo(
+    () =>
+      JSON.stringify({
+        connections,
+        nodes,
+        workflowName: workflowName.trim(),
+      }),
+    [connections, nodes, workflowName],
+  )
+
+  const hasWorkflowToSave = nodes.length > 0 && workflowName.trim().length > 0
+  const isSavingWorkflow =
+    createWorkflowTemplate.isPending || updateWorkflowTemplate.isPending
+  const hasUnsavedChanges =
+    hasWorkflowToSave &&
+    workflowSignature !== lastSavedWorkflowSignatureRef.current
 
   const toolbarActions = useMemo<ToolbarAction[]>(() => {
     const topLevelAgents = [...agents]
@@ -375,6 +662,117 @@ export const WorkflowDesignerPage = () => {
       },
     ]
   }, [agents, returnTo, tools, triggers])
+
+  useEffect(() => {
+    if (workflowTemplateId) {
+      return
+    }
+
+    if (hydratedWorkflowIdRef.current === 'draft') {
+      return
+    }
+
+    hydratedWorkflowIdRef.current = 'draft'
+
+    const draft = loadWorkflowDraft()
+    if (!draft) {
+      lastSavedWorkflowSignatureRef.current = null
+      lastStoredDraftSignatureRef.current = JSON.stringify({
+        connections: [],
+        nodes: [],
+        workflowName: DEFAULT_WORKFLOW_NAME,
+      })
+      return
+    }
+
+    setConnections(draft.connections)
+    setNodes(draft.nodes)
+    setWorkflowName(draft.workflowName)
+    nextInsertOffsetRef.current =
+      (draft.nodes.length % CANVAS_NODE_INSERT_STEPS) * CANVAS_NODE_INSERT_OFFSET
+    lastSavedWorkflowSignatureRef.current = null
+    lastStoredDraftSignatureRef.current = JSON.stringify({
+      connections: draft.connections,
+      nodes: draft.nodes,
+      workflowName: draft.workflowName.trim(),
+    })
+  }, [workflowTemplateId])
+
+  useEffect(() => {
+    if (!workflowTemplateId || !workflowTemplate) {
+      return
+    }
+
+    if (hydratedWorkflowIdRef.current === workflowTemplateId) {
+      return
+    }
+
+    const parsedWorkflow = parseWorkflowTemplate(workflowTemplate.graph, canvasRef.current)
+    hydratedWorkflowIdRef.current = workflowTemplateId
+    setConnections(parsedWorkflow.connections)
+    setNodes(parsedWorkflow.nodes)
+    setWorkflowName(workflowTemplate.name)
+    nextInsertOffsetRef.current =
+      (parsedWorkflow.nodes.length % CANVAS_NODE_INSERT_STEPS) *
+      CANVAS_NODE_INSERT_OFFSET
+    lastSavedWorkflowSignatureRef.current = JSON.stringify({
+      connections: parsedWorkflow.connections,
+      nodes: parsedWorkflow.nodes,
+      workflowName: workflowTemplate.name.trim(),
+    })
+    lastStoredDraftSignatureRef.current = null
+    clearWorkflowDraft()
+  }, [workflowTemplate, workflowTemplateId])
+
+  const persistWorkflow = useCallback(
+    async (mode: 'auto' | 'manual') => {
+      if (!hasWorkflowToSave || isSavingWorkflow) {
+        return null
+      }
+
+      const payload = {
+        graph: buildWorkflowGraph(nodes, connections),
+        name: workflowName.trim(),
+        triggers: buildWorkflowTriggers(nodes, connections),
+      }
+
+      const savedWorkflow = workflowTemplateId
+        ? await updateWorkflowTemplate.mutateAsync({
+            ...payload,
+            workflowTemplateId,
+          })
+        : await createWorkflowTemplate.mutateAsync(payload)
+
+      lastSavedWorkflowSignatureRef.current = JSON.stringify({
+        connections,
+        nodes,
+        workflowName: workflowName.trim(),
+      })
+      lastStoredDraftSignatureRef.current = workflowSignature
+      clearWorkflowDraft()
+      setSaveMessage(mode === 'auto' ? 'Draft saved' : 'Workflow saved')
+
+      if (!workflowTemplateId) {
+        void navigate(`/agents/workflow-designer/${savedWorkflow.id}`, {
+          replace: true,
+        })
+      }
+
+      return savedWorkflow
+    },
+    [
+      connections,
+      createWorkflowTemplate,
+      hasWorkflowToSave,
+      isSavingWorkflow,
+      navigate,
+      nodes,
+      updateWorkflowTemplate,
+      workflowName,
+      workflowSignature,
+      workflowTemplateId,
+    ],
+  )
 
   const connectionLayouts = useMemo<WorkflowConnectionLayout[]>(() => {
     return connections.flatMap((connection) => {
@@ -613,6 +1011,76 @@ export const WorkflowDesignerPage = () => {
     }
   }, [draftConnection, hoveredHandle, finishDraftConnection])
 
+  useEffect(() => {
+    if (!saveMessage) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSaveMessage(null)
+    }, 2200)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [saveMessage])
+
+  useEffect(() => {
+    if (!autoSaveDraft) {
+      return
+    }
+
+    if (!workflowTemplateId) {
+      const isMeaningfulDraft =
+        nodes.length > 0 || workflowName.trim() !== DEFAULT_WORKFLOW_NAME
+
+      if (!isMeaningfulDraft) {
+        clearWorkflowDraft()
+        lastStoredDraftSignatureRef.current = workflowSignature
+        return
+      }
+
+      if (workflowSignature === lastStoredDraftSignatureRef.current) {
+        return
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        storeWorkflowDraft({
+          connections,
+          nodes,
+          workflowName,
+        })
+        lastStoredDraftSignatureRef.current = workflowSignature
+        setSaveMessage('Draft cached')
+      }, 450)
+
+      return () => {
+        window.clearTimeout(timeoutId)
+      }
+    }
+
+    if (!hasUnsavedChanges) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void persistWorkflow('auto')
+    }, 700)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [
+    autoSaveDraft,
+    connections,
+    hasUnsavedChanges,
+    nodes,
+    persistWorkflow,
+    workflowName,
+    workflowSignature,
+    workflowTemplateId,
+  ])
+
   const addNodeFromItem = (item: ToolbarMenuItem) => {
     if (!item.nodeType) {
       return
@@ -632,6 +1100,7 @@ export const WorkflowDesignerPage = () => {
         id: crypto.randomUUID(),
         label: item.label,
         meta: item.meta,
+        sourceId: item.key,
         type: nodeType,
         x: insertionPoint.x,
         y: insertionPoint.y,
@@ -720,6 +1189,67 @@ export const WorkflowDesignerPage = () => {
 
   return (
     <div aria-label="Workflow Designer" className="flex h-full w-full flex-col bg-white">
+      <header className="flex h-14 items-center justify-between gap-4 border-b border-black/8 bg-white px-4">
+        <div className="min-w-0 flex-1">
+          <input
+            aria-label="Workflow name"
+            className="w-full max-w-xl border-none bg-transparent text-[15px] font-semibold text-[#2f2237] outline-none placeholder:text-[#9a8aa2]"
+            onChange={(event) => setWorkflowName(event.target.value)}
+            placeholder={DEFAULT_WORKFLOW_NAME}
+            value={workflowName}
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="min-w-[96px] text-right text-[11px] text-[#7c6b86]">
+            {isWorkflowTemplateLoading ? (
+              'Loading workflow...'
+            ) : saveMessage ? (
+              <span className="inline-flex items-center gap-1">
+                <FontAwesomeIcon className="text-[10px]" icon={faCheck} />
+                {saveMessage}
+              </span>
+            ) : workflowTemplateId ? (
+              'Saved workflow'
+            ) : (
+              'New workflow'
+            )}
+          </div>
+
+          <label className="flex items-center gap-2 text-[11px] font-medium text-[#5f4e67]">
+            <span>Auto save</span>
+            <button
+              aria-label="Toggle auto save"
+              aria-pressed={autoSaveDraft}
+              className={[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                autoSaveDraft ? 'bg-[#7445c7]' : 'bg-[#d9d1df]',
+              ].join(' ')}
+              onClick={() => setAutoSaveDraft((currentValue) => !currentValue)}
+              type="button"
+            >
+              <span
+                className={[
+                  'inline-block h-5 w-5 rounded-full bg-white shadow transition-transform',
+                  autoSaveDraft ? 'translate-x-5' : 'translate-x-1',
+                ].join(' ')}
+              />
+            </button>
+          </label>
+
+          <button
+            className="admin-button admin-button-primary min-w-[88px]"
+            disabled={!hasWorkflowToSave || isSavingWorkflow}
+            onClick={() => {
+              void persistWorkflow('manual')
+            }}
+            type="button"
+          >
+            {isSavingWorkflow ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </header>
+
       <header className="flex h-12 items-center gap-2 border-b border-black/8 bg-[#faf8fc] px-4">
         {toolbarActions.map((action) => {
           const isOpen = openMenu === action.key

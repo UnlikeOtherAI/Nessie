@@ -532,6 +532,8 @@ export const CreateWorkflowTemplateBodySchema = z.object({
   requiredEnvironmentTemplateIds: z.array(z.string().uuid()).optional(),
 })
 
+export const UpdateWorkflowTemplateBodySchema = CreateWorkflowTemplateBodySchema
+
 export const WorkflowInstallationRecordSchema = z.object({
   id: z.string().uuid(),
   workflowTemplateId: z.string().uuid(),

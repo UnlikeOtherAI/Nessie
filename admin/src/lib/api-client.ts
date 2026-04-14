@@ -163,8 +163,20 @@ export type WorkflowTemplateRecord = {
   name: string
   description?: string | null
   version: number
-  graph: { steps: Array<{ id: string; type: string; title?: string }> }
+  graph: {
+    steps: Array<{
+      id: string
+      input?: Record<string, unknown>
+      title?: string
+      type: string
+    }>
+  }
+  triggers: unknown
+  variableSchema: unknown
+  bindingSchema: unknown
   requiredEnvironmentTemplateIds: string[]
+  createdByActorType: string
+  createdByActorId: string
   createdAt: string
   updatedAt: string
 }
@@ -175,10 +187,14 @@ export type WorkflowInstallationRecord = {
   workflowTemplateVersion: number
   organizationId: string
   channelId?: string | null
-  status: 'active' | 'paused' | 'archived'
+  projectId?: string | null
+  teamId?: string | null
+  status: 'active' | 'paused' | 'draft' | 'disabled'
   active: boolean
   resolvedBindings: Record<string, unknown>
   config: Record<string, unknown>
+  createdByActorType: string
+  createdByActorId: string
   createdAt: string
   updatedAt: string
 }

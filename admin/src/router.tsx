@@ -56,6 +56,10 @@ export const router = createBrowserRouter([
         element: <WorkflowDesignerPage />,
       },
       {
+        path: '/agents/workflow-designer/:workflowTemplateId',
+        element: <WorkflowDesignerPage />,
+      },
+      {
         path: '/agents/triggers',
         element: <TriggersPage />,
       },

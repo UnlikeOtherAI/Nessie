@@ -408,6 +408,63 @@ export const getWorkflowTemplate = async (
   return template ? mapWorkflowTemplate(template) : null
 }
 
+export const updateWorkflowTemplate = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  workflowTemplateId: string,
+  input: {
+    bindingSchema?: unknown
+    description?: string
+    graph: WorkflowGraph
+    name: string
+    requiredEnvironmentTemplateIds?: string[]
+    triggers?: unknown
+    variableSchema?: unknown
+  },
+): Promise<WorkflowTemplateRecord | null> => {
+  await validateRequiredEnvironmentTemplateIds(
+    prisma,
+    actorContext.tenant.organizationId,
+    input.requiredEnvironmentTemplateIds ?? [],
+  )
+
+  const existingTemplate = await prisma.workflowTemplate.findFirst({
+    where: {
+      id: workflowTemplateId,
+      organizationId: actorContext.tenant.organizationId,
+    },
+    select: {
+      id: true,
+      version: true,
+    },
+  })
+
+  if (!existingTemplate) {
+    return null
+  }
+
+  const template = await prisma.workflowTemplate.update({
+    where: {
+      id: existingTemplate.id,
+    },
+    data: {
+      name: input.name,
+      description: input.description,
+      version: {
+        increment: 1,
+      },
+      graphJson: input.graph as unknown as Prisma.InputJsonValue,
+      triggersJson: (input.triggers ?? {}) as Prisma.InputJsonValue,
+      variableSchema: (input.variableSchema ?? {}) as Prisma.InputJsonValue,
+      bindingSchema: (input.bindingSchema ?? {}) as Prisma.InputJsonValue,
+      requiredEnvironmentTemplateIds:
+        (input.requiredEnvironmentTemplateIds ?? []) as unknown as Prisma.InputJsonValue,
+    },
+  })
+
+  return mapWorkflowTemplate(template)
+}
+
 export const installWorkflowTemplate = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
