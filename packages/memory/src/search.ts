@@ -118,13 +118,14 @@ const buildSearchQuery = (
 
   if (mode === 'lexical') {
     return {
-      sql: 'SELECT * FROM match_thoughts_lexical($1, $2::uuid, $3::uuid, $4::"ThoughtAudienceType", $5::uuid, $6)',
+      sql: 'SELECT * FROM match_thoughts_lexical($1, $2::uuid, $3::uuid, $4::"ThoughtAudienceType", $5::uuid, $6, $7)',
       params: [
         input.query,
         input.organizationId,
         input.userId,
         input.outputAudienceType,
         input.outputAudienceId,
+        threshold,
         limit,
       ],
     }

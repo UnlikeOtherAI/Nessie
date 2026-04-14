@@ -52,7 +52,11 @@ export const createThoughtService = (deps: ThoughtServiceDeps) => ({
              t.visibility,
              t.owner_type,
              t.owner_id,
-             t.user_id
+             t.user_id,
+             t.organization_id,
+             t.project_id,
+             t.team_id,
+             t.channel_id
            ),
            resolve_thought_audience_id(
              t.audience_id,
@@ -61,7 +65,11 @@ export const createThoughtService = (deps: ThoughtServiceDeps) => ({
                t.visibility,
                t.owner_type,
                t.owner_id,
-               t.user_id
+               t.user_id,
+               t.organization_id,
+               t.project_id,
+               t.team_id,
+               t.channel_id
              ),
              t.organization_id,
              t.project_id,
@@ -79,7 +87,11 @@ export const createThoughtService = (deps: ThoughtServiceDeps) => ({
              t.visibility,
              t.owner_type,
              t.owner_id,
-             t.user_id
+             t.user_id,
+             t.organization_id,
+             t.project_id,
+             t.team_id,
+             t.channel_id
            ),
            resolve_thought_audience_id(
              t.audience_id,
@@ -88,7 +100,11 @@ export const createThoughtService = (deps: ThoughtServiceDeps) => ({
                t.visibility,
                t.owner_type,
                t.owner_id,
-               t.user_id
+               t.user_id,
+               t.organization_id,
+               t.project_id,
+               t.team_id,
+               t.channel_id
              ),
              t.organization_id,
              t.project_id,

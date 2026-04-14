@@ -61,7 +61,11 @@ CREATE OR REPLACE FUNCTION resolve_thought_audience_type(
   stored_visibility "ThoughtVisibility",
   stored_owner_type "ThoughtOwnerType",
   stored_owner_id text,
-  stored_user_id uuid
+  stored_user_id uuid,
+  stored_organization_id uuid,
+  stored_project_id uuid,
+  stored_team_id uuid,
+  stored_channel_id uuid
 )
 RETURNS "ThoughtAudienceType"
 LANGUAGE plpgsql
@@ -80,6 +84,23 @@ BEGIN
       ) THEN
         RETURN 'user'::"ThoughtAudienceType";
       END IF;
+
+      IF stored_channel_id IS NOT NULL THEN
+        RETURN 'channel'::"ThoughtAudienceType";
+      END IF;
+
+      IF stored_team_id IS NOT NULL THEN
+        RETURN 'team'::"ThoughtAudienceType";
+      END IF;
+
+      IF stored_project_id IS NOT NULL THEN
+        RETURN 'project'::"ThoughtAudienceType";
+      END IF;
+
+      IF stored_organization_id IS NOT NULL THEN
+        RETURN 'organization'::"ThoughtAudienceType";
+      END IF;
+
       RETURN NULL;
     WHEN 'channel' THEN
       RETURN 'channel'::"ThoughtAudienceType";
@@ -151,7 +172,11 @@ WITH resolved AS (
       t.visibility,
       t.owner_type,
       t.owner_id,
-      t.user_id
+      t.user_id,
+      t.organization_id,
+      t.project_id,
+      t.team_id,
+      t.channel_id
     ) AS resolved_audience_type
   FROM "thoughts" AS t
 )
@@ -458,7 +483,11 @@ AS $$
         t.visibility,
         t.owner_type,
         t.owner_id,
-        t.user_id
+        t.user_id,
+        t.organization_id,
+        t.project_id,
+        t.team_id,
+        t.channel_id
       ) AS audience_type,
       resolve_thought_audience_id(
         t.audience_id,
@@ -467,7 +496,11 @@ AS $$
           t.visibility,
           t.owner_type,
           t.owner_id,
-          t.user_id
+          t.user_id,
+          t.organization_id,
+          t.project_id,
+          t.team_id,
+          t.channel_id
         ),
         t.organization_id,
         t.project_id,
@@ -568,6 +601,7 @@ CREATE OR REPLACE FUNCTION match_thoughts_lexical(
   match_user_id uuid,
   output_audience_type "ThoughtAudienceType",
   output_audience_id uuid,
+  match_threshold float DEFAULT 0.3,
   match_limit int DEFAULT 10
 )
 RETURNS TABLE (
@@ -621,6 +655,7 @@ AS $$
     CROSS JOIN search_query AS sq
     WHERE numnode(sq.ts_query) > 0
       AND t.search_vector @@ sq.ts_query
+      AND ts_rank_cd(t.search_vector, sq.ts_query, 32) > match_threshold
     ORDER BY similarity DESC, t.created_at DESC
     LIMIT GREATEST(match_limit * 5, 25)
   )

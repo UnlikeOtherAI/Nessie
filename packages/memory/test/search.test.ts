@@ -116,8 +116,11 @@ test('searchAndLogThoughts logs hybrid recalls and attaches recall ids', async (
 
 test('searchAndLogThoughts skips embeddings for lexical mode', async () => {
   let embedCalled = false
+  const queries: { params: unknown[] | undefined; sql: string }[] = []
 
-  const pool = createPoolStub((sql) => {
+  const pool = createPoolStub((sql, params) => {
+    queries.push({ params, sql })
+
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
       return { rows: [] }
     }
@@ -167,6 +170,7 @@ test('searchAndLogThoughts skips embeddings for lexical mode', async () => {
       outputAudienceId: '77777777-7777-7777-7777-777777777777',
       outputAudienceType: 'user',
       query: 'deploy pipeline actions',
+      threshold: 0.55,
       userId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     },
     {
@@ -182,4 +186,11 @@ test('searchAndLogThoughts skips embeddings for lexical mode', async () => {
 
   assert.equal(embedCalled, false)
   assert.equal(results[0]?.retrievalMode, 'lexical')
+  assert.ok(
+    queries.some(
+      (query) =>
+        query.sql.includes('match_thoughts_lexical')
+        && query.params?.[5] === 0.55,
+    ),
+  )
 })

@@ -67,14 +67,6 @@ const defaultCaptureAudienceType = (
     return 'channel'
   }
 
-  if (scoped.teamId) {
-    return 'team'
-  }
-
-  if (scoped.projectId) {
-    return 'project'
-  }
-
   return actorContext.actor.actorType === 'user'
     ? 'user'
     : 'organization'
@@ -133,27 +125,6 @@ export const resolveThoughtOutputAudience = (
         audienceType: 'channel',
         audienceId: channelId,
         visibility: 'channel',
-      },
-    }
-  }
-
-  const teamId = actorContext.actionContext.teamId ?? actorContext.tenant.teamId
-  if (teamId) {
-    return {
-      audience: {
-        audienceType: 'team',
-        audienceId: teamId,
-        visibility: 'team',
-      },
-    }
-  }
-
-  if (actorContext.tenant.projectId) {
-    return {
-      audience: {
-        audienceType: 'project',
-        audienceId: actorContext.tenant.projectId,
-        visibility: 'project',
       },
     }
   }

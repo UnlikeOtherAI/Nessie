@@ -128,7 +128,11 @@ export const captureThought = async (
          visibility,
          owner_type,
          owner_id,
-         user_id
+         user_id,
+         organization_id,
+         project_id,
+         team_id,
+         channel_id
        ) = $3::"ThoughtAudienceType"
        AND resolve_thought_audience_id(
          audience_id,
@@ -137,7 +141,11 @@ export const captureThought = async (
            visibility,
            owner_type,
            owner_id,
-           user_id
+           user_id,
+           organization_id,
+           project_id,
+           team_id,
+           channel_id
          ),
          organization_id,
          project_id,
