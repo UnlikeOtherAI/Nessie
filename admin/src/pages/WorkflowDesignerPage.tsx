@@ -61,11 +61,18 @@ type WorkflowConnectionLayout = {
 }
 
 type WorkflowDraftConnection = {
-  fromNodeId: string
+  color: string
+  startHandleKind: 'input' | 'output'
+  startNodeId: string
   startX: number
   startY: number
   x: number
   y: number
+}
+
+type WorkflowHoveredHandle = {
+  kind: 'input' | 'output'
+  nodeId: string
 }
 
 const toolbarButtonClass = [
@@ -180,6 +187,37 @@ const getConnectionGeometry = (
   }
 }
 
+const getOppositeHandleKind = (handleKind: 'input' | 'output') =>
+  handleKind === 'input' ? 'output' : 'input'
+
+const getDraftConnectionCandidate = (
+  draftConnection: WorkflowDraftConnection,
+  hoveredHandle: WorkflowHoveredHandle | null,
+) => {
+  if (!hoveredHandle) {
+    return null
+  }
+
+  const expectedTargetHandleKind = getOppositeHandleKind(
+    draftConnection.startHandleKind,
+  )
+  if (hoveredHandle.kind !== expectedTargetHandleKind) {
+    return null
+  }
+
+  if (draftConnection.startHandleKind === 'output') {
+    return {
+      fromNodeId: draftConnection.startNodeId,
+      toNodeId: hoveredHandle.nodeId,
+    }
+  }
+
+  return {
+    fromNodeId: hoveredHandle.nodeId,
+    toNodeId: draftConnection.startNodeId,
+  }
+}
+
 const getCanvasInsertionPoint = (canvasElement: HTMLDivElement | null, offset: number) => {
   if (!canvasElement) {
     return {
@@ -231,8 +269,8 @@ export const WorkflowDesignerPage = () => {
 
   const [connections, setConnections] = useState<WorkflowConnection[]>([])
   const [draftConnection, setDraftConnection] = useState<WorkflowDraftConnection | null>(null)
+  const [hoveredHandle, setHoveredHandle] = useState<WorkflowHoveredHandle | null>(null)
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null)
-  const [hoveredInputNodeId, setHoveredInputNodeId] = useState<string | null>(null)
   const [nodes, setNodes] = useState<WorkflowCanvasNode[]>([])
   const [openMenu, setOpenMenu] = useState<string | null>(null)
 
@@ -345,26 +383,34 @@ export const WorkflowDesignerPage = () => {
     })
   }, [connections, nodes])
 
-  const invalidDraftTargetNodeId = useMemo(() => {
-    if (!draftConnection || !hoveredInputNodeId) {
+  const invalidDraftTarget = useMemo(() => {
+    if (!draftConnection || !hoveredHandle) {
+      return null
+    }
+
+    const candidateConnection = getDraftConnectionCandidate(
+      draftConnection,
+      hoveredHandle,
+    )
+    if (!candidateConnection) {
       return null
     }
 
     const isDuplicateConnection = connections.some(
       (connection) =>
-        connection.fromNodeId === draftConnection.fromNodeId &&
-        connection.toNodeId === hoveredInputNodeId,
+        connection.fromNodeId === candidateConnection.fromNodeId &&
+        connection.toNodeId === candidateConnection.toNodeId,
     )
 
     if (
-      hoveredInputNodeId === draftConnection.fromNodeId ||
+      candidateConnection.fromNodeId === candidateConnection.toNodeId ||
       isDuplicateConnection
     ) {
-      return hoveredInputNodeId
+      return hoveredHandle
     }
 
     return null
-  }, [connections, draftConnection, hoveredInputNodeId])
+  }, [connections, draftConnection, hoveredHandle])
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -383,8 +429,8 @@ export const WorkflowDesignerPage = () => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDraftConnection(null)
+        setHoveredHandle(null)
         setHoveredConnectionId(null)
-        setHoveredInputNodeId(null)
         setOpenMenu(null)
       }
     }
@@ -434,16 +480,21 @@ export const WorkflowDesignerPage = () => {
 
       if (draftConnection && canvasRef.current) {
         const canvasBounds = canvasRef.current.getBoundingClientRect()
-        const hoveredInputHandle = document
+        const hoveredHandleElement = document
           .elementFromPoint(event.clientX, event.clientY)
-          ?.closest('[data-workflow-input-node-id]')
-        const nextHoveredInputNodeId =
-          hoveredInputHandle?.getAttribute('data-workflow-input-node-id') ?? null
+          ?.closest('[data-workflow-node-id][data-workflow-handle-kind]')
+        const nextHoveredHandle =
+          hoveredHandleElement instanceof HTMLElement
+            ? {
+                kind: hoveredHandleElement.dataset.workflowHandleKind as
+                  | 'input'
+                  | 'output',
+                nodeId: hoveredHandleElement.dataset.workflowNodeId ?? '',
+              }
+            : null
 
-        setHoveredInputNodeId(
-          nextHoveredInputNodeId === draftConnection.fromNodeId
-            ? draftConnection.fromNodeId
-            : nextHoveredInputNodeId,
+        setHoveredHandle(
+          nextHoveredHandle?.nodeId ? nextHoveredHandle : null,
         )
 
         setDraftConnection((currentDraft) =>
@@ -461,46 +512,57 @@ export const WorkflowDesignerPage = () => {
     const handlePointerUp = (event: PointerEvent) => {
       dragStateRef.current = null
 
-      if (
-        draftConnection &&
-        hoveredInputNodeId &&
-        hoveredInputNodeId !== draftConnection.fromNodeId
-      ) {
-        setConnections((currentConnections) => {
-          const duplicateConnection = currentConnections.some(
-            (connection) =>
-              connection.fromNodeId === draftConnection.fromNodeId &&
-              connection.toNodeId === hoveredInputNodeId,
-          )
+      if (draftConnection) {
+        const candidateConnection = getDraftConnectionCandidate(
+          draftConnection,
+          hoveredHandle,
+        )
+        const isInvalidTarget =
+          candidateConnection &&
+          (candidateConnection.fromNodeId === candidateConnection.toNodeId ||
+            connections.some(
+              (connection) =>
+                connection.fromNodeId === candidateConnection.fromNodeId &&
+                connection.toNodeId === candidateConnection.toNodeId,
+            ))
 
-          if (duplicateConnection) {
-            return currentConnections
-          }
+        if (candidateConnection && !isInvalidTarget) {
+          setConnections((currentConnections) => {
+            const duplicateConnection = currentConnections.some(
+              (connection) =>
+                connection.fromNodeId === candidateConnection.fromNodeId &&
+                connection.toNodeId === candidateConnection.toNodeId,
+            )
 
-          return [
-            ...currentConnections,
-            {
-              fromNodeId: draftConnection.fromNodeId,
-              id: crypto.randomUUID(),
-              toNodeId: hoveredInputNodeId,
-            },
-          ]
-        })
+            if (duplicateConnection) {
+              return currentConnections
+            }
+
+            return [
+              ...currentConnections,
+              {
+                fromNodeId: candidateConnection.fromNodeId,
+                id: crypto.randomUUID(),
+                toNodeId: candidateConnection.toNodeId,
+              },
+            ]
+          })
+        }
       }
 
       const target = event.target
-      const releasedOverInputHandle =
+      const releasedOverHandle =
         target instanceof Element &&
-        target.closest('[data-workflow-input-handle="true"]')
+        target.closest('[data-workflow-handle-kind]')
 
-      if (releasedOverInputHandle || hoveredInputNodeId) {
+      if (releasedOverHandle || hoveredHandle) {
         setDraftConnection(null)
-        setHoveredInputNodeId(null)
+        setHoveredHandle(null)
         return
       }
 
       setDraftConnection(null)
-      setHoveredInputNodeId(null)
+      setHoveredHandle(null)
     }
 
     document.addEventListener('pointermove', handlePointerMove)
@@ -510,7 +572,7 @@ export const WorkflowDesignerPage = () => {
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [draftConnection, hoveredInputNodeId])
+  }, [connections, draftConnection, hoveredHandle])
 
   const addNodeFromItem = (item: ToolbarMenuItem) => {
     if (!item.nodeType) {
@@ -579,6 +641,7 @@ export const WorkflowDesignerPage = () => {
   const handleConnectionStart = (
     event: ReactPointerEvent<HTMLButtonElement>,
     nodeId: string,
+    startHandleKind: 'input' | 'output',
   ) => {
     event.preventDefault()
     event.stopPropagation()
@@ -589,52 +652,21 @@ export const WorkflowDesignerPage = () => {
       return
     }
 
-    const outputAnchor = getNodeOutputAnchor(node)
+    const startAnchor =
+      startHandleKind === 'input'
+        ? getNodeInputAnchor(node)
+        : getNodeOutputAnchor(node)
+
     setHoveredConnectionId(null)
-    setHoveredInputNodeId(null)
+    setHoveredHandle(null)
     setDraftConnection({
-      fromNodeId: nodeId,
-      startX: outputAnchor.x,
-      startY: outputAnchor.y,
+      color: nodeThemes[node.type].border,
+      startHandleKind,
+      startNodeId: nodeId,
+      startX: startAnchor.x,
+      startY: startAnchor.y,
       x: event.clientX - canvasBounds.left,
       y: event.clientY - canvasBounds.top,
-    })
-  }
-
-  const handleConnectionComplete = (
-    event: ReactPointerEvent<HTMLButtonElement>,
-    nodeId: string,
-  ) => {
-    event.preventDefault()
-    event.stopPropagation()
-
-    setDraftConnection((currentDraft) => {
-      if (!currentDraft || currentDraft.fromNodeId === nodeId) {
-        return null
-      }
-
-      setConnections((currentConnections) => {
-        const duplicateConnection = currentConnections.some(
-          (connection) =>
-            connection.fromNodeId === currentDraft.fromNodeId &&
-            connection.toNodeId === nodeId,
-        )
-
-        if (duplicateConnection) {
-          return currentConnections
-        }
-
-        return [
-          ...currentConnections,
-          {
-            fromNodeId: currentDraft.fromNodeId,
-            id: crypto.randomUUID(),
-            toNodeId: nodeId,
-          },
-        ]
-      })
-
-      return null
     })
   }
 
@@ -792,7 +824,7 @@ export const WorkflowDesignerPage = () => {
                 { x: draftConnection.x, y: draftConnection.y },
               ).path}
               fill="none"
-              stroke={nodeThemes.agent.border}
+              stroke={draftConnection.color}
               strokeDasharray="8 6"
               strokeLinecap="round"
               strokeWidth="3"
@@ -851,8 +883,16 @@ export const WorkflowDesignerPage = () => {
           const hasIncomingConnection = connections.some(
             (connection) => connection.toNodeId === node.id,
           )
-          const isHoveredInput = hoveredInputNodeId === node.id
-          const isInvalidDraftTarget = invalidDraftTargetNodeId === node.id
+          const isHoveredInput =
+            hoveredHandle?.nodeId === node.id && hoveredHandle.kind === 'input'
+          const isHoveredOutput =
+            hoveredHandle?.nodeId === node.id && hoveredHandle.kind === 'output'
+          const isInvalidInputTarget =
+            invalidDraftTarget?.nodeId === node.id &&
+            invalidDraftTarget.kind === 'input'
+          const isInvalidOutputTarget =
+            invalidDraftTarget?.nodeId === node.id &&
+            invalidDraftTarget.kind === 'output'
 
           return (
             <div
@@ -873,20 +913,21 @@ export const WorkflowDesignerPage = () => {
                 <button
                   aria-label={`Connect into ${node.label}`}
                   className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 transition-all hover:scale-110 hover:bg-current"
-                  data-workflow-handle="true"
-                  data-workflow-input-handle="true"
-                  data-workflow-input-node-id={node.id}
-                  onPointerUp={(event) => handleConnectionComplete(event, node.id)}
+                  data-workflow-handle-kind="input"
+                  data-workflow-node-id={node.id}
+                  onPointerDown={(event) =>
+                    handleConnectionStart(event, node.id, 'input')
+                  }
                   style={{
                     backgroundColor: isHoveredInput
-                      ? isInvalidDraftTarget
+                      ? isInvalidInputTarget
                         ? '#dc2626'
                         : theme.border
                       : hasIncomingConnection
                         ? 'transparent'
                       : '#ffffff',
-                    borderColor: isInvalidDraftTarget ? '#dc2626' : theme.border,
-                    color: isInvalidDraftTarget ? '#dc2626' : theme.border,
+                    borderColor: isInvalidInputTarget ? '#dc2626' : theme.border,
+                    color: isInvalidInputTarget ? '#dc2626' : theme.border,
                     transform: isHoveredInput
                       ? 'translateY(-50%) scale(1.1)'
                       : 'translateY(-50%)',
@@ -898,9 +939,23 @@ export const WorkflowDesignerPage = () => {
               <button
                 aria-label={`Connect from ${node.label}`}
                 className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 bg-white transition-all hover:scale-110 hover:bg-current"
-                data-workflow-handle="true"
-                onPointerDown={(event) => handleConnectionStart(event, node.id)}
-                style={{ borderColor: theme.border, color: theme.border }}
+                data-workflow-handle-kind="output"
+                data-workflow-node-id={node.id}
+                onPointerDown={(event) =>
+                  handleConnectionStart(event, node.id, 'output')
+                }
+                style={{
+                  backgroundColor: isHoveredOutput
+                    ? isInvalidOutputTarget
+                      ? '#dc2626'
+                      : theme.border
+                    : '#ffffff',
+                  borderColor: isInvalidOutputTarget ? '#dc2626' : theme.border,
+                  color: isInvalidOutputTarget ? '#dc2626' : theme.border,
+                  transform: isHoveredOutput
+                    ? 'translateY(-50%) scale(1.1)'
+                    : 'translateY(-50%)',
+                }}
                 type="button"
               />
 
