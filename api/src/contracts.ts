@@ -1038,7 +1038,7 @@ export const ProviderInvocationRequestSchema = z.object({
 export type ProviderInvocationRequest = z.infer<typeof ProviderInvocationRequestSchema>
 
 export const ProviderToolCallSchema = z.object({
-  toolCallId: z.string().uuid(),
+  toolCallId: z.string().min(1),
   toolName: NonEmptyStringSchema,
   arguments: z.record(z.unknown()),
   reason: z.string().optional(),

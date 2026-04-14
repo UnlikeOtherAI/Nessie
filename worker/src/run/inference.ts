@@ -573,9 +573,11 @@ const executeStage = async (
 
       let next = await source.next()
       while (!next.done) {
-        outputText += next.value.text
-        if (next.value.text && input.onVisibleTextDelta) {
-          await input.onVisibleTextDelta(next.value.text)
+        if (next.value.type === 'output_text.delta') {
+          outputText += next.value.text
+          if (next.value.text && input.onVisibleTextDelta) {
+            await input.onVisibleTextDelta(next.value.text)
+          }
         }
         next = await source.next()
       }

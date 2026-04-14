@@ -44,6 +44,8 @@ const buildProviderRequest = (
   requestId,
   responseFormat: request.responseFormat,
   temperature: request.temperature,
+  toolChoice: request.toolChoice,
+  tools: request.tools,
 })
 
 const buildInferenceResult = (
@@ -55,6 +57,7 @@ const buildInferenceResult = (
     invocations: InferenceResult['invocations']
     outputText: string
     requestId: string
+    toolCalls: InferenceResult['toolCalls']
   },
 ): InferenceResult => ({
   correlationId: result.correlationId,
@@ -64,6 +67,7 @@ const buildInferenceResult = (
   outputText: result.outputText,
   provider,
   requestId: result.requestId,
+  toolCalls: result.toolCalls,
 })
 
 export const createInferenceService = (
@@ -81,7 +85,13 @@ export const createInferenceService = (
     const requestId = buildRequestId(request, requestIdFactory)
     const capabilities = await capabilityCatalog.resolve(config, request.model)
     const model = request.model ?? capabilities.effectiveSnapshot.model
-    const providerRequest = buildProviderRequest(request, requestId, model)
+    const providerRequest = buildProviderRequest(
+      capabilities.effectiveSnapshot.toolCallingMode === 'native'
+        ? request
+        : { ...request, toolChoice: undefined, tools: undefined },
+      requestId,
+      model,
+    )
     const providerResult = await connector.invoke(providerRequest)
     const resolvedModel = providerResult.invocation.model
 
@@ -91,6 +101,7 @@ export const createInferenceService = (
       invocations: [providerResult.invocation],
       outputText: providerResult.outputText,
       requestId,
+      toolCalls: providerResult.toolCalls,
     })
   }
 
@@ -108,7 +119,13 @@ export const createInferenceService = (
     const requestId = buildRequestId(request, requestIdFactory)
     const capabilities = await capabilityCatalog.resolve(config, request.model)
     const model = request.model ?? capabilities.effectiveSnapshot.model
-    const providerRequest = buildProviderRequest(request, requestId, model)
+    const providerRequest = buildProviderRequest(
+      capabilities.effectiveSnapshot.toolCallingMode === 'native'
+        ? request
+        : { ...request, toolChoice: undefined, tools: undefined },
+      requestId,
+      model,
+    )
     const providerStream = connector.stream(providerRequest)
 
     let next = await providerStream.next()
@@ -125,6 +142,7 @@ export const createInferenceService = (
       invocations: [next.value.invocation],
       outputText: next.value.outputText,
       requestId,
+      toolCalls: next.value.toolCalls,
     })
   }
 

@@ -15,7 +15,9 @@ import type {
   ProviderInvocationRequest,
   ProviderInvocationResult,
   ProviderMessage,
+  ProviderToolCall,
   ProviderStreamEvent,
+  ToolSchemaDescriptor,
 } from './types.js'
 
 type OpenAiUsage = {
@@ -27,7 +29,14 @@ type OpenAiUsage = {
 type OpenAiChatResponse = {
   choices?: Array<{
     finish_reason?: string | null
-    message?: { content?: string | null }
+    message?: {
+      content?: string | null
+      tool_calls?: Array<{
+        id: string
+        type: 'function'
+        function: { name: string; arguments: string }
+      }>
+    }
   }>
   model?: string
   usage?: OpenAiUsage
@@ -44,7 +53,15 @@ type OpenAiEmbeddingResponse = {
 
 type OpenAiStreamChunk = {
   choices?: Array<{
-    delta?: { content?: string | null }
+    delta?: {
+      content?: string | null
+      tool_calls?: Array<{
+        index: number
+        id?: string
+        type?: 'function'
+        function?: { name?: string; arguments?: string }
+      }>
+    }
     finish_reason?: string | null
     message?: { content?: string | null }
   }>
@@ -54,6 +71,7 @@ type OpenAiStreamChunk = {
 type CapturedStreamResult = {
   finishReason?: NormalizedFinishReason
   outputText: string
+  toolCalls: ProviderToolCall[]
   usage: InvocationUsage
 }
 
@@ -75,6 +93,14 @@ const resolveOpenAiTemperature = (
   OPENAI_REASONING_MODEL_PREFIX_RE.test(model) ? undefined : temperature
 
 const nowIso = (): string => new Date().toISOString()
+
+const safeParseJson = (raw: string): Record<string, unknown> => {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return { _raw: raw }
+  }
+}
 
 const normalizeFinishReason = (
   value: string | null | undefined,
@@ -195,6 +221,7 @@ const collectChatStream = async function* (
   let fallbackMessageContent = ''
   let finishReason: NormalizedFinishReason | undefined
   let outputText = ''
+  const toolCalls = new Map<number, { args: string; id: string; name: string }>()
   let usage: InvocationUsage = {}
   let yieldedDelta = false
 
@@ -217,7 +244,18 @@ const collectChatStream = async function* (
 
         const data = line.slice(6).trim()
         if (data === '[DONE]') {
-          return { finishReason, outputText, usage }
+          return {
+            finishReason,
+            outputText,
+            toolCalls: Array.from(toolCalls.entries())
+              .sort(([left], [right]) => left - right)
+              .map(([, value]) => ({
+                arguments: safeParseJson(value.args),
+                toolCallId: value.id,
+                toolName: value.name,
+              })),
+            usage,
+          }
         }
 
         try {
@@ -240,6 +278,32 @@ const collectChatStream = async function* (
             continue
           }
 
+          for (const toolCallDelta of choice?.delta?.tool_calls ?? []) {
+            const existing = toolCalls.get(toolCallDelta.index) ?? {
+              args: '',
+              id: '',
+              name: '',
+            }
+
+            if (toolCallDelta.id) {
+              existing.id = toolCallDelta.id
+            }
+
+            if (toolCallDelta.function?.name) {
+              existing.name = toolCallDelta.function.name
+            }
+
+            if (toolCallDelta.function?.arguments) {
+              existing.args += toolCallDelta.function.arguments
+              yield {
+                type: 'tool_call.delta',
+                text: toolCallDelta.function.arguments,
+              }
+            }
+
+            toolCalls.set(toolCallDelta.index, existing)
+          }
+
           const messageText = choice?.message?.content ?? ''
           if (messageText) {
             fallbackMessageContent = messageText
@@ -258,11 +322,58 @@ const collectChatStream = async function* (
     yield { type: 'output_text.delta', text: fallbackMessageContent }
   }
 
-  return { finishReason, outputText, usage }
+  return {
+    finishReason,
+    outputText,
+    toolCalls: Array.from(toolCalls.entries())
+      .sort(([left], [right]) => left - right)
+      .map(([, value]) => ({
+        arguments: safeParseJson(value.args),
+        toolCallId: value.id,
+        toolName: value.name,
+      })),
+    usage,
+  }
 }
 
 const formatMiniMaxContextBlock = (content: string): string =>
   `${MINIMAX_CONTEXT_PREFIX}${content.trim()}`
+
+const mapToolsToOpenAi = (
+  tools: ToolSchemaDescriptor[] | undefined,
+):
+  | Array<{
+    type: 'function'
+    function: {
+      name: string
+      description: string
+      parameters: Record<string, unknown>
+    }
+  }>
+  | undefined =>
+  tools?.map((tool) => ({
+    function: {
+      description: tool.description,
+      name: tool.toolName,
+      parameters: tool.inputSchema,
+    },
+    type: 'function',
+  }))
+
+const mapToolCallsFromOpenAi = (
+  toolCalls:
+    | Array<{
+      id: string
+      type: 'function'
+      function: { name: string; arguments: string }
+    }>
+    | undefined,
+): ProviderToolCall[] =>
+  (toolCalls ?? []).map((toolCall) => ({
+    arguments: safeParseJson(toolCall.function.arguments),
+    toolCallId: toolCall.id,
+    toolName: toolCall.function.name,
+  }))
 
 const normalizeMiniMaxMessages = (
   messages: ProviderMessage[],
@@ -310,8 +421,9 @@ const normalizeMiniMaxMessages = (
 
     flushPendingSystem()
     normalized.push({
-      content: message.content,
+      content: message.content ?? '',
       role: 'assistant',
+      toolCalls: message.toolCalls,
     })
   }
 
@@ -520,16 +632,22 @@ const createOpenAiLikeConnector = (
       const model = resolveChatModel(request.model)
 
       try {
+        const tools = mapToolsToOpenAi(request.tools)
         const response = await invokeRequest({
           max_completion_tokens: request.maxOutputTokens ?? 1024,
           messages: request.messages,
           model,
           response_format: request.responseFormat,
           temperature: resolveOpenAiTemperature(model, request.temperature),
+          tool_choice: request.toolChoice,
+          tools,
         })
 
         const json = (await response.json()) as OpenAiChatResponse
         const outputText = json.choices?.[0]?.message?.content ?? ''
+        const toolCalls = mapToolCallsFromOpenAi(
+          json.choices?.[0]?.message?.tool_calls,
+        )
         const finishReason = normalizeFinishReason(
           json.choices?.[0]?.finish_reason,
         )
@@ -548,6 +666,7 @@ const createOpenAiLikeConnector = (
             usage: usageFromOpenAi(json.usage),
           }),
           outputText,
+          toolCalls,
         }
       } catch (error) {
         throw providerError({
@@ -574,6 +693,7 @@ const createOpenAiLikeConnector = (
       const model = resolveChatModel(request.model)
 
       try {
+        const tools = mapToolsToOpenAi(request.tools)
         const response = await invokeRequest({
           max_completion_tokens: request.maxOutputTokens ?? 1024,
           messages: request.messages,
@@ -582,6 +702,8 @@ const createOpenAiLikeConnector = (
           stream: true,
           stream_options: { include_usage: true },
           temperature: resolveOpenAiTemperature(model, request.temperature),
+          tool_choice: request.toolChoice,
+          tools,
         })
 
         const stream = collectChatStream(response)
@@ -605,6 +727,7 @@ const createOpenAiLikeConnector = (
             usage: next.value.usage,
           }),
           outputText: next.value.outputText,
+          toolCalls: next.value.toolCalls,
         }
       } catch (error) {
         throw providerError({
@@ -729,6 +852,7 @@ const createMiniMaxConnector = (
             usage: next.value.usage,
           }),
           outputText: next.value.outputText,
+          toolCalls: next.value.toolCalls,
         }
       } catch (error) {
         throw providerError({
@@ -784,6 +908,7 @@ const createMiniMaxConnector = (
             usage: next.value.usage,
           }),
           outputText: next.value.outputText,
+          toolCalls: next.value.toolCalls,
         }
       } catch (error) {
         throw providerError({
