@@ -3989,110 +3989,121 @@ export const buildApp = async () => {
       return reply
     }
 
-    // Use the orchestrator to decide agent engagement
-    const scopes = [
-      {
-        kind: 'organization' as const,
-        organizationId: actorContext.tenant.organizationId,
-      },
-      {
-        kind: 'channel' as const,
-        channelId: parseChannelId(thread.channel.id),
-      },
-    ]
-
+    // Kick off agent engagement without blocking the 201 response.
+    // Failures here must never surface as a failed message on the client — the
+    // user message was already persisted above.
     if (result.channelAgents.length > 0 && sharedModelClient) {
-      // Fetch recent messages for context
-      const recentDbMessages = await prisma.message.findMany({
-        where: { threadId: thread.id },
-        orderBy: { createdAt: 'desc' },
-        take: 6,
-        include: { agent: { select: { name: true } } },
-      })
-
-      const decisions = await decideAgentEngagement(sharedModelClient, {
-        agents: result.channelAgents,
-        content: body.content,
-        recentMessages: recentDbMessages.reverse().slice(0, -1).map((m) => ({
-          role: m.role,
-          content: m.content,
-          agentName: m.agent?.name ?? undefined,
-        })),
-      })
-
-      for (const decision of decisions) {
-        if (decision.action === 'reply') {
-          const run = await prisma.run.create({
-            data: {
-              agentId: decision.agentId,
-              threadId: thread.id,
-              status: 'pending',
-            },
-            select: { agentId: true, id: true, status: true, threadId: true },
-          })
-
-          const task = await prisma.task.create({
-            data: {
-              runId: run.id,
-              agentId: decision.agentId,
-              status: 'inbox',
-              purpose: body.content.slice(0, 200),
-            },
-            select: { id: true },
-          })
-
-          await realtimeHub.publishWs(
-            [
-              ...scopes,
-              { kind: 'agent' as const, agentId: parseAgentId(decision.agentId) },
-            ],
+      const capturedResult = result
+      const capturedActorContext = actorContext
+      const capturedThread = thread
+      const capturedContent = body.content
+      void (async () => {
+        try {
+          const scopes = [
             {
-              data: {
-                agentId: parseAgentId(decision.agentId),
-                contentPreview: result.message.content.slice(0, 200),
-                messageId: result.message.id,
-                role: result.message.role,
-                threadId: parseThreadId(result.message.threadId),
-              },
-              event: 'message.new',
+              kind: 'organization' as const,
+              organizationId: capturedActorContext.tenant.organizationId,
             },
-          )
+            {
+              kind: 'channel' as const,
+              channelId: parseChannelId(capturedThread.channel.id),
+            },
+          ]
 
-          await enqueueRunExecution(prisma, {
-            actorContext: withActionContext(actorContext, {
-              agentId: parseAgentId(run.agentId),
-              channelId: parseChannelId(thread.channel.id),
-              taskId: parseTaskId(task.id),
-              threadId: parseThreadId(run.threadId),
-            }),
-            agentId: parseAgentId(run.agentId),
-            messageId: result.message.id,
-            runId: parseRunId(run.id),
-            taskId: parseTaskId(task.id),
-            threadId: parseThreadId(run.threadId),
-          }, `run:${run.id}`)
-        }
-
-        if (decision.action === 'acknowledge') {
-          await addReaction(prisma, {
-            messageId: result.message.id,
-            agentId: decision.agentId,
-            emoji: decision.emoji,
+          const recentDbMessages = await prisma.message.findMany({
+            where: { threadId: capturedThread.id },
+            orderBy: { createdAt: 'desc' },
+            take: 6,
+            include: { agent: { select: { name: true } } },
           })
 
-          const reactionData = {
-            messageId: result.message.id,
-            agentId: parseAgentId(decision.agentId),
-            emoji: decision.emoji,
+          const decisions = await decideAgentEngagement(sharedModelClient, {
+            agents: capturedResult.channelAgents,
+            content: capturedContent,
+            recentMessages: recentDbMessages.reverse().slice(0, -1).map((m) => ({
+              role: m.role,
+              content: m.content,
+              agentName: m.agent?.name ?? undefined,
+            })),
+          })
+
+          for (const decision of decisions) {
+            if (decision.action === 'reply') {
+              const run = await prisma.run.create({
+                data: {
+                  agentId: decision.agentId,
+                  threadId: capturedThread.id,
+                  status: 'pending',
+                },
+                select: { agentId: true, id: true, status: true, threadId: true },
+              })
+
+              const task = await prisma.task.create({
+                data: {
+                  runId: run.id,
+                  agentId: decision.agentId,
+                  status: 'inbox',
+                  purpose: capturedContent.slice(0, 200),
+                },
+                select: { id: true },
+              })
+
+              await realtimeHub.publishWs(
+                [
+                  ...scopes,
+                  { kind: 'agent' as const, agentId: parseAgentId(decision.agentId) },
+                ],
+                {
+                  data: {
+                    agentId: parseAgentId(decision.agentId),
+                    contentPreview: capturedResult.message.content.slice(0, 200),
+                    messageId: capturedResult.message.id,
+                    role: capturedResult.message.role,
+                    threadId: parseThreadId(capturedResult.message.threadId),
+                  },
+                  event: 'message.new',
+                },
+              )
+
+              await enqueueRunExecution(prisma, {
+                actorContext: withActionContext(capturedActorContext, {
+                  agentId: parseAgentId(run.agentId),
+                  channelId: parseChannelId(capturedThread.channel.id),
+                  taskId: parseTaskId(task.id),
+                  threadId: parseThreadId(run.threadId),
+                }),
+                agentId: parseAgentId(run.agentId),
+                messageId: capturedResult.message.id,
+                runId: parseRunId(run.id),
+                taskId: parseTaskId(task.id),
+                threadId: parseThreadId(run.threadId),
+              }, `run:${run.id}`)
+            }
+
+            if (decision.action === 'acknowledge') {
+              await addReaction(prisma, {
+                messageId: capturedResult.message.id,
+                agentId: decision.agentId,
+                emoji: decision.emoji,
+              })
+
+              const reactionData = {
+                messageId: capturedResult.message.id,
+                agentId: parseAgentId(decision.agentId),
+                emoji: decision.emoji,
+              }
+
+              await realtimeHub.publishSse(capturedThread.id, 'message.reaction', reactionData)
+              await realtimeHub.publishWs(scopes, {
+                data: reactionData,
+                event: 'message.reaction',
+              })
+            }
           }
-
-          await realtimeHub.publishSse(thread.id, 'message.reaction', reactionData)
-          await realtimeHub.publishWs(scopes, {
-            data: reactionData,
-            event: 'message.reaction',
-          })
+        } catch (error) {
+          app.log.error({ err: error, messageId: capturedResult.message.id }, '[orchestrate] agent engagement failed')
         }
-      }
+      })()
     }
 
     return reply.code(201).send(
