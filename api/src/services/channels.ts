@@ -169,27 +169,20 @@ export const findOrCreateDmChannel = async (
     currentUserId: string
     targetUserId: string
   },
-): Promise<ChannelRecord> => {
-  // Find an existing DM channel where both users are members
-  const existing = await prisma.channel.findFirst({
+): Promise<ChannelRecord | null> => {
+  // Validate both users belong to the organization
+  const memberCount = await prisma.organizationMember.count({
     where: {
-      type: 'dm',
       organizationId: input.organizationId,
-      members: {
-        every: {
-          userId: { in: [input.currentUserId, input.targetUserId] },
-        },
-      },
-      AND: [
-        { members: { some: { userId: input.currentUserId } } },
-        { members: { some: { userId: input.targetUserId } } },
-      ],
+      userId: { in: [input.currentUserId, input.targetUserId] },
     },
   })
-
-  if (existing) {
-    return mapChannelRecord(prisma, existing)
+  if (memberCount < 2) {
+    return null
   }
+
+  // Deterministic key for race-safe DM dedup (scoped to org+team)
+  const dmKey = [input.organizationId, input.teamId, ...[input.currentUserId, input.targetUserId].sort()].join(':')
 
   // Look up the target user's display name for the channel label
   const targetUser = await prisma.user.findUnique({
@@ -197,13 +190,16 @@ export const findOrCreateDmChannel = async (
     select: { displayName: true },
   })
 
-  const channel = await prisma.channel.create({
-    data: {
+  // Upsert on dmKey — idempotent, race-safe
+  const channel = await prisma.channel.upsert({
+    where: { dmKey },
+    create: {
       label: targetUser?.displayName ?? 'Direct Message',
       type: 'dm',
       organizationId: input.organizationId,
       teamId: input.teamId,
       visibility: 'private',
+      dmKey,
       members: {
         create: [
           { userId: input.currentUserId },
@@ -211,6 +207,7 @@ export const findOrCreateDmChannel = async (
         ],
       },
     },
+    update: {},
   })
 
   return mapChannelRecord(prisma, channel)
@@ -223,7 +220,20 @@ export const createGroupFromDm = async (
     newUserId: string
     currentUserId: string
   },
-): Promise<ChannelRecord> => {
+): Promise<ChannelRecord | null> => {
+  // Get the DM channel for org/team context first (needed for org membership check)
+  const dmChannel = await prisma.channel.findUniqueOrThrow({
+    where: { id: input.dmChannelId },
+  })
+
+  // Validate newUserId belongs to the same organization
+  const isMember = await prisma.organizationMember.count({
+    where: { organizationId: dmChannel.organizationId, userId: input.newUserId },
+  })
+  if (!isMember) {
+    return null
+  }
+
   // Get all current members of the DM
   const existingMembers = await prisma.channelMember.findMany({
     where: { channelId: input.dmChannelId },
@@ -235,11 +245,6 @@ export const createGroupFromDm = async (
       input.newUserId,
     ]),
   ]
-
-  // Get the DM channel for org/team context
-  const dmChannel = await prisma.channel.findUniqueOrThrow({
-    where: { id: input.dmChannelId },
-  })
 
   // Build the label from display names of all members except current user
   const users = await prisma.user.findMany({

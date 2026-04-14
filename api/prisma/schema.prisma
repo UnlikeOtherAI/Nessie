@@ -472,6 +472,7 @@ model Channel {
   organizationId String            @map("organization_id") @db.Uuid
   teamId         String            @map("team_id") @db.Uuid
   visibility     ChannelVisibility @default(public)
+  dmKey          String?           @unique @map("dm_key")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)

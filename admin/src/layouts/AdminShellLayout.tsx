@@ -112,8 +112,7 @@ export const AdminShellLayout = () => {
 
   useEffect(() => {
     setStarred(me?.user.preferences?.starred ?? []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.user.id]);
+  }, [me?.user.preferences?.starred]);
 
   const toggleStar = useCallback((type: 'channel' | 'user', id: string) => {
     setStarred((prev) => {
@@ -185,6 +184,7 @@ export const AdminShellLayout = () => {
         id: me.user.id,
         label: me.user.displayName,
         style: getDmStyle(0),
+        dmChannelId: undefined,
       },
     ];
   }, [me, users, channels]);

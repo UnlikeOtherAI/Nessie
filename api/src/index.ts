@@ -522,6 +522,26 @@ const getVisibleChannel = async (
 const isChannelMember = async (userId: string, channelId: string): Promise<boolean> =>
   (await prisma.channelMember.count({ where: { userId, channelId } })) > 0
 
+const getChannelIfMember = async (
+  userId: string,
+  organizationId: string,
+  channelId: string,
+): Promise<{ type: string; visibility: string } | null> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: {
+      type: true,
+      organizationId: true,
+      visibility: true,
+      members: { where: { userId }, select: { id: true }, take: 1 },
+    },
+  })
+  if (!channel) return null
+  if (channel.organizationId !== organizationId) return null
+  if (channel.members.length === 0) return null
+  return { type: channel.type, visibility: channel.visibility }
+}
+
 const isTriggerTargetWritableByActor = async (
   actorContext: AuthorizedActionContext,
   trigger: {
@@ -1355,7 +1375,7 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    const channel = await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId)
+    const channel = await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId)
     if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
@@ -1373,6 +1393,10 @@ export const buildApp = async () => {
         newUserId: body.userId,
         currentUserId: actorContext.actor.actorId,
       })
+      if (!group) {
+        sendApiError(reply, 403, 'USER_NOT_IN_ORGANIZATION', 'Target user is not a member of this organization')
+        return reply
+      }
       return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(group)))
     }
 
@@ -1387,7 +1411,7 @@ export const buildApp = async () => {
     }
 
     const { channelId, userId } = request.params as { channelId: string; userId: string }
-    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    if (!(await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1403,7 +1427,7 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    if (!(await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1473,7 +1497,7 @@ export const buildApp = async () => {
     }
 
     if (
-      !(await getVisibleChannel(
+      !(await getChannelIfMember(
         actorContext.actor.actorId,
         actorContext.tenant.organizationId,
         call.channelId,
@@ -1540,7 +1564,7 @@ export const buildApp = async () => {
     }
 
     if (
-      !(await getVisibleChannel(
+      !(await getChannelIfMember(
         actorContext.actor.actorId,
         actorContext.tenant.organizationId,
         call.channelId,
@@ -1597,7 +1621,7 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    if (!(await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1673,6 +1697,11 @@ export const buildApp = async () => {
       currentUserId: actorContext.actor.actorId,
       targetUserId: userId,
     })
+
+    if (!channel) {
+      sendApiError(reply, 403, 'USER_NOT_IN_ORGANIZATION', 'Target user is not a member of this organization')
+      return reply
+    }
 
     return createApiResponse(ChannelRecordSchema.parse(channel))
   })
