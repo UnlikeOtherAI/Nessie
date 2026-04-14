@@ -183,13 +183,23 @@ The template should prefer `routingProfileId` over raw `provider`/`model` fields
 The existing `findOrCreateDmChannel()` uses `dmKey = org:team:sorted([user1,user2])` for user-to-user DMs. For personal assistant DMs, use a distinct key format to avoid collisions:
 
 ```
-dmKey = `pa:${organizationId}:${userId}:${agentId}`
+dmKey = `pa:${organizationId}:${userId}`
 ```
 
+The key must NOT include `agentId` — during bootstrap, the agent doesn't exist yet, so including it would make the key non-deterministic across concurrent calls (each creating a different agent, producing a different key, defeating deduplication). Since the `@@unique([organizationId, userId])` constraint guarantees at most one PA instance per user per org, the `org:user` pair is sufficient for uniqueness.
+
 This ensures:
-- deterministic lookup for idempotent bootstrap
+- deterministic lookup for idempotent bootstrap (key is computable before any records are created)
 - no collision with user-to-user DM keys (different prefix)
 - the `dmKey` unique constraint in Prisma handles race conditions on concurrent bootstrap calls
+
+### Channel.teamId for PA DMs
+
+The current `Channel` model has a mandatory `teamId` field. PA DMs are org-scoped, not team-scoped. Options:
+1. Make `Channel.teamId` nullable (breaking change for existing queries)
+2. Use the org's default team as the PA DM's team (simpler, no schema change)
+
+Recommended: option 2 — stamp the default team from `actorContext.tenant.teamId`. This avoids a schema migration on `Channel` and aligns with the Phase 1 rule that the default team is a bootstrap container.
 
 ### Bootstrap concurrency
 
@@ -198,6 +208,8 @@ The bootstrap endpoint must use a transaction that:
 2. Creates agent, channel, binding, thread, and instance in a single Prisma `$transaction`
 3. Relies on the `@@unique([organizationId, userId])` constraint to reject the loser in a race
 4. Catches unique constraint violation and retries as a read-only lookup
+
+Note: `ensureDefaultThread()` (`channels.ts`) has no DB uniqueness constraint behind it — two concurrent bootstrap calls could create duplicate "General" threads. Either add a `@@unique([channelId, isDefault])` constraint or use an upsert keyed on `channelId + label`.
 
 ## 5. Web Application
 
@@ -591,6 +603,20 @@ These are real issues in the current codebase that block a safe multi-user rollo
 - **`WorkflowInstallation` channel picker has no PA exclusion** (`api/src/services/workflows.ts`, `admin/src/pages/WorkflowsPage.tsx`): The channel dropdown for workflow installation targets includes all channels. PA DM channels must be excluded.
 
 - **`ChannelRecordSchema` and `mapChannelRecord` need `dmTargetType`** (`api/src/contracts.ts`, `api/src/services/channels.ts`): The contract schema and the mapping function do not surface `dmTargetType` or `dmTargetAgentId`. The admin client cannot distinguish PA DMs from user DMs without these fields.
+
+- **Generic agent CRUD routes must reject PA kind** (`api/src/index.ts`): `POST /api/agents` and `PUT /api/agents/:agentId` only do membership and policy checks. External callers could create or mutate PA agents through generic agent APIs, bypassing the seeded-policy approach. Both routes need an `agentKind` guard.
+
+- **`Plan` model leaks PA-generated plans into org listings** (`api/prisma/schema.prisma`, `api/src/services/plans.ts`): `Plan` has no `userId` or `personalAssistantInstanceId`. `listPlans()` and `getPlan()` filter only by `organizationId` + optional `agentId/status`. Plans created by a PA agent appear in the org-wide plan list. Either add user-scoping or exclude PA agents from the shared plan APIs.
+
+- **`AuditActionSchema` has no PA lifecycle actions** (`packages/schemas/src/index.ts`): Only has generic `agent.*`, `approval.*`, `pricing.*`, and `policy.*` actions. Needs PA-specific actions: `personal_assistant.bootstrap`, `personal_assistant.rotate`, `personal_assistant.suspend`, `personal_assistant.reactivate`, `personal_assistant.access_denied`.
+
+- **`emitAuditEvent()` has no system actor support** (`api/src/services/audit.ts`): Only records org/project/team/channel from the current request context. System-driven events (auto-provisioning, rotation) need a defined `actorType = 'system'` path, since there is no request context.
+
+- **`ingestTokenEvent()` is not wired into runtime** (`api/src/services/token-ledger.ts`): The doc specifies token attribution rules but the actual ingestion point for PA usage is undefined. The plan must specify where in the execution flow `ingestTokenEvent()` is called — likely in the orchestrator's tool execution path or the inference routing layer.
+
+- **`createMailboxMessage()` doesn't verify channel binding** (`api/src/services/mailbox.ts`): Verifies thread/channel consistency only at the org level. Does not check that `toAgentId` is bound to that channel or that `fromAgentId` shares the same scope. Cross-channel agents can target PA instances.
+
+- **Admin shell `useOpenDm()` and `navigateToDm()` model DMs as user-to-user** (`admin/src/layouts/AdminShellLayout.tsx`): The DM flow uses `useUsers()` and `navigateToDm()` which assume two human users. PA DMs need a separate launcher path that calls the bootstrap endpoint instead of the user-to-user DM flow.
 
 ## 17. Recommended Rollout Order
 
