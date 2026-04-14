@@ -527,6 +527,16 @@ export const AdminShellLayout = () => {
                   ),
                 },
                 {
+                  path: '/agents/tools',
+                  label: 'Tools',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path d="M14.7 6.3a4 4 0 105 5l-6.9 6.9a2 2 0 11-2.8-2.8l6.9-6.9a4 4 0 00-2.2-2.2z" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M7 17l-1.5 1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+                {
                   path: '/agents/activity',
                   label: 'Activity',
                   icon: (
