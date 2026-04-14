@@ -513,7 +513,7 @@ ReplyPayload = {
   channelData?: Record<string, unknown>, // per-channel envelope
 }
 
-// EmbeddedPiRunResult — return of runEmbeddedPiAgent(), in src/agents/pi-embedded-runner/run/types.ts
+// EmbeddedPiRunResult — return of runEmbeddedPiAgent(), in src/agents/pi-embedded-runner/types.ts
 EmbeddedPiRunResult = {
   text: string,
   stopReason: string,
@@ -735,7 +735,7 @@ File: `src/agents/cli-runner.ts`
 
 ## 4. Orchestration — Auto-Reply Pipeline
 
-File: `src/auto-reply/reply/agent-runner-execution.ts`
+File: `src/auto-reply/reply/agent-runner.ts`
 
 `runReplyAgent()` — the central orchestrator that ties channels to agents:
 
@@ -785,7 +785,7 @@ async function runReplyAgent(params: GetReplyOptions): Promise<ReplyPayload>
 
 Directory: `src/agents/auth-profiles/`
 
-A full subsystem with its own store, credential state machine, OAuth flow, health tracking, and repair workflows. The directory contains **37 files** — the key surface:
+A full subsystem with its own store, credential state machine, OAuth flow, health tracking, and repair workflows. The directory contains **36 files** — the key surface:
 
 ```typescript
 // profiles.ts — AuthProfile type and store
@@ -1033,12 +1033,15 @@ isAuthAssistantError(error)            // → refresh OAuth token
 
 // Failover decision
 FailoverReason =
-  | "billing"
+  | "auth"
+  | "auth_permanent"
+  | "format"
   | "rate_limit"
-  | "context_overflow"
-  | "compaction_failure"
-  | "model_error"
-  | "transient_http"
+  | "overloaded"
+  | "billing"
+  | "timeout"
+  | "model_not_found"
+  | "session_expired"
   | "unknown"
 
 // Resolution — resolveRunFailoverDecision() in run/failover-policy.ts (3 overloads)
@@ -1076,7 +1079,7 @@ ACP errors are wrapped in `FailoverError` and classified by `resolveFailoverStat
 
 Sessions are **not** a formal state machine. State is event-driven and timestamp-based. There are three relevant surfaces:
 
-**1. Diagnostic state** (`src/logging/diagnostic-session-state.ts`):
+**1. Diagnostic state** (`src/infra/diagnostic-events.ts`):
 ```typescript
 DiagnosticSessionState = "idle" | "processing" | "waiting"
 // idle       — created, no active work
@@ -1213,7 +1216,7 @@ Config (zod-schema.agents.ts)
 Incoming Message
   │
   ▼
-runReplyAgent()  [agent-runner-execution.ts]
+runReplyAgent()  [agent-runner.ts]
   │
   ├── resolveSessionAgentId()
   ├── resolveAgentExecutionContract()
