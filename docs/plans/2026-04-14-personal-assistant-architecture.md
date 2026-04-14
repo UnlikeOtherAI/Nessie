@@ -151,7 +151,7 @@ The template should prefer `routingProfileId` over raw `provider`/`model` fields
       "instance": { "id", "agentId", "channelId", "templateVersion", "status" },
       "agent": { "id", "name", "status" },
       "channel": { "id", "label", "type": "dm", "visibility": "private" },
-      "thread": { "id", "label": "General" }
+      "thread": { "id", "title": "General" }
     }
     ```
   - error cases:
@@ -162,6 +162,7 @@ The template should prefer `routingProfileId` over raw `provider`/`model` fields
   - admin-only; returns template + instance count + last rotation timestamp
 - `PUT /api/admin/personal-assistant-template`
   - admin-only; auto-increments `version` on save
+  - upsert semantics: first `PUT` creates the template with `createdByActorId = currentActorId`; subsequent `PUT`s update with `updatedByActorId = currentActorId`
 - `POST /api/admin/personal-assistant-template/rotate`
   - admin-only; applies template changes to existing instances
   - accepts optional `{ dryRun: boolean }` to preview affected instances
@@ -660,16 +661,17 @@ These are real issues in the current codebase that block a safe multi-user rollo
 
 1. **Schema migration** — Add `agentKind`, `ownerUserId`, `managedByTemplateId` to `Agent`. Create `PersonalAssistantTemplate` and `PersonalAssistantInstance` models. Add `dmTargetType`, `dmTargetAgentId` to `Channel`.
 2. **Agent tenancy fix** — `createAgentRecord()` must stamp `organizationId`. Add `agentKind` checks to `isAgentAccessibleToActor()`, `cloneAgentRecord()`, `bindAgentToChannel()`.
-3. **Service guards** — Add `agentKind` rejection guards to `createAgentTrigger()`, workflow step validation, and generic agent create/bind endpoints.
-4. **Bootstrap endpoint** — `POST /api/personal-assistant/bootstrap` with transaction, idempotency, DM key format, and policy seed rules.
-5. **Realtime scoping** — Suppress org-scoped WS broadcasts for personal assistant channels. Ensure `filterAuthorizedScopes()` rejects cross-user channel subscriptions.
-6. **Admin template CRUD** — `GET/PUT/DELETE /api/admin/personal-assistant-template` endpoints + rotation endpoint.
-7. **Admin template editor page** — New page in `/admin` for template name, prompt, provider/model/routing profile, tool policy.
-8. **User DM entry** — Assistant-first entry in the DM list in `/admin`. Bootstrap call on first tap, navigate to returned channel.
-9. **Memory scoping** — Filter `Thought` queries by `agentId` for personal assistant contexts. Ensure `ThoughtRecall` signals are instance-scoped.
-10. **Policy seed rules** — Auto-create deny-all + owner-allow policy rules when bootstrapping an instance.
-11. **Audit integration** — Log lifecycle events (create, suspend, reactivate, wipe) without transcript content.
-12. **Token attribution** — Ensure `TokenLedgerEvent` records use instance `agentId`. Add aggregate PA usage view to admin tokens page.
+3. **Service guards** — Add `agentKind` rejection guards to `createAgentTrigger()`, workflow step validation, and generic agent create/bind endpoints (`POST /api/agents`, `PUT /api/agents/:agentId`). **Must ship before step 4** — otherwise the bootstrap endpoint creates PA agents but the generic agent API remains an unguarded creation path.
+4. **Thread uniqueness** — Fix `ensureDefaultThread()` race: add `@@unique([channelId, title])` or use an upsert. Required before bootstrap can safely create threads under concurrency.
+5. **Bootstrap endpoint** — `POST /api/personal-assistant/bootstrap` with transaction, idempotency, DM key format, and policy seed rules.
+6. **Realtime scoping** — Suppress org-scoped WS broadcasts for personal assistant channels. Ensure `filterAuthorizedScopes()` rejects cross-user channel subscriptions.
+7. **Admin template CRUD** — `GET/PUT/DELETE /api/admin/personal-assistant-template` endpoints + rotation endpoint.
+8. **Admin template editor page** — New page in `/admin` for template name, prompt, provider/model/routing profile, tool policy.
+9. **User DM entry** — Assistant-first entry in the DM list in `/admin`. Bootstrap call on first tap, navigate to returned channel.
+10. **Memory scoping** — Filter `Thought` queries by `agentId` for personal assistant contexts. Ensure `ThoughtRecall` signals are instance-scoped.
+11. **Policy seed rules** — Auto-create deny-all + owner-allow policy rules when bootstrapping an instance.
+12. **Audit integration** — Log lifecycle events (create, suspend, reactivate, wipe) without transcript content. Add PA-specific actions to `AuditActionSchema`.
+13. **Token attribution** — Wire `ingestTokenEvent()` into the execution path (prerequisite: this function exists but has zero call sites today). Ensure `TokenLedgerEvent` records use instance `agentId`. Add aggregate PA usage view to admin tokens page.
 
 ## 18. Open Questions
 
