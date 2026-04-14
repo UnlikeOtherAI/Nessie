@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import {
@@ -53,6 +53,11 @@ type WorkflowConnection = {
   toNodeId: string
 }
 
+type WorkflowConnectionCandidate = {
+  fromNodeId: string
+  toNodeId: string
+}
+
 type WorkflowConnectionLayout = {
   color: string
   id: string
@@ -101,6 +106,7 @@ const CANVAS_PADDING = 24
 const CANVAS_NODE_WIDTH = 244
 const CANVAS_NODE_HEIGHT = 96
 const CANVAS_NODE_HANDLE_Y = 48
+const CANVAS_NODE_HANDLE_OFFSET_Y = -5
 const CANVAS_NODE_INSERT_OFFSET = 28
 const CANVAS_NODE_INSERT_STEPS = 6
 
@@ -141,12 +147,12 @@ const clamp = (value: number, min: number, max: number) =>
 
 const getNodeInputAnchor = (node: WorkflowCanvasNode) => ({
   x: node.x,
-  y: node.y + CANVAS_NODE_HANDLE_Y,
+  y: node.y + CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
 })
 
 const getNodeOutputAnchor = (node: WorkflowCanvasNode) => ({
   x: node.x + CANVAS_NODE_WIDTH,
-  y: node.y + CANVAS_NODE_HANDLE_Y,
+  y: node.y + CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
 })
 
 const getConnectionGeometry = (
@@ -193,7 +199,7 @@ const getOppositeHandleKind = (handleKind: 'input' | 'output') =>
 const getDraftConnectionCandidate = (
   draftConnection: WorkflowDraftConnection,
   hoveredHandle: WorkflowHoveredHandle | null,
-) => {
+) : WorkflowConnectionCandidate | null => {
   if (!hoveredHandle) {
     return null
   }
@@ -217,6 +223,17 @@ const getDraftConnectionCandidate = (
     toNodeId: draftConnection.startNodeId,
   }
 }
+
+const isInvalidWorkflowConnection = (
+  candidateConnection: WorkflowConnectionCandidate,
+  connections: WorkflowConnection[],
+) =>
+  candidateConnection.fromNodeId === candidateConnection.toNodeId ||
+  connections.some(
+    (connection) =>
+      connection.fromNodeId === candidateConnection.fromNodeId &&
+      connection.toNodeId === candidateConnection.toNodeId,
+  )
 
 const getCanvasInsertionPoint = (canvasElement: HTMLDivElement | null, offset: number) => {
   if (!canvasElement) {
@@ -388,6 +405,10 @@ export const WorkflowDesignerPage = () => {
       return null
     }
 
+    if (hoveredHandle.kind === draftConnection.startHandleKind) {
+      return hoveredHandle
+    }
+
     const candidateConnection = getDraftConnectionCandidate(
       draftConnection,
       hoveredHandle,
@@ -396,21 +417,52 @@ export const WorkflowDesignerPage = () => {
       return null
     }
 
-    const isDuplicateConnection = connections.some(
-      (connection) =>
-        connection.fromNodeId === candidateConnection.fromNodeId &&
-        connection.toNodeId === candidateConnection.toNodeId,
-    )
-
-    if (
-      candidateConnection.fromNodeId === candidateConnection.toNodeId ||
-      isDuplicateConnection
-    ) {
+    if (isInvalidWorkflowConnection(candidateConnection, connections)) {
       return hoveredHandle
     }
 
     return null
   }, [connections, draftConnection, hoveredHandle])
+
+  const finishDraftConnection = useCallback(
+    (
+      currentDraftConnection: WorkflowDraftConnection | null,
+      currentHoveredHandle: WorkflowHoveredHandle | null,
+    ) => {
+      if (!currentDraftConnection) {
+        return
+      }
+
+      const candidateConnection = getDraftConnectionCandidate(
+        currentDraftConnection,
+        currentHoveredHandle,
+      )
+
+      if (
+        candidateConnection &&
+        !isInvalidWorkflowConnection(candidateConnection, connections)
+      ) {
+        setConnections((currentConnections) => {
+          if (isInvalidWorkflowConnection(candidateConnection, currentConnections)) {
+            return currentConnections
+          }
+
+          return [
+            ...currentConnections,
+            {
+              fromNodeId: candidateConnection.fromNodeId,
+              id: crypto.randomUUID(),
+              toNodeId: candidateConnection.toNodeId,
+            },
+          ]
+        })
+      }
+
+      setDraftConnection(null)
+      setHoveredHandle(null)
+    },
+    [connections],
+  )
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -443,6 +495,32 @@ export const WorkflowDesignerPage = () => {
       document.removeEventListener('mousedown', handlePointerDown)
     }
   }, [])
+
+  useEffect(() => {
+    const handleDocumentClick = () => {
+      if (!draftConnection) {
+        return
+      }
+
+      finishDraftConnection(draftConnection, hoveredHandle)
+    }
+
+    const handleWindowBlur = () => {
+      if (!draftConnection) {
+        return
+      }
+
+      finishDraftConnection(draftConnection, hoveredHandle)
+    }
+
+    document.addEventListener('click', handleDocumentClick, true)
+    window.addEventListener('blur', handleWindowBlur)
+
+    return () => {
+      document.removeEventListener('click', handleDocumentClick, true)
+      window.removeEventListener('blur', handleWindowBlur)
+    }
+  }, [draftConnection, finishDraftConnection, hoveredHandle])
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -512,52 +590,13 @@ export const WorkflowDesignerPage = () => {
     const handlePointerUp = (event: PointerEvent) => {
       dragStateRef.current = null
 
-      if (draftConnection) {
-        const candidateConnection = getDraftConnectionCandidate(
-          draftConnection,
-          hoveredHandle,
-        )
-        const isInvalidTarget =
-          candidateConnection &&
-          (candidateConnection.fromNodeId === candidateConnection.toNodeId ||
-            connections.some(
-              (connection) =>
-                connection.fromNodeId === candidateConnection.fromNodeId &&
-                connection.toNodeId === candidateConnection.toNodeId,
-            ))
-
-        if (candidateConnection && !isInvalidTarget) {
-          setConnections((currentConnections) => {
-            const duplicateConnection = currentConnections.some(
-              (connection) =>
-                connection.fromNodeId === candidateConnection.fromNodeId &&
-                connection.toNodeId === candidateConnection.toNodeId,
-            )
-
-            if (duplicateConnection) {
-              return currentConnections
-            }
-
-            return [
-              ...currentConnections,
-              {
-                fromNodeId: candidateConnection.fromNodeId,
-                id: crypto.randomUUID(),
-                toNodeId: candidateConnection.toNodeId,
-              },
-            ]
-          })
-        }
-      }
-
       const target = event.target
       const releasedOverHandle =
         target instanceof Element &&
         target.closest('[data-workflow-handle-kind]')
 
       if (releasedOverHandle || hoveredHandle) {
-        setDraftConnection(null)
-        setHoveredHandle(null)
+        finishDraftConnection(draftConnection, hoveredHandle)
         return
       }
 
@@ -572,7 +611,7 @@ export const WorkflowDesignerPage = () => {
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [connections, draftConnection, hoveredHandle])
+  }, [draftConnection, hoveredHandle, finishDraftConnection])
 
   const addNodeFromItem = (item: ToolbarMenuItem) => {
     if (!item.nodeType) {
@@ -928,6 +967,7 @@ export const WorkflowDesignerPage = () => {
                       : '#ffffff',
                     borderColor: isInvalidInputTarget ? '#dc2626' : theme.border,
                     color: isInvalidInputTarget ? '#dc2626' : theme.border,
+                    top: CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
                     transform: isHoveredInput
                       ? 'translateY(-50%) scale(1.1)'
                       : 'translateY(-50%)',
@@ -952,6 +992,7 @@ export const WorkflowDesignerPage = () => {
                     : '#ffffff',
                   borderColor: isInvalidOutputTarget ? '#dc2626' : theme.border,
                   color: isInvalidOutputTarget ? '#dc2626' : theme.border,
+                  top: CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
                   transform: isHoveredOutput
                     ? 'translateY(-50%) scale(1.1)'
                     : 'translateY(-50%)',
