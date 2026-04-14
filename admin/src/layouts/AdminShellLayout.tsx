@@ -42,6 +42,9 @@ const getDmStyle = (index: number) => ({
   background: dmGradients[index % dmGradients.length],
 });
 
+const renderUnreadCount = (count: number) =>
+  count > 0 ? <span className={unreadCountClassName}>{count}</span> : null;
+
 export type AdminShellOutletContext = {
   onCreateChannel: () => void;
   onSelectAgent: (agentId: string) => void;
@@ -79,6 +82,10 @@ export const AdminShellLayout = () => {
   const [dmCollapsed, setDmCollapsed] = useState(() => getCookie('dmCollapsed') === '1');
   const [starred, setStarred] = useState<Array<{ type: 'channel' | 'user'; id: string }>>(
     () => me?.user.preferences?.starred ?? [],
+  );
+  const unreadCountByChannelId = useMemo(
+    () => new Map(channels.map((channel) => [channel.id, channel.unreadCount])),
+    [channels],
   );
 
   const openCreateChannel = useCallback(() => setCreateChannelOpen(true), []);
@@ -648,8 +655,9 @@ export const AdminShellLayout = () => {
                           >
                             <span className={channelHashClassName}>#</span>
                             <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+                            {renderUnreadCount(channel.unreadCount)}
                             <span
-                              className="ml-auto flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                              className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleStar('channel', item.id);
@@ -671,8 +679,13 @@ export const AdminShellLayout = () => {
                         >
                           <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
                           <span className="min-w-0 flex-1 truncate text-sm">{person.label}</span>
+                          {renderUnreadCount(
+                            person.dmChannelId
+                              ? unreadCountByChannelId.get(person.dmChannelId) ?? 0
+                              : 0,
+                          )}
                           <span
-                            className="ml-auto flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                            className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleStar('user', item.id);
@@ -712,9 +725,6 @@ export const AdminShellLayout = () => {
                     const isStarredChannel = starred.some(
                       (s) => s.type === 'channel' && s.id === channel.id,
                     );
-                    const agentCount = agents.filter((a) =>
-                      a.channelIds.includes(channel.id),
-                    ).length;
                     return (
                       <button
                         key={channel.id}
@@ -724,9 +734,7 @@ export const AdminShellLayout = () => {
                       >
                         <span className={channelHashClassName}>#</span>
                         <span className="min-w-0 flex-1 truncate">{channel.label}</span>
-                        {channel.id === currentChannelId && agentCount > 0 ? (
-                          <span className={unreadCountClassName}>{agentCount}</span>
-                        ) : null}
+                        {renderUnreadCount(channel.unreadCount)}
                         <span
                           className={[
                             'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
@@ -790,6 +798,9 @@ export const AdminShellLayout = () => {
                     const isStarredUser = starred.some(
                       (s) => s.type === 'user' && s.id === person.id,
                     );
+                    const unreadCount = person.dmChannelId
+                      ? unreadCountByChannelId.get(person.dmChannelId) ?? 0
+                      : 0;
                     return (
                       <button
                         key={person.id}
@@ -799,6 +810,7 @@ export const AdminShellLayout = () => {
                       >
                         <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
                         <span className="min-w-0 flex-1 truncate text-sm">{person.label}</span>
+                        {renderUnreadCount(unreadCount)}
                         <span
                           className={[
                             'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',

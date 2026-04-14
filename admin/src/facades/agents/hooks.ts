@@ -340,7 +340,10 @@ export const useAgentRealtime = (input: {
       }
 
       if (message.event === 'message.new') {
-        invalidateAgentCaches(message.data.agentId)
+        if (message.data.agentId) {
+          invalidateAgentCaches(message.data.agentId)
+        }
+        void queryClient.invalidateQueries({ queryKey: ['channels'] })
         if (message.data.threadId === threadIdRef.current) {
           void queryClient.invalidateQueries({
             queryKey: ['threads', message.data.threadId, 'messages'],

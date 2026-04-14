@@ -64,6 +64,7 @@ export const ChannelRecordSchema = z.object({
   organizationId: OrganizationIdSchema,
   teamId: TeamIdSchema,
   defaultThreadId: ThreadIdSchema,
+  unreadCount: z.number().int().nonnegative(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })

@@ -196,6 +196,7 @@ import {
   createThreadMessage,
   findThreadForUser,
   listThreadMessages,
+  markThreadRead,
 } from './services/messages.js'
 import {
   claimMailboxMessage,
@@ -3999,6 +4000,23 @@ export const buildApp = async () => {
       return reply
     }
 
+    await realtimeHub.publishWs(
+      [
+        { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+        { kind: 'channel', channelId: parseChannelId(thread.channel.id) },
+      ],
+      {
+        data: {
+          agentId: undefined,
+          contentPreview: result.message.content.slice(0, 200),
+          messageId: result.message.id,
+          role: result.message.role,
+          threadId: parseThreadId(thread.id),
+        },
+        event: 'message.new',
+      },
+    )
+
     // Enqueue agent-engagement decision — durable, retryable, never blocks this
     // response. The try/catch ensures a transient queue-insert failure cannot
     // surface as a "failed" badge on an already-persisted user message.
@@ -4038,6 +4056,27 @@ export const buildApp = async () => {
         }),
       ),
     )
+  })
+
+  app.post('/api/threads/:threadId/read', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { threadId } = request.params as { threadId: string }
+    const thread = await findThreadForUser(prisma, threadId, actorContext.actor.actorId)
+    if (!thread) {
+      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+
+    await markThreadRead(prisma, {
+      threadId: thread.id,
+      userId: actorContext.actor.actorId,
+    })
+
+    return reply.code(200).send(createApiResponse({ ok: true }))
   })
 
   app.post('/api/threads/:threadId/messages/:messageId/reactions', async (request, reply) => {

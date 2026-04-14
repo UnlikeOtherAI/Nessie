@@ -26,7 +26,7 @@ import {
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
 import { useSendMessage } from '../facades/messages/hooks'
-import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
+import { useMarkThreadRead, useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { useTools } from '../facades/tools/hooks'
 import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, ThreadMessageRecord } from '../lib/api-client'
@@ -187,6 +187,7 @@ export const ChannelsPage = () => {
   const { data: threadMessages = [] } = useThreadMessages(
     activeChannel?.defaultThreadId,
   )
+  const markThreadRead = useMarkThreadRead()
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
 
@@ -259,6 +260,37 @@ export const ChannelsPage = () => {
     setOptimisticMessages([])
     setShowCallOverlay(false)
   }, [activeChannel?.id])
+
+  const lastReadMarkerRef = useRef<string | null>(null)
+  const pendingReadMarkerRef = useRef<string | null>(null)
+  useEffect(() => {
+    lastReadMarkerRef.current = null
+    pendingReadMarkerRef.current = null
+  }, [activeChannel?.defaultThreadId])
+
+  useEffect(() => {
+    const threadId = activeChannel?.defaultThreadId
+    const latestMessageId = threadMessages.at(-1)?.id
+    if (!threadId || !latestMessageId) {
+      return
+    }
+
+    const marker = `${threadId}:${latestMessageId}`
+    if (lastReadMarkerRef.current === marker || pendingReadMarkerRef.current === marker) {
+      return
+    }
+
+    pendingReadMarkerRef.current = marker
+    markThreadRead.mutate(threadId, {
+      onError: () => {
+        pendingReadMarkerRef.current = null
+      },
+      onSuccess: () => {
+        lastReadMarkerRef.current = marker
+        pendingReadMarkerRef.current = null
+      },
+    })
+  }, [activeChannel?.defaultThreadId, markThreadRead, threadMessages])
 
   const mentionEntities: MentionEntity[] = useMemo(
     () => [

@@ -270,7 +270,7 @@ export type WsEventMap = {
     resolvedAt: string
   }
   'message.new': {
-    agentId: AgentId
+    agentId?: AgentId
     messageId: string
     role: MessageRole
     contentPreview: string
@@ -371,7 +371,7 @@ export const ApprovalNeededEventSchema = z.object({
   reason: z.string(),
 })
 export const MessageNewEventSchema = z.object({
-  agentId: AgentIdSchema,
+  agentId: AgentIdSchema.optional(),
   messageId: NonEmptyStringSchema,
   role: MessageRoleSchema,
   contentPreview: z.string(),

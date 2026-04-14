@@ -30,6 +30,7 @@ export type ChannelRecord = {
   organizationId: string
   teamId: string
   type: 'dm' | 'standard'
+  unreadCount: number
   updatedAt: string
   visibility: 'private' | 'protected' | 'public'
 }

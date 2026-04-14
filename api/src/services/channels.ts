@@ -8,6 +8,55 @@ import {
 } from '@nessie/schemas'
 import type { ChannelRecord } from '../contracts.js'
 
+type ThreadUnreadRow = {
+  thread_id: string
+  unread_count: bigint | number
+}
+
+const loadUnreadCountsByThread = async (
+  prisma: PrismaClient,
+  threadIds: string[],
+  userId: string,
+): Promise<Map<string, number>> => {
+  if (threadIds.length === 0) {
+    return new Map()
+  }
+
+  const rows = await prisma.$queryRaw<ThreadUnreadRow[]>(Prisma.sql`
+    SELECT
+      t.id AS thread_id,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN m.id IS NOT NULL
+              AND (m.user_id IS NULL OR m.user_id <> ${userId}::uuid)
+              AND (trs.last_read_at IS NULL OR m.created_at > trs.last_read_at)
+            THEN 1
+            ELSE 0
+          END
+        ),
+        0
+      ) AS unread_count
+    FROM "threads" t
+    LEFT JOIN "thread_read_states" trs
+      ON trs.thread_id = t.id
+      AND trs.user_id = ${userId}::uuid
+    LEFT JOIN "messages" m
+      ON m.thread_id = t.id
+    WHERE t.id IN (${Prisma.join(threadIds.map((threadId) => Prisma.sql`${threadId}::uuid`))})
+    GROUP BY t.id
+  `)
+
+  return new Map(
+    rows.map((row) => [
+      row.thread_id,
+      typeof row.unread_count === 'bigint'
+        ? Number(row.unread_count)
+        : row.unread_count,
+    ]),
+  )
+}
+
 export const ensureDefaultThread = async (
   prisma: PrismaClient,
   channelId: string,
@@ -46,17 +95,26 @@ export const ensureDefaultThread = async (
 const mapChannelRecord = async (
   prisma: PrismaClient,
   channel: Channel,
-): Promise<ChannelRecord> => ({
+  userId?: string,
+): Promise<ChannelRecord> => {
+  const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
+  const unreadCount = userId
+    ? (await loadUnreadCountsByThread(prisma, [defaultThreadId], userId)).get(defaultThreadId) ?? 0
+    : 0
+
+  return {
+    defaultThreadId: parseThreadId(defaultThreadId),
   id: parseChannelId(channel.id),
   label: channel.label,
   type: channel.type,
   visibility: channel.visibility,
   organizationId: parseOrganizationId(channel.organizationId),
   teamId: parseTeamId(channel.teamId),
-  defaultThreadId: parseThreadId(await ensureDefaultThread(prisma, channel.id)),
+  unreadCount,
   createdAt: channel.createdAt.toISOString(),
   updatedAt: channel.updatedAt.toISOString(),
-})
+  }
+}
 
 export const listChannelsForUser = async (
   prisma: PrismaClient,
@@ -114,6 +172,12 @@ export const listChannelsForUser = async (
     }
   }
 
+  const unreadCountsByThread = await loadUnreadCountsByThread(
+    prisma,
+    channels.map((channel) => channel.threads[0]!.id),
+    userId,
+  )
+
   return channels.map((channel) => ({
     id: parseChannelId(channel.id),
     label: channel.label,
@@ -122,6 +186,7 @@ export const listChannelsForUser = async (
     organizationId: parseOrganizationId(channel.organizationId),
     teamId: parseTeamId(channel.teamId),
     defaultThreadId: parseThreadId(channel.threads[0]!.id),
+    unreadCount: unreadCountsByThread.get(channel.threads[0]!.id) ?? 0,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
   }))
@@ -211,13 +276,13 @@ export const findOrCreateDmChannel = async (
       },
       update: {},
     })
-    return mapChannelRecord(prisma, channel)
+    return mapChannelRecord(prisma, channel, input.currentUserId)
   } catch (err) {
     // Race condition: another request created the channel between our read and write.
     // The unique index on dmKey guarantees exactly one winner; losers re-fetch.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       const existing = await prisma.channel.findUniqueOrThrow({ where: { dmKey } })
-      return mapChannelRecord(prisma, existing)
+      return mapChannelRecord(prisma, existing, input.currentUserId)
     }
     throw err
   }
@@ -280,7 +345,7 @@ export const createGroupFromDm = async (
     },
   })
 
-  return mapChannelRecord(prisma, channel)
+  return mapChannelRecord(prisma, channel, input.currentUserId)
 }
 
 export const createChannelForUser = async (
@@ -312,5 +377,5 @@ export const createChannelForUser = async (
     },
   })
 
-  return mapChannelRecord(prisma, channel)
+  return mapChannelRecord(prisma, channel, input.userId)
 }

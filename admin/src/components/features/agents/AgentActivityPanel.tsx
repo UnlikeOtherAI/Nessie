@@ -20,10 +20,12 @@ export type AgentRealtimeState = {
 
 type AgentActivityPanelProps = {
   agents: AgentRecord[];
+  collapsible?: boolean;
   currentChannelId?: string | null;
   onSelectAgent: (agentId: string) => void;
   realtime: AgentRealtimeState;
   selectedAgentId?: string | null;
+  title?: string;
 };
 
 const activeStatuses = new Set<AgentRecord['status']>([
@@ -62,13 +64,16 @@ const getAgentIcon = (agent: AgentRecord): string => {
 
 export const AgentActivityPanel = ({
   agents,
+  collapsible = true,
   currentChannelId,
   onSelectAgent,
   realtime,
   selectedAgentId,
+  title = 'Agents',
 }: AgentActivityPanelProps) => {
   const [collapsed, setCollapsed] = useState(() => getCookie('agentsCollapsed') === '1');
   const bindAgent = useBindAgent();
+  const isCollapsed = collapsible ? collapsed : false;
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((prev) => {
@@ -113,35 +118,49 @@ export const AgentActivityPanel = ({
 
   return (
     <section id="activity">
-      <button
-        className="admin-sec-hdr mt-2"
-        onClick={toggleCollapsed}
-        type="button"
-      >
-        <svg
-          className={[
-            'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-            collapsed ? '-rotate-90' : '',
-          ].join(' ')}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          viewBox="0 0 24 24"
+      {collapsible ? (
+        <button
+          className="admin-sec-hdr mt-2"
+          onClick={toggleCollapsed}
+          type="button"
         >
-          <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <span>Agents</span>
-        <span
-          className={[
-            'ml-auto rounded bg-white/6 px-1.5 py-0.5 text-[10px]',
-            'font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]',
-          ].join(' ')}
-        >
-          {connectionLabel[realtime.connectionState]}
-        </span>
-      </button>
+          <svg
+            className={[
+              'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+              collapsed ? '-rotate-90' : '',
+            ].join(' ')}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            viewBox="0 0 24 24"
+          >
+            <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>{title}</span>
+          <span
+            className={[
+              'ml-auto rounded bg-white/6 px-1.5 py-0.5 text-[10px]',
+              'font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]',
+            ].join(' ')}
+          >
+            {connectionLabel[realtime.connectionState]}
+          </span>
+        </button>
+      ) : (
+        <div className="admin-sec-hdr mt-2">
+          <span>{title}</span>
+          <span
+            className={[
+              'ml-auto rounded bg-white/6 px-1.5 py-0.5 text-[10px]',
+              'font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]',
+            ].join(' ')}
+          >
+            {connectionLabel[realtime.connectionState]}
+          </span>
+        </div>
+      )}
 
-      {!collapsed && (
+      {!isCollapsed && (
         <>
           {sortedAgents.length === 0 ? (
             <div

@@ -77,6 +77,37 @@ export const listThreadMessages = async (
   return messages.map(mapThreadMessageRecord)
 }
 
+export const markThreadRead = async (
+  prisma: PrismaClient,
+  input: {
+    threadId: string
+    userId: string
+  },
+): Promise<void> => {
+  const latestMessage = await prisma.message.findFirst({
+    where: { threadId: input.threadId },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  })
+
+  await prisma.threadReadState.upsert({
+    where: {
+      threadId_userId: {
+        threadId: input.threadId,
+        userId: input.userId,
+      },
+    },
+    create: {
+      threadId: input.threadId,
+      userId: input.userId,
+      lastReadAt: latestMessage?.createdAt ?? new Date(),
+    },
+    update: {
+      lastReadAt: latestMessage?.createdAt ?? new Date(),
+    },
+  })
+}
+
 export type ChannelAgent = {
   id: string
   name: string
