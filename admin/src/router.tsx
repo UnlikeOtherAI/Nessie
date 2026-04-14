@@ -1,5 +1,6 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
+import { AgentActivityPage } from './pages/AgentActivityPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
@@ -36,6 +37,10 @@ export const router = createBrowserRouter([
       {
         path: '/agents',
         element: <AgentsPage />,
+      },
+      {
+        path: '/agents/activity',
+        element: <AgentActivityPage />,
       },
       {
         path: '/agents/designer',
