@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
 import { StatusPill } from '../../primitives/StatusPill'
+import { AgentCreateButton } from './AgentCreateButton'
 import { AgentStatusDot } from './AgentStatusDot'
 import { AgentDetailTabs } from './AgentDetailTabs'
 
@@ -25,7 +26,7 @@ export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumn
   return (
     <div className="flex h-full flex-col bg-[color:var(--main)]">
       <div className="flex-shrink-0 border-b border-[color:var(--sep)] px-6 py-5">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {showBack && onBack ? (
             <button
               className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10"
@@ -37,7 +38,7 @@ export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumn
               </svg>
             </button>
           ) : null}
-          <h2 className="flex-1 text-xl font-semibold text-white">{agent.name}</h2>
+          <h2 className="min-w-0 flex-1 text-xl font-semibold text-white">{agent.name}</h2>
           <AgentStatusDot status={agent.status} />
           <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
           <button
@@ -54,19 +55,11 @@ export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumn
               <path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <button
-            className={[
-              'flex h-7 w-7 items-center justify-center rounded',
-              'text-[color:var(--tx2)] hover:bg-white/10 hover:text-white',
-            ].join(' ')}
+          <AgentCreateButton
+            className="flex-shrink-0"
+            label="Create sub-agent"
             onClick={() => void navigate(`/agents/designer?parentId=${agent.id}`)}
-            title="Add child agent"
-            type="button"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+          />
         </div>
         <div className="mt-2 text-sm text-[color:var(--tx2)]">{agent.role}</div>
         <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
