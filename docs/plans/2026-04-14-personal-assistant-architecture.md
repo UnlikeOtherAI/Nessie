@@ -335,12 +335,11 @@ export const PersonalAssistantInstanceSchema = z.object({
   updatedAt: z.string().datetime(),
 })
 
-export const BootstrapPersonalAssistantResponseSchema = z.object({
-  instance: PersonalAssistantInstanceSchema,
-  agent: AgentRecordSchema,
-  channel: ChannelRecordSchema,
-  thread: ThreadRecordSchema,
-})
+// Note: BootstrapPersonalAssistantResponseSchema lives in api/src/contracts.ts
+// (not packages/schemas) because it references AgentRecordSchema, ChannelRecordSchema,
+// and ThreadRecordSchema which are api-level contracts.
+// The schemas above (Template, Instance, ErrorCode, AgentKind, DmTargetType)
+// belong in packages/schemas because they have no api-level dependencies.
 
 export const PersonalAssistantErrorCodeSchema = z.enum([
   'PERSONAL_ASSISTANT_NOT_CONFIGURED',
@@ -385,11 +384,12 @@ Use explicit codes:
 
 The existing `PolicyRule` / `PolicyBinding` system should be leveraged rather than building ad-hoc access control:
 
-- Seed a default policy rule at template creation time:
-  - scope: `agent`, resourceType: `agent`, action: `view`, effect: `deny`, actorType: `*`
-  - This denies all actors from viewing the personal assistant agent by default.
+- Seed default policy rules at instance bootstrap time (not template creation):
+  - scope: `agent`, scopeId: `instance.agentId`, resourceType: `agent`, action: `view`, effect: `deny`, actorType: `*`
+  - This denies all actors from viewing that specific personal assistant agent by default.
 - Add a counterpart allow rule scoped to the owner:
   - actorType: `user`, actorId: `instance.userId`, effect: `allow`
+- These rules are per-instance (scoped to the specific agent), not per-template.
 - Admin template edit permission uses:
   - resourceType: `admin`, action: `edit`, scoped to `organization`
 - Admin transcript access (if ever enabled) must be a separate policy rule with `requiresApproval: true` in conditions.
@@ -576,7 +576,7 @@ These are real issues in the current codebase that block a safe multi-user rollo
 
 - **Organization-scoped realtime broadcasts** (`api/src/index.ts`): Thread message publishing emits events on organization-scoped WS topics alongside channel-scoped topics. For personal assistant channels, the org-scoped broadcast must be suppressed. Check `filterAuthorizedScopes()` in the WebSocket handler.
 
-- **`findOrCreateDmChannel()` key format** (`api/src/services/channels.ts`): Currently uses `org:team:sorted([user1,user2])` format. Needs a new key format (`pa:org:user:agent`) for personal assistant DMs to avoid collisions with user-user DMs.
+- **`findOrCreateDmChannel()` key format** (`api/src/services/channels.ts`): Currently uses `org:team:sorted([user1,user2])` format. Needs a new key format (`pa:${organizationId}:${userId}`) for personal assistant DMs to avoid collisions with user-user DMs. See section 4 for details on why the key must NOT include `agentId`.
 
 - **Admin `Personal` category is a UI label** (`admin/src/`): The "Personal" agent category is presentational only — no backend ownership enforcement. Personal assistant agents should not appear in any category listing. They need their own dedicated UI surface.
 
@@ -635,7 +635,7 @@ These are real issues in the current codebase that block a safe multi-user rollo
 
 ## 18. Open Questions
 
-- Should template updates apply immediately to all existing assistant instances, or only to new runs after a version bump is acknowledged?
+- ~~Should template updates apply immediately to all existing assistant instances, or only to new runs after a version bump is acknowledged?~~ **Resolved in section 4**: changes do NOT auto-propagate; the `rotate` endpoint applies them explicitly.
 - Do you want admins to have any break-glass support access to personal assistant threads, or strictly never?
 - Do you want the personal assistant to support optional per-user prompt extensions later, or should it remain template-only?
 - Should the personal assistant DM support multiple threads (like normal channels) or be a single-thread surface?
