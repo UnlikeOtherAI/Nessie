@@ -111,6 +111,7 @@ export const ConfigEnvMap = {
   NESSIE_MODE: 'mode',
   NESSIE_AGENT_EXEC_PROXY_ENABLED: 'agent.execProxy.enabled',
   NESSIE_AGENT_EXEC_PROXY_BINARY: 'agent.execProxy.binary',
+  NESSIE_AGENT_EXEC_PROXY_COMMANDS: 'agent.execProxy.commands',
   NESSIE_AUTH_AUTO_REDIRECT: 'auth.autoRedirectToSso',
   NESSIE_AUTH_SECRET: 'auth.secret',
   NESSIE_AUTH_TOKEN_TTL: 'auth.tokenTtlSeconds',

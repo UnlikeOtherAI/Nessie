@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import { buildTool } from './Tool.js'
 import type { Tool } from './Tool.js'
-import { exec } from 'child_process'
+import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
-import { existsSync } from 'node:fs'
+import { which } from 'which'
+import type { ExecProxyConfig } from '@nessie/config'
 
 const execAsync = promisify(exec)
 
@@ -16,79 +17,114 @@ const BashToolSchema = z.object({
 export type BashToolInput = z.infer<typeof BashToolSchema>
 
 /**
- * RTK exec proxy configuration loaded from environment variables.
- * When enabled, matching commands are wrapped with `rtk` to compress output.
- *
- * Environment variables:
- * - NESSIE_AGENT_EXEC_PROXY_ENABLED=true|false (default: false)
- * - NESSIE_AGENT_EXEC_PROXY_BINARY=/path/to/rtk (default: rtk)
- * - NESSIE_AGENT_EXEC_PROXY_COMMANDS=git,npm,pnpm (comma-separated list)
+ * Tokenize a shell command string into safe arguments for spawn().
+ * Handles quoted strings (single/double), escape sequences, and whitespace.
+ * This prevents shell injection since we use spawn() with argv array.
  */
+function tokenizeCommand(command: string): string[] {
+  const tokens: string[] = []
+  let current = ''
+  let inSingleQuote = false
+  let inDoubleQuote = false
+  let i = 0
 
-interface RtkConfig {
-  enabled: boolean
-  binary: string
-  commands: string[]
-}
+  while (i < command.length) {
+    const ch = command[i]
 
-function getRtkConfig(): RtkConfig {
-  const enabled = process.env.NESSIE_AGENT_EXEC_PROXY_ENABLED === 'true'
-  const binary = process.env.NESSIE_AGENT_EXEC_PROXY_BINARY ?? 'rtk'
-  const commandsStr = process.env.NESSIE_AGENT_EXEC_PROXY_COMMANDS ?? ''
-  const commands = commandsStr
-    ? commandsStr.split(',').map(s => s.trim()).filter(s => s.length > 0)
-    : []
+    if (inSingleQuote) {
+      if (ch === "'") {
+        inSingleQuote = false
+      } else {
+        current += ch
+      }
+      i++
+      continue
+    }
 
-  return { enabled, binary, commands }
+    if (inDoubleQuote) {
+      if (ch === '"') {
+        inDoubleQuote = false
+      } else if (ch === '\\' && i + 1 < command.length && command[i + 1] === '"') {
+        current += '"'
+        i += 2
+      } else {
+        current += ch
+      }
+      i++
+      continue
+    }
+
+    if (ch === "'") {
+      inSingleQuote = true
+      i++
+      continue
+    }
+
+    if (ch === '"') {
+      inDoubleQuote = true
+      i++
+      continue
+    }
+
+    if (ch === '\\' && i + 1 < command.length) {
+      const next = command[i + 1]
+      if (next === '\\' || next === '"' || next === '$' || next === '`' || next === '\n') {
+        current += next
+        i += 2
+        continue
+      }
+    }
+
+    if (/\s/.test(ch)) {
+      if (current.length > 0) {
+        tokens.push(current)
+        current = ''
+      }
+      i++
+      continue
+    }
+
+    current += ch
+    i++
+  }
+
+  if (current.length > 0) {
+    tokens.push(current)
+  }
+
+  return tokens
 }
 
 /**
- * Check if a command should be proxied through RTK based on the execProxy config.
- * Returns true if:
- * - execProxy.enabled is true
- * - the command starts with one of the configured allowlisted commands
- * - the rtk binary exists on the system
+ * Check if a command matches an allowlisted executable using proper tokenization.
  */
-function shouldUseRtkProxy(command: string): boolean {
-  const config = getRtkConfig()
-
-  if (!config.enabled) {
+function matchesAllowlist(commandTokens: string[], allowlist: string[]): boolean {
+  if (commandTokens.length === 0 || allowlist.length === 0) {
     return false
   }
 
-  if (!config.commands || config.commands.length === 0) {
-    return false
-  }
+  // First token is the command executable
+  const cmd = commandTokens[0].toLowerCase()
 
-  // Check if command starts with any allowlisted command
-  const isAllowlisted = config.commands.some((allowed) => {
-    const trimmed = allowed.trim()
-    return trimmed.length > 0 && command.trim().startsWith(trimmed)
+  // Exact match first, then prefix match
+  return allowlist.some(allowed => {
+    const a = allowed.toLowerCase()
+    if (cmd === a) return true
+    // Only allow actual path prefixes like /usr/bin/git
+    if (cmd.startsWith(a + '/')) return true
+    return false
   })
-
-  if (!isAllowlisted) {
-    return false
-  }
-
-  // Check if rtk binary exists
-  if (!existsSync(config.binary)) {
-    console.warn(`[BashTool] RTK exec proxy enabled but binary not found: ${config.binary}`)
-    return false
-  }
-
-  return true
 }
 
 /**
- * Wrap a command with RTK proxy if eligible.
+ * Create a BashTool with optional RTK exec proxy support.
+ *
  * RTK (Rust Token Killer) compresses CLI output to save context tokens (50-87% reduction).
+ * Commands matching the allowlist are wrapped with `rtk` binary for output compression.
+ *
+ * @param execProxyConfig - Typed exec proxy config from NessieConfig.agent.execProxy
  */
-function wrapWithRtkProxy(command: string): string {
-  const config = getRtkConfig()
-  return `${config.binary} ${command}`
-}
-
-export function createBashTool(): Tool<BashToolInput, { stdout: string; stderr: string; exitCode: number }> {
+export function createBashTool(execProxyConfig?: ExecProxyConfig): Tool<BashToolInput, { stdout: string; stderr: string; exitCode: number }> {
   return buildTool({
     name: 'Bash',
     description: 'Execute a shell command on the system',
@@ -96,27 +132,78 @@ export function createBashTool(): Tool<BashToolInput, { stdout: string; stderr: 
 
     async call(args, _context) {
       const timeout = args.timeout ?? 30000
-      let command = args.command
+      const command = args.command
+      const config = execProxyConfig ?? { enabled: false, binary: 'rtk', commands: [] }
+
+      let useRtk = false
 
       // Apply RTK exec proxy if configured and command is allowlisted
-      if (shouldUseRtkProxy(command)) {
-        command = wrapWithRtkProxy(command)
-        console.debug(`[BashTool] Using RTK proxy: ${command}`)
-      }
-
-      try {
-        const { stdout, stderr } = await execAsync(command, { timeout })
-        return { data: { stdout, stderr, exitCode: 0 } }
-      } catch (err: unknown) {
-        const error = err as { stdout?: string; stderr?: string; code?: number }
-        return {
-          data: {
-            stdout: error.stdout ?? '',
-            stderr: error.stderr ?? String(err),
-            exitCode: error.code ?? 1,
-          },
+      if (config.enabled && config.commands.length > 0) {
+        const tokens = tokenizeCommand(command)
+        if (matchesAllowlist(tokens, config.commands)) {
+          // Resolve rtk binary from PATH
+          const rtkPath = await which(config.binary).catch(() => null)
+          if (rtkPath) {
+            useRtk = true
+          } else {
+            console.warn(`[BashTool] RTK exec proxy enabled but binary not found in PATH: ${config.binary}`)
+          }
         }
       }
+
+      if (useRtk) {
+        // Use spawn with argv array to avoid shell injection
+        return new Promise((resolve) => {
+          const rtkPath = which.sync(config.binary)
+          const tokens = tokenizeCommand(command)
+          const child = spawn(rtkPath, ['exec', '--', ...tokens], {
+            timeout,
+            env: process.env,
+          })
+
+          let stdout = ''
+          let stderr = ''
+
+          child.stdout.on('data', (data) => { stdout += data.toString() })
+          child.stderr.on('data', (data) => { stderr += data.toString() })
+
+          child.on('close', (code) => {
+            resolve({ data: { stdout, stderr, exitCode: code ?? 1 } })
+          })
+
+          child.on('error', () => {
+            resolve({ data: { stdout, stderr, exitCode: 1 } })
+          })
+        })
+      }
+
+      // Standard execution using spawn with argv array (no shell)
+      const tokens = tokenizeCommand(command)
+      if (tokens.length === 0) {
+        return { data: { stdout: '', stderr: 'Empty command', exitCode: 1 } }
+      }
+
+      return new Promise((resolve) => {
+        const [cmd, ...args_] = tokens
+        const child = spawn(cmd, args_, {
+          timeout,
+          env: process.env,
+        })
+
+        let stdout = ''
+        let stderr = ''
+
+        child.stdout?.on('data', (data) => { stdout += data.toString() })
+        child.stderr?.on('data', (data) => { stderr += data.toString() })
+
+        child.on('close', (code) => {
+          resolve({ data: { stdout, stderr, exitCode: code ?? 1 } })
+        })
+
+        child.on('error', () => {
+          resolve({ data: { stdout, stderr, exitCode: 1 } })
+        })
+      })
     },
 
     isConcurrencySafe() { return false },
