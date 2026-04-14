@@ -6,6 +6,7 @@ import {
   createInferenceService,
   type ModelProviderConfig,
   type ProviderMessage,
+  type ProviderToolCall,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import type {
@@ -59,6 +60,7 @@ type ResolvedRoute = {
 type StageExecutionSuccess = {
   candidate: CandidateOutput
   invocation: InvocationRecord
+  toolCalls: ProviderToolCall[]
 }
 
 type ResolvedProviderConfig = {
@@ -563,6 +565,7 @@ const executeStage = async (
 
     let outputText = ''
     let invocation: InvocationRecord | undefined
+    let toolCalls: ProviderToolCall[] = []
     if (input.stream) {
       const source = service.stream?.({
         actorContext: input.actorContext,
@@ -588,7 +591,9 @@ const executeStage = async (
         }
         next = await source.next()
       }
+      outputText = next.value.outputText
       invocation = next.value.invocations.at(-1)
+      toolCalls = next.value.toolCalls
     } else {
       const result = await service.run({
         actorContext: input.actorContext,
@@ -602,12 +607,13 @@ const executeStage = async (
       })
       outputText = result.outputText
       invocation = result.invocations.at(-1)
+      toolCalls = result.toolCalls
       if (outputText && input.emitBufferedOutput && input.onVisibleTextDelta) {
         await input.onVisibleTextDelta(outputText)
       }
     }
 
-    if (!outputText.trim()) {
+    if (!outputText.trim() && toolCalls.length === 0) {
       throw new Error(`Stage ${input.stage.id} produced no content`)
     }
     if (!invocation) {
@@ -640,8 +646,16 @@ const executeStage = async (
         outputText,
         stageId: input.stage.id,
         stageRole: input.stage.role,
+        toolCalls:
+          toolCalls.length > 0
+            ? toolCalls.map((toolCall) => ({
+                arguments: toolCall.arguments,
+                toolName: toolCall.toolName,
+              }))
+            : undefined,
       },
       invocation: enrichedInvocation,
+      toolCalls,
     }
   } catch (error) {
     const maybeInvocation =
@@ -716,6 +730,7 @@ const executeSingleMode = async (
       invocations: [],
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }
@@ -751,7 +766,16 @@ const executeSingleMode = async (
     invocations: [success.invocation],
     requestId: input.actorContext.actionContext.requestId,
     status: 'completed',
-    toolExecutionOwner: null,
+    toolCalls: success.toolCalls,
+    toolExecutionOwner:
+      success.toolCalls.length > 0
+        ? {
+            invocationId: success.invocation.invocationId,
+            model: success.invocation.model,
+            provider: success.invocation.provider,
+            stageId: stage.id,
+          }
+        : null,
   }
 }
 
@@ -803,6 +827,7 @@ const executeFallbackMode = async (
         invocations,
         requestId: input.actorContext.actionContext.requestId,
         status: 'completed',
+        toolCalls: [],
         toolExecutionOwner: null,
       }
     } catch (error) {
@@ -824,6 +849,7 @@ const executeFallbackMode = async (
     invocations,
     requestId: input.actorContext.actionContext.requestId,
     status: 'failed',
+    toolCalls: [],
     toolExecutionOwner: null,
   }
 }
@@ -887,6 +913,7 @@ const executeCommitteeMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }
@@ -955,6 +982,7 @@ const executeCommitteeMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'completed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   } catch (error) {
@@ -973,6 +1001,7 @@ const executeCommitteeMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }
@@ -1010,6 +1039,7 @@ const executePipelineMode = async (
         invocations,
         requestId: input.actorContext.actionContext.requestId,
         status: 'failed',
+        toolCalls: [],
         toolExecutionOwner: null,
       }
     }
@@ -1052,6 +1082,7 @@ const executePipelineMode = async (
           invocations,
           requestId: input.actorContext.actionContext.requestId,
           status: 'failed',
+          toolCalls: [],
           toolExecutionOwner: null,
         }
       }
@@ -1070,6 +1101,7 @@ const executePipelineMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }
@@ -1093,6 +1125,7 @@ const executePipelineMode = async (
     invocations,
     requestId: input.actorContext.actionContext.requestId,
     status: 'completed',
+    toolCalls: [],
     toolExecutionOwner: null,
   }
 }
@@ -1176,6 +1209,7 @@ const executeShadowMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'completed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   } catch (error) {
@@ -1207,6 +1241,7 @@ const executeShadowMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }

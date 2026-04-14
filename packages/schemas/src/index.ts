@@ -1291,12 +1291,39 @@ export const ProviderMessageRoleSchema = z.enum([
 ])
 export type ProviderMessageRole = z.infer<typeof ProviderMessageRoleSchema>
 
-export const ProviderMessageSchema = z.object({
-  role: ProviderMessageRoleSchema,
-  content: z.union([z.string(), z.array(ProviderMessageContentPartSchema)]),
-  name: NonEmptyStringSchema.optional(),
-  toolCallId: NonEmptyStringSchema.optional(),
+const ProviderMessageContentSchema = z.union([
+  z.string(),
+  z.array(ProviderMessageContentPartSchema),
+])
+
+export const ProviderToolCallSchema = z.object({
+  toolCallId: NonEmptyStringSchema,
+  toolName: NonEmptyStringSchema,
+  arguments: z.record(z.unknown()),
+  reason: z.string().optional(),
 })
+export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>
+
+export const ProviderMessageSchema = z.discriminatedUnion('role', [
+  z.object({
+    role: z.literal('system'),
+    content: ProviderMessageContentSchema,
+  }),
+  z.object({
+    role: z.literal('user'),
+    content: ProviderMessageContentSchema,
+  }),
+  z.object({
+    role: z.literal('assistant'),
+    content: ProviderMessageContentSchema.nullable(),
+    toolCalls: z.array(ProviderToolCallSchema).optional(),
+  }),
+  z.object({
+    role: z.literal('tool'),
+    content: z.string(),
+    toolCallId: NonEmptyStringSchema,
+  }),
+])
 export type ProviderMessage = z.infer<typeof ProviderMessageSchema>
 
 export const ToolSchemaDescriptorSchema = z.object({
@@ -1320,6 +1347,24 @@ export const StructuredOutputDescriptorSchema = z.object({
 export type StructuredOutputDescriptor = z.infer<
   typeof StructuredOutputDescriptorSchema
 >
+
+export const JsonObjectResponseFormatSchema = z.object({
+  type: z.literal('json_object'),
+})
+export type JsonObjectResponseFormat = z.infer<
+  typeof JsonObjectResponseFormatSchema
+>
+
+export const ToolChoiceSchema = z.union([
+  z.enum(['auto', 'none', 'required']),
+  z.object({
+    type: z.literal('function'),
+    function: z.object({
+      name: NonEmptyStringSchema,
+    }),
+  }),
+])
+export type ToolChoice = z.infer<typeof ToolChoiceSchema>
 
 export const ModelCapabilitySourceSchema = z.enum(['static', 'live', 'manual'])
 export type ModelCapabilitySource = z.infer<typeof ModelCapabilitySourceSchema>
@@ -1402,22 +1447,17 @@ export const InvocationRecordSchema = z.object({
 })
 export type InvocationRecord = z.infer<typeof InvocationRecordSchema>
 
-export const ProviderToolCallSchema = z.object({
-  toolCallId: NonEmptyStringSchema,
-  toolName: NonEmptyStringSchema,
-  arguments: z.record(z.unknown()),
-  reason: z.string().optional(),
-})
-export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>
-
 export const ProviderInvocationRequestSchema = z.object({
   requestId: NonEmptyStringSchema,
   correlationId: NonEmptyStringSchema.optional(),
   model: NonEmptyStringSchema,
   messages: z.array(ProviderMessageSchema),
   tools: z.array(ToolSchemaDescriptorSchema).optional(),
+  toolChoice: ToolChoiceSchema.optional(),
+  responseFormat: JsonObjectResponseFormatSchema.optional(),
   expectedStructuredOutput: StructuredOutputDescriptorSchema.optional(),
   maxOutputTokens: z.number().int().positive().optional(),
+  temperature: z.number().optional(),
   metadata: z.record(z.unknown()).optional(),
 })
 export type ProviderInvocationRequest = z.infer<
@@ -1474,7 +1514,11 @@ export const InferenceRequestSchema = z.object({
   route: InferenceRequestRouteSchema,
   messages: z.array(ProviderMessageSchema),
   tools: z.array(ToolSchemaDescriptorSchema).optional(),
+  toolChoice: ToolChoiceSchema.optional(),
+  responseFormat: JsonObjectResponseFormatSchema.optional(),
   expectedStructuredOutput: StructuredOutputDescriptorSchema.optional(),
+  maxOutputTokens: z.number().int().positive().optional(),
+  temperature: z.number().optional(),
   metadata: z.record(z.unknown()).optional(),
 })
 export type InferenceRequest = z.infer<typeof InferenceRequestSchema>
@@ -1652,6 +1696,7 @@ export const MultiProviderResultSchema = z.object({
   finalAnswer: z.string().optional(),
   structuredOutput: z.unknown().optional(),
   answerOwner: AnswerOwnerSchema.optional(),
+  toolCalls: z.array(ProviderToolCallSchema),
   toolExecutionOwner: ToolExecutionOwnerSchema.nullable(),
   failure: MultiProviderFailureSchema.optional(),
   invocations: z.array(InvocationRecordSchema),

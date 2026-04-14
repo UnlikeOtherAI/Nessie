@@ -745,6 +745,7 @@ export const executeRunJob = async (
       threadId: parseThreadId(context.run.threadId),
     })
     streamStarted = true
+    let currentTurnStreamed = false
 
     const loopResult = await runAgenticLoop({
       budget: DEFAULT_BUDGET,
@@ -794,6 +795,10 @@ export const executeRunJob = async (
           })
         },
         onTextDelta: async (delta) => {
+          if (currentTurnStreamed) {
+            currentTurnStreamed = false
+            return
+          }
           await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
             content: delta,
             runId: parseRunId(context.run.id),
@@ -811,6 +816,7 @@ export const executeRunJob = async (
       },
       initialMessages,
       runInference: async (messages) => {
+        currentTurnStreamed = false
         const mpr = await runInferenceGraph(deps.prisma, {
           actorContext: payload.actorContext,
           agent: {
@@ -821,9 +827,21 @@ export const executeRunJob = async (
           },
           baseMessages: messages,
           modelConfig: runtimeModelConfig,
+          onVisibleTextDelta: async (chunk) => {
+            currentTurnStreamed = true
+            await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+              content: chunk,
+              runId: parseRunId(context.run.id),
+            })
+          },
           organizationId: context.channel.organizationId,
+          toolChoice: 'auto',
+          tools: toolDefs,
         })
-        if (mpr.status !== 'completed' || !mpr.finalAnswer?.trim()) {
+        if (
+          mpr.status !== 'completed'
+          || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
+        ) {
           throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
         }
         return {
@@ -834,7 +852,7 @@ export const executeRunJob = async (
           outputText: mpr.finalAnswer ?? '',
           provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'openai-compatible',
           requestId: mpr.requestId,
-          toolCalls: [],
+          toolCalls: mpr.toolCalls,
         }
       },
       tools: toolDefs,

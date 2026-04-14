@@ -908,12 +908,39 @@ export const ProviderMessageContentPartSchema = z.union([
 ])
 export type ProviderMessageContentPart = z.infer<typeof ProviderMessageContentPartSchema>
 
-export const ProviderMessageSchema = z.object({
-  role: z.enum(['system', 'user', 'assistant', 'tool']),
-  content: z.union([z.string(), ProviderMessageContentPartSchema.array()]),
-  name: z.string().min(1).optional(),
-  toolCallId: z.string().min(1).optional(),
+const ProviderMessageContentSchema = z.union([
+  z.string(),
+  ProviderMessageContentPartSchema.array(),
+])
+
+export const ProviderToolCallSchema = z.object({
+  toolCallId: z.string().min(1),
+  toolName: NonEmptyStringSchema,
+  arguments: z.record(z.unknown()),
+  reason: z.string().optional(),
 })
+export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>
+
+export const ProviderMessageSchema = z.discriminatedUnion('role', [
+  z.object({
+    role: z.literal('system'),
+    content: ProviderMessageContentSchema,
+  }),
+  z.object({
+    role: z.literal('user'),
+    content: ProviderMessageContentSchema,
+  }),
+  z.object({
+    role: z.literal('assistant'),
+    content: ProviderMessageContentSchema.nullable(),
+    toolCalls: ProviderToolCallSchema.array().optional(),
+  }),
+  z.object({
+    role: z.literal('tool'),
+    content: z.string(),
+    toolCallId: z.string().min(1),
+  }),
+])
 export type ProviderMessage = z.infer<typeof ProviderMessageSchema>
 
 export const ToolSchemaDescriptorSchema = z.object({
@@ -935,6 +962,24 @@ export const StructuredOutputDescriptorSchema = z.object({
   jsonSchema: z.record(z.unknown()),
 })
 export type StructuredOutputDescriptor = z.infer<typeof StructuredOutputDescriptorSchema>
+
+export const JsonObjectResponseFormatSchema = z.object({
+  type: z.literal('json_object'),
+})
+export type JsonObjectResponseFormat = z.infer<
+  typeof JsonObjectResponseFormatSchema
+>
+
+export const ToolChoiceSchema = z.union([
+  z.enum(['auto', 'none', 'required']),
+  z.object({
+    type: z.literal('function'),
+    function: z.object({
+      name: NonEmptyStringSchema,
+    }),
+  }),
+])
+export type ToolChoice = z.infer<typeof ToolChoiceSchema>
 
 export const ModelCapabilityUsageReportingSchema = z.object({
   inputTokens: z.boolean(),
@@ -1031,19 +1076,14 @@ export const ProviderInvocationRequestSchema = z.object({
   model: NonEmptyStringSchema,
   messages: ProviderMessageSchema.array(),
   tools: ToolSchemaDescriptorSchema.array().optional(),
+  toolChoice: ToolChoiceSchema.optional(),
+  responseFormat: JsonObjectResponseFormatSchema.optional(),
   expectedStructuredOutput: StructuredOutputDescriptorSchema.optional(),
   maxOutputTokens: z.number().int().positive().optional(),
+  temperature: z.number().optional(),
   metadata: z.record(z.unknown()).optional(),
 })
 export type ProviderInvocationRequest = z.infer<typeof ProviderInvocationRequestSchema>
-
-export const ProviderToolCallSchema = z.object({
-  toolCallId: z.string().min(1),
-  toolName: NonEmptyStringSchema,
-  arguments: z.record(z.unknown()),
-  reason: z.string().optional(),
-})
-export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>
 
 export const ProviderInvocationResultSchema = z.object({
   outputText: z.string(),
@@ -1086,6 +1126,7 @@ export const MultiProviderResultSchema = z.object({
       invocationId: z.string().uuid(),
     })
     .optional(),
+  toolCalls: ProviderToolCallSchema.array().default([]),
   toolExecutionOwner: z
     .object({
       stageId: NonEmptyStringSchema,
