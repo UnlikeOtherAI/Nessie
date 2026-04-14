@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useNavigate } from 'react-router-dom'
 import type {
   WorkflowInstallationRecord,
@@ -160,36 +162,34 @@ export const WorkflowsPage = (_props: WorkflowsPageProps) => {
               <div className="mt-3 grid gap-2">
                 {templates.map((template) => {
                   const linkedInstallation = latestInstallationByTemplateId.get(template.id)
-                  const isSelected =
-                    linkedInstallation?.id !== undefined &&
-                    linkedInstallation.id === effectiveInstallationId
 
                   return (
                     <button
                       key={template.id}
-                      className={`admin-card rounded-xl border px-3 py-2 text-left transition ${
-                        isSelected
-                          ? 'border-sky-400/60 bg-sky-400/10'
-                          : 'border-[color:var(--sep)] bg-black/10 hover:bg-black/20'
-                      }`}
+                      className="admin-card cursor-pointer rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-2 text-left transition hover:bg-black/20"
                       onClick={() => {
-                        if (!linkedInstallation) {
-                          return
-                        }
-
-                        setSelectedInstallationId(linkedInstallation.id)
-                        setSelectedRunId(undefined)
+                        void navigate(`/agents/workflow-designer/${template.id}`)
                       }}
                       type="button"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="font-semibold text-white">{template.name}</div>
-                        <span className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                          {linkedInstallation ? 'installed' : 'saved'}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-xs text-[color:var(--tx3)]">
-                        v{template.version} · updated {formatTimestamp(template.updatedAt)}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold text-white">
+                            {template.name}
+                          </div>
+                          <div className="mt-1 text-xs text-[color:var(--tx3)]">
+                            v{template.version} · updated {formatTimestamp(template.updatedAt)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                            {linkedInstallation ? 'installed' : 'saved'}
+                          </span>
+                          <FontAwesomeIcon
+                            className="text-xs text-[color:var(--tx3)]"
+                            icon={faChevronRight}
+                          />
+                        </div>
                       </div>
                     </button>
                   )
