@@ -7,6 +7,7 @@ import {
   faPlus,
   faRobot,
   faScrewdriverWrench,
+  faTrashCan,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -52,6 +53,13 @@ type WorkflowConnection = {
   toNodeId: string
 }
 
+type WorkflowConnectionLayout = {
+  color: string
+  id: string
+  midpoint: { x: number; y: number }
+  path: string
+}
+
 type WorkflowDraftConnection = {
   fromNodeId: string
   startX: number
@@ -77,7 +85,7 @@ const sectionLabelClass =
 const dividerClass = 'my-1 border-t border-black/8'
 
 const canvasClass = [
-  'relative flex-1 overflow-hidden bg-white',
+  'relative flex-1 overflow-hidden bg-white select-none',
   'bg-[radial-gradient(circle_at_1px_1px,rgba(116,69,199,0.12)_1px,transparent_0)]',
   '[background-size:28px_28px]',
 ].join(' ')
@@ -134,17 +142,42 @@ const getNodeOutputAnchor = (node: WorkflowCanvasNode) => ({
   y: node.y + CANVAS_NODE_HANDLE_Y,
 })
 
-const buildConnectionPath = (
+const getConnectionGeometry = (
   start: { x: number; y: number },
   end: { x: number; y: number },
 ) => {
   const curveOffset = Math.max(Math.abs(end.x - start.x) * 0.45, 64)
-  return [
-    `M ${start.x} ${start.y}`,
-    `C ${start.x + curveOffset} ${start.y},`,
-    `${end.x - curveOffset} ${end.y},`,
-    `${end.x} ${end.y}`,
-  ].join(' ')
+  const startControl = {
+    x: start.x + curveOffset,
+    y: start.y,
+  }
+  const endControl = {
+    x: end.x - curveOffset,
+    y: end.y,
+  }
+
+  const midpoint = {
+    x:
+      start.x * 0.125 +
+      startControl.x * 0.375 +
+      endControl.x * 0.375 +
+      end.x * 0.125,
+    y:
+      start.y * 0.125 +
+      startControl.y * 0.375 +
+      endControl.y * 0.375 +
+      end.y * 0.125,
+  }
+
+  return {
+    midpoint,
+    path: [
+      `M ${start.x} ${start.y}`,
+      `C ${startControl.x} ${startControl.y},`,
+      `${endControl.x} ${endControl.y},`,
+      `${end.x} ${end.y}`,
+    ].join(' '),
+  }
 }
 
 const getCanvasInsertionPoint = (canvasElement: HTMLDivElement | null, offset: number) => {
@@ -198,6 +231,8 @@ export const WorkflowDesignerPage = () => {
 
   const [connections, setConnections] = useState<WorkflowConnection[]>([])
   const [draftConnection, setDraftConnection] = useState<WorkflowDraftConnection | null>(null)
+  const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null)
+  const [hoveredInputNodeId, setHoveredInputNodeId] = useState<string | null>(null)
   const [nodes, setNodes] = useState<WorkflowCanvasNode[]>([])
   const [openMenu, setOpenMenu] = useState<string | null>(null)
 
@@ -286,6 +321,51 @@ export const WorkflowDesignerPage = () => {
     ]
   }, [agents, returnTo, tools, triggers])
 
+  const connectionLayouts = useMemo<WorkflowConnectionLayout[]>(() => {
+    return connections.flatMap((connection) => {
+      const sourceNode = nodes.find((node) => node.id === connection.fromNodeId)
+      const targetNode = nodes.find((node) => node.id === connection.toNodeId)
+
+      if (!sourceNode || !targetNode) {
+        return []
+      }
+
+      const sourceAnchor = getNodeOutputAnchor(sourceNode)
+      const targetAnchor = getNodeInputAnchor(targetNode)
+      const geometry = getConnectionGeometry(sourceAnchor, targetAnchor)
+
+      return [
+        {
+          color: nodeThemes[sourceNode.type].border,
+          id: connection.id,
+          midpoint: geometry.midpoint,
+          path: geometry.path,
+        },
+      ]
+    })
+  }, [connections, nodes])
+
+  const invalidDraftTargetNodeId = useMemo(() => {
+    if (!draftConnection || !hoveredInputNodeId) {
+      return null
+    }
+
+    const isDuplicateConnection = connections.some(
+      (connection) =>
+        connection.fromNodeId === draftConnection.fromNodeId &&
+        connection.toNodeId === hoveredInputNodeId,
+    )
+
+    if (
+      hoveredInputNodeId === draftConnection.fromNodeId ||
+      isDuplicateConnection
+    ) {
+      return hoveredInputNodeId
+    }
+
+    return null
+  }, [connections, draftConnection, hoveredInputNodeId])
+
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target
@@ -303,6 +383,8 @@ export const WorkflowDesignerPage = () => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDraftConnection(null)
+        setHoveredConnectionId(null)
+        setHoveredInputNodeId(null)
         setOpenMenu(null)
       }
     }
@@ -352,6 +434,18 @@ export const WorkflowDesignerPage = () => {
 
       if (draftConnection && canvasRef.current) {
         const canvasBounds = canvasRef.current.getBoundingClientRect()
+        const hoveredInputHandle = document
+          .elementFromPoint(event.clientX, event.clientY)
+          ?.closest('[data-workflow-input-node-id]')
+        const nextHoveredInputNodeId =
+          hoveredInputHandle?.getAttribute('data-workflow-input-node-id') ?? null
+
+        setHoveredInputNodeId(
+          nextHoveredInputNodeId === draftConnection.fromNodeId
+            ? draftConnection.fromNodeId
+            : nextHoveredInputNodeId,
+        )
+
         setDraftConnection((currentDraft) =>
           currentDraft
             ? {
@@ -367,15 +461,46 @@ export const WorkflowDesignerPage = () => {
     const handlePointerUp = (event: PointerEvent) => {
       dragStateRef.current = null
 
-      const target = event.target
       if (
+        draftConnection &&
+        hoveredInputNodeId &&
+        hoveredInputNodeId !== draftConnection.fromNodeId
+      ) {
+        setConnections((currentConnections) => {
+          const duplicateConnection = currentConnections.some(
+            (connection) =>
+              connection.fromNodeId === draftConnection.fromNodeId &&
+              connection.toNodeId === hoveredInputNodeId,
+          )
+
+          if (duplicateConnection) {
+            return currentConnections
+          }
+
+          return [
+            ...currentConnections,
+            {
+              fromNodeId: draftConnection.fromNodeId,
+              id: crypto.randomUUID(),
+              toNodeId: hoveredInputNodeId,
+            },
+          ]
+        })
+      }
+
+      const target = event.target
+      const releasedOverInputHandle =
         target instanceof Element &&
         target.closest('[data-workflow-input-handle="true"]')
-      ) {
+
+      if (releasedOverInputHandle || hoveredInputNodeId) {
+        setDraftConnection(null)
+        setHoveredInputNodeId(null)
         return
       }
 
       setDraftConnection(null)
+      setHoveredInputNodeId(null)
     }
 
     document.addEventListener('pointermove', handlePointerMove)
@@ -385,7 +510,7 @@ export const WorkflowDesignerPage = () => {
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [draftConnection])
+  }, [draftConnection, hoveredInputNodeId])
 
   const addNodeFromItem = (item: ToolbarMenuItem) => {
     if (!item.nodeType) {
@@ -436,6 +561,8 @@ export const WorkflowDesignerPage = () => {
       return
     }
 
+    event.preventDefault()
+
     const node = nodes.find((candidate) => candidate.id === nodeId)
     if (!node) {
       return
@@ -463,6 +590,8 @@ export const WorkflowDesignerPage = () => {
     }
 
     const outputAnchor = getNodeOutputAnchor(node)
+    setHoveredConnectionId(null)
+    setHoveredInputNodeId(null)
     setDraftConnection({
       fromNodeId: nodeId,
       startX: outputAnchor.x,
@@ -507,6 +636,15 @@ export const WorkflowDesignerPage = () => {
 
       return null
     })
+  }
+
+  const handleConnectionDelete = (connectionId: string) => {
+    setConnections((currentConnections) =>
+      currentConnections.filter((connection) => connection.id !== connectionId),
+    )
+    setHoveredConnectionId((currentHoveredConnectionId) =>
+      currentHoveredConnectionId === connectionId ? null : currentHoveredConnectionId,
+    )
   }
 
   return (
@@ -608,36 +746,51 @@ export const WorkflowDesignerPage = () => {
 
       <div ref={canvasRef} className={canvasClass}>
         <svg className="pointer-events-none absolute inset-0 h-full w-full">
-          {connections.map((connection) => {
-            const sourceNode = nodes.find((node) => node.id === connection.fromNodeId)
-            const targetNode = nodes.find((node) => node.id === connection.toNodeId)
-
-            if (!sourceNode || !targetNode) {
-              return null
-            }
-
-            const sourceAnchor = getNodeOutputAnchor(sourceNode)
-            const targetAnchor = getNodeInputAnchor(targetNode)
-            const sourceTheme = nodeThemes[sourceNode.type]
-
+          {connectionLayouts.map((connectionLayout) => {
             return (
-              <path
-                key={connection.id}
-                d={buildConnectionPath(sourceAnchor, targetAnchor)}
-                fill="none"
-                stroke={sourceTheme.border}
-                strokeLinecap="round"
-                strokeWidth="3"
-              />
+              <g key={connectionLayout.id} className="pointer-events-auto">
+                <path
+                  d={connectionLayout.path}
+                  fill="none"
+                  stroke={connectionLayout.color}
+                  strokeLinecap="round"
+                  strokeWidth="3"
+                />
+                <path
+                  className="cursor-pointer"
+                  d={connectionLayout.path}
+                  fill="none"
+                  onMouseEnter={() => setHoveredConnectionId(connectionLayout.id)}
+                  onMouseLeave={(event) => {
+                    const relatedTarget = event.relatedTarget
+                    if (
+                      relatedTarget instanceof Element &&
+                      relatedTarget.closest(
+                        `[data-connection-delete-id="${connectionLayout.id}"]`,
+                      )
+                    ) {
+                      return
+                    }
+
+                    setHoveredConnectionId((currentHoveredConnectionId) =>
+                      currentHoveredConnectionId === connectionLayout.id
+                        ? null
+                        : currentHoveredConnectionId,
+                    )
+                  }}
+                  stroke="transparent"
+                  strokeWidth="18"
+                />
+              </g>
             )
           })}
 
           {draftConnection ? (
             <path
-              d={buildConnectionPath(
+              d={getConnectionGeometry(
                 { x: draftConnection.startX, y: draftConnection.startY },
                 { x: draftConnection.x, y: draftConnection.y },
-              )}
+              ).path}
               fill="none"
               stroke={nodeThemes.agent.border}
               strokeDasharray="8 6"
@@ -661,13 +814,47 @@ export const WorkflowDesignerPage = () => {
           </div>
         ) : null}
 
+        {connectionLayouts.map((connectionLayout) =>
+          hoveredConnectionId === connectionLayout.id ? (
+            <button
+              key={connectionLayout.id}
+              className="absolute z-10 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow-[0_10px_24px_rgba(31,22,38,0.16)] transition-transform hover:scale-105"
+              data-connection-delete-id={connectionLayout.id}
+              onClick={() => handleConnectionDelete(connectionLayout.id)}
+              onMouseEnter={() => setHoveredConnectionId(connectionLayout.id)}
+              onMouseLeave={() =>
+                setHoveredConnectionId((currentHoveredConnectionId) =>
+                  currentHoveredConnectionId === connectionLayout.id
+                    ? null
+                    : currentHoveredConnectionId,
+                )
+              }
+              onPointerDown={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+              }}
+              style={{
+                borderColor: connectionLayout.color,
+                color: connectionLayout.color,
+                left: connectionLayout.midpoint.x,
+                top: connectionLayout.midpoint.y,
+              }}
+              type="button"
+            >
+              <FontAwesomeIcon className="text-[12px]" icon={faTrashCan} />
+            </button>
+          ) : null,
+        )}
+
         {nodes.map((node) => {
           const theme = nodeThemes[node.type]
+          const isHoveredInput = hoveredInputNodeId === node.id
+          const isInvalidDraftTarget = invalidDraftTargetNodeId === node.id
 
           return (
             <div
               key={node.id}
-              className="absolute cursor-grab rounded-2xl border bg-white shadow-[0_18px_40px_rgba(31,22,38,0.12)] active:cursor-grabbing"
+              className="absolute cursor-grab select-none rounded-2xl border bg-white shadow-[0_18px_40px_rgba(31,22,38,0.12)] active:cursor-grabbing"
               onPointerDown={(event) => handleNodePointerDown(event, node.id)}
               style={{
                 backgroundColor: theme.fill,
@@ -675,17 +862,30 @@ export const WorkflowDesignerPage = () => {
                 height: CANVAS_NODE_HEIGHT,
                 left: node.x,
                 top: node.y,
+                userSelect: 'none',
                 width: CANVAS_NODE_WIDTH,
               }}
             >
               {node.type !== 'trigger' ? (
                 <button
                   aria-label={`Connect into ${node.label}`}
-                  className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 bg-white transition-all hover:scale-110 hover:bg-current"
+                  className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 transition-all hover:scale-110 hover:bg-current"
                   data-workflow-handle="true"
                   data-workflow-input-handle="true"
+                  data-workflow-input-node-id={node.id}
                   onPointerUp={(event) => handleConnectionComplete(event, node.id)}
-                  style={{ borderColor: theme.border, color: theme.border }}
+                  style={{
+                    backgroundColor: isHoveredInput
+                      ? isInvalidDraftTarget
+                        ? '#dc2626'
+                        : theme.border
+                      : '#ffffff',
+                    borderColor: isInvalidDraftTarget ? '#dc2626' : theme.border,
+                    color: isInvalidDraftTarget ? '#dc2626' : theme.border,
+                    transform: isHoveredInput
+                      ? 'translateY(-50%) scale(1.1)'
+                      : 'translateY(-50%)',
+                  }}
                   type="button"
                 />
               ) : null}
