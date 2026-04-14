@@ -62,3 +62,4 @@ The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. Cl
 
 - [brief.md](docs/brief.md) — Full project brief
 - [build-ai-coworker.md](docs/build-ai-coworker.md) — macOS app build plan
+- Finished documents belong in `docs/done/`.

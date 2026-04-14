@@ -4,7 +4,7 @@ How Nessie extracts, assigns, stores, and retrieves memories — structured arou
 
 Builds on:
 - [memory-reasoning-and-experience.md](memory-reasoning-and-experience.md) — reasoning model, outcome tracking
-- [memory-security-and-scoping.md](memory-security-and-scoping.md) — multi-tenant visibility, org hard boundaries
+- [memory-security-and-scoping.md](done/memory-security-and-scoping.md) — multi-tenant visibility, org hard boundaries
 
 Research backing (deep research papers informing this design):
 - [research/memory-retrieval-and-reranking-in-multi-agent-systems.md](research/memory-retrieval-and-reranking-in-multi-agent-systems.md) — retrieval architectures, reranking, cold start, negative mining, implicit feedback

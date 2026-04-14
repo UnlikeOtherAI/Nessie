@@ -12,7 +12,7 @@ Every conversation source — Teams meetings, Zoom calls, Twilio voice, WhatsApp
 
 Related documents:
 - [the-agents.md](the-agents.md) — agent architecture, execution, skills
-- [multi-agent-memory-system.md](multi-agent-memory-system.md) — memory types, retrieval, feedback
+- [multi-agent-memory-system.md](done/multi-agent-memory-system.md) — memory types, retrieval, feedback
 - [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) — agent external identity
 - Section 10 below — Twilio voice connector (reference plugin implementation)
 - [marketplace.md](marketplace.md) — workflow templates register triggers via § 4

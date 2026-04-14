@@ -4,7 +4,7 @@ How Nessie agents work today, how they should work, and what needs to change. Th
 
 Related documents:
 - [agent-base-template.md](agent-base-template.md) — universal agent contract and field definitions
-- [multi-agent-memory-system.md](multi-agent-memory-system.md) — memory types, retrieval, self-eval
+- [multi-agent-memory-system.md](done/multi-agent-memory-system.md) — memory types, retrieval, self-eval
 - [agent-communication-spec.md](agent-communication-spec.md) — routing, threads, status model
 - [research/evolving-agent-runtime-enterprise-grade.md](research/evolving-agent-runtime-enterprise-grade.md) — enterprise evolution research
 - [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) — external identity, VOIP, email, WhatsApp
