@@ -59,7 +59,7 @@ export const McpServerConfigSchema = z.object({
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
 
 export const McpConfigSchema = z.object({
-  servers: z.array(McpServerConfigSchema).default([]),
+  servers: z.record(z.string(), McpServerConfigSchema).default({}),
 })
 export type McpConfig = z.infer<typeof McpConfigSchema>
 

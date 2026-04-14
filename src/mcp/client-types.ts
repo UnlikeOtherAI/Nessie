@@ -3,21 +3,10 @@
  */
 
 import { z } from 'zod'
+import { McpServerConfigSchema } from '@nessie/config'
 
-// Transport types
-export const TransportTypeSchema = z.enum(['stdio', 'http'])
-export type TransportType = z.infer<typeof TransportTypeSchema>
-
-// Server configuration
-export const McpServerConfigSchema = z.object({
-  name: z.string().min(1),
-  command: z.string().min(1).optional(),  // For stdio transport
-  args: z.array(z.string()).default([]),
-  env: z.record(z.string()).optional(),
-  transport: TransportTypeSchema.default('stdio'),
-  url: z.string().url().optional(),  // For http transport
-})
-
+// Re-export for convenience
+export { McpServerConfigSchema }
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
 
 // MCP client config (top-level) — servers is an OBJECT per issue #50 spec
