@@ -177,7 +177,7 @@ const loadAllowedToolIds = async (
   const enabledToolIds = new Set(
     enabledRegistryEntries
       .map((entry) => entry.toolId)
-      .filter((toolId) => BUILTIN_TOOL_IDS.has(toolId as 'document_read' | 'web_fetch' | 'web_search')),
+      .filter((toolId) => BUILTIN_TOOL_IDS.has(toolId)),
   )
 
   const [runScopedSessions, threadScopedSessions, agentScopedSessions] = await Promise.all([

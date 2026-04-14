@@ -11,6 +11,7 @@ type ToolExecutionResult = {
 }
 
 const MAX_PREVIEW_LENGTH = 1200
+const MAX_TOOL_RESULT_CHARS = 32_000
 const URL_PATTERN = /https?:\/\/[^\s)]+/i
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const docsRoot = resolve(repoRoot, 'docs')
@@ -24,6 +25,17 @@ const BLOCKED_HOSTNAMES = new Set([
 
 const truncate = (value: string, maxLength = MAX_PREVIEW_LENGTH): string =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`
+
+const truncateToolResult = (output: string): string =>
+  output.length > MAX_TOOL_RESULT_CHARS
+    ? output.slice(0, MAX_TOOL_RESULT_CHARS) + '\n\n[output truncated]'
+    : output
+
+export type AgenticToolResult = {
+  inputSummary: string
+  output: string
+  success: boolean
+}
 
 const extractUrl = (prompt: string): string | null => {
   const rawMatch = prompt.match(URL_PATTERN)?.[0]
@@ -193,6 +205,43 @@ export const shouldUseWebSearch = (prompt: string): boolean =>
   /\b(search|latest|look up|lookup|find on the web|web)\b/i.test(prompt)
 
 export const shouldUseWebFetch = (prompt: string): boolean => URL_PATTERN.test(prompt)
+
+const wrapTool = async (
+  inputSummary: string,
+  fn: () => Promise<{ outputPreview: string }>,
+): Promise<AgenticToolResult> => {
+  try {
+    const result = await fn()
+    return {
+      inputSummary,
+      output: truncateToolResult(result.outputPreview),
+      success: true,
+    }
+  } catch (error) {
+    return {
+      inputSummary,
+      output: 'Tool error: ' + (error instanceof Error ? error.message : String(error)),
+      success: false,
+    }
+  }
+}
+
+export const executeBuiltinTool = async (
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<AgenticToolResult> => {
+  const inputSummary = JSON.stringify(args).slice(0, 200)
+  switch (toolName) {
+    case 'web_search':
+      return wrapTool(inputSummary, () => runWebSearchTool(String(args.query ?? '')))
+    case 'web_fetch':
+      return wrapTool(inputSummary, () => runWebFetchTool(String(args.url ?? '')))
+    case 'document_read':
+      return wrapTool(inputSummary, () => runDocumentReadTool(String(args.query ?? '')))
+    default:
+      return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
+  }
+}
 
 export const runDocumentReadTool = async (prompt: string): Promise<ToolExecutionResult> => {
   const filePath = await selectDocumentPath(prompt)
