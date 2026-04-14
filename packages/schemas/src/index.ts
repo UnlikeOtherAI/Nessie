@@ -527,6 +527,16 @@ export const WsEventSchema = z.union([
     data: MessageNewEventSchema,
     ts: TimestampSchema,
   }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('agent.iteration'),
+    data: z.object({
+      agentId: z.string(),
+      iteration: z.number().int().positive(),
+      runId: z.string(),
+    }),
+    ts: TimestampSchema,
+  }),
 ])
 
 export const WsClientMessageSchema = z.union([
