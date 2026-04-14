@@ -157,3 +157,51 @@ test('trimConversationToFit keeps assistant tool calls paired with tool results'
 
   assert.deepEqual(trimmed, [messages[0]!, ...assistantToolGroup])
 })
+
+test('runAgenticLoop enforces the maxTokens budget', async () => {
+  const exhausted: string[] = []
+
+  const result = await runAgenticLoop({
+    budget: {
+      maxIterations: 2,
+      maxToolCalls: 2,
+      maxTokens: 5,
+      maxWallclockMs: 10_000,
+    },
+    callbacks: {
+      onIterationStart: async () => {},
+      onToolCallStart: async () => {},
+      onToolCallEnd: async () => {},
+      onTextDelta: async () => {},
+      onBudgetExhausted: async (reason) => {
+        exhausted.push(reason)
+      },
+    },
+    executeTool: async () => ({
+      inputSummary: '',
+      output: '',
+      success: true,
+    }),
+    initialMessages: [{ content: 'Hi', role: 'user' }],
+    runInference: async () => ({
+      correlationId: 'corr-2',
+      finishReason: 'stop',
+      invocations: [
+        makeInvocation({
+          invocationId: '33333333-3333-3333-3333-333333333333',
+          usage: { totalTokens: 6 },
+        }),
+      ],
+      model: 'gpt-5-mini',
+      outputText: 'Too long',
+      provider: 'openai',
+      requestId: 'req-3',
+      toolCalls: [],
+    }),
+    tools: [],
+  })
+
+  assert.equal(result.exhaustedBudget, 'tokens')
+  assert.equal(result.totalTokensUsed, 6)
+  assert.deepEqual(exhausted, ['tokens'])
+})

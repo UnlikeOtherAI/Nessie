@@ -33,7 +33,13 @@ export const DEFAULT_BUDGET: BudgetLimits = {
   maxCostCents: 50,
 }
 
-type BudgetExhaustionReason = 'iterations' | 'tool_calls' | 'wallclock' | 'loop_detected'
+type BudgetExhaustionReason =
+  | 'cost'
+  | 'iterations'
+  | 'loop_detected'
+  | 'tokens'
+  | 'tool_calls'
+  | 'wallclock'
 
 export type LoopCallbacks = {
   onIterationStart: (iteration: number) => Promise<void>
@@ -54,6 +60,7 @@ export type LoopResult = {
   finalText: string
   iterations: number
   toolCallsUsed: number
+  totalCostCents: number
   wallclockMs: number
   totalTokensUsed: number
   exhaustedBudget: BudgetExhaustionReason | null
@@ -94,6 +101,14 @@ const makeToolCallSignature = (
 
 const sumTokens = (invocations: InvocationRecord[]): number =>
   invocations.reduce((sum, inv) => sum + (inv.usage.totalTokens ?? 0), 0)
+
+const sumCostCents = (invocations: InvocationRecord[]): number =>
+  invocations.reduce((sum, inv) => {
+    if (inv.providerReportedCost?.currency.toUpperCase() !== 'USD') {
+      return sum
+    }
+    return sum + Math.round(inv.providerReportedCost.amount * 100)
+  }, 0)
 
 const CONTEXT_BUDGET_TOKENS = 100_000
 const CONTEXT_TRIM_THRESHOLD = 0.85
@@ -170,6 +185,7 @@ export const runAgenticLoop = async (input: {
 
   let iterations = 0
   let toolCallsUsed = 0
+  let totalCostCents = 0
   let totalTokensUsed = 0
   const startTime = Date.now()
 
@@ -183,6 +199,7 @@ export const runAgenticLoop = async (input: {
         finalText: '',
         invocations: allInvocations,
         iterations,
+        totalCostCents,
         toolCallsUsed,
         totalTokensUsed,
         wallclockMs: elapsed(),
@@ -205,7 +222,36 @@ export const runAgenticLoop = async (input: {
 
     const result = await callInferenceWithRetry(messages, input.runInference, retryBudget)
     allInvocations.push(...result.invocations)
+    totalCostCents = sumCostCents(allInvocations)
     totalTokensUsed = sumTokens(allInvocations)
+
+    if (budget.maxTokens && totalTokensUsed >= budget.maxTokens) {
+      await callbacks.onBudgetExhausted('tokens')
+      return {
+        exhaustedBudget: 'tokens',
+        finalText: '',
+        invocations: allInvocations,
+        iterations,
+        totalCostCents,
+        toolCallsUsed,
+        totalTokensUsed,
+        wallclockMs: elapsed(),
+      }
+    }
+
+    if (budget.maxCostCents && totalCostCents >= budget.maxCostCents) {
+      await callbacks.onBudgetExhausted('cost')
+      return {
+        exhaustedBudget: 'cost',
+        finalText: '',
+        invocations: allInvocations,
+        iterations,
+        totalCostCents,
+        toolCallsUsed,
+        totalTokensUsed,
+        wallclockMs: elapsed(),
+      }
+    }
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
       if (result.outputText) {
@@ -216,6 +262,7 @@ export const runAgenticLoop = async (input: {
         finalText: result.outputText,
         invocations: allInvocations,
         iterations,
+        totalCostCents,
         toolCallsUsed,
         totalTokensUsed,
         wallclockMs: elapsed(),
@@ -312,6 +359,7 @@ export const runAgenticLoop = async (input: {
         finalText: '',
         invocations: allInvocations,
         iterations,
+        totalCostCents,
         toolCallsUsed,
         totalTokensUsed,
         wallclockMs: elapsed(),
@@ -325,6 +373,7 @@ export const runAgenticLoop = async (input: {
         finalText: '',
         invocations: allInvocations,
         iterations,
+        totalCostCents,
         toolCallsUsed,
         totalTokensUsed,
         wallclockMs: elapsed(),
@@ -338,6 +387,7 @@ export const runAgenticLoop = async (input: {
     finalText: '',
     invocations: allInvocations,
     iterations,
+    totalCostCents,
     toolCallsUsed,
     totalTokensUsed,
     wallclockMs: elapsed(),
