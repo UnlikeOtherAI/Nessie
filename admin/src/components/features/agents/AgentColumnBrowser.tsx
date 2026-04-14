@@ -633,6 +633,7 @@ export const AgentColumnBrowser = () => {
     }
 
     return result
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     allAgentsById,
     customCategories,
