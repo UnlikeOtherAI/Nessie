@@ -4394,6 +4394,7 @@ export const buildApp = async () => {
 
     await ts.recordOutcome({
       thoughtId: id,
+      organizationId: actorContext.tenant.organizationId,
       outcome: body.outcome,
       outcomeNotes: body.outcomeNotes,
       actorType: actorContext.actor.actorType,
@@ -4484,6 +4485,7 @@ export const buildApp = async () => {
     const linkId = await ts.link({
       sourceId: id,
       targetId: body.targetId,
+      organizationId: actorContext.tenant.organizationId,
       relation: body.relation,
       metadata: body.metadata,
       actorType: actorContext.actor.actorType,

@@ -120,3 +120,29 @@ test('captureThought writes canonical audience fields for private user memory', 
     ),
   )
 })
+
+test('captureThought rejects conflicting scoped audience identifiers', async () => {
+  const pool = createPoolStub(() => {
+    throw new Error('query should not run when audience identifiers conflict')
+  })
+
+  await assert.rejects(
+    () =>
+      captureThought(
+        {
+          audienceId: '11111111-1111-1111-1111-111111111111',
+          audienceType: 'channel',
+          channelId: '22222222-2222-2222-2222-222222222222',
+          content: 'Do not accept mismatched channel identifiers.',
+          organizationId: '33333333-3333-3333-3333-333333333333',
+          ownerId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          ownerType: 'user',
+        },
+        {
+          modelClient: createModelClientStub(),
+          pool,
+        },
+      ),
+    /conflicting audience identifiers/,
+  )
+})

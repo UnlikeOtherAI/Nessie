@@ -55,6 +55,23 @@ const VISIBILITY_BY_AUDIENCE_TYPE: Record<ThoughtAudienceType, ThoughtVisibility
   organization: 'organization',
 }
 
+const resolveCanonicalAudienceId = (
+  explicitAudienceId: string | undefined,
+  canonicalAudienceId: string | undefined,
+  label: string,
+): string => {
+  if (canonicalAudienceId && explicitAudienceId && canonicalAudienceId !== explicitAudienceId) {
+    throw new Error(`${label} memory received conflicting audience identifiers`)
+  }
+
+  const audienceId = canonicalAudienceId ?? explicitAudienceId
+  if (!audienceId) {
+    throw new Error(`${label} memory requires a concrete audience ID`)
+  }
+
+  return audienceId
+}
+
 const resolveAudience = (
   input: CaptureThoughtInput,
 ): { audienceId: string; audienceType: ThoughtAudienceType; userId: string | null } => {
@@ -63,12 +80,11 @@ const resolveAudience = (
 
   switch (audienceType) {
     case 'user': {
-      const userId = input.audienceId
-        ?? input.userId
-        ?? (input.ownerType === 'user' ? input.ownerId : undefined)
-      if (!userId) {
-        throw new Error('User-scoped memory requires a user audience ID')
-      }
+      const userId = resolveCanonicalAudienceId(
+        input.audienceId,
+        input.userId ?? (input.ownerType === 'user' ? input.ownerId : undefined),
+        'User-scoped',
+      )
 
       return {
         audienceType,
@@ -77,33 +93,40 @@ const resolveAudience = (
       }
     }
     case 'channel': {
-      const audienceId = input.audienceId ?? input.channelId
-      if (!audienceId) {
-        throw new Error('Channel-scoped memory requires a channel ID')
-      }
+      const audienceId = resolveCanonicalAudienceId(
+        input.audienceId,
+        input.channelId,
+        'Channel-scoped',
+      )
 
       return { audienceType, audienceId, userId: null }
     }
     case 'team': {
-      const audienceId = input.audienceId ?? input.teamId
-      if (!audienceId) {
-        throw new Error('Team-scoped memory requires a team ID')
-      }
+      const audienceId = resolveCanonicalAudienceId(
+        input.audienceId,
+        input.teamId,
+        'Team-scoped',
+      )
 
       return { audienceType, audienceId, userId: null }
     }
     case 'project': {
-      const audienceId = input.audienceId ?? input.projectId
-      if (!audienceId) {
-        throw new Error('Project-scoped memory requires a project ID')
-      }
+      const audienceId = resolveCanonicalAudienceId(
+        input.audienceId,
+        input.projectId,
+        'Project-scoped',
+      )
 
       return { audienceType, audienceId, userId: null }
     }
     case 'organization':
       return {
         audienceType,
-        audienceId: input.audienceId ?? input.organizationId,
+        audienceId: resolveCanonicalAudienceId(
+          input.audienceId,
+          input.organizationId,
+          'Organization-scoped',
+        ),
         userId: null,
       }
   }
