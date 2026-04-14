@@ -59,6 +59,28 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     },
     safe: true,
   },
+  {
+    id: 'spawn_subtask',
+    label: 'Spawn Sub-Task',
+    description:
+      'Delegate a specific sub-task to a new child agent. Use when a task is complex enough to benefit from parallel or specialized work. The child agent will complete the task and report back.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description: 'Clear description of the sub-task to delegate',
+        },
+        role: {
+          type: 'string',
+          description:
+            'Role for the child agent: researcher, builder, reviewer',
+        },
+      },
+      required: ['task'],
+    },
+    safe: true,
+  },
 ]
 
 export const BUILTIN_TOOL_IDS = new Set(

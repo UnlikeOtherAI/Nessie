@@ -5,6 +5,17 @@ import type {
   ProviderToolCall,
   ToolSchemaDescriptor,
 } from '@nessie/runtime'
+import {
+  classifyError,
+  resolveRecovery,
+  createRetryBudget,
+  type RetryBudget,
+} from './error-classification.js'
+import {
+  estimateMessagesTokens,
+  estimateToolSchemaTokens,
+  trimConversationToFit,
+} from './context-management.js'
 
 export type BudgetLimits = {
   maxIterations: number
@@ -84,6 +95,64 @@ const makeToolCallSignature = (
 const sumTokens = (invocations: InvocationRecord[]): number =>
   invocations.reduce((sum, inv) => sum + (inv.usage.totalTokens ?? 0), 0)
 
+const CONTEXT_BUDGET_TOKENS = 100_000
+const CONTEXT_TRIM_THRESHOLD = 0.85
+const CONTEXT_TRIM_TARGET = 0.75
+const MAX_COMPACTION_ATTEMPTS = 2
+
+const callInferenceWithRetry = async (
+  messages: ProviderMessage[],
+  runInference: (msgs: ProviderMessage[]) => Promise<InferenceResult>,
+  retryBudget: RetryBudget,
+): Promise<InferenceResult> => {
+  let lastError: unknown
+  let compactionAttempts = 0
+
+  for (let attempt = 0; attempt <= 3; attempt++) {
+    try {
+      return await runInference(messages)
+    } catch (error) {
+      lastError = error
+      const reason = classifyError(error)
+      const recovery = resolveRecovery(reason, attempt, retryBudget)
+
+      if (recovery.action === 'retry') {
+        retryBudget.remaining -= 1
+        await new Promise((resolve) => setTimeout(resolve, recovery.delayMs))
+        continue
+      }
+
+      if (recovery.action === 'compact_and_retry') {
+        if (compactionAttempts >= MAX_COMPACTION_ATTEMPTS) {
+          throw new Error('Context overflow: unable to compact messages further')
+        }
+        compactionAttempts += 1
+        const trimmed = trimConversationToFit(messages, Math.floor(CONTEXT_BUDGET_TOKENS * 0.6))
+        messages.length = 0
+        messages.push(...trimmed)
+        continue
+      }
+
+      if (recovery.action === 'surface_error') {
+        return {
+          correlationId: undefined,
+          finishReason: 'error',
+          invocations: [],
+          model: '',
+          outputText: recovery.userMessage,
+          provider: 'openai',
+          requestId: '',
+          toolCalls: [],
+        }
+      }
+
+      throw error
+    }
+  }
+
+  throw lastError
+}
+
 export const runAgenticLoop = async (input: {
   budget: BudgetLimits
   callbacks: LoopCallbacks
@@ -92,10 +161,12 @@ export const runAgenticLoop = async (input: {
   runInference: (messages: ProviderMessage[]) => Promise<InferenceResult>
   tools: ToolSchemaDescriptor[]
 }): Promise<LoopResult> => {
-  const { budget, callbacks, executeTool, initialMessages, runInference } = input
+  const { budget, callbacks, executeTool, initialMessages } = input
   const messages: ProviderMessage[] = [...initialMessages]
   const allInvocations: InvocationRecord[] = []
   const signatureCounts = new Map<string, number>()
+  const retryBudget = createRetryBudget(6)
+  const toolSchemaTokens = estimateToolSchemaTokens(input.tools)
 
   let iterations = 0
   let toolCallsUsed = 0
@@ -121,7 +192,18 @@ export const runAgenticLoop = async (input: {
     iterations += 1
     await callbacks.onIterationStart(iterations)
 
-    const result = await runInference(messages)
+    const currentTokens = estimateMessagesTokens(messages)
+    if (currentTokens + toolSchemaTokens > CONTEXT_BUDGET_TOKENS * CONTEXT_TRIM_THRESHOLD) {
+      const trimmed = trimConversationToFit(
+        messages,
+        Math.floor(CONTEXT_BUDGET_TOKENS * CONTEXT_TRIM_TARGET),
+        toolSchemaTokens,
+      )
+      messages.length = 0
+      messages.push(...trimmed)
+    }
+
+    const result = await callInferenceWithRetry(messages, input.runInference, retryBudget)
     allInvocations.push(...result.invocations)
     totalTokensUsed = sumTokens(allInvocations)
 

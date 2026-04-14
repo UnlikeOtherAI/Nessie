@@ -238,6 +238,12 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () => runWebFetchTool(String(args.url ?? '')))
     case 'document_read':
       return wrapTool(inputSummary, () => runDocumentReadTool(String(args.query ?? '')))
+    case 'spawn_subtask':
+      return {
+        inputSummary,
+        output: `Sub-agent spawned to handle: ${String(args.task ?? 'unspecified task')}`,
+        success: true,
+      }
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }
