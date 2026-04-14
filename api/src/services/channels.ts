@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import type { Channel, PrismaClient } from '@prisma/client'
 import {
   parseChannelId,
@@ -191,26 +192,35 @@ export const findOrCreateDmChannel = async (
   })
 
   // Upsert on dmKey — idempotent, race-safe
-  const channel = await prisma.channel.upsert({
-    where: { dmKey },
-    create: {
-      label: targetUser?.displayName ?? 'Direct Message',
-      type: 'dm',
-      organizationId: input.organizationId,
-      teamId: input.teamId,
-      visibility: 'private',
-      dmKey,
-      members: {
-        create: [
-          { userId: input.currentUserId },
-          { userId: input.targetUserId },
-        ],
+  try {
+    const channel = await prisma.channel.upsert({
+      where: { dmKey },
+      create: {
+        label: targetUser?.displayName ?? 'Direct Message',
+        type: 'dm',
+        organizationId: input.organizationId,
+        teamId: input.teamId,
+        visibility: 'private',
+        dmKey,
+        members: {
+          create: [
+            { userId: input.currentUserId },
+            { userId: input.targetUserId },
+          ],
+        },
       },
-    },
-    update: {},
-  })
-
-  return mapChannelRecord(prisma, channel)
+      update: {},
+    })
+    return mapChannelRecord(prisma, channel)
+  } catch (err) {
+    // Race condition: another request created the channel between our read and write.
+    // The unique index on dmKey guarantees exactly one winner; losers re-fetch.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      const existing = await prisma.channel.findUniqueOrThrow({ where: { dmKey } })
+      return mapChannelRecord(prisma, existing)
+    }
+    throw err
+  }
 }
 
 export const createGroupFromDm = async (
