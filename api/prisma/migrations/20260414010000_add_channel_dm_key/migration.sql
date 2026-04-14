@@ -8,7 +8,7 @@ SET "dm_key" = (
   SELECT
     c2."organization_id" || ':' || c2."team_id" || ':' ||
     (
-      SELECT string_agg(cm."user_id", ':' ORDER BY cm."user_id")
+      SELECT string_agg(cm."user_id"::text, ':' ORDER BY cm."user_id")
       FROM "channel_members" cm
       WHERE cm."channel_id" = c2.id
     )
