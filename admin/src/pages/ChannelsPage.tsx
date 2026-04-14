@@ -1024,7 +1024,7 @@ export const ChannelsPage = () => {
               </p>
               <button
                 className="admin-button admin-button-primary mt-4"
-                onClick={() => void navigate('/agents/new')}
+                onClick={() => void navigate('/agents/designer')}
                 type="button"
               >
                 Create agent

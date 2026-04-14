@@ -80,8 +80,11 @@ export type AgentDesignerActions = {
   toggleTool: (toolId: string, enabled: boolean) => void
 }
 
-export const useAgentDesigner = () => {
-  const [state, dispatch] = useReducer(reducer, DEFAULT_STATE)
+export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
+  const [state, dispatch] = useReducer(reducer, {
+    ...DEFAULT_STATE,
+    ...initialState,
+  })
 
   const setName = useCallback((name: string) => dispatch({ type: 'set_name', name }), [])
   const setRole = useCallback((role: string) => dispatch({ type: 'set_role', role }), [])

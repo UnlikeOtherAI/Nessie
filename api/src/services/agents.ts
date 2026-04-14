@@ -507,6 +507,64 @@ export const createAgentRecord = async (
   return mapAgentRecord(agent)
 }
 
+export const updateAgentRecord = async (
+  prisma: PrismaClient,
+  agentId: string,
+  input: {
+    model?: string
+    name?: string
+    provider?: string
+    role?: string
+    systemPrompt?: string
+    toolPolicy?: Record<string, boolean>
+  },
+): Promise<AgentRecord | null> => {
+  const existing = await prisma.agent.findUnique({ where: { id: agentId } })
+  if (!existing) {
+    return null
+  }
+
+  const agent = await prisma.agent.update({
+    where: { id: agentId },
+    data: {
+      model: input.model ?? existing.model,
+      name: input.name ?? existing.name,
+      provider: input.provider ?? existing.provider,
+      role: input.role ?? existing.role,
+      systemPrompt: input.systemPrompt ?? existing.systemPrompt,
+      toolPolicy: input.toolPolicy ?? existing.toolPolicy ?? undefined,
+    },
+    include: {
+      bindings: {
+        orderBy: { createdAt: 'asc' },
+        select: { channelId: true },
+      },
+      messages: {
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+        take: 1,
+      },
+      runs: {
+        include: {
+          toolCalls: {
+            orderBy: { startedAt: 'desc' },
+            select: {
+              endedAt: true,
+              startedAt: true,
+              toolName: true,
+            },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+  })
+
+  return mapAgentRecord(agent)
+}
+
 export const unbindAgentFromChannel = async (
   prisma: PrismaClient,
   agentId: string,

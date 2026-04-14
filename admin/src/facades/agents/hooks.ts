@@ -115,6 +115,29 @@ export const useCreateAgent = () => {
   })
 }
 
+export const useUpdateAgent = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      agentId: string
+      model?: string
+      name?: string
+      provider?: string
+      role?: string
+      systemPrompt?: string
+      toolPolicy?: Record<string, boolean>
+    }) => {
+      const { agentId, ...body } = input
+      return apiClient.put<AgentRecord>(`/api/agents/${agentId}`, body)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
 export const useBindAgent = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

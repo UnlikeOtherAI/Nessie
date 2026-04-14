@@ -38,16 +38,20 @@ export const router = createBrowserRouter([
         element: <AgentsPage />,
       },
       {
-        path: '/triggers',
+        path: '/agents/designer',
+        element: <AgentDesignerPage />,
+      },
+      {
+        path: '/agents/designer/:agentId',
+        element: <AgentDesignerPage />,
+      },
+      {
+        path: '/agents/triggers',
         element: <TriggersPage />,
       },
       {
-        path: '/workflows',
+        path: '/agents/workflows',
         element: <WorkflowsPage />,
-      },
-      {
-        path: '/agents/new',
-        element: <AgentDesignerPage />,
       },
       {
         path: '/settings',

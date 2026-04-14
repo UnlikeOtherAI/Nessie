@@ -126,6 +126,15 @@ export const CreateAgentBodySchema = z.object({
   model: z.string().optional(),
 })
 
+export const UpdateAgentBodySchema = z.object({
+  name: NonEmptyStringSchema.optional(),
+  role: NonEmptyStringSchema.optional(),
+  systemPrompt: z.string().optional(),
+  toolPolicy: z.record(z.string(), z.boolean()).optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+})
+
 export const CreateAgentBindingBodySchema = z.object({
   channelId: ChannelIdSchema,
 })

@@ -45,7 +45,21 @@ export const AgentDetailColumn = ({ agent, onBack, showBack }: AgentDetailColumn
               'flex h-7 w-7 items-center justify-center rounded',
               'text-[color:var(--tx2)] hover:bg-white/10 hover:text-white',
             ].join(' ')}
-            onClick={() => void navigate(`/agents/new?parentId=${agent.id}`)}
+            onClick={() => void navigate(`/agents/designer/${agent.id}`)}
+            title="Edit agent"
+            type="button"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+              <path d="M12 20h9" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            className={[
+              'flex h-7 w-7 items-center justify-center rounded',
+              'text-[color:var(--tx2)] hover:bg-white/10 hover:text-white',
+            ].join(' ')}
+            onClick={() => void navigate(`/agents/designer?parentId=${agent.id}`)}
             title="Add child agent"
             type="button"
           >

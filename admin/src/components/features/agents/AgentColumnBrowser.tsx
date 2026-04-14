@@ -466,7 +466,7 @@ export const AgentColumnBrowser = () => {
                   'transition-colors hover:bg-white/10',
                   'hover:text-white',
                 ].join(' ')}
-                onClick={() => void navigate('/agents/new')}
+                onClick={() => void navigate('/agents/designer')}
                 title="New agent"
                 type="button"
               >
@@ -569,7 +569,7 @@ export const AgentColumnBrowser = () => {
                   'flex h-7 w-7 items-center justify-center rounded',
                   'text-[color:var(--tx2)] hover:bg-white/10 hover:text-white',
                 ].join(' ')}
-                onClick={() => void navigate(`/agents/new?parentId=${parentId}`)}
+                onClick={() => void navigate(`/agents/designer?parentId=${parentId}`)}
                 title="Add child agent"
                 type="button"
               >

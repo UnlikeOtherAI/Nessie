@@ -57,8 +57,6 @@ export const AdminShellLayout = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
-  const isTriggersRoute = location.pathname.startsWith('/triggers');
-  const isWorkflowsRoute = location.pathname.startsWith('/workflows');
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
@@ -307,71 +305,6 @@ export const AdminShellLayout = () => {
             <span className="admin-rail-btn-label">Agents</span>
           </Link>
 
-          <Link
-            className={`admin-rail-btn ${isTriggersRoute ? 'active' : ''}`}
-            to="/triggers"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="M12 4v6" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M12 16v4" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M20 12h-4" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M8 12H4" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="12" cy="12" r="3.5" />
-            </svg>
-            <span className="admin-rail-btn-label">Triggers</span>
-          </Link>
-
-          <Link
-            className={`admin-rail-btn ${isWorkflowsRoute ? 'active' : ''}`}
-            to="/workflows"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <rect height="4" rx="1" width="6" x="4" y="4" />
-              <rect height="4" rx="1" width="6" x="14" y="10" />
-              <rect height="4" rx="1" width="6" x="4" y="16" />
-              <path
-                d="M10 6h2a2 2 0 012 2v4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M14 12h-2a2 2 0 00-2 2v4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="admin-rail-btn-label">Workflows</span>
-          </Link>
-
-          <button
-            className="admin-rail-btn"
-            onClick={() => void navigate('/settings#activity')}
-            type="button"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="admin-rail-btn-label">Activity</span>
-          </button>
-
           <div className="my-2 h-px w-8 bg-white/15" />
 
           <Link
@@ -526,6 +459,96 @@ export const AdminShellLayout = () => {
             </span>
           </button>
         </aside>
+
+        {isAgentsRoute && (
+          <aside
+            className={[
+              'hidden h-full w-[220px] flex-col overflow-hidden',
+              'border-r border-[color:var(--sep)] bg-[color:var(--sb)] md:flex',
+            ].join(' ')}
+          >
+            <div className="flex h-[50px] items-center px-4">
+              <span className="text-[15px] font-bold text-white">Agents</span>
+            </div>
+            <nav className="flex flex-1 flex-col gap-0.5 px-2 py-1">
+              {[
+                {
+                  path: '/agents',
+                  label: 'Agents',
+                  exact: true,
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <circle cx="12" cy="8" r="4" />
+                      <path d="M4 20c0-4 3.582-7 8-7s8 3 8 7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+                {
+                  path: '/agents/designer',
+                  label: 'Designer',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path d="M12 20h9" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+                {
+                  path: '/agents/triggers',
+                  label: 'Triggers',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path d="M12 4v6" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M12 16v4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M20 12h-4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M8 12H4" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="12" cy="12" r="3.5" />
+                    </svg>
+                  ),
+                },
+                {
+                  path: '/agents/workflows',
+                  label: 'Workflows',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <rect height="4" rx="1" width="6" x="4" y="4" />
+                      <rect height="4" rx="1" width="6" x="14" y="10" />
+                      <rect height="4" rx="1" width="6" x="4" y="16" />
+                      <path d="M10 6h2a2 2 0 012 2v4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M14 12h-2a2 2 0 00-2 2v4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+                {
+                  path: '/agents/activity',
+                  label: 'Activity',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+              ].map((item) => {
+                const isActive = item.exact
+                  ? location.pathname === item.path
+                  : location.pathname.startsWith(item.path);
+                return (
+                  <Link
+                    key={item.path}
+                    className={[
+                      'admin-sb-item flex items-center gap-2.5 px-3 py-2 text-[13px]',
+                      isActive ? 'active' : '',
+                    ].join(' ')}
+                    to={item.path}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </aside>
+        )}
 
         {!isAgentsRoute && (
           <aside

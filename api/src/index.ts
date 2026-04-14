@@ -72,6 +72,7 @@ import {
   BlockWorkflowStepRunBodySchema,
   CancelWorkflowRunBodySchema,
   CreateAgentBodySchema,
+  UpdateAgentBodySchema,
   CreateAgentTriggerBodySchema,
   CreateAgentCategoryBodySchema,
   CreatePlanBodySchema,
@@ -134,6 +135,7 @@ import {
   buildSnapshotForScopes,
   cloneAgentRecord,
   createAgentRecord,
+  updateAgentRecord,
   listAgentsForUser,
   loadAgentActivity,
   loadAgentChildren,
@@ -1731,6 +1733,26 @@ export const buildApp = async () => {
     })
 
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(agent)))
+  })
+
+  app.put('/api/agents/:agentId', async (request, reply) => {
+    if (!requireActorContext(request, reply)) {
+      return reply
+    }
+
+    const body = parseInput(UpdateAgentBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    const agent = await updateAgentRecord(prisma, agentId, body)
+    if (!agent) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    return createApiResponse(AgentRecordSchema.parse(agent))
   })
 
   app.post('/api/agents/:agentId/bindings', async (request, reply) => {

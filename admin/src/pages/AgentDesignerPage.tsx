@@ -1,19 +1,49 @@
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useMemo } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
-import { useAgents, useCreateAgent } from '../facades/agents/hooks'
+import type { AgentFormState } from '../components/features/agents/designer/useAgentDesigner'
+import { useAgents, useCreateAgent, useUpdateAgent } from '../facades/agents/hooks'
 import { useDesignerChat } from '../facades/designer/hooks'
+
+const DEFAULT_TOOLS: Record<string, boolean> = {
+  'bash': false,
+  'file-read': false,
+  'file-write': false,
+  'glob': false,
+  'grep': false,
+  'web-search': false,
+}
 
 export const AgentDesignerPage = () => {
   const navigate = useNavigate()
+  const { agentId } = useParams<{ agentId?: string }>()
   const [searchParams] = useSearchParams()
   const parentId = searchParams.get('parentId') ?? undefined
   const { data: agents = [] } = useAgents()
+  const editingAgent = agentId ? agents.find((a) => a.id === agentId) : undefined
   const parentAgent = parentId ? agents.find((a) => a.id === parentId) : undefined
-  const { actions, state } = useAgentDesigner()
+  const isEditMode = Boolean(agentId)
+
+  const initialState = useMemo<Partial<AgentFormState> | undefined>(() => {
+    if (!editingAgent) return undefined
+    return {
+      name: editingAgent.name,
+      role: editingAgent.role,
+      provider: editingAgent.provider ?? 'openai',
+      model: editingAgent.model ?? 'gpt-5',
+      systemPrompt: editingAgent.systemPrompt ?? '',
+      tools: DEFAULT_TOOLS,
+    }
+  }, [editingAgent])
+
+  const { actions, state } = useAgentDesigner(initialState)
   const chat = useDesignerChat(state, actions)
   const createAgent = useCreateAgent()
+  const updateAgent = useUpdateAgent()
+
+  const isSaving = createAgent.isPending || updateAgent.isPending
 
   const handleSave = async () => {
     if (!state.name.trim()) return
@@ -22,15 +52,27 @@ export const AgentDesignerPage = () => {
       Object.entries(state.tools).filter(([, v]) => v),
     )
 
-    await createAgent.mutateAsync({
-      name: state.name.trim(),
-      role: state.role.trim() || 'assistant',
-      systemPrompt: state.systemPrompt.trim() || undefined,
-      provider: state.provider || undefined,
-      model: state.model || undefined,
-      toolPolicy: Object.keys(enabledTools).length > 0 ? state.tools : undefined,
-      parentAgentId: parentId,
-    })
+    if (isEditMode && agentId) {
+      await updateAgent.mutateAsync({
+        agentId,
+        name: state.name.trim(),
+        role: state.role.trim() || 'assistant',
+        systemPrompt: state.systemPrompt.trim() || undefined,
+        provider: state.provider || undefined,
+        model: state.model || undefined,
+        toolPolicy: Object.keys(enabledTools).length > 0 ? state.tools : undefined,
+      })
+    } else {
+      await createAgent.mutateAsync({
+        name: state.name.trim(),
+        role: state.role.trim() || 'assistant',
+        systemPrompt: state.systemPrompt.trim() || undefined,
+        provider: state.provider || undefined,
+        model: state.model || undefined,
+        toolPolicy: Object.keys(enabledTools).length > 0 ? state.tools : undefined,
+        parentAgentId: parentId,
+      })
+    }
 
     void navigate('/agents')
   }
@@ -64,7 +106,9 @@ export const AgentDesignerPage = () => {
               <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <h1 className="text-base font-bold text-white">Agent Designer</h1>
+          <h1 className="text-base font-bold text-white">
+            {isEditMode ? 'Edit Agent' : 'Agent Designer'}
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -76,11 +120,13 @@ export const AgentDesignerPage = () => {
           </button>
           <button
             className="admin-button admin-button-primary"
-            disabled={!state.name.trim() || createAgent.isPending}
+            disabled={!state.name.trim() || isSaving}
             onClick={handleSave}
             type="button"
           >
-            {createAgent.isPending ? 'Creating...' : 'Create Agent'}
+            {isSaving
+              ? (isEditMode ? 'Saving...' : 'Creating...')
+              : (isEditMode ? 'Save Changes' : 'Create Agent')}
           </button>
         </div>
       </div>

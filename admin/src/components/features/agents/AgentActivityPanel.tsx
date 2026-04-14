@@ -249,7 +249,7 @@ export const AgentActivityPanel = ({
 
           <button
             className="admin-sb-item text-[color:var(--tx3)]"
-            onClick={() => window.location.assign('/agents/new')}
+            onClick={() => window.location.assign('/agents/designer')}
             type="button"
           >
             <svg
