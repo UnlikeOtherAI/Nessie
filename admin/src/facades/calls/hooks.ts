@@ -28,7 +28,8 @@ export const useStartCall = () => {
   return useMutation({
     mutationFn: (channelId: string) =>
       apiClient.post<CallRecord>(`/api/channels/${channelId}/call`),
-    onSuccess: (_data, channelId) => {
+    onSuccess: (data, channelId) => {
+      queryClient.setQueryData(['call', channelId], data)
       void queryClient.invalidateQueries({ queryKey: ['call', channelId] })
     },
   })
@@ -41,7 +42,8 @@ export const useJoinCall = () => {
   return useMutation({
     mutationFn: (callId: string) =>
       apiClient.post<CallRecord>(`/api/calls/${callId}/join`),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      queryClient.setQueryData(['call', data.channelId], data)
       void queryClient.invalidateQueries({ queryKey: ['call'] })
     },
   })

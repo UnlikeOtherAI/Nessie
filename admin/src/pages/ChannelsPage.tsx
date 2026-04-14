@@ -221,6 +221,15 @@ export const ChannelsPage = () => {
     [activeParticipants, me],
   )
 
+  // Auto-open the overlay when the user joins or starts a call.
+  const prevIsInCallRef = useRef(false)
+  useEffect(() => {
+    if (isInCall && !prevIsInCallRef.current) {
+      setShowCallOverlay(true)
+    }
+    prevIsInCallRef.current = isInCall
+  }, [isInCall])
+
   // Clear optimistic bubble once the real message from the server arrives.
   // Match on content + proximity: any optimistic entry whose content equals
   // a persisted user message can be dropped.
@@ -502,13 +511,9 @@ export const ChannelsPage = () => {
             onClick={() => {
               if (!callEligible || !activeChannel) return
               if (!activeCall) {
-                startCall.mutate(activeChannel.id, {
-                  onSuccess: () => setShowCallOverlay(true),
-                })
+                startCall.mutate(activeChannel.id)
               } else if (!isInCall) {
-                joinCall.mutate(activeCall.id, {
-                  onSuccess: () => setShowCallOverlay(true),
-                })
+                joinCall.mutate(activeCall.id)
               } else {
                 setShowCallOverlay((v) => !v)
               }
@@ -582,9 +587,7 @@ export const ChannelsPage = () => {
         <CallBanner
           participants={activeParticipants}
           onJoin={() => {
-            joinCall.mutate(activeCall.id, {
-              onSuccess: () => setShowCallOverlay(true),
-            })
+            joinCall.mutate(activeCall.id)
           }}
         />
       )}
@@ -1130,7 +1133,7 @@ export const ChannelsPage = () => {
         pastedText={oversizePaste ?? ''}
       />
 
-      {showCallOverlay && activeCall && isInCall && (
+      {showCallOverlay && activeCall && (
         <CallOverlay
           displayName={me?.user.displayName ?? 'User'}
           onLeave={() => {
