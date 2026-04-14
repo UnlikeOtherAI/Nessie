@@ -10,7 +10,7 @@
 
 **Source document:** `docs/openclaw-architecture.md` (the overnight OpenClaw deep-dive)
 
-**Review notes:** This plan has been through 2 review rounds. Round 1 (12 reviewers): 18 gaps addressed in v2. Round 2 (15 reviewers — 5 Claude explore agents + 10 max, each reading actual source): 15 additional gaps addressed in v3. Changes marked with `[v3]` annotations. All findings verified against code.
+**Review notes:** This plan has been through 3 review rounds. Round 1 (12 reviewers): 18 gaps addressed in v2. Round 2 (15 reviewers — 5 Claude explore agents + 10 max, each reading actual source): 16 additional gaps addressed in v3. Round 3 (5 Claude explore agents, line-by-line source verification): 0 new CRITICAL/HIGH findings — plan is clean. All 3 deferred HIGHs verified as non-regressive. Changes marked with `[v2]`/`[v3]` annotations.
 
 ---
 
@@ -149,7 +149,7 @@ export type ProviderMessage =
 
 **Critical:** The new `ProviderToolCall` uses the same field names as `packages/schemas` (`toolCallId`, `toolName`, `arguments`) — NOT OpenAI's wire format (`id`, `function.name`, `function.arguments`). The connector is responsible for the translation.
 
-Update all call sites in connectors.ts and service.ts that construct `ProviderMessage` to conform to the union.
+Update all call sites in connectors.ts and service.ts that construct `ProviderMessage` to conform to the union. **[v3] Known breaking site:** `normalizeMiniMaxMessages` (connectors.ts lines 267-320) constructs messages with the flat struct pattern — must be updated to use the discriminated union variants.
 
 ### Step 2: Extend `ProviderInvocationRequest` and `ProviderInvocationResult`
 
@@ -2012,6 +2012,18 @@ Tasks 4, 5, 6 can run in parallel after Task 3.
 | 32 | Argument repair is just `{ _raw: raw }` — no streaming corruption recovery | HIGH | Acknowledged — deferred to Phase 2 (OpenClaw has full repair pipeline) |
 | 33 | Role-based tool filtering absent — ROLE_POLICIES not consulted | HIGH | Acknowledged — legacy `src/` code, not imported by worker. Phase 2 task. |
 | 34 | OpenAI format mapping (ToolSchemaDescriptor ↔ wire format) missing from pseudocode | HIGH | Task 1 Step 6 — mapToolsToOpenAi/mapToolCallsFromOpenAi added |
+
+## [v3] Review Round 3 Findings
+
+5 Claude explore agents verifying plan claims against actual source code line-by-line. Focus: factual accuracy of plan's code descriptions.
+
+| # | Finding | Severity | Addressed In |
+|---|---|---|---|
+| 35 | `normalizeMiniMaxMessages` (connectors.ts:267-320) constructs flat-struct ProviderMessages — breaks on discriminated union | MEDIUM | Task 1 Step 1 — noted as known breaking site |
+| 36 | `maybeSpawnChildAgent` creates 3 entities + PlanStep, not 7 — mailbox consumer creates Message/Run/Task async | INFO | Task 6 Step 2 already describes 2-phase flow via mailbox |
+| 37 | All 3 deferred HIGHs (maxCostCents, argument repair, role filtering) verified as non-regressive | INFO | No changes needed — deferrals safe |
+
+**Round 3 verdict: No new CRITICAL or HIGH findings. Plan is clean.**
 
 ---
 
