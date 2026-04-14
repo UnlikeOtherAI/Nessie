@@ -114,7 +114,6 @@ const WorkflowToolSchema = z.discriminatedUnion('action', [
   GetTaskToolSchema,
   ListTasksToolSchema,
   UpdateTaskToolSchema,
-  UpdateTaskToolSchema,
   CompleteTaskToolSchema,
   DeleteTaskToolSchema,
   GetExecutableTasksToolSchema,

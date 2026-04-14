@@ -443,12 +443,18 @@ async function main() {
     if (req.method === 'POST' && req.url === '/workflow') {
       const chunks: Buffer[] = []
       for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
       await handleWorkflowCreate(req, res, body)
       return
     }
 
     if (req.method === 'GET' && req.url === '/workflow') {
+      const url = new URL(req.url, `http://${req.headers.host}`)
+      if (url.searchParams.has('workflowId')) {
+        await handleWorkflowGet(req, res)
+        return
+      }
       await handleWorkflowList(req, res)
       return
     }
@@ -461,7 +467,8 @@ async function main() {
     if (req.method === 'POST' && req.url === '/workflow/update') {
       const chunks: Buffer[] = []
       for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
       await handleWorkflowUpdate(req, res, body)
       return
     }
@@ -469,16 +476,21 @@ async function main() {
     if (req.method === 'POST' && req.url === '/workflow/delete') {
       const chunks: Buffer[] = []
       for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
       await handleWorkflowDelete(req, res, body)
       return
     }
 
-    // Task CRUD
+    if (req.method === 'GET' && req.url?.startsWith('/workflow/task/list')) {
+      await handleTaskList(req, res)
+      return
+    }
     if (req.method === 'POST' && req.url === '/workflow/task') {
       const chunks: Buffer[] = []
       for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
       await handleTaskCreate(req, res, body)
       return
     }
@@ -496,7 +508,8 @@ async function main() {
     if (req.method === 'POST' && req.url === '/workflow/task/update') {
       const chunks: Buffer[] = []
       for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
       await handleTaskUpdate(req, res, body)
       return
     }
@@ -504,7 +517,8 @@ async function main() {
     if (req.method === 'POST' && req.url === '/workflow/task/complete') {
       const chunks: Buffer[] = []
       for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
       await handleTaskComplete(req, res, body)
       return
     }
@@ -512,7 +526,8 @@ async function main() {
     if (req.method === 'POST' && req.url === '/workflow/task/delete') {
       const chunks: Buffer[] = []
       for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
       await handleTaskDelete(req, res, body)
       return
     }

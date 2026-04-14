@@ -4,7 +4,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
+import { resolve } from 'node:path'
 import type {
   Workflow,
   WorkflowTask,
@@ -22,6 +22,9 @@ interface WorkflowStore {
   workflows: Workflow[]
   tasks: Record<string, WorkflowTask[]>  // workflowId -> tasks
 }
+
+// Write queue to serialize concurrent writes per workspace
+const _writeQueue = new Map<string, Promise<void>>()
 
 function getStorePath(workspaceId: string): string {
   return resolve(WORKFLOW_DIR, workspaceId, 'workflows.json')
@@ -41,16 +44,40 @@ function loadStore(workspaceId: string): WorkflowStore {
   }
   try {
     const data = readFileSync(path, 'utf8')
-    return JSON.parse(data) as WorkflowStore
+    const parsed = JSON.parse(data)
+    if (!parsed || typeof parsed !== 'object') {
+      return { workflows: [], tasks: {} }
+    }
+    return parsed as WorkflowStore
   } catch {
     return { workflows: [], tasks: {} }
+  }
+}
+
+async function saveStoreAsync(workspaceId: string, store: WorkflowStore): Promise<void> {
+  ensureDir(workspaceId)
+  const path = getStorePath(workspaceId)
+  // Write to temp file first, then rename for atomicity
+  const tmpPath = `${path}.tmp.${Date.now()}`
+  writeFileSync(tmpPath, JSON.stringify(store, null, 2), 'utf8')
+  try {
+    // atomic rename
+    const { renameSync } = await import('node:fs')
+    renameSync(tmpPath, path)
+  } catch {
+    // fallback: direct write
+    writeFileSync(path, JSON.stringify(store, null, 2), 'utf8')
   }
 }
 
 function saveStore(workspaceId: string, store: WorkflowStore): void {
   ensureDir(workspaceId)
   const path = getStorePath(workspaceId)
-  writeFileSync(path, JSON.stringify(store, null, 2), 'utf8')
+  // Serialize writes via promise chain
+  const prev = _writeQueue.get(workspaceId) ?? Promise.resolve()
+  const next = prev.then(() => saveStoreAsync(workspaceId, store))
+  _writeQueue.set(workspaceId, next)
+  // Don't wait — fire and forget
 }
 
 // Default workspace ID
@@ -136,14 +163,7 @@ export class WorkflowStoreManager {
       return { error: `Workflow not found: ${input.workflowId}` }
     }
 
-    // Validate dependencies exist
     const existingTasks = store.tasks[input.workflowId] ?? []
-    for (const depId of input.dependencies) {
-      if (!existingTasks.some(t => t.id === depId) && depId !== input.workflowId) {
-        // Also check if it's the workflow itself (self-reference check)
-        // Actually dependencies should be other tasks, not the workflow itself
-      }
-    }
 
     // Validate DAG
     const newTask: WorkflowTask = {
@@ -237,6 +257,13 @@ export class WorkflowStoreManager {
           completedAt: Date.now(),
         }
         tasks[index] = updated
+
+        // Update parent workflow timestamp
+        const workflow = store.workflows.find(w => w.id === task.workflowId)
+        if (workflow) {
+          workflow.updatedAt = Date.now()
+        }
+
         saveStore(this.workspaceId, store)
         return updated
       }

@@ -70,7 +70,7 @@ export function WorkflowApp() {
 
   async function fetchWorkflowTasks(workflowId: string) {
     try {
-      const res = await fetch(`${API_BASE}/workflow?workflowId=${workflowId}`)
+      const res = await fetch(`${API_BASE}/workflow/get?workflowId=${workflowId}`)
       const data = await res.json()
       setSelectedWorkflow(data.workflow)
       setTasks(data.tasks || [])
