@@ -1,7 +1,6 @@
 import { useCallback, useReducer } from 'react'
 
 export type AgentFormState = {
-  categoryId: string | null
   model: string
   name: string
   provider: string
@@ -15,7 +14,6 @@ export type AgentDesignerAction =
   | { chunk: string; type: 'append_system_prompt' }
   | { field: string; type: 'clear_streaming' }
   | { field: string; type: 'set_streaming' }
-  | { id: string | null; type: 'set_category' }
   | { model: string; type: 'set_model' }
   | { name: string; type: 'set_name' }
   | { prompt: string; type: 'set_system_prompt' }
@@ -24,7 +22,6 @@ export type AgentDesignerAction =
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
 
 const DEFAULT_STATE: AgentFormState = {
-  categoryId: null,
   model: 'gpt-5',
   name: '',
   provider: 'openai',
@@ -51,8 +48,6 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       return { ...state, systemPrompt: action.prompt }
     case 'append_system_prompt':
       return { ...state, systemPrompt: state.systemPrompt + action.chunk }
-    case 'set_category':
-      return { ...state, categoryId: action.id }
     case 'set_provider':
       return { ...state, provider: action.provider }
     case 'set_model':
@@ -71,7 +66,6 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
 export type AgentDesignerActions = {
   applyToolCall: (name: string, args: Record<string, unknown>) => void
   dispatch: React.Dispatch<AgentDesignerAction>
-  setCategoryId: (id: string | null) => void
   setModel: (model: string) => void
   setName: (name: string) => void
   setProvider: (provider: string) => void
@@ -90,10 +84,6 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
   const setRole = useCallback((role: string) => dispatch({ type: 'set_role', role }), [])
   const setSystemPrompt = useCallback(
     (prompt: string) => dispatch({ type: 'set_system_prompt', prompt }),
-    [],
-  )
-  const setCategoryId = useCallback(
-    (id: string | null) => dispatch({ type: 'set_category', id }),
     [],
   )
   const setProvider = useCallback(
@@ -116,9 +106,6 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
         break
       case 'set_system_prompt':
         dispatch({ type: 'set_system_prompt', prompt: String(args.content ?? '') })
-        break
-      case 'set_category':
-        dispatch({ type: 'set_category', id: args.categoryId ? String(args.categoryId) : null })
         break
       case 'set_provider':
         dispatch({ type: 'set_provider', provider: String(args.provider ?? '') })
@@ -153,7 +140,6 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
   const actions: AgentDesignerActions = {
     applyToolCall,
     dispatch,
-    setCategoryId,
     setModel,
     setName,
     setProvider,

@@ -47,18 +47,6 @@ const DESIGNER_TOOLS = [
   {
     type: 'function' as const,
     function: {
-      name: 'set_category',
-      description: 'Assign the agent to a category by ID, or null to unassign',
-      parameters: {
-        type: 'object',
-        properties: { categoryId: { type: ['string', 'null'] } },
-        required: ['categoryId'],
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
       name: 'set_provider',
       description: 'Set the LLM provider',
       parameters: {
@@ -176,7 +164,6 @@ const buildSystemPrompt = (
     `- Name: ${formState.name || '(empty)'}`,
     `- Role: ${formState.role || '(empty)'}`,
     `- System prompt: ${summarizedSystemPrompt}`,
-    `- Category: ${formState.categoryId || 'none'}`,
     `- Provider: ${formState.provider}`,
     `- Model: ${formState.model}`,
     `- Tools enabled: ${enabledTools.length > 0 ? enabledTools.join(', ') : 'none'}`,

@@ -55,8 +55,6 @@ import {
 import {
   AcquireResourceLockBodySchema,
   AddChannelMemberBodySchema,
-  AgentCategoryAgentBodySchema,
-  AgentCategoryRecordSchema,
   AgentRecordSchema,
   AgentTriggerDeliveryRecordSchema,
   AgentTriggerRecordSchema,
@@ -74,7 +72,6 @@ import {
   CreateAgentBodySchema,
   UpdateAgentBodySchema,
   CreateAgentTriggerBodySchema,
-  CreateAgentCategoryBodySchema,
   CreatePlanBodySchema,
   CreatePlanStepBodySchema,
   CreateWorkflowRunBodySchema,
@@ -110,7 +107,6 @@ import {
   ToolDescriptorSchema,
   ToolRegistryEntrySchema,
   UpdateAgentTriggerBodySchema,
-  UpdateAgentCategoryBodySchema,
   UserRecordSchema,
   WorkflowInstallationRecordSchema,
   WorkflowRunRecordSchema,
@@ -123,14 +119,6 @@ import { seedBootstrapRecords } from './db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from './lib/api.js'
 import { enqueueOrchestrateDecide, enqueueQueueJob } from './queue/pgqueue.js'
 import { createRealtimeHub } from './realtime/hub.js'
-import {
-  addAgentToCategory,
-  createAgentCategory,
-  deleteAgentCategory,
-  listAgentCategories,
-  removeAgentFromCategory,
-  updateAgentCategory,
-} from './services/agent-categories.js'
 import {
   bindAgentToChannel,
   buildSnapshotForScopes,
@@ -2402,130 +2390,6 @@ export const buildApp = async () => {
       }),
     )
   })
-
-  // ─── Agent Categories ─────────────────────────────────────────────────────
-
-  app.get('/api/agent-categories', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const categories = await listAgentCategories(
-      prisma,
-      actorContext.tenant.organizationId,
-    )
-    return createApiResponse(
-      AgentCategoryRecordSchema.array().parse(categories),
-    )
-  })
-
-  app.post('/api/agent-categories', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const body = parseInput(CreateAgentCategoryBodySchema, request.body, reply)
-    if (!body) return reply
-
-    const category = await createAgentCategory(prisma, {
-      name: body.name,
-      description: body.description,
-      visibility: body.visibility ?? 'public',
-      organizationId: actorContext.tenant.organizationId,
-      createdById: actorContext.actor.actorId,
-      authorAgentId: body.authorAgentId,
-    })
-
-    return reply
-      .code(201)
-      .send(createApiResponse(AgentCategoryRecordSchema.parse(category)))
-  })
-
-  app.put('/api/agent-categories/:categoryId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const body = parseInput(
-      UpdateAgentCategoryBodySchema,
-      request.body,
-      reply,
-    )
-    if (!body) return reply
-
-    const { categoryId } = request.params as { categoryId: string }
-    const category = await updateAgentCategory(prisma, categoryId, body)
-    if (!category) {
-      sendApiError(reply, 404, 'CATEGORY_NOT_FOUND', 'Category not found')
-      return reply
-    }
-
-    return createApiResponse(AgentCategoryRecordSchema.parse(category))
-  })
-
-  app.delete('/api/agent-categories/:categoryId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const { categoryId } = request.params as { categoryId: string }
-    const deleted = await deleteAgentCategory(prisma, categoryId)
-    if (!deleted) {
-      sendApiError(reply, 404, 'CATEGORY_NOT_FOUND', 'Category not found')
-      return reply
-    }
-
-    return reply.code(204).send()
-  })
-
-  app.post(
-    '/api/agent-categories/:categoryId/agents',
-    async (request, reply) => {
-      const actorContext = requireActorContext(request, reply)
-      if (!actorContext) return reply
-
-      const body = parseInput(AgentCategoryAgentBodySchema, request.body, reply)
-      if (!body) return reply
-
-      const { categoryId } = request.params as { categoryId: string }
-      const category = await addAgentToCategory(
-        prisma,
-        categoryId,
-        body.agentId,
-      )
-      if (!category) {
-        sendApiError(reply, 404, 'CATEGORY_NOT_FOUND', 'Category not found')
-        return reply
-      }
-
-      return createApiResponse(AgentCategoryRecordSchema.parse(category))
-    },
-  )
-
-  app.delete(
-    '/api/agent-categories/:categoryId/agents/:agentId',
-    async (request, reply) => {
-      const actorContext = requireActorContext(request, reply)
-      if (!actorContext) return reply
-
-      const { categoryId, agentId } = request.params as {
-        agentId: string
-        categoryId: string
-      }
-      const removed = await removeAgentFromCategory(
-        prisma,
-        categoryId,
-        agentId,
-      )
-      if (!removed) {
-        sendApiError(
-          reply,
-          404,
-          'LINK_NOT_FOUND',
-          'Agent is not in this category',
-        )
-        return reply
-      }
-
-      return reply.code(204).send()
-    },
-  )
 
   app.get('/api/plans', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

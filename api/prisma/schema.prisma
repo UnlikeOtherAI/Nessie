@@ -161,11 +161,6 @@ enum MessageRole {
   system
 }
 
-enum AgentCategoryVisibility {
-  public
-  private
-}
-
 // ─── Phase 2 Enums ──────────────────────────────────────────────────────────
 
 enum PolicyScope {
@@ -381,7 +376,6 @@ model User {
   callParticipants    CallParticipant[]    @relation("CallParticipation")
   messages            Message[]
   reactions           MessageReaction[]
-  agentCategories     AgentCategory[]
   threadReadStates    ThreadReadState[]
 
   @@map("users")
@@ -395,7 +389,6 @@ model Organization {
   members         OrganizationMember[]
   projects        Project[]
   channels        Channel[]
-  agentCategories AgentCategory[]
   thoughts        Thought[]
 
   @@map("organizations")
@@ -587,8 +580,6 @@ model Agent {
   parentAgent    Agent?               @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
   childAgents    Agent[]              @relation("AgentHierarchy")
   bindings              AgentBinding[]
-  categoryLinks         AgentCategoryAgent[]
-  authoredCategories    AgentCategory[]        @relation("AgentCategoryAuthor")
   routingProfile        InferenceRoutingProfile? @relation(fields: [routingProfileId], references: [id], onDelete: SetNull)
   messages              Message[]
   reactions             MessageReaction[]
@@ -795,38 +786,6 @@ model InferenceEvalRun {
   @@index([organizationId, status, startedAt(sort: Desc)])
   @@index([evalSuiteId, startedAt(sort: Desc)])
   @@map("inference_eval_runs")
-}
-
-model AgentCategory {
-  id             String                  @id @default(uuid()) @db.Uuid
-  name           String
-  description    String?
-  visibility     AgentCategoryVisibility @default(public)
-  organizationId String                  @map("organization_id") @db.Uuid
-  createdById    String                  @map("created_by_id") @db.Uuid
-  authorAgentId  String?                 @map("author_agent_id") @db.Uuid
-  createdAt      DateTime                @default(now()) @map("created_at")
-  updatedAt      DateTime                @updatedAt @map("updated_at")
-  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy      User                    @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  authorAgent    Agent?                  @relation("AgentCategoryAuthor", fields: [authorAgentId], references: [id], onDelete: SetNull)
-  agents         AgentCategoryAgent[]
-
-  @@index([organizationId, visibility])
-  @@map("agent_categories")
-}
-
-model AgentCategoryAgent {
-  id         String        @id @default(uuid()) @db.Uuid
-  categoryId String        @map("category_id") @db.Uuid
-  agentId    String        @map("agent_id") @db.Uuid
-  createdAt  DateTime      @default(now()) @map("created_at")
-  category   AgentCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  agent      Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@unique([categoryId, agentId])
-  @@index([agentId])
-  @@map("agent_category_agents")
 }
 
 model AgentBinding {

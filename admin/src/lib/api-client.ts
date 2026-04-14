@@ -101,19 +101,6 @@ export type ThreadMessageRecord = {
   userId?: string | null
 }
 
-export type AgentCategoryRecord = {
-  agentIds: string[]
-  authorAgentId: string | null
-  createdAt: string
-  createdById: string
-  description: string | null
-  id: string
-  name: string
-  organizationId: string
-  updatedAt: string
-  visibility: 'private' | 'public'
-}
-
 export type ToolDescriptor = {
   builtin?: boolean
   description: string
