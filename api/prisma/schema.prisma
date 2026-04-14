@@ -511,7 +511,7 @@ model Thread {
   runs      Run[]
   triggerTargets AgentTrigger[]          @relation("TriggerTargetThread")
 
-  @@index([channelId])
+  @@index([channelId, createdAt])
   @@map("threads")
 }
 

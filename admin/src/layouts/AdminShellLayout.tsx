@@ -176,6 +176,7 @@ export const AdminShellLayout = () => {
         id: user.id,
         label: user.displayName,
         style: getDmStyle(index),
+        dmChannelId: channels.find((c) => c.type === 'dm' && user.channelIds.includes(c.id))?.id,
       }));
     }
 
@@ -186,7 +187,7 @@ export const AdminShellLayout = () => {
         style: getDmStyle(0),
       },
     ];
-  }, [me, users]);
+  }, [me, users, channels]);
 
   useEffect(() => {
     setSelectedAgentId(null);
@@ -639,7 +640,7 @@ export const AdminShellLayout = () => {
                       return (
                         <button
                           key={`starred-usr-${item.id}`}
-                          className={`admin-sb-item group ${activeDmChannel?.label === person.label ? 'active' : ''}`}
+                          className={`admin-sb-item group ${activeDmChannel?.id === person.dmChannelId ? 'active' : ''}`}
                           onClick={() => navigateToDm(item.id)}
                           type="button"
                         >
@@ -767,7 +768,7 @@ export const AdminShellLayout = () => {
                     return (
                       <button
                         key={person.id}
-                        className={`admin-sb-item group ${activeDmChannel?.label === person.label ? 'active' : ''}`}
+                        className={`admin-sb-item group ${activeDmChannel?.id === person.dmChannelId ? 'active' : ''}`}
                         onClick={() => navigateToDm(person.id)}
                         type="button"
                       >

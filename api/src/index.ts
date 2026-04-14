@@ -496,25 +496,27 @@ const isAgentAccessibleToActor = async (
   )
 }
 
-const isChannelVisibleToUser = async (
+const getVisibleChannel = async (
   userId: string,
   organizationId: string,
   channelId: string,
-): Promise<boolean> => {
+): Promise<{ type: string; visibility: string } | null> => {
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     select: {
+      type: true,
       organizationId: true,
       visibility: true,
       members: { where: { userId }, select: { id: true }, take: 1 },
     },
   })
-  if (!channel) return false
-  if (channel.organizationId !== organizationId) return false
+  if (!channel) return null
+  if (channel.organizationId !== organizationId) return null
   // Public channels are visible to all org members
-  if (channel.visibility === 'public') return true
+  if (channel.visibility === 'public') return { type: channel.type, visibility: channel.visibility }
   // Protected and private channels require membership
-  return channel.members.length > 0
+  if (channel.members.length > 0) return { type: channel.type, visibility: channel.visibility }
+  return null
 }
 
 const isChannelMember = async (userId: string, channelId: string): Promise<boolean> =>
@@ -540,7 +542,7 @@ const isTriggerTargetWritableByActor = async (
   }
 
   if (
-    !(await isChannelVisibleToUser(
+    !(await getVisibleChannel(
       actorContext.actor.actorId,
       actorContext.tenant.organizationId,
       trigger.targetChannelId,
@@ -1353,7 +1355,8 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    const channel = await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId)
+    if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1364,8 +1367,7 @@ export const buildApp = async () => {
     }
 
     // If the channel is a DM, create a new group channel instead of mutating the DM
-    const channel = await prisma.channel.findUnique({ where: { id: channelId }, select: { type: true } })
-    if (channel?.type === 'dm') {
+    if (channel.type === 'dm') {
       const group = await createGroupFromDm(prisma, {
         dmChannelId: channelId,
         newUserId: body.userId,
@@ -1385,7 +1387,7 @@ export const buildApp = async () => {
     }
 
     const { channelId, userId } = request.params as { channelId: string; userId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1401,7 +1403,7 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1471,7 +1473,7 @@ export const buildApp = async () => {
     }
 
     if (
-      !(await isChannelVisibleToUser(
+      !(await getVisibleChannel(
         actorContext.actor.actorId,
         actorContext.tenant.organizationId,
         call.channelId,
@@ -1538,7 +1540,7 @@ export const buildApp = async () => {
     }
 
     if (
-      !(await isChannelVisibleToUser(
+      !(await getVisibleChannel(
         actorContext.actor.actorId,
         actorContext.tenant.organizationId,
         call.channelId,
@@ -1595,7 +1597,7 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1648,7 +1650,7 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1726,7 +1728,7 @@ export const buildApp = async () => {
     }
 
     if (
-      !(await isChannelVisibleToUser(
+      !(await getVisibleChannel(
         actorContext.actor.actorId,
         actorContext.tenant.organizationId,
         body.channelId,
@@ -1764,7 +1766,7 @@ export const buildApp = async () => {
     }
 
     const { agentId, channelId } = request.params as { agentId: string; channelId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }

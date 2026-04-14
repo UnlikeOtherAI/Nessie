@@ -35,7 +35,10 @@ export const ensureDefaultThread = async (
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     })
-    return fallback!.id
+    if (!fallback) {
+      throw new Error(`Failed to create or find default thread for channel ${channelId}`)
+    }
+    return fallback.id
   }
 }
 
