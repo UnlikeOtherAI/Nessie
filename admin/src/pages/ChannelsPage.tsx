@@ -221,14 +221,21 @@ export const ChannelsPage = () => {
     [activeParticipants, me],
   )
 
-  // Auto-open the overlay when the user joins or starts a call.
-  const prevIsInCallRef = useRef(false)
+  // Auto-open the overlay when the user joins or starts a call on the current channel.
+  // Track channelId alongside isInCall so that navigating to a channel where the user
+  // is already a participant does not spuriously trigger the overlay.
+  const prevCallStateRef = useRef<{ channelId: string | undefined; isInCall: boolean }>({
+    channelId: activeChannel?.id,
+    isInCall: false,
+  })
   useEffect(() => {
-    if (isInCall && !prevIsInCallRef.current) {
+    const prev = prevCallStateRef.current
+    const channelChanged = prev.channelId !== activeChannel?.id
+    if (!channelChanged && isInCall && !prev.isInCall) {
       setShowCallOverlay(true)
     }
-    prevIsInCallRef.current = isInCall
-  }, [isInCall])
+    prevCallStateRef.current = { channelId: activeChannel?.id, isInCall }
+  }, [isInCall, activeChannel?.id])
 
   // Clear optimistic bubble once the real message from the server arrives.
   // Match on content + proximity: any optimistic entry whose content equals
@@ -247,9 +254,10 @@ export const ChannelsPage = () => {
     }
   }, [threadMessages, optimisticMessages, me?.user.id])
 
-  // Reset optimistic state when switching channels.
+  // Reset optimistic state and call overlay when switching channels.
   useEffect(() => {
     setOptimisticMessages([])
+    setShowCallOverlay(false)
   }, [activeChannel?.id])
 
   const mentionEntities: MentionEntity[] = useMemo(
@@ -1133,7 +1141,7 @@ export const ChannelsPage = () => {
         pastedText={oversizePaste ?? ''}
       />
 
-      {showCallOverlay && activeCall && (
+      {showCallOverlay && activeCall && isInCall && (
         <CallOverlay
           displayName={me?.user.displayName ?? 'User'}
           onLeave={() => {
