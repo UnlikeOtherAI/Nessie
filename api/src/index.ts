@@ -1757,7 +1757,7 @@ export const buildApp = async () => {
     }
 
     if (
-      !(await getVisibleChannel(
+      !(await getChannelIfMember(
         actorContext.actor.actorId,
         actorContext.tenant.organizationId,
         body.channelId,
@@ -1795,8 +1795,14 @@ export const buildApp = async () => {
     }
 
     const { agentId, channelId } = request.params as { agentId: string; channelId: string }
-    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    if (!(await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+
+    const unbindDecision = await checkPolicy(prisma, actorContext, 'agent', 'bind', { agentId, channelId })
+    if (!unbindDecision.allowed) {
+      sendApiError(reply, 403, 'POLICY_DENIED', `Agent unbinding denied: ${unbindDecision.reasonCode}`)
       return reply
     }
 
