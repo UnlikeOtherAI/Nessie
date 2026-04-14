@@ -102,6 +102,10 @@ export const listChannelsForUser = async (
       const threadId = threadMap.get(channel.id)
       if (threadId) {
         channel.threads = [{ id: threadId }]
+      } else {
+        // Defensive fallback for partial batch failures
+        const fallback = await ensureDefaultThread(prisma, channel.id)
+        channel.threads = [{ id: fallback }]
       }
     }
   }
@@ -241,7 +245,7 @@ export const createGroupFromDm = async (
   })
   const otherNames = users
     .filter((u) => u.id !== input.currentUserId)
-    .map((u) => u.displayName)
+    .map((u) => u.displayName ?? 'Unknown')
     .sort()
   const label = otherNames.join(', ')
 

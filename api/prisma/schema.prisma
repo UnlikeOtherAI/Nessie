@@ -483,7 +483,6 @@ model Channel {
   threads        Thread[]
 
   @@index([organizationId, type])
-  @@index([organizationId])
   @@map("channels")
 }
 
@@ -821,6 +820,7 @@ model AgentBinding {
   channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@unique([agentId, channelId])
+  @@index([channelId])
   @@map("agent_bindings")
 }
 

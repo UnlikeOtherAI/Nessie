@@ -65,6 +65,7 @@ export const useRemoveChannelMember = () => {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
   })
 }
