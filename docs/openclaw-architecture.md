@@ -20,14 +20,20 @@ Agents can run in two modes:
 
 File: `src/config/zod-schema.agents.ts`
 
+Four independent top-level exports — `AgentsSchema`, `BindingsSchema`, `BroadcastSchema`, and `AudioSchema` are sibling schemas, not nested:
+
 ```typescript
 AgentsSchema = {
   defaults?: AgentDefaultsSchema,   // global fallbacks applied before per-agent overrides
   list?: AgentEntrySchema[],        // named agents array
-  bindings?: BindingsSchema,        // channel → agent routing
-  broadcast?: BroadcastSchema,
 }
+
+BindingsSchema  // route + ACP bindings — independent export
+BroadcastSchema // broadcast config — independent export
+AudioSchema     // audio config — independent export
 ```
+
+> `bindings`, `broadcast`, and `audio` are **not** fields inside `AgentsSchema`. They are parsed as independent top-level keys in the gateway config file.
 
 ### 1.2 Agent Entry Schema
 
@@ -58,8 +64,24 @@ AgentEntrySchema = {
   embeddedPi?: EmbeddedPiSchema,                  // embedded Pi agent settings
   sandbox?: AgentSandboxSchema,                   // docker/ssh/browser isolation
   tools?: AgentToolsSchema,                       // tool allowlists, exec policies, loop detection
-  runtime?: RuntimeSchema,                        // "embedded" | "acp"
+  runtime?: RuntimeSchema,                        // discriminated object: embedded vs acp
 }
+```
+
+Where `RuntimeSchema` is a discriminated object (not a string union):
+```typescript
+RuntimeSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("embedded") }),
+  z.object({
+    type: z.literal("acp"),
+    acp: z.object({
+      mode: z.enum(["run", "session"]).optional(),  // run=oneshot, session=persistent
+      label: z.string().optional(),
+      cwd: z.string().optional(),
+      backend: z.string().optional(),
+    }).optional(),
+  }),
+])
 ```
 
 Where `EmbeddedPiSchema` controls project settings and execution contracts:
@@ -243,7 +265,7 @@ AcpBindingSchema = {
     roles?: string[],
   },
   acp?: {
-    mode?: "run"|"session",   // "run" = oneshot, "session" = persistent
+    mode?: "persistent"|"oneshot",  // config-level: "persistent" = long-lived, "oneshot" = single exchange
     label?: string,
     cwd?: string,
     backend?: string,
@@ -251,7 +273,7 @@ AcpBindingSchema = {
 }
 ```
 
-> ACP spawn modes map: `"run"` → oneshot (single request/response), `"session"` → persistent (maintains state).
+> ACP binding modes at config level: `"persistent"` (long-lived, maintains state) vs `"oneshot"` (single request/response). At the tool/runtime API level, the equivalent modes are `"run"` (oneshot) and `"session"` (persistent).
 
 > ACP bindings require `match.peer.id` — the binding must target a concrete conversation.
 
@@ -446,8 +468,8 @@ The following types are referenced throughout the config schemas but not fully d
 AgentModelSchema = z.union([
   z.string(),                              // e.g., "openai/gpt-4o"
   z.object({
-    primary: z.string(),                  // primary model ID
-    fallbacks: z.array(z.string()),       // fallback model IDs in order
+    primary: z.string().optional(),        // optional — can omit if only fallbacks used
+    fallbacks: z.array(z.string()).optional(),  // optional — can omit if only primary used
   }).strict(),
 ])
 
@@ -515,11 +537,21 @@ ReplyPayload = {
 
 // EmbeddedPiRunResult — return of runEmbeddedPiAgent(), in src/agents/pi-embedded-runner/types.ts
 EmbeddedPiRunResult = {
-  text: string,
-  stopReason: string,
-  usage?: UsageLike,
-  agentMeta?: EmbeddedPiAgentMeta,
-  // ...
+  payloads?: Array<{
+    text?: string,
+    mediaUrl?: string,
+    mediaUrls?: string[],
+    replyToId?: string,
+    isError?: boolean,
+    isReasoning?: boolean,
+    audioAsVoice?: boolean,
+  }>,
+  meta: EmbeddedPiRunMeta,
+  didSendViaMessagingTool?: boolean,     // true if a messaging tool sent successfully
+  messagingToolSentTexts?: string[],
+  messagingToolSentMediaUrls?: string[],
+  messagingToolSentTargets?: MessagingToolSend[],
+  successfulCronAdds?: number,
 }
 
 // Lane — concurrency isolation primitive, in src/process/lanes.ts + command-queue.ts
@@ -550,9 +582,9 @@ ResolvedAgentConfig             // type: resolved config with defaults applied
 File: `src/agents/agent-scope.ts`
 
 ```typescript
-resolveSessionAgentIds(params)       // picks agent from session key, explicit param, or default
-resolveAgentExecutionContract()      // determines embedded vs ACP runtime
-resolveSessionAgentId(session)       // resolves agent for a given session
+resolveSessionAgentIds(params)               // picks agent from session key, explicit param, or default
+resolveAgentExecutionContract(cfg, agentId) // resolves executionContract: "default" | "strict-agentic"
+resolveSessionAgentId(session)               // resolves agent for a given session
 ```
 
 ---
@@ -604,7 +636,7 @@ File: `src/agents/pi-embedded-runner/run.ts`
    ├── argument repair            [run/attempt.tool-call-argument-repair.ts]
    │     └── `decodeHtmlEntitiesInObject`, `wrapStreamFnRepairMalformedToolCallArguments`
    ├── sandbox routing (docker/ssh/browser) or in-process
-   ├── MCP tool bundling          [ensureSessionMcpRuntime() at loop start, pi-bundle-mcp-tools.ts]
+   ├── MCP tool bundling          [getOrCreateSessionMcpRuntime() + materializeBundleMcpToolsForRun(), pi-bundle-mcp-tools.ts]
    ├── stream resolution          [resolveEmbeddedAgentStreamFn()]
    └── pi-agent-core execution
 
@@ -752,7 +784,7 @@ async function runReplyAgent(params: GetReplyOptions): Promise<ReplyPayload>
 
 2. Agent config resolution
    ├── resolveAgentConfig(agentId)
-   └── resolveAgentExecutionContract()  // embedded vs ACP
+   └── resolveAgentExecutionContract()  // resolves executionContract: "default" | "strict-agentic"
 
 3. Auth profile resolution
    └── resolveRunAuthProfile(config, agentId)
@@ -792,14 +824,20 @@ A full subsystem with its own store, credential state machine, OAuth flow, healt
 AuthProfile = {
   id: string,
   provider: string,
-  apiKey?: string,
-  oauth?: { clientId, clientSecret, refreshToken },
+  credentials: AuthProfileCredential[],   // discriminated union (see below)
   // ...
 }
 
+// types.ts — AuthProfileCredential discriminated union
+AuthProfileCredential =
+  | { type: "api_key",  provider: string, key?: string, keyRef?: SecretRef, email?: string, displayName?: string }
+  | { type: "token",    provider: string, token?: string, tokenRef?: SecretRef, expires?: number, email?: string, displayName?: string }
+  | { type: "oauth",   provider: string, clientId?: string, email?: string, displayName?: string, managedBy?: ExternalOAuthManager,
+      access?: string, refresh?: string, clientSecret?: string, refreshToken?: string }
+
 // types.ts — core AuthProfile type
 // persisted.ts — persisted credential representation
-// store.ts — persistent encrypted credential store
+// store.ts — persistent JSON-backed credential store (plain JSON files, NOT encrypted)
 // credential-state.ts — credential lifecycle state machine
 // identity.ts — identity resolution
 
@@ -817,13 +855,14 @@ classifyOAuthRefreshFailure()
 
 // policy.ts — policy resolution (additional policy checks)
 
-// state-observation.ts — live health tracking
+// state-observation.ts — live health tracking types (no-op barrel)
+
+// profiles.ts — live health tracking
 markAuthProfileGood()
-markAuthProfileFailure()
 
 // runtime-snapshots.ts — snapshot isolation during config reload
 // session-override.ts — per-session auth overrides
-// usage.ts — usage tracking per profile
+// usage.ts — usage tracking + markAuthProfileFailure()
 // upsert-with-lock.ts — concurrent profile updates
 // repair.ts — credential repair workflows
 // doctor.ts — health diagnostics
@@ -988,7 +1027,7 @@ type PluginHookName =
 
 > All hook names use `snake_case`. The plugin SDK registers hooks using these string names.
 
-**Execution order:** Hooks run in registration order within each type. Global hooks are initialized once at startup via `initializeGlobalHookRunner()` in `src/plugins/loader.ts`. Return values can mutate the intercepted data (e.g., `before_prompt_build` can return an overridden prompt).
+**Execution order:** Hooks run in **priority order (higher first)**, not registration order. Within the same priority, order is undefined. Default priority is `0`. Global hooks are initialized once at startup via `initializeGlobalHookRunner()` in `src/plugins/loader.ts` (called from `activatePluginRegistry()` inside `loadOpenClawPlugins()`). Return values can mutate the intercepted data (e.g., `before_prompt_build` can return an overridden prompt).
 
 ---
 
@@ -997,9 +1036,13 @@ type PluginHookName =
 MCP tools are bundled and routed in the tool execution loop. The key files:
 
 ```typescript
-// src/agents/pi-bundle-mcp-tools.ts
-disposeSessionMcpRuntime()     // disposes MCP runtime for a session
-ensureSessionMcpRuntime()      // creates/bundles MCP tools for a session
+// src/agents/pi-bundle-mcp-tools.ts (barrel re-exporting from pi-bundle-mcp-runtime.js / pi-bundle-mcp-materialize.js)
+disposeSessionMcpRuntime()                  // disposes MCP runtime for a session
+getOrCreateSessionMcpRuntime()              // creates/bundles MCP tools for a session (getOrCreateSessionMcpRuntime)
+createBundleMcpToolRuntime()                // creates a fresh MCP tool runtime bundle
+materializeBundleMcpToolsForRun()            // materializes bundled tools for a run
+disposeAllSessionMcpRuntimes()              // disposes all session MCP runtimes
+getSessionMcpRuntimeManager()               // returns the MCP runtime manager
 
 // src/plugins/runtime/runtime-agent.ts — MCP tool bundling in plugin runtime
 ```
@@ -1009,7 +1052,7 @@ ensureSessionMcpRuntime()      // creates/bundles MCP tools for a session
 **Protocol:** MCP tools use JSON-RPC 2.0 over stdio (the standard MCP protocol). The MCP server can be in-process or a separate process.
 
 **Lifecycle:**
-1. Session starts → `ensureSessionMcpRuntime()` bundles MCP tools
+1. Session starts → `getOrCreateSessionMcpRuntime()` bundles MCP tools + `materializeBundleMcpToolsForRun()` materializes them for the run
 2. Tool call routed to MCP server via JSON-RPC
 3. Result returned to agent
 4. Session ends → `disposeSessionMcpRuntime()`
@@ -1031,7 +1074,7 @@ isCompactionFailureError(error)        // → retry compaction or abort
 isFailoverAssistantError(error)       // → retry with failover
 isAuthAssistantError(error)            // → refresh OAuth token
 
-// Failover decision
+// FailoverReason — string union (from pi-embedded-helpers/types.ts)
 FailoverReason =
   | "auth"
   | "auth_permanent"
@@ -1050,8 +1093,10 @@ resolveRunFailoverDecision(params: RunFailoverDecisionParams): RunFailoverDecisi
 resolveRunFailoverDecision(params: RetryLimitDecisionParams): RetryLimitFailoverDecision
 handleRetryLimitExhaustion(params)           // dead-letter path
 handleAssistantFailover(attempt, error)       // model-level failover
+
+// FailoverError lives in src/agents/failover-error.ts (separate from errors.ts)
 FailoverError                                 // structured error type (failover-error.ts)
-resolveFailoverStatus(error)                  // classify + route
+resolveFailoverStatus(reason: FailoverReason)  // maps FailoverReason → status code; takes FailoverReason, NOT arbitrary error
 ```
 
 **ACP error codes** (`acp-spawn.ts`):
@@ -1069,7 +1114,7 @@ ACP_SPAWN_ERROR_CODES = [
   "dispatch_failed",
 ]
 ```
-ACP errors are wrapped in `FailoverError` and classified by `resolveFailoverStatus()`.
+ACP errors from `spawnAcpDirect()` are returned as `SpawnAcpResult` with an `errorCode` field on failed results. They are **not** wrapped in `FailoverError`.
 
 **Retry budget:** Each run has a configurable `retryLimit`. Once exhausted, `handleRetryLimitExhaustion()` determines the dead-letter path — surface error to user or archive session.
 
@@ -1100,19 +1145,53 @@ SessionEntry.status = "running" | "done" | "failed" | "killed" | "timeout"
 ```
 Set after a sub-agent session completes.
 
-**Persistence layer:** Sessions are stored in `sessions/` as JSON files. Key fields:
+**Persistence layer:** Sessions are stored in `sessions/` as JSON files. Full `SessionEntry` type (only `sessionId` and `updatedAt` are required, everything else optional):
 ```typescript
 SessionEntry = {
-  id, sessionKey, agentId, createdAt, updatedAt,
-  compactionCount, status?, heartbeatKey?,
-  updatedAt, idleExpiresAt, lastHeartbeatAt, ...
+  sessionId: string,
+  updatedAt: number,
+  lastHeartbeatText?: string,
+  lastHeartbeatSentAt?: number,
+  heartbeatIsolatedBaseSessionKey?: string,
+  heartbeatTaskState?: Record<string, number>,
+  sessionFile?: string,
+  spawnedBy?: string,
+  spawnedWorkspaceDir?: string,
+  parentSessionKey?: string,
+  forkFromParent?: boolean,
+  spawnDepth?: number,
+  subagentRole?: "orchestrator" | "leaf",
+  subagentControlScope?: "children" | "none",
+  startedAt?: number,
+  endedAt?: number,
+  runtimeMs?: number,
+  status?: "running" | "done" | "failed" | "killed" | "timeout",
+  abortCutoffMessageSid?: string,
+  abortCutoffTimestamp?: number,
+  inputTokens?: number,
+  outputTokens?: number,
+  totalTokens?: number,
+  estimatedCostUsd?: number,
+  modelProvider?: string,
+  model?: string,
+  contextTokens?: number,
+  compactionCount?: number,
+  compactionCheckpoints?: SessionCompactionCheckpoint[],
+  memoryFlushAt?: number,
+  channel?: string,
+  groupId?: string,
+  subject?: string,
+  label?: string,
+  displayName?: string,
+  acp?: SessionAcpMeta,
+  // ... many more optional fields
 }
 ```
 Session pruning is driven by `updatedAt` vs `idleExpiresAt` and `archiveAfterMinutes`.
 
 **Heartbeat:** Heartbeat agents run in isolated sessions with `:heartbeat` key suffix (`resolveSessionAgentId()`). They are independent sessions, not sub-states of the parent.
 
-**Lane isolation:** `resolveSessionLane()` assigns each session to a lane. `enqueueCommandInLane(lane, task, opts)` serializes work within a lane. Concurrent tool calls within the same session are serialized. Sessions with `scope: "shared"` in sandbox config share a lane.
+**Lane isolation:** `resolveSessionLane()` assigns each session to a lane. `enqueueCommandInLane(lane, task, opts)` serializes work within a lane. Concurrent tool calls within the same session are serialized. The sandbox `scope: "shared"` option causes all sessions to share a single workspace container/browser rather than creating per-session isolation — it does NOT share lanes between sessions.
 
 ---
 
@@ -1120,29 +1199,44 @@ Session pruning is driven by `updatedAt` vs `idleExpiresAt` and `archiveAfterMin
 
 File: `src/plugins/runtime/index.ts` — `createPluginRuntime()`
 
-The full `PluginRuntime` object:
+The full `PluginRuntime` object (extends `PluginRuntimeCore` with `subagent` and `channel`):
 
 ```typescript
-PluginRuntime = {
-  agent,                   // runEmbeddedAgent / runEmbeddedPiAgent
-  subagent,               // spawned sub-agent operations
-  tasks,                  // task CRUD
-  taskFlow,               // workflow orchestration
-  channel,                // channel operations
-  memory,                 // memory engine runtime
-  webSearch,              // search tools
+// PluginRuntimeCore (types-core.ts) — base fields
+PluginRuntimeCore = {
+  version: string,        // OpenClaw version
   config,                 // agent config access
-  events,                 // hook system (runtime-events.ts)
-  logging,                // structured logging
-  tts,                    // text-to-speech
-  stt,                    // speech-to-text
+  agent,                   // runEmbeddedPiAgent
+  system,                  // system runtime
+  media,                   // media runtime
+  tts,                     // text-to-speech
   mediaUnderstanding,
-  modelAuth,              // auth profile management
   imageGeneration,
   videoGeneration,
   musicGeneration,
+  webSearch,              // search tools
+  stt,                    // speech-to-text
+  events,                 // { onAgentEvent, onSessionTranscriptUpdate } — NOT the full hook system
+  logging,                // structured logging
+  state,                  // plugin state management
+  tasks,                  // task CRUD
+  taskFlow,               // workflow orchestration (deprecated)
+  modelAuth,              // auth profile management
+}
+
+// PluginRuntime = PluginRuntimeCore + subagent + channel
+PluginRuntime = PluginRuntimeCore & {
+  subagent: {
+    run(params: SubagentRunParams): Promise<SubagentRunResult>
+    waitForRun(params: SubagentWaitParams): Promise<SubagentWaitResult>
+    getSessionMessages(params: SubagentGetSessionMessagesParams): Promise<SubagentGetSessionMessagesResult>
+    deleteSession(params: SubagentDeleteSessionParams): Promise<void>
+  },
+  channel: PluginRuntimeChannel,
 }
 ```
+
+> **Note:** `PluginRuntime` has **no `memory` field**. Memory is provided as a separate plugin slot (`plugins.slots.memory = "memory-lancedb"`) with a separate `memory-lancedb` plugin package, not as part of the core runtime surface.
 
 File: `src/plugins/runtime/runtime-agent.ts` — plugin-facing agent surface
 File: `src/plugins/runtime/runtime-taskflow.ts` — task flow runtime
@@ -1168,7 +1262,13 @@ Plugins can replace the low-level agent runtime by registering an `AgentHarness`
 
 ## 13. Sub-Agent / Spawn System
 
-Sub-agents are spawned from the main agent via the `spawn` tool (in `tools/sessions-spawn-tool.ts`):
+Sub-agents are spawned from the main agent via the `sessions_spawn` tool (in `tools/sessions-spawn-tool.ts`):
+
+```typescript
+// src/agents/tools/sessions-spawn-tool.ts
+name: "sessions_spawn"   // NOT "spawn"
+runtime: params.runtime === "acp" ? "acp" : "subagent"  // default is "subagent", NOT "spawn"
+```
 
 ```typescript
 // Config (from SubagentsSchema in AgentDefaultsSchema)
@@ -1188,7 +1288,7 @@ subagents: {
 
 **Files:**
 - `src/agents/command/session-store.ts` — sub-agent session store management
-- `src/agents/spawned-context.ts` — `normalizeSpawnedRunMetadata()`
+- `src/agents/spawned-context.ts` — `normalizeSpawnedRunMetadata()` (types: `SpawnedRunMetadata`, `NormalizedSpawnedRunMetadata`, `SpawnedToolContext`)
 - `src/cron/isolated-agent/` — isolated sessions for heartbeat/cron agents
 
 **IPC mechanism:** Sub-agent sessions communicate via the session store (`session-store.ts`). The parent agent can send messages to and receive messages from child sessions. Lifecycle teardown: when a parent session terminates, child sessions are marked for archival and no further messages are routed to them.
@@ -1201,7 +1301,7 @@ subagents: {
 Config (zod-schema.agents.ts)
   ├── agents.defaults — global fallbacks (AgentDefaultsSchema)
   ├── agents.list[] — named agent entries (AgentEntrySchema)
-  │     ├── runtime: "embedded" | "acp"
+  │     ├── runtime: RuntimeSchema  // discriminated object: { type: "embedded" } | { type: "acp"; acp?: {...} }
   │     ├── embeddedPi: project settings, execution contract
   │     ├── sandbox: docker / ssh / browser
   │     ├── tools: allowlists, exec policies, loop detection
@@ -1219,7 +1319,7 @@ Incoming Message
 runReplyAgent()  [agent-runner.ts]
   │
   ├── resolveSessionAgentId()
-  ├── resolveAgentExecutionContract()
+  ├── resolveAgentExecutionContract()  // resolves executionContract: "default" | "strict-agentic"
   ├── resolveRunAuthProfile()
   ├── buildEmbeddedRunExecutionParams()
   │
@@ -1248,7 +1348,7 @@ runReplyAgent()  [agent-runner.ts]
 ACP runtime path:
 ┌─ acp ───────────────────────────────────────────────────────────────┐
 │ tools/sessions-spawn-tool.ts                                          │
-│   → spawnAcpDirect("run"|"session")  [acp-spawn.ts]                   │
+│   → spawnAcpDirect("run"|"session")  [acp-spawn.ts]  (via sessions_spawn tool, defaults to "subagent" runtime)                   │
 │     → separate OpenClaw process, ACP protocol over stdio              │
 └───────────────────────────────────────────────────────────────────────┘
 
@@ -1281,8 +1381,8 @@ Hooks (src/plugins/hook-runner-global.ts)
 |---|---|
 | `@mariozechner/pi-agent-core` | Core agent runtime (tool execution, LLM calls) |
 | `zod` | All configuration validation |
-| `lancedb` | Vector + FTS memory store |
-| `packages/memory-host-sdk/` | Memory engine (monorepo package) |
+| `lancedb` | Vector store backend for the `memory-lancedb` plugin slot |
+| `packages/memory-host-sdk/` | Memory engine (monorepo package, SQLite/FTS/sqlite-vec backend) |
 | `packages/plugin-sdk/` | Plugin SDK types and interfaces |
 | `packages/plugin-package-contract/` | Plugin package contract |
 | `openclaw internal` | Channel integrations, MCP tool bundling, auth profiles |
@@ -1297,7 +1397,7 @@ Hooks (src/plugins/hook-runner-global.ts)
 4. **Compaction** — triggered on context overflow or timeout; summarize old history into a compact message; inject as a new session entry; `postCompactionForce` can force memory sync afterward
 5. **Sandbox isolation** — Docker/SSH/Browser with security policies enforced at config parse time (before any container starts); seccomp/AppArmor/network restrictions prevent escape
 6. **Skills snapshots** — versioned workspace snapshots; `getSkillsSnapshotVersion()` tracks current version; `shouldRefreshSnapshotForVersion()` decides whether to rebuild on config change
-7. **Memory engine** — LanceDB with hybrid vector+FTS; MMR reranking for diversity; temporal decay for recency weighting; sync on session start, search, interval, or watch
+7. **Memory engine** — SQLite/FTS/sqlite-vec backend via `packages/memory-host-sdk/`; `memory-lancedb` plugin occupies the `plugins.slots.memory` slot; MMR reranking for diversity; temporal decay for recency weighting; sync on session start, search, interval, or watch
 8. **Plugin harness** — plugins register `AgentHarness*` to replace the low-level agent runtime; harness intercepts `EmbeddedRunAttemptParams` / `EmbeddedRunAttemptResult`
-9. **Hook runner** — `getGlobalHookRunner()` provides typed hook execution; 29 hooks in `PluginHookName` (`before_model_resolve`, `llm_input`, `before_tool_call`, `agent_end`, etc.); hooks initialized at startup in `src/plugins/loader.ts`; execution order matches registration order; return values can mutate intercepted data
-10. **Failover policy** — `FailoverReason` enum drives recovery: billing → surface error, rate_limit → rotate + backoff, context_overflow → compact, model_error → retry with failover; retry budget prevents infinite loops
+9. **Hook runner** — `getGlobalHookRunner()` provides typed hook execution; 29 hooks in `PluginHookName` (`before_model_resolve`, `llm_input`, `before_tool_call`, `agent_end`, etc.); hooks initialized at startup in `src/plugins/loader.ts`; execution order is **priority order (higher first)**, not registration order; return values can mutate intercepted data
+10. **Failover policy** — `FailoverReason` enum drives recovery: billing → surface error, rate_limit → rotate + backoff, auth → refresh token, context_overflow → compact, model_not_found → retry with failover; retry budget prevents infinite loops
