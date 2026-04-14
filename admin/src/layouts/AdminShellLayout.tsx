@@ -170,8 +170,10 @@ export const AdminShellLayout = () => {
       return [];
     }
 
-    if (users.length > 0) {
-      return users.slice(0, 4).map((user, index) => ({
+    const otherUsers = users.filter((u) => u.id !== me.user.id);
+
+    if (otherUsers.length > 0) {
+      return otherUsers.slice(0, 4).map((user, index) => ({
         id: user.id,
         label: user.displayName,
         style: getDmStyle(index),
