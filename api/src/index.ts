@@ -20,7 +20,7 @@ import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
-import { createModelClient, createPgPool, ModelUsageTracker } from '@nessie/runtime'
+import { createModelClient, createPgPool, decideAgentEngagement, ModelUsageTracker } from '@nessie/runtime'
 import {
   CaptureThoughtBodySchema,
   CHAT_MESSAGE_MAX_CHARS,
@@ -37,6 +37,7 @@ import {
   parseRunId,
   parseTaskId,
   parseThreadId,
+  withActionContext,
   type AuthorizedActionContext,
   type MeResponse,
   type TriggerEventDispatchJobPayload,
@@ -202,7 +203,6 @@ import {
   listMailboxMessages,
   markMailboxMessageDelivered,
 } from './services/mailbox.js'
-import { decideAgentEngagement } from './services/orchestrator.js'
 import {
   addPlanStep,
   createPlan,
@@ -428,16 +428,6 @@ const requireUserActor = (
   return false
 }
 
-const withActionContext = (
-  actorContext: AuthorizedActionContext,
-  fields: Partial<AuthorizedActionContext['actionContext']>,
-): AuthorizedActionContext => ({
-  ...actorContext,
-  actionContext: {
-    ...actorContext.actionContext,
-    ...fields,
-  },
-})
 
 const isAgentVisibleToUser = async (
   userId: string,

@@ -758,6 +758,14 @@ export const AuthorizedActionContextSchema = AccessContextSchema.extend({
 })
 export type AuthorizedActionContext = z.infer<typeof AuthorizedActionContextSchema>
 
+export const withActionContext = (
+  actorContext: AuthorizedActionContext,
+  fields: Partial<AuthorizedActionContext['actionContext']>,
+): AuthorizedActionContext => ({
+  ...actorContext,
+  actionContext: { ...actorContext.actionContext, ...fields },
+})
+
 export const RunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   agentId: AgentIdSchema,
@@ -772,6 +780,29 @@ export const RunExecuteJobPayloadSchema = z.object({
   threadId: ThreadIdSchema,
 })
 export type RunExecuteJobPayload = z.infer<typeof RunExecuteJobPayloadSchema>
+
+export const OrchestrateDecideJobPayloadSchema = z.object({
+  actorContext: AuthorizedActionContextSchema,
+  /**
+   * Resolved agent list as computed by createThreadMessage — includes bound
+   * agents AND any @mentioned agents not yet bound to the channel.
+   * Stored in payload so the worker does not re-derive (would miss @mentions).
+   */
+  channelAgents: z.array(
+    z.object({
+      id: z.string().uuid(),
+      name: z.string().min(1),
+      role: z.string().min(1),
+      systemPrompt: z.string().nullable(),
+    }),
+  ),
+  channelId: ChannelIdSchema,
+  content: z.string().min(1),
+  messageId: z.string().uuid(),
+  role: z.string().min(1),
+  threadId: ThreadIdSchema,
+})
+export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPayloadSchema>
 
 export const WorkflowRunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
