@@ -158,8 +158,11 @@ export function createMcpAdminTool(manager?: McpClientManager): Tool<McpToolInpu
       }
     },
 
-    isConcurrencySafe() { return true },
-    isReadOnly() { return true },
+    isConcurrencySafe() { return false },
+    isReadOnly() {
+      // connect/disconnect spawn/kill child processes — not read-only
+      return false
+    },
 
     userFacingName() { return 'MCP Admin' },
     getActivityDescription(input) {

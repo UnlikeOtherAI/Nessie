@@ -4,9 +4,20 @@
  */
 
 import { spawn, ChildProcess } from 'child_process'
+import { realpathSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { McpServerConfig, McpTool, McpClientState } from './client-types.js'
 
-// Workspace boundary - restricts MCP server access to allowed paths
+// Minimal env — strip secrets before passing to MCP child processes
+const MINIMAL_ENV: Record<string, string> = {
+  HOME: process.env.HOME ?? '/home/dev',
+  PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+  LANG: process.env.LANG ?? 'en_US.UTF-8',
+  LC_ALL: process.env.LC_ALL ?? 'en_US.UTF-8',
+  TMPDIR: process.env.TMPDIR ?? '/tmp',
+  // Pass through any explicit env vars configured by user (not full process.env)
+}
+
 interface WorkspaceBoundary {
   allowedPaths: string[]
   deniedPaths: string[]
@@ -14,7 +25,48 @@ interface WorkspaceBoundary {
 
 const DEFAULT_WORKSPACE_BOUNDARY: WorkspaceBoundary = {
   allowedPaths: [],
-  deniedPaths: ['/etc', '/root', '/home/*/.ssh', '/home/*/.gnupg'],
+  deniedPaths: ['/etc', '/root', '/home', '/tmp'],
+}
+
+/**
+ * Resolve a path to its realpath, catching symlink errors.
+ * Returns null if the path doesn't exist or can't be resolved.
+ */
+function safeRealpath(p: string): string | null {
+  try {
+    return realpathSync(p)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Check if a path is within the workspace boundary using realpath + prefix check.
+ */
+function isPathInBoundary(path: string, boundary: WorkspaceBoundary, workspaceRoot: string): boolean {
+  // Normalize: resolve to absolute, then get realpath to catch symlinks
+  const absPath = resolve(workspaceRoot, path)
+  const realPath = safeRealpath(absPath)
+  if (!realPath) return false
+
+  // Check denied patterns (simple prefix match on real path)
+  for (const denied of boundary.deniedPaths) {
+    if (realPath === denied || realPath.startsWith(denied + '/')) {
+      return false
+    }
+  }
+
+  // If allowedPaths specified, must be within one of them
+  if (boundary.allowedPaths.length > 0) {
+    const withinAllowed = boundary.allowedPaths.some(allowed => {
+      const realAllowed = safeRealpath(allowed)
+      if (!realAllowed) return false
+      return realPath === realAllowed || realPath.startsWith(realAllowed + '/')
+    })
+    if (!withinAllowed) return false
+  }
+
+  return true
 }
 
 export class McpClientManager {
@@ -61,35 +113,65 @@ export class McpClientManager {
   }
 
   /**
-   * Connect to a stdio-based MCP server
+   * Connect to a stdio-based MCP server with proper JSON-RPC framing.
    */
   private async connectStdio(name: string, config: McpServerConfig): Promise<void> {
     const entry = this.servers.get(name)
     if (!entry) return
 
     return new Promise((resolve, reject) => {
-      const child = spawn(config.command!, config.args, {
+      // Merge MINIMAL_ENV with user-specified env vars only
+      const childEnv: Record<string, string> = {
+        ...MINIMAL_ENV,
+        ...config.env,
+      }
+
+      const child = spawn(config.command!, config.args ?? [], {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          ...config.env,
-        },
+        env: childEnv,
       })
 
       entry.process = child
 
-      let stdout = ''
-      let stderr = ''
+      let stdoutBuffer = ''
+      let stderrBuffer = ''
+      let pendingResponses = new Map<string, (value: unknown) => void>()
+      let toolCallResolve: ((value: unknown) => void) | null = null
+      let toolCallReject: ((err: Error) => void) | null = null
+      let currentToolCallId: string | null = null
 
       child.stdout?.on('data', (data: Buffer) => {
-        stdout += data.toString()
-        // Try to parse tool manifest
-        this.handleServerMessage(name, stdout)
+        stdoutBuffer += data.toString()
+        // Process complete JSON-RPC messages (newline-delimited)
+        const lines = stdoutBuffer.split('\n')
+        stdoutBuffer = lines.pop() ?? '' // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const msg = JSON.parse(line)
+            this.handleServerMessage(name, msg)
+
+            // Handle response to a pending tool call
+            if (msg.id && currentToolCallId === String(msg.id)) {
+              currentToolCallId = null
+              if (msg.error) {
+                toolCallReject?.(new Error(msg.error.message ?? 'Unknown error'))
+              } else {
+                toolCallResolve?.(msg.result)
+              }
+              toolCallResolve = null
+              toolCallReject = null
+            }
+          } catch {
+            // Not JSON — might be partial frame, ignore
+          }
+        }
       })
 
       child.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString()
-        console.warn(`[McpClient:${name}] stderr:`, data.toString())
+        stderrBuffer += data.toString()
+        console.warn(`[McpClient:${name}] stderr:`, data.toString().slice(0, 200))
       })
 
       child.on('error', (err) => {
@@ -121,31 +203,57 @@ export class McpClientManager {
         },
       }
 
-      setTimeout(() => {
-        if (child.stdin) {
-          child.stdin.write(JSON.stringify(initRequest) + '\n')
+      child.stdin?.write(JSON.stringify(initRequest) + '\n')
+
+      // Wait for server to respond to initialize before marking connected
+      // Poll until we get the response or timeout
+      const initTimeout = setTimeout(() => {
+        entry.state.error = 'Initialize timeout'
+        reject(new Error('MCP server initialize timeout'))
+      }, 10000)
+
+      const checkInit = setInterval(() => {
+        if (entry.state.tools.length > 0) {
+          clearTimeout(initTimeout)
+          clearInterval(checkInit)
           entry.state.connected = true
           resolve()
         }
-      }, 100)
+      }, 50)
+
+      // Store the init check interval for cleanup
+      ;(entry as unknown as Record<string, unknown>)._initCheckInterval = checkInit
     })
   }
 
   /**
-   * Handle messages from MCP server
+   * Handle messages from MCP server (notifications, responses).
    */
-  private handleServerMessage(name: string, data: string): void {
-    const entry = this.servers.get(name)
-    if (!entry) return
+  private handleServerMessage(name: string, msg: unknown): void {
+    if (!msg || typeof msg !== 'object') return
+    const obj = msg as Record<string, unknown>
 
-    try {
-      const msg = JSON.parse(data)
-      if (msg.result?.tools) {
-        entry.state.tools = msg.result.tools as McpTool[]
-        console.log(`[McpClient:${name}] Received ${entry.state.tools.length} tools`)
+    // Tool list from server (notification after initialize)
+    if (obj.method === 'notifications/tools/list' || obj.method === 'tools/list') {
+      const tools = (obj.params as Record<string, unknown> | undefined)?.tools as unknown[]
+      if (Array.isArray(tools)) {
+        const entry = this.servers.get(name)
+        if (entry) {
+          entry.state.tools = tools as McpTool[]
+          console.log(`[McpClient:${name}] Received ${entry.state.tools.length} tools`)
+        }
       }
-    } catch {
-      // Not a JSON message or not yet complete
+    }
+
+    // Result from initialize
+    if (obj.id === 'init' && obj.result) {
+      const entry = this.servers.get(name)
+      if (entry && obj.result && typeof obj.result === 'object') {
+        const result = obj.result as Record<string, unknown>
+        if (Array.isArray(result.tools)) {
+          entry.state.tools = result.tools as McpTool[]
+        }
+      }
     }
   }
 
@@ -173,7 +281,7 @@ export class McpClientManager {
     // For stdio transport, send request and wait for response
     if (entry.config.transport === 'stdio' && entry.process?.stdin) {
       return new Promise((resolve, reject) => {
-        const id = `call-${Date.now()}`
+        const id = `call-${Date.now()}-${Math.random().toString(36).slice(2)}`
         const request = {
           jsonrpc: '2.0',
           id,
@@ -184,33 +292,20 @@ export class McpClientManager {
           },
         }
 
-        let responseData = ''
-
-        const onData = (data: Buffer) => {
-          responseData += data.toString()
-          try {
-            const response = JSON.parse(responseData)
-            if (response.id === id) {
-              entry.process!.stdout?.removeListener('data', onData)
-              if (response.error) {
-                reject(new Error(response.error.message))
-              } else {
-                resolve(response.result)
-              }
-            }
-          } catch {
-            // Not complete yet
-          }
-        }
-
-        entry.process!.stdout?.on('data', onData)
         entry.process!.stdin?.write(JSON.stringify(request) + '\n')
 
         // Timeout after 30 seconds
-        setTimeout(() => {
-          entry.process!.stdout?.removeListener('data', onData)
+        const timeout = setTimeout(() => {
           reject(new Error('Tool call timed out'))
         }, 30000)
+
+        // Store callbacks for the stdout handler to pick up
+        const originalOn = entry.process!.stdout?.on.bind(entry.process!.stdout)
+        // We'll handle it via a flag + stored callbacks
+        ;(entry as unknown as Record<string, unknown>)._currentResolve = resolve
+        ;(entry as unknown as Record<string, unknown>)._currentReject = reject
+        ;(entry as unknown as Record<string, unknown>)._currentToolId = id
+        ;(entry as unknown as Record<string, unknown>)._toolTimeout = timeout
       })
     }
 
@@ -218,27 +313,29 @@ export class McpClientManager {
   }
 
   /**
-   * Validate that arguments don't access denied paths
+   * Validate that arguments don't access denied paths using realpath normalization.
    */
   private validateWorkspaceBoundary(args: Record<string, unknown>): void {
     const checkPath = (path: unknown): void => {
       if (typeof path !== 'string') return
 
-      // Check denied paths
-      for (const denied of this.boundary.deniedPaths) {
-        if (path.startsWith(denied)) {
-          throw new Error(`Access denied: ${path}`)
+      // Resolve relative to workspace root and check realpath
+      const absPath = resolve(this.workspaceRoot, path)
+      const realPath = safeRealpath(absPath)
+
+      if (realPath === null) {
+        // Path doesn't exist yet — allow it, don't block on creation
+        // But check the parent directory exists and is valid
+        const parent = resolve(absPath, '..')
+        const realParent = safeRealpath(parent)
+        if (realParent === null) {
+          throw new Error(`Path parent directory doesn't exist: ${parent}`)
         }
+        return
       }
 
-      // If allowedPaths is set, check the path is within allowed
-      if (this.boundary.allowedPaths.length > 0) {
-        const withinAllowed = this.boundary.allowedPaths.some(allowed =>
-          path.startsWith(allowed) || path.startsWith(this.workspaceRoot)
-        )
-        if (!withinAllowed) {
-          throw new Error(`Path outside workspace boundary: ${path}`)
-        }
+      if (!isPathInBoundary(realPath, this.boundary, this.workspaceRoot)) {
+        throw new Error(`Access denied: ${path} is outside workspace boundary`)
       }
     }
 
@@ -292,7 +389,13 @@ export class McpClientManager {
    */
   disconnect(serverName: string): void {
     const entry = this.servers.get(serverName)
-    if (entry?.process) {
+    if (!entry) return
+
+    // Clear any pending init check
+    const initInterval = (entry as unknown as Record<string, unknown>)._initCheckInterval as NodeJS.Timeout | undefined
+    if (initInterval) clearInterval(initInterval)
+
+    if (entry.process) {
       entry.process.kill()
       entry.state.connected = false
     }

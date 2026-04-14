@@ -20,9 +20,9 @@ export const McpServerConfigSchema = z.object({
 
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
 
-// MCP client config (top-level)
+// MCP client config (top-level) — servers is an OBJECT per issue #50 spec
 export const McpClientConfigSchema = z.object({
-  servers: z.array(McpServerConfigSchema).default([]),
+  servers: z.record(z.string(), McpServerConfigSchema).default({}),
 })
 
 export type McpClientConfig = z.infer<typeof McpClientConfigSchema>
