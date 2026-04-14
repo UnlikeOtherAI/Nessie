@@ -20,7 +20,7 @@ import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
-import { createModelClient, createPgPool, decideAgentEngagement, ModelUsageTracker } from '@nessie/runtime'
+import { createModelClient, createPgPool, ModelUsageTracker } from '@nessie/runtime'
 import {
   CaptureThoughtBodySchema,
   CHAT_MESSAGE_MAX_CHARS,
@@ -34,10 +34,8 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
-  parseRunId,
   parseTaskId,
   parseThreadId,
-  withActionContext,
   type AuthorizedActionContext,
   type MeResponse,
   type TriggerEventDispatchJobPayload,
@@ -121,7 +119,7 @@ import { DEFAULT_BOOTSTRAP_RECORD_IDS } from './db/bootstrap.js'
 import { getPrismaClient } from './db/client.js'
 import { seedBootstrapRecords } from './db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from './lib/api.js'
-import { enqueueQueueJob, enqueueRunExecution } from './queue/pgqueue.js'
+import { enqueueOrchestrateDecide, enqueueQueueJob } from './queue/pgqueue.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import {
   addAgentToCategory,
@@ -3979,121 +3977,30 @@ export const buildApp = async () => {
       return reply
     }
 
-    // Kick off agent engagement without blocking the 201 response.
-    // Failures here must never surface as a failed message on the client — the
-    // user message was already persisted above.
-    if (result.channelAgents.length > 0 && sharedModelClient) {
-      const capturedResult = result
-      const capturedActorContext = actorContext
-      const capturedThread = thread
-      const capturedContent = body.content
-      void (async () => {
-        try {
-          const scopes = [
-            {
-              kind: 'organization' as const,
-              organizationId: capturedActorContext.tenant.organizationId,
-            },
-            {
-              kind: 'channel' as const,
-              channelId: parseChannelId(capturedThread.channel.id),
-            },
-          ]
-
-          const recentDbMessages = await prisma.message.findMany({
-            where: { threadId: capturedThread.id },
-            orderBy: { createdAt: 'desc' },
-            take: 6,
-            include: { agent: { select: { name: true } } },
-          })
-
-          const decisions = await decideAgentEngagement(sharedModelClient, {
-            agents: capturedResult.channelAgents,
-            content: capturedContent,
-            recentMessages: recentDbMessages.reverse().slice(0, -1).map((m) => ({
-              role: m.role,
-              content: m.content,
-              agentName: m.agent?.name ?? undefined,
-            })),
-          })
-
-          for (const decision of decisions) {
-            if (decision.action === 'reply') {
-              const run = await prisma.run.create({
-                data: {
-                  agentId: decision.agentId,
-                  threadId: capturedThread.id,
-                  status: 'pending',
-                },
-                select: { agentId: true, id: true, status: true, threadId: true },
-              })
-
-              const task = await prisma.task.create({
-                data: {
-                  runId: run.id,
-                  agentId: decision.agentId,
-                  status: 'inbox',
-                  purpose: capturedContent.slice(0, 200),
-                },
-                select: { id: true },
-              })
-
-              await realtimeHub.publishWs(
-                [
-                  ...scopes,
-                  { kind: 'agent' as const, agentId: parseAgentId(decision.agentId) },
-                ],
-                {
-                  data: {
-                    agentId: parseAgentId(decision.agentId),
-                    contentPreview: capturedResult.message.content.slice(0, 200),
-                    messageId: capturedResult.message.id,
-                    role: capturedResult.message.role,
-                    threadId: parseThreadId(capturedResult.message.threadId),
-                  },
-                  event: 'message.new',
-                },
-              )
-
-              await enqueueRunExecution(prisma, {
-                actorContext: withActionContext(capturedActorContext, {
-                  agentId: parseAgentId(run.agentId),
-                  channelId: parseChannelId(capturedThread.channel.id),
-                  taskId: parseTaskId(task.id),
-                  threadId: parseThreadId(run.threadId),
-                }),
-                agentId: parseAgentId(run.agentId),
-                messageId: capturedResult.message.id,
-                runId: parseRunId(run.id),
-                taskId: parseTaskId(task.id),
-                threadId: parseThreadId(run.threadId),
-              }, `run:${run.id}`)
-            }
-
-            if (decision.action === 'acknowledge') {
-              await addReaction(prisma, {
-                messageId: capturedResult.message.id,
-                agentId: decision.agentId,
-                emoji: decision.emoji,
-              })
-
-              const reactionData = {
-                messageId: capturedResult.message.id,
-                agentId: parseAgentId(decision.agentId),
-                emoji: decision.emoji,
-              }
-
-              await realtimeHub.publishSse(capturedThread.id, 'message.reaction', reactionData)
-              await realtimeHub.publishWs(scopes, {
-                data: reactionData,
-                event: 'message.reaction',
-              })
-            }
-          }
-        } catch (error) {
-          app.log.error({ err: error, messageId: capturedResult.message.id }, '[orchestrate] agent engagement failed')
-        }
-      })()
+    // Enqueue agent-engagement decision — durable, retryable, never blocks this
+    // response. The try/catch ensures a transient queue-insert failure cannot
+    // surface as a "failed" badge on an already-persisted user message.
+    if (result.channelAgents.length > 0) {
+      try {
+        await enqueueOrchestrateDecide(
+          prisma,
+          {
+            actorContext,
+            channelAgents: result.channelAgents,
+            channelId: parseChannelId(thread.channel.id),
+            content: body.content,
+            messageId: result.message.id,
+            role: result.message.role,
+            threadId: parseThreadId(thread.id),
+          },
+          `orchestrate:${result.message.id}`,
+        )
+      } catch (err) {
+        app.log.error(
+          { err, messageId: result.message.id },
+          '[orchestrate] failed to enqueue decide job — agent will not respond',
+        )
+      }
     }
 
     return reply.code(201).send(
