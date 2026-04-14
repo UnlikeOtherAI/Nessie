@@ -205,9 +205,11 @@ Recommended: option 2 — stamp the default team from `actorContext.tenant.teamI
 
 The bootstrap endpoint must use a transaction that:
 1. `findFirst` the existing instance by `(organizationId, userId)` — return if found
-2. Creates agent, channel, binding, thread, and instance in a single Prisma `$transaction`
+2. Creates ALL records (agent, channel, channel_member, agent_binding, thread, policy rules, and instance) inside a single Prisma `$transaction` — this is critical: if the instance insert fails due to the unique constraint, the entire transaction rolls back, preventing orphaned agents or channels
 3. Relies on the `@@unique([organizationId, userId])` constraint to reject the loser in a race
-4. Catches unique constraint violation and retries as a read-only lookup
+4. Catches unique constraint violation (`P2002`) and retries as a read-only lookup
+
+Do NOT create the agent outside the transaction. If the agent is committed independently and the instance insert fails, the orphaned agent is never cleaned up.
 
 Note: `ensureDefaultThread()` (`channels.ts`) has no DB uniqueness constraint behind it — two concurrent bootstrap calls could create duplicate "General" threads. Either add a `@@unique([channelId, isDefault])` constraint or use an upsert keyed on `channelId + label`.
 
@@ -552,6 +554,42 @@ docs/
 - Reuse the same provider/model/tool policy from the template unless a later feature adds paid per-user overrides.
 - Keep one instance per user, not one instance per session.
 - Template versioning lets you roll prompt changes forward without mutating conversation history.
+
+### User deletion / deactivation
+
+When a user is deleted or deactivated:
+- Set `instance.status = 'archived'`
+- Set `agent.status = 'offline'`
+- Do NOT hard-delete the instance, agent, DM channel, or messages — archive them for compliance and audit trail
+- Remove the user from `channel_members` so the DM no longer appears in any active user's list
+- The user deletion flow must include PA cleanup as a hook or cascade step
+
+### Default team protection
+
+Since PA DM channels use the org's default team as their `teamId` (section 4), the default team must not be deletable. Add an invariant in the team deletion flow:
+
+```
+if (team.isDefault) throw new ForbiddenError('Cannot delete the default team')
+```
+
+This is simpler than migrating PA channels to a nullable `teamId`.
+
+### Agent-vs-instance status lifecycle
+
+`instance.status` (`active | suspended | archived`) and `Agent.status` (`idle | thinking | executing | ...`) are independent fields. Rules:
+- When `instance.status` is set to `suspended` or `archived`, prevent NEW runs from starting (enforce at the run-creation layer, not by mutating `Agent.status`)
+- In-flight runs should be allowed to complete naturally
+- After all in-flight runs complete, set `Agent.status = 'offline'`
+- When `instance.status` returns to `active`, set `Agent.status = 'idle'`
+
+### Approval-required tools in PA context
+
+If the PA agent's tool policy allows a tool that has a `requiresApproval: true` policy rule:
+- The run enters `waiting_approval` state
+- The PA must surface a "waiting for approval" system message in the DM thread so the user sees it
+- The user approves/rejects either via the admin approvals page or (future) via a DM-native approval action
+- If the user never acts, `sweepExpiredApprovals()` expires the request after the configured timeout
+- Recommendation: for the initial rollout, restrict PA tool policy to tools that do NOT require approval. Add approval-gated tools as a later feature.
 
 Upgrade triggers:
 
