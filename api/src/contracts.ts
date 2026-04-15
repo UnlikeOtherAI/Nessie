@@ -36,7 +36,7 @@ export type AuthProviderAuthorizeQuery = z.infer<typeof AuthProviderAuthorizeQue
 
 export const BootstrapModeResponseSchema = z.object({
   bootstrapMode: z.literal(true),
-  bootstrapUrl: z.literal('/admin/bootstrap'),
+  bootstrapUrl: z.literal('/bootstrap'),
 })
 
 export const BootstrapRequestSchema = z.object({
@@ -251,6 +251,7 @@ export const ThreadMessageRecordSchema = z.object({
   role: MessageRoleSchema,
   content: z.string(),
   createdAt: TimestampSchema,
+  metadata: z.record(z.string(), z.unknown()).optional(),
   reactions: MessageReactionRecordSchema.array().optional(),
 })
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>

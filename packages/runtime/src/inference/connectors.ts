@@ -375,6 +375,36 @@ const mapToolCallsFromOpenAi = (
     toolName: toolCall.function.name,
   }))
 
+const mapMessagesToOpenAi = (
+  messages: ProviderMessage[],
+): Array<Record<string, unknown>> =>
+  messages.map((message) => {
+    if (message.role === 'assistant') {
+      return {
+        content: message.content ?? '',
+        role: 'assistant',
+        tool_calls: message.toolCalls?.map((toolCall) => ({
+          function: {
+            arguments: JSON.stringify(toolCall.arguments),
+            name: toolCall.toolName,
+          },
+          id: toolCall.toolCallId,
+          type: 'function',
+        })),
+      }
+    }
+
+    if (message.role === 'tool') {
+      return {
+        content: message.content,
+        role: 'tool',
+        tool_call_id: message.toolCallId,
+      }
+    }
+
+    return message
+  })
+
 const normalizeMiniMaxMessages = (
   messages: ProviderMessage[],
 ): ProviderMessage[] => {
@@ -635,7 +665,7 @@ const createOpenAiLikeConnector = (
         const tools = mapToolsToOpenAi(request.tools)
         const response = await invokeRequest({
           max_completion_tokens: request.maxOutputTokens ?? 1024,
-          messages: request.messages,
+          messages: mapMessagesToOpenAi(request.messages),
           model,
           response_format: request.responseFormat,
           temperature: resolveOpenAiTemperature(model, request.temperature),
@@ -696,7 +726,7 @@ const createOpenAiLikeConnector = (
         const tools = mapToolsToOpenAi(request.tools)
         const response = await invokeRequest({
           max_completion_tokens: request.maxOutputTokens ?? 1024,
-          messages: request.messages,
+          messages: mapMessagesToOpenAi(request.messages),
           model,
           response_format: request.responseFormat,
           stream: true,

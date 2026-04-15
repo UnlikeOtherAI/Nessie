@@ -753,6 +753,7 @@ export const ChannelsPage = () => {
         <PersonalAssistantConfigBanner
           agent={personalAssistantAgent}
           channel={personalAssistantChannel}
+          configSummary={personalAssistantState?.configSummary}
         />
       ) : null}
 

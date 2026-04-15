@@ -181,6 +181,21 @@ export const AgentStatusSchema = z.enum([
 ])
 export type AgentStatus = z.infer<typeof AgentStatusSchema>
 
+export const AgentKindSchema = z.enum(['shared', 'personal_assistant'])
+export type AgentKind = z.infer<typeof AgentKindSchema>
+
+export const AgentSurfacePolicySchema = z.enum(['shared', 'dm_only'])
+export type AgentSurfacePolicy = z.infer<typeof AgentSurfacePolicySchema>
+
+export const AgentDelegationModeSchema = z.enum([
+  'none',
+  'act_as_requesting_user',
+])
+export type AgentDelegationMode = z.infer<typeof AgentDelegationModeSchema>
+
+export const SystemChannelTypeSchema = z.enum(['personal_assistant'])
+export type SystemChannelType = z.infer<typeof SystemChannelTypeSchema>
+
 export const AgentTriggerTypeSchema = z.enum([
   'manual',
   'scheduled',
@@ -725,6 +740,7 @@ export const ActionContextSchema = z.object({
   teamId: TeamIdSchema.optional(),
   channelId: ChannelIdSchema.optional(),
   agentId: AgentIdSchema.optional(),
+  effectiveUserId: UserIdSchema.optional(),
   toolId: NonEmptyStringSchema.optional(),
   taskId: TaskIdSchema.optional(),
   sessionId: NonEmptyStringSchema.optional(),
@@ -812,6 +828,37 @@ export const WorkflowRunExecuteJobPayloadSchema = z.object({
   workflowRunId: z.string().uuid(),
 })
 export type WorkflowRunExecuteJobPayload = z.infer<typeof WorkflowRunExecuteJobPayloadSchema>
+
+export const PersonalAssistantConfigSummarySchema = z.object({
+  agentId: AgentIdSchema,
+  model: z.string().optional(),
+  provider: z.string().optional(),
+  systemPromptPreview: z.string().optional(),
+  toolIds: z.array(NonEmptyStringSchema),
+  updatedAt: TimestampSchema,
+})
+export type PersonalAssistantConfigSummary = z.infer<
+  typeof PersonalAssistantConfigSummarySchema
+>
+
+export const PersonalAssistantBootstrapResponseSchema = z.object({
+  agent: z.object({
+    id: AgentIdSchema,
+    name: z.literal('Personal Assistant'),
+  }),
+  channel: z.object({
+    id: ChannelIdSchema,
+    type: z.literal('dm'),
+  }),
+  thread: z.object({
+    id: ThreadIdSchema,
+    title: z.string().nullable().optional(),
+  }),
+  configSummary: PersonalAssistantConfigSummarySchema,
+})
+export type PersonalAssistantBootstrapResponse = z.infer<
+  typeof PersonalAssistantBootstrapResponseSchema
+>
 
 export const ExecutionEnvironmentAllocateJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
@@ -1037,6 +1084,11 @@ export const AuditActionSchema = z.enum([
   'agent.deleted',
   'agent.bound',
   'agent.unbound',
+  'personal_assistant.bootstrap',
+  'personal_assistant.rotate',
+  'personal_assistant.suspend',
+  'personal_assistant.reactivate',
+  'personal_assistant.access_denied',
   'tool.granted',
   'tool.revoked',
   'approval.created',

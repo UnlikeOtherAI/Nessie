@@ -25,7 +25,8 @@ const upsertChannel = (
 }
 
 export const isPersonalAssistantChannel = (channel?: ChannelRecord | null): boolean =>
-  channel?.metadata?.systemChannelType === 'personal_assistant'
+  channel?.systemChannelType === 'personal_assistant'
+  || channel?.metadata?.systemChannelType === 'personal_assistant'
 
 export const usePersonalAssistant = (enabled = true) => {
   const apiClient = useApiClient()
@@ -54,6 +55,7 @@ export const usePersonalAssistantBootstrap = () => {
       queryClient.setQueryData(personalAssistantQueryKey, {
         agent: response.agent,
         channel: response.channel,
+        configSummary: response.configSummary,
         instance: response.instance ?? null,
         thread: response.thread,
       } satisfies PersonalAssistantStateResponse)

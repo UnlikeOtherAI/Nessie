@@ -264,6 +264,8 @@ const buildWorkflowExecutionActorContext = (input: {
 const createWorkflowMailboxMessage = async (
   prisma: PrismaClient,
   input: {
+    actorId: string
+    actorType: 'agent' | 'service' | 'user'
     body: string
     channelId?: string | null
     fromAgentId?: string | null
@@ -283,6 +285,8 @@ const createWorkflowMailboxMessage = async (
         organizationId: input.organizationId,
         workflowRunId: input.workflowRunId,
         workflowStepRunId: input.workflowStepRunId,
+        actorId: input.actorId,
+        actorType: input.actorType,
         fromAgentId: input.fromAgentId ?? undefined,
         toAgentId: input.toAgentId,
         channelId: input.channelId ?? undefined,
@@ -627,6 +631,8 @@ export const executeWorkflowRun = async (
       }
 
       const mailboxMessage = await createWorkflowMailboxMessage(prisma, {
+        actorId: workflow.run.startedByActorId,
+        actorType: parseWorkflowStartedByActorType(workflow.run.startedByActorType),
         organizationId: workflow.run.organizationId,
         workflowRunId,
         workflowStepRunId: nextStep.id,

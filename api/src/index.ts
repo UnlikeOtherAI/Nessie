@@ -20,12 +20,14 @@ import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
+import { captureUserMessageMemory } from '@nessie/memory'
 import { createModelClient, createPgPool, ModelUsageTracker } from '@nessie/runtime'
 import {
   CaptureThoughtBodySchema,
   CHAT_MESSAGE_MAX_CHARS,
   LinkThoughtsBodySchema,
   MeResponseSchema,
+  PersonalAssistantConfigSummarySchema,
   RecordThoughtRecallSignalBodySchema,
   RecordOutcomeBodySchema,
   SearchThoughtsBodySchema,
@@ -34,12 +36,16 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
+  parseRunId,
   parseTaskId,
+  parseTeamId,
   parseThreadId,
+  parseUserId,
   type AuthorizedActionContext,
   type MeResponse,
   type TriggerEventDispatchJobPayload,
   type WsScope,
+  withActionContext,
 } from '@nessie/schemas'
 import {
   createBootstrapTokenState,
@@ -102,8 +108,11 @@ import {
   InstallWorkflowTemplateBodySchema,
   UpdateWorkflowTemplateBodySchema,
   LaunchExecutionEnvironmentBodySchema,
+  PersonalAssistantBootstrapResponseSchema,
+  PersonalAssistantStateResponseSchema,
   TemporaryContextSessionSchema,
   ThreadMessageRecordSchema,
+  ThreadRecordSchema,
   ToolDescriptorSchema,
   ToolRegistryEntrySchema,
   UpdateAgentTriggerBodySchema,
@@ -165,10 +174,12 @@ import {
   addMemberToChannel,
   createChannelForUser,
   createGroupFromDm,
+  ensureDefaultThread,
   findOrCreateDmChannel,
   listChannelsForUser,
   removeMemberFromChannel,
 } from './services/channels.js'
+import { ensurePersonalAssistantBootstrap } from './services/personal-assistant.js'
 import {
   createCall,
   endCall,
@@ -327,7 +338,7 @@ const resolveBootstrapState = async (): Promise<BootstrapTokenState | null> => {
 const logBootstrapUrl = (state: BootstrapTokenState): void => {
   const baseUrl = `http://${config.api.host === '0.0.0.0' ? 'localhost' : config.api.host}:${config.api.port}`
   console.log('First-time setup. Open this URL to create your owner account:')
-  console.log(`${baseUrl}/admin/bootstrap?token=${state.token}`)
+  console.log(`${baseUrl}/bootstrap?token=${state.token}`)
 }
 
 const getAuthorizationToken = (request: FastifyRequest): string | null => {
@@ -423,6 +434,221 @@ const requireUserActor = (
   return false
 }
 
+const isPersonalAssistantChannelType = (
+  value: string | null | undefined,
+): value is 'personal_assistant' => value === 'personal_assistant'
+
+const buildChannelRealtimeScopes = (input: {
+  channelId: string
+  organizationId: string
+  systemChannelType?: string | null
+}): WsScope[] =>
+  isPersonalAssistantChannelType(input.systemChannelType)
+    ? [{ kind: 'channel', channelId: parseChannelId(input.channelId) }]
+    : [
+        {
+          kind: 'organization',
+          organizationId: parseOrganizationId(input.organizationId),
+        },
+        { kind: 'channel', channelId: parseChannelId(input.channelId) },
+      ]
+
+const buildPersonalAssistantConfigSummary = (agent: {
+  id: string
+  model: string | null
+  provider: string | null
+  systemPrompt: string | null
+  toolPolicy: unknown
+  updatedAt: Date
+}) =>
+  PersonalAssistantConfigSummarySchema.parse({
+    agentId: parseAgentId(agent.id),
+    model: agent.model ?? undefined,
+    provider: agent.provider ?? undefined,
+    systemPromptPreview: agent.systemPrompt?.slice(0, 200) ?? undefined,
+    toolIds:
+      agent.toolPolicy
+      && typeof agent.toolPolicy === 'object'
+      && !Array.isArray(agent.toolPolicy)
+        ? Object.entries(agent.toolPolicy as Record<string, unknown>)
+            .filter(([, enabled]) => enabled === true)
+            .map(([toolId]) => toolId)
+            .sort()
+        : [],
+    updatedAt: agent.updatedAt.toISOString(),
+  })
+
+const loadPersonalAssistantState = async (
+  actorContext: AuthorizedActionContext & {
+    actor: AuthorizedActionContext['actor'] & { actorType: 'user' }
+  },
+) => {
+  const userId = actorContext.actionContext.effectiveUserId ?? actorContext.actor.actorId
+  const dmKey = `pa:${actorContext.tenant.organizationId}:${userId}`
+  const channel = await prisma.channel.findUnique({
+    where: { dmKey },
+    select: {
+      createdAt: true,
+      id: true,
+      label: true,
+      organizationId: true,
+      systemChannelType: true,
+      teamId: true,
+      type: true,
+      updatedAt: true,
+      visibility: true,
+      members: {
+        where: { userId },
+        select: { id: true },
+        take: 1,
+      },
+      agentBindings: {
+        orderBy: { createdAt: 'asc' },
+        select: { agentId: true },
+        take: 1,
+      },
+    },
+  })
+
+  if (
+    !channel
+    || channel.organizationId !== actorContext.tenant.organizationId
+    || channel.members.length === 0
+    || !isPersonalAssistantChannelType(channel.systemChannelType)
+  ) {
+    return null
+  }
+
+  const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
+  const thread = await prisma.thread.findUnique({
+    where: { id: defaultThreadId },
+    select: {
+      channelId: true,
+      createdAt: true,
+      id: true,
+      title: true,
+      updatedAt: true,
+    },
+  })
+  if (!thread) {
+    return null
+  }
+
+  const agent = channel.agentBindings[0]?.agentId
+    ? await prisma.agent.findUnique({
+        where: { id: channel.agentBindings[0].agentId },
+        select: {
+          agentKind: true,
+          bindings: {
+            where: { channelId: channel.id },
+            orderBy: { createdAt: 'asc' },
+            select: { channelId: true },
+          },
+          createdAt: true,
+          delegationMode: true,
+          id: true,
+          messages: {
+            where: { threadId: thread.id },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+            take: 1,
+          },
+          model: true,
+          name: true,
+          provider: true,
+          role: true,
+          runs: {
+            where: { threadId: thread.id },
+            include: {
+              toolCalls: {
+                orderBy: { startedAt: 'desc' },
+                select: {
+                  endedAt: true,
+                  startedAt: true,
+                  toolName: true,
+                },
+                take: 1,
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+          status: true,
+          surfacePolicy: true,
+          systemManaged: true,
+          systemPrompt: true,
+          toolPolicy: true,
+          updatedAt: true,
+        },
+      })
+    : null
+  const latestRun = agent?.runs[0]
+  const latestToolCall = latestRun?.toolCalls[0]
+  const latestMessage = agent?.messages[0]
+  const isActiveRun =
+    latestRun !== undefined
+    && latestRun.status !== 'completed'
+    && latestRun.status !== 'failed'
+    && latestRun.status !== 'cancelled'
+  const lastActivityAt =
+    latestToolCall?.startedAt
+    ?? latestMessage?.createdAt
+    ?? latestRun?.createdAt
+    ?? agent?.updatedAt
+    ?? channel.updatedAt
+
+  return PersonalAssistantStateResponseSchema.parse({
+    agent: agent
+      ? {
+          id: parseAgentId(agent.id),
+          name: agent.name,
+          role: agent.role,
+          status: agent.status,
+          agentKind: agent.agentKind,
+          systemManaged: agent.systemManaged,
+          surfacePolicy: agent.surfacePolicy,
+          delegationMode: agent.delegationMode,
+          currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
+          currentToolName:
+            isActiveRun && latestToolCall?.endedAt === null ? latestToolCall.toolName : undefined,
+          currentToolStartedAt:
+            isActiveRun && latestToolCall?.endedAt === null
+              ? latestToolCall.startedAt.toISOString()
+              : undefined,
+          lastActivityAt: lastActivityAt.toISOString(),
+          parentAgentId: null,
+          provider: agent.provider ?? undefined,
+          model: agent.model ?? undefined,
+          createdAt: agent.createdAt.toISOString(),
+          updatedAt: agent.updatedAt.toISOString(),
+          channelIds: agent.bindings.map((binding) => parseChannelId(binding.channelId)),
+        }
+      : null,
+    channel: {
+      id: parseChannelId(channel.id),
+      label: channel.label,
+      type: channel.type,
+      systemChannelType: channel.systemChannelType,
+      visibility: channel.visibility,
+      organizationId: parseOrganizationId(channel.organizationId),
+      teamId: parseTeamId(channel.teamId),
+      defaultThreadId: parseThreadId(thread.id),
+      unreadCount: 0,
+      createdAt: channel.createdAt.toISOString(),
+      updatedAt: channel.updatedAt.toISOString(),
+    },
+    instance: null,
+    thread: ThreadRecordSchema.parse({
+      id: parseThreadId(thread.id),
+      channelId: parseChannelId(thread.channelId),
+      title: thread.title ?? 'General',
+      createdAt: thread.createdAt.toISOString(),
+      updatedAt: thread.updatedAt.toISOString(),
+    }),
+    ...(agent ? { configSummary: buildPersonalAssistantConfigSummary(agent) } : {}),
+  })
+}
+
 
 const isAgentVisibleToUser = async (
   userId: string,
@@ -432,6 +658,7 @@ const isAgentVisibleToUser = async (
   (await prisma.agent.count({
     where: {
       id: agentId,
+      systemManaged: false,
       OR: [
         { organizationId },
         { bindings: { some: { channel: { organizationId } } } },
@@ -457,6 +684,7 @@ const isAgentAccessibleToActor = async (
       await prisma.agent.count({
         where: {
           id: agentId,
+          systemManaged: false,
           OR: [
             { organizationId: actorContext.tenant.organizationId },
             {
@@ -485,10 +713,15 @@ const getVisibleChannel = async (
   userId: string,
   organizationId: string,
   channelId: string,
-): Promise<{ type: string; visibility: string } | null> => {
+): Promise<{
+  systemChannelType?: 'personal_assistant'
+  type: string
+  visibility: string
+} | null> => {
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     select: {
+      systemChannelType: true,
       type: true,
       organizationId: true,
       visibility: true,
@@ -498,9 +731,21 @@ const getVisibleChannel = async (
   if (!channel) return null
   if (channel.organizationId !== organizationId) return null
   // Public channels are visible to all org members
-  if (channel.visibility === 'public') return { type: channel.type, visibility: channel.visibility }
+  if (channel.visibility === 'public') {
+    return {
+      systemChannelType: channel.systemChannelType ?? undefined,
+      type: channel.type,
+      visibility: channel.visibility,
+    }
+  }
   // Protected and private channels require membership
-  if (channel.members.length > 0) return { type: channel.type, visibility: channel.visibility }
+  if (channel.members.length > 0) {
+    return {
+      systemChannelType: channel.systemChannelType ?? undefined,
+      type: channel.type,
+      visibility: channel.visibility,
+    }
+  }
   return null
 }
 
@@ -511,10 +756,15 @@ const getChannelIfMember = async (
   userId: string,
   organizationId: string,
   channelId: string,
-): Promise<{ type: string; visibility: string } | null> => {
+): Promise<{
+  systemChannelType?: 'personal_assistant'
+  type: string
+  visibility: string
+} | null> => {
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     select: {
+      systemChannelType: true,
       type: true,
       organizationId: true,
       visibility: true,
@@ -524,7 +774,11 @@ const getChannelIfMember = async (
   if (!channel) return null
   if (channel.organizationId !== organizationId) return null
   if (channel.members.length === 0) return null
-  return { type: channel.type, visibility: channel.visibility }
+  return {
+    systemChannelType: channel.systemChannelType ?? undefined,
+    type: channel.type,
+    visibility: channel.visibility,
+  }
 }
 
 const isTriggerTargetWritableByActor = async (
@@ -793,6 +1047,9 @@ export const buildApp = async () => {
     max: config.database.poolMax,
     min: config.database.poolMin,
   })
+  const messageMemoryCaptureConfig = sharedModelClient
+    ? { pool: memoryPool, modelClient: sharedModelClient }
+    : null
   const thoughtService = sharedModelClient
     ? createThoughtService({
       pool: memoryPool,
@@ -896,7 +1153,7 @@ export const buildApp = async () => {
       if (state) {
         return createApiResponse(BootstrapModeResponseSchema.parse({
           bootstrapMode: true,
-          bootstrapUrl: '/admin/bootstrap',
+          bootstrapUrl: '/bootstrap',
         }))
       }
 
@@ -1193,6 +1450,67 @@ export const buildApp = async () => {
     return createApiResponse(ChannelRecordSchema.array().parse(channels))
   })
 
+  app.get('/api/personal-assistant', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
+    return createApiResponse(await loadPersonalAssistantState(actorContext))
+  })
+
+  app.post('/api/personal-assistant/bootstrap', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
+    const bootstrap = await ensurePersonalAssistantBootstrap(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId:
+        actorContext.tenant.teamId
+        ?? actorContext.actionContext.teamId
+        ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
+      userId: actorContext.actor.actorId,
+    })
+    const state = await loadPersonalAssistantState(actorContext)
+    if (!state?.agent || !state.channel || !state.thread) {
+      sendApiError(
+        reply,
+        500,
+        'PERSONAL_ASSISTANT_BOOTSTRAP_FAILED',
+        'Failed to load personal assistant state after bootstrap',
+      )
+      return reply
+    }
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'personal_assistant.bootstrap' as Parameters<typeof emitAuditEvent>[1]['action'],
+      outcome: 'success',
+      resourceId: bootstrap.agentId,
+      resourceType: 'agent',
+    })
+
+    return reply.code(200).send(
+      createApiResponse(
+        PersonalAssistantBootstrapResponseSchema.parse({
+          agent: state.agent,
+          channel: state.channel,
+          configSummary: state.configSummary,
+          instance: null,
+          thread: state.thread,
+        }),
+      ),
+    )
+  })
+
   app.post('/api/channels', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -1238,6 +1556,16 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'Personal Assistant DMs cannot be modified',
+      )
+      return reply
+    }
+
     // If the channel is a DM, create a new group channel instead of mutating the DM
     if (channel.type === 'dm') {
       const group = await createGroupFromDm(prisma, {
@@ -1263,8 +1591,22 @@ export const buildApp = async () => {
     }
 
     const { channelId, userId } = request.params as { channelId: string; userId: string }
-    if (!(await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    const channel = await getChannelIfMember(
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      channelId,
+    )
+    if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'Personal Assistant DMs cannot be modified',
+      )
       return reply
     }
 
@@ -1279,8 +1621,22 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    if (!(await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    const channel = await getChannelIfMember(
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      channelId,
+    )
+    if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'Calls are not available in the Personal Assistant DM',
+      )
       return reply
     }
 
@@ -1598,7 +1954,8 @@ export const buildApp = async () => {
   })
 
   app.put('/api/agents/:agentId', async (request, reply) => {
-    if (!requireActorContext(request, reply)) {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
       return reply
     }
 
@@ -1608,6 +1965,18 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
+    const existingAgent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { systemManaged: true },
+    })
+    if (!existingAgent) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    if (existingAgent.systemManaged && !requireOwner(actorContext, reply)) {
+      return reply
+    }
+
     const agent = await updateAgentRecord(prisma, agentId, body)
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
@@ -1628,14 +1997,22 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (
-      !(await getChannelIfMember(
-        actorContext.actor.actorId,
-        actorContext.tenant.organizationId,
-        body.channelId,
-      ))
-    ) {
+    const channel = await getChannelIfMember(
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      body.channelId,
+    )
+    if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'Agents cannot be bound to the Personal Assistant DM',
+      )
       return reply
     }
 
@@ -1667,8 +2044,22 @@ export const buildApp = async () => {
     }
 
     const { agentId, channelId } = request.params as { agentId: string; channelId: string }
-    if (!(await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    const channel = await getChannelIfMember(
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      channelId,
+    )
+    if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'The Personal Assistant DM binding is system managed',
+      )
       return reply
     }
 
@@ -2090,7 +2481,7 @@ export const buildApp = async () => {
     }
 
     if (!isJsonContentType(request)) {
-      sendApiError(reply, 415, 'UNSUPPORTED_MEDIA_TYPE', 'Webhook payload must be JSON')
+      sendApiError(reply, 415, 'WEBHOOK_CONTENT_TYPE_INVALID', 'Webhook requests must use JSON')
       return reply
     }
 
@@ -3050,7 +3441,11 @@ export const buildApp = async () => {
 
     let message
     try {
-      message = await createMailboxMessage(prisma, actorContext.tenant.organizationId, body)
+      message = await createMailboxMessage(prisma, actorContext.tenant.organizationId, {
+        ...body,
+        actorId: actorContext.actor.actorId,
+        actorType: actorContext.actor.actorType,
+      })
     } catch (error) {
       if (error instanceof Error && error.message === 'MAILBOX_THREAD_NOT_FOUND') {
         sendApiError(reply, 404, 'MAILBOX_THREAD_NOT_FOUND', 'Mailbox thread not found')
@@ -3511,6 +3906,7 @@ export const buildApp = async () => {
     const query = request.query as { projectId?: string }
     const where: Record<string, unknown> = {
       project: { organizationId: actorContext.tenant.organizationId },
+      systemManaged: false,
     }
     if (query.projectId) {
       where['projectId'] = query.projectId
@@ -3714,11 +4110,38 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (messageMemoryCaptureConfig) {
+      try {
+        await captureUserMessageMemory(
+          {
+            channelId: thread.channel.id,
+            content: result.message.content,
+            memoryOrigin:
+              thread.channel.systemChannelType === 'personal_assistant'
+                ? 'personal_assistant_dm'
+                : 'user_authored_workspace_message',
+            messageId: result.message.id,
+            organizationId: actorContext.tenant.organizationId,
+            sourceAudience: thread.channel.type === 'dm' ? 'dm' : 'channel',
+            threadId: thread.id,
+            userId: actorContext.actor.actorId,
+          },
+          messageMemoryCaptureConfig,
+        )
+      } catch (error) {
+        app.log.warn(
+          { err: error, messageId: result.message.id },
+          '[memory] failed to capture user message memory',
+        )
+      }
+    }
+
     await realtimeHub.publishWs(
-      [
-        { kind: 'organization', organizationId: actorContext.tenant.organizationId },
-        { kind: 'channel', channelId: parseChannelId(thread.channel.id) },
-      ],
+      buildChannelRealtimeScopes({
+        channelId: thread.channel.id,
+        organizationId: actorContext.tenant.organizationId,
+        systemChannelType: thread.channel.systemChannelType,
+      }),
       {
         data: {
           agentId: undefined,
@@ -3735,11 +4158,19 @@ export const buildApp = async () => {
     // response. The try/catch ensures a transient queue-insert failure cannot
     // surface as a "failed" badge on an already-persisted user message.
     if (result.channelAgents.length > 0) {
+      const orchestrationActorContext = isPersonalAssistantChannelType(
+        thread.channel.systemChannelType,
+      )
+        ? withActionContext(actorContext, {
+            effectiveUserId: parseUserId(actorContext.actor.actorId),
+          })
+        : actorContext
+
       try {
         await enqueueOrchestrateDecide(
           prisma,
           {
-            actorContext,
+            actorContext: orchestrationActorContext,
             channelAgents: result.channelAgents,
             channelId: parseChannelId(thread.channel.id),
             content: body.content,
@@ -3767,6 +4198,12 @@ export const buildApp = async () => {
           role: result.message.role,
           content: result.message.content,
           createdAt: result.message.createdAt.toISOString(),
+          metadata:
+            result.message.metadata
+            && typeof result.message.metadata === 'object'
+            && !Array.isArray(result.message.metadata)
+              ? (result.message.metadata as Record<string, unknown>)
+              : undefined,
         }),
       ),
     )
@@ -3819,10 +4256,11 @@ export const buildApp = async () => {
     })
 
     await realtimeHub.publishWs(
-      [
-        { kind: 'organization', organizationId: actorContext.tenant.organizationId },
-        { kind: 'channel', channelId: parseChannelId(thread.channel.id) },
-      ],
+      buildChannelRealtimeScopes({
+        channelId: thread.channel.id,
+        organizationId: actorContext.tenant.organizationId,
+        systemChannelType: thread.channel.systemChannelType,
+      }),
       {
         data: { messageId, userId: actorContext.actor.actorId, emoji: body.emoji },
         event: 'message.reaction',

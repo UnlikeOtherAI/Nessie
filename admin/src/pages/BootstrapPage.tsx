@@ -93,7 +93,7 @@ export const BootstrapPage = () => {
                 Bootstrap URL
               </div>
               <div className="mt-1 break-all font-mono text-sm">
-                {bootstrapState?.bootstrapUrl ?? '/admin/bootstrap?token=...'}
+                {bootstrapState?.bootstrapUrl ?? '/bootstrap?token=...'}
               </div>
             </div>
             <div>

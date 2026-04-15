@@ -3,7 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { z } from 'zod'
 import type {
   AgentActivityResponse,
@@ -233,6 +233,7 @@ export const patchAgentStatusRecord = (
 
 export const useAgentRealtime = (input: {
   channelId?: string
+  channelIds?: string[]
   organizationId?: string
   threadId?: string
 }): AgentActivityRealtimeState => {
@@ -242,6 +243,18 @@ export const useAgentRealtime = (input: {
   const [records, setRecords] = useState<Record<string, AgentRealtimeRecord>>({})
   const threadIdRef = useRef(input.threadId)
   threadIdRef.current = input.threadId
+  const subscriptionChannelIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [input.channelId, ...(input.channelIds ?? [])].filter(
+            (value): value is string => typeof value === 'string' && value.length > 0,
+          ),
+        ),
+      ),
+    [input.channelId, input.channelIds],
+  )
+  const subscriptionKey = subscriptionChannelIds.slice().sort().join(',')
 
   useEffect(() => {
     if (!token || !me?.context.organizationId) {
@@ -370,6 +383,13 @@ export const useAgentRealtime = (input: {
       socket = new WebSocket(resolveWebSocketUrl(token))
 
       socket.addEventListener('open', () => {
+        const channelScopes = subscriptionKey
+          .split(',')
+          .filter((channelId) => channelId.length > 0)
+          .map((channelId) => ({
+            kind: 'channel' as const,
+            channelId,
+          }))
         socket?.send(
           JSON.stringify({
             type: 'set_subscriptions',
@@ -378,6 +398,7 @@ export const useAgentRealtime = (input: {
                 kind: 'organization',
                 organizationId: me.context.organizationId,
               },
+              ...channelScopes,
             ],
           }),
         )
@@ -422,7 +443,7 @@ export const useAgentRealtime = (input: {
       clearPingInterval()
       socket?.close()
     }
-  }, [me?.context.organizationId, queryClient, token])
+  }, [me?.context.organizationId, queryClient, subscriptionKey, token])
 
   return {
     connectionState,

@@ -6,6 +6,7 @@ const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_CHANNEL_TYPE = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_DELEGATION_MODE = 'act_as_requesting_user' as const
 const PERSONAL_ASSISTANT_SURFACE_POLICY = 'dm_only' as const
+const PERSONAL_ASSISTANT_SYSTEM_TEAM_NAME = 'Personal Assistant System'
 
 export const PERSONAL_ASSISTANT_NAME = 'Personal Assistant'
 
@@ -38,6 +39,57 @@ export type PersonalAssistantBootstrapResult = {
   threadId: string
 }
 
+const ensurePersonalAssistantSystemTeam = async (
+  prisma: PrismaClient,
+  input: {
+    organizationId: string
+    teamId: string
+  },
+): Promise<string> =>
+  prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext(${input.organizationId}),
+        hashtext('personal_assistant_system_team')
+      )
+    `
+
+    const existing = await tx.team.findFirst({
+      where: {
+        name: PERSONAL_ASSISTANT_SYSTEM_TEAM_NAME,
+        project: { organizationId: input.organizationId },
+        systemManaged: true,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    })
+    if (existing) {
+      return existing.id
+    }
+
+    const seedTeam = await tx.team.findFirst({
+      where: {
+        id: input.teamId,
+        project: { organizationId: input.organizationId },
+      },
+      select: { projectId: true },
+    })
+    if (!seedTeam) {
+      throw new Error('PERSONAL_ASSISTANT_SYSTEM_TEAM_CONTEXT_NOT_FOUND')
+    }
+
+    const team = await tx.team.create({
+      data: {
+        name: PERSONAL_ASSISTANT_SYSTEM_TEAM_NAME,
+        projectId: seedTeam.projectId,
+        systemManaged: true,
+      },
+      select: { id: true },
+    })
+
+    return team.id
+  })
+
 const createPersonalAssistantAgentData = (
   organizationId: string,
   config?: PersonalAssistantAgentConfig,
@@ -60,70 +112,47 @@ export const ensurePersonalAssistantAgent = async (
   prisma: PrismaClient,
   organizationId: string,
   config?: PersonalAssistantAgentConfig,
-): Promise<string> => {
-  const existing = await prisma.agent.findFirst({
-    where: {
-      organizationId,
-      agentKind: PERSONAL_ASSISTANT_AGENT_KIND,
-      systemManaged: true,
-    },
-    select: {
-      id: true,
-      model: true,
-      provider: true,
-      role: true,
-      systemPrompt: true,
-      toolPolicy: true,
-    },
-  })
+): Promise<string> =>
+  prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext(${organizationId}),
+        hashtext('personal_assistant_agent')
+      )
+    `
 
-  if (existing) {
-    const agent = await prisma.agent.update({
-      where: { id: existing.id },
-      data: createPersonalAssistantAgentData(organizationId, config, existing),
-      select: { id: true },
+    const existing = await tx.agent.findFirst({
+      where: {
+        organizationId,
+        agentKind: PERSONAL_ASSISTANT_AGENT_KIND,
+        systemManaged: true,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        model: true,
+        provider: true,
+        role: true,
+        systemPrompt: true,
+        toolPolicy: true,
+      },
     })
-    return parseAgentId(agent.id)
-  }
 
-  try {
-    const agent = await prisma.agent.create({
-      data: createPersonalAssistantAgentData(organizationId, config),
-      select: { id: true },
-    })
-    return parseAgentId(agent.id)
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const fallback = await prisma.agent.findFirst({
-        where: {
-          organizationId,
-          agentKind: PERSONAL_ASSISTANT_AGENT_KIND,
-          systemManaged: true,
-        },
-        select: {
-          id: true,
-          model: true,
-          provider: true,
-          role: true,
-          systemPrompt: true,
-          toolPolicy: true,
-        },
-      })
-      if (!fallback) {
-        throw error
-      }
-
-      const agent = await prisma.agent.update({
-        where: { id: fallback.id },
-        data: createPersonalAssistantAgentData(organizationId, config, fallback),
+    if (existing) {
+      const agent = await tx.agent.update({
+        where: { id: existing.id },
+        data: createPersonalAssistantAgentData(organizationId, config, existing),
         select: { id: true },
       })
       return parseAgentId(agent.id)
     }
 
-    throw error
-  }
-}
+    const agent = await tx.agent.create({
+      data: createPersonalAssistantAgentData(organizationId, config),
+      select: { id: true },
+    })
+    return parseAgentId(agent.id)
+  })
 
 export const ensurePersonalAssistantChannel = async (
   prisma: PrismaClient,
@@ -265,10 +294,14 @@ export const ensurePersonalAssistantBootstrap = async (
   prisma: PrismaClient,
   input: PersonalAssistantBootstrapInput,
 ): Promise<PersonalAssistantBootstrapResult> => {
+  const systemTeamId = await ensurePersonalAssistantSystemTeam(prisma, {
+    organizationId: input.organizationId,
+    teamId: input.teamId,
+  })
   const agentId = await ensurePersonalAssistantAgent(prisma, input.organizationId, input.agentConfig)
   const channelId = await ensurePersonalAssistantChannel(prisma, {
     organizationId: input.organizationId,
-    teamId: input.teamId,
+    teamId: systemTeamId,
     userId: input.userId,
   })
   const threadId = await ensureDefaultThread(prisma, channelId)

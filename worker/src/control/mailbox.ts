@@ -20,6 +20,8 @@ import { enqueueRunExecution } from '../queue.js'
 const CLAIM_TIMEOUT_MS = 60_000
 
 type ClaimedMailboxMessage = {
+  actorId: string | null
+  actorType: string | null
   attempts: number
   body: string
   channelId: string | null
@@ -39,6 +41,7 @@ type ClaimedMailboxMessage = {
 
 const buildMailboxActorContext = (input: {
   actorId: string
+  actorType: 'agent' | 'service' | 'user'
   channelId: string
   organizationId: string
   targetAgentId: string
@@ -47,8 +50,8 @@ const buildMailboxActorContext = (input: {
 }): AuthorizedActionContext => ({
   actor: {
     actorId: input.actorId,
-    actorType: 'agent',
-    roles: ['system'],
+    actorType: input.actorType,
+    ...(input.actorType === 'agent' ? { roles: ['system'] } : {}),
   },
   actionContext: {
     agentId: parseAgentId(input.targetAgentId),
@@ -106,6 +109,8 @@ const claimNextMailboxMessage = async (
       FROM next_message
       WHERE amm."id" = next_message."id"
       RETURNING
+        amm."actor_id" AS "actorId",
+        amm."actor_type" AS "actorType",
         amm."body" AS "body",
         amm."attempts" AS "attempts",
         amm."channel_id" AS "channelId",
@@ -172,6 +177,14 @@ export const reclaimExpiredMailboxMessages = async (
   )
 
   return Number(rows)
+}
+
+const resolveMailboxActorType = (message: ClaimedMailboxMessage): 'agent' | 'service' | 'user' => {
+  if (message.actorType === 'agent' || message.actorType === 'service' || message.actorType === 'user') {
+    return message.actorType
+  }
+
+  return 'agent'
 }
 
 export const dispatchNextMailboxMessage = async (
@@ -270,7 +283,8 @@ export const dispatchNextMailboxMessage = async (
       tx,
       {
         actorContext: buildMailboxActorContext({
-          actorId: message.fromAgentId ?? message.toAgentId,
+          actorId: message.actorId ?? message.fromAgentId ?? message.toAgentId,
+          actorType: resolveMailboxActorType(message),
           channelId: thread.channelId,
           organizationId: message.organizationId,
           targetAgentId: message.toAgentId,

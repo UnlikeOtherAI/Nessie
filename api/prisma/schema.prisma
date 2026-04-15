@@ -464,6 +464,7 @@ model Team {
   id        String       @id @default(uuid()) @db.Uuid
   name      String
   projectId String       @map("project_id") @db.Uuid
+  systemManaged Boolean  @default(false) @map("system_managed")
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
   project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -561,6 +562,7 @@ model Message {
   userId    String?           @map("user_id") @db.Uuid
   role      MessageRole
   content   String
+  metadata  Json?             @default("{}")
   createdAt DateTime          @default(now()) @map("created_at")
   thread    Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
   agent     Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
@@ -967,6 +969,8 @@ model AgentMailboxMessage {
   planStepId        String?              @map("plan_step_id") @db.Uuid
   workflowRunId     String?              @map("workflow_run_id") @db.Uuid
   workflowStepRunId String?              @map("workflow_step_run_id") @db.Uuid
+  actorId           String?              @map("actor_id") @db.Uuid
+  actorType         String?              @map("actor_type")
   fromAgentId       String?              @map("from_agent_id") @db.Uuid
   toAgentId         String?              @map("to_agent_id") @db.Uuid
   channelId         String?              @map("channel_id") @db.Uuid
@@ -1033,7 +1037,7 @@ model WorkflowInstallation {
   workflowTemplate        WorkflowTemplate           @relation(fields: [workflowTemplateId], references: [id], onDelete: Cascade)
   runs                    WorkflowRun[]
   triggers                AgentTrigger[]
-  stateEntries            WorkflowStateEntry[]
+  stateEntries            WorkflowStateEntry[]       @relation("WorkflowInstallationStateEntries")
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
@@ -1053,9 +1057,9 @@ model WorkflowStateEntry {
   version               Int                  @default(1)
   createdAt             DateTime             @default(now()) @map("created_at")
   updatedAt             DateTime             @updatedAt @map("updated_at")
-  workflowInstallation   WorkflowInstallation @relation(fields: [workflowInstallationId], references: [id], onDelete: Cascade)
-  workflowRun            WorkflowRun?        @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
-  workflowStepRun        WorkflowStepRun?    @relation(fields: [workflowStepRunId], references: [id], onDelete: SetNull)
+  workflowInstallation  WorkflowInstallation @relation("WorkflowInstallationStateEntries", fields: [workflowInstallationId], references: [id], onDelete: Cascade)
+  workflowRun           WorkflowRun?         @relation("WorkflowRunStateEntries", fields: [workflowRunId], references: [id], onDelete: SetNull)
+  workflowStepRun       WorkflowStepRun?     @relation("WorkflowStepRunStateEntries", fields: [workflowStepRunId], references: [id], onDelete: SetNull)
 
   @@unique([workflowInstallationId, key])
   @@index([organizationId, updatedAt(sort: Desc)])
@@ -1093,7 +1097,7 @@ model WorkflowRun {
   plan                          Plan?                          @relation(fields: [planId], references: [id], onDelete: SetNull)
   planStep                      PlanStep?                      @relation(fields: [planStepId], references: [id], onDelete: SetNull)
   stepRuns                      WorkflowStepRun[]
-  stateEntries                  WorkflowStateEntry[]
+  stateEntries                  WorkflowStateEntry[]          @relation("WorkflowRunStateEntries")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   executionUsageEntries         ExecutionUsageLedger[]
 
@@ -1128,7 +1132,7 @@ model WorkflowStepRun {
   agentRun              Run?                          @relation("WorkflowAgentRun", fields: [agentRunId], references: [id], onDelete: SetNull)
   task                  Task?                         @relation("WorkflowTask", fields: [taskId], references: [id], onDelete: SetNull)
   environmentInstance   ExecutionEnvironmentInstance? @relation("WorkflowStepEnvironment")
-  stateEntries          WorkflowStateEntry[]
+  stateEntries          WorkflowStateEntry[]          @relation("WorkflowStepRunStateEntries")
   executionUsageEntries ExecutionUsageLedger[]
 
   @@unique([workflowRunId, sequence])

@@ -21,6 +21,10 @@ const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRec
   role: message.role,
   content: message.content,
   createdAt: message.createdAt.toISOString(),
+  metadata:
+    message.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+      ? (message.metadata as Record<string, unknown>)
+      : undefined,
   reactions: message.reactions.map((r) => ({
     id: r.id,
     messageId: r.messageId,
@@ -35,7 +39,16 @@ export const findThreadForUser = async (
   prisma: PrismaClient,
   threadId: string,
   userId: string,
-): Promise<(Thread & { channel: { id: string; organizationId: string } }) | null> =>
+): Promise<
+  (Thread & {
+    channel: {
+      id: string
+      organizationId: string
+      type: 'dm' | 'standard'
+      systemChannelType: 'personal_assistant' | null
+    }
+  }) | null
+> =>
   prisma.thread.findFirst({
     where: {
       id: threadId,
@@ -50,6 +63,8 @@ export const findThreadForUser = async (
         select: {
           id: true,
           organizationId: true,
+          type: true,
+          systemChannelType: true,
         },
       },
     },
@@ -135,9 +150,9 @@ export const createThreadMessage = async (
 ): Promise<CreateThreadMessageResult> => {
   const thread = await prisma.thread.findUnique({
     where: { id: input.threadId },
-    include: {
+    select: {
       channel: {
-        include: {
+        select: {
           agentBindings: {
             include: {
               agent: {
@@ -146,6 +161,8 @@ export const createThreadMessage = async (
             },
             orderBy: { createdAt: 'asc' },
           },
+          organizationId: true,
+          systemChannelType: true,
         },
       },
     },
@@ -170,6 +187,10 @@ export const createThreadMessage = async (
     role: b.agent.role,
     systemPrompt: b.agent.systemPrompt,
   }))
+  const resolvedChannelAgents =
+    thread.channel.systemChannelType === 'personal_assistant'
+      ? channelAgents.slice(0, 1)
+      : channelAgents
 
   // Also resolve @mentioned agents not yet bound to this channel. Agent
   // names can contain spaces, so we can't split them out of free text with
@@ -177,10 +198,13 @@ export const createThreadMessage = async (
   // name against the content with the same escape rule the orchestrator
   // uses, so parsing is identical on both sides.
   if (input.content.includes('@')) {
-    const boundIds = new Set(channelAgents.map((a) => a.id))
+    const boundIds = new Set(resolvedChannelAgents.map((a) => a.id))
     const candidates = await prisma.agent.findMany({
       where: {
+        agentKind: 'shared',
         id: { notIn: [...boundIds] },
+        organizationId: thread.channel.organizationId,
+        systemManaged: false,
       },
       select: { id: true, name: true, role: true, systemPrompt: true },
     })
@@ -189,7 +213,7 @@ export const createThreadMessage = async (
       const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       const mentionRe = new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i')
       if (mentionRe.test(input.content)) {
-        channelAgents.push({
+        resolvedChannelAgents.push({
           id: agent.id,
           name: agent.name,
           role: agent.role,
@@ -202,7 +226,7 @@ export const createThreadMessage = async (
   return {
     kind: 'created',
     message,
-    channelAgents,
+    channelAgents: resolvedChannelAgents,
   }
 }
 

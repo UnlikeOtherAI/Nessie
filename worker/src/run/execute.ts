@@ -52,6 +52,7 @@ type ExecutionDependencies = {
 
 type RunContext = {
   agent: {
+    agentKind: 'personal_assistant' | 'shared'
     id: string
     name: string
     model: string | null
@@ -62,6 +63,7 @@ type RunContext = {
   channel: {
     id: string
     organizationId: string
+    systemChannelType: 'personal_assistant' | null
   }
   run: {
     id: string
@@ -312,22 +314,54 @@ export const detectReferencedRecallIds = (
       : [],
   )
 
+const PERSONAL_ASSISTANT_MEMORY_ORIGINS = new Set([
+  'personal_assistant_dm',
+  'user_authored_workspace_message',
+  'user_conversation_summary',
+])
+
+const isSuppressedMemory = (metadata: unknown): boolean => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return false
+  }
+
+  const record = metadata as Record<string, unknown>
+  return record['suppressed'] === true || record['suppressionState'] === 'suppressed'
+}
+
+const filterPersonalAssistantMemories = (results: SearchResult[]): SearchResult[] =>
+  results.filter((result) => {
+    if (isSuppressedMemory(result.metadata)) {
+      return false
+    }
+    if (!result.metadata || typeof result.metadata !== 'object' || Array.isArray(result.metadata)) {
+      return false
+    }
+
+    const memoryOrigin = (result.metadata as Record<string, unknown>)['memory_origin']
+    return typeof memoryOrigin === 'string' && PERSONAL_ASSISTANT_MEMORY_ORIGINS.has(memoryOrigin)
+  })
+
 const buildScopesForAgent = (
   channel: RunContext['channel'],
   agentId: string,
 ): WsScope[] => [
   {
-    kind: 'organization',
-    organizationId: parseOrganizationId(channel.organizationId),
-  },
-  {
     kind: 'channel',
     channelId: parseChannelId(channel.id),
   },
-  {
-    kind: 'agent',
-    agentId: parseAgentId(agentId),
-  },
+  ...(channel.systemChannelType === 'personal_assistant'
+    ? []
+    : [
+        {
+          kind: 'organization' as const,
+          organizationId: parseOrganizationId(channel.organizationId),
+        },
+        {
+          kind: 'agent' as const,
+          agentId: parseAgentId(agentId),
+        },
+      ]),
 ]
 
 const publishRunUpdated = async (
@@ -450,6 +484,7 @@ const loadRunContext = async (
     include: {
       agent: {
         select: {
+          agentKind: true,
           id: true,
           model: true,
           name: true,
@@ -465,6 +500,7 @@ const loadRunContext = async (
             select: {
               id: true,
               organizationId: true,
+              systemChannelType: true,
             },
           },
         },
@@ -541,22 +577,38 @@ const retrieveRelevantMemories = async (
   payload: RunExecuteJobPayload,
   prompt: string,
 ): Promise<SearchResult[]> => {
+  const effectiveUserId =
+    payload.actorContext.actionContext.effectiveUserId
+    ?? (payload.actorContext.actor.actorType === 'user'
+      ? payload.actorContext.actor.actorId
+      : undefined)
+
   try {
-    return await searchAndLogThoughts(
+    const memories = await searchAndLogThoughts(
       {
         channelId: context.channel.id,
         includeReasoning: false,
         limit: MAX_MEMORY_RESULTS,
         mode: 'hybrid',
         organizationId: context.channel.organizationId,
-        outputAudienceId: context.channel.id,
-        outputAudienceType: 'channel',
+        outputAudienceId:
+          context.channel.systemChannelType === 'personal_assistant' && effectiveUserId
+            ? effectiveUserId
+            : context.channel.id,
+        outputAudienceType:
+          context.channel.systemChannelType === 'personal_assistant' && effectiveUserId
+            ? 'user'
+            : 'channel',
         query: prompt,
         sessionId: payload.actorContext.actionContext.sessionId,
-        userId: payload.actorContext.actor.actorId,
+        userId: effectiveUserId ?? payload.actorContext.actor.actorId,
       },
       deps.searchConfig,
     )
+
+    return context.channel.systemChannelType === 'personal_assistant'
+      ? filterPersonalAssistantMemories(memories)
+      : memories
   } catch (error) {
     console.warn(
       '[worker] Memory search failed, continuing without memories:',
@@ -814,7 +866,26 @@ export const executeRunJob = async (
         if (!resolvedToolIds.has(toolName)) {
           return { output: `Tool "${toolName}" is not allowed for this agent.`, success: false, inputSummary: JSON.stringify(args).slice(0, 200) }
         }
-        return executeBuiltinTool(toolName, args)
+        return executeBuiltinTool(toolName, args, {
+          agentId: context.agent.id,
+          actorContext: payload.actorContext,
+          channel: {
+            id: context.channel.id,
+            organizationId: parseOrganizationId(context.channel.organizationId),
+            systemChannelType: context.channel.systemChannelType,
+          },
+          memoryCaptureConfig: {
+            modelClient: deps.modelClient,
+            pool: deps.searchConfig.pool,
+          },
+          prisma: deps.prisma,
+          realtimeTransport: deps.realtimeTransport,
+          run: {
+            id: context.run.id,
+            messageId: payload.messageId,
+            threadId: context.run.threadId,
+          },
+        })
       },
       initialMessages,
       runInference: async (messages) => {

@@ -19,7 +19,7 @@ export type AuthProviderDescriptor = {
 
 export type BootstrapModeResponse = {
   bootstrapMode: true
-  bootstrapUrl: '/admin/bootstrap'
+  bootstrapUrl: '/bootstrap'
 }
 
 export type ChannelMetadataRecord = {
@@ -35,6 +35,7 @@ export type ChannelRecord = {
   label: string
   metadata?: ChannelMetadataRecord
   organizationId: string
+  systemChannelType?: 'personal_assistant' | string
   teamId: string
   type: 'dm' | 'standard'
   unreadCount: number
@@ -107,6 +108,7 @@ export type ThreadMessageRecord = {
   content: string
   createdAt: string
   id: string
+  metadata?: Record<string, unknown>
   reactions?: MessageReaction[]
   role: 'assistant' | 'system' | 'user'
   threadId: string
@@ -131,9 +133,19 @@ export type PersonalAssistantInstanceRecord = {
   updatedAt: string
 }
 
+export type PersonalAssistantConfigSummary = {
+  agentId: string
+  model?: string
+  provider?: string
+  systemPromptPreview?: string
+  toolIds: string[]
+  updatedAt: string
+}
+
 export type PersonalAssistantStateResponse = {
   agent: AgentRecord | null
   channel: ChannelRecord | null
+  configSummary?: PersonalAssistantConfigSummary
   instance?: PersonalAssistantInstanceRecord | null
   thread?: ThreadRecord | null
 }
@@ -141,6 +153,7 @@ export type PersonalAssistantStateResponse = {
 export type PersonalAssistantBootstrapResponse = {
   agent: AgentRecord
   channel: ChannelRecord
+  configSummary?: PersonalAssistantConfigSummary
   instance?: PersonalAssistantInstanceRecord | null
   thread: ThreadRecord
 }

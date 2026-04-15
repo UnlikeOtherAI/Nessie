@@ -74,6 +74,7 @@ export const AdminShellLayout = () => {
   );
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
+    channelIds: personalAssistantChannel ? [personalAssistantChannel.id] : [],
     threadId: currentChannelId
       ? channels.find((channel) => channel.id === currentChannelId)?.defaultThreadId
       : undefined,

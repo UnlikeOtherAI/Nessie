@@ -4,6 +4,10 @@ export { extractMetadata, type ThoughtMetadata } from './extract-metadata.js'
 export { extractReasoning, type ReasoningExtraction } from './extract-reasoning.js'
 export { captureThought, type CaptureThoughtInput, type CapturedThought, type CaptureConfig } from './capture.js'
 export {
+  captureUserMessageMemory,
+  type UserMessageMemoryOrigin,
+} from './user-message-memory.js'
+export {
   searchThoughts,
   searchAndLogThoughts,
   SearchEmbeddingError,

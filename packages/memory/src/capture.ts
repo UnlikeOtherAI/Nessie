@@ -21,6 +21,7 @@ export type CaptureThoughtInput = {
   visibility?: 'private' | 'channel' | 'team' | 'project' | 'organization'
   sensitivityTier?: 'normal' | 'sensitive' | 'restricted'
   importance?: number
+  metadata?: Record<string, unknown>
 }
 
 export type CapturedThought = {
@@ -207,6 +208,13 @@ export const captureThought = async (
     extractMetadata(input.content, config.modelClient).catch(() => null),
     extractReasoning(input.content, config.modelClient).catch(() => null),
   ])
+  const mergedMetadata =
+    metadata || input.metadata
+      ? ({
+          ...(metadata ?? {}),
+          ...(input.metadata ?? {}),
+        } as ThoughtMetadata)
+      : null
 
   // Insert thought
   const sensitivityTier = input.sensitivityTier ?? 'normal'
@@ -241,7 +249,7 @@ export const captureThought = async (
       visibility,
       sensitivityTier,
       importance,
-      metadata ? JSON.stringify(metadata) : null,
+      mergedMetadata ? JSON.stringify(mergedMetadata) : null,
     ],
   )
 
@@ -288,7 +296,7 @@ export const captureThought = async (
     id: thoughtId,
     content: input.content,
     contentHash,
-    metadata,
+    metadata: mergedMetadata,
     reasoning,
     isDuplicate: false,
     embeddingFailed: embedding === null,

@@ -1,4 +1,8 @@
-import type { AgentRecord, ChannelRecord } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  ChannelRecord,
+  PersonalAssistantConfigSummary,
+} from '../../../lib/api-client'
 import { isPersonalAssistantChannel } from '../../../facades/personal-assistant/hooks'
 
 type PersonalAssistantSidebarEntryProps = {
@@ -11,6 +15,7 @@ type PersonalAssistantSidebarEntryProps = {
 type PersonalAssistantConfigBannerProps = {
   agent?: AgentRecord | null
   channel?: ChannelRecord | null
+  configSummary?: PersonalAssistantConfigSummary
 }
 
 const assistantGlyphClassName =
@@ -25,7 +30,11 @@ const pillClassName =
   'rounded-full border border-[rgba(124,58,237,0.18)] bg-[rgba(124,58,237,0.12)] ' +
   'px-2 py-0.5 text-[10px] font-semibold text-[#d8b4fe]'
 
-const assistantPills = (agent?: AgentRecord | null, channel?: ChannelRecord | null) => {
+const assistantPills = (
+  agent?: AgentRecord | null,
+  channel?: ChannelRecord | null,
+  configSummary?: PersonalAssistantConfigSummary,
+) => {
   const pills: Array<string> = []
 
   if (agent?.systemManaged) {
@@ -44,8 +53,13 @@ const assistantPills = (agent?: AgentRecord | null, channel?: ChannelRecord | nu
     )
   }
 
-  if (agent?.provider || agent?.model) {
-    pills.push([agent.provider, agent.model].filter(Boolean).join(' / '))
+  const providerModel = [agent?.provider, agent?.model]
+    .filter(Boolean)
+    .join(' / ')
+    || [configSummary?.provider, configSummary?.model].filter(Boolean).join(' / ')
+
+  if (providerModel) {
+    pills.push(providerModel)
   }
 
   return pills
@@ -95,12 +109,13 @@ export const PersonalAssistantSidebarEntry = ({
 export const PersonalAssistantConfigBanner = ({
   agent,
   channel,
+  configSummary,
 }: PersonalAssistantConfigBannerProps) => {
   if (!isPersonalAssistantChannel(channel)) {
     return null
   }
 
-  const pills = assistantPills(agent, channel)
+  const pills = assistantPills(agent, channel, configSummary)
 
   return (
     <section className="mx-5 mt-3 rounded-xl border border-[rgba(124,58,237,0.18)] bg-[rgba(124,58,237,0.08)] px-4 py-3">
@@ -128,6 +143,22 @@ export const PersonalAssistantConfigBanner = ({
               ))}
             </div>
           )}
+          {configSummary ? (
+            <div className="mt-3 grid gap-2 text-xs leading-5 text-[color:var(--tx2)]">
+              <div>
+                <span className="font-semibold text-white/85">Prompt preview:</span>{' '}
+                {configSummary.systemPromptPreview?.trim() || 'No custom system prompt configured.'}
+              </div>
+              <div>
+                <span className="font-semibold text-white/85">Enabled tools:</span>{' '}
+                {configSummary.toolIds.length > 0 ? configSummary.toolIds.join(', ') : 'No tool overrides enabled.'}
+              </div>
+              <div>
+                <span className="font-semibold text-white/85">Config updated:</span>{' '}
+                {new Date(configSummary.updatedAt).toLocaleString()}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

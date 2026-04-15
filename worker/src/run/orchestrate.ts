@@ -26,9 +26,16 @@ export const executeOrchestrateDecideJob = async (
   payload: OrchestrateDecideJobPayload,
 ): Promise<void> => {
   const { actorContext, channelAgents, channelId, content, messageId, role, threadId } = payload
+  const channel = await deps.prisma.channel.findUnique({
+    where: { id: channelId },
+    select: {
+      organizationId: true,
+      systemChannelType: true,
+    },
+  })
 
   // Belt-and-suspenders guard — API already checks before enqueueing.
-  if (channelAgents.length === 0) {
+  if (channelAgents.length === 0 || !channel) {
     return
   }
 
@@ -64,17 +71,25 @@ export const executeOrchestrateDecideJob = async (
     return
   }
 
-  const scopes = [
-    {
-      kind: 'organization' as const,
-      organizationId: actorContext.tenant.organizationId,
-    },
-    {
-      kind: 'channel' as const,
-      // channelId is already ChannelId-branded from the payload schema — no re-parse needed.
-      channelId,
-    },
-  ]
+  const scopes =
+    channel.systemChannelType === 'personal_assistant'
+      ? [
+          {
+            kind: 'channel' as const,
+            channelId,
+          },
+        ]
+      : [
+          {
+            kind: 'organization' as const,
+            organizationId: actorContext.tenant.organizationId,
+          },
+          {
+            kind: 'channel' as const,
+            // channelId is already ChannelId-branded from the payload schema — no re-parse needed.
+            channelId,
+          },
+        ]
 
   for (const decision of decisions) {
     if (decision.action === 'reply') {
@@ -132,11 +147,16 @@ export const executeOrchestrateDecideJob = async (
 
       // Publish outside the transaction — pg_notify cannot be rolled back, but
       // the run/task are now durably committed so the event is correct.
+      const publishScopes =
+        channel.systemChannelType === 'personal_assistant'
+          ? scopes
+          : [
+              ...scopes,
+              { kind: 'agent' as const, agentId: parseAgentId(run.agentId) },
+            ]
+
       await deps.realtimeTransport.publishWs(
-        [
-          ...scopes,
-          { kind: 'agent' as const, agentId: parseAgentId(run.agentId) },
-        ],
+        publishScopes,
         {
           data: {
             agentId: parseAgentId(run.agentId),

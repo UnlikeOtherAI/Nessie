@@ -189,6 +189,7 @@ export const listChannelsForUser = async (
     id: parseChannelId(channel.id),
     label: channel.label,
     type: channel.type,
+    systemChannelType: channel.systemChannelType ?? undefined,
     visibility: channel.visibility,
     organizationId: parseOrganizationId(channel.organizationId),
     teamId: parseTeamId(channel.teamId),
