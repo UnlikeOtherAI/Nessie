@@ -122,6 +122,129 @@ const isActiveRun = (status: WorkflowRunRecord['status']): boolean =>
 const isTerminalRun = (status: WorkflowRunRecord['status']): boolean =>
   status === 'cancelled' || status === 'completed' || status === 'failed'
 
+type WorkflowTemplateDetailProps = {
+  installationCount: number
+  latestInstallation?: WorkflowInstallationRecord
+  onEdit: () => void
+  template: WorkflowTemplateRecord
+}
+
+const WorkflowTemplateDetail = ({
+  installationCount,
+  latestInstallation,
+  onEdit,
+  template,
+}: WorkflowTemplateDetailProps) => {
+  const stepCount = template.graph.steps.length
+  const environmentCount = template.requiredEnvironmentTemplateIds.length
+
+  return (
+    <div className="grid gap-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="min-w-0 flex-1 text-xl font-semibold text-white">
+                {template.name}
+              </h2>
+              <StatusPill tone={latestInstallation ? 'accent' : 'muted'}>
+                {latestInstallation ? 'installed' : 'saved'}
+              </StatusPill>
+            </div>
+            <div className="mt-3 text-sm text-[color:var(--tx2)]">
+              Workflow template {template.id.slice(0, 8)} with {stepCount} step
+              {stepCount === 1 ? '' : 's'}.
+            </div>
+          </div>
+
+          <button
+            className="admin-button admin-button-primary"
+            onClick={onEdit}
+            type="button"
+          >
+            Edit
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {[
+          ['Version', `${template.version}`],
+          ['Updated', formatTimestamp(template.updatedAt)],
+          ['Installations', `${installationCount}`],
+          ['Environment templates', `${environmentCount}`],
+        ].map(([label, value]) => (
+          <div
+            className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-3"
+            key={label}
+          >
+            <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+              {label}
+            </div>
+            <div className="mt-2 text-sm text-white">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+        <div className={sectionTitle}>Latest installation</div>
+        {latestInstallation ? (
+          <div className="mt-3 rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-semibold text-white">
+                {latestInstallation.id.slice(0, 8)}
+              </div>
+              <StatusPill tone={getInstallationTone(latestInstallation.status)}>
+                {latestInstallation.status}
+              </StatusPill>
+            </div>
+            <div className="mt-2 text-sm text-[color:var(--tx2)]">
+              Version {latestInstallation.workflowTemplateVersion}
+              {latestInstallation.channelId
+                ? ` · channel ${latestInstallation.channelId.slice(0, 8)}`
+                : ' · not bound to a channel'}
+            </div>
+            <div className="mt-1 text-xs text-[color:var(--tx3)]">
+              Updated {formatTimestamp(latestInstallation.updatedAt)}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-xl border border-[color:var(--sep)] bg-black/10 p-4 text-sm text-[color:var(--tx3)]">
+            This workflow has not been installed yet.
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+        <div className={sectionTitle}>Workflow structure</div>
+        <div className="mt-3 grid gap-2">
+          {template.graph.steps.map((step, index) => (
+            <div
+              className="rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-2"
+              key={step.id}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-semibold text-white">
+                  {index + 1}. {step.title ?? step.type}
+                </div>
+                <span className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+                  {step.type}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-[color:var(--tx3)]">{step.id}</div>
+            </div>
+          ))}
+          {template.graph.steps.length === 0 ? (
+            <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4 text-center text-sm text-[color:var(--tx3)]">
+              No steps defined yet.
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type WorkflowInstallationDetailProps = {
   installation: WorkflowInstallationRecord
   onSelectRun: (runId: string | undefined) => void
@@ -427,6 +550,9 @@ export const WorkflowsPage = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const { data: templates = [] } = useWorkflowTemplates(isOwner)
   const { data: installations = [] } = useWorkflowInstallations(isOwner)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<
+    string | undefined
+  >(undefined)
   const [selectedInstallationId, setSelectedInstallationId] = useState<
     string | undefined
   >(undefined)
@@ -466,6 +592,25 @@ export const WorkflowsPage = () => {
     }
     return map
   }, [sortedInstallations])
+
+  const installationCountByTemplateId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const installation of sortedInstallations) {
+      map.set(
+        installation.workflowTemplateId,
+        (map.get(installation.workflowTemplateId) ?? 0) + 1,
+      )
+    }
+    return map
+  }, [sortedInstallations])
+
+  const selectedTemplate = useMemo(
+    () =>
+      selectedTemplateId
+        ? sortedTemplates.find((template) => template.id === selectedTemplateId)
+        : undefined,
+    [selectedTemplateId, sortedTemplates],
+  )
 
   const effectiveInstallationId =
     selectedInstallationId &&
@@ -513,6 +658,7 @@ export const WorkflowsPage = () => {
               return (
                 <ColumnBrowserItem
                   caption={`v${template.version} · updated ${formatTimestamp(template.updatedAt)}`}
+                  isSelected={template.id === selectedTemplate?.id}
                   key={template.id}
                   meta={
                     <StatusPill tone={linkedInstallation ? 'accent' : 'muted'}>
@@ -520,7 +666,9 @@ export const WorkflowsPage = () => {
                     </StatusPill>
                   }
                   onClick={() => {
-                    void navigate(`/agents/workflow-designer/${template.id}`)
+                    setSelectedTemplateId(template.id)
+                    setSelectedInstallationId(undefined)
+                    setSelectedRunId(undefined)
                   }}
                   subtitle={linkedInstallation ? linkedInstallation.id.slice(0, 8) : 'Ready to edit'}
                   title={template.name}
@@ -547,7 +695,9 @@ export const WorkflowsPage = () => {
               return (
                 <ColumnBrowserItem
                   caption={`Updated ${formatTimestamp(installation.updatedAt)}`}
-                  isSelected={installation.id === effectiveInstallationId}
+                  isSelected={
+                    !selectedTemplate && installation.id === effectiveInstallationId
+                  }
                   key={installation.id}
                   meta={
                     <StatusPill tone={getInstallationTone(installation.status)}>
@@ -555,6 +705,7 @@ export const WorkflowsPage = () => {
                     </StatusPill>
                   }
                   onClick={() => {
+                    setSelectedTemplateId(undefined)
                     setSelectedInstallationId(installation.id)
                     setSelectedRunId(undefined)
                   }}
@@ -578,7 +729,27 @@ export const WorkflowsPage = () => {
     </ColumnBrowserColumn>,
   ]
 
-  if (selectedInstallation) {
+  if (selectedTemplate) {
+    columns.push(
+      <ColumnBrowserColumn
+        key={`template-${selectedTemplate.id}`}
+        onBack={() => setSelectedTemplateId(undefined)}
+        showBack={isMobile}
+        title={selectedTemplate.name}
+      >
+        <WorkflowTemplateDetail
+          installationCount={
+            installationCountByTemplateId.get(selectedTemplate.id) ?? 0
+          }
+          latestInstallation={latestInstallationByTemplateId.get(selectedTemplate.id)}
+          onEdit={() =>
+            void navigate(`/agents/workflow-designer/${selectedTemplate.id}`)
+          }
+          template={selectedTemplate}
+        />
+      </ColumnBrowserColumn>,
+    )
+  } else if (selectedInstallation) {
     columns.push(
       <ColumnBrowserColumn
         key={`installation-${selectedInstallation.id}`}
@@ -621,7 +792,9 @@ export const WorkflowsPage = () => {
         activeColumn={
           selectedRunId
             ? 2
-            : selectedInstallationId && selectedInstallation
+            : selectedTemplate
+              ? 1
+              : selectedInstallationId && selectedInstallation
               ? 1
               : 0
         }
