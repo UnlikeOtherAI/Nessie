@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
+import { TriggerEditorDialog } from '../components/features/triggers/TriggerEditorDialog'
 import {
   useFireTrigger,
   usePauseTrigger,
@@ -8,8 +9,20 @@ import {
   useTriggers,
   useUpcomingTriggers,
 } from '../facades/triggers/hooks'
+import { useAgents } from '../facades/agents/hooks'
+import { useChannels } from '../facades/channels/hooks'
+import {
+  useWorkflowInstallations,
+  useWorkflowTemplates,
+} from '../facades/workflows/hooks'
 import { useMediaQuery } from '../hooks/useMediaQuery'
-import type { AgentTriggerRecord } from '../lib/api-client'
+import type {
+  AgentRecord,
+  AgentTriggerRecord,
+  ChannelRecord,
+  WorkflowInstallationRecord,
+  WorkflowTemplateRecord,
+} from '../lib/api-client'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { StatusPill } from '../components/primitives/StatusPill'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
@@ -28,17 +41,6 @@ const parseTriggerHash = (hash: string): string | undefined => {
 const formatTimestamp = (value?: string) =>
   value ? new Date(value).toLocaleString() : '—'
 
-const formatTriggerTarget = (trigger: {
-  agentId?: string
-  workflowInstallationId?: string
-}): string => {
-  if (trigger.agentId) return `agent ${trigger.agentId.slice(0, 8)}`
-  if (trigger.workflowInstallationId) {
-    return `workflow ${trigger.workflowInstallationId.slice(0, 8)}`
-  }
-  return 'unassigned'
-}
-
 const getTriggerTone = (status: AgentTriggerRecord['status']) => {
   switch (status) {
     case 'active':
@@ -52,15 +54,144 @@ const getTriggerTone = (status: AgentTriggerRecord['status']) => {
   }
 }
 
-type TriggerDetailProps = {
-  trigger: AgentTriggerRecord
+const getTriggerTypeLabel = (trigger: AgentTriggerRecord): string => {
+  if (trigger.type === 'manual') return 'Manual start'
+  if (trigger.type === 'interval') return 'Repeating interval'
+  if (trigger.type === 'webhook') return 'Webhook'
+  if (trigger.type === 'event') return 'System event'
+
+  const cronExpression =
+    typeof trigger.config?.cron === 'string' && trigger.config.cron.trim().length > 0
+      ? trigger.config.cron
+      : undefined
+
+  return cronExpression ? 'Cron schedule' : 'One-off schedule'
 }
 
-const TriggerDetail = ({ trigger }: TriggerDetailProps) => {
+const getWorkflowInstallationLabel = (
+  installation: WorkflowInstallationRecord,
+  templatesById: Map<string, WorkflowTemplateRecord>,
+): string => {
+  const template = templatesById.get(installation.workflowTemplateId)
+  if (template) {
+    return `${template.name} · ${installation.id.slice(0, 8)}`
+  }
+
+  return `Workflow ${installation.id.slice(0, 8)}`
+}
+
+const formatTriggerTarget = (
+  trigger: Pick<
+    AgentTriggerRecord,
+    'agentId' | 'targetChannelId' | 'workflowInstallationId'
+  >,
+  input: {
+    agentsById: Map<string, AgentRecord>
+    channelsById: Map<string, ChannelRecord>
+    workflowInstallationsById: Map<string, WorkflowInstallationRecord>
+    workflowTemplatesById: Map<string, WorkflowTemplateRecord>
+  },
+): string => {
+  if (trigger.agentId) {
+    const agent = input.agentsById.get(trigger.agentId)
+    const channel = trigger.targetChannelId
+      ? input.channelsById.get(trigger.targetChannelId)
+      : undefined
+    if (agent && channel) {
+      return `${agent.name} in #${channel.label}`
+    }
+    if (agent) {
+      return agent.name
+    }
+    return `agent ${trigger.agentId.slice(0, 8)}`
+  }
+
+  if (trigger.workflowInstallationId) {
+    const installation = input.workflowInstallationsById.get(trigger.workflowInstallationId)
+    if (installation) {
+      return getWorkflowInstallationLabel(installation, input.workflowTemplatesById)
+    }
+    return `workflow ${trigger.workflowInstallationId.slice(0, 8)}`
+  }
+
+  return 'unassigned'
+}
+
+const getTriggerConfigRows = (trigger: AgentTriggerRecord): Array<[string, string]> => {
+  if (trigger.type === 'scheduled') {
+    const cronExpression =
+      typeof trigger.config?.cron === 'string' && trigger.config.cron.trim().length > 0
+        ? trigger.config.cron
+        : undefined
+    const timezone =
+      typeof trigger.config?.timezone === 'string' && trigger.config.timezone.trim().length > 0
+        ? trigger.config.timezone
+        : undefined
+
+    if (cronExpression) {
+      return [
+        ['Schedule', cronExpression],
+        ['Timezone', timezone ?? 'Default'],
+      ]
+    }
+
+    return [['Run at', formatTimestamp(trigger.nextRunAt)]]
+  }
+
+  if (trigger.type === 'interval') {
+    const intervalMinutes =
+      typeof trigger.config?.interval_minutes === 'number'
+        ? `${trigger.config.interval_minutes} minutes`
+        : 'Not set'
+    return [
+      ['Every', intervalMinutes],
+      ['First run', formatTimestamp(trigger.nextRunAt)],
+    ]
+  }
+
+  if (trigger.type === 'webhook') {
+    const authMode = trigger.config?.authMode === 'token' ? 'Shared token' : 'Signed request'
+    return [
+      ['Auth mode', authMode],
+      ['Endpoint', `/api/triggers/${trigger.id}/webhook`],
+    ]
+  }
+
+  if (trigger.type === 'event') {
+    const events = Array.isArray(trigger.config?.events)
+      ? trigger.config.events.filter(
+          (value): value is string => typeof value === 'string' && value.trim().length > 0,
+        )
+      : []
+
+    return [['Events', events.length > 0 ? events.join(', ') : 'Not configured']]
+  }
+
+  return [['Mode', 'Run when manually started']]
+}
+
+type TriggerDetailProps = {
+  agentsById: Map<string, AgentRecord>
+  channelsById: Map<string, ChannelRecord>
+  onEdit: () => void
+  trigger: AgentTriggerRecord
+  workflowInstallationsById: Map<string, WorkflowInstallationRecord>
+  workflowTemplatesById: Map<string, WorkflowTemplateRecord>
+}
+
+const TriggerDetail = ({
+  agentsById,
+  channelsById,
+  onEdit,
+  trigger,
+  workflowInstallationsById,
+  workflowTemplatesById,
+}: TriggerDetailProps) => {
   const pauseTrigger = usePauseTrigger()
   const resumeTrigger = useResumeTrigger()
   const fireTrigger = useFireTrigger()
   const { data: history = [] } = useTriggerHistory(trigger.id, 8)
+  const triggerConfigRows = getTriggerConfigRows(trigger)
 
   return (
     <div className="grid gap-4">
@@ -77,11 +208,23 @@ const TriggerDetail = ({ trigger }: TriggerDetailProps) => {
             </div>
             <div className="mt-3 text-sm text-[color:var(--tx2)]">
               {trigger.description ??
-                `Target ${formatTriggerTarget(trigger)} via ${trigger.type}.`}
+                `Target ${formatTriggerTarget(trigger, {
+                  agentsById,
+                  channelsById,
+                  workflowInstallationsById,
+                  workflowTemplatesById,
+                })} via ${getTriggerTypeLabel(trigger).toLowerCase()}.`}
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button
+              className="admin-button admin-button-primary"
+              onClick={onEdit}
+              type="button"
+            >
+              Edit
+            </button>
             <button
               className="admin-button admin-button-secondary"
               onClick={() =>
@@ -118,10 +261,16 @@ const TriggerDetail = ({ trigger }: TriggerDetailProps) => {
 
       <div className="grid gap-3 lg:grid-cols-2">
         {[
-          ['Type', trigger.type],
-          ['Target', formatTriggerTarget(trigger)],
+          ['Type', getTriggerTypeLabel(trigger)],
+          ['Target', formatTriggerTarget(trigger, {
+            agentsById,
+            channelsById,
+            workflowInstallationsById,
+            workflowTemplatesById,
+          })],
           ['Next run', formatTimestamp(trigger.nextRunAt)],
           ['Last fired', formatTimestamp(trigger.lastFiredAt)],
+          ...triggerConfigRows,
         ].map(([label, value]) => (
           <div
             className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-3"
@@ -174,16 +323,21 @@ const TriggerDetail = ({ trigger }: TriggerDetailProps) => {
 }
 
 export const TriggersPage = () => {
-  const navigate = useNavigate()
   const location = useLocation()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const { data: triggers = [] } = useTriggers(isOwner)
   const { data: scheduled = [] } = useUpcomingTriggers(isOwner)
+  const { data: agents = [] } = useAgents()
+  const { data: channels = [] } = useChannels()
+  const { data: workflowInstallations = [] } = useWorkflowInstallations(isOwner)
+  const { data: workflowTemplates = [] } = useWorkflowTemplates(isOwner)
   const [selectedTriggerId, setSelectedTriggerId] = useState<string | undefined>(
     undefined,
   )
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [editingTriggerId, setEditingTriggerId] = useState<string | undefined>(undefined)
 
   const sortedTriggers = useMemo(
     () =>
@@ -199,6 +353,26 @@ export const TriggersPage = () => {
         (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
       ),
     [scheduled],
+  )
+
+  const agentsById = useMemo(
+    () => new Map(agents.map((agent) => [agent.id, agent])),
+    [agents],
+  )
+  const channelsById = useMemo(
+    () => new Map(channels.map((channel) => [channel.id, channel])),
+    [channels],
+  )
+  const workflowInstallationsById = useMemo(
+    () =>
+      new Map(
+        workflowInstallations.map((installation) => [installation.id, installation]),
+      ),
+    [workflowInstallations],
+  )
+  const workflowTemplatesById = useMemo(
+    () => new Map(workflowTemplates.map((template) => [template.id, template])),
+    [workflowTemplates],
   )
 
   useEffect(() => {
@@ -220,6 +394,32 @@ export const TriggersPage = () => {
     () => sortedTriggers.find((trigger) => trigger.id === effectiveTriggerId),
     [effectiveTriggerId, sortedTriggers],
   )
+  const editingTrigger = useMemo(
+    () => sortedTriggers.find((trigger) => trigger.id === editingTriggerId),
+    [editingTriggerId, sortedTriggers],
+  )
+  const defaultCreateTarget = useMemo(() => {
+    if (!selectedTrigger) {
+      return undefined
+    }
+
+    if (selectedTrigger.agentId) {
+      return {
+        targetKind: 'agent' as const,
+        agentId: selectedTrigger.agentId,
+        targetChannelId: selectedTrigger.targetChannelId,
+      }
+    }
+
+    if (selectedTrigger.workflowInstallationId) {
+      return {
+        targetKind: 'workflow' as const,
+        workflowInstallationId: selectedTrigger.workflowInstallationId,
+      }
+    }
+
+    return undefined
+  }, [selectedTrigger])
 
   if (!isOwner) {
     return (
@@ -234,7 +434,7 @@ export const TriggersPage = () => {
       headerAction={
         <button
           className="admin-button admin-button-primary"
-          onClick={() => void navigate('/agents')}
+          onClick={() => setCreateDialogOpen(true)}
           type="button"
         >
           New trigger
@@ -259,7 +459,12 @@ export const TriggersPage = () => {
                 key={trigger.id}
                 meta={<StatusPill tone={getTriggerTone(trigger.status)}>{trigger.status}</StatusPill>}
                 onClick={() => setSelectedTriggerId(trigger.id)}
-                subtitle={`${formatTriggerTarget(trigger)} · ${trigger.type}`}
+                subtitle={`${formatTriggerTarget(trigger, {
+                  agentsById,
+                  channelsById,
+                  workflowInstallationsById,
+                  workflowTemplatesById,
+                })} · ${getTriggerTypeLabel(trigger)}`}
                 title={trigger.name ?? trigger.type}
               >
                 {trigger.description ?? 'Ready to fire or schedule.'}
@@ -289,7 +494,7 @@ export const TriggersPage = () => {
                       {trigger.name ?? trigger.type}
                     </div>
                     <div className="mt-1 text-xs text-[color:var(--tx3)]">
-                      {trigger.type} · {formatTimestamp(trigger.nextRunAt)}
+                      {getTriggerTypeLabel(trigger)} · {formatTimestamp(trigger.nextRunAt)}
                     </div>
                   </div>
                   <StatusPill tone={getTriggerTone(trigger.status)}>
@@ -317,7 +522,14 @@ export const TriggersPage = () => {
         showBack={isMobile}
         title={selectedTrigger.name ?? selectedTrigger.type}
       >
-        <TriggerDetail trigger={selectedTrigger} />
+        <TriggerDetail
+          agentsById={agentsById}
+          channelsById={channelsById}
+          onEdit={() => setEditingTriggerId(selectedTrigger.id)}
+          trigger={selectedTrigger}
+          workflowInstallationsById={workflowInstallationsById}
+          workflowTemplatesById={workflowTemplatesById}
+        />
       </ColumnBrowserColumn>,
     )
   }
@@ -327,6 +539,22 @@ export const TriggersPage = () => {
       <ColumnBrowserViewport
         activeColumn={selectedTriggerId && selectedTrigger ? 1 : 0}
         columns={columns}
+      />
+      <TriggerEditorDialog
+        agents={agents}
+        channels={channels}
+        defaultTarget={defaultCreateTarget}
+        onClose={() => {
+          setCreateDialogOpen(false)
+          setEditingTriggerId(undefined)
+        }}
+        onSaved={(trigger) => {
+          setSelectedTriggerId(trigger.id)
+        }}
+        open={createDialogOpen || Boolean(editingTrigger)}
+        trigger={editingTrigger}
+        workflowInstallations={workflowInstallations}
+        workflowTemplates={workflowTemplates}
       />
     </div>
   )
