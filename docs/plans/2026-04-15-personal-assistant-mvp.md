@@ -96,6 +96,8 @@ This keeps the MVP small and gives us a clean path to future managed assistants.
 - Opening it finds or creates that user's private DM.
 - The assistant behaves like a normal chat assistant inside that DM.
 - The assistant can see whatever the user can already see.
+- The assistant can search across conversations, projects, channels, groups,
+  meetings, and other workspace surfaces anywhere the user has access.
 - The assistant can search the user's past authored messages across the
   workspace and use them to ground replies and actions.
 - The assistant remains anchored to the user's DM as its control surface, even
@@ -198,7 +200,8 @@ That means:
 
 Primary action families:
 
-- message and thread search / read
+- workspace-wide search / read across visible conversations, projects,
+  channels, groups, meetings, and related objects
 - authored-message search across the user's history
 - user / people search and lookup across visible workspace entities
 - message send / reply / thread creation / follow-up
@@ -324,14 +327,18 @@ That means:
 - all authorization checks should resolve exactly as if the user performed the
   action directly
 
-### Read access
+### Read access and workspace search
 
 All read/search tools used by the personal assistant should evaluate access
 using the effective user identity.
 
 Examples:
 
+- search across conversations, channels, projects, groups, meetings, and other
+  collaboration surfaces the user can access
 - search messages in channels the user can access
+- search project history, channel history, meeting context, and related
+  workspace records wherever the user already has access
 - search all past messages authored by the user
 - find a specific user by name, role, team, project, or prior collaboration
   context where the user could already discover that person
@@ -359,6 +366,8 @@ In practice that means:
 
 - the assistant can read, search, draft, send, organize, share, and follow up
   anywhere the user can
+- the assistant can search workspace history and objects anywhere the user has
+  access, not just the user's own past messages
 - the assistant can look up the right person to contact based on visible
   workspace identity data plus the user's own history
 - the assistant can coordinate people and split work based on the user's memory
