@@ -42,7 +42,7 @@ import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
 import { PersonalAssistantConfigBanner } from '../components/features/personal-assistant/PersonalAssistantSurface'
 import { useActiveCall, useJoinCall, useLeaveCall, useStartCall } from '../facades/calls/hooks'
 
-type ChannelTab = 'agents' | 'messages' | 'runs'
+type ChannelTab = 'agents' | 'files' | 'messages' | 'runs'
 
 type FeedItem =
   | { kind: 'date'; label: string }
@@ -55,6 +55,9 @@ const runsCardClass = [
   'admin-card flex items-start gap-3 p-3 text-left',
   'hover:bg-[color:var(--main-hover)]',
 ].join(' ')
+
+const isOperationsTab = (tab: ChannelTab): boolean =>
+  tab === 'agents' || tab === 'runs'
 
 const formatDayLabel = (value: string): string => {
   const date = new Date(value)
@@ -152,9 +155,10 @@ const getDisplayName = (
   entry: ThreadMessageRecord,
   meDisplayName: string,
   agentMap: Map<string, AgentRecord>,
+  assistantFallbackName = 'Agent',
 ): string => {
   if (entry.role === 'assistant') {
-    return agentMap.get(entry.agentId ?? '')?.name ?? 'Agent'
+    return agentMap.get(entry.agentId ?? '')?.name ?? assistantFallbackName
   }
 
   if (entry.role === 'system') {
@@ -221,9 +225,11 @@ export const ChannelsPage = () => {
   const startCall = useStartCall()
   const joinCall = useJoinCall()
   const leaveCall = useLeaveCall()
-  const isPersonalAssistantConversation = isPersonalAssistantChannel(
-    personalAssistantState?.channel ?? activeChannel,
-  )
+  const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
+  const isConversationSurface =
+    activeChannel?.type === 'dm' || isPersonalAssistantConversation
+  const visibleActiveTab =
+    isConversationSurface && isOperationsTab(activeTab) ? 'messages' : activeTab
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
   const personalAssistantChannel =
@@ -232,7 +238,9 @@ export const ChannelsPage = () => {
     !isPersonalAssistantConversation && channelUsers.length >= 2
   const composePlaceholder = isPersonalAssistantConversation
     ? 'Message Personal Assistant'
-    : `Message #${activeChannel?.label ?? 'channel'} or @mention an agent`
+    : activeChannel?.type === 'dm'
+      ? `Message ${activeChannel.label}`
+      : `Message #${activeChannel?.label ?? 'channel'} or @mention an agent`
   const activeParticipants = useMemo(
     () => (activeCall?.participants ?? []).filter((p) => !p.leftAt),
     [activeCall],
@@ -257,6 +265,12 @@ export const ChannelsPage = () => {
     }
     prevCallStateRef.current = { channelId: activeChannel?.id, isInCall }
   }, [isInCall, activeChannel?.id])
+
+  useEffect(() => {
+    if (isConversationSurface && isOperationsTab(activeTab)) {
+      setActiveTab('messages')
+    }
+  }, [activeTab, isConversationSurface])
 
   // Clear optimistic bubble once the real message from the server arrives.
   // Match on content + proximity: any optimistic entry whose content equals
@@ -314,19 +328,21 @@ export const ChannelsPage = () => {
 
   const mentionEntities: MentionEntity[] = useMemo(
     () => [
-      ...agents.map((a) => ({
-        id: a.id,
-        name: a.name,
-        type: 'agent' as const,
-        glyph: getAgentGlyph(a),
-      })),
+      ...(isConversationSurface
+        ? []
+        : agents.map((a) => ({
+            id: a.id,
+            name: a.name,
+            type: 'agent' as const,
+            glyph: getAgentGlyph(a),
+          }))),
       ...channelUsers.map((u) => ({
         id: u.id,
         name: u.displayName,
         type: 'user' as const,
       })),
     ],
-    [agents, channelUsers],
+    [agents, channelUsers, isConversationSurface],
   )
 
   const mentionEntityMap = useMemo(
@@ -437,7 +453,7 @@ export const ChannelsPage = () => {
     container.scrollTop = container.scrollHeight
   }, [
     activeChannel?.id,
-    activeTab,
+    visibleActiveTab,
     feedItems.length,
     optimisticMessages.length,
     pendingMessages.length,
@@ -678,7 +694,7 @@ export const ChannelsPage = () => {
 
       <div className="flex h-9 items-center border-b border-[color:var(--sep)] px-3">
         <button
-          className={`admin-tab ${activeTab === 'messages' ? 'active' : ''}`}
+          className={`admin-tab ${visibleActiveTab === 'messages' ? 'active' : ''}`}
           onClick={() => setActiveTab('messages')}
           type="button"
         >
@@ -702,8 +718,8 @@ export const ChannelsPage = () => {
           Messages
         </button>
         <button
-          className={`admin-tab ${activeTab === 'runs' ? 'active' : ''}`}
-          onClick={() => setActiveTab('runs')}
+          className={`admin-tab ${visibleActiveTab === 'files' ? 'active' : ''}`}
+          onClick={() => setActiveTab('files')}
           type="button"
         >
           <svg
@@ -714,39 +730,63 @@ export const ChannelsPage = () => {
             viewBox="0 0 24 24"
           >
             <path
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 0a2 2 0 002 2h2a2 2 0 002-2m-6 9l2 2 4-4"
+              d="M15.172 7 8.586 13.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656L5.757 10.757a6 6 0 108.486 8.486L20.5 13"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           </svg>
-          Runs
+          Files
         </button>
-        <button
-          className={`admin-tab ${activeTab === 'agents' ? 'active' : ''}`}
-          onClick={() => setActiveTab('agents')}
-          type="button"
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            viewBox="0 0 24 24"
+        {!isConversationSurface ? (
+          <button
+            className={`admin-tab ${visibleActiveTab === 'runs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('runs')}
+            type="button"
           >
-            <circle cx="12" cy="8" r="4" />
-            <path
-              d="M4 20c0-4 3.582-7 8-7s8 3 8 7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Agents
-        </button>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 0a2 2 0 002 2h2a2 2 0 002-2m-6 9l2 2 4-4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Runs
+          </button>
+        ) : null}
+        {!isConversationSurface ? (
+          <button
+            className={`admin-tab ${visibleActiveTab === 'agents' ? 'active' : ''}`}
+            onClick={() => setActiveTab('agents')}
+            type="button"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <circle cx="12" cy="8" r="4" />
+              <path
+                d="M4 20c0-4 3.582-7 8-7s8 3 8 7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Agents
+          </button>
+        ) : null}
       </div>
 
       {isPersonalAssistantConversation ? (
@@ -762,7 +802,7 @@ export const ChannelsPage = () => {
         data-testid="channel-content-scroll"
         ref={contentScrollRef}
       >
-        {activeTab === 'messages' ? (
+        {visibleActiveTab === 'messages' ? (
           <>
             {feedItems.length === 0 &&
             pendingMessages.length === 0 &&
@@ -815,9 +855,14 @@ export const ChannelsPage = () => {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
                       <span className="text-sm font-bold text-white">
-                        {getDisplayName(item.message, me.user.displayName, agentMap)}
+                        {getDisplayName(
+                          item.message,
+                          me.user.displayName,
+                          agentMap,
+                          isPersonalAssistantConversation ? 'Personal Assistant' : 'Agent',
+                        )}
                       </span>
-                      {item.message.role === 'assistant' ? (
+                      {item.message.role === 'assistant' && !isPersonalAssistantConversation ? (
                         <span
                           className={[
                             'inline-flex items-center gap-1 rounded',
@@ -929,6 +974,9 @@ export const ChannelsPage = () => {
 
             {pendingMessages.map((entry) => {
               const pendingAgent = agentById.get(entry.agentId) ?? null
+              const pendingDisplayName = isPersonalAssistantConversation
+                ? 'Personal Assistant'
+                : pendingAgent?.name ?? 'Agent'
 
               return (
                 <article key={entry.runId} className="admin-msg-row py-1">
@@ -944,7 +992,7 @@ export const ChannelsPage = () => {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
                       <span className="text-sm font-bold text-white">
-                        {pendingAgent?.name ?? 'Agent'}
+                        {pendingDisplayName}
                       </span>
                       <span
                         className={[
@@ -953,7 +1001,7 @@ export const ChannelsPage = () => {
                           'text-[11px] font-semibold text-[#a78bfa]',
                         ].join(' ')}
                       >
-                        running
+                        {isPersonalAssistantConversation ? 'responding' : 'running'}
                       </span>
                     </div>
                     <div className="mt-0.5 border-l-2 border-[rgba(124,58,237,0.5)] pl-3">
@@ -970,7 +1018,78 @@ export const ChannelsPage = () => {
           </>
         ) : null}
 
-        {activeTab === 'runs' ? (
+        {visibleActiveTab === 'files' ? (
+          <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <section className="admin-card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                    Conversation files
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-[color:var(--tx2)]">
+                    Files shared in this {isConversationSurface ? 'conversation' : 'channel'} will
+                    live here instead of getting mixed into runs or agent controls.
+                  </p>
+                </div>
+                <span className="rounded-full border border-[color:var(--sep)] bg-black/10 px-3 py-1 text-xs font-semibold text-[color:var(--tx3)]">
+                  Upload backend next
+                </span>
+              </div>
+
+              <div className="mt-5 rounded-xl border border-dashed border-[color:var(--sep)] bg-black/10 p-8 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-white/6 text-[color:var(--tx2)]">
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M15.172 7 8.586 13.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656L5.757 10.757a6 6 0 108.486 8.486L20.5 13"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <div className="mt-4 text-sm font-semibold text-white">No files yet</div>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[color:var(--tx3)]">
+                  Attachment upload is the next backend step. Once it lands, files attached to
+                  messages and added directly to this surface will be searchable and manageable
+                  from this tab.
+                </p>
+              </div>
+            </section>
+
+            <aside className="admin-card p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                Scope
+              </div>
+              <div className="mt-4 grid gap-3 text-sm">
+                <div className="rounded-lg border border-[color:var(--sep)] bg-black/10 p-3">
+                  <div className="text-[color:var(--tx3)]">Surface</div>
+                  <div className="mt-1 font-semibold text-white">
+                    {isConversationSurface ? 'Conversation' : 'Channel'}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-[color:var(--sep)] bg-black/10 p-3">
+                  <div className="text-[color:var(--tx3)]">Owner</div>
+                  <div className="mt-1 font-semibold text-white">
+                    {isPersonalAssistantConversation
+                      ? 'Personal Assistant DM'
+                      : activeChannel?.label ?? 'Current channel'}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-[color:var(--sep)] bg-black/10 p-3 text-[color:var(--tx2)]">
+                  This tab is intentionally visible on every channel so file management has one
+                  predictable home.
+                </div>
+              </div>
+            </aside>
+          </div>
+        ) : null}
+
+        {visibleActiveTab === 'runs' ? (
           <div className="grid gap-4 p-5 lg:grid-cols-2">
             <section className="admin-card p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
@@ -1052,7 +1171,7 @@ export const ChannelsPage = () => {
           </div>
         ) : null}
 
-        {activeTab === 'agents' ? (
+        {visibleActiveTab === 'agents' ? (
           <div className="grid gap-4 p-5 lg:grid-cols-2">
             {boundAgents.length > 0 ? (
               boundAgents.map((agent) => (

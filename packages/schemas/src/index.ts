@@ -232,8 +232,15 @@ export type MessageRole = z.infer<typeof MessageRoleSchema>
 
 export type SseEventMap = {
   'stream.start': { runId: RunId; threadId: ThreadId; agentId: AgentId }
+  'stream.reasoning': { runId: RunId; content: string }
   'stream.delta': { runId: RunId; content: string }
-  'stream.done': { runId: RunId; messageId: string }
+  'stream.done': {
+    runId: RunId
+    messageId: string
+    agentId?: AgentId
+    content?: string
+    createdAt?: string
+  }
   'message.reaction': { messageId: string; agentId?: AgentId; userId?: string; emoji: string }
 }
 
@@ -297,7 +304,15 @@ export const StreamDeltaEventSchema = z.object({
   content: z.string(),
 })
 export type StreamDeltaEvent = z.infer<typeof StreamDeltaEventSchema>
+export const StreamReasoningEventSchema = z.object({
+  runId: RunIdSchema,
+  content: z.string(),
+})
+export type StreamReasoningEvent = z.infer<typeof StreamReasoningEventSchema>
 export const StreamDoneEventSchema = z.object({
+  agentId: AgentIdSchema.optional(),
+  content: z.string().optional(),
+  createdAt: TimestampSchema.optional(),
   runId: RunIdSchema,
   messageId: NonEmptyStringSchema,
 })
@@ -309,12 +324,22 @@ export const MessageReactionEventSchema = z.object({
   emoji: z.string(),
 })
 export type MessageReactionEvent = z.infer<typeof MessageReactionEventSchema>
-export const SseEventNameSchema = z.enum(['stream.start', 'stream.delta', 'stream.done', 'message.reaction'])
+export const SseEventNameSchema = z.enum([
+  'stream.start',
+  'stream.reasoning',
+  'stream.delta',
+  'stream.done',
+  'message.reaction',
+])
 
 export const SseEventSchema = z.discriminatedUnion('event', [
   z.object({
     event: z.literal('stream.start'),
     data: StreamStartEventSchema,
+  }),
+  z.object({
+    event: z.literal('stream.reasoning'),
+    data: StreamReasoningEventSchema,
   }),
   z.object({
     event: z.literal('stream.delta'),
@@ -1522,6 +1547,10 @@ export type ProviderInvocationResult = z.infer<
 
 export const ProviderStreamEventSchema = z.discriminatedUnion('type', [
   z.object({
+    type: z.literal('reasoning_text.delta'),
+    text: z.string(),
+  }),
+  z.object({
     type: z.literal('output_text.delta'),
     text: z.string(),
   }),
@@ -1600,6 +1629,10 @@ export const StageExecutionStatusSchema = z.enum([
 export type StageExecutionStatus = z.infer<typeof StageExecutionStatusSchema>
 
 export const InferenceStreamEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('reasoning_text.delta'),
+    text: z.string(),
+  }),
   z.object({
     type: z.literal('output_text.delta'),
     text: z.string(),

@@ -38,6 +38,7 @@ type RunInferenceGraphInput = {
   }
   baseMessages: ProviderMessage[]
   modelConfig: ModelConfig
+  onVisibleReasoningDelta?: (delta: string) => Promise<void>
   onVisibleTextDelta?: (delta: string) => Promise<void>
   organizationId: string
   tools?: ToolSchemaDescriptor[]
@@ -517,6 +518,7 @@ const executeStage = async (
     emitBufferedOutput?: boolean
     mode: RoutingMode
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     profileId?: string
@@ -583,6 +585,11 @@ const executeStage = async (
 
       let next = await source.next()
       while (!next.done) {
+        if (next.value.type === 'reasoning_text.delta') {
+          if (next.value.text && input.onVisibleReasoningDelta) {
+            await input.onVisibleReasoningDelta(next.value.text)
+          }
+        }
         if (next.value.type === 'output_text.delta') {
           outputText += next.value.text
           if (next.value.text && input.onVisibleTextDelta) {
@@ -711,6 +718,7 @@ const executeSingleMode = async (
     actorContext: AuthorizedActionContext
     baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
@@ -741,6 +749,7 @@ const executeSingleMode = async (
     emitBufferedOutput: !input.route.streamLive,
     mode: input.route.mode,
     modelConfig: input.modelConfig,
+    onVisibleReasoningDelta: input.onVisibleReasoningDelta,
     onVisibleTextDelta: input.onVisibleTextDelta,
     organizationId: input.organizationId,
     profileId: input.route.profileId,
@@ -785,6 +794,7 @@ const executeFallbackMode = async (
     actorContext: AuthorizedActionContext
     baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
@@ -802,6 +812,7 @@ const executeFallbackMode = async (
         emitBufferedOutput: true,
         mode: input.route.mode,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         profileId: input.route.profileId,
@@ -860,6 +871,7 @@ const executeCommitteeMode = async (
     actorContext: AuthorizedActionContext
     baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
@@ -957,6 +969,7 @@ const executeCommitteeMode = async (
       emitBufferedOutput: !input.route.streamLive,
       mode: input.route.mode,
       modelConfig: input.modelConfig,
+      onVisibleReasoningDelta: input.onVisibleReasoningDelta,
       onVisibleTextDelta: input.onVisibleTextDelta,
       organizationId: input.organizationId,
       profileId: input.route.profileId,
@@ -1013,6 +1026,7 @@ const executePipelineMode = async (
     actorContext: AuthorizedActionContext
     baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
@@ -1054,6 +1068,8 @@ const executePipelineMode = async (
           emitBufferedOutput: stage.id === visibleStage.id && !input.route.streamLive,
           mode: input.route.mode,
           modelConfig: input.modelConfig,
+          onVisibleReasoningDelta:
+            stage.id === visibleStage.id ? input.onVisibleReasoningDelta : undefined,
           onVisibleTextDelta: stage.id === visibleStage.id ? input.onVisibleTextDelta : undefined,
           organizationId: input.organizationId,
           profileId: input.route.profileId,
@@ -1136,6 +1152,7 @@ const executeShadowMode = async (
     actorContext: AuthorizedActionContext
     baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
@@ -1171,6 +1188,7 @@ const executeShadowMode = async (
       emitBufferedOutput: !input.route.streamLive,
       mode: input.route.mode,
       modelConfig: input.modelConfig,
+      onVisibleReasoningDelta: input.onVisibleReasoningDelta,
       onVisibleTextDelta: input.onVisibleTextDelta,
       organizationId: input.organizationId,
       profileId: input.route.profileId,
@@ -1337,6 +1355,7 @@ export const runInferenceGraph = async (
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,
@@ -1349,6 +1368,7 @@ export const runInferenceGraph = async (
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,
@@ -1359,6 +1379,7 @@ export const runInferenceGraph = async (
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,
@@ -1369,6 +1390,7 @@ export const runInferenceGraph = async (
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,
@@ -1379,6 +1401,7 @@ export const runInferenceGraph = async (
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,

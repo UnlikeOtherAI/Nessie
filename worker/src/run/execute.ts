@@ -900,6 +900,12 @@ export const executeRunJob = async (
           },
           baseMessages: messages,
           modelConfig: runtimeModelConfig,
+          onVisibleReasoningDelta: async (chunk) => {
+            await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.reasoning', {
+              content: chunk,
+              runId: parseRunId(context.run.id),
+            })
+          },
           onVisibleTextDelta: async (chunk) => {
             currentTurnStreamed = true
             await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
@@ -954,6 +960,9 @@ export const executeRunJob = async (
     })
 
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
+      agentId: parseAgentId(context.agent.id),
+      content: responseText,
+      createdAt: assistantMessage.createdAt.toISOString(),
       messageId: assistantMessage.id,
       runId: parseRunId(context.run.id),
     })
@@ -1008,18 +1017,22 @@ export const executeRunJob = async (
     if (streamStarted) {
       const fallbackMessageId = `run-error:${context.run.id}`
       let terminalMessageId = fallbackMessageId
+      let terminalContent = `I hit an error while processing this request: ${messageText}`
+      let terminalCreatedAt = new Date().toISOString()
 
       try {
         const errorMessage = await deps.prisma.message.create({
           data: {
             agentId: context.agent.id,
-            content: `I hit an error while processing this request: ${messageText}`,
+            content: terminalContent,
             role: 'assistant',
             threadId: context.run.threadId,
           },
         })
 
         terminalMessageId = errorMessage.id
+        terminalContent = errorMessage.content
+        terminalCreatedAt = errorMessage.createdAt.toISOString()
 
         await publishMessageCreated(deps.realtimeTransport, context, {
           content: errorMessage.content,
@@ -1032,6 +1045,9 @@ export const executeRunJob = async (
 
       try {
         await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
+          agentId: parseAgentId(context.agent.id),
+          content: terminalContent,
+          createdAt: terminalCreatedAt,
           messageId: terminalMessageId,
           runId: parseRunId(context.run.id),
         })

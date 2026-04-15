@@ -136,6 +136,7 @@ export type ProviderInvocationResult = {
 }
 
 export type ProviderStreamEvent =
+  | { type: 'reasoning_text.delta'; text: string }
   | { type: 'output_text.delta'; text: string }
   | { type: 'tool_call.delta'; text: string }
   | { type: 'response.error'; message: string; retryable: boolean }

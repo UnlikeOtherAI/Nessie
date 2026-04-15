@@ -55,6 +55,7 @@ type OpenAiStreamChunk = {
   choices?: Array<{
     delta?: {
       content?: string | null
+      reasoning_content?: string | null
       tool_calls?: Array<{
         index: number
         id?: string
@@ -271,6 +272,11 @@ const collectChatStream = async function* (
           }
 
           const deltaText = choice?.delta?.content ?? ''
+          const reasoningText = choice?.delta?.reasoning_content ?? ''
+          if (reasoningText) {
+            yield { type: 'reasoning_text.delta', text: reasoningText }
+          }
+
           if (deltaText) {
             yieldedDelta = true
             outputText += deltaText
