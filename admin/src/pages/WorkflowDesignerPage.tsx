@@ -134,8 +134,7 @@ const canvasClass = [
 const CANVAS_PADDING = 24
 const CANVAS_NODE_WIDTH = 244
 const CANVAS_NODE_HEIGHT = 96
-const CANVAS_NODE_HANDLE_Y = 48
-const CANVAS_NODE_HANDLE_OFFSET_Y = -5
+const CANVAS_NODE_HANDLE_Y = CANVAS_NODE_HEIGHT / 2
 const CANVAS_NODE_INSERT_OFFSET = 28
 const CANVAS_NODE_INSERT_STEPS = 6
 const DEFAULT_WORKFLOW_NAME = 'Untitled workflow'
@@ -373,12 +372,12 @@ const clamp = (value: number, min: number, max: number) =>
 
 const getNodeInputAnchor = (node: WorkflowCanvasNode) => ({
   x: node.x,
-  y: node.y + CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
+  y: node.y + CANVAS_NODE_HANDLE_Y,
 })
 
 const getNodeOutputAnchor = (node: WorkflowCanvasNode) => ({
   x: node.x + CANVAS_NODE_WIDTH,
-  y: node.y + CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
+  y: node.y + CANVAS_NODE_HANDLE_Y,
 })
 
 const getConnectionGeometry = (
@@ -1014,6 +1013,7 @@ export const WorkflowDesignerPage = () => {
     offsetX: number
     offsetY: number
     nodeId: string
+    pointerId: number
   } | null>(null)
   const nextInsertOffsetRef = useRef(0)
 
@@ -1028,6 +1028,7 @@ export const WorkflowDesignerPage = () => {
   const [selectedNodeConfigDraft, setSelectedNodeConfigDraft] = useState('{}')
   const [selectedNodeConfigError, setSelectedNodeConfigError] = useState<string | null>(null)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [isDraggingNode, setIsDraggingNode] = useState(false)
   const [workflowName, setWorkflowName] = useState(DEFAULT_WORKFLOW_NAME)
 
   const workflowDesignerLocationState = useMemo<WorkflowDesignerLocationState>(() => {
@@ -1525,8 +1526,28 @@ export const WorkflowDesignerPage = () => {
   }, [draftConnection, finishDraftConnection, hoveredHandle])
 
   useEffect(() => {
+    const stopNodeDrag = (pointerId?: number) => {
+      const dragState = dragStateRef.current
+      if (!dragState) {
+        return
+      }
+
+      if (typeof pointerId === 'number' && dragState.pointerId !== pointerId) {
+        return
+      }
+
+      dragStateRef.current = null
+      setIsDraggingNode(false)
+    }
+
     const handlePointerMove = (event: PointerEvent) => {
-      if (dragStateRef.current && canvasRef.current) {
+      const dragState = dragStateRef.current
+
+      if (
+        dragState &&
+        dragState.pointerId === event.pointerId &&
+        canvasRef.current
+      ) {
         const canvasBounds = canvasRef.current.getBoundingClientRect()
         const maxX = Math.max(
           CANVAS_PADDING,
@@ -1539,16 +1560,16 @@ export const WorkflowDesignerPage = () => {
 
         setNodes((currentNodes) =>
           currentNodes.map((node) =>
-            node.id === dragStateRef.current?.nodeId
+            node.id === dragState.nodeId
               ? {
                   ...node,
                   x: clamp(
-                    event.clientX - canvasBounds.left - dragStateRef.current.offsetX,
+                    event.clientX - canvasBounds.left - dragState.offsetX,
                     CANVAS_PADDING,
                     maxX,
                   ),
                   y: clamp(
-                    event.clientY - canvasBounds.top - dragStateRef.current.offsetY,
+                    event.clientY - canvasBounds.top - dragState.offsetY,
                     CANVAS_PADDING,
                     maxY,
                   ),
@@ -1590,7 +1611,7 @@ export const WorkflowDesignerPage = () => {
     }
 
     const handlePointerUp = (event: PointerEvent) => {
-      dragStateRef.current = null
+      stopNodeDrag(event.pointerId)
 
       const target = event.target
       const releasedOverHandle =
@@ -1606,12 +1627,24 @@ export const WorkflowDesignerPage = () => {
       setHoveredHandle(null)
     }
 
+    const handlePointerCancel = (event: PointerEvent) => {
+      stopNodeDrag(event.pointerId)
+    }
+
+    const handleWindowBlur = () => {
+      stopNodeDrag()
+    }
+
     document.addEventListener('pointermove', handlePointerMove)
     document.addEventListener('pointerup', handlePointerUp)
+    document.addEventListener('pointercancel', handlePointerCancel)
+    window.addEventListener('blur', handleWindowBlur)
 
     return () => {
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
+      document.removeEventListener('pointercancel', handlePointerCancel)
+      window.removeEventListener('blur', handleWindowBlur)
     }
   }, [draftConnection, hoveredHandle, finishDraftConnection])
 
@@ -1630,7 +1663,7 @@ export const WorkflowDesignerPage = () => {
   }, [saveMessage])
 
   useEffect(() => {
-    if (!autoSaveDraft) {
+    if (!autoSaveDraft || isDraggingNode) {
       return
     }
 
@@ -1678,6 +1711,7 @@ export const WorkflowDesignerPage = () => {
     autoSaveDraft,
     connections,
     hasUnsavedChanges,
+    isDraggingNode,
     nodes,
     persistWorkflow,
     workflowName,
@@ -1744,20 +1778,23 @@ export const WorkflowDesignerPage = () => {
       return
     }
 
-    event.preventDefault()
-
     const node = nodes.find((candidate) => candidate.id === nodeId)
     if (!node) {
       return
     }
 
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+
     setSelectedNodeId(nodeId)
+    setIsDraggingNode(true)
 
     const canvasBounds = canvasRef.current.getBoundingClientRect()
     dragStateRef.current = {
       nodeId,
       offsetX: event.clientX - canvasBounds.left - node.x,
       offsetY: event.clientY - canvasBounds.top - node.y,
+      pointerId: event.pointerId,
     }
   }
 
@@ -2059,7 +2096,7 @@ export const WorkflowDesignerPage = () => {
             }
           }}
         >
-          <svg className="pointer-events-none absolute inset-0 h-full w-full">
+          <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full">
             {connectionLayouts.map((connectionLayout) => {
               return (
                 <g key={connectionLayout.id} className="pointer-events-auto">
@@ -2132,7 +2169,7 @@ export const WorkflowDesignerPage = () => {
             hoveredConnectionId === connectionLayout.id ? (
               <button
                 key={connectionLayout.id}
-                className="absolute z-10 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow-[0_10px_24px_rgba(31,22,38,0.16)] transition-transform hover:scale-105"
+                className="absolute z-40 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow-[0_10px_24px_rgba(31,22,38,0.16)] transition-transform hover:scale-105"
                 data-connection-delete-id={connectionLayout.id}
                 onClick={() => handleConnectionDelete(connectionLayout.id)}
                 onMouseEnter={() => setHoveredConnectionId(connectionLayout.id)}
@@ -2165,6 +2202,9 @@ export const WorkflowDesignerPage = () => {
             const hasIncomingConnection = connections.some(
               (connection) => connection.toNodeId === node.id,
             )
+            const hasOutgoingConnection = connections.some(
+              (connection) => connection.fromNodeId === node.id,
+            )
             const isHoveredInput =
               hoveredHandle?.nodeId === node.id && hoveredHandle.kind === 'input'
             const isHoveredOutput =
@@ -2176,13 +2216,15 @@ export const WorkflowDesignerPage = () => {
               invalidDraftTarget?.nodeId === node.id &&
               invalidDraftTarget.kind === 'output'
             const isSelected = selectedNodeId === node.id
+            const isDragging = dragStateRef.current?.nodeId === node.id
 
             return (
               <div
                 key={node.id}
                 className={[
-                  'absolute cursor-grab select-none rounded-2xl border bg-white shadow-[0_18px_40px_rgba(31,22,38,0.12)] active:cursor-grabbing',
+                  'absolute z-20 cursor-grab select-none rounded-2xl border bg-white shadow-[0_18px_40px_rgba(31,22,38,0.12)] active:cursor-grabbing',
                   isSelected ? 'ring-2 ring-[#7445c7] ring-offset-2 ring-offset-[#faf8fc]' : '',
+                  isDragging ? 'z-30' : '',
                 ].join(' ')}
                 onPointerDown={(event) => handleNodePointerDown(event, node.id)}
                 style={{
@@ -2198,7 +2240,7 @@ export const WorkflowDesignerPage = () => {
                 {node.type !== 'trigger' ? (
                   <button
                     aria-label={`Connect into ${node.label}`}
-                    className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 transition-all hover:scale-110 hover:bg-current"
+                    className="absolute -left-2 h-4 w-4 rounded-full border-2 transition-all hover:bg-current"
                     data-workflow-handle-kind="input"
                     data-workflow-node-id={node.id}
                     onPointerDown={(event) =>
@@ -2214,7 +2256,7 @@ export const WorkflowDesignerPage = () => {
                           : '#ffffff',
                       borderColor: isInvalidInputTarget ? '#dc2626' : theme.border,
                       color: isInvalidInputTarget ? '#dc2626' : theme.border,
-                      top: CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
+                      top: CANVAS_NODE_HANDLE_Y,
                       transform: isHoveredInput
                         ? 'translateY(-50%) scale(1.1)'
                         : 'translateY(-50%)',
@@ -2225,7 +2267,7 @@ export const WorkflowDesignerPage = () => {
 
                 <button
                   aria-label={`Connect from ${node.label}`}
-                  className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 bg-white transition-all hover:scale-110 hover:bg-current"
+                  className="absolute -right-2 h-4 w-4 rounded-full border-2 bg-white transition-all hover:bg-current"
                   data-workflow-handle-kind="output"
                   data-workflow-node-id={node.id}
                   onPointerDown={(event) =>
@@ -2236,10 +2278,12 @@ export const WorkflowDesignerPage = () => {
                       ? isInvalidOutputTarget
                         ? '#dc2626'
                         : theme.border
-                      : '#ffffff',
+                      : hasOutgoingConnection
+                        ? 'transparent'
+                        : '#ffffff',
                     borderColor: isInvalidOutputTarget ? '#dc2626' : theme.border,
                     color: isInvalidOutputTarget ? '#dc2626' : theme.border,
-                    top: CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
+                    top: CANVAS_NODE_HANDLE_Y,
                     transform: isHoveredOutput
                       ? 'translateY(-50%) scale(1.1)'
                       : 'translateY(-50%)',
