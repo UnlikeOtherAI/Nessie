@@ -9,6 +9,7 @@ import type {
 import {
   useBlockWorkflowStepRun,
   useCancelWorkflowRun,
+  useInstallWorkflowTemplate,
   useRetryWorkflowRun,
   useSkipWorkflowStepRun,
   useStartWorkflowRun,
@@ -42,6 +43,39 @@ const stepActionPill =
 
 const formatTimestamp = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : '—'
+
+const formatJsonValue = (value: unknown) => {
+  if (value === undefined) {
+    return 'undefined'
+  }
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+const JsonBlock = ({
+  label,
+  value,
+}: {
+  label: string
+  value: unknown
+}) => (
+  <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-3">
+    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+      {label}
+    </div>
+    <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-white">
+      {formatJsonValue(value)}
+    </pre>
+  </div>
+)
 
 const getWorkflowTemplateLabel = (
   template: WorkflowTemplateRecord | undefined,
@@ -153,13 +187,17 @@ const readWorkflowsPageLocationState = (
 type WorkflowTemplateDetailProps = {
   installationCount: number
   latestInstallation?: WorkflowInstallationRecord
+  isInstalling: boolean
+  onInstall: () => void
   onEdit: () => void
   template: WorkflowTemplateRecord
 }
 
 const WorkflowTemplateDetail = ({
   installationCount,
+  isInstalling,
   latestInstallation,
+  onInstall,
   onEdit,
   template,
 }: WorkflowTemplateDetailProps) => {
@@ -191,6 +229,14 @@ const WorkflowTemplateDetail = ({
             type="button"
           >
             Edit
+          </button>
+          <button
+            className="admin-button"
+            disabled={isInstalling}
+            onClick={onInstall}
+            type="button"
+          >
+            {isInstalling ? 'Installing…' : 'Install'}
           </button>
         </div>
       </div>
@@ -486,6 +532,14 @@ const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => {
         </div>
       </div>
 
+      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+        <div className={sectionTitle}>Run payload</div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <JsonBlock label="Input" value={run.input} />
+          <JsonBlock label="Output" value={run.output} />
+        </div>
+      </div>
+
       <div className="grid gap-2">
         {steps.map((step) => {
           const canSkip =
@@ -517,6 +571,10 @@ const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => {
               {step.errorMessage ? (
                 <div className="mt-1 text-xs text-rose-300">{step.errorMessage}</div>
               ) : null}
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <JsonBlock label="Step input" value={step.input} />
+                <JsonBlock label="Step output" value={step.output} />
+              </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   className={stepActionPill}
@@ -579,6 +637,7 @@ export const WorkflowsPage = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const { data: templates = [] } = useWorkflowTemplates(isOwner)
   const { data: installations = [] } = useWorkflowInstallations(isOwner)
+  const installWorkflowTemplate = useInstallWorkflowTemplate()
   const restoredSelection = useMemo(
     () => readWorkflowsPageLocationState(location.state),
     [location.state],
@@ -800,7 +859,20 @@ export const WorkflowsPage = () => {
           installationCount={
             installationCountByTemplateId.get(selectedTemplate.id) ?? 0
           }
+          isInstalling={installWorkflowTemplate.isPending}
           latestInstallation={latestInstallationByTemplateId.get(selectedTemplate.id)}
+          onInstall={() =>
+            installWorkflowTemplate.mutate(
+              { workflowTemplateId: selectedTemplate.id },
+              {
+                onSuccess: (installation) => {
+                  setSelectedTemplateId(undefined)
+                  setSelectedInstallationId(installation.id)
+                  setSelectedRunId(undefined)
+                },
+              },
+            )
+          }
           onEdit={() =>
             void navigate(`/agents/workflow-designer/${selectedTemplate.id}`, {
               state: {

@@ -47,6 +47,7 @@ type ToolbarAction = {
 type WorkflowCanvasNode = {
   id: string
   label: string
+  config: Record<string, unknown>
   meta?: string
   sourceId: string
   type: WorkflowCanvasNodeType
@@ -94,6 +95,7 @@ type WorkflowDesignerDraft = {
 }
 
 type WorkflowDesignerSerializedNode = {
+  config?: Record<string, unknown>
   meta?: string
   outgoingNodeIds: string[]
   position?: {
@@ -175,6 +177,116 @@ const normalizeReturnTo = (pathname: string, search: string, hash: string) =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+const readRecord = (value: unknown): Record<string, unknown> =>
+  isRecord(value) ? value : {}
+
+const formatJson = (value: unknown) =>
+  JSON.stringify(value ?? {}, null, 2)
+
+const readJsonObject = (value: string): Record<string, unknown> | null => {
+  if (!value.trim()) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return isRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const getWorkflowNodeInitialConfig = (
+  nodeType: WorkflowCanvasNodeType,
+  source: unknown,
+): Record<string, unknown> => {
+  if (!isRecord(source)) {
+    return {}
+  }
+
+  switch (nodeType) {
+    case 'agent':
+      return {
+        agentKind: source.agentKind,
+        delegationMode: source.delegationMode,
+        model: source.model,
+        provider: source.provider,
+        role: source.role,
+        systemPrompt: source.systemPrompt,
+        surfacePolicy: source.surfacePolicy,
+        toolPolicy: source.toolPolicy,
+      }
+    case 'tool':
+      return {
+        description: source.description,
+        enabled: source.enabled,
+        handlerKind: source.handlerKind,
+        safe: source.safe,
+      }
+    case 'trigger':
+      return {
+        ...readRecord(source.config),
+        description: source.description,
+        enabled: source.enabled,
+        nextRunAt: source.nextRunAt,
+        status: source.status,
+        targetChannelId: source.targetChannelId,
+        targetThreadId: source.targetThreadId,
+        type: source.type,
+      }
+    default:
+      return {}
+  }
+}
+
+const getWorkflowNodeMeta = (
+  nodeType: WorkflowCanvasNodeType,
+  source: unknown,
+): string | undefined => {
+  if (!isRecord(source)) {
+    return undefined
+  }
+
+  switch (nodeType) {
+    case 'agent':
+      return typeof source.role === 'string' ? source.role : undefined
+    case 'tool':
+      return source.safe === false ? 'restricted' : 'safe'
+    case 'trigger':
+      return typeof source.type === 'string' ? source.type : undefined
+    default:
+      return undefined
+  }
+}
+
+const getWorkflowNodeLabel = (
+  nodeType: WorkflowCanvasNodeType,
+  source: unknown,
+): string => {
+  if (!isRecord(source)) {
+    return nodeType === 'agent' ? 'Untitled agent' : nodeType === 'tool' ? 'Untitled tool' : 'Untitled trigger'
+  }
+
+  switch (nodeType) {
+    case 'agent':
+      return typeof source.name === 'string' && source.name.trim()
+        ? source.name
+        : 'Untitled agent'
+    case 'tool':
+      return typeof source.label === 'string' && source.label.trim()
+        ? source.label
+        : 'Untitled tool'
+    case 'trigger':
+      return typeof source.name === 'string' && source.name.trim()
+        ? source.name
+        : typeof source.type === 'string' && source.type.trim()
+          ? source.type
+          : 'Untitled trigger'
+    default:
+      return 'Untitled node'
+  }
+}
+
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
 
@@ -238,6 +350,7 @@ const readSerializedNode = (value: unknown): WorkflowDesignerSerializedNode => {
 
   const positionValue = isRecord(value.position) ? value.position : undefined
   return {
+    config: isRecord(value.config) ? value.config : undefined,
     meta: typeof value.meta === 'string' ? value.meta : undefined,
     outgoingNodeIds: Array.isArray(value.outgoingNodeIds)
       ? value.outgoingNodeIds.filter(
@@ -360,6 +473,7 @@ const loadWorkflowDraft = (): WorkflowDesignerDraft | null => {
                 typeof entry.label === 'string' && entry.label.trim()
                   ? entry.label
                   : 'Untitled node',
+              config: isRecord(entry.config) ? entry.config : {},
               meta: typeof entry.meta === 'string' ? entry.meta : undefined,
               sourceId:
                 typeof entry.sourceId === 'string' && entry.sourceId.trim()
@@ -420,14 +534,81 @@ const clearWorkflowDraft = () => {
   window.localStorage.removeItem(WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY)
 }
 
+const getLinearWorkflowNodes = (
+  nodes: WorkflowCanvasNode[],
+  connections: WorkflowConnection[],
+) => {
+  if (nodes.length === 0) {
+    return []
+  }
+
+  const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]))
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const incomingCounts = new Map(nodes.map((node) => [node.id, 0]))
+  const outgoingNodeIdsByNodeId = new Map<string, string[]>()
+
+  for (const connection of connections) {
+    if (!nodeById.has(connection.fromNodeId) || !nodeById.has(connection.toNodeId)) {
+      continue
+    }
+
+    incomingCounts.set(
+      connection.toNodeId,
+      (incomingCounts.get(connection.toNodeId) ?? 0) + 1,
+    )
+
+    const outgoingNodeIds = outgoingNodeIdsByNodeId.get(connection.fromNodeId) ?? []
+    outgoingNodeIdsByNodeId.set(connection.fromNodeId, [
+      ...outgoingNodeIds,
+      connection.toNodeId,
+    ])
+  }
+
+  const orderedNodes: WorkflowCanvasNode[] = []
+  const visitedNodeIds = new Set<string>()
+
+  const appendChain = (startNode: WorkflowCanvasNode) => {
+    let currentNode: WorkflowCanvasNode | undefined = startNode
+
+    while (currentNode && !visitedNodeIds.has(currentNode.id)) {
+      orderedNodes.push(currentNode)
+      visitedNodeIds.add(currentNode.id)
+
+      const nextNodeCandidates = (outgoingNodeIdsByNodeId.get(currentNode.id) ?? [])
+        .filter((nodeId) => nodeById.has(nodeId) && !visitedNodeIds.has(nodeId))
+        .sort((left, right) => (nodeOrder.get(left) ?? 0) - (nodeOrder.get(right) ?? 0))
+      const nextNodeId: string | undefined = nextNodeCandidates[0]
+
+      currentNode = nextNodeId ? nodeById.get(nextNodeId) : undefined
+    }
+  }
+
+  const startNodes = nodes
+    .filter((node) => (incomingCounts.get(node.id) ?? 0) === 0)
+    .sort((left, right) => (nodeOrder.get(left.id) ?? 0) - (nodeOrder.get(right.id) ?? 0))
+
+  for (const node of startNodes) {
+    appendChain(node)
+  }
+
+  for (const node of nodes) {
+    if (!visitedNodeIds.has(node.id)) {
+      appendChain(node)
+    }
+  }
+
+  return orderedNodes
+}
+
 const buildWorkflowGraph = (
   nodes: WorkflowCanvasNode[],
   connections: WorkflowConnection[],
 ) => ({
-  steps: nodes.map((node) => ({
+  steps: getLinearWorkflowNodes(nodes, connections).map((node) => ({
     id: node.id,
     input: {
       workflowDesigner: {
+        config: node.config,
         meta: node.meta,
         outgoingNodeIds: connections
           .filter((connection) => connection.fromNodeId === node.id)
@@ -452,6 +633,7 @@ const buildWorkflowTriggers = (
     .filter((node) => node.type === 'trigger')
     .map((node) => ({
       id: node.id,
+      config: node.config,
       meta: node.meta,
       sourceId: node.sourceId,
       targetNodeIds: connections
@@ -489,6 +671,7 @@ const parseWorkflowTemplate = (
       {
         id: step.id,
         label: step.title?.trim() || 'Untitled node',
+        config: serializedNode.config ?? {},
         meta: serializedNode.meta,
         sourceId: serializedNode.sourceId ?? step.id,
         type: stepType,
@@ -563,6 +746,9 @@ export const WorkflowDesignerPage = () => {
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null)
   const [nodes, setNodes] = useState<WorkflowCanvasNode[]>([])
   const [openMenu, setOpenMenu] = useState<string | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [selectedNodeConfigDraft, setSelectedNodeConfigDraft] = useState('{}')
+  const [selectedNodeConfigError, setSelectedNodeConfigError] = useState<string | null>(null)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [workflowName, setWorkflowName] = useState(DEFAULT_WORKFLOW_NAME)
 
@@ -632,40 +818,101 @@ export const WorkflowDesignerPage = () => {
     hasWorkflowToSave &&
     workflowSignature !== lastSavedWorkflowSignatureRef.current
 
+  const topLevelAgentSources = useMemo(
+    () =>
+      [...agents]
+        .filter((agent) => !agent.parentAgentId)
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((agent) => ({
+          config: getWorkflowNodeInitialConfig('agent', agent),
+          label: getWorkflowNodeLabel('agent', agent),
+          meta: getWorkflowNodeMeta('agent', agent),
+          nodeType: 'agent' as const,
+          sourceId: agent.id,
+        })),
+    [agents],
+  )
+
+  const triggerNodeSources = useMemo(
+    () =>
+      [...triggers]
+        .sort((left, right) =>
+          (left.name ?? left.type).localeCompare(right.name ?? right.type),
+        )
+        .map((trigger) => ({
+          config: getWorkflowNodeInitialConfig('trigger', trigger),
+          label: getWorkflowNodeLabel('trigger', trigger),
+          meta: getWorkflowNodeMeta('trigger', trigger),
+          nodeType: 'trigger' as const,
+          sourceId: trigger.id,
+        })),
+    [triggers],
+  )
+
+  const toolNodeSources = useMemo(
+    () =>
+      [...tools]
+        .sort((left, right) => left.label.localeCompare(right.label))
+        .map((tool) => ({
+          config: getWorkflowNodeInitialConfig('tool', tool),
+          label: getWorkflowNodeLabel('tool', tool),
+          meta: getWorkflowNodeMeta('tool', tool),
+          nodeType: 'tool' as const,
+          sourceId: tool.id,
+        })),
+    [tools],
+  )
+
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId),
+    [nodes, selectedNodeId],
+  )
+
+  useEffect(() => {
+    if (!selectedNode) {
+      setSelectedNodeConfigDraft('{}')
+      setSelectedNodeConfigError(null)
+      return
+    }
+
+    setSelectedNodeConfigDraft(formatJson(selectedNode.config))
+    setSelectedNodeConfigError(null)
+  }, [selectedNode])
+
+  useEffect(() => {
+    if (selectedNodeId && !nodes.some((node) => node.id === selectedNodeId)) {
+      setSelectedNodeId(nodes[0]?.id ?? null)
+    }
+  }, [nodes, selectedNodeId])
+
+  const selectedNodeSource = useMemo(() => {
+    if (!selectedNode) {
+      return undefined
+    }
+
+    const sources =
+      selectedNode.type === 'agent'
+        ? topLevelAgentSources
+        : selectedNode.type === 'tool'
+          ? toolNodeSources
+          : triggerNodeSources
+
+    return sources.find((source) => source.sourceId === selectedNode.sourceId)
+  }, [selectedNode, topLevelAgentSources, toolNodeSources, triggerNodeSources])
+
+  const selectedNodeSourceOptions = useMemo(() => {
+    if (!selectedNode) {
+      return []
+    }
+
+    return selectedNode.type === 'agent'
+      ? topLevelAgentSources
+      : selectedNode.type === 'tool'
+        ? toolNodeSources
+        : triggerNodeSources
+  }, [selectedNode, topLevelAgentSources, toolNodeSources, triggerNodeSources])
+
   const toolbarActions = useMemo<ToolbarAction[]>(() => {
-    const topLevelAgents = [...agents]
-      .filter((agent) => !agent.parentAgentId)
-      .sort((left, right) => left.name.localeCompare(right.name))
-      .map((agent) => ({
-        icon: faRobot,
-        key: agent.id,
-        label: agent.name,
-        meta: agent.role,
-        nodeType: 'agent' as const,
-      }))
-
-    const allTriggers = [...triggers]
-      .sort((left, right) =>
-        (left.name ?? left.type).localeCompare(right.name ?? right.type),
-      )
-      .map((trigger) => ({
-        icon: faBolt,
-        key: trigger.id,
-        label: trigger.name ?? trigger.type,
-        meta: trigger.type,
-        nodeType: 'trigger' as const,
-      }))
-
-    const allTools = [...tools]
-      .sort((left, right) => left.label.localeCompare(right.label))
-      .map((tool) => ({
-        icon: faScrewdriverWrench,
-        key: tool.id,
-        label: tool.label,
-        meta: tool.safe ? 'safe' : 'restricted',
-        nodeType: 'tool' as const,
-      }))
-
     return [
       {
         createItem: {
@@ -675,7 +922,13 @@ export const WorkflowDesignerPage = () => {
         },
         emptyLabel: 'No triggers yet',
         icon: faBolt,
-        items: allTriggers,
+        items: triggerNodeSources.map((source) => ({
+          icon: faBolt,
+          key: source.sourceId,
+          label: source.label,
+          meta: source.meta,
+          nodeType: source.nodeType,
+        })),
         key: 'trigger',
         label: 'Trigger',
         sectionLabel: 'All triggers',
@@ -688,7 +941,13 @@ export const WorkflowDesignerPage = () => {
         },
         emptyLabel: 'No tools yet',
         icon: faScrewdriverWrench,
-        items: allTools,
+        items: toolNodeSources.map((source) => ({
+          icon: faScrewdriverWrench,
+          key: source.sourceId,
+          label: source.label,
+          meta: source.meta,
+          nodeType: source.nodeType,
+        })),
         key: 'tools',
         label: 'Tools',
         sectionLabel: 'All tools',
@@ -703,13 +962,19 @@ export const WorkflowDesignerPage = () => {
         },
         emptyLabel: 'No top-level agents',
         icon: faRobot,
-        items: topLevelAgents,
+        items: topLevelAgentSources.map((source) => ({
+          icon: faRobot,
+          key: source.sourceId,
+          label: source.label,
+          meta: source.meta,
+          nodeType: source.nodeType,
+        })),
         key: 'agents',
         label: 'Agents',
         sectionLabel: 'Top-level agents',
       },
     ]
-  }, [agents, returnTo, tools, triggers])
+  }, [returnTo, topLevelAgentSources, toolNodeSources, triggerNodeSources])
 
   useEffect(() => {
     if (workflowTemplateId) {
@@ -730,12 +995,14 @@ export const WorkflowDesignerPage = () => {
         nodes: [],
         workflowName: DEFAULT_WORKFLOW_NAME,
       })
+      setSelectedNodeId(null)
       return
     }
 
     setConnections(draft.connections)
     setNodes(draft.nodes)
     setWorkflowName(draft.workflowName)
+    setSelectedNodeId(draft.nodes[0]?.id ?? null)
     nextInsertOffsetRef.current =
       (draft.nodes.length % CANVAS_NODE_INSERT_STEPS) * CANVAS_NODE_INSERT_OFFSET
     lastSavedWorkflowSignatureRef.current = null
@@ -760,6 +1027,7 @@ export const WorkflowDesignerPage = () => {
     setConnections(parsedWorkflow.connections)
     setNodes(parsedWorkflow.nodes)
     setWorkflowName(workflowTemplate.name)
+    setSelectedNodeId(parsedWorkflow.nodes[0]?.id ?? null)
     nextInsertOffsetRef.current =
       (parsedWorkflow.nodes.length % CANVAS_NODE_INSERT_STEPS) *
       CANVAS_NODE_INSERT_OFFSET
@@ -1137,25 +1405,34 @@ export const WorkflowDesignerPage = () => {
     }
 
     const nodeType = item.nodeType
+    const source =
+      nodeType === 'agent'
+        ? topLevelAgentSources.find((entry) => entry.sourceId === item.key)
+        : nodeType === 'tool'
+          ? toolNodeSources.find((entry) => entry.sourceId === item.key)
+          : triggerNodeSources.find((entry) => entry.sourceId === item.key)
     const offset = nextInsertOffsetRef.current
     nextInsertOffsetRef.current =
       (nextInsertOffsetRef.current + CANVAS_NODE_INSERT_OFFSET) %
       (CANVAS_NODE_INSERT_OFFSET * CANVAS_NODE_INSERT_STEPS)
 
     const insertionPoint = getCanvasInsertionPoint(canvasRef.current, offset)
+    const nodeId = crypto.randomUUID()
 
     setNodes((currentNodes) => [
       ...currentNodes,
       {
-        id: crypto.randomUUID(),
-        label: item.label,
-        meta: item.meta,
+        id: nodeId,
+        config: source?.config ?? {},
+        label: source?.label ?? item.label,
+        meta: source?.meta ?? item.meta,
         sourceId: item.key,
         type: nodeType,
         x: insertionPoint.x,
         y: insertionPoint.y,
       },
     ])
+    setSelectedNodeId(nodeId)
   }
 
   const handleMenuItemClick = (item: ToolbarMenuItem) => {
@@ -1188,12 +1465,79 @@ export const WorkflowDesignerPage = () => {
       return
     }
 
+    setSelectedNodeId(nodeId)
+
     const canvasBounds = canvasRef.current.getBoundingClientRect()
     dragStateRef.current = {
       nodeId,
       offsetX: event.clientX - canvasBounds.left - node.x,
       offsetY: event.clientY - canvasBounds.top - node.y,
     }
+  }
+
+  const handleSelectedNodeLabelChange = (value: string) => {
+    if (!selectedNodeId) {
+      return
+    }
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === selectedNodeId ? { ...node, label: value } : node,
+      ),
+    )
+  }
+
+  const handleSelectedNodeSourceChange = (sourceId: string) => {
+    if (!selectedNode) {
+      return
+    }
+
+    const sources =
+      selectedNode.type === 'agent'
+        ? topLevelAgentSources
+        : selectedNode.type === 'tool'
+          ? toolNodeSources
+          : triggerNodeSources
+    const nextSource = sources.find((source) => source.sourceId === sourceId)
+    if (!nextSource) {
+      return
+    }
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === selectedNode.id
+          ? {
+              ...node,
+              config: nextSource.config,
+              label: nextSource.label,
+              meta: nextSource.meta,
+              sourceId: nextSource.sourceId,
+            }
+          : node,
+      ),
+    )
+    setSelectedNodeConfigDraft(formatJson(nextSource.config))
+    setSelectedNodeConfigError(null)
+  }
+
+  const handleSelectedNodeConfigChange = (value: string) => {
+    setSelectedNodeConfigDraft(value)
+    const parsed = readJsonObject(value)
+    if (parsed === null) {
+      setSelectedNodeConfigError('Config must be valid JSON.')
+      return
+    }
+
+    setSelectedNodeConfigError(null)
+    if (!selectedNode) {
+      return
+    }
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === selectedNode.id ? { ...node, config: parsed } : node,
+      ),
+    )
   }
 
   const handleConnectionStart = (
@@ -1419,239 +1763,389 @@ export const WorkflowDesignerPage = () => {
         })}
       </header>
 
-      <div ref={canvasRef} className={canvasClass}>
-        <svg className="pointer-events-none absolute inset-0 h-full w-full">
-          {connectionLayouts.map((connectionLayout) => {
-            return (
-              <g key={connectionLayout.id} className="pointer-events-auto">
-                <path
-                  d={connectionLayout.path}
-                  fill="none"
-                  stroke={connectionLayout.color}
-                  strokeLinecap="round"
-                  strokeWidth="3"
-                />
-                <path
-                  className="cursor-pointer"
-                  d={connectionLayout.path}
-                  fill="none"
-                  onMouseEnter={() => setHoveredConnectionId(connectionLayout.id)}
-                  onMouseLeave={(event) => {
-                    const relatedTarget = event.relatedTarget
-                    if (
-                      relatedTarget instanceof Element &&
-                      relatedTarget.closest(
-                        `[data-connection-delete-id="${connectionLayout.id}"]`,
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div
+          ref={canvasRef}
+          className={canvasClass}
+          onPointerDown={(event) => {
+            if (event.currentTarget === event.target) {
+              setSelectedNodeId(null)
+            }
+          }}
+        >
+          <svg className="pointer-events-none absolute inset-0 h-full w-full">
+            {connectionLayouts.map((connectionLayout) => {
+              return (
+                <g key={connectionLayout.id} className="pointer-events-auto">
+                  <path
+                    d={connectionLayout.path}
+                    fill="none"
+                    stroke={connectionLayout.color}
+                    strokeLinecap="round"
+                    strokeWidth="3"
+                  />
+                  <path
+                    className="cursor-pointer"
+                    d={connectionLayout.path}
+                    fill="none"
+                    onMouseEnter={() => setHoveredConnectionId(connectionLayout.id)}
+                    onMouseLeave={(event) => {
+                      const relatedTarget = event.relatedTarget
+                      if (
+                        relatedTarget instanceof Element &&
+                        relatedTarget.closest(
+                          `[data-connection-delete-id="${connectionLayout.id}"]`,
+                        )
+                      ) {
+                        return
+                      }
+
+                      setHoveredConnectionId((currentHoveredConnectionId) =>
+                        currentHoveredConnectionId === connectionLayout.id
+                          ? null
+                          : currentHoveredConnectionId,
                       )
-                    ) {
-                      return
-                    }
+                    }}
+                    stroke="transparent"
+                    strokeWidth="18"
+                  />
+                </g>
+              )
+            })}
 
-                    setHoveredConnectionId((currentHoveredConnectionId) =>
-                      currentHoveredConnectionId === connectionLayout.id
-                        ? null
-                        : currentHoveredConnectionId,
-                    )
-                  }}
-                  stroke="transparent"
-                  strokeWidth="18"
-                />
-              </g>
-            )
-          })}
+            {draftConnection ? (
+              <path
+                d={getConnectionGeometry(
+                  { x: draftConnection.startX, y: draftConnection.startY },
+                  { x: draftConnection.x, y: draftConnection.y },
+                ).path}
+                fill="none"
+                stroke={draftConnection.color}
+                strokeDasharray="8 6"
+                strokeLinecap="round"
+                strokeWidth="3"
+              />
+            ) : null}
+          </svg>
 
-          {draftConnection ? (
-            <path
-              d={getConnectionGeometry(
-                { x: draftConnection.startX, y: draftConnection.startY },
-                { x: draftConnection.x, y: draftConnection.y },
-              ).path}
-              fill="none"
-              stroke={draftConnection.color}
-              strokeDasharray="8 6"
-              strokeLinecap="round"
-              strokeWidth="3"
-            />
-          ) : null}
-        </svg>
-
-        {nodes.length === 0 ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
-            <div className="max-w-md rounded-2xl border border-dashed border-[#d6cbe0] bg-white/80 px-6 py-5 text-center shadow-[0_18px_40px_rgba(31,22,38,0.06)] backdrop-blur">
-              <p className="text-[13px] font-semibold text-[#433349]">
-                Select a trigger, tool, or agent to place it on the canvas.
-              </p>
-              <p className="mt-2 text-[11px] leading-5 text-[#7c6b86]">
-                Nodes drop into the middle of the workflow and can be dragged into
-                position. Connect them from right to left using the circular handles.
-              </p>
+          {nodes.length === 0 ? (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
+              <div className="max-w-md rounded-2xl border border-dashed border-[#d6cbe0] bg-white/80 px-6 py-5 text-center shadow-[0_18px_40px_rgba(31,22,38,0.06)] backdrop-blur">
+                <p className="text-[13px] font-semibold text-[#433349]">
+                  Select a trigger, tool, or agent to place it on the canvas.
+                </p>
+                <p className="mt-2 text-[11px] leading-5 text-[#7c6b86]">
+                  Nodes drop into the middle of the workflow and can be dragged into
+                  position. Connect them from right to left using the circular handles.
+                </p>
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {connectionLayouts.map((connectionLayout) =>
-          hoveredConnectionId === connectionLayout.id ? (
-            <button
-              key={connectionLayout.id}
-              className="absolute z-10 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow-[0_10px_24px_rgba(31,22,38,0.16)] transition-transform hover:scale-105"
-              data-connection-delete-id={connectionLayout.id}
-              onClick={() => handleConnectionDelete(connectionLayout.id)}
-              onMouseEnter={() => setHoveredConnectionId(connectionLayout.id)}
-              onMouseLeave={() =>
-                setHoveredConnectionId((currentHoveredConnectionId) =>
-                  currentHoveredConnectionId === connectionLayout.id
-                    ? null
-                    : currentHoveredConnectionId,
-                )
-              }
-              onPointerDown={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-              }}
-              style={{
-                borderColor: connectionLayout.color,
-                color: connectionLayout.color,
-                left: connectionLayout.midpoint.x,
-                top: connectionLayout.midpoint.y,
-              }}
-              type="button"
-            >
-              <FontAwesomeIcon className="text-[12px]" icon={faTrashCan} />
-            </button>
-          ) : null,
-        )}
+          {connectionLayouts.map((connectionLayout) =>
+            hoveredConnectionId === connectionLayout.id ? (
+              <button
+                key={connectionLayout.id}
+                className="absolute z-10 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow-[0_10px_24px_rgba(31,22,38,0.16)] transition-transform hover:scale-105"
+                data-connection-delete-id={connectionLayout.id}
+                onClick={() => handleConnectionDelete(connectionLayout.id)}
+                onMouseEnter={() => setHoveredConnectionId(connectionLayout.id)}
+                onMouseLeave={() =>
+                  setHoveredConnectionId((currentHoveredConnectionId) =>
+                    currentHoveredConnectionId === connectionLayout.id
+                      ? null
+                      : currentHoveredConnectionId,
+                  )
+                }
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+                style={{
+                  borderColor: connectionLayout.color,
+                  color: connectionLayout.color,
+                  left: connectionLayout.midpoint.x,
+                  top: connectionLayout.midpoint.y,
+                }}
+                type="button"
+              >
+                <FontAwesomeIcon className="text-[12px]" icon={faTrashCan} />
+              </button>
+            ) : null,
+          )}
 
-        {nodes.map((node) => {
-          const theme = nodeThemes[node.type]
-          const hasIncomingConnection = connections.some(
-            (connection) => connection.toNodeId === node.id,
-          )
-          const isHoveredInput =
-            hoveredHandle?.nodeId === node.id && hoveredHandle.kind === 'input'
-          const isHoveredOutput =
-            hoveredHandle?.nodeId === node.id && hoveredHandle.kind === 'output'
-          const isInvalidInputTarget =
-            invalidDraftTarget?.nodeId === node.id &&
-            invalidDraftTarget.kind === 'input'
-          const isInvalidOutputTarget =
-            invalidDraftTarget?.nodeId === node.id &&
-            invalidDraftTarget.kind === 'output'
+          {nodes.map((node) => {
+            const theme = nodeThemes[node.type]
+            const hasIncomingConnection = connections.some(
+              (connection) => connection.toNodeId === node.id,
+            )
+            const isHoveredInput =
+              hoveredHandle?.nodeId === node.id && hoveredHandle.kind === 'input'
+            const isHoveredOutput =
+              hoveredHandle?.nodeId === node.id && hoveredHandle.kind === 'output'
+            const isInvalidInputTarget =
+              invalidDraftTarget?.nodeId === node.id &&
+              invalidDraftTarget.kind === 'input'
+            const isInvalidOutputTarget =
+              invalidDraftTarget?.nodeId === node.id &&
+              invalidDraftTarget.kind === 'output'
+            const isSelected = selectedNodeId === node.id
 
-          return (
-            <div
-              key={node.id}
-              className="absolute cursor-grab select-none rounded-2xl border bg-white shadow-[0_18px_40px_rgba(31,22,38,0.12)] active:cursor-grabbing"
-              onPointerDown={(event) => handleNodePointerDown(event, node.id)}
-              style={{
-                backgroundColor: theme.fill,
-                borderColor: theme.border,
-                height: CANVAS_NODE_HEIGHT,
-                left: node.x,
-                top: node.y,
-                userSelect: 'none',
-                width: CANVAS_NODE_WIDTH,
-              }}
-            >
-              {node.type !== 'trigger' ? (
+            return (
+              <div
+                key={node.id}
+                className={[
+                  'absolute cursor-grab select-none rounded-2xl border bg-white shadow-[0_18px_40px_rgba(31,22,38,0.12)] active:cursor-grabbing',
+                  isSelected ? 'ring-2 ring-[#7445c7] ring-offset-2 ring-offset-[#faf8fc]' : '',
+                ].join(' ')}
+                onPointerDown={(event) => handleNodePointerDown(event, node.id)}
+                style={{
+                  backgroundColor: theme.fill,
+                  borderColor: theme.border,
+                  height: CANVAS_NODE_HEIGHT,
+                  left: node.x,
+                  top: node.y,
+                  userSelect: 'none',
+                  width: CANVAS_NODE_WIDTH,
+                }}
+              >
+                {node.type !== 'trigger' ? (
+                  <button
+                    aria-label={`Connect into ${node.label}`}
+                    className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 transition-all hover:scale-110 hover:bg-current"
+                    data-workflow-handle-kind="input"
+                    data-workflow-node-id={node.id}
+                    onPointerDown={(event) =>
+                      handleConnectionStart(event, node.id, 'input')
+                    }
+                    style={{
+                      backgroundColor: isHoveredInput
+                        ? isInvalidInputTarget
+                          ? '#dc2626'
+                          : theme.border
+                        : hasIncomingConnection
+                          ? 'transparent'
+                          : '#ffffff',
+                      borderColor: isInvalidInputTarget ? '#dc2626' : theme.border,
+                      color: isInvalidInputTarget ? '#dc2626' : theme.border,
+                      top: CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
+                      transform: isHoveredInput
+                        ? 'translateY(-50%) scale(1.1)'
+                        : 'translateY(-50%)',
+                    }}
+                    type="button"
+                  />
+                ) : null}
+
                 <button
-                  aria-label={`Connect into ${node.label}`}
-                  className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 transition-all hover:scale-110 hover:bg-current"
-                  data-workflow-handle-kind="input"
+                  aria-label={`Connect from ${node.label}`}
+                  className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 bg-white transition-all hover:scale-110 hover:bg-current"
+                  data-workflow-handle-kind="output"
                   data-workflow-node-id={node.id}
                   onPointerDown={(event) =>
-                    handleConnectionStart(event, node.id, 'input')
+                    handleConnectionStart(event, node.id, 'output')
                   }
                   style={{
-                    backgroundColor: isHoveredInput
-                      ? isInvalidInputTarget
+                    backgroundColor: isHoveredOutput
+                      ? isInvalidOutputTarget
                         ? '#dc2626'
                         : theme.border
-                      : hasIncomingConnection
-                        ? 'transparent'
                       : '#ffffff',
-                    borderColor: isInvalidInputTarget ? '#dc2626' : theme.border,
-                    color: isInvalidInputTarget ? '#dc2626' : theme.border,
+                    borderColor: isInvalidOutputTarget ? '#dc2626' : theme.border,
+                    color: isInvalidOutputTarget ? '#dc2626' : theme.border,
                     top: CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
-                    transform: isHoveredInput
+                    transform: isHoveredOutput
                       ? 'translateY(-50%) scale(1.1)'
                       : 'translateY(-50%)',
                   }}
                   type="button"
                 />
-              ) : null}
 
-              <button
-                aria-label={`Connect from ${node.label}`}
-                className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 bg-white transition-all hover:scale-110 hover:bg-current"
-                data-workflow-handle-kind="output"
-                data-workflow-node-id={node.id}
-                onPointerDown={(event) =>
-                  handleConnectionStart(event, node.id, 'output')
-                }
-                style={{
-                  backgroundColor: isHoveredOutput
-                    ? isInvalidOutputTarget
-                      ? '#dc2626'
-                      : theme.border
-                    : '#ffffff',
-                  borderColor: isInvalidOutputTarget ? '#dc2626' : theme.border,
-                  color: isInvalidOutputTarget ? '#dc2626' : theme.border,
-                  top: CANVAS_NODE_HANDLE_Y + CANVAS_NODE_HANDLE_OFFSET_Y,
-                  transform: isHoveredOutput
-                    ? 'translateY(-50%) scale(1.1)'
-                    : 'translateY(-50%)',
-                }}
-                type="button"
-              />
+                <div className="flex h-full flex-col px-4 py-3">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="flex h-9 w-9 items-center justify-center rounded-xl"
+                      style={{
+                        backgroundColor: theme.badgeBackground,
+                        color: theme.border,
+                      }}
+                    >
+                      <FontAwesomeIcon
+                        fixedWidth
+                        icon={
+                          node.type === 'trigger'
+                            ? faBolt
+                            : node.type === 'tool'
+                              ? faScrewdriverWrench
+                              : faRobot
+                        }
+                      />
+                    </div>
 
-              <div className="flex h-full flex-col px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <div
-                    className="flex h-9 w-9 items-center justify-center rounded-xl"
-                    style={{ backgroundColor: theme.badgeBackground, color: theme.border }}
-                  >
-                    <FontAwesomeIcon
-                      fixedWidth
-                      icon={
-                        node.type === 'trigger'
-                          ? faBolt
-                          : node.type === 'tool'
-                            ? faScrewdriverWrench
-                            : faRobot
-                      }
-                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-semibold text-[#2f2237]">
+                        {node.label}
+                      </div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                          style={{
+                            backgroundColor: theme.badgeBackground,
+                            color: theme.border,
+                          }}
+                        >
+                          {theme.label}
+                        </span>
+                        {node.meta ? (
+                          <span className="truncate text-[10px] text-[#6f5b77]">
+                            {node.meta}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-semibold text-[#2f2237]">
-                      {node.label}
+                  <div className="mt-auto text-[11px] leading-5 text-[#6f5b77]">
+                    Drag to position. Use the connector circles to build the workflow.
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <aside className="hidden w-[352px] shrink-0 border-l border-black/8 bg-[#fbf9fd] lg:flex lg:flex-col">
+          <div className="border-b border-black/8 px-4 py-3">
+            <div className={sectionLabelClass}>Node inspector</div>
+            <div className="mt-1 text-sm text-[#5f4e67]">
+              Edit the selected trigger, tool, or agent node.
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {selectedNode ? (
+              <div className="grid gap-4">
+                <div className="rounded-2xl border border-black/8 bg-white p-4 shadow-[0_12px_24px_rgba(31,22,38,0.04)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[#8b7a93]">
+                        Selected node
+                      </div>
+                      <div className="mt-1 text-base font-semibold text-[#2f2237]">
+                        {selectedNode.label}
+                      </div>
                     </div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
-                        style={{
-                          backgroundColor: theme.badgeBackground,
-                          color: theme.border,
-                        }}
-                      >
-                        {theme.label}
+                    <span
+                      className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                      style={{
+                        backgroundColor: nodeThemes[selectedNode.type].badgeBackground,
+                        color: nodeThemes[selectedNode.type].border,
+                      }}
+                    >
+                      {nodeThemes[selectedNode.type].label}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3">
+                    <label className="grid gap-1.5 text-sm text-[#433349]">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8b7a93]">
+                        Label
                       </span>
-                      {node.meta ? (
-                        <span className="truncate text-[10px] text-[#6f5b77]">
-                          {node.meta}
-                        </span>
+                      <input
+                        className="admin-input"
+                        onChange={(event) => handleSelectedNodeLabelChange(event.target.value)}
+                        value={selectedNode.label}
+                      />
+                    </label>
+
+                    <label className="grid gap-1.5 text-sm text-[#433349]">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8b7a93]">
+                        Source
+                      </span>
+                      <select
+                        className="admin-input"
+                        onChange={(event) => handleSelectedNodeSourceChange(event.target.value)}
+                        value={selectedNode.sourceId}
+                      >
+                        {selectedNodeSourceOptions.some(
+                          (source) => source.sourceId === selectedNode.sourceId,
+                        ) ? null : (
+                          <option value={selectedNode.sourceId}>
+                            {selectedNode.sourceId}
+                          </option>
+                        )}
+                        {selectedNodeSourceOptions.map((source) => (
+                          <option key={source.sourceId} value={source.sourceId}>
+                            {source.label}
+                            {source.meta ? ` · ${source.meta}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="grid gap-1.5 text-sm text-[#433349]">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8b7a93]">
+                        Config
+                      </span>
+                      <textarea
+                        className="admin-input min-h-56 resize-y font-mono text-xs"
+                        onChange={(event) =>
+                          handleSelectedNodeConfigChange(event.target.value)
+                        }
+                        spellCheck={false}
+                        value={selectedNodeConfigDraft}
+                      />
+                      {selectedNodeConfigError ? (
+                        <div className="text-xs text-rose-500">
+                          {selectedNodeConfigError}
+                        </div>
                       ) : null}
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-auto text-[11px] leading-5 text-[#6f5b77]">
-                  Drag to position. Use the connector circles to build the workflow.
+                <div className="rounded-2xl border border-black/8 bg-white p-4 shadow-[0_12px_24px_rgba(31,22,38,0.04)]">
+                  <div className={sectionLabelClass}>Node metadata</div>
+                  <div className="mt-3 grid gap-3 text-sm">
+                    {[
+                      ['Node ID', selectedNode.id],
+                      ['Source ID', selectedNode.sourceId],
+                      ['Type', selectedNode.type],
+                      ['Position', `${Math.round(selectedNode.x)}, ${Math.round(selectedNode.y)}`],
+                    ].map(([label, value]) => (
+                      <div
+                        className="rounded-xl border border-black/8 bg-[#faf8fc] px-3 py-2"
+                        key={label}
+                      >
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-[#8b7a93]">
+                          {label}
+                        </div>
+                        <div className="mt-1 break-all text-[#2f2237]">{value}</div>
+                      </div>
+                    ))}
+                    {selectedNodeSource ? (
+                      <div className="rounded-xl border border-black/8 bg-[#faf8fc] px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-[#8b7a93]">
+                          Resolved source
+                        </div>
+                        <div className="mt-1 text-[#2f2237]">{selectedNodeSource.label}</div>
+                        {selectedNodeSource.meta ? (
+                          <div className="mt-1 text-xs text-[#6f5b77]">
+                            {selectedNodeSource.meta}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[#d6cbe0] bg-white px-5 py-6 text-center text-sm text-[#6f5b77]">
+                Select a node to edit its source and config.
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   )
