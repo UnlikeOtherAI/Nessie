@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { BUILTIN_TOOL_IDS, WORKFLOW_TOOL_IDS } from '@nessie/runtime'
+import { buildGcloudRunJobArgs } from '../src/control/execution.js'
 import { executeWorkflowBuiltinTool } from '../src/run/tools.js'
 
 const makeStateKey = (installationId: string, key: string): string =>
@@ -14,6 +15,55 @@ test('workflow-only tools stay out of the agent builtin tool set', () => {
   assert.equal(WORKFLOW_TOOL_IDS.has('state_get'), true)
   assert.equal(WORKFLOW_TOOL_IDS.has('state_put'), true)
   assert.equal(WORKFLOW_TOOL_IDS.has('change_detect'), true)
+})
+
+test('gcloud run job action deploys current config before executing', () => {
+  const { deployArgs, executeArgs } = buildGcloudRunJobArgs({
+    env: {
+      CHANNEL_ID: 'channel-123',
+      RUN_MODE: 'workflow',
+    },
+    image: 'us-docker.pkg.dev/example/nessie/action:latest',
+    jobName: 'nessie-action',
+    maxRetries: '1',
+    projectId: 'example-project',
+    region: 'europe-west2',
+    tasks: '2',
+  })
+
+  assert.deepEqual(deployArgs, [
+    'run',
+    'jobs',
+    'deploy',
+    'nessie-action',
+    '--project',
+    'example-project',
+    '--region',
+    'europe-west2',
+    '--image',
+    'us-docker.pkg.dev/example/nessie/action:latest',
+    '--quiet',
+    '--format=json',
+    '--set-env-vars',
+    'CHANNEL_ID=channel-123,RUN_MODE=workflow',
+    '--tasks',
+    '2',
+    '--max-retries',
+    '1',
+  ])
+  assert.deepEqual(executeArgs, [
+    'run',
+    'jobs',
+    'execute',
+    'nessie-action',
+    '--project',
+    'example-project',
+    '--region',
+    'europe-west2',
+    '--wait',
+    '--quiet',
+    '--format=json',
+  ])
 })
 
 test('executeWorkflowBuiltinTool persists workflow state and increments versions', async () => {
