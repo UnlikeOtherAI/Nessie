@@ -1,8 +1,20 @@
 import { lookup } from 'node:dns/promises'
+import { createHash } from 'node:crypto'
 import { readFile, readdir } from 'node:fs/promises'
 import { isIP } from 'node:net'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Prisma, type PrismaClient } from '@prisma/client'
+import type { PgRealtimeTransport } from '@nessie/runtime'
+import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
+import { parseOrganizationId, type RunExecuteJobPayload } from '@nessie/schemas'
+import {
+  runAuthoredMessageSearchTool,
+  runPeopleSearchTool,
+  runSendMessageTool,
+  runUpdatePreferencesTool,
+  runWorkspaceSearchTool,
+} from './pa-tools.js'
 
 type ToolExecutionResult = {
   inputSummary: string
@@ -10,8 +22,31 @@ type ToolExecutionResult = {
   toolName: string
 }
 
+type WorkflowToolExecutionResult = {
+  inputSummary: string
+  output: Record<string, unknown>
+  summary: string
+  success: boolean
+}
+
+export type BuiltinToolRuntimeContext = {
+  actorContext: RunExecuteJobPayload['actorContext']
+  channel: {
+    id: string
+    organizationId: RunExecuteJobPayload['actorContext']['tenant']['organizationId']
+  }
+  prisma: PrismaClient
+  realtimeTransport: PgRealtimeTransport
+  run: {
+    id: string
+    threadId: string
+  }
+}
+
 const MAX_PREVIEW_LENGTH = 1200
 const MAX_TOOL_RESULT_CHARS = 32_000
+const MAX_FETCH_RESPONSE_BYTES = 512_000
+const FETCH_TIMEOUT_MS = 15_000
 const URL_PATTERN = /https?:\/\/[^\s)]+/i
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const docsRoot = resolve(repoRoot, 'docs')
@@ -31,10 +66,50 @@ const truncateToolResult = (output: string): string =>
     ? output.slice(0, MAX_TOOL_RESULT_CHARS) + '\n\n[output truncated]'
     : output
 
+const stableJsonStringify = (value: unknown): string => {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value)
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableJsonStringify(entry)).join(',')}]`
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) =>
+    left.localeCompare(right),
+  )
+  return `{${entries
+    .map(([key, entry]) => `${JSON.stringify(key)}:${stableJsonStringify(entry)}`)
+    .join(',')}}`
+}
+
+const hashJsonValue = (value: unknown): string =>
+  createHash('sha256').update(stableJsonStringify(value)).digest('hex')
+
+const workflowToolFailure = (
+  inputSummary: string,
+  message: string,
+): WorkflowToolExecutionResult => ({
+  inputSummary,
+  output: {
+    error: message,
+  },
+  summary: message,
+  success: false,
+})
+
 export type AgenticToolResult = {
   inputSummary: string
   output: string
   success: boolean
+}
+
+export type WorkflowBuiltinToolRuntimeContext = {
+  organizationId: string
+  prisma: PrismaClient
+  workflowInstallationId: string
+  workflowRunId: string
+  workflowStepRunId: string
 }
 
 const extractUrl = (prompt: string): string | null => {
@@ -77,6 +152,136 @@ const resolveDocsPath = (candidatePath: string): string | null => {
   return resolvedPath === docsRoot || resolvedPath.startsWith(docsRootPrefix)
     ? resolvedPath
     : null
+}
+
+const collectWebSearchResults = async (
+  query: string,
+): Promise<{
+  query: string
+  results: Array<{ title: string; url: string }>
+  searchUrl: string
+  text: string
+}> => {
+  const normalizedQuery = query
+    .replace(/\b(search|latest|look up|lookup|find on the web|web)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || query.trim()
+
+  const searchUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(normalizedQuery)}`
+  const response = await fetch(searchUrl, {
+    headers: {
+      'user-agent': 'NessieWorker/0.0.0',
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  const { text: html } = await readResponseText(response, MAX_FETCH_RESPONSE_BYTES)
+  const matches = Array.from(
+    html.matchAll(/result__a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/g),
+  ).slice(0, 3)
+
+  const results =
+    matches.length > 0
+      ? matches.map((match) => ({
+          title: stripHtml(match[2] ?? 'Result'),
+          url: match[1] ?? searchUrl,
+        }))
+      : [{ title: 'DuckDuckGo search', url: searchUrl }]
+
+  const text = results
+    .map((entry, index) => `${index + 1}. ${entry.title} - ${entry.url}`)
+    .join('\n')
+
+  return {
+    query: normalizedQuery,
+    results,
+    searchUrl,
+    text,
+  }
+}
+
+const readResponseText = async (
+  response: Response,
+  maxBytes: number,
+): Promise<{ text: string; truncated: boolean }> => {
+  if (!response.body) {
+    const text = await response.text()
+    const encoded = new TextEncoder().encode(text)
+    if (encoded.byteLength <= maxBytes) {
+      return { text, truncated: false }
+    }
+    return {
+      text: new TextDecoder().decode(encoded.subarray(0, maxBytes)),
+      truncated: true,
+    }
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let bytesRead = 0
+  let text = ''
+  let truncated = false
+
+  while (true) {
+    const chunk = await reader.read()
+    if (chunk.done) {
+      break
+    }
+
+    const value = chunk.value
+    bytesRead += value.byteLength
+
+    if (bytesRead > maxBytes) {
+      const overflow = bytesRead - maxBytes
+      const allowedBytes = Math.max(0, value.byteLength - overflow)
+      text += decoder.decode(value.subarray(0, allowedBytes), { stream: true })
+      truncated = true
+      await reader.cancel()
+      break
+    }
+
+    text += decoder.decode(value, { stream: true })
+  }
+
+  text += decoder.decode()
+
+  return { text, truncated }
+}
+
+const collectWebFetchResult = async (
+  rawUrl: string,
+): Promise<{
+  content: string
+  contentHash: string
+  contentType: string
+  text: string
+  truncated: boolean
+  url: string
+}> => {
+  const safeUrl = await assertSafeFetchUrl(rawUrl)
+  const response = await fetch(safeUrl, {
+    headers: {
+      'user-agent': 'NessieWorker/0.0.0',
+    },
+    redirect: 'error',
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  const contentType = response.headers.get('content-type') ?? 'text/plain'
+  const { text: body, truncated: bodyTruncated } = await readResponseText(
+    response,
+    MAX_FETCH_RESPONSE_BYTES,
+  )
+  const text = contentType.includes('text/html') ? stripHtml(body) : body
+  const truncated = bodyTruncated || text.length > MAX_TOOL_RESULT_CHARS
+  const content = truncated ? text.slice(0, MAX_TOOL_RESULT_CHARS) : text
+
+  return {
+    content,
+    contentHash: hashJsonValue(text),
+    contentType,
+    text,
+    truncated,
+    url: safeUrl.toString(),
+  }
 }
 
 const selectDocumentPath = async (prompt: string): Promise<string | null> => {
@@ -229,9 +434,43 @@ const wrapTool = async (
 export const executeBuiltinTool = async (
   toolName: string,
   args: Record<string, unknown>,
+  context: BuiltinToolRuntimeContext,
 ): Promise<AgenticToolResult> => {
   const inputSummary = JSON.stringify(args).slice(0, 200)
   switch (toolName) {
+    case 'workspace_search':
+      return wrapTool(inputSummary, () =>
+        runWorkspaceSearchTool(context, String(args.query ?? ''), args.limit),
+      )
+    case 'authored_message_search':
+      return wrapTool(inputSummary, () =>
+        runAuthoredMessageSearchTool(context, String(args.query ?? ''), args.limit),
+      )
+    case 'people_search':
+      return wrapTool(inputSummary, () =>
+        runPeopleSearchTool(context, String(args.query ?? ''), args.limit),
+      )
+    case 'send_message':
+      return wrapTool(inputSummary, () =>
+        runSendMessageTool(context, {
+          channelId:
+            typeof args.channelId === 'string' ? args.channelId : undefined,
+          content: String(args.content ?? ''),
+          targetUserId:
+            typeof args.targetUserId === 'string' ? args.targetUserId : undefined,
+          threadId:
+            typeof args.threadId === 'string' ? args.threadId : undefined,
+        }),
+      )
+    case 'update_preferences':
+      return wrapTool(inputSummary, () =>
+        runUpdatePreferencesTool(
+          context,
+          (typeof args.preferences === 'object' && args.preferences !== null
+            ? args.preferences
+            : {}) as Record<string, unknown>,
+        ),
+      )
     case 'web_search':
       return wrapTool(inputSummary, () => runWebSearchTool(String(args.query ?? '')))
     case 'web_fetch':
@@ -246,6 +485,206 @@ export const executeBuiltinTool = async (
       }
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
+  }
+}
+
+export const executeWorkflowBuiltinTool = async (
+  toolName: string,
+  args: Record<string, unknown>,
+  context: WorkflowBuiltinToolRuntimeContext,
+): Promise<WorkflowToolExecutionResult> => {
+  const inputSummary = JSON.stringify(args).slice(0, 200)
+
+  if (!WORKFLOW_TOOL_IDS.has(toolName)) {
+    return workflowToolFailure(inputSummary, `Unsupported workflow tool: ${toolName}`)
+  }
+
+  switch (toolName) {
+    case 'web_search': {
+      const query = typeof args.query === 'string' ? args.query.trim() : ''
+      if (!query) {
+        return workflowToolFailure(inputSummary, 'Workflow web_search requires query.')
+      }
+
+      const result = await collectWebSearchResults(query)
+      return {
+        inputSummary,
+        output: {
+          query: result.query,
+          results: result.results,
+          searchUrl: result.searchUrl,
+          text: result.text,
+        },
+        summary: `Web search completed for "${result.query}".`,
+        success: true,
+      }
+    }
+    case 'web_fetch': {
+      const url = typeof args.url === 'string' ? args.url.trim() : ''
+      if (!url) {
+        return workflowToolFailure(inputSummary, 'Workflow web_fetch requires url.')
+      }
+
+      const result = await collectWebFetchResult(url)
+      return {
+        inputSummary,
+        output: {
+          content: result.content,
+          contentHash: result.contentHash,
+          contentType: result.contentType,
+          text: result.text,
+          truncated: result.truncated,
+          url: result.url,
+        },
+        summary: `Fetched ${result.url}.`,
+        success: true,
+      }
+    }
+    case 'state_get': {
+      const key = typeof args.key === 'string' ? args.key.trim() : ''
+      if (!key) {
+        return workflowToolFailure(inputSummary, 'Workflow state_get requires key.')
+      }
+
+      const entry = await context.prisma.workflowStateEntry.findUnique({
+        where: {
+          workflowInstallationId_key: {
+            key,
+            workflowInstallationId: context.workflowInstallationId,
+          },
+        },
+        select: {
+          updatedAt: true,
+          value: true,
+          valueHash: true,
+          version: true,
+        },
+      })
+
+      const fallbackValue = Object.prototype.hasOwnProperty.call(args, 'defaultValue')
+        ? (args.defaultValue ?? null)
+        : null
+
+      return {
+        inputSummary,
+        output: {
+          found: entry !== null,
+          key,
+          updatedAt: entry?.updatedAt.toISOString() ?? null,
+          value: entry?.value ?? fallbackValue,
+          valueHash: entry?.valueHash ?? null,
+          version: entry?.version ?? 0,
+        },
+        summary: entry ? `Loaded state "${key}".` : `No state found for "${key}".`,
+        success: true,
+      }
+    }
+    case 'state_put': {
+      const key = typeof args.key === 'string' ? args.key.trim() : ''
+      if (!key) {
+        return workflowToolFailure(inputSummary, 'Workflow state_put requires key.')
+      }
+      if (!Object.prototype.hasOwnProperty.call(args, 'value')) {
+        return workflowToolFailure(inputSummary, 'Workflow state_put requires value.')
+      }
+
+      const value = args.value ?? null
+      const valueHash = hashJsonValue(value)
+      const entry = await context.prisma.workflowStateEntry.upsert({
+        where: {
+          workflowInstallationId_key: {
+            key,
+            workflowInstallationId: context.workflowInstallationId,
+          },
+        },
+        create: {
+          key,
+          organizationId: parseOrganizationId(context.organizationId),
+          value: value as Prisma.InputJsonValue,
+          valueHash,
+          version: 1,
+          workflowInstallationId: context.workflowInstallationId,
+          workflowRunId: context.workflowRunId,
+          workflowStepRunId: context.workflowStepRunId,
+        },
+        update: {
+          organizationId: parseOrganizationId(context.organizationId),
+          value: value as Prisma.InputJsonValue,
+          valueHash,
+          version: {
+            increment: 1,
+          },
+          workflowRunId: context.workflowRunId,
+          workflowStepRunId: context.workflowStepRunId,
+        },
+        select: {
+          updatedAt: true,
+          value: true,
+          valueHash: true,
+          version: true,
+          key: true,
+        },
+      })
+
+      return {
+        inputSummary,
+        output: {
+          key: entry.key,
+          updatedAt: entry.updatedAt.toISOString(),
+          value: entry.value,
+          valueHash: entry.valueHash,
+          version: entry.version,
+        },
+        summary: `Stored state "${entry.key}".`,
+        success: true,
+      }
+    }
+    case 'change_detect': {
+      const key = typeof args.key === 'string' ? args.key.trim() : ''
+      if (!key) {
+        return workflowToolFailure(inputSummary, 'Workflow change_detect requires key.')
+      }
+      if (!Object.prototype.hasOwnProperty.call(args, 'value')) {
+        return workflowToolFailure(inputSummary, 'Workflow change_detect requires value.')
+      }
+
+      const currentValue = args.value ?? null
+      const currentHash = hashJsonValue(currentValue)
+      const entry = await context.prisma.workflowStateEntry.findUnique({
+        where: {
+          workflowInstallationId_key: {
+            key,
+            workflowInstallationId: context.workflowInstallationId,
+          },
+        },
+        select: {
+          updatedAt: true,
+          value: true,
+          valueHash: true,
+          version: true,
+        },
+      })
+
+      const changed = entry ? entry.valueHash !== currentHash : true
+      return {
+        inputSummary,
+        output: {
+          changeType: entry ? (changed ? 'updated' : 'unchanged') : 'created',
+          changed,
+          currentHash,
+          currentValue,
+          found: entry !== null,
+          key,
+          previousHash: entry?.valueHash ?? null,
+          previousValue: entry?.value ?? null,
+          version: entry?.version ?? 0,
+        },
+        summary: changed ? `Change detected for "${key}".` : `No change detected for "${key}".`,
+        success: true,
+      }
+    }
+    default:
+      return workflowToolFailure(inputSummary, `Unsupported workflow tool: ${toolName}`)
   }
 }
 
@@ -277,53 +716,21 @@ export const runWebFetchTool = async (prompt: string): Promise<ToolExecutionResu
     }
   }
 
-  const safeUrl = await assertSafeFetchUrl(url)
-  const response = await fetch(safeUrl, {
-    headers: {
-      'user-agent': 'NessieWorker/0.0.0',
-    },
-    redirect: 'error',
-  })
-  const contentType = response.headers.get('content-type') ?? 'text/plain'
-  const body = await response.text()
-  const outputPreview = contentType.includes('text/html') ? stripHtml(body) : body
+  const result = await collectWebFetchResult(url)
 
   return {
-    inputSummary: safeUrl.toString(),
-    outputPreview: truncate(outputPreview),
+    inputSummary: result.url,
+    outputPreview: truncate(result.text),
     toolName: 'web_fetch',
   }
 }
 
 export const runWebSearchTool = async (prompt: string): Promise<ToolExecutionResult> => {
-  const query = prompt
-    .replace(/\b(search|latest|look up|lookup|find on the web|web)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim() || prompt.trim()
-
-  const searchUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-  const response = await fetch(searchUrl, {
-    headers: {
-      'user-agent': 'NessieWorker/0.0.0',
-    },
-  })
-  const html = await response.text()
-  const matches = Array.from(
-    html.matchAll(/result__a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/g),
-  ).slice(0, 3)
-
-  const lines =
-    matches.length > 0
-      ? matches.map((match, index) => {
-          const title = stripHtml(match[2] ?? 'Result')
-          const url = match[1] ?? searchUrl
-          return `${index + 1}. ${title} - ${url}`
-        })
-      : [`1. DuckDuckGo search - ${searchUrl}`]
+  const result = await collectWebSearchResults(prompt)
 
   return {
-    inputSummary: query,
-    outputPreview: truncate(lines.join('\n')),
+    inputSummary: result.query,
+    outputPreview: truncate(result.text),
     toolName: 'web_search',
   }
 }

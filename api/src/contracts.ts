@@ -7,6 +7,7 @@ import {
   CHAT_MESSAGE_MAX_CHARS,
   MessageRoleSchema,
   OrganizationIdSchema,
+  PersonalAssistantConfigSummarySchema,
   RunIdSchema,
   TeamIdSchema,
   ThreadIdSchema,
@@ -166,6 +167,7 @@ export const AgentTriggerRecordSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   config: z.record(z.unknown()),
+  webhookApiKey: z.string().optional(),
   targetChannelId: ChannelIdSchema.optional(),
   targetThreadId: ThreadIdSchema.optional(),
   lastFiredAt: TimestampSchema.optional(),
@@ -253,9 +255,40 @@ export const ThreadMessageRecordSchema = z.object({
 })
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
 
+export const ThreadRecordSchema = z.object({
+  id: ThreadIdSchema,
+  channelId: ChannelIdSchema,
+  title: z.string(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema.optional(),
+})
+export type ThreadRecord = z.infer<typeof ThreadRecordSchema>
+
 export const CreateThreadMessageBodySchema = z.object({
   content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
 })
+
+export const PersonalAssistantStateResponseSchema = z.object({
+  agent: AgentRecordSchema.nullable(),
+  channel: ChannelRecordSchema.nullable(),
+  instance: z.null().optional(),
+  thread: ThreadRecordSchema.nullable().optional(),
+  configSummary: PersonalAssistantConfigSummarySchema.optional(),
+})
+export type PersonalAssistantStateResponse = z.infer<
+  typeof PersonalAssistantStateResponseSchema
+>
+
+export const PersonalAssistantBootstrapResponseSchema = z.object({
+  agent: AgentRecordSchema,
+  channel: ChannelRecordSchema,
+  instance: z.null().optional(),
+  thread: ThreadRecordSchema,
+  configSummary: PersonalAssistantConfigSummarySchema.optional(),
+})
+export type PersonalAssistantBootstrapResponse = z.infer<
+  typeof PersonalAssistantBootstrapResponseSchema
+>
 
 export const ToolDescriptorSchema = z.object({
   id: NonEmptyStringSchema,
@@ -577,6 +610,21 @@ export const WorkflowStepRunRecordSchema = z.object({
   updatedAt: TimestampSchema,
 })
 export type WorkflowStepRunRecord = z.infer<typeof WorkflowStepRunRecordSchema>
+
+export const WorkflowStateEntryRecordSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: OrganizationIdSchema,
+  workflowInstallationId: z.string().uuid(),
+  workflowRunId: z.string().uuid().nullish(),
+  workflowStepRunId: z.string().uuid().nullish(),
+  key: NonEmptyStringSchema,
+  value: z.unknown(),
+  valueHash: NonEmptyStringSchema,
+  version: z.number().int().positive(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type WorkflowStateEntryRecord = z.infer<typeof WorkflowStateEntryRecordSchema>
 
 export const CreateWorkflowRunBodySchema = z.object({
   input: z.record(z.unknown()).optional(),
