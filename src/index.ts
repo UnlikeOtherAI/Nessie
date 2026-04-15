@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { timingSafeEqual } from 'node:crypto'
 import { WebSocketServer, WebSocket } from 'ws'
 import { RealtimeClient } from './voice/index.js'
 import { Orchestrator } from './agent/Orchestrator.js'
@@ -13,6 +14,7 @@ const PROVIDER = process.env.LLM_PROVIDER ?? 'openai'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? ''
 const HOST = process.env.HELPER_HOST ?? '127.0.0.1'
 const PORT = Number(process.env.HELPER_PORT ?? process.env.PORT ?? '5554')
+const HELPER_API_KEY = (process.env.NESSIE_HELPER_API_KEY ?? process.env.HELPER_API_KEY ?? '').trim()
 
 // ─── Event broadcast bus ───────────────────────────────────────────────────────
 // All connected WebSocket clients and active SSE streams receive these events.
@@ -43,10 +45,122 @@ function sendSSE(res: import('node:http').ServerResponse, event: string, data: u
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }
 
+function isLocalHelperHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase()
+  return normalized === 'localhost'
+    || normalized === '127.0.0.1'
+    || normalized === '::1'
+    || normalized === '[::1]'
+}
+
+function getRequestPath(req: import('node:http').IncomingMessage): string {
+  try {
+    return new URL(req.url ?? '/', `http://${req.headers.host ?? HOST}`).pathname
+  } catch {
+    return req.url ?? '/'
+  }
+}
+
+function isProtectedHttpPath(req: import('node:http').IncomingMessage): boolean {
+  const path = getRequestPath(req)
+  return path === '/state'
+    || path === '/chat'
+    || path === '/chat/sync'
+    || path === '/mcp'
+    || path.startsWith('/mcp/')
+    || path === '/history'
+    || path.startsWith('/history/')
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function readHeaderApiKey(req: import('node:http').IncomingMessage): string | undefined {
+  const authorization = firstHeaderValue(req.headers.authorization)
+  const bearer = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
+  if (bearer) return bearer
+
+  return firstHeaderValue(req.headers['x-helper-api-key'])?.trim()
+    ?? firstHeaderValue(req.headers['x-nessie-helper-api-key'])?.trim()
+}
+
+function readWebSocketQueryApiKey(req: import('node:http').IncomingMessage): string | undefined {
+  try {
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? HOST}`)
+    return url.searchParams.get('token')?.trim()
+      ?? url.searchParams.get('apiKey')?.trim()
+      ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+function readWebSocketProtocolApiKey(req: import('node:http').IncomingMessage): string | undefined {
+  const rawProtocolHeader = firstHeaderValue(req.headers['sec-websocket-protocol'])
+  if (!rawProtocolHeader) return undefined
+
+  const rawBearer = rawProtocolHeader.match(/(?:^|,)\s*Bearer\s+([^,\s]+)/i)?.[1]?.trim()
+  if (rawBearer) return rawBearer
+
+  const protocols = rawProtocolHeader.split(',').map(protocol => protocol.trim()).filter(Boolean)
+  for (let index = 0; index < protocols.length; index += 1) {
+    const protocol = protocols[index]
+    if (!protocol) continue
+
+    const normalized = protocol.toLowerCase()
+    if (normalized === 'bearer' || normalized === 'token' || normalized === 'apikey' || normalized === 'api-key') {
+      return protocols[index + 1]?.trim()
+    }
+
+    for (const prefix of ['bearer.', 'bearer-', 'token.', 'token-', 'apikey.', 'apikey-', 'api-key.', 'api-key-']) {
+      if (normalized.startsWith(prefix)) return protocol.slice(prefix.length).trim()
+    }
+  }
+
+  return undefined
+}
+
+function isValidHelperApiKey(value: string | undefined): boolean {
+  if (!HELPER_API_KEY) return true
+  if (!value) return false
+
+  const expected = Buffer.from(HELPER_API_KEY)
+  const supplied = Buffer.from(value)
+  return expected.length === supplied.length && timingSafeEqual(expected, supplied)
+}
+
+function isHttpRequestAuthorized(req: import('node:http').IncomingMessage): boolean {
+  return isValidHelperApiKey(readHeaderApiKey(req))
+}
+
+function isWebSocketRequestAuthorized(req: import('node:http').IncomingMessage): boolean {
+  return isValidHelperApiKey(
+    readHeaderApiKey(req)
+      ?? readWebSocketQueryApiKey(req)
+      ?? readWebSocketProtocolApiKey(req),
+  )
+}
+
+function sendUnauthorized(res: import('node:http').ServerResponse) {
+  res.writeHead(401, {
+    'Content-Type': 'application/json',
+    'WWW-Authenticate': 'Bearer realm="nessie-helper"',
+  })
+  res.end(JSON.stringify({ error: 'Unauthorized' }))
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 async function main() {
   console.log(`Nessie starting... (LLM: ${PROVIDER})`)
+
+  if (!HELPER_API_KEY && !isLocalHelperHost(HOST)) {
+    throw new Error('Refusing to start helper server on a non-local host without NESSIE_HELPER_API_KEY or HELPER_API_KEY')
+  }
+  if (!HELPER_API_KEY) {
+    console.warn('Warning: helper auth disabled because HELPER_HOST is local-only')
+  }
 
   let llm = null
   try {
@@ -80,6 +194,11 @@ async function main() {
   // ─── HTTP server ────────────────────────────────────────────────────────────
 
   const server = createServer(async (req, res) => {
+    if (isProtectedHttpPath(req) && !isHttpRequestAuthorized(req)) {
+      sendUnauthorized(res)
+      return
+    }
+
     // ─── GET /health ──────────────────────────────────────────────────────────
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -309,9 +428,24 @@ async function main() {
 
   // ─── WebSocket server ───────────────────────────────────────────────────────
 
-  const wss = new WebSocketServer({ server })
+  const wss = new WebSocketServer({
+    server,
+    verifyClient: ({ req }, done) => {
+      if (isWebSocketRequestAuthorized(req)) {
+        done(true)
+        return
+      }
+
+      done(false, 401, 'Unauthorized')
+    },
+  })
 
   wss.on('connection', (ws, req) => {
+    if (!isWebSocketRequestAuthorized(req)) {
+      ws.close(4001, 'Unauthorized')
+      return
+    }
+
     const path = req.url ?? ''
 
     if (path === '/voice' || path.startsWith('/voice')) {
@@ -469,4 +603,7 @@ async function main() {
   process.on('SIGTERM', shutdown)
 }
 
-main().catch(console.error)
+main().catch((error: unknown) => {
+  console.error(error)
+  process.exitCode = 1
+})
