@@ -20,6 +20,7 @@ import { enqueueRunExecution } from '../queue.js'
 const CLAIM_TIMEOUT_MS = 60_000
 
 type ClaimedMailboxMessage = {
+  attempts: number
   body: string
   channelId: string | null
   claimedAt: Date
@@ -106,6 +107,7 @@ const claimNextMailboxMessage = async (
       WHERE amm."id" = next_message."id"
       RETURNING
         amm."body" AS "body",
+        amm."attempts" AS "attempts",
         amm."channel_id" AS "channelId",
         amm."claimed_at" AS "claimedAt",
         amm."correlation_id" AS "correlationId",
@@ -127,11 +129,11 @@ const claimNextMailboxMessage = async (
 
 const deadLetterMailboxMessage = async (
   prisma: PrismaClient,
-  message: Pick<ClaimedMailboxMessage, 'claimedAt' | 'id'>,
+  message: Pick<ClaimedMailboxMessage, 'attempts' | 'id'>,
 ): Promise<boolean> => {
   const result = await prisma.agentMailboxMessage.updateMany({
     where: {
-      claimedAt: message.claimedAt,
+      attempts: message.attempts,
       deliveredAt: null,
       id: message.id,
       status: 'processing',
@@ -143,25 +145,6 @@ const deadLetterMailboxMessage = async (
   })
 
   return result.count === 1
-}
-
-const lockClaimedMailboxMessage = async (
-  prisma: Pick<PrismaClient, '$queryRaw'>,
-  message: Pick<ClaimedMailboxMessage, 'claimedAt' | 'id'>,
-): Promise<boolean> => {
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>(
-    Prisma.sql`
-      SELECT amm."id" AS "id"
-      FROM "agent_mailbox_messages" AS amm
-      WHERE amm."id" = ${message.id}
-        AND amm."status" = 'processing'::"MailboxMessageStatus"
-        AND amm."delivered_at" IS NULL
-        AND amm."claimed_at" = ${message.claimedAt}
-      FOR UPDATE
-    `,
-  )
-
-  return rows.length === 1
 }
 
 export const reclaimExpiredMailboxMessages = async (
@@ -255,11 +238,6 @@ export const dispatchNextMailboxMessage = async (
     } as const)
 
   const publishPayload = await prisma.$transaction(async (tx) => {
-    const claimStillOwned = await lockClaimedMailboxMessage(tx, message)
-    if (!claimStillOwned) {
-      return null
-    }
-
     const promptMessage = await tx.message.create({
       data: {
         content: message.body,

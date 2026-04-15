@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseOrganizationId } from '@nessie/schemas'
-import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
+import { SYSTEM_TOOL_DEFINITIONS } from '@nessie/runtime'
 import type {
   ToolDescriptor,
   ToolRegistryEntry,
@@ -59,7 +59,7 @@ export const ensureBuiltinToolsRegistered = async (
   prisma: PrismaClient,
 ): Promise<void> => {
   await Promise.all(
-    BUILTIN_TOOL_DEFINITIONS.map((tool) =>
+    SYSTEM_TOOL_DEFINITIONS.map((tool) =>
       prisma.toolRegistryEntry.upsert({
         where: {
           scopeKey_toolId: {

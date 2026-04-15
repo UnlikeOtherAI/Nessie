@@ -13,7 +13,6 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
-import { useTriggers } from '../facades/triggers/hooks'
 import { useTools } from '../facades/tools/hooks'
 import {
   useCreateWorkflowTemplate,
@@ -171,6 +170,81 @@ const nodeThemes: Record<
   },
 }
 
+const WORKFLOW_TRIGGER_TYPE_LABELS = {
+  event: 'Event trigger',
+  interval: 'Interval trigger',
+  manual: 'Manual trigger',
+  scheduled: 'Scheduled trigger',
+  webhook: 'Webhook trigger',
+} as const
+
+const WORKFLOW_TOOL_NODE_IDS = new Set([
+  'change_detect',
+  'state_get',
+  'state_put',
+  'web_fetch',
+  'web_search',
+])
+
+type WorkflowTriggerTemplateNode = {
+  config: Record<string, unknown>
+  description?: string
+  enabled?: boolean
+  id: string
+  meta?: string
+  name?: string
+  nextRunAt?: string
+  position?: {
+    x?: number
+    y?: number
+  }
+  sourceId: string
+  targetNodeIds: string[]
+  title?: string
+  type: string
+}
+
+const getDefaultWorkflowTriggerConfig = (
+  triggerType: keyof typeof WORKFLOW_TRIGGER_TYPE_LABELS,
+): Record<string, unknown> => {
+  switch (triggerType) {
+    case 'scheduled':
+      return {
+        cron: '0 * * * *',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        type: triggerType,
+      }
+    case 'interval':
+      return {
+        interval_minutes: 60,
+        type: triggerType,
+      }
+    default:
+      return {
+        type: triggerType,
+      }
+  }
+}
+
+const getWorkflowRuntimeStepType = (nodeType: WorkflowCanvasNodeType): string =>
+  nodeType === 'agent' ? 'agent_task' : nodeType === 'tool' ? 'tool_call' : nodeType
+
+const getWorkflowCanvasNodeType = (stepType: string): WorkflowCanvasNodeType | null => {
+  if (stepType === 'agent' || stepType === 'agent_task') {
+    return 'agent'
+  }
+
+  if (stepType === 'tool' || stepType === 'tool_call') {
+    return 'tool'
+  }
+
+  if (stepType === 'trigger') {
+    return 'trigger'
+  }
+
+  return null
+}
+
 const normalizeReturnTo = (pathname: string, search: string, hash: string) =>
   `${pathname}${search}${hash}`
 
@@ -207,23 +281,23 @@ const getWorkflowNodeInitialConfig = (
   switch (nodeType) {
     case 'agent':
       return {
-        agentKind: source.agentKind,
-        delegationMode: source.delegationMode,
-        model: source.model,
-        provider: source.provider,
-        role: source.role,
-        systemPrompt: source.systemPrompt,
-        surfacePolicy: source.surfacePolicy,
-        toolPolicy: source.toolPolicy,
+        agentId: typeof source.id === 'string' ? source.id : undefined,
       }
     case 'tool':
       return {
-        description: source.description,
-        enabled: source.enabled,
-        handlerKind: source.handlerKind,
-        safe: source.safe,
+        toolName: typeof source.id === 'string' ? source.id : undefined,
       }
     case 'trigger':
+      if (
+        typeof source.type === 'string' &&
+        source.type in WORKFLOW_TRIGGER_TYPE_LABELS &&
+        !('createdAt' in source)
+      ) {
+        return getDefaultWorkflowTriggerConfig(
+          source.type as keyof typeof WORKFLOW_TRIGGER_TYPE_LABELS,
+        )
+      }
+
       return {
         ...readRecord(source.config),
         description: source.description,
@@ -253,6 +327,13 @@ const getWorkflowNodeMeta = (
     case 'tool':
       return source.safe === false ? 'restricted' : 'safe'
     case 'trigger':
+      if (
+        typeof source.type === 'string' &&
+        source.type in WORKFLOW_TRIGGER_TYPE_LABELS &&
+        !('createdAt' in source)
+      ) {
+        return source.type
+      }
       return typeof source.type === 'string' ? source.type : undefined
     default:
       return undefined
@@ -600,29 +681,144 @@ const getLinearWorkflowNodes = (
   return orderedNodes
 }
 
+const buildExecutableNodeConfig = (
+  node: WorkflowCanvasNode,
+): Record<string, unknown> => {
+  const config = readRecord(node.config)
+
+  if (node.type === 'agent') {
+    return {
+      ...config,
+      agentId:
+        typeof config.agentId === 'string' && config.agentId.trim()
+          ? config.agentId
+          : node.sourceId,
+    }
+  }
+
+  if (node.type === 'tool') {
+    return {
+      ...config,
+      toolName:
+        typeof config.toolName === 'string' && config.toolName.trim()
+          ? config.toolName
+          : node.sourceId,
+    }
+  }
+
+  return {
+    ...config,
+    type:
+      typeof config.type === 'string' && config.type.trim()
+        ? config.type
+        : node.sourceId,
+  }
+}
+
+const readWorkflowStepConfig = (step: {
+  input?: Record<string, unknown>
+}): Record<string, unknown> => {
+  const stepInput = readRecord(step.input)
+  const runtimeConfig = Object.fromEntries(
+    Object.entries(stepInput).filter(([key]) => key !== 'workflowDesigner'),
+  )
+  if (Object.keys(runtimeConfig).length > 0) {
+    return runtimeConfig
+  }
+
+  const serializedNode = readSerializedNode(stepInput.workflowDesigner)
+  return serializedNode.config ?? {}
+}
+
+const readWorkflowTemplateTriggers = (
+  value: unknown,
+): WorkflowTriggerTemplateNode[] =>
+  Array.isArray(value)
+    ? value.flatMap((entry) => {
+        if (!isRecord(entry)) {
+          return []
+        }
+
+        const type =
+          typeof entry.type === 'string'
+            ? entry.type
+            : typeof entry.sourceId === 'string'
+              ? entry.sourceId
+              : typeof readRecord(entry.config).type === 'string'
+                ? String(readRecord(entry.config).type)
+                : undefined
+
+        if (!type) {
+          return []
+        }
+
+        return [
+          {
+            config: readRecord(entry.config),
+            description:
+              typeof entry.description === 'string' ? entry.description : undefined,
+            enabled:
+              typeof entry.enabled === 'boolean' ? entry.enabled : undefined,
+            id: typeof entry.id === 'string' ? entry.id : crypto.randomUUID(),
+            meta: typeof entry.meta === 'string' ? entry.meta : undefined,
+            name: typeof entry.name === 'string' ? entry.name : undefined,
+            nextRunAt:
+              typeof entry.nextRunAt === 'string' ? entry.nextRunAt : undefined,
+            position: isRecord(entry.position)
+              ? {
+                  x:
+                    typeof entry.position.x === 'number'
+                      ? entry.position.x
+                      : undefined,
+                  y:
+                    typeof entry.position.y === 'number'
+                      ? entry.position.y
+                      : undefined,
+                }
+              : undefined,
+            sourceId:
+              typeof entry.sourceId === 'string' ? entry.sourceId : type,
+            targetNodeIds: Array.isArray(entry.targetNodeIds)
+              ? entry.targetNodeIds.filter(
+                  (nodeId): nodeId is string => typeof nodeId === 'string',
+                )
+              : [],
+            title: typeof entry.title === 'string' ? entry.title : undefined,
+            type,
+          } satisfies WorkflowTriggerTemplateNode,
+        ]
+      })
+    : []
+
 const buildWorkflowGraph = (
   nodes: WorkflowCanvasNode[],
   connections: WorkflowConnection[],
 ) => ({
-  steps: getLinearWorkflowNodes(nodes, connections).map((node) => ({
-    id: node.id,
-    input: {
-      workflowDesigner: {
-        config: node.config,
-        meta: node.meta,
-        outgoingNodeIds: connections
-          .filter((connection) => connection.fromNodeId === node.id)
-          .map((connection) => connection.toNodeId),
-        position: {
-          x: Math.round(node.x),
-          y: Math.round(node.y),
+  steps: getLinearWorkflowNodes(nodes, connections)
+    .filter((node) => node.type !== 'trigger')
+    .map((node) => {
+      const executableConfig = buildExecutableNodeConfig(node)
+      return {
+        id: node.id,
+        input: {
+          ...executableConfig,
+          workflowDesigner: {
+            config: executableConfig,
+            meta: node.meta,
+            outgoingNodeIds: connections
+              .filter((connection) => connection.fromNodeId === node.id)
+              .map((connection) => connection.toNodeId),
+            position: {
+              x: Math.round(node.x),
+              y: Math.round(node.y),
+            },
+            sourceId: node.sourceId,
+          },
         },
-        sourceId: node.sourceId,
-      },
-    },
-    title: node.label,
-    type: node.type,
-  })),
+        title: node.label,
+        type: getWorkflowRuntimeStepType(node.type),
+      }
+    }),
 })
 
 const buildWorkflowTriggers = (
@@ -631,16 +827,39 @@ const buildWorkflowTriggers = (
 ) =>
   nodes
     .filter((node) => node.type === 'trigger')
-    .map((node) => ({
-      id: node.id,
-      config: node.config,
-      meta: node.meta,
-      sourceId: node.sourceId,
-      targetNodeIds: connections
-        .filter((connection) => connection.fromNodeId === node.id)
-        .map((connection) => connection.toNodeId),
-      title: node.label,
-    }))
+    .map((node) => {
+      const triggerConfig = buildExecutableNodeConfig(node)
+      const {
+        description,
+        enabled,
+        nextRunAt,
+        type,
+        ...config
+      } = triggerConfig
+
+      return {
+        config,
+        description:
+          typeof description === 'string' ? description : undefined,
+        enabled: enabled !== false,
+        id: node.id,
+        meta: node.meta,
+        name: node.label,
+        nextRunAt:
+          typeof nextRunAt === 'string' ? nextRunAt : undefined,
+        position: {
+          x: Math.round(node.x),
+          y: Math.round(node.y),
+        },
+        sourceId: node.sourceId,
+        targetNodeIds: connections
+          .filter((connection) => connection.fromNodeId === node.id)
+          .map((connection) => connection.toNodeId),
+        title: node.label,
+        type:
+          typeof type === 'string' && type.trim() ? type : node.sourceId,
+      }
+    })
 
 const parseWorkflowTemplate = (
   graph: {
@@ -651,11 +870,12 @@ const parseWorkflowTemplate = (
       type: string
     }>
   },
+  triggers: unknown,
   canvasElement: HTMLDivElement | null,
 ): Pick<WorkflowDesignerDraft, 'connections' | 'nodes'> => {
   const parsedNodes = graph.steps.flatMap((step, index) => {
-    const stepType = step.type
-    if (stepType !== 'agent' && stepType !== 'tool' && stepType !== 'trigger') {
+    const stepType = getWorkflowCanvasNodeType(step.type)
+    if (!stepType) {
       return []
     }
 
@@ -671,9 +891,15 @@ const parseWorkflowTemplate = (
       {
         id: step.id,
         label: step.title?.trim() || 'Untitled node',
-        config: serializedNode.config ?? {},
+        config: readWorkflowStepConfig(step),
         meta: serializedNode.meta,
-        sourceId: serializedNode.sourceId ?? step.id,
+        sourceId:
+          serializedNode.sourceId
+          ?? (stepType === 'agent'
+            ? String(readWorkflowStepConfig(step).agentId ?? step.id)
+            : stepType === 'tool'
+              ? String(readWorkflowStepConfig(step).toolName ?? step.id)
+              : step.id),
         type: stepType,
         x:
           typeof serializedNode.position?.x === 'number'
@@ -706,9 +932,62 @@ const parseWorkflowTemplate = (
     )
   })
 
+  const triggerNodes = readWorkflowTemplateTriggers(triggers).map((trigger, index) => {
+    const fallbackPosition = getCanvasInsertionPoint(
+      canvasElement,
+      ((parsedNodes.length + index) % CANVAS_NODE_INSERT_STEPS) *
+        CANVAS_NODE_INSERT_OFFSET,
+    )
+
+    return {
+      id: trigger.id,
+      label:
+        trigger.title?.trim()
+        || trigger.name?.trim()
+        || WORKFLOW_TRIGGER_TYPE_LABELS[
+          trigger.type as keyof typeof WORKFLOW_TRIGGER_TYPE_LABELS
+        ]
+        || 'Untitled trigger',
+      config: {
+        ...trigger.config,
+        ...(trigger.description ? { description: trigger.description } : {}),
+        ...(trigger.nextRunAt ? { nextRunAt: trigger.nextRunAt } : {}),
+        ...(trigger.enabled !== undefined ? { enabled: trigger.enabled } : {}),
+        type: trigger.type,
+      },
+      meta: trigger.meta ?? trigger.type,
+      sourceId: trigger.sourceId,
+      type: 'trigger' as const,
+      x:
+        typeof trigger.position?.x === 'number'
+          ? trigger.position.x
+          : fallbackPosition.x,
+      y:
+        typeof trigger.position?.y === 'number'
+          ? trigger.position.y
+          : fallbackPosition.y,
+    }
+  })
+
+  const allNodes = [...parsedNodes, ...triggerNodes]
+
+  const triggerConnections = readWorkflowTemplateTriggers(triggers).flatMap((trigger) =>
+    trigger.targetNodeIds.flatMap((toNodeId) =>
+      allNodes.some((candidate) => candidate.id === toNodeId)
+        ? [
+            {
+              id: crypto.randomUUID(),
+              fromNodeId: trigger.id,
+              toNodeId,
+            } satisfies WorkflowConnection,
+          ]
+        : [],
+    ),
+  )
+
   return {
-    connections: parsedConnections,
-    nodes: parsedNodes,
+    connections: [...parsedConnections, ...triggerConnections],
+    nodes: allNodes,
   }
 }
 
@@ -719,7 +998,6 @@ export const WorkflowDesignerPage = () => {
   const { me } = useAuthSession()
   const { data: agents = [] } = useAgents()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
-  const { data: triggers = [] } = useTriggers(isOwner)
   const { data: tools = [] } = useTools()
   const {
     data: workflowTemplate,
@@ -821,7 +1099,10 @@ export const WorkflowDesignerPage = () => {
   const topLevelAgentSources = useMemo(
     () =>
       [...agents]
-        .filter((agent) => !agent.parentAgentId)
+        .filter(
+          (agent) =>
+            !agent.parentAgentId && agent.agentKind !== 'personal_assistant',
+        )
         .sort((left, right) => left.name.localeCompare(right.name))
         .map((agent) => ({
           config: getWorkflowNodeInitialConfig('agent', agent),
@@ -835,23 +1116,24 @@ export const WorkflowDesignerPage = () => {
 
   const triggerNodeSources = useMemo(
     () =>
-      [...triggers]
-        .sort((left, right) =>
-          (left.name ?? left.type).localeCompare(right.name ?? right.type),
-        )
-        .map((trigger) => ({
-          config: getWorkflowNodeInitialConfig('trigger', trigger),
-          label: getWorkflowNodeLabel('trigger', trigger),
-          meta: getWorkflowNodeMeta('trigger', trigger),
+      Object.entries(WORKFLOW_TRIGGER_TYPE_LABELS).map(([triggerType, label]) => ({
+          config: getWorkflowNodeInitialConfig('trigger', {
+            type: triggerType,
+          }),
+          label,
+          meta: getWorkflowNodeMeta('trigger', {
+            type: triggerType,
+          }),
           nodeType: 'trigger' as const,
-          sourceId: trigger.id,
+          sourceId: triggerType,
         })),
-    [triggers],
+    [],
   )
 
   const toolNodeSources = useMemo(
     () =>
       [...tools]
+        .filter((tool) => WORKFLOW_TOOL_NODE_IDS.has(tool.id))
         .sort((left, right) => left.label.localeCompare(right.label))
         .map((tool) => ({
           config: getWorkflowNodeInitialConfig('tool', tool),
@@ -1022,7 +1304,11 @@ export const WorkflowDesignerPage = () => {
       return
     }
 
-    const parsedWorkflow = parseWorkflowTemplate(workflowTemplate.graph, canvasRef.current)
+    const parsedWorkflow = parseWorkflowTemplate(
+      workflowTemplate.graph,
+      workflowTemplate.triggers,
+      canvasRef.current,
+    )
     hydratedWorkflowIdRef.current = workflowTemplateId
     setConnections(parsedWorkflow.connections)
     setNodes(parsedWorkflow.nodes)

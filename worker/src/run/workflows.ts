@@ -115,6 +115,7 @@ export const loadWorkflowGraph = async (
   installation: {
     channelId: string | null
     config: unknown
+    id: string
     projectId: string | null
     resolvedBindings: unknown
     teamId: string | null
@@ -144,6 +145,7 @@ export const loadWorkflowGraph = async (
         select: {
           channelId: true,
           config: true,
+          id: true,
           projectId: true,
           resolvedBindings: true,
           teamId: true,
@@ -199,6 +201,7 @@ export const loadWorkflowGraph = async (
     installation: {
       channelId: workflowRun.installation.channelId,
       config: workflowRun.installation.config,
+      id: workflowRun.installation.id,
       projectId: workflowRun.installation.projectId,
       resolvedBindings: workflowRun.installation.resolvedBindings,
       teamId: workflowRun.installation.teamId,
@@ -241,6 +244,7 @@ export const markWorkflowRunStarted = async (
 export const markWorkflowStepRunStarted = async (
   prisma: PrismaLike,
   input: {
+    input?: Record<string, unknown>
     output?: Record<string, unknown>
     stepRunId: string
   },
@@ -250,6 +254,7 @@ export const markWorkflowStepRunStarted = async (
     data: {
       status: 'running',
       startedAt: new Date(),
+      ...(input.input ? { input: input.input as Prisma.InputJsonValue } : {}),
       ...(input.output ? { output: input.output as Prisma.InputJsonValue } : {}),
     },
   })
@@ -258,6 +263,7 @@ export const markWorkflowStepRunStarted = async (
 export const markWorkflowStepRunQueued = async (
   prisma: PrismaLike,
   input: {
+    input?: Record<string, unknown>
     output?: Record<string, unknown>
     workflowRunId?: string | null
     workflowStepRunId?: string | null
@@ -282,6 +288,7 @@ export const markWorkflowStepRunQueued = async (
       data: {
         status: 'running',
         startedAt: now,
+        ...(input.input ? { input: input.input as Prisma.InputJsonValue } : {}),
         ...(input.output ? { output: input.output as Prisma.InputJsonValue } : {}),
       },
     })

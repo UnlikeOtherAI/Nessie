@@ -23,6 +23,7 @@ import { enqueueQueueJob, enqueueRunExecution } from '../queue/pgqueue.js'
 import { ensureDefaultThread } from './channels.js'
 
 const SCHEDULER_TRIGGER_TYPES: AgentTriggerType[] = ['scheduled', 'interval']
+type WorkflowTriggerPrismaLike = Pick<PrismaClient, 'agentTrigger' | 'workflowInstallation'>
 
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
   value ? value.toISOString() : undefined
@@ -145,6 +146,7 @@ export const listOrganizationTriggers = async (
       OR: [
         {
           agent: {
+            agentKind: 'shared',
             OR: [
               { organizationId },
               {
@@ -193,7 +195,12 @@ export const listScheduledTriggers = async (
   const triggers = await prisma.agentTrigger.findMany({
     where: {
       OR: [
-        { agent: { organizationId: input.organizationId } },
+        {
+          agent: {
+            organizationId: input.organizationId,
+            agentKind: 'shared',
+          },
+        },
         { workflowInstallation: { organizationId: input.organizationId } },
       ],
       enabled: true,
@@ -249,10 +256,13 @@ export const createAgentTrigger = async (
 
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
-    select: { id: true },
+    select: {
+      id: true,
+      agentKind: true,
+    },
   })
 
-  if (!agent) {
+  if (!agent || agent.agentKind === 'personal_assistant') {
     return null
   }
 
@@ -283,7 +293,7 @@ export const createAgentTrigger = async (
 }
 
 export const createWorkflowTrigger = async (
-  prisma: PrismaClient,
+  prisma: WorkflowTriggerPrismaLike,
   workflowInstallationId: string,
   input: {
     config?: Record<string, unknown>

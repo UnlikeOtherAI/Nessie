@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
+  type AgentTriggerType,
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -17,6 +18,7 @@ import type {
 import { WorkflowGraphSchema } from '../contracts.js'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
 import { parseOptional, toJsonRecord } from './contract-helpers.js'
+import { createWorkflowTrigger } from './triggers.js'
 
 type WorkflowTemplateWithGraph = {
   bindingSchema: unknown
@@ -97,12 +99,82 @@ type WorkflowStepRunRow = {
   workflowRunId: string
 }
 
+type WorkflowTemplateTriggerDefinition = {
+  config: Record<string, unknown>
+  description?: string
+  enabled?: boolean
+  name?: string
+  nextRunAt?: string
+  type: AgentTriggerType
+}
+
+const WORKFLOW_TEMPLATE_TRIGGER_TYPES: AgentTriggerType[] = [
+  'manual',
+  'scheduled',
+  'interval',
+  'webhook',
+  'event',
+]
+
 const parseWorkflowGraph = (value: unknown): WorkflowGraph =>
   WorkflowGraphSchema.parse(value && typeof value === 'object' && !Array.isArray(value) ? value : {})
 
 const parseUuidArray = (value: unknown): string[] =>
   Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string')
+    : []
+
+const isWorkflowTemplateTriggerType = (
+  value: unknown,
+): value is AgentTriggerType =>
+  typeof value === 'string' &&
+  (WORKFLOW_TEMPLATE_TRIGGER_TYPES as string[]).includes(value)
+
+const parseWorkflowTemplateTriggers = (
+  value: unknown,
+): WorkflowTemplateTriggerDefinition[] =>
+  Array.isArray(value)
+    ? value.flatMap((entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+          return []
+        }
+
+        const record = entry as Record<string, unknown>
+        const config =
+          record.config && typeof record.config === 'object' && !Array.isArray(record.config)
+            ? (record.config as Record<string, unknown>)
+            : {}
+        const type = isWorkflowTemplateTriggerType(record.type)
+          ? record.type
+          : isWorkflowTemplateTriggerType(record.sourceId)
+            ? record.sourceId
+            : isWorkflowTemplateTriggerType(config.type)
+              ? config.type
+              : undefined
+
+        if (!type) {
+          return []
+        }
+
+        return [
+          {
+            config,
+            description:
+              typeof record.description === 'string' ? record.description : undefined,
+            enabled:
+              typeof record.enabled === 'boolean' ? record.enabled : undefined,
+            name:
+              typeof record.name === 'string'
+                ? record.name
+                : typeof record.title === 'string'
+                  ? record.title
+                  : undefined,
+            nextRunAt:
+              typeof record.nextRunAt === 'string' ? record.nextRunAt : undefined,
+            type,
+          } satisfies WorkflowTemplateTriggerDefinition,
+        ]
+      })
     : []
 
 const validateRequiredEnvironmentTemplateIds = async (
@@ -141,6 +213,7 @@ const validateWorkflowInstallationChannel = async (
     where: {
       id: channelId,
       organizationId,
+      systemChannelType: null,
     },
     select: { id: true },
   })
@@ -483,38 +556,50 @@ export const installWorkflowTemplate = async (
     input.channelId,
   )
 
-  const template = await prisma.workflowTemplate.findFirst({
-    where: {
-      id: workflowTemplateId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-    select: {
-      id: true,
-      version: true,
-    },
-  })
-  if (!template) {
-    return null
-  }
+  const result = await prisma.$transaction(async (tx) => {
+    const template = await tx.workflowTemplate.findFirst({
+      where: {
+        id: workflowTemplateId,
+        organizationId: actorContext.tenant.organizationId,
+      },
+      select: {
+        id: true,
+        triggersJson: true,
+        version: true,
+      },
+    })
+    if (!template) {
+      return null
+    }
 
-  const installation = await prisma.workflowInstallation.create({
-    data: {
-      workflowTemplateId: template.id,
-      workflowTemplateVersion: template.version,
-      organizationId: actorContext.tenant.organizationId,
-      projectId: actorContext.tenant.projectId,
-      teamId: actorContext.tenant.teamId,
-      channelId: input.channelId,
-      status: input.status ?? (input.active === false ? 'paused' : 'active'),
-      active: input.active ?? true,
-      resolvedBindings: (input.resolvedBindings ?? {}) as Prisma.InputJsonValue,
-      config: (input.config ?? {}) as Prisma.InputJsonValue,
-      createdByActorType: actorContext.actor.actorType,
-      createdByActorId: actorContext.actor.actorId,
-    },
+    const installation = await tx.workflowInstallation.create({
+      data: {
+        workflowTemplateId: template.id,
+        workflowTemplateVersion: template.version,
+        organizationId: actorContext.tenant.organizationId,
+        projectId: actorContext.tenant.projectId,
+        teamId: actorContext.tenant.teamId,
+        channelId: input.channelId,
+        status: input.status ?? (input.active === false ? 'paused' : 'active'),
+        active: input.active ?? true,
+        resolvedBindings: (input.resolvedBindings ?? {}) as Prisma.InputJsonValue,
+        config: (input.config ?? {}) as Prisma.InputJsonValue,
+        createdByActorType: actorContext.actor.actorType,
+        createdByActorId: actorContext.actor.actorId,
+      },
+    })
+
+    for (const triggerDefinition of parseWorkflowTemplateTriggers(template.triggersJson)) {
+      const createdTrigger = await createWorkflowTrigger(tx, installation.id, triggerDefinition)
+      if (!createdTrigger) {
+        throw new Error('WORKFLOW_TEMPLATE_TRIGGER_INVALID')
+      }
+    }
+
+    return installation
   })
 
-  return mapWorkflowInstallation(installation)
+  return result ? mapWorkflowInstallation(result) : null
 }
 
 export const listWorkflowInstallations = async (
@@ -732,6 +817,7 @@ export const retryWorkflowRun = async (
         status: true,
         input: true,
         installationId: true,
+        triggerDeliveryId: true,
         triggerId: true,
       },
     })
@@ -768,6 +854,7 @@ export const retryWorkflowRun = async (
         installationId: installation.id,
         organizationId: installation.organizationId,
         triggerId: existing.triggerId,
+        triggerDeliveryId: existing.triggerDeliveryId,
         retriedFromWorkflowRunId: existing.id,
         input: (existing.input ?? {}) as Prisma.InputJsonValue,
         summary,
