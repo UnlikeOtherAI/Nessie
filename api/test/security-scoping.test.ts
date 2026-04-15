@@ -75,3 +75,20 @@ test('channel-scoped websocket events do not deliver to unrelated subscriptions'
     false,
   )
 })
+
+test('multi-channel websocket events require access to every channel scope', async () => {
+  assert.equal(
+    await shouldDeliverWsNotification({
+      connectionScopes: [
+        { kind: 'organization', organizationId },
+      ],
+      notificationScopes: [
+        { kind: 'organization', organizationId },
+        { kind: 'channel', channelId },
+        { kind: 'channel', channelId: '00000000-0000-4000-8000-000000000005' },
+      ],
+      canAccessChannel: async (candidateChannelId) => candidateChannelId === channelId,
+    }),
+    false,
+  )
+})

@@ -46,11 +46,11 @@ export const shouldDeliverWsNotification = async (
     }
 
     for (const scope of notificationChannelScopes) {
-      if (await input.canAccessChannel(scope.channelId)) {
-        return true
+      if (!(await input.canAccessChannel(scope.channelId))) {
+        return false
       }
     }
-    return false
+    return true
   }
 
   return input.connectionScopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))
