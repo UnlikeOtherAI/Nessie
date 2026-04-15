@@ -491,19 +491,6 @@ export const AdminShellLayout = () => {
                   ),
                 },
                 {
-                  path: '/agents/triggers',
-                  label: 'Triggers',
-                  icon: (
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                      <path d="M12 4v6" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M12 16v4" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M20 12h-4" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M8 12H4" strokeLinecap="round" strokeLinejoin="round" />
-                      <circle cx="12" cy="12" r="3.5" />
-                    </svg>
-                  ),
-                },
-                {
                   path: '/agents/workflows',
                   label: 'Workflows',
                   icon: (
@@ -513,6 +500,19 @@ export const AdminShellLayout = () => {
                       <rect height="4" rx="1" width="6" x="4" y="16" />
                       <path d="M10 6h2a2 2 0 012 2v4" strokeLinecap="round" strokeLinejoin="round" />
                       <path d="M14 12h-2a2 2 0 00-2 2v4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+                {
+                  path: '/agents/triggers',
+                  label: 'Triggers',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path d="M12 4v6" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M12 16v4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M20 12h-4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M8 12H4" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="12" cy="12" r="3.5" />
                     </svg>
                   ),
                 },

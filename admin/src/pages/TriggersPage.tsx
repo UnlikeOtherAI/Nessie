@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   useFireTrigger,
   usePauseTrigger,
@@ -174,6 +174,7 @@ const TriggerDetail = ({ trigger }: TriggerDetailProps) => {
 }
 
 export const TriggersPage = () => {
+  const navigate = useNavigate()
   const location = useLocation()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const { me } = useAuthSession()
@@ -231,16 +232,25 @@ export const TriggersPage = () => {
   const columns = [
     <ColumnBrowserColumn
       headerAction={
-        <div className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-          {activeCount} active
-        </div>
+        <button
+          className="admin-button admin-button-primary"
+          onClick={() => void navigate('/agents')}
+          type="button"
+        >
+          New trigger
+        </button>
       }
       key="triggers"
       title="All triggers"
     >
       <div className="grid gap-6">
         <div>
-          <div className={sectionTitle}>Configured</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className={sectionTitle}>Configured</div>
+            <div className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+              {activeCount} active
+            </div>
+          </div>
           <div className="mt-3 grid gap-3">
             {sortedTriggers.map((trigger) => (
               <ColumnBrowserItem
