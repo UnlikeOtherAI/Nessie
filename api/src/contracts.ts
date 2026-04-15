@@ -110,6 +110,10 @@ export const CreateChannelBodySchema = z.object({
   visibility: z.enum(['public', 'protected', 'private']).optional(),
 })
 
+export const UpdateProjectBodySchema = z.object({
+  name: NonEmptyStringSchema,
+})
+
 export const AgentRecordSchema = z.object({
   id: AgentIdSchema,
   name: NonEmptyStringSchema,

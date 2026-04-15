@@ -334,6 +334,7 @@ export type SessionState =
 export type ApiClient = {
   delete: <TData>(path: string) => Promise<TData>
   get: <TData>(path: string) => Promise<TData>
+  patch: <TData>(path: string, body?: unknown) => Promise<TData>
   post: <TData>(path: string, body?: unknown) => Promise<TData>
   put: <TData>(path: string, body?: unknown) => Promise<TData>
 }
@@ -393,6 +394,11 @@ export const createApiClient = (token: string | null): ApiClient => {
   return {
     delete: (path) => request(path, { method: 'DELETE' }),
     get: (path) => request(path, { method: 'GET' }),
+    patch: (path, body) =>
+      request(path, {
+        method: 'PATCH',
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
     post: (path, body) =>
       request(path, {
         method: 'POST',

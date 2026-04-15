@@ -118,6 +118,7 @@ import {
   ToolDescriptorSchema,
   ToolRegistryEntrySchema,
   UpdateAgentTriggerBodySchema,
+  UpdateProjectBodySchema,
   UserRecordSchema,
   WorkflowInstallationRecordSchema,
   WorkflowRunRecordSchema,
@@ -4040,6 +4041,50 @@ export const buildApp = async () => {
       memberCount: 1,
       createdAt: project.createdAt.toISOString(),
     })))
+  })
+
+  app.patch('/api/projects/:projectId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { projectId } = request.params as { projectId: string }
+    const body = parseInput(UpdateProjectBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const project = await prisma.project.findFirst({
+      where: {
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
+      include: { members: { select: { userId: true, role: true } } },
+    })
+    if (!project) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    const updatedProject = await prisma.project.update({
+      where: { id: project.id },
+      data: { name: body.name },
+      include: { members: { select: { userId: true, role: true } } },
+    })
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'project.updated' as Parameters<typeof emitAuditEvent>[1]['action'],
+      resourceType: 'project',
+      resourceId: updatedProject.id,
+      outcome: 'success',
+    })
+
+    return createApiResponse(ProjectRecordSchema.parse({
+      id: updatedProject.id,
+      name: updatedProject.name,
+      organizationId: updatedProject.organizationId,
+      memberCount: updatedProject.members.length,
+      createdAt: updatedProject.createdAt.toISOString(),
+    }))
   })
 
   app.post('/api/projects/:projectId/members', async (request, reply) => {

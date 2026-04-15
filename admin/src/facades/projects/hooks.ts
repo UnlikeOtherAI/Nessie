@@ -47,3 +47,19 @@ export const useCreateTeam = () => {
     },
   })
 }
+
+export const useRenameProject = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { name: string; projectId: string }) =>
+      apiClient.patch<ProjectRecord>(`/api/projects/${input.projectId}`, {
+        name: input.name,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}

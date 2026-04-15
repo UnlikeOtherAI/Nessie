@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AgentActivityPanel } from '../components/features/agents/AgentActivityPanel';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
@@ -8,6 +8,7 @@ import {
 import { PresenceDot } from '../components/primitives/PresenceDot';
 import { CreateChannelDialog } from '../components/shared/CreateChannelDialog';
 import { CreateProjectDialog } from '../components/shared/CreateProjectDialog';
+import { RenameProjectDialog } from '../components/shared/RenameProjectDialog';
 import { useAgentRealtime, useAgents } from '../facades/agents/hooks';
 import { useChannels, useOpenDm } from '../facades/channels/hooks';
 import {
@@ -23,6 +24,15 @@ import { useAuthSession } from '../providers/AuthSessionProvider';
 type StarredItem = { type: 'channel' | 'project' | 'user'; id: string };
 type SidebarProject = ProjectRecord & { channels: ChannelRecord[] };
 type CreateChannelTarget = { projectName?: string; teamId?: string };
+type RenameProjectTarget = { id: string; name: string };
+type SidebarMenu =
+  | { type: 'channels' }
+  | { type: 'project'; projectId: string }
+  | null;
+type VisibleStarredEntry =
+  | { type: 'channel'; channel: ChannelRecord }
+  | { type: 'project'; channels: ChannelRecord[]; project: SidebarProject; starred: boolean }
+  | { type: 'user'; person: { dmChannelId?: string; id: string; label: string; style: CSSProperties } };
 
 const DEFAULT_BOOTSTRAP_PROJECT_ID = '00000000-0000-4000-8000-000000000002';
 
@@ -97,7 +107,8 @@ export const AdminShellLayout = () => {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [createChannelTarget, setCreateChannelTarget] = useState<CreateChannelTarget | null>(null);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [sidebarMenu, setSidebarMenu] = useState<'channels' | null>(null);
+  const [renameProjectTarget, setRenameProjectTarget] = useState<RenameProjectTarget | null>(null);
+  const [sidebarMenu, setSidebarMenu] = useState<SidebarMenu>(null);
   const [channelsCollapsed, setChannelsCollapsed] = useState(
     () => getCookie('channelsCollapsed') === '1',
   );
@@ -164,6 +175,11 @@ export const AdminShellLayout = () => {
     setCreateProjectOpen(true);
   }, []);
   const closeCreateProject = useCallback(() => setCreateProjectOpen(false), []);
+  const openRenameProject = useCallback((target: RenameProjectTarget) => {
+    setSidebarMenu(null);
+    setRenameProjectTarget(target);
+  }, []);
+  const closeRenameProject = useCallback(() => setRenameProjectTarget(null), []);
 
   const toggleChannelsCollapsed = useCallback(() => {
     setChannelsCollapsed((prev) => {
@@ -199,15 +215,6 @@ export const AdminShellLayout = () => {
   );
   const starredProjectIds = useMemo(
     () => new Set(starred.filter((item) => item.type === 'project').map((item) => item.id)),
-    [starred],
-  );
-  const starredNonDefaultProjectIds = useMemo(
-    () =>
-      new Set(
-        starred
-          .filter((item) => item.type === 'project' && item.id !== DEFAULT_BOOTSTRAP_PROJECT_ID)
-          .map((item) => item.id),
-      ),
     [starred],
   );
   const starredUserIds = useMemo(
@@ -263,8 +270,9 @@ export const AdminShellLayout = () => {
         .map((project) => ({
           ...project,
           channels: project.channels.filter((channel) => !starredChannelIds.has(channel.id)),
-        })),
-    [sidebarProjects, starredChannelIds, starredProjectIds],
+        }))
+        .filter((project) => project.channels.length > 0 || projectById.get(project.id)?.channels.length === 0),
+    [projectById, sidebarProjects, starredChannelIds, starredProjectIds],
   );
 
   const toggleStar = useCallback((type: StarredItem['type'], id: string) => {
@@ -349,22 +357,77 @@ export const AdminShellLayout = () => {
     ];
   }, [me, users, channels]);
 
-  const visibleStarredItems = useMemo(
-    () =>
-      starred.filter((item) => {
-        if (item.type === 'project') {
-          return item.id !== DEFAULT_BOOTSTRAP_PROJECT_ID && projectById.has(item.id);
+  const visibleStarredEntries = useMemo<VisibleStarredEntry[]>(() => {
+    const entries: VisibleStarredEntry[] = [];
+    const projectEntryById = new Map<string, Extract<VisibleStarredEntry, { type: 'project' }>>();
+
+    const addProjectEntry = (
+      project: SidebarProject,
+      channelsToShow: ChannelRecord[],
+      starredProject: boolean,
+    ) => {
+      const existing = projectEntryById.get(project.id);
+      if (existing) {
+        if (starredProject) {
+          existing.channels = channelsToShow;
+          existing.starred = true;
+          return;
         }
 
-        if (item.type === 'channel') {
-          const channel = channelById.get(item.id);
-          return channel ? !starredNonDefaultProjectIds.has(channel.projectId) : false;
+        const existingChannelIds = new Set(existing.channels.map((channel) => channel.id));
+        existing.channels = [
+          ...existing.channels,
+          ...channelsToShow.filter((channel) => !existingChannelIds.has(channel.id)),
+        ];
+        return;
+      }
+
+      const entry: Extract<VisibleStarredEntry, { type: 'project' }> = {
+        channels: channelsToShow,
+        project,
+        starred: starredProject,
+        type: 'project',
+      };
+      projectEntryById.set(project.id, entry);
+      entries.push(entry);
+    };
+
+    for (const item of starred) {
+      if (item.type === 'project') {
+        if (item.id === DEFAULT_BOOTSTRAP_PROJECT_ID) continue;
+        const project = projectById.get(item.id);
+        if (project) {
+          addProjectEntry(project, project.channels, true);
+        }
+        continue;
+      }
+
+      if (item.type === 'channel') {
+        const channel = channelById.get(item.id);
+        if (!channel) continue;
+
+        if (channel.projectId === DEFAULT_BOOTSTRAP_PROJECT_ID) {
+          entries.push({ channel, type: 'channel' });
+          continue;
         }
 
-        return sidebarPeople.some((person) => person.id === item.id);
-      }),
-    [channelById, projectById, sidebarPeople, starred, starredNonDefaultProjectIds],
-  );
+        if (starredProjectIds.has(channel.projectId)) continue;
+
+        const project = projectById.get(channel.projectId);
+        if (project) {
+          addProjectEntry(project, [channel], false);
+        }
+        continue;
+      }
+
+      const person = sidebarPeople.find((candidate) => candidate.id === item.id);
+      if (person) {
+        entries.push({ person, type: 'user' });
+      }
+    }
+
+    return entries;
+  }, [channelById, projectById, sidebarPeople, starred, starredProjectIds]);
 
   const openPersonalAssistant = useCallback(async () => {
     if (personalAssistantChannel) {
@@ -795,7 +858,7 @@ export const AdminShellLayout = () => {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto py-1">
-              {visibleStarredItems.length > 0 && (
+              {visibleStarredEntries.length > 0 && (
                 <>
                   <button
                     className="admin-sec-hdr"
@@ -826,14 +889,12 @@ export const AdminShellLayout = () => {
                     Starred
                   </button>
                   {!starredCollapsed &&
-                    visibleStarredItems.map((item) => {
+                    visibleStarredEntries.map((item) => {
                       if (item.type === 'channel') {
-                        const channel = channelById.get(item.id);
-                        if (!channel) return null;
-                        if (starredNonDefaultProjectIds.has(channel.projectId)) return null;
+                        const { channel } = item;
                         return (
                           <button
-                            key={`starred-ch-${item.id}`}
+                            key={`starred-ch-${channel.id}`}
                             className={`admin-sb-item group ${channel.id === currentChannelId ? 'active' : ''}`}
                             onClick={() => void navigate(`/channels/${channel.id}`)}
                             type="button"
@@ -845,7 +906,7 @@ export const AdminShellLayout = () => {
                               className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleStar('channel', item.id);
+                                toggleStar('channel', channel.id);
                               }}
                             >
                               ★
@@ -854,21 +915,19 @@ export const AdminShellLayout = () => {
                         );
                       }
                       if (item.type === 'project') {
-                        if (item.id === DEFAULT_BOOTSTRAP_PROJECT_ID) return null;
-                        const project = projectById.get(item.id);
-                        if (!project) return null;
-                        const unreadCount = project.channels.reduce(
+                        const { channels: starredProjectChannels, project } = item;
+                        const unreadCount = starredProjectChannels.reduce(
                           (total, channel) => total + channel.unreadCount,
                           0,
                         );
                         return (
-                          <div key={`starred-prj-${item.id}`} className="mt-1">
+                          <div key={`starred-prj-${project.id}`} className="mt-1">
                             <button
                               className={[
                                 'admin-sb-item group font-semibold',
                                 project.id === currentProjectId ? 'active-parent' : '',
                               ].join(' ')}
-                              onClick={() => navigateToProject(item.id)}
+                              onClick={() => navigateToProject(project.id)}
                               type="button"
                             >
                               <svg
@@ -886,32 +945,22 @@ export const AdminShellLayout = () => {
                               </svg>
                               <span className="min-w-0 flex-1 truncate">{project.name}</span>
                               {renderUnreadCount(unreadCount)}
-                              <span
-                                className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleStar('project', item.id);
-                                }}
-                              >
-                                ★
-                              </span>
-                              <span
-                                className="ml-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10 hover:text-white"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openCreateChannel({
-                                    projectName: project.name,
-                                    teamId: teamIdByProjectId.get(project.id),
-                                  });
-                                }}
-                              >
-                                +
-                              </span>
+                              {item.starred ? (
+                                <span
+                                  className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleStar('project', project.id);
+                                  }}
+                                >
+                                  ★
+                                </span>
+                              ) : null}
                             </button>
 
-                            {project.channels.map((channel) => (
+                            {starredProjectChannels.map((channel) => (
                               <button
-                                key={`starred-prj-${item.id}-ch-${channel.id}`}
+                                key={`starred-prj-${project.id}-ch-${channel.id}`}
                                 className={[
                                   'admin-sb-item sidebar-child group',
                                   channel.id === currentChannelId ? 'active' : '',
@@ -922,18 +971,26 @@ export const AdminShellLayout = () => {
                                 <span className={channelHashClassName}>#</span>
                                 <span className="min-w-0 flex-1 truncate">{channel.label}</span>
                                 {renderUnreadCount(channel.unreadCount)}
+                                <span
+                                  className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleStar('channel', channel.id);
+                                  }}
+                                >
+                                  ★
+                                </span>
                               </button>
                             ))}
                           </div>
                         );
                       }
-                      const person = sidebarPeople.find((p) => p.id === item.id);
-                      if (!person) return null;
+                      const { person } = item;
                       return (
                         <button
-                          key={`starred-usr-${item.id}`}
+                          key={`starred-usr-${person.id}`}
                           className={`admin-sb-item group ${person.dmChannelId && activeDmChannel?.id === person.dmChannelId ? 'active' : ''}`}
-                          onClick={() => navigateToDm(item.id)}
+                          onClick={() => navigateToDm(person.id)}
                           type="button"
                         >
                           <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
@@ -947,7 +1004,7 @@ export const AdminShellLayout = () => {
                             className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleStar('user', item.id);
+                              toggleStar('user', person.id);
                             }}
                           >
                             ★
@@ -983,13 +1040,13 @@ export const AdminShellLayout = () => {
                     aria-label="Add channel or project"
                     className="admin-sidebar-plus"
                     onClick={() =>
-                      setSidebarMenu((current) => (current === 'channels' ? null : 'channels'))
+                      setSidebarMenu((current) => (current?.type === 'channels' ? null : { type: 'channels' }))
                     }
                     type="button"
                   >
                     +
                   </button>
-                  {sidebarMenu === 'channels' ? (
+                  {sidebarMenu?.type === 'channels' ? (
                     <div className="admin-sidebar-menu">
                       <button
                         onClick={() =>
@@ -1090,17 +1147,50 @@ export const AdminShellLayout = () => {
                           >
                             {isStarredProject ? '★' : '☆'}
                           </span>
-                          <span
-                            className="ml-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10 hover:text-white"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openCreateChannel({
-                                projectName: project.name,
-                                teamId: teamIdByProjectId.get(project.id),
-                              });
-                            }}
-                          >
-                            +
+                          <span className="relative ml-1 flex-shrink-0">
+                            <span
+                              aria-label={`Project actions for ${project.name}`}
+                              className="admin-sidebar-more"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSidebarMenu((current) =>
+                                  current?.type === 'project' && current.projectId === project.id
+                                    ? null
+                                    : { projectId: project.id, type: 'project' },
+                                );
+                              }}
+                              role="button"
+                              tabIndex={0}
+                            >
+                              ⋯
+                            </span>
+                            {sidebarMenu?.type === 'project' && sidebarMenu.projectId === project.id ? (
+                              <span className="admin-sidebar-menu admin-sidebar-menu-project">
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openCreateChannel({
+                                      projectName: project.name,
+                                      teamId: teamIdByProjectId.get(project.id),
+                                    });
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  Add new channel within project
+                                </span>
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openRenameProject({ id: project.id, name: project.name });
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  Rename project
+                                </span>
+                              </span>
+                            ) : null}
                           </span>
                         </button>
 
@@ -1240,6 +1330,14 @@ export const AdminShellLayout = () => {
         teamId={createChannelTarget?.teamId}
       />
       <CreateProjectDialog onClose={closeCreateProject} open={createProjectOpen} />
+      {renameProjectTarget ? (
+        <RenameProjectDialog
+          currentName={renameProjectTarget.name}
+          onClose={closeRenameProject}
+          open
+          projectId={renameProjectTarget.id}
+        />
+      ) : null}
 
       <AgentDetailDrawer
         agent={selectedAgent}
