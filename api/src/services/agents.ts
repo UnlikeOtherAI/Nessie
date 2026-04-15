@@ -15,6 +15,16 @@ import {
 } from '@nessie/schemas'
 import type { AgentRecord } from '../contracts.js'
 
+const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
+const PERSONAL_ASSISTANT_SURFACE_POLICY = 'dm_only' as const
+const PERSONAL_ASSISTANT_DELEGATION_MODE = 'act_as_requesting_user' as const
+
+const isSystemManagedAgent = (agent: {
+  agentKind: string
+  systemManaged: boolean
+}): boolean =>
+  agent.systemManaged || agent.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
+
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
   value ? value.toISOString() : undefined
 
@@ -54,6 +64,10 @@ const mapAgentRecord = (agent: {
   }>
   provider: string | null
   model: string | null
+  agentKind: 'personal_assistant' | 'shared'
+  systemManaged: boolean
+  surfacePolicy: 'dm_only' | 'shared'
+  delegationMode: 'act_as_requesting_user' | 'none'
   status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
   systemPrompt: string | null
   updatedAt: Date
@@ -77,6 +91,10 @@ const mapAgentRecord = (agent: {
     name: agent.name,
     role: agent.role,
     status: agent.status,
+    agentKind: agent.agentKind,
+    systemManaged: agent.systemManaged,
+    surfacePolicy: agent.surfacePolicy,
+    delegationMode: agent.delegationMode,
     currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
     currentToolName:
       isActiveRun && latestToolCall?.endedAt === null ? latestToolCall.toolName : undefined,
@@ -98,6 +116,7 @@ const mapAgentRecord = (agent: {
 export const loadAgentStatus = async (
   prisma: PrismaClient,
   agentId: string,
+  options?: { includeSystemManaged?: boolean },
 ): Promise<AgentStatusResponse | null> => {
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
@@ -133,6 +152,10 @@ export const loadAgentStatus = async (
   })
 
   if (!agent) {
+    return null
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
     return null
   }
 
@@ -182,6 +205,7 @@ export const loadAgentStatus = async (
 export const loadAgentActivity = async (
   prisma: PrismaClient,
   agentId: string,
+  options?: { includeSystemManaged?: boolean },
 ): Promise<AgentActivityResponse | null> => {
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
@@ -209,6 +233,10 @@ export const loadAgentActivity = async (
   })
 
   if (!agent) {
+    return null
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
     return null
   }
 
@@ -255,7 +283,24 @@ export const loadAgentMessages = async (
   limit: number,
   callerUserId?: string,
   offset = 0,
+  options?: { includeSystemManaged?: boolean },
 ): Promise<AgentMessage[]> => {
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: {
+      agentKind: true,
+      systemManaged: true,
+    },
+  })
+
+  if (!agent) {
+    return []
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
+    return []
+  }
+
   // Build channel membership filter to prevent cross-channel data leakage
   const channelFilter = callerUserId
     ? { thread: { channel: { members: { some: { userId: callerUserId } } } } }
@@ -295,7 +340,24 @@ export const loadAgentMessages = async (
 export const loadAgentChildren = async (
   prisma: PrismaClient,
   agentId: string,
+  options?: { includeSystemManaged?: boolean },
 ): Promise<AgentChild[]> => {
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: {
+      agentKind: true,
+      systemManaged: true,
+    },
+  })
+
+  if (!agent) {
+    return []
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
+    return []
+  }
+
   const agents = await prisma.agent.findMany({
     where: { parentAgentId: agentId },
     orderBy: { createdAt: 'asc' },
@@ -315,7 +377,24 @@ export const loadRunToolCalls = async (
   prisma: PrismaClient,
   agentId: string,
   runId: string,
+  options?: { includeSystemManaged?: boolean },
 ): Promise<ToolCallEntry[]> => {
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: {
+      agentKind: true,
+      systemManaged: true,
+    },
+  })
+
+  if (!agent) {
+    return []
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
+    return []
+  }
+
   const toolCalls = await prisma.toolCall.findMany({
     where: { agentId, runId },
     orderBy: { startedAt: 'asc' },
@@ -421,6 +500,7 @@ export const listAgentsForUser = async (
 
   const agents = await prisma.agent.findMany({
     where: {
+      systemManaged: false,
       OR: visibilityFilters,
     },
     include: {
@@ -458,23 +538,40 @@ export const listAgentsForUser = async (
 export const createAgentRecord = async (
   prisma: PrismaClient,
   input: {
+    agentKind?: 'personal_assistant' | 'shared'
     model?: string
     name: string
     parentAgentId?: string
     provider?: string
     role: string
+    surfacePolicy?: 'dm_only' | 'shared'
     systemPrompt?: string
+    systemManaged?: boolean
+    delegationMode?: 'act_as_requesting_user' | 'none'
     toolPolicy?: Record<string, boolean>
   },
 ): Promise<AgentRecord> => {
+  if (
+    input.agentKind === PERSONAL_ASSISTANT_AGENT_KIND ||
+    input.systemManaged === true ||
+    input.surfacePolicy === PERSONAL_ASSISTANT_SURFACE_POLICY ||
+    input.delegationMode === PERSONAL_ASSISTANT_DELEGATION_MODE
+  ) {
+    throw new Error('PERSONAL_ASSISTANT_CREATE_REQUIRES_BOOTSTRAP')
+  }
+
   const agent = await prisma.agent.create({
     data: {
+      agentKind: 'shared',
+      delegationMode: 'none',
       model: input.model,
       name: input.name,
       parentAgentId: input.parentAgentId,
       provider: input.provider,
       role: input.role,
+      surfacePolicy: 'shared',
       systemPrompt: input.systemPrompt,
+      systemManaged: false,
       toolPolicy: input.toolPolicy ?? undefined,
     },
     include: {
@@ -511,11 +608,15 @@ export const updateAgentRecord = async (
   prisma: PrismaClient,
   agentId: string,
   input: {
+    agentKind?: 'personal_assistant' | 'shared'
     model?: string
     name?: string
     provider?: string
     role?: string
+    surfacePolicy?: 'dm_only' | 'shared'
     systemPrompt?: string
+    systemManaged?: boolean
+    delegationMode?: 'act_as_requesting_user' | 'none'
     toolPolicy?: Record<string, boolean>
   },
 ): Promise<AgentRecord | null> => {
@@ -524,14 +625,27 @@ export const updateAgentRecord = async (
     return null
   }
 
+  if (
+    input.agentKind === PERSONAL_ASSISTANT_AGENT_KIND ||
+    input.systemManaged === true ||
+    input.surfacePolicy === PERSONAL_ASSISTANT_SURFACE_POLICY ||
+    input.delegationMode === PERSONAL_ASSISTANT_DELEGATION_MODE
+  ) {
+    throw new Error('PERSONAL_ASSISTANT_UPDATE_REQUIRES_BOOTSTRAP')
+  }
+
   const agent = await prisma.agent.update({
     where: { id: agentId },
     data: {
+      agentKind: existing.agentKind,
+      delegationMode: existing.delegationMode,
       model: input.model ?? existing.model,
-      name: input.name ?? existing.name,
+      name: existing.systemManaged ? existing.name : input.name ?? existing.name,
       provider: input.provider ?? existing.provider,
       role: input.role ?? existing.role,
+      surfacePolicy: existing.surfacePolicy,
       systemPrompt: input.systemPrompt ?? existing.systemPrompt,
+      systemManaged: existing.systemManaged,
       toolPolicy: input.toolPolicy ?? existing.toolPolicy ?? undefined,
     },
     include: {
@@ -570,6 +684,26 @@ export const unbindAgentFromChannel = async (
   agentId: string,
   channelId: string,
 ): Promise<void> => {
+  const binding = await prisma.agent.findFirst({
+    where: {
+      id: agentId,
+      systemManaged: false,
+      bindings: {
+        some: {
+          channelId,
+          channel: {
+            systemChannelType: null,
+          },
+        },
+      },
+    },
+    select: { id: true },
+  })
+
+  if (!binding) {
+    return
+  }
+
   await prisma.agentBinding.deleteMany({
     where: { agentId, channelId },
   })
@@ -581,18 +715,38 @@ export const cloneAgentRecord = async (
 ): Promise<AgentRecord | null> => {
   const source = await prisma.agent.findUnique({
     where: { id: sourceAgentId },
+    select: {
+      agentKind: true,
+      delegationMode: true,
+      model: true,
+      name: true,
+      provider: true,
+      role: true,
+      surfacePolicy: true,
+      systemManaged: true,
+      systemPrompt: true,
+      toolPolicy: true,
+    },
   })
   if (!source) {
     return null
   }
 
+  if (isSystemManagedAgent(source)) {
+    return null
+  }
+
   const agent = await prisma.agent.create({
     data: {
+      agentKind: 'shared',
+      delegationMode: 'none',
       model: source.model,
       name: `${source.name} (copy)`,
       provider: source.provider,
       role: source.role,
+      surfacePolicy: 'shared',
       systemPrompt: source.systemPrompt,
+      systemManaged: false,
       toolPolicy: source.toolPolicy ?? undefined,
     },
     include: {
@@ -630,6 +784,36 @@ export const bindAgentToChannel = async (
   agentId: string,
   channelId: string,
 ): Promise<AgentRecord | null> => {
+  const [agent, channel] = await Promise.all([
+    prisma.agent.findUnique({
+      where: { id: agentId },
+      select: {
+        agentKind: true,
+        delegationMode: true,
+        model: true,
+        name: true,
+        provider: true,
+        role: true,
+        surfacePolicy: true,
+        systemManaged: true,
+        systemPrompt: true,
+        toolPolicy: true,
+      },
+    }),
+    prisma.channel.findUnique({
+      where: { id: channelId },
+      select: { systemChannelType: true },
+    }),
+  ])
+
+  if (!agent || !channel) {
+    return null
+  }
+
+  if (isSystemManagedAgent(agent) || channel.systemChannelType === 'personal_assistant') {
+    return null
+  }
+
   await prisma.agentBinding.upsert({
     where: {
       agentId_channelId: {
@@ -644,7 +828,7 @@ export const bindAgentToChannel = async (
     },
   })
 
-  const agent = await prisma.agent.findUnique({
+  const boundAgent = await prisma.agent.findUnique({
     where: { id: agentId },
     include: {
       bindings: {
@@ -674,5 +858,5 @@ export const bindAgentToChannel = async (
     },
   })
 
-  return agent ? mapAgentRecord(agent) : null
+  return boundAgent ? mapAgentRecord(boundAgent) : null
 }

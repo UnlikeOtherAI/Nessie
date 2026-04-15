@@ -104,15 +104,16 @@ const mapChannelRecord = async (
 
   return {
     defaultThreadId: parseThreadId(defaultThreadId),
-  id: parseChannelId(channel.id),
-  label: channel.label,
-  type: channel.type,
-  visibility: channel.visibility,
-  organizationId: parseOrganizationId(channel.organizationId),
-  teamId: parseTeamId(channel.teamId),
-  unreadCount,
-  createdAt: channel.createdAt.toISOString(),
-  updatedAt: channel.updatedAt.toISOString(),
+    id: parseChannelId(channel.id),
+    label: channel.label,
+    type: channel.type,
+    systemChannelType: channel.systemChannelType ?? undefined,
+    visibility: channel.visibility,
+    organizationId: parseOrganizationId(channel.organizationId),
+    teamId: parseTeamId(channel.teamId),
+    unreadCount,
+    createdAt: channel.createdAt.toISOString(),
+    updatedAt: channel.updatedAt.toISOString(),
   }
 }
 
@@ -171,6 +172,12 @@ export const listChannelsForUser = async (
       }
     }
   }
+
+  channels.sort((left, right) => {
+    const leftPriority = left.systemChannelType === 'personal_assistant' ? 0 : 1
+    const rightPriority = right.systemChannelType === 'personal_assistant' ? 0 : 1
+    return leftPriority - rightPriority || left.createdAt.getTime() - right.createdAt.getTime()
+  })
 
   const unreadCountsByThread = await loadUnreadCountsByThread(
     prisma,

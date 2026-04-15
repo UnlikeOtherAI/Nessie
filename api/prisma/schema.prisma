@@ -16,6 +16,21 @@ enum AgentStatus {
   offline
 }
 
+enum AgentKind {
+  shared
+  personal_assistant
+}
+
+enum AgentSurfacePolicy {
+  shared
+  dm_only
+}
+
+enum AgentDelegationMode {
+  none
+  act_as_requesting_user
+}
+
 enum RunStatus {
   pending
   running
@@ -147,6 +162,10 @@ enum TaskStatus {
 enum ChannelType {
   standard
   dm
+}
+
+enum ChannelSystemType {
+  personal_assistant
 }
 
 enum ChannelVisibility {
@@ -299,7 +318,7 @@ enum InferenceStageRole {
 }
 
 enum InferenceStreamPolicy {
-  primary_only @map("primary-only")
+  primary_only   @map("primary-only")
   buffered_judge @map("buffered-judge")
 }
 
@@ -390,14 +409,14 @@ model User {
 }
 
 model Organization {
-  id              String               @id @default(uuid()) @db.Uuid
-  name            String
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
-  members         OrganizationMember[]
-  projects        Project[]
-  channels        Channel[]
-  thoughts        Thought[]
+  id        String               @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  members   OrganizationMember[]
+  projects  Project[]
+  channels  Channel[]
+  thoughts  Thought[]
 
   @@map("organizations")
 }
@@ -468,22 +487,23 @@ model TeamMember {
 }
 
 model Channel {
-  id             String            @id @default(uuid()) @db.Uuid
-  label          String
-  type           ChannelType       @default(standard)
-  organizationId String            @map("organization_id") @db.Uuid
-  teamId         String            @map("team_id") @db.Uuid
-  visibility     ChannelVisibility @default(public)
-  dmKey          String?           @unique @map("dm_key")
-  createdAt      DateTime          @default(now()) @map("created_at")
-  updatedAt      DateTime          @updatedAt @map("updated_at")
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  team           Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  members        ChannelMember[]
-  calls          Call[]
-  agentBindings  AgentBinding[]
-  triggerTargets AgentTrigger[]          @relation("TriggerTargetChannel")
-  threads        Thread[]
+  id                String             @id @default(uuid()) @db.Uuid
+  label             String
+  type              ChannelType        @default(standard)
+  systemChannelType ChannelSystemType? @map("system_channel_type")
+  organizationId    String             @map("organization_id") @db.Uuid
+  teamId            String             @map("team_id") @db.Uuid
+  visibility        ChannelVisibility  @default(public)
+  dmKey             String?            @unique @map("dm_key")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team              Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  members           ChannelMember[]
+  calls             Call[]
+  agentBindings     AgentBinding[]
+  triggerTargets    AgentTrigger[]     @relation("TriggerTargetChannel")
+  threads           Thread[]
 
   @@index([organizationId, type])
   @@map("channels")
@@ -503,17 +523,17 @@ model ChannelMember {
 }
 
 model Thread {
-  id        String    @id @default(uuid()) @db.Uuid
-  channelId String    @map("channel_id") @db.Uuid
-  title     String?
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  id              String                @id @default(uuid()) @db.Uuid
+  channelId       String                @map("channel_id") @db.Uuid
+  title           String?
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  channel         Channel               @relation(fields: [channelId], references: [id], onDelete: Cascade)
   mailboxMessages AgentMailboxMessage[]
-  messages  Message[]
-  readStates ThreadReadState[]
-  runs      Run[]
-  triggerTargets AgentTrigger[]          @relation("TriggerTargetThread")
+  messages        Message[]
+  readStates      ThreadReadState[]
+  runs            Run[]
+  triggerTargets  AgentTrigger[]        @relation("TriggerTargetThread")
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -521,13 +541,13 @@ model Thread {
 
 model ThreadReadState {
   id         String   @id @default(uuid()) @db.Uuid
-  threadId    String   @map("thread_id") @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  lastReadAt  DateTime @map("last_read_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  thread      Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threadId   String   @map("thread_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  lastReadAt DateTime @map("last_read_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  thread     Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([threadId, userId])
   @@index([userId])
@@ -535,16 +555,16 @@ model ThreadReadState {
 }
 
 model Message {
-  id        String      @id @default(uuid()) @db.Uuid
-  threadId  String      @map("thread_id") @db.Uuid
-  agentId   String?     @map("agent_id") @db.Uuid
-  userId    String?     @map("user_id") @db.Uuid
+  id        String            @id @default(uuid()) @db.Uuid
+  threadId  String            @map("thread_id") @db.Uuid
+  agentId   String?           @map("agent_id") @db.Uuid
+  userId    String?           @map("user_id") @db.Uuid
   role      MessageRole
   content   String
-  createdAt DateTime    @default(now()) @map("created_at")
-  thread    Thread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  agent     Agent?      @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime          @default(now()) @map("created_at")
+  thread    Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  agent     Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   reactions MessageReaction[]
 
   @@index([threadId, createdAt])
@@ -570,63 +590,68 @@ model MessageReaction {
 }
 
 model Agent {
-  id             String               @id @default(uuid()) @db.Uuid
-  name           String
-  role           String               @default("assistant")
-  status         AgentStatus          @default(idle)
-  systemPrompt   String?              @map("system_prompt")
-  toolPolicy     Json?                @map("tool_policy")
-  provider       String?              @map("provider")
-  model          String?              @map("model")
-  routingProfileId String?            @map("routing_profile_id") @db.Uuid
-  parentAgentId  String?              @map("parent_agent_id") @db.Uuid
-  organizationId String?              @map("organization_id") @db.Uuid
-  projectId      String?              @map("project_id") @db.Uuid
-  teamId         String?              @map("team_id") @db.Uuid
-  createdAt      DateTime             @default(now()) @map("created_at")
-  updatedAt      DateTime             @updatedAt @map("updated_at")
-  parentAgent    Agent?               @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
-  childAgents    Agent[]              @relation("AgentHierarchy")
-  bindings              AgentBinding[]
-  routingProfile        InferenceRoutingProfile? @relation(fields: [routingProfileId], references: [id], onDelete: SetNull)
-  messages              Message[]
-  reactions             MessageReaction[]
-  runs                  Run[]
-  triggers              AgentTrigger[]
-  tasks                 Task[]
-  approvalRequests      ApprovalRequest[]
-  workflowStepRuns      WorkflowStepRun[] @relation("WorkflowStepAssignedAgent")
+  id                            String                         @id @default(uuid()) @db.Uuid
+  name                          String
+  role                          String                         @default("assistant")
+  status                        AgentStatus                    @default(idle)
+  agentKind                     AgentKind                      @default(shared) @map("agent_kind")
+  systemManaged                 Boolean                        @default(false) @map("system_managed")
+  surfacePolicy                 AgentSurfacePolicy             @default(shared) @map("surface_policy")
+  delegationMode                AgentDelegationMode            @default(none) @map("delegation_mode")
+  systemPrompt                  String?                        @map("system_prompt")
+  toolPolicy                    Json?                          @map("tool_policy")
+  provider                      String?                        @map("provider")
+  model                         String?                        @map("model")
+  routingProfileId              String?                        @map("routing_profile_id") @db.Uuid
+  parentAgentId                 String?                        @map("parent_agent_id") @db.Uuid
+  organizationId                String?                        @map("organization_id") @db.Uuid
+  projectId                     String?                        @map("project_id") @db.Uuid
+  teamId                        String?                        @map("team_id") @db.Uuid
+  createdAt                     DateTime                       @default(now()) @map("created_at")
+  updatedAt                     DateTime                       @updatedAt @map("updated_at")
+  parentAgent                   Agent?                         @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
+  childAgents                   Agent[]                        @relation("AgentHierarchy")
+  bindings                      AgentBinding[]
+  routingProfile                InferenceRoutingProfile?       @relation(fields: [routingProfileId], references: [id], onDelete: SetNull)
+  messages                      Message[]
+  reactions                     MessageReaction[]
+  runs                          Run[]
+  triggers                      AgentTrigger[]
+  tasks                         Task[]
+  approvalRequests              ApprovalRequest[]
+  workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowStepAssignedAgent")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
 
   @@index([organizationId])
   @@index([organizationId, projectId])
+  @@index([organizationId, agentKind, systemManaged])
   @@index([routingProfileId])
   @@map("agents")
 }
 
 model InferenceProvider {
-  id                     String                    @id @default(uuid()) @db.Uuid
-  organizationId         String                    @map("organization_id") @db.Uuid
-  providerKey            String                    @map("provider_key")
-  connectorKind          InferenceConnectorKind     @map("connector_kind")
-  displayName            String                    @map("display_name")
-  enabled                Boolean                   @default(false)
-  lifecycleStatus        InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
-  baseUrl                String?                   @map("base_url")
-  supportsModelDiscovery Boolean                   @default(true) @map("supports_model_discovery")
-  activeCredentialBindingId String?                @unique @map("active_credential_binding_id") @db.Uuid
-  healthStatus           InferenceHealthStatus      @default(unknown) @map("health_status")
-  lastCheckedAt          DateTime?                 @map("last_checked_at")
-  createdByActorId       String                    @map("created_by_actor_id")
-  updatedByActorId       String                    @map("updated_by_actor_id")
-  approvedByActorId      String?                   @map("approved_by_actor_id")
-  approvedAt             DateTime?                 @map("approved_at")
-  createdAt              DateTime                  @default(now()) @map("created_at")
-  updatedAt              DateTime                  @updatedAt @map("updated_at")
-  activeCredentialBinding InferenceCredentialBinding? @relation("ProviderActiveCredentialBinding", fields: [activeCredentialBindingId], references: [id], onDelete: SetNull)
-  credentialBindings     InferenceCredentialBinding[] @relation("ProviderCredentialBindings")
-  models                 InferenceModel[]
-  capabilityOverrides    InferenceCapabilityOverride[]
+  id                        String                        @id @default(uuid()) @db.Uuid
+  organizationId            String                        @map("organization_id") @db.Uuid
+  providerKey               String                        @map("provider_key")
+  connectorKind             InferenceConnectorKind        @map("connector_kind")
+  displayName               String                        @map("display_name")
+  enabled                   Boolean                       @default(false)
+  lifecycleStatus           InferenceLifecycleStatus      @default(draft) @map("lifecycle_status")
+  baseUrl                   String?                       @map("base_url")
+  supportsModelDiscovery    Boolean                       @default(true) @map("supports_model_discovery")
+  activeCredentialBindingId String?                       @unique @map("active_credential_binding_id") @db.Uuid
+  healthStatus              InferenceHealthStatus         @default(unknown) @map("health_status")
+  lastCheckedAt             DateTime?                     @map("last_checked_at")
+  createdByActorId          String                        @map("created_by_actor_id")
+  updatedByActorId          String                        @map("updated_by_actor_id")
+  approvedByActorId         String?                       @map("approved_by_actor_id")
+  approvedAt                DateTime?                     @map("approved_at")
+  createdAt                 DateTime                      @default(now()) @map("created_at")
+  updatedAt                 DateTime                      @updatedAt @map("updated_at")
+  activeCredentialBinding   InferenceCredentialBinding?   @relation("ProviderActiveCredentialBinding", fields: [activeCredentialBindingId], references: [id], onDelete: SetNull)
+  credentialBindings        InferenceCredentialBinding[]  @relation("ProviderCredentialBindings")
+  models                    InferenceModel[]
+  capabilityOverrides       InferenceCapabilityOverride[]
 
   @@index([organizationId, providerKey])
   @@index([organizationId, enabled, lifecycleStatus])
@@ -635,16 +660,16 @@ model InferenceProvider {
 }
 
 model InferenceCredentialBinding {
-  id              String               @id @default(uuid()) @db.Uuid
-  organizationId  String               @map("organization_id") @db.Uuid
-  providerId      String               @map("provider_id") @db.Uuid
-  label           String
-  authSecretRef   String               @map("auth_secret_ref")
-  createdByActorId String              @map("created_by_actor_id")
-  revokedAt       DateTime?            @map("revoked_at")
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
-  provider        InferenceProvider    @relation("ProviderCredentialBindings", fields: [providerId], references: [id], onDelete: Cascade)
+  id                String             @id @default(uuid()) @db.Uuid
+  organizationId    String             @map("organization_id") @db.Uuid
+  providerId        String             @map("provider_id") @db.Uuid
+  label             String
+  authSecretRef     String             @map("auth_secret_ref")
+  createdByActorId  String             @map("created_by_actor_id")
+  revokedAt         DateTime?          @map("revoked_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  provider          InferenceProvider  @relation("ProviderCredentialBindings", fields: [providerId], references: [id], onDelete: Cascade)
   activeForProvider InferenceProvider? @relation("ProviderActiveCredentialBinding")
 
   @@unique([providerId, label])
@@ -653,24 +678,24 @@ model InferenceCredentialBinding {
 }
 
 model InferenceModel {
-  id                     String                    @id @default(uuid()) @db.Uuid
-  organizationId         String                    @map("organization_id") @db.Uuid
-  providerId            String                    @map("provider_id") @db.Uuid
-  model                  String
-  displayName            String?                   @map("display_name")
-  enabled                Boolean                   @default(false)
-  lifecycleStatus        InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
-  capabilitySnapshot     Json                      @default("{}") @map("capability_snapshot_json")
-  source                 InferenceCapabilitySource  @default(static)
-  discoveredAt           DateTime                  @default(now()) @map("discovered_at")
-  lastVerifiedAt         DateTime?                 @map("last_verified_at")
-  createdByActorId       String                    @map("created_by_actor_id")
-  updatedByActorId       String                    @map("updated_by_actor_id")
-  approvedByActorId      String?                   @map("approved_by_actor_id")
-  approvedAt             DateTime?                 @map("approved_at")
-  createdAt              DateTime                  @default(now()) @map("created_at")
-  updatedAt              DateTime                  @updatedAt @map("updated_at")
-  provider               InferenceProvider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id                 String                    @id @default(uuid()) @db.Uuid
+  organizationId     String                    @map("organization_id") @db.Uuid
+  providerId         String                    @map("provider_id") @db.Uuid
+  model              String
+  displayName        String?                   @map("display_name")
+  enabled            Boolean                   @default(false)
+  lifecycleStatus    InferenceLifecycleStatus  @default(draft) @map("lifecycle_status")
+  capabilitySnapshot Json                      @default("{}") @map("capability_snapshot_json")
+  source             InferenceCapabilitySource @default(static)
+  discoveredAt       DateTime                  @default(now()) @map("discovered_at")
+  lastVerifiedAt     DateTime?                 @map("last_verified_at")
+  createdByActorId   String                    @map("created_by_actor_id")
+  updatedByActorId   String                    @map("updated_by_actor_id")
+  approvedByActorId  String?                   @map("approved_by_actor_id")
+  approvedAt         DateTime?                 @map("approved_at")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+  provider           InferenceProvider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@unique([providerId, model])
   @@index([organizationId, providerId, enabled, lifecycleStatus])
@@ -678,20 +703,20 @@ model InferenceModel {
 }
 
 model InferenceCapabilityOverride {
-  id                   String                    @id @default(uuid()) @db.Uuid
-  organizationId       String                    @map("organization_id") @db.Uuid
-  providerId          String                    @map("provider_id") @db.Uuid
-  model                String
-  lifecycleStatus      InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
-  overrideSnapshot    Json                      @default("{}") @map("override_snapshot_json")
-  createdByActorId     String                    @map("created_by_actor_id")
-  updatedByActorId     String                    @map("updated_by_actor_id")
-  createdAt            DateTime                  @default(now()) @map("created_at")
-  clearedAt            DateTime?                 @map("cleared_at")
-  approvedByActorId    String?                   @map("approved_by_actor_id")
-  approvedAt           DateTime?                 @map("approved_at")
-  updatedAt            DateTime                  @updatedAt @map("updated_at")
-  provider             InferenceProvider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id                String                   @id @default(uuid()) @db.Uuid
+  organizationId    String                   @map("organization_id") @db.Uuid
+  providerId        String                   @map("provider_id") @db.Uuid
+  model             String
+  lifecycleStatus   InferenceLifecycleStatus @default(draft) @map("lifecycle_status")
+  overrideSnapshot  Json                     @default("{}") @map("override_snapshot_json")
+  createdByActorId  String                   @map("created_by_actor_id")
+  updatedByActorId  String                   @map("updated_by_actor_id")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  clearedAt         DateTime?                @map("cleared_at")
+  approvedByActorId String?                  @map("approved_by_actor_id")
+  approvedAt        DateTime?                @map("approved_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+  provider          InferenceProvider        @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@unique([providerId, model])
   @@index([organizationId, providerId, lifecycleStatus])
@@ -699,21 +724,21 @@ model InferenceCapabilityOverride {
 }
 
 model ToolMediatorProfile {
-  id                   String                    @id @default(uuid()) @db.Uuid
-  organizationId       String                    @map("organization_id") @db.Uuid
-  label                String
-  enabled              Boolean                   @default(false)
-  lifecycleStatus      InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
-  translatorProvider   String                    @map("translator_provider")
-  translatorModel      String                    @map("translator_model")
-  mediatorConfig       Json                      @default("{}") @map("mediator_config_json")
-  createdByActorId     String                    @map("created_by_actor_id")
-  updatedByActorId     String                    @map("updated_by_actor_id")
-  approvedByActorId    String?                   @map("approved_by_actor_id")
-  approvedAt           DateTime?                 @map("approved_at")
-  createdAt            DateTime                  @default(now()) @map("created_at")
-  updatedAt            DateTime                  @updatedAt @map("updated_at")
-  routingProfiles      InferenceRoutingProfile[]
+  id                 String                    @id @default(uuid()) @db.Uuid
+  organizationId     String                    @map("organization_id") @db.Uuid
+  label              String
+  enabled            Boolean                   @default(false)
+  lifecycleStatus    InferenceLifecycleStatus  @default(draft) @map("lifecycle_status")
+  translatorProvider String                    @map("translator_provider")
+  translatorModel    String                    @map("translator_model")
+  mediatorConfig     Json                      @default("{}") @map("mediator_config_json")
+  createdByActorId   String                    @map("created_by_actor_id")
+  updatedByActorId   String                    @map("updated_by_actor_id")
+  approvedByActorId  String?                   @map("approved_by_actor_id")
+  approvedAt         DateTime?                 @map("approved_at")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+  routingProfiles    InferenceRoutingProfile[]
 
   @@unique([organizationId, label])
   @@index([organizationId, enabled, lifecycleStatus])
@@ -721,26 +746,26 @@ model ToolMediatorProfile {
 }
 
 model InferenceRoutingProfile {
-  id                   String                    @id @default(uuid()) @db.Uuid
-  organizationId       String                    @map("organization_id") @db.Uuid
-  label                String
-  enabled              Boolean                   @default(false)
-  exposure             InferenceExposure         @default(standard)
-  lifecycleStatus      InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
-  mode                 InferenceRoutingMode
-  streamPolicy         InferenceStreamPolicy     @default(primary_only) @map("stream_policy")
+  id                    String                   @id @default(uuid()) @db.Uuid
+  organizationId        String                   @map("organization_id") @db.Uuid
+  label                 String
+  enabled               Boolean                  @default(false)
+  exposure              InferenceExposure        @default(standard)
+  lifecycleStatus       InferenceLifecycleStatus @default(draft) @map("lifecycle_status")
+  mode                  InferenceRoutingMode
+  streamPolicy          InferenceStreamPolicy    @default(primary_only) @map("stream_policy")
   toolMediatorProfileId String?                  @map("tool_mediator_profile_id") @db.Uuid
-  routeGraph           Json                      @default("{}") @map("route_graph_json")
-  createdByActorId     String                    @map("created_by_actor_id")
-  updatedByActorId     String                    @map("updated_by_actor_id")
-  approvedByActorId    String?                   @map("approved_by_actor_id")
-  approvedAt           DateTime?                 @map("approved_at")
-  createdAt            DateTime                  @default(now()) @map("created_at")
-  updatedAt            DateTime                  @updatedAt @map("updated_at")
-  toolMediatorProfile  ToolMediatorProfile?      @relation(fields: [toolMediatorProfileId], references: [id], onDelete: SetNull)
-  agents               Agent[]
-  targetEvalSuites     InferenceEvalSuite[]      @relation("EvalSuiteTargetRoute")
-  judgeEvalSuites      InferenceEvalSuite[]      @relation("EvalSuiteJudgeRoute")
+  routeGraph            Json                     @default("{}") @map("route_graph_json")
+  createdByActorId      String                   @map("created_by_actor_id")
+  updatedByActorId      String                   @map("updated_by_actor_id")
+  approvedByActorId     String?                  @map("approved_by_actor_id")
+  approvedAt            DateTime?                @map("approved_at")
+  createdAt             DateTime                 @default(now()) @map("created_at")
+  updatedAt             DateTime                 @updatedAt @map("updated_at")
+  toolMediatorProfile   ToolMediatorProfile?     @relation(fields: [toolMediatorProfileId], references: [id], onDelete: SetNull)
+  agents                Agent[]
+  targetEvalSuites      InferenceEvalSuite[]     @relation("EvalSuiteTargetRoute")
+  judgeEvalSuites       InferenceEvalSuite[]     @relation("EvalSuiteJudgeRoute")
 
   @@unique([organizationId, label])
   @@index([organizationId, enabled, lifecycleStatus])
@@ -749,24 +774,24 @@ model InferenceRoutingProfile {
 }
 
 model InferenceEvalSuite {
-  id                   String                    @id @default(uuid()) @db.Uuid
-  organizationId       String                    @map("organization_id") @db.Uuid
-  label                String
-  exposure             InferenceExposure         @default(standard)
-  enabled              Boolean                   @default(false)
-  datasetRef           Json                      @map("dataset_ref_json")
+  id                     String                   @id @default(uuid()) @db.Uuid
+  organizationId         String                   @map("organization_id") @db.Uuid
+  label                  String
+  exposure               InferenceExposure        @default(standard)
+  enabled                Boolean                  @default(false)
+  datasetRef             Json                     @map("dataset_ref_json")
   targetRoutingProfileId String                   @map("target_routing_profile_id") @db.Uuid
-  judgeRoutingProfileId String?                  @map("judge_routing_profile_id") @db.Uuid
-  lifecycleStatus      InferenceLifecycleStatus   @default(draft) @map("lifecycle_status")
-  createdByActorId     String                    @map("created_by_actor_id")
-  updatedByActorId     String                    @map("updated_by_actor_id")
-  approvedByActorId    String?                   @map("approved_by_actor_id")
-  approvedAt           DateTime?                 @map("approved_at")
-  createdAt            DateTime                  @default(now()) @map("created_at")
-  updatedAt            DateTime                  @updatedAt @map("updated_at")
-  targetRoutingProfile InferenceRoutingProfile    @relation("EvalSuiteTargetRoute", fields: [targetRoutingProfileId], references: [id], onDelete: Restrict)
-  judgeRoutingProfile  InferenceRoutingProfile?   @relation("EvalSuiteJudgeRoute", fields: [judgeRoutingProfileId], references: [id], onDelete: SetNull)
-  runs                 InferenceEvalRun[]
+  judgeRoutingProfileId  String?                  @map("judge_routing_profile_id") @db.Uuid
+  lifecycleStatus        InferenceLifecycleStatus @default(draft) @map("lifecycle_status")
+  createdByActorId       String                   @map("created_by_actor_id")
+  updatedByActorId       String                   @map("updated_by_actor_id")
+  approvedByActorId      String?                  @map("approved_by_actor_id")
+  approvedAt             DateTime?                @map("approved_at")
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
+  targetRoutingProfile   InferenceRoutingProfile  @relation("EvalSuiteTargetRoute", fields: [targetRoutingProfileId], references: [id], onDelete: Restrict)
+  judgeRoutingProfile    InferenceRoutingProfile? @relation("EvalSuiteJudgeRoute", fields: [judgeRoutingProfileId], references: [id], onDelete: SetNull)
+  runs                   InferenceEvalRun[]
 
   @@unique([organizationId, label])
   @@index([organizationId, enabled, lifecycleStatus])
@@ -775,21 +800,21 @@ model InferenceEvalSuite {
 }
 
 model InferenceEvalRun {
-  id                   String                    @id @default(uuid()) @db.Uuid
-  organizationId       String                    @map("organization_id") @db.Uuid
-  evalSuiteId          String                    @map("eval_suite_id") @db.Uuid
-  startedByActorId     String                    @map("started_by_actor_id")
-  startedAt            DateTime                  @default(now()) @map("started_at")
-  finishedAt           DateTime?                 @map("finished_at")
-  status               InferenceEvalStatus       @default(queued)
-  summary              Json                      @default("{}") @map("summary_json")
-  result               Json                      @default("{}") @map("result_json")
-  caseResults          Json                      @default("[]") @map("case_results_json")
-  targetProfileSnapshot Json                      @default("{}") @map("target_profile_snapshot_json")
-  judgeProfileSnapshot  Json?                     @map("judge_profile_snapshot_json")
-  createdAt            DateTime                  @default(now()) @map("created_at")
-  updatedAt            DateTime                  @updatedAt @map("updated_at")
-  evalSuite            InferenceEvalSuite        @relation(fields: [evalSuiteId], references: [id], onDelete: Cascade)
+  id                    String              @id @default(uuid()) @db.Uuid
+  organizationId        String              @map("organization_id") @db.Uuid
+  evalSuiteId           String              @map("eval_suite_id") @db.Uuid
+  startedByActorId      String              @map("started_by_actor_id")
+  startedAt             DateTime            @default(now()) @map("started_at")
+  finishedAt            DateTime?           @map("finished_at")
+  status                InferenceEvalStatus @default(queued)
+  summary               Json                @default("{}") @map("summary_json")
+  result                Json                @default("{}") @map("result_json")
+  caseResults           Json                @default("[]") @map("case_results_json")
+  targetProfileSnapshot Json                @default("{}") @map("target_profile_snapshot_json")
+  judgeProfileSnapshot  Json?               @map("judge_profile_snapshot_json")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  evalSuite             InferenceEvalSuite  @relation(fields: [evalSuiteId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status, startedAt(sort: Desc)])
   @@index([evalSuiteId, startedAt(sort: Desc)])
@@ -810,23 +835,23 @@ model AgentBinding {
 }
 
 model Run {
-  id         String     @id @default(uuid()) @db.Uuid
-  agentId    String     @map("agent_id") @db.Uuid
-  threadId   String     @map("thread_id") @db.Uuid
-  triggerId  String?    @map("trigger_id") @db.Uuid
-  triggerDeliveryId String? @unique @map("trigger_delivery_id") @db.Uuid
-  status     RunStatus  @default(pending)
-  startedAt  DateTime?  @map("started_at")
-  finishedAt DateTime?  @map("finished_at")
-  createdAt  DateTime   @default(now()) @map("created_at")
-  agent      Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  thread     Thread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  trigger    AgentTrigger? @relation(fields: [triggerId], references: [id], onDelete: SetNull)
-  triggerDelivery AgentTriggerDelivery? @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
-  tasks      Task[]
-  toolCalls  ToolCall[]
-  workflowRuns WorkflowRun[] @relation("WorkflowParentRun")
-  workflowStepRuns WorkflowStepRun[] @relation("WorkflowAgentRun")
+  id                            String                         @id @default(uuid()) @db.Uuid
+  agentId                       String                         @map("agent_id") @db.Uuid
+  threadId                      String                         @map("thread_id") @db.Uuid
+  triggerId                     String?                        @map("trigger_id") @db.Uuid
+  triggerDeliveryId             String?                        @unique @map("trigger_delivery_id") @db.Uuid
+  status                        RunStatus                      @default(pending)
+  startedAt                     DateTime?                      @map("started_at")
+  finishedAt                    DateTime?                      @map("finished_at")
+  createdAt                     DateTime                       @default(now()) @map("created_at")
+  agent                         Agent                          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread                        Thread                         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  trigger                       AgentTrigger?                  @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  triggerDelivery               AgentTriggerDelivery?          @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
+  tasks                         Task[]
+  toolCalls                     ToolCall[]
+  workflowRuns                  WorkflowRun[]                  @relation("WorkflowParentRun")
+  workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowAgentRun")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
 
   @@index([agentId, status])
@@ -836,30 +861,30 @@ model Run {
 }
 
 model AgentTrigger {
-  id          String                     @id @default(uuid()) @db.Uuid
-  agentId     String?                    @map("agent_id") @db.Uuid
-  workflowInstallationId String?         @map("workflow_installation_id") @db.Uuid
-  type        AgentTriggerType
-  status      AgentTriggerStatus         @default(active)
-  enabled     Boolean                    @default(true)
-  name        String?
-  description String?
-  config      Json                       @default("{}")
-  targetChannelId String?                @map("target_channel_id") @db.Uuid
-  targetThreadId String?                 @map("target_thread_id") @db.Uuid
-  schedulerClaimId String?               @map("scheduler_claim_id") @db.Uuid
-  schedulerClaimedAt DateTime?           @map("scheduler_claimed_at")
-  lastFiredAt DateTime?                  @map("last_fired_at")
-  nextRunAt   DateTime?                  @map("next_run_at")
-  createdAt   DateTime                   @default(now()) @map("created_at")
-  updatedAt   DateTime                   @updatedAt @map("updated_at")
-  agent       Agent?                     @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  workflowInstallation WorkflowInstallation? @relation(fields: [workflowInstallationId], references: [id], onDelete: Cascade)
-  targetChannel Channel?                 @relation("TriggerTargetChannel", fields: [targetChannelId], references: [id], onDelete: SetNull)
-  targetThread Thread?                   @relation("TriggerTargetThread", fields: [targetThreadId], references: [id], onDelete: SetNull)
-  deliveries  AgentTriggerDelivery[]
-  runs        Run[]
-  workflowRuns WorkflowRun[]
+  id                     String                 @id @default(uuid()) @db.Uuid
+  agentId                String?                @map("agent_id") @db.Uuid
+  workflowInstallationId String?                @map("workflow_installation_id") @db.Uuid
+  type                   AgentTriggerType
+  status                 AgentTriggerStatus     @default(active)
+  enabled                Boolean                @default(true)
+  name                   String?
+  description            String?
+  config                 Json                   @default("{}")
+  targetChannelId        String?                @map("target_channel_id") @db.Uuid
+  targetThreadId         String?                @map("target_thread_id") @db.Uuid
+  schedulerClaimId       String?                @map("scheduler_claim_id") @db.Uuid
+  schedulerClaimedAt     DateTime?              @map("scheduler_claimed_at")
+  lastFiredAt            DateTime?              @map("last_fired_at")
+  nextRunAt              DateTime?              @map("next_run_at")
+  createdAt              DateTime               @default(now()) @map("created_at")
+  updatedAt              DateTime               @updatedAt @map("updated_at")
+  agent                  Agent?                 @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workflowInstallation   WorkflowInstallation?  @relation(fields: [workflowInstallationId], references: [id], onDelete: Cascade)
+  targetChannel          Channel?               @relation("TriggerTargetChannel", fields: [targetChannelId], references: [id], onDelete: SetNull)
+  targetThread           Thread?                @relation("TriggerTargetThread", fields: [targetThreadId], references: [id], onDelete: SetNull)
+  deliveries             AgentTriggerDelivery[]
+  runs                   Run[]
+  workflowRuns           WorkflowRun[]
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])
@@ -886,27 +911,27 @@ model AgentTriggerDelivery {
   run          Run?                       @relation("RunTriggerDelivery")
   workflowRuns WorkflowRun[]
 
+  @@unique([triggerId, dedupeKey])
   @@index([triggerId, createdAt])
   @@index([status, createdAt])
-  @@unique([triggerId, dedupeKey])
   @@map("agent_trigger_deliveries")
 }
 
 model Plan {
-  id                 String     @id @default(uuid()) @db.Uuid
-  organizationId     String     @map("organization_id") @db.Uuid
-  projectId          String?    @map("project_id") @db.Uuid
-  teamId             String?    @map("team_id") @db.Uuid
-  channelId          String?    @map("channel_id") @db.Uuid
-  runId              String?    @map("run_id") @db.Uuid
-  agentId            String?    @map("agent_id") @db.Uuid
+  id                 String        @id @default(uuid()) @db.Uuid
+  organizationId     String        @map("organization_id") @db.Uuid
+  projectId          String?       @map("project_id") @db.Uuid
+  teamId             String?       @map("team_id") @db.Uuid
+  channelId          String?       @map("channel_id") @db.Uuid
+  runId              String?       @map("run_id") @db.Uuid
+  agentId            String?       @map("agent_id") @db.Uuid
   goal               String
   summary            String?
-  status             PlanStatus @default(draft)
-  createdByActorType String     @map("created_by_actor_type")
-  createdByActorId   String     @map("created_by_actor_id")
-  createdAt          DateTime   @default(now()) @map("created_at")
-  updatedAt          DateTime   @updatedAt @map("updated_at")
+  status             PlanStatus    @default(draft)
+  createdByActorType String        @map("created_by_actor_type")
+  createdByActorId   String        @map("created_by_actor_id")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
   workflowRuns       WorkflowRun[]
 
   @@index([organizationId, createdAt(sort: Desc)])
@@ -936,53 +961,53 @@ model PlanStep {
 }
 
 model AgentMailboxMessage {
-  id             String               @id @default(uuid()) @db.Uuid
-  organizationId String               @map("organization_id") @db.Uuid
-  planId         String?              @map("plan_id") @db.Uuid
-  planStepId     String?              @map("plan_step_id") @db.Uuid
-  workflowRunId  String?              @map("workflow_run_id") @db.Uuid
-  workflowStepRunId String?           @map("workflow_step_run_id") @db.Uuid
-  fromAgentId    String?              @map("from_agent_id") @db.Uuid
-  toAgentId      String?              @map("to_agent_id") @db.Uuid
-  channelId      String?              @map("channel_id") @db.Uuid
-  threadId       String?              @map("thread_id") @db.Uuid
-  subject        String?
-  body           String
-  correlationId  String?              @map("correlation_id")
-  status         MailboxMessageStatus @default(queued)
-  attempts       Int                  @default(0)
-  visibleAt      DateTime             @default(now()) @map("visible_at")
-  claimedAt      DateTime?            @map("claimed_at")
-  deliveredAt    DateTime?            @map("delivered_at")
-  createdAt      DateTime             @default(now()) @map("created_at")
-  updatedAt      DateTime             @updatedAt @map("updated_at")
-  thread         Thread?              @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  id                String               @id @default(uuid()) @db.Uuid
+  organizationId    String               @map("organization_id") @db.Uuid
+  planId            String?              @map("plan_id") @db.Uuid
+  planStepId        String?              @map("plan_step_id") @db.Uuid
+  workflowRunId     String?              @map("workflow_run_id") @db.Uuid
+  workflowStepRunId String?              @map("workflow_step_run_id") @db.Uuid
+  fromAgentId       String?              @map("from_agent_id") @db.Uuid
+  toAgentId         String?              @map("to_agent_id") @db.Uuid
+  channelId         String?              @map("channel_id") @db.Uuid
+  threadId          String?              @map("thread_id") @db.Uuid
+  subject           String?
+  body              String
+  correlationId     String?              @map("correlation_id")
+  status            MailboxMessageStatus @default(queued)
+  attempts          Int                  @default(0)
+  visibleAt         DateTime             @default(now()) @map("visible_at")
+  claimedAt         DateTime?            @map("claimed_at")
+  deliveredAt       DateTime?            @map("delivered_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  thread            Thread?              @relation(fields: [threadId], references: [id], onDelete: SetNull)
 
+  @@unique([toAgentId, correlationId])
   @@index([organizationId, status, visibleAt])
   @@index([toAgentId, status, visibleAt])
   @@index([planId, createdAt])
   @@index([workflowRunId, createdAt])
   @@index([threadId, status, visibleAt])
-  @@unique([toAgentId, correlationId])
   @@map("agent_mailbox_messages")
 }
 
 model WorkflowTemplate {
-  id                           String   @id @default(uuid()) @db.Uuid
-  organizationId               String   @map("organization_id") @db.Uuid
-  name                         String
-  description                  String?
-  version                      Int      @default(1)
-  graphJson                    Json     @default("{}") @map("graph_json")
-  triggersJson                 Json     @default("{}") @map("triggers_json")
-  variableSchema               Json     @default("{}") @map("variable_schema")
-  bindingSchema                Json     @default("{}") @map("binding_schema")
-  requiredEnvironmentTemplateIds Json   @default("[]") @map("required_environment_template_ids")
-  createdByActorType           String   @map("created_by_actor_type")
-  createdByActorId             String   @map("created_by_actor_id")
-  createdAt                    DateTime @default(now()) @map("created_at")
-  updatedAt                    DateTime @updatedAt @map("updated_at")
-  installations                WorkflowInstallation[]
+  id                             String                 @id @default(uuid()) @db.Uuid
+  organizationId                 String                 @map("organization_id") @db.Uuid
+  name                           String
+  description                    String?
+  version                        Int                    @default(1)
+  graphJson                      Json                   @default("{}") @map("graph_json")
+  triggersJson                   Json                   @default("{}") @map("triggers_json")
+  variableSchema                 Json                   @default("{}") @map("variable_schema")
+  bindingSchema                  Json                   @default("{}") @map("binding_schema")
+  requiredEnvironmentTemplateIds Json                   @default("[]") @map("required_environment_template_ids")
+  createdByActorType             String                 @map("created_by_actor_type")
+  createdByActorId               String                 @map("created_by_actor_id")
+  createdAt                      DateTime               @default(now()) @map("created_at")
+  updatedAt                      DateTime               @updatedAt @map("updated_at")
+  installations                  WorkflowInstallation[]
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, name])
@@ -1016,37 +1041,37 @@ model WorkflowInstallation {
 }
 
 model WorkflowRun {
-  id               String            @id @default(uuid()) @db.Uuid
-  installationId   String            @map("installation_id") @db.Uuid
-  organizationId   String            @map("organization_id") @db.Uuid
-  triggerId        String?           @map("trigger_id") @db.Uuid
-  triggerDeliveryId String?          @map("trigger_delivery_id") @db.Uuid
-  parentRunId      String?           @map("parent_run_id") @db.Uuid
-  retriedFromWorkflowRunId String?   @map("retried_from_workflow_run_id") @db.Uuid
-  planId           String?           @map("plan_id") @db.Uuid
-  planStepId       String?           @map("plan_step_id") @db.Uuid
-  status           WorkflowRunStatus @default(pending)
-  input            Json              @default("{}")
-  output           Json?             @default("{}")
-  summary          String?
-  errorMessage     String?           @map("error_message")
-  startedByActorType String          @map("started_by_actor_type")
-  startedByActorId String            @map("started_by_actor_id")
-  startedAt        DateTime?         @map("started_at")
-  finishedAt       DateTime?         @map("finished_at")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  installation     WorkflowInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
-  trigger          AgentTrigger?     @relation(fields: [triggerId], references: [id], onDelete: SetNull)
-  triggerDelivery  AgentTriggerDelivery? @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
-  parentRun        Run?              @relation("WorkflowParentRun", fields: [parentRunId], references: [id], onDelete: SetNull)
-  retriedFromWorkflowRun WorkflowRun? @relation("WorkflowRunRetry", fields: [retriedFromWorkflowRunId], references: [id], onDelete: SetNull)
-  retries          WorkflowRun[]     @relation("WorkflowRunRetry")
-  plan             Plan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
-  planStep         PlanStep?         @relation(fields: [planStepId], references: [id], onDelete: SetNull)
-  stepRuns         WorkflowStepRun[]
+  id                            String                         @id @default(uuid()) @db.Uuid
+  installationId                String                         @map("installation_id") @db.Uuid
+  organizationId                String                         @map("organization_id") @db.Uuid
+  triggerId                     String?                        @map("trigger_id") @db.Uuid
+  triggerDeliveryId             String?                        @map("trigger_delivery_id") @db.Uuid
+  parentRunId                   String?                        @map("parent_run_id") @db.Uuid
+  retriedFromWorkflowRunId      String?                        @map("retried_from_workflow_run_id") @db.Uuid
+  planId                        String?                        @map("plan_id") @db.Uuid
+  planStepId                    String?                        @map("plan_step_id") @db.Uuid
+  status                        WorkflowRunStatus              @default(pending)
+  input                         Json                           @default("{}")
+  output                        Json?                          @default("{}")
+  summary                       String?
+  errorMessage                  String?                        @map("error_message")
+  startedByActorType            String                         @map("started_by_actor_type")
+  startedByActorId              String                         @map("started_by_actor_id")
+  startedAt                     DateTime?                      @map("started_at")
+  finishedAt                    DateTime?                      @map("finished_at")
+  createdAt                     DateTime                       @default(now()) @map("created_at")
+  updatedAt                     DateTime                       @updatedAt @map("updated_at")
+  installation                  WorkflowInstallation           @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  trigger                       AgentTrigger?                  @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  triggerDelivery               AgentTriggerDelivery?          @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
+  parentRun                     Run?                           @relation("WorkflowParentRun", fields: [parentRunId], references: [id], onDelete: SetNull)
+  retriedFromWorkflowRun        WorkflowRun?                   @relation("WorkflowRunRetry", fields: [retriedFromWorkflowRunId], references: [id], onDelete: SetNull)
+  retries                       WorkflowRun[]                  @relation("WorkflowRunRetry")
+  plan                          Plan?                          @relation(fields: [planId], references: [id], onDelete: SetNull)
+  planStep                      PlanStep?                      @relation(fields: [planStepId], references: [id], onDelete: SetNull)
+  stepRuns                      WorkflowStepRun[]
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
-  executionUsageEntries ExecutionUsageLedger[]
+  executionUsageEntries         ExecutionUsageLedger[]
 
   @@index([installationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
@@ -1057,27 +1082,27 @@ model WorkflowRun {
 }
 
 model WorkflowStepRun {
-  id                    String                @id @default(uuid()) @db.Uuid
-  workflowRunId         String                @map("workflow_run_id") @db.Uuid
-  stepKey               String                @map("step_key")
-  stepType              String                @map("step_type")
+  id                    String                        @id @default(uuid()) @db.Uuid
+  workflowRunId         String                        @map("workflow_run_id") @db.Uuid
+  stepKey               String                        @map("step_key")
+  stepType              String                        @map("step_type")
   title                 String
   sequence              Int
-  status                WorkflowStepRunStatus @default(pending)
-  input                 Json                  @default("{}")
-  output                Json?                 @default("{}")
-  errorMessage          String?               @map("error_message")
-  assignedAgentId       String?               @map("assigned_agent_id") @db.Uuid
-  agentRunId            String?               @map("agent_run_id") @db.Uuid
-  taskId                String?               @map("task_id") @db.Uuid
-  startedAt             DateTime?             @map("started_at")
-  finishedAt            DateTime?             @map("finished_at")
-  createdAt             DateTime              @default(now()) @map("created_at")
-  updatedAt             DateTime              @updatedAt @map("updated_at")
-  workflowRun           WorkflowRun           @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
-  assignedAgent         Agent?                @relation("WorkflowStepAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
-  agentRun              Run?                  @relation("WorkflowAgentRun", fields: [agentRunId], references: [id], onDelete: SetNull)
-  task                  Task?                 @relation("WorkflowTask", fields: [taskId], references: [id], onDelete: SetNull)
+  status                WorkflowStepRunStatus         @default(pending)
+  input                 Json                          @default("{}")
+  output                Json?                         @default("{}")
+  errorMessage          String?                       @map("error_message")
+  assignedAgentId       String?                       @map("assigned_agent_id") @db.Uuid
+  agentRunId            String?                       @map("agent_run_id") @db.Uuid
+  taskId                String?                       @map("task_id") @db.Uuid
+  startedAt             DateTime?                     @map("started_at")
+  finishedAt            DateTime?                     @map("finished_at")
+  createdAt             DateTime                      @default(now()) @map("created_at")
+  updatedAt             DateTime                      @updatedAt @map("updated_at")
+  workflowRun           WorkflowRun                   @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  assignedAgent         Agent?                        @relation("WorkflowStepAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  agentRun              Run?                          @relation("WorkflowAgentRun", fields: [agentRunId], references: [id], onDelete: SetNull)
+  task                  Task?                         @relation("WorkflowTask", fields: [taskId], references: [id], onDelete: SetNull)
   environmentInstance   ExecutionEnvironmentInstance? @relation("WorkflowStepEnvironment")
   executionUsageEntries ExecutionUsageLedger[]
 
@@ -1088,23 +1113,23 @@ model WorkflowStepRun {
 }
 
 model ExecutionEnvironmentTemplate {
-  id                 String            @id @default(uuid()) @db.Uuid
-  organizationId     String            @map("organization_id") @db.Uuid
-  projectId          String?           @map("project_id") @db.Uuid
-  teamId             String?           @map("team_id") @db.Uuid
-  channelId          String?           @map("channel_id") @db.Uuid
+  id                 String                         @id @default(uuid()) @db.Uuid
+  organizationId     String                         @map("organization_id") @db.Uuid
+  projectId          String?                        @map("project_id") @db.Uuid
+  teamId             String?                        @map("team_id") @db.Uuid
+  channelId          String?                        @map("channel_id") @db.Uuid
   name               String
   description        String?
   provider           ExecutionProvider
   mode               ExecutionMode
   image              String?
-  launchConfig       Json              @default("{}") @map("launch_config")
-  pricingConfig      Json              @default("{}") @map("pricing_config")
-  enabled            Boolean           @default(true)
-  createdByActorType String            @map("created_by_actor_type")
-  createdByActorId   String            @map("created_by_actor_id")
-  createdAt          DateTime          @default(now()) @map("created_at")
-  updatedAt          DateTime          @updatedAt @map("updated_at")
+  launchConfig       Json                           @default("{}") @map("launch_config")
+  pricingConfig      Json                           @default("{}") @map("pricing_config")
+  enabled            Boolean                        @default(true)
+  createdByActorType String                         @map("created_by_actor_type")
+  createdByActorId   String                         @map("created_by_actor_id")
+  createdAt          DateTime                       @default(now()) @map("created_at")
+  updatedAt          DateTime                       @updatedAt @map("updated_at")
   instances          ExecutionEnvironmentInstance[]
   usageEntries       ExecutionUsageLedger[]
 
@@ -1114,36 +1139,36 @@ model ExecutionEnvironmentTemplate {
 }
 
 model ExecutionEnvironmentInstance {
-  id                 String                           @id @default(uuid()) @db.Uuid
-  templateId         String                           @map("template_id") @db.Uuid
-  organizationId     String                           @map("organization_id") @db.Uuid
-  projectId          String?                          @map("project_id") @db.Uuid
-  teamId             String?                          @map("team_id") @db.Uuid
-  channelId          String?                          @map("channel_id") @db.Uuid
-  workflowRunId      String?                          @map("workflow_run_id") @db.Uuid
-  workflowStepRunId  String?                          @unique @map("workflow_step_run_id") @db.Uuid
-  runId              String?                          @map("run_id") @db.Uuid
-  agentId            String?                          @map("agent_id") @db.Uuid
-  status             ExecutionEnvironmentInstanceStatus @default(pending)
-  launchedByActorType String                          @map("launched_by_actor_type")
-  launchedByActorId  String                           @map("launched_by_actor_id")
-  providerInstanceRef String?                         @map("provider_instance_ref")
-  launchConfig       Json                             @default("{}") @map("launch_config")
-  metadata           Json                             @default("{}")
-  errorMessage       String?                          @map("error_message")
-  startedAt          DateTime?                        @map("started_at")
-  readyAt            DateTime?                        @map("ready_at")
-  terminatedAt       DateTime?                        @map("terminated_at")
-  lastHeartbeatAt    DateTime?                        @map("last_heartbeat_at")
-  createdAt          DateTime                         @default(now()) @map("created_at")
-  updatedAt          DateTime                         @updatedAt @map("updated_at")
-  template           ExecutionEnvironmentTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  workflowRun        WorkflowRun?                     @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
-  workflowStepRun    WorkflowStepRun?                 @relation("WorkflowStepEnvironment", fields: [workflowStepRunId], references: [id], onDelete: SetNull)
-  run                Run?                             @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent              Agent?                           @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  leases             ExecutionLease[]
-  usageEntries       ExecutionUsageLedger[]
+  id                  String                             @id @default(uuid()) @db.Uuid
+  templateId          String                             @map("template_id") @db.Uuid
+  organizationId      String                             @map("organization_id") @db.Uuid
+  projectId           String?                            @map("project_id") @db.Uuid
+  teamId              String?                            @map("team_id") @db.Uuid
+  channelId           String?                            @map("channel_id") @db.Uuid
+  workflowRunId       String?                            @map("workflow_run_id") @db.Uuid
+  workflowStepRunId   String?                            @unique @map("workflow_step_run_id") @db.Uuid
+  runId               String?                            @map("run_id") @db.Uuid
+  agentId             String?                            @map("agent_id") @db.Uuid
+  status              ExecutionEnvironmentInstanceStatus @default(pending)
+  launchedByActorType String                             @map("launched_by_actor_type")
+  launchedByActorId   String                             @map("launched_by_actor_id")
+  providerInstanceRef String?                            @map("provider_instance_ref")
+  launchConfig        Json                               @default("{}") @map("launch_config")
+  metadata            Json                               @default("{}")
+  errorMessage        String?                            @map("error_message")
+  startedAt           DateTime?                          @map("started_at")
+  readyAt             DateTime?                          @map("ready_at")
+  terminatedAt        DateTime?                          @map("terminated_at")
+  lastHeartbeatAt     DateTime?                          @map("last_heartbeat_at")
+  createdAt           DateTime                           @default(now()) @map("created_at")
+  updatedAt           DateTime                           @updatedAt @map("updated_at")
+  template            ExecutionEnvironmentTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  workflowRun         WorkflowRun?                       @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  workflowStepRun     WorkflowStepRun?                   @relation("WorkflowStepEnvironment", fields: [workflowStepRunId], references: [id], onDelete: SetNull)
+  run                 Run?                               @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent               Agent?                             @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  leases              ExecutionLease[]
+  usageEntries        ExecutionUsageLedger[]
 
   @@index([organizationId, status, createdAt(sort: Desc)])
   @@index([templateId, createdAt(sort: Desc)])
@@ -1152,17 +1177,17 @@ model ExecutionEnvironmentInstance {
 }
 
 model ExecutionRunner {
-  id          String                @id @default(uuid()) @db.Uuid
-  organizationId String?            @map("organization_id") @db.Uuid
-  provider    ExecutionProvider
-  label       String
-  capabilities Json                 @default("{}")
-  status      ExecutionRunnerStatus @default(active)
-  heartbeatAt DateTime?             @map("heartbeat_at")
-  metadata    Json                  @default("{}")
-  createdAt   DateTime              @default(now()) @map("created_at")
-  updatedAt   DateTime              @updatedAt @map("updated_at")
-  leases      ExecutionLease[]
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String?               @map("organization_id") @db.Uuid
+  provider       ExecutionProvider
+  label          String
+  capabilities   Json                  @default("{}")
+  status         ExecutionRunnerStatus @default(active)
+  heartbeatAt    DateTime?             @map("heartbeat_at")
+  metadata       Json                  @default("{}")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  leases         ExecutionLease[]
 
   @@unique([provider, label])
   @@index([organizationId, provider, status])
@@ -1170,18 +1195,18 @@ model ExecutionRunner {
 }
 
 model ExecutionLease {
-  id            String               @id @default(uuid()) @db.Uuid
-  instanceId     String              @map("instance_id") @db.Uuid
-  runnerId       String              @map("runner_id") @db.Uuid
-  status         ExecutionLeaseStatus @default(issued)
-  leaseToken     String              @unique @map("lease_token")
-  expiresAt      DateTime            @map("expires_at")
-  acknowledgedAt DateTime?           @map("acknowledged_at")
-  completedAt    DateTime?           @map("completed_at")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
+  id             String                       @id @default(uuid()) @db.Uuid
+  instanceId     String                       @map("instance_id") @db.Uuid
+  runnerId       String                       @map("runner_id") @db.Uuid
+  status         ExecutionLeaseStatus         @default(issued)
+  leaseToken     String                       @unique @map("lease_token")
+  expiresAt      DateTime                     @map("expires_at")
+  acknowledgedAt DateTime?                    @map("acknowledged_at")
+  completedAt    DateTime?                    @map("completed_at")
+  createdAt      DateTime                     @default(now()) @map("created_at")
+  updatedAt      DateTime                     @updatedAt @map("updated_at")
   instance       ExecutionEnvironmentInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  runner         ExecutionRunner     @relation(fields: [runnerId], references: [id], onDelete: Cascade)
+  runner         ExecutionRunner              @relation(fields: [runnerId], references: [id], onDelete: Cascade)
 
   @@index([instanceId, status, createdAt(sort: Desc)])
   @@index([runnerId, status, createdAt(sort: Desc)])
@@ -1189,30 +1214,30 @@ model ExecutionLease {
 }
 
 model ExecutionUsageLedger {
-  id                 String   @id @default(uuid()) @db.Uuid
-  instanceId         String   @map("instance_id") @db.Uuid
-  templateId         String   @map("template_id") @db.Uuid
-  organizationId     String   @map("organization_id") @db.Uuid
-  projectId          String?  @map("project_id") @db.Uuid
-  teamId             String?  @map("team_id") @db.Uuid
-  channelId          String?  @map("channel_id") @db.Uuid
-  workflowRunId      String?  @map("workflow_run_id") @db.Uuid
-  workflowStepRunId  String?  @map("workflow_step_run_id") @db.Uuid
-  runId              String?  @map("run_id") @db.Uuid
-  agentId            String?  @map("agent_id") @db.Uuid
-  actorType          String   @map("actor_type")
-  actorId            String   @map("actor_id")
-  meterType          String   @map("meter_type")
-  quantity           Float
-  unitPrice          Float?   @map("unit_price")
-  costAmount         Float?   @map("cost_amount")
-  currency           String?
-  metadata           Json     @default("{}")
-  recordedAt         DateTime @default(now()) @map("recorded_at")
-  instance           ExecutionEnvironmentInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  template           ExecutionEnvironmentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  workflowRun        WorkflowRun? @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
-  workflowStepRun    WorkflowStepRun? @relation(fields: [workflowStepRunId], references: [id], onDelete: SetNull)
+  id                String                       @id @default(uuid()) @db.Uuid
+  instanceId        String                       @map("instance_id") @db.Uuid
+  templateId        String                       @map("template_id") @db.Uuid
+  organizationId    String                       @map("organization_id") @db.Uuid
+  projectId         String?                      @map("project_id") @db.Uuid
+  teamId            String?                      @map("team_id") @db.Uuid
+  channelId         String?                      @map("channel_id") @db.Uuid
+  workflowRunId     String?                      @map("workflow_run_id") @db.Uuid
+  workflowStepRunId String?                      @map("workflow_step_run_id") @db.Uuid
+  runId             String?                      @map("run_id") @db.Uuid
+  agentId           String?                      @map("agent_id") @db.Uuid
+  actorType         String                       @map("actor_type")
+  actorId           String                       @map("actor_id")
+  meterType         String                       @map("meter_type")
+  quantity          Float
+  unitPrice         Float?                       @map("unit_price")
+  costAmount        Float?                       @map("cost_amount")
+  currency          String?
+  metadata          Json                         @default("{}")
+  recordedAt        DateTime                     @default(now()) @map("recorded_at")
+  instance          ExecutionEnvironmentInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  template          ExecutionEnvironmentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  workflowRun       WorkflowRun?                 @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  workflowStepRun   WorkflowStepRun?             @relation(fields: [workflowStepRunId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, recordedAt(sort: Desc)])
   @@index([instanceId, recordedAt(sort: Desc)])
@@ -1252,9 +1277,9 @@ model ToolRegistryEntry {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
+  @@unique([scopeKey, toolId])
   @@index([organizationId, enabled])
   @@index([builtin, enabled])
-  @@unique([scopeKey, toolId])
   @@map("tool_registry_entries")
 }
 
@@ -1280,19 +1305,19 @@ model TemporaryContextSession {
 }
 
 model Task {
-  id           String      @id @default(uuid()) @db.Uuid
-  runId        String?     @map("run_id") @db.Uuid
-  agentId      String      @map("agent_id") @db.Uuid
-  parentTaskId String?     @map("parent_task_id") @db.Uuid
-  status       TaskStatus  @default(inbox)
-  purpose      String?
-  createdAt    DateTime    @default(now()) @map("created_at")
-  updatedAt    DateTime    @updatedAt @map("updated_at")
-  run          Run?        @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent        Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  parentTask   Task?       @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
-  childTasks   Task[]      @relation("TaskHierarchy")
-  events       TaskEvent[]
+  id               String            @id @default(uuid()) @db.Uuid
+  runId            String?           @map("run_id") @db.Uuid
+  agentId          String            @map("agent_id") @db.Uuid
+  parentTaskId     String?           @map("parent_task_id") @db.Uuid
+  status           TaskStatus        @default(inbox)
+  purpose          String?
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  run              Run?              @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent            Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  parentTask       Task?             @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  childTasks       Task[]            @relation("TaskHierarchy")
+  events           TaskEvent[]
   workflowStepRuns WorkflowStepRun[] @relation("WorkflowTask")
 
   @@index([agentId, status])
@@ -1415,23 +1440,23 @@ model ApprovalRequest {
 }
 
 model AuditLog {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  projectId      String?      @map("project_id") @db.Uuid
-  teamId         String?      @map("team_id") @db.Uuid
-  channelId      String?      @map("channel_id") @db.Uuid
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  projectId      String?        @map("project_id") @db.Uuid
+  teamId         String?        @map("team_id") @db.Uuid
+  channelId      String?        @map("channel_id") @db.Uuid
   actorType      AuditActorType @map("actor_type")
-  actorId        String       @map("actor_id")
+  actorId        String         @map("actor_id")
   action         String
-  resourceType   String       @map("resource_type")
-  resourceId     String?      @map("resource_id")
+  resourceType   String         @map("resource_type")
+  resourceId     String?        @map("resource_id")
   outcome        AuditOutcome
   reason         String?
   metadata       Json?
-  requestId      String       @map("request_id")
-  ipAddress      String?      @map("ip_address")
-  userAgent      String?      @map("user_agent")
-  createdAt      DateTime     @default(now()) @map("created_at")
+  requestId      String         @map("request_id")
+  ipAddress      String?        @map("ip_address")
+  userAgent      String?        @map("user_agent")
+  createdAt      DateTime       @default(now()) @map("created_at")
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, action, createdAt(sort: Desc)])
@@ -1441,39 +1466,39 @@ model AuditLog {
 }
 
 model TokenLedgerEvent {
-  id                   String        @id @default(uuid()) @db.Uuid
-  occurredAt           DateTime      @map("occurred_at") @db.Timestamptz(6)
-  organizationId       String        @map("organization_id") @db.Uuid
-  projectId            String?       @map("project_id") @db.Uuid
-  teamId               String?       @map("team_id") @db.Uuid
-  channelId            String?       @map("channel_id") @db.Uuid
-  threadId             String?       @map("thread_id") @db.Uuid
-  sessionId            String?       @map("session_id")
-  taskId               String?       @map("task_id") @db.Uuid
-  agentId              String?       @map("agent_id") @db.Uuid
-  actorId              String        @map("actor_id")
-  requestId            String        @map("request_id")
-  correlationId        String?       @map("correlation_id")
-  provider             String
-  model                String
-  operationType        OperationType @map("operation_type")
-  inputTokens          Int?          @map("input_tokens")
-  outputTokens         Int?          @map("output_tokens")
-  cachedInputTokens    Int?          @map("cached_input_tokens")
-  cachedOutputTokens   Int?          @map("cached_output_tokens")
-  cacheReadTokens      Int?          @map("cache_read_tokens")
-  cacheWriteTokens     Int?          @map("cache_write_tokens")
-  totalTokens          Int?          @map("total_tokens")
-  providerCostAmount   Float?        @map("provider_cost_amount")
-  providerCostCurrency String?       @map("provider_cost_currency")
-  pricingProfileId     String?       @map("pricing_profile_id") @db.Uuid
-  pricingSource        PricingSource? @map("pricing_source")
-  pricingCurrency      String?       @map("pricing_currency")
-  pricingInputPerM     Float?        @map("pricing_input_per_m")
-  pricingOutputPerM    Float?        @map("pricing_output_per_m")
-  estimatedCostAmount  Float?        @map("estimated_cost_amount")
-  estimatedCostCurrency String?      @map("estimated_cost_currency")
-  metadata             Json?
+  id                    String         @id @default(uuid()) @db.Uuid
+  occurredAt            DateTime       @map("occurred_at") @db.Timestamptz(6)
+  organizationId        String         @map("organization_id") @db.Uuid
+  projectId             String?        @map("project_id") @db.Uuid
+  teamId                String?        @map("team_id") @db.Uuid
+  channelId             String?        @map("channel_id") @db.Uuid
+  threadId              String?        @map("thread_id") @db.Uuid
+  sessionId             String?        @map("session_id")
+  taskId                String?        @map("task_id") @db.Uuid
+  agentId               String?        @map("agent_id") @db.Uuid
+  actorId               String         @map("actor_id")
+  requestId             String         @map("request_id")
+  correlationId         String?        @map("correlation_id")
+  provider              String
+  model                 String
+  operationType         OperationType  @map("operation_type")
+  inputTokens           Int?           @map("input_tokens")
+  outputTokens          Int?           @map("output_tokens")
+  cachedInputTokens     Int?           @map("cached_input_tokens")
+  cachedOutputTokens    Int?           @map("cached_output_tokens")
+  cacheReadTokens       Int?           @map("cache_read_tokens")
+  cacheWriteTokens      Int?           @map("cache_write_tokens")
+  totalTokens           Int?           @map("total_tokens")
+  providerCostAmount    Float?         @map("provider_cost_amount")
+  providerCostCurrency  String?        @map("provider_cost_currency")
+  pricingProfileId      String?        @map("pricing_profile_id") @db.Uuid
+  pricingSource         PricingSource? @map("pricing_source")
+  pricingCurrency       String?        @map("pricing_currency")
+  pricingInputPerM      Float?         @map("pricing_input_per_m")
+  pricingOutputPerM     Float?         @map("pricing_output_per_m")
+  estimatedCostAmount   Float?         @map("estimated_cost_amount")
+  estimatedCostCurrency String?        @map("estimated_cost_currency")
+  metadata              Json?
 
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, provider, model, occurredAt(sort: Desc)])
@@ -1507,50 +1532,50 @@ model ModelPricingProfile {
 // ─── Memory Models ──────────────────────────────────────────────────────────
 
 model Thought {
-  id              String              @id @default(uuid()) @db.Uuid
-  content         String
-  contentHash     String              @map("content_hash")
-  embedding       Unsupported("vector(1536)")?
-  searchVector    Unsupported("tsvector")?    @map("search_vector")
+  id           String                       @id @default(uuid()) @db.Uuid
+  content      String
+  contentHash  String                       @map("content_hash")
+  embedding    Unsupported("vector(1536)")?
+  searchVector Unsupported("tsvector")?     @map("search_vector")
 
   // Ownership
-  ownerId         String              @map("owner_id")
-  ownerType       ThoughtOwnerType    @map("owner_type")
+  ownerId   String           @map("owner_id")
+  ownerType ThoughtOwnerType @map("owner_type")
 
   // Canonical audience
-  audienceType    ThoughtAudienceType? @map("audience_type")
-  audienceId      String?              @map("audience_id") @db.Uuid
+  audienceType ThoughtAudienceType? @map("audience_type")
+  audienceId   String?              @map("audience_id") @db.Uuid
 
   // Tenant scoping
-  organizationId  String              @map("organization_id") @db.Uuid
-  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  projectId       String?             @map("project_id") @db.Uuid
-  teamId          String?             @map("team_id") @db.Uuid
-  channelId       String?             @map("channel_id") @db.Uuid
-  threadId        String?             @map("thread_id") @db.Uuid
-  userId          String?             @map("user_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId      String?      @map("project_id") @db.Uuid
+  teamId         String?      @map("team_id") @db.Uuid
+  channelId      String?      @map("channel_id") @db.Uuid
+  threadId       String?      @map("thread_id") @db.Uuid
+  userId         String?      @map("user_id") @db.Uuid
 
   // Classification
-  visibility      ThoughtVisibility   @default(private)
-  sensitivityTier SensitivityTier     @default(normal) @map("sensitivity_tier")
-  importance      Float               @default(0.5)
+  visibility      ThoughtVisibility @default(private)
+  sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
+  importance      Float             @default(0.5)
 
   // LLM-extracted metadata
-  metadata        Json?
+  metadata Json?
 
   // Lifecycle
-  lastAccessedAt  DateTime?           @map("last_accessed_at") @db.Timestamptz(6)
-  accessCount     Int                 @default(0) @map("access_count")
-  deletedAt       DateTime?           @map("deleted_at")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  lastAccessedAt DateTime? @map("last_accessed_at") @db.Timestamptz(6)
+  accessCount    Int       @default(0) @map("access_count")
+  deletedAt      DateTime? @map("deleted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  reasonings      ThoughtReasoning[]
-  linksFrom       ThoughtLink[]       @relation("ThoughtLinksFrom")
-  linksTo         ThoughtLink[]       @relation("ThoughtLinksTo")
-  auditLogs       ThoughtAuditLog[]
-  recalls         ThoughtRecall[]
+  reasonings ThoughtReasoning[]
+  linksFrom  ThoughtLink[]      @relation("ThoughtLinksFrom")
+  linksTo    ThoughtLink[]      @relation("ThoughtLinksTo")
+  auditLogs  ThoughtAuditLog[]
+  recalls    ThoughtRecall[]
 
   @@index([organizationId, visibility, createdAt])
   @@index([organizationId, audienceType, audienceId, createdAt])
@@ -1562,29 +1587,29 @@ model Thought {
 }
 
 model ThoughtReasoning {
-  id              String          @id @default(uuid()) @db.Uuid
-  thoughtId       String          @map("thought_id") @db.Uuid
-  thought         Thought         @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid()) @db.Uuid
+  thoughtId String  @map("thought_id") @db.Uuid
+  thought   Thought @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
 
-  reasoningType   ReasoningType   @map("reasoning_type")
-  alternatives    Json?
-  criteria        Json?
-  constraints     Json?
-  tradeoffs       String?
-  confidence      Float?
-  reasoning       String
+  reasoningType ReasoningType @map("reasoning_type")
+  alternatives  Json?
+  criteria      Json?
+  constraints   Json?
+  tradeoffs     String?
+  confidence    Float?
+  reasoning     String
 
-  actorType       String          @map("actor_type")
-  actorId         String          @map("actor_id")
+  actorType String @map("actor_type")
+  actorId   String @map("actor_id")
 
-  outcome         OutcomeStatus   @default(pending)
-  outcomeNotes    String?         @map("outcome_notes")
-  outcomeAt       DateTime?       @map("outcome_at")
+  outcome      OutcomeStatus @default(pending)
+  outcomeNotes String?       @map("outcome_notes")
+  outcomeAt    DateTime?     @map("outcome_at")
 
-  organizationId  String          @map("organization_id") @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
 
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([thoughtId, createdAt])
   @@index([organizationId, outcome])
@@ -1593,14 +1618,14 @@ model ThoughtReasoning {
 }
 
 model ThoughtLink {
-  id         String              @id @default(uuid()) @db.Uuid
-  sourceId   String              @map("source_id") @db.Uuid
-  targetId   String              @map("target_id") @db.Uuid
-  source     Thought             @relation("ThoughtLinksFrom", fields: [sourceId], references: [id], onDelete: Cascade)
-  target     Thought             @relation("ThoughtLinksTo", fields: [targetId], references: [id], onDelete: Cascade)
-  relation   ThoughtLinkRelation
-  metadata   Json?
-  createdAt  DateTime            @default(now()) @map("created_at")
+  id        String              @id @default(uuid()) @db.Uuid
+  sourceId  String              @map("source_id") @db.Uuid
+  targetId  String              @map("target_id") @db.Uuid
+  source    Thought             @relation("ThoughtLinksFrom", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    Thought             @relation("ThoughtLinksTo", fields: [targetId], references: [id], onDelete: Cascade)
+  relation  ThoughtLinkRelation
+  metadata  Json?
+  createdAt DateTime            @default(now()) @map("created_at")
 
   @@unique([sourceId, targetId, relation])
   @@index([targetId])
@@ -1608,37 +1633,37 @@ model ThoughtLink {
 }
 
 model ThoughtAuditLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  thoughtId  String   @map("thought_id") @db.Uuid
-  thought    Thought  @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
-  action     String
-  actorType  String   @map("actor_type")
-  actorId    String   @map("actor_id")
-  diff       Json?
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid()) @db.Uuid
+  thoughtId String   @map("thought_id") @db.Uuid
+  thought   Thought  @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
+  action    String
+  actorType String   @map("actor_type")
+  actorId   String   @map("actor_id")
+  diff      Json?
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([thoughtId, createdAt])
   @@map("thought_audit_logs")
 }
 
 model ThoughtRecall {
-  id            String                      @id @default(uuid()) @db.Uuid
-  thoughtId      String                     @map("thought_id") @db.Uuid
-  thought        Thought                    @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
-  requesterUserId String?                   @map("requester_user_id") @db.Uuid
-  sessionId      String?                    @map("session_id")
-  channelId      String?                    @map("channel_id") @db.Uuid
-  outputAudienceType ThoughtAudienceType?   @map("output_audience_type")
-  outputAudienceId String?                  @map("output_audience_id") @db.Uuid
-  queryText      String                     @map("query_text")
-  queryEmbedding Unsupported("vector(1536)")? @map("query_embedding")
-  similarity     Float?
-  rankPosition   Int                        @map("rank_position")
-  retrievalMode  String                     @default("hybrid") @map("retrieval_mode")
-  wasInjected    Boolean                    @default(false) @map("was_injected")
-  wasReferenced  Boolean                    @default(false) @map("was_referenced")
-  userSignal     String?                    @map("user_signal")
-  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                 String                       @id @default(uuid()) @db.Uuid
+  thoughtId          String                       @map("thought_id") @db.Uuid
+  thought            Thought                      @relation(fields: [thoughtId], references: [id], onDelete: Cascade)
+  requesterUserId    String?                      @map("requester_user_id") @db.Uuid
+  sessionId          String?                      @map("session_id")
+  channelId          String?                      @map("channel_id") @db.Uuid
+  outputAudienceType ThoughtAudienceType?         @map("output_audience_type")
+  outputAudienceId   String?                      @map("output_audience_id") @db.Uuid
+  queryText          String                       @map("query_text")
+  queryEmbedding     Unsupported("vector(1536)")? @map("query_embedding")
+  similarity         Float?
+  rankPosition       Int                          @map("rank_position")
+  retrievalMode      String                       @default("hybrid") @map("retrieval_mode")
+  wasInjected        Boolean                      @default(false) @map("was_injected")
+  wasReferenced      Boolean                      @default(false) @map("was_referenced")
+  userSignal         String?                      @map("user_signal")
+  createdAt          DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([thoughtId])
   @@index([requesterUserId, createdAt(sort: Desc)])
