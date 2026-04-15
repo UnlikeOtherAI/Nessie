@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
@@ -586,12 +586,6 @@ const isTriggerAccessibleToActor = async (
   return false
 }
 
-const buildWebhookSignature = (secret: string, payload: Buffer, prefix: string): string =>
-  `${prefix}${createHmac('sha256', secret).update(payload).digest('hex')}`
-
-const getRawBody = (request: FastifyRequest): Buffer =>
-  (request as RequestWithRawBody).rawBody ?? Buffer.from('')
-
 const isJsonContentType = (request: FastifyRequest): boolean => {
   const contentType = parseHeaderValue(request.headers['content-type'])
   if (!contentType) {
@@ -616,67 +610,14 @@ const parseHeaderValue = (
   return trimmed.length > 0 ? trimmed : undefined
 }
 
-const resolveWebhookAuthMode = (
-  config: unknown,
-): 'signature' | 'token' => {
-  if (
-    config &&
-    typeof config === 'object' &&
-    !Array.isArray(config) &&
-    (config as Record<string, unknown>)['authMode'] === 'token'
-  ) {
-    return 'token'
+const parseBearerToken = (value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined
   }
 
-  return 'signature'
+  const match = value.match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() || undefined
 }
-
-const resolveWebhookHeaderNames = (
-  config: unknown,
-  key: 'deliveryIdHeader' | 'signatureHeader' | 'timestampHeader' | 'tokenHeader',
-  fallback: string[],
-): string[] => {
-  if (!config || typeof config !== 'object' || Array.isArray(config)) {
-    return fallback
-  }
-
-  const value = (config as Record<string, unknown>)[key]
-  if (typeof value === 'string' && value.length > 0) {
-    return [value.toLowerCase()]
-  }
-
-  const pluralKey = `${key}s`
-  const pluralValue = (config as Record<string, unknown>)[pluralKey]
-  if (Array.isArray(pluralValue)) {
-    const headers = pluralValue
-      .filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
-      .map((entry) => entry.toLowerCase())
-    if (headers.length > 0) {
-      return headers
-    }
-  }
-
-  return fallback
-}
-
-const resolveWebhookTimestampToleranceSeconds = (config: unknown): number | null => {
-  if (!config || typeof config !== 'object' || Array.isArray(config)) {
-    return null
-  }
-
-  const value = (config as Record<string, unknown>)['timestampToleranceSeconds']
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    return null
-  }
-
-  return Math.floor(value)
-}
-
-const shouldBindWebhookTimestampToSignature = (config: unknown): boolean =>
-  !!config &&
-  typeof config === 'object' &&
-  !Array.isArray(config) &&
-  (config as Record<string, unknown>)['bindTimestampToSignature'] === true
 
 const readFirstHeader = (
   request: FastifyRequest,
@@ -692,96 +633,22 @@ const readFirstHeader = (
   return undefined
 }
 
-const parseWebhookTimestamp = (value: string): Date | null => {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return null
-  }
+const readWebhookApiKey = (request: FastifyRequest): string | undefined =>
+  parseBearerToken(parseHeaderValue(request.headers['authorization'])) ??
+  parseHeaderValue(request.headers['x-nessie-trigger-key'])
 
-  if (/^\d+$/.test(trimmed)) {
-    const numericValue = Number.parseInt(trimmed, 10)
-    if (!Number.isFinite(numericValue)) {
-      return null
-    }
-
-    const milliseconds = trimmed.length >= 13 ? numericValue : numericValue * 1000
-    const parsed = new Date(milliseconds)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-  }
-
-  const parsed = new Date(trimmed)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-const buildWebhookSignaturePayload = (input: {
-  config: unknown
-  request: FastifyRequest
-}): Buffer | null => {
-  const rawBody = getRawBody(input.request)
-  if (!shouldBindWebhookTimestampToSignature(input.config)) {
-    return rawBody
-  }
-
-  const timestampHeaders = resolveWebhookHeaderNames(input.config, 'timestampHeader', [
-    'x-nessie-trigger-timestamp',
-    'x-request-timestamp',
-  ])
-  const timestampValue = readFirstHeader(input.request, timestampHeaders)
-  if (!timestampValue) {
-    return null
-  }
-
-  return Buffer.concat([Buffer.from(`${timestampValue}.`), rawBody])
-}
-
-const isWebhookSignatureValid = (
-  providedSignature: string | undefined,
-  expectedSecret: string,
-  payload: Buffer,
-  prefix: string,
-): boolean => {
-  if (!providedSignature) {
+const isTimingSafeMatch = (left: string | undefined, right: string | undefined): boolean => {
+  if (!left || !right) {
     return false
   }
 
-  const expectedSignature = buildWebhookSignature(expectedSecret, payload, prefix)
-  const providedBuffer = Buffer.from(providedSignature)
-  const expectedBuffer = Buffer.from(expectedSignature)
-  if (providedBuffer.length !== expectedBuffer.length) {
+  const leftBuffer = Buffer.from(left)
+  const rightBuffer = Buffer.from(right)
+  if (leftBuffer.length !== rightBuffer.length) {
     return false
   }
 
-  return timingSafeEqual(providedBuffer, expectedBuffer)
-}
-
-const isWebhookTimestampFresh = (input: {
-  config: unknown
-  now?: Date
-  request: FastifyRequest
-}): boolean => {
-  const toleranceSeconds = resolveWebhookTimestampToleranceSeconds(input.config)
-  if (!toleranceSeconds) {
-    return true
-  }
-
-  if (!shouldBindWebhookTimestampToSignature(input.config)) {
-    return false
-  }
-
-  const timestampHeaders = resolveWebhookHeaderNames(input.config, 'timestampHeader', [
-    'x-nessie-trigger-timestamp',
-    'x-request-timestamp',
-  ])
-  const timestampValue = readFirstHeader(input.request, timestampHeaders)
-  const parsedTimestamp = timestampValue ? parseWebhookTimestamp(timestampValue) : null
-  if (!parsedTimestamp) {
-    return false
-  }
-
-  return (
-    Math.abs((input.now ?? new Date()).getTime() - parsedTimestamp.getTime()) <=
-    toleranceSeconds * 1000
-  )
+  return timingSafeEqual(leftBuffer, rightBuffer)
 }
 
 const filterAuthorizedScopes = async (
@@ -1877,11 +1744,6 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (body.type === 'webhook' && typeof body.config?.['secret'] !== 'string') {
-      sendApiError(reply, 400, 'WEBHOOK_SECRET_REQUIRED', 'Webhook triggers require a secret')
-      return reply
-    }
-
     const trigger = await createAgentTrigger(prisma, agentId, body)
     if (!trigger) {
       sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
@@ -2220,117 +2082,57 @@ export const buildApp = async () => {
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
   })
 
-  app.post('/api/triggers/:triggerId/webhook', async (request, reply) => {
-    const { triggerId } = request.params as { triggerId: string }
-    const trigger = await prisma.agentTrigger.findUnique({
-      where: { id: triggerId },
-      select: {
-        agentId: true,
-        config: true,
-        id: true,
-        type: true,
-      },
-    })
-    if (!trigger || trigger.type !== 'webhook') {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    const expectedSecret =
-      trigger.config &&
-      typeof trigger.config === 'object' &&
-      !Array.isArray(trigger.config) &&
-      typeof (trigger.config as Record<string, unknown>)['secret'] === 'string'
-        ? ((trigger.config as Record<string, unknown>)['secret'] as string)
-        : undefined
-
-    const authMode = resolveWebhookAuthMode(trigger.config)
-    const signatureHeaders = resolveWebhookHeaderNames(trigger.config, 'signatureHeader', [
-      'x-nessie-trigger-signature',
-      'x-hub-signature-256',
-    ])
-    const tokenHeaders = resolveWebhookHeaderNames(trigger.config, 'tokenHeader', [
-      'x-nessie-trigger-secret',
-      'x-gitlab-token',
-    ])
-    const deliveryIdHeaders = resolveWebhookHeaderNames(trigger.config, 'deliveryIdHeader', [
-      'x-nessie-delivery-id',
-      'x-github-delivery',
-      'x-request-id',
-    ])
-    const dedupeKey = readFirstHeader(request, deliveryIdHeaders)
-    const signaturePrefix =
-      trigger.config &&
-      typeof trigger.config === 'object' &&
-      !Array.isArray(trigger.config) &&
-      typeof (trigger.config as Record<string, unknown>)['signaturePrefix'] === 'string'
-        ? ((trigger.config as Record<string, unknown>)['signaturePrefix'] as string)
-        : 'sha256='
-
-    if (!dedupeKey) {
-      sendApiError(reply, 400, 'WEBHOOK_DELIVERY_ID_REQUIRED', 'Webhook delivery id header missing')
-      return reply
-    }
-
-    if (!expectedSecret) {
-      sendApiError(reply, 403, 'WEBHOOK_SECRET_INVALID', 'Webhook secret missing')
+  app.post('/api/triggers/webhook', { config: { public: true } }, async (request, reply) => {
+    const apiKey = readWebhookApiKey(request)
+    if (!apiKey) {
+      sendApiError(reply, 401, 'WEBHOOK_API_KEY_REQUIRED', 'Webhook API key missing')
       return reply
     }
 
     if (!isJsonContentType(request)) {
-      sendApiError(reply, 415, 'WEBHOOK_CONTENT_TYPE_INVALID', 'Webhook requests must use JSON')
+      sendApiError(reply, 415, 'UNSUPPORTED_MEDIA_TYPE', 'Webhook payload must be JSON')
       return reply
     }
 
-    if (authMode === 'token') {
-      const providedToken = readFirstHeader(request, tokenHeaders)
-      const providedBuffer = Buffer.from(providedToken ?? '')
-      const expectedBuffer = Buffer.from(expectedSecret)
-      if (
-        providedBuffer.length !== expectedBuffer.length ||
-        !timingSafeEqual(providedBuffer, expectedBuffer)
-      ) {
-        sendApiError(reply, 403, 'WEBHOOK_TOKEN_INVALID', 'Webhook token mismatch')
-        return reply
-      }
-    } else {
-      const signaturePayload = buildWebhookSignaturePayload({
-        config: trigger.config,
-        request,
-      })
-      if (!signaturePayload) {
-        sendApiError(
-          reply,
-          403,
-          'WEBHOOK_TIMESTAMP_INVALID',
-          'Webhook timestamp is missing for signed verification',
-        )
-        return reply
-      }
+    const candidateTriggers = await prisma.agentTrigger.findMany({
+      where: {
+        type: 'webhook',
+      },
+      select: {
+        id: true,
+        config: true,
+      },
+    })
 
-      if (
-        !isWebhookSignatureValid(
-          readFirstHeader(request, signatureHeaders),
-          expectedSecret,
-          signaturePayload,
-          signaturePrefix,
-        )
-      ) {
-        sendApiError(reply, 403, 'WEBHOOK_SIGNATURE_INVALID', 'Webhook signature mismatch')
-        return reply
-      }
-    }
+    const matchedTrigger = candidateTriggers.find((candidate) => {
+      const candidateApiKey =
+        candidate.config &&
+        typeof candidate.config === 'object' &&
+        !Array.isArray(candidate.config) &&
+        typeof (candidate.config as Record<string, unknown>)['apiKey'] === 'string'
+          ? ((candidate.config as Record<string, unknown>)['apiKey'] as string)
+          : undefined
 
-    if (!isWebhookTimestampFresh({ config: trigger.config, request })) {
-      sendApiError(reply, 403, 'WEBHOOK_TIMESTAMP_INVALID', 'Webhook timestamp is missing or stale')
+      return isTimingSafeMatch(candidateApiKey, apiKey)
+    })
+
+    if (!matchedTrigger) {
+      sendApiError(reply, 403, 'WEBHOOK_API_KEY_INVALID', 'Webhook API key is invalid')
       return reply
     }
+
+    const dedupeKey =
+      readFirstHeader(request, [
+        'x-nessie-delivery-id',
+        'x-github-delivery',
+        'x-request-id',
+      ]) ?? randomUUID()
 
     const dispatched = await dispatchAgentTrigger(prisma, {
       dedupeKey,
       payload: request.body,
       source: 'webhook',
-      triggerId,
+      triggerId: matchedTrigger.id,
     })
 
     if (dispatched.kind === 'rejected') {
@@ -2800,11 +2602,6 @@ export const buildApp = async () => {
 
     const body = parseInput(CreateWorkflowTriggerBodySchema, request.body, reply)
     if (!body) {
-      return reply
-    }
-
-    if (body.type === 'webhook' && typeof body.config?.['secret'] !== 'string') {
-      sendApiError(reply, 400, 'WEBHOOK_SECRET_REQUIRED', 'Webhook triggers require a secret')
       return reply
     }
 

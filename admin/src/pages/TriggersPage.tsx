@@ -150,10 +150,9 @@ const getTriggerConfigRows = (trigger: AgentTriggerRecord): Array<[string, strin
   }
 
   if (trigger.type === 'webhook') {
-    const authMode = trigger.config?.authMode === 'token' ? 'Shared token' : 'Signed request'
     return [
-      ['Auth mode', authMode],
-      ['Endpoint', `/api/triggers/${trigger.id}/webhook`],
+      ['Endpoint', '/api/triggers/webhook'],
+      ['API key', trigger.webhookApiKey ?? 'Not generated yet'],
     ]
   }
 

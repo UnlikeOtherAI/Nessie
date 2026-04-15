@@ -48,8 +48,6 @@ type TriggerFormState = {
   targetChannelId: string
   targetKind: TriggerTargetKind
   triggerType: AgentTriggerRecord['type']
-  webhookAuthMode: 'signature' | 'token'
-  webhookSecret: string
   workflowInstallationId: string
   cron: string
   timezone: string
@@ -157,8 +155,6 @@ const getDefaultCreateState = (
     cron: '',
     timezone: getLocalTimezone(),
     intervalMinutes: '60',
-    webhookSecret: '',
-    webhookAuthMode: 'signature',
     eventNames: '',
     eventFilter: '',
   }
@@ -193,9 +189,6 @@ const getEditState = (
     timezone: typeof config.timezone === 'string' ? config.timezone : getLocalTimezone(),
     intervalMinutes:
       typeof config.interval_minutes === 'number' ? `${config.interval_minutes}` : '60',
-    webhookSecret:
-      typeof config.secret === 'string' && config.secret !== '[redacted]' ? config.secret : '',
-    webhookAuthMode: config.authMode === 'token' ? 'token' : 'signature',
     eventNames: toEventNamesValue(config),
     eventFilter: toEventFilterValue(config),
   }
@@ -454,23 +447,10 @@ export const TriggerEditorDialog = ({
     }
 
     if (form.triggerType === 'webhook') {
-      const nextConfig: Record<string, unknown> = {
-        authMode: form.webhookAuthMode,
-      }
-      const secret = form.webhookSecret.trim()
-      if (mode === 'create' && !secret) {
-        setFormError('Webhook secret is required.')
-        return null
-      }
-      if (secret) {
-        nextConfig.secret = secret
-      }
-
       return {
         name,
         description: description || undefined,
         enabled: form.enabled,
-        config: nextConfig,
       }
     }
 
@@ -597,8 +577,8 @@ export const TriggerEditorDialog = ({
   const webhookBaseUrl = getBaseUrl() || window.location.origin.replace(/\/$/, '')
   const webhookUrl =
     trigger?.type === 'webhook'
-      ? `${webhookBaseUrl}/api/triggers/${trigger.id}/webhook`
-      : null
+      ? `${webhookBaseUrl}/api/triggers/webhook`
+      : `${webhookBaseUrl}/api/triggers/webhook`
 
   return (
     <div
@@ -1052,58 +1032,63 @@ export const TriggerEditorDialog = ({
           {form.triggerType === 'webhook' ? (
             <section className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-1.5">
-                  <label className={fieldLabelClass} htmlFor="trigger-webhook-auth-mode">
-                    Auth mode
+                <div className="grid gap-1.5 md:col-span-2">
+                  <label className={fieldLabelClass} htmlFor="trigger-webhook-endpoint">
+                    Shared endpoint
                   </label>
-                  <select
-                    className="admin-input"
-                    id="trigger-webhook-auth-mode"
-                    onChange={(nextEvent) =>
-                      setForm((current) => ({
-                        ...current,
-                        webhookAuthMode: nextEvent.target.value as 'signature' | 'token',
-                      }))
-                    }
-                    value={form.webhookAuthMode}
-                  >
-                    <option value="signature">Signed request</option>
-                    <option value="token">Shared token</option>
-                  </select>
+                  <input
+                    className="admin-input cursor-default font-mono text-xs opacity-80"
+                    disabled
+                    id="trigger-webhook-endpoint"
+                    value={webhookUrl}
+                  />
                 </div>
 
                 <div className="grid gap-1.5">
-                  <label className={fieldLabelClass} htmlFor="trigger-webhook-secret">
-                    Secret
+                  <label className={fieldLabelClass} htmlFor="trigger-webhook-auth-header">
+                    Auth header
                   </label>
                   <input
-                    className="admin-input"
-                    id="trigger-webhook-secret"
-                    onChange={(nextEvent) =>
-                      setForm((current) => ({
-                        ...current,
-                        webhookSecret: nextEvent.target.value,
-                      }))
+                    className="admin-input cursor-default font-mono text-xs opacity-80"
+                    disabled
+                    id="trigger-webhook-auth-header"
+                    value="Authorization: Bearer <api-key>"
+                  />
+                </div>
+
+                <div className="grid gap-1.5">
+                  <label className={fieldLabelClass} htmlFor="trigger-webhook-fallback-header">
+                    Alternate header
+                  </label>
+                  <input
+                    className="admin-input cursor-default font-mono text-xs opacity-80"
+                    disabled
+                    id="trigger-webhook-fallback-header"
+                    value="X-Nessie-Trigger-Key: <api-key>"
+                  />
+                </div>
+
+                <div className="grid gap-1.5 md:col-span-2">
+                  <label className={fieldLabelClass} htmlFor="trigger-webhook-api-key">
+                    API key
+                  </label>
+                  <input
+                    className="admin-input cursor-default font-mono text-xs opacity-80"
+                    disabled
+                    id="trigger-webhook-api-key"
+                    value={
+                      trigger?.webhookApiKey ??
+                      (mode === 'create'
+                        ? 'Generated automatically after creation'
+                        : 'Save this trigger to generate an API key')
                     }
-                    placeholder={
-                      mode === 'edit'
-                        ? 'Leave blank to keep the stored secret'
-                        : 'Enter a shared secret'
-                    }
-                    type="password"
-                    value={form.webhookSecret}
                   />
                 </div>
               </div>
 
               <div className="mt-4 rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-3 text-sm text-[color:var(--tx3)]">
-                {webhookUrl ? (
-                  <>
-                    Endpoint: <span className="admin-inline-code">{webhookUrl}</span>
-                  </>
-                ) : (
-                  'The webhook endpoint URL is generated after the trigger is created.'
-                )}
+                Nessie routes every webhook call through this single endpoint and uses the
+                trigger API key to identify which trigger should fire.
               </div>
             </section>
           ) : null}
