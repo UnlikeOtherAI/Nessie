@@ -4,17 +4,29 @@
 
 ## 1. Product Rules
 
-The MVP should follow five rules:
+The core model is simple:
 
+- the personal assistant is the user's delegated second self
 - every user gets exactly one `Personal Assistant`
 - it always appears at the top of that user's DMs
 - it uses the same runtime stack as a regular agent
-- it does not get any visibility the user does not already have
+- it has exactly the same permissions as the user who is talking to it
 - it has a user-scoped memory built from that user's conversations across the
   workspace
 
-At the same time, the assistant must be able to read and write across the
-workspace using the same permissions as the user who is talking to it.
+The assistant must be able to do anything the user can do in the product.
+
+Sometimes that means the assistant acts directly, for example by searching
+messages, sending a reply, sharing a document, or updating user settings.
+Sometimes that means the assistant delegates a specialist agent, because that is
+already how the product exposes that capability to the user.
+
+The contract stays the same in both cases:
+
+- same authority as the user
+- same visibility as the user
+- same write reach as the user
+- no independent power beyond what the user could already do
 
 That means we need to separate:
 
@@ -46,6 +58,7 @@ is:
 - private per-user conversation surface
 - private per-user assistant memory built from the user's conversations
 - delegated workspace access using the current user's permissions
+- the same user-visible action surface the user already has
 
 ## 3. Why This Stays Compatible With Regular Agents
 
@@ -68,7 +81,10 @@ Special policies:
 - exactly the same authorization scope as the requesting user
 - user-scoped assistant memory
 - delegated read/write access using the requesting user's permissions
-- restricted toolset focused on communication, delegation, and user settings
+- DM-anchored control surface, even when the assistant acts elsewhere for the
+  user
+- user-equivalent action scope: if the user can do it, the assistant can do it;
+  if the user would need to delegate another agent, the assistant does that too
 
 This keeps the MVP small and gives us a clean path to future managed assistants.
 
@@ -80,6 +96,8 @@ This keeps the MVP small and gives us a clean path to future managed assistants.
 - Opening it finds or creates that user's private DM.
 - The assistant behaves like a normal chat assistant inside that DM.
 - The assistant can see whatever the user can already see.
+- The assistant can search the user's past authored messages across the
+  workspace and use them to ground replies and actions.
 - The assistant remains anchored to the user's DM as its control surface, even
   when acting elsewhere on the user's behalf.
 
@@ -99,7 +117,8 @@ Admins can still change the normal agent configuration:
 
 - system prompt
 - model / routing
-- tools, within the restricted personal-assistant toolset
+- tools and policies that shape how the assistant speaks, plans, searches, and
+  delegates on the user's behalf
 - attached markdown docs
 
 ## 5. Minimal Data Model
@@ -163,26 +182,31 @@ When the assistant posts on behalf of the user, keep provenance:
 The message should read as sent by the user, but the audit trail must still show
 that the personal assistant executed it.
 
-### `Agent` tool policy
+### `Agent` execution policy
 
-For the MVP, the personal assistant should not have the normal broad agent tool
-surface.
+For the MVP, the personal assistant should follow the same action model the
+user already has in the product.
 
-Allowed tool families:
+That means:
 
-- message search / read
-- message send / reply / thread creation
+- if the user can search, read, post, share, organize, or change a personal
+  setting, the assistant can do that too
+- if the user can only achieve a task by delegating another agent, the personal
+  assistant should use that same delegation path instead of bypassing it
+- the personal assistant should not gain a separate low-level power surface just
+  because it is implemented as an agent
+
+Primary action families:
+
+- message and thread search / read
+- authored-message search across the user's history
+- message send / reply / thread creation / follow-up
 - document share / attach into conversations
 - delegation to other agents
 - user preference and personal settings updates
 
-Not allowed:
-
-- bash
-- file write
-- code execution
-- generic research or admin tool surfaces
-- doing specialist work itself instead of delegating it to another agent
+The important boundary is not "communication versus tools." The important
+boundary is "same user authority, no extra authority."
 
 ## 6. Memory Model
 
@@ -201,7 +225,7 @@ For MVP, that means two sources:
 
 - direct DM conversation with `Personal Assistant`
 - memories distilled from messages the user has authored in other DMs, channels,
-  and threads
+  meetings, groups, and threads they can access
 
 This should let the assistant know:
 
@@ -228,6 +252,10 @@ For MVP, the safest useful capture rule is:
 
 That gives us "my assistant knows what I have said and agreed to" without
 turning it into a raw global transcript mirror of every shared conversation.
+
+The assistant should also have a live search tool over the user's past authored
+messages, so even when a detail is not promoted into persistent memory, it can
+still reconstruct what the user previously said.
 
 ### What should stay out of assistant memory by default
 
@@ -317,38 +345,36 @@ The rule is simple:
 - if the user can see it, the assistant can see it
 - if the user cannot see it, the assistant cannot see it
 
-### Tool scope
+### User-equivalent action scope
 
-Even though the assistant should have the same permissions as the user, it does
-not need the same product capability surface as every other agent.
+The personal assistant should expose the same action surface the user has, not a
+smaller one.
 
-It is a communication and delegation assistant.
+In practice that means:
 
-That means it should use tools for:
+- the assistant can read, search, draft, send, organize, share, and follow up
+  anywhere the user can
+- the assistant can coordinate people and split work based on the user's memory
+  plus live workspace context
+- the assistant can change the user's own preferences and settings where the
+  user could do so directly
+- the assistant can delegate specialist work to other agents wherever the user
+  would do the same thing
 
-- reading message history
-- finding the right people and conversations
-- sending messages and threads
-- sharing documents into conversations
-- updating the user's own assistant/user preferences
-- delegating work to other agents
+The important nuance is execution shape:
 
-It should not use tools for:
+- the assistant is not meant to become a specialist engineer, researcher, or
+  operator in its own DM
+- when the product requires agent delegation for real specialist work, the
+  personal assistant should perform that same delegation for the user
 
-- directly doing engineering or specialist work
-- editing files
-- running shell commands
-- operating arbitrary external systems
-
-For any real work beyond communication and settings, the personal assistant
-should delegate a worker agent instead of doing the work itself.
-
-That delegation should inherit the same effective user permissions as the
+That delegation must inherit the same effective user permissions as the
 requesting user.
 
 ### Write access
 
-For the MVP, delegated write should cover normal communication actions:
+For the MVP, delegated write should cover the normal collaboration actions users
+actually need:
 
 - send message
 - reply in thread
@@ -357,16 +383,17 @@ For the MVP, delegated write should cover normal communication actions:
 - assign or split work in a message based on live context plus the user's
   assistant memory
 - delegate work to other agents based on the user's request
+- follow up, remind, and summarize into conversations the user can post in
 
-This is enough to satisfy "send messages on my behalf" and "delegate work on my
-behalf" without taking on the full destructive-moderation surface on day one.
+If there are user actions we do not ship on day one, that should be treated as
+implementation sequencing, not as a different permission model.
 
-I would keep these out of MVP unless we explicitly choose them:
+The target rule stays:
 
-- delete messages
-- bulk edits
-- membership changes
-- administrative moderation actions
+- if the user can perform the action directly, the assistant should eventually
+  be able to perform it too
+- if the user can only perform it by delegating another agent, the assistant
+  should be able to trigger that same delegation path
 
 ### Safety rule
 
@@ -408,7 +435,9 @@ For MVP:
 - it should act as the user's delegate, not as an independently added teammate
 
 So the system should hide it from generic "add agent" flows, but not block it
-from reading or writing in surfaces the user can already access.
+from reading or writing in surfaces the user can already access, including
+meetings, groups, channels, threads, and other collaboration surfaces the user
+can already inspect or post in.
 
 ## 9. Bootstrap Flow
 
@@ -451,8 +480,9 @@ The MVP needs real backend enforcement in a few places:
   workspace
 - derived memory capture must stay user-scoped even when sourced from shared
   conversations
-- the tool registry must restrict personal assistants to communication,
-  delegation, and user-setting tools
+- the execution layer must preserve the "same user authority, same user
+  delegation paths" rule instead of giving the assistant a weaker or broader
+  action model
 
 If those checks are solid, the rest of the system can stay mostly normal.
 
@@ -464,8 +494,9 @@ Do not add these yet:
 - separate personal assistant template/instance tables
 - auto-promotion of workspace conversations into PA memory
 - admin-created arbitrary managed assistants
-- broad destructive write delegation
-- broad regular-agent tool access
+- full coverage of lower-frequency destructive user actions on day one
+- a special low-level tool bypass that skips the same delegation path users
+  already rely on
 
 Those can come later if the MVP works.
 
@@ -494,7 +525,7 @@ Under that model:
 2. Pin the assistant to the top of the DM list.
 3. Enforce `dm_only` surface policy everywhere shared-agent flows exist.
 4. Add delegated read/write execution using effective user permissions.
-5. Add the `memory_origin = personal_assistant` capture and retrieval rule.
+5. Add the personal-assistant user-memory capture and retrieval rule.
 6. Add provenance/audit metadata for delegated posts.
 
 That is enough for a real MVP.
@@ -508,7 +539,9 @@ The MVP should be:
 - one private user-scoped assistant-memory namespace per user, built from that
   user's conversations across the workspace
 - live workspace read/write with exactly the same permissions as the user
-- restricted tools for communication, delegation, and personal settings
+- the same user-visible action surface the user already has
+- specialist work routed through the same agent-delegation path the user would
+  use
 - a DM-anchored control surface, not a separate visible teammate
 
 That is much simpler than the previous design, and it is compatible with the
