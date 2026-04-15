@@ -31,7 +31,11 @@ export const useCreateChannel = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { label: string; visibility?: ChannelRecord['visibility'] }) =>
+    mutationFn: (input: {
+      label: string
+      teamId?: string
+      visibility?: ChannelRecord['visibility']
+    }) =>
       apiClient.post<ChannelRecord>('/api/channels', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['channels'] })

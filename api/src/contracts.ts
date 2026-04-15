@@ -106,6 +106,7 @@ export const EmptyBodySchema = z.object({})
 
 export const CreateChannelBodySchema = z.object({
   label: NonEmptyStringSchema,
+  teamId: TeamIdSchema.optional(),
   visibility: z.enum(['public', 'protected', 'private']).optional(),
 })
 

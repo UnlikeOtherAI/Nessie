@@ -202,7 +202,7 @@ export const SettingsPage = () => {
 
             <button
               className="admin-button admin-button-primary mt-4 justify-self-start"
-              onClick={onCreateChannel}
+              onClick={() => onCreateChannel()}
               type="button"
             >
               Create channel

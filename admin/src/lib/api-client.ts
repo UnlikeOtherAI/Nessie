@@ -54,6 +54,14 @@ export type ProjectRecord = {
   organizationId: string
 }
 
+export type TeamRecord = {
+  createdAt: string
+  id: string
+  memberCount: number
+  name: string
+  projectId: string
+}
+
 export type CallParticipantRecord = {
   displayName: string
   joinedAt: string

@@ -14,10 +14,12 @@ const toSlug = (value: string): string =>
 type CreateChannelDialogProps = {
   onClose: () => void
   open: boolean
+  projectName?: string
+  teamId?: string
 }
 
 export const CreateChannelDialog = (
-  { onClose, open }: CreateChannelDialogProps,
+  { onClose, open, projectName, teamId }: CreateChannelDialogProps,
 ) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
@@ -58,6 +60,7 @@ export const CreateChannelDialog = (
 
     const created = await createChannel.mutateAsync({
       label: name.trim(),
+      teamId,
       visibility,
     })
     handleClose()
@@ -83,9 +86,12 @@ export const CreateChannelDialog = (
     >
       <div className="create-channel-panel">
         <div className="create-channel-header">
-          <h2 className="text-lg font-bold text-white">
-            Create a channel
-          </h2>
+          <div>
+            <h2 className="text-lg font-bold text-white">Create a channel</h2>
+            {projectName ? (
+              <div className="text-xs text-[color:var(--tx3)]">in {projectName}</div>
+            ) : null}
+          </div>
           <button
             className={[
               'flex h-7 w-7 items-center justify-center',

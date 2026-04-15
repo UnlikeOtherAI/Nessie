@@ -7,13 +7,14 @@ import {
 } from '../components/features/personal-assistant/PersonalAssistantSurface';
 import { PresenceDot } from '../components/primitives/PresenceDot';
 import { CreateChannelDialog } from '../components/shared/CreateChannelDialog';
+import { CreateProjectDialog } from '../components/shared/CreateProjectDialog';
 import { useAgentRealtime, useAgents } from '../facades/agents/hooks';
 import { useChannels, useOpenDm } from '../facades/channels/hooks';
 import {
   isPersonalAssistantChannel,
   usePersonalAssistantBootstrap,
 } from '../facades/personal-assistant/hooks';
-import { useProjects } from '../facades/projects/hooks';
+import { useProjects, useTeams } from '../facades/projects/hooks';
 import { useUsers } from '../facades/users/hooks';
 import type { AgentRecord, ChannelRecord, ProjectRecord } from '../lib/api-client';
 import { getCookie, setCookie } from '../lib/storage';
@@ -21,6 +22,7 @@ import { useAuthSession } from '../providers/AuthSessionProvider';
 
 type StarredItem = { type: 'channel' | 'project' | 'user'; id: string };
 type SidebarProject = ProjectRecord & { channels: ChannelRecord[] };
+type CreateChannelTarget = { projectName?: string; teamId?: string };
 
 const DEFAULT_BOOTSTRAP_PROJECT_ID = '00000000-0000-4000-8000-000000000002';
 
@@ -59,7 +61,7 @@ const renderUnreadCount = (count: number) =>
   count > 0 ? <span className={unreadCountClassName}>{count}</span> : null;
 
 export type AdminShellOutletContext = {
-  onCreateChannel: () => void;
+  onCreateChannel: (target?: CreateChannelTarget) => void;
   onSelectAgent: (agentId: string) => void;
   scopedAgents: AgentRecord[];
 };
@@ -70,6 +72,7 @@ export const AdminShellLayout = () => {
   const { logout, me, sessionState, token } = useAuthSession();
   const { data: channels = [] } = useChannels();
   const { data: projects = [] } = useProjects();
+  const { data: teams = [] } = useTeams();
   const { data: agents = [] } = useAgents();
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const { data: users = [] } = useUsers(isOwner);
@@ -92,7 +95,9 @@ export const AdminShellLayout = () => {
     : undefined;
   const personalAssistantBootstrap = usePersonalAssistantBootstrap();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [createChannelOpen, setCreateChannelOpen] = useState(false);
+  const [createChannelTarget, setCreateChannelTarget] = useState<CreateChannelTarget | null>(null);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [sidebarMenu, setSidebarMenu] = useState<'channels' | null>(null);
   const [channelsCollapsed, setChannelsCollapsed] = useState(
     () => getCookie('channelsCollapsed') === '1',
   );
@@ -149,8 +154,16 @@ export const AdminShellLayout = () => {
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }, [projects, standardChannels]);
 
-  const openCreateChannel = useCallback(() => setCreateChannelOpen(true), []);
-  const closeCreateChannel = useCallback(() => setCreateChannelOpen(false), []);
+  const openCreateChannel = useCallback((target?: CreateChannelTarget) => {
+    setSidebarMenu(null);
+    setCreateChannelTarget(target ?? {});
+  }, []);
+  const closeCreateChannel = useCallback(() => setCreateChannelTarget(null), []);
+  const openCreateProject = useCallback(() => {
+    setSidebarMenu(null);
+    setCreateProjectOpen(true);
+  }, []);
+  const closeCreateProject = useCallback(() => setCreateProjectOpen(false), []);
 
   const toggleChannelsCollapsed = useCallback(() => {
     setChannelsCollapsed((prev) => {
@@ -209,12 +222,36 @@ export const AdminShellLayout = () => {
     () => new Map(sidebarProjects.map((project) => [project.id, project])),
     [sidebarProjects],
   );
+  const teamIdByProjectId = useMemo(() => {
+    const result = new Map<string, string>();
+
+    for (const team of teams) {
+      if (!result.has(team.projectId)) {
+        result.set(team.projectId, team.id);
+      }
+    }
+
+    for (const channel of standardChannels) {
+      if (!result.has(channel.projectId)) {
+        result.set(channel.projectId, channel.teamId);
+      }
+    }
+
+    return result;
+  }, [standardChannels, teams]);
   const defaultProjectChannels = useMemo(
     () =>
       sidebarProjects.find((project) => project.id === DEFAULT_BOOTSTRAP_PROJECT_ID)?.channels.filter(
         (channel) => !starredChannelIds.has(channel.id),
       ) ?? [],
     [sidebarProjects, starredChannelIds],
+  );
+  const defaultProjectTeamId = useMemo(
+    () =>
+      teamIdByProjectId.get(DEFAULT_BOOTSTRAP_PROJECT_ID)
+      ?? standardChannels.find((channel) => channel.projectId === DEFAULT_BOOTSTRAP_PROJECT_ID)
+        ?.teamId,
+    [standardChannels, teamIdByProjectId],
   );
   const visibleSidebarProjects = useMemo(
     () =>
@@ -858,6 +895,18 @@ export const AdminShellLayout = () => {
                               >
                                 ★
                               </span>
+                              <span
+                                className="ml-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10 hover:text-white"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openCreateChannel({
+                                    projectName: project.name,
+                                    teamId: teamIdByProjectId.get(project.id),
+                                  });
+                                }}
+                              >
+                                +
+                              </span>
                             </button>
 
                             {project.channels.map((channel) => (
@@ -909,25 +958,56 @@ export const AdminShellLayout = () => {
                 </>
               )}
 
-              <button
-                className="admin-sec-hdr"
-                onClick={toggleChannelsCollapsed}
-                type="button"
-              >
-                <svg
-                  className={[
-                    'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-                    channelsCollapsed ? '-rotate-90' : '',
-                  ].join(' ')}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  viewBox="0 0 24 24"
+              <div className="admin-sec-row">
+                <button
+                  className="admin-sec-hdr"
+                  onClick={toggleChannelsCollapsed}
+                  type="button"
                 >
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Channels
-              </button>
+                  <svg
+                    className={[
+                      'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                      channelsCollapsed ? '-rotate-90' : '',
+                    ].join(' ')}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Channels
+                </button>
+                <div className="relative">
+                  <button
+                    aria-label="Add channel or project"
+                    className="admin-sidebar-plus"
+                    onClick={() =>
+                      setSidebarMenu((current) => (current === 'channels' ? null : 'channels'))
+                    }
+                    type="button"
+                  >
+                    +
+                  </button>
+                  {sidebarMenu === 'channels' ? (
+                    <div className="admin-sidebar-menu">
+                      <button
+                        onClick={() =>
+                          openCreateChannel({
+                            teamId: defaultProjectTeamId,
+                          })
+                        }
+                        type="button"
+                      >
+                        Create new channel
+                      </button>
+                      <button onClick={openCreateProject} type="button">
+                        Create new project
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
 
               {!channelsCollapsed && (
                 <>
@@ -1010,6 +1090,18 @@ export const AdminShellLayout = () => {
                           >
                             {isStarredProject ? '★' : '☆'}
                           </span>
+                          <span
+                            className="ml-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10 hover:text-white"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openCreateChannel({
+                                projectName: project.name,
+                                teamId: teamIdByProjectId.get(project.id),
+                              });
+                            }}
+                          >
+                            +
+                          </span>
                         </button>
 
                         {project.channels.map((channel) => {
@@ -1047,45 +1139,38 @@ export const AdminShellLayout = () => {
                       </div>
                     );
                   })}
-
-                  <button
-                    className="admin-sb-item text-[color:var(--tx3)]"
-                    onClick={openCreateChannel}
-                    type="button"
-                  >
-                    <svg
-                      className="h-4 w-4 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    Create channel
-                  </button>
                 </>
               )}
 
-              <button
-                className="admin-sec-hdr mt-2"
-                onClick={toggleDmCollapsed}
-                type="button"
-              >
-                <svg
-                  className={[
-                    'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-                    dmCollapsed ? '-rotate-90' : '',
-                  ].join(' ')}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  viewBox="0 0 24 24"
+              <div className="admin-sec-row mt-2">
+                <button
+                  className="admin-sec-hdr"
+                  onClick={toggleDmCollapsed}
+                  type="button"
                 >
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Direct messages
-              </button>
+                  <svg
+                    className={[
+                      'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                      dmCollapsed ? '-rotate-90' : '',
+                    ].join(' ')}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Direct messages
+                </button>
+                <button
+                  aria-label={isOwner ? 'Invite people' : 'Open workspace profile'}
+                  className="admin-sidebar-plus"
+                  onClick={() => void navigate('/settings#users')}
+                  type="button"
+                >
+                  +
+                </button>
+              </div>
 
               {!dmCollapsed && (
                 <>
@@ -1129,23 +1214,6 @@ export const AdminShellLayout = () => {
                       </button>
                     );
                   })}
-
-                  <button
-                    className="admin-sb-item text-[color:var(--tx3)]"
-                    onClick={() => void navigate('/settings#users')}
-                    type="button"
-                  >
-                    <svg
-                      className="h-4 w-4 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    {isOwner ? 'Invite people' : 'Workspace profile'}
-                  </button>
                 </>
               )}
 
@@ -1165,7 +1233,13 @@ export const AdminShellLayout = () => {
         </main>
       </div>
 
-      <CreateChannelDialog onClose={closeCreateChannel} open={createChannelOpen} />
+      <CreateChannelDialog
+        onClose={closeCreateChannel}
+        open={createChannelTarget !== null}
+        projectName={createChannelTarget?.projectName}
+        teamId={createChannelTarget?.teamId}
+      />
+      <CreateProjectDialog onClose={closeCreateProject} open={createProjectOpen} />
 
       <AgentDetailDrawer
         agent={selectedAgent}

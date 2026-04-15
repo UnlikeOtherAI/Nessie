@@ -1680,7 +1680,11 @@ export const buildApp = async () => {
       label: body.label,
       visibility: body.visibility ?? 'public',
       organizationId: actorContext.tenant.organizationId,
-      teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? '00000000-0000-4000-8000-000000000003',
+      teamId:
+        body.teamId
+        ?? actorContext.tenant.teamId
+        ?? actorContext.actionContext.teamId
+        ?? '00000000-0000-4000-8000-000000000003',
       userId: actorContext.actor.actorId,
     })
 

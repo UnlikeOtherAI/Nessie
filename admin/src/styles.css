@@ -117,6 +117,62 @@ a {
   cursor: pointer;
 }
 
+.admin-sec-row {
+  display: flex;
+  align-items: flex-end;
+  position: relative;
+}
+
+.admin-sidebar-plus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 5px 8px 0 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--tx3);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.admin-sidebar-plus:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.admin-sidebar-menu {
+  position: absolute;
+  z-index: 20;
+  top: 30px;
+  right: 8px;
+  width: 180px;
+  overflow: hidden;
+  border: 1px solid var(--sep);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+}
+
+.admin-sidebar-menu button {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 8px 10px;
+  color: var(--tx);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+
+.admin-sidebar-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .admin-sb-item {
   display: flex;
   align-items: center;
