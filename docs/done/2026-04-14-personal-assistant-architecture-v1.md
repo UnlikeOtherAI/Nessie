@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD013 MD031 MD032 MD040 -->
+
 # Personal Assistant Architecture
 
 > Status: proposed implementation brief for per-user personal assistants.
