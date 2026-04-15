@@ -3,10 +3,21 @@ import type { Channel, PrismaClient } from '@prisma/client'
 import {
   parseChannelId,
   parseOrganizationId,
+  parseProjectId,
   parseTeamId,
   parseThreadId,
 } from '@nessie/schemas'
 import type { ChannelRecord } from '../contracts.js'
+
+type ChannelWithProject = Channel & {
+  team?: {
+    name: string
+    project: {
+      id: string
+      name: string
+    }
+  }
+}
 
 type ThreadUnreadRow = {
   thread_id: string
@@ -94,13 +105,22 @@ export const ensureDefaultThread = async (
 
 const mapChannelRecord = async (
   prisma: PrismaClient,
-  channel: Channel,
+  channel: ChannelWithProject,
   userId?: string,
 ): Promise<ChannelRecord> => {
   const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
   const unreadCount = userId
     ? (await loadUnreadCountsByThread(prisma, [defaultThreadId], userId)).get(defaultThreadId) ?? 0
     : 0
+  const team = channel.team ?? await prisma.team.findUniqueOrThrow({
+    where: { id: channel.teamId },
+    select: {
+      name: true,
+      project: {
+        select: { id: true, name: true },
+      },
+    },
+  })
 
   return {
     defaultThreadId: parseThreadId(defaultThreadId),
@@ -110,7 +130,10 @@ const mapChannelRecord = async (
     systemChannelType: channel.systemChannelType ?? undefined,
     visibility: channel.visibility,
     organizationId: parseOrganizationId(channel.organizationId),
+    projectId: parseProjectId(team.project.id),
+    projectName: team.project.name,
     teamId: parseTeamId(channel.teamId),
+    teamName: team.name,
     unreadCount,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
@@ -142,6 +165,14 @@ export const listChannelsForUser = async (
         orderBy: { createdAt: 'asc' },
         take: 1,
         select: { id: true },
+      },
+      team: {
+        select: {
+          name: true,
+          project: {
+            select: { id: true, name: true },
+          },
+        },
       },
     },
   })
@@ -192,7 +223,10 @@ export const listChannelsForUser = async (
     systemChannelType: channel.systemChannelType ?? undefined,
     visibility: channel.visibility,
     organizationId: parseOrganizationId(channel.organizationId),
+    projectId: parseProjectId(channel.team.project.id),
+    projectName: channel.team.project.name,
     teamId: parseTeamId(channel.teamId),
+    teamName: channel.team.name,
     defaultThreadId: parseThreadId(channel.threads[0]!.id),
     unreadCount: unreadCountsByThread.get(channel.threads[0]!.id) ?? 0,
     createdAt: channel.createdAt.toISOString(),

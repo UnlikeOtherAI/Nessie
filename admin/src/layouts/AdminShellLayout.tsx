@@ -13,10 +13,14 @@ import {
   isPersonalAssistantChannel,
   usePersonalAssistantBootstrap,
 } from '../facades/personal-assistant/hooks';
+import { useProjects } from '../facades/projects/hooks';
 import { useUsers } from '../facades/users/hooks';
-import type { AgentRecord } from '../lib/api-client';
+import type { AgentRecord, ChannelRecord, ProjectRecord } from '../lib/api-client';
 import { getCookie, setCookie } from '../lib/storage';
 import { useAuthSession } from '../providers/AuthSessionProvider';
+
+type StarredItem = { type: 'channel' | 'project' | 'user'; id: string };
+type SidebarProject = ProjectRecord & { channels: ChannelRecord[] };
 
 const parseChannelIdFromPath = (pathname: string): string | undefined => {
   const match = pathname.match(/^\/channels(?:\/([^/]+))?$/);
@@ -63,6 +67,7 @@ export const AdminShellLayout = () => {
   const navigate = useNavigate();
   const { logout, me, sessionState, token } = useAuthSession();
   const { data: channels = [] } = useChannels();
+  const { data: projects = [] } = useProjects();
   const { data: agents = [] } = useAgents();
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const { data: users = [] } = useUsers(isOwner);
@@ -93,13 +98,54 @@ export const AdminShellLayout = () => {
     () => getCookie('starredCollapsed') === '1',
   );
   const [dmCollapsed, setDmCollapsed] = useState(() => getCookie('dmCollapsed') === '1');
-  const [starred, setStarred] = useState<Array<{ type: 'channel' | 'user'; id: string }>>(
+  const [starred, setStarred] = useState<StarredItem[]>(
     () => me?.user.preferences?.starred ?? [],
   );
   const unreadCountByChannelId = useMemo(
     () => new Map(channels.map((channel) => [channel.id, channel.unreadCount])),
     [channels],
   );
+  const standardChannels = useMemo(
+    () => channels.filter((channel) => channel.type !== 'dm'),
+    [channels],
+  );
+  const currentProjectId = useMemo(
+    () => standardChannels.find((channel) => channel.id === currentChannelId)?.projectId,
+    [currentChannelId, standardChannels],
+  );
+  const sidebarProjects = useMemo<SidebarProject[]>(() => {
+    const channelsByProject = new Map<string, ChannelRecord[]>();
+    const projectById = new Map<string, ProjectRecord>();
+
+    for (const project of projects) {
+      projectById.set(project.id, project);
+    }
+
+    for (const channel of standardChannels) {
+      const projectChannels = channelsByProject.get(channel.projectId) ?? [];
+      projectChannels.push(channel);
+      channelsByProject.set(channel.projectId, projectChannels);
+
+      if (!projectById.has(channel.projectId)) {
+        projectById.set(channel.projectId, {
+          createdAt: channel.createdAt,
+          id: channel.projectId,
+          memberCount: 0,
+          name: channel.projectName,
+          organizationId: channel.organizationId,
+        });
+      }
+    }
+
+    return Array.from(projectById.values())
+      .map((project) => ({
+        ...project,
+        channels: (channelsByProject.get(project.id) ?? [])
+          .slice()
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
+      }))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }, [projects, standardChannels]);
 
   const openCreateChannel = useCallback(() => setCreateChannelOpen(true), []);
   const closeCreateChannel = useCallback(() => setCreateChannelOpen(false), []);
@@ -132,7 +178,7 @@ export const AdminShellLayout = () => {
     setStarred(me?.user.preferences?.starred ?? []);
   }, [me?.user.preferences?.starred]);
 
-  const toggleStar = useCallback((type: 'channel' | 'user', id: string) => {
+  const toggleStar = useCallback((type: StarredItem['type'], id: string) => {
     setStarred((prev) => {
       const exists = prev.some((s) => s.type === type && s.id === id);
       const next = exists
@@ -149,6 +195,11 @@ export const AdminShellLayout = () => {
       return next;
     });
   }, [token]);
+
+  const navigateToProject = useCallback((projectId: string) => {
+    const firstChannel = standardChannels.find((channel) => channel.projectId === projectId);
+    void navigate(firstChannel ? `/channels/${firstChannel.id}` : '/channels');
+  }, [navigate, standardChannels]);
 
   const scopedAgents = agents;
 
@@ -695,6 +746,47 @@ export const AdminShellLayout = () => {
                           </button>
                         );
                       }
+                      if (item.type === 'project') {
+                        const project = sidebarProjects.find((candidate) => candidate.id === item.id);
+                        if (!project) return null;
+                        const unreadCount = project.channels.reduce(
+                          (total, channel) => total + channel.unreadCount,
+                          0,
+                        );
+                        return (
+                          <button
+                            key={`starred-prj-${item.id}`}
+                            className={`admin-sb-item group ${project.id === currentProjectId ? 'active' : ''}`}
+                            onClick={() => navigateToProject(item.id)}
+                            type="button"
+                          >
+                            <svg
+                              className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                            {renderUnreadCount(unreadCount)}
+                            <span
+                              className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleStar('project', item.id);
+                              }}
+                            >
+                              ★
+                            </span>
+                          </button>
+                        );
+                      }
                       const person = sidebarPeople.find((p) => p.id === item.id);
                       if (!person) return null;
                       return (
@@ -748,35 +840,91 @@ export const AdminShellLayout = () => {
 
               {!channelsCollapsed && (
                 <>
-                  {channels.filter((c) => c.type !== 'dm').map((channel) => {
-                    const isStarredChannel = starred.some(
-                      (s) => s.type === 'channel' && s.id === channel.id,
+                  {sidebarProjects.map((project) => {
+                    const isStarredProject = starred.some(
+                      (s) => s.type === 'project' && s.id === project.id,
                     );
+                    const projectUnreadCount = project.channels.reduce(
+                      (total, channel) => total + channel.unreadCount,
+                      0,
+                    );
+
                     return (
-                      <button
-                        key={channel.id}
-                        className={`admin-sb-item group ${channel.id === currentChannelId ? 'active' : ''}`}
-                        onClick={() => void navigate(`/channels/${channel.id}`)}
-                        type="button"
-                      >
-                        <span className={channelHashClassName}>#</span>
-                        <span className="min-w-0 flex-1 truncate">{channel.label}</span>
-                        {renderUnreadCount(channel.unreadCount)}
-                        <span
+                      <div key={project.id} className="mt-1">
+                        <button
                           className={[
-                            'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
-                            isStarredChannel
-                              ? 'ml-1 text-yellow-400 opacity-100'
-                              : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+                            'admin-sb-item group font-semibold',
+                            project.id === currentProjectId ? 'active' : '',
                           ].join(' ')}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleStar('channel', channel.id);
-                          }}
+                          onClick={() => navigateToProject(project.id)}
+                          type="button"
                         >
-                          {isStarredChannel ? '★' : '☆'}
-                        </span>
-                      </button>
+                          <svg
+                            className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                          {renderUnreadCount(projectUnreadCount)}
+                          <span
+                            className={[
+                              'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+                              isStarredProject
+                                ? 'ml-1 text-yellow-400 opacity-100'
+                                : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+                            ].join(' ')}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleStar('project', project.id);
+                            }}
+                          >
+                            {isStarredProject ? '★' : '☆'}
+                          </span>
+                        </button>
+
+                        {project.channels.map((channel) => {
+                          const isStarredChannel = starred.some(
+                            (s) => s.type === 'channel' && s.id === channel.id,
+                          );
+                          return (
+                            <button
+                              key={channel.id}
+                              className={[
+                                'admin-sb-item group pl-8',
+                                channel.id === currentChannelId ? 'active' : '',
+                              ].join(' ')}
+                              onClick={() => void navigate(`/channels/${channel.id}`)}
+                              type="button"
+                            >
+                              <span className={channelHashClassName}>#</span>
+                              <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+                              {renderUnreadCount(channel.unreadCount)}
+                              <span
+                                className={[
+                                  'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+                                  isStarredChannel
+                                    ? 'ml-1 text-yellow-400 opacity-100'
+                                    : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+                                ].join(' ')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleStar('channel', channel.id);
+                                }}
+                              >
+                                {isStarredChannel ? '★' : '☆'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     );
                   })}
 

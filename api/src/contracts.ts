@@ -8,6 +8,7 @@ import {
   MessageRoleSchema,
   OrganizationIdSchema,
   PersonalAssistantConfigSummarySchema,
+  ProjectIdSchema,
   RunIdSchema,
   TeamIdSchema,
   ThreadIdSchema,
@@ -62,13 +63,25 @@ export const ChannelRecordSchema = z.object({
   systemChannelType: z.enum(['personal_assistant']).optional(),
   visibility: z.enum(['public', 'protected', 'private']),
   organizationId: OrganizationIdSchema,
+  projectId: ProjectIdSchema,
+  projectName: NonEmptyStringSchema,
   teamId: TeamIdSchema,
+  teamName: NonEmptyStringSchema,
   defaultThreadId: ThreadIdSchema,
   unreadCount: z.number().int().nonnegative(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
+
+export const ProjectRecordSchema = z.object({
+  id: ProjectIdSchema,
+  name: NonEmptyStringSchema,
+  organizationId: OrganizationIdSchema,
+  memberCount: z.number().int().nonnegative(),
+  createdAt: TimestampSchema,
+})
+export type ProjectRecord = z.infer<typeof ProjectRecordSchema>
 
 export const CallParticipantRecordSchema = z.object({
   userId: UserIdSchema,

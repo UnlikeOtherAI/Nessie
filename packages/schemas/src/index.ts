@@ -596,7 +596,7 @@ export type AuthProviderResponseType = z.infer<typeof AuthProviderResponseTypeSc
 
 export const UserPreferencesSchema = z.object({
   starred: z.array(z.object({
-    type: z.enum(['channel', 'user']),
+    type: z.enum(['channel', 'project', 'user']),
     id: z.string(),
   })).optional(),
 })

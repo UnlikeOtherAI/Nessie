@@ -94,7 +94,7 @@ module "cloud_run" {
   vpc_connector_id             = module.networking.vpc_connector_id
   api_service_account_email    = module.iam.api_service_account_email
   worker_service_account_email = module.iam.worker_service_account_email
-  database_connection_name      = module.cloud_sql.connection_name
+  database_connection_name     = module.cloud_sql.connection_name
   redis_host                   = module.redis.host
 
   depends_on = [module.networking, module.iam, module.cloud_sql, module.redis]

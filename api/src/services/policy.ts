@@ -32,6 +32,12 @@ type PolicyRuleRow = {
   scopeId: string
 }
 
+const actionToPrisma = (action: string) => {
+  if (action === 'export') return 'export_action'
+  if (action === 'import') return 'import_action'
+  return action
+}
+
 const evaluateConditions = (
   conditions: Record<string, unknown> | null,
 ): boolean => {
@@ -267,20 +273,13 @@ export const createPolicyRule = async (
     bindings?: Array<{ actorType: string; actorId: string }>
   },
 ) => {
-  // Map schema action names to Prisma enum values
-  const actionToPrisma = (action: string) => {
-    if (action === 'export') return 'export_action' as const
-    if (action === 'import') return 'import_action' as const
-    return action as Exclude<typeof input.action, 'export' | 'import'>
-  }
-
   const rule = await prisma.policyRule.create({
     data: {
       organizationId: input.organizationId,
       scope: input.scope,
       scopeId: input.scopeId,
       resourceType: input.resourceType,
-      action: actionToPrisma(input.action),
+      action: actionToPrisma(input.action) as Exclude<typeof input.action, 'export' | 'import'>,
       effect: input.effect,
       priority: input.priority ?? 0,
       conditions: (input.conditions as Prisma.InputJsonValue) ?? undefined,
@@ -354,13 +353,65 @@ export const removePolicyBinding = async (
 
 // ─── Default seed policies ──────────────────────────────────────────────────
 
+const ensureAgentBindDefaultPolicies = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  createdBy: string,
+): Promise<void> => {
+  const ensureRule = async (input: {
+    actorId: string
+    effect: PolicyEffect
+    priority: number
+  }) => {
+    const existingRule = await prisma.policyRule.findFirst({
+      where: {
+        action: actionToPrisma('bind') as 'bind',
+        bindings: {
+          some: {
+            actorId: input.actorId,
+            actorType: 'role',
+          },
+        },
+        effect: input.effect,
+        organizationId,
+        resourceType: 'agent',
+        scope: 'organization',
+        scopeId: organizationId,
+      },
+      select: { id: true },
+    })
+
+    if (existingRule) {
+      return
+    }
+
+    await createPolicyRule(prisma, {
+      organizationId,
+      scope: 'organization',
+      scopeId: organizationId,
+      resourceType: 'agent',
+      action: 'bind',
+      effect: input.effect,
+      priority: input.priority,
+      createdBy,
+      bindings: [{ actorType: 'role', actorId: input.actorId }],
+    })
+  }
+
+  await ensureRule({ actorId: 'member', effect: 'deny', priority: 50 })
+  await ensureRule({ actorId: 'owner', effect: 'allow', priority: 10 })
+}
+
 export const seedDefaultPolicies = async (
   prisma: PrismaClient,
   organizationId: string,
   createdBy: string,
 ) => {
   const existing = await prisma.policyRule.count({ where: { organizationId } })
-  if (existing > 0) return
+  if (existing > 0) {
+    await ensureAgentBindDefaultPolicies(prisma, organizationId, createdBy)
+    return
+  }
 
   // Allow org members to view public channels
   await createPolicyRule(prisma, {
@@ -426,7 +477,20 @@ export const seedDefaultPolicies = async (
     bindings: [{ actorType: 'role', actorId: '*' }],
   })
 
-  // Allow binding agents to channels
+  // Deny regular members from binding agents to channels
+  await createPolicyRule(prisma, {
+    organizationId,
+    scope: 'organization',
+    scopeId: organizationId,
+    resourceType: 'agent',
+    action: 'bind',
+    effect: 'deny',
+    priority: 50,
+    createdBy,
+    bindings: [{ actorType: 'role', actorId: 'member' }],
+  })
+
+  // Allow owners to bind agents to channels
   await createPolicyRule(prisma, {
     organizationId,
     scope: 'organization',
@@ -434,9 +498,9 @@ export const seedDefaultPolicies = async (
     resourceType: 'agent',
     action: 'bind',
     effect: 'allow',
-    priority: 100,
+    priority: 10,
     createdBy,
-    bindings: [{ actorType: 'role', actorId: '*' }],
+    bindings: [{ actorType: 'role', actorId: 'owner' }],
   })
 
   // Allow viewing tools

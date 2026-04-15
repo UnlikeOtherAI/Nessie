@@ -35,12 +35,23 @@ export type ChannelRecord = {
   label: string
   metadata?: ChannelMetadataRecord
   organizationId: string
+  projectId: string
+  projectName: string
   systemChannelType?: 'personal_assistant' | string
   teamId: string
+  teamName: string
   type: 'dm' | 'standard'
   unreadCount: number
   updatedAt: string
   visibility: 'private' | 'protected' | 'public'
+}
+
+export type ProjectRecord = {
+  createdAt: string
+  id: string
+  memberCount: number
+  name: string
+  organizationId: string
 }
 
 export type CallParticipantRecord = {

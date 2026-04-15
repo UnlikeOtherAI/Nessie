@@ -19,6 +19,37 @@ const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_SURFACE_POLICY = 'dm_only' as const
 const PERSONAL_ASSISTANT_DELEGATION_MODE = 'act_as_requesting_user' as const
 
+export type AgentVisibilityScope = {
+  includeAllOrgChannels?: boolean
+  organizationId: string
+  userId: string
+}
+
+export const buildAccessibleChannelWhere = (
+  visibility: AgentVisibilityScope,
+): Prisma.ChannelWhereInput => ({
+  organizationId: visibility.organizationId,
+  ...(visibility.includeAllOrgChannels
+    ? {}
+    : {
+        OR: [
+          { visibility: 'public' },
+          { members: { some: { userId: visibility.userId } } },
+        ],
+      }),
+})
+
+export const buildAccessibleThreadWhere = (
+  visibility: AgentVisibilityScope,
+): Prisma.ThreadWhereInput => ({
+  channel: buildAccessibleChannelWhere(visibility),
+})
+
+const buildAccessibleRunWhere = (
+  visibility?: AgentVisibilityScope,
+): Prisma.RunWhereInput =>
+  visibility ? { thread: buildAccessibleThreadWhere(visibility) } : {}
+
 const isSystemManagedAgent = (agent: {
   agentKind: string
   systemManaged: boolean
@@ -116,20 +147,28 @@ const mapAgentRecord = (agent: {
 export const loadAgentStatus = async (
   prisma: PrismaClient,
   agentId: string,
-  options?: { includeSystemManaged?: boolean },
+  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
 ): Promise<AgentStatusResponse | null> => {
+  const runVisibilityWhere = buildAccessibleRunWhere(options?.visibility)
+  const taskVisibilityWhere = options?.visibility ? { run: runVisibilityWhere } : {}
+  const messageVisibilityWhere = options?.visibility
+    ? { thread: buildAccessibleThreadWhere(options.visibility) }
+    : {}
+
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
     include: {
       childAgents: {
         include: {
           tasks: {
+            where: taskVisibilityWhere,
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
         },
       },
       messages: {
+        where: messageVisibilityWhere,
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -141,6 +180,7 @@ export const loadAgentStatus = async (
           },
         },
         where: {
+          ...runVisibilityWhere,
           status: {
             in: ['pending', 'running'],
           },
@@ -205,14 +245,18 @@ export const loadAgentStatus = async (
 export const loadAgentActivity = async (
   prisma: PrismaClient,
   agentId: string,
-  options?: { includeSystemManaged?: boolean },
+  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
 ): Promise<AgentActivityResponse | null> => {
+  const runVisibilityWhere = buildAccessibleRunWhere(options?.visibility)
+  const taskVisibilityWhere = options?.visibility ? { run: runVisibilityWhere } : {}
+
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
     include: {
       childAgents: {
         include: {
           tasks: {
+            where: taskVisibilityWhere,
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
@@ -226,6 +270,7 @@ export const loadAgentActivity = async (
             take: 20,
           },
         },
+        where: runVisibilityWhere,
         orderBy: { createdAt: 'desc' },
         take: 10,
       },
@@ -281,9 +326,8 @@ export const loadAgentMessages = async (
   prisma: PrismaClient,
   agentId: string,
   limit: number,
-  callerUserId?: string,
   offset = 0,
-  options?: { includeSystemManaged?: boolean },
+  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
 ): Promise<AgentMessage[]> => {
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
@@ -301,23 +345,23 @@ export const loadAgentMessages = async (
     return []
   }
 
-  // Build channel membership filter to prevent cross-channel data leakage
-  const channelFilter = callerUserId
-    ? { thread: { channel: { members: { some: { userId: callerUserId } } } } }
-    : {}
+  const threadVisibilityWhere = options?.visibility
+    ? buildAccessibleThreadWhere(options.visibility)
+    : undefined
 
   const messages = await prisma.message.findMany({
     where: {
       OR: [
-        { agentId, ...channelFilter },
+        {
+          agentId,
+          ...(threadVisibilityWhere ? { thread: threadVisibilityWhere } : {}),
+        },
         {
           thread: {
+            ...(threadVisibilityWhere ?? {}),
             runs: {
               some: { agentId },
             },
-            ...(callerUserId
-              ? { channel: { members: { some: { userId: callerUserId } } } }
-              : {}),
           },
         },
       ],
@@ -377,7 +421,7 @@ export const loadRunToolCalls = async (
   prisma: PrismaClient,
   agentId: string,
   runId: string,
-  options?: { includeSystemManaged?: boolean },
+  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
 ): Promise<ToolCallEntry[]> => {
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
@@ -396,7 +440,13 @@ export const loadRunToolCalls = async (
   }
 
   const toolCalls = await prisma.toolCall.findMany({
-    where: { agentId, runId },
+    where: {
+      agentId,
+      runId,
+      ...(options?.visibility
+        ? { run: buildAccessibleRunWhere(options.visibility) }
+        : {}),
+    },
     orderBy: { startedAt: 'asc' },
   })
 
@@ -406,6 +456,7 @@ export const loadRunToolCalls = async (
 export const buildSnapshotForScopes = async (
   prisma: PrismaClient,
   scopes: WsScope[],
+  options?: { visibility?: AgentVisibilityScope },
 ): Promise<WsSnapshot> => {
   if (scopes.length === 0) {
     return { agents: [] }
@@ -421,7 +472,12 @@ export const buildSnapshotForScopes = async (
 
     if (scope.kind === 'channel') {
       const bindings = await prisma.agentBinding.findMany({
-        where: { channelId: scope.channelId },
+        where: {
+          channelId: scope.channelId,
+          ...(options?.visibility
+            ? { channel: buildAccessibleChannelWhere(options.visibility) }
+            : {}),
+        },
         select: { agentId: true },
       })
       bindings.forEach((binding) => agentIds.add(binding.agentId))
@@ -431,7 +487,9 @@ export const buildSnapshotForScopes = async (
     const bindings = await prisma.agentBinding.findMany({
       where: {
         channel: {
-          organizationId: scope.organizationId,
+          ...(options?.visibility
+            ? buildAccessibleChannelWhere(options.visibility)
+            : { organizationId: scope.organizationId }),
         },
       },
       select: { agentId: true },
@@ -440,7 +498,9 @@ export const buildSnapshotForScopes = async (
   }
 
   const snapshots = await Promise.all(
-    Array.from(agentIds).map(async (agentId) => loadAgentStatus(prisma, agentId)),
+    Array.from(agentIds).map(async (agentId) =>
+      loadAgentStatus(prisma, agentId, { visibility: options?.visibility }),
+    ),
   )
 
   return {
@@ -463,28 +523,16 @@ export const listAgentsForUser = async (
   organizationId: string,
   includeUnbound: boolean,
 ): Promise<AgentRecord[]> => {
+  const visibleChannelWhere = buildAccessibleChannelWhere({
+    includeAllOrgChannels: includeUnbound,
+    organizationId,
+    userId,
+  })
   const visibilityFilters: Prisma.AgentWhereInput[] = [
-    // Agents bound to channels the user is a member of
     {
       bindings: {
         some: {
-          channel: {
-            organizationId,
-            members: {
-              some: { userId },
-            },
-          },
-        },
-      },
-    },
-    // Agents bound to public channels in the org (visible to all org members)
-    {
-      bindings: {
-        some: {
-          channel: {
-            organizationId,
-            visibility: 'public',
-          },
+          channel: visibleChannelWhere,
         },
       },
     },
@@ -505,10 +553,18 @@ export const listAgentsForUser = async (
     },
     include: {
       bindings: {
+        where: {
+          channel: visibleChannelWhere,
+        },
         orderBy: { createdAt: 'asc' },
         select: { channelId: true },
       },
       messages: {
+        where: {
+          thread: {
+            channel: visibleChannelWhere,
+          },
+        },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
         take: 1,
@@ -523,6 +579,11 @@ export const listAgentsForUser = async (
               toolName: true,
             },
             take: 1,
+          },
+        },
+        where: {
+          thread: {
+            channel: visibleChannelWhere,
           },
         },
         orderBy: { createdAt: 'desc' },

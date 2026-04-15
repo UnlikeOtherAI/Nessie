@@ -16,7 +16,7 @@ if (existsSync(envFile)) {
     if (!(key in process.env)) process.env[key] = val
   }
 }
-import cors from '@fastify/cors'
+import cors, { type FastifyCorsOptions } from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
@@ -36,6 +36,7 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
+  parseProjectId,
   parseRunId,
   parseTaskId,
   parseTeamId,
@@ -97,6 +98,7 @@ import {
   MailboxMessageRecordSchema,
   PlanRecordSchema,
   PlanStepRecordSchema,
+  ProjectRecordSchema,
   PublishEventBodySchema,
   ResourceLockRecordSchema,
   ExecutionEnvironmentInstanceRecordSchema,
@@ -130,6 +132,7 @@ import { enqueueOrchestrateDecide, enqueueQueueJob } from './queue/pgqueue.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import {
   bindAgentToChannel,
+  buildAccessibleChannelWhere,
   buildSnapshotForScopes,
   cloneAgentRecord,
   createAgentRecord,
@@ -308,6 +311,58 @@ if (!process.env.DATABASE_URL) {
 }
 const databaseUrl = process.env.DATABASE_URL
 const prisma = getPrismaClient()
+
+const parseOriginList = (...values: Array<string | undefined>): Set<string> => {
+  const origins = new Set<string>()
+  for (const value of values) {
+    for (const origin of value?.split(',') ?? []) {
+      const trimmed = origin.trim().replace(/\/$/, '')
+      if (trimmed) {
+        origins.add(trimmed)
+      }
+    }
+  }
+  return origins
+}
+
+const localCorsOrigins = new Set([
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5555',
+  'http://localhost:3000',
+  'http://localhost:5555',
+])
+
+export const createCorsOriginChecker = (input: {
+  allowedOrigins: Set<string>
+  mode: typeof config.mode
+}): NonNullable<FastifyCorsOptions['origin']> =>
+  (origin, callback) => {
+    if (!origin) {
+      callback(null, true)
+      return
+    }
+
+    const normalizedOrigin = origin.replace(/\/$/, '')
+    if (
+      input.allowedOrigins.has(normalizedOrigin)
+      || (input.mode === 'local' && localCorsOrigins.has(normalizedOrigin))
+    ) {
+      callback(null, true)
+      return
+    }
+
+    callback(null, false)
+  }
+
+const allowedCorsOrigins = parseOriginList(
+  process.env.NESSIE_CORS_ORIGINS,
+  process.env.NESSIE_ALLOWED_ORIGINS,
+  process.env.NESSIE_ADMIN_ORIGIN,
+  process.env.NESSIE_WEB_ORIGIN,
+  process.env.ADMIN_ORIGIN,
+  process.env.WEB_ORIGIN,
+)
+
 const authSecret = (() => {
   if (config.auth.secret) return config.auth.secret
   if (config.mode === 'local') {
@@ -497,6 +552,14 @@ const loadPersonalAssistantState = async (
       type: true,
       updatedAt: true,
       visibility: true,
+      team: {
+        select: {
+          name: true,
+          project: {
+            select: { id: true, name: true },
+          },
+        },
+      },
       members: {
         where: { userId },
         select: { id: true },
@@ -631,7 +694,10 @@ const loadPersonalAssistantState = async (
       systemChannelType: channel.systemChannelType,
       visibility: channel.visibility,
       organizationId: parseOrganizationId(channel.organizationId),
+      projectId: parseProjectId(channel.team.project.id),
+      projectName: channel.team.project.name,
       teamId: parseTeamId(channel.teamId),
+      teamName: channel.team.name,
       defaultThreadId: parseThreadId(thread.id),
       unreadCount: 0,
       createdAt: channel.createdAt.toISOString(),
@@ -659,16 +725,13 @@ const isAgentVisibleToUser = async (
     where: {
       id: agentId,
       systemManaged: false,
-      OR: [
-        { organizationId },
-        { bindings: { some: { channel: { organizationId } } } },
-      ],
       bindings: {
         some: {
           channel: {
-            members: {
-              some: { userId },
-            },
+            ...buildAccessibleChannelWhere({
+              organizationId,
+              userId,
+            }),
           },
         },
       },
@@ -905,6 +968,19 @@ const isTimingSafeMatch = (left: string | undefined, right: string | undefined):
   return timingSafeEqual(leftBuffer, rightBuffer)
 }
 
+const canAccessChannelRealtimeEvent = async (input: {
+  channelId: string
+  organizationId: string
+  userId: string
+}): Promise<boolean> =>
+  (await getVisibleChannel(input.userId, input.organizationId, input.channelId)) !== null
+
+const createAgentVisibilityScope = (actorContext: AuthorizedActionContext) => ({
+  includeAllOrgChannels: actorContext.actor.roles?.includes('owner') ?? false,
+  organizationId: actorContext.tenant.organizationId,
+  userId: actorContext.actor.actorId,
+})
+
 const filterAuthorizedScopes = async (
   userId: string,
   tenantOrganizationId: string,
@@ -921,10 +997,7 @@ const filterAuthorizedScopes = async (
     }
 
     if (scope.kind === 'channel') {
-      // WS event delivery requires channel membership for private/protected channels.
-      // Public channels allow visibility but WS events still require membership
-      // to prevent leaking real-time content to non-participants.
-      if (await isChannelMember(userId, scope.channelId)) {
+      if (await getVisibleChannel(userId, tenantOrganizationId, scope.channelId)) {
         authorizedScopes.push(scope)
       }
       continue
@@ -995,6 +1068,69 @@ const buildSessionForUser = (input: {
 const apiUsageTracker = new ModelUsageTracker()
 let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
 
+type RateLimitRule = {
+  keyPrefix: string
+  max: number
+  windowMs: number
+}
+
+type RateLimitBucket = {
+  count: number
+  resetAt: number
+}
+
+const rateLimitBuckets = new Map<string, RateLimitBucket>()
+
+const resolveRateLimitRule = (request: FastifyRequest): RateLimitRule | null => {
+  const method = request.method.toUpperCase()
+  const routePath = request.routeOptions.url ?? new URL(request.url, 'http://localhost').pathname
+
+  if (method === 'POST' && (routePath === '/api/auth/session' || routePath === '/api/auth/bootstrap')) {
+    return { keyPrefix: `${method}:${routePath}`, max: 10, windowMs: 10 * 60 * 1000 }
+  }
+
+  if (method === 'POST' && routePath === '/api/threads/:threadId/messages') {
+    return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
+  }
+
+  if (routePath.startsWith('/api/agents') && ['DELETE', 'POST', 'PUT'].includes(method)) {
+    return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
+  }
+
+  return null
+}
+
+const getRateLimitClientId = (request: FastifyRequest): string => {
+  const forwardedFor = parseHeaderValue(request.headers['x-forwarded-for'])
+  return forwardedFor?.split(',')[0]?.trim() || request.ip
+}
+
+const checkRateLimit = (request: FastifyRequest): { retryAfterSeconds: number } | null => {
+  const rule = resolveRateLimitRule(request)
+  if (!rule) {
+    return null
+  }
+
+  const now = Date.now()
+  const key = `${rule.keyPrefix}:${getRateLimitClientId(request)}`
+  const existingBucket = rateLimitBuckets.get(key)
+  const bucket =
+    existingBucket && existingBucket.resetAt > now
+      ? existingBucket
+      : { count: 0, resetAt: now + rule.windowMs }
+
+  bucket.count += 1
+  rateLimitBuckets.set(key, bucket)
+
+  if (bucket.count <= rule.max) {
+    return null
+  }
+
+  return {
+    retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+  }
+}
+
 export const buildApp = async () => {
   const app = Fastify({ logger: true })
 
@@ -1038,6 +1174,7 @@ export const buildApp = async () => {
   }
 
   const realtimeHub = await createRealtimeHub({
+    canAccessChannelEvent: canAccessChannelRealtimeEvent,
     databaseUrl,
     poolMax: config.database.poolMax,
     poolMin: config.database.poolMin,
@@ -1058,7 +1195,17 @@ export const buildApp = async () => {
     })
     : null
 
-  await app.register(cors, { origin: true, credentials: true })
+  if (config.mode !== 'local' && allowedCorsOrigins.size === 0) {
+    app.log.warn('No CORS allowlist configured; browser cross-origin requests will be denied')
+  }
+
+  await app.register(cors, {
+    credentials: true,
+    origin: createCorsOriginChecker({
+      allowedOrigins: allowedCorsOrigins,
+      mode: config.mode,
+    }),
+  })
   await app.register(websocket)
 
   // Self-heal: ensure every pre-existing organization has the default policy
@@ -1093,6 +1240,13 @@ export const buildApp = async () => {
   })
 
   app.addHook('preHandler', async (request, reply) => {
+    const rateLimit = checkRateLimit(request)
+    if (rateLimit) {
+      reply.header('retry-after', String(rateLimit.retryAfterSeconds))
+      sendApiError(reply, 429, 'RATE_LIMITED', 'Too many requests')
+      return
+    }
+
     if (request.routeOptions.config.public === true) {
       return
     }
@@ -2018,6 +2172,10 @@ export const buildApp = async () => {
 
     const { agentId } = request.params as { agentId: string }
 
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
     // Policy check: user must be allowed to bind agents
     const bindDecision = await checkPolicy(prisma, actorContext, 'agent', 'bind', {
       agentId,
@@ -2060,6 +2218,10 @@ export const buildApp = async () => {
         'CHANNEL_SYSTEM_MANAGED',
         'The Personal Assistant DM binding is system managed',
       )
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -3829,13 +3991,13 @@ export const buildApp = async () => {
       orderBy: { createdAt: 'asc' },
     })
 
-    return createApiResponse(projects.map((p) => ({
+    return createApiResponse(ProjectRecordSchema.array().parse(projects.map((p) => ({
       id: p.id,
       name: p.name,
       organizationId: p.organizationId,
       memberCount: p.members.length,
       createdAt: p.createdAt.toISOString(),
-    })))
+    }))))
   })
 
   app.post('/api/projects', async (request, reply) => {
@@ -3867,12 +4029,13 @@ export const buildApp = async () => {
       outcome: 'success',
     })
 
-    return reply.code(201).send(createApiResponse({
+    return reply.code(201).send(createApiResponse(ProjectRecordSchema.parse({
       id: project.id,
       name: project.name,
       organizationId: project.organizationId,
+      memberCount: 1,
       createdAt: project.createdAt.toISOString(),
-    }))
+    })))
   })
 
   app.post('/api/projects/:projectId/members', async (request, reply) => {
@@ -4320,12 +4483,13 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    const visibility = createAgentVisibilityScope(actorContext)
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    const status = await loadAgentStatus(prisma, agentId)
+    const status = await loadAgentStatus(prisma, agentId, { visibility })
     if (!status) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
@@ -4341,12 +4505,13 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    const visibility = createAgentVisibilityScope(actorContext)
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    const activity = await loadAgentActivity(prisma, agentId)
+    const activity = await loadAgentActivity(prisma, agentId, { visibility })
     if (!activity) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
@@ -4365,12 +4530,13 @@ export const buildApp = async () => {
     const query = request.query as { limit?: string; offset?: string }
     const limit = Math.min(Math.max(Number(query.limit ?? '5'), 1), 50)
     const offset = Math.max(Number(query.offset ?? '0'), 0)
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    const visibility = createAgentVisibilityScope(actorContext)
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    return createApiResponse(await loadAgentMessages(prisma, agentId, limit, actorContext.actor.actorId, offset))
+    return createApiResponse(await loadAgentMessages(prisma, agentId, limit, offset, { visibility }))
   })
 
   app.get('/api/agents/:agentId/children', async (request, reply) => {
@@ -4380,7 +4546,7 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
@@ -4395,12 +4561,13 @@ export const buildApp = async () => {
     }
 
     const { agentId, runId } = request.params as { agentId: string; runId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    const visibility = createAgentVisibilityScope(actorContext)
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    return createApiResponse(await loadRunToolCalls(prisma, agentId, runId))
+    return createApiResponse(await loadRunToolCalls(prisma, agentId, runId, { visibility }))
   })
 
   app.get('/api/activity', { websocket: true }, (socket, request) => {
@@ -4412,8 +4579,12 @@ export const buildApp = async () => {
 
     const userId = actorContext.actor.actorId
     const tenantOrganizationId = actorContext.tenant.organizationId
-    const wsConnection = realtimeHub.registerWsConnection((message) => {
-      sendJson(message)
+    const wsConnection = realtimeHub.registerWsConnection({
+      organizationId: tenantOrganizationId,
+      userId,
+      send: (message) => {
+        sendJson(message)
+      },
     })
     let currentScopes: WsScope[] = []
     let idleTimer: NodeJS.Timeout
@@ -4467,7 +4638,9 @@ export const buildApp = async () => {
 
       currentScopes = await filterAuthorizedScopes(userId, tenantOrganizationId, nextScopes)
       realtimeHub.setWsScopes(wsConnection, currentScopes)
-      const snapshot = await buildSnapshotForScopes(prisma, currentScopes)
+      const snapshot = await buildSnapshotForScopes(prisma, currentScopes, {
+        visibility: createAgentVisibilityScope(actorContext),
+      })
 
       sendJson({
         type: 'subscribed',
