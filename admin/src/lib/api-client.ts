@@ -22,11 +22,18 @@ export type BootstrapModeResponse = {
   bootstrapUrl: '/admin/bootstrap'
 }
 
+export type ChannelMetadataRecord = {
+  ownerUserId?: string
+  systemChannelType?: 'personal_assistant' | string
+  [key: string]: unknown
+}
+
 export type ChannelRecord = {
   createdAt: string
   defaultThreadId: string
   id: string
   label: string
+  metadata?: ChannelMetadataRecord
   organizationId: string
   teamId: string
   type: 'dm' | 'standard'
@@ -65,7 +72,12 @@ export type AgentRecord = {
   name: string
   parentAgentId?: string | null
   provider?: string
+  agentKind?: 'shared' | 'personal_assistant'
+  delegationMode?: 'none' | 'act_as_requesting_user'
+  ownerUserId?: string | null
   role: string
+  surfacePolicy?: 'shared' | 'dm_only'
+  systemManaged?: boolean
   status: AgentStatusResponse['status']
   systemPrompt?: string
   updatedAt: string
@@ -99,6 +111,38 @@ export type ThreadMessageRecord = {
   role: 'assistant' | 'system' | 'user'
   threadId: string
   userId?: string | null
+}
+
+export type ThreadRecord = {
+  channelId: string
+  createdAt: string
+  id: string
+  title: string
+  updatedAt?: string
+}
+
+export type PersonalAssistantInstanceRecord = {
+  agentId: string
+  channelId: string
+  createdAt: string
+  id: string
+  status: 'active' | 'suspended' | 'archived'
+  templateVersion: number
+  updatedAt: string
+}
+
+export type PersonalAssistantStateResponse = {
+  agent: AgentRecord | null
+  channel: ChannelRecord | null
+  instance?: PersonalAssistantInstanceRecord | null
+  thread?: ThreadRecord | null
+}
+
+export type PersonalAssistantBootstrapResponse = {
+  agent: AgentRecord
+  channel: ChannelRecord
+  instance?: PersonalAssistantInstanceRecord | null
+  thread: ThreadRecord
 }
 
 export type ToolDescriptor = {

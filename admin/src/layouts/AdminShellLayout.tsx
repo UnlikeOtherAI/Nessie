@@ -2,10 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AgentActivityPanel } from '../components/features/agents/AgentActivityPanel';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
+import {
+  PersonalAssistantSidebarEntry,
+} from '../components/features/personal-assistant/PersonalAssistantSurface';
 import { PresenceDot } from '../components/primitives/PresenceDot';
 import { CreateChannelDialog } from '../components/shared/CreateChannelDialog';
 import { useAgentRealtime, useAgents } from '../facades/agents/hooks';
 import { useChannels, useOpenDm } from '../facades/channels/hooks';
+import {
+  isPersonalAssistantChannel,
+  usePersonalAssistantBootstrap,
+} from '../facades/personal-assistant/hooks';
 import { useUsers } from '../facades/users/hooks';
 import type { AgentRecord } from '../lib/api-client';
 import { getCookie, setCookie } from '../lib/storage';
@@ -61,6 +68,10 @@ export const AdminShellLayout = () => {
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
   const currentChannelId = parseChannelIdFromPath(location.pathname);
+  const personalAssistantChannel = useMemo(
+    () => channels.find(isPersonalAssistantChannel) ?? null,
+    [channels],
+  );
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
     threadId: currentChannelId
@@ -69,8 +80,9 @@ export const AdminShellLayout = () => {
   });
   const openDm = useOpenDm();
   const activeDmChannel = currentChannelId
-    ? channels.find((c) => c.id === currentChannelId && c.type === 'dm')
+      ? channels.find((c) => c.id === currentChannelId && c.type === 'dm')
     : undefined;
+  const personalAssistantBootstrap = usePersonalAssistantBootstrap();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
   const [channelsCollapsed, setChannelsCollapsed] = useState(
@@ -195,6 +207,20 @@ export const AdminShellLayout = () => {
       },
     ];
   }, [me, users, channels]);
+
+  const openPersonalAssistant = useCallback(async () => {
+    if (personalAssistantChannel) {
+      void navigate(`/channels/${personalAssistantChannel.id}`);
+      return;
+    }
+
+    try {
+      const response = await personalAssistantBootstrap.mutateAsync();
+      void navigate(`/channels/${response.channel.id}`);
+    } catch {
+      // The backend can still be bootstrapped independently; keep the rail stable.
+    }
+  }, [navigate, personalAssistantBootstrap, personalAssistantChannel]);
 
   useEffect(() => {
     setSelectedAgentId(null);
@@ -794,6 +820,12 @@ export const AdminShellLayout = () => {
 
               {!dmCollapsed && (
                 <>
+                  <PersonalAssistantSidebarEntry
+                    active={personalAssistantChannel?.id === currentChannelId}
+                    bootstrapping={personalAssistantBootstrap.isPending}
+                    onClick={() => void openPersonalAssistant()}
+                    unreadCount={personalAssistantChannel?.unreadCount ?? 0}
+                  />
                   {sidebarPeople.map((person) => {
                     const isStarredUser = starred.some(
                       (s) => s.type === 'user' && s.id === person.id,

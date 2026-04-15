@@ -26,6 +26,10 @@ import {
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
 import { useSendMessage } from '../facades/messages/hooks'
+import {
+  isPersonalAssistantChannel,
+  usePersonalAssistant,
+} from '../facades/personal-assistant/hooks'
 import { useMarkThreadRead, useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { useTools } from '../facades/tools/hooks'
 import { useUsers } from '../facades/users/hooks'
@@ -35,6 +39,7 @@ import { useAuthSession } from '../providers/AuthSessionProvider'
 import { CallBanner } from '../components/shared/CallBanner'
 import { CallOverlay } from '../components/shared/CallOverlay'
 import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
+import { PersonalAssistantConfigBanner } from '../components/features/personal-assistant/PersonalAssistantSurface'
 import { useActiveCall, useJoinCall, useLeaveCall, useStartCall } from '../facades/calls/hooks'
 
 type ChannelTab = 'agents' | 'messages' | 'runs'
@@ -173,6 +178,7 @@ export const ChannelsPage = () => {
 
   const activeChannel =
     channels.find((channel) => channel.id === channelId) ?? channels[0] ?? null
+  const isPersonalAssistantActiveChannel = isPersonalAssistantChannel(activeChannel)
   const boundAgents = useMemo(
     () =>
       activeChannel
@@ -186,6 +192,9 @@ export const ChannelsPage = () => {
   )
   const { data: threadMessages = [] } = useThreadMessages(
     activeChannel?.defaultThreadId,
+  )
+  const { data: personalAssistantState } = usePersonalAssistant(
+    isPersonalAssistantActiveChannel,
   )
   const markThreadRead = useMarkThreadRead()
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
@@ -212,7 +221,18 @@ export const ChannelsPage = () => {
   const startCall = useStartCall()
   const joinCall = useJoinCall()
   const leaveCall = useLeaveCall()
-  const callEligible = channelUsers.length >= 2
+  const isPersonalAssistantConversation = isPersonalAssistantChannel(
+    personalAssistantState?.channel ?? activeChannel,
+  )
+  const personalAssistantAgent =
+    personalAssistantState?.agent ?? boundAgents[0] ?? null
+  const personalAssistantChannel =
+    personalAssistantState?.channel ?? activeChannel
+  const callEligible =
+    !isPersonalAssistantConversation && channelUsers.length >= 2
+  const composePlaceholder = isPersonalAssistantConversation
+    ? 'Message Personal Assistant'
+    : `Message #${activeChannel?.label ?? 'channel'} or @mention an agent`
   const activeParticipants = useMemo(
     () => (activeCall?.participants ?? []).filter((p) => !p.leftAt),
     [activeCall],
@@ -484,7 +504,11 @@ export const ChannelsPage = () => {
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          {activeChannel?.type === 'dm' ? (
+          {isPersonalAssistantConversation ? (
+            <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(124,58,237,0.18)] text-[9px] font-bold text-white">
+              ⚡
+            </div>
+          ) : activeChannel?.type === 'dm' ? (
             <div
               className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
               style={{ background: 'linear-gradient(135deg,#6d28d9,#4f46e5)' }}
@@ -497,15 +521,33 @@ export const ChannelsPage = () => {
             </span>
           )}
           <h1 className="truncate text-[17px] font-bold text-white">
-            {activeChannel?.label ?? 'channels'}
+            {isPersonalAssistantConversation
+              ? 'Personal Assistant'
+              : activeChannel?.label ?? 'channels'}
           </h1>
+          {isPersonalAssistantConversation && (
+            <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+              system managed
+            </span>
+          )}
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-2">
           <button
-            className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/5"
-            onClick={() => setShowMembersPopup(true)}
-            title="View channel members"
+            className={[
+              'flex items-center gap-2 rounded-lg px-2 py-1',
+              isPersonalAssistantConversation ? 'cursor-default opacity-90' : 'hover:bg-white/5',
+            ].join(' ')}
+            onClick={() => {
+              if (!isPersonalAssistantConversation) {
+                setShowMembersPopup(true)
+              }
+            }}
+            title={
+              isPersonalAssistantConversation
+                ? 'Personal Assistant is system-managed'
+                : 'View channel members'
+            }
             type="button"
           >
             <div className="flex -space-x-1.5">
@@ -545,7 +587,7 @@ export const ChannelsPage = () => {
                 ? isInCall
                   ? 'text-emerald-400 hover:bg-white/10'
                   : 'text-[color:var(--tx3)] hover:bg-white/10'
-                : 'cursor-not-allowed text-[color:var(--tx3)] opacity-40',
+              : 'cursor-not-allowed text-[color:var(--tx3)] opacity-40',
             ].join(' ')}
             disabled={!callEligible}
             onClick={() => {
@@ -559,7 +601,9 @@ export const ChannelsPage = () => {
               }
             }}
             title={
-              callEligible
+              isPersonalAssistantConversation
+                ? 'Personal Assistant does not support calls'
+                : callEligible
                 ? activeCall
                   ? isInCall
                     ? 'Toggle call overlay'
@@ -704,6 +748,13 @@ export const ChannelsPage = () => {
           Agents
         </button>
       </div>
+
+      {isPersonalAssistantConversation ? (
+        <PersonalAssistantConfigBanner
+          agent={personalAssistantAgent}
+          channel={personalAssistantChannel}
+        />
+      ) : null}
 
       <div
         className="min-h-0 flex-1 overflow-y-auto"
@@ -1075,7 +1126,7 @@ export const ChannelsPage = () => {
             onChange={setMessage}
             onOversizePaste={(paste) => setOversizePaste(paste)}
             onSubmit={(text) => void sendText(text)}
-            placeholder={`Message #${activeChannel?.label ?? 'channel'} or @mention an agent`}
+            placeholder={composePlaceholder}
           />
           <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">
             <div className="flex items-center gap-1">
