@@ -200,6 +200,7 @@ Primary action families:
 
 - message and thread search / read
 - authored-message search across the user's history
+- user / people search and lookup across visible workspace entities
 - message send / reply / thread creation / follow-up
 - document share / attach into conversations
 - delegation to other agents
@@ -332,8 +333,12 @@ Examples:
 
 - search messages in channels the user can access
 - search all past messages authored by the user
+- find a specific user by name, role, team, project, or prior collaboration
+  context where the user could already discover that person
 - read threads the user can open
 - list groups, projects, teams, and channels visible to the user
+- inspect visible user, member, and participant records needed to route work or
+  send a message to the right person
 - inspect the user's own sent messages and surrounding thread context
 - inspect team conversations and documents the user can currently access in
   order to ground a response or a delegated action
@@ -354,6 +359,8 @@ In practice that means:
 
 - the assistant can read, search, draft, send, organize, share, and follow up
   anywhere the user can
+- the assistant can look up the right person to contact based on visible
+  workspace identity data plus the user's own history
 - the assistant can coordinate people and split work based on the user's memory
   plus live workspace context
 - the assistant can change the user's own preferences and settings where the
