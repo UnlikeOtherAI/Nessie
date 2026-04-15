@@ -30,7 +30,7 @@ type ToolbarMenuItem = {
   label: string
   meta?: string
   nodeType?: WorkflowCanvasNodeType
-  state?: { returnTo: string }
+  state?: Record<string, unknown>
   to?: string
 }
 
@@ -101,6 +101,11 @@ type WorkflowDesignerSerializedNode = {
     y?: number
   }
   sourceId?: string
+}
+
+type WorkflowDesignerLocationState = {
+  returnTo?: string
+  returnToState?: unknown
 }
 
 const toolbarButtonClass = [
@@ -561,11 +566,54 @@ export const WorkflowDesignerPage = () => {
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [workflowName, setWorkflowName] = useState(DEFAULT_WORKFLOW_NAME)
 
+  const workflowDesignerLocationState = useMemo<WorkflowDesignerLocationState>(() => {
+    const state = location.state
+
+    if (!state || typeof state !== 'object') {
+      return {}
+    }
+
+    const candidateState = state as WorkflowDesignerLocationState
+    return {
+      returnTo:
+        typeof candidateState.returnTo === 'string'
+          ? candidateState.returnTo
+          : undefined,
+      returnToState: candidateState.returnToState,
+    }
+  }, [location.state])
+
   const returnTo = normalizeReturnTo(
     location.pathname,
     location.search,
     location.hash,
   )
+
+  const handleBack = useCallback(() => {
+    if (workflowDesignerLocationState.returnTo) {
+      void navigate(workflowDesignerLocationState.returnTo, {
+        replace: true,
+        state: workflowDesignerLocationState.returnToState,
+      })
+      return
+    }
+
+    const historyIndex =
+      typeof window.history.state?.idx === 'number'
+        ? window.history.state.idx
+        : 0
+
+    if (historyIndex > 0) {
+      void navigate(-1)
+      return
+    }
+
+    void navigate('/agents/workflows', { replace: true })
+  }, [
+    navigate,
+    workflowDesignerLocationState.returnTo,
+    workflowDesignerLocationState.returnToState,
+  ])
 
   const workflowSignature = useMemo(
     () =>
@@ -755,6 +803,7 @@ export const WorkflowDesignerPage = () => {
       if (!workflowTemplateId) {
         void navigate(`/agents/workflow-designer/${savedWorkflow.id}`, {
           replace: true,
+          state: location.state ?? undefined,
         })
       }
 
@@ -771,6 +820,7 @@ export const WorkflowDesignerPage = () => {
       workflowName,
       workflowSignature,
       workflowTemplateId,
+      location.state,
     ],
   )
 
@@ -1190,7 +1240,31 @@ export const WorkflowDesignerPage = () => {
   return (
     <div aria-label="Workflow Designer" className="flex h-full w-full flex-col bg-white">
       <header className="flex h-14 items-center justify-between gap-4 border-b border-black/8 bg-white px-4">
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <button
+            className={[
+              'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded',
+              'text-[#8b7a93] transition-colors',
+              'hover:bg-[#f4eff8] hover:text-[#2f2237]',
+            ].join(' ')}
+            onClick={handleBack}
+            title="Back"
+            type="button"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M19 12H5M12 19l-7-7 7-7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
           <input
             aria-label="Workflow name"
             className="w-full max-w-xl border-none bg-transparent text-[15px] font-semibold text-[#2f2237] outline-none placeholder:text-[#9a8aa2]"

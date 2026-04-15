@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type {
   WorkflowInstallationRecord,
   WorkflowRunRecord,
@@ -121,6 +121,34 @@ const isActiveRun = (status: WorkflowRunRecord['status']): boolean =>
 
 const isTerminalRun = (status: WorkflowRunRecord['status']): boolean =>
   status === 'cancelled' || status === 'completed' || status === 'failed'
+
+type WorkflowsPageLocationState = {
+  selectedInstallationId?: string
+  selectedRunId?: string
+  selectedTemplateId?: string
+}
+
+const readWorkflowsPageLocationState = (
+  value: unknown,
+): WorkflowsPageLocationState => {
+  if (!value || typeof value !== 'object') {
+    return {}
+  }
+
+  const state = value as WorkflowsPageLocationState
+  return {
+    selectedInstallationId:
+      typeof state.selectedInstallationId === 'string'
+        ? state.selectedInstallationId
+        : undefined,
+    selectedRunId:
+      typeof state.selectedRunId === 'string' ? state.selectedRunId : undefined,
+    selectedTemplateId:
+      typeof state.selectedTemplateId === 'string'
+        ? state.selectedTemplateId
+        : undefined,
+  }
+}
 
 type WorkflowTemplateDetailProps = {
   installationCount: number
@@ -544,20 +572,25 @@ const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => {
 }
 
 export const WorkflowsPage = () => {
+  const location = useLocation()
   const navigate = useNavigate()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const { data: templates = [] } = useWorkflowTemplates(isOwner)
   const { data: installations = [] } = useWorkflowInstallations(isOwner)
+  const restoredSelection = useMemo(
+    () => readWorkflowsPageLocationState(location.state),
+    [location.state],
+  )
   const [selectedTemplateId, setSelectedTemplateId] = useState<
     string | undefined
-  >(undefined)
+  >(() => restoredSelection.selectedTemplateId)
   const [selectedInstallationId, setSelectedInstallationId] = useState<
     string | undefined
-  >(undefined)
+  >(() => restoredSelection.selectedInstallationId)
   const [selectedRunId, setSelectedRunId] = useState<string | undefined>(
-    undefined,
+    () => restoredSelection.selectedRunId,
   )
 
   const sortedTemplates = useMemo(
@@ -626,6 +659,16 @@ export const WorkflowsPage = () => {
     [effectiveInstallationId, sortedInstallations],
   )
 
+  useEffect(() => {
+    setSelectedTemplateId(restoredSelection.selectedTemplateId)
+    setSelectedInstallationId(restoredSelection.selectedInstallationId)
+    setSelectedRunId(restoredSelection.selectedRunId)
+  }, [
+    restoredSelection.selectedInstallationId,
+    restoredSelection.selectedRunId,
+    restoredSelection.selectedTemplateId,
+  ])
+
   if (!isOwner) {
     return (
       <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
@@ -634,12 +677,28 @@ export const WorkflowsPage = () => {
     )
   }
 
+  const currentWorkflowLocationState: WorkflowsPageLocationState = selectedTemplate
+    ? {
+        selectedTemplateId: selectedTemplate.id,
+      }
+    : {
+        selectedInstallationId,
+        selectedRunId,
+      }
+
   const columns = [
     <ColumnBrowserColumn
       headerAction={
         <button
           className="admin-button admin-button-primary"
-          onClick={() => void navigate('/agents/workflow-designer')}
+          onClick={() =>
+            void navigate('/agents/workflow-designer', {
+              state: {
+                returnTo: '/agents/workflows',
+                returnToState: currentWorkflowLocationState,
+              },
+            })
+          }
           type="button"
         >
           New workflow
@@ -743,7 +802,14 @@ export const WorkflowsPage = () => {
           }
           latestInstallation={latestInstallationByTemplateId.get(selectedTemplate.id)}
           onEdit={() =>
-            void navigate(`/agents/workflow-designer/${selectedTemplate.id}`)
+            void navigate(`/agents/workflow-designer/${selectedTemplate.id}`, {
+              state: {
+                returnTo: '/agents/workflows',
+                returnToState: {
+                  selectedTemplateId: selectedTemplate.id,
+                },
+              },
+            })
           }
           template={selectedTemplate}
         />
