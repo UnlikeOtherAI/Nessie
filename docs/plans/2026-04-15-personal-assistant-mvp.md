@@ -7,7 +7,8 @@
 The core model is simple:
 
 - the personal assistant is the user's delegated second self
-- every user gets exactly one `Personal Assistant`
+- every user gets exactly one direct `Personal Assistant` relationship and DM
+  per organization
 - it always appears at the top of that user's DMs
 - it uses the same runtime stack as a regular agent
 - it has exactly the same permissions as the user who is talking to it
@@ -27,6 +28,9 @@ The contract stays the same in both cases:
 - same visibility as the user
 - same write reach as the user
 - no independent power beyond what the user could already do
+
+For MVP, day-one delivery can still sequence lower-frequency actions later.
+That is an implementation-coverage choice, not a different permission model.
 
 That means we need to separate:
 
@@ -115,6 +119,11 @@ What is different:
 - the surface policy is fixed to `dm_only`
 - the system guarantees one exists per org
 
+Those fixed fields must be backend invariants, not just UI defaults.
+
+Admins should not be able to delete the system-managed PA from the normal agent
+editing flow.
+
 Admins can still change the normal agent configuration:
 
 - system prompt
@@ -122,6 +131,22 @@ Admins can still change the normal agent configuration:
 - tools and policies that shape how the assistant speaks, plans, searches, and
   delegates on the user's behalf
 - attached markdown docs
+
+Because the assistant runs with user permissions but can be configured by org
+admins, the trust boundary must be explicit:
+
+- admin configuration can shape behavior, but it cannot bypass user-scoped
+  permission, memory, or surface-policy enforcement
+- admin changes to prompt, docs, and tool policy should be auditable
+- users should be able to inspect the current admin-managed configuration
+  summary from the PA DM so this never acts like a hidden deputy
+
+Normal agent surfaces that must stay blocked for PA:
+
+- clone
+- triggers / workflows / automation
+- generic agent activity panels that aggregate by `agentId` alone
+- any admin surface that would expose cross-user PA runs or messages
 
 ## 5. Minimal Data Model
 
@@ -145,6 +170,15 @@ For the built-in assistant:
 - `surfacePolicy = dm_only`
 - `delegationMode = act_as_requesting_user`
 
+Required invariant rules:
+
+- exactly one `personal_assistant` agent per organization
+- bootstrap recreates it if it is missing
+- once `systemManaged = true`, `agentKind`, `name`, `surfacePolicy`, and
+  `delegationMode` are immutable outside system bootstrap/migration code paths
+- normal admin delete/archive flows must block hard deletion of the
+  `systemManaged` PA agent
+
 ### `Channel`
 
 Use a normal DM channel with a deterministic key:
@@ -158,6 +192,12 @@ That gives us:
 - one personal-assistant DM per user per org
 - idempotent bootstrap
 - no need for a separate instance table in the MVP
+- compatibility with existing DM/thread/message models
+
+Because `Channel.teamId` is currently required, PA DMs should live in a hidden
+system team per organization unless the schema is intentionally changed later.
+That team should exist only to satisfy channel topology and should not expose PA
+DMs through normal team browsing or governance surfaces.
 
 The channel should also carry an explicit marker in metadata, for example:
 
@@ -168,10 +208,40 @@ The channel should also carry an explicit marker in metadata, for example:
 }
 ```
 
+Lifecycle rule:
+
+- if the user leaves the org, archive the PA DM and apply the same retention
+  policy to its thread history and user-scoped PA memory
+- if the user later regains access with the same identity, bootstrap can reopen
+  or recreate from the retained state according to that retention policy
+
 ### `AgentBinding`
 
-Bind the personal assistant agent to that channel using the normal binding path,
-but never expose this through generic bind UI.
+Bind the personal assistant agent to that channel through a system-only
+bootstrap bind path.
+
+Rules:
+
+- generic `bindAgentToChannel()` must reject `surfacePolicy = dm_only`
+- bootstrap is the only allowed code path that may create the PA DM binding
+- generic bind UI and bind APIs never expose `personal_assistant`
+
+### PA UI data isolation
+
+The PA must not reuse generic agent activity/message surfaces that aggregate by
+`agentId` alone.
+
+Frontend and API rules:
+
+- PA conversation UI should read from the user's PA DM channel/thread as the
+  primary source of truth
+- if the product still needs PA-specific activity drill-down, those queries must
+  be additionally scoped by `effectiveUserId` and `triggerChannelId`
+- generic `useAgentActivity(agentId)` / `useAgentMessages(agentId)` style flows
+  must not be pointed at the built-in PA without that extra scoping
+- PA websocket/event delivery must be scoped to the PA DM participants and
+  authorized admin/audit surfaces, never to generic org-wide agent feeds keyed
+  only by `agentId`
 
 ### `Message` / audit metadata
 
@@ -183,6 +253,18 @@ When the assistant posts on behalf of the user, keep provenance:
 
 The message should read as sent by the user, but the audit trail must still show
 that the personal assistant executed it.
+
+If the product later wants participant-visible provenance, it can render a
+lightweight "via Personal Assistant" affordance from that metadata without
+changing the underlying author model.
+
+MVP policy should be explicit:
+
+- delegated messages are intentionally attributed to the user, like a delegated
+  executive-assistant action
+- provenance remains available in audit and can be surfaced to the sender,
+  admins, or later recipient-facing UI if product decides that trust tradeoff is
+  worth exposing
 
 ### `Agent` execution policy
 
@@ -220,6 +302,13 @@ This is the most important rule in the whole design:
 - the assistant's memory is still **not** the same thing as generic workspace
   search
 
+The governing asymmetry should be explicit:
+
+- the assistant can search everything the user can see
+- the assistant can persist only user-scoped memory derived from the user's own
+  authored history and approved summaries about the user's commitments,
+  agreements, plans, and working relationships
+
 ### What becomes personal-assistant memory
 
 The assistant should accumulate a persistent memory of the user's own
@@ -252,7 +341,15 @@ For MVP, the safest useful capture rule is:
 - capture from messages authored by the user anywhere they can speak
 - allow derived user-scoped summaries from conversations the user participated
   in when those summaries are about the user's commitments, agreements, plans,
-  or working relationships
+  or working relationships and are tightly anchored to the user's own authored
+  messages or directly attributed commitments
+
+Examples:
+
+- allowed: "I agreed to own rollout comms by Friday"
+- allowed: "In the migration thread I asked Bob to take the API piece"
+- not allowed: "The team debated three rollout options"
+- not allowed: "Alice and Eve disagreed about architecture"
 
 That gives us "my assistant knows what I have said and agreed to" without
 turning it into a raw global transcript mirror of every shared conversation.
@@ -260,6 +357,32 @@ turning it into a raw global transcript mirror of every shared conversation.
 The assistant should also have a live search tool over the user's past authored
 messages, so even when a detail is not promoted into persistent memory, it can
 still reconstruct what the user previously said.
+
+### Retrieval architecture
+
+The brief should distinguish persistent memory from live search:
+
+- persistent memory is for durable user facts, commitments, preferences,
+  working relationships, and prior decisions already distilled into
+  user-scoped memory
+- live authored-message search is for exact wording, narrow factual lookup, and
+  details that were not promoted into persistent memory
+- live workspace search is for current shared context the user can access, even
+  when that content must never become persistent PA memory
+
+Expected retrieval order:
+
+1. load user-scoped persistent memory
+2. issue live authored-message search when the answer needs exact prior wording
+   or unpromoted user history
+3. issue live workspace search when the answer depends on current channel,
+   project, meeting, or participant context
+
+The assistant should not treat these as interchangeable stores.
+
+For MVP, `user_conversation_summary` should also use a shorter retention window
+than direct authored-message memories unless later implementation work proves
+that longer retention is safe and useful.
 
 ### What should stay out of assistant memory by default
 
@@ -281,6 +404,7 @@ user-scoped assistant memory automatically.
 
 These memories should still be stored as user-scoped memories:
 
+- `organization_id = orgId`
 - `audience_type = user`
 - `audience_id = userId`
 
@@ -289,14 +413,17 @@ And they should carry a source marker so we can distinguish kinds of user memory
 - `memory_origin = personal_assistant_dm`
 - `memory_origin = user_authored_workspace_message`
 - `memory_origin = user_conversation_summary`
+- `source_audience = dm | channel | group | meeting | project | ...`
 
 `memory_origin` can stay in metadata for MVP if we do not want a first-class
-column yet.
+column yet, but the implementation should either index it directly or promote it
+to a first-class column before scale makes metadata filtering unsafe.
 
 ### Retrieval rule
 
 When the personal assistant recalls persistent memory, filter by:
 
+- `organization_id = orgId`
 - `audience = user:{userId}`
 - `memory_origin in personal-assistant user-memory origins`
 
@@ -307,6 +434,28 @@ That ensures:
   conversations
 - future user-scoped assistants do not automatically share memory unless we
   explicitly choose that later
+
+For outbound writes, source context still matters:
+
+- narrower-source memories may inform the assistant's reasoning in the PA DM
+- the assistant should not project a narrower-source memory into a broader
+  outbound write unless the target surface is source-compatible or the user
+  explicitly confirms sharing that context now
+
+### Memory correction and forgetting
+
+The doc should make source-of-truth behavior explicit:
+
+- if a user asks the assistant to forget something, delete or tombstone the
+  user-scoped PA memory entry without changing the source workspace message
+- if a source user-authored message is deleted or materially edited, linked
+  `user_authored_workspace_message` memories should be invalidated or
+  re-derived
+- forgetting should also create a suppression record tied to the source refs so
+  the same fact is not silently re-captured from unchanged source material
+- if retention removes archived PA memory, bootstrap should not silently
+  reconstruct deleted memories unless the source-capture rules fire again from
+  still-existing workspace history
 
 ## 7. Workspace Access Model
 
@@ -326,6 +475,18 @@ That means:
 - no reduced permissions compared with the user
 - all authorization checks should resolve exactly as if the user performed the
   action directly
+
+This must be a runtime invariant, not a convention.
+
+Every assistant run should carry:
+
+- `effectiveUserId`
+- `triggerChannelId`
+- `triggerThreadId`
+- `delegationDepth`
+
+And every internal read, write, search, memory operation, prompt/context
+assembly step, and tool call must validate against that run context.
 
 ### Read access and workspace search
 
@@ -357,6 +518,14 @@ The rule is simple:
 - if the user can see it, the assistant can see it
 - if the user cannot see it, the assistant cannot see it
 
+That same rule must apply to:
+
+- direct assistant reads that do not go through delegated tools
+- context assembly before model invocation
+- memory retrieval joins
+- any indexing or search helper that fetches workspace records on the
+  assistant's behalf
+
 ### User-equivalent action scope
 
 The personal assistant should expose the same action surface the user has, not a
@@ -387,6 +556,15 @@ The important nuance is execution shape:
 That delegation must inherit the same effective user permissions as the
 requesting user.
 
+Delegation rules:
+
+- delegated agents receive the same `effectiveUserId`
+- the originating PA run remains the root provenance context
+- permission checks are re-evaluated immediately before every delegated write
+- delegation depth must be bounded and cycles must be rejected
+- `effectiveUserId` must be bound to run context and validated at authorization
+  time, not passed as an untrusted mutable parameter in prompts or tool payloads
+
 ### Write access
 
 For the MVP, delegated write should cover the normal collaboration actions users
@@ -396,8 +574,9 @@ actually need:
 - reply in thread
 - create thread where the user could create one
 - attach or reference a document the user selected for sending
-- assign or split work in a message based on live context plus the user's
-  assistant memory
+- compose and send coordination messages that assign or split work based on live
+  context plus the user's assistant memory, and invoke existing assignment flows
+  the user already has where those product features exist
 - delegate work to other agents based on the user's request
 - follow up, remind, and summarize into conversations the user can post in
 
@@ -418,6 +597,18 @@ must come from an explicit request in the DM from that same user.
 
 The assistant can draft, plan, and propose freely, but posting should still be a
 direct delegated action from the current DM session.
+
+High-impact actions may still use a preview or confirmation step in the DM
+without changing the underlying authority model. That is a UX safety pattern,
+not a different permission scope.
+
+For MVP, "explicit request" should mean:
+
+- the request comes from the user's PA DM
+- the current request explicitly names or confirms the target surface and the
+  intent of the write; prior context alone is not enough
+- any follow-up or reminder write happens synchronously as part of that current
+  DM request, not as an autonomous scheduled action later
 
 This is enough to support flows like:
 
@@ -449,6 +640,8 @@ For MVP:
 - it should not appear as a separate inviteable participant in generic agent
   pickers
 - it should act as the user's delegate, not as an independently added teammate
+- users can mute PA notifications, but cannot delete the system assistant or
+  remove its access point from the DM surface
 
 So the system should hide it from generic "add agent" flows, but not block it
 from reading or writing in surfaces the user can already access, including
@@ -466,10 +659,16 @@ We still want a dedicated bootstrap endpoint because the surface is guaranteed.
 3. API ensures the org-level `Personal Assistant` agent exists.
 4. API finds or creates the DM channel with `dmKey = pa:{org}:{user}`.
 5. API ensures the channel has a default thread.
-6. API ensures the personal assistant agent is bound to that DM.
-7. API returns the normal channel/thread payload for navigation.
+6. API creates or verifies the PA binding through the system-only bootstrap bind
+   path.
+7. API marks the DM as pinned in the returned payload or through a server-side
+   pinned-DM rule.
+8. API returns the normal channel/thread payload for navigation plus a visible
+   summary of the current admin-managed PA configuration.
 
 The endpoint must be idempotent.
+It also needs DB-level uniqueness or transactional locking so concurrent
+bootstrap calls cannot create duplicate PA channels or bindings.
 
 ### Suggested response
 
@@ -485,22 +684,45 @@ The endpoint must be idempotent.
 
 The MVP needs real backend enforcement in a few places:
 
+- exactly-one-personal-assistant-per-org must be a real invariant
+- fixed PA fields must be immutable outside system-managed code paths
+- admin-managed prompt, docs, and tool policy must remain auditable and cannot
+  override permission, memory, or surface-policy boundaries
+- users must be able to inspect the current admin-managed PA configuration from
+  the PA surface
 - generic `bindAgentToChannel()` must reject `surfacePolicy = dm_only`
+- bootstrap must use a separate system-only bind path for the PA DM
 - agent discovery/listing must hide personal assistants from normal lists
+- generic clone, trigger, workflow, and admin automation surfaces must reject
+  `personal_assistant`
+- PA UI reads must not use generic agent-activity/message aggregation keyed only
+  by `agentId`
+- PA realtime events, run updates, and admin snapshots must never fan out
+  through generic org-wide agent feeds keyed only by `agentId`
+- all assistant reads, writes, searches, memory retrievals, and context assembly
+  must run with effective user permissions
 - delegated tools must run with effective user permissions
 - delegated agents spawned by the personal assistant must inherit the same
-  effective user permissions
+  effective user permissions plus bounded depth and cycle protection
 - memory capture/retrieval must apply the `user + personal-assistant user memory`
-  filter
+  filter plus org scoping
 - message-memory capture must include the user's authored messages across the
   workspace
 - derived memory capture must stay user-scoped even when sourced from shared
   conversations
+- outbound writes must respect source-audience compatibility unless the user
+  explicitly confirms broader sharing
+- source message edit/delete events must invalidate or re-derive linked PA
+  memories
+- forgotten memories must have suppression so they are not silently re-captured
 - the execution layer must preserve the "same user authority, same user
   delegation paths" rule instead of giving the assistant a weaker or broader
   action model
+- delegated posts must retain provenance metadata and be able to surface user-
+  visible provenance if product chooses to expose it
 
-If those checks are solid, the rest of the system can stay mostly normal.
+This is still mostly normal-agent infrastructure, but it does require shared
+permission and execution plumbing rather than a few isolated UI checks.
 
 ## 11. What We Are Deliberately Not Doing In MVP
 
@@ -508,7 +730,8 @@ Do not add these yet:
 
 - per-user cloned agent instances
 - separate personal assistant template/instance tables
-- auto-promotion of workspace conversations into PA memory
+- auto-capture of full shared conversation history from other participants into
+  PA memory
 - admin-created arbitrary managed assistants
 - full coverage of lower-frequency destructive user actions on day one
 - a special low-level tool bypass that skips the same delegation path users
@@ -537,12 +760,21 @@ Under that model:
 
 ## 13. Recommended Build Order
 
-1. Add the personal-assistant agent flags and DM bootstrap path.
-2. Pin the assistant to the top of the DM list.
-3. Enforce `dm_only` surface policy everywhere shared-agent flows exist.
-4. Add delegated read/write execution using effective user permissions.
-5. Add the personal-assistant user-memory capture and retrieval rule.
-6. Add provenance/audit metadata for delegated posts.
+1. Inventory existing search, tool, and delegation paths that must accept
+   `effectiveUserId`, and retrofit the shared execution layer before building on
+   top of it.
+2. Add the personal-assistant agent invariants, uniqueness rules, and system-
+   only bootstrap bind path.
+3. Add hidden system-team placement for PA DMs plus DM bootstrap and pinned-DM
+   behavior.
+4. Add effective-user enforcement across direct reads/search, context assembly,
+   tool dispatch, delegated agents, and pre-write rechecks.
+5. Add PA-specific UI/API isolation so DM history and activity never aggregate
+   across users by `agentId` alone.
+6. Add workspace search coverage plus authored-message search.
+7. Add the personal-assistant user-memory extraction, retrieval, invalidation,
+   and forgetting rules.
+8. Add provenance/audit metadata for delegated posts.
 
 That is enough for a real MVP.
 
