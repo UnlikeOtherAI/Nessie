@@ -12,6 +12,17 @@ export type LlmStreamOptions = {
   temperature?: number
 }
 
+// Safety net: if a streaming response is abandoned and the generator is GC'd
+// before completion, FinalizationRegistry ensures the reader is cancelled and
+// released back to the connection pool, preventing socket leaks.
+// See: openclaw/openclaw#67461
+const streamFinalizationRegistry = new FinalizationRegistry<ReadableStreamDefaultReader>(
+  (reader) => {
+    reader.cancel().catch(() => { /* ignore cancel errors on already-resolved streams */ })
+    reader.releaseLock()
+  },
+)
+
 /**
  * Yields text deltas from the model. Throws on API error after zero or more deltas.
  */
@@ -63,6 +74,9 @@ async function* openaiStream(
   const decoder = new TextDecoder()
   let buffer = ''
 
+  // Register reader with finalization registry as a safety net for abandoned streams
+  streamFinalizationRegistry.register(reader, reader)
+
   try {
     while (true) {
       const { done, value } = await reader.read()
@@ -88,6 +102,10 @@ async function* openaiStream(
       }
     }
   } finally {
+    streamFinalizationRegistry.unregister(reader)
+    // Cancel the reader to release the underlying socket back to the pool.
+    // This is safe to call even if the stream is already done.
+    await reader.cancel().catch(() => { /* ignore cancel errors */ })
     reader.releaseLock()
   }
 }
@@ -127,6 +145,9 @@ async function* minimaxStream(
   const decoder = new TextDecoder()
   let buffer = ''
 
+  // Register reader with finalization registry as a safety net for abandoned streams
+  streamFinalizationRegistry.register(reader, reader)
+
   try {
     while (true) {
       const { done, value } = await reader.read()
@@ -152,6 +173,10 @@ async function* minimaxStream(
       }
     }
   } finally {
+    streamFinalizationRegistry.unregister(reader)
+    // Cancel the reader to release the underlying socket back to the pool.
+    // This is safe to call even if the stream is already done.
+    await reader.cancel().catch(() => { /* ignore cancel errors */ })
     reader.releaseLock()
   }
 }
