@@ -40,7 +40,9 @@ export interface TrustedGroupIds {
  */
 export function resolveGroupContextFromSessionKey(sessionKey: string): string | null {
   const parsed = fromOpenClawKey(sessionKey)
-  return parsed?.groupId ?? null
+  // fromOpenClawKey returns NessieRef: { taskId, threadId, parentTaskId }.
+  // The session key encodes groupId in the taskId field.
+  return parsed?.taskId ?? null
 }
 
 /**
@@ -155,9 +157,16 @@ export function applyFinalEffectiveToolPolicy(
     spawnedBy,
   })
 
+  // HARD DENY: if trust was dropped, deny all tools — no partial access
+  if (trusted.dropped) {
+    return {
+      tools: [],
+      filtered: true,
+      droppedCount: bundledTools.length + 1,
+    }
+  }
+
   // Apply role-based tool policy to bundled tools
-  // Note: In OpenClaw, there would be per-agent, per-group allowlists layered on top.
-  // In Nessie, we apply role-based policy as the primary mechanism.
   const allowedToolNames = bundledTools
     .filter(tool => isToolAllowed(role, tool.name))
     .map(tool => tool.name)
@@ -167,7 +176,7 @@ export function applyFinalEffectiveToolPolicy(
   if (droppedTools.length > 0) {
     console.info(
       `[policy] Filtered ${droppedTools.length} bundled tool(s) for role="${role}" ` +
-      `(groupId=${trusted.groupId ?? 'null'}, dropped=${trusted.dropped}): ` +
+      `(groupId=${trusted.groupId ?? 'null'}): ` +
       droppedTools.map(t => t.name).join(', '),
     )
   }
@@ -176,8 +185,8 @@ export function applyFinalEffectiveToolPolicy(
 
   return {
     tools: filteredTools,
-    filtered: droppedTools.length > 0 || trusted.dropped,
-    droppedCount: droppedTools.length + (trusted.dropped ? 1 : 0),
+    filtered: droppedTools.length > 0,
+    droppedCount: droppedTools.length,
   }
 }
 

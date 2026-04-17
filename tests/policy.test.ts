@@ -6,16 +6,26 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { resolveTrustedGroupId } from '../src/agent/tools/policy.js'
+import { resolveTrustedGroupId, applyFinalEffectiveToolPolicy } from '../src/agent/tools/policy.js'
+import type { Tools } from '../src/tools/types.js'
+
+// Test helper: make a minimal tool
+function makeTool(name: string): { name: string; inputSchema: { parse: (x: unknown) => unknown } } {
+  return {
+    name,
+    inputSchema: { parse: (x: unknown) => x },
+  }
+}
 
 describe('resolveTrustedGroupId', () => {
-  it('returns caller groupId as-is when empty', () => {
+  it('returns null when caller groupId is empty (no trust signal needed)', () => {
+    // Empty caller groupId is accepted as-is — no trust verification needed
     const result = resolveTrustedGroupId({
       groupId: '',
       sessionKey: 'agent:main:nessie:group:group-A',
       spawnedBy: 'parent-task-1',
     })
-    expect(result.groupId).toBe('')
+    expect(result.groupId).toBeNull()
     expect(result.dropped).toBe(false)
   })
 
@@ -118,5 +128,101 @@ describe('resolveTrustedGroupId', () => {
     })
     expect(result.groupId).toBe('group-A')
     expect(result.dropped).toBe(false)
+  })
+})
+
+describe('applyFinalEffectiveToolPolicy', () => {
+  const allTestTools: Tools = [
+    makeTool('Bash'),
+    makeTool('WebSearch'),
+    makeTool('FileRead'),
+    makeTool('FileWrite'),
+    makeTool('Glob'),
+    makeTool('Grep'),
+  ]
+
+  it('returns all tools when trust is not dropped and role allows them', () => {
+    // builder role allows all 6 tools — no tools are dropped, filtered=false
+    const result = applyFinalEffectiveToolPolicy(allTestTools, {
+      role: 'builder',
+      sessionKey: 'agent:main:nessie:group:group-A',
+      spawnedBy: 'parent-task-1',
+    })
+    expect(result.tools.length).toBe(6)
+    expect(result.filtered).toBe(false)
+    expect(result.droppedCount).toBe(0)
+  })
+
+  it('HARD DENY: trusted.dropped === true returns empty tools array', () => {
+    // Caller groupId disagrees with both trusted sources → trust dropped → ALL tools denied
+    const result = applyFinalEffectiveToolPolicy(allTestTools, {
+      role: 'builder',
+      groupId: 'group-Caller',
+      sessionKey: 'agent:main:nessie:group:group-B',
+      spawnedBy: 'group-A',
+    })
+    expect(result.tools).toEqual([])
+    expect(result.filtered).toBe(true)
+  })
+
+  it('task with tools: [WebSearch] under role that allows Bash must deny Bash', () => {
+    // watcher role allows: FileRead, Glob, Grep — NOT Bash or WebSearch
+    const result = applyFinalEffectiveToolPolicy(allTestTools, {
+      role: 'watcher',
+      sessionKey: 'agent:main:nessie:group:group-A',
+      spawnedBy: 'group-A',
+    })
+    const allowedToolNames = result.tools.map(t => t.name)
+    expect(allowedToolNames).not.toContain('Bash')
+    expect(allowedToolNames).not.toContain('WebSearch')
+    expect(allowedToolNames).toContain('FileRead')
+  })
+
+  it('task with tools: [Bash] under role that disallows Bash must deny', () => {
+    // watcher role does NOT allow Bash
+    const result = applyFinalEffectiveToolPolicy(allTestTools, {
+      role: 'watcher',
+      sessionKey: 'agent:main:nessie:group:group-A',
+      spawnedBy: 'group-A',
+    })
+    const allowedToolNames = result.tools.map(t => t.name)
+    expect(allowedToolNames).not.toContain('Bash')
+  })
+
+  it('trusted.dropped === true must remove ALL tools from returned set', () => {
+    // Caller groupId present but sessionKey can't be parsed + no spawnedBy → trust dropped → ALL tools denied
+    const result = applyFinalEffectiveToolPolicy(allTestTools, {
+      role: 'builder',
+      groupId: 'some-group',
+      sessionKey: 'invalid-key-format',
+      spawnedBy: undefined,
+    })
+    expect(result.tools).toHaveLength(0)
+    expect(result.filtered).toBe(true)
+  })
+
+  it('empty effective tool set after policy intersection must hard-deny, not fall back', () => {
+    // watcher role only allows FileRead, Glob, Grep — if caller requests only Bash,
+    // the effective intersection is empty → must deny, not fall back to watcher tools
+    const watcherTools = [makeTool('Bash')]
+    const result = applyFinalEffectiveToolPolicy(watcherTools, {
+      role: 'watcher',
+      sessionKey: 'agent:main:nessie:group:group-A',
+      spawnedBy: 'group-A',
+    })
+    expect(result.tools).toHaveLength(0)
+    expect(result.filtered).toBe(true)
+  })
+
+  it('missing ledger state (no sessionKey, no spawnedBy) must fail closed', () => {
+    // No server-verified group context with non-empty caller groupId → trust dropped → ALL tools denied
+    const result = applyFinalEffectiveToolPolicy(allTestTools, {
+      role: 'researcher',
+      groupId: 'any-group',
+      sessionKey: undefined,
+      spawnedBy: undefined,
+    })
+    expect(result.tools).toEqual([])
+    expect(result.filtered).toBe(true)
   })
 })

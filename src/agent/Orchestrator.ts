@@ -425,12 +425,12 @@ export class Orchestrator {
     return await this.llm.chat(conversation)
   }
 
-  private async handleSubAgentTask(task: string, toolNames: string[]): Promise<string> {
+  private async handleSubAgentTask(task: string, toolNames: string[], role: TaskRole = 'researcher'): Promise<string> {
     if (!this.llm) return 'No LLM configured for sub-agent responses.'
 
     const subAgent: SubAgentTask = {
       id: crypto.randomUUID(), name: `research-${Date.now()}`,
-      task, tools: toolNames, status: 'running',
+      task, tools: toolNames, status: 'running', role,
     }
     this.state.subAgents.push(subAgent)
     this.broadcastState()
@@ -441,7 +441,7 @@ export class Orchestrator {
 
     const spawnResult = this.spawnManager.spawn({
       parentTaskId: null,
-      role: 'researcher',
+      role,
       label: task,
       toolScope: toolNames,
       timeoutSeconds: 300,
@@ -456,13 +456,13 @@ export class Orchestrator {
 
     const taskId = spawnResult.taskId
     subAgent.taskId = taskId
-    subAgent.role = 'researcher'
+    subAgent.role = role
 
     this.callbacks.onBroadcast?.({
       type: 'task.spawned',
       taskId,
       parentTaskId: null,
-      role: 'researcher',
+      role,
       label: task,
     })
 
@@ -577,6 +577,9 @@ export class Orchestrator {
 
     // Build policy context from task and ledger
     const spawnedTask = this.taskLedger.getTask(taskId)
+    if (!spawnedTask) {
+      return `Spawn error: task ${taskId} not found in ledger. Aborting.`
+    }
     const spawnedBy = spawnedTask?.parentId ?? null
     const sessionKey = taskId
       ? toOpenClawKey({
@@ -594,19 +597,19 @@ export class Orchestrator {
       spawnedBy: spawnedBy ?? undefined,
     })
 
-    // Determine which tool to use based on policy-filtered tools
+    // Intersect caller-supplied tools with policy-filtered tools.
+    // This prevents the caller from requesting a tool that policy filtered out,
+    // then having the code fall back to a different allowed tool instead of denying.
     const availableToolNames = policyResult.tools.map(t => t.name)
-    const toolName = task.tools.includes('WebSearch') && availableToolNames.includes('WebSearch')
-      ? 'WebSearch'
-      : availableToolNames.includes('Bash')
-        ? 'Bash'
-        : availableToolNames[0] ?? 'Bash'
+    const requestedToolNames = task.tools ?? []
+    const effectiveToolNames = requestedToolNames.filter(name => availableToolNames.includes(name))
 
-    // Verify selected tool is in policy-filtered list
-    if (!availableToolNames.includes(toolName)) {
+    if (effectiveToolNames.length === 0) {
       const allowed = availableToolNames.join(', ') || 'none'
-      return `Tool "${toolName}" is not allowed by policy for role="${role}". Allowed: ${allowed}`
+      return `No allowed tools: requested [${requestedToolNames.join(', ')}] but policy allows [${allowed}] for role="${role}". Spawn denied.`
     }
+
+    const toolName = effectiveToolNames[0]
 
     const toolInput = toolName === 'WebSearch' ? { query: task.task } : { command: task.task }
     const toolUse: ToolUseBlock = { id: task.id, name: toolName, input: toolInput }
