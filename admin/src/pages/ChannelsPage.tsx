@@ -39,10 +39,11 @@ import { useAuthSession } from '../providers/AuthSessionProvider'
 import { CallBanner } from '../components/shared/CallBanner'
 import { CallOverlay } from '../components/shared/CallOverlay'
 import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
+import { AgentInfoCard } from '../components/features/agents/AgentInfoCard'
 import { PersonalAssistantConfigBanner } from '../components/features/personal-assistant/PersonalAssistantSurface'
 import { useActiveCall, useJoinCall, useLeaveCall, useStartCall } from '../facades/calls/hooks'
 
-type ChannelTab = 'agents' | 'files' | 'messages' | 'runs'
+type ChannelTab = 'agents' | 'files' | 'info' | 'messages' | 'runs'
 
 type FeedItem =
   | { kind: 'date'; label: string }
@@ -737,6 +738,24 @@ export const ChannelsPage = () => {
           </svg>
           Files
         </button>
+        <button
+          className={`admin-tab ${visibleActiveTab === 'info' ? 'active' : ''}`}
+          onClick={() => setActiveTab('info')}
+          type="button"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <circle cx="12" cy="12" r="9" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M12 11v5" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="12" cy="8" fill="currentColor" r="0.5" stroke="none" />
+          </svg>
+          Info
+        </button>
         {!isConversationSurface ? (
           <button
             className={`admin-tab ${visibleActiveTab === 'runs' ? 'active' : ''}`}
@@ -788,14 +807,6 @@ export const ChannelsPage = () => {
           </button>
         ) : null}
       </div>
-
-      {isPersonalAssistantConversation ? (
-        <PersonalAssistantConfigBanner
-          agent={personalAssistantAgent}
-          channel={personalAssistantChannel}
-          configSummary={personalAssistantState?.configSummary}
-        />
-      ) : null}
 
       <div
         className="min-h-0 flex-1 overflow-y-auto"
@@ -1086,6 +1097,28 @@ export const ChannelsPage = () => {
                 </div>
               </div>
             </aside>
+          </div>
+        ) : null}
+
+        {visibleActiveTab === 'info' ? (
+          <div className="p-5">
+            {isPersonalAssistantConversation ? (
+              <PersonalAssistantConfigBanner
+                agent={personalAssistantAgent}
+                channel={personalAssistantChannel}
+                configSummary={personalAssistantState?.configSummary}
+              />
+            ) : boundAgents.length > 0 ? (
+              <div className="grid gap-3">
+                {boundAgents.map((agent) => (
+                  <AgentInfoCard agent={agent} key={agent.id} />
+                ))}
+              </div>
+            ) : (
+              <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
+                No agents are bound to this channel.
+              </div>
+            )}
           </div>
         ) : null}
 
