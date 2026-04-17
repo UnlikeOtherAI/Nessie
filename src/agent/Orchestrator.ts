@@ -30,6 +30,8 @@ import {
 } from '../openclaw/index.js'
 import { runBeforeToolCall, runAfterToolCall } from '../plugins/hook-registry.js'
 import type { OpenClawEvent, OpenClawAgentConfig } from '../openclaw/index.js'
+import { applyFinalEffectiveToolPolicy } from './tools/policy.js'
+import { toOpenClawKey } from '../openclaw/session-mapper.js'
 
 export class Orchestrator {
   private state: OrchestratorState
@@ -453,6 +455,9 @@ export class Orchestrator {
     }
 
     const taskId = spawnResult.taskId
+    subAgent.taskId = taskId
+    subAgent.role = 'researcher'
+
     this.callbacks.onBroadcast?.({
       type: 'task.spawned',
       taskId,
@@ -467,7 +472,7 @@ export class Orchestrator {
     let rawResult: string
     let success = true
     try {
-      rawResult = await this.spawnSubAgent(subAgent)
+      rawResult = await this.spawnSubAgent(subAgent, taskId)
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       rawResult = errMsg
@@ -567,12 +572,45 @@ export class Orchestrator {
     return this.spawnManager.getSpawnStatus()
   }
 
-  private async spawnSubAgent(task: SubAgentTask): Promise<string> {
+  private async spawnSubAgent(task: SubAgentTask, taskId: string): Promise<string> {
     const context = this.makeContext()
-    const toolName = task.tools.includes('WebSearch') ? 'WebSearch' : 'Bash'
+
+    // Build policy context from task and ledger
+    const spawnedTask = this.taskLedger.getTask(taskId)
+    const spawnedBy = spawnedTask?.parentId ?? null
+    const sessionKey = taskId
+      ? toOpenClawKey({
+        taskId,
+        threadId: spawnedTask?.threadId ?? 'main',
+        parentTaskId: spawnedBy,
+      }).key
+      : undefined
+
+    // Apply bundled-tool policy filtering using server-verified group identity
+    const role = task.role ?? 'researcher'
+    const policyResult = applyFinalEffectiveToolPolicy(allTools, {
+      role,
+      sessionKey,
+      spawnedBy: spawnedBy ?? undefined,
+    })
+
+    // Determine which tool to use based on policy-filtered tools
+    const availableToolNames = policyResult.tools.map(t => t.name)
+    const toolName = task.tools.includes('WebSearch') && availableToolNames.includes('WebSearch')
+      ? 'WebSearch'
+      : availableToolNames.includes('Bash')
+        ? 'Bash'
+        : availableToolNames[0] ?? 'Bash'
+
+    // Verify selected tool is in policy-filtered list
+    if (!availableToolNames.includes(toolName)) {
+      const allowed = availableToolNames.join(', ') || 'none'
+      return `Tool "${toolName}" is not allowed by policy for role="${role}". Allowed: ${allowed}`
+    }
+
     const toolInput = toolName === 'WebSearch' ? { query: task.task } : { command: task.task }
     const toolUse: ToolUseBlock = { id: task.id, name: toolName, input: toolInput }
-    const tool = findToolByName(allTools, toolUse.name)
+    const tool = findToolByName(policyResult.tools, toolUse.name)
     if (!tool) return `Tool not found: ${toolUse.name}`
 
     this.callbacks.onBroadcast?.({
@@ -590,8 +628,14 @@ export class Orchestrator {
     if (veto?.block) {
       const reason = veto.blockReason ?? 'Tool call blocked by before_tool_call hook'
       const durationMs = Date.now() - startMs
-      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: reason, blocked: true, blockReason: veto.blockReason } })
-      void runAfterToolCall({ toolName, params: parsed.data, blocked: true, blockReason: veto.blockReason, durationMs }, ctx)
+      this.callbacks.onBroadcast?.({
+        type: 'tool.done', name: toolName,
+        output: { error: reason, blocked: true, blockReason: veto.blockReason },
+      })
+      void runAfterToolCall(
+        { toolName, params: parsed.data, blocked: true, blockReason: veto.blockReason, durationMs },
+        ctx,
+      )
       return `Error: ${reason}`
     }
 
