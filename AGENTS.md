@@ -18,7 +18,7 @@
 
 - Every UI change must be visually verified using kelpie before considering the work complete.
 - Run `kelpie "http://localhost:5555/<path>"` to screenshot the affected page and confirm the feature renders correctly.
-- Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched.
+- Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched. Always run Playwright headless unless the user explicitly requests otherwise.
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
 
 ## Architecture

@@ -42,7 +42,7 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 
 - Every UI/frontend change must be verified using kelpie before the work is considered done.
 - Run `kelpie "http://localhost:5555/<path>"` to screenshot the affected page and confirm correct rendering.
-- Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched.
+- Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched. Always run Playwright headless unless the user explicitly requests otherwise.
 
 ## MCP Integration
 
