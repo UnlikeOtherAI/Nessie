@@ -14,6 +14,7 @@ import { allTools, findToolByName } from '../tools/index.js'
 import type { ToolUseContext } from '../tools/types.js'
 import { CreateTaskSchema } from '../orchestration/task-types.js'
 import type { TaskRole } from '../orchestration/task-types.js'
+import { runBeforeToolCall, runAfterToolCall } from '../plugins/hook-registry.js'
 
 export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
   return {
@@ -99,15 +100,23 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
         options: { tools: allTools, debug: false },
       }
 
-      try {
-        const result = await tool.call(parsed.data, context)
-        orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: result.data })
-        return JSON.stringify(result.data, null, 2)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: { error: msg } })
-        return `Error: ${msg}`
+      const startMs = Date.now()
+
+      // before_tool_call hook — can veto
+      const ctx = { agentId: 'main', toolName }
+      const veto = await runBeforeToolCall({ toolName, params: parsed.data }, ctx)
+      if (veto?.block) {
+        const reason = veto.blockReason ?? 'Tool call blocked by before_tool_call hook'
+        orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: { error: reason, blocked: true, blockReason: veto.blockReason } })
+        void runAfterToolCall({ toolName, params: parsed.data, blocked: true, blockReason: veto.blockReason, durationMs: Date.now() - startMs }, ctx)
+        return `Error: ${reason}`
       }
+
+      const result = await tool.call(parsed.data, context)
+      const durationMs = Date.now() - startMs
+      orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: result.data })
+      void runAfterToolCall({ toolName, params: parsed.data, result: result.data, durationMs, blocked: false }, ctx)
+      return JSON.stringify(result.data, null, 2)
     },
 
     pushMessage(input: { role: 'user' | 'assistant' | 'system'; threadId: string; content: string }) {
