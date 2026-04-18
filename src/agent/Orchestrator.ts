@@ -28,6 +28,7 @@ import type { WatcherAlert } from '../orchestration/watcher.js'
 import {
   translateEvent, getAllAgentConfigs, toOpenClawKey, fromOpenClawKey,
 } from '../openclaw/index.js'
+import { runBeforeToolCall, runAfterToolCall } from '../plugins/hook-registry.js'
 import type { OpenClawEvent, OpenClawAgentConfig } from '../openclaw/index.js'
 
 export class Orchestrator {
@@ -581,9 +582,24 @@ export class Orchestrator {
     const parsed = tool.inputSchema.safeParse(toolUse.input)
     if (!parsed.success) return `Invalid input: ${parsed.error.message}`
 
+    const startMs = Date.now()
+    const ctx = { agentId: task.id, toolName }
+
+    // before_tool_call hook — can veto
+    const veto = await runBeforeToolCall({ toolName, params: parsed.data }, ctx)
+    if (veto?.block) {
+      const reason = veto.blockReason ?? 'Tool call blocked by before_tool_call hook'
+      const durationMs = Date.now() - startMs
+      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: reason, blocked: true, blockReason: veto.blockReason } })
+      void runAfterToolCall({ toolName, params: parsed.data, blocked: true, blockReason: veto.blockReason, durationMs }, ctx)
+      return `Error: ${reason}`
+    }
+
     const result = await tool.call(parsed.data, context)
+    const durationMs = Date.now() - startMs
     const data = JSON.stringify(result.data)
     this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: result.data })
+    void runAfterToolCall({ toolName, params: parsed.data, result: result.data, durationMs, blocked: false }, ctx)
     return data
   }
 
