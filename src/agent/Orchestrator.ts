@@ -64,6 +64,7 @@ export class Orchestrator {
     }
     this.callbacks = options.callbacks ?? {}
     this.llm = options.llm ?? null
+    this.taskLedger = new TaskLedger()
     this.config = options.config
     this.taskLedger = new TaskLedger()
     this.verificationGate = new VerificationGate(this.taskLedger)
