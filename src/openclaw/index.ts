@@ -5,7 +5,7 @@
  * and OpenClaw-compatible session events, agent configs, and announce payloads.
  */
 
-export { toOpenClawKey, fromOpenClawKey, parentKey } from './session-mapper.js'
+export { toOpenClawKey, fromOpenClawKey, parentKey, resolveAgentMainSessionKey } from './session-mapper.js'
 export type { NessieRef, OpenClawSessionKey } from './session-mapper.js'
 
 export { translateEvent, resetSeq } from './event-translator.js'

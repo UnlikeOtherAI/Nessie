@@ -63,3 +63,18 @@ export function parentKey(ref: NessieRef): string | null {
     parentTaskId: null,
   }).key
 }
+
+/**
+ * Resolve the main session key for a specific agent.
+ * Uses the agent's threadId as the channel key.
+ * Falls back to 'orchestrator' for the default main thread.
+ */
+export function resolveAgentMainSessionKey(agentId: string | null | undefined): string {
+  if (!agentId) {
+    // No agentId — route to default orchestrator main session
+    return `agent:orchestrator:${NESSIE_CHANNEL}:group:main`
+  }
+  // Map agentId to threadId: 'main' agent → 'main' thread, others use agentId as threadId
+  const threadId = agentId === 'main' || agentId === 'orchestrator' ? 'main' : agentId
+  return `agent:${threadId}:${NESSIE_CHANNEL}:group:main`
+}
