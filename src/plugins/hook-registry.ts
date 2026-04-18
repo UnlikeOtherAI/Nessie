@@ -13,6 +13,13 @@ type HookHandler = (event: unknown, context: unknown) => unknown
 const handlers: Map<string, HookHandler[]> = new Map()
 
 /**
+ * Clear all registered handlers. Exported for testing.
+ */
+export function clearHooks(): void {
+  handlers.clear()
+}
+
+/**
  * Register a handler for the given event name.
  * @param event Event name, e.g. 'before_tool_call'
  * @param handler Function called when the event fires
@@ -54,8 +61,14 @@ export function runAfterToolCall(event: AfterToolCallEvent, context: AfterToolCa
   const hookHandlers = handlers.get('after_tool_call') ?? []
   for (const handler of hookHandlers) {
     // Fire-and-forget: do not await, catch+log errors
-    handler(event, context).catch((err) => {
+    // Wrap in Promise.resolve to handle both sync and async handlers,
+    // and use try/catch to handle synchronous throws
+    try {
+      Promise.resolve(handler(event, context)).catch((err) => {
+        console.error('[hook-registry] after_tool_call hook error:', err)
+      })
+    } catch (err) {
       console.error('[hook-registry] after_tool_call hook error:', err)
-    })
+    }
   }
 }

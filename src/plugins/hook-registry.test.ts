@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { registerHook, runBeforeToolCall, runAfterToolCall } from './hook-registry.js'
+import { registerHook, runBeforeToolCall, runAfterToolCall, clearHooks } from './hook-registry.js'
 
 describe('hook-registry', () => {
   beforeEach(() => {
-    // Reset module state between tests by clearing handlers
-    // (handlers are module-level, so we clear them per test)
+    clearHooks()
   })
 
   it('runBeforeToolCall returns undefined when no hooks registered', async () => {
