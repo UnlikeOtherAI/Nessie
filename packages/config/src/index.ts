@@ -86,6 +86,19 @@ export const NessieConfigSchema = z.object({
     provider: QueueProviderSchema,
     projectId: z.string().min(1).optional(),
   }),
+  agents: z
+    .object({
+      defaults: z
+        .object({
+          systemPreamble: z
+            .object({
+              enforce: z.boolean().default(false),
+            })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   model: ModelConfigSchema,
   api: z.object({
     host: z.string().min(1).default('0.0.0.0'),

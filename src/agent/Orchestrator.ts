@@ -28,16 +28,14 @@ import type { WatcherAlert } from '../orchestration/watcher.js'
 import {
   translateEvent, getAllAgentConfigs, toOpenClawKey, fromOpenClawKey,
 } from '../openclaw/index.js'
-import { runBeforeToolCall, runAfterToolCall } from '../plugins/hook-registry.js'
-import type { BeforeToolCallContext } from '../plugins/hook-types.js'
+import { prependSecurityPreamble, resolveSecurityPreamble } from '../security/system-preamble.js'
 import type { OpenClawEvent, OpenClawAgentConfig } from '../openclaw/index.js'
-import { dispatchWithFailover } from './dispatch.js'
 
 export class Orchestrator {
   private state: OrchestratorState
   private callbacks: OrchestratorCallbacks
   private llm: LlmClient | null
-  private backends: string[]
+  private config: Record<string, unknown> | undefined
   private schedules = new Map<string, TimerHandle>()
   private taskLedger: TaskLedger
   private spawnManager: SpawnManager
@@ -66,7 +64,7 @@ export class Orchestrator {
     }
     this.callbacks = options.callbacks ?? {}
     this.llm = options.llm ?? null
-    this.backends = options.backends ?? []
+    this.config = options.config
     this.taskLedger = new TaskLedger()
     this.verificationGate = new VerificationGate(this.taskLedger)
     this.approvalGate = new ApprovalGate(this.taskLedger)
@@ -402,12 +400,17 @@ export class Orchestrator {
       .replace(new RegExp(`^@?${agent.name}\\s*:?\\s*`, 'i'), '')
       .replace(new RegExp(`^ask\\s+${agent.name}\\s+(to\\s+)?`, 'i'), '')
       .trim() || content
+    const baseInstruction = `You are ${agent.name}. Responsibility: ${agent.responsibility}`
+    const preamble = resolveSecurityPreamble(this.config ?? {})
+    const systemContent = preamble
+      ? prependSecurityPreamble(baseInstruction)
+      : baseInstruction
     const systemMsg = {
       role: 'system' as const,
-      content: `You are ${agent.name}. Responsibility: ${agent.responsibility}`,
+      content: systemContent,
     }
-    const reply = await dispatchWithFailover(this.llm, [systemMsg, ...threadMessages, { role: 'user', content: prompt }], { backends: this.backends })
-    return `${agent.name}: ${reply.output}`
+    const reply = await this.llm.chat([systemMsg, ...threadMessages, { role: 'user', content: prompt }])
+    return `${agent.name}: ${reply}`
   }
 
   private async handleKeyboardInject(text: string): Promise<string> {
@@ -424,7 +427,7 @@ export class Orchestrator {
         role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
         content: m.content,
       }))
-    return await dispatchWithFailover(this.llm, conversation, { backends: this.backends }).then(r => r.output)
+    return await this.llm.chat(conversation)
   }
 
   private async handleSubAgentTask(task: string, toolNames: string[]): Promise<string> {
@@ -497,7 +500,7 @@ export class Orchestrator {
     this.spawnManager.complete(taskId, true, rawResult, 1)
 
     try {
-      const result = await dispatchWithFailover(this.llm, [
+      const response = await this.llm.chat([
         {
           role: 'system',
           content: 'You are a helpful assistant. A research task was just completed. '
@@ -505,8 +508,8 @@ export class Orchestrator {
             + 'Be concise and practical. Do not mention tools, JSON, or raw data.',
         },
         { role: 'user', content: `Original question: ${task}\n\nResearch results:\n${rawResult}` },
-      ], { backends: this.backends, timeoutMs: 30_000, maxTokens: 300 })
-      return result.output
+      ], { maxTokens: 300 })
+      return response
     } catch {
       return `Here's what I found: ${rawResult}`
     }
@@ -572,6 +575,7 @@ export class Orchestrator {
   }
 
   private async spawnSubAgent(task: SubAgentTask): Promise<string> {
+    const context = this.makeContext()
     const toolName = task.tools.includes('WebSearch') ? 'WebSearch' : 'Bash'
     const toolInput = toolName === 'WebSearch' ? { query: task.task } : { command: task.task }
     const toolUse: ToolUseBlock = { id: task.id, name: toolName, input: toolInput }
@@ -585,63 +589,10 @@ export class Orchestrator {
     const parsed = tool.inputSchema.safeParse(toolUse.input)
     if (!parsed.success) return `Invalid input: ${parsed.error.message}`
 
-    // Build hook context
-    const ctx: BeforeToolCallContext = { sessionKey: task.id, toolName }
-
-    // ── before_tool_call hook (veto check) ───────────────────────────────────
-    const beforeResult = await runBeforeToolCall({ toolName, params: parsed.data, toolCallId: task.id }, ctx)
-    if (beforeResult.blocked) {
-      const reason = beforeResult.blockReason ?? 'Tool call blocked by plugin hook'
-      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: reason } })
-      // Fire after_tool_call with blocked=true (fire-and-forget)
-      void runAfterToolCall(
-        {
-          toolName,
-          params: parsed.data,
-          toolCallId: task.id,
-          error: reason,
-          blocked: true,
-          blockReason: beforeResult.blockReason,
-        },
-        ctx,
-      )
-      return `Error: ${reason}`
-    }
-
-    const context = this.makeContext()
-    const startMs = Date.now()
-    try {
-      const result = await tool.call(beforeResult.params, context)
-      const data = JSON.stringify(result.data)
-      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: result.data })
-      // Fire after_tool_call with result (fire-and-forget)
-      void runAfterToolCall(
-        {
-          toolName,
-          params: beforeResult.params,
-          toolCallId: task.id,
-          result: result.data,
-          durationMs: Date.now() - startMs,
-        },
-        ctx,
-      )
-      return data
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: msg } })
-      // Fire after_tool_call with error (fire-and-forget)
-      void runAfterToolCall(
-        {
-          toolName,
-          params: beforeResult.params,
-          toolCallId: task.id,
-          error: msg,
-          durationMs: Date.now() - startMs,
-        },
-        ctx,
-      )
-      return `Error: ${msg}`
-    }
+    const result = await tool.call(parsed.data, context)
+    const data = JSON.stringify(result.data)
+    this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: result.data })
+    return data
   }
 
   private startWeatherSchedule(agentId: string, intervalMinutes: number) {
@@ -1004,8 +955,7 @@ export type OrchestratorOptions = {
   defaultAgent?: string
   callbacks?: OrchestratorCallbacks
   llm?: LlmClient
-  /** Fallback backend URLs for inference failover. */
-  backends?: string[]
+  config?: Record<string, unknown>
 }
 
 export type OrchestratorCallbacks = {
