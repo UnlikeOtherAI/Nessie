@@ -23,6 +23,10 @@ export interface SpawnConfig {
   maxSpawnDepth: number
   maxChildrenPerAgent: number
   maxConcurrent: number
+  /** Queue depth threshold — circuit breaker trips when active spawns >= this. Default: 9. */
+  circuitBreakerDepth: number
+  /** Oldest-entry wait threshold in ms — circuit breaker trips when oldest entry wait >= this. Default: 600_000 (10 min). */
+  circuitBreakerWaitMs: number
 }
 
 export interface AnnouncePayload {
@@ -38,6 +42,22 @@ const DEFAULT_CONFIG: SpawnConfig = {
   maxSpawnDepth: 3,
   maxChildrenPerAgent: 5,
   maxConcurrent: 3,
+  circuitBreakerDepth: 9,
+  circuitBreakerWaitMs: 600_000,
+}
+
+/**
+ * Thrown by SpawnManager when the command lane circuit breaker trips.
+ * Indicates the queue is saturated and the caller should retry after retryAfterMs.
+ */
+export class CommandLaneCircuitBreakerError extends Error {
+  readonly retryAfterMs: number | undefined
+
+  constructor(message: string, retryAfterMs?: number) {
+    super(message)
+    this.name = 'CommandLaneCircuitBreakerError'
+    this.retryAfterMs = retryAfterMs
+  }
 }
 
 export class SpawnManager {
@@ -46,7 +66,7 @@ export class SpawnManager {
   // NOTE: activeSpawns is in-memory only. After a server restart, in-flight
   // tasks lose their timers. Call hydrate() on startup to mark orphaned
   // in-progress tasks as failed.
-  private activeSpawns = new Map<string, { taskId: string; timer: ReturnType<typeof setTimeout> }>()
+  private activeSpawns = new Map<string, { taskId: string; timer: ReturnType<typeof setTimeout>; enqueuedAt: number }>()
   private onComplete: (taskId: string, result: AnnouncePayload) => void
 
   constructor(
@@ -75,6 +95,26 @@ export class SpawnManager {
   }
 
   spawn(request: SpawnRequest): SpawnResult {
+    // Circuit breaker: fail fast when queue is saturated to prevent wedging.
+    // Check depth first, then oldest-entry wait.
+    const active = this.activeSpawns.size
+    if (active >= this.config.circuitBreakerDepth) {
+      const retryAfter = Math.min(this.config.circuitBreakerWaitMs, 30_000)
+      throw new CommandLaneCircuitBreakerError(
+        `Circuit breaker: queue depth ${active} >= ${this.config.circuitBreakerDepth}`,
+        retryAfter,
+      )
+    }
+
+    const oldestWaitMs = this.getOldestEntryWaitMs()
+    if (oldestWaitMs !== null && oldestWaitMs >= this.config.circuitBreakerWaitMs) {
+      const retryAfter = Math.min(this.config.circuitBreakerWaitMs, 30_000)
+      throw new CommandLaneCircuitBreakerError(
+        `Circuit breaker: oldest entry wait ${oldestWaitMs}ms >= ${this.config.circuitBreakerWaitMs}ms`,
+        retryAfter,
+      )
+    }
+
     if (request.parentTaskId) {
       // Verify parent task exists in ledger (Issue 6)
       const parentTask = this.ledger.getTask(request.parentTaskId)
@@ -127,11 +167,12 @@ export class SpawnManager {
       outputPath: null,
     })
 
+    const now = Date.now()
     const timer = setTimeout(() => {
       this.handleTimeout(task.id)
     }, clampedTimeout * 1000)
 
-    this.activeSpawns.set(task.id, { taskId: task.id, timer })
+    this.activeSpawns.set(task.id, { taskId: task.id, timer, enqueuedAt: now })
 
     return { taskId: task.id, accepted: true }
   }
@@ -198,6 +239,18 @@ export class SpawnManager {
 
   getSpawnStatus(): { active: number; limit: number } {
     return { active: this.activeSpawns.size, limit: this.config.maxConcurrent }
+  }
+
+  /**
+   * Returns the age in ms of the oldest active spawn, or null if no active spawns.
+   */
+  private getOldestEntryWaitMs(): number | null {
+    if (this.activeSpawns.size === 0) return null
+    let oldest = Infinity
+    for (const spawn of this.activeSpawns.values()) {
+      if (spawn.enqueuedAt < oldest) oldest = spawn.enqueuedAt
+    }
+    return oldest === Infinity ? null : Date.now() - oldest
   }
 
   private getSpawnDepth(taskId: string): number {
