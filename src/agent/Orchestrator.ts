@@ -27,6 +27,7 @@ import { Watcher } from '../orchestration/watcher.js'
 import type { WatcherAlert } from '../orchestration/watcher.js'
 import {
   translateEvent, getAllAgentConfigs, toOpenClawKey, fromOpenClawKey,
+  resolveAgentMainSessionKey,
 } from '../openclaw/index.js'
 import { runBeforeToolCall, runAfterToolCall } from '../plugins/hook-registry.js'
 import type { OpenClawEvent, OpenClawAgentConfig } from '../openclaw/index.js'
@@ -583,7 +584,7 @@ export class Orchestrator {
     if (!parsed.success) return `Invalid input: ${parsed.error.message}`
 
     const startMs = Date.now()
-    const ctx = { agentId: task.id, toolName }
+    const ctx = { agentId: task.id, toolName, sessionKey: resolveAgentMainSessionKey(task.id) }
 
     // before_tool_call hook — can veto
     const veto = await runBeforeToolCall({ toolName, params: parsed.data }, ctx)
