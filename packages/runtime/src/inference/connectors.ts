@@ -186,8 +186,8 @@ const providerError = (input: {
 // before completion, FinalizationRegistry ensures the reader is cancelled and
 // released back to the connection pool, preventing socket leaks.
 // See: openclaw/openclaw#67461
-const streamFinalizationRegistry = new FinalizationRegistry<ReadableStreamDefaultReader>(
-  (reader) => {
+const streamFinalizationRegistry = new FinalizationRegistry<{ reader: ReadableStreamDefaultReader }>(
+  ({ reader }) => {
     reader.cancel().catch(() => { /* ignore cancel errors on already-resolved streams */ })
     reader.releaseLock()
   },
@@ -210,7 +210,7 @@ const collectChatStream = async function* (
   let yieldedDelta = false
 
   // Register reader with finalization registry as a safety net for abandoned streams
-  streamFinalizationRegistry.register(reader, reader)
+  streamFinalizationRegistry.register(reader, { reader })
 
   try {
     while (true) {
