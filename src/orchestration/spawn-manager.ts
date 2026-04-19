@@ -17,6 +17,7 @@ export interface SpawnResult {
   taskId: string
   accepted: boolean
   reason?: string
+  retryAfterMs?: number
 }
 
 export interface SpawnConfig {
@@ -99,20 +100,24 @@ export class SpawnManager {
     // Check depth first, then oldest-entry wait.
     const active = this.activeSpawns.size
     if (active >= this.config.circuitBreakerDepth) {
-      const retryAfter = Math.min(this.config.circuitBreakerWaitMs, 30_000)
-      throw new CommandLaneCircuitBreakerError(
-        `Circuit breaker: queue depth ${active} >= ${this.config.circuitBreakerDepth}`,
-        retryAfter,
-      )
+      const retryAfterMs = Math.min(this.config.circuitBreakerWaitMs, 30_000)
+      return {
+        taskId: '',
+        accepted: false,
+        reason: `Circuit breaker: queue depth ${active} >= ${this.config.circuitBreakerDepth}`,
+        retryAfterMs,
+      }
     }
 
     const oldestWaitMs = this.getOldestEntryWaitMs()
     if (oldestWaitMs !== null && oldestWaitMs >= this.config.circuitBreakerWaitMs) {
-      const retryAfter = Math.min(this.config.circuitBreakerWaitMs, 30_000)
-      throw new CommandLaneCircuitBreakerError(
-        `Circuit breaker: oldest entry wait ${oldestWaitMs}ms >= ${this.config.circuitBreakerWaitMs}ms`,
-        retryAfter,
-      )
+      const retryAfterMs = Math.min(this.config.circuitBreakerWaitMs, 30_000)
+      return {
+        taskId: '',
+        accepted: false,
+        reason: `Circuit breaker: oldest entry wait ${oldestWaitMs}ms >= ${this.config.circuitBreakerWaitMs}ms`,
+        retryAfterMs,
+      }
     }
 
     if (request.parentTaskId) {

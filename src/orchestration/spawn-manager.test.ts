@@ -57,18 +57,15 @@ test('SpawnManager: breaker triggers when queue depth >= circuitBreakerDepth', (
   // Now activeSpawns.size == 9, circuit breaker is armed
 
   // 10th task should trip the circuit breaker (9 >= 9 triggers check BEFORE queuing)
-  assert.throws(
-    () =>
-      manager.spawn({
-        parentTaskId: null,
-        role: 'researcher',
-        label: 'task-breaker',
-        toolScope: ['Bash'],
-        timeoutSeconds: 60,
-      }),
-    CommandLaneCircuitBreakerError,
-    '10th spawn should trip circuit breaker at depth >= 9',
-  )
+  const breakerResult = manager.spawn({
+    parentTaskId: null,
+    role: 'researcher',
+    label: 'task-breaker',
+    toolScope: ['Bash'],
+    timeoutSeconds: 100,
+  })
+  assert.equal(breakerResult.accepted, false, '10th spawn should trip circuit breaker at depth >= 9')
+  assert.equal(breakerResult.retryAfterMs, 30_000)
 })
 
 test('SpawnManager: breaker triggers when oldest entry wait >= circuitBreakerWaitMs', () => {
@@ -100,18 +97,15 @@ test('SpawnManager: breaker triggers when oldest entry wait >= circuitBreakerWai
   }
 
   // Next spawn should trip on wait threshold
-  assert.throws(
-    () =>
-      manager.spawn({
-        parentTaskId: null,
-        role: 'researcher',
-        label: 'new-task',
-        toolScope: ['Bash'],
-        timeoutSeconds: 60,
-      }),
-    CommandLaneCircuitBreakerError,
-    'spawn with old entry wait >= threshold should trip circuit breaker',
-  )
+  const breakerResult = manager.spawn({
+    parentTaskId: null,
+    role: 'researcher',
+    label: 'new-task',
+    toolScope: ['Bash'],
+    timeoutSeconds: 100,
+  })
+  assert.equal(breakerResult.accepted, false, 'spawn with old entry wait >= threshold should trip circuit breaker')
+  assert.equal(breakerResult.retryAfterMs, 30_000)
 })
 
 test('CommandLaneCircuitBreakerError has correct properties', () => {
