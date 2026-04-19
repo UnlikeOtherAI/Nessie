@@ -584,7 +584,9 @@ export class Orchestrator {
     if (!parsed.success) return `Invalid input: ${parsed.error.message}`
 
     const startMs = Date.now()
-    const ctx = { agentId: task.id, toolName, sessionKey: resolveAgentMainSessionKey(task.id) }
+    const ctx = { agentId: task.id, toolName,
+      sessionKey: resolveAgentMainSessionKey(task.id),
+    }
 
     // before_tool_call hook — can veto
     const veto = await runBeforeToolCall({ toolName, params: parsed.data }, ctx)
