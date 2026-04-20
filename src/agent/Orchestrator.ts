@@ -28,6 +28,8 @@ import type { WatcherAlert } from '../orchestration/watcher.js'
 import {
   translateEvent, getAllAgentConfigs, toOpenClawKey, fromOpenClawKey,
 } from '../openclaw/index.js'
+import { runBeforeToolCall, runAfterToolCall } from '../plugins/hook-registry.js'
+import type { BeforeToolCallContext } from '../plugins/hook-types.js'
 import type { OpenClawEvent, OpenClawAgentConfig } from '../openclaw/index.js'
 
 export class Orchestrator {
@@ -567,7 +569,6 @@ export class Orchestrator {
   }
 
   private async spawnSubAgent(task: SubAgentTask): Promise<string> {
-    const context = this.makeContext()
     const toolName = task.tools.includes('WebSearch') ? 'WebSearch' : 'Bash'
     const toolInput = toolName === 'WebSearch' ? { query: task.task } : { command: task.task }
     const toolUse: ToolUseBlock = { id: task.id, name: toolName, input: toolInput }
@@ -581,10 +582,35 @@ export class Orchestrator {
     const parsed = tool.inputSchema.safeParse(toolUse.input)
     if (!parsed.success) return `Invalid input: ${parsed.error.message}`
 
-    const result = await tool.call(parsed.data, context)
-    const data = JSON.stringify(result.data)
-    this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: result.data })
-    return data
+    // Build hook context
+    const ctx: BeforeToolCallContext = { agentId: task.agentId, sessionKey: task.id, toolName }
+
+    // ── before_tool_call hook (veto check) ───────────────────────────────────
+    const beforeResult = await runBeforeToolCall({ toolName, params: parsed.data, toolCallId: task.id }, ctx)
+    if (beforeResult.blocked) {
+      const reason = beforeResult.blockReason ?? 'Tool call blocked by plugin hook'
+      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: reason } })
+      // Fire after_tool_call with blocked=true (fire-and-forget)
+      void runAfterToolCall({ toolName, params: parsed.data, toolCallId: task.id, error: reason, blocked: true, blockReason: beforeResult.blockReason }, ctx)
+      return `Error: ${reason}`
+    }
+
+    const context = this.makeContext()
+    const startMs = Date.now()
+    try {
+      const result = await tool.call(beforeResult.params, context)
+      const data = JSON.stringify(result.data)
+      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: result.data })
+      // Fire after_tool_call with result (fire-and-forget)
+      void runAfterToolCall({ toolName, params: beforeResult.params, toolCallId: task.id, result: result.data, durationMs: Date.now() - startMs }, ctx)
+      return data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: msg } })
+      // Fire after_tool_call with error (fire-and-forget)
+      void runAfterToolCall({ toolName, params: beforeResult.params, toolCallId: task.id, error: msg, durationMs: Date.now() - startMs }, ctx)
+      return `Error: ${msg}`
+    }
   }
 
   private startWeatherSchedule(agentId: string, intervalMinutes: number) {

@@ -209,6 +209,17 @@ const providerError = (input: {
   )
 }
 
+// Safety net: if a streaming response is abandoned and the generator is GC'd
+// before completion, FinalizationRegistry ensures the reader is cancelled and
+// released back to the connection pool, preventing socket leaks.
+// See: openclaw/openclaw#67461
+const streamFinalizationRegistry = new FinalizationRegistry<ReadableStreamDefaultReader>(
+  (reader) => {
+    reader.cancel().catch(() => { /* ignore cancel errors on already-resolved streams */ })
+    reader.releaseLock()
+  },
+)
+
 const collectChatStream = async function* (
   response: Response,
 ): AsyncGenerator<ProviderStreamEvent, CapturedStreamResult, undefined> {
@@ -225,6 +236,9 @@ const collectChatStream = async function* (
   const toolCalls = new Map<number, { args: string; id: string; name: string }>()
   let usage: InvocationUsage = {}
   let yieldedDelta = false
+
+  // Register reader with finalization registry as a safety net for abandoned streams
+  streamFinalizationRegistry.register(reader, reader)
 
   try {
     while (true) {
@@ -320,6 +334,10 @@ const collectChatStream = async function* (
       }
     }
   } finally {
+    streamFinalizationRegistry.unregister(reader)
+    // Cancel the reader to release the underlying socket back to the pool.
+    // This is safe to call even if the stream is already done.
+    await reader.cancel().catch(() => { /* ignore cancel errors */ })
     reader.releaseLock()
   }
 
