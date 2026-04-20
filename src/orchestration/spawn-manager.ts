@@ -1,6 +1,8 @@
 import { TaskLedger } from './task-ledger.js'
 import type { TaskRole } from './task-types.js'
 import { TaskStatus, SpawnRequestSchema } from './task-types.js'
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { resolveNestedAgentLaneForSession, isNestedAgentLane, NESTED_LANE } from '../agent/lanes.js'
 
 export interface SpawnRequest {
   parentTaskId: string | null
@@ -9,6 +11,8 @@ export interface SpawnRequest {
   toolScope: string[]
   timeoutSeconds: number
   modelOverride?: string
+  /** Override lane for this spawn (e.g. from resolveNestedAgentLaneForSession). */
+  lane?: string
 }
 
 export { SpawnRequestSchema }
@@ -26,7 +30,7 @@ export interface SpawnConfig {
   maxConcurrent: number
   /** Queue depth threshold — circuit breaker trips when active spawns >= this. Default: 9. */
   circuitBreakerDepth: number
-  /** Oldest-entry wait threshold in ms — circuit breaker trips when oldest entry wait >= this. Default: 600_000 (10 min). */
+  /** Oldest-entry wait threshold in ms. Circuit breaker trips when oldest >= this (default: 10 min). */
   circuitBreakerWaitMs: number
 }
 
@@ -64,10 +68,14 @@ export class CommandLaneCircuitBreakerError extends Error {
 export class SpawnManager {
   private ledger: TaskLedger
   private config: SpawnConfig
-  // NOTE: activeSpawns is in-memory only. After a server restart, in-flight
-  // tasks lose their timers. Call hydrate() on startup to mark orphaned
-  // in-progress tasks as failed.
-  private activeSpawns = new Map<string, { taskId: string; timer: ReturnType<typeof setTimeout>; enqueuedAt: number }>()
+  // Per-lane active spawns: lane name → map of taskId → spawn entry.
+  // Allows nested-role tasks to run in parallel across different sessions
+  // while a single-lane role (e.g. researcher) respects its own maxConcurrent.
+  private laneStates = new Map<string, Map<string, {
+    taskId: string; timer: ReturnType<typeof setTimeout>; enqueuedAt: number
+  }>>()
+  // Maps taskId → lane name so handleTimeout / complete can clean up the right lane entry.
+  private taskLanes = new Map<string, string>()
   private onComplete: (taskId: string, result: AnnouncePayload) => void
 
   constructor(
@@ -95,16 +103,39 @@ export class SpawnManager {
     }
   }
 
+  /**
+   * Resolve the lane key for a spawn request. Uses the request's explicit `lane`
+   * field if provided; otherwise falls back to deriving a lane from the role via
+   * the lanes module.
+   */
+  private resolveLane(request: SpawnRequest): string {
+    if (request.lane) return request.lane
+    // Default: researcher role maps to the per-session nested lane so that
+    // long-running nested tasks don't block other sessions' nested work.
+    if (request.role === 'researcher') {
+      // For background/Cron sessions the lane resolver falls back to bare 'nested'.
+      return 'nested'
+    }
+    return request.role
+  }
+
+  /** Count active spawns for a given lane. */
+  private activeInLane(lane: string): number {
+    return this.laneStates.get(lane)?.size ?? 0
+  }
+
   spawn(request: SpawnRequest): SpawnResult {
-    // Circuit breaker: fail fast when queue is saturated to prevent wedging.
-    // Check depth first, then oldest-entry wait.
-    const active = this.activeSpawns.size
-    if (active >= this.config.circuitBreakerDepth) {
+    const lane = this.resolveLane(request)
+
+    // Circuit breaker: fail fast when the GLOBAL queue is saturated.
+    // This is a system-wide guard, not per-lane.
+    const totalActive = Array.from(this.laneStates.values()).reduce((s, m) => s + m.size, 0)
+    if (totalActive >= this.config.circuitBreakerDepth) {
       const retryAfterMs = Math.min(this.config.circuitBreakerWaitMs, 30_000)
       return {
         taskId: '',
         accepted: false,
-        reason: `Circuit breaker: queue depth ${active} >= ${this.config.circuitBreakerDepth}`,
+        reason: `Circuit breaker: queue depth ${totalActive} >= ${this.config.circuitBreakerDepth}`,
         retryAfterMs,
       }
     }
@@ -121,7 +152,6 @@ export class SpawnManager {
     }
 
     if (request.parentTaskId) {
-      // Verify parent task exists in ledger (Issue 6)
       const parentTask = this.ledger.getTask(request.parentTaskId)
       if (!parentTask) {
         return {
@@ -150,15 +180,16 @@ export class SpawnManager {
       }
     }
 
-    if (this.activeSpawns.size >= this.config.maxConcurrent) {
+    // Per-lane maxConcurrent: each lane gets its own concurrency allowance.
+    // e.g. 'researcher' lane won't block 'nested:sess:abc' lane.
+    if (this.activeInLane(lane) >= this.config.maxConcurrent) {
       return {
         taskId: '',
         accepted: false,
-        reason: `Max concurrent spawns (${this.config.maxConcurrent}) reached`,
+        reason: `Max concurrent spawns for lane '${lane}' (${this.config.maxConcurrent}) reached`,
       }
     }
 
-    // Clamp timeoutSeconds to [1, 3600]
     const clampedTimeout = Math.max(1, Math.min(3600, request.timeoutSeconds))
 
     const task = this.ledger.createTask({
@@ -174,23 +205,27 @@ export class SpawnManager {
 
     const now = Date.now()
     const timer = setTimeout(() => {
-      this.handleTimeout(task.id)
+      this.handleTimeout(task.id, lane)
     }, clampedTimeout * 1000)
 
-    this.activeSpawns.set(task.id, { taskId: task.id, timer, enqueuedAt: now })
+    if (!this.laneStates.has(lane)) this.laneStates.set(lane, new Map())
+    this.laneStates.get(lane)!.set(task.id, { taskId: task.id, timer, enqueuedAt: now })
 
     return { taskId: task.id, accepted: true }
   }
 
   complete(taskId: string, success: boolean, result: string, toolCallCount: number): void {
-    const spawn = this.activeSpawns.get(taskId)
+    const lane = this.taskLanes.get(taskId)
+    const laneMap = lane ? this.laneStates.get(lane) : undefined
+    const spawn = laneMap?.get(taskId)
     if (!spawn) return
 
     clearTimeout(spawn.timer)
 
     const task = this.ledger.getTask(taskId)
     if (!task) {
-      this.activeSpawns.delete(taskId)
+      if (laneMap) laneMap.delete(taskId)
+      this.taskLanes.delete(taskId)
       return
     }
 
@@ -205,21 +240,23 @@ export class SpawnManager {
       toolCallCount,
     }
 
-    // Run callback before deleting spawn so the task is still tracked if callback throws
     try {
       this.onComplete(taskId, payload)
     } finally {
-      this.activeSpawns.delete(taskId)
+      if (laneMap) laneMap.delete(taskId)
+      this.taskLanes.delete(taskId)
     }
   }
 
-  private handleTimeout(taskId: string): void {
-    const spawn = this.activeSpawns.get(taskId)
+  private handleTimeout(taskId: string, lane: string): void {
+    const laneMap = this.laneStates.get(lane)
+    const spawn = laneMap?.get(taskId)
     if (!spawn) return
 
     const task = this.ledger.getTask(taskId)
     if (!task) {
-      this.activeSpawns.delete(taskId)
+      if (laneMap) laneMap.delete(taskId)
+      this.taskLanes.delete(taskId)
       return
     }
 
@@ -234,26 +271,28 @@ export class SpawnManager {
       toolCallCount: 0,
     }
 
-    // Run callback before deleting spawn so the task is still tracked if callback throws
     try {
       this.onComplete(taskId, payload)
     } finally {
-      this.activeSpawns.delete(taskId)
+      if (laneMap) laneMap.delete(taskId)
+      this.taskLanes.delete(taskId)
     }
   }
 
   getSpawnStatus(): { active: number; limit: number } {
-    return { active: this.activeSpawns.size, limit: this.config.maxConcurrent }
+    const totalActive = Array.from(this.laneStates.values()).reduce((s, m) => s + m.size, 0)
+    return { active: totalActive, limit: this.config.maxConcurrent }
   }
 
   /**
-   * Returns the age in ms of the oldest active spawn, or null if no active spawns.
+   * Returns the age in ms of the oldest active spawn across all lanes, or null if no active spawns.
    */
   private getOldestEntryWaitMs(): number | null {
-    if (this.activeSpawns.size === 0) return null
     let oldest = Infinity
-    for (const spawn of this.activeSpawns.values()) {
-      if (spawn.enqueuedAt < oldest) oldest = spawn.enqueuedAt
+    for (const laneMap of this.laneStates.values()) {
+      for (const spawn of laneMap.values()) {
+        if (spawn.enqueuedAt < oldest) oldest = spawn.enqueuedAt
+      }
     }
     return oldest === Infinity ? null : Date.now() - oldest
   }
@@ -271,9 +310,12 @@ export class SpawnManager {
   }
 
   close(): void {
-    for (const spawn of this.activeSpawns.values()) {
-      clearTimeout(spawn.timer)
+    for (const laneMap of this.laneStates.values()) {
+      for (const spawn of laneMap.values()) {
+        clearTimeout(spawn.timer)
+      }
     }
-    this.activeSpawns.clear()
+    this.laneStates.clear()
+    this.taskLanes.clear()
   }
 }
