@@ -76,6 +76,8 @@ export const createMailboxMessage = async (
   prisma: PrismaClient,
   organizationId: string,
   input: {
+    actorId?: string
+    actorType?: 'agent' | 'service' | 'user'
     body: string
     channelId?: string
     correlationId?: string
@@ -122,6 +124,8 @@ export const createMailboxMessage = async (
         planStepId: input.planStepId,
         workflowRunId: input.workflowRunId,
         workflowStepRunId: input.workflowStepRunId,
+        actorId: input.actorId,
+        actorType: input.actorType,
         fromAgentId: input.fromAgentId,
         toAgentId: input.toAgentId,
         channelId: resolvedChannelId,

@@ -6,7 +6,7 @@ This document serves as the foundation for the agent system. Any new agent type 
 
 Related documents:
 - [the-agents.md](the-agents.md) — canonical reference for agent architecture, execution, skills, and roadmap
-- [multi-agent-memory-system.md](multi-agent-memory-system.md) — memory types, retrieval, self-eval
+- [multi-agent-memory-system.md](done/multi-agent-memory-system.md) — memory types, retrieval, self-eval
 - [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md) — external identity (email, VOIP, WhatsApp, SMS)
 
 ---
@@ -44,7 +44,7 @@ The LLM that powers decision-making:
 
 ### Memory
 
-Persistent context across runs (see [multi-agent-memory-system.md](multi-agent-memory-system.md)):
+Persistent context across runs (see [multi-agent-memory-system.md](done/multi-agent-memory-system.md)):
 - **Working memory** — current context window (implicit, not stored)
 - **Semantic memory** — facts, decisions, knowledge (pgvector embeddings)
 - **Reasoning memory** — why decisions were made (structured records)

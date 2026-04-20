@@ -1,15 +1,40 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AgentActivityPanel } from '../components/features/agents/AgentActivityPanel';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
+import {
+  PersonalAssistantSidebarEntry,
+} from '../components/features/personal-assistant/PersonalAssistantSurface';
 import { PresenceDot } from '../components/primitives/PresenceDot';
 import { CreateChannelDialog } from '../components/shared/CreateChannelDialog';
+import { CreateProjectDialog } from '../components/shared/CreateProjectDialog';
+import { RenameProjectDialog } from '../components/shared/RenameProjectDialog';
 import { useAgentRealtime, useAgents } from '../facades/agents/hooks';
-import { useChannels } from '../facades/channels/hooks';
+import { useChannels, useOpenDm } from '../facades/channels/hooks';
+import {
+  isPersonalAssistantChannel,
+  usePersonalAssistantBootstrap,
+} from '../facades/personal-assistant/hooks';
+import { useProjects, useTeams } from '../facades/projects/hooks';
 import { useUsers } from '../facades/users/hooks';
-import type { AgentRecord } from '../lib/api-client';
+import type { AgentRecord, ChannelRecord, ProjectRecord } from '../lib/api-client';
 import { getCookie, setCookie } from '../lib/storage';
 import { useAuthSession } from '../providers/AuthSessionProvider';
+
+type StarredItem = { type: 'channel' | 'project' | 'user'; id: string };
+type SidebarProject = ProjectRecord & { channels: ChannelRecord[] };
+type CreateChannelTarget = { projectName?: string; teamId?: string };
+type RenameProjectTarget = { id: string; name: string };
+type SidebarMenu =
+  | { type: 'channels' }
+  | { type: 'project'; projectId: string }
+  | null;
+type VisibleStarredEntry =
+  | { type: 'channel'; channel: ChannelRecord }
+  | { type: 'project'; channels: ChannelRecord[]; project: SidebarProject; starred: boolean }
+  | { type: 'user'; person: { dmChannelId?: string; id: string; label: string; style: CSSProperties } };
+
+const DEFAULT_BOOTSTRAP_PROJECT_ID = '00000000-0000-4000-8000-000000000002';
 
 const parseChannelIdFromPath = (pathname: string): string | undefined => {
   const match = pathname.match(/^\/channels(?:\/([^/]+))?$/);
@@ -42,8 +67,11 @@ const getDmStyle = (index: number) => ({
   background: dmGradients[index % dmGradients.length],
 });
 
+const renderUnreadCount = (count: number) =>
+  count > 0 ? <span className={unreadCountClassName}>{count}</span> : null;
+
 export type AdminShellOutletContext = {
-  onCreateChannel: () => void;
+  onCreateChannel: (target?: CreateChannelTarget) => void;
   onSelectAgent: (agentId: string) => void;
   scopedAgents: AgentRecord[];
 };
@@ -53,21 +81,34 @@ export const AdminShellLayout = () => {
   const navigate = useNavigate();
   const { logout, me, sessionState, token } = useAuthSession();
   const { data: channels = [] } = useChannels();
+  const { data: projects = [] } = useProjects();
+  const { data: teams = [] } = useTeams();
   const { data: agents = [] } = useAgents();
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
-  const isTriggersRoute = location.pathname.startsWith('/triggers');
-  const isWorkflowsRoute = location.pathname.startsWith('/workflows');
   const currentChannelId = parseChannelIdFromPath(location.pathname);
+  const personalAssistantChannel = useMemo(
+    () => channels.find(isPersonalAssistantChannel) ?? null,
+    [channels],
+  );
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
+    channelIds: personalAssistantChannel ? [personalAssistantChannel.id] : [],
     threadId: currentChannelId
       ? channels.find((channel) => channel.id === currentChannelId)?.defaultThreadId
       : undefined,
   });
+  const openDm = useOpenDm();
+  const activeDmChannel = currentChannelId
+      ? channels.find((c) => c.id === currentChannelId && c.type === 'dm')
+    : undefined;
+  const personalAssistantBootstrap = usePersonalAssistantBootstrap();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [createChannelOpen, setCreateChannelOpen] = useState(false);
+  const [createChannelTarget, setCreateChannelTarget] = useState<CreateChannelTarget | null>(null);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [renameProjectTarget, setRenameProjectTarget] = useState<RenameProjectTarget | null>(null);
+  const [sidebarMenu, setSidebarMenu] = useState<SidebarMenu>(null);
   const [channelsCollapsed, setChannelsCollapsed] = useState(
     () => getCookie('channelsCollapsed') === '1',
   );
@@ -75,12 +116,70 @@ export const AdminShellLayout = () => {
     () => getCookie('starredCollapsed') === '1',
   );
   const [dmCollapsed, setDmCollapsed] = useState(() => getCookie('dmCollapsed') === '1');
-  const [starred, setStarred] = useState<Array<{ type: 'channel' | 'user'; id: string }>>(
+  const [starred, setStarred] = useState<StarredItem[]>(
     () => me?.user.preferences?.starred ?? [],
   );
+  const unreadCountByChannelId = useMemo(
+    () => new Map(channels.map((channel) => [channel.id, channel.unreadCount])),
+    [channels],
+  );
+  const standardChannels = useMemo(
+    () => channels.filter((channel) => channel.type !== 'dm'),
+    [channels],
+  );
+  const currentProjectId = useMemo(
+    () => standardChannels.find((channel) => channel.id === currentChannelId)?.projectId,
+    [currentChannelId, standardChannels],
+  );
+  const sidebarProjects = useMemo<SidebarProject[]>(() => {
+    const channelsByProject = new Map<string, ChannelRecord[]>();
+    const projectById = new Map<string, ProjectRecord>();
 
-  const openCreateChannel = useCallback(() => setCreateChannelOpen(true), []);
-  const closeCreateChannel = useCallback(() => setCreateChannelOpen(false), []);
+    for (const project of projects) {
+      projectById.set(project.id, project);
+    }
+
+    for (const channel of standardChannels) {
+      const projectChannels = channelsByProject.get(channel.projectId) ?? [];
+      projectChannels.push(channel);
+      channelsByProject.set(channel.projectId, projectChannels);
+
+      if (!projectById.has(channel.projectId)) {
+        projectById.set(channel.projectId, {
+          createdAt: channel.createdAt,
+          id: channel.projectId,
+          memberCount: 0,
+          name: channel.projectName,
+          organizationId: channel.organizationId,
+        });
+      }
+    }
+
+    return Array.from(projectById.values())
+      .map((project) => ({
+        ...project,
+        channels: (channelsByProject.get(project.id) ?? [])
+          .slice()
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
+      }))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }, [projects, standardChannels]);
+
+  const openCreateChannel = useCallback((target?: CreateChannelTarget) => {
+    setSidebarMenu(null);
+    setCreateChannelTarget(target ?? {});
+  }, []);
+  const closeCreateChannel = useCallback(() => setCreateChannelTarget(null), []);
+  const openCreateProject = useCallback(() => {
+    setSidebarMenu(null);
+    setCreateProjectOpen(true);
+  }, []);
+  const closeCreateProject = useCallback(() => setCreateProjectOpen(false), []);
+  const openRenameProject = useCallback((target: RenameProjectTarget) => {
+    setSidebarMenu(null);
+    setRenameProjectTarget(target);
+  }, []);
+  const closeRenameProject = useCallback(() => setRenameProjectTarget(null), []);
 
   const toggleChannelsCollapsed = useCallback(() => {
     setChannelsCollapsed((prev) => {
@@ -108,9 +207,75 @@ export const AdminShellLayout = () => {
 
   useEffect(() => {
     setStarred(me?.user.preferences?.starred ?? []);
-  }, [me?.user.id]);
+  }, [me?.user.preferences?.starred]);
 
-  const toggleStar = useCallback((type: 'channel' | 'user', id: string) => {
+  const starredChannelIds = useMemo(
+    () => new Set(starred.filter((item) => item.type === 'channel').map((item) => item.id)),
+    [starred],
+  );
+  const starredProjectIds = useMemo(
+    () => new Set(starred.filter((item) => item.type === 'project').map((item) => item.id)),
+    [starred],
+  );
+  const starredUserIds = useMemo(
+    () => new Set(starred.filter((item) => item.type === 'user').map((item) => item.id)),
+    [starred],
+  );
+  const channelById = useMemo(
+    () => new Map(channels.map((channel) => [channel.id, channel])),
+    [channels],
+  );
+  const projectById = useMemo(
+    () => new Map(sidebarProjects.map((project) => [project.id, project])),
+    [sidebarProjects],
+  );
+  const teamIdByProjectId = useMemo(() => {
+    const result = new Map<string, string>();
+
+    for (const team of teams) {
+      if (!result.has(team.projectId)) {
+        result.set(team.projectId, team.id);
+      }
+    }
+
+    for (const channel of standardChannels) {
+      if (!result.has(channel.projectId)) {
+        result.set(channel.projectId, channel.teamId);
+      }
+    }
+
+    return result;
+  }, [standardChannels, teams]);
+  const defaultProjectChannels = useMemo(
+    () =>
+      sidebarProjects.find((project) => project.id === DEFAULT_BOOTSTRAP_PROJECT_ID)?.channels.filter(
+        (channel) => !starredChannelIds.has(channel.id),
+      ) ?? [],
+    [sidebarProjects, starredChannelIds],
+  );
+  const defaultProjectTeamId = useMemo(
+    () =>
+      teamIdByProjectId.get(DEFAULT_BOOTSTRAP_PROJECT_ID)
+      ?? standardChannels.find((channel) => channel.projectId === DEFAULT_BOOTSTRAP_PROJECT_ID)
+        ?.teamId,
+    [standardChannels, teamIdByProjectId],
+  );
+  const visibleSidebarProjects = useMemo(
+    () =>
+      sidebarProjects
+        .filter(
+          (project) =>
+            project.id !== DEFAULT_BOOTSTRAP_PROJECT_ID && !starredProjectIds.has(project.id),
+        )
+        .map((project) => ({
+          ...project,
+          channels: project.channels.filter((channel) => !starredChannelIds.has(channel.id)),
+        }))
+        .filter((project) => project.channels.length > 0 || projectById.get(project.id)?.channels.length === 0),
+    [projectById, sidebarProjects, starredChannelIds, starredProjectIds],
+  );
+
+  const toggleStar = useCallback((type: StarredItem['type'], id: string) => {
     setStarred((prev) => {
       const exists = prev.some((s) => s.type === type && s.id === id);
       const next = exists
@@ -128,6 +293,11 @@ export const AdminShellLayout = () => {
     });
   }, [token]);
 
+  const navigateToProject = useCallback((projectId: string) => {
+    const firstChannel = standardChannels.find((channel) => channel.projectId === projectId);
+    void navigate(firstChannel ? `/channels/${firstChannel.id}` : '/channels');
+  }, [navigate, standardChannels]);
+
   const scopedAgents = agents;
 
   const selectedAgent = useMemo(
@@ -143,16 +313,37 @@ export const AdminShellLayout = () => {
     setSelectedAgentId(null);
   };
 
+  const navigateToDm = useCallback((userId: string) => {
+    const targetUser = users.find((u) => u.id === userId);
+    if (targetUser) {
+      const dmChannel = channels.find(
+        (c) => c.type === 'dm' && targetUser.channelIds.includes(c.id),
+      );
+      if (dmChannel) {
+        void navigate(`/channels/${dmChannel.id}`);
+        return;
+      }
+    }
+    openDm.mutate(userId, {
+      onSuccess: (channel) => {
+        void navigate(`/channels/${channel.id}`);
+      },
+    });
+  }, [channels, navigate, openDm, users]);
+
   const sidebarPeople = useMemo(() => {
     if (!me) {
       return [];
     }
 
-    if (users.length > 0) {
-      return users.slice(0, 4).map((user, index) => ({
+    const otherUsers = users.filter((u) => u.id !== me.user.id);
+
+    if (otherUsers.length > 0) {
+      return otherUsers.slice(0, 4).map((user, index) => ({
         id: user.id,
         label: user.displayName,
         style: getDmStyle(index),
+        dmChannelId: channels.find((c) => c.type === 'dm' && user.channelIds.includes(c.id))?.id,
       }));
     }
 
@@ -161,9 +352,96 @@ export const AdminShellLayout = () => {
         id: me.user.id,
         label: me.user.displayName,
         style: getDmStyle(0),
+        dmChannelId: undefined,
       },
     ];
-  }, [me, users]);
+  }, [me, users, channels]);
+
+  const visibleStarredEntries = useMemo<VisibleStarredEntry[]>(() => {
+    const entries: VisibleStarredEntry[] = [];
+    const projectEntryById = new Map<string, Extract<VisibleStarredEntry, { type: 'project' }>>();
+
+    const addProjectEntry = (
+      project: SidebarProject,
+      channelsToShow: ChannelRecord[],
+      starredProject: boolean,
+    ) => {
+      const existing = projectEntryById.get(project.id);
+      if (existing) {
+        if (starredProject) {
+          existing.channels = channelsToShow;
+          existing.starred = true;
+          return;
+        }
+
+        const existingChannelIds = new Set(existing.channels.map((channel) => channel.id));
+        existing.channels = [
+          ...existing.channels,
+          ...channelsToShow.filter((channel) => !existingChannelIds.has(channel.id)),
+        ];
+        return;
+      }
+
+      const entry: Extract<VisibleStarredEntry, { type: 'project' }> = {
+        channels: channelsToShow,
+        project,
+        starred: starredProject,
+        type: 'project',
+      };
+      projectEntryById.set(project.id, entry);
+      entries.push(entry);
+    };
+
+    for (const item of starred) {
+      if (item.type === 'project') {
+        if (item.id === DEFAULT_BOOTSTRAP_PROJECT_ID) continue;
+        const project = projectById.get(item.id);
+        if (project) {
+          addProjectEntry(project, project.channels, true);
+        }
+        continue;
+      }
+
+      if (item.type === 'channel') {
+        const channel = channelById.get(item.id);
+        if (!channel) continue;
+
+        if (channel.projectId === DEFAULT_BOOTSTRAP_PROJECT_ID) {
+          entries.push({ channel, type: 'channel' });
+          continue;
+        }
+
+        if (starredProjectIds.has(channel.projectId)) continue;
+
+        const project = projectById.get(channel.projectId);
+        if (project) {
+          addProjectEntry(project, [channel], false);
+        }
+        continue;
+      }
+
+      const person = sidebarPeople.find((candidate) => candidate.id === item.id);
+      if (person) {
+        entries.push({ person, type: 'user' });
+      }
+    }
+
+    return entries;
+  }, [channelById, projectById, sidebarPeople, starred, starredProjectIds]);
+
+  const openPersonalAssistant = useCallback(async () => {
+    if (personalAssistantChannel) {
+      void navigate(`/channels/${personalAssistantChannel.id}`);
+      return;
+    }
+
+    try {
+      const response = await personalAssistantBootstrap.mutateAsync();
+      void navigate(`/channels/${response.channel.id}`);
+    } catch {
+      // The backend can still be bootstrapped independently; keep the rail stable.
+    }
+  }, [navigate, personalAssistantBootstrap, personalAssistantChannel]);
 
   useEffect(() => {
     setSelectedAgentId(null);
@@ -281,70 +559,7 @@ export const AdminShellLayout = () => {
             <span className="admin-rail-btn-label">Agents</span>
           </Link>
 
-          <Link
-            className={`admin-rail-btn ${isTriggersRoute ? 'active' : ''}`}
-            to="/triggers"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="M12 4v6" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M12 16v4" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M20 12h-4" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M8 12H4" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="12" cy="12" r="3.5" />
-            </svg>
-            <span className="admin-rail-btn-label">Triggers</span>
-          </Link>
-
-          <Link
-            className={`admin-rail-btn ${isWorkflowsRoute ? 'active' : ''}`}
-            to="/workflows"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <rect height="4" rx="1" width="6" x="4" y="4" />
-              <rect height="4" rx="1" width="6" x="14" y="10" />
-              <rect height="4" rx="1" width="6" x="4" y="16" />
-              <path
-                d="M10 6h2a2 2 0 012 2v4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M14 12h-2a2 2 0 00-2 2v4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="admin-rail-btn-label">Workflows</span>
-          </Link>
-
-          <button
-            className="admin-rail-btn"
-            onClick={() => void navigate('/settings#activity')}
-            type="button"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="admin-rail-btn-label">Activity</span>
-          </button>
+          <div className="my-2 h-px w-8 bg-white/15" />
 
           <Link
             className={`admin-rail-btn ${location.pathname.startsWith('/settings') ? 'active' : ''}`}
@@ -499,6 +714,96 @@ export const AdminShellLayout = () => {
           </button>
         </aside>
 
+        {isAgentsRoute && (
+          <aside
+            className={[
+              'hidden h-full w-[220px] flex-col overflow-hidden',
+              'border-r border-[color:var(--sep)] bg-[color:var(--sb)] md:flex',
+            ].join(' ')}
+          >
+            <div className="flex h-[50px] items-center px-4">
+              <span className="text-[15px] font-bold text-white">Agents</span>
+            </div>
+            <nav className="flex flex-1 flex-col gap-0.5 px-2 py-1">
+              {[
+                {
+                  path: '/agents',
+                  label: 'Agents',
+                  exact: true,
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <circle cx="12" cy="8" r="4" />
+                      <path d="M4 20c0-4 3.582-7 8-7s8 3 8 7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+                {
+                  path: '/agents/workflows',
+                  label: 'Workflows',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <rect height="4" rx="1" width="6" x="4" y="4" />
+                      <rect height="4" rx="1" width="6" x="14" y="10" />
+                      <rect height="4" rx="1" width="6" x="4" y="16" />
+                      <path d="M10 6h2a2 2 0 012 2v4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M14 12h-2a2 2 0 00-2 2v4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+                {
+                  path: '/agents/triggers',
+                  label: 'Triggers',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path d="M12 4v6" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M12 16v4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M20 12h-4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M8 12H4" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="12" cy="12" r="3.5" />
+                    </svg>
+                  ),
+                },
+                {
+                  path: '/agents/tools',
+                  label: 'Tools',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path d="M14.7 6.3a4 4 0 105 5l-6.9 6.9a2 2 0 11-2.8-2.8l6.9-6.9a4 4 0 00-2.2-2.2z" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M7 17l-1.5 1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+                {
+                  path: '/agents/activity',
+                  label: 'Activity',
+                  icon: (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ),
+                },
+              ].map((item) => {
+                const isActive = item.exact
+                  ? location.pathname === item.path
+                  : location.pathname.startsWith(item.path);
+                return (
+                  <Link
+                    key={item.path}
+                    className={[
+                      'admin-sb-item flex items-center gap-2.5 px-3 py-2 text-[13px]',
+                      isActive ? 'active' : '',
+                    ].join(' ')}
+                    to={item.path}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </aside>
+        )}
+
         {!isAgentsRoute && (
           <aside
             className={[
@@ -553,7 +858,7 @@ export const AdminShellLayout = () => {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto py-1">
-              {starred.length > 0 && (
+              {visibleStarredEntries.length > 0 && (
                 <>
                   <button
                     className="admin-sec-hdr"
@@ -579,34 +884,29 @@ export const AdminShellLayout = () => {
                       strokeWidth="2"
                       viewBox="0 0 24 24"
                     >
-                      <polygon
-                        points="12 2 15.09 8.26 22 9.27 17 14.14
-                          18.18 21.02 12 17.77 5.82 21.02 7 14.14
-                          2 9.27 8.91 8.26 12 2"
-                      />
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                     </svg>
                     Starred
                   </button>
                   {!starredCollapsed &&
-                    starred.map((item) => {
+                    visibleStarredEntries.map((item) => {
                       if (item.type === 'channel') {
-                        const channel = channels.find((c) => c.id === item.id);
-                        if (!channel) return null;
+                        const { channel } = item;
                         return (
                           <button
-                            key={`starred-ch-${item.id}`}
+                            key={`starred-ch-${channel.id}`}
                             className={`admin-sb-item group ${channel.id === currentChannelId ? 'active' : ''}`}
                             onClick={() => void navigate(`/channels/${channel.id}`)}
                             type="button"
                           >
                             <span className={channelHashClassName}>#</span>
                             <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+                            {renderUnreadCount(channel.unreadCount)}
                             <span
-                              className="ml-auto flex-shrink-0 cursor-pointer px-0.5
-                                text-sm leading-none text-yellow-400"
+                              className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleStar('channel', item.id);
+                                toggleStar('channel', channel.id);
                               }}
                             >
                               ★
@@ -614,22 +914,97 @@ export const AdminShellLayout = () => {
                           </button>
                         );
                       }
-                      const person = sidebarPeople.find((p) => p.id === item.id);
-                      if (!person) return null;
+                      if (item.type === 'project') {
+                        const { channels: starredProjectChannels, project } = item;
+                        const unreadCount = starredProjectChannels.reduce(
+                          (total, channel) => total + channel.unreadCount,
+                          0,
+                        );
+                        return (
+                          <div key={`starred-prj-${project.id}`} className="mt-1">
+                            <button
+                              className={[
+                                'admin-sb-item group font-semibold',
+                                project.id === currentProjectId ? 'active-parent' : '',
+                              ].join(' ')}
+                              onClick={() => navigateToProject(project.id)}
+                              type="button"
+                            >
+                              <svg
+                                className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                              <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                              {renderUnreadCount(unreadCount)}
+                              {item.starred ? (
+                                <span
+                                  className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleStar('project', project.id);
+                                  }}
+                                >
+                                  ★
+                                </span>
+                              ) : null}
+                            </button>
+
+                            {starredProjectChannels.map((channel) => (
+                              <button
+                                key={`starred-prj-${project.id}-ch-${channel.id}`}
+                                className={[
+                                  'admin-sb-item sidebar-child group',
+                                  channel.id === currentChannelId ? 'active' : '',
+                                ].join(' ')}
+                                onClick={() => void navigate(`/channels/${channel.id}`)}
+                                type="button"
+                              >
+                                <span className={channelHashClassName}>#</span>
+                                <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+                                {renderUnreadCount(channel.unreadCount)}
+                                <span
+                                  className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleStar('channel', channel.id);
+                                  }}
+                                >
+                                  ★
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      }
+                      const { person } = item;
                       return (
                         <button
-                          key={`starred-usr-${item.id}`}
-                          className="admin-sb-item group"
-                          onClick={() => void navigate('/settings#users')}
+                          key={`starred-usr-${person.id}`}
+                          className={`admin-sb-item group ${person.dmChannelId && activeDmChannel?.id === person.dmChannelId ? 'active' : ''}`}
+                          onClick={() => navigateToDm(person.id)}
                           type="button"
                         >
                           <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
                           <span className="min-w-0 flex-1 truncate text-sm">{person.label}</span>
+                          {renderUnreadCount(
+                            person.dmChannelId
+                              ? unreadCountByChannelId.get(person.dmChannelId) ?? 0
+                              : 0,
+                          )}
                           <span
-                            className="ml-auto flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                            className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleStar('user', item.id);
+                              toggleStar('user', person.id);
                             }}
                           >
                             ★
@@ -640,47 +1015,74 @@ export const AdminShellLayout = () => {
                 </>
               )}
 
-              <button
-                className="admin-sec-hdr"
-                onClick={toggleChannelsCollapsed}
-                type="button"
-              >
-                <svg
-                  className={[
-                    'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-                    channelsCollapsed ? '-rotate-90' : '',
-                  ].join(' ')}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  viewBox="0 0 24 24"
+              <div className="admin-sec-row">
+                <button
+                  className="admin-sec-hdr"
+                  onClick={toggleChannelsCollapsed}
+                  type="button"
                 >
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Channels
-              </button>
+                  <svg
+                    className={[
+                      'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                      channelsCollapsed ? '-rotate-90' : '',
+                    ].join(' ')}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Channels
+                </button>
+                <div className="relative">
+                  <button
+                    aria-label="Add channel or project"
+                    className="admin-sidebar-plus"
+                    onClick={() =>
+                      setSidebarMenu((current) => (current?.type === 'channels' ? null : { type: 'channels' }))
+                    }
+                    type="button"
+                  >
+                    +
+                  </button>
+                  {sidebarMenu?.type === 'channels' ? (
+                    <div className="admin-sidebar-menu">
+                      <button
+                        onClick={() =>
+                          openCreateChannel({
+                            teamId: defaultProjectTeamId,
+                          })
+                        }
+                        type="button"
+                      >
+                        Create new channel
+                      </button>
+                      <button onClick={openCreateProject} type="button">
+                        Create new project
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
 
               {!channelsCollapsed && (
                 <>
-                  {channels.map((channel) => {
-                    const isStarredChannel = starred.some(
-                      (s) => s.type === 'channel' && s.id === channel.id,
-                    );
-                    const agentCount = agents.filter((a) =>
-                      a.channelIds.includes(channel.id),
-                    ).length;
+                  {defaultProjectChannels.map((channel) => {
+                    const isStarredChannel = starredChannelIds.has(channel.id);
                     return (
                       <button
                         key={channel.id}
-                        className={`admin-sb-item group ${channel.id === currentChannelId ? 'active' : ''}`}
+                        className={[
+                          'admin-sb-item group',
+                          channel.id === currentChannelId ? 'active' : '',
+                        ].join(' ')}
                         onClick={() => void navigate(`/channels/${channel.id}`)}
                         type="button"
                       >
                         <span className={channelHashClassName}>#</span>
                         <span className="min-w-0 flex-1 truncate">{channel.label}</span>
-                        {channel.id === currentChannelId && agentCount > 0 ? (
-                          <span className={unreadCountClassName}>{agentCount}</span>
-                        ) : null}
+                        {renderUnreadCount(channel.unreadCount)}
                         <span
                           className={[
                             'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
@@ -699,60 +1101,192 @@ export const AdminShellLayout = () => {
                     );
                   })}
 
-                  <button
-                    className="admin-sb-item text-[color:var(--tx3)]"
-                    onClick={openCreateChannel}
-                    type="button"
-                  >
-                    <svg
-                      className="h-4 w-4 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    Create channel
-                  </button>
+                  {visibleSidebarProjects.map((project) => {
+                    const isStarredProject = starredProjectIds.has(project.id);
+                    const projectUnreadCount = project.channels.reduce(
+                      (total, channel) => total + channel.unreadCount,
+                      0,
+                    );
+
+                    return (
+                      <div key={project.id} className="mt-1">
+                        <button
+                          className={[
+                            'admin-sb-item group font-semibold',
+                            project.id === currentProjectId ? 'active-parent' : '',
+                          ].join(' ')}
+                          onClick={() => navigateToProject(project.id)}
+                          type="button"
+                        >
+                          <svg
+                            className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                          {renderUnreadCount(projectUnreadCount)}
+                          <span
+                            className={[
+                              'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+                              isStarredProject
+                                ? 'ml-1 text-yellow-400 opacity-100'
+                                : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+                            ].join(' ')}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleStar('project', project.id);
+                            }}
+                          >
+                            {isStarredProject ? '★' : '☆'}
+                          </span>
+                          <span className="relative ml-1 flex-shrink-0">
+                            <span
+                              aria-label={`Project actions for ${project.name}`}
+                              className="admin-sidebar-more"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSidebarMenu((current) =>
+                                  current?.type === 'project' && current.projectId === project.id
+                                    ? null
+                                    : { projectId: project.id, type: 'project' },
+                                );
+                              }}
+                              role="button"
+                              tabIndex={0}
+                            >
+                              ⋯
+                            </span>
+                            {sidebarMenu?.type === 'project' && sidebarMenu.projectId === project.id ? (
+                              <span className="admin-sidebar-menu admin-sidebar-menu-project">
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openCreateChannel({
+                                      projectName: project.name,
+                                      teamId: teamIdByProjectId.get(project.id),
+                                    });
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  Add new channel within project
+                                </span>
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openRenameProject({ id: project.id, name: project.name });
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  Rename project
+                                </span>
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+
+                        {project.channels.map((channel) => {
+                          const isStarredChannel = starredChannelIds.has(channel.id);
+                          return (
+                            <button
+                              key={channel.id}
+                              className={[
+                                'admin-sb-item sidebar-child group',
+                                channel.id === currentChannelId ? 'active' : '',
+                              ].join(' ')}
+                              onClick={() => void navigate(`/channels/${channel.id}`)}
+                              type="button"
+                            >
+                              <span className={channelHashClassName}>#</span>
+                              <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+                              {renderUnreadCount(channel.unreadCount)}
+                              <span
+                                className={[
+                                  'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+                                  isStarredChannel
+                                    ? 'ml-1 text-yellow-400 opacity-100'
+                                    : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+                                ].join(' ')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleStar('channel', channel.id);
+                                }}
+                              >
+                                {isStarredChannel ? '★' : '☆'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
                 </>
               )}
 
-              <button
-                className="admin-sec-hdr mt-2"
-                onClick={toggleDmCollapsed}
-                type="button"
-              >
-                <svg
-                  className={[
-                    'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-                    dmCollapsed ? '-rotate-90' : '',
-                  ].join(' ')}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  viewBox="0 0 24 24"
+              <div className="admin-sec-row mt-2">
+                <button
+                  className="admin-sec-hdr"
+                  onClick={toggleDmCollapsed}
+                  type="button"
                 >
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Direct messages
-              </button>
+                  <svg
+                    className={[
+                      'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                      dmCollapsed ? '-rotate-90' : '',
+                    ].join(' ')}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Direct messages
+                </button>
+                <button
+                  aria-label={isOwner ? 'Invite people' : 'Open workspace profile'}
+                  className="admin-sidebar-plus"
+                  onClick={() => void navigate('/settings#users')}
+                  type="button"
+                >
+                  +
+                </button>
+              </div>
 
               {!dmCollapsed && (
                 <>
+                  <PersonalAssistantSidebarEntry
+                    active={personalAssistantChannel?.id === currentChannelId}
+                    bootstrapping={personalAssistantBootstrap.isPending}
+                    onClick={() => void openPersonalAssistant()}
+                    unreadCount={personalAssistantChannel?.unreadCount ?? 0}
+                  />
                   {sidebarPeople.map((person) => {
-                    const isStarredUser = starred.some(
-                      (s) => s.type === 'user' && s.id === person.id,
-                    );
+                    if (starredUserIds.has(person.id)) return null;
+
+                    const isStarredUser = starredUserIds.has(person.id);
+                    const unreadCount = person.dmChannelId
+                      ? unreadCountByChannelId.get(person.dmChannelId) ?? 0
+                      : 0;
                     return (
                       <button
                         key={person.id}
-                        className="admin-sb-item group"
-                        onClick={() => void navigate('/settings#users')}
+                        className={`admin-sb-item group ${person.dmChannelId && activeDmChannel?.id === person.dmChannelId ? 'active' : ''}`}
+                        onClick={() => navigateToDm(person.id)}
                         type="button"
                       >
                         <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
                         <span className="min-w-0 flex-1 truncate text-sm">{person.label}</span>
+                        {renderUnreadCount(unreadCount)}
                         <span
                           className={[
                             'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
@@ -770,23 +1304,6 @@ export const AdminShellLayout = () => {
                       </button>
                     );
                   })}
-
-                  <button
-                    className="admin-sb-item text-[color:var(--tx3)]"
-                    onClick={() => void navigate('/settings#users')}
-                    type="button"
-                  >
-                    <svg
-                      className="h-4 w-4 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    {isOwner ? 'Invite people' : 'Workspace profile'}
-                  </button>
                 </>
               )}
 
@@ -806,7 +1323,21 @@ export const AdminShellLayout = () => {
         </main>
       </div>
 
-      <CreateChannelDialog onClose={closeCreateChannel} open={createChannelOpen} />
+      <CreateChannelDialog
+        onClose={closeCreateChannel}
+        open={createChannelTarget !== null}
+        projectName={createChannelTarget?.projectName}
+        teamId={createChannelTarget?.teamId}
+      />
+      <CreateProjectDialog onClose={closeCreateProject} open={createProjectOpen} />
+      {renameProjectTarget ? (
+        <RenameProjectDialog
+          currentName={renameProjectTarget.name}
+          onClose={closeRenameProject}
+          open
+          projectId={renameProjectTarget.id}
+        />
+      ) : null}
 
       <AgentDetailDrawer
         agent={selectedAgent}

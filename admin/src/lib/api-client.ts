@@ -19,7 +19,13 @@ export type AuthProviderDescriptor = {
 
 export type BootstrapModeResponse = {
   bootstrapMode: true
-  bootstrapUrl: '/admin/bootstrap'
+  bootstrapUrl: '/bootstrap'
+}
+
+export type ChannelMetadataRecord = {
+  ownerUserId?: string
+  systemChannelType?: 'personal_assistant' | string
+  [key: string]: unknown
 }
 
 export type ChannelRecord = {
@@ -27,10 +33,51 @@ export type ChannelRecord = {
   defaultThreadId: string
   id: string
   label: string
+  metadata?: ChannelMetadataRecord
   organizationId: string
+  projectId: string
+  projectName: string
+  systemChannelType?: 'personal_assistant' | string
   teamId: string
+  teamName: string
+  type: 'dm' | 'standard'
+  unreadCount: number
   updatedAt: string
   visibility: 'private' | 'protected' | 'public'
+}
+
+export type ProjectRecord = {
+  createdAt: string
+  id: string
+  memberCount: number
+  name: string
+  organizationId: string
+}
+
+export type TeamRecord = {
+  createdAt: string
+  id: string
+  memberCount: number
+  name: string
+  projectId: string
+}
+
+export type CallParticipantRecord = {
+  displayName: string
+  joinedAt: string
+  leftAt: string | null
+  userId: string
+}
+
+export type CallRecord = {
+  channelId: string
+  endedAt: string | null
+  id: string
+  participants: CallParticipantRecord[]
+  roomId: string
+  startedAt: string
+  startedById: string
+  status: 'active' | 'ended'
 }
 
 export type AgentRecord = {
@@ -45,7 +92,12 @@ export type AgentRecord = {
   name: string
   parentAgentId?: string | null
   provider?: string
+  agentKind?: 'shared' | 'personal_assistant'
+  delegationMode?: 'none' | 'act_as_requesting_user'
+  ownerUserId?: string | null
   role: string
+  surfacePolicy?: 'shared' | 'dm_only'
+  systemManaged?: boolean
   status: AgentStatusResponse['status']
   systemPrompt?: string
   updatedAt: string
@@ -75,23 +127,54 @@ export type ThreadMessageRecord = {
   content: string
   createdAt: string
   id: string
+  metadata?: Record<string, unknown>
   reactions?: MessageReaction[]
   role: 'assistant' | 'system' | 'user'
   threadId: string
   userId?: string | null
 }
 
-export type AgentCategoryRecord = {
-  agentIds: string[]
-  authorAgentId: string | null
+export type ThreadRecord = {
+  channelId: string
   createdAt: string
-  createdById: string
-  description: string | null
   id: string
-  name: string
-  organizationId: string
+  title: string
+  updatedAt?: string
+}
+
+export type PersonalAssistantInstanceRecord = {
+  agentId: string
+  channelId: string
+  createdAt: string
+  id: string
+  status: 'active' | 'suspended' | 'archived'
+  templateVersion: number
   updatedAt: string
-  visibility: 'private' | 'public'
+}
+
+export type PersonalAssistantConfigSummary = {
+  agentId: string
+  model?: string
+  provider?: string
+  systemPromptPreview?: string
+  toolIds: string[]
+  updatedAt: string
+}
+
+export type PersonalAssistantStateResponse = {
+  agent: AgentRecord | null
+  channel: ChannelRecord | null
+  configSummary?: PersonalAssistantConfigSummary
+  instance?: PersonalAssistantInstanceRecord | null
+  thread?: ThreadRecord | null
+}
+
+export type PersonalAssistantBootstrapResponse = {
+  agent: AgentRecord
+  channel: ChannelRecord
+  configSummary?: PersonalAssistantConfigSummary
+  instance?: PersonalAssistantInstanceRecord | null
+  thread: ThreadRecord
 }
 
 export type ToolDescriptor = {
@@ -114,6 +197,7 @@ export type AgentTriggerRecord = {
   name?: string
   description?: string
   config: Record<string, unknown>
+  webhookApiKey?: string
   targetChannelId?: string
   targetThreadId?: string
   lastFiredAt?: string
@@ -143,8 +227,20 @@ export type WorkflowTemplateRecord = {
   name: string
   description?: string | null
   version: number
-  graph: { steps: Array<{ id: string; type: string; title?: string }> }
+  graph: {
+    steps: Array<{
+      id: string
+      input?: Record<string, unknown>
+      title?: string
+      type: string
+    }>
+  }
+  triggers: unknown
+  variableSchema: unknown
+  bindingSchema: unknown
   requiredEnvironmentTemplateIds: string[]
+  createdByActorType: string
+  createdByActorId: string
   createdAt: string
   updatedAt: string
 }
@@ -155,10 +251,14 @@ export type WorkflowInstallationRecord = {
   workflowTemplateVersion: number
   organizationId: string
   channelId?: string | null
-  status: 'active' | 'paused' | 'archived'
+  projectId?: string | null
+  teamId?: string | null
+  status: 'active' | 'paused' | 'draft' | 'disabled'
   active: boolean
   resolvedBindings: Record<string, unknown>
   config: Record<string, unknown>
+  createdByActorType: string
+  createdByActorId: string
   createdAt: string
   updatedAt: string
 }
@@ -234,6 +334,7 @@ export type SessionState =
 export type ApiClient = {
   delete: <TData>(path: string) => Promise<TData>
   get: <TData>(path: string) => Promise<TData>
+  patch: <TData>(path: string, body?: unknown) => Promise<TData>
   post: <TData>(path: string, body?: unknown) => Promise<TData>
   put: <TData>(path: string, body?: unknown) => Promise<TData>
 }
@@ -293,6 +394,11 @@ export const createApiClient = (token: string | null): ApiClient => {
   return {
     delete: (path) => request(path, { method: 'DELETE' }),
     get: (path) => request(path, { method: 'GET' }),
+    patch: (path, body) =>
+      request(path, {
+        method: 'PATCH',
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
     post: (path, body) =>
       request(path, {
         method: 'POST',

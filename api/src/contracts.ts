@@ -1,6 +1,4 @@
 import {
-  AgentCategoryIdSchema,
-  AgentCategoryVisibilitySchema,
   AgentIdSchema,
   AgentStatusSchema,
   AgentTriggerTypeSchema,
@@ -9,6 +7,8 @@ import {
   CHAT_MESSAGE_MAX_CHARS,
   MessageRoleSchema,
   OrganizationIdSchema,
+  PersonalAssistantConfigSummarySchema,
+  ProjectIdSchema,
   RunIdSchema,
   TeamIdSchema,
   ThreadIdSchema,
@@ -37,7 +37,7 @@ export type AuthProviderAuthorizeQuery = z.infer<typeof AuthProviderAuthorizeQue
 
 export const BootstrapModeResponseSchema = z.object({
   bootstrapMode: z.literal(true),
-  bootstrapUrl: z.literal('/admin/bootstrap'),
+  bootstrapUrl: z.literal('/bootstrap'),
 })
 
 export const BootstrapRequestSchema = z.object({
@@ -59,18 +59,59 @@ export const LoginRequestSchema = z.object({
 export const ChannelRecordSchema = z.object({
   id: ChannelIdSchema,
   label: NonEmptyStringSchema,
+  type: z.enum(['standard', 'dm']),
+  systemChannelType: z.enum(['personal_assistant']).optional(),
   visibility: z.enum(['public', 'protected', 'private']),
   organizationId: OrganizationIdSchema,
+  projectId: ProjectIdSchema,
+  projectName: NonEmptyStringSchema,
   teamId: TeamIdSchema,
+  teamName: NonEmptyStringSchema,
   defaultThreadId: ThreadIdSchema,
+  unreadCount: z.number().int().nonnegative(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
 
+export const ProjectRecordSchema = z.object({
+  id: ProjectIdSchema,
+  name: NonEmptyStringSchema,
+  organizationId: OrganizationIdSchema,
+  memberCount: z.number().int().nonnegative(),
+  createdAt: TimestampSchema,
+})
+export type ProjectRecord = z.infer<typeof ProjectRecordSchema>
+
+export const CallParticipantRecordSchema = z.object({
+  userId: UserIdSchema,
+  displayName: z.string(),
+  joinedAt: TimestampSchema,
+  leftAt: TimestampSchema.nullable(),
+})
+
+export const CallRecordSchema = z.object({
+  id: z.string().uuid(),
+  channelId: ChannelIdSchema,
+  roomId: z.string(),
+  status: z.enum(['active', 'ended']),
+  startedById: UserIdSchema,
+  startedAt: TimestampSchema,
+  endedAt: TimestampSchema.nullable(),
+  participants: z.array(CallParticipantRecordSchema),
+})
+export type CallRecord = z.infer<typeof CallRecordSchema>
+
+export const EmptyBodySchema = z.object({})
+
 export const CreateChannelBodySchema = z.object({
   label: NonEmptyStringSchema,
+  teamId: TeamIdSchema.optional(),
   visibility: z.enum(['public', 'protected', 'private']).optional(),
+})
+
+export const UpdateProjectBodySchema = z.object({
+  name: NonEmptyStringSchema,
 })
 
 export const AgentRecordSchema = z.object({
@@ -78,6 +119,10 @@ export const AgentRecordSchema = z.object({
   name: NonEmptyStringSchema,
   role: NonEmptyStringSchema,
   status: AgentStatusSchema,
+  agentKind: z.enum(['shared', 'personal_assistant']).optional(),
+  systemManaged: z.boolean().optional(),
+  surfacePolicy: z.enum(['shared', 'dm_only']).optional(),
+  delegationMode: z.enum(['none', 'act_as_requesting_user']).optional(),
   currentRunId: RunIdSchema.optional(),
   currentToolName: z.string().optional(),
   currentToolStartedAt: TimestampSchema.optional(),
@@ -99,6 +144,15 @@ export const CreateAgentBodySchema = z.object({
   systemPrompt: z.string().optional(),
   parentAgentId: z.string().optional(),
   routingProfileId: z.string().uuid().optional(),
+  toolPolicy: z.record(z.string(), z.boolean()).optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+})
+
+export const UpdateAgentBodySchema = z.object({
+  name: NonEmptyStringSchema.optional(),
+  role: NonEmptyStringSchema.optional(),
+  systemPrompt: z.string().optional(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
@@ -131,6 +185,7 @@ export const AgentTriggerRecordSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   config: z.record(z.unknown()),
+  webhookApiKey: z.string().optional(),
   targetChannelId: ChannelIdSchema.optional(),
   targetThreadId: ThreadIdSchema.optional(),
   lastFiredAt: TimestampSchema.optional(),
@@ -192,38 +247,6 @@ export const FireAgentTriggerBodySchema = z.object({
   payload: z.unknown().optional(),
 })
 
-export const AgentCategoryRecordSchema = z.object({
-  id: AgentCategoryIdSchema,
-  name: NonEmptyStringSchema,
-  description: z.string().nullable(),
-  visibility: AgentCategoryVisibilitySchema,
-  organizationId: OrganizationIdSchema,
-  createdById: UserIdSchema,
-  authorAgentId: AgentIdSchema.nullable(),
-  agentIds: z.array(AgentIdSchema),
-  createdAt: TimestampSchema,
-  updatedAt: TimestampSchema,
-})
-export type AgentCategoryRecord = z.infer<typeof AgentCategoryRecordSchema>
-
-export const CreateAgentCategoryBodySchema = z.object({
-  name: NonEmptyStringSchema,
-  description: z.string().optional(),
-  visibility: AgentCategoryVisibilitySchema.optional(),
-  authorAgentId: AgentIdSchema.optional(),
-})
-
-export const UpdateAgentCategoryBodySchema = z.object({
-  name: NonEmptyStringSchema.optional(),
-  description: z.string().nullable().optional(),
-  visibility: AgentCategoryVisibilitySchema.optional(),
-  authorAgentId: AgentIdSchema.nullable().optional(),
-})
-
-export const AgentCategoryAgentBodySchema = z.object({
-  agentId: AgentIdSchema,
-})
-
 export const AddChannelMemberBodySchema = z.object({
   userId: UserIdSchema,
 })
@@ -246,13 +269,45 @@ export const ThreadMessageRecordSchema = z.object({
   role: MessageRoleSchema,
   content: z.string(),
   createdAt: TimestampSchema,
+  metadata: z.record(z.string(), z.unknown()).optional(),
   reactions: MessageReactionRecordSchema.array().optional(),
 })
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
 
+export const ThreadRecordSchema = z.object({
+  id: ThreadIdSchema,
+  channelId: ChannelIdSchema,
+  title: z.string(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema.optional(),
+})
+export type ThreadRecord = z.infer<typeof ThreadRecordSchema>
+
 export const CreateThreadMessageBodySchema = z.object({
   content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
 })
+
+export const PersonalAssistantStateResponseSchema = z.object({
+  agent: AgentRecordSchema.nullable(),
+  channel: ChannelRecordSchema.nullable(),
+  instance: z.null().optional(),
+  thread: ThreadRecordSchema.nullable().optional(),
+  configSummary: PersonalAssistantConfigSummarySchema.optional(),
+})
+export type PersonalAssistantStateResponse = z.infer<
+  typeof PersonalAssistantStateResponseSchema
+>
+
+export const PersonalAssistantBootstrapResponseSchema = z.object({
+  agent: AgentRecordSchema,
+  channel: ChannelRecordSchema,
+  instance: z.null().optional(),
+  thread: ThreadRecordSchema,
+  configSummary: PersonalAssistantConfigSummarySchema.optional(),
+})
+export type PersonalAssistantBootstrapResponse = z.infer<
+  typeof PersonalAssistantBootstrapResponseSchema
+>
 
 export const ToolDescriptorSchema = z.object({
   id: NonEmptyStringSchema,
@@ -500,6 +555,8 @@ export const CreateWorkflowTemplateBodySchema = z.object({
   requiredEnvironmentTemplateIds: z.array(z.string().uuid()).optional(),
 })
 
+export const UpdateWorkflowTemplateBodySchema = CreateWorkflowTemplateBodySchema
+
 export const WorkflowInstallationRecordSchema = z.object({
   id: z.string().uuid(),
   workflowTemplateId: z.string().uuid(),
@@ -572,6 +629,21 @@ export const WorkflowStepRunRecordSchema = z.object({
   updatedAt: TimestampSchema,
 })
 export type WorkflowStepRunRecord = z.infer<typeof WorkflowStepRunRecordSchema>
+
+export const WorkflowStateEntryRecordSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: OrganizationIdSchema,
+  workflowInstallationId: z.string().uuid(),
+  workflowRunId: z.string().uuid().nullish(),
+  workflowStepRunId: z.string().uuid().nullish(),
+  key: NonEmptyStringSchema,
+  value: z.unknown(),
+  valueHash: NonEmptyStringSchema,
+  version: z.number().int().positive(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type WorkflowStateEntryRecord = z.infer<typeof WorkflowStateEntryRecordSchema>
 
 export const CreateWorkflowRunBodySchema = z.object({
   input: z.record(z.unknown()).optional(),
@@ -886,12 +958,39 @@ export const ProviderMessageContentPartSchema = z.union([
 ])
 export type ProviderMessageContentPart = z.infer<typeof ProviderMessageContentPartSchema>
 
-export const ProviderMessageSchema = z.object({
-  role: z.enum(['system', 'user', 'assistant', 'tool']),
-  content: z.union([z.string(), ProviderMessageContentPartSchema.array()]),
-  name: z.string().min(1).optional(),
-  toolCallId: z.string().min(1).optional(),
+const ProviderMessageContentSchema = z.union([
+  z.string(),
+  ProviderMessageContentPartSchema.array(),
+])
+
+export const ProviderToolCallSchema = z.object({
+  toolCallId: z.string().min(1),
+  toolName: NonEmptyStringSchema,
+  arguments: z.record(z.unknown()),
+  reason: z.string().optional(),
 })
+export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>
+
+export const ProviderMessageSchema = z.discriminatedUnion('role', [
+  z.object({
+    role: z.literal('system'),
+    content: ProviderMessageContentSchema,
+  }),
+  z.object({
+    role: z.literal('user'),
+    content: ProviderMessageContentSchema,
+  }),
+  z.object({
+    role: z.literal('assistant'),
+    content: ProviderMessageContentSchema.nullable(),
+    toolCalls: ProviderToolCallSchema.array().optional(),
+  }),
+  z.object({
+    role: z.literal('tool'),
+    content: z.string(),
+    toolCallId: z.string().min(1),
+  }),
+])
 export type ProviderMessage = z.infer<typeof ProviderMessageSchema>
 
 export const ToolSchemaDescriptorSchema = z.object({
@@ -913,6 +1012,24 @@ export const StructuredOutputDescriptorSchema = z.object({
   jsonSchema: z.record(z.unknown()),
 })
 export type StructuredOutputDescriptor = z.infer<typeof StructuredOutputDescriptorSchema>
+
+export const JsonObjectResponseFormatSchema = z.object({
+  type: z.literal('json_object'),
+})
+export type JsonObjectResponseFormat = z.infer<
+  typeof JsonObjectResponseFormatSchema
+>
+
+export const ToolChoiceSchema = z.union([
+  z.enum(['auto', 'none', 'required']),
+  z.object({
+    type: z.literal('function'),
+    function: z.object({
+      name: NonEmptyStringSchema,
+    }),
+  }),
+])
+export type ToolChoice = z.infer<typeof ToolChoiceSchema>
 
 export const ModelCapabilityUsageReportingSchema = z.object({
   inputTokens: z.boolean(),
@@ -1009,19 +1126,14 @@ export const ProviderInvocationRequestSchema = z.object({
   model: NonEmptyStringSchema,
   messages: ProviderMessageSchema.array(),
   tools: ToolSchemaDescriptorSchema.array().optional(),
+  toolChoice: ToolChoiceSchema.optional(),
+  responseFormat: JsonObjectResponseFormatSchema.optional(),
   expectedStructuredOutput: StructuredOutputDescriptorSchema.optional(),
   maxOutputTokens: z.number().int().positive().optional(),
+  temperature: z.number().optional(),
   metadata: z.record(z.unknown()).optional(),
 })
 export type ProviderInvocationRequest = z.infer<typeof ProviderInvocationRequestSchema>
-
-export const ProviderToolCallSchema = z.object({
-  toolCallId: z.string().uuid(),
-  toolName: NonEmptyStringSchema,
-  arguments: z.record(z.unknown()),
-  reason: z.string().optional(),
-})
-export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>
 
 export const ProviderInvocationResultSchema = z.object({
   outputText: z.string(),
@@ -1064,6 +1176,7 @@ export const MultiProviderResultSchema = z.object({
       invocationId: z.string().uuid(),
     })
     .optional(),
+  toolCalls: ProviderToolCallSchema.array().default([]),
   toolExecutionOwner: z
     .object({
       stageId: NonEmptyStringSchema,
@@ -1482,7 +1595,6 @@ export const DesignerFormStateSchema = z.object({
   name: z.string(),
   role: z.string(),
   systemPrompt: z.string(),
-  categoryId: z.string().nullable(),
   provider: z.string(),
   model: z.string(),
   tools: z.record(z.string(), z.boolean()),

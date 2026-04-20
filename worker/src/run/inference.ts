@@ -5,7 +5,9 @@ import type { ModelConfig, ModelProvider } from '@nessie/config'
 import {
   createInferenceService,
   type ModelProviderConfig,
-  type ModelMessage,
+  type ProviderMessage,
+  type ProviderToolCall,
+  type ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import type {
   AuthorizedActionContext,
@@ -34,10 +36,13 @@ type RunInferenceGraphInput = {
     provider: string | null
     routingProfileId: string | null
   }
-  baseMessages: ModelMessage[]
+  baseMessages: ProviderMessage[]
   modelConfig: ModelConfig
+  onVisibleReasoningDelta?: (delta: string) => Promise<void>
   onVisibleTextDelta?: (delta: string) => Promise<void>
   organizationId: string
+  tools?: ToolSchemaDescriptor[]
+  toolChoice?: 'auto' | 'none' | 'required'
 }
 
 type PersistInvocationLedgerInput = {
@@ -56,6 +61,7 @@ type ResolvedRoute = {
 type StageExecutionSuccess = {
   candidate: CandidateOutput
   invocation: InvocationRecord
+  toolCalls: ProviderToolCall[]
 }
 
 type ResolvedProviderConfig = {
@@ -135,9 +141,9 @@ const resolveBoundApiKey = (authSecretRef: string | null | undefined): string =>
   authSecretRef ? process.env[authSecretRef] ?? '' : ''
 
 const buildVisibleStageMessages = (
-  baseMessages: ModelMessage[],
+  baseMessages: ProviderMessage[],
   upstream: CandidateOutput[],
-): ModelMessage[] => {
+): ProviderMessage[] => {
   if (upstream.length === 0) {
     return baseMessages
   }
@@ -166,7 +172,7 @@ const buildVisibleStageMessages = (
         'Use them as intermediate context when producing the final answer.',
         upstreamContext,
       ].join('\n\n'),
-      role: 'system',
+      role: 'system' as const,
     },
   ]
 }
@@ -508,10 +514,11 @@ const executeStage = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     emitBufferedOutput?: boolean
     mode: RoutingMode
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     profileId?: string
@@ -519,6 +526,8 @@ const executeStage = async (
     stage: RouteStage
     stageIndex: number
     stream: boolean
+    toolChoice?: 'auto' | 'none' | 'required'
+    tools?: ToolSchemaDescriptor[]
     upstream: CandidateOutput[]
   },
 ): Promise<StageExecutionSuccess> => {
@@ -558,6 +567,7 @@ const executeStage = async (
 
     let outputText = ''
     let invocation: InvocationRecord | undefined
+    let toolCalls: ProviderToolCall[] = []
     if (input.stream) {
       const source = service.stream?.({
         actorContext: input.actorContext,
@@ -566,6 +576,8 @@ const executeStage = async (
         model: providerConfig.model,
         requestId,
         temperature: input.modelConfig.temperature,
+        tools: input.tools,
+        toolChoice: input.toolChoice,
       })
       if (!source) {
         throw new Error(`Provider ${providerConfig.providerKey} does not support streaming`)
@@ -573,13 +585,22 @@ const executeStage = async (
 
       let next = await source.next()
       while (!next.done) {
-        outputText += next.value.text
-        if (next.value.text && input.onVisibleTextDelta) {
-          await input.onVisibleTextDelta(next.value.text)
+        if (next.value.type === 'reasoning_text.delta') {
+          if (next.value.text && input.onVisibleReasoningDelta) {
+            await input.onVisibleReasoningDelta(next.value.text)
+          }
+        }
+        if (next.value.type === 'output_text.delta') {
+          outputText += next.value.text
+          if (next.value.text && input.onVisibleTextDelta) {
+            await input.onVisibleTextDelta(next.value.text)
+          }
         }
         next = await source.next()
       }
+      outputText = next.value.outputText
       invocation = next.value.invocations.at(-1)
+      toolCalls = next.value.toolCalls
     } else {
       const result = await service.run({
         actorContext: input.actorContext,
@@ -588,15 +609,18 @@ const executeStage = async (
         model: providerConfig.model,
         requestId,
         temperature: input.modelConfig.temperature,
+        tools: input.tools,
+        toolChoice: input.toolChoice,
       })
       outputText = result.outputText
       invocation = result.invocations.at(-1)
+      toolCalls = result.toolCalls
       if (outputText && input.emitBufferedOutput && input.onVisibleTextDelta) {
         await input.onVisibleTextDelta(outputText)
       }
     }
 
-    if (!outputText.trim()) {
+    if (!outputText.trim() && toolCalls.length === 0) {
       throw new Error(`Stage ${input.stage.id} produced no content`)
     }
     if (!invocation) {
@@ -629,8 +653,16 @@ const executeStage = async (
         outputText,
         stageId: input.stage.id,
         stageRole: input.stage.role,
+        toolCalls:
+          toolCalls.length > 0
+            ? toolCalls.map((toolCall) => ({
+                arguments: toolCall.arguments,
+                toolName: toolCall.toolName,
+              }))
+            : undefined,
       },
       invocation: enrichedInvocation,
+      toolCalls,
     }
   } catch (error) {
     const maybeInvocation =
@@ -684,12 +716,15 @@ const executeSingleMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
     routeSource: 'direct' | 'routing-profile'
+    tools?: ToolSchemaDescriptor[]
+    toolChoice?: 'auto' | 'none' | 'required'
   },
 ): Promise<MultiProviderResult> => {
   const stage = input.route.stages[0]
@@ -703,6 +738,7 @@ const executeSingleMode = async (
       invocations: [],
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }
@@ -713,6 +749,7 @@ const executeSingleMode = async (
     emitBufferedOutput: !input.route.streamLive,
     mode: input.route.mode,
     modelConfig: input.modelConfig,
+    onVisibleReasoningDelta: input.onVisibleReasoningDelta,
     onVisibleTextDelta: input.onVisibleTextDelta,
     organizationId: input.organizationId,
     profileId: input.route.profileId,
@@ -720,6 +757,8 @@ const executeSingleMode = async (
     stage,
     stageIndex: 0,
     stream: input.route.streamLive,
+    toolChoice: input.toolChoice,
+    tools: input.tools,
     upstream: [],
   })
 
@@ -736,7 +775,16 @@ const executeSingleMode = async (
     invocations: [success.invocation],
     requestId: input.actorContext.actionContext.requestId,
     status: 'completed',
-    toolExecutionOwner: null,
+    toolCalls: success.toolCalls,
+    toolExecutionOwner:
+      success.toolCalls.length > 0
+        ? {
+            invocationId: success.invocation.invocationId,
+            model: success.invocation.model,
+            provider: success.invocation.provider,
+            stageId: stage.id,
+          }
+        : null,
   }
 }
 
@@ -744,8 +792,9 @@ const executeFallbackMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
@@ -763,6 +812,7 @@ const executeFallbackMode = async (
         emitBufferedOutput: true,
         mode: input.route.mode,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         profileId: input.route.profileId,
@@ -788,6 +838,7 @@ const executeFallbackMode = async (
         invocations,
         requestId: input.actorContext.actionContext.requestId,
         status: 'completed',
+        toolCalls: [],
         toolExecutionOwner: null,
       }
     } catch (error) {
@@ -809,6 +860,7 @@ const executeFallbackMode = async (
     invocations,
     requestId: input.actorContext.actionContext.requestId,
     status: 'failed',
+    toolCalls: [],
     toolExecutionOwner: null,
   }
 }
@@ -817,8 +869,9 @@ const executeCommitteeMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
@@ -872,6 +925,7 @@ const executeCommitteeMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }
@@ -915,6 +969,7 @@ const executeCommitteeMode = async (
       emitBufferedOutput: !input.route.streamLive,
       mode: input.route.mode,
       modelConfig: input.modelConfig,
+      onVisibleReasoningDelta: input.onVisibleReasoningDelta,
       onVisibleTextDelta: input.onVisibleTextDelta,
       organizationId: input.organizationId,
       profileId: input.route.profileId,
@@ -940,6 +995,7 @@ const executeCommitteeMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'completed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   } catch (error) {
@@ -958,6 +1014,7 @@ const executeCommitteeMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }
@@ -967,8 +1024,9 @@ const executePipelineMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
@@ -995,6 +1053,7 @@ const executePipelineMode = async (
         invocations,
         requestId: input.actorContext.actionContext.requestId,
         status: 'failed',
+        toolCalls: [],
         toolExecutionOwner: null,
       }
     }
@@ -1009,6 +1068,8 @@ const executePipelineMode = async (
           emitBufferedOutput: stage.id === visibleStage.id && !input.route.streamLive,
           mode: input.route.mode,
           modelConfig: input.modelConfig,
+          onVisibleReasoningDelta:
+            stage.id === visibleStage.id ? input.onVisibleReasoningDelta : undefined,
           onVisibleTextDelta: stage.id === visibleStage.id ? input.onVisibleTextDelta : undefined,
           organizationId: input.organizationId,
           profileId: input.route.profileId,
@@ -1037,6 +1098,7 @@ const executePipelineMode = async (
           invocations,
           requestId: input.actorContext.actionContext.requestId,
           status: 'failed',
+          toolCalls: [],
           toolExecutionOwner: null,
         }
       }
@@ -1055,6 +1117,7 @@ const executePipelineMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }
@@ -1078,6 +1141,7 @@ const executePipelineMode = async (
     invocations,
     requestId: input.actorContext.actionContext.requestId,
     status: 'completed',
+    toolCalls: [],
     toolExecutionOwner: null,
   }
 }
@@ -1086,8 +1150,9 @@ const executeShadowMode = async (
   prisma: PrismaClient,
   input: {
     actorContext: AuthorizedActionContext
-    baseMessages: ModelMessage[]
+    baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     route: ResolvedRoute
@@ -1123,6 +1188,7 @@ const executeShadowMode = async (
       emitBufferedOutput: !input.route.streamLive,
       mode: input.route.mode,
       modelConfig: input.modelConfig,
+      onVisibleReasoningDelta: input.onVisibleReasoningDelta,
       onVisibleTextDelta: input.onVisibleTextDelta,
       organizationId: input.organizationId,
       profileId: input.route.profileId,
@@ -1161,6 +1227,7 @@ const executeShadowMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'completed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   } catch (error) {
@@ -1192,6 +1259,7 @@ const executeShadowMode = async (
       invocations,
       requestId: input.actorContext.actionContext.requestId,
       status: 'failed',
+      toolCalls: [],
       toolExecutionOwner: null,
     }
   }
@@ -1287,16 +1355,20 @@ export const runInferenceGraph = async (
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,
         routeSource,
+        toolChoice: input.toolChoice,
+        tools: input.tools,
       })
     case 'fallback':
       return executeFallbackMode(prisma, {
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,
@@ -1307,6 +1379,7 @@ export const runInferenceGraph = async (
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,
@@ -1317,6 +1390,7 @@ export const runInferenceGraph = async (
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,
@@ -1327,6 +1401,7 @@ export const runInferenceGraph = async (
         actorContext: input.actorContext,
         baseMessages: input.baseMessages,
         modelConfig: input.modelConfig,
+        onVisibleReasoningDelta: input.onVisibleReasoningDelta,
         onVisibleTextDelta: input.onVisibleTextDelta,
         organizationId: input.organizationId,
         route,

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
@@ -16,16 +16,18 @@ if (existsSync(envFile)) {
     if (!(key in process.env)) process.env[key] = val
   }
 }
-import cors from '@fastify/cors'
+import cors, { type FastifyCorsOptions } from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
+import { captureUserMessageMemory } from '@nessie/memory'
 import { createModelClient, createPgPool, ModelUsageTracker } from '@nessie/runtime'
 import {
   CaptureThoughtBodySchema,
   CHAT_MESSAGE_MAX_CHARS,
   LinkThoughtsBodySchema,
   MeResponseSchema,
+  PersonalAssistantConfigSummarySchema,
   RecordThoughtRecallSignalBodySchema,
   RecordOutcomeBodySchema,
   SearchThoughtsBodySchema,
@@ -34,13 +36,17 @@ import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
+  parseProjectId,
   parseRunId,
   parseTaskId,
+  parseTeamId,
   parseThreadId,
+  parseUserId,
   type AuthorizedActionContext,
   type MeResponse,
   type TriggerEventDispatchJobPayload,
   type WsScope,
+  withActionContext,
 } from '@nessie/schemas'
 import {
   createBootstrapTokenState,
@@ -56,8 +62,6 @@ import {
 import {
   AcquireResourceLockBodySchema,
   AddChannelMemberBodySchema,
-  AgentCategoryAgentBodySchema,
-  AgentCategoryRecordSchema,
   AgentRecordSchema,
   AgentTriggerDeliveryRecordSchema,
   AgentTriggerRecordSchema,
@@ -65,6 +69,7 @@ import {
   AuthProviderDescriptorSchema,
   BootstrapModeResponseSchema,
   BootstrapRequestSchema,
+  CallRecordSchema,
   ChannelRecordSchema,
   CreateMailboxMessageBodySchema,
   CreateExecutionEnvironmentTemplateBodySchema,
@@ -72,8 +77,8 @@ import {
   BlockWorkflowStepRunBodySchema,
   CancelWorkflowRunBodySchema,
   CreateAgentBodySchema,
+  UpdateAgentBodySchema,
   CreateAgentTriggerBodySchema,
-  CreateAgentCategoryBodySchema,
   CreatePlanBodySchema,
   CreatePlanStepBodySchema,
   CreateWorkflowRunBodySchema,
@@ -93,6 +98,7 @@ import {
   MailboxMessageRecordSchema,
   PlanRecordSchema,
   PlanStepRecordSchema,
+  ProjectRecordSchema,
   PublishEventBodySchema,
   ResourceLockRecordSchema,
   ExecutionEnvironmentInstanceRecordSchema,
@@ -100,14 +106,19 @@ import {
   ExecutionLeaseRecordSchema,
   ExecutionRunnerRecordSchema,
   ExecutionUsageLedgerRecordSchema,
+  EmptyBodySchema,
   InstallWorkflowTemplateBodySchema,
+  UpdateWorkflowTemplateBodySchema,
   LaunchExecutionEnvironmentBodySchema,
+  PersonalAssistantBootstrapResponseSchema,
+  PersonalAssistantStateResponseSchema,
   TemporaryContextSessionSchema,
   ThreadMessageRecordSchema,
+  ThreadRecordSchema,
   ToolDescriptorSchema,
   ToolRegistryEntrySchema,
   UpdateAgentTriggerBodySchema,
-  UpdateAgentCategoryBodySchema,
+  UpdateProjectBodySchema,
   UserRecordSchema,
   WorkflowInstallationRecordSchema,
   WorkflowRunRecordSchema,
@@ -118,21 +129,15 @@ import { DEFAULT_BOOTSTRAP_RECORD_IDS } from './db/bootstrap.js'
 import { getPrismaClient } from './db/client.js'
 import { seedBootstrapRecords } from './db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from './lib/api.js'
-import { enqueueQueueJob, enqueueRunExecution } from './queue/pgqueue.js'
+import { enqueueOrchestrateDecide, enqueueQueueJob } from './queue/pgqueue.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import {
-  addAgentToCategory,
-  createAgentCategory,
-  deleteAgentCategory,
-  listAgentCategories,
-  removeAgentFromCategory,
-  updateAgentCategory,
-} from './services/agent-categories.js'
-import {
   bindAgentToChannel,
+  buildAccessibleChannelWhere,
   buildSnapshotForScopes,
   cloneAgentRecord,
   createAgentRecord,
+  updateAgentRecord,
   listAgentsForUser,
   loadAgentActivity,
   loadAgentChildren,
@@ -172,9 +177,20 @@ import {
 import {
   addMemberToChannel,
   createChannelForUser,
+  createGroupFromDm,
+  ensureDefaultThread,
+  findOrCreateDmChannel,
   listChannelsForUser,
   removeMemberFromChannel,
 } from './services/channels.js'
+import { ensurePersonalAssistantBootstrap } from './services/personal-assistant.js'
+import {
+  createCall,
+  endCall,
+  getActiveCallForChannel,
+  joinCall,
+  leaveCall,
+} from './services/calls.js'
 import {
   buildExternalAuthAuthorizeUrl,
   exchangeExternalAuthCode,
@@ -184,6 +200,7 @@ import {
   createThreadMessage,
   findThreadForUser,
   listThreadMessages,
+  markThreadRead,
 } from './services/messages.js'
 import {
   claimMailboxMessage,
@@ -191,7 +208,6 @@ import {
   listMailboxMessages,
   markMailboxMessageDelivered,
 } from './services/mailbox.js'
-import { decideAgentEngagement } from './services/orchestrator.js'
 import {
   addPlanStep,
   createPlan,
@@ -213,6 +229,10 @@ import {
   listResourceLocks,
   releaseResourceLock,
 } from './services/resource-locks.js'
+import {
+  resolveThoughtCaptureAudience,
+  resolveThoughtOutputAudience,
+} from './services/thought-audiences.js'
 import { createThoughtService } from './services/thoughts.js'
 import {
   listAvailableTools,
@@ -233,6 +253,7 @@ import {
   retryWorkflowRun,
   skipWorkflowStepRun,
   unblockWorkflowStepRun,
+  updateWorkflowTemplate,
   WorkflowActionError,
 } from './services/workflows.js'
 import {
@@ -291,6 +312,58 @@ if (!process.env.DATABASE_URL) {
 }
 const databaseUrl = process.env.DATABASE_URL
 const prisma = getPrismaClient()
+
+const parseOriginList = (...values: Array<string | undefined>): Set<string> => {
+  const origins = new Set<string>()
+  for (const value of values) {
+    for (const origin of value?.split(',') ?? []) {
+      const trimmed = origin.trim().replace(/\/$/, '')
+      if (trimmed) {
+        origins.add(trimmed)
+      }
+    }
+  }
+  return origins
+}
+
+const localCorsOrigins = new Set([
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5555',
+  'http://localhost:3000',
+  'http://localhost:5555',
+])
+
+export const createCorsOriginChecker = (input: {
+  allowedOrigins: Set<string>
+  mode: typeof config.mode
+}): NonNullable<FastifyCorsOptions['origin']> =>
+  (origin, callback) => {
+    if (!origin) {
+      callback(null, true)
+      return
+    }
+
+    const normalizedOrigin = origin.replace(/\/$/, '')
+    if (
+      input.allowedOrigins.has(normalizedOrigin)
+      || (input.mode === 'local' && localCorsOrigins.has(normalizedOrigin))
+    ) {
+      callback(null, true)
+      return
+    }
+
+    callback(null, false)
+  }
+
+const allowedCorsOrigins = parseOriginList(
+  process.env.NESSIE_CORS_ORIGINS,
+  process.env.NESSIE_ALLOWED_ORIGINS,
+  process.env.NESSIE_ADMIN_ORIGIN,
+  process.env.NESSIE_WEB_ORIGIN,
+  process.env.ADMIN_ORIGIN,
+  process.env.WEB_ORIGIN,
+)
+
 const authSecret = (() => {
   if (config.auth.secret) return config.auth.secret
   if (config.mode === 'local') {
@@ -321,7 +394,7 @@ const resolveBootstrapState = async (): Promise<BootstrapTokenState | null> => {
 const logBootstrapUrl = (state: BootstrapTokenState): void => {
   const baseUrl = `http://${config.api.host === '0.0.0.0' ? 'localhost' : config.api.host}:${config.api.port}`
   console.log('First-time setup. Open this URL to create your owner account:')
-  console.log(`${baseUrl}/admin/bootstrap?token=${state.token}`)
+  console.log(`${baseUrl}/bootstrap?token=${state.token}`)
 }
 
 const getAuthorizationToken = (request: FastifyRequest): string | null => {
@@ -417,16 +490,232 @@ const requireUserActor = (
   return false
 }
 
-const withActionContext = (
-  actorContext: AuthorizedActionContext,
-  fields: Partial<AuthorizedActionContext['actionContext']>,
-): AuthorizedActionContext => ({
-  ...actorContext,
-  actionContext: {
-    ...actorContext.actionContext,
-    ...fields,
+const isPersonalAssistantChannelType = (
+  value: string | null | undefined,
+): value is 'personal_assistant' => value === 'personal_assistant'
+
+const buildChannelRealtimeScopes = (input: {
+  channelId: string
+  organizationId: string
+  systemChannelType?: string | null
+}): WsScope[] =>
+  isPersonalAssistantChannelType(input.systemChannelType)
+    ? [{ kind: 'channel', channelId: parseChannelId(input.channelId) }]
+    : [
+        {
+          kind: 'organization',
+          organizationId: parseOrganizationId(input.organizationId),
+        },
+        { kind: 'channel', channelId: parseChannelId(input.channelId) },
+      ]
+
+const buildPersonalAssistantConfigSummary = (agent: {
+  id: string
+  model: string | null
+  provider: string | null
+  systemPrompt: string | null
+  toolPolicy: unknown
+  updatedAt: Date
+}) =>
+  PersonalAssistantConfigSummarySchema.parse({
+    agentId: parseAgentId(agent.id),
+    model: agent.model ?? undefined,
+    provider: agent.provider ?? undefined,
+    systemPromptPreview: agent.systemPrompt?.slice(0, 200) ?? undefined,
+    toolIds:
+      agent.toolPolicy
+      && typeof agent.toolPolicy === 'object'
+      && !Array.isArray(agent.toolPolicy)
+        ? Object.entries(agent.toolPolicy as Record<string, unknown>)
+            .filter(([, enabled]) => enabled === true)
+            .map(([toolId]) => toolId)
+            .sort()
+        : [],
+    updatedAt: agent.updatedAt.toISOString(),
+  })
+
+const loadPersonalAssistantState = async (
+  actorContext: AuthorizedActionContext & {
+    actor: AuthorizedActionContext['actor'] & { actorType: 'user' }
   },
-})
+) => {
+  const userId = actorContext.actionContext.effectiveUserId ?? actorContext.actor.actorId
+  const dmKey = `pa:${actorContext.tenant.organizationId}:${userId}`
+  const channel = await prisma.channel.findUnique({
+    where: { dmKey },
+    select: {
+      createdAt: true,
+      id: true,
+      label: true,
+      organizationId: true,
+      systemChannelType: true,
+      teamId: true,
+      type: true,
+      updatedAt: true,
+      visibility: true,
+      team: {
+        select: {
+          name: true,
+          project: {
+            select: { id: true, name: true },
+          },
+        },
+      },
+      members: {
+        where: { userId },
+        select: { id: true },
+        take: 1,
+      },
+      agentBindings: {
+        orderBy: { createdAt: 'asc' },
+        select: { agentId: true },
+        take: 1,
+      },
+    },
+  })
+
+  if (
+    !channel
+    || channel.organizationId !== actorContext.tenant.organizationId
+    || channel.members.length === 0
+    || !isPersonalAssistantChannelType(channel.systemChannelType)
+  ) {
+    return null
+  }
+
+  const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
+  const thread = await prisma.thread.findUnique({
+    where: { id: defaultThreadId },
+    select: {
+      channelId: true,
+      createdAt: true,
+      id: true,
+      title: true,
+      updatedAt: true,
+    },
+  })
+  if (!thread) {
+    return null
+  }
+
+  const agent = channel.agentBindings[0]?.agentId
+    ? await prisma.agent.findUnique({
+        where: { id: channel.agentBindings[0].agentId },
+        select: {
+          agentKind: true,
+          bindings: {
+            where: { channelId: channel.id },
+            orderBy: { createdAt: 'asc' },
+            select: { channelId: true },
+          },
+          createdAt: true,
+          delegationMode: true,
+          id: true,
+          messages: {
+            where: { threadId: thread.id },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+            take: 1,
+          },
+          model: true,
+          name: true,
+          provider: true,
+          role: true,
+          runs: {
+            where: { threadId: thread.id },
+            include: {
+              toolCalls: {
+                orderBy: { startedAt: 'desc' },
+                select: {
+                  endedAt: true,
+                  startedAt: true,
+                  toolName: true,
+                },
+                take: 1,
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+          status: true,
+          surfacePolicy: true,
+          systemManaged: true,
+          systemPrompt: true,
+          toolPolicy: true,
+          updatedAt: true,
+        },
+      })
+    : null
+  const latestRun = agent?.runs[0]
+  const latestToolCall = latestRun?.toolCalls[0]
+  const latestMessage = agent?.messages[0]
+  const isActiveRun =
+    latestRun !== undefined
+    && latestRun.status !== 'completed'
+    && latestRun.status !== 'failed'
+    && latestRun.status !== 'cancelled'
+  const lastActivityAt =
+    latestToolCall?.startedAt
+    ?? latestMessage?.createdAt
+    ?? latestRun?.createdAt
+    ?? agent?.updatedAt
+    ?? channel.updatedAt
+
+  return PersonalAssistantStateResponseSchema.parse({
+    agent: agent
+      ? {
+          id: parseAgentId(agent.id),
+          name: agent.name,
+          role: agent.role,
+          status: agent.status,
+          agentKind: agent.agentKind,
+          systemManaged: agent.systemManaged,
+          surfacePolicy: agent.surfacePolicy,
+          delegationMode: agent.delegationMode,
+          currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
+          currentToolName:
+            isActiveRun && latestToolCall?.endedAt === null ? latestToolCall.toolName : undefined,
+          currentToolStartedAt:
+            isActiveRun && latestToolCall?.endedAt === null
+              ? latestToolCall.startedAt.toISOString()
+              : undefined,
+          lastActivityAt: lastActivityAt.toISOString(),
+          parentAgentId: null,
+          provider: agent.provider ?? undefined,
+          model: agent.model ?? undefined,
+          createdAt: agent.createdAt.toISOString(),
+          updatedAt: agent.updatedAt.toISOString(),
+          channelIds: agent.bindings.map((binding) => parseChannelId(binding.channelId)),
+        }
+      : null,
+    channel: {
+      id: parseChannelId(channel.id),
+      label: channel.label,
+      type: channel.type,
+      systemChannelType: channel.systemChannelType,
+      visibility: channel.visibility,
+      organizationId: parseOrganizationId(channel.organizationId),
+      projectId: parseProjectId(channel.team.project.id),
+      projectName: channel.team.project.name,
+      teamId: parseTeamId(channel.teamId),
+      teamName: channel.team.name,
+      defaultThreadId: parseThreadId(thread.id),
+      unreadCount: 0,
+      createdAt: channel.createdAt.toISOString(),
+      updatedAt: channel.updatedAt.toISOString(),
+    },
+    instance: null,
+    thread: ThreadRecordSchema.parse({
+      id: parseThreadId(thread.id),
+      channelId: parseChannelId(thread.channelId),
+      title: thread.title ?? 'General',
+      createdAt: thread.createdAt.toISOString(),
+      updatedAt: thread.updatedAt.toISOString(),
+    }),
+    ...(agent ? { configSummary: buildPersonalAssistantConfigSummary(agent) } : {}),
+  })
+}
+
 
 const isAgentVisibleToUser = async (
   userId: string,
@@ -436,16 +725,14 @@ const isAgentVisibleToUser = async (
   (await prisma.agent.count({
     where: {
       id: agentId,
-      OR: [
-        { organizationId },
-        { bindings: { some: { channel: { organizationId } } } },
-      ],
+      systemManaged: false,
       bindings: {
         some: {
           channel: {
-            members: {
-              some: { userId },
-            },
+            ...buildAccessibleChannelWhere({
+              organizationId,
+              userId,
+            }),
           },
         },
       },
@@ -461,6 +748,7 @@ const isAgentAccessibleToActor = async (
       await prisma.agent.count({
         where: {
           id: agentId,
+          systemManaged: false,
           OR: [
             { organizationId: actorContext.tenant.organizationId },
             {
@@ -485,29 +773,77 @@ const isAgentAccessibleToActor = async (
   )
 }
 
-const isChannelVisibleToUser = async (
+const getVisibleChannel = async (
   userId: string,
   organizationId: string,
   channelId: string,
-): Promise<boolean> => {
+): Promise<{
+  systemChannelType?: 'personal_assistant'
+  type: string
+  visibility: string
+} | null> => {
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     select: {
+      systemChannelType: true,
+      type: true,
       organizationId: true,
       visibility: true,
       members: { where: { userId }, select: { id: true }, take: 1 },
     },
   })
-  if (!channel) return false
-  if (channel.organizationId !== organizationId) return false
+  if (!channel) return null
+  if (channel.organizationId !== organizationId) return null
   // Public channels are visible to all org members
-  if (channel.visibility === 'public') return true
+  if (channel.visibility === 'public') {
+    return {
+      systemChannelType: channel.systemChannelType ?? undefined,
+      type: channel.type,
+      visibility: channel.visibility,
+    }
+  }
   // Protected and private channels require membership
-  return channel.members.length > 0
+  if (channel.members.length > 0) {
+    return {
+      systemChannelType: channel.systemChannelType ?? undefined,
+      type: channel.type,
+      visibility: channel.visibility,
+    }
+  }
+  return null
 }
 
 const isChannelMember = async (userId: string, channelId: string): Promise<boolean> =>
   (await prisma.channelMember.count({ where: { userId, channelId } })) > 0
+
+const getChannelIfMember = async (
+  userId: string,
+  organizationId: string,
+  channelId: string,
+): Promise<{
+  systemChannelType?: 'personal_assistant'
+  type: string
+  visibility: string
+} | null> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: {
+      systemChannelType: true,
+      type: true,
+      organizationId: true,
+      visibility: true,
+      members: { where: { userId }, select: { id: true }, take: 1 },
+    },
+  })
+  if (!channel) return null
+  if (channel.organizationId !== organizationId) return null
+  if (channel.members.length === 0) return null
+  return {
+    systemChannelType: channel.systemChannelType ?? undefined,
+    type: channel.type,
+    visibility: channel.visibility,
+  }
+}
 
 const isTriggerTargetWritableByActor = async (
   actorContext: AuthorizedActionContext,
@@ -529,7 +865,7 @@ const isTriggerTargetWritableByActor = async (
   }
 
   if (
-    !(await isChannelVisibleToUser(
+    !(await getVisibleChannel(
       actorContext.actor.actorId,
       actorContext.tenant.organizationId,
       trigger.targetChannelId,
@@ -568,12 +904,6 @@ const isTriggerAccessibleToActor = async (
   return false
 }
 
-const buildWebhookSignature = (secret: string, payload: Buffer, prefix: string): string =>
-  `${prefix}${createHmac('sha256', secret).update(payload).digest('hex')}`
-
-const getRawBody = (request: FastifyRequest): Buffer =>
-  (request as RequestWithRawBody).rawBody ?? Buffer.from('')
-
 const isJsonContentType = (request: FastifyRequest): boolean => {
   const contentType = parseHeaderValue(request.headers['content-type'])
   if (!contentType) {
@@ -598,67 +928,14 @@ const parseHeaderValue = (
   return trimmed.length > 0 ? trimmed : undefined
 }
 
-const resolveWebhookAuthMode = (
-  config: unknown,
-): 'signature' | 'token' => {
-  if (
-    config &&
-    typeof config === 'object' &&
-    !Array.isArray(config) &&
-    (config as Record<string, unknown>)['authMode'] === 'token'
-  ) {
-    return 'token'
+const parseBearerToken = (value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined
   }
 
-  return 'signature'
+  const match = value.match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() || undefined
 }
-
-const resolveWebhookHeaderNames = (
-  config: unknown,
-  key: 'deliveryIdHeader' | 'signatureHeader' | 'timestampHeader' | 'tokenHeader',
-  fallback: string[],
-): string[] => {
-  if (!config || typeof config !== 'object' || Array.isArray(config)) {
-    return fallback
-  }
-
-  const value = (config as Record<string, unknown>)[key]
-  if (typeof value === 'string' && value.length > 0) {
-    return [value.toLowerCase()]
-  }
-
-  const pluralKey = `${key}s`
-  const pluralValue = (config as Record<string, unknown>)[pluralKey]
-  if (Array.isArray(pluralValue)) {
-    const headers = pluralValue
-      .filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
-      .map((entry) => entry.toLowerCase())
-    if (headers.length > 0) {
-      return headers
-    }
-  }
-
-  return fallback
-}
-
-const resolveWebhookTimestampToleranceSeconds = (config: unknown): number | null => {
-  if (!config || typeof config !== 'object' || Array.isArray(config)) {
-    return null
-  }
-
-  const value = (config as Record<string, unknown>)['timestampToleranceSeconds']
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    return null
-  }
-
-  return Math.floor(value)
-}
-
-const shouldBindWebhookTimestampToSignature = (config: unknown): boolean =>
-  !!config &&
-  typeof config === 'object' &&
-  !Array.isArray(config) &&
-  (config as Record<string, unknown>)['bindTimestampToSignature'] === true
 
 const readFirstHeader = (
   request: FastifyRequest,
@@ -674,97 +951,36 @@ const readFirstHeader = (
   return undefined
 }
 
-const parseWebhookTimestamp = (value: string): Date | null => {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return null
-  }
+const readWebhookApiKey = (request: FastifyRequest): string | undefined =>
+  parseBearerToken(parseHeaderValue(request.headers['authorization'])) ??
+  parseHeaderValue(request.headers['x-nessie-trigger-key'])
 
-  if (/^\d+$/.test(trimmed)) {
-    const numericValue = Number.parseInt(trimmed, 10)
-    if (!Number.isFinite(numericValue)) {
-      return null
-    }
-
-    const milliseconds = trimmed.length >= 13 ? numericValue : numericValue * 1000
-    const parsed = new Date(milliseconds)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-  }
-
-  const parsed = new Date(trimmed)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-const buildWebhookSignaturePayload = (input: {
-  config: unknown
-  request: FastifyRequest
-}): Buffer | null => {
-  const rawBody = getRawBody(input.request)
-  if (!shouldBindWebhookTimestampToSignature(input.config)) {
-    return rawBody
-  }
-
-  const timestampHeaders = resolveWebhookHeaderNames(input.config, 'timestampHeader', [
-    'x-nessie-trigger-timestamp',
-    'x-request-timestamp',
-  ])
-  const timestampValue = readFirstHeader(input.request, timestampHeaders)
-  if (!timestampValue) {
-    return null
-  }
-
-  return Buffer.concat([Buffer.from(`${timestampValue}.`), rawBody])
-}
-
-const isWebhookSignatureValid = (
-  providedSignature: string | undefined,
-  expectedSecret: string,
-  payload: Buffer,
-  prefix: string,
-): boolean => {
-  if (!providedSignature) {
+const isTimingSafeMatch = (left: string | undefined, right: string | undefined): boolean => {
+  if (!left || !right) {
     return false
   }
 
-  const expectedSignature = buildWebhookSignature(expectedSecret, payload, prefix)
-  const providedBuffer = Buffer.from(providedSignature)
-  const expectedBuffer = Buffer.from(expectedSignature)
-  if (providedBuffer.length !== expectedBuffer.length) {
+  const leftBuffer = Buffer.from(left)
+  const rightBuffer = Buffer.from(right)
+  if (leftBuffer.length !== rightBuffer.length) {
     return false
   }
 
-  return timingSafeEqual(providedBuffer, expectedBuffer)
+  return timingSafeEqual(leftBuffer, rightBuffer)
 }
 
-const isWebhookTimestampFresh = (input: {
-  config: unknown
-  now?: Date
-  request: FastifyRequest
-}): boolean => {
-  const toleranceSeconds = resolveWebhookTimestampToleranceSeconds(input.config)
-  if (!toleranceSeconds) {
-    return true
-  }
+const canAccessChannelRealtimeEvent = async (input: {
+  channelId: string
+  organizationId: string
+  userId: string
+}): Promise<boolean> =>
+  (await getVisibleChannel(input.userId, input.organizationId, input.channelId)) !== null
 
-  if (!shouldBindWebhookTimestampToSignature(input.config)) {
-    return false
-  }
-
-  const timestampHeaders = resolveWebhookHeaderNames(input.config, 'timestampHeader', [
-    'x-nessie-trigger-timestamp',
-    'x-request-timestamp',
-  ])
-  const timestampValue = readFirstHeader(input.request, timestampHeaders)
-  const parsedTimestamp = timestampValue ? parseWebhookTimestamp(timestampValue) : null
-  if (!parsedTimestamp) {
-    return false
-  }
-
-  return (
-    Math.abs((input.now ?? new Date()).getTime() - parsedTimestamp.getTime()) <=
-    toleranceSeconds * 1000
-  )
-}
+const createAgentVisibilityScope = (actorContext: AuthorizedActionContext) => ({
+  includeAllOrgChannels: actorContext.actor.roles?.includes('owner') ?? false,
+  organizationId: actorContext.tenant.organizationId,
+  userId: actorContext.actor.actorId,
+})
 
 const filterAuthorizedScopes = async (
   userId: string,
@@ -782,10 +998,7 @@ const filterAuthorizedScopes = async (
     }
 
     if (scope.kind === 'channel') {
-      // WS event delivery requires channel membership for private/protected channels.
-      // Public channels allow visibility but WS events still require membership
-      // to prevent leaking real-time content to non-participants.
-      if (await isChannelMember(userId, scope.channelId)) {
+      if (await getVisibleChannel(userId, tenantOrganizationId, scope.channelId)) {
         authorizedScopes.push(scope)
       }
       continue
@@ -856,6 +1069,69 @@ const buildSessionForUser = (input: {
 const apiUsageTracker = new ModelUsageTracker()
 let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
 
+type RateLimitRule = {
+  keyPrefix: string
+  max: number
+  windowMs: number
+}
+
+type RateLimitBucket = {
+  count: number
+  resetAt: number
+}
+
+const rateLimitBuckets = new Map<string, RateLimitBucket>()
+
+const resolveRateLimitRule = (request: FastifyRequest): RateLimitRule | null => {
+  const method = request.method.toUpperCase()
+  const routePath = request.routeOptions.url ?? new URL(request.url, 'http://localhost').pathname
+
+  if (method === 'POST' && (routePath === '/api/auth/session' || routePath === '/api/auth/bootstrap')) {
+    return { keyPrefix: `${method}:${routePath}`, max: 10, windowMs: 10 * 60 * 1000 }
+  }
+
+  if (method === 'POST' && routePath === '/api/threads/:threadId/messages') {
+    return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
+  }
+
+  if (routePath.startsWith('/api/agents') && ['DELETE', 'POST', 'PUT'].includes(method)) {
+    return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
+  }
+
+  return null
+}
+
+const getRateLimitClientId = (request: FastifyRequest): string => {
+  const forwardedFor = parseHeaderValue(request.headers['x-forwarded-for'])
+  return forwardedFor?.split(',')[0]?.trim() || request.ip
+}
+
+const checkRateLimit = (request: FastifyRequest): { retryAfterSeconds: number } | null => {
+  const rule = resolveRateLimitRule(request)
+  if (!rule) {
+    return null
+  }
+
+  const now = Date.now()
+  const key = `${rule.keyPrefix}:${getRateLimitClientId(request)}`
+  const existingBucket = rateLimitBuckets.get(key)
+  const bucket =
+    existingBucket && existingBucket.resetAt > now
+      ? existingBucket
+      : { count: 0, resetAt: now + rule.windowMs }
+
+  bucket.count += 1
+  rateLimitBuckets.set(key, bucket)
+
+  if (bucket.count <= rule.max) {
+    return null
+  }
+
+  return {
+    retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+  }
+}
+
 export const buildApp = async () => {
   const app = Fastify({ logger: true })
 
@@ -899,6 +1175,7 @@ export const buildApp = async () => {
   }
 
   const realtimeHub = await createRealtimeHub({
+    canAccessChannelEvent: canAccessChannelRealtimeEvent,
     databaseUrl,
     poolMax: config.database.poolMax,
     poolMin: config.database.poolMin,
@@ -908,6 +1185,9 @@ export const buildApp = async () => {
     max: config.database.poolMax,
     min: config.database.poolMin,
   })
+  const messageMemoryCaptureConfig = sharedModelClient
+    ? { pool: memoryPool, modelClient: sharedModelClient }
+    : null
   const thoughtService = sharedModelClient
     ? createThoughtService({
       pool: memoryPool,
@@ -916,7 +1196,17 @@ export const buildApp = async () => {
     })
     : null
 
-  await app.register(cors, { origin: true, credentials: true })
+  if (config.mode !== 'local' && allowedCorsOrigins.size === 0) {
+    app.log.warn('No CORS allowlist configured; browser cross-origin requests will be denied')
+  }
+
+  await app.register(cors, {
+    credentials: true,
+    origin: createCorsOriginChecker({
+      allowedOrigins: allowedCorsOrigins,
+      mode: config.mode,
+    }),
+  })
   await app.register(websocket)
 
   // Self-heal: ensure every pre-existing organization has the default policy
@@ -951,6 +1241,13 @@ export const buildApp = async () => {
   })
 
   app.addHook('preHandler', async (request, reply) => {
+    const rateLimit = checkRateLimit(request)
+    if (rateLimit) {
+      reply.header('retry-after', String(rateLimit.retryAfterSeconds))
+      sendApiError(reply, 429, 'RATE_LIMITED', 'Too many requests')
+      return
+    }
+
     if (request.routeOptions.config.public === true) {
       return
     }
@@ -1011,7 +1308,7 @@ export const buildApp = async () => {
       if (state) {
         return createApiResponse(BootstrapModeResponseSchema.parse({
           bootstrapMode: true,
-          bootstrapUrl: '/admin/bootstrap',
+          bootstrapUrl: '/bootstrap',
         }))
       }
 
@@ -1308,6 +1605,67 @@ export const buildApp = async () => {
     return createApiResponse(ChannelRecordSchema.array().parse(channels))
   })
 
+  app.get('/api/personal-assistant', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
+    return createApiResponse(await loadPersonalAssistantState(actorContext))
+  })
+
+  app.post('/api/personal-assistant/bootstrap', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
+    const bootstrap = await ensurePersonalAssistantBootstrap(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId:
+        actorContext.tenant.teamId
+        ?? actorContext.actionContext.teamId
+        ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
+      userId: actorContext.actor.actorId,
+    })
+    const state = await loadPersonalAssistantState(actorContext)
+    if (!state?.agent || !state.channel || !state.thread) {
+      sendApiError(
+        reply,
+        500,
+        'PERSONAL_ASSISTANT_BOOTSTRAP_FAILED',
+        'Failed to load personal assistant state after bootstrap',
+      )
+      return reply
+    }
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'personal_assistant.bootstrap' as Parameters<typeof emitAuditEvent>[1]['action'],
+      outcome: 'success',
+      resourceId: bootstrap.agentId,
+      resourceType: 'agent',
+    })
+
+    return reply.code(200).send(
+      createApiResponse(
+        PersonalAssistantBootstrapResponseSchema.parse({
+          agent: state.agent,
+          channel: state.channel,
+          configSummary: state.configSummary,
+          instance: null,
+          thread: state.thread,
+        }),
+      ),
+    )
+  })
+
   app.post('/api/channels', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -1323,7 +1681,11 @@ export const buildApp = async () => {
       label: body.label,
       visibility: body.visibility ?? 'public',
       organizationId: actorContext.tenant.organizationId,
-      teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? '00000000-0000-4000-8000-000000000003',
+      teamId:
+        body.teamId
+        ?? actorContext.tenant.teamId
+        ?? actorContext.actionContext.teamId
+        ?? '00000000-0000-4000-8000-000000000003',
       userId: actorContext.actor.actorId,
     })
 
@@ -1342,7 +1704,8 @@ export const buildApp = async () => {
     }
 
     const { channelId } = request.params as { channelId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    const channel = await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId)
+    if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
       return reply
     }
@@ -1350,6 +1713,30 @@ export const buildApp = async () => {
     const body = parseInput(AddChannelMemberBodySchema, request.body, reply)
     if (!body) {
       return reply
+    }
+
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'Personal Assistant DMs cannot be modified',
+      )
+      return reply
+    }
+
+    // If the channel is a DM, create a new group channel instead of mutating the DM
+    if (channel.type === 'dm') {
+      const group = await createGroupFromDm(prisma, {
+        dmChannelId: channelId,
+        newUserId: body.userId,
+        currentUserId: actorContext.actor.actorId,
+      })
+      if (!group) {
+        sendApiError(reply, 403, 'USER_NOT_IN_ORGANIZATION', 'Target user is not a member of this organization')
+        return reply
+      }
+      return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(group)))
     }
 
     await addMemberToChannel(prisma, channelId, body.userId)
@@ -1363,13 +1750,327 @@ export const buildApp = async () => {
     }
 
     const { channelId, userId } = request.params as { channelId: string; userId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    const channel = await getChannelIfMember(
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      channelId,
+    )
+    if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'Personal Assistant DMs cannot be modified',
+      )
       return reply
     }
 
     await removeMemberFromChannel(prisma, channelId, userId)
     return reply.code(204).send()
+  })
+
+  app.post('/api/channels/:channelId/call', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    const channel = await getChannelIfMember(
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      channelId,
+    )
+    if (!channel) {
+      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'Calls are not available in the Personal Assistant DM',
+      )
+      return reply
+    }
+
+    const body = parseInput(EmptyBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const memberCount = await prisma.channelMember.count({
+      where: { channelId },
+    })
+    if (memberCount < 2) {
+      sendApiError(reply, 400, 'CALL_REQUIRES_PARTICIPANTS', 'Calls require at least two channel members')
+      return reply
+    }
+
+    try {
+      const result = await createCall(prisma, channelId, actorContext.actor.actorId)
+
+      await realtimeHub.publishWs(
+        [{ kind: 'channel', channelId: parseChannelId(channelId) }],
+        {
+          data: {
+            callId: result.id,
+            channelId: result.channelId,
+            roomId: result.roomId,
+            startedBy: result.startedById,
+          },
+          event: 'call.started',
+        },
+      )
+
+      return reply.code(201).send(createApiResponse(CallRecordSchema.parse(result)))
+    } catch (error) {
+      if (error instanceof Error && error.message === 'ACTIVE_CALL_EXISTS') {
+        sendApiError(reply, 409, 'ACTIVE_CALL_EXISTS', 'An active call already exists for this channel')
+        return reply
+      }
+
+      throw error
+    }
+  })
+
+  app.post('/api/calls/:callId/join', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { callId } = request.params as { callId: string }
+    const body = parseInput(EmptyBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const call = await prisma.call.findUnique({
+      where: { id: callId },
+      select: {
+        channelId: true,
+        status: true,
+      },
+    })
+    if (!call) {
+      sendApiError(reply, 404, 'CALL_NOT_FOUND', 'Call not found')
+      return reply
+    }
+
+    if (
+      !(await getChannelIfMember(
+        actorContext.actor.actorId,
+        actorContext.tenant.organizationId,
+        call.channelId,
+      ))
+    ) {
+      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+
+    try {
+      const result = await joinCall(prisma, callId, actorContext.actor.actorId)
+
+      const participant = result.participants.find((entry) => entry.userId === actorContext.actor.actorId)
+      await realtimeHub.publishWs(
+        [{ kind: 'channel', channelId: parseChannelId(result.channelId) }],
+        {
+          data: {
+            callId: result.id,
+            channelId: result.channelId,
+            userId: actorContext.actor.actorId,
+            displayName: participant?.displayName ?? actorContext.actor.actorId,
+          },
+          event: 'call.joined',
+        },
+      )
+
+      return createApiResponse(CallRecordSchema.parse(result))
+    } catch (error) {
+      if (error instanceof Error && error.message === 'CALL_NOT_FOUND') {
+        sendApiError(reply, 404, 'CALL_NOT_FOUND', 'Call not found')
+        return reply
+      }
+
+      if (error instanceof Error && error.message === 'CALL_NOT_ACTIVE') {
+        sendApiError(reply, 409, 'CALL_NOT_ACTIVE', 'Call is no longer active')
+        return reply
+      }
+
+      throw error
+    }
+  })
+
+  app.post('/api/calls/:callId/leave', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { callId } = request.params as { callId: string }
+    const body = parseInput(EmptyBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const call = await prisma.call.findUnique({
+      where: { id: callId },
+      select: {
+        channelId: true,
+      },
+    })
+    if (!call) {
+      sendApiError(reply, 404, 'CALL_NOT_FOUND', 'Call not found')
+      return reply
+    }
+
+    if (
+      !(await getChannelIfMember(
+        actorContext.actor.actorId,
+        actorContext.tenant.organizationId,
+        call.channelId,
+      ))
+    ) {
+      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+
+    try {
+      const result = await leaveCall(prisma, callId, actorContext.actor.actorId)
+
+      await realtimeHub.publishWs(
+        [{ kind: 'channel', channelId: parseChannelId(result.channelId) }],
+        {
+          data: {
+            callId: result.id,
+            channelId: result.channelId,
+            userId: actorContext.actor.actorId,
+          },
+          event: 'call.left',
+        },
+      )
+
+      if (result.status === 'ended') {
+        await realtimeHub.publishWs(
+          [{ kind: 'channel', channelId: parseChannelId(result.channelId) }],
+          {
+            data: {
+              callId: result.id,
+              channelId: result.channelId,
+              endedAt: result.endedAt,
+            },
+            event: 'call.ended',
+          },
+        )
+      }
+
+      return createApiResponse(CallRecordSchema.parse(result))
+    } catch (error) {
+      if (error instanceof Error && error.message === 'CALL_NOT_FOUND') {
+        sendApiError(reply, 404, 'CALL_NOT_FOUND', 'Call not found')
+        return reply
+      }
+
+      throw error
+    }
+  })
+
+  app.delete('/api/channels/:channelId/call', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    if (!(await getChannelIfMember(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+
+    const activeCall = await prisma.call.findFirst({
+      where: {
+        channelId,
+        status: 'active',
+      },
+      select: {
+        id: true,
+      },
+      orderBy: { startedAt: 'desc' },
+    })
+    if (!activeCall) {
+      sendApiError(reply, 404, 'CALL_NOT_FOUND', 'Call not found')
+      return reply
+    }
+
+    try {
+      const result = await endCall(prisma, activeCall.id)
+
+      await realtimeHub.publishWs(
+        [{ kind: 'channel', channelId: parseChannelId(result.channelId) }],
+        {
+          data: {
+            callId: result.id,
+            channelId: result.channelId,
+            endedAt: result.endedAt,
+          },
+          event: 'call.ended',
+        },
+      )
+
+      return createApiResponse(CallRecordSchema.parse(result))
+    } catch (error) {
+      if (error instanceof Error && error.message === 'CALL_NOT_FOUND') {
+        sendApiError(reply, 404, 'CALL_NOT_FOUND', 'Call not found')
+        return reply
+      }
+
+      throw error
+    }
+  })
+
+  app.get('/api/channels/:channelId/call', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    if (!(await getVisibleChannel(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+      sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+
+    const result = await getActiveCallForChannel(prisma, channelId)
+    return createApiResponse(result ? CallRecordSchema.parse(result) : null)
+  })
+
+  app.post('/api/dm/:userId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { userId } = request.params as { userId: string }
+
+    const channel = await findOrCreateDmChannel(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? '00000000-0000-4000-8000-000000000003',
+      currentUserId: actorContext.actor.actorId,
+      targetUserId: userId,
+    })
+
+    if (!channel) {
+      sendApiError(reply, 403, 'USER_NOT_IN_ORGANIZATION', 'Target user is not a member of this organization')
+      return reply
+    }
+
+    return createApiResponse(ChannelRecordSchema.parse(channel))
   })
 
   app.get('/api/agents', async (request, reply) => {
@@ -1411,6 +2112,39 @@ export const buildApp = async () => {
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(agent)))
   })
 
+  app.put('/api/agents/:agentId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(UpdateAgentBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    const existingAgent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { systemManaged: true },
+    })
+    if (!existingAgent) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    if (existingAgent.systemManaged && !requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const agent = await updateAgentRecord(prisma, agentId, body)
+    if (!agent) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    return createApiResponse(AgentRecordSchema.parse(agent))
+  })
+
   app.post('/api/agents/:agentId/bindings', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -1422,18 +2156,30 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (
-      !(await isChannelVisibleToUser(
-        actorContext.actor.actorId,
-        actorContext.tenant.organizationId,
-        body.channelId,
-      ))
-    ) {
+    const channel = await getChannelIfMember(
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      body.channelId,
+    )
+    if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'Agents cannot be bound to the Personal Assistant DM',
+      )
       return reply
     }
 
     const { agentId } = request.params as { agentId: string }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
 
     // Policy check: user must be allowed to bind agents
     const bindDecision = await checkPolicy(prisma, actorContext, 'agent', 'bind', {
@@ -1461,8 +2207,32 @@ export const buildApp = async () => {
     }
 
     const { agentId, channelId } = request.params as { agentId: string; channelId: string }
-    if (!(await isChannelVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, channelId))) {
+    const channel = await getChannelIfMember(
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+      channelId,
+    )
+    if (!channel) {
       sendApiError(reply, 404, 'CHANNEL_NOT_FOUND', 'Channel not found')
+      return reply
+    }
+    if (channel.systemChannelType === 'personal_assistant') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_SYSTEM_MANAGED',
+        'The Personal Assistant DM binding is system managed',
+      )
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const unbindDecision = await checkPolicy(prisma, actorContext, 'agent', 'bind', { agentId, channelId })
+    if (!unbindDecision.allowed) {
+      sendApiError(reply, 403, 'POLICY_DENIED', `Agent unbinding denied: ${unbindDecision.reasonCode}`)
       return reply
     }
 
@@ -1529,11 +2299,6 @@ export const buildApp = async () => {
 
     const body = parseInput(CreateAgentTriggerBodySchema, request.body, reply)
     if (!body) {
-      return reply
-    }
-
-    if (body.type === 'webhook' && typeof body.config?.['secret'] !== 'string') {
-      sendApiError(reply, 400, 'WEBHOOK_SECRET_REQUIRED', 'Webhook triggers require a secret')
       return reply
     }
 
@@ -1875,60 +2640,10 @@ export const buildApp = async () => {
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
   })
 
-  app.post('/api/triggers/:triggerId/webhook', async (request, reply) => {
-    const { triggerId } = request.params as { triggerId: string }
-    const trigger = await prisma.agentTrigger.findUnique({
-      where: { id: triggerId },
-      select: {
-        agentId: true,
-        config: true,
-        id: true,
-        type: true,
-      },
-    })
-    if (!trigger || trigger.type !== 'webhook') {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    const expectedSecret =
-      trigger.config &&
-      typeof trigger.config === 'object' &&
-      !Array.isArray(trigger.config) &&
-      typeof (trigger.config as Record<string, unknown>)['secret'] === 'string'
-        ? ((trigger.config as Record<string, unknown>)['secret'] as string)
-        : undefined
-
-    const authMode = resolveWebhookAuthMode(trigger.config)
-    const signatureHeaders = resolveWebhookHeaderNames(trigger.config, 'signatureHeader', [
-      'x-nessie-trigger-signature',
-      'x-hub-signature-256',
-    ])
-    const tokenHeaders = resolveWebhookHeaderNames(trigger.config, 'tokenHeader', [
-      'x-nessie-trigger-secret',
-      'x-gitlab-token',
-    ])
-    const deliveryIdHeaders = resolveWebhookHeaderNames(trigger.config, 'deliveryIdHeader', [
-      'x-nessie-delivery-id',
-      'x-github-delivery',
-      'x-request-id',
-    ])
-    const dedupeKey = readFirstHeader(request, deliveryIdHeaders)
-    const signaturePrefix =
-      trigger.config &&
-      typeof trigger.config === 'object' &&
-      !Array.isArray(trigger.config) &&
-      typeof (trigger.config as Record<string, unknown>)['signaturePrefix'] === 'string'
-        ? ((trigger.config as Record<string, unknown>)['signaturePrefix'] as string)
-        : 'sha256='
-
-    if (!dedupeKey) {
-      sendApiError(reply, 400, 'WEBHOOK_DELIVERY_ID_REQUIRED', 'Webhook delivery id header missing')
-      return reply
-    }
-
-    if (!expectedSecret) {
-      sendApiError(reply, 403, 'WEBHOOK_SECRET_INVALID', 'Webhook secret missing')
+  app.post('/api/triggers/webhook', { config: { public: true } }, async (request, reply) => {
+    const apiKey = readWebhookApiKey(request)
+    if (!apiKey) {
+      sendApiError(reply, 401, 'WEBHOOK_API_KEY_REQUIRED', 'Webhook API key missing')
       return reply
     }
 
@@ -1937,55 +2652,45 @@ export const buildApp = async () => {
       return reply
     }
 
-    if (authMode === 'token') {
-      const providedToken = readFirstHeader(request, tokenHeaders)
-      const providedBuffer = Buffer.from(providedToken ?? '')
-      const expectedBuffer = Buffer.from(expectedSecret)
-      if (
-        providedBuffer.length !== expectedBuffer.length ||
-        !timingSafeEqual(providedBuffer, expectedBuffer)
-      ) {
-        sendApiError(reply, 403, 'WEBHOOK_TOKEN_INVALID', 'Webhook token mismatch')
-        return reply
-      }
-    } else {
-      const signaturePayload = buildWebhookSignaturePayload({
-        config: trigger.config,
-        request,
-      })
-      if (!signaturePayload) {
-        sendApiError(
-          reply,
-          403,
-          'WEBHOOK_TIMESTAMP_INVALID',
-          'Webhook timestamp is missing for signed verification',
-        )
-        return reply
-      }
+    const candidateTriggers = await prisma.agentTrigger.findMany({
+      where: {
+        type: 'webhook',
+      },
+      select: {
+        id: true,
+        config: true,
+      },
+    })
 
-      if (
-        !isWebhookSignatureValid(
-          readFirstHeader(request, signatureHeaders),
-          expectedSecret,
-          signaturePayload,
-          signaturePrefix,
-        )
-      ) {
-        sendApiError(reply, 403, 'WEBHOOK_SIGNATURE_INVALID', 'Webhook signature mismatch')
-        return reply
-      }
-    }
+    const matchedTrigger = candidateTriggers.find((candidate) => {
+      const candidateApiKey =
+        candidate.config &&
+        typeof candidate.config === 'object' &&
+        !Array.isArray(candidate.config) &&
+        typeof (candidate.config as Record<string, unknown>)['apiKey'] === 'string'
+          ? ((candidate.config as Record<string, unknown>)['apiKey'] as string)
+          : undefined
 
-    if (!isWebhookTimestampFresh({ config: trigger.config, request })) {
-      sendApiError(reply, 403, 'WEBHOOK_TIMESTAMP_INVALID', 'Webhook timestamp is missing or stale')
+      return isTimingSafeMatch(candidateApiKey, apiKey)
+    })
+
+    if (!matchedTrigger) {
+      sendApiError(reply, 403, 'WEBHOOK_API_KEY_INVALID', 'Webhook API key is invalid')
       return reply
     }
+
+    const dedupeKey =
+      readFirstHeader(request, [
+        'x-nessie-delivery-id',
+        'x-github-delivery',
+        'x-request-id',
+      ]) ?? randomUUID()
 
     const dispatched = await dispatchAgentTrigger(prisma, {
       dedupeKey,
       payload: request.body,
       source: 'webhook',
-      triggerId,
+      triggerId: matchedTrigger.id,
     })
 
     if (dispatched.kind === 'rejected') {
@@ -2049,130 +2754,6 @@ export const buildApp = async () => {
       }),
     )
   })
-
-  // ─── Agent Categories ─────────────────────────────────────────────────────
-
-  app.get('/api/agent-categories', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const categories = await listAgentCategories(
-      prisma,
-      actorContext.tenant.organizationId,
-    )
-    return createApiResponse(
-      AgentCategoryRecordSchema.array().parse(categories),
-    )
-  })
-
-  app.post('/api/agent-categories', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const body = parseInput(CreateAgentCategoryBodySchema, request.body, reply)
-    if (!body) return reply
-
-    const category = await createAgentCategory(prisma, {
-      name: body.name,
-      description: body.description,
-      visibility: body.visibility ?? 'public',
-      organizationId: actorContext.tenant.organizationId,
-      createdById: actorContext.actor.actorId,
-      authorAgentId: body.authorAgentId,
-    })
-
-    return reply
-      .code(201)
-      .send(createApiResponse(AgentCategoryRecordSchema.parse(category)))
-  })
-
-  app.put('/api/agent-categories/:categoryId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const body = parseInput(
-      UpdateAgentCategoryBodySchema,
-      request.body,
-      reply,
-    )
-    if (!body) return reply
-
-    const { categoryId } = request.params as { categoryId: string }
-    const category = await updateAgentCategory(prisma, categoryId, body)
-    if (!category) {
-      sendApiError(reply, 404, 'CATEGORY_NOT_FOUND', 'Category not found')
-      return reply
-    }
-
-    return createApiResponse(AgentCategoryRecordSchema.parse(category))
-  })
-
-  app.delete('/api/agent-categories/:categoryId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-
-    const { categoryId } = request.params as { categoryId: string }
-    const deleted = await deleteAgentCategory(prisma, categoryId)
-    if (!deleted) {
-      sendApiError(reply, 404, 'CATEGORY_NOT_FOUND', 'Category not found')
-      return reply
-    }
-
-    return reply.code(204).send()
-  })
-
-  app.post(
-    '/api/agent-categories/:categoryId/agents',
-    async (request, reply) => {
-      const actorContext = requireActorContext(request, reply)
-      if (!actorContext) return reply
-
-      const body = parseInput(AgentCategoryAgentBodySchema, request.body, reply)
-      if (!body) return reply
-
-      const { categoryId } = request.params as { categoryId: string }
-      const category = await addAgentToCategory(
-        prisma,
-        categoryId,
-        body.agentId,
-      )
-      if (!category) {
-        sendApiError(reply, 404, 'CATEGORY_NOT_FOUND', 'Category not found')
-        return reply
-      }
-
-      return createApiResponse(AgentCategoryRecordSchema.parse(category))
-    },
-  )
-
-  app.delete(
-    '/api/agent-categories/:categoryId/agents/:agentId',
-    async (request, reply) => {
-      const actorContext = requireActorContext(request, reply)
-      if (!actorContext) return reply
-
-      const { categoryId, agentId } = request.params as {
-        agentId: string
-        categoryId: string
-      }
-      const removed = await removeAgentFromCategory(
-        prisma,
-        categoryId,
-        agentId,
-      )
-      if (!removed) {
-        sendApiError(
-          reply,
-          404,
-          'LINK_NOT_FOUND',
-          'Agent is not in this category',
-        )
-        return reply
-      }
-
-      return reply.code(204).send()
-    },
-  )
 
   app.get('/api/plans', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -2338,6 +2919,53 @@ export const buildApp = async () => {
       actorContext.tenant.organizationId,
       workflowTemplateId,
     )
+    if (!workflow) {
+      sendApiError(reply, 404, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
+      return reply
+    }
+
+    return createApiResponse(WorkflowTemplateRecordSchema.parse(workflow))
+  })
+
+  app.put('/api/workflows/:workflowTemplateId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(UpdateWorkflowTemplateBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowTemplateId } = request.params as { workflowTemplateId: string }
+    let workflow
+    try {
+      workflow = await updateWorkflowTemplate(
+        prisma,
+        actorContext,
+        workflowTemplateId,
+        body,
+      )
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND'
+      ) {
+        sendApiError(
+          reply,
+          404,
+          'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND',
+          'One or more required execution environment templates were not found',
+        )
+        return reply
+      }
+      throw error
+    }
+
     if (!workflow) {
       sendApiError(reply, 404, 'WORKFLOW_TEMPLATE_NOT_FOUND', 'Workflow template not found')
       return reply
@@ -2532,11 +3160,6 @@ export const buildApp = async () => {
 
     const body = parseInput(CreateWorkflowTriggerBodySchema, request.body, reply)
     if (!body) {
-      return reply
-    }
-
-    if (body.type === 'webhook' && typeof body.config?.['secret'] !== 'string') {
-      sendApiError(reply, 400, 'WEBHOOK_SECRET_REQUIRED', 'Webhook triggers require a secret')
       return reply
     }
 
@@ -2985,7 +3608,11 @@ export const buildApp = async () => {
 
     let message
     try {
-      message = await createMailboxMessage(prisma, actorContext.tenant.organizationId, body)
+      message = await createMailboxMessage(prisma, actorContext.tenant.organizationId, {
+        ...body,
+        actorId: actorContext.actor.actorId,
+        actorType: actorContext.actor.actorType,
+      })
     } catch (error) {
       if (error instanceof Error && error.message === 'MAILBOX_THREAD_NOT_FOUND') {
         sendApiError(reply, 404, 'MAILBOX_THREAD_NOT_FOUND', 'Mailbox thread not found')
@@ -3369,13 +3996,13 @@ export const buildApp = async () => {
       orderBy: { createdAt: 'asc' },
     })
 
-    return createApiResponse(projects.map((p) => ({
+    return createApiResponse(ProjectRecordSchema.array().parse(projects.map((p) => ({
       id: p.id,
       name: p.name,
       organizationId: p.organizationId,
       memberCount: p.members.length,
       createdAt: p.createdAt.toISOString(),
-    })))
+    }))))
   })
 
   app.post('/api/projects', async (request, reply) => {
@@ -3407,11 +4034,56 @@ export const buildApp = async () => {
       outcome: 'success',
     })
 
-    return reply.code(201).send(createApiResponse({
+    return reply.code(201).send(createApiResponse(ProjectRecordSchema.parse({
       id: project.id,
       name: project.name,
       organizationId: project.organizationId,
+      memberCount: 1,
       createdAt: project.createdAt.toISOString(),
+    })))
+  })
+
+  app.patch('/api/projects/:projectId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { projectId } = request.params as { projectId: string }
+    const body = parseInput(UpdateProjectBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const project = await prisma.project.findFirst({
+      where: {
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
+      include: { members: { select: { userId: true, role: true } } },
+    })
+    if (!project) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    const updatedProject = await prisma.project.update({
+      where: { id: project.id },
+      data: { name: body.name },
+      include: { members: { select: { userId: true, role: true } } },
+    })
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'project.updated' as Parameters<typeof emitAuditEvent>[1]['action'],
+      resourceType: 'project',
+      resourceId: updatedProject.id,
+      outcome: 'success',
+    })
+
+    return createApiResponse(ProjectRecordSchema.parse({
+      id: updatedProject.id,
+      name: updatedProject.name,
+      organizationId: updatedProject.organizationId,
+      memberCount: updatedProject.members.length,
+      createdAt: updatedProject.createdAt.toISOString(),
     }))
   })
 
@@ -3446,6 +4118,7 @@ export const buildApp = async () => {
     const query = request.query as { projectId?: string }
     const where: Record<string, unknown> = {
       project: { organizationId: actorContext.tenant.organizationId },
+      systemManaged: false,
     }
     if (query.projectId) {
       where['projectId'] = query.projectId
@@ -3649,109 +4322,81 @@ export const buildApp = async () => {
       return reply
     }
 
-    // Use the orchestrator to decide agent engagement
-    const scopes = [
-      {
-        kind: 'organization' as const,
+    if (messageMemoryCaptureConfig) {
+      try {
+        await captureUserMessageMemory(
+          {
+            channelId: thread.channel.id,
+            content: result.message.content,
+            memoryOrigin:
+              thread.channel.systemChannelType === 'personal_assistant'
+                ? 'personal_assistant_dm'
+                : 'user_authored_workspace_message',
+            messageId: result.message.id,
+            organizationId: actorContext.tenant.organizationId,
+            sourceAudience: thread.channel.type === 'dm' ? 'dm' : 'channel',
+            threadId: thread.id,
+            userId: actorContext.actor.actorId,
+          },
+          messageMemoryCaptureConfig,
+        )
+      } catch (error) {
+        app.log.warn(
+          { err: error, messageId: result.message.id },
+          '[memory] failed to capture user message memory',
+        )
+      }
+    }
+
+    await realtimeHub.publishWs(
+      buildChannelRealtimeScopes({
+        channelId: thread.channel.id,
         organizationId: actorContext.tenant.organizationId,
-      },
+        systemChannelType: thread.channel.systemChannelType,
+      }),
       {
-        kind: 'channel' as const,
-        channelId: parseChannelId(thread.channel.id),
+        data: {
+          agentId: undefined,
+          contentPreview: result.message.content.slice(0, 200),
+          messageId: result.message.id,
+          role: result.message.role,
+          threadId: parseThreadId(thread.id),
+        },
+        event: 'message.new',
       },
-    ]
+    )
 
-    if (result.channelAgents.length > 0 && sharedModelClient) {
-      // Fetch recent messages for context
-      const recentDbMessages = await prisma.message.findMany({
-        where: { threadId: thread.id },
-        orderBy: { createdAt: 'desc' },
-        take: 6,
-        include: { agent: { select: { name: true } } },
-      })
-
-      const decisions = await decideAgentEngagement(sharedModelClient, {
-        agents: result.channelAgents,
-        content: body.content,
-        recentMessages: recentDbMessages.reverse().slice(0, -1).map((m) => ({
-          role: m.role,
-          content: m.content,
-          agentName: m.agent?.name ?? undefined,
-        })),
-      })
-
-      for (const decision of decisions) {
-        if (decision.action === 'reply') {
-          const run = await prisma.run.create({
-            data: {
-              agentId: decision.agentId,
-              threadId: thread.id,
-              status: 'pending',
-            },
-            select: { agentId: true, id: true, status: true, threadId: true },
+    // Enqueue agent-engagement decision — durable, retryable, never blocks this
+    // response. The try/catch ensures a transient queue-insert failure cannot
+    // surface as a "failed" badge on an already-persisted user message.
+    if (result.channelAgents.length > 0) {
+      const orchestrationActorContext = isPersonalAssistantChannelType(
+        thread.channel.systemChannelType,
+      )
+        ? withActionContext(actorContext, {
+            effectiveUserId: parseUserId(actorContext.actor.actorId),
           })
+        : actorContext
 
-          const task = await prisma.task.create({
-            data: {
-              runId: run.id,
-              agentId: decision.agentId,
-              status: 'inbox',
-              purpose: body.content.slice(0, 200),
-            },
-            select: { id: true },
-          })
-
-          await realtimeHub.publishWs(
-            [
-              ...scopes,
-              { kind: 'agent' as const, agentId: parseAgentId(decision.agentId) },
-            ],
-            {
-              data: {
-                agentId: parseAgentId(decision.agentId),
-                contentPreview: result.message.content.slice(0, 200),
-                messageId: result.message.id,
-                role: result.message.role,
-                threadId: parseThreadId(result.message.threadId),
-              },
-              event: 'message.new',
-            },
-          )
-
-          await enqueueRunExecution(prisma, {
-            actorContext: withActionContext(actorContext, {
-              agentId: parseAgentId(run.agentId),
-              channelId: parseChannelId(thread.channel.id),
-              taskId: parseTaskId(task.id),
-              threadId: parseThreadId(run.threadId),
-            }),
-            agentId: parseAgentId(run.agentId),
+      try {
+        await enqueueOrchestrateDecide(
+          prisma,
+          {
+            actorContext: orchestrationActorContext,
+            channelAgents: result.channelAgents,
+            channelId: parseChannelId(thread.channel.id),
+            content: body.content,
             messageId: result.message.id,
-            runId: parseRunId(run.id),
-            taskId: parseTaskId(task.id),
-            threadId: parseThreadId(run.threadId),
-          }, `run:${run.id}`)
-        }
-
-        if (decision.action === 'acknowledge') {
-          await addReaction(prisma, {
-            messageId: result.message.id,
-            agentId: decision.agentId,
-            emoji: decision.emoji,
-          })
-
-          const reactionData = {
-            messageId: result.message.id,
-            agentId: parseAgentId(decision.agentId),
-            emoji: decision.emoji,
-          }
-
-          await realtimeHub.publishSse(thread.id, 'message.reaction', reactionData)
-          await realtimeHub.publishWs(scopes, {
-            data: reactionData,
-            event: 'message.reaction',
-          })
-        }
+            role: result.message.role,
+            threadId: parseThreadId(thread.id),
+          },
+          `orchestrate:${result.message.id}`,
+        )
+      } catch (err) {
+        app.log.error(
+          { err, messageId: result.message.id },
+          '[orchestrate] failed to enqueue decide job — agent will not respond',
+        )
       }
     }
 
@@ -3765,9 +4410,36 @@ export const buildApp = async () => {
           role: result.message.role,
           content: result.message.content,
           createdAt: result.message.createdAt.toISOString(),
+          metadata:
+            result.message.metadata
+            && typeof result.message.metadata === 'object'
+            && !Array.isArray(result.message.metadata)
+              ? (result.message.metadata as Record<string, unknown>)
+              : undefined,
         }),
       ),
     )
+  })
+
+  app.post('/api/threads/:threadId/read', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { threadId } = request.params as { threadId: string }
+    const thread = await findThreadForUser(prisma, threadId, actorContext.actor.actorId)
+    if (!thread) {
+      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+
+    await markThreadRead(prisma, {
+      threadId: thread.id,
+      userId: actorContext.actor.actorId,
+    })
+
+    return reply.code(200).send(createApiResponse({ ok: true }))
   })
 
   app.post('/api/threads/:threadId/messages/:messageId/reactions', async (request, reply) => {
@@ -3796,10 +4468,11 @@ export const buildApp = async () => {
     })
 
     await realtimeHub.publishWs(
-      [
-        { kind: 'organization', organizationId: actorContext.tenant.organizationId },
-        { kind: 'channel', channelId: parseChannelId(thread.channel.id) },
-      ],
+      buildChannelRealtimeScopes({
+        channelId: thread.channel.id,
+        organizationId: actorContext.tenant.organizationId,
+        systemChannelType: thread.channel.systemChannelType,
+      }),
       {
         data: { messageId, userId: actorContext.actor.actorId, emoji: body.emoji },
         event: 'message.reaction',
@@ -3859,12 +4532,13 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    const visibility = createAgentVisibilityScope(actorContext)
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    const status = await loadAgentStatus(prisma, agentId)
+    const status = await loadAgentStatus(prisma, agentId, { visibility })
     if (!status) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
@@ -3880,12 +4554,13 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    const visibility = createAgentVisibilityScope(actorContext)
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    const activity = await loadAgentActivity(prisma, agentId)
+    const activity = await loadAgentActivity(prisma, agentId, { visibility })
     if (!activity) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
@@ -3904,12 +4579,13 @@ export const buildApp = async () => {
     const query = request.query as { limit?: string; offset?: string }
     const limit = Math.min(Math.max(Number(query.limit ?? '5'), 1), 50)
     const offset = Math.max(Number(query.offset ?? '0'), 0)
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    const visibility = createAgentVisibilityScope(actorContext)
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    return createApiResponse(await loadAgentMessages(prisma, agentId, limit, actorContext.actor.actorId, offset))
+    return createApiResponse(await loadAgentMessages(prisma, agentId, limit, offset, { visibility }))
   })
 
   app.get('/api/agents/:agentId/children', async (request, reply) => {
@@ -3919,7 +4595,7 @@ export const buildApp = async () => {
     }
 
     const { agentId } = request.params as { agentId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
@@ -3934,12 +4610,13 @@ export const buildApp = async () => {
     }
 
     const { agentId, runId } = request.params as { agentId: string; runId: string }
-    if (!(await isAgentVisibleToUser(actorContext.actor.actorId, actorContext.tenant.organizationId, agentId))) {
+    const visibility = createAgentVisibilityScope(actorContext)
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
-    return createApiResponse(await loadRunToolCalls(prisma, agentId, runId))
+    return createApiResponse(await loadRunToolCalls(prisma, agentId, runId, { visibility }))
   })
 
   app.get('/api/activity', { websocket: true }, (socket, request) => {
@@ -3951,8 +4628,12 @@ export const buildApp = async () => {
 
     const userId = actorContext.actor.actorId
     const tenantOrganizationId = actorContext.tenant.organizationId
-    const wsConnection = realtimeHub.registerWsConnection((message) => {
-      sendJson(message)
+    const wsConnection = realtimeHub.registerWsConnection({
+      organizationId: tenantOrganizationId,
+      userId,
+      send: (message) => {
+        sendJson(message)
+      },
     })
     let currentScopes: WsScope[] = []
     let idleTimer: NodeJS.Timeout
@@ -4006,7 +4687,9 @@ export const buildApp = async () => {
 
       currentScopes = await filterAuthorizedScopes(userId, tenantOrganizationId, nextScopes)
       realtimeHub.setWsScopes(wsConnection, currentScopes)
-      const snapshot = await buildSnapshotForScopes(prisma, currentScopes)
+      const snapshot = await buildSnapshotForScopes(prisma, currentScopes, {
+        visibility: createAgentVisibilityScope(actorContext),
+      })
 
       sendJson({
         type: 'subscribed',
@@ -4045,16 +4728,40 @@ export const buildApp = async () => {
     const ts = requireThoughtService(reply)
     if (!ts) return reply
 
+    const projectId = body.projectId ?? actorContext.tenant.projectId
+    const teamId = body.teamId
+      ?? actorContext.actionContext.teamId
+      ?? actorContext.tenant.teamId
+    const channelId = body.channelId
+      ?? actorContext.actionContext.channelId
+      ?? actorContext.tenant.channelId
+      ?? undefined
+    const captureAudience = resolveThoughtCaptureAudience(actorContext, {
+      audienceType: body.audienceType,
+      visibility: body.visibility,
+      projectId,
+      teamId,
+      channelId,
+    })
+    if (!captureAudience.audience) {
+      return sendApiError(reply, 400, 'INVALID_MEMORY_AUDIENCE', captureAudience.error)
+    }
+
     const result = await ts.capture({
       content: body.content,
       ownerId: actorContext.actor.actorId,
       ownerType: actorContext.actor.actorType,
+      audienceType: captureAudience.audience.audienceType,
+      audienceId: captureAudience.audience.audienceId,
       organizationId: actorContext.tenant.organizationId,
-      projectId: body.projectId ?? actorContext.tenant.projectId,
-      teamId: body.teamId ?? actorContext.tenant.teamId,
-      channelId: body.channelId ?? actorContext.tenant.channelId ?? undefined,
+      projectId,
+      teamId,
+      channelId,
       threadId: body.threadId ?? undefined,
-      visibility: body.visibility,
+      userId: captureAudience.audience.audienceType === 'user'
+        ? captureAudience.audience.audienceId
+        : undefined,
+      visibility: captureAudience.audience.visibility,
       sensitivityTier: body.sensitivityTier,
       importance: body.importance,
     })
@@ -4068,6 +4775,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
     const body = parseInput(SearchThoughtsBodySchema, request.body, reply)
     if (!body) {
       return reply
@@ -4076,11 +4787,18 @@ export const buildApp = async () => {
     const ts = requireThoughtService(reply)
     if (!ts) return reply
 
+    const outputAudience = resolveThoughtOutputAudience(actorContext)
+    if (!outputAudience.audience) {
+      return sendApiError(reply, 400, 'INVALID_MEMORY_AUDIENCE', outputAudience.error)
+    }
+
     try {
       const results = await ts.search({
         query: body.query,
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
+        outputAudienceType: outputAudience.audience.audienceType,
+        outputAudienceId: outputAudience.audience.audienceId,
         threshold: body.threshold,
         limit: body.limit,
         includeReasoning: body.includeReasoning,
@@ -4102,6 +4820,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
     const body = parseInput(RecordOutcomeBodySchema, request.body, reply)
     if (!body) {
       return reply
@@ -4111,15 +4833,25 @@ export const buildApp = async () => {
     if (!ts) return reply
 
     const { id } = request.params as { id: string }
-    const orgId = actorContext.tenant.organizationId
+    const outputAudience = resolveThoughtOutputAudience(actorContext)
+    if (!outputAudience.audience) {
+      return sendApiError(reply, 400, 'INVALID_MEMORY_AUDIENCE', outputAudience.error)
+    }
 
-    const hasAccess = await ts.verifyAccess(id, orgId)
+    const hasAccess = await ts.verifyAccess({
+      thoughtId: id,
+      organizationId: actorContext.tenant.organizationId,
+      requesterUserId: actorContext.actor.actorId,
+      outputAudienceType: outputAudience.audience.audienceType,
+      outputAudienceId: outputAudience.audience.audienceId,
+    })
     if (!hasAccess) {
       return sendApiError(reply, 404, 'THOUGHT_NOT_FOUND', 'Thought not found')
     }
 
     await ts.recordOutcome({
       thoughtId: id,
+      organizationId: actorContext.tenant.organizationId,
       outcome: body.outcome,
       outcomeNotes: body.outcomeNotes,
       actorType: actorContext.actor.actorType,
@@ -4135,6 +4867,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
     const body = parseInput(RecordThoughtRecallSignalBodySchema, request.body, reply)
     if (!body) {
       return reply
@@ -4147,6 +4883,7 @@ export const buildApp = async () => {
     const updated = await ts.recordRecallSignal({
       recallId: id,
       organizationId: actorContext.tenant.organizationId,
+      requesterUserId: actorContext.actor.actorId,
       userSignal: body.userSignal,
     })
 
@@ -4163,6 +4900,10 @@ export const buildApp = async () => {
       return reply
     }
 
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
     const body = parseInput(LinkThoughtsBodySchema, request.body, reply)
     if (!body) {
       return reply
@@ -4172,12 +4913,27 @@ export const buildApp = async () => {
     if (!ts) return reply
 
     const { id } = request.params as { id: string }
-    const orgId = actorContext.tenant.organizationId
+    const outputAudience = resolveThoughtOutputAudience(actorContext)
+    if (!outputAudience.audience) {
+      return sendApiError(reply, 400, 'INVALID_MEMORY_AUDIENCE', outputAudience.error)
+    }
 
-    // Verify both source and target belong to caller's org
+    // Verify both source and target are readable in the caller's current audience.
     const [sourceOk, targetOk] = await Promise.all([
-      ts.verifyAccess(id, orgId),
-      ts.verifyAccess(body.targetId, orgId),
+      ts.verifyAccess({
+        thoughtId: id,
+        organizationId: actorContext.tenant.organizationId,
+        requesterUserId: actorContext.actor.actorId,
+        outputAudienceType: outputAudience.audience.audienceType,
+        outputAudienceId: outputAudience.audience.audienceId,
+      }),
+      ts.verifyAccess({
+        thoughtId: body.targetId,
+        organizationId: actorContext.tenant.organizationId,
+        requesterUserId: actorContext.actor.actorId,
+        outputAudienceType: outputAudience.audience.audienceType,
+        outputAudienceId: outputAudience.audience.audienceId,
+      }),
     ])
     if (!sourceOk || !targetOk) {
       return sendApiError(reply, 404, 'THOUGHT_NOT_FOUND', 'Thought not found')
@@ -4186,6 +4942,7 @@ export const buildApp = async () => {
     const linkId = await ts.link({
       sourceId: id,
       targetId: body.targetId,
+      organizationId: actorContext.tenant.organizationId,
       relation: body.relation,
       metadata: body.metadata,
       actorType: actorContext.actor.actorType,
@@ -4669,6 +5426,13 @@ export const startApiServer = async () => {
     host: config.api.host,
     port: config.api.port,
   })
+
+  // In local mode, start the worker in-process so agents always work
+  if (config.mode === 'local') {
+    const { startWorker } = await import('@nessie/worker')
+    await startWorker()
+    console.log('[api] embedded worker started (local mode)')
+  }
 
   return app
 }

@@ -1,5 +1,6 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
+import { AgentActivityPage } from './pages/AgentActivityPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
@@ -9,8 +10,10 @@ import { ChannelsPage } from './pages/ChannelsPage'
 import { LoginPage } from './pages/LoginPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ToolsPage } from './pages/ToolsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
 import { TriggersPage } from './pages/TriggersPage'
+import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 
 export const router = createBrowserRouter([
@@ -38,16 +41,36 @@ export const router = createBrowserRouter([
         element: <AgentsPage />,
       },
       {
-        path: '/triggers',
+        path: '/agents/activity',
+        element: <AgentActivityPage />,
+      },
+      {
+        path: '/agents/designer',
+        element: <AgentDesignerPage />,
+      },
+      {
+        path: '/agents/designer/:agentId',
+        element: <AgentDesignerPage />,
+      },
+      {
+        path: '/agents/workflow-designer',
+        element: <WorkflowDesignerPage />,
+      },
+      {
+        path: '/agents/workflow-designer/:workflowTemplateId',
+        element: <WorkflowDesignerPage />,
+      },
+      {
+        path: '/agents/triggers',
         element: <TriggersPage />,
       },
       {
-        path: '/workflows',
+        path: '/agents/workflows',
         element: <WorkflowsPage />,
       },
       {
-        path: '/agents/new',
-        element: <AgentDesignerPage />,
+        path: '/agents/tools',
+        element: <ToolsPage />,
       },
       {
         path: '/settings',

@@ -117,14 +117,110 @@ a {
   cursor: pointer;
 }
 
+.admin-sec-row {
+  display: flex;
+  align-items: flex-end;
+  position: relative;
+}
+
+.admin-sidebar-plus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 5px 8px 0 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--tx3);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.admin-sidebar-plus:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.admin-sidebar-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--tx3);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.admin-sidebar-more:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.admin-sidebar-menu {
+  position: absolute;
+  z-index: 20;
+  top: 30px;
+  right: 8px;
+  width: 180px;
+  overflow: hidden;
+  border: 1px solid var(--sep);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+}
+
+.admin-sidebar-menu-project {
+  top: 24px;
+  right: 0;
+  width: 220px;
+}
+
+.admin-sidebar-menu button {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 8px 10px;
+  color: var(--tx);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+
+.admin-sidebar-menu [role="button"] {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--tx);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.admin-sidebar-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.admin-sidebar-menu [role="button"]:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .admin-sb-item {
   display: flex;
   align-items: center;
   gap: 7px;
+  width: calc(100% - 16px);
   margin: 0 8px;
   min-height: 28px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 5px;
   padding: 4px 8px 4px 20px;
   color: var(--tx2);
   font-size: 15px;
@@ -139,6 +235,15 @@ a {
 .admin-sb-item.active {
   background: var(--sb-active);
   color: #fff;
+}
+
+.admin-sb-item.active-parent {
+  background: color-mix(in srgb, var(--sb-active) 20%, transparent);
+  color: color-mix(in srgb, #fff 78%, var(--tx2) 22%);
+}
+
+.admin-sb-item.sidebar-child {
+  padding-left: 32px;
 }
 
 .admin-rail-btn {

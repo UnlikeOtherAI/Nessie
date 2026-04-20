@@ -18,6 +18,66 @@ export const useWorkflowTemplates = (enabled = true) => {
   })
 }
 
+export const useWorkflowTemplate = (
+  workflowTemplateId?: string,
+  enabled = true,
+) => {
+  const apiClient = useApiClient()
+
+  return useQuery<WorkflowTemplateRecord>({
+    queryKey: ['workflow-templates', workflowTemplateId],
+    queryFn: () => apiClient.get(`/api/workflows/${workflowTemplateId}`),
+    enabled: enabled && Boolean(workflowTemplateId),
+  })
+}
+
+export const useCreateWorkflowTemplate = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      bindingSchema?: unknown
+      description?: string
+      graph: WorkflowTemplateRecord['graph']
+      name: string
+      requiredEnvironmentTemplateIds?: string[]
+      triggers?: unknown
+      variableSchema?: unknown
+    }) => apiClient.post<WorkflowTemplateRecord>('/api/workflows', input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workflow-templates'] })
+    },
+  })
+}
+
+export const useUpdateWorkflowTemplate = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      workflowTemplateId: string
+      bindingSchema?: unknown
+      description?: string
+      graph: WorkflowTemplateRecord['graph']
+      name: string
+      requiredEnvironmentTemplateIds?: string[]
+      triggers?: unknown
+      variableSchema?: unknown
+    }) => {
+      const { workflowTemplateId, ...body } = input
+      return apiClient.put<WorkflowTemplateRecord>(`/api/workflows/${workflowTemplateId}`, body)
+    },
+    onSuccess: (workflow) => {
+      void queryClient.invalidateQueries({ queryKey: ['workflow-templates'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['workflow-templates', workflow.id],
+      })
+    },
+  })
+}
+
 export const useWorkflowInstallations = (enabled = true) => {
   const apiClient = useApiClient()
 
@@ -25,6 +85,32 @@ export const useWorkflowInstallations = (enabled = true) => {
     queryKey: ['workflow-installations'],
     queryFn: () => apiClient.get('/api/workflow-installations'),
     enabled,
+  })
+}
+
+export const useInstallWorkflowTemplate = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      workflowTemplateId: string
+      active?: boolean
+      channelId?: string
+      config?: Record<string, unknown>
+      resolvedBindings?: Record<string, unknown>
+      status?: WorkflowInstallationRecord['status']
+    }) => {
+      const { workflowTemplateId, ...body } = input
+      return apiClient.post<WorkflowInstallationRecord>(
+        `/api/workflows/${workflowTemplateId}/install`,
+        body,
+      )
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workflow-installations'] })
+      void queryClient.invalidateQueries({ queryKey: ['workflow-templates'] })
+    },
   })
 }
 

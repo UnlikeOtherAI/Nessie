@@ -218,6 +218,65 @@ const buildGcloudLabels = (input: {
   nessie_org: sanitizeNamePart(input.organizationId).slice(0, 63),
 })
 
+export const buildGcloudRunJobArgs = (input: {
+  env: Record<string, string>
+  image: string
+  jobName: string
+  maxRetries?: string
+  projectId: string
+  region: string
+  tasks?: string
+}): { deployArgs: string[]; executeArgs: string[] } => {
+  const deployArgs = [
+    'run',
+    'jobs',
+    'deploy',
+    input.jobName,
+    '--project',
+    input.projectId,
+    '--region',
+    input.region,
+    '--image',
+    input.image,
+    '--quiet',
+    '--format=json',
+  ]
+
+  if (Object.keys(input.env).length > 0) {
+    deployArgs.push(
+      '--set-env-vars',
+      Object.entries(input.env)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(','),
+    )
+  }
+
+  if (input.tasks) {
+    deployArgs.push('--tasks', input.tasks)
+  }
+
+  if (input.maxRetries) {
+    deployArgs.push('--max-retries', input.maxRetries)
+  }
+
+  return {
+    deployArgs,
+    executeArgs: [
+      'run',
+      'jobs',
+      'execute',
+      input.jobName,
+      '--project',
+      input.projectId,
+      '--region',
+      input.region,
+      '--wait',
+      '--quiet',
+      '--format=json',
+    ],
+  }
+}
+
 const formatCommandError = (error: unknown, command: string, args: string[]): Error => {
   if (!(error instanceof Error)) {
     return new Error(`${command} ${args.join(' ')} failed`)
@@ -587,7 +646,7 @@ const buildGcloudVmArgs = async (
 const buildGcloudFunctionArgs = (
   context: ProvisioningContext,
 ): {
-  createArgs: string[]
+  deployArgs: string[]
   executeArgs: string[]
   metadata: Record<string, unknown>
   providerInstanceRef: string
@@ -604,56 +663,22 @@ const buildGcloudFunctionArgs = (
   }
 
   const jobName = parseString(config['jobName']) ?? buildGcloudInstanceName(context.instance.id)
-  const createArgs = [
-    'run',
-    'jobs',
-    'create',
-    jobName,
-    '--project',
-    projectId,
-    '--region',
-    region,
-    '--image',
-    image,
-    '--quiet',
-    '--format=json',
-  ]
-
   const env = parseStringRecord(config['env'])
-  if (Object.keys(env).length > 0) {
-    createArgs.push(
-      '--set-env-vars',
-      Object.entries(env)
-        .map(([key, value]) => `${key}=${value}`)
-        .join(','),
-    )
-  }
-
   const tasks = parseString(config['tasks'])
-  if (tasks) {
-    createArgs.push('--tasks', tasks)
-  }
-
   const maxRetries = parseString(config['maxRetries'])
-  if (maxRetries) {
-    createArgs.push('--max-retries', maxRetries)
-  }
+  const { deployArgs, executeArgs } = buildGcloudRunJobArgs({
+    env,
+    image,
+    jobName,
+    projectId,
+    region,
+    ...(tasks ? { tasks } : {}),
+    ...(maxRetries ? { maxRetries } : {}),
+  })
 
   return {
-    createArgs,
-    executeArgs: [
-      'run',
-      'jobs',
-      'execute',
-      jobName,
-      '--project',
-      projectId,
-      '--region',
-      region,
-      '--wait',
-      '--quiet',
-      '--format=json',
-    ],
+    deployArgs,
+    executeArgs,
     metadata: {
       jobName,
       projectId,
@@ -685,16 +710,9 @@ const provisionGcloud = async (
     throw new Error(`GCLOUD_MODE_UNSUPPORTED:${context.instance.template.mode}`)
   }
 
-  const { createArgs, executeArgs, metadata, providerInstanceRef } = buildGcloudFunctionArgs(context)
+  const { deployArgs, executeArgs, metadata, providerInstanceRef } = buildGcloudFunctionArgs(context)
 
-  try {
-    await runCommand('gcloud', createArgs)
-  } catch (error) {
-    if (!(error instanceof Error) || !error.message.toLowerCase().includes('already exists')) {
-      throw error
-    }
-  }
-
+  await runCommand('gcloud', deployArgs)
   await runCommand('gcloud', executeArgs)
 
   return {

@@ -46,6 +46,17 @@ variable "worker_image" {
   default     = "us-central1-docker.pkg.dev/PROJECT/nessie/worker:latest"
 }
 
+resource "google_secret_manager_secret" "auth_secret" {
+  project   = var.project_id
+  secret_id = "nessie-auth-secret"
+
+  labels = var.labels
+
+  replication {
+    auto {}
+  }
+}
+
 locals {
   common_env = [
     {
@@ -59,6 +70,11 @@ locals {
   ]
 
   common_secret_env = [
+    {
+      name       = "NESSIE_AUTH_SECRET"
+      secret_key = google_secret_manager_secret.auth_secret.secret_id
+      version    = "latest"
+    },
     {
       name       = "NESSIE_DB_URL"
       secret_key = "nessie-database-url"

@@ -32,12 +32,23 @@ export type JsonObjectResponseFormat = {
   type: 'json_object'
 }
 
-export type ProviderMessage = {
-  role: 'assistant' | 'system' | 'tool' | 'user'
-  content: string
-  name?: string
-  toolCallId?: string
+export type ToolSchemaDescriptor = {
+  toolName: string
+  description: string
+  inputSchema: Record<string, unknown>
 }
+
+export type ProviderToolCall = {
+  toolCallId: string
+  toolName: string
+  arguments: Record<string, unknown>
+}
+
+export type ProviderMessage =
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string | null; toolCalls?: ProviderToolCall[] }
+  | { role: 'tool'; content: string; toolCallId: string }
 
 export type UsageReporting = {
   cacheReadTokens: boolean
@@ -109,18 +120,26 @@ export type ProviderInvocationRequest = {
   model: string
   responseFormat?: JsonObjectResponseFormat
   temperature?: number
+  tools?: ToolSchemaDescriptor[]
+  toolChoice?:
+    | 'auto'
+    | 'none'
+    | 'required'
+    | { type: 'function'; function: { name: string } }
 }
 
 export type ProviderInvocationResult = {
   finishReason?: NormalizedFinishReason
   invocation: InvocationRecord
   outputText: string
+  toolCalls: ProviderToolCall[]
 }
 
-export type ProviderStreamEvent = {
-  type: 'output_text.delta'
-  text: string
-}
+export type ProviderStreamEvent =
+  | { type: 'reasoning_text.delta'; text: string }
+  | { type: 'output_text.delta'; text: string }
+  | { type: 'tool_call.delta'; text: string }
+  | { type: 'response.error'; message: string; retryable: boolean }
 
 export type ProviderEmbeddingRequest = {
   requestId: string
@@ -192,6 +211,12 @@ export type InferenceRequest = {
   requestId?: string
   responseFormat?: JsonObjectResponseFormat
   temperature?: number
+  tools?: ToolSchemaDescriptor[]
+  toolChoice?:
+    | 'auto'
+    | 'none'
+    | 'required'
+    | { type: 'function'; function: { name: string } }
 }
 
 export type InferenceResult = {
@@ -202,6 +227,7 @@ export type InferenceResult = {
   outputText: string
   provider: ModelProviderName
   requestId: string
+  toolCalls: ProviderToolCall[]
 }
 
 export type InferenceStreamEvent = ProviderStreamEvent

@@ -18,12 +18,13 @@
 
 - Every UI change must be visually verified using kelpie before considering the work complete.
 - Run `kelpie "http://localhost:5555/<path>"` to screenshot the affected page and confirm the feature renders correctly.
-- Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched.
+- Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched. Always run Playwright headless unless the user explicitly requests otherwise.
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
 
 ## Architecture
 
 - All standards, specs, and design decisions live in `docs/`.
+- When a document is finished, move it to `docs/done/`.
 - Legacy code lives in `src/`. New code goes into `api/`, `admin/`, `web/`, `worker/`, `packages/`.
 - Do not import from `src/` in new code. All reusable concepts must be re-implemented in `packages/`.
 - Follow the provider system and frontend architecture in `docs/provider-system-and-frontend-architecture.md`.

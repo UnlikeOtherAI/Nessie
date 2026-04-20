@@ -1,10 +1,11 @@
 import type { AgentChild } from '@nessie/schemas'
 import type { AgentRecord } from '../../../lib/api-client'
+import { ColumnBrowserItem } from '../../shared/column-browser/ColumnBrowserItem'
 import { AgentStatusDot } from './AgentStatusDot'
 
 type AgentColumnItemProps = {
   agent: AgentRecord | AgentChild
-  hasChildren?: boolean
+  childCount?: number
   isSelected: boolean
   onClick: () => void
 }
@@ -12,43 +13,47 @@ type AgentColumnItemProps = {
 const getName = (agent: AgentRecord | AgentChild): string => agent.name
 
 const getRole = (agent: AgentRecord | AgentChild): string =>
-  'role' in agent && typeof (agent as AgentRecord).role === 'string'
-    ? (agent as AgentRecord).role
+  'role' in agent && typeof agent.role === 'string'
+    ? agent.role
     : 'purpose' in agent
-      ? (agent as AgentChild).purpose ?? ''
-      : ''
+      ? agent.purpose ?? 'assistant'
+      : 'assistant'
+
+const getMeta = (
+  agent: AgentRecord | AgentChild,
+  childCount: number,
+): string => {
+  if ('lastActivityAt' in agent) {
+    return `Last activity ${new Date(agent.lastActivityAt).toLocaleString()}`
+  }
+
+  if ('purpose' in agent && agent.purpose) {
+    return agent.purpose
+  }
+
+  return childCount > 0
+    ? `${childCount} sub-agent${childCount === 1 ? '' : 's'}`
+    : 'No sub-agents'
+}
 
 export const AgentColumnItem = ({
   agent,
-  hasChildren,
+  childCount = 0,
   isSelected,
   onClick,
 }: AgentColumnItemProps) => (
-  <button
-    className={[
-      'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
-      isSelected
-        ? 'bg-[color:var(--accent)] text-white'
-        : 'text-[color:var(--tx)] hover:bg-white/8',
-    ].join(' ')}
+  <ColumnBrowserItem
+    caption={
+      childCount > 0
+        ? `${childCount} sub-agent${childCount === 1 ? '' : 's'}`
+        : 'Leaf agent'
+    }
+    isSelected={isSelected}
+    meta={<AgentStatusDot status={agent.status} />}
     onClick={onClick}
-    type="button"
+    subtitle={getRole(agent)}
+    title={getName(agent)}
   >
-    <AgentStatusDot status={agent.status} />
-    <div className="min-w-0 flex-1">
-      <div className="truncate text-sm font-medium">{getName(agent)}</div>
-      <div className="truncate text-xs text-[color:var(--tx3)]">{getRole(agent)}</div>
-    </div>
-    {hasChildren ? (
-      <svg
-        className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        viewBox="0 0 24 24"
-      >
-        <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ) : null}
-  </button>
+    {getMeta(agent, childCount)}
+  </ColumnBrowserItem>
 )

@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import type { ThreadMessageRecord } from '../../lib/api-client'
+import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
@@ -8,8 +8,17 @@ type StreamState = {
   pendingMessages: Array<{
     agentId: string
     content: string
+    reasoningContent: string
     runId: string
   }>
+}
+
+type StreamEventData = {
+  agentId?: string
+  content?: string
+  createdAt?: string
+  messageId?: string
+  runId: string
 }
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
@@ -21,6 +30,32 @@ export const useThreadMessages = (threadId?: string) => {
     queryKey: ['threads', threadId, 'messages'],
     queryFn: () => apiClient.get(`/api/threads/${threadId}/messages`),
     enabled: Boolean(threadId),
+  })
+}
+
+export const useMarkThreadRead = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (threadId: string) => apiClient.post(`/api/threads/${threadId}/read`, {}),
+    onMutate: (threadId) => {
+      queryClient.setQueryData<ChannelRecord[] | undefined>(
+        ['channels'],
+        (current) =>
+          current?.map((channel) =>
+            channel.defaultThreadId === threadId
+              ? { ...channel, unreadCount: 0 }
+              : channel,
+          ),
+      )
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
   })
 }
 
@@ -104,15 +139,36 @@ export const useThreadStream = (threadId?: string): StreamState => {
                 continue
               }
 
-              const data = JSON.parse(dataLine) as {
-                agentId?: string
-                content?: string
-                runId: string
-              }
+              const data = JSON.parse(dataLine) as StreamEventData
 
               if (event === 'stream.start') {
-                const newPending = { agentId: data.agentId ?? '', content: '', runId: data.runId }
-                setPendingMessages((current) => [...current, newPending])
+                setPendingMessages((current) =>
+                  current.some((message) => message.runId === data.runId)
+                    ? current
+                    : [
+                        ...current,
+                        {
+                          agentId: data.agentId ?? '',
+                          content: '',
+                          reasoningContent: '',
+                          runId: data.runId,
+                        },
+                      ],
+                )
+                continue
+              }
+
+              if (event === 'stream.reasoning') {
+                setPendingMessages((current) =>
+                  current.map((message) =>
+                    message.runId === data.runId
+                      ? {
+                          ...message,
+                          reasoningContent: `${message.reasoningContent}${data.content ?? ''}`,
+                        }
+                      : message,
+                  ),
+                )
                 continue
               }
 
@@ -131,6 +187,27 @@ export const useThreadStream = (threadId?: string): StreamState => {
               }
 
               if (event === 'stream.done') {
+                if (data.messageId && data.content !== undefined) {
+                  queryClient.setQueryData<ThreadMessageRecord[] | undefined>(
+                    ['threads', threadId, 'messages'],
+                    (current) => {
+                      const finalMessage: ThreadMessageRecord = {
+                        agentId: data.agentId ?? null,
+                        content: data.content ?? '',
+                        createdAt: data.createdAt ?? new Date().toISOString(),
+                        id: data.messageId ?? '',
+                        reactions: [],
+                        role: 'assistant',
+                        threadId,
+                      }
+                      const messages = current ?? []
+                      return [
+                        ...messages.filter((message) => message.id !== finalMessage.id),
+                        finalMessage,
+                      ]
+                    },
+                  )
+                }
                 setPendingMessages((current) =>
                   current.filter((message) => message.runId !== data.runId),
                 )

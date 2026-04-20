@@ -6,7 +6,7 @@ The foundational skill model (structure, visibility, lifecycle, database schema)
 
 Related documents:
 - [the-agents.md § 7](the-agents.md) — skill structure, visibility, lifecycle, database schema, promotion pipeline
-- [multi-agent-memory-system.md](multi-agent-memory-system.md) — procedural memory, self-evaluation loop
+- [multi-agent-memory-system.md](done/multi-agent-memory-system.md) — procedural memory, self-evaluation loop
 - [external-tool-integration.md](external-tool-integration.md) — tool outcome memory, companion skills
 - [marketplace.md](marketplace.md) — unified marketplace, library, agent editor integration
 - [tool-registry-spec.md](tool-registry-spec.md) — sandbox constraints for security verification Stage 4

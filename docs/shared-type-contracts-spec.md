@@ -99,9 +99,16 @@ type TaskStatus = 'inbox' | 'assigned' | 'in_progress' | 'review' | 'done' | 'fa
 
 // SSE events — chat/thread streaming
 type SseEventMap = {
-  'stream.start': { runId: string; threadId: string };
+  'stream.start': { runId: string; threadId: string; agentId: string };
+  'stream.reasoning': { runId: string; content: string };
   'stream.delta': { runId: string; content: string };
-  'stream.done': { runId: string; messageId: string };
+  'stream.done': {
+    runId: string;
+    messageId: string;
+    agentId?: string;
+    content?: string;
+    createdAt?: string;
+  };
 };
 
 // WebSocket events — presence and agent activity
@@ -167,6 +174,7 @@ Rules:
 - SSE events go on `SseEventMap`, WebSocket events go on `WsEventMap`
 - **do not put chat streaming events on the WebSocket**
 - **do not put agent activity events on SSE**
+- `stream.reasoning` is for provider-supplied chat reasoning/thinking text only; it is scoped to the active thread stream and is separate from Phase 2 `agent.thought` activity events
 - `message.new` is a WebSocket event for cache invalidation; the actual message content arrives via SSE `stream.done` or REST query — not duplicated on both transports
 - legacy event names (`streaming.start`, `subagent.started`, `task.state_changed`) are historical only and must not be used for new `/api` or `/admin` work
 - `agent.thought`, `agent.tool.progress`, and `approval.resolved` are Phase 2 events; do not implement in Phase 1

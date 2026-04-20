@@ -4,6 +4,7 @@ import type { Pool } from 'pg'
 
 export type RecordOutcomeInput = {
   thoughtId: string
+  organizationId: string
   outcome: 'successful' | 'partially' | 'failed' | 'superseded'
   outcomeNotes?: string
   actorType: string
@@ -15,11 +16,20 @@ export const recordOutcome = async (
   pool: Pool,
 ): Promise<void> => {
   const result = await pool.query(
-    `UPDATE thought_reasonings
+    `UPDATE thought_reasonings AS tr
      SET outcome = $1, outcome_notes = $2, outcome_at = now(), updated_at = now()
-     WHERE thought_id = $3 AND outcome = 'pending'
+     FROM thoughts AS t
+     WHERE tr.thought_id = $3
+       AND tr.thought_id = t.id
+       AND t.organization_id = $4::uuid
+       AND tr.outcome = 'pending'
      RETURNING id`,
-    [input.outcome, input.outcomeNotes ?? null, input.thoughtId],
+    [
+      input.outcome,
+      input.outcomeNotes ?? null,
+      input.thoughtId,
+      input.organizationId,
+    ],
   )
 
   await pool.query(
@@ -43,6 +53,7 @@ export const recordOutcome = async (
 export type LinkThoughtsInput = {
   sourceId: string
   targetId: string
+  organizationId: string
   relation: 'supersedes' | 'derived_from' | 'contradicts' | 'supports' | 'relates_to'
   metadata?: Record<string, unknown>
   actorType: string
@@ -55,10 +66,22 @@ export const linkThoughts = async (
 ): Promise<string> => {
   const result = await pool.query(
     `INSERT INTO thought_links (id, source_id, target_id, relation, metadata, created_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, now())
+     SELECT gen_random_uuid(), source.id, target.id, $3, $4, now()
+     FROM thoughts AS source
+     CROSS JOIN thoughts AS target
+     WHERE source.id = $1
+       AND target.id = $2
+       AND source.organization_id = $5::uuid
+       AND target.organization_id = $5::uuid
      ON CONFLICT (source_id, target_id, relation) DO NOTHING
      RETURNING id`,
-    [input.sourceId, input.targetId, input.relation, input.metadata ? JSON.stringify(input.metadata) : null],
+    [
+      input.sourceId,
+      input.targetId,
+      input.relation,
+      input.metadata ? JSON.stringify(input.metadata) : null,
+      input.organizationId,
+    ],
   )
 
   const insertedRow = result.rows[0] as { id: string } | undefined
@@ -74,8 +97,15 @@ export const linkThoughts = async (
            outcome_notes = 'Superseded by thought ' || $1,
            outcome_at = now(),
            updated_at = now()
-       WHERE thought_id = $2 AND outcome = 'pending'`,
-      [input.sourceId, input.targetId],
+       WHERE thought_id = $2
+         AND outcome = 'pending'
+         AND EXISTS (
+           SELECT 1
+           FROM thoughts AS t
+           WHERE t.id = $2
+             AND t.organization_id = $3::uuid
+         )`,
+      [input.sourceId, input.targetId, input.organizationId],
     )
   }
 

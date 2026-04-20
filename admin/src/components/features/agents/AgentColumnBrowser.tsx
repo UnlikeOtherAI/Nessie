@@ -1,61 +1,26 @@
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import type { AgentChild } from '@nessie/schemas'
-import { useAgentCategories } from '../../../facades/agent-categories/hooks'
+import { useNavigate } from 'react-router-dom'
 import { useAgentChildren, useAgents } from '../../../facades/agents/hooks'
 import { useMediaQuery } from '../../../hooks/useMediaQuery'
-import type {
-  AgentCategoryRecord,
-  AgentRecord,
-} from '../../../lib/api-client'
+import type { AgentRecord } from '../../../lib/api-client'
+import { ColumnBrowserViewport } from '../../shared/column-browser/ColumnBrowserViewport'
 import { AgentColumn } from './AgentColumn'
+import { AgentCreateButton } from './AgentCreateButton'
 import { AgentColumnItem } from './AgentColumnItem'
 import { AgentDetailColumn } from './AgentDetailColumn'
 import { AgentStatusDot } from './AgentStatusDot'
-import { CategoryAgentsPopup } from './CategoryAgentsPopup'
-import { CreateCategoryDialog } from './CreateCategoryDialog'
 import { SubAgentPopup } from './SubAgentPopup'
 
-// ─── Static category definitions ───────────────────────────────────────────
-
-type StaticCategoryId = 'all' | 'global' | 'personal' | 'system'
-
-type CategorySelection =
-  | { kind: 'custom'; id: string }
-  | { kind: 'static'; id: StaticCategoryId }
-
-const STATIC_CATEGORIES: Array<{
-  description: string
-  id: StaticCategoryId
-  name: string
-}> = [
-  { id: 'all', name: 'All', description: 'Every agent in the workspace' },
-  {
-    id: 'system',
-    name: 'System',
-    description: 'Built-in orchestrator agents',
-  },
-  {
-    id: 'global',
-    name: 'Global',
-    description: 'Agents available to all channels',
-  },
-  {
-    id: 'personal',
-    name: 'Personal',
-    description: 'Agents you created',
-  },
-]
-
-// ─── Children helpers (unchanged) ──────────────────────────────────────────
-
 type AgentChildrenListProps = {
+  childCountByParentId: Map<string, number>
   onSelect: (child: AgentChild) => void
   parentId: string
   selectedId?: string
 }
 
 const AgentChildrenList = ({
+  childCountByParentId,
   onSelect,
   parentId,
   selectedId,
@@ -64,25 +29,24 @@ const AgentChildrenList = ({
 
   if (children.length === 0) {
     return (
-      <div
-        className="px-3 py-6 text-center text-xs text-[color:var(--tx3)]"
-      >
-        No child agents
+      <div className="py-8 text-center text-sm text-[color:var(--tx3)]">
+        No child agents.
       </div>
     )
   }
 
   return (
-    <>
+    <div className="grid gap-3">
       {children.map((child) => (
         <AgentColumnItem
           agent={child}
+          childCount={childCountByParentId.get(child.agentId) ?? 0}
           isSelected={child.agentId === selectedId}
           key={child.agentId}
           onClick={() => onSelect(child)}
         />
       ))}
-    </>
+    </div>
   )
 }
 
@@ -109,13 +73,8 @@ const AgentChildrenHeader = ({
   const displayedChildren = children.slice(0, 5)
 
   return (
-    <div
-      className={[
-        'mb-2 rounded-lg border border-[color:var(--sep)]',
-        'bg-[color:var(--panel)] p-3',
-      ].join(' ')}
-    >
-      <div className="flex items-center justify-between">
+    <div className="mb-3 rounded-xl border border-[color:var(--sep)] bg-black/10 p-3">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <AgentStatusDot status={parentAgent.status} />
           <div>
@@ -128,10 +87,7 @@ const AgentChildrenHeader = ({
           </div>
         </div>
         <button
-          className={[
-            'flex items-center gap-0.5 rounded-full px-1 py-0.5',
-            'transition-colors hover:bg-white/10',
-          ].join(' ')}
+          className="flex items-center gap-0.5 rounded-full px-1 py-0.5 transition-colors hover:bg-white/10"
           onClick={onOpenPopup}
           title="Manage sub-agents"
           type="button"
@@ -141,8 +97,7 @@ const AgentChildrenHeader = ({
               <div
                 className={[
                   'flex h-[22px] w-[22px] items-center justify-center',
-                  'rounded-full border-2 border-[color:var(--panel)]',
-                  'text-[10px]',
+                  'rounded-full border-2 border-[color:var(--main)] text-[10px]',
                 ].join(' ')}
                 key={child.agentId}
                 style={{ background: agentGradient }}
@@ -154,9 +109,9 @@ const AgentChildrenHeader = ({
           </div>
           <div
             className={[
-              'flex h-[22px] w-[22px] items-center justify-center',
-              'rounded-full border-2 border-[color:var(--panel)]',
-              'bg-white/10 text-xs text-[color:var(--tx3)]',
+              'flex h-[22px] w-[22px] items-center justify-center rounded-full',
+              'border-2 border-[color:var(--main)] bg-white/10 text-xs',
+              'text-[color:var(--tx3)]',
             ].join(' ')}
           >
             <svg
@@ -179,237 +134,48 @@ const AgentChildrenHeader = ({
   )
 }
 
-// ─── Category column item ──────────────────────────────────────────────────
-
-type CategoryItemProps = {
-  description: string
-  isSelected: boolean
-  name: string
-  onClick: () => void
-}
-
-const CategoryItem = ({
-  description,
-  isSelected,
-  name,
-  onClick,
-}: CategoryItemProps) => (
-  <button
-    className={[
-      'flex w-full items-center gap-3 rounded-lg px-3 py-2.5',
-      'text-left transition-colors',
-      isSelected
-        ? 'bg-[color:var(--accent)] text-white'
-        : 'text-[color:var(--tx)] hover:bg-white/8',
-    ].join(' ')}
-    onClick={onClick}
-    type="button"
-  >
-    <div className="min-w-0 flex-1">
-      <div className="truncate text-sm font-medium">{name}</div>
-      <div className="truncate text-xs text-[color:var(--tx3)]">
-        {description}
-      </div>
-    </div>
-    <svg
-      className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M9 5l7 7-7 7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  </button>
-)
-
-// ─── Category column content ──────────────────────────────────────────────
-
-type CategoryColumnContentProps = {
-  categories: AgentCategoryRecord[]
-  onCreateClick: () => void
-  onSelect: (selection: CategorySelection) => void
-  selected: CategorySelection | null
-}
-
-const CategoryColumnContent = ({
-  categories,
-  onCreateClick,
-  onSelect,
-  selected,
-}: CategoryColumnContentProps) => {
-  const isSelected = (sel: CategorySelection): boolean => {
-    if (!selected) return false
-    if (selected.kind !== sel.kind) return false
-    return selected.id === sel.id
-  }
-
-  return (
-    <>
-      {/* Static categories */}
-      {STATIC_CATEGORIES.map((cat) => (
-        <CategoryItem
-          description={cat.description}
-          isSelected={isSelected({ kind: 'static', id: cat.id })}
-          key={cat.id}
-          name={cat.name}
-          onClick={() => onSelect({ kind: 'static', id: cat.id })}
-        />
-      ))}
-
-      {/* Divider if we have custom categories */}
-      {categories.length > 0 && (
-        <div className="mx-2 my-2 border-t border-[color:var(--sep)]" />
-      )}
-
-      {/* Custom categories */}
-      {categories.map((cat) => (
-        <CategoryItem
-          description={
-            cat.description
-              ?? `${cat.agentIds.length} agent${cat.agentIds.length !== 1 ? 's' : ''} \u00B7 ${cat.visibility}`
-          }
-          isSelected={isSelected({ kind: 'custom', id: cat.id })}
-          key={cat.id}
-          name={cat.name}
-          onClick={() => onSelect({ kind: 'custom', id: cat.id })}
-        />
-      ))}
-
-      {/* New category button */}
-      <div className="mx-2 mt-2 border-t border-[color:var(--sep)] pt-2">
-        <button
-          className={[
-            'flex w-full items-center gap-2 rounded-lg',
-            'px-3 py-2 text-left text-xs',
-            'text-[color:var(--tx3)]',
-            'transition-colors hover:bg-white/5',
-            'hover:text-[color:var(--tx2)]',
-          ].join(' ')}
-          onClick={onCreateClick}
-          type="button"
-        >
-          <svg
-            className="h-3.5 w-3.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-          >
-            <path
-              d="M12 5v14M5 12h14"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          New category
-        </button>
-      </div>
-    </>
-  )
-}
-
-// ─── Main browser ──────────────────────────────────────────────────────────
-
 export const AgentColumnBrowser = () => {
   const navigate = useNavigate()
   const { data: agents = [] } = useAgents()
-  const { data: customCategories = [] } = useAgentCategories()
 
-  const [selectedCategory, setSelectedCategory] =
-    useState<CategorySelection | null>(null)
   const [selectionPath, setSelectionPath] = useState<string[]>([])
   const [activeColumn, setActiveColumn] = useState(0)
   const [subAgentPopupAgentId, setSubAgentPopupAgentId] = useState<
     string | null
   >(null)
-  const [categoryPopupId, setCategoryPopupId] = useState<string | null>(
-    null,
-  )
-  const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
-
   const isMobile = useMediaQuery('(max-width: 767px)')
-  const isTablet = useMediaQuery(
-    '(min-width: 768px) and (max-width: 1023px)',
-  )
-
-  const visibleColumns = isMobile ? 1 : isTablet ? 2 : 3
 
   const rootAgents = useMemo(
-    () => agents.filter((a) => !a.parentAgentId),
+    () =>
+      agents
+        .filter((agent) => !agent.parentAgentId)
+        .sort((left, right) => left.name.localeCompare(right.name)),
     [agents],
   )
 
   const allAgentsById = useMemo(
-    () => new Map(agents.map((a) => [a.id, a])),
+    () => new Map(agents.map((agent) => [agent.id, agent])),
     [agents],
   )
 
-  // Filter agents based on selected category
-  const filteredAgents = useMemo(() => {
-    if (!selectedCategory) return rootAgents
-
-    if (selectedCategory.kind === 'static') {
-      switch (selectedCategory.id) {
-        case 'all':
-          return rootAgents
-        case 'system':
-          return rootAgents.filter(
-            (a) =>
-              a.role === 'orchestrator' ||
-              a.role === 'system' ||
-              a.name.toLowerCase().includes('system'),
-          )
-        case 'global':
-          return rootAgents.filter(
-            (a) => a.channelIds.length > 1 || a.channelIds.length === 0,
-          )
-        case 'personal':
-          return rootAgents
-        default:
-          return rootAgents
-      }
+  const childCountByParentId = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const agent of agents) {
+      if (!agent.parentAgentId) continue
+      counts.set(agent.parentAgentId, (counts.get(agent.parentAgentId) ?? 0) + 1)
     }
+    return counts
+  }, [agents])
 
-    const customCat = customCategories.find(
-      (c) => c.id === selectedCategory.id,
-    )
-    if (!customCat) return []
-    const idSet = new Set(customCat.agentIds)
-    return rootAgents.filter((a) => idSet.has(a.id))
-  }, [selectedCategory, rootAgents, customCategories])
-
-  const selectCategory = useCallback((sel: CategorySelection) => {
-    setSelectedCategory(sel)
-    setSelectionPath([])
-    setActiveColumn(1)
-  }, [])
+  const getChildCount = useCallback(
+    (agentId: string): number => childCountByParentId.get(agentId) ?? 0,
+    [childCountByParentId],
+  )
 
   const selectAgentAtDepth = useCallback(
     (agentId: string, depth: number) => {
       setSelectionPath((prev) => [...prev.slice(0, depth), agentId])
-      setActiveColumn(depth + 2) // +2 because column 0 is categories
-    },
-    [],
-  )
-
-  const navigateBack = useCallback(
-    (toColumn: number) => {
-      if (toColumn <= 0) {
-        setSelectedCategory(null)
-        setSelectionPath([])
-        setActiveColumn(0)
-      } else if (toColumn === 1) {
-        setSelectionPath([])
-        setActiveColumn(1)
-      } else {
-        setSelectionPath((prev) => prev.slice(0, toColumn - 1))
-        setActiveColumn(toColumn)
-      }
+      setActiveColumn(depth + 1)
     },
     [],
   )
@@ -422,289 +188,124 @@ export const AgentColumnBrowser = () => {
   const columns = useMemo(() => {
     const result: ReactNode[] = []
 
-    // Column 0: categories
     result.push(
-      <div
-        className="h-full w-full flex-shrink-0"
-        key="categories"
-        style={{ width: `${100 / visibleColumns}%` }}
-      >
-        <AgentColumn showBack={false} title="Agent Categories">
-          <CategoryColumnContent
-            categories={customCategories}
-            onCreateClick={() => setCreateCategoryOpen(true)}
-            onSelect={selectCategory}
-            selected={selectedCategory}
+      <AgentColumn
+        headerAction={
+          <AgentCreateButton
+            label="New agent"
+            onClick={() => void navigate('/agents/designer')}
           />
-        </AgentColumn>
-      </div>,
+        }
+        key="agents"
+        showBack={false}
+        title="All agents"
+      >
+        {rootAgents.length === 0 ? (
+          <div className="py-8 text-center text-sm text-[color:var(--tx3)]">
+            No agents yet.
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {rootAgents.map((agent) => (
+              <AgentColumnItem
+                agent={agent}
+                childCount={childCountByParentId.get(agent.id) ?? 0}
+                isSelected={selectionPath[0] === agent.id}
+                key={agent.id}
+                onClick={() => selectAgentAtDepth(agent.id, 0)}
+              />
+            ))}
+          </div>
+        )}
+      </AgentColumn>,
     )
 
-    // Column 1: agents filtered by category (only when category selected)
-    if (selectedCategory) {
-      const categoryLabel =
-        selectedCategory.kind === 'static'
-          ? STATIC_CATEGORIES.find(
-              (c) => c.id === selectedCategory.id,
-            )?.name ?? 'Agents'
-          : customCategories.find(
-              (c) => c.id === selectedCategory.id,
-            )?.name ?? 'Agents'
-
-      result.push(
-        <div
-          className="h-full w-full flex-shrink-0"
-          key="agents"
-          style={{ width: `${100 / visibleColumns}%` }}
-        >
-          <AgentColumn
-            headerAction={
-              <button
-                className={[
-                  'flex h-7 w-7 items-center justify-center',
-                  'rounded text-[color:var(--tx3)]',
-                  'transition-colors hover:bg-white/10',
-                  'hover:text-white',
-                ].join(' ')}
-                onClick={() => void navigate('/agents/new')}
-                title="New agent"
-                type="button"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M12 5v14M5 12h14"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            }
-            onBack={() => navigateBack(0)}
-            showBack={isMobile}
-            title={categoryLabel}
-          >
-            {/* Manage agents button for custom categories */}
-            {selectedCategory.kind === 'custom' && (
-              <button
-                className={[
-                  'mb-2 flex w-full items-center justify-center',
-                  'gap-1.5 rounded-lg border',
-                  'border-[rgba(124,58,237,0.3)]',
-                  'bg-[rgba(124,58,237,0.1)] px-3 py-2',
-                  'text-xs font-medium text-[#a78bfa]',
-                  'transition-colors',
-                  'hover:bg-[rgba(124,58,237,0.2)]',
-                ].join(' ')}
-                onClick={() =>
-                  setCategoryPopupId(selectedCategory.id)
-                }
-                type="button"
-              >
-                <svg
-                  className="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M12 5v14M5 12h14"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Manage agents
-              </button>
-            )}
-            {filteredAgents.length === 0 ? (
-              <div
-                className={[
-                  'px-3 py-6 text-center text-xs',
-                  'text-[color:var(--tx3)]',
-                ].join(' ')}
-              >
-                No agents in this category
-              </div>
-            ) : (
-              filteredAgents.map((agent) => (
-                <AgentColumnItem
-                  agent={agent}
-                  hasChildren
-                  isSelected={selectionPath[0] === agent.id}
-                  key={agent.id}
-                  onClick={() => selectAgentAtDepth(agent.id, 0)}
-                />
-              ))
-            )}
-          </AgentColumn>
-        </div>,
-      )
-    }
-
-    // Columns 2..N: children of each agent in the selection path
     for (let depth = 0; depth < selectionPath.length; depth++) {
       const parentId = selectionPath[depth]
-      if (!parentId) {
-        continue
-      }
+      if (!parentId) continue
+      if (getChildCount(parentId) === 0) continue
       const parentAgent = allAgentsById.get(parentId)
       const nextSelectedId = selectionPath[depth + 1]
 
       result.push(
-        <div
-          className="h-full w-full flex-shrink-0"
-          key={`children-${parentId}`}
-          style={{ width: `${100 / visibleColumns}%` }}
-        >
-          <AgentColumn
-            headerAction={
-              <button
-                className={[
-                  'flex h-7 w-7 items-center justify-center rounded',
-                  'text-[color:var(--tx2)] hover:bg-white/10 hover:text-white',
-                ].join(' ')}
-                onClick={() => void navigate(`/agents/new?parentId=${parentId}`)}
-                title="Add child agent"
-                type="button"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M12 5v14M5 12h14"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            }
-            onBack={() => navigateBack(depth + 1)}
-            showBack={isMobile}
-            title={parentAgent?.name ?? 'Children'}
-          >
-            {parentAgent && (
-              <AgentChildrenHeader
-                onOpenPopup={() =>
-                  setSubAgentPopupAgentId(parentId)
-                }
-                parentAgent={parentAgent}
-                parentId={parentId}
-              />
-            )}
-            <AgentChildrenList
-              onSelect={(child) =>
-                selectAgentAtDepth(child.agentId, depth + 1)
+        <AgentColumn
+          headerAction={
+            <AgentCreateButton
+              label="Create sub-agent"
+              onClick={() =>
+                void navigate(`/agents/designer?parentId=${parentId}`)
               }
-              parentId={parentId}
-              selectedId={nextSelectedId}
             />
-          </AgentColumn>
-        </div>,
+          }
+          key={`children-${parentId}`}
+          onBack={() => {
+            setSelectionPath((prev) => prev.slice(0, depth))
+            setActiveColumn(depth)
+          }}
+          showBack={isMobile}
+          title={parentAgent?.name ?? 'Children'}
+        >
+          {parentAgent ? (
+            <AgentChildrenHeader
+              onOpenPopup={() => setSubAgentPopupAgentId(parentId)}
+              parentAgent={parentAgent}
+              parentId={parentId}
+            />
+          ) : null}
+          <AgentChildrenList
+            childCountByParentId={childCountByParentId}
+            onSelect={(child) => selectAgentAtDepth(child.agentId, depth + 1)}
+            parentId={parentId}
+            selectedId={nextSelectedId}
+          />
+        </AgentColumn>,
       )
     }
 
-    // Final column: detail view of deepest selected agent
     if (deepestSelected) {
+      const detailBackColumn = selectionPath.reduce(
+        (count, selectedId) => count + (getChildCount(selectedId) > 0 ? 1 : 0),
+        0,
+      )
+
       result.push(
-        <div
-          className="h-full w-full flex-shrink-0"
+        <AgentDetailColumn
+          agent={deepestSelected}
           key={`detail-${deepestSelected.id}`}
-          style={{ width: `${100 / visibleColumns}%` }}
-        >
-          <AgentDetailColumn
-            agent={deepestSelected}
-            onBack={() =>
-              navigateBack(selectionPath.length + 1)
-            }
-            showBack={isMobile}
-          />
-        </div>,
+          onBack={() => setActiveColumn(detailBackColumn)}
+          showBack={isMobile}
+        />,
       )
     }
 
     return result
   }, [
     allAgentsById,
-    customCategories,
+    childCountByParentId,
     deepestSelected,
-    filteredAgents,
+    getChildCount,
     isMobile,
-    navigateBack,
+    navigate,
+    rootAgents,
     selectAgentAtDepth,
-    selectCategory,
-    selectedCategory,
     selectionPath,
-    visibleColumns,
   ])
-
-  const totalColumns = columns.length
-
-  const translateX = useMemo(() => {
-    const columnWidthPercent = 100 / visibleColumns
-
-    if (isMobile) {
-      return -(activeColumn * 100)
-    }
-
-    const desktopStartIndex = Math.max(
-      0,
-      Math.min(
-        activeColumn - (visibleColumns - 1),
-        totalColumns - visibleColumns,
-      ),
-    )
-    return -(desktopStartIndex * columnWidthPercent)
-  }, [activeColumn, isMobile, totalColumns, visibleColumns])
 
   const popupAgent = subAgentPopupAgentId
     ? allAgentsById.get(subAgentPopupAgentId)
     : undefined
 
-  const popupCategory = categoryPopupId
-    ? customCategories.find((c) => c.id === categoryPopupId)
-    : undefined
-
   return (
-    <div className="h-full w-full overflow-hidden">
-      <div
-        className={[
-          'flex h-full transition-transform duration-300 ease-out',
-        ].join(' ')}
-        style={{ transform: `translateX(${translateX}%)` }}
-      >
-        {columns}
-      </div>
+    <div className="h-full w-full">
+      <ColumnBrowserViewport activeColumn={activeColumn} columns={columns} />
 
-      {subAgentPopupAgentId && popupAgent && (
+      {subAgentPopupAgentId && popupAgent ? (
         <SubAgentPopup
           onClose={() => setSubAgentPopupAgentId(null)}
           parentAgentId={subAgentPopupAgentId}
           parentAgentName={popupAgent.name}
         />
-      )}
-
-      {categoryPopupId && popupCategory && (
-        <CategoryAgentsPopup
-          allAgents={rootAgents}
-          category={popupCategory}
-          onClose={() => setCategoryPopupId(null)}
-        />
-      )}
-
-      <CreateCategoryDialog
-        onClose={() => setCreateCategoryOpen(false)}
-        open={createCategoryOpen}
-      />
+      ) : null}
     </div>
   )
 }

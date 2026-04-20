@@ -24,7 +24,6 @@ const TOOL_TO_FIELD: Record<string, string> = {
   set_name: 'name',
   set_role: 'role',
   set_system_prompt: 'systemPrompt',
-  set_category: 'categoryId',
   set_provider: 'provider',
   set_model: 'model',
 }
@@ -134,7 +133,6 @@ export const useDesignerChat = (
               name: formState.name,
               role: formState.role,
               systemPrompt: formState.systemPrompt,
-              categoryId: formState.categoryId,
               provider: formState.provider,
               model: formState.model,
               tools: formState.tools,

@@ -1,4 +1,4 @@
-import type { ModelClient, ModelMessage } from '@nessie/runtime'
+import type { ModelClient, ModelMessage } from './model.js'
 
 export type OrchestratorAgent = {
   id: string
@@ -60,7 +60,10 @@ export const decideAgentEngagement = async (
 
   // LLM decision: should any agent engage?
   const agentDescriptions = input.agents
-    .map((a) => `- "${a.name}" (id: ${a.id}, role: ${a.role}): ${a.systemPrompt?.slice(0, 120) ?? 'general assistant'}`)
+    .map(
+      (a) =>
+        `- "${a.name}" (id: ${a.id}, role: ${a.role}): ${a.systemPrompt?.slice(0, 120) ?? 'general assistant'}`,
+    )
     .join('\n')
 
   const conversationContext = input.recentMessages
@@ -133,7 +136,11 @@ export const decideAgentEngagement = async (
     if (parsed.action === 'reply' && input.agents.some((a) => a.id === parsed.agentId)) {
       return [{ action: 'reply', agentId: parsed.agentId! }]
     }
-    if (parsed.action === 'acknowledge' && parsed.emoji && input.agents.some((a) => a.id === parsed.agentId)) {
+    if (
+      parsed.action === 'acknowledge' &&
+      parsed.emoji &&
+      input.agents.some((a) => a.id === parsed.agentId)
+    ) {
       return [{ action: 'acknowledge', agentId: parsed.agentId!, emoji: String(parsed.emoji) }]
     }
     return []

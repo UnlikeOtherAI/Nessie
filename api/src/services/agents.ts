@@ -15,6 +15,47 @@ import {
 } from '@nessie/schemas'
 import type { AgentRecord } from '../contracts.js'
 
+const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
+const PERSONAL_ASSISTANT_SURFACE_POLICY = 'dm_only' as const
+const PERSONAL_ASSISTANT_DELEGATION_MODE = 'act_as_requesting_user' as const
+
+export type AgentVisibilityScope = {
+  includeAllOrgChannels?: boolean
+  organizationId: string
+  userId: string
+}
+
+export const buildAccessibleChannelWhere = (
+  visibility: AgentVisibilityScope,
+): Prisma.ChannelWhereInput => ({
+  organizationId: visibility.organizationId,
+  ...(visibility.includeAllOrgChannels
+    ? {}
+    : {
+        OR: [
+          { visibility: 'public' },
+          { members: { some: { userId: visibility.userId } } },
+        ],
+      }),
+})
+
+export const buildAccessibleThreadWhere = (
+  visibility: AgentVisibilityScope,
+): Prisma.ThreadWhereInput => ({
+  channel: buildAccessibleChannelWhere(visibility),
+})
+
+const buildAccessibleRunWhere = (
+  visibility?: AgentVisibilityScope,
+): Prisma.RunWhereInput =>
+  visibility ? { thread: buildAccessibleThreadWhere(visibility) } : {}
+
+const isSystemManagedAgent = (agent: {
+  agentKind: string
+  systemManaged: boolean
+}): boolean =>
+  agent.systemManaged || agent.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
+
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
   value ? value.toISOString() : undefined
 
@@ -54,6 +95,10 @@ const mapAgentRecord = (agent: {
   }>
   provider: string | null
   model: string | null
+  agentKind: 'personal_assistant' | 'shared'
+  systemManaged: boolean
+  surfacePolicy: 'dm_only' | 'shared'
+  delegationMode: 'act_as_requesting_user' | 'none'
   status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
   systemPrompt: string | null
   updatedAt: Date
@@ -77,6 +122,10 @@ const mapAgentRecord = (agent: {
     name: agent.name,
     role: agent.role,
     status: agent.status,
+    agentKind: agent.agentKind,
+    systemManaged: agent.systemManaged,
+    surfacePolicy: agent.surfacePolicy,
+    delegationMode: agent.delegationMode,
     currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
     currentToolName:
       isActiveRun && latestToolCall?.endedAt === null ? latestToolCall.toolName : undefined,
@@ -98,19 +147,28 @@ const mapAgentRecord = (agent: {
 export const loadAgentStatus = async (
   prisma: PrismaClient,
   agentId: string,
+  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
 ): Promise<AgentStatusResponse | null> => {
+  const runVisibilityWhere = buildAccessibleRunWhere(options?.visibility)
+  const taskVisibilityWhere = options?.visibility ? { run: runVisibilityWhere } : {}
+  const messageVisibilityWhere = options?.visibility
+    ? { thread: buildAccessibleThreadWhere(options.visibility) }
+    : {}
+
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
     include: {
       childAgents: {
         include: {
           tasks: {
+            where: taskVisibilityWhere,
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
         },
       },
       messages: {
+        where: messageVisibilityWhere,
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -122,6 +180,7 @@ export const loadAgentStatus = async (
           },
         },
         where: {
+          ...runVisibilityWhere,
           status: {
             in: ['pending', 'running'],
           },
@@ -133,6 +192,10 @@ export const loadAgentStatus = async (
   })
 
   if (!agent) {
+    return null
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
     return null
   }
 
@@ -182,13 +245,18 @@ export const loadAgentStatus = async (
 export const loadAgentActivity = async (
   prisma: PrismaClient,
   agentId: string,
+  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
 ): Promise<AgentActivityResponse | null> => {
+  const runVisibilityWhere = buildAccessibleRunWhere(options?.visibility)
+  const taskVisibilityWhere = options?.visibility ? { run: runVisibilityWhere } : {}
+
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
     include: {
       childAgents: {
         include: {
           tasks: {
+            where: taskVisibilityWhere,
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
@@ -202,6 +270,7 @@ export const loadAgentActivity = async (
             take: 20,
           },
         },
+        where: runVisibilityWhere,
         orderBy: { createdAt: 'desc' },
         take: 10,
       },
@@ -209,6 +278,10 @@ export const loadAgentActivity = async (
   })
 
   if (!agent) {
+    return null
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
     return null
   }
 
@@ -253,26 +326,42 @@ export const loadAgentMessages = async (
   prisma: PrismaClient,
   agentId: string,
   limit: number,
-  callerUserId?: string,
   offset = 0,
+  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
 ): Promise<AgentMessage[]> => {
-  // Build channel membership filter to prevent cross-channel data leakage
-  const channelFilter = callerUserId
-    ? { thread: { channel: { members: { some: { userId: callerUserId } } } } }
-    : {}
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: {
+      agentKind: true,
+      systemManaged: true,
+    },
+  })
+
+  if (!agent) {
+    return []
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
+    return []
+  }
+
+  const threadVisibilityWhere = options?.visibility
+    ? buildAccessibleThreadWhere(options.visibility)
+    : undefined
 
   const messages = await prisma.message.findMany({
     where: {
       OR: [
-        { agentId, ...channelFilter },
+        {
+          agentId,
+          ...(threadVisibilityWhere ? { thread: threadVisibilityWhere } : {}),
+        },
         {
           thread: {
+            ...(threadVisibilityWhere ?? {}),
             runs: {
               some: { agentId },
             },
-            ...(callerUserId
-              ? { channel: { members: { some: { userId: callerUserId } } } }
-              : {}),
           },
         },
       ],
@@ -295,7 +384,24 @@ export const loadAgentMessages = async (
 export const loadAgentChildren = async (
   prisma: PrismaClient,
   agentId: string,
+  options?: { includeSystemManaged?: boolean },
 ): Promise<AgentChild[]> => {
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: {
+      agentKind: true,
+      systemManaged: true,
+    },
+  })
+
+  if (!agent) {
+    return []
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
+    return []
+  }
+
   const agents = await prisma.agent.findMany({
     where: { parentAgentId: agentId },
     orderBy: { createdAt: 'asc' },
@@ -315,9 +421,32 @@ export const loadRunToolCalls = async (
   prisma: PrismaClient,
   agentId: string,
   runId: string,
+  options?: { includeSystemManaged?: boolean; visibility?: AgentVisibilityScope },
 ): Promise<ToolCallEntry[]> => {
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: {
+      agentKind: true,
+      systemManaged: true,
+    },
+  })
+
+  if (!agent) {
+    return []
+  }
+
+  if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) {
+    return []
+  }
+
   const toolCalls = await prisma.toolCall.findMany({
-    where: { agentId, runId },
+    where: {
+      agentId,
+      runId,
+      ...(options?.visibility
+        ? { run: buildAccessibleRunWhere(options.visibility) }
+        : {}),
+    },
     orderBy: { startedAt: 'asc' },
   })
 
@@ -327,6 +456,7 @@ export const loadRunToolCalls = async (
 export const buildSnapshotForScopes = async (
   prisma: PrismaClient,
   scopes: WsScope[],
+  options?: { visibility?: AgentVisibilityScope },
 ): Promise<WsSnapshot> => {
   if (scopes.length === 0) {
     return { agents: [] }
@@ -342,7 +472,12 @@ export const buildSnapshotForScopes = async (
 
     if (scope.kind === 'channel') {
       const bindings = await prisma.agentBinding.findMany({
-        where: { channelId: scope.channelId },
+        where: {
+          channelId: scope.channelId,
+          ...(options?.visibility
+            ? { channel: buildAccessibleChannelWhere(options.visibility) }
+            : {}),
+        },
         select: { agentId: true },
       })
       bindings.forEach((binding) => agentIds.add(binding.agentId))
@@ -352,7 +487,9 @@ export const buildSnapshotForScopes = async (
     const bindings = await prisma.agentBinding.findMany({
       where: {
         channel: {
-          organizationId: scope.organizationId,
+          ...(options?.visibility
+            ? buildAccessibleChannelWhere(options.visibility)
+            : { organizationId: scope.organizationId }),
         },
       },
       select: { agentId: true },
@@ -361,7 +498,9 @@ export const buildSnapshotForScopes = async (
   }
 
   const snapshots = await Promise.all(
-    Array.from(agentIds).map(async (agentId) => loadAgentStatus(prisma, agentId)),
+    Array.from(agentIds).map(async (agentId) =>
+      loadAgentStatus(prisma, agentId, { visibility: options?.visibility }),
+    ),
   )
 
   return {
@@ -384,28 +523,16 @@ export const listAgentsForUser = async (
   organizationId: string,
   includeUnbound: boolean,
 ): Promise<AgentRecord[]> => {
+  const visibleChannelWhere = buildAccessibleChannelWhere({
+    includeAllOrgChannels: includeUnbound,
+    organizationId,
+    userId,
+  })
   const visibilityFilters: Prisma.AgentWhereInput[] = [
-    // Agents bound to channels the user is a member of
     {
       bindings: {
         some: {
-          channel: {
-            organizationId,
-            members: {
-              some: { userId },
-            },
-          },
-        },
-      },
-    },
-    // Agents bound to public channels in the org (visible to all org members)
-    {
-      bindings: {
-        some: {
-          channel: {
-            organizationId,
-            visibility: 'public',
-          },
+          channel: visibleChannelWhere,
         },
       },
     },
@@ -421,11 +548,95 @@ export const listAgentsForUser = async (
 
   const agents = await prisma.agent.findMany({
     where: {
+      systemManaged: false,
       OR: visibilityFilters,
     },
     include: {
       bindings: {
+        where: {
+          channel: visibleChannelWhere,
+        },
         orderBy: { createdAt: 'asc' },
+        select: { channelId: true },
+      },
+      messages: {
+        where: {
+          thread: {
+            channel: visibleChannelWhere,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+        take: 1,
+      },
+      runs: {
+        include: {
+          toolCalls: {
+            orderBy: { startedAt: 'desc' },
+            select: {
+              endedAt: true,
+              startedAt: true,
+              toolName: true,
+            },
+            take: 1,
+          },
+        },
+        where: {
+          thread: {
+            channel: visibleChannelWhere,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  return agents.map(mapAgentRecord)
+}
+
+export const createAgentRecord = async (
+  prisma: PrismaClient,
+  input: {
+    agentKind?: 'personal_assistant' | 'shared'
+    model?: string
+    name: string
+    parentAgentId?: string
+    provider?: string
+    role: string
+    surfacePolicy?: 'dm_only' | 'shared'
+    systemPrompt?: string
+    systemManaged?: boolean
+    delegationMode?: 'act_as_requesting_user' | 'none'
+    toolPolicy?: Record<string, boolean>
+  },
+): Promise<AgentRecord> => {
+  if (
+    input.agentKind === PERSONAL_ASSISTANT_AGENT_KIND ||
+    input.systemManaged === true ||
+    input.surfacePolicy === PERSONAL_ASSISTANT_SURFACE_POLICY ||
+    input.delegationMode === PERSONAL_ASSISTANT_DELEGATION_MODE
+  ) {
+    throw new Error('PERSONAL_ASSISTANT_CREATE_REQUIRES_BOOTSTRAP')
+  }
+
+  const agent = await prisma.agent.create({
+    data: {
+      agentKind: 'shared',
+      delegationMode: 'none',
+      model: input.model,
+      name: input.name,
+      parentAgentId: input.parentAgentId,
+      provider: input.provider,
+      role: input.role,
+      surfacePolicy: 'shared',
+      systemPrompt: input.systemPrompt,
+      systemManaged: false,
+      toolPolicy: input.toolPolicy ?? undefined,
+    },
+    include: {
+      bindings: {
         select: { channelId: true },
       },
       messages: {
@@ -449,36 +660,58 @@ export const listAgentsForUser = async (
         take: 1,
       },
     },
-    orderBy: { createdAt: 'asc' },
   })
 
-  return agents.map(mapAgentRecord)
+  return mapAgentRecord(agent)
 }
 
-export const createAgentRecord = async (
+export const updateAgentRecord = async (
   prisma: PrismaClient,
+  agentId: string,
   input: {
+    agentKind?: 'personal_assistant' | 'shared'
     model?: string
-    name: string
-    parentAgentId?: string
+    name?: string
     provider?: string
-    role: string
+    role?: string
+    surfacePolicy?: 'dm_only' | 'shared'
     systemPrompt?: string
+    systemManaged?: boolean
+    delegationMode?: 'act_as_requesting_user' | 'none'
     toolPolicy?: Record<string, boolean>
   },
-): Promise<AgentRecord> => {
-  const agent = await prisma.agent.create({
+): Promise<AgentRecord | null> => {
+  const existing = await prisma.agent.findUnique({ where: { id: agentId } })
+  if (!existing) {
+    return null
+  }
+
+  if (
+    input.agentKind === PERSONAL_ASSISTANT_AGENT_KIND ||
+    input.systemManaged === true ||
+    input.surfacePolicy === PERSONAL_ASSISTANT_SURFACE_POLICY ||
+    input.delegationMode === PERSONAL_ASSISTANT_DELEGATION_MODE
+  ) {
+    throw new Error('PERSONAL_ASSISTANT_UPDATE_REQUIRES_BOOTSTRAP')
+  }
+
+  const agent = await prisma.agent.update({
+    where: { id: agentId },
     data: {
-      model: input.model,
-      name: input.name,
-      parentAgentId: input.parentAgentId,
-      provider: input.provider,
-      role: input.role,
-      systemPrompt: input.systemPrompt,
-      toolPolicy: input.toolPolicy ?? undefined,
+      agentKind: existing.agentKind,
+      delegationMode: existing.delegationMode,
+      model: input.model ?? existing.model,
+      name: existing.systemManaged ? existing.name : input.name ?? existing.name,
+      provider: input.provider ?? existing.provider,
+      role: input.role ?? existing.role,
+      surfacePolicy: existing.surfacePolicy,
+      systemPrompt: input.systemPrompt ?? existing.systemPrompt,
+      systemManaged: existing.systemManaged,
+      toolPolicy: input.toolPolicy ?? existing.toolPolicy ?? undefined,
     },
     include: {
       bindings: {
+        orderBy: { createdAt: 'asc' },
         select: { channelId: true },
       },
       messages: {
@@ -512,6 +745,26 @@ export const unbindAgentFromChannel = async (
   agentId: string,
   channelId: string,
 ): Promise<void> => {
+  const binding = await prisma.agent.findFirst({
+    where: {
+      id: agentId,
+      systemManaged: false,
+      bindings: {
+        some: {
+          channelId,
+          channel: {
+            systemChannelType: null,
+          },
+        },
+      },
+    },
+    select: { id: true },
+  })
+
+  if (!binding) {
+    return
+  }
+
   await prisma.agentBinding.deleteMany({
     where: { agentId, channelId },
   })
@@ -523,18 +776,38 @@ export const cloneAgentRecord = async (
 ): Promise<AgentRecord | null> => {
   const source = await prisma.agent.findUnique({
     where: { id: sourceAgentId },
+    select: {
+      agentKind: true,
+      delegationMode: true,
+      model: true,
+      name: true,
+      provider: true,
+      role: true,
+      surfacePolicy: true,
+      systemManaged: true,
+      systemPrompt: true,
+      toolPolicy: true,
+    },
   })
   if (!source) {
     return null
   }
 
+  if (isSystemManagedAgent(source)) {
+    return null
+  }
+
   const agent = await prisma.agent.create({
     data: {
+      agentKind: 'shared',
+      delegationMode: 'none',
       model: source.model,
       name: `${source.name} (copy)`,
       provider: source.provider,
       role: source.role,
+      surfacePolicy: 'shared',
       systemPrompt: source.systemPrompt,
+      systemManaged: false,
       toolPolicy: source.toolPolicy ?? undefined,
     },
     include: {
@@ -572,6 +845,36 @@ export const bindAgentToChannel = async (
   agentId: string,
   channelId: string,
 ): Promise<AgentRecord | null> => {
+  const [agent, channel] = await Promise.all([
+    prisma.agent.findUnique({
+      where: { id: agentId },
+      select: {
+        agentKind: true,
+        delegationMode: true,
+        model: true,
+        name: true,
+        provider: true,
+        role: true,
+        surfacePolicy: true,
+        systemManaged: true,
+        systemPrompt: true,
+        toolPolicy: true,
+      },
+    }),
+    prisma.channel.findUnique({
+      where: { id: channelId },
+      select: { systemChannelType: true },
+    }),
+  ])
+
+  if (!agent || !channel) {
+    return null
+  }
+
+  if (isSystemManagedAgent(agent) || channel.systemChannelType === 'personal_assistant') {
+    return null
+  }
+
   await prisma.agentBinding.upsert({
     where: {
       agentId_channelId: {
@@ -586,7 +889,7 @@ export const bindAgentToChannel = async (
     },
   })
 
-  const agent = await prisma.agent.findUnique({
+  const boundAgent = await prisma.agent.findUnique({
     where: { id: agentId },
     include: {
       bindings: {
@@ -616,5 +919,5 @@ export const bindAgentToChannel = async (
     },
   })
 
-  return agent ? mapAgentRecord(agent) : null
+  return boundAgent ? mapAgentRecord(boundAgent) : null
 }

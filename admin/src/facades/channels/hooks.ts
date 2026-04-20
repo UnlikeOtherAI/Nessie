@@ -8,6 +8,21 @@ export const useChannels = () => {
   return useQuery<ChannelRecord[]>({
     queryKey: ['channels'],
     queryFn: () => apiClient.get('/api/channels'),
+    staleTime: Infinity,
+  })
+}
+
+export const useOpenDm = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (userId: string) =>
+      apiClient.post<ChannelRecord>(`/api/dm/${userId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
   })
 }
 
@@ -16,7 +31,11 @@ export const useCreateChannel = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { label: string; visibility?: ChannelRecord['visibility'] }) =>
+    mutationFn: (input: {
+      label: string
+      teamId?: string
+      visibility?: ChannelRecord['visibility']
+    }) =>
       apiClient.post<ChannelRecord>('/api/channels', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
@@ -30,11 +49,12 @@ export const useAddChannelMember = () => {
 
   return useMutation({
     mutationFn: (input: { channelId: string; userId: string }) =>
-      apiClient.post(`/api/channels/${input.channelId}/members`, {
+      apiClient.post<ChannelRecord | undefined>(`/api/channels/${input.channelId}/members`, {
         userId: input.userId,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
   })
 }
@@ -50,6 +70,7 @@ export const useRemoveChannelMember = () => {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
   })
 }

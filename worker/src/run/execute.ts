@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   markRecallsInjected,
   markRecallsReferenced,
@@ -8,9 +8,10 @@ import {
 } from '@nessie/memory'
 import { loadConfig } from '@nessie/config'
 import type {
+  InvocationRecord,
   ModelClient,
-  ModelMessage,
   PgRealtimeTransport,
+  ProviderMessage,
   QueueProvider,
 } from '@nessie/runtime'
 import { BUILTIN_TOOL_DEFINITIONS, BUILTIN_TOOL_IDS } from '@nessie/runtime'
@@ -21,22 +22,18 @@ import {
   parseRunId,
   parseTaskId,
   parseThreadId,
+  withActionContext,
+  type AuthorizedActionContext,
   type RunExecuteJobPayload,
   type RunStatus,
   type TaskStatus,
   type WsScope,
 } from '@nessie/schemas'
-import {
-  runDocumentReadTool,
-  runWebFetchTool,
-  runWebSearchTool,
-  shouldUseDocumentRead,
-  shouldUseWebFetch,
-  shouldUseWebSearch,
-} from './tools.js'
+import { executeBuiltinTool } from './tools.js'
+import { authorizeToolCall, resolveAgentTools, type ToolDenialReason } from './tool-policy.js'
+import { runAgenticLoop, DEFAULT_BUDGET } from './agentic-loop.js'
 import { enqueueQueueJob } from '../queue.js'
 import {
-  appendDelegationStep,
   markDelegationStepFinished,
   ensureRunPlanContext,
   markRunPlanFinished,
@@ -57,6 +54,7 @@ type ExecutionDependencies = {
 
 type RunContext = {
   agent: {
+    agentKind: 'personal_assistant' | 'shared'
     id: string
     name: string
     model: string | null
@@ -67,6 +65,7 @@ type RunContext = {
   channel: {
     id: string
     organizationId: string
+    systemChannelType: 'personal_assistant' | null
   }
   run: {
     id: string
@@ -87,17 +86,353 @@ type StoredConversationMessage = {
   role: 'assistant' | 'system' | 'user'
 }
 
-const MAX_TOOL_CONTEXT_LENGTH = 400
 const MAX_MEMORY_RESULTS = 5
 const MAX_MEMORY_CONTEXT_LENGTH = 220
 const MIN_REFERENCE_TOKENS = 5
 const BUILTIN_TOOL_SCOPE_KEY = 'builtin'
+const POLICY_SCOPE_WEIGHT: Record<string, number> = {
+  organization: 0,
+  project: 1,
+  team: 2,
+  channel: 3,
+  agent: 4,
+  tool: 5,
+  user: 6,
+}
 
 type RetrievedMemory = Pick<SearchResult, 'content' | 'recallId'>
+
+type WorkerPolicyRule = {
+  action: string
+  bindings: Array<{
+    actorId: string
+    actorType: string
+  }>
+  conditions: unknown
+  effect: string
+  id: string
+  priority: number
+  resourceType: string
+  scope: string
+  scopeId: string
+}
+
+type ToolPolicyEvaluation =
+  | {
+      allowed: true
+      policyRuleId?: string
+      policySource: string
+    }
+  | {
+      allowed: false
+      approvalActionType?: string
+      policyRuleId?: string
+      policySource: string
+      reason: 'approval_required' | 'explicit_policy_deny'
+    }
+
+type ToolDeniedOutputReason =
+  | ToolDenialReason
+  | 'approval_required'
+  | 'explicit_policy_deny'
 
 const buildScopes = (context: RunContext): WsScope[] => [
   ...buildScopesForAgent(context.channel, context.agent.id),
 ]
+
+const buildToolActorContext = (
+  actorContext: AuthorizedActionContext,
+  context: RunContext,
+  toolName: string,
+): AuthorizedActionContext =>
+  withActionContext(actorContext, {
+    agentId: parseAgentId(context.agent.id),
+    channelId: parseChannelId(context.channel.id),
+    taskId: parseTaskId(context.task.id),
+    threadId: parseThreadId(context.run.threadId),
+    toolId: toolName,
+  })
+
+const evaluatePolicyConditions = (conditions: Record<string, unknown> | null): boolean => {
+  if (!conditions) {
+    return true
+  }
+
+  const timeWindow = conditions['timeWindow']
+  if (timeWindow && typeof timeWindow === 'object' && !Array.isArray(timeWindow)) {
+    const candidate = timeWindow as {
+      daysOfWeek?: unknown
+      endHour?: unknown
+      startHour?: unknown
+    }
+    if (
+      typeof candidate.startHour !== 'number'
+      || typeof candidate.endHour !== 'number'
+      || !Array.isArray(candidate.daysOfWeek)
+    ) {
+      return false
+    }
+
+    const now = new Date()
+    const hour = now.getUTCHours()
+    const day = now.getUTCDay()
+    if (!candidate.daysOfWeek.includes(day)) {
+      return false
+    }
+    if (candidate.startHour <= candidate.endHour) {
+      return hour >= candidate.startHour && hour < candidate.endHour
+    }
+    return hour >= candidate.startHour || hour < candidate.endHour
+  }
+
+  return true
+}
+
+const actorMatchesPolicyBinding = (
+  actorContext: AuthorizedActionContext,
+  context: RunContext,
+  binding: WorkerPolicyRule['bindings'][number],
+): boolean => {
+  if (binding.actorId === '*') {
+    return true
+  }
+  if (
+    binding.actorType === actorContext.actor.actorType
+    && binding.actorId === actorContext.actor.actorId
+  ) {
+    return true
+  }
+  if (binding.actorType === 'role' && actorContext.actor.roles?.includes(binding.actorId)) {
+    return true
+  }
+  if (binding.actorType === 'agent' && binding.actorId === context.agent.id) {
+    return true
+  }
+  return false
+}
+
+const buildPolicyScopeIds = (
+  actorContext: AuthorizedActionContext,
+  context: RunContext,
+  toolName: string,
+): string[] => [
+  actorContext.tenant.organizationId,
+  ...(actorContext.tenant.projectId ? [actorContext.tenant.projectId] : []),
+  ...(actorContext.tenant.teamId ? [actorContext.tenant.teamId] : []),
+  context.channel.id,
+  context.agent.id,
+  toolName,
+  actorContext.actor.actorId,
+]
+
+const evaluateToolInvokePolicy = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  context: RunContext,
+  toolName: string,
+): Promise<ToolPolicyEvaluation> => {
+  const rules = await prisma.policyRule.findMany({
+    where: {
+      action: 'invoke',
+      organizationId: context.channel.organizationId,
+      resourceType: 'tool',
+      scopeId: { in: buildPolicyScopeIds(actorContext, context, toolName) },
+    },
+    include: { bindings: true },
+    orderBy: [{ priority: 'asc' }],
+  }) as WorkerPolicyRule[]
+
+  const matchingRules = rules
+    .filter((rule) =>
+      rule.bindings.some((binding) => actorMatchesPolicyBinding(actorContext, context, binding)),
+    )
+    .sort((left, right) => {
+      const leftWeight = POLICY_SCOPE_WEIGHT[left.scope] ?? 99
+      const rightWeight = POLICY_SCOPE_WEIGHT[right.scope] ?? 99
+      if (leftWeight !== rightWeight) {
+        return leftWeight - rightWeight
+      }
+      return left.priority - right.priority
+    })
+
+  let lastAllow: WorkerPolicyRule | null = null
+  for (const rule of matchingRules) {
+    const conditions = rule.conditions as Record<string, unknown> | null
+    if (!evaluatePolicyConditions(conditions)) {
+      continue
+    }
+
+    if (rule.effect === 'deny') {
+      return {
+        allowed: false,
+        policyRuleId: rule.id,
+        policySource: `${rule.scope}:${rule.scopeId}/deny`,
+        reason: 'explicit_policy_deny',
+      }
+    }
+
+    if (rule.effect === 'allow') {
+      if (conditions?.['requiresApproval'] && !actorContext.approval?.approvalProof) {
+        return {
+          allowed: false,
+          approvalActionType:
+            typeof conditions['approvalActionType'] === 'string'
+              ? conditions['approvalActionType']
+              : undefined,
+          policyRuleId: rule.id,
+          policySource: `${rule.scope}:${rule.scopeId}/allow`,
+          reason: 'approval_required',
+        }
+      }
+      lastAllow = rule
+    }
+  }
+
+  if (lastAllow) {
+    return {
+      allowed: true,
+      policyRuleId: lastAllow.id,
+      policySource: `${lastAllow.scope}:${lastAllow.scopeId}/allow`,
+    }
+  }
+
+  return { allowed: true, policySource: 'none' }
+}
+
+const emitWorkerAuditEvent = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: {
+    action: 'policy.evaluated'
+    metadata?: Record<string, unknown>
+    outcome: 'denied' | 'error' | 'success'
+    reason?: string
+    resourceId?: string
+    resourceType: string
+    tenantOverride?: {
+      channelId?: string | null
+      organizationId: string
+      projectId?: string | null
+      teamId?: string | null
+    }
+  },
+): Promise<void> => {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        action: input.action,
+        actorId: actorContext.actor.actorId,
+        actorType: actorContext.actor.actorType,
+        channelId:
+          input.tenantOverride?.channelId
+          ?? actorContext.actionContext.channelId
+          ?? actorContext.tenant.channelId
+          ?? null,
+        metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? undefined,
+        organizationId: input.tenantOverride?.organizationId ?? actorContext.tenant.organizationId,
+        outcome: input.outcome,
+        projectId: input.tenantOverride?.projectId ?? actorContext.tenant.projectId ?? null,
+        reason: input.reason ?? null,
+        requestId: actorContext.actionContext.requestId,
+        resourceId: input.resourceId ?? null,
+        resourceType: input.resourceType,
+        teamId:
+          input.tenantOverride?.teamId
+          ?? actorContext.tenant.teamId
+          ?? actorContext.actionContext.teamId
+          ?? null,
+      },
+    })
+  } catch {
+    console.error('[worker:audit] Failed to emit audit event:', input.action, input.resourceType)
+  }
+}
+
+const validateRunActorContext = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  context: RunContext,
+): Promise<void> => {
+  const mismatches: string[] = []
+
+  if (actorContext.tenant.organizationId !== context.channel.organizationId) {
+    mismatches.push('tenant.organizationId')
+  }
+  if (actorContext.tenant.channelId && actorContext.tenant.channelId !== context.channel.id) {
+    mismatches.push('tenant.channelId')
+  }
+  if (
+    actorContext.actionContext.channelId
+    && actorContext.actionContext.channelId !== context.channel.id
+  ) {
+    mismatches.push('actionContext.channelId')
+  }
+  if (actorContext.actionContext.agentId && actorContext.actionContext.agentId !== context.agent.id) {
+    mismatches.push('actionContext.agentId')
+  }
+  if (actorContext.actionContext.taskId && actorContext.actionContext.taskId !== context.task.id) {
+    mismatches.push('actionContext.taskId')
+  }
+  if (
+    actorContext.actionContext.threadId
+    && actorContext.actionContext.threadId !== context.run.threadId
+  ) {
+    mismatches.push('actionContext.threadId')
+  }
+
+  if (mismatches.length === 0) {
+    return
+  }
+
+  await emitWorkerAuditEvent(prisma, actorContext, {
+    action: 'policy.evaluated',
+    metadata: {
+      agentId: context.agent.id,
+      channelId: context.channel.id,
+      mismatches,
+      runId: context.run.id,
+      source: 'worker_actor_context_validation',
+      taskId: context.task.id,
+      threadId: context.run.threadId,
+    },
+    outcome: 'denied',
+    reason: 'actor_context_mismatch',
+    resourceId: context.run.id,
+    resourceType: 'run',
+    tenantOverride: {
+      channelId: context.channel.id,
+      organizationId: context.channel.organizationId,
+      projectId: null,
+      teamId: null,
+    },
+  })
+
+  throw new Error('Actor context does not match the run execution context.')
+}
+
+const toolDeniedResult = (
+  toolName: string,
+  args: Record<string, unknown>,
+  input: {
+    approvalActionType?: string
+    message: string
+    policyRuleId?: string
+    policySource?: string
+    reason: ToolDeniedOutputReason
+  },
+): { inputSummary: string; output: string; success: false } => ({
+  inputSummary: JSON.stringify(args).slice(0, 200),
+  output: JSON.stringify({
+    approvalActionType: input.approvalActionType,
+    message: input.message,
+    policyRuleId: input.policyRuleId,
+    policySource: input.policySource,
+    reason: input.reason,
+    toolId: toolName,
+    type: 'tool_denied',
+  }),
+  success: false,
+})
 
 const maybeContinueParentWorkflow = async (
   deps: Pick<ExecutionDependencies, 'prisma'>,
@@ -177,7 +512,7 @@ const loadAllowedToolIds = async (
   const enabledToolIds = new Set(
     enabledRegistryEntries
       .map((entry) => entry.toolId)
-      .filter((toolId) => BUILTIN_TOOL_IDS.has(toolId as 'document_read' | 'web_fetch' | 'web_search')),
+      .filter((toolId) => BUILTIN_TOOL_IDS.has(toolId)),
   )
 
   const [runScopedSessions, threadScopedSessions, agentScopedSessions] = await Promise.all([
@@ -318,22 +653,54 @@ export const detectReferencedRecallIds = (
       : [],
   )
 
+const PERSONAL_ASSISTANT_MEMORY_ORIGINS = new Set([
+  'personal_assistant_dm',
+  'user_authored_workspace_message',
+  'user_conversation_summary',
+])
+
+const isSuppressedMemory = (metadata: unknown): boolean => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return false
+  }
+
+  const record = metadata as Record<string, unknown>
+  return record['suppressed'] === true || record['suppressionState'] === 'suppressed'
+}
+
+const filterPersonalAssistantMemories = (results: SearchResult[]): SearchResult[] =>
+  results.filter((result) => {
+    if (isSuppressedMemory(result.metadata)) {
+      return false
+    }
+    if (!result.metadata || typeof result.metadata !== 'object' || Array.isArray(result.metadata)) {
+      return false
+    }
+
+    const memoryOrigin = (result.metadata as Record<string, unknown>)['memory_origin']
+    return typeof memoryOrigin === 'string' && PERSONAL_ASSISTANT_MEMORY_ORIGINS.has(memoryOrigin)
+  })
+
 const buildScopesForAgent = (
   channel: RunContext['channel'],
   agentId: string,
 ): WsScope[] => [
   {
-    kind: 'organization',
-    organizationId: parseOrganizationId(channel.organizationId),
-  },
-  {
     kind: 'channel',
     channelId: parseChannelId(channel.id),
   },
-  {
-    kind: 'agent',
-    agentId: parseAgentId(agentId),
-  },
+  ...(channel.systemChannelType === 'personal_assistant'
+    ? []
+    : [
+        {
+          kind: 'organization' as const,
+          organizationId: parseOrganizationId(channel.organizationId),
+        },
+        {
+          kind: 'agent' as const,
+          agentId: parseAgentId(agentId),
+        },
+      ]),
 ]
 
 const publishRunUpdated = async (
@@ -456,6 +823,7 @@ const loadRunContext = async (
     include: {
       agent: {
         select: {
+          agentKind: true,
           id: true,
           model: true,
           name: true,
@@ -471,6 +839,7 @@ const loadRunContext = async (
             select: {
               id: true,
               organizationId: true,
+              systemChannelType: true,
             },
           },
         },
@@ -539,161 +908,7 @@ const recordToolEnd = async (
   })
 }
 
-const resetAgentToThinking = async (
-  deps: ExecutionDependencies,
-  context: RunContext,
-): Promise<void> => {
-  await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
-  await publishAgentStatus(deps.realtimeTransport, context, {
-    currentRunId: context.run.id,
-    status: 'thinking',
-  })
-}
 
-const executeSafeTool = async (
-  deps: ExecutionDependencies,
-  context: RunContext,
-  toolName: 'document_read' | 'web_fetch' | 'web_search',
-  prompt: string,
-): Promise<string> => {
-  const startedAt = new Date()
-
-  await setAgentStatus(deps.prisma, context.agent.id, 'executing')
-  await publishAgentStatus(deps.realtimeTransport, context, {
-    currentRunId: context.run.id,
-    currentToolName: toolName,
-    currentToolStartedAt: startedAt.toISOString(),
-    status: 'executing',
-  })
-
-  await deps.realtimeTransport.publishWs(buildScopes(context), {
-    data: {
-      agentId: parseAgentId(context.agent.id),
-      inputSummary: prompt.slice(0, 200),
-      runId: parseRunId(context.run.id),
-      toolName,
-    },
-    event: 'agent.tool.start',
-  })
-
-  try {
-    const result =
-      toolName === 'document_read'
-        ? await runDocumentReadTool(prompt)
-        : toolName === 'web_fetch'
-          ? await runWebFetchTool(prompt)
-          : await runWebSearchTool(prompt)
-    const durationMs = Math.max(0, Date.now() - startedAt.getTime())
-
-    await recordToolEnd(deps, context, {
-      durationMs,
-      inputSummary: result.inputSummary,
-      outputPreview: result.outputPreview,
-      startedAt,
-      success: true,
-      toolName: result.toolName,
-    })
-
-    await resetAgentToThinking(deps, context)
-    return result.outputPreview
-  } catch (error) {
-    const outputPreview =
-      error instanceof Error ? error.message : 'Tool execution failed unexpectedly'
-    const durationMs = Math.max(0, Date.now() - startedAt.getTime())
-
-    await recordToolEnd(deps, context, {
-      durationMs,
-      inputSummary: prompt.slice(0, 200),
-      outputPreview,
-      startedAt,
-      success: false,
-      toolName,
-    })
-
-    await resetAgentToThinking(deps, context)
-    return outputPreview
-  }
-}
-
-const deriveDelegatedTask = (prompt: string): string => {
-  const normalizedPrompt = prompt.replace(/\s+/g, ' ').trim()
-  const delegationPatterns = [
-    /\b(?:spawn|delegate)(?:\s+a)?(?:\s+sub-agent|\s+subagent)?\s+(?:to|for)\s+(.+?)(?:[.?!]|$)/i,
-    /\b(?:spawn|delegate)(?:\s+a)?(?:\s+sub-agent|\s+subagent)?\b\s+(.+?)(?:[.?!]|$)/i,
-  ]
-
-  for (const pattern of delegationPatterns) {
-    const match = normalizedPrompt.match(pattern)
-    const task = match?.[1]?.replace(/^(and|then)\s+/i, '').trim()
-    if (task) {
-      return task
-    }
-  }
-
-  return 'Summarize the parent request succinctly.'
-}
-
-const maybeSpawnChildAgent = async (
-  deps: ExecutionDependencies,
-  context: RunContext,
-  prompt: string,
-  planContext: RunPlanContext,
-): Promise<string | null> => {
-  if (context.agent.parentAgentId || !/\b(spawn|delegate|sub-agent|subagent)\b/i.test(prompt)) {
-    return null
-  }
-
-  const delegatedTask = deriveDelegatedTask(prompt)
-
-  const child = await deps.prisma.agent.create({
-    data: {
-      bindings: {
-        create: {
-          channelId: context.channel.id,
-        },
-      },
-      name: `${context.agent.name} Research`,
-      parentAgentId: context.agent.id,
-      role: 'assistant',
-      status: 'idle',
-      systemPrompt: 'Handle a delegated sub-task and report back succinctly.',
-    },
-  })
-
-  const delegationStep = await appendDelegationStep(deps.prisma, {
-    assignedAgentId: child.id,
-    payload: {
-      delegatedTask,
-      parentAgentId: context.agent.id,
-      parentRunId: context.run.id,
-      parentTaskId: context.task.id,
-    },
-    planId: planContext.planId,
-    title: `Delegate to ${child.name}: ${delegatedTask}`,
-  })
-
-  await deps.prisma.agentMailboxMessage.create({
-    data: {
-      body: [
-        `Delegated sub-task from ${context.agent.name}.`,
-        `Task: ${delegatedTask}`,
-        `Parent request context: ${prompt.trim()}`,
-        'Complete only the delegated task and report back succinctly.',
-      ].join('\n\n'),
-      channelId: context.channel.id,
-      correlationId: `spawn:${context.run.id}:${child.id}`,
-      fromAgentId: context.agent.id,
-      organizationId: context.channel.organizationId,
-      planId: planContext.planId,
-      planStepId: delegationStep.stepId,
-      subject: `Delegated task for ${child.name}`,
-      threadId: context.run.threadId,
-      toAgentId: child.id,
-    },
-  })
-
-  return child.name
-}
 
 const retrieveRelevantMemories = async (
   deps: ExecutionDependencies,
@@ -701,20 +916,38 @@ const retrieveRelevantMemories = async (
   payload: RunExecuteJobPayload,
   prompt: string,
 ): Promise<SearchResult[]> => {
+  const effectiveUserId =
+    payload.actorContext.actionContext.effectiveUserId
+    ?? (payload.actorContext.actor.actorType === 'user'
+      ? payload.actorContext.actor.actorId
+      : undefined)
+
   try {
-    return await searchAndLogThoughts(
+    const memories = await searchAndLogThoughts(
       {
         channelId: context.channel.id,
         includeReasoning: false,
         limit: MAX_MEMORY_RESULTS,
         mode: 'hybrid',
         organizationId: context.channel.organizationId,
+        outputAudienceId:
+          context.channel.systemChannelType === 'personal_assistant' && effectiveUserId
+            ? effectiveUserId
+            : context.channel.id,
+        outputAudienceType:
+          context.channel.systemChannelType === 'personal_assistant' && effectiveUserId
+            ? 'user'
+            : 'channel',
         query: prompt,
         sessionId: payload.actorContext.actionContext.sessionId,
-        userId: payload.actorContext.actor.actorId,
+        userId: effectiveUserId ?? payload.actorContext.actor.actorId,
       },
       deps.searchConfig,
     )
+
+    return context.channel.systemChannelType === 'personal_assistant'
+      ? filterPersonalAssistantMemories(memories)
+      : memories
   } catch (error) {
     console.warn(
       '[worker] Memory search failed, continuing without memories:',
@@ -728,18 +961,15 @@ const buildModelPrompt = (
   conversation: StoredConversationMessage[],
   context: RunContext,
   prompt: string,
-  toolOutputs: string[],
-  childAgentName: string | null,
   memoryContext: string | null,
-): ModelMessage[] => {
+): ProviderMessage[] => {
   const systemParts = [
     `You are ${context.agent.name}.`,
     context.agent.systemPrompt?.trim() ?? '',
-    'Respond directly to the request using the available tool results when they are relevant.',
+    'You have access to tools. Use them when needed to answer the request accurately.',
+    'Call tools by their function name. Do not fabricate tool output — always call the tool.',
+    'When you have enough information, respond directly without calling more tools.',
     'Use relevant memory context when it helps, but prefer the latest explicit user instructions on conflict.',
-    'The required safe tools have already been executed.',
-    'Do not emit tool-call markup or request more tool execution.',
-    'Return plain text only.',
     'Keep the answer concise and concrete.',
     [
       'Write like a person in a chat thread, not a help-desk bot.',
@@ -760,30 +990,7 @@ const buildModelPrompt = (
     ].join('\n'),
   ].filter((part) => part.length > 0)
 
-  const promptParts = [prompt.trim()]
-
-  if (toolOutputs.length > 0) {
-    const truncatedToolOutputs = toolOutputs.map((output) =>
-      output.length <= MAX_TOOL_CONTEXT_LENGTH
-        ? output
-        : `${output.slice(0, MAX_TOOL_CONTEXT_LENGTH - 1)}…`,
-    )
-
-    promptParts.push(`Tool results:\n${truncatedToolOutputs.join('\n\n')}`)
-  }
-
-  if (childAgentName) {
-    promptParts.push(`A delegated sub-agent named ${childAgentName} was spawned.`)
-  }
-
-  const messages: ModelMessage[] = [{ content: systemParts.join('\n\n'), role: 'system' }]
-
-  if (toolOutputs.length > 0 || childAgentName) {
-    messages.push({
-      content: promptParts.slice(1).join('\n\n'),
-      role: 'system',
-    })
-  }
+  const messages: ProviderMessage[] = [{ content: systemParts.join('\n\n'), role: 'system' }]
 
   if (memoryContext) {
     messages.push({
@@ -867,6 +1074,8 @@ export const executeRunJob = async (
   let planContext: RunPlanContext | null = null
 
   try {
+    await validateRunActorContext(deps.prisma, payload.actorContext, context)
+
     planContext = await ensureRunPlanContext(deps.prisma, {
       agentId: context.agent.id,
       channelId: context.channel.id,
@@ -894,26 +1103,19 @@ export const executeRunJob = async (
     })
 
     const allowedToolIds = await loadAllowedToolIds(deps.prisma, context)
-    const toolOutputs: string[] = []
 
-    if (allowedToolIds.has('document_read') && shouldUseDocumentRead(prompt)) {
-      toolOutputs.push(await executeSafeTool(deps, context, 'document_read', prompt))
-    }
-
-    if (allowedToolIds.has('web_fetch') && shouldUseWebFetch(prompt)) {
-      toolOutputs.push(await executeSafeTool(deps, context, 'web_fetch', prompt))
-    }
-
-    if (allowedToolIds.has('web_search') && shouldUseWebSearch(prompt)) {
-      toolOutputs.push(await executeSafeTool(deps, context, 'web_search', prompt))
-    }
-
-    const childAgentName = await maybeSpawnChildAgent(
-      deps,
-      context,
-      prompt,
-      planContext,
+    const agentRecord = await deps.prisma.agent.findUnique({
+      where: { id: context.agent.id },
+      select: { toolPolicy: true, parentAgentId: true },
+    })
+    const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
+    const { descriptors: toolDefs, allowedIds: resolvedToolIds } = resolveAgentTools(
+      allowedToolIds,
+      BUILTIN_TOOL_DEFINITIONS,
+      toolPolicy,
+      context.agent.parentAgentId,
     )
+
     const conversation = await loadConversation(deps.prisma, context.run.threadId)
     const memories = await retrieveRelevantMemories(deps, context, payload, prompt)
     const injectedRecallIds = memories.flatMap((memory) =>
@@ -925,12 +1127,10 @@ export const executeRunJob = async (
       await markRecallsInjected(injectedRecallIds, deps.searchConfig.pool)
     }
 
-    const modelMessages = buildModelPrompt(
+    const initialMessages = buildModelPrompt(
       conversation,
       context,
       prompt,
-      toolOutputs,
-      childAgentName,
       memoryContext,
     )
 
@@ -940,41 +1140,214 @@ export const executeRunJob = async (
       threadId: parseThreadId(context.run.threadId),
     })
     streamStarted = true
+    let currentTurnStreamed = false
 
-    let responseText = ''
-
-    const inferenceResult = await runInferenceGraph(deps.prisma, {
-      actorContext: payload.actorContext,
-      agent: {
-        id: context.agent.id,
-        model: context.agent.model,
-        provider: context.agent.provider,
-        routingProfileId: null,
+    const loopResult = await runAgenticLoop({
+      budget: DEFAULT_BUDGET,
+      callbacks: {
+        onIterationStart: async (iteration) => {
+          await deps.realtimeTransport.publishWs(buildScopes(context), {
+            data: {
+              agentId: parseAgentId(context.agent.id),
+              iteration,
+              runId: parseRunId(context.run.id),
+            },
+            event: 'agent.iteration',
+          })
+        },
+        onToolCallStart: async (toolName, _args) => {
+          const startedAt = new Date()
+          await setAgentStatus(deps.prisma, context.agent.id, 'executing')
+          await publishAgentStatus(deps.realtimeTransport, context, {
+            currentRunId: context.run.id,
+            currentToolName: toolName,
+            currentToolStartedAt: startedAt.toISOString(),
+            status: 'executing',
+          })
+          await deps.realtimeTransport.publishWs(buildScopes(context), {
+            data: {
+              agentId: parseAgentId(context.agent.id),
+              inputSummary: JSON.stringify(_args).slice(0, 200),
+              runId: parseRunId(context.run.id),
+              toolName,
+            },
+            event: 'agent.tool.start',
+          })
+        },
+        onToolCallEnd: async (toolName, result, durationMs, success, inputSummary, startedAt) => {
+          await recordToolEnd(deps, context, {
+            durationMs,
+            inputSummary,
+            outputPreview: result.slice(0, 1200),
+            startedAt,
+            success,
+            toolName,
+          })
+          await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
+          await publishAgentStatus(deps.realtimeTransport, context, {
+            currentRunId: context.run.id,
+            status: 'thinking',
+          })
+        },
+        onTextDelta: async (delta) => {
+          if (currentTurnStreamed) {
+            currentTurnStreamed = false
+            return
+          }
+          await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+            content: delta,
+            runId: parseRunId(context.run.id),
+          })
+        },
+        onBudgetExhausted: async (reason) => {
+          console.warn(`[worker] Agentic loop budget exhausted: ${reason} for run ${context.run.id}`)
+        },
       },
-      baseMessages: modelMessages,
-      modelConfig: runtimeModelConfig,
-      onVisibleTextDelta: async (chunk) => {
-        responseText += chunk
-        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
-          content: chunk,
-          runId: parseRunId(context.run.id),
+      executeTool: async (toolName, args) => {
+        const toolActorContext = buildToolActorContext(payload.actorContext, context, toolName)
+        const registryDecision = authorizeToolCall(
+          toolName,
+          allowedToolIds,
+          BUILTIN_TOOL_DEFINITIONS,
+          toolPolicy,
+          context.agent.parentAgentId,
+        )
+
+        if (!registryDecision.allowed || !resolvedToolIds.has(toolName)) {
+          const message = `Tool "${toolName}" is not allowed for this agent.`
+          await emitWorkerAuditEvent(deps.prisma, toolActorContext, {
+            action: 'policy.evaluated',
+            metadata: {
+              agentId: context.agent.id,
+              runId: context.run.id,
+              source: 'worker_tool_authorization',
+              taskId: context.task.id,
+              toolId: toolName,
+            },
+            outcome: 'denied',
+            reason: registryDecision.allowed ? 'tool_not_granted' : registryDecision.reason,
+            resourceId: toolName,
+            resourceType: 'tool',
+          })
+          return toolDeniedResult(toolName, args, {
+            message,
+            reason: registryDecision.allowed ? 'tool_not_granted' : registryDecision.reason,
+          })
+        }
+
+        const policyDecision = await evaluateToolInvokePolicy(
+          deps.prisma,
+          toolActorContext,
+          context,
+          toolName,
+        )
+        if (!policyDecision.allowed) {
+          const message =
+            policyDecision.reason === 'approval_required'
+              ? `Tool "${toolName}" requires approval before it can run.`
+              : `Tool "${toolName}" was denied by policy.`
+          await emitWorkerAuditEvent(deps.prisma, toolActorContext, {
+            action: 'policy.evaluated',
+            metadata: {
+              agentId: context.agent.id,
+              approvalActionType: policyDecision.approvalActionType,
+              policyRuleId: policyDecision.policyRuleId,
+              policySource: policyDecision.policySource,
+              runId: context.run.id,
+              source: 'worker_tool_policy',
+              taskId: context.task.id,
+              toolId: toolName,
+            },
+            outcome: 'denied',
+            reason: policyDecision.reason,
+            resourceId: toolName,
+            resourceType: 'tool',
+          })
+          return toolDeniedResult(toolName, args, {
+            approvalActionType: policyDecision.approvalActionType,
+            message,
+            policyRuleId: policyDecision.policyRuleId,
+            policySource: policyDecision.policySource,
+            reason: policyDecision.reason,
+          })
+        }
+        return executeBuiltinTool(toolName, args, {
+          agentId: context.agent.id,
+          actorContext: toolActorContext,
+          channel: {
+            id: context.channel.id,
+            organizationId: parseOrganizationId(context.channel.organizationId),
+            systemChannelType: context.channel.systemChannelType,
+          },
+          memoryCaptureConfig: {
+            modelClient: deps.modelClient,
+            pool: deps.searchConfig.pool,
+          },
+          prisma: deps.prisma,
+          realtimeTransport: deps.realtimeTransport,
+          run: {
+            id: context.run.id,
+            messageId: payload.messageId,
+            threadId: context.run.threadId,
+          },
         })
       },
-      organizationId: context.channel.organizationId,
+      initialMessages,
+      runInference: async (messages) => {
+        currentTurnStreamed = false
+        const mpr = await runInferenceGraph(deps.prisma, {
+          actorContext: payload.actorContext,
+          agent: {
+            id: context.agent.id,
+            model: context.agent.model,
+            provider: context.agent.provider,
+            routingProfileId: null,
+          },
+          baseMessages: messages,
+          modelConfig: runtimeModelConfig,
+          onVisibleReasoningDelta: async (chunk) => {
+            await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.reasoning', {
+              content: chunk,
+              runId: parseRunId(context.run.id),
+            })
+          },
+          onVisibleTextDelta: async (chunk) => {
+            currentTurnStreamed = true
+            await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+              content: chunk,
+              runId: parseRunId(context.run.id),
+            })
+          },
+          organizationId: context.channel.organizationId,
+          toolChoice: 'auto',
+          tools: toolDefs,
+        })
+        if (
+          mpr.status !== 'completed'
+          || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
+        ) {
+          throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
+        }
+        return {
+          correlationId: mpr.correlationId,
+          finishReason: mpr.invocations[0]?.finishReason,
+          invocations: mpr.invocations as unknown as InvocationRecord[],
+          model: mpr.invocations[0]?.model ?? '',
+          outputText: mpr.finalAnswer ?? '',
+          provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'openai-compatible',
+          requestId: mpr.requestId,
+          toolCalls: mpr.toolCalls,
+        }
+      },
+      tools: toolDefs,
     })
 
-    if (inferenceResult.status !== 'completed' || !inferenceResult.finalAnswer?.trim()) {
-      throw new Error(
-        inferenceResult.failure?.message ?? 'Inference execution produced no final answer',
-      )
-    }
-
-    responseText = stripLeadingSectionTag(inferenceResult.finalAnswer)
+    const responseText = stripLeadingSectionTag(loopResult.finalText)
 
     await persistInvocationLedgerEvents(deps.prisma, {
       actorContext: payload.actorContext,
       agentId: context.agent.id,
-      invocations: inferenceResult.invocations,
+      invocations: loopResult.invocations,
     })
 
     const referencedRecallIds = detectReferencedRecallIds(responseText, memories)
@@ -992,6 +1365,9 @@ export const executeRunJob = async (
     })
 
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
+      agentId: parseAgentId(context.agent.id),
+      content: responseText,
+      createdAt: assistantMessage.createdAt.toISOString(),
       messageId: assistantMessage.id,
       runId: parseRunId(context.run.id),
     })
@@ -1006,8 +1382,8 @@ export const executeRunJob = async (
     await updateTaskStatus(deps.prisma, context.task.id, 'done')
     await markRunPlanFinished(deps.prisma, {
       artifacts: {
-        childAgentName,
-        toolOutputs,
+        iterations: loopResult.iterations,
+        toolCallsUsed: loopResult.toolCallsUsed,
       },
       planId: planContext.planId,
       rootStepId: planContext.rootStepId,
@@ -1016,11 +1392,10 @@ export const executeRunJob = async (
     })
     await markDelegationStepFinished(deps.prisma, {
       artifacts: {
-        childAgentName,
         responseText,
         runId: context.run.id,
         taskId: context.task.id,
-        toolOutputs,
+        iterations: loopResult.iterations,
       },
       planId: payload.parentPlanId,
       planStepId: payload.parentPlanStepId,
@@ -1028,11 +1403,9 @@ export const executeRunJob = async (
     })
     await maybeContinueParentWorkflow(deps, payload, {
       output: {
-        childAgentName,
         responseText,
         runId: context.run.id,
         taskId: context.task.id,
-        toolOutputs,
       },
       success: true,
     })
@@ -1049,18 +1422,22 @@ export const executeRunJob = async (
     if (streamStarted) {
       const fallbackMessageId = `run-error:${context.run.id}`
       let terminalMessageId = fallbackMessageId
+      let terminalContent = `I hit an error while processing this request: ${messageText}`
+      let terminalCreatedAt = new Date().toISOString()
 
       try {
         const errorMessage = await deps.prisma.message.create({
           data: {
             agentId: context.agent.id,
-            content: `I hit an error while processing this request: ${messageText}`,
+            content: terminalContent,
             role: 'assistant',
             threadId: context.run.threadId,
           },
         })
 
         terminalMessageId = errorMessage.id
+        terminalContent = errorMessage.content
+        terminalCreatedAt = errorMessage.createdAt.toISOString()
 
         await publishMessageCreated(deps.realtimeTransport, context, {
           content: errorMessage.content,
@@ -1073,6 +1450,9 @@ export const executeRunJob = async (
 
       try {
         await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
+          agentId: parseAgentId(context.agent.id),
+          content: terminalContent,
+          createdAt: terminalCreatedAt,
           messageId: terminalMessageId,
           runId: parseRunId(context.run.id),
         })

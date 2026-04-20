@@ -9,9 +9,11 @@ type ChannelMembersPopupProps = {
   boundAgents: AgentRecord[]
   channelId: string
   channelLabel: string
+  channelType: 'dm' | 'standard'
   channelUsers: UserRecord[]
   currentUserId: string
   onClose: () => void
+  onGroupCreated: (channelId: string) => void
   onSelectAgent: (agentId: string) => void
 }
 
@@ -67,9 +69,11 @@ export const ChannelMembersPopup = ({
   boundAgents,
   channelId,
   channelLabel,
+  channelType,
   channelUsers,
   currentUserId,
   onClose,
+  onGroupCreated,
   onSelectAgent,
 }: ChannelMembersPopupProps) => {
   const [search, setSearch] = useState('')
@@ -483,7 +487,16 @@ export const ChannelMembersPopup = ({
                     ].join(' ')}
                     disabled={addMember.isPending}
                     onClick={() =>
-                      addMember.mutate({ channelId, userId: user.id })
+                      addMember.mutate(
+                        { channelId, userId: user.id },
+                        {
+                          onSuccess: (data) => {
+                            if (channelType === 'dm' && data?.id) {
+                              onGroupCreated(data.id)
+                            }
+                          },
+                        },
+                      )
                     }
                     type="button"
                   >

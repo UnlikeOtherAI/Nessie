@@ -25,8 +25,6 @@ export const ChannelIdSchema = createUuidBrandSchema<'ChannelId'>()
 export type ChannelId = z.infer<typeof ChannelIdSchema>
 export const AgentIdSchema = createUuidBrandSchema<'AgentId'>()
 export type AgentId = z.infer<typeof AgentIdSchema>
-export const AgentCategoryIdSchema = createUuidBrandSchema<'AgentCategoryId'>()
-export type AgentCategoryId = z.infer<typeof AgentCategoryIdSchema>
 export const ThreadIdSchema = createUuidBrandSchema<'ThreadId'>()
 export type ThreadId = z.infer<typeof ThreadIdSchema>
 export const RunIdSchema = createUuidBrandSchema<'RunId'>()
@@ -87,8 +85,6 @@ export const parseProjectId = (value: string): ProjectId => ProjectIdSchema.pars
 export const parseTeamId = (value: string): TeamId => TeamIdSchema.parse(value)
 export const parseChannelId = (value: string): ChannelId => ChannelIdSchema.parse(value)
 export const parseAgentId = (value: string): AgentId => AgentIdSchema.parse(value)
-export const parseAgentCategoryId = (value: string): AgentCategoryId =>
-  AgentCategoryIdSchema.parse(value)
 export const parseThreadId = (value: string): ThreadId => ThreadIdSchema.parse(value)
 export const parseRunId = (value: string): RunId => RunIdSchema.parse(value)
 export const parseTaskId = (value: string): TaskId => TaskIdSchema.parse(value)
@@ -175,9 +171,6 @@ export const createApiResponseSchema = <TOutput>(
     meta: PaginationMetaSchema.optional(),
   })
 
-export const AgentCategoryVisibilitySchema = z.enum(['public', 'private'])
-export type AgentCategoryVisibility = z.infer<typeof AgentCategoryVisibilitySchema>
-
 export const AgentStatusSchema = z.enum([
   'idle',
   'thinking',
@@ -187,6 +180,21 @@ export const AgentStatusSchema = z.enum([
   'offline',
 ])
 export type AgentStatus = z.infer<typeof AgentStatusSchema>
+
+export const AgentKindSchema = z.enum(['shared', 'personal_assistant'])
+export type AgentKind = z.infer<typeof AgentKindSchema>
+
+export const AgentSurfacePolicySchema = z.enum(['shared', 'dm_only'])
+export type AgentSurfacePolicy = z.infer<typeof AgentSurfacePolicySchema>
+
+export const AgentDelegationModeSchema = z.enum([
+  'none',
+  'act_as_requesting_user',
+])
+export type AgentDelegationMode = z.infer<typeof AgentDelegationModeSchema>
+
+export const SystemChannelTypeSchema = z.enum(['personal_assistant'])
+export type SystemChannelType = z.infer<typeof SystemChannelTypeSchema>
 
 export const AgentTriggerTypeSchema = z.enum([
   'manual',
@@ -224,8 +232,15 @@ export type MessageRole = z.infer<typeof MessageRoleSchema>
 
 export type SseEventMap = {
   'stream.start': { runId: RunId; threadId: ThreadId; agentId: AgentId }
+  'stream.reasoning': { runId: RunId; content: string }
   'stream.delta': { runId: RunId; content: string }
-  'stream.done': { runId: RunId; messageId: string }
+  'stream.done': {
+    runId: RunId
+    messageId: string
+    agentId?: AgentId
+    content?: string
+    createdAt?: string
+  }
   'message.reaction': { messageId: string; agentId?: AgentId; userId?: string; emoji: string }
 }
 
@@ -270,7 +285,7 @@ export type WsEventMap = {
     resolvedAt: string
   }
   'message.new': {
-    agentId: AgentId
+    agentId?: AgentId
     messageId: string
     role: MessageRole
     contentPreview: string
@@ -289,7 +304,15 @@ export const StreamDeltaEventSchema = z.object({
   content: z.string(),
 })
 export type StreamDeltaEvent = z.infer<typeof StreamDeltaEventSchema>
+export const StreamReasoningEventSchema = z.object({
+  runId: RunIdSchema,
+  content: z.string(),
+})
+export type StreamReasoningEvent = z.infer<typeof StreamReasoningEventSchema>
 export const StreamDoneEventSchema = z.object({
+  agentId: AgentIdSchema.optional(),
+  content: z.string().optional(),
+  createdAt: TimestampSchema.optional(),
   runId: RunIdSchema,
   messageId: NonEmptyStringSchema,
 })
@@ -301,12 +324,22 @@ export const MessageReactionEventSchema = z.object({
   emoji: z.string(),
 })
 export type MessageReactionEvent = z.infer<typeof MessageReactionEventSchema>
-export const SseEventNameSchema = z.enum(['stream.start', 'stream.delta', 'stream.done', 'message.reaction'])
+export const SseEventNameSchema = z.enum([
+  'stream.start',
+  'stream.reasoning',
+  'stream.delta',
+  'stream.done',
+  'message.reaction',
+])
 
 export const SseEventSchema = z.discriminatedUnion('event', [
   z.object({
     event: z.literal('stream.start'),
     data: StreamStartEventSchema,
+  }),
+  z.object({
+    event: z.literal('stream.reasoning'),
+    data: StreamReasoningEventSchema,
   }),
   z.object({
     event: z.literal('stream.delta'),
@@ -371,7 +404,7 @@ export const ApprovalNeededEventSchema = z.object({
   reason: z.string(),
 })
 export const MessageNewEventSchema = z.object({
-  agentId: AgentIdSchema,
+  agentId: AgentIdSchema.optional(),
   messageId: NonEmptyStringSchema,
   role: MessageRoleSchema,
   contentPreview: z.string(),
@@ -527,6 +560,16 @@ export const WsEventSchema = z.union([
     data: MessageNewEventSchema,
     ts: TimestampSchema,
   }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('agent.iteration'),
+    data: z.object({
+      agentId: z.string(),
+      iteration: z.number().int().positive(),
+      runId: z.string(),
+    }),
+    ts: TimestampSchema,
+  }),
 ])
 
 export const WsClientMessageSchema = z.union([
@@ -553,7 +596,7 @@ export type AuthProviderResponseType = z.infer<typeof AuthProviderResponseTypeSc
 
 export const UserPreferencesSchema = z.object({
   starred: z.array(z.object({
-    type: z.enum(['channel', 'user']),
+    type: z.enum(['channel', 'project', 'user']),
     id: z.string(),
   })).optional(),
 })
@@ -722,6 +765,7 @@ export const ActionContextSchema = z.object({
   teamId: TeamIdSchema.optional(),
   channelId: ChannelIdSchema.optional(),
   agentId: AgentIdSchema.optional(),
+  effectiveUserId: UserIdSchema.optional(),
   toolId: NonEmptyStringSchema.optional(),
   taskId: TaskIdSchema.optional(),
   sessionId: NonEmptyStringSchema.optional(),
@@ -758,6 +802,14 @@ export const AuthorizedActionContextSchema = AccessContextSchema.extend({
 })
 export type AuthorizedActionContext = z.infer<typeof AuthorizedActionContextSchema>
 
+export const withActionContext = (
+  actorContext: AuthorizedActionContext,
+  fields: Partial<AuthorizedActionContext['actionContext']>,
+): AuthorizedActionContext => ({
+  ...actorContext,
+  actionContext: { ...actorContext.actionContext, ...fields },
+})
+
 export const RunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   agentId: AgentIdSchema,
@@ -773,11 +825,65 @@ export const RunExecuteJobPayloadSchema = z.object({
 })
 export type RunExecuteJobPayload = z.infer<typeof RunExecuteJobPayloadSchema>
 
+export const OrchestrateDecideJobPayloadSchema = z.object({
+  actorContext: AuthorizedActionContextSchema,
+  /**
+   * Resolved agent list as computed by createThreadMessage — includes bound
+   * agents AND any @mentioned agents not yet bound to the channel.
+   * Stored in payload so the worker does not re-derive (would miss @mentions).
+   */
+  channelAgents: z.array(
+    z.object({
+      id: z.string().uuid(),
+      name: z.string().min(1),
+      role: z.string().min(1),
+      systemPrompt: z.string().nullable(),
+    }),
+  ),
+  channelId: ChannelIdSchema,
+  content: z.string().min(1),
+  messageId: z.string().uuid(),
+  role: z.string().min(1),
+  threadId: ThreadIdSchema,
+})
+export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPayloadSchema>
+
 export const WorkflowRunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   workflowRunId: z.string().uuid(),
 })
 export type WorkflowRunExecuteJobPayload = z.infer<typeof WorkflowRunExecuteJobPayloadSchema>
+
+export const PersonalAssistantConfigSummarySchema = z.object({
+  agentId: AgentIdSchema,
+  model: z.string().optional(),
+  provider: z.string().optional(),
+  systemPromptPreview: z.string().optional(),
+  toolIds: z.array(NonEmptyStringSchema),
+  updatedAt: TimestampSchema,
+})
+export type PersonalAssistantConfigSummary = z.infer<
+  typeof PersonalAssistantConfigSummarySchema
+>
+
+export const PersonalAssistantBootstrapResponseSchema = z.object({
+  agent: z.object({
+    id: AgentIdSchema,
+    name: z.literal('Personal Assistant'),
+  }),
+  channel: z.object({
+    id: ChannelIdSchema,
+    type: z.literal('dm'),
+  }),
+  thread: z.object({
+    id: ThreadIdSchema,
+    title: z.string().nullable().optional(),
+  }),
+  configSummary: PersonalAssistantConfigSummarySchema,
+})
+export type PersonalAssistantBootstrapResponse = z.infer<
+  typeof PersonalAssistantBootstrapResponseSchema
+>
 
 export const ExecutionEnvironmentAllocateJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
@@ -1003,6 +1109,11 @@ export const AuditActionSchema = z.enum([
   'agent.deleted',
   'agent.bound',
   'agent.unbound',
+  'personal_assistant.bootstrap',
+  'personal_assistant.rotate',
+  'personal_assistant.suspend',
+  'personal_assistant.reactivate',
+  'personal_assistant.access_denied',
   'tool.granted',
   'tool.revoked',
   'approval.created',
@@ -1250,12 +1361,39 @@ export const ProviderMessageRoleSchema = z.enum([
 ])
 export type ProviderMessageRole = z.infer<typeof ProviderMessageRoleSchema>
 
-export const ProviderMessageSchema = z.object({
-  role: ProviderMessageRoleSchema,
-  content: z.union([z.string(), z.array(ProviderMessageContentPartSchema)]),
-  name: NonEmptyStringSchema.optional(),
-  toolCallId: NonEmptyStringSchema.optional(),
+const ProviderMessageContentSchema = z.union([
+  z.string(),
+  z.array(ProviderMessageContentPartSchema),
+])
+
+export const ProviderToolCallSchema = z.object({
+  toolCallId: NonEmptyStringSchema,
+  toolName: NonEmptyStringSchema,
+  arguments: z.record(z.unknown()),
+  reason: z.string().optional(),
 })
+export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>
+
+export const ProviderMessageSchema = z.discriminatedUnion('role', [
+  z.object({
+    role: z.literal('system'),
+    content: ProviderMessageContentSchema,
+  }),
+  z.object({
+    role: z.literal('user'),
+    content: ProviderMessageContentSchema,
+  }),
+  z.object({
+    role: z.literal('assistant'),
+    content: ProviderMessageContentSchema.nullable(),
+    toolCalls: z.array(ProviderToolCallSchema).optional(),
+  }),
+  z.object({
+    role: z.literal('tool'),
+    content: z.string(),
+    toolCallId: NonEmptyStringSchema,
+  }),
+])
 export type ProviderMessage = z.infer<typeof ProviderMessageSchema>
 
 export const ToolSchemaDescriptorSchema = z.object({
@@ -1279,6 +1417,24 @@ export const StructuredOutputDescriptorSchema = z.object({
 export type StructuredOutputDescriptor = z.infer<
   typeof StructuredOutputDescriptorSchema
 >
+
+export const JsonObjectResponseFormatSchema = z.object({
+  type: z.literal('json_object'),
+})
+export type JsonObjectResponseFormat = z.infer<
+  typeof JsonObjectResponseFormatSchema
+>
+
+export const ToolChoiceSchema = z.union([
+  z.enum(['auto', 'none', 'required']),
+  z.object({
+    type: z.literal('function'),
+    function: z.object({
+      name: NonEmptyStringSchema,
+    }),
+  }),
+])
+export type ToolChoice = z.infer<typeof ToolChoiceSchema>
 
 export const ModelCapabilitySourceSchema = z.enum(['static', 'live', 'manual'])
 export type ModelCapabilitySource = z.infer<typeof ModelCapabilitySourceSchema>
@@ -1361,22 +1517,17 @@ export const InvocationRecordSchema = z.object({
 })
 export type InvocationRecord = z.infer<typeof InvocationRecordSchema>
 
-export const ProviderToolCallSchema = z.object({
-  toolCallId: NonEmptyStringSchema,
-  toolName: NonEmptyStringSchema,
-  arguments: z.record(z.unknown()),
-  reason: z.string().optional(),
-})
-export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>
-
 export const ProviderInvocationRequestSchema = z.object({
   requestId: NonEmptyStringSchema,
   correlationId: NonEmptyStringSchema.optional(),
   model: NonEmptyStringSchema,
   messages: z.array(ProviderMessageSchema),
   tools: z.array(ToolSchemaDescriptorSchema).optional(),
+  toolChoice: ToolChoiceSchema.optional(),
+  responseFormat: JsonObjectResponseFormatSchema.optional(),
   expectedStructuredOutput: StructuredOutputDescriptorSchema.optional(),
   maxOutputTokens: z.number().int().positive().optional(),
+  temperature: z.number().optional(),
   metadata: z.record(z.unknown()).optional(),
 })
 export type ProviderInvocationRequest = z.infer<
@@ -1395,6 +1546,10 @@ export type ProviderInvocationResult = z.infer<
 >
 
 export const ProviderStreamEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('reasoning_text.delta'),
+    text: z.string(),
+  }),
   z.object({
     type: z.literal('output_text.delta'),
     text: z.string(),
@@ -1433,7 +1588,11 @@ export const InferenceRequestSchema = z.object({
   route: InferenceRequestRouteSchema,
   messages: z.array(ProviderMessageSchema),
   tools: z.array(ToolSchemaDescriptorSchema).optional(),
+  toolChoice: ToolChoiceSchema.optional(),
+  responseFormat: JsonObjectResponseFormatSchema.optional(),
   expectedStructuredOutput: StructuredOutputDescriptorSchema.optional(),
+  maxOutputTokens: z.number().int().positive().optional(),
+  temperature: z.number().optional(),
   metadata: z.record(z.unknown()).optional(),
 })
 export type InferenceRequest = z.infer<typeof InferenceRequestSchema>
@@ -1470,6 +1629,10 @@ export const StageExecutionStatusSchema = z.enum([
 export type StageExecutionStatus = z.infer<typeof StageExecutionStatusSchema>
 
 export const InferenceStreamEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('reasoning_text.delta'),
+    text: z.string(),
+  }),
   z.object({
     type: z.literal('output_text.delta'),
     text: z.string(),
@@ -1611,6 +1774,7 @@ export const MultiProviderResultSchema = z.object({
   finalAnswer: z.string().optional(),
   structuredOutput: z.unknown().optional(),
   answerOwner: AnswerOwnerSchema.optional(),
+  toolCalls: z.array(ProviderToolCallSchema),
   toolExecutionOwner: ToolExecutionOwnerSchema.nullable(),
   failure: MultiProviderFailureSchema.optional(),
   invocations: z.array(InvocationRecordSchema),
@@ -1865,6 +2029,15 @@ export const ThoughtVisibilitySchema = z.enum([
 ])
 export type ThoughtVisibility = z.infer<typeof ThoughtVisibilitySchema>
 
+export const ThoughtAudienceTypeSchema = z.enum([
+  'user',
+  'channel',
+  'team',
+  'project',
+  'organization',
+])
+export type ThoughtAudienceType = z.infer<typeof ThoughtAudienceTypeSchema>
+
 export const SensitivityTierSchema = z.enum(['normal', 'sensitive', 'restricted'])
 export type SensitivityTier = z.infer<typeof SensitivityTierSchema>
 
@@ -1906,6 +2079,7 @@ export type ThoughtRecallUserSignal = z.infer<typeof ThoughtRecallUserSignalSche
 
 export const CaptureThoughtBodySchema = z.object({
   content: z.string().min(1).max(50000),
+  audienceType: ThoughtAudienceTypeSchema.optional(),
   visibility: ThoughtVisibilitySchema.optional(),
   sensitivityTier: SensitivityTierSchema.optional(),
   importance: z.number().min(0).max(1).optional(),
@@ -1944,3 +2118,66 @@ export const RecordThoughtRecallSignalBodySchema = z.object({
 export type RecordThoughtRecallSignalBody = z.infer<
   typeof RecordThoughtRecallSignalBodySchema
 >
+
+// ─── Sandbox Configuration ───────────────────────────────────────────────────
+
+/**
+ * Sandbox mode determines where exec commands run:
+ * - 'off': sandbox disabled, exec runs directly on host (auto → gateway)
+ * - 'non-main': sandbox only for non-main agents (auto → sandbox for non-main)
+ * - 'all': sandbox for all agents (auto → sandbox)
+ */
+export const SandboxModeSchema = z.enum(['off', 'non-main', 'all'])
+export type SandboxMode = z.infer<typeof SandboxModeSchema>
+
+export const SandboxConfigSchema = z.object({
+  mode: SandboxModeSchema.default('off'),
+  docker: z.object({
+    image: z.string().optional(),
+    containerPrefix: z.string().optional(),
+    workdir: z.string().optional(),
+    readOnlyRoot: z.boolean().optional(),
+    tmpfs: z.array(z.string()).optional(),
+    network: z.string().optional(),
+    memory: z.union([z.string(), z.number()]).optional(),
+    cpus: z.union([z.string(), z.number()]).optional(),
+    binds: z.array(z.string()).optional(),
+  }).optional(),
+  workspaceAccess: z.enum(['none', 'ro', 'rw']).optional(),
+  scope: z.enum(['session', 'agent', 'shared']).optional(),
+  workspaceRoot: z.string().optional(),
+})
+export type SandboxConfig = z.infer<typeof SandboxConfigSchema>
+
+/**
+ * Exec host target for tool execution.
+ * - 'auto': resolves to 'gateway', 'sandbox', or 'node' based on sandbox availability
+ * - 'gateway': always run exec on the gateway (host)
+ * - 'sandbox': always run exec in sandbox
+ * - 'node': run exec on a specific node
+ */
+export const ExecHostSchema = z.enum(['auto', 'gateway', 'sandbox', 'node'])
+export type ExecHost = z.infer<typeof ExecHostSchema>
+
+export const ExecToolsConfigSchema = z.object({
+  host: ExecHostSchema.default('auto'),
+  security: z.enum(['deny', 'allowlist', 'full']).optional(),
+  ask: z.enum(['off', 'on-miss', 'always']).optional(),
+  safeBins: z.array(z.string()).optional(),
+  timeoutSec: z.number().int().positive().optional(),
+  cleanupMs: z.number().int().nonnegative().optional(),
+  backgroundMs: z.number().int().nonnegative().optional(),
+})
+export type ExecToolsConfig = z.infer<typeof ExecToolsConfigSchema>
+
+// ─── Agent Tool Policy with Sandbox ──────────────────────────────────────────
+
+export const AgentToolPolicySchema = z.object({
+  profile: z.enum(['minimal', 'coding', 'messaging', 'full']).optional(),
+  allow: z.array(z.string()).optional(),
+  alsoAllow: z.array(z.string()).optional(),
+  deny: z.array(z.string()).optional(),
+  exec: ExecToolsConfigSchema.optional(),
+  sandbox: SandboxConfigSchema.optional(),
+})
+export type AgentToolPolicy = z.infer<typeof AgentToolPolicySchema>

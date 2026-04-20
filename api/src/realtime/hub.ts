@@ -17,8 +17,10 @@ type SseConnection = {
 }
 
 type WsConnection = {
+  organizationId: string
   scopes: WsScope[]
   send: (message: WsEventMessage) => void
+  userId: string
 }
 
 const formatSseEvent = (notification: Extract<RealtimeNotificationPayload, { kind: 'sse' }>) =>
@@ -26,7 +28,40 @@ const formatSseEvent = (notification: Extract<RealtimeNotificationPayload, { kin
 
 const toScopeKey = (scope: WsScope): string => JSON.stringify(scope)
 
+export const shouldDeliverWsNotification = async (
+  input: {
+    canAccessChannel: (channelId: string) => Promise<boolean>
+    connectionScopes: WsScope[]
+    notificationScopes: WsScope[]
+  },
+): Promise<boolean> => {
+  const notificationChannelScopes = input.notificationScopes.filter(
+    (scope): scope is Extract<WsScope, { kind: 'channel' }> => scope.kind === 'channel',
+  )
+  const notificationScopeKeys = new Set(input.notificationScopes.map(toScopeKey))
+
+  if (notificationChannelScopes.length > 0) {
+    if (!input.connectionScopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))) {
+      return false
+    }
+
+    for (const scope of notificationChannelScopes) {
+      if (!(await input.canAccessChannel(scope.channelId))) {
+        return false
+      }
+    }
+    return true
+  }
+
+  return input.connectionScopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))
+}
+
 export const createRealtimeHub = async (input: {
+  canAccessChannelEvent?: (input: {
+    channelId: string
+    organizationId: string
+    userId: string
+  }) => Promise<boolean>
   databaseUrl: string
   poolMax: number
   poolMin: number
@@ -60,9 +95,23 @@ export const createRealtimeHub = async (input: {
       return
     }
 
-    const notificationScopeKeys = new Set(notification.scopes.map(toScopeKey))
     for (const connection of wsConnections) {
-      if (!connection.scopes.some((scope) => notificationScopeKeys.has(toScopeKey(scope)))) {
+      const shouldDeliver = await shouldDeliverWsNotification({
+        connectionScopes: connection.scopes,
+        notificationScopes: notification.scopes,
+        canAccessChannel: async (channelId) =>
+          input.canAccessChannelEvent
+            ? input.canAccessChannelEvent({
+                channelId,
+                organizationId: connection.organizationId,
+                userId: connection.userId,
+              })
+            : connection.scopes.some(
+                (scope) => scope.kind === 'channel' && scope.channelId === channelId,
+              ),
+      })
+
+      if (!shouldDeliver) {
         continue
       }
 
@@ -96,11 +145,15 @@ export const createRealtimeHub = async (input: {
             continue
           }
 
-          // stream.start and stream.delta are ephemeral — don't replay from backlog.
+          // stream.start, stream.reasoning, and stream.delta are ephemeral — don't replay from backlog.
           // A reconnecting client missed the live stream; the final message is already
-          // in the messages table. Replaying start/delta would show a zombie pending
-          // message until stream.done arrives.
-          if (event.event === 'stream.start' || event.event === 'stream.delta') {
+          // in the messages table. Replaying live chunks would show a zombie pending
+          // message or orphaned reasoning until stream.done arrives.
+          if (
+            event.event === 'stream.start' ||
+            event.event === 'stream.reasoning' ||
+            event.event === 'stream.delta'
+          ) {
             connection.lastSequence = event.sequence
             continue
           }
@@ -152,10 +205,18 @@ export const createRealtimeHub = async (input: {
         ts?: string
       },
     ): Promise<WsEventMessage> => transport.publishWs(scopes, input),
-    registerWsConnection: (send: (message: WsEventMessage) => void): WsConnection => {
+    registerWsConnection: (
+      input: {
+        organizationId: string
+        send: (message: WsEventMessage) => void
+        userId: string
+      },
+    ): WsConnection => {
       const connection: WsConnection = {
+        organizationId: input.organizationId,
         scopes: [],
-        send,
+        send: input.send,
+        userId: input.userId,
       }
       wsConnections.add(connection)
       return connection

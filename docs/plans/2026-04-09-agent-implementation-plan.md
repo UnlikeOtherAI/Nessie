@@ -52,7 +52,7 @@ All other ordering aligns with the canonical sequence.
 - [external-tool-integration.md](../external-tool-integration.md) — tool execution, temporary context (§ 5), async tools (§ 1.1), remote workers (§ 2), API connectors (§ 3)
 - [skills.md](../skills.md) — skill system, security verification pipeline (§ 3), tier model
 - [marketplace.md](../marketplace.md) — unified marketplace, library, capability assignments, workflow templates (§ 8)
-- [multi-agent-memory-system.md](../multi-agent-memory-system.md) — memory types, recall, self-eval, phases A–F
+- [multi-agent-memory-system.md](../done/multi-agent-memory-system.md) — memory types, recall, self-eval, phases A–F
 - [conversation-intelligence-platform.md](../conversation-intelligence-platform.md) — event-driven platform, plugin architecture
 - [agent-base-template.md](../agent-base-template.md) — agent contract and field definitions
 

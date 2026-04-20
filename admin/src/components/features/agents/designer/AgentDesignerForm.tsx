@@ -1,4 +1,3 @@
-import { useAgentCategories } from '../../../../facades/agent-categories/hooks'
 import type { AgentDesignerActions, AgentFormState } from './useAgentDesigner'
 import { TOOL_CATEGORIES, ToolCategorySection } from './ToolCategorySection'
 
@@ -53,7 +52,6 @@ const fieldLabelClass = [
 ].join(' ')
 
 export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesignerFormProps) => {
-  const { data: categories = [] } = useAgentCategories()
   const isStreaming = (field: string) => state.streamingField === field
 
   return (
@@ -100,26 +98,6 @@ export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesi
           placeholder="e.g. assistant, reviewer, analyst"
           value={state.role}
         />
-      </div>
-
-      {/* Category */}
-      <div className="grid gap-1.5">
-        <label className={fieldLabelClass} htmlFor="agent-category">
-          Category
-        </label>
-        <select
-          className="admin-input"
-          id="agent-category"
-          onChange={(e) => actions.setCategoryId(e.target.value || null)}
-          value={state.categoryId ?? ''}
-        >
-          <option value="">None</option>
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
       </div>
 
       {/* Provider & Model */}

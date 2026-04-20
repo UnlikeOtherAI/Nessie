@@ -7,7 +7,7 @@ Related documents:
 - [marketplace.md](marketplace.md) — unified marketplace, library, agent editor integration
 - [tool-registry-spec.md](tool-registry-spec.md) — tool registry, grants, bundles, prompt layers
 - [secret-management-spec.md](secret-management-spec.md) — credential storage, scoping, resolution
-- [multi-agent-memory-system.md](multi-agent-memory-system.md) — procedural memory, outcome tracking
+- [multi-agent-memory-system.md](done/multi-agent-memory-system.md) — procedural memory, outcome tracking
 - [conversation-intelligence-platform.md](conversation-intelligence-platform.md) — plugin architecture
 
 ---

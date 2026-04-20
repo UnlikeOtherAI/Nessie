@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
-import type { RunExecuteJobPayload } from '@nessie/schemas'
+import type { OrchestrateDecideJobPayload, RunExecuteJobPayload } from '@nessie/schemas'
 
 export const enqueueQueueJob = async (
   prisma: Pick<PrismaClient, '$executeRaw'>,
@@ -75,5 +75,17 @@ export const enqueueRunExecution = async (
     idempotencyKey,
     payload,
     topic: 'run.execute',
+  })
+}
+
+export const enqueueOrchestrateDecide = async (
+  prisma: Pick<PrismaClient, '$executeRaw'>,
+  payload: OrchestrateDecideJobPayload,
+  idempotencyKey?: string,
+): Promise<boolean> => {
+  return enqueueQueueJob(prisma, {
+    idempotencyKey,
+    payload,
+    topic: 'orchestrate.decide',
   })
 }

@@ -23,9 +23,32 @@ import { enqueueQueueJob, enqueueRunExecution } from '../queue/pgqueue.js'
 import { ensureDefaultThread } from './channels.js'
 
 const SCHEDULER_TRIGGER_TYPES: AgentTriggerType[] = ['scheduled', 'interval']
+type WorkflowTriggerPrismaLike = Pick<PrismaClient, 'agentTrigger' | 'workflowInstallation'>
 
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
   value ? value.toISOString() : undefined
+
+const generateWebhookApiKey = (): string =>
+  `ntk_${randomUUID().replace(/-/g, '')}`
+
+const extractWebhookApiKey = (value: unknown): string | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+
+  const apiKey = (value as Record<string, unknown>)['apiKey']
+  return typeof apiKey === 'string' && apiKey.trim().length > 0 ? apiKey : undefined
+}
+
+const ensureWebhookConfig = (
+  value: unknown,
+): Record<string, unknown> => {
+  const config = isJsonRecord(value) ? { ...value } : {}
+  return {
+    ...config,
+    apiKey: extractWebhookApiKey(config) ?? generateWebhookApiKey(),
+  }
+}
 
 const redactTriggerConfig = (value: unknown): Record<string, unknown> => {
   const config =
@@ -35,6 +58,9 @@ const redactTriggerConfig = (value: unknown): Record<string, unknown> => {
 
   if ('secret' in config) {
     config['secret'] = '[redacted]'
+  }
+  if ('apiKey' in config) {
+    config['apiKey'] = '[redacted]'
   }
 
   return config
@@ -66,6 +92,7 @@ const mapTriggerRecord = (trigger: {
   name: trigger.name ?? undefined,
   description: trigger.description ?? undefined,
   config: redactTriggerConfig(trigger.config),
+  webhookApiKey: extractWebhookApiKey(trigger.config),
   targetChannelId: trigger.targetChannelId ? parseChannelId(trigger.targetChannelId) : undefined,
   targetThreadId: trigger.targetThreadId ? parseThreadId(trigger.targetThreadId) : undefined,
   lastFiredAt: toTimestamp(trigger.lastFiredAt),
@@ -119,6 +146,7 @@ export const listOrganizationTriggers = async (
       OR: [
         {
           agent: {
+            agentKind: 'shared',
             OR: [
               { organizationId },
               {
@@ -167,7 +195,12 @@ export const listScheduledTriggers = async (
   const triggers = await prisma.agentTrigger.findMany({
     where: {
       OR: [
-        { agent: { organizationId: input.organizationId } },
+        {
+          agent: {
+            organizationId: input.organizationId,
+            agentKind: 'shared',
+          },
+        },
         { workflowInstallation: { organizationId: input.organizationId } },
       ],
       enabled: true,
@@ -208,12 +241,12 @@ export const createAgentTrigger = async (
     type: AgentTriggerType
   },
 ): Promise<AgentTriggerRecord | null> => {
-  if (input.type === 'webhook' && typeof input.config?.['secret'] !== 'string') {
-    return null
-  }
+  const normalizedConfig = input.type === 'webhook'
+    ? ensureWebhookConfig(input.config)
+    : (input.config ?? {})
 
   const normalizedNextRunAt = normalizeNextRunAt({
-    config: input.config,
+    config: normalizedConfig,
     nextRunAt: input.nextRunAt,
     type: input.type,
   })
@@ -223,10 +256,13 @@ export const createAgentTrigger = async (
 
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
-    select: { id: true },
+    select: {
+      id: true,
+      agentKind: true,
+    },
   })
 
-  if (!agent) {
+  if (!agent || agent.agentKind === 'personal_assistant') {
     return null
   }
 
@@ -246,7 +282,7 @@ export const createAgentTrigger = async (
       status: input.enabled === false ? 'paused' : 'active',
       name: input.name,
       description: input.description,
-      config: (input.config ?? {}) as Prisma.InputJsonValue,
+      config: normalizedConfig as Prisma.InputJsonValue,
       nextRunAt: normalizedNextRunAt ?? undefined,
       targetChannelId: target.channelId,
       targetThreadId: target.threadId,
@@ -257,7 +293,7 @@ export const createAgentTrigger = async (
 }
 
 export const createWorkflowTrigger = async (
-  prisma: PrismaClient,
+  prisma: WorkflowTriggerPrismaLike,
   workflowInstallationId: string,
   input: {
     config?: Record<string, unknown>
@@ -268,12 +304,12 @@ export const createWorkflowTrigger = async (
     type: AgentTriggerType
   },
 ): Promise<AgentTriggerRecord | null> => {
-  if (input.type === 'webhook' && typeof input.config?.['secret'] !== 'string') {
-    return null
-  }
+  const normalizedConfig = input.type === 'webhook'
+    ? ensureWebhookConfig(input.config)
+    : (input.config ?? {})
 
   const normalizedNextRunAt = normalizeNextRunAt({
-    config: input.config,
+    config: normalizedConfig,
     nextRunAt: input.nextRunAt,
     type: input.type,
   })
@@ -297,7 +333,7 @@ export const createWorkflowTrigger = async (
       status: input.enabled === false ? 'paused' : 'active',
       name: input.name,
       description: input.description,
-      config: (input.config ?? {}) as Prisma.InputJsonValue,
+      config: normalizedConfig as Prisma.InputJsonValue,
       nextRunAt: normalizedNextRunAt ?? undefined,
     },
   })
@@ -347,19 +383,6 @@ export const updateAgentTrigger = async (
     return null
   }
 
-  if (existing.type === 'webhook' && input.config) {
-    const nextConfig = {
-      ...(existing.config && typeof existing.config === 'object' && !Array.isArray(existing.config)
-        ? (existing.config as Record<string, unknown>)
-        : {}),
-      ...input.config,
-    }
-
-    if (typeof nextConfig['secret'] !== 'string') {
-      return null
-    }
-  }
-
   const shouldUpdateTarget =
     input.targetChannelId !== undefined || input.targetThreadId !== undefined
 
@@ -397,6 +420,12 @@ export const updateAgentTrigger = async (
           ...(isJsonRecord(existing.config) ? existing.config : {}),
           ...input.config,
         }
+  const normalizedConfig =
+    existing.type === 'webhook' ? ensureWebhookConfig(nextConfig) : nextConfig
+  const shouldPersistConfig =
+    existing.type === 'webhook'
+      ? input.config !== undefined || !extractWebhookApiKey(existing.config)
+      : input.config !== undefined
   const shouldRecomputeSchedulerNextRun =
     input.nextRunAt === undefined && input.config !== undefined
   const normalizedNextRunAt =
@@ -404,14 +433,14 @@ export const updateAgentTrigger = async (
       ? input.nextRunAt === undefined
         ? shouldRecomputeSchedulerNextRun
           ? normalizeNextRunAt({
-              config: isJsonRecord(nextConfig) ? nextConfig : undefined,
+              config: isJsonRecord(normalizedConfig) ? normalizedConfig : undefined,
               type: existing.type,
             })
           : undefined
         : input.nextRunAt === null
           ? null
           : normalizeNextRunAt({
-              config: isJsonRecord(nextConfig) ? nextConfig : undefined,
+              config: isJsonRecord(normalizedConfig) ? normalizedConfig : undefined,
               nextRunAt: input.nextRunAt,
               type: existing.type,
             })
@@ -424,7 +453,7 @@ export const updateAgentTrigger = async (
   if (
     existing.type === 'scheduled' &&
     input.config !== undefined &&
-    !parseScheduledCronConfig(nextConfig)
+    !parseScheduledCronConfig(normalizedConfig)
   ) {
     return null
   }
@@ -432,7 +461,7 @@ export const updateAgentTrigger = async (
   if (
     existing.type === 'interval' &&
     input.config !== undefined &&
-    !parseIntervalMinutes(nextConfig)
+    !parseIntervalMinutes(normalizedConfig)
   ) {
     return null
   }
@@ -444,10 +473,9 @@ export const updateAgentTrigger = async (
       description: input.description === undefined ? undefined : input.description,
       enabled: input.enabled,
       status: nextStatus,
-      config:
-        input.config === undefined
-          ? undefined
-          : (nextConfig as Prisma.InputJsonValue),
+      config: shouldPersistConfig
+        ? (normalizedConfig as Prisma.InputJsonValue)
+        : undefined,
       ...(shouldUpdateTarget
         ? {
             targetChannelId: target.channelId,

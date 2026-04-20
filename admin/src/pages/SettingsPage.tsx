@@ -202,7 +202,7 @@ export const SettingsPage = () => {
 
             <button
               className="admin-button admin-button-primary mt-4 justify-self-start"
-              onClick={onCreateChannel}
+              onClick={() => onCreateChannel()}
               type="button"
             >
               Create channel
@@ -362,7 +362,11 @@ export const SettingsPage = () => {
             <div className={sectionTitleClass}>Tools</div>
             <div className="mt-4 grid gap-2">
               {tools.map((tool) => (
-                <div key={tool.id} className="admin-card p-3">
+                <div
+                  key={tool.id}
+                  id={`tool-${tool.id}`}
+                  className="admin-card p-3"
+                >
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-semibold text-white">{tool.label}</div>
                     <span

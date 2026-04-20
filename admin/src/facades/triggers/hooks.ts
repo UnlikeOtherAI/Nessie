@@ -45,6 +45,42 @@ export const useUpcomingTriggers = (enabled = true) => {
   })
 }
 
+export const useCreateAgentTrigger = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      agentId: string
+      type: AgentTriggerRecord['type']
+      name?: string
+      description?: string
+      enabled?: boolean
+      config?: Record<string, unknown>
+      nextRunAt?: string
+      targetChannelId?: string
+      targetThreadId?: string
+    }) =>
+      apiClient.post<AgentTriggerRecord>(`/api/agents/${input.agentId}/triggers`, {
+        type: input.type,
+        name: input.name,
+        description: input.description,
+        enabled: input.enabled,
+        config: input.config,
+        nextRunAt: input.nextRunAt,
+        targetChannelId: input.targetChannelId,
+        targetThreadId: input.targetThreadId,
+      }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['agents', variables.agentId, 'triggers'],
+      })
+    },
+  })
+}
+
 export const usePauseTrigger = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
@@ -67,6 +103,33 @@ export const useResumeTrigger = () => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['triggers'] })
       void queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
+export const useUpdateTrigger = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      triggerId: string
+      name?: string | null
+      description?: string | null
+      enabled?: boolean
+      status?: AgentTriggerRecord['status']
+      config?: Record<string, unknown>
+      nextRunAt?: string | null
+      targetChannelId?: string | null
+      targetThreadId?: string | null
+    }) => {
+      const { triggerId, ...body } = input
+      return apiClient.put<AgentTriggerRecord>(`/api/triggers/${triggerId}`, body)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: ['workflow-installations'] })
     },
   })
 }
