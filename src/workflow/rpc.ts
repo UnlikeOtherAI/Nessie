@@ -21,7 +21,7 @@ function sendJson(res: ServerResponse, status: number, data: unknown): void {
 }
 
 // Workflow handlers
-export const handleWorkflowCreate: RpcHandler = async (req, res, body) => {
+export const handleWorkflowCreate: RpcHandler = async (_req, res, body) => {
   const input = body as { name?: string; description?: string; ownerAgentId?: string }
   if (!input.name) {
     return sendJson(res, 400, { error: 'name is required' })
@@ -49,12 +49,12 @@ export const handleWorkflowGet: RpcHandler = async (req, res) => {
   return sendJson(res, 200, { workflow, tasks })
 }
 
-export const handleWorkflowList: RpcHandler = async (req, res) => {
+export const handleWorkflowList: RpcHandler = async (_req, res) => {
   const workflows = getWorkflowStore().listWorkflows()
   return sendJson(res, 200, { workflows })
 }
 
-export const handleWorkflowUpdate: RpcHandler = async (req, res, body) => {
+export const handleWorkflowUpdate: RpcHandler = async (_req, res, body) => {
   const input = body as { workflowId?: string; name?: string; description?: string; status?: string }
   if (!input.workflowId) {
     return sendJson(res, 400, { error: 'workflowId is required' })
@@ -75,7 +75,7 @@ export const handleWorkflowUpdate: RpcHandler = async (req, res, body) => {
   return sendJson(res, 200, { workflow })
 }
 
-export const handleWorkflowDelete: RpcHandler = async (req, res, body) => {
+export const handleWorkflowDelete: RpcHandler = async (_req, res, body) => {
   const input = body as { workflowId?: string }
   if (!input.workflowId) {
     return sendJson(res, 400, { error: 'workflowId is required' })
@@ -85,7 +85,7 @@ export const handleWorkflowDelete: RpcHandler = async (req, res, body) => {
 }
 
 // Task handlers
-export const handleTaskCreate: RpcHandler = async (req, res, body) => {
+export const handleTaskCreate: RpcHandler = async (_req, res, body) => {
   const input = body as {
     workflowId?: string
     label?: string
@@ -133,7 +133,7 @@ export const handleTaskList: RpcHandler = async (req, res) => {
   return sendJson(res, 200, { tasks })
 }
 
-export const handleTaskUpdate: RpcHandler = async (req, res, body) => {
+export const handleTaskUpdate: RpcHandler = async (_req, res, body) => {
   const input = body as {
     taskId?: string
     label?: string
@@ -161,7 +161,7 @@ export const handleTaskUpdate: RpcHandler = async (req, res, body) => {
   return sendJson(res, 200, { task })
 }
 
-export const handleTaskComplete: RpcHandler = async (req, res, body) => {
+export const handleTaskComplete: RpcHandler = async (_req, res, body) => {
   const input = body as { taskId?: string; result?: string; error?: string }
   if (!input.taskId) {
     return sendJson(res, 400, { error: 'taskId is required' })
@@ -173,7 +173,7 @@ export const handleTaskComplete: RpcHandler = async (req, res, body) => {
   return sendJson(res, 200, { task })
 }
 
-export const handleTaskDelete: RpcHandler = async (req, res, body) => {
+export const handleTaskDelete: RpcHandler = async (_req, res, body) => {
   const input = body as { taskId?: string }
   if (!input.taskId) {
     return sendJson(res, 400, { error: 'taskId is required' })

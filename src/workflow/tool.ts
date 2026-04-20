@@ -121,7 +121,7 @@ const WorkflowToolSchema = z.discriminatedUnion('action', [
 
 export type WorkflowToolInput = z.infer<typeof WorkflowToolSchema>
 
-export function createWorkflowTool(store?: WorkflowStoreManager): Tool<WorkflowToolInput, unknown> {
+export function createWorkflowTool(store?: WorkflowStoreManager): Tool<Record<string, unknown>, unknown> {
   const workflowStore = store ?? getWorkflowStore()
 
   return buildTool({
@@ -138,21 +138,21 @@ export function createWorkflowTool(store?: WorkflowStoreManager): Tool<WorkflowT
             ownerAgentId: args.ownerAgentId ?? 'main',
           }
           const workflow = workflowStore.createWorkflow(input)
-          return { data: { workflow } }
+          return { data: { workflow } } as { data: unknown }
         }
 
         case 'get': {
           const workflow = workflowStore.getWorkflow(args.workflowId)
           if (!workflow) {
-            return { data: { error: `Workflow not found: ${args.workflowId}` } }
+            return { data: { error: `Workflow not found: ${args.workflowId}` } } as { data: unknown }
           }
           const tasks = workflowStore.listTasks(args.workflowId)
-          return { data: { workflow, tasks } }
+          return { data: { workflow, tasks } } as { data: unknown }
         }
 
         case 'list': {
           const workflows = workflowStore.listWorkflows()
-          return { data: { workflows } }
+          return { data: { workflows } } as { data: unknown }
         }
 
         case 'update': {
@@ -162,14 +162,14 @@ export function createWorkflowTool(store?: WorkflowStoreManager): Tool<WorkflowT
           if (args.status !== undefined) input.status = args.status
           const workflow = workflowStore.updateWorkflow(args.workflowId, input)
           if (!workflow) {
-            return { data: { error: `Workflow not found: ${args.workflowId}` } }
+            return { data: { error: `Workflow not found: ${args.workflowId}` } } as { data: unknown }
           }
-          return { data: { workflow } }
+          return { data: { workflow } } as { data: unknown }
         }
 
         case 'delete': {
           const deleted = workflowStore.deleteWorkflow(args.workflowId)
-          return { data: { deleted } }
+          return { data: { deleted } } as { data: unknown }
         }
 
         case 'createTask': {
@@ -182,22 +182,22 @@ export function createWorkflowTool(store?: WorkflowStoreManager): Tool<WorkflowT
           }
           const result = workflowStore.createTask(input)
           if ('error' in result) {
-            return { data: { error: result.error } }
+            return { data: { error: result.error } } as { data: unknown }
           }
-          return { data: { task: result } }
+          return { data: { task: result } } as { data: unknown }
         }
 
         case 'getTask': {
           const task = workflowStore.getTask(args.taskId)
           if (!task) {
-            return { data: { error: `Task not found: ${args.taskId}` } }
+            return { data: { error: `Task not found: ${args.taskId}` } } as { data: unknown }
           }
-          return { data: { task } }
+          return { data: { task } } as { data: unknown }
         }
 
         case 'listTasks': {
           const tasks = workflowStore.listTasks(args.workflowId)
-          return { data: { tasks } }
+          return { data: { tasks } } as { data: unknown }
         }
 
         case 'updateTask': {
@@ -208,31 +208,31 @@ export function createWorkflowTool(store?: WorkflowStoreManager): Tool<WorkflowT
           if (args.ownerAgentId !== undefined) input.ownerAgentId = args.ownerAgentId
           const task = workflowStore.updateTask(args.taskId, input)
           if (!task) {
-            return { data: { error: `Task not found: ${args.taskId}` } }
+            return { data: { error: `Task not found: ${args.taskId}` } } as { data: unknown }
           }
-          return { data: { task } }
+          return { data: { task } } as { data: unknown }
         }
 
         case 'completeTask': {
           const task = workflowStore.completeTask(args.taskId, args.result, args.error)
           if (!task) {
-            return { data: { error: `Task not found: ${args.taskId}` } }
+            return { data: { error: `Task not found: ${args.taskId}` } } as { data: unknown }
           }
-          return { data: { task } }
+          return { data: { task } } as { data: unknown }
         }
 
         case 'deleteTask': {
           const deleted = workflowStore.deleteTask(args.taskId)
-          return { data: { deleted } }
+          return { data: { deleted } } as { data: unknown }
         }
 
         case 'getExecutableTasks': {
           const tasks = workflowStore.getExecutableTasks(args.workflowId)
-          return { data: { tasks } }
+          return { data: { tasks } } as { data: unknown }
         }
 
         default:
-          return { data: { error: `Unknown action: ${(args as { action: string }).action}` } }
+          return { data: { error: `Unknown action: ${(args as { action: string }).action}` } } as { data: unknown }
       }
     },
 

@@ -14,7 +14,7 @@ import type {
   UpdateTaskInput,
   WorkflowTaskStatus,
 } from './types.js'
-import { validateDag } from './types.js'
+import { validateDag, WorkflowStatus } from './types.js'
 
 const WORKFLOW_DIR = process.env.NESSIE_WORKFLOW_DIR ?? `${process.env.HOME}/.nessie/workflows`
 
@@ -72,8 +72,6 @@ async function saveStoreAsync(workspaceId: string, store: WorkflowStore): Promis
 
 function saveStore(workspaceId: string, store: WorkflowStore): void {
   ensureDir(workspaceId)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const path = getStorePath(workspaceId)
   // Serialize writes via promise chain
   const prev = _writeQueue.get(workspaceId) ?? Promise.resolve()
   const next = prev.then(() => saveStoreAsync(workspaceId, store))
@@ -129,14 +127,17 @@ export class WorkflowStoreManager {
     if (index === -1) {
       return null
     }
-    const workflow = store.workflows[index]
+    const existing = store.workflows[index]!
     const updated: Workflow = {
-      ...workflow,
-      ...input,
+      id: existing.id,
+      name: input.name ?? existing.name,
+      description: input.description ?? existing.description,
+      status: (input.status ?? existing.status) as WorkflowStatus,
+      ownerAgentId: existing.ownerAgentId,
+      taskIds: existing.taskIds,
+      createdAt: existing.createdAt,
       updatedAt: Date.now(),
-    }
-    if (input.status === 'completed') {
-      updated.completedAt = Date.now()
+      completedAt: input.status === 'completed' ? Date.now() : existing.completedAt,
     }
     store.workflows[index] = updated
     saveStore(this.workspaceId, store)
@@ -184,10 +185,15 @@ export class WorkflowStoreManager {
 
     const dagErrors = validateDag([...existingTasks, newTask])
     if (dagErrors.length > 0) {
-      return { error: dagErrors[0].message }
+      return { error: dagErrors[0]!.message }
     }
 
-    store.tasks[input.workflowId].push(newTask)
+    const workflowTasks = store.tasks[input.workflowId]
+    if (!workflowTasks) {
+      store.tasks[input.workflowId] = [newTask]
+    } else {
+      workflowTasks.push(newTask)
+    }
     workflow.taskIds.push(newTask.id)
     workflow.updatedAt = Date.now()
     saveStore(this.workspaceId, store)
@@ -212,24 +218,28 @@ export class WorkflowStoreManager {
     const store = loadStore(this.workspaceId)
     for (const workflowId of Object.keys(store.tasks)) {
       const tasks = store.tasks[workflowId]
+      if (!tasks) continue
       const index = tasks.findIndex(t => t.id === id)
       if (index !== -1) {
-        const task = tasks[index]
+        const existing = tasks[index]!
         const updated: WorkflowTask = {
-          ...task,
-          ...input,
+          id: existing.id,
+          workflowId: existing.workflowId,
+          label: input.label ?? existing.label,
+          description: input.description ?? existing.description,
+          status: (input.status ?? existing.status) as WorkflowTaskStatus,
+          ownerAgentId: input.ownerAgentId !== undefined ? input.ownerAgentId : existing.ownerAgentId,
+          dependencies: existing.dependencies,
+          result: existing.result,
+          error: existing.error,
+          createdAt: existing.createdAt,
           updatedAt: Date.now(),
-        }
-        if (input.status === 'completed' || input.status === 'failed') {
-          updated.completedAt = Date.now()
-          if (input.status === 'completed') {
-            updated.result = updated.result ?? 'Completed'
-          }
+          completedAt: (input.status === 'completed' || input.status === 'failed') ? Date.now() : existing.completedAt,
         }
         tasks[index] = updated
 
         // Update workflow timestamp
-        const workflow = store.workflows.find(w => w.id === task.workflowId)
+        const workflow = store.workflows.find(w => w.id === existing.workflowId)
         if (workflow) {
           workflow.updatedAt = Date.now()
         }
@@ -245,22 +255,29 @@ export class WorkflowStoreManager {
     const store = loadStore(this.workspaceId)
     for (const workflowId of Object.keys(store.tasks)) {
       const tasks = store.tasks[workflowId]
+      if (!tasks) continue
       const index = tasks.findIndex(t => t.id === id)
       if (index !== -1) {
-        const task = tasks[index]
+        const existing = tasks[index]!
         const status: WorkflowTaskStatus = error ? 'failed' : 'completed'
         const updated: WorkflowTask = {
-          ...task,
+          id: existing.id,
+          workflowId: existing.workflowId,
+          label: existing.label,
+          description: existing.description,
           status,
-          result: result ?? task.result,
-          error: error ?? task.error,
+          ownerAgentId: existing.ownerAgentId,
+          dependencies: existing.dependencies,
+          result: result ?? existing.result ?? null,
+          error: error ?? existing.error ?? null,
+          createdAt: existing.createdAt,
           updatedAt: Date.now(),
           completedAt: Date.now(),
         }
         tasks[index] = updated
 
         // Update parent workflow timestamp
-        const workflow = store.workflows.find(w => w.id === task.workflowId)
+        const workflow = store.workflows.find(w => w.id === existing.workflowId)
         if (workflow) {
           workflow.updatedAt = Date.now()
         }
@@ -276,6 +293,7 @@ export class WorkflowStoreManager {
     const store = loadStore(this.workspaceId)
     for (const workflowId of Object.keys(store.tasks)) {
       const tasks = store.tasks[workflowId]
+      if (!tasks) continue
       const index = tasks.findIndex(t => t.id === id)
       if (index !== -1) {
         tasks.splice(index, 1)
