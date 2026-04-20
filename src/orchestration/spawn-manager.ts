@@ -1,9 +1,6 @@
 import { TaskLedger } from './task-ledger.js'
 import type { TaskRole } from './task-types.js'
 import { TaskStatus, SpawnRequestSchema } from './task-types.js'
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { resolveNestedAgentLaneForSession, isNestedAgentLane, NESTED_LANE } from '../agent/lanes.js'
-
 export interface SpawnRequest {
   parentTaskId: string | null
   role: TaskRole
