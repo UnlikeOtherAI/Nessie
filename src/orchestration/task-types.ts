@@ -88,6 +88,7 @@ export const SpawnRequestSchema = z.object({
   toolScope: z.array(z.string()).default([]),
   timeoutSeconds: z.number().finite().min(1).max(3600).default(300),
   modelOverride: z.string().optional(),
+  lane: z.string().optional(),
 })
 
 export type SpawnRequestInput = z.infer<typeof SpawnRequestSchema>

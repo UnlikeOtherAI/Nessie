@@ -90,10 +90,12 @@ test('SpawnManager: breaker triggers when oldest entry wait >= circuitBreakerWai
 
   // Manipulate enqueuedAt to simulate an old entry (testing internal state via cast)
   const spawns = manager as unknown as {
-    activeSpawns: Map<string, { taskId: string; enqueuedAt: number }>
+    laneStates: Map<string, Map<string, { taskId: string; enqueuedAt: number }>>
   }
-  for (const spawn of spawns.activeSpawns.values()) {
-    spawn.enqueuedAt = Date.now() - 100 // 100ms ago, exceeds 50ms threshold
+  for (const laneMap of spawns.laneStates.values()) {
+    for (const spawn of laneMap.values()) {
+      spawn.enqueuedAt = Date.now() - 100 // 100ms ago, exceeds 50ms threshold
+    }
   }
 
   // Next spawn should trip on wait threshold

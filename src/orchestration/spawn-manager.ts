@@ -107,10 +107,16 @@ export class SpawnManager {
    */
   private resolveLane(request: SpawnRequest): string {
     if (request.lane) return request.lane
-    // Default: researcher role maps to the per-session nested lane so that
+    // Per-session nested lane: scope to the parent's threadId so that
     // long-running nested tasks don't block other sessions' nested work.
     if (request.role === 'researcher') {
-      // For background/Cron sessions the lane resolver falls back to bare 'nested'.
+      if (request.parentTaskId) {
+        const parent = this.ledger.getTask(request.parentTaskId)
+        if (parent?.threadId && parent.threadId !== 'main') {
+          return `nested:${parent.threadId}`
+        }
+      }
+      // No parent / no session: fallback to bare 'nested' for legacy/cron paths.
       return 'nested'
     }
     return request.role
@@ -207,6 +213,7 @@ export class SpawnManager {
 
     if (!this.laneStates.has(lane)) this.laneStates.set(lane, new Map())
     this.laneStates.get(lane)!.set(task.id, { taskId: task.id, timer, enqueuedAt: now })
+    this.taskLanes.set(task.id, lane)
 
     return { taskId: task.id, accepted: true }
   }
