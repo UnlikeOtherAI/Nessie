@@ -3,32 +3,40 @@ import { registerHook, runBeforeToolCall, runAfterToolCall, clearHooks } from '.
 
 describe('hook-registry', () => {
   beforeEach(() => {
+    // Reset module state between tests by clearing handlers
     clearHooks()
   })
 
   it('runBeforeToolCall returns undefined when no hooks registered', async () => {
     const result = await runBeforeToolCall({ toolName: 'Bash', params: {} }, { toolName: 'Bash' })
-    expect(result).toBeUndefined()
+    expect(result).toEqual({ blocked: false, params: {} })
   })
 
   it('runBeforeToolCall returns block result when hook blocks', async () => {
-    registerHook('before_tool_call', () => ({ block: true, blockReason: 'Not allowed' }))
+    registerHook('before_tool_call', () => ({ blocked: true, blockReason: 'Not allowed' }))
     const result = await runBeforeToolCall({ toolName: 'Bash', params: {} }, { toolName: 'Bash' })
-    expect(result).toEqual({ block: true, blockReason: 'Not allowed' })
+    expect(result).toEqual({ blocked: true, blockReason: 'Not allowed', params: {} })
   })
 
   it('runBeforeToolCall returns undefined when hook allows', async () => {
-    registerHook('before_tool_call', () => ({ block: false }))
+    registerHook('before_tool_call', () => ({ blocked: false }))
     const result = await runBeforeToolCall({ toolName: 'Bash', params: {} }, { toolName: 'Bash' })
-    expect(result).toBeUndefined()
+    expect(result).toEqual({ blocked: false, params: {} })
   })
 
   it('runBeforeToolCall is fail-resilient when hook throws', async () => {
     registerHook('before_tool_call', () => { throw new Error('Hook error') })
-    registerHook('before_tool_call', () => ({ block: true, blockReason: 'Blocked by second' }))
+    registerHook('before_tool_call', () => ({ blocked: true, blockReason: 'Blocked by second' }))
     const result = await runBeforeToolCall({ toolName: 'Bash', params: {} }, { toolName: 'Bash' })
     // First hook throws, second hook runs and blocks
-    expect(result).toEqual({ block: true, blockReason: 'Blocked by second' })
+    expect(result).toEqual({ blocked: true, blockReason: 'Blocked by second', params: {} })
+  })
+
+  it('runBeforeToolCall merges params from hooks', async () => {
+    registerHook('before_tool_call', () => ({ params: { timeout: 5000 } }))
+    registerHook('before_tool_call', () => ({ params: { retries: 3 } }))
+    const result = await runBeforeToolCall({ toolName: 'Bash', params: {} }, { toolName: 'Bash' })
+    expect(result.params).toEqual({ timeout: 5000, retries: 3 })
   })
 
   it('runAfterToolCall fires handlers without blocking', () => {
