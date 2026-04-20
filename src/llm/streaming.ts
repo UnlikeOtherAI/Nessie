@@ -16,7 +16,7 @@ export type LlmStreamOptions = {
 // before completion, FinalizationRegistry ensures the reader is cancelled and
 // released back to the connection pool, preventing socket leaks.
 // See: openclaw/openclaw#67461
-const streamFinalizationRegistry = new FinalizationRegistry<ReadableStreamDefaultReader<any>>(
+const streamFinalizationRegistry = new FinalizationRegistry<ReadableStreamDefaultReader<unknown>>(
   (reader) => {
     reader.cancel().catch(() => { /* ignore cancel errors on already-resolved streams */ })
     reader.releaseLock()
