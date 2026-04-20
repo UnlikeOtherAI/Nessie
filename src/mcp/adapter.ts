@@ -108,10 +108,15 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
         sessionKey: resolveAgentMainSessionKey('main'),
       }
       const veto = await runBeforeToolCall({ toolName, params: parsed.data }, ctx)
-      if (veto?.block) {
+      if (veto?.blocked) {
         const reason = veto.blockReason ?? 'Tool call blocked by before_tool_call hook'
-        orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: { error: reason, blocked: true, blockReason: veto.blockReason } })
-        void runAfterToolCall({ toolName, params: parsed.data, blocked: true, blockReason: veto.blockReason, durationMs: Date.now() - startMs }, ctx)
+        const output = { error: reason, blocked: true, blockReason: veto.blockReason }
+        orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output })
+        const ms = Date.now() - startMs
+        void runAfterToolCall(
+          { toolName, params: parsed.data, blocked: true, blockReason: veto.blockReason, durationMs: ms },
+          ctx,
+        )
         return `Error: ${reason}`
       }
 

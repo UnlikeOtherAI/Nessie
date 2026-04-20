@@ -590,11 +590,15 @@ export class Orchestrator {
 
     // before_tool_call hook — can veto
     const veto = await runBeforeToolCall({ toolName, params: parsed.data }, ctx)
-    if (veto?.block) {
+    if (veto?.blocked) {
       const reason = veto.blockReason ?? 'Tool call blocked by before_tool_call hook'
       const durationMs = Date.now() - startMs
-      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: reason, blocked: true, blockReason: veto.blockReason } })
-      void runAfterToolCall({ toolName, params: parsed.data, blocked: true, blockReason: veto.blockReason, durationMs }, ctx)
+      const toolOutput = { error: reason, blocked: true, blockReason: veto.blockReason }
+      this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: toolOutput })
+      void runAfterToolCall(
+        { toolName, params: parsed.data, blocked: true, blockReason: veto.blockReason, durationMs },
+        ctx,
+      )
       return `Error: ${reason}`
     }
 
