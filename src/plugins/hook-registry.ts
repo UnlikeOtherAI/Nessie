@@ -58,7 +58,7 @@ export async function runBeforeToolCall(
   context: BeforeToolCallContext,
 ): Promise<{ blocked: boolean; blockReason?: string; params: Record<string, unknown> }> {
   const registrations = (handlers.get('before_tool_call') ?? [])
-    .toSorted((a, b) => b.priority - a.priority)
+    .sort((a: HookRegistration, b: HookRegistration) => b.priority - a.priority)
 
   if (registrations.length === 0) {
     return { blocked: false, params: event.params }

@@ -583,7 +583,7 @@ export class Orchestrator {
     if (!parsed.success) return `Invalid input: ${parsed.error.message}`
 
     // Build hook context
-    const ctx: BeforeToolCallContext = { agentId: task.agentId, sessionKey: task.id, toolName }
+    const ctx: BeforeToolCallContext = { sessionKey: task.id, toolName }
 
     // ── before_tool_call hook (veto check) ───────────────────────────────────
     const beforeResult = await runBeforeToolCall({ toolName, params: parsed.data, toolCallId: task.id }, ctx)

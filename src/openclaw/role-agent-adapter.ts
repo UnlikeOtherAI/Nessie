@@ -9,7 +9,7 @@
 import type { RolePolicy } from '../orchestration/role-registry.js'
 import { ROLE_POLICIES } from '../orchestration/role-registry.js'
 import type { TaskRole } from '../orchestration/task-types.js'
-import type { SandboxConfig } from '../../packages/schemas/src/index.js'
+import type { SandboxConfig } from '../../packages/schemas/dist/index.js'
 
 export interface OpenClawAgentConfig {
   agentId: string
