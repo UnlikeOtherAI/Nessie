@@ -19,14 +19,18 @@ const NESTED_LANE_PREFIX = `${NESTED_LANE}:`;
 /**
  * Resolve the lane for a nested agent operation, scoped to the target session.
  *
- * - With a valid, non-empty session key → returns `nested:<sessionKey>`
+ * - With a valid, non-empty session key that is NOT 'main'
+ *   → returns `nested:<sessionKey>`
  *   Each session gets its own lane, enabling parallel execution.
+ * - With 'main' session key (the primary orchestrator session)
+ *   → returns bare `"nested"` since main is the root session and does not
+ *   need per-session isolation for nested operations.
  * - Without a session key (null, undefined, empty string, whitespace-only)
  *   → returns bare `"nested"` for legacy/cron paths that don't have a target session.
  */
 export function resolveNestedAgentLaneForSession(sessionKey: string | null | undefined): string {
   const trimmed = sessionKey?.trim();
-  if (!trimmed) {
+  if (!trimmed || trimmed === 'main') {
     return NESTED_LANE;
   }
   return `${NESTED_LANE_PREFIX}${trimmed}`;

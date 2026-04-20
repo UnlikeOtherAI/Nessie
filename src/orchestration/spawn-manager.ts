@@ -1,6 +1,7 @@
 import { TaskLedger } from './task-ledger.js'
 import type { TaskRole } from './task-types.js'
 import { TaskStatus, SpawnRequestSchema } from './task-types.js'
+import { resolveNestedAgentLaneForSession } from '../agent/lanes.js'
 export interface SpawnRequest {
   parentTaskId: string | null
   role: TaskRole
@@ -102,22 +103,20 @@ export class SpawnManager {
 
   /**
    * Resolve the lane key for a spawn request. Uses the request's explicit `lane`
-   * field if provided; otherwise falls back to deriving a lane from the role via
-   * the lanes module.
+   * field if provided; otherwise falls back to the role name. For the 'researcher'
+   * role, delegates to resolveNestedAgentLaneForSession to obtain a session-scoped
+   * nested lane (nested:<sessionKey>) so that long-running nested tasks don't block
+   * other sessions' nested work.
    */
   private resolveLane(request: SpawnRequest): string {
     if (request.lane) return request.lane
-    // Per-session nested lane: scope to the parent's threadId so that
-    // long-running nested tasks don't block other sessions' nested work.
     if (request.role === 'researcher') {
-      if (request.parentTaskId) {
-        const parent = this.ledger.getTask(request.parentTaskId)
-        if (parent?.threadId && parent.threadId !== 'main') {
-          return `nested:${parent.threadId}`
-        }
-      }
-      // No parent / no session: fallback to bare 'nested' for legacy/cron paths.
-      return 'nested'
+      // Determine the session key: use parent's threadId when available.
+      const sessionKey = request.parentTaskId
+        ? this.ledger.getTask(request.parentTaskId)?.threadId ?? null
+        : null
+      // Pass null for no-session fallback → returns bare 'nested' for legacy/cron paths.
+      return resolveNestedAgentLaneForSession(sessionKey)
     }
     return request.role
   }

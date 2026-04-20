@@ -4,11 +4,139 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { AnnouncePayload } from './spawn-manager.js'
+import type { AnnouncePayload, SpawnRequest } from './spawn-manager.js'
 import { SpawnManager, CommandLaneCircuitBreakerError } from './spawn-manager.js'
 import { TaskLedger } from './task-ledger.js'
 
 const noopOnComplete = (_taskId: string, _payload: AnnouncePayload) => {}
+
+// ─── Session-scoped lane tests ─────────────────────────────────────────────────
+
+test('SpawnManager: researcher with parent in non-main session → session-scoped nested lane', () => {
+  const ledger = new TaskLedger()
+  const manager = new SpawnManager(ledger, noopOnComplete)
+
+  // Create a parent task in a non-main session (threadId)
+  const parent = ledger.createTask({
+    parentId: null,
+    threadId: 'agent:session:abc',
+    role: 'orchestrator',
+    label: 'parent task',
+    assignedModel: null,
+    timeoutSeconds: 60,
+    specPath: null,
+    outputPath: null,
+  })
+
+  // Spawn a researcher child — lane should be scoped to the session
+  const result = manager.spawn({
+    parentTaskId: parent.id,
+    role: 'researcher',
+    label: 'child research task',
+    toolScope: ['WebSearch'],
+    timeoutSeconds: 60,
+  })
+
+  assert.equal(result.accepted, true)
+
+  // Verify the task was assigned the session-scoped lane
+  const taskLanes = manager as unknown as { taskLanes: Map<string, string> }
+  const lane = taskLanes.taskLanes.get(result.taskId)
+  assert.equal(lane, 'nested:agent:session:abc',
+    'researcher with non-main parent should get session-scoped lane')
+})
+
+test('SpawnManager: researcher without parent → bare nested lane', () => {
+  const ledger = new TaskLedger()
+  const manager = new SpawnManager(ledger, noopOnComplete)
+
+  const result = manager.spawn({
+    parentTaskId: null,
+    role: 'researcher',
+    label: 'orphan research task',
+    toolScope: ['WebSearch'],
+    timeoutSeconds: 60,
+  })
+
+  assert.equal(result.accepted, true)
+
+  const taskLanes = manager as unknown as { taskLanes: Map<string, string> }
+  const lane = taskLanes.taskLanes.get(result.taskId)
+  assert.equal(lane, 'nested',
+    'researcher without parent should get bare nested lane')
+})
+
+test('SpawnManager: researcher with parent in main session → bare nested lane', () => {
+  const ledger = new TaskLedger()
+  const manager = new SpawnManager(ledger, noopOnComplete)
+
+  // Parent in 'main' thread → should fallback to bare 'nested'
+  const parent = ledger.createTask({
+    parentId: null,
+    threadId: 'main',
+    role: 'orchestrator',
+    label: 'main parent',
+    assignedModel: null,
+    timeoutSeconds: 60,
+    specPath: null,
+    outputPath: null,
+  })
+
+  const result = manager.spawn({
+    parentTaskId: parent.id,
+    role: 'researcher',
+    label: 'main session research',
+    toolScope: ['WebSearch'],
+    timeoutSeconds: 60,
+  })
+
+  assert.equal(result.accepted, true)
+
+  const taskLanes = manager as unknown as { taskLanes: Map<string, string> }
+  const lane = taskLanes.taskLanes.get(result.taskId)
+  assert.equal(lane, 'nested',
+    'researcher with main-session parent should get bare nested lane')
+})
+
+test('SpawnManager: non-researcher roles → role name as lane', () => {
+  const ledger = new TaskLedger()
+  const manager = new SpawnManager(ledger, noopOnComplete)
+
+  for (const role of ['orchestrator', 'builder', 'watcher'] as const) {
+    const result = manager.spawn({
+      parentTaskId: null,
+      role,
+      label: `${role} task`,
+      toolScope: ['Bash'],
+      timeoutSeconds: 60,
+    })
+    assert.equal(result.accepted, true, `${role} should be accepted`)
+
+    const taskLanes = manager as unknown as { taskLanes: Map<string, string> }
+    const lane = taskLanes.taskLanes.get(result.taskId)
+    assert.equal(lane, role, `${role} should use its role name as lane`)
+  }
+})
+
+test('SpawnManager: explicit lane override → uses provided lane', () => {
+  const ledger = new TaskLedger()
+  const manager = new SpawnManager(ledger, noopOnComplete)
+
+  const result = manager.spawn({
+    parentTaskId: null,
+    role: 'researcher',
+    label: 'custom lane task',
+    toolScope: ['WebSearch'],
+    timeoutSeconds: 60,
+    lane: 'my-custom-lane',
+  })
+
+  assert.equal(result.accepted, true)
+
+  const taskLanes = manager as unknown as { taskLanes: Map<string, string> }
+  const lane = taskLanes.taskLanes.get(result.taskId)
+  assert.equal(lane, 'my-custom-lane', 'explicit lane override should be used')
+})
 
 test('SpawnManager: normal queuing continues below circuitBreakerDepth', () => {
   const ledger = new TaskLedger()

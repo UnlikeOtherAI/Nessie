@@ -40,6 +40,13 @@ test('resolveNestedAgentLaneForSession: session key with surrounding whitespace 
   assert.equal(resolveNestedAgentLaneForSession('  agent:main:cron:abc123  '), 'nested:agent:main:cron:abc123')
 })
 
+test('resolveNestedAgentLaneForSession: "main" session → bare "nested" (not "nested:main")', () => {
+  // The 'main' thread is the root orchestrator session; it should use the bare
+  // nested lane so that nested operations in main do not block each other by
+  // session isolation — main is special and does not need per-session lanes.
+  assert.equal(resolveNestedAgentLaneForSession('main'), 'nested')
+})
+
 // ─── isNestedAgentLane ────────────────────────────────────────────────────────
 
 test('isNestedAgentLane: "nested" → true', () => {
