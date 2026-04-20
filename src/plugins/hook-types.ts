@@ -8,7 +8,7 @@ export interface BeforeToolCallEvent {
 }
 
 export interface BeforeToolCallResult {
-  block?: boolean
+  blocked?: boolean
   blockReason?: string
   params?: Record<string, unknown>
 }

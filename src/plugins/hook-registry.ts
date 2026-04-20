@@ -74,7 +74,7 @@ export async function runBeforeToolCall(
       const result = await handler(event, context) as BeforeToolCallResult | undefined
       if (!result) continue
 
-      if (result.block === true) {
+      if (result.blocked === true) {
         blocked = true
         blockReason = result.blockReason ?? 'Tool call blocked by plugin hook'
         break
@@ -104,13 +104,17 @@ export function runAfterToolCall(event: AfterToolCallEvent, context: AfterToolCa
   const registrations = handlers.get('after_tool_call') ?? []
 
   for (const { handler } of registrations) {
-    // Fire-and-forget: do not await, catch+log errors
-    const result = handler(event, context)
-    if (result && typeof result === 'object' && 'then' in result) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(result as Promise<unknown>).catch((err) => {
-        console.error('[hook-registry] after_tool_call hook error:', err)
-      })
+    try {
+      // Fire-and-forget: do not await, catch+log errors
+      const result = handler(event, context)
+      if (result && typeof result === 'object' && 'then' in result) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(result as Promise<unknown>).catch((err) => {
+          console.error('[hook-registry] after_tool_call hook error:', err)
+        })
+      }
+    } catch (err) {
+      console.error('[hook-registry] after_tool_call hook error:', err)
     }
   }
 }
