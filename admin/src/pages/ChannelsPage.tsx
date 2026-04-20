@@ -1016,7 +1016,7 @@ export const ChannelsPage = () => {
                       </span>
                     </div>
                     <div className="mt-0.5 border-l-2 border-[rgba(124,58,237,0.5)] pl-3">
-                      <p className="text-sm leading-6 text-[color:var(--tx)]">
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
                         {entry.content ? renderContent(entry.content) : 'Streaming response'}
                         <span className="streaming-dot" />
                       </p>
