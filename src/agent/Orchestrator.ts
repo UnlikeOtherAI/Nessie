@@ -591,7 +591,17 @@ export class Orchestrator {
       const reason = beforeResult.blockReason ?? 'Tool call blocked by plugin hook'
       this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: reason } })
       // Fire after_tool_call with blocked=true (fire-and-forget)
-      void runAfterToolCall({ toolName, params: parsed.data, toolCallId: task.id, error: reason, blocked: true, blockReason: beforeResult.blockReason }, ctx)
+      void runAfterToolCall(
+        {
+          toolName,
+          params: parsed.data,
+          toolCallId: task.id,
+          error: reason,
+          blocked: true,
+          blockReason: beforeResult.blockReason,
+        },
+        ctx,
+      )
       return `Error: ${reason}`
     }
 
@@ -602,13 +612,31 @@ export class Orchestrator {
       const data = JSON.stringify(result.data)
       this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: result.data })
       // Fire after_tool_call with result (fire-and-forget)
-      void runAfterToolCall({ toolName, params: beforeResult.params, toolCallId: task.id, result: result.data, durationMs: Date.now() - startMs }, ctx)
+      void runAfterToolCall(
+        {
+          toolName,
+          params: beforeResult.params,
+          toolCallId: task.id,
+          result: result.data,
+          durationMs: Date.now() - startMs,
+        },
+        ctx,
+      )
       return data
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: msg } })
       // Fire after_tool_call with error (fire-and-forget)
-      void runAfterToolCall({ toolName, params: beforeResult.params, toolCallId: task.id, error: msg, durationMs: Date.now() - startMs }, ctx)
+      void runAfterToolCall(
+        {
+          toolName,
+          params: beforeResult.params,
+          toolCallId: task.id,
+          error: msg,
+          durationMs: Date.now() - startMs,
+        },
+        ctx,
+      )
       return `Error: ${msg}`
     }
   }

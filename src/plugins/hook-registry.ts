@@ -70,7 +70,6 @@ export async function runBeforeToolCall(
 
   for (const { handler } of registrations) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await handler(event, context) as BeforeToolCallResult | undefined
       if (!result) continue
 
@@ -108,7 +107,6 @@ export function runAfterToolCall(event: AfterToolCallEvent, context: AfterToolCa
       // Fire-and-forget: do not await, catch+log errors
       const result = handler(event, context)
       if (result && typeof result === 'object' && 'then' in result) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ;(result as Promise<unknown>).catch((err) => {
           console.error('[hook-registry] after_tool_call hook error:', err)
         })

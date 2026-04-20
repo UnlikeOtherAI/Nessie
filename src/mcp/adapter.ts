@@ -97,7 +97,10 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
         const reason = beforeResult.blockReason ?? 'Tool call blocked by plugin hook'
         orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: { error: reason } })
         // Fire after_tool_call with blocked=true (fire-and-forget)
-        void runAfterToolCall({ toolName, params: parsed.data, error: reason, blocked: true, blockReason: beforeResult.blockReason }, ctx)
+        void runAfterToolCall(
+          { toolName, params: parsed.data, error: reason, blocked: true, blockReason: beforeResult.blockReason },
+          ctx,
+        )
         return `Error: ${reason}`
       }
 
@@ -119,13 +122,19 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
         const result = await tool.call(beforeResult.params, context)
         orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: result.data })
         // Fire after_tool_call with result (fire-and-forget)
-        void runAfterToolCall({ toolName, params: beforeResult.params, result: result.data, durationMs: Date.now() - startMs }, ctx)
+        void runAfterToolCall(
+          { toolName, params: beforeResult.params, result: result.data, durationMs: Date.now() - startMs },
+          ctx,
+        )
         return JSON.stringify(result.data, null, 2)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: { error: msg } })
         // Fire after_tool_call with error (fire-and-forget)
-        void runAfterToolCall({ toolName, params: beforeResult.params, error: msg, durationMs: Date.now() - startMs }, ctx)
+        void runAfterToolCall(
+          { toolName, params: beforeResult.params, error: msg, durationMs: Date.now() - startMs },
+          ctx,
+        )
         return `Error: ${msg}`
       }
     },
