@@ -16,7 +16,7 @@ export type LlmStreamOptions = {
 // before completion, FinalizationRegistry ensures the reader is cancelled and
 // released back to the connection pool, preventing socket leaks.
 // See: openclaw/openclaw#67461
-const streamFinalizationRegistry = new FinalizationRegistry<ReadableStreamDefaultReader>(
+const streamFinalizationRegistry = new FinalizationRegistry<ReadableStreamDefaultReader<unknown>>(
   (reader) => {
     reader.cancel().catch(() => { /* ignore cancel errors on already-resolved streams */ })
     reader.releaseLock()
@@ -72,10 +72,10 @@ async function* openaiStream(
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
-  let buffer = ''
+  let buffer: string = "" as string
 
   // Register reader with finalization registry as a safety net for abandoned streams
-  streamFinalizationRegistry.register(reader, reader)
+  (streamFinalizationRegistry as FinalizationRegistry<unknown>).register(reader, reader)
 
   try {
     while (true) {
@@ -102,7 +102,7 @@ async function* openaiStream(
       }
     }
   } finally {
-    streamFinalizationRegistry.unregister(reader)
+    (streamFinalizationRegistry as FinalizationRegistry<unknown>).unregister(reader)
     // Cancel the reader to release the underlying socket back to the pool.
     // This is safe to call even if the stream is already done.
     await reader.cancel().catch(() => { /* ignore cancel errors */ })
@@ -143,10 +143,10 @@ async function* minimaxStream(
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
-  let buffer = ''
+  let buffer: string = "" as string
 
   // Register reader with finalization registry as a safety net for abandoned streams
-  streamFinalizationRegistry.register(reader, reader)
+  (streamFinalizationRegistry as FinalizationRegistry<unknown>).register(reader, reader)
 
   try {
     while (true) {
@@ -173,7 +173,7 @@ async function* minimaxStream(
       }
     }
   } finally {
-    streamFinalizationRegistry.unregister(reader)
+    (streamFinalizationRegistry as FinalizationRegistry<unknown>).unregister(reader)
     // Cancel the reader to release the underlying socket back to the pool.
     // This is safe to call even if the stream is already done.
     await reader.cancel().catch(() => { /* ignore cancel errors */ })

@@ -3,8 +3,13 @@
   "compilerOptions": {
     "composite": true,
     "noEmit": true,
-    "types": ["bun-types"],
+    "types": [
+      "bun-types"
+    ],
     "outDir": "dist"
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*",
+    "packages/schemas/src/**/*"
+  ]
 }
