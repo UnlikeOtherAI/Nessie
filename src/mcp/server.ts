@@ -745,6 +745,7 @@ export class McpServer {
         toolScope: args.toolScope,
         timeoutSeconds: args.timeoutSeconds,
         modelOverride: args.modelOverride,
+        lane: args.lane,
       })
       if (!parsed.success) {
         return {
@@ -759,6 +760,7 @@ export class McpServer {
         toolScope: parsed.data.toolScope,
         timeoutSeconds: parsed.data.timeoutSeconds,
         modelOverride: parsed.data.modelOverride,
+        lane: parsed.data.lane,
       })
       return {
         jsonrpc: '2.0', id: req.id ?? null,
@@ -1207,6 +1209,7 @@ export interface SpawnTaskRequest {
   toolScope: string[]
   timeoutSeconds: number
   modelOverride?: string
+  lane?: string
 }
 
 export interface ListMessagesOptions {

@@ -154,6 +154,10 @@ export class SpawnManager {
       }
     }
 
+    // Inherit threadId from parent to preserve session chains across depths.
+    // e.g. agent:main:sub:x → spawned child gets threadId 'agent:main:sub:x'
+    // so resolveLane() can correctly scope nested:<threadId> at all depth levels.
+    let parentThreadId = 'main'
     if (request.parentTaskId) {
       const parentTask = this.ledger.getTask(request.parentTaskId)
       if (!parentTask) {
@@ -163,6 +167,7 @@ export class SpawnManager {
           reason: `Parent task not found: ${request.parentTaskId}`,
         }
       }
+      parentThreadId = parentTask.threadId
 
       const depth = this.getSpawnDepth(request.parentTaskId)
       if (depth >= this.config.maxSpawnDepth) {
@@ -197,7 +202,7 @@ export class SpawnManager {
 
     const task = this.ledger.createTask({
       parentId: request.parentTaskId,
-      threadId: 'main',
+      threadId: parentThreadId,
       role: request.role,
       label: request.label,
       assignedModel: request.modelOverride ?? null,
