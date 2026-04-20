@@ -111,7 +111,8 @@ export const useThreadStream = (threadId?: string): StreamState => {
               }
 
               if (event === 'stream.start') {
-                setPendingMessages((current) => [...current, { agentId: data.agentId ?? '', content: '', runId: data.runId }])
+                const newPending = { agentId: data.agentId ?? '', content: '', runId: data.runId }
+                setPendingMessages((current) => [...current, newPending])
                 continue
               }
 

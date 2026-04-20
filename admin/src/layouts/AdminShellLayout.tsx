@@ -108,7 +108,6 @@ export const AdminShellLayout = () => {
 
   useEffect(() => {
     setStarred(me?.user.preferences?.starred ?? []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.user.id]);
 
   const toggleStar = useCallback((type: 'channel' | 'user', id: string) => {
@@ -580,7 +579,11 @@ export const AdminShellLayout = () => {
                       strokeWidth="2"
                       viewBox="0 0 24 24"
                     >
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                      <polygon
+                        points="12 2 15.09 8.26 22 9.27 17 14.14
+                          18.18 21.02 12 17.77 5.82 21.02 7 14.14
+                          2 9.27 8.91 8.26 12 2"
+                      />
                     </svg>
                     Starred
                   </button>
@@ -599,7 +602,8 @@ export const AdminShellLayout = () => {
                             <span className={channelHashClassName}>#</span>
                             <span className="min-w-0 flex-1 truncate">{channel.label}</span>
                             <span
-                              className="ml-auto flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-yellow-400"
+                              className="ml-auto flex-shrink-0 cursor-pointer px-0.5
+                                text-sm leading-none text-yellow-400"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleStar('channel', item.id);
