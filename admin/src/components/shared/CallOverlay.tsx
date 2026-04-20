@@ -64,7 +64,6 @@ export const CallOverlay = ({ roomId, displayName, onLeave }: CallOverlayProps) 
         apiRef.current = null
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId])
 
   if (minimized) {
