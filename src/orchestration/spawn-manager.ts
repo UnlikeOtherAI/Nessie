@@ -133,7 +133,10 @@ export class SpawnManager {
     // This is a system-wide guard, not per-lane.
     const totalActive = Array.from(this.laneStates.values()).reduce((s, m) => s + m.size, 0)
     if (totalActive >= this.config.circuitBreakerDepth) {
-      const retryAfterMs = Math.min(this.config.circuitBreakerWaitMs, 30_000)
+      // retryAfterMs: always use 30 s so the client uses a human-friendly delay.
+      // The internal threshold (circuitBreakerWaitMs) can be tiny for testing; the
+      // external retry hint should always be the same to avoid leaking internals.
+      const retryAfterMs = 30_000
       return {
         taskId: '',
         accepted: false,
@@ -144,7 +147,8 @@ export class SpawnManager {
 
     const oldestWaitMs = this.getOldestEntryWaitMs()
     if (oldestWaitMs !== null && oldestWaitMs >= this.config.circuitBreakerWaitMs) {
-      const retryAfterMs = Math.min(this.config.circuitBreakerWaitMs, 30_000)
+      // retryAfterMs: always 30 s for the same reason as above.
+      const retryAfterMs = 30_000
       return {
         taskId: '',
         accepted: false,
