@@ -72,6 +72,7 @@ async function saveStoreAsync(workspaceId: string, store: WorkflowStore): Promis
 
 function saveStore(workspaceId: string, store: WorkflowStore): void {
   ensureDir(workspaceId)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const path = getStorePath(workspaceId)
   // Serialize writes via promise chain
   const prev = _writeQueue.get(workspaceId) ?? Promise.resolve()

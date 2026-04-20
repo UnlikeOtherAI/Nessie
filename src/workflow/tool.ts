@@ -58,7 +58,7 @@ const CreateTaskToolSchema = z.object({
   label: z.string().min(1),
   description: z.string().optional().default(''),
   ownerAgentId: z.string().nullable().optional(),
-  dependencies: z.array(z.string().uuid()).optional().default([]),
+  dependencies: z.array(z.string().uuid()).default([]),
 })
 
 // Schema for getting a task
@@ -134,8 +134,8 @@ export function createWorkflowTool(store?: WorkflowStoreManager): Tool<WorkflowT
         case 'create': {
           const input: CreateWorkflowInput = {
             name: args.name,
-            description: args.description,
-            ownerAgentId: args.ownerAgentId,
+            description: args.description ?? '',
+            ownerAgentId: args.ownerAgentId ?? 'main',
           }
           const workflow = workflowStore.createWorkflow(input)
           return { data: { workflow } }
@@ -176,9 +176,9 @@ export function createWorkflowTool(store?: WorkflowStoreManager): Tool<WorkflowT
           const input: CreateTaskInput = {
             workflowId: args.workflowId,
             label: args.label,
-            description: args.description,
-            ownerAgentId: args.ownerAgentId,
-            dependencies: args.dependencies,
+            description: args.description ?? '',
+            ownerAgentId: args.ownerAgentId ?? null,
+            dependencies: args.dependencies ?? [],
           }
           const result = workflowStore.createTask(input)
           if ('error' in result) {
@@ -241,7 +241,8 @@ export function createWorkflowTool(store?: WorkflowStoreManager): Tool<WorkflowT
 
     userFacingName() { return 'Workflow' },
     getActivityDescription(input) {
-      return input?.description ?? `Workflow: ${String((input as { action?: string })?.action ?? 'operation')}`
+      const desc = (input && 'description' in input) ? input.description : undefined
+      return desc ?? `Workflow: ${String((input as { action?: string })?.action ?? 'operation')}`
     },
     maxResultSizeChars: 50_000,
   })

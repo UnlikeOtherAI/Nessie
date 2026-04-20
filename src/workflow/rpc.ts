@@ -14,14 +14,6 @@ import type {
 
 type RpcHandler = (req: IncomingMessage, res: ServerResponse, body?: unknown) => Promise<void>
 
-async function parseBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = []
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-  }
-  const rawBody = Buffer.concat(chunks).toString('utf8')
-  return rawBody ? JSON.parse(rawBody) : {}
-}
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json' })

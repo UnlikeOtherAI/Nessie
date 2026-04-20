@@ -20,5 +20,16 @@ export const allTools: Tools = [
   WorkflowTool,
 ]
 
-export { BashTool, FileReadTool, FileWriteTool, GlobTool, GrepTool, WebSearchTool, WorkflowTool, findToolByName, buildTool }
+export {
+  BashTool,
+  FileReadTool,
+  FileWriteTool,
+  GlobTool,
+  GrepTool,
+  WebSearchTool,
+  WorkflowTool,
+  findToolByName,
+  buildTool,
+}
+
 export type { Tool, ToolDef, AnyTool, Tools, ToolUseBlock }
