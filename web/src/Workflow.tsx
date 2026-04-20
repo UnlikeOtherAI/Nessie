@@ -163,13 +163,18 @@ export function WorkflowApp() {
       <div style={{ display: 'flex', gap: '20px' }}>
         {/* Workflow List */}
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <div
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}
+          >
             <h2>Workflows</h2>
             <button onClick={() => setShowCreate(true)}>New Workflow</button>
           </div>
 
           {showCreate && (
-            <form onSubmit={createWorkflow} style={{ padding: '10px', background: '#f5f5f5', borderRadius: '4px', marginBottom: '10px' }}>
+            <form
+      onSubmit={createWorkflow}
+      style={{ padding: '10px', background: '#f5f5f5', borderRadius: '4px', marginBottom: '10px' }}
+    >
               <input
                 type="text"
                 placeholder="Workflow name"
@@ -210,13 +215,18 @@ export function WorkflowApp() {
         {/* Task List */}
         {selectedWorkflow && (
           <div style={{ flex: 2 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}
+          >
               <h2>Tasks: {selectedWorkflow.name}</h2>
               <button onClick={() => setShowCreateTask(true)}>Add Task</button>
             </div>
 
             {showCreateTask && (
-              <form onSubmit={createTask} style={{ padding: '10px', background: '#f5f5f5', borderRadius: '4px', marginBottom: '10px' }}>
+              <form
+              onSubmit={createTask}
+              style={{ padding: '10px', background: '#f5f5f5', borderRadius: '4px', marginBottom: '10px' }}
+            >
                 <input
                   type="text"
                   placeholder="Task label"
@@ -231,7 +241,13 @@ export function WorkflowApp() {
                   style={{ display: 'block', width: '100%', marginBottom: '5px', padding: '5px' }}
                 />
                 <button type="submit">Create</button>
-                <button type="button" onClick={() => setShowCreateTask(false)} style={{ marginLeft: '5px' }}>Cancel</button>
+                <button
+              type="button"
+              onClick={() => setShowCreateTask(false)}
+              style={{ marginLeft: '5px' }}
+            >
+              Cancel
+            </button>
               </form>
             )}
 
@@ -272,7 +288,15 @@ export function WorkflowApp() {
             )}
 
             {/* DAG Visualization placeholder */}
-            <div style={{ marginTop: '20px', padding: '20px', background: '#f9f9f9', borderRadius: '4px', textAlign: 'center' }}>
+            <div
+            style={{
+              marginTop: '20px',
+              padding: '20px',
+              background: '#f9f9f9',
+              borderRadius: '4px',
+              textAlign: 'center',
+            }}
+          >
               <p style={{ color: '#666' }}>
                 DAG visualization available at <code>/workflow</code> endpoint
               </p>
