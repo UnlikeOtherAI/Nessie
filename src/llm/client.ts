@@ -21,10 +21,12 @@ export interface LlmClient {
 // ---------------------------------------------------------------------------
 
 function createOpenAiClient(apiKey: string, model = 'gpt-4o', baseUrl?: string): LlmClient {
-  const endpoint = baseUrl ?? 'https://api.openai.com/v1/chat/completions'
   return {
     async chat(messages, options) {
-      const res = await fetch(endpoint, {
+      // Use per-call baseUrl override (for failover), falling back to the
+      // client-level default set at construction time.
+      const url = options?.baseUrl ?? baseUrl ?? 'https://api.openai.com/v1/chat/completions'
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,

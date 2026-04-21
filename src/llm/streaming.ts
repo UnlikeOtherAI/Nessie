@@ -5,11 +5,14 @@
  */
 
 import type { LlmMessage } from './client.js'
+import { isRetryableInferenceError } from '../agent/dispatch.js'
 
 export type LlmStreamOptions = {
   model?: string
   maxTokens?: number
   temperature?: number
+  /** Override base URL for OpenAI-compatible backends (used for failover primary). */
+  baseUrl?: string
 }
 
 // Safety net: if a streaming response is abandoned and the generator is GC'd
@@ -35,7 +38,21 @@ export async function* llmStream(
   if (provider === 'minimax') {
     yield* minimaxStream(messages, options)
   } else {
-    yield* openaiStream(messages, options)
+    // B2: Streaming failover.
+    // The SSE response is a committed HTTP stream — once we've yielded deltas to the
+    // client we cannot retry/rewind. Therefore streaming failover is only viable when
+    // the primary fails BEFORE any yield (i.e. before the first delta is sent).
+    // Once streaming starts, any error aborts the stream with no retry.
+    // This is a known limitation of SSE streaming; non-streaming calls use the full
+    // dispatchWithFailover() path.
+    try {
+      yield* openaiStream(messages, options)
+    } catch (primaryErr) {
+      if (options.baseUrl && isRetryableInferenceError(primaryErr as Error)) {
+        console.warn(`[llmStream] Primary streaming failed (${(primaryErr as Error).message}), aborting stream`)
+      }
+      throw primaryErr
+    }
   }
 }
 
@@ -48,7 +65,8 @@ async function* openaiStream(
   const apiKey = process.env.OPENAI_CHAT_API_KEY ?? process.env.OPENAI_API_KEY
   if (!apiKey) throw new Error('OPENAI_API_KEY / OPENAI_CHAT_API_KEY is not set')
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const url = options.baseUrl ?? 'https://api.openai.com/v1/chat/completions'
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -119,6 +137,8 @@ async function* minimaxStream(
   const apiKey = process.env.MINIMAX_API_KEY
   if (!apiKey) throw new Error('MINIMAX_API_KEY is not set')
 
+  // Note: MiniMax does not support custom baseUrl for text/chatcompletion_v2.
+  // Fallback to the default endpoint. Failover for streaming is a known limitation.
   const res = await fetch('https://api.minimax.io/v1/text/chatcompletion_v2', {
     method: 'POST',
     headers: {

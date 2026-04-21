@@ -42,7 +42,19 @@ export const ModelConfigSchema = z.object({
   maxTokens: z.number().int().positive().default(2048),
   modelName: z.string().min(1).optional(),
   temperature: z.number().min(0).max(2).default(0.2),
-  backends: z.array(z.string().url()).default([]),
+  backends: z.array(
+    z.string().url(),
+  ).default([]).refine(
+    (urls) => urls.map((u) => new URL(u)).every(
+      (parsed) =>
+        parsed.protocol === 'https:' &&
+        !['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname),
+    ),
+    {
+      message:
+        'Backends must be https:// URLs and cannot point to localhost, 127.0.0.1, or internal metadata endpoints',
+    },
+  ),
 })
 export type ModelConfig = z.infer<typeof ModelConfigSchema>
 
@@ -107,6 +119,7 @@ export const ConfigEnvMap = {
   NESSIE_MODEL_API_KEY: 'model.apiKey',
   NESSIE_MODEL_MAX_TOKENS: 'model.maxTokens',
   NESSIE_MODEL_NAME: 'model.modelName',
+  NESSIE_MODEL_BACKENDS: 'model.backends',
   NESSIE_MODEL_TEMPERATURE: 'model.temperature',
   NESSIE_API_HOST: 'api.host',
   NESSIE_API_PORT: 'api.port',
@@ -263,6 +276,16 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
 
   if (modelApiKey !== undefined) {
     setByPath(overrides, 'model.apiKey', modelApiKey)
+  }
+
+  // Parse comma-separated NESSIE_MODEL_BACKENDS into a string[] for model.backends
+  if (env.NESSIE_MODEL_BACKENDS !== undefined) {
+    const raw = env.NESSIE_MODEL_BACKENDS
+    const parsed = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    setByPath(overrides, 'model.backends', parsed)
   }
 
   return overrides

@@ -505,7 +505,7 @@ export class Orchestrator {
             + 'Be concise and practical. Do not mention tools, JSON, or raw data.',
         },
         { role: 'user', content: `Original question: ${task}\n\nResearch results:\n${rawResult}` },
-      ], { backends: this.backends, timeoutMs: 30_000 })
+      ], { backends: this.backends, timeoutMs: 30_000, maxTokens: 300 })
       return result.output
     } catch {
       return `Here's what I found: ${rawResult}`
