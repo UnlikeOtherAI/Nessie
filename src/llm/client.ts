@@ -7,6 +7,8 @@ export type LlmOptions = {
   model?: string
   maxTokens?: number
   temperature?: number
+  /** Override base URL for OpenAI-compatible backends. */
+  baseUrl?: string
 }
 
 export interface LlmClient {
@@ -18,10 +20,11 @@ export interface LlmClient {
 // OpenAI Chat API
 // ---------------------------------------------------------------------------
 
-function createOpenAiClient(apiKey: string, model = 'gpt-4o'): LlmClient {
+function createOpenAiClient(apiKey: string, model = 'gpt-4o', baseUrl?: string): LlmClient {
+  const endpoint = baseUrl ?? 'https://api.openai.com/v1/chat/completions'
   return {
     async chat(messages, options) {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -86,7 +89,7 @@ function createMiniMaxClient(apiKey: string, model = 'MiniMax-M2.5'): LlmClient 
 // Factory
 // ---------------------------------------------------------------------------
 
-export function createLlmClient(): LlmClient {
+export function createLlmClient(baseUrl?: string): LlmClient {
   const provider = process.env.LLM_PROVIDER ?? 'openai'
 
   if (provider === 'minimax') {
@@ -98,5 +101,5 @@ export function createLlmClient(): LlmClient {
   // Default: OpenAI
   const key = process.env.OPENAI_CHAT_API_KEY ?? process.env.OPENAI_API_KEY
   if (!key) throw new Error('OPENAI_API_KEY / OPENAI_CHAT_API_KEY is not set')
-  return createOpenAiClient(key)
+  return createOpenAiClient(key, undefined, baseUrl)
 }

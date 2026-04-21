@@ -42,6 +42,7 @@ export const ModelConfigSchema = z.object({
   maxTokens: z.number().int().positive().default(2048),
   modelName: z.string().min(1).optional(),
   temperature: z.number().min(0).max(2).default(0.2),
+  backends: z.array(z.string().url()).default([]),
 })
 export type ModelConfig = z.infer<typeof ModelConfigSchema>
 
@@ -143,6 +144,7 @@ const DEFAULT_CONFIG: NessieConfig = {
     provider: 'openai',
     maxTokens: 2048,
     temperature: 0.2,
+    backends: [],
   },
   api: {
     host: '0.0.0.0',

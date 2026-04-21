@@ -31,11 +31,13 @@ import {
 import { runBeforeToolCall, runAfterToolCall } from '../plugins/hook-registry.js'
 import type { BeforeToolCallContext } from '../plugins/hook-types.js'
 import type { OpenClawEvent, OpenClawAgentConfig } from '../openclaw/index.js'
+import { dispatchWithFailover } from './dispatch.js'
 
 export class Orchestrator {
   private state: OrchestratorState
   private callbacks: OrchestratorCallbacks
   private llm: LlmClient | null
+  private backends: string[]
   private schedules = new Map<string, TimerHandle>()
   private taskLedger: TaskLedger
   private spawnManager: SpawnManager
@@ -64,6 +66,7 @@ export class Orchestrator {
     }
     this.callbacks = options.callbacks ?? {}
     this.llm = options.llm ?? null
+    this.backends = options.backends ?? []
     this.taskLedger = new TaskLedger()
     this.verificationGate = new VerificationGate(this.taskLedger)
     this.approvalGate = new ApprovalGate(this.taskLedger)
@@ -403,8 +406,8 @@ export class Orchestrator {
       role: 'system' as const,
       content: `You are ${agent.name}. Responsibility: ${agent.responsibility}`,
     }
-    const reply = await this.llm.chat([systemMsg, ...threadMessages, { role: 'user', content: prompt }])
-    return `${agent.name}: ${reply}`
+    const reply = await dispatchWithFailover(this.llm, [systemMsg, ...threadMessages, { role: 'user', content: prompt }], { backends: this.backends })
+    return `${agent.name}: ${reply.output}`
   }
 
   private async handleKeyboardInject(text: string): Promise<string> {
@@ -421,7 +424,7 @@ export class Orchestrator {
         role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
         content: m.content,
       }))
-    return await this.llm.chat(conversation)
+    return await dispatchWithFailover(this.llm, conversation, { backends: this.backends }).then(r => r.output)
   }
 
   private async handleSubAgentTask(task: string, toolNames: string[]): Promise<string> {
@@ -494,7 +497,7 @@ export class Orchestrator {
     this.spawnManager.complete(taskId, true, rawResult, 1)
 
     try {
-      const response = await this.llm.chat([
+      const result = await dispatchWithFailover(this.llm, [
         {
           role: 'system',
           content: 'You are a helpful assistant. A research task was just completed. '
@@ -502,8 +505,8 @@ export class Orchestrator {
             + 'Be concise and practical. Do not mention tools, JSON, or raw data.',
         },
         { role: 'user', content: `Original question: ${task}\n\nResearch results:\n${rawResult}` },
-      ], { maxTokens: 300 })
-      return response
+      ], { backends: this.backends, timeoutMs: 30_000 })
+      return result.output
     } catch {
       return `Here's what I found: ${rawResult}`
     }
@@ -1001,6 +1004,8 @@ export type OrchestratorOptions = {
   defaultAgent?: string
   callbacks?: OrchestratorCallbacks
   llm?: LlmClient
+  /** Fallback backend URLs for inference failover. */
+  backends?: string[]
 }
 
 export type OrchestratorCallbacks = {

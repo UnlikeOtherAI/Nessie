@@ -169,9 +169,14 @@ async function main() {
     console.warn(`Warning: chat LLM unavailable — ${error instanceof Error ? error.message : String(error)}`)
   }
 
+  const backends = process.env.NESSIE_MODEL_BACKENDS
+    ? process.env.NESSIE_MODEL_BACKENDS.split(',').map((s) => s.trim()).filter(Boolean)
+    : []
+
   const orchestrator = new Orchestrator({
     defaultAgent: 'main',
     llm: llm ?? undefined,
+    backends,
     callbacks: {
       onBroadcast: broadcast,
       onStateChange: (state) => {
