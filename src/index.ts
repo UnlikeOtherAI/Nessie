@@ -8,6 +8,7 @@ import type { ServerEvent } from './events.js'
 import { McpServer, parseJsonRpcRequest } from './mcp/server.js'
 import { createMcpAdapter } from './mcp/adapter.js'
 import { deleteHistory } from './db/database.js'
+import { loadConfig } from '../packages/config/src/index.js'
 import bonjour from 'bonjour'
 // Workflow RPC handlers
 import {
@@ -25,7 +26,6 @@ import {
   handleTaskExecutable,
 } from './workflow/rpc.js'
 
-const PROVIDER = process.env.LLM_PROVIDER ?? 'openai'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? ''
 const HOST = process.env.HELPER_HOST ?? '127.0.0.1'
 const PORT = Number(process.env.HELPER_PORT ?? process.env.PORT ?? '5554')
@@ -168,14 +168,18 @@ function sendUnauthorized(res: import('node:http').ServerResponse) {
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`Nessie starting... (LLM: ${PROVIDER})`)
+  // Load config first so we know the model provider for the startup log
+  const config = loadConfig({ env: process.env as Record<string, string> })
 
+  // Fail fast: refuse to start without auth on non-local hosts
   if (!HELPER_API_KEY && !isLocalHelperHost(HOST)) {
     throw new Error('Refusing to start helper server on a non-local host without NESSIE_HELPER_API_KEY or HELPER_API_KEY')
   }
   if (!HELPER_API_KEY) {
     console.warn('Warning: helper auth disabled because HELPER_HOST is local-only')
   }
+
+  console.log(`Nessie starting... (LLM: ${config.model.provider})`)
 
   let llm = null
   try {
@@ -184,9 +188,14 @@ async function main() {
     console.warn(`Warning: chat LLM unavailable — ${error instanceof Error ? error.message : String(error)}`)
   }
 
+  // Use validated backends from loadConfig — parsed and URL-validated via ConfigEnvMap.
+  // Falls back to empty array when NESSIE_MODEL_BACKENDS is unset.
+  const backends: string[] = config.model.backends ?? []
+
   const orchestrator = new Orchestrator({
     defaultAgent: 'main',
     llm: llm ?? undefined,
+    backends,
     callbacks: {
       onBroadcast: broadcast,
       onStateChange: (state) => {

@@ -10,6 +10,7 @@
   },
   "include": [
     "src/**/*",
-    "packages/schemas/src/**/*"
+    "packages/schemas/src/**/*",
+    "packages/config/src/**/*"
   ]
 }
