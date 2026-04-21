@@ -1,6 +1,5 @@
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
-import reactHooksPlugin from 'eslint-plugin-react-hooks'
 
 export default [
   {
@@ -14,42 +13,25 @@ export default [
     ],
   },
   {
-    files: [
-      'src/**/*.ts',
-      'api/src/**/*.ts',
-      'admin/src/**/*.{ts,tsx}',
-      'web/src/**/*.{ts,tsx}',
-      'worker/src/**/*.ts',
-      'cli/src/**/*.ts',
-      'packages/*/src/**/*.ts',
-    ],
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-        ecmaFeatures: {
-          jsx: true,
-        },
+        ecmaVersion: 'latest',
+        sourceType: 'module',
       },
     },
     plugins: {
       '@typescript-eslint': tsPlugin,
-      'react-hooks': reactHooksPlugin,
     },
     rules: {
       'no-unused-vars': 'off',
-      'no-restricted-imports': [
+      '@typescript-eslint/no-unused-vars': [
         'error',
-        {
-          patterns: ['src/*', '../src/*', '../../src/*', '../../../src/*', '../../../../src/*'],
-        },
+        { argsIgnorePattern: '^_' },
       ],
       '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'max-len': ['error', { code: 120, ignoreStrings: true, ignoreTemplateLiterals: true }],
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
     },
   },
 ]

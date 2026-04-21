@@ -9,6 +9,21 @@ import { McpServer, parseJsonRpcRequest } from './mcp/server.js'
 import { createMcpAdapter } from './mcp/adapter.js'
 import { deleteHistory } from './db/database.js'
 import bonjour from 'bonjour'
+// Workflow RPC handlers
+import {
+  handleWorkflowCreate,
+  handleWorkflowGet,
+  handleWorkflowList,
+  handleWorkflowUpdate,
+  handleWorkflowDelete,
+  handleTaskCreate,
+  handleTaskGet,
+  handleTaskList,
+  handleTaskUpdate,
+  handleTaskComplete,
+  handleTaskDelete,
+  handleTaskExecutable,
+} from './workflow/rpc.js'
 
 const PROVIDER = process.env.LLM_PROVIDER ?? 'openai'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? ''
@@ -419,6 +434,101 @@ async function main() {
       const responses = await Promise.all(requests.map((r) => mcpServer.handleRequest(r)))
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(responses.length === 1 ? responses[0] : responses))
+      return
+    }
+
+    // ─── Workflow RPC endpoints ─────────────────────────────────────────────
+
+    // Workflow CRUD
+    if (req.method === 'POST' && req.url === '/workflow') {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
+      await handleWorkflowCreate(req, res, body)
+      return
+    }
+
+    if (req.method === 'GET' && req.url === '/workflow') {
+      const url = new URL(req.url, `http://${req.headers.host}`)
+      if (url.searchParams.has('workflowId')) {
+        await handleWorkflowGet(req, res)
+        return
+      }
+      await handleWorkflowList(req, res)
+      return
+    }
+
+    if (req.method === 'GET' && req.url?.startsWith('/workflow/get')) {
+      await handleWorkflowGet(req, res)
+      return
+    }
+
+    if (req.method === 'POST' && req.url === '/workflow/update') {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
+      await handleWorkflowUpdate(req, res, body)
+      return
+    }
+
+    if (req.method === 'POST' && req.url === '/workflow/delete') {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
+      await handleWorkflowDelete(req, res, body)
+      return
+    }
+
+    if (req.method === 'GET' && req.url?.startsWith('/workflow/task/list')) {
+      await handleTaskList(req, res)
+      return
+    }
+    if (req.method === 'POST' && req.url === '/workflow/task') {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
+      await handleTaskCreate(req, res, body)
+      return
+    }
+
+    if (req.method === 'GET' && req.url?.startsWith('/workflow/task')) {
+      const url = new URL(req.url, `http://${req.headers.host}`)
+      if (url.pathname === '/workflow/task/executable') {
+        await handleTaskExecutable(req, res)
+      } else {
+        await handleTaskGet(req, res)
+      }
+      return
+    }
+
+    if (req.method === 'POST' && req.url === '/workflow/task/update') {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
+      await handleTaskUpdate(req, res, body)
+      return
+    }
+
+    if (req.method === 'POST' && req.url === '/workflow/task/complete') {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
+      await handleTaskComplete(req, res, body)
+      return
+    }
+
+    if (req.method === 'POST' && req.url === '/workflow/task/delete') {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
+      let body = {}
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
+      await handleTaskDelete(req, res, body)
       return
     }
 

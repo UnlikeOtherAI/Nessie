@@ -119,7 +119,6 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       setToken(null)
       clearStoredToken()
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const bootstrap = async (input: BootstrapInput): Promise<void> => {
@@ -204,7 +203,6 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       sessionState,
       token,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [bootstrapState, me, providers, sessionState, token],
   )
 
