@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { buildTool } from './Tool.js'
 import type { Tool } from './Tool.js'
 import { readFile } from 'fs/promises'
+import { isPathAllowed } from './path-validator.js'
 
 const FileReadSchema = z.object({
   file_path: z.string(),
@@ -17,7 +18,14 @@ export function createFileReadTool(): Tool<FileReadInput, { content: string; fil
     description: 'Read the contents of a file from the filesystem',
     inputSchema: FileReadSchema,
 
-    async call(args, _ctx) {
+    async call(args, ctx) {
+      // Check path permissions before reading.
+      const allowed = isPathAllowed(args.file_path, ctx.options.agentPathPermissions)
+      if (!allowed) {
+        throw new Error(
+          `Access denied: path '${args.file_path}' is not allowed by this agent's pathPermissions.`,
+        )
+      }
       const content = await readFile(args.file_path, 'utf-8')
       const offset = args.offset ?? 0
       const limit = args.limit

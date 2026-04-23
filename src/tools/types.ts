@@ -19,6 +19,8 @@ export type ToolResult<T> = {
   contextModifier?: (context: ToolUseContext) => ToolUseContext
 }
 
+import type { PathPermissions } from '../agent/types.js'
+
 export type ToolUseContext = {
   abortController: AbortController
   messages: Message[]
@@ -27,6 +29,8 @@ export type ToolUseContext = {
   options: {
     tools: Tools
     debug: boolean
+    /** Optional per-agent path permissions for file access tools. */
+    agentPathPermissions?: PathPermissions
   }
 }
 

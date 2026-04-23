@@ -6,6 +6,13 @@ export type AgentMessage = {
   timestamp: number
 }
 
+export interface PathPermissions {
+  /** Glob patterns for allowed paths. If set, only matching paths are permitted. */
+  allow?: string[]
+  /** Glob patterns for denied paths. Takes precedence over allow. */
+  block?: string[]
+}
+
 export type ManagedAgent = {
   id: string
   name: string
@@ -16,6 +23,8 @@ export type ManagedAgent = {
   intervalMinutes?: number
   lastRunAt?: number
   nextRunAt?: number
+  /** Optional per-agent path permissions for file access tools. */
+  pathPermissions?: PathPermissions
 }
 
 export type SubAgentTask = {
