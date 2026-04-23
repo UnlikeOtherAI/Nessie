@@ -7,25 +7,11 @@ import { createLlmClient } from './llm/client.js'
 import type { ServerEvent } from './events.js'
 import { McpServer, parseJsonRpcRequest } from './mcp/server.js'
 import { createMcpAdapter } from './mcp/adapter.js'
-import { deleteHistory } from './db/database.js'
-import { loadConfig } from '../packages/config/src/index.js'
+import { deleteHistory, initSessionMaintenance } from './db/database.js'
+import { loadConfig } from '@nessie/config'
 import bonjour from 'bonjour'
-// Workflow RPC handlers
-import {
-  handleWorkflowCreate,
-  handleWorkflowGet,
-  handleWorkflowList,
-  handleWorkflowUpdate,
-  handleWorkflowDelete,
-  handleTaskCreate,
-  handleTaskGet,
-  handleTaskList,
-  handleTaskUpdate,
-  handleTaskComplete,
-  handleTaskDelete,
-  handleTaskExecutable,
-} from './workflow/rpc.js'
 
+const PROVIDER = process.env.LLM_PROVIDER ?? 'openai'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? ''
 const HOST = process.env.HELPER_HOST ?? '127.0.0.1'
 const PORT = Number(process.env.HELPER_PORT ?? process.env.PORT ?? '5554')
@@ -168,18 +154,14 @@ function sendUnauthorized(res: import('node:http').ServerResponse) {
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  // Load config first so we know the model provider for the startup log
-  const config = loadConfig({ env: process.env as Record<string, string> })
+  console.log(`Nessie starting... (LLM: ${PROVIDER})`)
 
-  // Fail fast: refuse to start without auth on non-local hosts
   if (!HELPER_API_KEY && !isLocalHelperHost(HOST)) {
     throw new Error('Refusing to start helper server on a non-local host without NESSIE_HELPER_API_KEY or HELPER_API_KEY')
   }
   if (!HELPER_API_KEY) {
     console.warn('Warning: helper auth disabled because HELPER_HOST is local-only')
   }
-
-  console.log(`Nessie starting... (LLM: ${config.model.provider})`)
 
   let llm = null
   try {
@@ -188,14 +170,9 @@ async function main() {
     console.warn(`Warning: chat LLM unavailable — ${error instanceof Error ? error.message : String(error)}`)
   }
 
-  // Use validated backends from loadConfig — parsed and URL-validated via ConfigEnvMap.
-  // Falls back to empty array when NESSIE_MODEL_BACKENDS is unset.
-  const backends: string[] = config.model.backends ?? []
-
   const orchestrator = new Orchestrator({
     defaultAgent: 'main',
     llm: llm ?? undefined,
-    backends,
     callbacks: {
       onBroadcast: broadcast,
       onStateChange: (state) => {
@@ -203,6 +180,23 @@ async function main() {
       },
     },
   })
+
+  // ─── Session Maintenance ─────────────────────────────────────────────────────
+  // Initialize session maintenance: enforce count limits at startup.
+  const config = loadConfig()
+  if (config.sessions?.maintenance) {
+    const result = initSessionMaintenance({
+      mode: config.sessions.maintenance.mode,
+      maxEntries: config.sessions.maintenance.maxEntries,
+      maxAgeDays: config.sessions.maintenance.maxAgeDays,
+    })
+    if (result.countPruned > 0 || result.agePruned > 0) {
+      console.log(
+        `[sessions] maintenance: pruned ${result.countPruned} sessions by count,`
+        + ` ${result.agePruned} sessions by age (${result.totalSessions} total remaining)`,
+      )
+    }
+  }
 
   // ─── MCP server ────────────────────────────────────────────────────────────
 
@@ -443,101 +437,6 @@ async function main() {
       const responses = await Promise.all(requests.map((r) => mcpServer.handleRequest(r)))
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(responses.length === 1 ? responses[0] : responses))
-      return
-    }
-
-    // ─── Workflow RPC endpoints ─────────────────────────────────────────────
-
-    // Workflow CRUD
-    if (req.method === 'POST' && req.url === '/workflow') {
-      const chunks: Buffer[] = []
-      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      let body = {}
-      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
-      await handleWorkflowCreate(req, res, body)
-      return
-    }
-
-    if (req.method === 'GET' && req.url === '/workflow') {
-      const url = new URL(req.url, `http://${req.headers.host}`)
-      if (url.searchParams.has('workflowId')) {
-        await handleWorkflowGet(req, res)
-        return
-      }
-      await handleWorkflowList(req, res)
-      return
-    }
-
-    if (req.method === 'GET' && req.url?.startsWith('/workflow/get')) {
-      await handleWorkflowGet(req, res)
-      return
-    }
-
-    if (req.method === 'POST' && req.url === '/workflow/update') {
-      const chunks: Buffer[] = []
-      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      let body = {}
-      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
-      await handleWorkflowUpdate(req, res, body)
-      return
-    }
-
-    if (req.method === 'POST' && req.url === '/workflow/delete') {
-      const chunks: Buffer[] = []
-      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      let body = {}
-      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
-      await handleWorkflowDelete(req, res, body)
-      return
-    }
-
-    if (req.method === 'GET' && req.url?.startsWith('/workflow/task/list')) {
-      await handleTaskList(req, res)
-      return
-    }
-    if (req.method === 'POST' && req.url === '/workflow/task') {
-      const chunks: Buffer[] = []
-      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      let body = {}
-      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
-      await handleTaskCreate(req, res, body)
-      return
-    }
-
-    if (req.method === 'GET' && req.url?.startsWith('/workflow/task')) {
-      const url = new URL(req.url, `http://${req.headers.host}`)
-      if (url.pathname === '/workflow/task/executable') {
-        await handleTaskExecutable(req, res)
-      } else {
-        await handleTaskGet(req, res)
-      }
-      return
-    }
-
-    if (req.method === 'POST' && req.url === '/workflow/task/update') {
-      const chunks: Buffer[] = []
-      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      let body = {}
-      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
-      await handleTaskUpdate(req, res, body)
-      return
-    }
-
-    if (req.method === 'POST' && req.url === '/workflow/task/complete') {
-      const chunks: Buffer[] = []
-      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      let body = {}
-      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
-      await handleTaskComplete(req, res, body)
-      return
-    }
-
-    if (req.method === 'POST' && req.url === '/workflow/task/delete') {
-      const chunks: Buffer[] = []
-      for await (const chunk of req) { chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)) }
-      let body = {}
-      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { /* ignore */ }
-      await handleTaskDelete(req, res, body)
       return
     }
 

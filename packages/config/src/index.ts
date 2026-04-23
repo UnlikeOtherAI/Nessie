@@ -31,6 +31,11 @@ export const StorageProviderSchema = z.enum(['filesystem', 'gcs', 's3'])
 export type StorageProvider = z.infer<typeof StorageProviderSchema>
 
 export const QueueProviderSchema = z.enum(['pubsub', 'local'])
+
+export type QueueProvider = z.infer<typeof QueueProviderSchema>
+
+export const SessionsMaintenanceModeSchema = z.enum(['enforce', 'warn'])
+export type SessionsMaintenanceMode = z.infer<typeof SessionsMaintenanceModeSchema>
 export type QueueProvider = z.infer<typeof QueueProviderSchema>
 
 export const ModelProviderSchema = z.enum(['openai', 'minimax'])
@@ -90,6 +95,13 @@ export const NessieConfigSchema = z.object({
   api: z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.number().int().positive().default(5554),
+  }),
+  sessions: z.object({
+    maintenance: z.object({
+      mode: SessionsMaintenanceModeSchema.default('enforce'),
+      maxEntries: z.number().int().positive().default(500),
+      maxAgeDays: z.number().int().positive().default(30),
+    }),
   }),
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
@@ -162,6 +174,13 @@ const DEFAULT_CONFIG: NessieConfig = {
   api: {
     host: '0.0.0.0',
     port: 5554,
+  },
+  sessions: {
+    maintenance: {
+      mode: 'enforce',
+      maxEntries: 500,
+      maxAgeDays: 30,
+    },
   },
 }
 

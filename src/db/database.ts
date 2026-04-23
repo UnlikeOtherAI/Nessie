@@ -102,7 +102,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_task_approvals_status ON task_approvals(status);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_task_approvals_pending
     ON task_approvals(task_id) WHERE status = 'pending';
+
+  CREATE TABLE IF NOT EXISTS db_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `)
+
 
 export interface PersistedMessage {
   id: string
@@ -113,6 +119,8 @@ export interface PersistedMessage {
 }
 
 export function insertMessage(msg: PersistedMessage): void {
+  // First-write age pruning: runs once on the first message insert after upgrade.
+  _ensureFirstWriteAgePruning()
   db.prepare(
     'INSERT OR REPLACE INTO messages (id, role, thread_id, content, timestamp) VALUES (?, ?, ?, ?, ?)',
   ).run(msg.id, msg.role, msg.threadId, msg.content, msg.timestamp)
@@ -211,6 +219,48 @@ export function getThreadHistory(threadId: string, recentMessageCount = 50): His
   return [...diaryEntries, ...messageEntries].sort((a, b) => a.timestamp - b.timestamp)
 }
 
+// ─── Session Maintenance ───────────────────────────────────────────────────────
+
+// Module-level config for session maintenance (set via initSessionMaintenance).
+let _sessionsConfig: SessionMaintenanceConfig | null = null
+
+/**
+ * Initialize session maintenance with the given config.
+ * Call this once at application startup (before any writes).
+ * Returns the result of the load-time pruning pass.
+ */
+export function initSessionMaintenance(config: SessionMaintenanceConfig): {
+  countPruned: number
+  agePruned: number
+  totalSessions: number
+} {
+  _sessionsConfig = config
+  // Run load-time maintenance: enforce count limit eagerly.
+  return runSessionMaintenance(config)
+}
+
+/**
+ * Returns the current session maintenance config, or null if not yet initialized.
+ */
+export function getSessionsConfig(): SessionMaintenanceConfig | null {
+  return _sessionsConfig
+}
+
+// Module-level flag: has the first-write age pruning already run?
+let _firstWriteAgePruningDone = false
+
+/**
+ * Called from insertMessage to handle the "first write after upgrade" path.
+ * Only actually prunes on the very first write; subsequent calls are no-ops.
+ */
+function _ensureFirstWriteAgePruning(): void {
+  if (_firstWriteAgePruningDone) return
+  const config = _sessionsConfig
+  if (!config) return // Not initialized yet; skip (should not happen in practice)
+  _firstWriteAgePruningDone = true
+  pruneSessionsByAge(config.maxAgeDays)
+}
+
 export function deleteHistory(threadId?: string): number {
   if (threadId) {
     const r1 = db.prepare('DELETE FROM messages WHERE thread_id = ?').run(threadId)
@@ -220,6 +270,146 @@ export function deleteHistory(threadId?: string): number {
   const r1 = db.prepare('DELETE FROM messages').run()
   db.prepare('DELETE FROM diary_entries').run()
   return r1.changes
+}
+
+// ─── Session Maintenance ───────────────────────────────────────────────────────
+
+export interface SessionMaintenanceConfig {
+  mode: 'enforce' | 'warn'
+  maxEntries: number
+  maxAgeDays: number
+}
+
+/**
+ * Prune oldest sessions when count exceeds maxEntries.
+ * Only prunes sessions that are NOT the 'main' thread.
+ * Returns the number of sessions deleted.
+ */
+export function pruneSessionsByCount(maxEntries: number): number {
+  // Count distinct thread_ids
+  const countRow = db.prepare(
+    'SELECT COUNT(DISTINCT thread_id) as count FROM messages',
+  ).get() as { count: number }
+  const totalSessions = countRow.count
+
+  if (totalSessions <= maxEntries) {
+    return 0
+  }
+
+  const excess = totalSessions - maxEntries
+
+  // Get oldest sessions (excluding 'main'), ordered by their earliest message timestamp
+  const oldestSessions = db.prepare(`
+    SELECT m.thread_id
+    FROM messages m
+    WHERE m.thread_id != 'main'
+    GROUP BY m.thread_id
+    ORDER BY MIN(m.timestamp) ASC
+    LIMIT ?
+  `).all(excess) as { thread_id: string }[]
+
+  let deleted = 0
+  for (const { thread_id: threadId } of oldestSessions) {
+    const r = db.prepare('DELETE FROM messages WHERE thread_id = ?').run(threadId)
+    db.prepare('DELETE FROM diary_entries WHERE thread_id = ?').run(threadId)
+    deleted += r.changes
+  }
+
+  return deleted
+}
+
+/**
+ * Prune sessions older than maxAgeDays.
+ * Only deletes sessions that are NOT the 'main' thread.
+ * Returns the number of sessions deleted.
+ */
+export function pruneSessionsByAge(maxAgeDays: number): number {
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000
+
+  // Find threads where the newest message is older than cutoff AND thread is not 'main'
+  const oldThreads = db.prepare(`
+    SELECT m.thread_id
+    FROM messages m
+    GROUP BY m.thread_id
+    HAVING MAX(m.timestamp) < ? AND m.thread_id != 'main'
+  `).all(cutoff) as { thread_id: string }[]
+
+  let deleted = 0
+  for (const { thread_id: threadId } of oldThreads) {
+    const r = db.prepare('DELETE FROM messages WHERE thread_id = ?').run(threadId)
+    db.prepare('DELETE FROM diary_entries WHERE thread_id = ?').run(threadId)
+    deleted += r.changes
+  }
+
+  return deleted
+}
+
+/**
+ * Run session maintenance according to the given config.
+ * - count pruning: when mode is 'enforce' and session count > maxEntries, prune oldest
+ * - age pruning: NOT performed here — see runFirstWriteSessionPruning() for that
+ *
+ * Returns an object describing what was done.
+ */
+export function runSessionMaintenance(config: SessionMaintenanceConfig): {
+  countPruned: number
+  agePruned: number
+  totalSessions: number
+} {
+  // Count current sessions
+  const countRow = db.prepare(
+    'SELECT COUNT(DISTINCT thread_id) as count FROM messages',
+  ).get() as { count: number }
+  const totalSessions = countRow.count
+
+  let countPruned = 0
+  if (config.mode === 'enforce' && totalSessions > config.maxEntries) {
+    countPruned = pruneSessionsByCount(config.maxEntries)
+  }
+
+  // Age pruning is intentionally skipped here — it runs separately on first write
+  // via runFirstWriteSessionPruning(), not on every maintenance call.
+  const agePruned = 0
+
+  return { countPruned, agePruned, totalSessions }
+}
+
+/**
+ * Get a metadata value from db_metadata table.
+ */
+function getMetadata(key: string): string | null {
+  const row = db.prepare('SELECT value FROM db_metadata WHERE key = ?').get(key) as
+    { value: string } | null
+  return row?.value ?? null
+}
+
+/**
+ * Set a metadata value in db_metadata table.
+ */
+function setMetadata(key: string, value: string): void {
+  db.prepare(
+    'INSERT OR REPLACE INTO db_metadata (key, value) VALUES (?, ?)',
+  ).run(key, value)
+}
+
+const MAINTENANCE_DONE_KEY = 'sessions_maintenance_age_pruned'
+
+/**
+ * Run first-write session age pruning.
+ * Only performs the age pruning once (tracked in db_metadata).
+ * Safe to call on every write; only actually prunes on the first call after upgrade.
+ *
+ * Returns true if pruning was performed, false if it was already done.
+ */
+export function runFirstWriteSessionPruning(maxAgeDays: number): boolean {
+  const alreadyDone = getMetadata(MAINTENANCE_DONE_KEY)
+  if (alreadyDone === 'true') {
+    return false
+  }
+
+  pruneSessionsByAge(maxAgeDays)
+  setMetadata(MAINTENANCE_DONE_KEY, 'true')
+  return true
 }
 
 export { db }
