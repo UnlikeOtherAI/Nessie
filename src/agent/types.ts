@@ -26,6 +26,8 @@ export type SubAgentTask = {
   status: 'pending' | 'running' | 'done' | 'failed'
   result?: string
   error?: string
+  role?: import('../orchestration/task-types.js').TaskRole
+  taskId?: string  // spawned task ID for session key derivation
 }
 
 export type OrchestratorState = {
