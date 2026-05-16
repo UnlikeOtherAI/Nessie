@@ -73,6 +73,7 @@ const buildSearch = (filters: {
 
 export const useMcpInstances = (
   filters: { scopeType?: McpServerScopeType; scopeId?: string } = {},
+  options: { enabled?: boolean } = {},
 ) => {
   const apiClient = useApiClient()
   const search = buildSearch(filters)
@@ -80,6 +81,7 @@ export const useMcpInstances = (
   return useQuery<McpServerInstanceRecord[]>({
     queryKey: [...INSTANCE_QUERY_KEY, filters.scopeType ?? null, filters.scopeId ?? null],
     queryFn: () => apiClient.get(`/api/mcp/instances${search}`),
+    enabled: options.enabled ?? true,
   })
 }
 

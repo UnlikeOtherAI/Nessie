@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import type {
+  ToolGrantSource,
   ToolGrantState,
   ToolRegistryEntryStatus,
   ToolRegistrySource,
@@ -48,7 +49,7 @@ export type ToolGrantRecord = {
   toolId: string
   state: ToolGrantState
   config: Record<string, unknown>
-  source: 'role' | 'agent-override'
+  source: ToolGrantSource
   roleId: string | null
   agentId: string | null
   createdAt: string

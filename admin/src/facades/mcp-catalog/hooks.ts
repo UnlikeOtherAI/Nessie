@@ -72,13 +72,17 @@ export type UpdateCatalogEntryInput = Partial<{
 
 const CATALOG_QUERY_KEY = ['mcp-catalog'] as const
 
-export const useMcpCatalog = (filters: { status?: McpCatalogStatus } = {}) => {
+export const useMcpCatalog = (
+  filters: { status?: McpCatalogStatus } = {},
+  options: { enabled?: boolean } = {},
+) => {
   const apiClient = useApiClient()
   const search = filters.status ? `?status=${filters.status}` : ''
 
   return useQuery<McpCatalogEntryRecord[]>({
     queryKey: [...CATALOG_QUERY_KEY, filters.status ?? null],
     queryFn: () => apiClient.get(`/api/mcp/catalog${search}`),
+    enabled: options.enabled ?? true,
   })
 }
 

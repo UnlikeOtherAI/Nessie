@@ -69,15 +69,18 @@ export const CredentialsDialog = ({
       setError('Principal ID and credential ref are required')
       return
     }
+    const payload = {
+      instanceId: instance.id,
+      principalType,
+      principalId: principalId.trim(),
+      credentialRef: credentialRef.trim(),
+    }
+    // Clear sensitive state BEFORE the request so closing the dialog mid-flight
+    // leaves no secret in React state or the DOM.
+    setPrincipalId('')
+    setCredentialRef('')
     try {
-      await upsert.mutateAsync({
-        instanceId: instance.id,
-        principalType,
-        principalId: principalId.trim(),
-        credentialRef: credentialRef.trim(),
-      })
-      setPrincipalId('')
-      setCredentialRef('')
+      await upsert.mutateAsync(payload)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Failed to save')
     }
@@ -162,9 +165,12 @@ export const CredentialsDialog = ({
             <label className={labelClass}>
               Credential ref
               <input
+                autoComplete="new-password"
                 className={inputClass}
+                name="credentialRef"
                 onChange={(event) => setCredentialRef(event.target.value)}
                 placeholder="secret://orgs/.../tokens/me"
+                type="password"
                 value={credentialRef}
               />
             </label>

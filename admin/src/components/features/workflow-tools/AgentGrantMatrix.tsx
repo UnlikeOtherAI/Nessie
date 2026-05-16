@@ -2,21 +2,30 @@ import { useState } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import {
   useCreateToolGrant,
+  useDeleteToolGrant,
   type McpToolRegistryRecord,
 } from '../../../facades/tool-grants/hooks'
 
 /**
  * Per-agent grant matrix. Each cell flips an `allowed` grant on/off for the
- * given (tool, agent) pair via POST `/api/mcp/tools/{toolId}/grants` (per
- * `api/src/routes/mcp.ts`). The current API surface does not return existing
- * grants alongside the tool list — only a write path — so this slice exposes
- * the "create grant" affordance. Reading back per-tool grants is tracked as a
- * follow-up against Slice C (see Hard constraints in the Slice E brief).
+ * given (tool, agent) pair via POST `/api/mcp/tools/{toolId}/grants` and
+ * DELETE `/api/mcp/tools/{toolId}/grants/{grantId}` (per
+ * `api/src/routes/mcp.ts`). The current `/api/mcp/tools` list response does
+ * not return existing grants alongside the tool list (tracked as task #25),
+ * so on uncheck we can only delete grants whose ids we captured during this
+ * session (returned by the create POST). For grants created in a previous
+ * session we cannot DELETE without the id and surface an inline hint asking
+ * the user to reload after #25 lands.
  */
 
 type AgentGrantMatrixProps = {
   agents: AgentRecord[]
   tools: McpToolRegistryRecord[]
+}
+
+type CellState = {
+  state: 'allowed'
+  grantId: string | null
 }
 
 const TINY_LABEL = [
@@ -25,7 +34,9 @@ const TINY_LABEL = [
 
 export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
   const createGrant = useCreateToolGrant()
-  const [recent, setRecent] = useState<Record<string, string>>({})
+  const deleteGrant = useDeleteToolGrant()
+  const [recent, setRecent] = useState<Record<string, CellState>>({})
+  const [cellError, setCellError] = useState<Record<string, string>>({})
 
   const cellKey = (toolId: string, agentId: string) => `${toolId}:${agentId}`
 
@@ -68,19 +79,56 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
               </th>
               {agents.map((agent) => {
                 const key = cellKey(tool.id, agent.id)
-                const justGranted = recent[key] === 'allowed'
+                const cell = recent[key]
+                const justGranted = cell?.state === 'allowed'
+                const error = cellError[key]
                 return (
                   <td className="px-3 py-2 align-top" key={key}>
                     <label className="inline-flex items-center gap-2 text-[color:var(--tx2)]">
                       <input
                         checked={justGranted}
                         onChange={(event) => {
+                          setCellError((current) => {
+                            const next = { ...current }
+                            delete next[key]
+                            return next
+                          })
                           if (!event.target.checked) {
-                            setRecent((current) => {
-                              const next = { ...current }
-                              delete next[key]
-                              return next
-                            })
+                            const grantId = cell?.grantId ?? null
+                            if (!grantId) {
+                              console.warn(
+                                '[AgentGrantMatrix] cannot revoke grant: id unknown (see task #25)',
+                                { toolId: tool.id, agentId: agent.id },
+                              )
+                              setCellError((current) => ({
+                                ...current,
+                                [key]:
+                                  'Reload to see persisted grants before revoking.',
+                              }))
+                              return
+                            }
+                            deleteGrant.mutate(
+                              {
+                                toolRegistryEntryId: tool.id,
+                                grantId,
+                              },
+                              {
+                                onSuccess: () =>
+                                  setRecent((current) => {
+                                    const next = { ...current }
+                                    delete next[key]
+                                    return next
+                                  }),
+                                onError: (caught) =>
+                                  setCellError((current) => ({
+                                    ...current,
+                                    [key]:
+                                      caught instanceof Error
+                                        ? caught.message
+                                        : 'Failed to revoke',
+                                  })),
+                              },
+                            )
                             return
                           }
                           createGrant.mutate(
@@ -90,10 +138,21 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
                               state: 'allowed',
                             },
                             {
-                              onSuccess: () =>
+                              onSuccess: (grant) =>
                                 setRecent((current) => ({
                                   ...current,
-                                  [key]: 'allowed',
+                                  [key]: {
+                                    state: 'allowed',
+                                    grantId: grant?.id ?? null,
+                                  },
+                                })),
+                              onError: (caught) =>
+                                setCellError((current) => ({
+                                  ...current,
+                                  [key]:
+                                    caught instanceof Error
+                                      ? caught.message
+                                      : 'Failed to grant',
                                 })),
                             },
                           )
@@ -104,6 +163,11 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
                         {justGranted ? 'allowed' : 'grant'}
                       </span>
                     </label>
+                    {error ? (
+                      <div className="mt-1 text-[10px] text-rose-300">
+                        {error}
+                      </div>
+                    ) : null}
                   </td>
                 )
               })}

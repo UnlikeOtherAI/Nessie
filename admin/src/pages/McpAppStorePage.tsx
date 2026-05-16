@@ -36,9 +36,9 @@ export const McpAppStorePage = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const organizationId = me?.context.organizationId ?? ''
 
-  const catalogQuery = useMcpCatalog()
+  const catalogQuery = useMcpCatalog({}, { enabled: isOwner })
   const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>()
-  const instancesQuery = useMcpInstances()
+  const instancesQuery = useMcpInstances({}, { enabled: isOwner })
   const createCatalog = useCreateCatalogEntry()
   const publishCatalog = usePublishCatalogEntry()
   const deprecateCatalog = useDeprecateCatalogEntry()

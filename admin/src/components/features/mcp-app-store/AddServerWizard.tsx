@@ -26,7 +26,7 @@ type AddServerWizardProps = {
   pending?: boolean
 }
 
-const PROTOCOLS: McpCatalogProtocol[] = ['stdio', 'http', 'sse']
+const PROTOCOLS: McpCatalogProtocol[] = ['stdio', 'http', 'sse', 'ws']
 const AUTH_METHODS: McpCatalogAuthMethod[] = [
   'api_key',
   'bearer',
@@ -209,14 +209,18 @@ export const AddServerWizard = ({
               ))}
             </select>
           </label>
-          {(protocol === 'http' || protocol === 'sse') && (
+          {(protocol === 'http' || protocol === 'sse' || protocol === 'ws') && (
             <label className={labelClass}>
               URL
               <input
                 className={inputClass}
                 onChange={(event) => setUrl(event.target.value)}
-                placeholder="https://example.com/mcp"
-                type="url"
+                placeholder={
+                  protocol === 'ws'
+                    ? 'wss://example.com/mcp'
+                    : 'https://example.com/mcp'
+                }
+                type={protocol === 'ws' ? 'text' : 'url'}
                 value={url}
               />
             </label>
