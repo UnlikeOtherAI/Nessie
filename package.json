@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.22.0",
   "scripts": {
     "dev": "pnpm legacy:dev",
+    "dev:mcp-fixture": "pnpm --filter @nessie/mcp-client start:fixture",
     "lint": "pnpm legacy:lint && node scripts/lint-markdown-structure.mjs && turbo run lint",
     "lint:markdown-structure": "node scripts/lint-markdown-structure.mjs",
     "typecheck": "pnpm legacy:typecheck && turbo run typecheck",

@@ -12,6 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src --max-warnings 0",
+    "start:fixture": "tsx test/fixtures/mcp-fixture-server.ts",
     "test": "node --test --import tsx test/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
