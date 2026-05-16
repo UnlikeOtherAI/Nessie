@@ -87,8 +87,85 @@ test('runHttpFetch refuses redirects to file:// URLs', async () => {
     runHttpFetch({ url: 'https://example.com' }, { fetchImpl }),
     (err) =>
       err instanceof HttpFetchError &&
-      err.message.includes('file://'),
+      /Unsupported URL scheme/.test(err.message),
   )
+})
+
+test('runHttpFetch refuses a file:// URL at the initial request', async () => {
+  const { fetchImpl, calls } = makeFakeFetch(() => new Response(''))
+
+  await assert.rejects(
+    runHttpFetch({ url: 'file:///etc/passwd' }, { fetchImpl }),
+    (err) =>
+      err instanceof HttpFetchError &&
+      /Unsupported URL scheme/.test(err.message),
+  )
+  assert.equal(calls.length, 0)
+})
+
+test('runHttpFetch refuses requests to localhost', async () => {
+  const { fetchImpl, calls } = makeFakeFetch(() => new Response(''))
+
+  await assert.rejects(
+    runHttpFetch({ url: 'http://localhost:5554/whatever' }, { fetchImpl }),
+    (err) =>
+      err instanceof HttpFetchError &&
+      /Private or local network/.test(err.message),
+  )
+  assert.equal(calls.length, 0)
+})
+
+test('runHttpFetch refuses requests to the cloud metadata IP', async () => {
+  const { fetchImpl, calls } = makeFakeFetch(() => new Response(''))
+
+  await assert.rejects(
+    runHttpFetch(
+      { url: 'http://169.254.169.254/latest/meta-data/' },
+      { fetchImpl },
+    ),
+    (err) =>
+      err instanceof HttpFetchError &&
+      /Private or local network/.test(err.message),
+  )
+  assert.equal(calls.length, 0)
+})
+
+test('runHttpFetch refuses a redirect to a private IPv4 address', async () => {
+  let serverHits = 0
+  const fetchImpl: typeof fetch = async (input) => {
+    serverHits += 1
+    const url = typeof input === 'string' ? input : input.toString()
+    if (url.startsWith('https://example.com')) {
+      return new Response('', {
+        status: 302,
+        headers: { location: 'http://127.0.0.1/admin' },
+      })
+    }
+    return new Response('should-not-be-reached', { status: 200 })
+  }
+
+  await assert.rejects(
+    runHttpFetch({ url: 'https://example.com' }, { fetchImpl }),
+    (err) =>
+      err instanceof HttpFetchError &&
+      /Private or local network/.test(err.message),
+  )
+  assert.equal(serverHits, 1)
+})
+
+test('runHttpFetch refuses URLs that embed credentials', async () => {
+  const { fetchImpl, calls } = makeFakeFetch(() => new Response(''))
+
+  await assert.rejects(
+    runHttpFetch(
+      { url: 'https://user:pass@example.com/data' },
+      { fetchImpl },
+    ),
+    (err) =>
+      err instanceof HttpFetchError &&
+      /Authenticated URLs/.test(err.message),
+  )
+  assert.equal(calls.length, 0)
 })
 
 test('runHttpFetch injects bearer auth header by default', async () => {

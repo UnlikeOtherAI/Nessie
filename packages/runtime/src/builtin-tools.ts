@@ -160,22 +160,6 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   {
-    id: 'web_fetch',
-    label: 'Web Fetch',
-    description: 'Fetch and read a public URL. Returns the text content.',
-    parameters: {
-      type: 'object',
-      properties: {
-        url: {
-          type: 'string',
-          description: 'The URL to fetch',
-        },
-      },
-      required: ['url'],
-    },
-    safe: true,
-  },
-  {
     id: 'document_read',
     label: 'Document Read',
     description: 'Read a project-local document by path or topic. Returns markdown content.',

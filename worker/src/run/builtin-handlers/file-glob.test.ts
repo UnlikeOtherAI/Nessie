@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -11,7 +18,8 @@ const setup = async (): Promise<{
   root: string
   cleanup: () => Promise<void>
 }> => {
-  const root = await mkdtemp(join(tmpdir(), 'nessie-file-glob-'))
+  const created = await mkdtemp(join(tmpdir(), 'nessie-file-glob-'))
+  const root = await realpath(created)
   await mkdir(join(root, 'src', 'inner'), { recursive: true })
   await writeFile(join(root, 'src', 'a.ts'), 'x')
   await writeFile(join(root, 'src', 'b.ts'), 'x')
@@ -94,6 +102,35 @@ test('runFileGlob refuses when allowedRoots is empty', async () => {
     runFileGlob({ pattern: '**/*' }, { allowedRoots: [] }),
     SandboxViolationError,
   )
+})
+
+test('runFileGlob skips matches reached via a symlink that escapes the root', async () => {
+  const { root, cleanup } = await setup()
+  const escapeTarget = await mkdtemp(join(tmpdir(), 'nessie-file-glob-out-'))
+  try {
+    await writeFile(join(escapeTarget, 'secret.ts'), 'x')
+    await symlink(escapeTarget, join(root, 'src', 'escape'))
+
+    const result = await runFileGlob(
+      { pattern: '**/*.ts', cwd: root },
+      { allowedRoots: [root] },
+    )
+
+    for (const match of result.matches) {
+      assert.equal(
+        match.startsWith(`${root}/`),
+        true,
+        `match ${match} escaped root ${root}`,
+      )
+    }
+    assert.equal(
+      result.matches.some((match) => match.includes('secret.ts')),
+      false,
+    )
+  } finally {
+    await rm(escapeTarget, { recursive: true, force: true })
+    await cleanup()
+  }
 })
 
 test('runFileGlob respects the limit and reports truncation', async () => {

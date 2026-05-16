@@ -47,8 +47,8 @@ export const runFileWrite = async (
   transportConfig: unknown,
 ): Promise<FileWriteOutput> => {
   const input = InputSchema.parse(rawArgs)
-  const sandbox = extractSandboxConfig(transportConfig, TOOL_ID)
-  const resolvedPath = assertInsideSandbox(input.path, sandbox, TOOL_ID)
+  const sandbox = await extractSandboxConfig(transportConfig, TOOL_ID)
+  const resolvedPath = await assertInsideSandbox(input.path, sandbox, TOOL_ID)
 
   const existed = await pathExists(resolvedPath)
   if (existed && !input.overwrite) {
@@ -59,7 +59,7 @@ export const runFileWrite = async (
 
   if (input.createParents) {
     const parent = dirname(resolvedPath)
-    assertInsideSandbox(parent, sandbox, TOOL_ID)
+    await assertInsideSandbox(parent, sandbox, TOOL_ID)
     await mkdir(parent, { recursive: true })
   }
 

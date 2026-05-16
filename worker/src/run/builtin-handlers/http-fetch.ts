@@ -1,5 +1,9 @@
 import { z } from 'zod'
 
+import { assertSafeUrl } from './url-safety.js'
+
+export { HttpFetchError } from './http-fetch-error.js'
+
 const DEFAULT_TIMEOUT_MS = 30_000
 const MAX_TIMEOUT_MS = 120_000
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024
@@ -33,14 +37,6 @@ export type HttpFetchOutput = {
   bodyText: string
   truncated: boolean
   bytesRead: number
-}
-
-export class HttpFetchError extends Error {
-  override readonly name = 'HttpFetchError'
-
-  constructor(message: string) {
-    super(message)
-  }
 }
 
 const applyAuth = (
@@ -124,6 +120,8 @@ export const runHttpFetch = async (
   const maxBytes = input.maxBytes ?? DEFAULT_MAX_BYTES
   const method = input.method
 
+  const safeUrl = await assertSafeUrl(input.url)
+
   let headers: Record<string, string> = { ...(input.headers ?? {}) }
   headers = applyAuth(headers, input.auth)
 
@@ -139,7 +137,7 @@ export const runHttpFetch = async (
     }
   }
 
-  const response = await fetchImpl(input.url, {
+  const response = await fetchImpl(safeUrl, {
     method,
     headers,
     body,
@@ -147,15 +145,13 @@ export const runHttpFetch = async (
     signal: AbortSignal.timeout(timeoutMs),
   })
 
-  // Honour 'manual' redirect handling: any redirect target must not be file://
-  // and we follow exactly one hop to keep behaviour predictable.
+  // Honour 'manual' redirect handling: any redirect target must pass the same
+  // scheme + SSRF checks as the initial URL. We follow exactly one hop to keep
+  // behaviour predictable.
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get('location')
     if (location) {
-      const redirectUrl = new URL(location, input.url)
-      if (redirectUrl.protocol === 'file:') {
-        throw new HttpFetchError('Refusing to follow redirect to file:// URL.')
-      }
+      const redirectUrl = await assertSafeUrl(new URL(location, safeUrl))
       const followed = await fetchImpl(redirectUrl, {
         method,
         headers,
@@ -180,7 +176,7 @@ export const runHttpFetch = async (
   return {
     status: response.status,
     statusText: response.statusText,
-    url: input.url,
+    url: safeUrl.toString(),
     headers: headersToObject(response.headers),
     bodyText: result.text,
     truncated: result.truncated,

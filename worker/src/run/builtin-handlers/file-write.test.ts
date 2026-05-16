@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -11,7 +18,8 @@ const setup = async (): Promise<{
   root: string
   cleanup: () => Promise<void>
 }> => {
-  const root = await mkdtemp(join(tmpdir(), 'nessie-file-write-'))
+  const created = await mkdtemp(join(tmpdir(), 'nessie-file-write-'))
+  const root = await realpath(created)
   return {
     root,
     cleanup: () => rm(root, { recursive: true, force: true }),
@@ -105,6 +113,31 @@ test('runFileWrite creates parent directories when createParents=true', async ()
     assert.equal(result.bytesWritten, 4)
     assert.equal(await readFile(target, 'utf8'), 'deep')
   } finally {
+    await cleanup()
+  }
+})
+
+test('runFileWrite rejects a symlinked destination that escapes the root', async () => {
+  const { root, cleanup } = await setup()
+  const escapeTarget = await mkdtemp(join(tmpdir(), 'nessie-file-write-out-'))
+  try {
+    const outside = join(escapeTarget, 'secret.txt')
+    await writeFile(outside, 'old', 'utf8')
+
+    const linkPath = join(root, 'link.txt')
+    await symlink(outside, linkPath)
+
+    await assert.rejects(
+      runFileWrite(
+        { path: linkPath, content: 'leak', overwrite: true },
+        { allowedRoots: [root] },
+      ),
+      SandboxViolationError,
+    )
+
+    assert.equal(await readFile(outside, 'utf8'), 'old')
+  } finally {
+    await rm(escapeTarget, { recursive: true, force: true })
     await cleanup()
   }
 })

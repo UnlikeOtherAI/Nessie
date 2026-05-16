@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -11,7 +11,8 @@ const setup = async (): Promise<{
   root: string
   cleanup: () => Promise<void>
 }> => {
-  const root = await mkdtemp(join(tmpdir(), 'nessie-file-read-'))
+  const created = await mkdtemp(join(tmpdir(), 'nessie-file-read-'))
+  const root = await realpath(created)
   return {
     root,
     cleanup: () => rm(root, { recursive: true, force: true }),
@@ -81,6 +82,26 @@ test('runFileRead refuses when transportConfig is missing', async () => {
     runFileRead({ path: '/tmp/foo' }, undefined),
     SandboxViolationError,
   )
+})
+
+test('runFileRead rejects a symlink that points outside the allowed root', async () => {
+  const { root, cleanup } = await setup()
+  const escapeTarget = await mkdtemp(join(tmpdir(), 'nessie-file-read-out-'))
+  try {
+    const secret = join(escapeTarget, 'secret.txt')
+    await writeFile(secret, 'leak', 'utf8')
+
+    const linkPath = join(root, 'link.txt')
+    await symlink(secret, linkPath)
+
+    await assert.rejects(
+      runFileRead({ path: linkPath }, { allowedRoots: [root] }),
+      SandboxViolationError,
+    )
+  } finally {
+    await rm(escapeTarget, { recursive: true, force: true })
+    await cleanup()
+  }
 })
 
 test('runFileRead truncates output when file exceeds maxBytes', async () => {
