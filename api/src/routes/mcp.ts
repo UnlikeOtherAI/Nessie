@@ -130,9 +130,12 @@ const UpsertOverrideBodySchema = z.object({
   credentialRef: z.string().min(1),
 })
 
+// `toolRegistryEntryId` is intentionally NOT in the body — it comes from the
+// route param (`POST /api/mcp/tools/:toolRegistryEntryId/grants`). Including
+// it in the body schema as well caused the admin facade to 400 (E2E BUG-1)
+// because it strips the id into the URL and never sends it in the JSON body.
 const CreateGrantBodySchema = z
   .object({
-    toolRegistryEntryId: z.string().uuid(),
     state: ToolGrantStateSchema.optional(),
     config: JsonRecordSchema.optional(),
     roleId: z.string().uuid().nullable().optional(),
