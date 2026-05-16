@@ -296,6 +296,90 @@ export const probeConnection = async (
 }
 
 /**
+ * Synchronous health probe (task #20, plan §6 `/healthcheck`). Reuses
+ * `probeConnection` so the success criteria stay identical to `testInstance`,
+ * but does NOT mutate the instance row — admins can poll this without
+ * advancing lifecycle state or moving the `healthFailureCount` needle.
+ *
+ * The public HTTP shape is `{ healthy, latencyMs, lastError? }`; that mapping
+ * lives in the route layer (`routes/mcp.ts`), this service returns the raw
+ * probe outcome unchanged.
+ */
+export type HealthcheckResult = {
+  healthy: boolean
+  latencyMs: number
+  lastError?: string
+}
+
+export const healthcheckInstance = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  id: string,
+  options: { managerFactory?: ManagerFactory } = {},
+): Promise<HealthcheckResult> => {
+  const instance = await getInstance(prisma, organizationId, id)
+  if (!instance) {
+    throw new McpInstanceError(
+      MCP_INSTANCE_ERROR_CODES.NOT_FOUND,
+      `MCP server instance ${id} not found`,
+    )
+  }
+  const catalogEntry = await getCatalogEntry(prisma, organizationId, instance.catalogEntryId)
+  if (!catalogEntry) {
+    throw new McpInstanceError(
+      MCP_INSTANCE_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND,
+      `Catalog entry ${instance.catalogEntryId} not found`,
+    )
+  }
+  ensureAuthConfigMatchesMethod(catalogEntry.authMethod, catalogEntry.authConfig)
+  const transport = resolveInstanceTransport(instance, catalogEntry)
+  const probe = await probeConnection(transport, options.managerFactory)
+  return {
+    healthy: probe.ok,
+    latencyMs: probe.latencyMs,
+    ...(probe.ok ? {} : { lastError: probe.error ?? 'unknown error' }),
+  }
+}
+
+/**
+ * Refresh an installed instance (task #20, plan §6 `/refresh`).
+ *
+ * Re-runs the same probe + registry projection as `testInstance` so a newly
+ * added tool on the remote server shows up in `ToolRegistryEntry`. Unlike
+ * `testInstance`, refresh is intentionally tolerant of probe failure — the
+ * route handler returns the up-to-date instance row either way so the admin
+ * UI can render the new lifecycle state (`error` with `healthFailureCount`
+ * incremented) without the 502 round-trip that the `test` endpoint emits.
+ *
+ * TODO(task #18): when the probed schema diverges from the stored
+ * `ToolRegistryEntry` (input/output/label/description), the affected entries'
+ * status should reset to `pending_review`. Scope here is just probe +
+ * projection; status-reset semantics land in #18.
+ */
+export const refreshInstance = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  id: string,
+  options: { managerFactory?: ManagerFactory } = {},
+): Promise<McpInstanceRow> => {
+  try {
+    return await testInstance(prisma, organizationId, id, options)
+  } catch (error) {
+    if (error instanceof McpInstanceError && error.code === MCP_INSTANCE_ERROR_CODES.PROBE_FAILED) {
+      const refreshed = await getInstance(prisma, organizationId, id)
+      if (!refreshed) {
+        throw new McpInstanceError(
+          MCP_INSTANCE_ERROR_CODES.NOT_FOUND,
+          `MCP server instance ${id} not found`,
+        )
+      }
+      return refreshed
+    }
+    throw error
+  }
+}
+
+/**
  * Probe a freshly-installed instance: open the connection, run `tools/list`,
  * persist the discovered tool descriptors on success, and project them into
  * `ToolRegistryEntry` rows (all `status: 'pending_review'`).

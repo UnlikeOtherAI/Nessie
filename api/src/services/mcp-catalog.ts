@@ -23,6 +23,7 @@ export const MCP_CATALOG_ERROR_CODES = {
   AUTH_CONFIG_INVALID: 'MCP_CATALOG_AUTH_CONFIG_INVALID',
   AUTH_METHOD_MISMATCH: 'MCP_CATALOG_AUTH_METHOD_MISMATCH',
   DUPLICATE_NAME: 'MCP_CATALOG_ENTRY_DUPLICATE_NAME',
+  INVALID_TRANSITION: 'MCP_CATALOG_ENTRY_INVALID_TRANSITION',
 } as const
 
 export class McpCatalogError extends Error {
@@ -231,4 +232,58 @@ export const deleteCatalogEntry = async (
   if (!existing) return false
   await prisma.mcpCatalogEntry.delete({ where: { id } })
   return true
+}
+
+/**
+ * Promote a catalog entry to `published` (task #20, plan §6 `/publish`).
+ *
+ * Defensive transitions: only `draft` → `published` is allowed. Re-publishing
+ * a row that's already `published` is a no-op success (idempotent). Trying to
+ * publish a `deprecated` row is rejected with `INVALID_TRANSITION` — once
+ * deprecated, a row should be cloned to a new version rather than resurrected,
+ * so existing instance installs keep referring to the deprecated catalog id.
+ */
+export const publishCatalogEntry = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  id: string,
+): Promise<McpCatalogEntryRow | null> => {
+  const existing = await getCatalogEntry(prisma, organizationId, id)
+  if (!existing) return null
+  if (existing.status === 'published') return existing
+  if (existing.status === 'deprecated') {
+    throw new McpCatalogError(
+      MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+      `Catalog entry ${id} is deprecated and cannot be re-published`,
+    )
+  }
+  return prisma.mcpCatalogEntry.update({
+    where: { id },
+    data: { status: 'published' },
+  })
+}
+
+/**
+ * Mark a published catalog entry `deprecated` (task #20, plan §6 `/deprecate`).
+ *
+ * Deprecation is non-destructive — existing `McpServerInstance` rows that
+ * point at this catalog id keep functioning. The status flag is purely an
+ * advisory signal so the App Store UI can hide the row from new-install
+ * pickers while leaving existing installs intact.
+ *
+ * Idempotent: deprecating an already-deprecated row succeeds. Draft rows
+ * can also be deprecated (skip publish) — same end state.
+ */
+export const deprecateCatalogEntry = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  id: string,
+): Promise<McpCatalogEntryRow | null> => {
+  const existing = await getCatalogEntry(prisma, organizationId, id)
+  if (!existing) return null
+  if (existing.status === 'deprecated') return existing
+  return prisma.mcpCatalogEntry.update({
+    where: { id },
+    data: { status: 'deprecated' },
+  })
 }

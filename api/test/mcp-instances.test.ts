@@ -12,7 +12,9 @@ import type { PrismaClient } from '@prisma/client'
 import {
   MCP_INSTANCE_ERROR_CODES,
   McpInstanceError,
+  healthcheckInstance,
   probeConnection,
+  refreshInstance,
   resolveInstanceTransport,
   testInstance,
   type McpInstanceRow,
@@ -313,4 +315,129 @@ test('testInstance transitions to active and projects tools on a successful prob
   assert.equal(successUpdate.lifecycleState, 'active')
   assert.equal(successUpdate.healthFailureCount, 0)
   assert.ok(successUpdate.healthLastCheckedAt instanceof Date)
+})
+
+// ─── healthcheckInstance (task #20) ─────────────────────────────────────────
+//
+// healthcheck reuses `probeConnection` but performs ZERO db writes — admins
+// can poll it to surface live latency without moving `healthFailureCount`.
+
+test('healthcheckInstance reports healthy=true with latencyMs on a clean probe', async () => {
+  const { prisma, updates } = makeStubPrisma(baseInstance, catalogEntryStub)
+  const { factory } = makeFakeManagerFactory({ listTools: () => [] })
+  const result = await healthcheckInstance(prisma, 'org-1', baseInstance.id, {
+    managerFactory: factory,
+  })
+  assert.equal(result.healthy, true)
+  assert.equal(typeof result.latencyMs, 'number')
+  assert.ok(result.latencyMs >= 0)
+  assert.equal(result.lastError, undefined)
+  // Critical: no db writes on healthcheck.
+  assert.equal(updates.length, 0)
+})
+
+test('healthcheckInstance reports healthy=false with lastError on probe failure', async () => {
+  const { prisma, updates } = makeStubPrisma(baseInstance, catalogEntryStub)
+  const { factory } = makeFakeManagerFactory({
+    listTools: () => Promise.reject(new Error('connection refused')),
+  })
+  const result = await healthcheckInstance(prisma, 'org-1', baseInstance.id, {
+    managerFactory: factory,
+  })
+  assert.equal(result.healthy, false)
+  assert.match(result.lastError ?? '', /connection refused/)
+  assert.equal(updates.length, 0)
+})
+
+test('healthcheckInstance throws NOT_FOUND when the instance does not exist', async () => {
+  const prisma = {
+    mcpServerInstance: { findFirst: async () => null },
+  } as unknown as Parameters<typeof healthcheckInstance>[0]
+  let thrown: unknown
+  try {
+    await healthcheckInstance(prisma, 'org-1', 'missing')
+  } catch (error) {
+    thrown = error
+  }
+  assert.ok(thrown instanceof McpInstanceError)
+  assert.equal(
+    (thrown as McpInstanceError).code,
+    MCP_INSTANCE_ERROR_CODES.NOT_FOUND,
+  )
+})
+
+// ─── refreshInstance (task #20) ─────────────────────────────────────────────
+//
+// refresh ≈ testInstance but tolerates probe failures — instead of throwing
+// PROBE_FAILED (which the test route maps to 502) it returns the updated
+// instance row with `lifecycleState=error` so the admin UI can render
+// state-change without an HTTP error round-trip.
+
+test('refreshInstance re-projects discovered tools on a successful probe', async () => {
+  const { prisma, transactionRan } = makeStubPrisma(baseInstance, catalogEntryStub)
+  const descriptors: McpToolDescriptor[] = [
+    { name: 'a', inputSchema: {} },
+    { name: 'b', inputSchema: {} },
+  ]
+  const { factory } = makeFakeManagerFactory({ listTools: () => descriptors })
+  const result = await refreshInstance(prisma, 'org-1', baseInstance.id, {
+    managerFactory: factory,
+  })
+  assert.equal(result.lifecycleState, 'active')
+  assert.equal(transactionRan.value, true)
+})
+
+test('refreshInstance returns the updated row (lifecycleState=error) on probe failure', async () => {
+  // Use a custom prisma stub so the second findFirst() returns the post-fail
+  // row with `lifecycleState='error'`, simulating what testInstance's failure
+  // update would have produced.
+  const failedRow: McpInstanceRow = {
+    ...baseInstance,
+    lifecycleState: 'error',
+    healthFailureCount: 1,
+    healthLastCheckedAt: new Date(),
+  }
+  let findFirstCalls = 0
+  const prisma = {
+    mcpServerInstance: {
+      findFirst: async () => {
+        findFirstCalls += 1
+        // First call (inside testInstance) sees the original row; second call
+        // (inside refreshInstance's fallback) sees the post-fail row.
+        return findFirstCalls === 1 ? baseInstance : failedRow
+      },
+      update: async () => failedRow,
+    },
+    mcpCatalogEntry: {
+      findFirst: async () => catalogEntryStub,
+    },
+    $transaction: async <T,>(fn: any) => fn({}),
+  } as unknown as Parameters<typeof refreshInstance>[0]
+
+  const { factory } = makeFakeManagerFactory({
+    listTools: () => Promise.reject(new Error('502 Bad Gateway')),
+  })
+
+  const result = await refreshInstance(prisma, 'org-1', baseInstance.id, {
+    managerFactory: factory,
+  })
+  assert.equal(result.lifecycleState, 'error')
+  assert.equal(result.healthFailureCount, 1)
+})
+
+test('refreshInstance still surfaces non-probe errors (e.g. NOT_FOUND)', async () => {
+  const prisma = {
+    mcpServerInstance: { findFirst: async () => null },
+  } as unknown as Parameters<typeof refreshInstance>[0]
+  let thrown: unknown
+  try {
+    await refreshInstance(prisma, 'org-1', 'missing')
+  } catch (error) {
+    thrown = error
+  }
+  assert.ok(thrown instanceof McpInstanceError)
+  assert.equal(
+    (thrown as McpInstanceError).code,
+    MCP_INSTANCE_ERROR_CODES.NOT_FOUND,
+  )
 })
