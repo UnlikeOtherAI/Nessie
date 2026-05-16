@@ -225,3 +225,6 @@ Three reviewer outputs landed.
 - **Slice A landed (commit b569447).** Universal MCP client across stdio/http/sse with discovery cache + exponential backoff + typed error hierarchy. 18/18 tests pass. Backed by `@modelcontextprotocol/sdk@^1.29.0` per D10.
 
 Marked tasks #4, #5, #7, #9, #11 completed (#4, #5 now `reviewed: true`). #10 deferred. Slice C now unblocked (A + B both done). Slice F still in flight; Slice C and F are file-disjoint within worker/* so they can run in parallel.
+
+### Tick 2026-05-16T20:37Z
+Slice F still actively running (transcript mtime within seconds; `worker/src/run/tools.ts` + `builtin-handlers/` dirty). Holding Slice C dispatch — F is editing `worker/src/run/tools.ts` which C would also need; dispatching both now would race. Dispatched Slice A reviewer (background) — A landed at b569447 with reviewed=false. Added blockedBy=#1 to #8 (prisma drift) for proper ordering. Next tick: if F lands, dispatch C; otherwise hold.
