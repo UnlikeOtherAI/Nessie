@@ -234,3 +234,6 @@ Slice F landed (commit fe90026): http_fetch/file_read/file_write/file_glob handl
 
 ### Tick 2026-05-16T19:42Z
 Note: prior tick timestamps used BST not UTC; correcting from here. Three background agents actively writing (transcript mtimes within 60s): Slice C builder, Slice A reviewer, Slice F reviewer. No unblocked tasks to claim — all remaining pending tasks (#3, #6, #8, #10) gate on #1 (Slice C). Tick-and-hold; await completion notifications.
+
+### Event 2026-05-16T19:48Z — Slice A reviewer + fix
+Slice A reviewer landed. 1 HIGH: `reconnect()` in `packages/mcp-client/src/client.ts` never invalidates the `DiscoveryCache` entry — stale tool list survives transport drops until 5-min TTL. SSE reconnect test had a misleading `implicit refresh` comment but actually returned the cached array. Verified the bug in source (no `cache.invalidate` call in the reconnect success path). Filed task #12, applied fix directly (one `this.cache.invalidate(this.id)` after `setState('ready')`), updated both HTTP and SSE reconnect tests to assert reference inequality (`notStrictEqual`) — proves a fresh `tools/list` round-trip. All 18/18 tests pass, lint+typecheck clean. Marked #12 completed, #7 `reviewed: true`. Slice C builder + Slice F reviewer still running.

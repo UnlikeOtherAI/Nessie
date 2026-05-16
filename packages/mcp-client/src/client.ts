@@ -186,6 +186,9 @@ export class McpConnection {
         await sleep(delay)
         await this.connectOnce()
         this.setState('ready')
+        // The reconnected server may expose a different tool surface (restart,
+        // version bump). Drop the stale entry so the next listTools() refetches.
+        this.cache.invalidate(this.id)
         this.backoff.reset()
         this.consecutiveFailures = 0
         return true

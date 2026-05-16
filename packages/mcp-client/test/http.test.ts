@@ -19,19 +19,22 @@ test('http: open → listTools → callTool → close', async () => {
   }
 })
 
-test('http: reconnect after transport drop', async () => {
+test('http: reconnect after transport drop invalidates discovery cache', async () => {
   const fake = await startHttpFake()
   const mgr = new McpClientManager()
   try {
     const id = await mgr.open({ transport: 'http', url: fake.url })
-    await mgr.listTools(id)
+    const before = await mgr.listTools(id)
 
     fake.dropConnections()
 
     const reconnected = await mgr.reconnect(id)
     assert.equal(reconnected, true)
-    const tools = await mgr.listTools(id)
-    assert.ok(tools.find((t) => t.name === 'add'))
+    const after = await mgr.listTools(id)
+    // Reference inequality proves the post-reconnect listTools issued a fresh
+    // tools/list round-trip instead of returning the cached pre-reconnect array.
+    assert.notStrictEqual(after, before)
+    assert.ok(after.find((t) => t.name === 'add'))
     await mgr.close(id)
   } finally {
     await fake.close()
