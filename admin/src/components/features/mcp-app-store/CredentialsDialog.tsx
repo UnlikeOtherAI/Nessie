@@ -47,6 +47,70 @@ const ghostBtn = [
   'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-white/5',
 ].join(' ')
 
+type OverrideRowProps = {
+  credentialRef: string
+  disabled: boolean
+  onRemove: () => void
+  principalId: string
+  principalType: McpCredentialPrincipalType
+}
+
+/**
+ * Renders a single saved credential override. The `credentialRef` is treated
+ * as sensitive (revealing it leaks naming patterns and which keys exist) and
+ * is masked by default with a per-row reveal toggle.
+ */
+const OverrideRow = ({
+  credentialRef,
+  disabled,
+  onRemove,
+  principalId,
+  principalType,
+}: OverrideRowProps) => {
+  const [revealed, setRevealed] = useState(false)
+  return (
+    <div
+      className={[
+        'flex items-center justify-between gap-3 rounded-md',
+        'border border-[color:var(--sep)] bg-black/10 px-3 py-2',
+      ].join(' ')}
+    >
+      <div className="min-w-0 text-sm">
+        <div className="truncate text-white">
+          {principalType}:{principalId.slice(0, 8)}…
+        </div>
+        <div className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
+          <span className="truncate font-mono">
+            {revealed ? credentialRef : '••••••••'}
+          </span>
+          <button
+            aria-label={
+              revealed ? 'Hide credential reference' : 'Show credential reference'
+            }
+            aria-pressed={revealed}
+            className={ghostBtn}
+            onClick={() => setRevealed((prev) => !prev)}
+            title={
+              revealed ? 'Hide credential reference' : 'Show credential reference'
+            }
+            type="button"
+          >
+            {revealed ? 'Hide' : 'Show'}
+          </button>
+        </div>
+      </div>
+      <button
+        className={ghostBtn}
+        disabled={disabled}
+        onClick={onRemove}
+        type="button"
+      >
+        Remove
+      </button>
+    </div>
+  )
+}
+
 export const CredentialsDialog = ({
   instance,
   oauth2,
@@ -204,36 +268,20 @@ export const CredentialsDialog = ({
               </div>
             ) : (
               overrides.map((override) => (
-                <div
-                  className={[
-                    'flex items-center justify-between gap-3 rounded-md',
-                    'border border-[color:var(--sep)] bg-black/10 px-3 py-2',
-                  ].join(' ')}
+                <OverrideRow
                   key={override.id}
-                >
-                  <div className="min-w-0 text-sm">
-                    <div className="truncate text-white">
-                      {override.principalType}:{override.principalId.slice(0, 8)}…
-                    </div>
-                    <div className="text-xs text-[color:var(--tx3)]">
-                      {override.credentialRef}
-                    </div>
-                  </div>
-                  <button
-                    className={ghostBtn}
-                    disabled={remove.isPending}
-                    onClick={() =>
-                      remove.mutate({
-                        instanceId: instance.id,
-                        principalType: override.principalType,
-                        principalId: override.principalId,
-                      })
-                    }
-                    type="button"
-                  >
-                    Remove
-                  </button>
-                </div>
+                  credentialRef={override.credentialRef}
+                  disabled={remove.isPending}
+                  onRemove={() =>
+                    remove.mutate({
+                      instanceId: instance.id,
+                      principalType: override.principalType,
+                      principalId: override.principalId,
+                    })
+                  }
+                  principalId={override.principalId}
+                  principalType={override.principalType}
+                />
               ))
             )}
           </div>
