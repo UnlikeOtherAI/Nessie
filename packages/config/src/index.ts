@@ -33,7 +33,7 @@ export type StorageProvider = z.infer<typeof StorageProviderSchema>
 export const QueueProviderSchema = z.enum(['pubsub', 'local'])
 export type QueueProvider = z.infer<typeof QueueProviderSchema>
 
-export const ModelProviderSchema = z.enum(['openai', 'minimax'])
+export const ModelProviderSchema = z.enum(['openai', 'minimax', 'kimi'])
 export type ModelProvider = z.infer<typeof ModelProviderSchema>
 
 export const ModelConfigSchema = z.object({
@@ -252,11 +252,13 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
   const modelProvider =
     env.NESSIE_MODEL_PROVIDER ??
     env.LLM_PROVIDER ??
-    (env.MINIMAX_API_KEY !== undefined
-      ? 'minimax'
-      : env.OPENAI_CHAT_API_KEY !== undefined || env.OPENAI_API_KEY !== undefined
-        ? 'openai'
-        : undefined)
+    (env.KIMI_API_KEY !== undefined
+      ? 'kimi'
+      : env.MINIMAX_API_KEY !== undefined
+        ? 'minimax'
+        : env.OPENAI_CHAT_API_KEY !== undefined || env.OPENAI_API_KEY !== undefined
+          ? 'openai'
+          : undefined)
 
   if (modelProvider !== undefined) {
     setByPath(overrides, 'model.provider', modelProvider)
@@ -268,11 +270,13 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
 
   const modelApiKey =
     env.NESSIE_MODEL_API_KEY ??
-    (modelProvider === 'minimax'
-      ? env.MINIMAX_API_KEY
-      : modelProvider === 'openai'
-        ? env.OPENAI_CHAT_API_KEY ?? env.OPENAI_API_KEY
-        : undefined)
+    (modelProvider === 'kimi'
+      ? env.KIMI_API_KEY
+      : modelProvider === 'minimax'
+        ? env.MINIMAX_API_KEY
+        : modelProvider === 'openai'
+          ? env.OPENAI_CHAT_API_KEY ?? env.OPENAI_API_KEY
+          : undefined)
 
   if (modelApiKey !== undefined) {
     setByPath(overrides, 'model.apiKey', modelApiKey)

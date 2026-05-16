@@ -1334,7 +1334,7 @@ export const executeRunJob = async (
           invocations: mpr.invocations as unknown as InvocationRecord[],
           model: mpr.invocations[0]?.model ?? '',
           outputText: mpr.finalAnswer ?? '',
-          provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'openai-compatible',
+          provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi' | 'openai-compatible',
           requestId: mpr.requestId,
           toolCalls: mpr.toolCalls,
         }

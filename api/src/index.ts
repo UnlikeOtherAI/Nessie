@@ -1193,7 +1193,7 @@ export const buildApp = async () => {
     sharedModelClient = createModelClient(
       {
         apiKey: modelApiKey,
-        provider: (config.model.provider ?? 'openai') as 'openai' | 'minimax',
+        provider: (config.model.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi',
       },
       apiUsageTracker,
     )

@@ -11,6 +11,7 @@ const PROVIDERS = [
   { label: 'OpenAI', value: 'openai' },
   { label: 'Anthropic', value: 'anthropic' },
   { label: 'MiniMax', value: 'minimax' },
+  { label: 'Kimi (for coding)', value: 'kimi' },
   { label: 'Ollama', value: 'ollama' },
   { label: 'Custom', value: 'custom' },
 ]

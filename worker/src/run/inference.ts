@@ -23,6 +23,7 @@ import type {
 
 const DEFAULT_MODEL_BY_PROVIDER: Record<ModelProvider, string> = {
   minimax: 'MiniMax-M2.5',
+  kimi: 'kimi-for-coding',
   openai: 'gpt-5-mini',
 }
 
@@ -118,6 +119,9 @@ const resolveRuntimeProvider = (providerKey: string): RunnableProvider | null =>
   if (normalized === 'minimax') {
     return 'minimax'
   }
+  if (normalized === 'kimi') {
+    return 'kimi'
+  }
   return null
 }
 
@@ -130,6 +134,14 @@ const resolveLegacyApiKey = (provider: ModelProvider, modelConfig: ModelConfig):
       process.env.OPENAI_CHAT_API_KEY ??
       process.env.OPENAI_API_KEY ??
       (modelConfig.provider === 'openai' ? modelConfig.apiKey : undefined) ??
+      ''
+    )
+  }
+
+  if (provider === 'kimi') {
+    return (
+      process.env.KIMI_API_KEY ??
+      (modelConfig.provider === 'kimi' ? modelConfig.apiKey : undefined) ??
       ''
     )
   }

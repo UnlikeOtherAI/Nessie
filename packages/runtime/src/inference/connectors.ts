@@ -78,6 +78,8 @@ type CapturedStreamResult = {
 
 const DEFAULT_OPENAI_MODEL = 'gpt-5-mini'
 const DEFAULT_MINIMAX_MODEL = 'MiniMax-M2.5'
+const DEFAULT_KIMI_MODEL = 'kimi-for-coding'
+const DEFAULT_KIMI_BASE_URL = 'https://api.kimi.com/coding'
 const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small'
 const MINIMAX_CONTEXT_PREFIX = 'Context:\n'
 
@@ -980,12 +982,418 @@ const createMiniMaxConnector = (
   }
 }
 
+// ─── Kimi (Anthropic Messages API compat) ──────────────────────────────────
+//
+// Speaks the Anthropic Messages API at https://api.kimi.com/coding/v1/messages.
+// Auth uses `x-api-key` (not Bearer) and requires `anthropic-version`.
+// Supports invoke() and stream() for text generation; no tool-calling support
+// yet — agents that need tools should pick an OpenAI-compatible provider.
+
+type AnthropicContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; thinking?: string }
+  | { type: string; [key: string]: unknown }
+
+type AnthropicMessagesResponse = {
+  id: string
+  type: 'message'
+  role: 'assistant'
+  content: AnthropicContentBlock[]
+  model: string
+  stop_reason?: string | null
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+    cached_tokens?: number
+  }
+}
+
+type AnthropicStreamEvent =
+  | { type: 'message_start'; message: AnthropicMessagesResponse }
+  | { type: 'content_block_start'; index: number; content_block: AnthropicContentBlock }
+  | {
+      type: 'content_block_delta'
+      index: number
+      delta: { type: 'text_delta'; text: string } | { type: 'thinking_delta'; thinking: string }
+    }
+  | { type: 'content_block_stop'; index: number }
+  | {
+      type: 'message_delta'
+      delta: { stop_reason?: string }
+      usage?: AnthropicMessagesResponse['usage']
+    }
+  | { type: 'message_stop' }
+  | { type: 'ping' }
+  | { type: 'error'; error?: { message?: string } }
+
+const normalizeAnthropicFinishReason = (
+  value: string | null | undefined,
+): NormalizedFinishReason | undefined => {
+  if (!value) {
+    return undefined
+  }
+  switch (value) {
+    case 'end_turn':
+    case 'stop_sequence':
+      return 'stop'
+    case 'max_tokens':
+      return 'length'
+    case 'tool_use':
+      return 'tool-call'
+    default:
+      return 'other'
+  }
+}
+
+const usageFromAnthropic = (
+  usage: AnthropicMessagesResponse['usage'],
+): InvocationUsage => {
+  if (!usage) {
+    return {}
+  }
+  const input = usage.input_tokens ?? usage.prompt_tokens ?? 0
+  const output = usage.output_tokens ?? usage.completion_tokens ?? 0
+  return {
+    inputTokens: input,
+    outputTokens: output,
+    totalTokens: usage.total_tokens ?? input + output,
+  }
+}
+
+// Anthropic puts the system prompt at the top level and forbids it as a
+// message role. Squash any system entries into a single string, then map the
+// rest. Tool/result messages are folded into text turns since this connector
+// does not yet support tool_use blocks.
+const toAnthropicPayload = (
+  messages: ProviderMessage[],
+): { system?: string; messages: Array<{ role: 'user' | 'assistant'; content: string }> } => {
+  const systemParts: string[] = []
+  const out: Array<{ role: 'user' | 'assistant'; content: string }> = []
+
+  for (const message of messages) {
+    if (message.role === 'system') {
+      systemParts.push(message.content)
+      continue
+    }
+    const role: 'user' | 'assistant' = message.role === 'assistant' ? 'assistant' : 'user'
+    const content =
+      message.role === 'tool'
+        ? `[tool result]\n${message.content}`
+        : message.content
+    if (!content) {
+      continue
+    }
+    const last = out.at(-1)
+    if (last && last.role === role) {
+      // Anthropic rejects consecutive same-role turns; concatenate them.
+      last.content += `\n\n${content}`
+      continue
+    }
+    out.push({ role, content })
+  }
+
+  // Anthropic also requires the first message to be `user`.
+  const first = out[0]
+  if (first && first.role !== 'user') {
+    out.unshift({ role: 'user', content: '(continue)' })
+  }
+
+  return {
+    system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
+    messages: out,
+  }
+}
+
+const collectAnthropicStream = async function* (
+  response: Response,
+): AsyncGenerator<ProviderStreamEvent, CapturedStreamResult, undefined> {
+  if (!response.body) {
+    throw new Error('Kimi response has no body')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let outputText = ''
+  let finishReason: NormalizedFinishReason | undefined
+  let usage: InvocationUsage = {}
+
+  streamFinalizationRegistry.register(reader, reader)
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      // Anthropic SSE separates events by blank lines.
+      let blankIndex: number
+      while ((blankIndex = buffer.indexOf('\n\n')) >= 0) {
+        const rawEvent = buffer.slice(0, blankIndex)
+        buffer = buffer.slice(blankIndex + 2)
+
+        let dataLine: string | undefined
+        for (const line of rawEvent.split('\n')) {
+          if (line.startsWith('data: ')) {
+            dataLine = line.slice(6).trim()
+          }
+        }
+        if (!dataLine) {
+          continue
+        }
+
+        let parsed: AnthropicStreamEvent
+        try {
+          parsed = JSON.parse(dataLine) as AnthropicStreamEvent
+        } catch {
+          continue
+        }
+
+        if (parsed.type === 'message_start') {
+          usage = usageFromAnthropic(parsed.message.usage)
+          continue
+        }
+        if (parsed.type === 'content_block_delta') {
+          if (parsed.delta.type === 'text_delta') {
+            outputText += parsed.delta.text
+            yield { type: 'output_text.delta', text: parsed.delta.text }
+          } else if (parsed.delta.type === 'thinking_delta') {
+            yield { type: 'reasoning_text.delta', text: parsed.delta.thinking }
+          }
+          continue
+        }
+        if (parsed.type === 'message_delta') {
+          if (parsed.delta.stop_reason) {
+            finishReason = normalizeAnthropicFinishReason(parsed.delta.stop_reason)
+          }
+          if (parsed.usage) {
+            const next = usageFromAnthropic(parsed.usage)
+            usage = {
+              inputTokens: next.inputTokens ?? usage.inputTokens,
+              outputTokens: next.outputTokens ?? usage.outputTokens,
+              totalTokens: next.totalTokens ?? usage.totalTokens,
+            }
+          }
+          continue
+        }
+        if (parsed.type === 'error') {
+          throw new Error(parsed.error?.message ?? 'Kimi stream error')
+        }
+      }
+    }
+  } finally {
+    streamFinalizationRegistry.unregister(reader)
+    await reader.cancel().catch(() => { /* ignore */ })
+    reader.releaseLock()
+  }
+
+  return {
+    finishReason,
+    outputText,
+    toolCalls: [],
+    usage,
+  }
+}
+
+const createKimiConnector = (
+  config: ModelProviderConfig,
+): ProviderConnector => {
+  if (!config.apiKey) {
+    throw new Error('KIMI_API_KEY is not set')
+  }
+
+  const baseUrl = config.baseUrl ?? DEFAULT_KIMI_BASE_URL
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-api-key': config.apiKey,
+    'anthropic-version': '2023-06-01',
+  }
+
+  const resolveChatModel = (model?: string): string =>
+    model ?? config.modelName ?? DEFAULT_KIMI_MODEL
+
+  const invokeRequest = async (
+    body: Record<string, unknown>,
+  ): Promise<Response> => {
+    const response = await fetch(`${baseUrl}/v1/messages`, {
+      body: JSON.stringify(body),
+      headers,
+      method: 'POST',
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Kimi model error ${response.status}: ${errorText}`)
+    }
+
+    return response
+  }
+
+  return {
+    provider: 'kimi',
+
+    async checkHealth(): Promise<ProviderHealthReport> {
+      return {
+        checkedAt: nowIso(),
+        message: 'Kimi connector does not expose a safe built-in health probe',
+        status: 'unknown',
+      }
+    },
+
+    close(): void {
+      // Stateless HTTP connector.
+    },
+
+    async fetchCompletion(body: Record<string, unknown>): Promise<Response> {
+      return invokeRequest(body)
+    },
+
+    async getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot> {
+      return createBaseSnapshot({
+        model,
+        provider: 'kimi',
+        structuredOutputMode: 'prompt-json',
+        supportsEmbeddings: false,
+        systemPromptMode: 'native',
+        toolCallingMode: 'prompt-translated',
+        toolResultMode: 'context-block',
+      })
+    },
+
+    async getProviderMeta() {
+      return {
+        displayName: 'Kimi (for coding)',
+        provider: 'kimi' as const,
+        supportsModelDiscovery: false,
+      }
+    },
+
+    async invoke(
+      request: ProviderInvocationRequest,
+    ): Promise<ProviderInvocationResult> {
+      const startedAt = Date.now()
+      const model = resolveChatModel(request.model)
+      const payload = toAnthropicPayload(request.messages)
+
+      try {
+        const response = await invokeRequest({
+          max_tokens: request.maxOutputTokens ?? 1024,
+          messages: payload.messages,
+          model,
+          system: payload.system,
+          temperature: request.temperature,
+        })
+
+        const parsed = (await response.json()) as AnthropicMessagesResponse
+        const outputText = (parsed.content ?? [])
+          .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+          .map((block) => block.text)
+          .join('')
+        const finishReason = normalizeAnthropicFinishReason(parsed.stop_reason)
+        const usage = usageFromAnthropic(parsed.usage)
+
+        return {
+          finishReason,
+          invocation: createInvocationRecord({
+            correlationId: request.correlationId,
+            finishReason,
+            latencyMs: Date.now() - startedAt,
+            metadata: request.metadata,
+            model,
+            operationType: 'chat',
+            provider: 'kimi',
+            requestId: request.requestId,
+            usage,
+          }),
+          outputText,
+          toolCalls: [],
+        }
+      } catch (error) {
+        throw providerError({
+          cause: error,
+          correlationId: request.correlationId,
+          latencyMs: Date.now() - startedAt,
+          metadata: request.metadata,
+          model,
+          operationType: 'chat',
+          provider: 'kimi',
+          requestId: request.requestId,
+        })
+      }
+    },
+
+    async listModels(): Promise<ModelCapabilitySnapshot[]> {
+      return []
+    },
+
+    async *stream(
+      request: ProviderInvocationRequest,
+    ): AsyncGenerator<ProviderStreamEvent, ProviderInvocationResult, undefined> {
+      const startedAt = Date.now()
+      const model = resolveChatModel(request.model)
+      const payload = toAnthropicPayload(request.messages)
+
+      try {
+        const response = await invokeRequest({
+          max_tokens: request.maxOutputTokens ?? 1024,
+          messages: payload.messages,
+          model,
+          stream: true,
+          system: payload.system,
+          temperature: request.temperature,
+        })
+
+        const stream = collectAnthropicStream(response)
+        let next = await stream.next()
+        while (!next.done) {
+          yield next.value
+          next = await stream.next()
+        }
+
+        return {
+          finishReason: next.value.finishReason,
+          invocation: createInvocationRecord({
+            correlationId: request.correlationId,
+            finishReason: next.value.finishReason,
+            latencyMs: Date.now() - startedAt,
+            metadata: request.metadata,
+            model,
+            operationType: 'chat',
+            provider: 'kimi',
+            requestId: request.requestId,
+            usage: next.value.usage,
+          }),
+          outputText: next.value.outputText,
+          toolCalls: next.value.toolCalls,
+        }
+      } catch (error) {
+        throw providerError({
+          cause: error,
+          correlationId: request.correlationId,
+          latencyMs: Date.now() - startedAt,
+          metadata: request.metadata,
+          model,
+          operationType: 'chat',
+          provider: 'kimi',
+          requestId: request.requestId,
+        })
+      }
+    },
+  }
+}
+
 export const createConnectorRegistry = (): ConnectorRegistry => {
   const factories = new Map<
     ModelProviderName,
     (config: ModelProviderConfig) => ProviderConnector
   >([
     ['minimax', createMiniMaxConnector],
+    ['kimi', createKimiConnector],
     ['openai', (config) => createOpenAiLikeConnector('openai', config)],
     [
       'openai-compatible',
