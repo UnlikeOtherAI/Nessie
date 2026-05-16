@@ -217,6 +217,30 @@ test('executeWorkflowBuiltinTool persists workflow state and increments versions
   })
 })
 
+test('executeWorkflowBuiltinTool returns workflow failure when web_fetch hits SSRF guard', async () => {
+  const prisma = {} as const
+
+  const result = await executeWorkflowBuiltinTool(
+    'web_fetch',
+    {
+      url: 'http://localhost/whatever',
+    },
+    {
+      organizationId: '00000000-0000-0000-0000-000000000001',
+      prisma: prisma as never,
+      workflowInstallationId: '00000000-0000-0000-0000-000000000030',
+      workflowRunId: '00000000-0000-0000-0000-000000000031',
+      workflowStepRunId: '00000000-0000-0000-0000-000000000032',
+    },
+  )
+
+  assert.equal(result.success, false)
+  assert.match(
+    String((result.output as { error?: unknown }).error ?? ''),
+    /private or local network/i,
+  )
+})
+
 test('executeWorkflowBuiltinTool detects changes against stored workflow state', async () => {
   const stateEntries = new Map<
     string,

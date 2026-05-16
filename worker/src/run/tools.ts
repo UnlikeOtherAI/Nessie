@@ -673,7 +673,15 @@ export const executeWorkflowBuiltinTool = async (
         return workflowToolFailure(inputSummary, 'Workflow web_fetch requires url.')
       }
 
-      const result = await collectWebFetchResult(url)
+      let result: Awaited<ReturnType<typeof collectWebFetchResult>>
+      try {
+        result = await collectWebFetchResult(url)
+      } catch (error) {
+        if (error instanceof HttpFetchError) {
+          return workflowToolFailure(inputSummary, error.message)
+        }
+        throw error
+      }
       return {
         inputSummary,
         output: {
