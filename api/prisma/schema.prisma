@@ -1392,42 +1392,53 @@ model ResourceLock {
 }
 
 model ToolRegistryEntry {
-  id              String                  @id @default(uuid()) @db.Uuid
-  organizationId  String?                 @map("organization_id") @db.Uuid
-  scopeKey        String                  @map("scope_key")
-  toolId          String                  @map("tool_id")
-  label           String
-  description     String
-  safe            Boolean                 @default(false)
-  builtin         Boolean                 @default(false)
-  enabled         Boolean                 @default(true)
-  handlerKind     String                  @default("builtin") @map("handler_kind")
-  metadata        Json?                   @default("{}")
-  source          ToolRegistrySource      @default(builtin)
-  transport       ToolRegistryTransport   @default(direct)
-  transportConfig Json                    @default("{}") @map("transport_config")
-  bundleId        String?                 @map("bundle_id") @db.Uuid
-  mcpInstanceId   String?                 @map("mcp_instance_id") @db.Uuid
-  inputSchema     Json                    @default("{}") @map("input_schema")
-  outputSchema    Json?                   @map("output_schema")
-  tags            String[]                @default([])
-  status          ToolRegistryEntryStatus @default(active)
-  version         String                  @default("0.0.0")
-  createdBy       String                  @default("system") @map("created_by")
-  createdAt       DateTime                @default(now()) @map("created_at")
-  updatedAt       DateTime                @updatedAt @map("updated_at")
+  id               String                  @id @default(uuid()) @db.Uuid
+  organizationId   String?                 @map("organization_id") @db.Uuid
+  scopeKey         String                  @map("scope_key")
+  toolId           String                  @map("tool_id")
+  label            String
+  description      String
+  overview         String                  @default("")
+  instructions     String                  @default("")
+  safe             Boolean                 @default(false)
+  builtin          Boolean                 @default(false)
+  enabled          Boolean                 @default(true)
+  handlerKind      String                  @default("builtin") @map("handler_kind")
+  metadata         Json?                   @default("{}")
+  source           ToolRegistrySource      @default(builtin)
+  transport        ToolRegistryTransport   @default(direct)
+  transportConfig  Json                    @default("{}") @map("transport_config")
+  bundleId         String?                 @map("bundle_id") @db.Uuid
+  mcpInstanceId    String?                 @map("mcp_instance_id") @db.Uuid
+  inputSchema      Json                    @default("{}") @map("input_schema")
+  outputSchema     Json?                   @map("output_schema")
+  tags             String[]                @default([])
+  baseSearchTerms  String[]                @default([]) @map("base_search_terms")
+  allowSearchTerms String[]                @default([]) @map("allow_search_terms")
+  basePrompt       Json                    @default("{\"content\": \"\", \"mergeMode\": \"append\"}") @map("base_prompt")
+  commonPrompt     Json?                   @map("common_prompt")
+  defaultConfig    Json                    @default("{}") @map("default_config")
+  searchableText   String                  @default("") @map("searchable_text")
+  status           ToolRegistryEntryStatus @default(active)
+  version          String                  @default("0.0.0")
+  createdBy        String                  @default("system") @map("created_by")
+  owner            String                  @default("system")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
 
   bundle      ToolBundle?        @relation(fields: [bundleId], references: [id], onDelete: SetNull)
   mcpInstance McpServerInstance? @relation(fields: [mcpInstanceId], references: [id], onDelete: SetNull)
   grants      ToolGrant[]
 
-  @@unique([scopeKey, toolId])
+  @@unique([organizationId, scopeKey, toolId], map: "tool_registry_entries_org_scope_tool_key")
   @@index([organizationId, enabled])
   @@index([builtin, enabled])
   @@index([organizationId, source])
   @@index([organizationId, status])
   @@index([bundleId])
   @@index([mcpInstanceId])
+  @@index([tags], type: Gin)
+  @@index([updatedAt])
   @@map("tool_registry_entries")
 }
 
@@ -1795,7 +1806,7 @@ model Thought {
   content      String
   contentHash  String                       @map("content_hash")
   embedding    Unsupported("vector(1536)")?
-  searchVector Unsupported("tsvector")?     @map("search_vector") @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))"))
+  searchVector Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))")) @map("search_vector")
 
   // Ownership
   ownerId   String           @map("owner_id")

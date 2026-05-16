@@ -140,12 +140,39 @@ export const ToolTransportConfigSchema = z.discriminatedUnion('transport', [
 ])
 export type ToolTransportConfig = z.infer<typeof ToolTransportConfigSchema>
 
-// ─── ToolRegistryEntry extensions (Slice B) ─────────────────────────────────
+// ─── ToolRegistryEntry extensions (Slice B + spec §3.1) ─────────────────────
 
 /**
- * Slice B additions to `ToolRegistryEntry`. Combine with the base entry shape
- * from `index.ts` to get the full row. Migration backfills these for existing
- * rows: `source='builtin'`, `transport='direct'`, `status='active'`.
+ * `basePrompt` shape per spec §3.1: the merge-mode-tagged prompt block stored
+ * on every tool. Roles/agents can override via `commonPrompt` and prompt
+ * layers — see `docs/tool-registry-spec.md` §6.
+ */
+export const PromptMergeModeSchema = z.enum(['append', 'prepend', 'replace'])
+export type PromptMergeMode = z.infer<typeof PromptMergeModeSchema>
+
+export const ToolBasePromptSchema = z.object({
+  content: z.string().default(''),
+  mergeMode: PromptMergeModeSchema.default('append'),
+})
+export type ToolBasePrompt = z.infer<typeof ToolBasePromptSchema>
+
+export const ToolCommonPromptSchema = z.object({
+  enabledPrompt: z.string(),
+  overviewPrompt: z.string().optional(),
+  blockedPrompt: z.string().optional(),
+  overrideMode: PromptMergeModeSchema,
+})
+export type ToolCommonPrompt = z.infer<typeof ToolCommonPromptSchema>
+
+/**
+ * Slice B + task #10 additions to `ToolRegistryEntry`. Combine with the base
+ * entry shape from `index.ts` to get the full row.
+ *
+ * Backfill defaults applied by the reconcile migration:
+ * - `source='builtin'`, `transport='direct'`, `status='active'`
+ * - `overview=''`, `instructions=''`, `searchableText=''`, `owner='system'`
+ * - `baseSearchTerms=[]`, `allowSearchTerms=[]`, `defaultConfig={}`
+ * - `basePrompt={content:'',mergeMode:'append'}`, `commonPrompt=null`
  */
 export const ToolRegistryEntryExtensionsSchema = z.object({
   source: ToolRegistrySourceSchema,
@@ -156,6 +183,18 @@ export const ToolRegistryEntryExtensionsSchema = z.object({
   inputSchema: JsonRecordSchema.default({}),
   outputSchema: JsonRecordSchema.nullable().optional(),
   tags: z.array(z.string()).default([]),
+  baseSearchTerms: z.array(z.string()).default([]),
+  allowSearchTerms: z.array(z.string()).default([]),
+  basePrompt: ToolBasePromptSchema.default({
+    content: '',
+    mergeMode: 'append',
+  }),
+  commonPrompt: ToolCommonPromptSchema.nullable().optional(),
+  defaultConfig: JsonRecordSchema.default({}),
+  overview: z.string().default(''),
+  instructions: z.string().default(''),
+  searchableText: z.string().default(''),
+  owner: z.string().min(1).default('system'),
   status: ToolRegistryEntryStatusSchema.default('active'),
   version: z.string().default('0.0.0'),
   createdBy: z.string().min(1).default('system'),
