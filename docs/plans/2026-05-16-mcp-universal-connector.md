@@ -343,3 +343,23 @@ Big landing wave. Four agents finished simultaneously:
 Commit `e44b94e`. Owned files only: `api/src/services/tool-dispatch.ts` (+9) and `api/test/tool-dispatch.test.ts` (+178). `NullSecretResolver` already existed at `secret-resolver.ts:22-26` so no class addition was needed. Agent noted there are zero callers of `planToolDispatch` in `api/src` today — the dispatcher is consumed by `worker/src/run/tool-dispatch.ts` (different process), so the route-side injection is not yet load-bearing. When an api-side caller is added (future invoke route) it MUST inject a concrete resolver — the default is now silent-null by design. 44/0 api tests. Marked #17 completed. Commit hygiene clean this time.
 
 **Wave-4 pending tasks:** #10 (ToolRegistryEntry reconcile, was blocked by #8 — now unblocked but holding until prisma state settles), #18 (re-probe pending_review reset), #20 (publish/deprecate/refresh/healthcheck/oauth routes), #21 (UUID validation tighten), #25 (grant readback), #26 (wizard validation), #27 (lastError column). All file-disjoint with #17 + #28 except #18/#20 which conflict on mcp-instances.ts and #21/#25 which conflict on routes/mcp.ts.
+
+### Tick 2026-05-16T20:50Z — dispatched #20 (MCP lifecycle routes)
+Only #20 was dispatchable without file collision against in-flight #28 (admin) and #3 (E2E):
+- #26 conflicts with #28 on admin/.
+- #18 conflicts with #20 on `mcp-instances.ts`.
+- #21/#25 conflict with #20 on `routes/mcp.ts`.
+- #27 conflicts on `schema.prisma`.
+- #10 still holding until prisma state settles.
+
+Dispatched #20 as agent `a621ab777949d59ff`. Prompt covers all 6 spec §6 routes (publish/deprecate/refresh/healthcheck/oauth start+callback), org-scoping per #19 pattern, healthcheck wrapping `probeConnection` from #22, OAuth state crypto rules, and reinforced explicit `git add` + `git diff --cached --stat` hygiene per the e4fb4ca incident. In flight: #3 + #28 + #20 (3 agents).
+
+### Event 2026-05-16T20:55Z — #28 landed (Slice E security fixes) + #3 landed (E2E smoke)
+- **#28 (Slice E fixes)** complete (commit `6a051d0`). Closes CRITICAL owner-gate race + 4 HIGH: AgentGrantMatrix uncheck wired to deleteGrant.mutate (captures grant id from create POST; cross-session unchecks surface inline "Reload to see persisted grants before revoking" hint per BUG-1 limitation), CredentialsDialog credential ref → `type="password"` + autocomplete=new-password + state cleared sync before mutateAsync, AddServerWizard `PROTOCOLS` now includes `'ws'` with `wss://` placeholder, tool-grants/hooks.ts imports `ToolGrantSource` from `@nessie/schemas`. `useMcpCatalog`/`useMcpInstances` extended with `{ enabled?: boolean }` forwarded to useQuery (owner gate). Admin gates green (lint/typecheck/build). 4 post-fix Playwright screenshots in `e2e/screenshots/2026-05-16-mcp-flow/post-fix-*.png`. Commit hygiene clean (per-file `git add`). Marked #28 completed.
+- **#3 (E2E kelpie smoke)** complete (commit `ca3b1be`, landed in prior tick — agent finished reporting this tick). 10 acceptance screenshots in `e2e/screenshots/2026-05-16-mcp-flow/`. Kelpie unavailable (mobile-device-only); Playwright headless used. Wizard structure diverges from acceptance script (3 steps + separate Install scope modal) — documented in notes file, not a bug. Step 1 (`/login`+dev login) skipped (session already established). Owner gating verified via "OW" avatar in all 10 screenshots. Steps 2–6 pass; steps 7–8 (grant create + reload) FAIL due to BUG-1. Marked #3 completed.
+
+**Two new bugs filed from #3:**
+- **#30** (HIGH) — admin `useCreateToolGrant` (`facades/tool-grants/hooks.ts:103-114`) strips `toolRegistryEntryId` into the URL, sends `{ state, config, roleId, agentId }` only. API `CreateGrantBodySchema` (`routes/mcp.ts:114-128`) REQUIRES `toolRegistryEntryId: z.string().uuid()` in body. Every grant POST → 400 VALIDATION_ERROR. Verified by direct fetch from browser context (#3) and by Read against current code. Handler at `routes/mcp.ts:518-540` reads `toolRegistryEntryId` from `request.params` — the body field is fully redundant/dead. Cleanest fix: drop from `CreateGrantBodySchema`. **#30 blocked on #20** (both touch `routes/mcp.ts`).
+- **#29** (LOW) — no reachable local MCP server for end-to-end discovery; catalog accepts any URL but tools/list returns 502 without a fixture. Filed to ship a tiny stdio/http MCP fake under `tools/` or `packages/mcp-client/test/`.
+
+**Currently in flight:** #20 (`a621ab777949d59ff`). 1 agent. Wave-5 pending: #10, #18, #21, #25, #26, #27, #29, #30. Most conflict with #20 on `routes/mcp.ts` / `mcp-instances.ts` / schema; holding until #20 lands. **#26 is now dispatchable** (admin-only, #28 done) — claiming for next dispatch wave.
