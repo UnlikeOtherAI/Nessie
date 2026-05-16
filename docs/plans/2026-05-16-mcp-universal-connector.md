@@ -400,3 +400,33 @@ Each dispatch prompt now includes explicit `git commit --only`-equivalent hygien
 **Hold for next tick:** #10 (schema), #18 (mcp-instances), #21 (routes), #25 (routes), #27 (schema + mcp-instances). Sequencing: after #30 lands, dispatch #21 + #25. After admin wave settles, dispatch #18 + (#10 OR #27).
 
 **Currently in flight:** #29 (`a9de34b6025c23813`), #30 (`ab91ef89e7558e18c`), #31 (`ad2230ce4a9e66e62`), #32 (`a55ca8bea613d64ba`), #33 (`a0939bc458f671718`). 5 agents. File-disjoint by design.
+
+### Tick 2026-05-16T21:02Z — landing wave + reviewer wave; #18/#10/#21 dispatched; OAuth findings filed
+- **#30 (drop redundant uuid)** complete (commit `22e7c2d`, 1 file +4/-1, gates green). Unblocks the E2E grant POST path.
+- **#29 (local MCP fixture)** complete (commit `29836af`). Pure node:http + node:crypto, 347-line fixture server speaking Streamable-HTTP MCP, exposing `echo` / `now` / `fixture_add`. `pnpm dev:mcp-fixture` starts it. Bound to `127.0.0.1`. End-to-end Playwright smoke through wizard → install → Test & discover → matrix shows the 3 mcp-remote tools. BUG-2 resolved.
+- **#32 (AgentGrantMatrix null-grantId)** complete (commit `8cb5bc8`, 1 file +27/-3). Distinct error path when create succeeds without `id`; preserves the cross-session reload-hint for the legitimate case. Agent declined to keep the checkbox visually "allowed" alongside the no-persist (mutually exclusive without a `CellState` reshape); reasonable tradeoff.
+- **#26 reviewer** complete. 1 CRITICAL (downgraded to MEDIUM after orchestrator verification — only path forward from transport is `advanceFromTransport` which validates) + 3 HIGH + 1 NOTE + 1 A11Y. Filed as:
+  - **#35** (HIGH validation gaps — OAuth2 URL scheme allowlist + onChange error clears + defensive submit re-validate) — blocked by #33.
+  - **#34** (HIGH a11y — `aria-describedby`/`aria-invalid`/`role=alert` missing) — blocked by #33.
+  - Note (#5 testingId redundancy) — not a bug, skipped.
+- **#20 reviewer** complete. 4 HIGH + 4 MEDIUM. Orchestrator verified H1/H3/M4 by Read. Filed as:
+  - **#37** (CRITICAL functional — `client_id`/`client_secret` absent from OAuth2 schema + start URL + token exchange; every RFC 6749 provider rejects. The schema package lacks the fields entirely.).
+  - **#38** (HIGH — production wires `inMemorySecretStoreStub` which silently drops tokens; fail-loud at startup if no real SecretStore in `NODE_ENV=production`).
+  - **#36** (HIGH — `api/src/routes/mcp.ts` is 799 lines, 60% over the 500 cap; split OAuth routes + body schemas). Blocked-by #37 + #38.
+  - **#39** (MEDIUM bundle — sanitize OAuth callback `error` param, drop `credentialRef` from `completeOAuth` response, map `INVALID_TRANSITION`/`NOT_OAUTH2` → 409, fix `publishCatalogEntry` TOCTOU). Blocked-by #37 + #38.
+  - L1/L2/L3 + M3 (spec deviation visibility) — informational, skipped or already tracked.
+- **#18 (re-probe → pending_review)** dispatched as `a1eb2c247aaea657b`. Owns `mcp-instances.ts` + test only.
+- **#21 (UUID validation in grant body)** dispatched as `af9fe17c3d084bb19`. Owns `routes/mcp.ts` schema portions + test.
+- **#10 (ToolRegistryEntry reconcile + migration)** dispatched as `aa81d8571a8b665ee`. Owns `prisma/schema.prisma` + new migration + schemas package types.
+
+**Hold for next tick:** #25 (routes/mcp.ts conflict with #21), #27 (schema conflict with #10, also mcp-instances conflict with #18), #36 / #37 / #38 / #39 (OAuth chain, sequenced after lifecycle agents settle), #34 / #35 (wait for #33 refactor).
+
+**Currently in flight:** #18, #31, #33, #21, #10. 5 agents.
+
+### Event 2026-05-16T21:08Z — #18 + #31 + #33 landed (mid-tick wave)
+- **#33 (wizard refactor)** complete (commit `bb05f8d`). AddServerWizard.tsx split — validation extracted to `add-server-wizard-validation.ts`; wizard file now 498 lines (under cap, per #26 reviewer note). Unblocks #34 + #35.
+- **#18 (re-probe → pending_review)** complete (commit `7693371`). +99/+275 in mcp-instances.ts + tests. 11 new tests (70 → 81). Drift predicate (`descriptorDiffersFromEntry`) compares canonical JSON of label/description/inputSchema/outputSchema to avoid false-positive resets from key reordering. Removed descriptors get swept to `pending_review` with `enabled=true` so dispatch surfaces loud failures rather than silently disabling. All inside a single Prisma `$transaction`.
+- **#31 (mask credentialRef)** complete (commit `0aebaf1`). +77/-29 in CredentialsDialog.tsx. Extracted `OverrideRow` subcomponent with masked `••••••••` default and `aria-pressed` show/hide toggle. Captured screenshots: `post-fix-credentials-{masked,revealed}.png`. 
+- **Mid-flight incident:** #18's agent ran `git stash` to autostash for rebase; the stash captured #31's WIP (`CredentialsDialog.tsx`) plus the perma-dirty `docs/simulation/ledger.md`. #31's agent had to extract only its own hunk from the stash via `git stash show -p | awk | git apply`. Stash `task-18-stash` remains in `git stash list` for inspection. Both agents committed clean scopes; no lost work. Reinforces the pattern: autostash + multi-agent staging is a recurring foot-gun. Consider banning `git stash` in agent prompts and requiring `git -c rebase.autostash=false pull --rebase` + explicit conflict resolution instead.
+
+**Currently in flight:** #21 (`af9fe17c3d084bb19`), #10 (`aa81d8571a8b665ee`). 2 agents.
