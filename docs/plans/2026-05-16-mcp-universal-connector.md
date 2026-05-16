@@ -201,3 +201,12 @@ Slice D landed (commit b39ac2b). Verified gates: build/typecheck/lint green, 18/
 
 ### Event 2026-05-16T19:26Z
 Slice B landed (commit 4eafbbf). Schemas + Prisma migration green (12/12 api tests pass, fresh-DB apply verified). Marked task #4 completed; dispatched B reviewer (background). Filed task #8 for pre-existing prisma drift (not Slice B's fault). Dispatched Slice F (now unblocked) in background. Wave status: D ✓, B ✓, A in progress; F dispatched; C still blocked on A; E blocked on C.
+
+### Liveness 2026-05-16T19:27:06Z
+- Ports: API 5554 UP (pid 62556), Admin 5555 UP (pid 34839)
+- @nessie/api: typecheck OK, lint OK
+- @nessie/admin: typecheck OK, lint OK
+- @nessie/worker: typecheck OK, lint OK
+- Uncommitted: docs/simulation/ledger.md (pre-existing, not mine), .claude/ (cron state), packages/mcp-client/ (Slice A in flight)
+- Stray worktree present: /System/Volumes/Data/.internal/tmpVolume/tmp/nessie-head-review.8YVikB (detached HEAD ed119b4) — likely user-spawned review env, left alone
+- Tasks: D ✓ E ✗ B ✓ E ✗ A in_progress F in_progress C blocked E blocked E2E blocked
