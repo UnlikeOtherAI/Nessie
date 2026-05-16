@@ -45,6 +45,8 @@ export const getCredentials = (slug: string): CredentialEntry => {
   return entry
 }
 
+export const allEmployees = (): CredentialEntry[] => Object.values(loadCredentials())
+
 const profileDir = (slug: string): string => {
   const dir = resolve(__dirname, '../state/profiles', slug)
   mkdirSync(dir, { recursive: true })
