@@ -8,6 +8,7 @@ import {
   TOOL_DISPATCH_ERROR_CODES,
   ToolDispatchError,
 } from '../src/services/tool-dispatch.js'
+import type { SecretResolver } from '../src/services/secret-resolver.js'
 
 /**
  * Regression coverage for the cross-org dispatch bypass closed in #19.
@@ -120,6 +121,183 @@ test('planToolDispatch passes registry lookup for global tools regardless of cal
     TOOL_DISPATCH_ERROR_CODES.GRANT_DENIED,
   )
 })
+
+/**
+ * Regression coverage for task #17: the dispatcher must default to a
+ * `NullSecretResolver` so opaque `secret_*` credentialRefs never silently
+ * resolve to `null` via the old `EnvSecretResolver` env-var lookup. The
+ * dispatch must reach the transport with `secret: null`, not blow up earlier.
+ */
+type McpInstanceFixture = {
+  id: string
+  credentialRef: string | null
+  lifecycleState: string
+  transportConfig: unknown
+  catalogEntry: { defaultTransportConfig: unknown }
+}
+
+const buildMcpPrisma = (options: {
+  registry: ToolEntryFixture[]
+  instances: McpInstanceFixture[]
+  grantAllowed?: boolean
+}): PrismaClient => {
+  const matchesWhere = (entry: ToolEntryFixture, where: any): boolean => {
+    if (where.id && entry.id !== where.id) return false
+    if (where.OR) {
+      const matched = (where.OR as Array<{ organizationId: string | null }>).some(
+        (clause) => entry.organizationId === clause.organizationId,
+      )
+      if (!matched) return false
+    }
+    return true
+  }
+
+  const prisma = {
+    toolRegistryEntry: {
+      findFirst: async ({ where }: { where: any }) =>
+        options.registry.find((entry) => matchesWhere(entry, where)) ?? null,
+    },
+    toolGrant: {
+      findMany: async () =>
+        options.grantAllowed
+          ? [
+            {
+              id: 'grant-1',
+              toolId: options.registry[0]?.id ?? 'tool',
+              state: 'allowed',
+              config: {},
+              source: 'role',
+              roleId: 'role-1',
+              agentId: null,
+              createdAt: new Date(0),
+              updatedAt: new Date(0),
+            },
+          ]
+          : [],
+    },
+    mcpServerInstance: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        options.instances.find((instance) => instance.id === where.id) ?? null,
+    },
+    mcpServerCredentialOverride: {
+      findUnique: async () => null,
+    },
+  }
+
+  return prisma as unknown as PrismaClient
+}
+
+const INSTANCE_ID = '00000000-0000-4000-8000-0000000000c1'
+
+const MCP_TRANSPORT_CONFIG = {
+  transport: 'mcp' as const,
+  serverId: INSTANCE_ID,
+  toolName: 'do_thing',
+}
+
+test(
+  'planToolDispatch defaults to NullSecretResolver: opaque credentialRef returns secret: null '
+    + 'instead of leaking through EnvSecretResolver',
+  async () => {
+    // Set the env var that EnvSecretResolver WOULD have read if we had not
+    // switched the default. If the default ever regresses to EnvSecretResolver,
+    // this test will return 'leaked-plaintext' and the assertion will fail.
+    process.env['secret_opaque_ref'] = 'leaked-plaintext'
+    try {
+      const prisma = buildMcpPrisma({
+        registry: [
+          {
+            id: 'tool-mcp',
+            organizationId: ORG_A,
+            enabled: true,
+            status: 'active',
+            transport: 'mcp',
+            transportConfig: MCP_TRANSPORT_CONFIG,
+            mcpInstanceId: INSTANCE_ID,
+          },
+        ],
+        instances: [
+          {
+            id: INSTANCE_ID,
+            credentialRef: 'secret_opaque_ref',
+            lifecycleState: 'active',
+            transportConfig: {},
+            catalogEntry: { defaultTransportConfig: {} },
+          },
+        ],
+        grantAllowed: true,
+      })
+
+      const plan = await planToolDispatch(prisma, 'tool-mcp', {
+        organizationId: ORG_A,
+        principals: { roleIds: ['role-1'] },
+        credentialContext: {},
+      })
+
+      assert.equal(plan.transport, 'mcp')
+      if (plan.transport !== 'mcp') throw new Error('unreachable')
+      // The dispatcher must explicitly produce `null` (not `undefined`) for an
+      // opaque ref when no resolver is injected; misconfigured deployments now
+      // fail loudly at the transport instead of silently dispatching null.
+      assert.strictEqual(plan.secret, null)
+    } finally {
+      delete process.env['secret_opaque_ref']
+    }
+  },
+)
+
+test(
+  'planToolDispatch uses the injected SecretResolver when options.secretResolver is provided',
+  async () => {
+    const prisma = buildMcpPrisma({
+      registry: [
+        {
+          id: 'tool-mcp',
+          organizationId: ORG_A,
+          enabled: true,
+          status: 'active',
+          transport: 'mcp',
+          transportConfig: MCP_TRANSPORT_CONFIG,
+          mcpInstanceId: 'instance-1',
+        },
+      ],
+      instances: [
+        {
+          id: 'instance-1',
+          credentialRef: 'secret_opaque_ref',
+          lifecycleState: 'active',
+          transportConfig: {},
+          catalogEntry: { defaultTransportConfig: {} },
+        },
+      ],
+      grantAllowed: true,
+    })
+
+    const calls: string[] = []
+    const resolver: SecretResolver = {
+      async resolve(ref: string) {
+        calls.push(ref)
+        return 'resolved-plaintext'
+      },
+    }
+
+    const plan = await planToolDispatch(
+      prisma,
+      'tool-mcp',
+      {
+        organizationId: ORG_A,
+        principals: { roleIds: ['role-1'] },
+        credentialContext: {},
+      },
+      { secretResolver: resolver },
+    )
+
+    assert.equal(plan.transport, 'mcp')
+    if (plan.transport !== 'mcp') throw new Error('unreachable')
+    assert.equal(plan.secret, 'resolved-plaintext')
+    assert.deepEqual(calls, ['secret_opaque_ref'])
+  },
+)
 
 test('planToolDispatch passes registry lookup when caller org matches', async () => {
   const prisma = buildPrisma([

@@ -7,7 +7,7 @@ import {
 import { resolveCredentialRef } from './mcp-credentials.js'
 import type { CredentialResolutionContext } from './mcp-credentials.js'
 import { hasAllowedGrantForPrincipals } from './tool-grants.js'
-import { EnvSecretResolver, type SecretResolver } from './secret-resolver.js'
+import { NullSecretResolver, type SecretResolver } from './secret-resolver.js'
 
 /**
  * API-side tool dispatch orchestration (plan §5/§6).
@@ -160,7 +160,14 @@ export const planToolDispatch = async (
   }
 
   const transportConfig = decodeTransportConfig(entry.transportConfig)
-  const secretResolver = options.secretResolver ?? new EnvSecretResolver()
+  // Default to NullSecretResolver: if no resolver is injected at boot, refs
+  // resolve to `null` and the call arrives at the transport with `secret:
+  // null`. The transport then fails loudly if auth was required, instead of
+  // the old EnvSecretResolver default silently looking up opaque `secret_*`
+  // refs as env-var names (always undefined → silent null). Production
+  // callers MUST inject a concrete `SecretResolver` via
+  // `options.secretResolver`.
+  const secretResolver = options.secretResolver ?? new NullSecretResolver()
 
   switch (transportConfig.transport) {
     case 'mcp': {
