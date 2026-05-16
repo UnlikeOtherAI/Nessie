@@ -253,3 +253,6 @@ Slice C builder still running (transcript mtime 3s ago). Visible progress since 
 
 ### Tick 2026-05-16T20:04Z
 Slice C builder still active (transcript mtime ~50s ago, 1.01 MB). New since last tick: `api/src/services/tool-enum-mapping.ts` (Prisma↔Zod enum mapper, likely helping the catalog/instance services). No other changes; existing file list unchanged. All pending tasks (#3, #6, #8, #10, #16) still gated on #1. Tick-and-hold.
+
+### Tick 2026-05-16T20:09Z
+Slice C builder in test-writing phase (transcript mtime 3s ago, 1.18 MB). Five new untracked test files since last tick: `api/test/mcp-catalog.test.ts`, `api/test/mcp-instances.test.ts`, `api/test/tool-enum-mapping.test.ts`, `worker/test/tool-dispatch.test.ts`, `worker/test/tool-http.test.ts`. Likely close to finish. All pending tasks still gated on #1. Tick-and-hold.
