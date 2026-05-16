@@ -22,6 +22,15 @@ import {
   runUpdatePreferencesTool,
   runWorkspaceSearchTool,
 } from './pa-tools.js'
+import {
+  FileWriteOverwriteError,
+  HttpFetchError,
+  runFileGlob,
+  runFileRead,
+  runFileWrite,
+  runHttpFetch,
+  SandboxViolationError,
+} from './builtin-handlers/index.js'
 import { enqueueRunExecution } from '../queue.js'
 import { appendDelegationStep } from './plans.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
@@ -589,6 +598,55 @@ const wrapTool = async (
   }
 }
 
+const BUILTIN_REGISTRY_SCOPE_KEY = 'builtin'
+
+const loadBuiltinTransportConfig = async (
+  prisma: PrismaClient,
+  toolId: string,
+): Promise<unknown> => {
+  const entry = await prisma.toolRegistryEntry.findUnique({
+    where: {
+      scopeKey_toolId: {
+        scopeKey: BUILTIN_REGISTRY_SCOPE_KEY,
+        toolId,
+      },
+    },
+    select: { transportConfig: true },
+  })
+  return entry?.transportConfig ?? {}
+}
+
+const wrapBuiltinResult = (
+  inputSummary: string,
+  fn: () => Promise<unknown>,
+): Promise<AgenticToolResult> =>
+  fn().then(
+    (output) => ({
+      inputSummary,
+      output: truncateToolResult(JSON.stringify(output, null, 2)),
+      success: true,
+    }),
+    (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      if (
+        error instanceof SandboxViolationError ||
+        error instanceof FileWriteOverwriteError ||
+        error instanceof HttpFetchError
+      ) {
+        return {
+          inputSummary,
+          output: `${error.name}: ${message}`,
+          success: false,
+        }
+      }
+      return {
+        inputSummary,
+        output: 'Tool error: ' + message,
+        success: false,
+      }
+    },
+  )
+
 export const executeBuiltinTool = async (
   toolName: string,
   args: Record<string, unknown>,
@@ -642,6 +700,32 @@ export const executeBuiltinTool = async (
           task: args.task,
         }),
       )
+    case 'http_fetch':
+      return wrapBuiltinResult(inputSummary, () => runHttpFetch(args))
+    case 'file_read':
+      return wrapBuiltinResult(inputSummary, async () => {
+        const transportConfig = await loadBuiltinTransportConfig(
+          context.prisma,
+          'file_read',
+        )
+        return runFileRead(args, transportConfig)
+      })
+    case 'file_write':
+      return wrapBuiltinResult(inputSummary, async () => {
+        const transportConfig = await loadBuiltinTransportConfig(
+          context.prisma,
+          'file_write',
+        )
+        return runFileWrite(args, transportConfig)
+      })
+    case 'file_glob':
+      return wrapBuiltinResult(inputSummary, async () => {
+        const transportConfig = await loadBuiltinTransportConfig(
+          context.prisma,
+          'file_glob',
+        )
+        return runFileGlob(args, transportConfig)
+      })
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }

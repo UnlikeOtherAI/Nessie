@@ -1,14 +1,19 @@
-export type BuiltinToolDefinition = {
-  id: string
-  description: string
-  label: string
-  parameters: {
-    type: 'object'
-    properties: Record<string, unknown>
-    required?: string[]
-  }
-  safe: boolean
-}
+import {
+  FILE_GLOB_TOOL_DEFINITION,
+  FILE_READ_TOOL_DEFINITION,
+  FILE_WRITE_TOOL_DEFINITION,
+  HTTP_FETCH_TOOL_DEFINITION,
+} from './builtin-tools-sandboxed.js'
+import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+
+export type { BuiltinToolDefinition } from './builtin-tools-types.js'
+export {
+  FILE_GLOB_TOOL_DEFINITION,
+  FILE_READ_TOOL_DEFINITION,
+  FILE_WRITE_TOOL_DEFINITION,
+  HTTP_FETCH_TOOL_DEFINITION,
+  SANDBOXED_BUILTIN_TOOL_DEFINITIONS,
+} from './builtin-tools-sandboxed.js'
 
 const WEB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'web_search',
@@ -210,6 +215,10 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   WEB_SEARCH_TOOL_DEFINITION,
   WEB_FETCH_TOOL_DEFINITION,
+  HTTP_FETCH_TOOL_DEFINITION,
+  FILE_READ_TOOL_DEFINITION,
+  FILE_WRITE_TOOL_DEFINITION,
+  FILE_GLOB_TOOL_DEFINITION,
 ]
 
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [

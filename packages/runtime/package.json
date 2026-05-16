@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@nessie/schemas": "workspace:*",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/pg": "^8.15.5"
