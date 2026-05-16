@@ -385,6 +385,92 @@ enum ThoughtLinkRelation {
   relates_to
 }
 
+// ─── MCP Universal Connector Enums ──────────────────────────────────────────
+
+enum McpCatalogProtocol {
+  stdio
+  http
+  sse
+  ws
+}
+
+enum McpCatalogAuthMethod {
+  api_key
+  bearer
+  basic
+  oauth2
+  none
+}
+
+enum McpCatalogStatus {
+  draft
+  published
+  deprecated
+}
+
+enum McpServerScopeType {
+  system
+  organization
+  project
+  team
+  channel
+  user
+}
+
+enum McpServerLifecycleState {
+  pending_setup
+  active
+  paused
+  error
+}
+
+enum McpCredentialPrincipalType {
+  user
+  agent
+  channel
+  team
+  project
+}
+
+enum ToolRegistrySource {
+  builtin
+  custom
+  mcp_remote          @map("mcp-remote")
+  interactive_session @map("interactive-session")
+}
+
+enum ToolRegistryTransport {
+  direct
+  mcp
+  http
+  stdio
+  pty
+}
+
+enum ToolRegistryEntryStatus {
+  active
+  pending_review
+  disabled
+}
+
+enum ToolBundleStatus {
+  pending_review
+  approved
+  rejected
+  disabled
+}
+
+enum ToolGrantState {
+  inherit
+  allowed
+  denied
+}
+
+enum ToolGrantSource {
+  role
+  agent_override @map("agent-override")
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique
@@ -461,15 +547,15 @@ model ProjectMember {
 }
 
 model Team {
-  id        String       @id @default(uuid()) @db.Uuid
-  name      String
-  projectId String       @map("project_id") @db.Uuid
-  systemManaged Boolean  @default(false) @map("system_managed")
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
-  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  members   TeamMember[]
-  channels  Channel[]
+  id            String       @id @default(uuid()) @db.Uuid
+  name          String
+  projectId     String       @map("project_id") @db.Uuid
+  systemManaged Boolean      @default(false) @map("system_managed")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members       TeamMember[]
+  channels      Channel[]
 
   @@map("teams")
 }
@@ -1046,20 +1132,20 @@ model WorkflowInstallation {
 }
 
 model WorkflowStateEntry {
-  id                    String               @id @default(uuid()) @db.Uuid
-  organizationId        String               @map("organization_id") @db.Uuid
-  workflowInstallationId String              @map("workflow_installation_id") @db.Uuid
-  workflowRunId         String?              @map("workflow_run_id") @db.Uuid
-  workflowStepRunId     String?              @map("workflow_step_run_id") @db.Uuid
-  key                   String               @map("state_key")
-  value                 Json
-  valueHash             String               @map("value_hash")
-  version               Int                  @default(1)
-  createdAt             DateTime             @default(now()) @map("created_at")
-  updatedAt             DateTime             @updatedAt @map("updated_at")
-  workflowInstallation  WorkflowInstallation @relation("WorkflowInstallationStateEntries", fields: [workflowInstallationId], references: [id], onDelete: Cascade)
-  workflowRun           WorkflowRun?         @relation("WorkflowRunStateEntries", fields: [workflowRunId], references: [id], onDelete: SetNull)
-  workflowStepRun       WorkflowStepRun?     @relation("WorkflowStepRunStateEntries", fields: [workflowStepRunId], references: [id], onDelete: SetNull)
+  id                     String               @id @default(uuid()) @db.Uuid
+  organizationId         String               @map("organization_id") @db.Uuid
+  workflowInstallationId String               @map("workflow_installation_id") @db.Uuid
+  workflowRunId          String?              @map("workflow_run_id") @db.Uuid
+  workflowStepRunId      String?              @map("workflow_step_run_id") @db.Uuid
+  key                    String               @map("state_key")
+  value                  Json
+  valueHash              String               @map("value_hash")
+  version                Int                  @default(1)
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+  workflowInstallation   WorkflowInstallation @relation("WorkflowInstallationStateEntries", fields: [workflowInstallationId], references: [id], onDelete: Cascade)
+  workflowRun            WorkflowRun?         @relation("WorkflowRunStateEntries", fields: [workflowRunId], references: [id], onDelete: SetNull)
+  workflowStepRun        WorkflowStepRun?     @relation("WorkflowStepRunStateEntries", fields: [workflowStepRunId], references: [id], onDelete: SetNull)
 
   @@unique([workflowInstallationId, key])
   @@index([organizationId, updatedAt(sort: Desc)])
@@ -1097,7 +1183,7 @@ model WorkflowRun {
   plan                          Plan?                          @relation(fields: [planId], references: [id], onDelete: SetNull)
   planStep                      PlanStep?                      @relation(fields: [planStepId], references: [id], onDelete: SetNull)
   stepRuns                      WorkflowStepRun[]
-  stateEntries                  WorkflowStateEntry[]          @relation("WorkflowRunStateEntries")
+  stateEntries                  WorkflowStateEntry[]           @relation("WorkflowRunStateEntries")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   executionUsageEntries         ExecutionUsageLedger[]
 
@@ -1292,24 +1378,154 @@ model ResourceLock {
 }
 
 model ToolRegistryEntry {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String?  @map("organization_id") @db.Uuid
-  scopeKey       String   @map("scope_key")
-  toolId         String   @map("tool_id")
-  label          String
-  description    String
-  safe           Boolean  @default(false)
-  builtin        Boolean  @default(false)
-  enabled        Boolean  @default(true)
-  handlerKind    String   @default("builtin") @map("handler_kind")
-  metadata       Json?    @default("{}")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id              String                  @id @default(uuid()) @db.Uuid
+  organizationId  String?                 @map("organization_id") @db.Uuid
+  scopeKey        String                  @map("scope_key")
+  toolId          String                  @map("tool_id")
+  label           String
+  description     String
+  safe            Boolean                 @default(false)
+  builtin         Boolean                 @default(false)
+  enabled         Boolean                 @default(true)
+  handlerKind     String                  @default("builtin") @map("handler_kind")
+  metadata        Json?                   @default("{}")
+  source          ToolRegistrySource      @default(builtin)
+  transport       ToolRegistryTransport   @default(direct)
+  transportConfig Json                    @default("{}") @map("transport_config")
+  bundleId        String?                 @map("bundle_id") @db.Uuid
+  mcpInstanceId   String?                 @map("mcp_instance_id") @db.Uuid
+  inputSchema     Json                    @default("{}") @map("input_schema")
+  outputSchema    Json?                   @map("output_schema")
+  tags            String[]                @default([])
+  status          ToolRegistryEntryStatus @default(active)
+  version         String                  @default("0.0.0")
+  createdBy       String                  @default("system") @map("created_by")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  bundle      ToolBundle?        @relation(fields: [bundleId], references: [id], onDelete: SetNull)
+  mcpInstance McpServerInstance? @relation(fields: [mcpInstanceId], references: [id], onDelete: SetNull)
+  grants      ToolGrant[]
 
   @@unique([scopeKey, toolId])
   @@index([organizationId, enabled])
   @@index([builtin, enabled])
+  @@index([organizationId, source])
+  @@index([organizationId, status])
+  @@index([bundleId])
+  @@index([mcpInstanceId])
   @@map("tool_registry_entries")
+}
+
+model McpCatalogEntry {
+  id                     String               @id @default(uuid()) @db.Uuid
+  organizationId         String?              @map("organization_id") @db.Uuid
+  name                   String
+  label                  String
+  description            String
+  protocol               McpCatalogProtocol
+  authMethod             McpCatalogAuthMethod @map("auth_method")
+  authConfig             Json                 @default("{}") @map("auth_config")
+  defaultTransportConfig Json                 @default("{}") @map("default_transport_config")
+  iconUrl                String?              @map("icon_url")
+  vendor                 String?
+  sourceUrl              String?              @map("source_url")
+  signature              String?
+  status                 McpCatalogStatus     @default(draft)
+  createdBy              String               @map("created_by") @db.Uuid
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  instances McpServerInstance[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@map("mcp_catalog_entries")
+}
+
+model McpServerInstance {
+  id                  String                  @id @default(uuid()) @db.Uuid
+  catalogEntryId      String                  @map("catalog_entry_id") @db.Uuid
+  organizationId      String                  @map("organization_id") @db.Uuid
+  scopeType           McpServerScopeType      @map("scope_type")
+  scopeId             String                  @map("scope_id") @db.Uuid
+  credentialRef       String?                 @map("credential_ref")
+  transportConfig     Json                    @default("{}") @map("transport_config")
+  discoveredTools     Json                    @default("[]") @map("discovered_tools")
+  lifecycleState      McpServerLifecycleState @default(pending_setup) @map("lifecycle_state")
+  healthLastCheckedAt DateTime?               @map("health_last_checked_at")
+  healthFailureCount  Int                     @default(0) @map("health_failure_count")
+  installedBy         String                  @map("installed_by") @db.Uuid
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+
+  catalogEntry        McpCatalogEntry               @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
+  credentialOverrides McpServerCredentialOverride[]
+  toolRegistryEntries ToolRegistryEntry[]
+
+  @@unique([catalogEntryId, scopeType, scopeId])
+  @@index([organizationId, scopeType, scopeId])
+  @@index([organizationId, lifecycleState])
+  @@map("mcp_server_instances")
+}
+
+model McpServerCredentialOverride {
+  id            String                     @id @default(uuid()) @db.Uuid
+  instanceId    String                     @map("instance_id") @db.Uuid
+  principalType McpCredentialPrincipalType @map("principal_type")
+  principalId   String                     @map("principal_id") @db.Uuid
+  credentialRef String                     @map("credential_ref")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+
+  instance McpServerInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@unique([instanceId, principalType, principalId])
+  @@index([principalType, principalId])
+  @@map("mcp_server_credential_overrides")
+}
+
+model ToolBundle {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  apiVersion     String           @map("api_version")
+  bundleName     String           @map("bundle_name")
+  version        String
+  vendor         String?
+  sourceUrl      String?          @map("source_url")
+  license        String?
+  signatureType  String?          @map("signature_type")
+  signatureValue String?          @map("signature_value")
+  policy         Json             @default("{}")
+  status         ToolBundleStatus @default(pending_review)
+  importedBy     String           @map("imported_by") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  tools ToolRegistryEntry[]
+
+  @@unique([organizationId, bundleName, version])
+  @@index([organizationId, status])
+  @@map("tool_bundles")
+}
+
+model ToolGrant {
+  id        String          @id @default(uuid()) @db.Uuid
+  toolId    String          @map("tool_id") @db.Uuid
+  state     ToolGrantState  @default(inherit)
+  config    Json            @default("{}")
+  source    ToolGrantSource
+  roleId    String?         @map("role_id") @db.Uuid
+  agentId   String?         @map("agent_id") @db.Uuid
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  tool ToolRegistryEntry @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@index([toolId])
+  @@index([roleId])
+  @@index([agentId])
+  @@map("tool_grants")
 }
 
 model TemporaryContextSession {
