@@ -50,6 +50,7 @@ export type McpInstanceRow = {
   lifecycleState: McpServerLifecycleState
   healthLastCheckedAt: Date | null
   healthFailureCount: number
+  lastError: string | null
   installedBy: string
   createdAt: Date
   updatedAt: Date
@@ -475,17 +476,19 @@ export const testInstance = async (
 
   const now = new Date()
   if (!probe.ok) {
+    const failureMessage = probe.error ?? 'unknown error'
     await prisma.mcpServerInstance.update({
       where: { id },
       data: {
         lifecycleState: 'error',
         healthFailureCount: { increment: 1 },
         healthLastCheckedAt: now,
+        lastError: failureMessage,
       },
     })
     throw new McpInstanceError(
       MCP_INSTANCE_ERROR_CODES.PROBE_FAILED,
-      `MCP probe failed: ${probe.error ?? 'unknown error'}`,
+      `MCP probe failed: ${failureMessage}`,
     )
   }
 
@@ -500,6 +503,7 @@ export const testInstance = async (
         lifecycleState: 'active',
         healthFailureCount: 0,
         healthLastCheckedAt: now,
+        lastError: null,
       },
     })
 

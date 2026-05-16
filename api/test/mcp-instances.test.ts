@@ -34,6 +34,7 @@ const baseInstance: McpInstanceRow = {
   lifecycleState: 'pending_setup',
   healthLastCheckedAt: null,
   healthFailureCount: 0,
+  lastError: null,
   installedBy: 'actor-1',
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -334,6 +335,9 @@ test('testInstance keeps lifecycleState off "active" when probe fails', async ()
   assert.ok(
     (failureUpdate as { healthLastCheckedAt?: unknown }).healthLastCheckedAt instanceof Date,
   )
+  // Task #27: lastError must be populated with the probe failure message so
+  // the admin UI can render it alongside `lifecycleState='error'`.
+  assert.equal((failureUpdate as { lastError?: unknown }).lastError, '401 invalid token')
 })
 
 test('testInstance transitions to active and projects tools on a successful probe', async () => {
@@ -356,6 +360,95 @@ test('testInstance transitions to active and projects tools on a successful prob
   assert.equal(successUpdate.lifecycleState, 'active')
   assert.equal(successUpdate.healthFailureCount, 0)
   assert.ok(successUpdate.healthLastCheckedAt instanceof Date)
+  // Task #27: a successful probe must clear any stale `lastError` left from
+  // a previous failed probe so the admin UI stops surfacing it.
+  assert.equal(
+    (successUpdate as { lastError?: unknown }).lastError,
+    null,
+  )
+})
+
+// ─── lastError set-on-failure / clear-on-success (task #27) ─────────────────
+//
+// Probe failures must persist `lastError` on the McpServerInstance row so the
+// admin UI can render a human-readable reason alongside lifecycleState='error'
+// + healthFailureCount. The next successful probe must wipe that value (set to
+// null) so a recovered server doesn't keep showing a stale message.
+
+test('testInstance persists probe failure message into lastError', async () => {
+  const { prisma, updates } = makeStubPrisma(baseInstance, catalogEntryStub)
+  const { factory } = makeFakeManagerFactory({
+    open: () => Promise.reject(new Error('ECONNREFUSED tcp://localhost:9999')),
+  })
+  try {
+    await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+  } catch {
+    // expected — PROBE_FAILED
+  }
+  assert.equal(updates.length, 1)
+  const data = updates[0]?.data as { lastError?: unknown }
+  assert.equal(typeof data.lastError, 'string')
+  assert.match(data.lastError as string, /ECONNREFUSED tcp:\/\/localhost:9999/)
+})
+
+test('testInstance clears lastError on a successful probe', async () => {
+  // Simulate a recovered server: the row currently has a stale lastError from
+  // a previous failure. The successful probe must overwrite it with null.
+  const stale: McpInstanceRow = {
+    ...baseInstance,
+    lifecycleState: 'error',
+    healthFailureCount: 3,
+    lastError: 'previously: 401 unauthorized',
+  }
+  const { prisma, updates } = makeStubPrisma(stale, catalogEntryStub)
+  const { factory } = makeFakeManagerFactory({ listTools: () => [] })
+  await testInstance(prisma, 'org-1', stale.id, { managerFactory: factory })
+  assert.equal(updates.length, 1)
+  const data = updates[0]?.data as { lastError?: unknown }
+  assert.equal(data.lastError, null)
+})
+
+test('refreshInstance persists lastError when the probe fails', async () => {
+  // Custom prisma stub matching the shape used by `refreshInstance returns
+  // the updated row (lifecycleState=error) on probe failure`, but with a
+  // failure row that carries the populated lastError too.
+  const failedRow: McpInstanceRow = {
+    ...baseInstance,
+    lifecycleState: 'error',
+    healthFailureCount: 1,
+    healthLastCheckedAt: new Date(),
+    lastError: '502 Bad Gateway',
+  }
+  const updates: RecordedUpdate[] = []
+  let findFirstCalls = 0
+  const prisma = {
+    mcpServerInstance: {
+      findFirst: async () => {
+        findFirstCalls += 1
+        return findFirstCalls === 1 ? baseInstance : failedRow
+      },
+      update: async (args: RecordedUpdate): Promise<McpInstanceRow> => {
+        updates.push(args)
+        return failedRow
+      },
+    },
+    mcpCatalogEntry: {
+      findFirst: async () => catalogEntryStub,
+    },
+    $transaction: async <T,>(fn: any) => fn({}),
+  } as unknown as Parameters<typeof refreshInstance>[0]
+
+  const { factory } = makeFakeManagerFactory({
+    listTools: () => Promise.reject(new Error('502 Bad Gateway')),
+  })
+  const result = await refreshInstance(prisma, 'org-1', baseInstance.id, {
+    managerFactory: factory,
+  })
+  assert.equal(result.lifecycleState, 'error')
+  assert.equal(result.lastError, '502 Bad Gateway')
+  assert.equal(updates.length, 1)
+  const data = updates[0]?.data as { lastError?: unknown }
+  assert.match(data.lastError as string, /502 Bad Gateway/)
 })
 
 // ─── healthcheckInstance (task #20) ─────────────────────────────────────────

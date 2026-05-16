@@ -226,6 +226,7 @@ export const McpServerInstanceSchema = z.object({
   lifecycleState: McpServerLifecycleStateSchema.default('pending_setup'),
   healthLastCheckedAt: TimestampSchema.nullable().optional(),
   healthFailureCount: z.number().int().nonnegative().default(0),
+  lastError: z.string().nullable().optional(),
   installedBy: UserIdRefSchema,
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
