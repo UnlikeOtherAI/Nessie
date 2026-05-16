@@ -1,0 +1,10 @@
+{
+  "apiVersion": "toolset.nessie.io/v1",
+  "kind": "NessieToolBundle",
+  "metadata": {
+    "id": "com.example.fixture",
+    "name": "Fixture Tools"
+    "version": "1.0.0"
+  },
+  "tools": []
+}

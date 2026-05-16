@@ -1,0 +1,19 @@
+{
+  "apiVersion": "toolset.nessie.io/v1",
+  "kind": "NessieToolBundle",
+  "metadata": {
+    "id": "com.example.fixture",
+    "name": "Fixture Tools",
+    "version": "1.0.0"
+  },
+  "tools": [
+    {
+      "id": "echo",
+      "toolName": "echo",
+      "label": "Echo",
+      "overview": "Echo the given text back to the caller.",
+      "source": "custom",
+      "transport": "direct"
+    }
+  ]
+}
