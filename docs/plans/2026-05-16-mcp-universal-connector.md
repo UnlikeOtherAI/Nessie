@@ -373,3 +373,17 @@ Dispatched #20 as agent `a621ab777949d59ff`. Prompt covers all 6 spec §6 routes
 - **Hold** for #10/#18/#21/#25/#27/#30: all still conflict with in-flight #20 on `routes/mcp.ts` / `mcp-instances.ts` / `schema.prisma`. **#31/#32** are admin-only and disjoint with #20/#29 — dispatchable next tick once #29 settles (parallel admin work risks the same git-index race we saw in `e4fb4ca`).
 
 **Currently in flight:** #20 (`a621ab777949d59ff`), #29 (`a9de34b6025c23813`). 2 agents.
+
+### Event 2026-05-16T20:54Z — `e4fb4ca` incident RECURRED on orchestrator commit
+Commit `413eff5` was intended to be plan-only (`git add docs/plans/...` → `git commit`). It captured 8 files / +1510 lines, including **all of #20's WIP**: `api/src/routes/mcp.ts`, `api/src/services/mcp-catalog.ts`, `api/src/services/mcp-instances.ts`, `api/src/services/mcp-oauth.ts` (new), `api/test/mcp-{catalog,instances,oauth}.test.ts`. Root cause: between the orchestrator's `git status` check and `git commit`, #20's agent had staged its work via `git add`; the orchestrator's commit (which had no `--only` / pathspec) flushed everything in the index, not just the explicitly-added plan file.
+
+**Post-incident verification (gates run on swept-in code):**
+- `pnpm --filter @nessie/api lint` PASS
+- `pnpm --filter @nessie/api typecheck` PASS
+- `pnpm --filter @nessie/api test` PASS (70/0, includes new mcp-oauth tests: state generation, startOAuth happy + 2 error paths, completeOAuth happy + 5 error paths covering replay/expiry/missing-code/missing-access-token + healthcheck/refresh probe tests)
+
+So functionally **#20 is on main and green**. The cost is: (a) commit message describes the plan tick, not the feature; (b) #20's agent will discover a clean tree when it tries to commit and may report confusion.
+
+**Future hygiene rule (orchestrator):** ALWAYS use `git commit -o <pathspec>` (or `git commit -- <pathspec>`) for plan/log commits — never bare `git commit` while other agents may have staged work. Equivalent for tick commits: `git commit --only docs/plans/2026-05-16-mcp-universal-connector.md -m '...'`.
+
+#20 left `in_progress` in TaskList pending the agent's own end-of-task report (its TaskUpdate call will confirm the actual scope it intended).
