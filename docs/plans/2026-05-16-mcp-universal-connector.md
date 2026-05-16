@@ -231,3 +231,6 @@ Slice F still actively running (transcript mtime within seconds; `worker/src/run
 
 ### Event 2026-05-16T20:42Z
 Slice F landed (commit fe90026): http_fetch/file_read/file_write/file_glob handlers under `worker/src/run/builtin-handlers/`, sandbox-enforced (empty allowedRoots = hard deny), http_fetch has SSRF guards (file:// reject + manual redirects), 25/25 new tests + 50 total worker tests pass. Slice F agent split `packages/runtime/src/builtin-tools.ts` into sibling files (`-sandboxed.ts`, `-types.ts`) to respect 500-line cap and extended `worker/package.json` test glob — both acceptable extensions of ownership boundary. Marked task #2 completed (reviewed=false). Dispatched Slice F reviewer + Slice C in parallel (file-disjoint; F is read-only, C creates new api/worker files + extends `worker/src/run/tools.ts` additively). Slice A reviewer still running.
+
+### Tick 2026-05-16T19:42Z
+Note: prior tick timestamps used BST not UTC; correcting from here. Three background agents actively writing (transcript mtimes within 60s): Slice C builder, Slice A reviewer, Slice F reviewer. No unblocked tasks to claim — all remaining pending tasks (#3, #6, #8, #10) gate on #1 (Slice C). Tick-and-hold; await completion notifications.
