@@ -19,6 +19,8 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/websocket": "^11.2.0",
     "@nessie/config": "workspace:*",
+    "@nessie/connectors": "workspace:*",
+    "@nessie/mcp-client": "workspace:*",
     "@nessie/memory": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",

@@ -127,6 +127,12 @@ importers:
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config
+      '@nessie/connectors':
+        specifier: workspace:*
+        version: link:../packages/connectors
+      '@nessie/mcp-client':
+        specifier: workspace:*
+        version: link:../packages/mcp-client
       '@nessie/memory':
         specifier: workspace:*
         version: link:../packages/memory
@@ -260,6 +266,9 @@ importers:
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config
+      '@nessie/mcp-client':
+        specifier: workspace:*
+        version: link:../packages/mcp-client
       '@nessie/memory':
         specifier: workspace:*
         version: link:../packages/memory

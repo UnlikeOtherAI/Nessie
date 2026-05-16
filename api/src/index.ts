@@ -293,6 +293,8 @@ import {
   listPricingProfiles,
 } from './services/token-ledger.js'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
+import { registerMcpRoutes } from './routes/mcp.js'
+import { registerToolBundleRoutes } from './routes/tools-bundles.js'
 
 type AuthenticatedRequestState = {
   actorContext: AuthorizedActionContext
@@ -5517,6 +5519,19 @@ export const buildApp = async () => {
 
   // ─── Inference control plane routes ─────────────────────────────────────
   registerInferenceControlPlaneRoutes(app, {
+    prisma,
+    requireActorContext,
+    requireOwner,
+  })
+
+  // ─── MCP universal connector routes (Slice C) ──────────────────────────
+  registerMcpRoutes(app, {
+    prisma,
+    requireActorContext,
+    requireOwner,
+  })
+
+  registerToolBundleRoutes(app, {
     prisma,
     requireActorContext,
     requireOwner,
