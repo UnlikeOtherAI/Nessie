@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { assertSafeUrl } from './url-safety.js'
+import { assertSafeUrl, type ResolveHost } from './url-safety.js'
 
 export { HttpFetchError } from './http-fetch-error.js'
 
@@ -112,15 +112,16 @@ const headersToObject = (headers: Headers): Record<string, string> => {
 
 export const runHttpFetch = async (
   rawArgs: unknown,
-  options?: { fetchImpl?: typeof fetch },
+  options?: { fetchImpl?: typeof fetch; resolveHost?: ResolveHost },
 ): Promise<HttpFetchOutput> => {
   const input = InputSchema.parse(rawArgs)
   const fetchImpl = options?.fetchImpl ?? fetch
+  const resolveHost = options?.resolveHost
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxBytes = input.maxBytes ?? DEFAULT_MAX_BYTES
   const method = input.method
 
-  const safeUrl = await assertSafeUrl(input.url)
+  const safeUrl = await assertSafeUrl(input.url, { resolveHost })
 
   let headers: Record<string, string> = { ...(input.headers ?? {}) }
   headers = applyAuth(headers, input.auth)
@@ -151,7 +152,9 @@ export const runHttpFetch = async (
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get('location')
     if (location) {
-      const redirectUrl = await assertSafeUrl(new URL(location, safeUrl))
+      const redirectUrl = await assertSafeUrl(new URL(location, safeUrl), {
+        resolveHost,
+      })
       const followed = await fetchImpl(redirectUrl, {
         method,
         headers,

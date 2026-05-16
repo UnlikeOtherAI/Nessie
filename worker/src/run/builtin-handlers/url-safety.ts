@@ -56,6 +56,18 @@ const isBlockedIpAddress = (value: string): boolean => {
   return true
 }
 
+/** Resolves a hostname to a list of IP address strings. */
+export type ResolveHost = (hostname: string) => Promise<string[]>
+
+const defaultResolveHost: ResolveHost = async (hostname) => {
+  const addresses = await lookup(hostname, { all: true, verbatim: true })
+  return addresses.map((entry) => entry.address)
+}
+
+export type AssertSafeUrlOptions = {
+  resolveHost?: ResolveHost
+}
+
 /**
  * Validate a URL for outbound fetch from a tool: http(s) only, no credentials,
  * no blocked hostnames, no private/link-local IPs (including DNS-resolved).
@@ -64,8 +76,15 @@ const isBlockedIpAddress = (value: string): boolean => {
  *
  * Canonical SSRF guard for the worker; the legacy web_fetch dispatch in
  * `worker/src/run/tools.ts` also routes through this function.
+ *
+ * The optional `resolveHost` option lets tests inject a fake DNS resolver so
+ * the SSRF suite does not depend on real DNS. Defaults to
+ * `dns.promises.lookup(hostname, { all: true })`.
  */
-export const assertSafeUrl = async (rawUrl: string | URL): Promise<URL> => {
+export const assertSafeUrl = async (
+  rawUrl: string | URL,
+  options?: AssertSafeUrlOptions,
+): Promise<URL> => {
   const url = typeof rawUrl === 'string' ? new URL(rawUrl) : rawUrl
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
@@ -91,10 +110,11 @@ export const assertSafeUrl = async (rawUrl: string | URL): Promise<URL> => {
     return url
   }
 
-  const addresses = await lookup(hostname, { all: true, verbatim: true })
+  const resolveHost = options?.resolveHost ?? defaultResolveHost
+  const addresses = await resolveHost(hostname)
   if (
     addresses.length === 0 ||
-    addresses.some((entry) => isBlockedIpAddress(entry.address))
+    addresses.some((address) => isBlockedIpAddress(address))
   ) {
     throw new HttpFetchError('Private or local network URLs are not allowed.')
   }
