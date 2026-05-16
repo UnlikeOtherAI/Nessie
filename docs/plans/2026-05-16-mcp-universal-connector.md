@@ -198,3 +198,6 @@ Wave 1 still running (B/A/D in_progress, dirty files: api/prisma/schema.prisma, 
 
 ### Tick 2026-05-16T19:23:00Z
 Slice D landed (commit b39ac2b). Verified gates: build/typecheck/lint green, 18/18 tests pass. Marked task #5 completed; dispatched code-reviewer agent (background). Slice B + A still in progress. Protocol note: sub-agents lack TaskUpdate/TaskList tool access — they report completion in summary, orchestrator records.
+
+### Event 2026-05-16T19:26Z
+Slice B landed (commit 4eafbbf). Schemas + Prisma migration green (12/12 api tests pass, fresh-DB apply verified). Marked task #4 completed; dispatched B reviewer (background). Filed task #8 for pre-existing prisma drift (not Slice B's fault). Dispatched Slice F (now unblocked) in background. Wave status: D ✓, B ✓, A in progress; F dispatched; C still blocked on A; E blocked on C.
