@@ -1389,7 +1389,9 @@ export const buildApp = async () => {
     }
 
     if (isBootstrapTokenExpired(state)) {
-      bootstrapTokenState = null
+      // Do NOT null the state here — that would re-arm minting on the next
+      // resolveBootstrapState() call. Leaving the expired state in place
+      // forces an explicit process restart to recover.
       sendApiError(reply, 401, 'TOKEN_EXPIRED', 'Bootstrap token expired')
       return reply
     }
@@ -4618,7 +4620,9 @@ export const buildApp = async () => {
     }, 15000)
 
     let streamConnection: Awaited<ReturnType<typeof realtimeHub.addSseConnection>> | null = null
+    let socketClosed = false
     request.raw.on('close', () => {
+      socketClosed = true
       clearInterval(keepAlive)
       if (streamConnection) {
         realtimeHub.removeSseConnection(streamConnection)
@@ -4632,6 +4636,12 @@ export const buildApp = async () => {
         reply.raw,
         lastEventId,
       )
+      // If the socket closed during hydration the close handler fired with
+      // streamConnection still null — remove now to avoid orphaning the
+      // connection inside the hub.
+      if (socketClosed) {
+        realtimeHub.removeSseConnection(streamConnection)
+      }
     } catch (err) {
       clearInterval(keepAlive)
       reply.raw.end()
