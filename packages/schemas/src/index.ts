@@ -291,6 +291,11 @@ export type WsEventMap = {
     contentPreview: string
     threadId: ThreadId
   }
+  'agent.iteration': {
+    agentId: string
+    iteration: number
+    runId: string
+  }
 }
 
 export const StreamStartEventSchema = z.object({
@@ -431,6 +436,7 @@ export const WsEventNameSchema = z.enum([
   'approval.needed',
   'approval.resolved',
   'message.new',
+  'agent.iteration',
 ])
 
 export const WsScopeSchema = z.union([

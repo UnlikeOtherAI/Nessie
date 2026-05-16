@@ -29,6 +29,8 @@ type PushMessage = {
 }
 
 const DEFAULT_MAX_DELIVERY_ATTEMPTS = 5
+const PROCESSED_IDS_CAP = 10_000
+const PROCESSED_IDS_EVICT_BATCH = 5_000
 
 const logPubSubError = (message: string, error: unknown): void => {
   console.error(message, error)
@@ -61,7 +63,14 @@ export class PubSubQueueProvider implements QueueProvider {
   private readonly projectId: string
   private readonly maxDeliveryAttempts: number
   private readonly handlers = new Map<string, QueueHandler>()
-  private readonly processedIds = new Set<string>()
+  // Bounded FIFO of completed message IDs. Map preserves insertion order, so
+  // the oldest entry is always the first key — cheap eviction without a
+  // parallel array, and no snapshot races.
+  private readonly processedIds = new Map<string, true>()
+  // IDs currently being handled. Used to drop true duplicates that arrive
+  // while the handler is awaiting, without committing them as "processed"
+  // before the handler resolves successfully.
+  private readonly inFlightIds = new Set<string>()
 
   constructor(client: PubSubClient, options: PubSubQueueOptions) {
     this.client = client
@@ -131,7 +140,7 @@ export class PubSubQueueProvider implements QueueProvider {
       return
     }
 
-    if (this.processedIds.has(job.id)) {
+    if (this.processedIds.has(job.id) || this.inFlightIds.has(job.id)) {
       return
     }
 
@@ -140,21 +149,27 @@ export class PubSubQueueProvider implements QueueProvider {
       throw new Error(`No handler registered for topic: ${job.topic}`)
     }
 
+    this.inFlightIds.add(job.id)
     try {
-      this.processedIds.add(job.id)
       await handler(job)
+      // Only commit to processedIds after the handler resolves successfully,
+      // so a thrown handler does not silently swallow concurrent redeliveries.
+      this.processedIds.set(job.id, true)
 
-      // Evict old IDs to prevent unbounded memory growth.
-      // Keep the most recent entries for dedup window.
-      if (this.processedIds.size > 10_000) {
-        const entries = Array.from(this.processedIds)
-        for (let i = 0; i < 5_000; i++) {
-          this.processedIds.delete(entries[i]!)
+      // Evict oldest IDs in batches to keep memory bounded. Map iteration is
+      // insertion-ordered, so the first keys are the oldest entries.
+      if (this.processedIds.size > PROCESSED_IDS_CAP) {
+        const iterator = this.processedIds.keys()
+        for (let i = 0; i < PROCESSED_IDS_EVICT_BATCH; i++) {
+          const next = iterator.next()
+          if (next.done) {
+            break
+          }
+          this.processedIds.delete(next.value)
         }
       }
-    } catch (error) {
-      this.processedIds.delete(job.id)
-      throw error
+    } finally {
+      this.inFlightIds.delete(job.id)
     }
   }
 }

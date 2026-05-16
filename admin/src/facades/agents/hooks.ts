@@ -265,13 +265,37 @@ export const useAgentRealtime = (input: {
 
     let closed = false
     let reconnectTimer: number | undefined
+    let handshakeTimer: number | undefined
     let socket: WebSocket | null = null
+    let reconnectAttempts = 0
+    const backoffSchedule = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000]
+    const HANDSHAKE_TIMEOUT_MS = 10_000
 
     const clearReconnectTimer = () => {
       if (reconnectTimer !== undefined) {
         window.clearTimeout(reconnectTimer)
         reconnectTimer = undefined
       }
+    }
+
+    const clearHandshakeTimer = () => {
+      if (handshakeTimer !== undefined) {
+        window.clearTimeout(handshakeTimer)
+        handshakeTimer = undefined
+      }
+    }
+
+    const scheduleReconnect = () => {
+      if (closed || reconnectTimer !== undefined) {
+        return
+      }
+      const delay =
+        backoffSchedule[Math.min(reconnectAttempts, backoffSchedule.length - 1)]
+      reconnectAttempts += 1
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = undefined
+        connect()
+      }, delay)
     }
 
     const invalidateAgentCaches = (agentId: string) => {
@@ -283,6 +307,9 @@ export const useAgentRealtime = (input: {
 
     const handleServerMessage = (message: WsServerMessage) => {
       if (message.type === 'subscribed') {
+        // Server-acknowledged handshake — safe to reset backoff.
+        reconnectAttempts = 0
+        clearHandshakeTimer()
         setConnectionState('connected')
         setRecords(snapshotToRecords(message.snapshot))
         queryClient.setQueryData<AgentRecord[] | undefined>(
@@ -376,13 +403,36 @@ export const useAgentRealtime = (input: {
     }
 
     const connect = () => {
+      if (closed) {
+        return
+      }
+      // A still-connecting socket is forcibly torn down so we don't wait
+      // out the browser's multi-minute handshake timeout.
+      if (socket && socket.readyState === WebSocket.CONNECTING) {
+        socket.close()
+        socket = null
+      }
       clearReconnectTimer()
+      clearHandshakeTimer()
       clearPingInterval()
       setConnectionState('connecting')
 
       socket = new WebSocket(resolveWebSocketUrl(token))
 
+      // Force teardown if the handshake never completes — otherwise a stuck
+      // CONNECTING socket can pin us for the browser default (~minutes).
+      handshakeTimer = window.setTimeout(() => {
+        handshakeTimer = undefined
+        if (socket && socket.readyState !== WebSocket.OPEN) {
+          socket.close()
+        }
+      }, HANDSHAKE_TIMEOUT_MS)
+
       socket.addEventListener('open', () => {
+        if (closed) {
+          socket?.close()
+          return
+        }
         const channelScopes = subscriptionKey
           .split(',')
           .filter((channelId) => channelId.length > 0)
@@ -422,12 +472,13 @@ export const useAgentRealtime = (input: {
 
       socket.addEventListener('close', () => {
         clearPingInterval()
+        clearHandshakeTimer()
         if (closed) {
           return
         }
 
         setConnectionState('disconnected')
-        reconnectTimer = window.setTimeout(connect, 1_500)
+        scheduleReconnect()
       })
 
       socket.addEventListener('error', () => {
@@ -440,6 +491,7 @@ export const useAgentRealtime = (input: {
     return () => {
       closed = true
       clearReconnectTimer()
+      clearHandshakeTimer()
       clearPingInterval()
       socket?.close()
     }

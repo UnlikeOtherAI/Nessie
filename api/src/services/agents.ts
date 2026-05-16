@@ -602,13 +602,16 @@ export const createAgentRecord = async (
     agentKind?: 'personal_assistant' | 'shared'
     model?: string
     name: string
+    organizationId?: string
     parentAgentId?: string
+    projectId?: string
     provider?: string
     role: string
     surfacePolicy?: 'dm_only' | 'shared'
     systemPrompt?: string
     systemManaged?: boolean
     delegationMode?: 'act_as_requesting_user' | 'none'
+    teamId?: string
     toolPolicy?: Record<string, boolean>
   },
 ): Promise<AgentRecord> => {
@@ -627,12 +630,15 @@ export const createAgentRecord = async (
       delegationMode: 'none',
       model: input.model,
       name: input.name,
+      organizationId: input.organizationId,
       parentAgentId: input.parentAgentId,
+      projectId: input.projectId,
       provider: input.provider,
       role: input.role,
       surfacePolicy: 'shared',
       systemPrompt: input.systemPrompt,
       systemManaged: false,
+      teamId: input.teamId,
       toolPolicy: input.toolPolicy ?? undefined,
     },
     include: {

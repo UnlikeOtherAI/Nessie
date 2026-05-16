@@ -17,7 +17,8 @@ export const useActiveCall = (channelId: string | undefined) => {
       }
     },
     enabled: !!channelId,
-    refetchInterval: 5000,
+    staleTime: 10_000,
+    refetchInterval: (query) => (query.state.data ? 5_000 : 30_000),
   })
 }
 

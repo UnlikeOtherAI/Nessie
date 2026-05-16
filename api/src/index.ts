@@ -376,6 +376,7 @@ const authSecret = (() => {
   process.exit(1)
 })()
 let bootstrapTokenState: BootstrapTokenState | null = null
+let bootstrapExpiryWarned = false
 
 const resolveBootstrapState = async (): Promise<BootstrapTokenState | null> => {
   const usersExist = (await prisma.user.count()) > 0
@@ -384,8 +385,21 @@ const resolveBootstrapState = async (): Promise<BootstrapTokenState | null> => {
     return null
   }
 
-  if (!bootstrapTokenState || isBootstrapTokenExpired(bootstrapTokenState)) {
+  // Mint exactly once at startup (or first call). After the initial token
+  // expires without being consumed, do NOT auto-rotate — return the expired
+  // state so callers (e.g. POST /api/auth/bootstrap) reject with
+  // TOKEN_EXPIRED. An explicit restart is required to mint a fresh token.
+  if (!bootstrapTokenState) {
     bootstrapTokenState = createBootstrapTokenState()
+    return bootstrapTokenState
+  }
+
+  if (isBootstrapTokenExpired(bootstrapTokenState) && !bootstrapExpiryWarned) {
+    bootstrapExpiryWarned = true
+    console.warn(
+      '[auth] Initial bootstrap token has expired without being consumed.'
+        + ' Restart the API process to mint a new bootstrap token.',
+    )
   }
 
   return bootstrapTokenState
@@ -1556,9 +1570,19 @@ export const buildApp = async () => {
     })
   })
 
-  app.get('/api/auth/dev-login', { config: { public: true } }, async (_request, reply) => {
+  app.get('/api/auth/dev-login', { config: { public: true } }, async (request, reply) => {
     if (config.mode !== 'local') {
       sendApiError(reply, 403, 'FORBIDDEN', 'Dev login is only available in local mode')
+      return reply
+    }
+
+    const remoteIp = request.ip
+    const isLoopback =
+      remoteIp === '127.0.0.1'
+      || remoteIp === '::1'
+      || remoteIp === '::ffff:127.0.0.1'
+    if (!isLoopback) {
+      sendApiError(reply, 403, 'FORBIDDEN', 'Dev login is only available from localhost')
       return reply
     }
 
@@ -2103,7 +2127,8 @@ export const buildApp = async () => {
   })
 
   app.post('/api/agents', async (request, reply) => {
-    if (!requireActorContext(request, reply)) {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
       return reply
     }
 
@@ -2115,10 +2140,13 @@ export const buildApp = async () => {
     const agent = await createAgentRecord(prisma, {
       model: body.model,
       name: body.name,
+      organizationId: actorContext.tenant.organizationId,
       parentAgentId: body.parentAgentId,
+      projectId: actorContext.tenant.projectId,
       provider: body.provider,
       role: body.role ?? 'assistant',
       systemPrompt: body.systemPrompt,
+      teamId: actorContext.tenant.teamId,
       toolPolicy: body.toolPolicy,
     })
 
@@ -4397,29 +4425,30 @@ export const buildApp = async () => {
     }
 
     if (messageMemoryCaptureConfig) {
-      try {
-        await captureUserMessageMemory(
-          {
-            channelId: thread.channel.id,
-            content: result.message.content,
-            memoryOrigin:
-              thread.channel.systemChannelType === 'personal_assistant'
-                ? 'personal_assistant_dm'
-                : 'user_authored_workspace_message',
-            messageId: result.message.id,
-            organizationId: actorContext.tenant.organizationId,
-            sourceAudience: thread.channel.type === 'dm' ? 'dm' : 'channel',
-            threadId: thread.id,
-            userId: actorContext.actor.actorId,
-          },
-          messageMemoryCaptureConfig,
-        )
-      } catch (error) {
-        app.log.warn(
-          { err: error, messageId: result.message.id },
-          '[memory] failed to capture user message memory',
-        )
-      }
+      // Fire-and-forget: never block the message POST response on memory
+      // capture. The handler comment downstream asserts orchestration "never
+      // blocks this response" — keep that invariant here too.
+      void captureUserMessageMemory(
+        {
+          channelId: thread.channel.id,
+          content: result.message.content,
+          memoryOrigin:
+            thread.channel.systemChannelType === 'personal_assistant'
+              ? 'personal_assistant_dm'
+              : 'user_authored_workspace_message',
+          messageId: result.message.id,
+          organizationId: actorContext.tenant.organizationId,
+          sourceAudience: thread.channel.type === 'dm' ? 'dm' : 'channel',
+          threadId: thread.id,
+          userId: actorContext.actor.actorId,
+        },
+        messageMemoryCaptureConfig,
+      ).catch((err) =>
+        request.log.error(
+          { err, messageId: result.message.id },
+          'capture_user_message_memory_failed',
+        ),
+      )
     }
 
     await realtimeHub.publishWs(
@@ -4582,21 +4611,33 @@ export const buildApp = async () => {
       ? lastEventIdHeader[0]
       : lastEventIdHeader
 
-    const streamConnection = await realtimeHub.addSseConnection(
-      thread.id,
-      reply.raw,
-      lastEventId,
-    )
-
+    // Register cleanup BEFORE awaiting addSseConnection so a half-open socket
+    // is still torn down if the client disconnects mid-await.
     const keepAlive = setInterval(() => {
       reply.raw.write(': keepalive\n\n')
     }, 15000)
 
+    let streamConnection: Awaited<ReturnType<typeof realtimeHub.addSseConnection>> | null = null
     request.raw.on('close', () => {
       clearInterval(keepAlive)
-      realtimeHub.removeSseConnection(streamConnection)
+      if (streamConnection) {
+        realtimeHub.removeSseConnection(streamConnection)
+      }
       reply.raw.end()
     })
+
+    try {
+      streamConnection = await realtimeHub.addSseConnection(
+        thread.id,
+        reply.raw,
+        lastEventId,
+      )
+    } catch (err) {
+      clearInterval(keepAlive)
+      reply.raw.end()
+      request.log.error({ err }, 'sse_setup_failed')
+      return reply
+    }
   })
 
   app.get('/api/agents/:agentId/status', async (request, reply) => {

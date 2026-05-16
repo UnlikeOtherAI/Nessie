@@ -34,3 +34,4 @@ export {
   getExperienceStats,
   type ExperienceStats,
 } from './lifecycle.js'
+export { withTransaction } from './transaction.js'

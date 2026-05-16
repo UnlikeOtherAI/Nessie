@@ -5,6 +5,7 @@ import { computeFingerprint } from './fingerprint.js'
 import { getEmbedding } from './embed.js'
 import { extractMetadata, type ThoughtMetadata } from './extract-metadata.js'
 import { extractReasoning, type ReasoningExtraction } from './extract-reasoning.js'
+import { withTransaction } from './transaction.js'
 
 export type CaptureThoughtInput = {
   content: string
@@ -220,86 +221,88 @@ export const captureThought = async (
   const sensitivityTier = input.sensitivityTier ?? 'normal'
   const importance = input.importance ?? 0.5
 
-  const insertResult = await config.pool.query(
-    `INSERT INTO thoughts (
-      id, content, content_hash, embedding, owner_id, owner_type,
-      audience_type, audience_id,
-      organization_id, project_id, team_id, channel_id, thread_id, user_id,
-      visibility, sensitivity_tier, importance, metadata, created_at, updated_at
-    ) VALUES (
-      gen_random_uuid(), $1, $2, $3::vector, $4, $5,
-      $6::"ThoughtAudienceType", $7::uuid,
-      $8, $9, $10, $11, $12, $13,
-      $14, $15, $16, $17, now(), now()
-    ) RETURNING id, created_at`,
-    [
-      input.content,
-      contentHash,
-      embedding ? `[${embedding.join(',')}]` : null,
-      input.ownerId,
-      input.ownerType,
-      resolvedAudience.audienceType,
-      resolvedAudience.audienceId,
-      input.organizationId,
-      input.projectId ?? null,
-      input.teamId ?? null,
-      input.channelId ?? null,
-      input.threadId ?? null,
-      resolvedAudience.userId,
-      visibility,
-      sensitivityTier,
-      importance,
-      mergedMetadata ? JSON.stringify(mergedMetadata) : null,
-    ],
-  )
-
-  const row = insertResult.rows[0] as { id: string; created_at: string }
-  const thoughtId = row.id
-  const createdAt = row.created_at
-
-  // If reasoning was extracted, insert a ThoughtReasoning record
-  if (reasoning?.hasReasoning) {
-    await config.pool.query(
-      `INSERT INTO thought_reasonings (
-        id, thought_id, reasoning_type, alternatives, criteria, constraints,
-        tradeoffs, confidence, reasoning, actor_type, actor_id, outcome,
-        organization_id, created_at, updated_at
+  return withTransaction(config.pool, async (client) => {
+    const insertResult = await client.query(
+      `INSERT INTO thoughts (
+        id, content, content_hash, embedding, owner_id, owner_type,
+        audience_type, audience_id,
+        organization_id, project_id, team_id, channel_id, thread_id, user_id,
+        visibility, sensitivity_tier, importance, metadata, created_at, updated_at
       ) VALUES (
-        gen_random_uuid(), $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10, 'pending',
-        $11, now(), now()
-      )`,
+        gen_random_uuid(), $1, $2, $3::vector, $4, $5,
+        $6::"ThoughtAudienceType", $7::uuid,
+        $8, $9, $10, $11, $12, $13,
+        $14, $15, $16, $17, now(), now()
+      ) RETURNING id, created_at`,
       [
-        thoughtId,
-        reasoning.reasoningType,
-        reasoning.alternatives ? JSON.stringify(reasoning.alternatives) : null,
-        reasoning.criteria ? JSON.stringify(reasoning.criteria) : null,
-        reasoning.constraints ? JSON.stringify(reasoning.constraints) : null,
-        reasoning.tradeoffs,
-        reasoning.confidence,
-        reasoning.reasoningSummary,
-        input.ownerType,
+        input.content,
+        contentHash,
+        embedding ? `[${embedding.join(',')}]` : null,
         input.ownerId,
+        input.ownerType,
+        resolvedAudience.audienceType,
+        resolvedAudience.audienceId,
         input.organizationId,
+        input.projectId ?? null,
+        input.teamId ?? null,
+        input.channelId ?? null,
+        input.threadId ?? null,
+        resolvedAudience.userId,
+        visibility,
+        sensitivityTier,
+        importance,
+        mergedMetadata ? JSON.stringify(mergedMetadata) : null,
       ],
     )
-  }
 
-  // Write audit log
-  await config.pool.query(
-    `INSERT INTO thought_audit_logs (id, thought_id, action, actor_type, actor_id, created_at)
-     VALUES (gen_random_uuid(), $1, 'created', $2, $3, now())`,
-    [thoughtId, input.ownerType, input.ownerId],
-  )
+    const row = insertResult.rows[0] as { id: string; created_at: string }
+    const thoughtId = row.id
+    const createdAt = row.created_at
 
-  return {
-    id: thoughtId,
-    content: input.content,
-    contentHash,
-    metadata: mergedMetadata,
-    reasoning,
-    isDuplicate: false,
-    embeddingFailed: embedding === null,
-    createdAt: String(createdAt),
-  }
+    // If reasoning was extracted, insert a ThoughtReasoning record
+    if (reasoning?.hasReasoning) {
+      await client.query(
+        `INSERT INTO thought_reasonings (
+          id, thought_id, reasoning_type, alternatives, criteria, constraints,
+          tradeoffs, confidence, reasoning, actor_type, actor_id, outcome,
+          organization_id, created_at, updated_at
+        ) VALUES (
+          gen_random_uuid(), $1, $2, $3, $4, $5,
+          $6, $7, $8, $9, $10, 'pending',
+          $11, now(), now()
+        )`,
+        [
+          thoughtId,
+          reasoning.reasoningType,
+          reasoning.alternatives ? JSON.stringify(reasoning.alternatives) : null,
+          reasoning.criteria ? JSON.stringify(reasoning.criteria) : null,
+          reasoning.constraints ? JSON.stringify(reasoning.constraints) : null,
+          reasoning.tradeoffs,
+          reasoning.confidence,
+          reasoning.reasoningSummary,
+          input.ownerType,
+          input.ownerId,
+          input.organizationId,
+        ],
+      )
+    }
+
+    // Write audit log
+    await client.query(
+      `INSERT INTO thought_audit_logs (id, thought_id, action, actor_type, actor_id, created_at)
+       VALUES (gen_random_uuid(), $1, 'created', $2, $3, now())`,
+      [thoughtId, input.ownerType, input.ownerId],
+    )
+
+    return {
+      id: thoughtId,
+      content: input.content,
+      contentHash,
+      metadata: mergedMetadata,
+      reasoning,
+      isDuplicate: false,
+      embeddingFailed: embedding === null,
+      createdAt: String(createdAt),
+    }
+  })
 }
