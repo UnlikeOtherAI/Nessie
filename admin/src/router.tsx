@@ -8,6 +8,7 @@ import { AuditLogPage } from './pages/AuditLogPage'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { LoginPage } from './pages/LoginPage'
+import { NotFoundPage } from './pages/NotFoundPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ToolsPage } from './pages/ToolsPage'
@@ -28,6 +29,18 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/workflows',
+    element: <Navigate to="/agents/workflows" replace />,
+  },
+  {
+    path: '/threads',
+    element: <Navigate to="/channels" replace />,
+  },
+  {
+    path: '/chats',
+    element: <Navigate to="/channels" replace />,
   },
   {
     element: <AdminShellLayout />,
@@ -93,5 +106,9 @@ export const router = createBrowserRouter([
         element: <PolicyPage />,
       },
     ],
+  },
+  {
+    path: '*',
+    element: <NotFoundPage />,
   },
 ])

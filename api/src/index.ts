@@ -406,12 +406,13 @@ const getAuthorizationToken = (request: FastifyRequest): string | null => {
     }
   }
 
-  const queryToken =
-    (request.query as { token?: string } | undefined)?.token ??
-    new URL(request.url, 'http://localhost').searchParams.get('token')
-
-  if (typeof queryToken === 'string' && queryToken.length > 0) {
-    return queryToken
+  // Narrow exception: WebSocket upgrade requests may carry the token in the
+  // query string because the browser WebSocket API cannot set custom headers.
+  if (request.headers.upgrade?.toLowerCase() === 'websocket') {
+    const query = request.query as { token?: unknown } | undefined
+    if (query && typeof query.token === 'string' && query.token) {
+      return query.token
+    }
   }
 
   return null
@@ -1133,7 +1134,19 @@ const checkRateLimit = (request: FastifyRequest): { retryAfterSeconds: number } 
 }
 
 export const buildApp = async () => {
-  const app = Fastify({ logger: true })
+  const app = Fastify({
+    logger: {
+      // Redact the `token` query param (used by the WebSocket upgrade path
+      // because the browser WS API cannot set headers) from access logs.
+      redact: {
+        paths: ['req.url'],
+        censor: (value: unknown) =>
+          typeof value === 'string'
+            ? value.replace(/([?&])token=[^&]*/gi, '$1token=[REDACTED]')
+            : value,
+      },
+    },
+  })
 
   app.addContentTypeParser(
     /^application\/([a-z0-9.+-]+\+)?json($|;)/i,
@@ -4090,11 +4103,18 @@ export const buildApp = async () => {
   app.post('/api/projects/:projectId/members', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
 
     const { projectId } = request.params as { projectId: string }
     const body = request.body as { userId?: string; role?: string } | undefined
     if (!body?.userId) {
       sendApiError(reply, 400, 'USER_ID_REQUIRED', 'userId is required')
+      return reply
+    }
+
+    const project = await prisma.project.findUnique({ where: { id: projectId } })
+    if (!project || project.organizationId !== actorContext.tenant.organizationId) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
       return reply
     }
 
@@ -4150,6 +4170,12 @@ export const buildApp = async () => {
       return reply
     }
 
+    const project = await prisma.project.findUnique({ where: { id: body.projectId } })
+    if (!project || project.organizationId !== actorContext.tenant.organizationId) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
+      return reply
+    }
+
     const team = await prisma.team.create({
       data: {
         name: body.name,
@@ -4179,11 +4205,21 @@ export const buildApp = async () => {
   app.post('/api/teams/:teamId/members', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
 
     const { teamId } = request.params as { teamId: string }
     const body = request.body as { userId?: string; role?: string } | undefined
     if (!body?.userId) {
       sendApiError(reply, 400, 'USER_ID_REQUIRED', 'userId is required')
+      return reply
+    }
+
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: { project: true },
+    })
+    if (!team || team.project.organizationId !== actorContext.tenant.organizationId) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
       return reply
     }
 
@@ -4221,6 +4257,44 @@ export const buildApp = async () => {
     })
     if (!orgMember) {
       sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this organization')
+      return reply
+    }
+
+    const project = await prisma.project.findUnique({ where: { id: body.projectId } })
+    if (!project || project.organizationId !== body.organizationId) {
+      sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this project/team')
+      return reply
+    }
+
+    const projectMember = await prisma.projectMember.findUnique({
+      where: {
+        projectId_userId: {
+          projectId: body.projectId,
+          userId: actorContext.actor.actorId,
+        },
+      },
+    })
+    if (!projectMember) {
+      sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this project/team')
+      return reply
+    }
+
+    const team = await prisma.team.findUnique({ where: { id: body.teamId } })
+    if (!team || team.projectId !== body.projectId) {
+      sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this project/team')
+      return reply
+    }
+
+    const teamMember = await prisma.teamMember.findUnique({
+      where: {
+        teamId_userId: {
+          teamId: body.teamId,
+          userId: actorContext.actor.actorId,
+        },
+      },
+    })
+    if (!teamMember) {
+      sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this project/team')
       return reply
     }
 

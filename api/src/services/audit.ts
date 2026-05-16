@@ -89,6 +89,14 @@ export type AuditLogQuery = {
   to?: string
 }
 
+const parseCursor = (raw: string): { cursorDate: Date; cursorId: string } | null => {
+  const [isoPart, idPart] = raw.split('|')
+  if (!isoPart || !idPart) return null
+  const d = new Date(isoPart)
+  if (Number.isNaN(d.getTime())) return null
+  return { cursorDate: d, cursorId: idPart }
+}
+
 export const listAuditLogs = async (
   prisma: PrismaClient,
   query: AuditLogQuery,
@@ -113,17 +121,30 @@ export const listAuditLogs = async (
   if (Object.keys(dateFilter).length > 0) where['createdAt'] = dateFilter
 
   if (query.cursor) {
-    where['id'] = { lt: query.cursor }
+    const parsed = parseCursor(query.cursor)
+    if (parsed) {
+      const existingAnd = where['AND']
+      where['AND'] = [
+        ...(Array.isArray(existingAnd) ? existingAnd : []),
+        {
+          OR: [
+            { createdAt: { lt: parsed.cursorDate } },
+            { createdAt: parsed.cursorDate, id: { lt: parsed.cursorId } },
+          ],
+        },
+      ]
+    }
   }
 
   const entries = await prisma.auditLog.findMany({
     where: where as Prisma.AuditLogWhereInput,
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
   })
 
   const hasMore = entries.length > limit
   const data = hasMore ? entries.slice(0, limit) : entries
+  const last = data.at(-1)
 
   return {
     data: data.map((entry) => ({
@@ -146,7 +167,7 @@ export const listAuditLogs = async (
       createdAt: entry.createdAt.toISOString(),
     })),
     meta: {
-      cursor: hasMore && data.length > 0 ? data.at(-1)!.id : null,
+      cursor: hasMore && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
       hasMore,
     },
   }

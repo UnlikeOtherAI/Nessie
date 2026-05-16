@@ -221,6 +221,14 @@ export const getEffectivePolicy = async (
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────
 
+const parseCursor = (raw: string): { cursorDate: Date; cursorId: string } | null => {
+  const [isoPart, idPart] = raw.split('|')
+  if (!isoPart || !idPart) return null
+  const d = new Date(isoPart)
+  if (Number.isNaN(d.getTime())) return null
+  return { cursorDate: d, cursorId: idPart }
+}
+
 export const listPolicyRules = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -237,22 +245,31 @@ export const listPolicyRules = async (
   if (filters?.scope) where['scope'] = filters.scope
   if (filters?.scopeId) where['scopeId'] = filters.scopeId
   if (filters?.resourceType) where['resourceType'] = filters.resourceType
-  if (filters?.cursor) where['id'] = { gt: filters.cursor }
+  if (filters?.cursor) {
+    const parsed = parseCursor(filters.cursor)
+    if (parsed) {
+      where['OR'] = [
+        { createdAt: { gt: parsed.cursorDate } },
+        { createdAt: parsed.cursorDate, id: { gt: parsed.cursorId } },
+      ]
+    }
+  }
 
   const rules = await prisma.policyRule.findMany({
     where: where as Prisma.PolicyRuleWhereInput,
     include: { bindings: true },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: limit + 1,
   })
 
   const hasMore = rules.length > limit
   const data = hasMore ? rules.slice(0, limit) : rules
+  const last = data.at(-1)
 
   return {
     data: data.map(mapPolicyRule),
     meta: {
-      cursor: hasMore && data.length > 0 ? data.at(-1)!.id : null,
+      cursor: hasMore && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
       hasMore,
     },
   }

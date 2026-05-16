@@ -52,6 +52,14 @@ export const createApprovalRequest = async (
   return mapApproval(approval)
 }
 
+const parseCursor = (raw: string): { cursorDate: Date; cursorId: string } | null => {
+  const [isoPart, idPart] = raw.split('|')
+  if (!isoPart || !idPart) return null
+  const d = new Date(isoPart)
+  if (Number.isNaN(d.getTime())) return null
+  return { cursorDate: d, cursorId: idPart }
+}
+
 export const listApprovalRequests = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -68,21 +76,30 @@ export const listApprovalRequests = async (
   if (filters?.status) where['status'] = filters.status
   if (filters?.agentId) where['agentId'] = filters.agentId
   if (filters?.channelId) where['channelId'] = filters.channelId
-  if (filters?.cursor) where['id'] = { lt: filters.cursor }
+  if (filters?.cursor) {
+    const parsed = parseCursor(filters.cursor)
+    if (parsed) {
+      where['OR'] = [
+        { createdAt: { lt: parsed.cursorDate } },
+        { createdAt: parsed.cursorDate, id: { lt: parsed.cursorId } },
+      ]
+    }
+  }
 
   const approvals = await prisma.approvalRequest.findMany({
     where: where as Prisma.ApprovalRequestWhereInput,
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
   })
 
   const hasMore = approvals.length > limit
   const data = hasMore ? approvals.slice(0, limit) : approvals
+  const last = data.at(-1)
 
   return {
     data: data.map(mapApproval),
     meta: {
-      cursor: hasMore && data.length > 0 ? data.at(-1)!.id : null,
+      cursor: hasMore && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
       hasMore,
     },
   }
