@@ -12,6 +12,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   MCP_INSTANCE_ERROR_CODES,
   McpInstanceError,
+  descriptorDiffersFromEntry,
   healthcheckInstance,
   probeConnection,
   refreshInstance,
@@ -217,16 +218,42 @@ test('probeConnection returns ok=false when listTools returns a non-array (malfo
 
 type RecordedUpdate = { where: { id: string }; data: Record<string, unknown> }
 
+type StubRegistryEntry = {
+  id: string
+  toolId: string
+  label: string
+  description: string
+  inputSchema: unknown
+  outputSchema: unknown
+}
+
+type RecordedUpsert = {
+  where: { scopeKey_toolId: { scopeKey: string; toolId: string } }
+  create: Record<string, unknown>
+  update: Record<string, unknown>
+}
+
+type RecordedUpdateMany = {
+  where: Record<string, unknown>
+  data: Record<string, unknown>
+}
+
 const makeStubPrisma = (
   instance: McpInstanceRow,
   catalogEntry: { authMethod: string; authConfig: unknown; defaultTransportConfig: unknown },
+  options: { existingEntries?: StubRegistryEntry[] } = {},
 ): {
   prisma: PrismaClient
   updates: RecordedUpdate[]
+  upserts: RecordedUpsert[]
+  updateManys: RecordedUpdateMany[]
   transactionRan: { value: boolean }
 } => {
   const updates: RecordedUpdate[] = []
+  const upserts: RecordedUpsert[] = []
+  const updateManys: RecordedUpdateMany[] = []
   const transactionRan = { value: false }
+  const existingEntries = options.existingEntries ?? []
   const tx = {
     mcpServerInstance: {
       update: async (args: RecordedUpdate): Promise<McpInstanceRow> => {
@@ -235,7 +262,15 @@ const makeStubPrisma = (
       },
     },
     toolRegistryEntry: {
-      upsert: async () => ({}),
+      findMany: async (): Promise<StubRegistryEntry[]> => existingEntries,
+      upsert: async (args: RecordedUpsert) => {
+        upserts.push(args)
+        return {}
+      },
+      updateMany: async (args: RecordedUpdateMany) => {
+        updateManys.push(args)
+        return { count: 0 }
+      },
     },
   }
   const prisma = {
@@ -254,7 +289,13 @@ const makeStubPrisma = (
       return fn(tx)
     },
   }
-  return { prisma: prisma as unknown as PrismaClient, updates, transactionRan }
+  return {
+    prisma: prisma as unknown as PrismaClient,
+    updates,
+    upserts,
+    updateManys,
+    transactionRan,
+  }
 }
 
 const catalogEntryStub = {
@@ -440,4 +481,234 @@ test('refreshInstance still surfaces non-probe errors (e.g. NOT_FOUND)', async (
     (thrown as McpInstanceError).code,
     MCP_INSTANCE_ERROR_CODES.NOT_FOUND,
   )
+})
+
+// ─── descriptorDiffersFromEntry (task #18) ──────────────────────────────────
+//
+// Unit-level checks for the diff predicate that decides whether a re-probe
+// has to bounce an approved registry entry back to `pending_review`.
+
+test('descriptorDiffersFromEntry returns false for an identical descriptor', () => {
+  const drifted = descriptorDiffersFromEntry(
+    {
+      name: 'echo',
+      title: 'Echo',
+      description: 'returns input',
+      inputSchema: { type: 'object', properties: { msg: { type: 'string' } } },
+      outputSchema: { type: 'object' },
+    },
+    {
+      label: 'Echo',
+      description: 'returns input',
+      inputSchema: { type: 'object', properties: { msg: { type: 'string' } } },
+      outputSchema: { type: 'object' },
+    },
+  )
+  assert.equal(drifted, false)
+})
+
+test('descriptorDiffersFromEntry ignores key order in JSON schemas', () => {
+  const drifted = descriptorDiffersFromEntry(
+    {
+      name: 'echo',
+      inputSchema: {
+        type: 'object',
+        properties: { a: { type: 'string' }, b: { type: 'number' } },
+      },
+    },
+    {
+      label: 'echo',
+      description: '',
+      // Same shape, reversed property order.
+      inputSchema: {
+        properties: { b: { type: 'number' }, a: { type: 'string' } },
+        type: 'object',
+      },
+      outputSchema: null,
+    },
+  )
+  assert.equal(drifted, false)
+})
+
+test('descriptorDiffersFromEntry returns true when label changes', () => {
+  const drifted = descriptorDiffersFromEntry(
+    { name: 'echo', title: 'Echo v2', inputSchema: {} },
+    { label: 'Echo', description: '', inputSchema: {}, outputSchema: null },
+  )
+  assert.equal(drifted, true)
+})
+
+test('descriptorDiffersFromEntry returns true when description changes', () => {
+  const drifted = descriptorDiffersFromEntry(
+    { name: 'echo', description: 'now with feeling', inputSchema: {} },
+    { label: 'echo', description: 'returns input', inputSchema: {}, outputSchema: null },
+  )
+  assert.equal(drifted, true)
+})
+
+test('descriptorDiffersFromEntry returns true when inputSchema changes', () => {
+  const drifted = descriptorDiffersFromEntry(
+    { name: 'echo', inputSchema: { type: 'object', required: ['msg'] } },
+    { label: 'echo', description: '', inputSchema: { type: 'object' }, outputSchema: null },
+  )
+  assert.equal(drifted, true)
+})
+
+test('descriptorDiffersFromEntry returns true when outputSchema changes', () => {
+  const drifted = descriptorDiffersFromEntry(
+    { name: 'echo', inputSchema: {}, outputSchema: { type: 'string' } },
+    { label: 'echo', description: '', inputSchema: {}, outputSchema: null },
+  )
+  assert.equal(drifted, true)
+})
+
+// ─── testInstance re-probe drift → pending_review (task #18) ────────────────
+//
+// On re-probe the projection must:
+//   - leave `status` untouched on entries that match the new descriptor
+//   - flip `status` to pending_review on entries whose label / description /
+//     inputSchema / outputSchema diverged from what was approved
+//   - flip `status` to pending_review on entries whose upstream tool has
+//     disappeared from `tools/list` (kept enabled so dispatch stays loud)
+
+test('testInstance leaves status untouched when descriptors are identical to existing entries', async () => {
+  const existing: StubRegistryEntry = {
+    id: 'entry-1',
+    toolId: 'mcp:instance-1:echo',
+    label: 'Echo',
+    description: 'returns input',
+    inputSchema: { type: 'object' },
+    outputSchema: null,
+  }
+  const { prisma, upserts, updateManys } = makeStubPrisma(baseInstance, catalogEntryStub, {
+    existingEntries: [existing],
+  })
+  const { factory } = makeFakeManagerFactory({
+    listTools: () => [
+      {
+        name: 'echo',
+        title: 'Echo',
+        description: 'returns input',
+        inputSchema: { type: 'object' },
+      },
+    ],
+  })
+
+  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+
+  assert.equal(upserts.length, 1)
+  // Identical descriptor → upsert.update must NOT carry a status field.
+  assert.equal('status' in upserts[0]!.update, false)
+  // No tools were removed → no updateMany sweep.
+  assert.equal(updateManys.length, 0)
+})
+
+test('testInstance flips status to pending_review when descriptor schema drifted', async () => {
+  const existing: StubRegistryEntry = {
+    id: 'entry-1',
+    toolId: 'mcp:instance-1:echo',
+    label: 'Echo',
+    description: 'returns input',
+    inputSchema: { type: 'object' },
+    outputSchema: null,
+  }
+  const { prisma, upserts } = makeStubPrisma(baseInstance, catalogEntryStub, {
+    existingEntries: [existing],
+  })
+  const { factory } = makeFakeManagerFactory({
+    listTools: () => [
+      {
+        name: 'echo',
+        title: 'Echo',
+        description: 'returns input',
+        // inputSchema gained a required field — material drift.
+        inputSchema: { type: 'object', required: ['msg'] },
+      },
+    ],
+  })
+
+  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+
+  assert.equal(upserts.length, 1)
+  assert.equal(upserts[0]!.update.status, 'pending_review')
+})
+
+test('testInstance flips status when descriptor label or description drifted', async () => {
+  const existing: StubRegistryEntry = {
+    id: 'entry-1',
+    toolId: 'mcp:instance-1:echo',
+    label: 'Echo',
+    description: 'old description',
+    inputSchema: {},
+    outputSchema: null,
+  }
+  const { prisma, upserts } = makeStubPrisma(baseInstance, catalogEntryStub, {
+    existingEntries: [existing],
+  })
+  const { factory } = makeFakeManagerFactory({
+    listTools: () => [
+      { name: 'echo', title: 'Echo', description: 'new description', inputSchema: {} },
+    ],
+  })
+
+  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+
+  assert.equal(upserts.length, 1)
+  assert.equal(upserts[0]!.update.status, 'pending_review')
+})
+
+test('testInstance flips removed-tool entries to pending_review via updateMany sweep', async () => {
+  const surviving: StubRegistryEntry = {
+    id: 'entry-keep',
+    toolId: 'mcp:instance-1:echo',
+    label: 'Echo',
+    description: '',
+    inputSchema: {},
+    outputSchema: null,
+  }
+  const removed: StubRegistryEntry = {
+    id: 'entry-removed',
+    toolId: 'mcp:instance-1:ghost',
+    label: 'Ghost',
+    description: 'no longer exposed',
+    inputSchema: {},
+    outputSchema: null,
+  }
+  const { prisma, upserts, updateManys } = makeStubPrisma(baseInstance, catalogEntryStub, {
+    existingEntries: [surviving, removed],
+  })
+  const { factory } = makeFakeManagerFactory({
+    // Only `echo` is reported now — `ghost` has vanished from the server.
+    listTools: () => [{ name: 'echo', title: 'Echo', inputSchema: {} }],
+  })
+
+  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+
+  // One upsert for the surviving tool, identical → no status flip.
+  assert.equal(upserts.length, 1)
+  assert.equal('status' in upserts[0]!.update, false)
+  // One updateMany sweeping the ghost entry into pending_review.
+  assert.equal(updateManys.length, 1)
+  assert.deepEqual(updateManys[0]!.where, { id: { in: ['entry-removed'] } })
+  assert.equal(updateManys[0]!.data.status, 'pending_review')
+})
+
+test('testInstance skips the removal sweep when every existing entry is still present', async () => {
+  const existing: StubRegistryEntry = {
+    id: 'entry-1',
+    toolId: 'mcp:instance-1:echo',
+    label: 'Echo',
+    description: '',
+    inputSchema: {},
+    outputSchema: null,
+  }
+  const { prisma, updateManys } = makeStubPrisma(baseInstance, catalogEntryStub, {
+    existingEntries: [existing],
+  })
+  const { factory } = makeFakeManagerFactory({
+    listTools: () => [{ name: 'echo', title: 'Echo', inputSchema: {} }],
+  })
+
+  await testInstance(prisma, 'org-1', baseInstance.id, { managerFactory: factory })
+  assert.equal(updateManys.length, 0)
 })

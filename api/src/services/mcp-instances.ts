@@ -89,6 +89,54 @@ const toRegistryScopeKey = (
 const toRegistryToolId = (instanceId: string, toolName: string): string =>
   `mcp:${instanceId}:${toolName}`
 
+/**
+ * Stable deep-equality for the JSON-ish payloads we persist on
+ * `ToolRegistryEntry` (inputSchema, outputSchema). Object keys are sorted so
+ * field-order differences from the upstream MCP server don't trigger a false
+ * "schema drifted" reset. `undefined`, `null`, and missing keys all collapse
+ * to the same canonical form (the stored `outputSchema` is nullable but a
+ * descriptor may simply omit it).
+ */
+const canonicalJson = (value: unknown): unknown => {
+  if (value === undefined || value === null) return null
+  if (Array.isArray(value)) return value.map(canonicalJson)
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => [k, canonicalJson(v)] as const)
+    return Object.fromEntries(entries)
+  }
+  return value
+}
+
+const jsonEqual = (a: unknown, b: unknown): boolean =>
+  JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b))
+
+/**
+ * Decide whether a freshly-probed descriptor materially differs from the
+ * existing `ToolRegistryEntry` row. We compare the four user-visible /
+ * governance-relevant fields the upsert writes: label, description,
+ * inputSchema, outputSchema. Other internal fields (transport, source,
+ * mcpInstanceId) are derived from the instance and never need a re-review.
+ */
+export const descriptorDiffersFromEntry = (
+  descriptor: McpToolDescriptor,
+  entry: {
+    label: string
+    description: string
+    inputSchema: unknown
+    outputSchema: unknown
+  },
+): boolean => {
+  const nextLabel = descriptor.title ?? descriptor.name
+  if (nextLabel !== entry.label) return true
+  if ((descriptor.description ?? '') !== entry.description) return true
+  if (!jsonEqual(descriptor.inputSchema ?? {}, entry.inputSchema)) return true
+  if (!jsonEqual(descriptor.outputSchema ?? null, entry.outputSchema)) return true
+  return false
+}
+
 export const listInstances = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -351,10 +399,11 @@ export const healthcheckInstance = async (
  * UI can render the new lifecycle state (`error` with `healthFailureCount`
  * incremented) without the 502 round-trip that the `test` endpoint emits.
  *
- * TODO(task #18): when the probed schema diverges from the stored
- * `ToolRegistryEntry` (input/output/label/description), the affected entries'
- * status should reset to `pending_review`. Scope here is just probe +
- * projection; status-reset semantics land in #18.
+ * Drift handling (task #18): a re-probe whose descriptors differ from the
+ * stored `ToolRegistryEntry` (label / description / inputSchema / outputSchema)
+ * resets the affected entries' status to `pending_review`, and any registry
+ * entry whose tool has been REMOVED from the server is likewise reset (kept
+ * enabled — disabling silently is more destructive than re-review).
  */
 export const refreshInstance = async (
   prisma: PrismaClient,
@@ -454,9 +503,34 @@ export const testInstance = async (
       },
     })
 
+    // Snapshot existing registry rows for this instance BEFORE the upsert
+    // sweep so we can (a) detect schema/label/description drift on rows that
+    // survive the re-probe and reset them to `pending_review`, and (b) reset
+    // any row whose tool has been REMOVED from the upstream server (it stays
+    // enabled — silent disable would mask the drift; pending_review surfaces
+    // it to the owner without breaking active grants).
+    const existingEntries = await tx.toolRegistryEntry.findMany({
+      where: { mcpInstanceId: id },
+      select: {
+        id: true,
+        toolId: true,
+        label: true,
+        description: true,
+        inputSchema: true,
+        outputSchema: true,
+      },
+    })
+    const existingByToolId = new Map(existingEntries.map((e) => [e.toolId, e]))
+
     const prismaSource = toPrismaToolRegistrySource('mcp-remote') as never
+    const seenToolIds = new Set<string>()
     for (const descriptor of descriptors) {
       const toolId = toRegistryToolId(id, descriptor.name)
+      seenToolIds.add(toolId)
+      const existing = existingByToolId.get(toolId)
+      const drifted = existing
+        ? descriptorDiffersFromEntry(descriptor, existing)
+        : false
       await tx.toolRegistryEntry.upsert({
         where: {
           scopeKey_toolId: { scopeKey, toolId },
@@ -504,7 +578,24 @@ export const testInstance = async (
           outputSchema: descriptor.outputSchema
             ? (descriptor.outputSchema as object)
             : Prisma.JsonNull,
+          // Only flip status when the new descriptor diverges from what was
+          // approved. An identical re-probe leaves an `active` entry active.
+          ...(drifted ? { status: 'pending_review' as const } : {}),
         },
+      })
+    }
+
+    // Sweep entries whose upstream tool disappeared. Keep them enabled so
+    // dispatch errors stay loud (HARD-failing call vs silently passing the
+    // wrong arg) — but flip them to pending_review so the owner sees the
+    // drift in the admin UI and can decide whether to delete / archive.
+    const removedIds = existingEntries
+      .filter((e) => !seenToolIds.has(e.toolId))
+      .map((e) => e.id)
+    if (removedIds.length > 0) {
+      await tx.toolRegistryEntry.updateMany({
+        where: { id: { in: removedIds } },
+        data: { status: 'pending_review' },
       })
     }
 
