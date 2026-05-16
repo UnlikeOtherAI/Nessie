@@ -256,3 +256,12 @@ Slice C builder still active (transcript mtime ~50s ago, 1.01 MB). New since las
 
 ### Tick 2026-05-16T20:09Z
 Slice C builder in test-writing phase (transcript mtime 3s ago, 1.18 MB). Five new untracked test files since last tick: `api/test/mcp-catalog.test.ts`, `api/test/mcp-instances.test.ts`, `api/test/tool-enum-mapping.test.ts`, `worker/test/tool-dispatch.test.ts`, `worker/test/tool-http.test.ts`. Likely close to finish. All pending tasks still gated on #1. Tick-and-hold.
+
+### Event 2026-05-16T20:11Z — Slice C landed
+Slice C complete (commit `16c4579`). 22 new/modified files. Gates green: api typecheck/lint/build/test (26 tests), worker typecheck/lint/build/test (69 tests). Marked #1 completed. Wave-3 unlocked: #6 (Slice E UI), #8 (prisma drift), #16 (SSRF dedupe) all now claimable. Dispatched 4 agents in parallel (file-disjoint per §3 ownership):
+- **Slice C reviewer** (`feature-dev:code-reviewer`) — read-only audit of all 22 files, focus on 7-level credential chain, SSRF bypass via fetchImpl seam, secret-resolver trust boundary, dispatch ordering.
+- **Slice E builder** — `admin/src/features/workflows/tools/**`, `admin/src/features/admin/mcp-app-store/**`, `admin/src/api/{mcp,connectors,toolGrants}.ts`, App Store + Workflows>Tools UI surfaces, kelpie verification required.
+- **#8 prisma drift** — `api/prisma/migrations/**` only, reconciliation migration so `prisma migrate diff --exit-code` returns 0.
+- **#16 SSRF dedupe** — `worker/src/run/tools.ts` + `worker/src/run/builtin-handlers/url-safety.ts`, consolidate `assertSafeFetchUrl` into the canonical home.
+
+All four dispatched in a single message. Sub-agents lack TaskUpdate; orchestrator will mark completion based on summaries.
