@@ -621,6 +621,7 @@ model Thread {
   messages        Message[]
   readStates      ThreadReadState[]
   runs            Run[]
+  streamEvents    ThreadStreamEvent[]
   triggerTargets  AgentTrigger[]        @relation("TriggerTargetThread")
 
   @@index([channelId, createdAt])
@@ -640,6 +641,18 @@ model ThreadReadState {
   @@unique([threadId, userId])
   @@index([userId])
   @@map("thread_read_states")
+}
+
+model ThreadStreamEvent {
+  id        BigInt   @id @default(autoincrement())
+  threadId  String   @map("thread_id") @db.Uuid
+  eventName String   @map("event_name")
+  data      Json     @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, id], map: "idx_thread_stream_events_replay")
+  @@map("thread_stream_events")
 }
 
 model Message {
@@ -1782,7 +1795,7 @@ model Thought {
   content      String
   contentHash  String                       @map("content_hash")
   embedding    Unsupported("vector(1536)")?
-  searchVector Unsupported("tsvector")?     @map("search_vector")
+  searchVector Unsupported("tsvector")?     @map("search_vector") @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))"))
 
   // Ownership
   ownerId   String           @map("owner_id")

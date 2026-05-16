@@ -130,6 +130,7 @@ export const listToolRegistry = async (
 
 export type CreateGrantInput = {
   toolRegistryEntryId: string
+  organizationId: string
   state?: ToolGrantState
   config?: Record<string, unknown>
   roleId?: string | null
@@ -155,8 +156,15 @@ export const createGrant = async (
     )
   }
 
-  const tool = await prisma.toolRegistryEntry.findUnique({
-    where: { id: input.toolRegistryEntryId },
+  // Scope the registry lookup to the caller's organization. The OR clause
+  // preserves access to global (`organizationId: null`) registry entries while
+  // blocking cross-org access — an owner in org A can no longer manage grants
+  // for tools owned by org B even if they know the id.
+  const tool = await prisma.toolRegistryEntry.findFirst({
+    where: {
+      id: input.toolRegistryEntryId,
+      OR: [{ organizationId: null }, { organizationId: input.organizationId }],
+    },
     select: { id: true },
   })
   if (!tool) {
@@ -181,9 +189,22 @@ export const createGrant = async (
 
 export const deleteGrant = async (
   prisma: PrismaClient,
+  organizationId: string,
   toolRegistryEntryId: string,
   grantId: string,
 ): Promise<boolean> => {
+  // Re-scope the registry lookup so org B cannot delete grants belonging to
+  // org A's tool even if it knows the grant id. Same OR rule as createGrant:
+  // global tools (organizationId: null) remain reachable to every org.
+  const tool = await prisma.toolRegistryEntry.findFirst({
+    where: {
+      id: toolRegistryEntryId,
+      OR: [{ organizationId: null }, { organizationId }],
+    },
+    select: { id: true },
+  })
+  if (!tool) return false
+
   const existing = await prisma.toolGrant.findFirst({
     where: { id: grantId, toolId: toolRegistryEntryId },
     select: { id: true },

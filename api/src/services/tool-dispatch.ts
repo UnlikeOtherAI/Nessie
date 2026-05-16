@@ -52,6 +52,12 @@ export type DispatchPrincipals = {
 }
 
 export type DispatchContext = {
+  /**
+   * Organization the caller belongs to. Used to scope the registry lookup so
+   * org B cannot dispatch tools that belong exclusively to org A. Global
+   * registry entries (`organizationId: null`) remain reachable to every org.
+   */
+  organizationId: string
   principals: DispatchPrincipals
   credentialContext: CredentialResolutionContext
 }
@@ -108,8 +114,11 @@ export const planToolDispatch = async (
   context: DispatchContext,
   options: DispatchOptions = {},
 ): Promise<DispatchPlan> => {
-  const entry = await prisma.toolRegistryEntry.findUnique({
-    where: { id: toolRegistryEntryId },
+  const entry = await prisma.toolRegistryEntry.findFirst({
+    where: {
+      id: toolRegistryEntryId,
+      OR: [{ organizationId: null }, { organizationId: context.organizationId }],
+    },
     select: {
       id: true,
       enabled: true,

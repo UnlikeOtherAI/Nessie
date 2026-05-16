@@ -527,6 +527,7 @@ export const registerMcpRoutes = (
     try {
       const grant = await createGrant(prisma, {
         toolRegistryEntryId,
+        organizationId: actorContext.tenant.organizationId,
         state: body.state,
         config: body.config,
         roleId: body.roleId,
@@ -550,7 +551,12 @@ export const registerMcpRoutes = (
         toolRegistryEntryId: string
         grantId: string
       }
-      const deleted = await deleteGrant(prisma, toolRegistryEntryId, grantId)
+      const deleted = await deleteGrant(
+        prisma,
+        actorContext.tenant.organizationId,
+        toolRegistryEntryId,
+        grantId,
+      )
       if (!deleted) {
         sendApiError(
           reply,
