@@ -138,14 +138,38 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
                               state: 'allowed',
                             },
                             {
-                              onSuccess: (grant) =>
+                              onSuccess: (grant) => {
+                                const newGrantId = grant?.id ?? null
+                                if (!newGrantId) {
+                                  // Server accepted the grant (2xx) but the
+                                  // response body lacked an id. Persisting a
+                                  // null grantId here would later surface the
+                                  // cross-session reload hint on uncheck,
+                                  // which is misleading because the grant
+                                  // was created in THIS session. Surface a
+                                  // distinct error and leave `recent`
+                                  // untouched so the checkbox falls back to
+                                  // the unchecked baseline on next render
+                                  // attempt while the user retries.
+                                  console.warn(
+                                    '[AgentGrantMatrix] create-grant succeeded without id',
+                                    { toolId: tool.id, agentId: agent.id },
+                                  )
+                                  setCellError((current) => ({
+                                    ...current,
+                                    [key]:
+                                      'Grant created but id missing in response — reload to revoke.',
+                                  }))
+                                  return
+                                }
                                 setRecent((current) => ({
                                   ...current,
                                   [key]: {
                                     state: 'allowed',
-                                    grantId: grant?.id ?? null,
+                                    grantId: newGrantId,
                                   },
-                                })),
+                                }))
+                              },
                               onError: (caught) =>
                                 setCellError((current) => ({
                                   ...current,
