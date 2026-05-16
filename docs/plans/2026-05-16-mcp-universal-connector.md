@@ -228,3 +228,6 @@ Marked tasks #4, #5, #7, #9, #11 completed (#4, #5 now `reviewed: true`). #10 de
 
 ### Tick 2026-05-16T20:37Z
 Slice F still actively running (transcript mtime within seconds; `worker/src/run/tools.ts` + `builtin-handlers/` dirty). Holding Slice C dispatch — F is editing `worker/src/run/tools.ts` which C would also need; dispatching both now would race. Dispatched Slice A reviewer (background) — A landed at b569447 with reviewed=false. Added blockedBy=#1 to #8 (prisma drift) for proper ordering. Next tick: if F lands, dispatch C; otherwise hold.
+
+### Event 2026-05-16T20:42Z
+Slice F landed (commit fe90026): http_fetch/file_read/file_write/file_glob handlers under `worker/src/run/builtin-handlers/`, sandbox-enforced (empty allowedRoots = hard deny), http_fetch has SSRF guards (file:// reject + manual redirects), 25/25 new tests + 50 total worker tests pass. Slice F agent split `packages/runtime/src/builtin-tools.ts` into sibling files (`-sandboxed.ts`, `-types.ts`) to respect 500-line cap and extended `worker/package.json` test glob — both acceptable extensions of ownership boundary. Marked task #2 completed (reviewed=false). Dispatched Slice F reviewer + Slice C in parallel (file-disjoint; F is read-only, C creates new api/worker files + extends `worker/src/run/tools.ts` additively). Slice A reviewer still running.
