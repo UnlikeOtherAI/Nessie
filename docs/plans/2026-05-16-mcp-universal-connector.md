@@ -209,4 +209,7 @@ Slice B landed (commit 4eafbbf). Schemas + Prisma migration green (12/12 api tes
 - @nessie/worker: typecheck OK, lint OK
 - Uncommitted: docs/simulation/ledger.md (pre-existing, not mine), .claude/ (cron state), packages/mcp-client/ (Slice A in flight)
 - Stray worktree present: /System/Volumes/Data/.internal/tmpVolume/tmp/nessie-head-review.8YVikB (detached HEAD ed119b4) — likely user-spawned review env, left alone
-- Tasks: D ✓ E ✗ B ✓ E ✗ A in_progress F in_progress C blocked E blocked E2E blocked
+- Tasks: D ✓, B ✓, A in_progress, F in_progress, C blocked on A, E blocked on C, E2E blocked
+
+### Tick 2026-05-16T19:30Z
+No-op. Slice A + F still in progress; B and D reviewers running (no completion notifications). Nothing unblocked to dispatch. #8 deferred until Slice C lands.
