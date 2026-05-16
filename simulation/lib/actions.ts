@@ -119,8 +119,8 @@ const actions: Record<string, ActionFn> = {
       name,
       role: str(args.role, 'assistant'),
       systemPrompt: str(args.system_prompt ?? args.systemPrompt),
-      provider: str(args.provider, 'openai'),
-      model: str(args.model, 'gpt-4o-mini'),
+      provider: 'kimi',
+      model: 'kimi-for-coding',
     })
     return { status: 'ok', detail: `created agent ${agent.id.slice(0, 8)} "${name}"` }
   },

@@ -1,6 +1,9 @@
-const OPENAI_API_KEY = process.env.OPENAI_CHAT_API_KEY ?? process.env.OPENAI_API_KEY ?? ''
+const KIMI_API_KEY = process.env.KIMI_API_KEY ?? ''
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? ''
+const OPENAI_API_KEY = process.env.OPENAI_CHAT_API_KEY ?? process.env.OPENAI_API_KEY ?? ''
 
+const KIMI_MODEL = process.env.SIM_BRAIN_KIMI_MODEL ?? 'kimi-for-coding'
+const KIMI_BASE_URL = process.env.KIMI_BASE_URL ?? 'https://api.kimi.com/coding'
 const ANTHROPIC_MODEL = process.env.SIM_BRAIN_ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
 const OPENAI_MODEL = process.env.SIM_BRAIN_OPENAI_MODEL ?? 'gpt-4o-mini'
 
@@ -29,6 +32,26 @@ const safeParseJson = (raw: string): BrainDecision | null => {
   } catch {
     return null
   }
+}
+
+const callKimi = async (userPrompt: string): Promise<string> => {
+  const res = await fetch(`${KIMI_BASE_URL}/v1/messages`, {
+    method: 'POST',
+    headers: {
+      'x-api-key': KIMI_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: KIMI_MODEL,
+      max_tokens: 400,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  })
+  if (!res.ok) throw new Error(`kimi ${res.status}: ${await res.text()}`)
+  const body = (await res.json()) as { content: { type: string; text: string }[] }
+  return body.content.filter((b) => b.type === 'text').map((b) => b.text).join('')
 }
 
 const callAnthropic = async (userPrompt: string): Promise<string> => {
@@ -75,12 +98,14 @@ const callOpenAi = async (userPrompt: string): Promise<string> => {
 }
 
 export const decide = async (userPrompt: string): Promise<BrainDecision> => {
-  const raw = ANTHROPIC_API_KEY
+  const raw = KIMI_API_KEY
+    ? await callKimi(userPrompt)
+    : ANTHROPIC_API_KEY
     ? await callAnthropic(userPrompt)
     : OPENAI_API_KEY
     ? await callOpenAi(userPrompt)
     : (() => {
-        throw new Error('no brain API key set (ANTHROPIC_API_KEY or OPENAI_API_KEY)')
+        throw new Error('no brain API key set (KIMI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)')
       })()
   const parsed = safeParseJson(raw)
   if (!parsed || !parsed.action) {
@@ -89,4 +114,5 @@ export const decide = async (userPrompt: string): Promise<BrainDecision> => {
   return parsed
 }
 
-export const activeBrain = (): string => (ANTHROPIC_API_KEY ? ANTHROPIC_MODEL : OPENAI_API_KEY ? OPENAI_MODEL : 'none')
+export const activeBrain = (): string =>
+  KIMI_API_KEY ? KIMI_MODEL : ANTHROPIC_API_KEY ? ANTHROPIC_MODEL : OPENAI_API_KEY ? OPENAI_MODEL : 'none'
