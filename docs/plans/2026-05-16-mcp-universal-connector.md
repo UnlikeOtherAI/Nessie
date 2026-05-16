@@ -387,3 +387,16 @@ So functionally **#20 is on main and green**. The cost is: (a) commit message de
 **Future hygiene rule (orchestrator):** ALWAYS use `git commit -o <pathspec>` (or `git commit -- <pathspec>`) for plan/log commits — never bare `git commit` while other agents may have staged work. Equivalent for tick commits: `git commit --only docs/plans/2026-05-16-mcp-universal-connector.md -m '...'`.
 
 #20 left `in_progress` in TaskList pending the agent's own end-of-task report (its TaskUpdate call will confirm the actual scope it intended).
+
+### Tick 2026-05-16T20:57Z — #20 reported done; wave-5 dispatched (#30 + 3 admin)
+- **#20** agent reported back accepting the bundled commit (`413eff5`); its scope matched what landed. Marked completed. 6/6 spec §6 routes live: catalog publish/deprecate, instance refresh/healthcheck, oauth start/callback. Spec deviation noted: targeted `McpCatalogStatus` for publish/deprecate (which has draft/published/deprecated) rather than `ToolRegistryEntryStatus` (which lacks `deprecated`). Behavior matches plan §6 catalog semantics.
+- **#30** unblocked — dispatched as `ab91ef89e7558e18c`. Drops the redundant `toolRegistryEntryId` field from `CreateGrantBodySchema` (single file: `api/src/routes/mcp.ts` + grant test). Will unblock the E2E flow's step 7+8 (grant create + persist).
+- **#31** dispatched as `ad2230ce4a9e66e62`. Mask `credentialRef` in CredentialsDialog overrides list (mask + reveal button). Single file.
+- **#32** dispatched as `a55ca8bea613d64ba`. Distinguish null-grantId-on-create from cross-session uncheck. Single file (AgentGrantMatrix.tsx).
+- **#33** dispatched as `a0939bc458f671718`. Refactor: extract wizard validation helpers to bring AddServerWizard.tsx under 500 lines. Two files (modify wizard + new validation.ts).
+
+Each dispatch prompt now includes explicit `git commit --only`-equivalent hygiene: stage by file NAME, `git diff --cached --stat` to verify scope, `git reset HEAD -- <extras>` if foreign files appear staged. Same lesson as the orchestrator-side `--only` rule (memory: feedback_orchestrator_commits).
+
+**Hold for next tick:** #10 (schema), #18 (mcp-instances), #21 (routes), #25 (routes), #27 (schema + mcp-instances). Sequencing: after #30 lands, dispatch #21 + #25. After admin wave settles, dispatch #18 + (#10 OR #27).
+
+**Currently in flight:** #29 (`a9de34b6025c23813`), #30 (`ab91ef89e7558e18c`), #31 (`ad2230ce4a9e66e62`), #32 (`a55ca8bea613d64ba`), #33 (`a0939bc458f671718`). 5 agents. File-disjoint by design.
