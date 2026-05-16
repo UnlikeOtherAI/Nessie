@@ -62,9 +62,8 @@ const isBlockedIpAddress = (value: string): boolean => {
  * Throws {@link HttpFetchError} on rejection. Defense-in-depth for both the
  * initial URL and any redirect target.
  *
- * Mirrors the legacy `assertSafeFetchUrl` in worker/src/run/tools.ts. Kept
- * separate so http_fetch does not couple to the legacy web_fetch dispatch;
- * dedupe is tracked as a follow-up after Slice C lands.
+ * Canonical SSRF guard for the worker; the legacy web_fetch dispatch in
+ * `worker/src/run/tools.ts` also routes through this function.
  */
 export const assertSafeUrl = async (rawUrl: string | URL): Promise<URL> => {
   const url = typeof rawUrl === 'string' ? new URL(rawUrl) : rawUrl
