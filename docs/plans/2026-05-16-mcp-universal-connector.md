@@ -213,3 +213,15 @@ Slice B landed (commit 4eafbbf). Schemas + Prisma migration green (12/12 api tes
 
 ### Tick 2026-05-16T19:30Z
 No-op. Slice A + F still in progress; B and D reviewers running (no completion notifications). Nothing unblocked to dispatch. #8 deferred until Slice C lands.
+
+### Event 2026-05-16T20:35Z — review findings + fixes
+Three reviewer outputs landed.
+
+- **Slice D review (1 HIGH):** off-by-one in `packages/connectors/src/formats/md.ts:41` — `+ offsetLine` double-counts the YAML body's first line. Filed task #11; dispatched fixer. Applied `+ offsetLine - 1`; companion fix in `yaml.ts` (re-enable `prettyErrors` so `linePos` propagates — was silently dropped, making the line offset untestable end-to-end). New regression test in `test/parse.test.ts` asserts YAML line 2 → markdown line 3. Verified: typecheck OK, 19/19 tests pass.
+- **Slice B review (1 CRITICAL + 2 HIGH):**
+  - C1: `McpCredentialPrincipalType` enum missing `organization`. Filed task #9; fixer added the value to both Prisma enum and Zod schema; new migration `20260516203329_mcp_add_organization_principal/migration.sql` with only `ALTER TYPE … ADD VALUE 'organization'`. `prisma validate` + `prisma generate` clean.
+  - H2: `valuePrefix: z.string().default('')` silently substituted on omission. Changed to `z.string()` (required) per D4 explicit-configurability requirement. No callsites needed update (no literal constructions exist yet).
+  - H1: `ToolRegistryEntry` pre-existing divergence from `tool-registry-spec.md §3.1` (10 spec fields absent + `toolId`/`description` naming conflicts). Pre-existing, not introduced by Slice B — filed as task #10, blocked by #1/#8 to avoid rippling into in-flight work.
+- **Slice A landed (commit b569447).** Universal MCP client across stdio/http/sse with discovery cache + exponential backoff + typed error hierarchy. 18/18 tests pass. Backed by `@modelcontextprotocol/sdk@^1.29.0` per D10.
+
+Marked tasks #4, #5, #7, #9, #11 completed (#4, #5 now `reviewed: true`). #10 deferred. Slice C now unblocked (A + B both done). Slice F still in flight; Slice C and F are file-disjoint within worker/* so they can run in parallel.

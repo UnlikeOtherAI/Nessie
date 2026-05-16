@@ -38,7 +38,7 @@ export const parseMarkdownManifest = (text: string): unknown => {
       if (cause instanceof ManifestParseError) {
         const offsetLine = countLines(stripped, cursor)
         throw new ManifestParseError('md', cause.message, {
-          line: (cause.line ?? 1) + offsetLine,
+          line: (cause.line ?? 1) + offsetLine - 1,
           column: cause.column,
         })
       }

@@ -430,6 +430,7 @@ enum McpCredentialPrincipalType {
   channel
   team
   project
+  organization
 }
 
 enum ToolRegistrySource {

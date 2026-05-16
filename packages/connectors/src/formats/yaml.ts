@@ -9,7 +9,9 @@ import { ManifestParseError } from '../errors.js'
  */
 export const parseYamlManifest = (text: string): unknown => {
   try {
-    return parseYaml(text, { prettyErrors: false })
+    // `prettyErrors` must stay enabled (the default) so the thrown
+    // `YAMLParseError` carries `linePos`; disabling it strips line/col.
+    return parseYaml(text)
   } catch (cause) {
     if (cause instanceof YAMLParseError) {
       const start = cause.linePos?.[0]

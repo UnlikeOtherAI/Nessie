@@ -89,3 +89,23 @@ test('parseMarkdownManifest rejects manifests with no closing delimiter', () => 
     assert.match(cause.message, /closing/)
   }
 })
+
+test('parseMarkdownManifest maps YAML error lines to the original markdown source', () => {
+  // Markdown source (1-indexed lines):
+  //   1: ---
+  //   2: name: x
+  //   3: bad: : :     <- YAML error here (YAML body line 2)
+  //   4: ---
+  // The YAML body spans markdown lines 2-3; YAML line 2 must map to
+  // markdown line 3. Regression test for the off-by-one in md.ts.
+  const text = '---\nname: x\nbad: : :\n---\n'
+
+  try {
+    parseManifest(text, 'md')
+    assert.fail('expected parseManifest to throw')
+  } catch (cause) {
+    assert.ok(cause instanceof ManifestParseError, 'expected ManifestParseError')
+    assert.equal(cause.format, 'md')
+    assert.equal(cause.line, 3, `expected line 3, got ${cause.line}`)
+  }
+})

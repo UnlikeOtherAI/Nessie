@@ -85,6 +85,7 @@ export const McpCredentialPrincipalTypeSchema = z.enum([
   'channel',
   'team',
   'project',
+  'organization',
 ])
 export type McpCredentialPrincipalType = z.infer<
   typeof McpCredentialPrincipalTypeSchema
@@ -100,7 +101,7 @@ export type McpCredentialPrincipalType = z.infer<
 export const McpApiKeyAuthConfigSchema = z.object({
   method: z.literal('api_key'),
   headerName: z.string().min(1),
-  valuePrefix: z.string().default(''),
+  valuePrefix: z.string(),
 })
 export type McpApiKeyAuthConfig = z.infer<typeof McpApiKeyAuthConfigSchema>
 
