@@ -308,3 +308,12 @@ Reviewer flagged two HIGHs. Verified each against current code:
 Prisma agent retry (`aadec7dcdd2dde4b8`) hit a second load-bearing block: `thoughts.search_vector` is a `tsvector GENERATED ALWAYS AS (to_tsvector('english', COALESCE(content, '')))` column powering `idx_thoughts_search_vector` for RAG/memory recall. `schema.prisma` declares it as `Unsupported("tsvector")?` with no `@default(dbgenerated(...))` annotation, so Prisma's diff keeps emitting `ALTER COLUMN search_vector DROP DEFAULT` — Postgres rejects (`is a generated column`), AND running it via `DROP EXPRESSION` would destroy the auto-population. Agent removed the destructive statement from the migration but the diff `--exit-code` still fails because the schema still doesn't represent the generation expression.
 
 Orchestrator authorised **Option A expansion**: lift the read-only ban on `Thought.searchVector` for this task only, annotate with `@default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))"))`. Re-dispatched as agent `a4f6233ea79ba1b60` with strict scope (just that one field). Acceptance unchanged: `prisma migrate diff --exit-code` must reach 0 before committing.
+
+### Tick 2026-05-16T20:35Z
+Six background agents alive after this tick's dispatch wave. Reviewer follow-ups (#17-#24) all came off the queue; claimed and dispatched the four that are file-disjoint vs the running #6/#8 agents and vs each other:
+- **#19** (CRITICAL cross-org grant bypass) → agent `a450e76cfd1240b49`. Owns `api/src/services/{tool-grants,tool-dispatch}.ts` + grant handlers in `api/src/routes/mcp.ts` + matching tests.
+- **#22** (testInstance probe outcome) → agent `aba2deb60e158ca09`. Owns `api/src/services/mcp-instances.ts` + tests.
+- **#23** (workflow web_fetch SSRF wrap) → agent `a9aabd8cc70ee32b1`. Owns `worker/src/run/tools.ts` + workflow tests.
+- **#24** (DNS resolver injection for SSRF tests) → agent `a6fbd7e7b09abab93`. Owns `worker/src/run/builtin-handlers/{url-safety.ts,http-fetch.test.ts,http-fetch.ts}`.
+
+Held #17 (conflicts with #19 on tool-dispatch.ts), #20+#21 (conflict on routes/mcp.ts), #18 (conflicts with #22 on mcp-instances.ts) — claim those once the active agents land. Still running from prior ticks: #6 (Slice E builder, `aa81518adf958254e`) and #8 (Prisma retry Option A, `a4f6233ea79ba1b60`). Total: 6 in flight, within the 8-agent cap.

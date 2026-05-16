@@ -1,16 +1,32 @@
+import type { ToolRegistryTransport } from '@nessie/schemas'
+
+/**
+ * `ToolTransportPill` shows the wire transport (direct/mcp/http/stdio/pty) a
+ * tool uses, so admins can tell at a glance whether they're about to grant an
+ * agent something local vs remote vs subprocess.
+ *
+ * Per §8 of provider-system-and-frontend-architecture.md.
+ */
 type ToolTransportPillProps = {
-  safe: boolean
+  transport: ToolRegistryTransport
 }
 
-export const ToolTransportPill = ({ safe }: ToolTransportPillProps) => (
-    <span
-      className={[
-        'inline-flex rounded-full border border-[color:var(--line)]',
-        'bg-white/70 px-3 py-1 text-xs uppercase',
-        'tracking-[0.18em]',
-        'text-[color:var(--muted)]',
-      ].join(' ')}
-    >
-      {safe ? 'local' : 'remote'}
+const TRANSPORT_LABELS: Record<ToolRegistryTransport, string> = {
+  direct: 'direct',
+  mcp: 'mcp',
+  http: 'http',
+  stdio: 'stdio',
+  pty: 'pty',
+}
+
+export const ToolTransportPill = ({ transport }: ToolTransportPillProps) => (
+  <span
+    className={[
+      'inline-flex rounded-full border border-[color:var(--sep)]',
+      'bg-black/20 px-3 py-1 text-[11px] uppercase',
+      'tracking-[0.18em] text-[color:var(--tx2)]',
+    ].join(' ')}
+  >
+    {TRANSPORT_LABELS[transport]}
   </span>
 )

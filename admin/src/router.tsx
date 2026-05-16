@@ -8,6 +8,7 @@ import { AuditLogPage } from './pages/AuditLogPage'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { LoginPage } from './pages/LoginPage'
+import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -16,6 +17,7 @@ import { TokenUsagePage } from './pages/TokenUsagePage'
 import { TriggersPage } from './pages/TriggersPage'
 import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
+import { WorkflowToolsPage } from './pages/WorkflowToolsPage'
 
 export const router = createBrowserRouter([
   {
@@ -84,6 +86,14 @@ export const router = createBrowserRouter([
       {
         path: '/agents/tools',
         element: <ToolsPage />,
+      },
+      {
+        path: '/workflows/tools',
+        element: <WorkflowToolsPage />,
+      },
+      {
+        path: '/mcp-app-store',
+        element: <McpAppStorePage />,
       },
       {
         path: '/settings',
