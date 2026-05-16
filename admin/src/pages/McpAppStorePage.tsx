@@ -180,7 +180,11 @@ export const McpAppStorePage = () => {
           onCredentials={(instance) => setCredentialsTarget(instance)}
           onSelect={() => undefined}
           onTest={(instance) => testInstance.mutate(instance.id)}
-          testingId={testInstance.isPending ? testInstance.variables : undefined}
+          testingId={
+            testInstance.isPending && testInstance.variables
+              ? testInstance.variables
+              : undefined
+          }
         />
       </ColumnBrowserColumn>,
     )

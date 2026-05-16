@@ -116,6 +116,93 @@ const buildTransportConfig = (
   }
 }
 
+type StepErrors = {
+  url?: string
+  command?: string
+  name?: string
+  label?: string
+  headerName?: string
+  authorizationUrl?: string
+  tokenUrl?: string
+}
+
+const inlineErrorClass = [
+  'mt-1 rounded-md border border-rose-400/40 bg-rose-500/10',
+  'px-2 py-1 text-xs text-rose-200',
+].join(' ')
+
+const parseUrl = (raw: string): URL | null => {
+  try {
+    return new URL(raw.trim())
+  } catch {
+    return null
+  }
+}
+
+const validateTransportStep = (
+  protocol: McpCatalogProtocol,
+  raw: { url: string; command: string },
+): StepErrors => {
+  const errors: StepErrors = {}
+  if (protocol === 'stdio') {
+    if (!raw.command.trim()) {
+      errors.command = 'Command is required'
+    }
+    return errors
+  }
+  const trimmed = raw.url.trim()
+  if (!trimmed) {
+    errors.url = 'URL is required'
+    return errors
+  }
+  const parsed = parseUrl(trimmed)
+  if (!parsed) {
+    errors.url = 'Invalid URL'
+    return errors
+  }
+  if (protocol === 'ws' && parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
+    errors.url = 'URL must use ws:// or wss:// scheme'
+    return errors
+  }
+  if (
+    (protocol === 'http' || protocol === 'sse')
+    && parsed.protocol !== 'http:'
+    && parsed.protocol !== 'https:'
+  ) {
+    errors.url = 'URL must use http:// or https:// scheme'
+  }
+  return errors
+}
+
+const validateIdentityStep = (raw: {
+  name: string
+  label: string
+}): StepErrors => {
+  const errors: StepErrors = {}
+  if (!raw.name.trim()) errors.name = 'Name is required'
+  if (!raw.label.trim()) errors.label = 'Label is required'
+  return errors
+}
+
+const validateAuthStep = (
+  method: McpCatalogAuthMethod,
+  raw: { headerName: string; authorizationUrl: string; tokenUrl: string },
+): StepErrors => {
+  const errors: StepErrors = {}
+  if (method === 'api_key') {
+    if (!raw.headerName.trim()) errors.headerName = 'Header name is required'
+  }
+  if (method === 'oauth2') {
+    if (!parseUrl(raw.authorizationUrl)) {
+      errors.authorizationUrl = 'Authorization URL must be a valid URL'
+    }
+    if (!parseUrl(raw.tokenUrl)) {
+      errors.tokenUrl = 'Token URL must be a valid URL'
+    }
+  }
+  return errors
+}
+
 export const AddServerWizard = ({
   onCancel,
   onSubmit,
@@ -137,14 +224,27 @@ export const AddServerWizard = ({
   const [tokenUrl, setTokenUrl] = useState('')
   const [scopes, setScopes] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [stepErrors, setStepErrors] = useState<StepErrors>({})
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
-    if (!name.trim() || !label.trim()) {
-      setError('Name and label are required')
+    const authErrors = validateAuthStep(authMethod, {
+      headerName,
+      authorizationUrl,
+      tokenUrl,
+    })
+    if (Object.keys(authErrors).length > 0) {
+      setStepErrors(authErrors)
       return
     }
+    const identityErrors = validateIdentityStep({ name, label })
+    if (Object.keys(identityErrors).length > 0) {
+      setStepErrors(identityErrors)
+      setStep('identity')
+      return
+    }
+    setStepErrors({})
     try {
       await onSubmit({
         name: name.trim(),
@@ -171,7 +271,30 @@ export const AddServerWizard = ({
     }
   }
 
-  const advance = (nextStep: WizardStep) => () => setStep(nextStep)
+  const advanceFromTransport = () => {
+    const errors = validateTransportStep(protocol, { url, command })
+    if (Object.keys(errors).length > 0) {
+      setStepErrors(errors)
+      return
+    }
+    setStepErrors({})
+    setStep('identity')
+  }
+
+  const advanceFromIdentity = () => {
+    const errors = validateIdentityStep({ name, label })
+    if (Object.keys(errors).length > 0) {
+      setStepErrors(errors)
+      return
+    }
+    setStepErrors({})
+    setStep('auth')
+  }
+
+  const goBack = (nextStep: WizardStep) => () => {
+    setStepErrors({})
+    setStep(nextStep)
+  }
 
   return (
     <form className="grid gap-5" onSubmit={(event) => void submit(event)}>
@@ -210,32 +333,46 @@ export const AddServerWizard = ({
             </select>
           </label>
           {(protocol === 'http' || protocol === 'sse' || protocol === 'ws') && (
-            <label className={labelClass}>
-              URL
-              <input
-                className={inputClass}
-                onChange={(event) => setUrl(event.target.value)}
-                placeholder={
-                  protocol === 'ws'
-                    ? 'wss://example.com/mcp'
-                    : 'https://example.com/mcp'
-                }
-                type={protocol === 'ws' ? 'text' : 'url'}
-                value={url}
-              />
-            </label>
+            <div>
+              <label className={labelClass}>
+                URL
+                <input
+                  className={inputClass}
+                  data-testid="wizard-url"
+                  onChange={(event) => setUrl(event.target.value)}
+                  placeholder={
+                    protocol === 'ws'
+                      ? 'wss://example.com/mcp'
+                      : 'https://example.com/mcp'
+                  }
+                  type={protocol === 'ws' ? 'text' : 'url'}
+                  value={url}
+                />
+              </label>
+              {stepErrors.url ? (
+                <div className={inlineErrorClass} data-testid="wizard-url-error">
+                  {stepErrors.url}
+                </div>
+              ) : null}
+            </div>
           )}
           {protocol === 'stdio' && (
             <>
-              <label className={labelClass}>
-                Command
-                <input
-                  className={inputClass}
-                  onChange={(event) => setCommand(event.target.value)}
-                  placeholder="/usr/local/bin/my-mcp-server"
-                  value={command}
-                />
-              </label>
+              <div>
+                <label className={labelClass}>
+                  Command
+                  <input
+                    className={inputClass}
+                    data-testid="wizard-command"
+                    onChange={(event) => setCommand(event.target.value)}
+                    placeholder="/usr/local/bin/my-mcp-server"
+                    value={command}
+                  />
+                </label>
+                {stepErrors.command ? (
+                  <div className={inlineErrorClass}>{stepErrors.command}</div>
+                ) : null}
+              </div>
               <label className={labelClass}>
                 Args (space separated)
                 <input
@@ -253,7 +390,8 @@ export const AddServerWizard = ({
             </button>
             <button
               className={buttonPrimary}
-              onClick={advance('identity')}
+              data-testid="wizard-transport-continue"
+              onClick={advanceFromTransport}
               type="button"
             >
               Continue
@@ -264,24 +402,38 @@ export const AddServerWizard = ({
 
       {step === 'identity' && (
         <div className="grid gap-3">
-          <label className={labelClass}>
-            Name (kebab-case, unique per org)
-            <input
-              className={inputClass}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="github-search"
-              value={name}
-            />
-          </label>
-          <label className={labelClass}>
-            Label
-            <input
-              className={inputClass}
-              onChange={(event) => setLabel(event.target.value)}
-              placeholder="GitHub Search"
-              value={label}
-            />
-          </label>
+          <div>
+            <label className={labelClass}>
+              Name (kebab-case, unique per org)
+              <input
+                className={inputClass}
+                data-testid="wizard-name"
+                onChange={(event) => setName(event.target.value)}
+                placeholder="github-search"
+                value={name}
+              />
+            </label>
+            {stepErrors.name ? (
+              <div className={inlineErrorClass} data-testid="wizard-name-error">
+                {stepErrors.name}
+              </div>
+            ) : null}
+          </div>
+          <div>
+            <label className={labelClass}>
+              Label
+              <input
+                className={inputClass}
+                data-testid="wizard-label"
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder="GitHub Search"
+                value={label}
+              />
+            </label>
+            {stepErrors.label ? (
+              <div className={inlineErrorClass}>{stepErrors.label}</div>
+            ) : null}
+          </div>
           <label className={labelClass}>
             Vendor (optional)
             <input
@@ -303,14 +455,15 @@ export const AddServerWizard = ({
           <div className="flex justify-between gap-2">
             <button
               className={buttonGhost}
-              onClick={advance('transport')}
+              onClick={goBack('transport')}
               type="button"
             >
               Back
             </button>
             <button
               className={buttonPrimary}
-              onClick={advance('auth')}
+              data-testid="wizard-identity-continue"
+              onClick={advanceFromIdentity}
               type="button"
             >
               Continue
@@ -339,15 +492,20 @@ export const AddServerWizard = ({
           </label>
           {authMethod === 'api_key' && (
             <>
-              <label className={labelClass}>
-                Header name
-                <input
-                  className={inputClass}
-                  onChange={(event) => setHeaderName(event.target.value)}
-                  placeholder="Authorization"
-                  value={headerName}
-                />
-              </label>
+              <div>
+                <label className={labelClass}>
+                  Header name
+                  <input
+                    className={inputClass}
+                    onChange={(event) => setHeaderName(event.target.value)}
+                    placeholder="Authorization"
+                    value={headerName}
+                  />
+                </label>
+                {stepErrors.headerName ? (
+                  <div className={inlineErrorClass}>{stepErrors.headerName}</div>
+                ) : null}
+              </div>
               <label className={labelClass}>
                 Value prefix (e.g. "Bearer ", "Token ", or empty)
                 <input
@@ -361,26 +519,38 @@ export const AddServerWizard = ({
           )}
           {authMethod === 'oauth2' && (
             <>
-              <label className={labelClass}>
-                Authorization URL
-                <input
-                  className={inputClass}
-                  onChange={(event) => setAuthorizationUrl(event.target.value)}
-                  placeholder="https://auth.example.com/authorize"
-                  type="url"
-                  value={authorizationUrl}
-                />
-              </label>
-              <label className={labelClass}>
-                Token URL
-                <input
-                  className={inputClass}
-                  onChange={(event) => setTokenUrl(event.target.value)}
-                  placeholder="https://auth.example.com/token"
-                  type="url"
-                  value={tokenUrl}
-                />
-              </label>
+              <div>
+                <label className={labelClass}>
+                  Authorization URL
+                  <input
+                    className={inputClass}
+                    onChange={(event) => setAuthorizationUrl(event.target.value)}
+                    placeholder="https://auth.example.com/authorize"
+                    type="url"
+                    value={authorizationUrl}
+                  />
+                </label>
+                {stepErrors.authorizationUrl ? (
+                  <div className={inlineErrorClass}>
+                    {stepErrors.authorizationUrl}
+                  </div>
+                ) : null}
+              </div>
+              <div>
+                <label className={labelClass}>
+                  Token URL
+                  <input
+                    className={inputClass}
+                    onChange={(event) => setTokenUrl(event.target.value)}
+                    placeholder="https://auth.example.com/token"
+                    type="url"
+                    value={tokenUrl}
+                  />
+                </label>
+                {stepErrors.tokenUrl ? (
+                  <div className={inlineErrorClass}>{stepErrors.tokenUrl}</div>
+                ) : null}
+              </div>
               <label className={labelClass}>
                 Scopes (space or comma separated)
                 <input
@@ -400,7 +570,7 @@ export const AddServerWizard = ({
           <div className="flex justify-between gap-2">
             <button
               className={buttonGhost}
-              onClick={advance('identity')}
+              onClick={goBack('identity')}
               type="button"
             >
               Back
