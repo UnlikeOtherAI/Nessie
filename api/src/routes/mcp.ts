@@ -134,7 +134,12 @@ const UpsertOverrideBodySchema = z.object({
 // route param (`POST /api/mcp/tools/:toolRegistryEntryId/grants`). Including
 // it in the body schema as well caused the admin facade to 400 (E2E BUG-1)
 // because it strips the id into the URL and never sends it in the JSON body.
-const CreateGrantBodySchema = z
+//
+// Exported for regression coverage (task #21): principal IDs (`roleId` /
+// `agentId`) MUST be validated as UUIDs at the route boundary so malformed
+// strings cannot reach Prisma — Prisma's own UUID coercion only fails at
+// query time, after the row is already partially constructed.
+export const CreateGrantBodySchema = z
   .object({
     state: ToolGrantStateSchema.optional(),
     config: JsonRecordSchema.optional(),
