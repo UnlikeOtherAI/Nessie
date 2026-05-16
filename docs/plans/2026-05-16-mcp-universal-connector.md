@@ -276,3 +276,35 @@ Orchestrator authorised **Option A**: lift the read-only ban on `schema.prisma` 
 
 ### Event 2026-05-16T20:19Z — #16 SSRF dedupe landed
 Commit `be423a5`. `worker/src/run/tools.ts` lost 100 lines (legacy `assertSafeFetchUrl` + `BLOCKED_HOSTNAMES` + IPv4/IPv6/IP helpers + unused `node:dns/promises` / `node:net` imports). Now imports `assertSafeUrl` from `./builtin-handlers/url-safety.js`. Error-class unified on `HttpFetchError` (legacy was plain `Error`); agent verified the only caller `collectWebFetchResult` consumes via `wrapTool` which only reads `error.message`. Gates: worker lint/typecheck/build/test all clean, 69/69 tests pass. Marked #16 completed. Dispatched #16 reviewer in parallel (read-only audit of the equivalence claim, caller blast radius, error-class change).
+
+### Tick 2026-05-16T20:22Z
+Four background agents alive (transcript mtimes within 20s):
+- **Slice E builder** (424K) — dirty: 4 modified `admin/src/components/shared/Tool*.tsx`, untracked `admin/src/components/features/mcp-app-store/`, untracked `admin/src/facades/{connectors,mcp-catalog,mcp-instances,tool-grants}/`. Agent discovered existing `components/shared/` and `facades/` conventions — minor deviation from the literal owned-file list I gave it (`components/tools/`, `api/*`), but it's correctly conforming to the project's actual structure rather than creating parallel duplicates. Acceptable adaptation.
+- **#8 prisma retry** (148K) — dirty: `api/prisma/schema.prisma` modified, untracked `api/prisma/migrations/20260516202000_reconcile_drift/`. ThreadStreamEvent model addition + cleaned migration in progress.
+- **Slice C reviewer** (391K) — read-only audit ongoing.
+- **#16 reviewer** (222K) — read-only audit ongoing.
+No commits since `be423a5`. Remaining pending tasks (#3, #10) still gated. Tick-and-hold.
+
+### Event 2026-05-16T20:30Z — Slice C reviewer landed (1 CRITICAL + 3 HIGH + 3 MEDIUM)
+Slice C reviewer returned with findings. Orchestrator verified each one via direct Read before filing follow-ups:
+- **CRITICAL** — cross-org grant create/delete bypass. Confirmed at `api/src/services/tool-grants.ts:158-167` (`createGrant` does `findUnique({ where: { id } })` with no organizationId filter) and L187 (`deleteGrant` same gap). Route `api/src/routes/mcp.ts:518-540` only calls `requireOwner` — no per-org check on the registry id path param. An owner in org A can grant or revoke against org B's tool registry entries. → Filed task **#19**.
+- **HIGH** — `planToolDispatch` defaults `secretResolver` to `EnvSecretResolver` (`tool-dispatch.ts:154`). Production credential refs are opaque `secret_*` strings; `process.env['secret_…']` is always undefined → resolver silently returns null. Misconfigured deployments will fail open instead of loud. → Filed task **#17**.
+- **HIGH** — `services/mcp-instances.ts::testInstance` flips `lifecycleState: 'active'` unconditionally regardless of probe outcome. → Filed task **#22**.
+- **HIGH** — Spec §6 routes missing: publish/deprecate/refresh/healthcheck/oauth start+callback. Slice E may already be shimming around these. → Filed task **#20**.
+- **MEDIUM** — `roleId`/`agentId` Zod validation inconsistent across grant routes (mix of `.uuid()` vs `.string()`). → Filed task **#21**.
+- **MEDIUM** — re-probe path doesn't reset `ToolRegistryEntry.status` to `pending_review` when input/output schema changes. → Filed task **#18**.
+- **MEDIUM** — HTTP tool SSRF tests still hit real DNS in places; flaky on isolated runners. → Filed task **#24**.
+
+#1 stays completed but **not marked reviewed=true** until #19 + #17 + #22 land. #20/#21/#18/#24 are independent follow-ups.
+
+### Event 2026-05-16T20:30Z — #16 reviewer landed (2 HIGH; one verified, one withdrawn)
+Reviewer flagged two HIGHs. Verified each against current code:
+- **HIGH** — workflow `web_fetch` (`worker/src/run/tools.ts:670-690`) calls `collectWebFetchResult` which now throws `HttpFetchError` from `assertSafeUrl`. The workflow case lacks the try/catch the agent path gets from `wrapTool`, so SSRF rejection escapes as an engine-level exception instead of a `workflowToolFailure`. Confirmed real. → Filed task **#23**.
+- **HIGH (withdrawn)** — "stale JSDoc at `url-safety.ts:65-66` claiming `tools.ts` routes through this function". Verified at `tools.ts:32,419` — the import + call are still present after the dedupe. JSDoc is accurate, not stale. Not filed. (Verification record: this is the kind of reviewer claim that doesn't survive Read; the doc remains current.)
+
+#16 marked reviewed=true (modulo #23 follow-up).
+
+### Event 2026-05-16T20:31Z — #8 prisma agent stopped a second time + Option A expanded
+Prisma agent retry (`aadec7dcdd2dde4b8`) hit a second load-bearing block: `thoughts.search_vector` is a `tsvector GENERATED ALWAYS AS (to_tsvector('english', COALESCE(content, '')))` column powering `idx_thoughts_search_vector` for RAG/memory recall. `schema.prisma` declares it as `Unsupported("tsvector")?` with no `@default(dbgenerated(...))` annotation, so Prisma's diff keeps emitting `ALTER COLUMN search_vector DROP DEFAULT` — Postgres rejects (`is a generated column`), AND running it via `DROP EXPRESSION` would destroy the auto-population. Agent removed the destructive statement from the migration but the diff `--exit-code` still fails because the schema still doesn't represent the generation expression.
+
+Orchestrator authorised **Option A expansion**: lift the read-only ban on `Thought.searchVector` for this task only, annotate with `@default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))"))`. Re-dispatched as agent `a4f6233ea79ba1b60` with strict scope (just that one field). Acceptance unchanged: `prisma migrate diff --exit-code` must reach 0 before committing.
