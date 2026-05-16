@@ -268,3 +268,11 @@ All four dispatched in a single message. Sub-agents lack TaskUpdate; orchestrato
 
 ### Tick 2026-05-16T20:17Z
 All 4 background agents (Slice C reviewer, Slice E builder, #8 prisma drift, #16 SSRF dedupe) writing within the last 5s — transcript sizes 214K / 141K / 40K / 69K. No commits since 16c4579. Working tree clean apart from the perpetual `.claude/` + `docs/simulation/ledger.md`. Remaining pending tasks (#3, #10) still gated on in-flight slices. Tick-and-hold.
+
+### Event 2026-05-16T20:18Z — #8 prisma agent stopped + Option A authorised
+Prisma drift agent correctly stopped and reported a blocker: the `thread_stream_events` table is load-bearing (`packages/runtime/src/realtime.ts:113,135,235`, `api/src/realtime/hub.ts:142,199`) but the matching `ThreadStreamEvent` model is missing from `schema.prisma`. The drift SQL therefore wanted to `DROP TABLE thread_stream_events`, which would break SSE backlog + publish. Schema is wrong vs reality.
+
+Orchestrator authorised **Option A**: lift the read-only ban on `schema.prisma` for this task only, add the missing model so the schema matches the migrations + code, then ship the cleaned reconciliation migration. Re-dispatched the agent with the expanded scope (schema.prisma now writable for the `ThreadStreamEvent` model only; all other models still read-only). The agent must re-run `prisma migrate diff` after adding the model and confirm no other destructive statements survive.
+
+### Event 2026-05-16T20:19Z — #16 SSRF dedupe landed
+Commit `be423a5`. `worker/src/run/tools.ts` lost 100 lines (legacy `assertSafeFetchUrl` + `BLOCKED_HOSTNAMES` + IPv4/IPv6/IP helpers + unused `node:dns/promises` / `node:net` imports). Now imports `assertSafeUrl` from `./builtin-handlers/url-safety.js`. Error-class unified on `HttpFetchError` (legacy was plain `Error`); agent verified the only caller `collectWebFetchResult` consumes via `wrapTool` which only reads `error.message`. Gates: worker lint/typecheck/build/test all clean, 69/69 tests pass. Marked #16 completed. Dispatched #16 reviewer in parallel (read-only audit of the equivalence claim, caller blast radius, error-class change).
