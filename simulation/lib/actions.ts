@@ -138,10 +138,23 @@ const actions: Record<string, ActionFn> = {
     if (agent.channelIds.includes(wanted.id)) {
       return { status: 'ok', detail: `${agent.name} already bound to #${wanted.label}` }
     }
-    try {
+    const tryBind = async (): Promise<void> => {
       await bindAgent(ctx.token, agent.id, wanted.id)
+    }
+    try {
+      await tryBind()
       return { status: 'ok', detail: `bound ${agent.name} → #${wanted.label}` }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('CHANNEL_NOT_FOUND') || msg.includes('404')) {
+        try {
+          await addChannelMember(ctx.token, wanted.id, ctx.userId)
+          await tryBind()
+          return { status: 'ok', detail: `joined+bound ${agent.name} → #${wanted.label}` }
+        } catch {
+          // fall through to general fallback
+        }
+      }
       if (general && agent.channelIds.includes(general.id)) {
         return { status: 'ok', detail: `${agent.name} already bound to #General (couldn't bind #${wanted.label})` }
       }
