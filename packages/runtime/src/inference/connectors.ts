@@ -239,8 +239,11 @@ const collectChatStream = async function* (
   let usage: InvocationUsage = {}
   let yieldedDelta = false
 
-  // Register reader with finalization registry as a safety net for abandoned streams
-  streamFinalizationRegistry.register(reader, reader)
+  // Register reader with finalization registry as a safety net for abandoned streams.
+  // Target/heldValue must be distinct objects (V8 throws otherwise); sentinel ties
+  // cleanup to generator lifetime while heldValue carries the reader for finalization.
+  const cleanupToken: object = {}
+  streamFinalizationRegistry.register(cleanupToken, reader, cleanupToken)
 
   try {
     while (true) {
@@ -336,7 +339,7 @@ const collectChatStream = async function* (
       }
     }
   } finally {
-    streamFinalizationRegistry.unregister(reader)
+    streamFinalizationRegistry.unregister(cleanupToken)
     // Cancel the reader to release the underlying socket back to the pool.
     // This is safe to call even if the stream is already done.
     await reader.cancel().catch(() => { /* ignore cancel errors */ })
@@ -1121,7 +1124,9 @@ const collectAnthropicStream = async function* (
   let finishReason: NormalizedFinishReason | undefined
   let usage: InvocationUsage = {}
 
-  streamFinalizationRegistry.register(reader, reader)
+  // Target/heldValue must be distinct objects; sentinel ties cleanup to generator scope.
+  const cleanupToken: object = {}
+  streamFinalizationRegistry.register(cleanupToken, reader, cleanupToken)
 
   try {
     while (true) {
@@ -1139,8 +1144,10 @@ const collectAnthropicStream = async function* (
 
         let dataLine: string | undefined
         for (const line of rawEvent.split('\n')) {
-          if (line.startsWith('data: ')) {
-            dataLine = line.slice(6).trim()
+          // SSE allows an optional space after the colon — Anthropic uses
+          // "data: " but Kimi emits "data:" without padding.
+          if (line.startsWith('data:')) {
+            dataLine = line.slice(5).trim()
           }
         }
         if (!dataLine) {
@@ -1187,7 +1194,7 @@ const collectAnthropicStream = async function* (
       }
     }
   } finally {
-    streamFinalizationRegistry.unregister(reader)
+    streamFinalizationRegistry.unregister(cleanupToken)
     await reader.cancel().catch(() => { /* ignore */ })
     reader.releaseLock()
   }

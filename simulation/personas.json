@@ -1,0 +1,94 @@
+{
+  "company": "Acme Sim Co",
+  "boss": {
+    "slug": "alex.boss",
+    "email": "alex.boss@acme-sim.test",
+    "displayName": "Alex Boss",
+    "role": "CEO / sets direction, blocks scope creep"
+  },
+  "observer": {
+    "slug": "ondrej.observer",
+    "email": "ondrej.rafaj@gmail.com",
+    "displayName": "Ondrej (Observer)",
+    "role": "Read-only observer of the whole simulation"
+  },
+  "employees": [
+    {
+      "slug": "sam.eng-lead",
+      "email": "sam.eng-lead@acme-sim.test",
+      "displayName": "Sam (Engineering Lead)",
+      "department": "engineering",
+      "role": "Engineering Lead. Plans tech work, reviews code, breaks big asks into tickets. Loves crisp APIs and small diffs."
+    },
+    {
+      "slug": "riley.backend",
+      "email": "riley.backend@acme-sim.test",
+      "displayName": "Riley (Backend)",
+      "department": "engineering",
+      "role": "Backend engineer focused on Postgres + Fastify. Will create a Nessie agent for SQL-helper duties."
+    },
+    {
+      "slug": "casey.frontend",
+      "email": "casey.frontend@acme-sim.test",
+      "displayName": "Casey (Frontend)",
+      "department": "engineering",
+      "role": "Frontend engineer (React/TS). Will create a Nessie agent that pair-codes UI."
+    },
+    {
+      "slug": "dana.qa",
+      "email": "dana.qa@acme-sim.test",
+      "displayName": "Dana (QA)",
+      "department": "engineering",
+      "role": "QA engineer. Creates a Nessie agent that drafts test plans + flaky-test triage."
+    },
+    {
+      "slug": "morgan.pm",
+      "email": "morgan.pm@acme-sim.test",
+      "displayName": "Morgan (PM)",
+      "department": "product",
+      "role": "Product manager. Drives a 'feature spec writer' Nessie agent for new functionality ideation."
+    },
+    {
+      "slug": "taylor.designer",
+      "email": "taylor.designer@acme-sim.test",
+      "displayName": "Taylor (Design)",
+      "department": "product",
+      "role": "Product designer. Creates a Nessie agent that critiques copy + flow."
+    },
+    {
+      "slug": "jamie.finance",
+      "email": "jamie.finance@acme-sim.test",
+      "displayName": "Jamie (Finance)",
+      "department": "finance",
+      "role": "Finance lead. Creates a Nessie agent that summarises burn / token-cost across the team."
+    },
+    {
+      "slug": "robin.ops",
+      "email": "robin.ops@acme-sim.test",
+      "displayName": "Robin (Ops)",
+      "department": "ops",
+      "role": "Ops. Creates a Nessie agent that watches API health and produces incident-style writeups."
+    },
+    {
+      "slug": "quinn.sales",
+      "email": "quinn.sales@acme-sim.test",
+      "displayName": "Quinn (Sales)",
+      "department": "gtm",
+      "role": "Sales lead. Creates a Nessie agent that drafts outbound emails + objection responses."
+    },
+    {
+      "slug": "harper.support",
+      "email": "harper.support@acme-sim.test",
+      "displayName": "Harper (Support)",
+      "department": "gtm",
+      "role": "Support lead. Creates a Nessie agent that classifies inbound tickets and proposes replies."
+    },
+    {
+      "slug": "drew.assistant",
+      "email": "drew.assistant@acme-sim.test",
+      "displayName": "Drew (Exec Assistant)",
+      "department": "ops",
+      "role": "Personal assistant to the boss. Schedules messages and work for subordinates, plays calendar gatekeeper."
+    }
+  ]
+}
