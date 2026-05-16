@@ -1,9 +1,34 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { getCredentials } from './employee.js'
 
+const __dirname = dirname(fileURLToPath(import.meta.url))
 const API_URL = process.env.NESSIE_API ?? 'http://localhost:5554'
 
-const tokenCache = new Map<string, { token: string; userId: string; obtainedAt: number }>()
 const TOKEN_TTL_MS = 60 * 60 * 1000
+const TOKEN_CACHE_PATH = resolve(__dirname, '../state/tokens.json')
+
+type CacheEntry = { token: string; userId: string; obtainedAt: number }
+const tokenCache: Map<string, CacheEntry> = (() => {
+  const m = new Map<string, CacheEntry>()
+  if (existsSync(TOKEN_CACHE_PATH)) {
+    try {
+      const raw = JSON.parse(readFileSync(TOKEN_CACHE_PATH, 'utf8')) as Record<string, CacheEntry>
+      for (const [k, v] of Object.entries(raw)) m.set(k, v)
+    } catch {
+      // ignore corrupt cache
+    }
+  }
+  return m
+})()
+
+const persistTokens = (): void => {
+  mkdirSync(dirname(TOKEN_CACHE_PATH), { recursive: true })
+  const obj: Record<string, CacheEntry> = {}
+  for (const [k, v] of tokenCache.entries()) obj[k] = v
+  writeFileSync(TOKEN_CACHE_PATH, JSON.stringify(obj, null, 2), 'utf8')
+}
 
 type LoginResponse = {
   data: {
@@ -31,6 +56,7 @@ export const getToken = async (slug: string): Promise<{ token: string; userId: s
   }
   const fresh = await login(slug)
   tokenCache.set(slug, { ...fresh, obtainedAt: Date.now() })
+  persistTokens()
   return fresh
 }
 
@@ -56,6 +82,11 @@ const request = async <T>(
   if (!text) return undefined as T
   const parsed = JSON.parse(text) as { data?: T } | T
   return ((parsed as { data?: T }).data ?? (parsed as T))
+}
+
+export const invalidateToken = (slug: string): void => {
+  tokenCache.delete(slug)
+  persistTokens()
 }
 
 export type Channel = {
@@ -91,6 +122,11 @@ export type WorkflowInstallation = {
 }
 
 export const listChannels = (token: string): Promise<Channel[]> => request(token, 'GET', '/api/channels')
+
+export const createChannel = (
+  token: string,
+  body: { label: string; visibility?: 'public' | 'protected' | 'private' },
+): Promise<Channel> => request(token, 'POST', '/api/channels', body)
 
 export const listAgents = (token: string): Promise<Agent[]> => request(token, 'GET', '/api/agents')
 

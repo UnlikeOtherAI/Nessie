@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { listAgents, listChannels } from './api.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const LEDGER_PATH = resolve(__dirname, '../../docs/simulation/ledger.md')
@@ -46,22 +47,40 @@ const tailLedger = (n: number, filterSlug?: string): string => {
   return filtered.slice(-n).join('\n') || '(no recent activity)'
 }
 
-export const buildEmployeePrompt = (
+export const buildEmployeePrompt = async (
   slug: string,
+  token: string,
   vocab: string[],
   globalTail = 8,
   selfTail = 5,
-): string => {
+): Promise<string> => {
   const persona = personaFor(slug)
   const recentGlobal = tailLedger(globalTail)
   const recentSelf = tailLedger(selfTail, slug)
+  const [channels, agents] = await Promise.all([
+    listChannels(token).catch(() => []),
+    listAgents(token).catch(() => []),
+  ])
+  const standardChannels = channels.filter((c) => c.type === 'standard' && !c.systemChannelType)
+  const channelLines = standardChannels.length
+    ? standardChannels.map((c) => `  - #${c.label}`).join('\n')
+    : '  (none — use create_channel to make one)'
+  const agentLines = agents.length
+    ? agents.map((a) => `  - ${a.name}${a.channelIds.length ? ` [in: ${a.channelIds.length} channel(s)]` : ' [unbound]'}`).join('\n')
+    : '  (none)'
   return [
     `You are ${persona.displayName} (slug: ${slug}).`,
     `Role: ${persona.role}`,
     persona.department ? `Department: ${persona.department}` : '',
     '',
-    'Company roster (use slugs for `target_slug`):',
+    'Company roster (use these slugs for `target_slug`):',
     orgRoster(),
+    '',
+    'Channels you can see (use EXACT labels for `channel`; create new ones with create_channel):',
+    channelLines,
+    '',
+    'Agents currently visible (use EXACT names for `agent_name`):',
+    agentLines,
     '',
     'Recent company activity (latest at bottom):',
     recentGlobal,
@@ -71,19 +90,25 @@ export const buildEmployeePrompt = (
     '',
     'Available actions (pick ONE):',
     `- idle { rationale }`,
-    `- note { text }                                       — record a thought, do nothing externally`,
+    `- note { text }                                       — record a thought`,
     `- dm_coworker { target_slug, content }                — direct-message a coworker`,
-    `- post_in_channel { channel, content }                — post in named channel (default "General")`,
+    `- post_in_channel { channel, content }                — post in a channel from the list above`,
+    `- create_channel { label, visibility }                — create a new channel`,
     `- create_agent { name, role, system_prompt, model }   — create a personal Nessie agent`,
     `- bind_agent { agent_name, channel }                  — bind your agent to a channel`,
-    `- prompt_own_agent { agent_name, content }            — message your bound agent`,
+    `- prompt_own_agent { agent_name, content }            — message your bound agent (auto-binds to General)`,
     `- create_workflow { name, description, definition }   — author a workflow template`,
     `- bootstrap_pa {}                                     — initialise your personal assistant`,
     `- schedule_for_boss { content }                       — assistant only: route to boss`,
     '',
     `Vocabulary keys exposed: ${vocab.join(', ')}.`,
     '',
-    'Stay in character. Prefer actions that move your role forward, talk to coworkers, build agents, set up workflows. Drew (assistant) should schedule for boss + nudge employees. The boss (alex.boss) should give direction and ask for status.',
+    'Rules:',
+    '- Only use channel labels and agent names from the lists above. If you want a channel that does not exist, call create_channel first.',
+    '- Do NOT chase "channel binding issues" or apologise about prior failures — fix them with the correct action.',
+    '- Stay in character. Move your role forward: build agents, write workflows, talk to coworkers about real work.',
+    '- Drew schedules for boss + nudges employees. The boss gives direction and asks for status.',
+    '',
     'Reply with one JSON object only: { "action": "...", "args": { ... }, "rationale": "one short sentence in character" }.',
   ]
     .filter(Boolean)

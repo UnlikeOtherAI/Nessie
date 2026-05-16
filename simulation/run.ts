@@ -16,7 +16,12 @@ const pickSlugs = (slugs: string[], n: number): string[] => {
 }
 
 const runOnce = async (slug: string): Promise<void> => {
-  const prompt = buildEmployeePrompt(slug, VOCAB)
+  const ctx = await ensureCtx(slug).catch((err) => {
+    writeLedger(slug, 'auth.error', 'fail', err instanceof Error ? err.message : String(err))
+    return null
+  })
+  if (!ctx) return
+  const prompt = await buildEmployeePrompt(slug, ctx.token, VOCAB)
   let decision
   try {
     decision = await decide(prompt)
@@ -25,11 +30,6 @@ const runOnce = async (slug: string): Promise<void> => {
     return
   }
   writeLedger(slug, `decide.${decision.action}`, 'note', decision.rationale.slice(0, 160))
-  const ctx = await ensureCtx(slug).catch((err) => {
-    writeLedger(slug, 'auth.error', 'fail', err instanceof Error ? err.message : String(err))
-    return null
-  })
-  if (!ctx) return
   const result = await execute(ctx, decision.action, decision.args ?? {})
   writeLedger(slug, decision.action, result.status, result.detail)
 }

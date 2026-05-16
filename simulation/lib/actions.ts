@@ -3,9 +3,11 @@ import {
   bindAgent,
   bootstrapPersonalAssistant,
   createAgent,
+  createChannel,
   createDmChannel,
   createWorkflow,
   getToken,
+  invalidateToken,
   listAgents,
   listChannels,
   listUsers,
@@ -26,6 +28,26 @@ export type ActionResult = {
 export type ActionFn = (ctx: ActionContext, args: Record<string, unknown>) => Promise<ActionResult>
 
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback)
+
+const fuzzyFindByName = <T extends { name: string }>(items: T[], needle: string): T | undefined => {
+  if (!needle) return undefined
+  const n = needle.toLowerCase()
+  return (
+    items.find((x) => x.name.toLowerCase() === n) ??
+    items.find((x) => x.name.toLowerCase().includes(n)) ??
+    items.find((x) => n.includes(x.name.toLowerCase()))
+  )
+}
+
+const fuzzyFindByLabel = <T extends { label: string }>(items: T[], needle: string): T | undefined => {
+  if (!needle) return undefined
+  const n = needle.toLowerCase()
+  return (
+    items.find((x) => x.label.toLowerCase() === n) ??
+    items.find((x) => x.label.toLowerCase().includes(n)) ??
+    items.find((x) => n.includes(x.label.toLowerCase()))
+  )
+}
 
 const resolveTargetUserId = async (ctx: ActionContext, args: Record<string, unknown>): Promise<string | null> => {
   const slug = str(args.target_slug ?? args.targetSlug ?? args.to)
@@ -58,25 +80,23 @@ const actions: Record<string, ActionFn> = {
   },
 
   post_in_channel: async (ctx, args) => {
-    const label = str(args.channel ?? args.channel_label ?? args.label)
+    const label = str(args.channel ?? args.channel_label ?? args.label).replace(/^#/, '')
     const content = str(args.content ?? args.message)
     if (!content) return { status: 'fail', detail: 'no content' }
     const channels = await listChannels(ctx.token)
-    const target = label
-      ? channels.find((c) => c.label.toLowerCase() === label.toLowerCase()) ??
-        channels.find((c) => c.label.toLowerCase().includes(label.toLowerCase()))
-      : channels.find((c) => c.label === 'General')
-    if (!target) return { status: 'fail', detail: `channel not found (label=${label})` }
-    await postMessage(ctx.token, target.defaultThreadId, content)
-    return { status: 'ok', detail: `#${target.label} "${content.slice(0, 80)}"` }
+    const target = label ? fuzzyFindByLabel(channels, label) : channels.find((c) => c.label === 'General')
+    const fallback = target ?? channels.find((c) => c.label === 'General')
+    if (!fallback) return { status: 'fail', detail: `no channels available` }
+    await postMessage(ctx.token, fallback.defaultThreadId, content)
+    return { status: 'ok', detail: `#${fallback.label} "${content.slice(0, 80)}"` }
   },
 
   create_agent: async (ctx, args) => {
     const name = str(args.name)
     if (!name) return { status: 'fail', detail: 'no name' }
     const agents = await listAgents(ctx.token)
-    const existing = agents.find((a) => a.name.toLowerCase() === name.toLowerCase())
-    if (existing) return { status: 'ok', detail: `agent exists: ${existing.id.slice(0, 8)} ${name}` }
+    const existing = fuzzyFindByName(agents, name)
+    if (existing) return { status: 'ok', detail: `agent exists: ${existing.id.slice(0, 8)} "${existing.name}"` }
     const agent = await createAgent(ctx.token, {
       name,
       role: str(args.role, 'assistant'),
@@ -88,34 +108,63 @@ const actions: Record<string, ActionFn> = {
   },
 
   bind_agent: async (ctx, args) => {
-    const name = str(args.agent_name ?? args.agentName ?? args.name)
-    const channelLabel = str(args.channel ?? args.channel_label, 'General')
+    const name = str(args.agent_name ?? args.agentName ?? args.name).replace(/^#/, '')
+    const channelLabel = str(args.channel ?? args.channel_label, 'General').replace(/^#/, '')
     const agents = await listAgents(ctx.token)
-    const agent = agents.find((a) => a.name.toLowerCase() === name.toLowerCase())
+    const agent = fuzzyFindByName(agents, name)
     if (!agent) return { status: 'fail', detail: `agent not found: ${name}` }
-    const channels = await listChannels(ctx.token)
-    const channel = channels.find((c) => c.label.toLowerCase() === channelLabel.toLowerCase())
-    if (!channel) return { status: 'fail', detail: `channel not found: ${channelLabel}` }
-    if (agent.channelIds.includes(channel.id)) {
-      return { status: 'ok', detail: `${name} already bound to #${channel.label}` }
+    const channels = (await listChannels(ctx.token)).filter((c) => c.type === 'standard' && !c.systemChannelType)
+    const general = channels.find((c) => c.label === 'General')
+    const wanted = fuzzyFindByLabel(channels, channelLabel) ?? general
+    if (!wanted) return { status: 'fail', detail: `no bindable channel found` }
+    if (agent.channelIds.includes(wanted.id)) {
+      return { status: 'ok', detail: `${agent.name} already bound to #${wanted.label}` }
     }
-    await bindAgent(ctx.token, agent.id, channel.id)
-    return { status: 'ok', detail: `bound ${name} → #${channel.label}` }
+    try {
+      await bindAgent(ctx.token, agent.id, wanted.id)
+      return { status: 'ok', detail: `bound ${agent.name} → #${wanted.label}` }
+    } catch (err) {
+      if (general && agent.channelIds.includes(general.id)) {
+        return { status: 'ok', detail: `${agent.name} already bound to #General (couldn't bind #${wanted.label})` }
+      }
+      if (general && general.id !== wanted.id) {
+        await bindAgent(ctx.token, agent.id, general.id)
+        return { status: 'ok', detail: `bound ${agent.name} → #General (fallback from #${wanted.label})` }
+      }
+      throw err
+    }
+  },
+
+  create_channel: async (ctx, args) => {
+    const label = str(args.label ?? args.name ?? args.channel).replace(/^#/, '')
+    if (!label) return { status: 'fail', detail: 'no label' }
+    const channels = await listChannels(ctx.token)
+    const existing = channels.find((c) => c.label.toLowerCase() === label.toLowerCase())
+    if (existing) return { status: 'ok', detail: `channel exists: ${existing.id.slice(0, 8)} #${label}` }
+    const ch = await createChannel(ctx.token, {
+      label,
+      visibility: (str(args.visibility) === 'private' ? 'private' : str(args.visibility) === 'protected' ? 'protected' : 'public') as 'public' | 'protected' | 'private',
+    })
+    return { status: 'ok', detail: `created #${label} ${ch.id.slice(0, 8)}` }
   },
 
   prompt_own_agent: async (ctx, args) => {
-    const name = str(args.agent_name ?? args.agentName ?? args.name)
+    const name = str(args.agent_name ?? args.agentName ?? args.name).replace(/^#/, '')
     const content = str(args.content ?? args.message)
     if (!content) return { status: 'fail', detail: 'no content' }
     const agents = await listAgents(ctx.token)
-    const agent = agents.find((a) => a.name.toLowerCase() === name.toLowerCase())
+    const agent = fuzzyFindByName(agents, name)
     if (!agent) return { status: 'fail', detail: `agent not found: ${name}` }
-    if (agent.channelIds.length === 0) return { status: 'fail', detail: `${name} not bound to any channel` }
     const channels = await listChannels(ctx.token)
-    const target = channels.find((c) => agent.channelIds.includes(c.id))
-    if (!target) return { status: 'fail', detail: `agent channel not visible` }
+    let target = channels.find((c) => agent.channelIds.includes(c.id))
+    if (!target) {
+      const general = channels.find((c) => c.label === 'General')
+      if (!general) return { status: 'fail', detail: `no General channel to auto-bind to` }
+      await bindAgent(ctx.token, agent.id, general.id)
+      target = general
+    }
     await postMessage(ctx.token, target.defaultThreadId, content)
-    return { status: 'ok', detail: `→${name} via #${target.label} "${content.slice(0, 60)}"` }
+    return { status: 'ok', detail: `→${agent.name} via #${target.label} "${content.slice(0, 60)}"` }
   },
 
   create_workflow: async (ctx, args) => {
@@ -159,8 +208,14 @@ export const execute = async (ctx: ActionContext, action: string, args: Record<s
 }
 
 export const ensureCtx = async (slug: string): Promise<ActionContext> => {
-  const { token, userId } = await getToken(slug)
-  return { slug, token, userId }
+  try {
+    const { token, userId } = await getToken(slug)
+    return { slug, token, userId }
+  } catch (err) {
+    invalidateToken(slug)
+    const { token, userId } = await getToken(slug)
+    return { slug, token, userId }
+  }
 }
 
 export const peerSlugs = (exceptSlug: string): string[] =>
