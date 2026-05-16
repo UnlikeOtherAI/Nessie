@@ -233,11 +233,83 @@ const stringifyError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
 /**
+ * Structured outcome of a single probe attempt. Returned from `probeConnection`
+ * and surfaced via `testInstance` so callers (route handler, admin UI) can
+ * render lifecycle transitions accurately. `ok: true` means we opened the
+ * connection, ran `tools/list`, and received a well-formed descriptor array
+ * (which may legitimately be empty for a server that has not registered any
+ * tools yet — that is still a successful handshake).
+ */
+export type McpProbeResult = {
+  ok: boolean
+  error?: string
+  latencyMs: number
+  toolCount?: number
+  descriptors?: McpToolDescriptor[]
+}
+
+/**
+ * Run a one-shot probe against an already-resolved transport spec. Pure with
+ * respect to Prisma: takes a `ManagerFactory` so tests can inject a fake
+ * `McpClientManager` and assert on probe outcomes without touching the DB.
+ *
+ * A throw at any stage (transport, protocol, auth, timeout) is captured as
+ * `{ ok: false, error }`. A return shape from `listTools` that is not an array
+ * is treated as a malformed handshake — also `ok: false`. Empty arrays are
+ * considered a successful handshake.
+ */
+export const probeConnection = async (
+  transport: McpTransportConfig,
+  managerFactory: ManagerFactory = defaultManagerFactory,
+): Promise<McpProbeResult> => {
+  const manager = managerFactory()
+  const startedAt = Date.now()
+  try {
+    const connectionId = await manager.open(transportToConnectionSpec(transport))
+    try {
+      const descriptors = await manager.listTools(connectionId)
+      if (!Array.isArray(descriptors)) {
+        return {
+          ok: false,
+          error: 'tools/list response was not an array',
+          latencyMs: Date.now() - startedAt,
+        }
+      }
+      return {
+        ok: true,
+        latencyMs: Date.now() - startedAt,
+        toolCount: descriptors.length,
+        descriptors,
+      }
+    } finally {
+      await manager.close(connectionId).catch(() => undefined)
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: stringifyError(error),
+      latencyMs: Date.now() - startedAt,
+    }
+  } finally {
+    await manager.closeAll().catch(() => undefined)
+  }
+}
+
+/**
  * Probe a freshly-installed instance: open the connection, run `tools/list`,
- * persist the discovered tool descriptors, project them into
- * `ToolRegistryEntry` rows (all `status: 'pending_review'`), then close the
- * connection. On failure the instance moves to `error` and the failure counter
- * increments.
+ * persist the discovered tool descriptors on success, and project them into
+ * `ToolRegistryEntry` rows (all `status: 'pending_review'`).
+ *
+ * Outcome handling (fixes HIGH finding from Slice C review, task #22):
+ *
+ * - Probe succeeds → `lifecycleState = 'active'`, `healthFailureCount = 0`,
+ *   `healthLastCheckedAt = now`. Discovered tools projected into the registry.
+ * - Probe fails (transport error, auth failure, malformed `tools/list`) →
+ *   `lifecycleState = 'error'`, `healthFailureCount` incremented,
+ *   `healthLastCheckedAt = now`. Lifecycle is NEVER advanced to `active`.
+ *   A typed `McpInstanceError(PROBE_FAILED)` carrying the failure reason is
+ *   thrown so the route handler can return 502 with the error message — the
+ *   admin UI surfaces this verbatim.
  */
 export const testInstance = async (
   prisma: PrismaClient,
@@ -266,35 +338,26 @@ export const testInstance = async (
   ensureAuthConfigMatchesMethod(catalogEntry.authMethod, catalogEntry.authConfig)
 
   const transport = resolveInstanceTransport(instance, catalogEntry)
-  const manager = (options.managerFactory ?? defaultManagerFactory)()
+  const probe = await probeConnection(transport, options.managerFactory)
 
-  let descriptors: McpToolDescriptor[]
-  try {
-    const connectionId = await manager.open(transportToConnectionSpec(transport))
-    try {
-      descriptors = await manager.listTools(connectionId)
-    } finally {
-      await manager.close(connectionId)
-    }
-  } catch (error) {
+  const now = new Date()
+  if (!probe.ok) {
     await prisma.mcpServerInstance.update({
       where: { id },
       data: {
         lifecycleState: 'error',
         healthFailureCount: { increment: 1 },
-        healthLastCheckedAt: new Date(),
+        healthLastCheckedAt: now,
       },
     })
     throw new McpInstanceError(
       MCP_INSTANCE_ERROR_CODES.PROBE_FAILED,
-      `MCP probe failed: ${stringifyError(error)}`,
+      `MCP probe failed: ${probe.error ?? 'unknown error'}`,
     )
-  } finally {
-    await manager.closeAll().catch(() => undefined)
   }
 
+  const descriptors = probe.descriptors ?? []
   const scopeKey = toRegistryScopeKey(organizationId, instance.scopeType, instance.scopeId)
-  const now = new Date()
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.mcpServerInstance.update({
