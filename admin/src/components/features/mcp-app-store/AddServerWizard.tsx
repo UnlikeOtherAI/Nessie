@@ -5,19 +5,18 @@ import type {
   McpServerAuthConfig,
 } from '@nessie/schemas'
 import type { CreateCatalogEntryInput } from '../../../facades/mcp-catalog/hooks'
+import {
+  validateAuthStep,
+  validateIdentityStep,
+  validateTransportStep,
+  type StepErrors,
+} from './add-server-wizard-validation'
 
 /**
- * "Add MCP server" wizard. Captures the catalog-entry-level metadata an admin
- * needs to publish a new MCP server in the App Store, in three logical steps:
- *
- *   1. transport (stdio | http | sse) and default transport config
- *   2. catalog identity (name, label, vendor, description)
- *   3. auth method (api_key/bearer/basic/oauth2/none) with method-specific config
- *
- * The wizard owns local form state; it calls `onSubmit` with a fully-typed
- * `CreateCatalogEntryInput` once all three steps validate. The page hosting it
- * runs the actual `useCreateCatalogEntry` mutation so error surfacing stays
- * page-level.
+ * "Add MCP server" wizard. Three steps: transport, catalog identity, auth
+ * method. Owns local form state and calls `onSubmit` with a typed
+ * `CreateCatalogEntryInput`; the hosting page runs the mutation. Validation
+ * lives in `./add-server-wizard-validation.ts`.
  */
 
 type AddServerWizardProps = {
@@ -27,13 +26,7 @@ type AddServerWizardProps = {
 }
 
 const PROTOCOLS: McpCatalogProtocol[] = ['stdio', 'http', 'sse', 'ws']
-const AUTH_METHODS: McpCatalogAuthMethod[] = [
-  'api_key',
-  'bearer',
-  'basic',
-  'oauth2',
-  'none',
-]
+const AUTH_METHODS: McpCatalogAuthMethod[] = ['api_key', 'bearer', 'basic', 'oauth2', 'none']
 
 type WizardStep = 'transport' | 'identity' | 'auth'
 
@@ -116,92 +109,10 @@ const buildTransportConfig = (
   }
 }
 
-type StepErrors = {
-  url?: string
-  command?: string
-  name?: string
-  label?: string
-  headerName?: string
-  authorizationUrl?: string
-  tokenUrl?: string
-}
-
 const inlineErrorClass = [
   'mt-1 rounded-md border border-rose-400/40 bg-rose-500/10',
   'px-2 py-1 text-xs text-rose-200',
 ].join(' ')
-
-const parseUrl = (raw: string): URL | null => {
-  try {
-    return new URL(raw.trim())
-  } catch {
-    return null
-  }
-}
-
-const validateTransportStep = (
-  protocol: McpCatalogProtocol,
-  raw: { url: string; command: string },
-): StepErrors => {
-  const errors: StepErrors = {}
-  if (protocol === 'stdio') {
-    if (!raw.command.trim()) {
-      errors.command = 'Command is required'
-    }
-    return errors
-  }
-  const trimmed = raw.url.trim()
-  if (!trimmed) {
-    errors.url = 'URL is required'
-    return errors
-  }
-  const parsed = parseUrl(trimmed)
-  if (!parsed) {
-    errors.url = 'Invalid URL'
-    return errors
-  }
-  if (protocol === 'ws' && parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
-    errors.url = 'URL must use ws:// or wss:// scheme'
-    return errors
-  }
-  if (
-    (protocol === 'http' || protocol === 'sse')
-    && parsed.protocol !== 'http:'
-    && parsed.protocol !== 'https:'
-  ) {
-    errors.url = 'URL must use http:// or https:// scheme'
-  }
-  return errors
-}
-
-const validateIdentityStep = (raw: {
-  name: string
-  label: string
-}): StepErrors => {
-  const errors: StepErrors = {}
-  if (!raw.name.trim()) errors.name = 'Name is required'
-  if (!raw.label.trim()) errors.label = 'Label is required'
-  return errors
-}
-
-const validateAuthStep = (
-  method: McpCatalogAuthMethod,
-  raw: { headerName: string; authorizationUrl: string; tokenUrl: string },
-): StepErrors => {
-  const errors: StepErrors = {}
-  if (method === 'api_key') {
-    if (!raw.headerName.trim()) errors.headerName = 'Header name is required'
-  }
-  if (method === 'oauth2') {
-    if (!parseUrl(raw.authorizationUrl)) {
-      errors.authorizationUrl = 'Authorization URL must be a valid URL'
-    }
-    if (!parseUrl(raw.tokenUrl)) {
-      errors.tokenUrl = 'Token URL must be a valid URL'
-    }
-  }
-  return errors
-}
 
 export const AddServerWizard = ({
   onCancel,
