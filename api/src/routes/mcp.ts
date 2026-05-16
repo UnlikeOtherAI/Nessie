@@ -58,7 +58,10 @@ import {
   listToolRegistry,
   ToolGrantError,
   TOOL_GRANT_ERROR_CODES,
+  type ToolGrantRow,
+  type ToolRegistryRow,
 } from '../services/tool-grants.js'
+import { fromPrismaToolGrantSource } from '../services/tool-enum-mapping.js'
 
 /**
  * Owner-only HTTP surface for the MCP universal connector (plan §6, spec
@@ -153,6 +156,56 @@ export const CreateGrantBodySchema = z
       path: ['roleId'],
     },
   )
+
+/**
+ * Tool registry entry with its associated grants attached. The admin
+ * `AgentGrantMatrix` (task #25) needs grant IDs alongside the tool list on
+ * initial render so cross-session unchecks can DELETE without first POSTing
+ * to capture the id. Grants are scoped indirectly: `listToolRegistry`
+ * already filters tools to the caller's org (or `organizationId: null`
+ * globals), so any grant whose `toolId` references a row in that list is
+ * implicitly in-scope. We do NOT need an explicit org clause on `toolGrant`
+ * itself — the table has no `organizationId` column.
+ */
+export type ToolRegistryEntryWithGrants = ToolRegistryRow & {
+  grants: ToolGrantRow[]
+}
+
+export const attachGrantsToRegistryEntries = async (
+  prisma: PrismaClient,
+  entries: ToolRegistryRow[],
+): Promise<ToolRegistryEntryWithGrants[]> => {
+  if (entries.length === 0) return []
+  const toolIds = entries.map((entry) => entry.id)
+  const grants = await prisma.toolGrant.findMany({
+    where: { toolId: { in: toolIds } },
+    orderBy: { createdAt: 'asc' },
+  })
+  const grantsByToolId = new Map<string, ToolGrantRow[]>()
+  for (const grant of grants) {
+    const mapped: ToolGrantRow = {
+      id: grant.id,
+      toolId: grant.toolId,
+      state: grant.state as ToolGrantRow['state'],
+      config: grant.config,
+      source: fromPrismaToolGrantSource(grant.source),
+      roleId: grant.roleId,
+      agentId: grant.agentId,
+      createdAt: grant.createdAt,
+      updatedAt: grant.updatedAt,
+    }
+    const bucket = grantsByToolId.get(grant.toolId)
+    if (bucket) {
+      bucket.push(mapped)
+    } else {
+      grantsByToolId.set(grant.toolId, [mapped])
+    }
+  }
+  return entries.map((entry) => ({
+    ...entry,
+    grants: grantsByToolId.get(entry.id) ?? [],
+  }))
+}
 
 const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
   if (error instanceof McpCatalogError) {
@@ -675,7 +728,8 @@ export const registerMcpRoutes = (
       source: sourceParsed?.success ? sourceParsed.data : undefined,
       scopeKey: query.scopeKey,
     })
-    return createApiResponse(tools)
+    const withGrants = await attachGrantsToRegistryEntries(prisma, tools)
+    return createApiResponse(withGrants)
   })
 
   app.post('/api/mcp/tools/:toolRegistryEntryId/grants', async (request, reply) => {
