@@ -247,3 +247,6 @@ Slice F reviewer landed earlier in the day; this tick processed and closed all f
 
 ### Tick 2026-05-16T19:55Z
 Slice C builder still actively running (transcript mtime within 20s; dirty files: `api/package.json`, `worker/package.json`, `pnpm-lock.yaml`, six untracked `api/src/services/mcp-*.ts` + `secret-resolver.ts` + `tool-bundles.ts` + `tool-grants.ts`). Every remaining pending task (#3 E2E, #6 Slice E, #8 prisma drift, #10 ToolRegistry reconcile, #16 SSRF dedupe) blocks on #1. Nothing to dispatch. Tick-and-hold.
+
+### Tick 2026-05-16T20:00Z
+Slice C builder still running (transcript mtime 3s ago). Visible progress since last tick: `api/src/routes/mcp.ts`, `api/src/routes/tools-bundles.ts`, `api/src/services/tool-dispatch.ts`, `worker/src/run/tool-dispatch.ts`, `worker/src/run/tool-http.ts`, `worker/src/run/tool-mcp.ts` all newly present (untracked), plus `api/src/index.ts` modified — implies route wiring is happening. No reviewer/builder slots free to dispatch — all pending tasks still gated on #1. Tick-and-hold.
