@@ -6,7 +6,7 @@ import { getCredentials } from './employee.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const API_URL = process.env.NESSIE_API ?? 'http://localhost:5554'
 
-const TOKEN_TTL_MS = 60 * 60 * 1000
+const TOKEN_TTL_MS = 23 * 60 * 60 * 1000
 const TOKEN_CACHE_PATH = resolve(__dirname, '../state/tokens.json')
 
 type CacheEntry = { token: string; userId: string; obtainedAt: number }
@@ -158,8 +158,14 @@ export const listWorkflows = (token: string): Promise<WorkflowTemplate[]> =>
 
 export const createWorkflow = (
   token: string,
-  body: { name: string; description?: string; definition?: unknown },
+  body: { name: string; description?: string; graph?: { steps: { id: string; type: string; title?: string; input?: Record<string, unknown> }[] } },
 ): Promise<WorkflowTemplate> => request(token, 'POST', '/api/workflows', body)
+
+export const addChannelMember = (
+  token: string,
+  channelId: string,
+  userId: string,
+): Promise<unknown> => request(token, 'POST', `/api/channels/${channelId}/members`, { userId })
 
 export const installWorkflow = (
   token: string,

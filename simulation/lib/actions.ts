@@ -1,5 +1,6 @@
 import { allEmployees, getCredentials } from './employee.js'
 import {
+  addChannelMember,
   bindAgent,
   bootstrapPersonalAssistant,
   createAgent,
@@ -83,12 +84,29 @@ const actions: Record<string, ActionFn> = {
     const label = str(args.channel ?? args.channel_label ?? args.label).replace(/^#/, '')
     const content = str(args.content ?? args.message)
     if (!content) return { status: 'fail', detail: 'no content' }
-    const channels = await listChannels(ctx.token)
-    const target = label ? fuzzyFindByLabel(channels, label) : channels.find((c) => c.label === 'General')
-    const fallback = target ?? channels.find((c) => c.label === 'General')
-    if (!fallback) return { status: 'fail', detail: `no channels available` }
-    await postMessage(ctx.token, fallback.defaultThreadId, content)
-    return { status: 'ok', detail: `#${fallback.label} "${content.slice(0, 80)}"` }
+    const channels = (await listChannels(ctx.token)).filter((c) => c.type === 'standard' && !c.systemChannelType)
+    const general = channels.find((c) => c.label === 'General')
+    const target = (label ? fuzzyFindByLabel(channels, label) : general) ?? general
+    if (!target) return { status: 'fail', detail: `no channels available` }
+    try {
+      await postMessage(ctx.token, target.defaultThreadId, content)
+      return { status: 'ok', detail: `#${target.label} "${content.slice(0, 80)}"` }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('THREAD_NOT_FOUND') || msg.includes('CHANNEL_NOT_FOUND') || msg.includes('404')) {
+        try {
+          await addChannelMember(ctx.token, target.id, ctx.userId)
+          await postMessage(ctx.token, target.defaultThreadId, content)
+          return { status: 'ok', detail: `joined+posted #${target.label} "${content.slice(0, 60)}"` }
+        } catch {
+          if (general && general.id !== target.id) {
+            await postMessage(ctx.token, general.defaultThreadId, content)
+            return { status: 'ok', detail: `#General (fallback) "${content.slice(0, 60)}"` }
+          }
+        }
+      }
+      throw err
+    }
   },
 
   create_agent: async (ctx, args) => {
@@ -170,12 +188,27 @@ const actions: Record<string, ActionFn> = {
   create_workflow: async (ctx, args) => {
     const name = str(args.name)
     if (!name) return { status: 'fail', detail: 'no name' }
+    const rawGraph = (args.graph ?? args.definition) as { steps?: unknown[] } | undefined
+    const rawSteps = Array.isArray(rawGraph?.steps) ? rawGraph!.steps : []
+    const steps = rawSteps
+      .map((s, i) => {
+        const o = (s ?? {}) as Record<string, unknown>
+        return {
+          id: str(o.id, `step-${i + 1}`),
+          type: str(o.type, 'note'),
+          title: str(o.title),
+          input: (o.input as Record<string, unknown> | undefined) ?? undefined,
+        }
+      })
+    const graph = steps.length > 0
+      ? { steps }
+      : { steps: [{ id: 'step-1', type: 'note', title: `Outline for ${name}` }] }
     const wf = await createWorkflow(ctx.token, {
       name,
-      description: str(args.description),
-      definition: args.definition ?? { steps: [] },
+      description: str(args.description) || undefined,
+      graph,
     })
-    return { status: 'ok', detail: `created workflow ${wf.id.slice(0, 8)} "${name}"` }
+    return { status: 'ok', detail: `created workflow ${wf.id.slice(0, 8)} "${name}" (${graph.steps.length} step)` }
   },
 
   bootstrap_pa: async (ctx) => {
@@ -207,14 +240,24 @@ export const execute = async (ctx: ActionContext, action: string, args: Record<s
   }
 }
 
+const authCooldownUntil = new Map<string, number>()
+
 export const ensureCtx = async (slug: string): Promise<ActionContext> => {
+  const cooldown = authCooldownUntil.get(slug) ?? 0
+  if (Date.now() < cooldown) {
+    throw new Error(`auth cooldown for ${slug}, ${Math.ceil((cooldown - Date.now()) / 1000)}s remaining`)
+  }
   try {
     const { token, userId } = await getToken(slug)
     return { slug, token, userId }
   } catch (err) {
-    invalidateToken(slug)
-    const { token, userId } = await getToken(slug)
-    return { slug, token, userId }
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('429') || msg.includes('RATE_LIMITED')) {
+      authCooldownUntil.set(slug, Date.now() + 90_000)
+    } else {
+      invalidateToken(slug)
+    }
+    throw err
   }
 }
 

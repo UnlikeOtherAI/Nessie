@@ -3,6 +3,7 @@ import { ensureCtx, execute, VOCAB } from './lib/actions.js'
 import { buildEmployeePrompt } from './lib/prompt.js'
 import { decide, activeBrain } from './lib/brain.js'
 import { writeLedger } from './lib/ledger.js'
+import { getToken } from './lib/api.js'
 
 const TICK_MS = Number(process.env.SIM_TICK_MS ?? 45_000)
 const EMPLOYEES_PER_TICK = Number(process.env.SIM_PER_TICK ?? 2)
@@ -34,6 +35,20 @@ const runOnce = async (slug: string): Promise<void> => {
   writeLedger(slug, decision.action, result.status, result.detail)
 }
 
+const warmTokens = async (slugs: string[]): Promise<void> => {
+  for (const slug of slugs) {
+    try {
+      await getToken(slug)
+      console.log(`[warm] ok ${slug}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.log(`[warm] skip ${slug}: ${msg.slice(0, 80)}`)
+      writeLedger(slug, 'warm.fail', 'fail', msg.slice(0, 160))
+    }
+    await sleep(8_000)
+  }
+}
+
 const main = async (): Promise<void> => {
   const all = allEmployees()
     .map((e) => e.slug)
@@ -43,6 +58,7 @@ const main = async (): Promise<void> => {
   console.log(`[run] roster (${all.length}): ${all.join(', ')}`)
   console.log(`[run] tick=${TICK_MS}ms, per-tick=${EMPLOYEES_PER_TICK}`)
   writeLedger('orchestrator', 'loop.start', 'note', `brain=${activeBrain()} tick=${TICK_MS}ms`)
+  await warmTokens(all)
   let tick = 0
   while (true) {
     tick += 1
