@@ -70,6 +70,9 @@ export const validateIdentityStep = (raw: {
   return errors
 }
 
+const isHttpScheme = (parsed: URL): boolean =>
+  parsed.protocol === 'http:' || parsed.protocol === 'https:'
+
 export const validateAuthStep = (
   method: McpCatalogAuthMethod,
   raw: { headerName: string; authorizationUrl: string; tokenUrl: string },
@@ -79,12 +82,59 @@ export const validateAuthStep = (
     if (!raw.headerName.trim()) errors.headerName = 'Header name is required'
   }
   if (method === 'oauth2') {
-    if (!parseUrl(raw.authorizationUrl)) {
+    const authParsed = parseUrl(raw.authorizationUrl)
+    if (!authParsed) {
       errors.authorizationUrl = 'Authorization URL must be a valid URL'
+    } else if (!isHttpScheme(authParsed)) {
+      errors.authorizationUrl = 'Authorization URL must use http:// or https://'
     }
-    if (!parseUrl(raw.tokenUrl)) {
+    const tokenParsed = parseUrl(raw.tokenUrl)
+    if (!tokenParsed) {
       errors.tokenUrl = 'Token URL must be a valid URL'
+    } else if (!isHttpScheme(tokenParsed)) {
+      errors.tokenUrl = 'Token URL must use http:// or https://'
     }
   }
   return errors
+}
+
+export const clearStepError = <K extends keyof StepErrors>(
+  prev: StepErrors,
+  key: K,
+): StepErrors => {
+  if (!(key in prev)) return prev
+  const next = { ...prev }
+  delete next[key]
+  return next
+}
+
+export type WizardStep = 'transport' | 'identity' | 'auth'
+
+export type WizardInputs = {
+  protocol: McpCatalogProtocol
+  authMethod: McpCatalogAuthMethod
+  url: string
+  command: string
+  name: string
+  label: string
+  headerName: string
+  authorizationUrl: string
+  tokenUrl: string
+}
+
+/**
+ * Run all three step validators in step order. Returns the first failing
+ * step (so the wizard can re-route the user) along with its errors, or null
+ * if every step passes.
+ */
+export const firstWizardStepError = (
+  raw: WizardInputs,
+): { step: WizardStep; errors: StepErrors } | null => {
+  const transport = validateTransportStep(raw.protocol, raw)
+  if (Object.keys(transport).length > 0) return { step: 'transport', errors: transport }
+  const identity = validateIdentityStep(raw)
+  if (Object.keys(identity).length > 0) return { step: 'identity', errors: identity }
+  const auth = validateAuthStep(raw.authMethod, raw)
+  if (Object.keys(auth).length > 0) return { step: 'auth', errors: auth }
+  return null
 }

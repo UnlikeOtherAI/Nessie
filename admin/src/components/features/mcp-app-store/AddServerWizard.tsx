@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type ChangeEvent, type FormEvent } from 'react'
 import type {
   McpCatalogAuthMethod,
   McpCatalogProtocol,
@@ -6,10 +6,12 @@ import type {
 } from '@nessie/schemas'
 import type { CreateCatalogEntryInput } from '../../../facades/mcp-catalog/hooks'
 import {
-  validateAuthStep,
+  clearStepError,
+  firstWizardStepError,
   validateIdentityStep,
   validateTransportStep,
   type StepErrors,
+  type WizardStep,
 } from './add-server-wizard-validation'
 
 /**
@@ -27,8 +29,6 @@ type AddServerWizardProps = {
 
 const PROTOCOLS: McpCatalogProtocol[] = ['stdio', 'http', 'sse', 'ws']
 const AUTH_METHODS: McpCatalogAuthMethod[] = ['api_key', 'bearer', 'basic', 'oauth2', 'none']
-
-type WizardStep = 'transport' | 'identity' | 'auth'
 
 const labelClass = [
   'text-[11px] font-semibold uppercase tracking-[0.18em]',
@@ -137,22 +137,24 @@ export const AddServerWizard = ({
   const [error, setError] = useState<string | null>(null)
   const [stepErrors, setStepErrors] = useState<StepErrors>({})
 
+  const onField = <K extends keyof StepErrors>(
+    set: (value: string) => void,
+    key: K,
+  ) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    set(event.target.value)
+    setStepErrors((prev) => clearStepError(prev, key))
+  }
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
-    const authErrors = validateAuthStep(authMethod, {
-      headerName,
-      authorizationUrl,
-      tokenUrl,
+    const failure = firstWizardStepError({
+      protocol, authMethod, url, command, name, label,
+      headerName, authorizationUrl, tokenUrl,
     })
-    if (Object.keys(authErrors).length > 0) {
-      setStepErrors(authErrors)
-      return
-    }
-    const identityErrors = validateIdentityStep({ name, label })
-    if (Object.keys(identityErrors).length > 0) {
-      setStepErrors(identityErrors)
-      setStep('identity')
+    if (failure) {
+      setStepErrors(failure.errors)
+      setStep(failure.step)
       return
     }
     setStepErrors({})
@@ -250,7 +252,7 @@ export const AddServerWizard = ({
                 <input
                   className={inputClass}
                   data-testid="wizard-url"
-                  onChange={(event) => setUrl(event.target.value)}
+                  onChange={onField(setUrl, 'url')}
                   placeholder={
                     protocol === 'ws'
                       ? 'wss://example.com/mcp'
@@ -275,7 +277,7 @@ export const AddServerWizard = ({
                   <input
                     className={inputClass}
                     data-testid="wizard-command"
-                    onChange={(event) => setCommand(event.target.value)}
+                    onChange={onField(setCommand, 'command')}
                     placeholder="/usr/local/bin/my-mcp-server"
                     value={command}
                   />
@@ -319,7 +321,7 @@ export const AddServerWizard = ({
               <input
                 className={inputClass}
                 data-testid="wizard-name"
-                onChange={(event) => setName(event.target.value)}
+                onChange={onField(setName, 'name')}
                 placeholder="github-search"
                 value={name}
               />
@@ -336,7 +338,7 @@ export const AddServerWizard = ({
               <input
                 className={inputClass}
                 data-testid="wizard-label"
-                onChange={(event) => setLabel(event.target.value)}
+                onChange={onField(setLabel, 'label')}
                 placeholder="GitHub Search"
                 value={label}
               />
@@ -408,7 +410,7 @@ export const AddServerWizard = ({
                   Header name
                   <input
                     className={inputClass}
-                    onChange={(event) => setHeaderName(event.target.value)}
+                    onChange={onField(setHeaderName, 'headerName')}
                     placeholder="Authorization"
                     value={headerName}
                   />
@@ -435,7 +437,7 @@ export const AddServerWizard = ({
                   Authorization URL
                   <input
                     className={inputClass}
-                    onChange={(event) => setAuthorizationUrl(event.target.value)}
+                    onChange={onField(setAuthorizationUrl, 'authorizationUrl')}
                     placeholder="https://auth.example.com/authorize"
                     type="url"
                     value={authorizationUrl}
@@ -452,7 +454,7 @@ export const AddServerWizard = ({
                   Token URL
                   <input
                     className={inputClass}
-                    onChange={(event) => setTokenUrl(event.target.value)}
+                    onChange={onField(setTokenUrl, 'tokenUrl')}
                     placeholder="https://auth.example.com/token"
                     type="url"
                     value={tokenUrl}
