@@ -15,6 +15,8 @@ export type StepErrors = {
   headerName?: string
   authorizationUrl?: string
   tokenUrl?: string
+  clientId?: string
+  clientSecret?: string
 }
 
 export const parseUrl = (raw: string): URL | null => {
@@ -75,7 +77,13 @@ const isHttpScheme = (parsed: URL): boolean =>
 
 export const validateAuthStep = (
   method: McpCatalogAuthMethod,
-  raw: { headerName: string; authorizationUrl: string; tokenUrl: string },
+  raw: {
+    headerName: string
+    authorizationUrl: string
+    tokenUrl: string
+    clientId: string
+    clientSecret: string
+  },
 ): StepErrors => {
   const errors: StepErrors = {}
   if (method === 'api_key') {
@@ -94,6 +102,8 @@ export const validateAuthStep = (
     } else if (!isHttpScheme(tokenParsed)) {
       errors.tokenUrl = 'Token URL must use http:// or https://'
     }
+    if (!raw.clientId.trim()) errors.clientId = 'Client ID is required'
+    if (!raw.clientSecret.trim()) errors.clientSecret = 'Client Secret is required'
   }
   return errors
 }
@@ -120,6 +130,8 @@ export type WizardInputs = {
   headerName: string
   authorizationUrl: string
   tokenUrl: string
+  clientId: string
+  clientSecret: string
 }
 
 /**

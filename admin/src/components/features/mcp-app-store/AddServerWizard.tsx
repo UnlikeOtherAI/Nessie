@@ -14,6 +14,7 @@ import {
   type WizardStep,
 } from './add-server-wizard-validation'
 import { ariaFor, renderFieldError } from './add-server-wizard-field'
+import { Oauth2Fields } from './add-server-wizard-oauth2-fields'
 
 /**
  * "Add MCP server" wizard. Three steps: transport, catalog identity, auth
@@ -59,6 +60,8 @@ const buildAuthConfig = (
     valuePrefix: string
     authorizationUrl: string
     tokenUrl: string
+    clientId: string
+    clientSecret: string
     scopes: string
   },
 ): McpServerAuthConfig => {
@@ -74,6 +77,8 @@ const buildAuthConfig = (
         method: 'oauth2',
         authorizationUrl: raw.authorizationUrl.trim(),
         tokenUrl: raw.tokenUrl.trim(),
+        clientId: raw.clientId.trim(),
+        clientSecret: raw.clientSecret,
         scopes: raw.scopes
           .split(/[\s,]+/)
           .map((scope) => scope.trim())
@@ -129,6 +134,8 @@ export const AddServerWizard = ({
   const [valuePrefix, setValuePrefix] = useState('Bearer ')
   const [authorizationUrl, setAuthorizationUrl] = useState('')
   const [tokenUrl, setTokenUrl] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
   const [scopes, setScopes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [stepErrors, setStepErrors] = useState<StepErrors>({})
@@ -146,7 +153,7 @@ export const AddServerWizard = ({
     setError(null)
     const failure = firstWizardStepError({
       protocol, authMethod, url, command, name, label,
-      headerName, authorizationUrl, tokenUrl,
+      headerName, authorizationUrl, tokenUrl, clientId, clientSecret,
     })
     if (failure) {
       setStepErrors(failure.errors)
@@ -167,6 +174,8 @@ export const AddServerWizard = ({
           valuePrefix,
           authorizationUrl,
           tokenUrl,
+          clientId,
+          clientSecret,
           scopes,
         }),
         defaultTransportConfig: buildTransportConfig(protocol, {
@@ -418,45 +427,18 @@ export const AddServerWizard = ({
             </>
           )}
           {authMethod === 'oauth2' && (
-            <>
-              <div>
-                <label className={labelClass}>
-                  Authorization URL
-                  <input
-                    className={inputClass}
-                    onChange={onField(setAuthorizationUrl, 'authorizationUrl')}
-                    placeholder="https://auth.example.com/authorize"
-                    type="url"
-                    value={authorizationUrl}
-                    {...ariaFor('authorizationUrl', stepErrors)}
-                  />
-                </label>
-                {renderFieldError('authorizationUrl', stepErrors.authorizationUrl)}
-              </div>
-              <div>
-                <label className={labelClass}>
-                  Token URL
-                  <input
-                    className={inputClass}
-                    onChange={onField(setTokenUrl, 'tokenUrl')}
-                    placeholder="https://auth.example.com/token"
-                    type="url"
-                    value={tokenUrl}
-                    {...ariaFor('tokenUrl', stepErrors)}
-                  />
-                </label>
-                {renderFieldError('tokenUrl', stepErrors.tokenUrl)}
-              </div>
-              <label className={labelClass}>
-                Scopes (space or comma separated)
-                <input
-                  className={inputClass}
-                  onChange={(event) => setScopes(event.target.value)}
-                  placeholder="repo read:user"
-                  value={scopes}
-                />
-              </label>
-            </>
+            <Oauth2Fields
+              classes={{ label: labelClass, input: inputClass }}
+              errors={stepErrors}
+              onChange={{
+                authorizationUrl: onField(setAuthorizationUrl, 'authorizationUrl'),
+                tokenUrl: onField(setTokenUrl, 'tokenUrl'),
+                clientId: onField(setClientId, 'clientId'),
+                clientSecret: onField(setClientSecret, 'clientSecret'),
+                scopes: (event) => setScopes(event.target.value),
+              }}
+              values={{ authorizationUrl, tokenUrl, clientId, clientSecret, scopes }}
+            />
           )}
           {error ? (
             <div
