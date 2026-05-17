@@ -269,7 +269,11 @@ export const CredentialsDialog = ({
             ) : (
               overrides.map((override) => (
                 <OverrideRow
-                  key={override.id}
+                  // Include `updatedAt` so an edit to an existing override
+                  // remounts the row and forces it back to the masked state —
+                  // keying on `id` alone preserved `revealed=true` across the
+                  // post-upsert refetch (regression vs. #31 masking intent).
+                  key={`${override.id}-${override.updatedAt}`}
                   credentialRef={override.credentialRef}
                   disabled={remove.isPending}
                   onRemove={() =>
