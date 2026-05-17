@@ -509,7 +509,7 @@ const loadAllowedToolIds = async (
     where: {
       builtin: true,
       enabled: true,
-      OR: [{ organizationId: null }, { organizationId: context.channel.organizationId }],
+      organizationId: context.channel.organizationId,
     },
     select: { toolId: true },
   })
@@ -1157,12 +1157,37 @@ export const executeRunJob = async (
     })
     streamStarted = true
     let currentTurnStreamed = false
+    const subAgentInvocations: InvocationRecord[] = []
 
-    const runInferenceWithTools = async (
+    type InferenceCallbacks = {
+      onVisibleReasoningDelta: (chunk: string) => Promise<void>
+      onVisibleTextDelta: (chunk: string) => Promise<void>
+    }
+    const mainInferenceCallbacks: InferenceCallbacks = {
+      onVisibleReasoningDelta: async (chunk) => {
+        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.reasoning', {
+          content: chunk,
+          runId: parseRunId(context.run.id),
+        })
+      },
+      onVisibleTextDelta: async (chunk) => {
+        currentTurnStreamed = true
+        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+          content: chunk,
+          runId: parseRunId(context.run.id),
+        })
+      },
+    }
+    const silentInferenceCallbacks: InferenceCallbacks = {
+      onVisibleReasoningDelta: async () => undefined,
+      onVisibleTextDelta: async () => undefined,
+    }
+
+    const runInferenceWithCallbacks = async (
       messages: ProviderMessage[],
       tools: ToolSchemaDescriptor[],
+      callbacks: InferenceCallbacks,
     ) => {
-      currentTurnStreamed = false
       const mpr = await runInferenceGraph(deps.prisma, {
         actorContext: payload.actorContext,
         agent: {
@@ -1173,19 +1198,8 @@ export const executeRunJob = async (
         },
         baseMessages: messages,
         modelConfig: runtimeModelConfig,
-        onVisibleReasoningDelta: async (chunk) => {
-          await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.reasoning', {
-            content: chunk,
-            runId: parseRunId(context.run.id),
-          })
-        },
-        onVisibleTextDelta: async (chunk) => {
-          currentTurnStreamed = true
-          await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
-            content: chunk,
-            runId: parseRunId(context.run.id),
-          })
-        },
+        onVisibleReasoningDelta: callbacks.onVisibleReasoningDelta,
+        onVisibleTextDelta: callbacks.onVisibleTextDelta,
         organizationId: context.channel.organizationId,
         toolChoice: 'auto',
         tools,
@@ -1207,6 +1221,14 @@ export const executeRunJob = async (
         toolCalls: mpr.toolCalls,
       }
     }
+
+    const runMainInference = (messages: ProviderMessage[], tools: ToolSchemaDescriptor[]) => {
+      currentTurnStreamed = false
+      return runInferenceWithCallbacks(messages, tools, mainInferenceCallbacks)
+    }
+
+    const runSubAgentInference = (messages: ProviderMessage[], tools: ToolSchemaDescriptor[]) =>
+      runInferenceWithCallbacks(messages, tools, silentInferenceCallbacks)
 
     const buildBuiltinCtx = (toolActorContext: AuthorizedActionContext) => ({
       agentId: context.agent.id,
@@ -1295,11 +1317,12 @@ export const executeRunJob = async (
         if (toolName === 'delegate') {
           const result = await runDelegate(args, {
             mcpToolset,
-            runInference: runInferenceWithTools,
+            runInference: runSubAgentInference,
             executeBuiltinTool: (n, a) => executeBuiltinTool(n, a, buildBuiltinCtx(toolActorContext)),
             builtinDescriptors: subAgentBuiltinDescriptors,
             allowedBuiltinIds: subAgentBuiltinIds,
           })
+          subAgentInvocations.push(...result.invocations)
           return {
             inputSummary: result.inputSummary,
             output: result.output,
@@ -1375,9 +1398,13 @@ export const executeRunJob = async (
         return executeBuiltinTool(toolName, args, buildBuiltinCtx(toolActorContext))
       },
       initialMessages,
-      runInference: (messages) => runInferenceWithTools(messages, toolDefs),
+      runInference: (messages) => runMainInference(messages, toolDefs),
       tools: toolDefs,
     })
+
+    if (subAgentInvocations.length > 0) {
+      loopResult.invocations.push(...subAgentInvocations)
+    }
 
     const responseText = stripLeadingSectionTag(loopResult.finalText)
 

@@ -101,7 +101,7 @@ export const listToolRegistryEntries = async (
 
   const entries = await prisma.toolRegistryEntry.findMany({
     where: {
-      OR: [{ organizationId: null }, { organizationId }],
+      organizationId,
     },
     orderBy: [{ builtin: 'desc' }, { label: 'asc' }],
   })
