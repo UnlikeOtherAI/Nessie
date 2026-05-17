@@ -446,3 +446,43 @@ Verification summary (per CLAUDE.md): 3 findings filed (1 Important, 1 doc-only,
 **Currently in flight:** #25 (`a3a2f186d959ee3e1`), #27 (`a5eb0540a6f6bdc8b`), #35 (`af4d2cee3f0df8b15`). 3 worker agents — all reviewers from this tick are now landed.
 
 **Hold for next tick:** OAuth chain (#37 first as it unblocks #36 + #39; #38 can pair with #37 since they touch disjoint files), then #34 after wizard validation #35 lands, then the new wave (#40, #41, #42). The orchestrator commit for THIS tick uses `git commit --only docs/plans/...` per the standing rule.
+
+### Tick 2026-05-17T10:31Z — final wave; plan complete
+Wave-8 (parallel, file-disjoint): #37, #38, #40, #41, #42, #34 all landed cleanly. Three follow-ups filed from fallout (#43 wizard fields from #37, #44 overview callers from #42) plus #36/#39 unblocked by the OAuth chain.
+
+Wave-9 (parallel): #44 + #36 + #43 dispatched.
+- **#44** complete (commit `49f5cdf`) — supplied `overview` on all 5 toolRegistryEntry callers; api typecheck back to zero errors.
+- **#36** complete (commit `c9a460b`) — split `routes/mcp.ts` 879→75-line shim with 6 sub-files (catalog 217, instances 182, tools 199, credentials 140, oauth 109, shared 119). All sub-files ≤300 lines.
+- **#43** complete (commit `2e94844`) — wizard collects clientId/clientSecret with full a11y + Playwright-verified validation.
+
+Wave-10 (sequential after #36 landed): #39 dispatched against the new sub-file layout.
+- **#39** complete (commit `48af4d1`) — four hardening fixes in one bundle: (a) OAuth callback error sanitized to RFC 6749 §4.1.2.1 whitelist; (b) `credentialRef` dropped from `completeOAuth` response; (c) `INVALID_TRANSITION` + `NOT_OAUTH2` mapped to HTTP 409; (d) `publishCatalogEntry` TOCTOU fixed via atomic `updateMany({where: {id, status: 'draft'}})`. 11 new tests; api now at 116/116.
+
+**Race incident logged:** Mid-wave-8, #37's commit `310a902` swept #38's in-flight edits to `mcp-oauth.test.ts` because both agents staged the same file concurrently. #38's agent handled it gracefully — moved its tests into a dedicated `mcp-routes-prod-guard.test.ts` and removed the duplicates from `mcp-oauth.test.ts` in its own commit. No tests lost. Same lesson as prior `feedback_orchestrator_commits.md` incidents: even file-name `git add` cannot eliminate the index race when two agents touch the same file in the same window. The fallback discipline — agents owning their own swept WIP and re-housing it — worked.
+
+**Final gates (post-#39):**
+- `pnpm --filter @nessie/api typecheck` — clean, 0 errors
+- `pnpm --filter @nessie/api test` — 116/116 pass
+- `pnpm --filter @nessie/schemas test` — clean
+- `pnpm --filter @nessie/worker test` — 73/73 pass
+- `pnpm --filter @nessie/admin lint` / `typecheck` / `build` — all clean
+
+## Outcome
+
+**Status:** complete. All 44 plan tasks landed. Cron loop cancelled (jobs `c81b008c` + `185c888c`).
+
+**What shipped:**
+- Universal MCP client (`packages/mcp-client`) — multi-transport (stdio/http/sse), discovery cache invalidation on reconnect, fixture server for end-to-end smoke.
+- Connector plugin system (`packages/connectors`) — manifest parser with correct YAML line offsets.
+- Prisma schema reconciled with `docs/tool-registry-spec.md` §3.1 (9 new columns + GIN + btree-on-updatedAt + org-scoped uniqueness; `overview` made required; `description→overview` backfill; `lastError` column on `McpServerInstance`).
+- API surface (`api/src/routes/mcp/*`) — catalog CRUD/publish/deprecate, instance CRUD/test/refresh/healthcheck, tools listing (with grants), grants CRUD, OAuth start/callback, credentials overrides. Split into 6 sub-files under the 500-line cap. Production guard fails loud when `oauthSecretStore` isn't wired.
+- OAuth2: RFC 6749-correct flow with `client_id`/`client_secret` in start URL + token exchange. Callback error params sanitized to whitelist. `credentialRef` never surfaces in responses. Conflict transitions return 409.
+- Worker dispatch (`worker/src/run`): SSRF-guarded http_fetch, workflow tool wrapping, sandbox symlink dereferencing, sub-agent inference no longer pollutes parent SSE.
+- Admin UI: MCP App Store with full wizard (transport/identity/auth with oauth2 client fields + scheme allowlist + onChange clears + a11y errors + 500-line cap maintained), tools matrix with per-agent grants, CredentialsDialog with refetch-safe masking.
+- Security hardening: tool-grants org-scoped, principalId UUID validation, EnvSecretResolver opt-in, atomic publish TOCTOU.
+
+**Reviewer findings handled:** 12 reviews launched (Slice E, #10, #18, #20, #26, #31). Every finding ≥70 confidence verified by orchestrator Read before filing — 2 severity downgrades (#10 CRITICAL CONCURRENTLY/btree_gin → Important deferrals; #26 CRITICAL submit-revalidate → MEDIUM defensive gap). Zero false positives.
+
+**Standing memory updates:** `feedback_orchestrator_commits.md` codified the `git commit --only` rule and the destructive-git-verb ban (after the wave-3 `e4fb4ca` index sweep and wave-5 `413eff5` incident). Wave-8's `310a902` race showed the rule is necessary but not sufficient when two agents touch the same file simultaneously — the recovery pattern is documented above.
+
+**Out of plan scope but desirable later:** enable `btree_gin` extension and recreate the tags index as `(organizationId, tags)` when the registry table grows; add `CONCURRENTLY` to large CREATE INDEX statements once Nessie has live production load; consider migration-checksum repair if any deployed environment trips on the comment-only edits to migration `20260516220919_reconcile_tool_registry_entry/migration.sql`.
