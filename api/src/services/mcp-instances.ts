@@ -477,6 +477,11 @@ export const testInstance = async (
   const now = new Date()
   if (!probe.ok) {
     const failureMessage = probe.error ?? 'unknown error'
+    // No $transaction wrapper here (unlike the success path below): the failure
+    // branch has no registry side effects to coordinate, and the only non-idempotent
+    // write is `healthFailureCount: { increment: 1 }` which Postgres serialises
+    // atomically. Wrapping this in a transaction would add overhead without benefit.
+    // If you add registry side effects to this branch, wrap it in $transaction.
     await prisma.mcpServerInstance.update({
       where: { id },
       data: {
