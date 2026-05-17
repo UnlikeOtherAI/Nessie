@@ -23,6 +23,7 @@ export type BudgetLimits = {
   maxWallclockMs: number
   maxTokens?: number
   maxCostCents?: number
+  toolTimeoutMs?: number
 }
 
 export const DEFAULT_BUDGET: BudgetLimits = {
@@ -31,6 +32,7 @@ export const DEFAULT_BUDGET: BudgetLimits = {
   maxWallclockMs: 90_000,
   maxTokens: 50_000,
   maxCostCents: 50,
+  toolTimeoutMs: 75_000,
 }
 
 type BudgetExhaustionReason =
@@ -72,7 +74,7 @@ type ExecuteToolFn = (
   args: Record<string, unknown>,
 ) => Promise<{ output: string; success: boolean; inputSummary: string }>
 
-const TOOL_TIMEOUT_MS = 30_000
+const DEFAULT_TOOL_TIMEOUT_MS = 30_000
 const LOOP_DETECTION_THRESHOLD = 3
 
 const withTimeout = async <T>(
@@ -300,7 +302,7 @@ export const runAgenticLoop = async (input: {
         try {
           const toolResult = await withTimeout(
             executeTool(tc.toolName, tc.arguments),
-            TOOL_TIMEOUT_MS,
+            budget.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
             tc.toolName,
           )
           const durationMs = Date.now() - startedAt.getTime()

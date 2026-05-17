@@ -507,11 +507,13 @@ const BUILTIN_REGISTRY_SCOPE_KEY = 'builtin'
 
 const loadBuiltinTransportConfig = async (
   prisma: PrismaClient,
+  organizationId: string,
   toolId: string,
 ): Promise<unknown> => {
   const entry = await prisma.toolRegistryEntry.findUnique({
     where: {
-      scopeKey_toolId: {
+      organizationId_scopeKey_toolId: {
+        organizationId,
         scopeKey: BUILTIN_REGISTRY_SCOPE_KEY,
         toolId,
       },
@@ -611,6 +613,7 @@ export const executeBuiltinTool = async (
       return wrapBuiltinResult(inputSummary, async () => {
         const transportConfig = await loadBuiltinTransportConfig(
           context.prisma,
+          context.channel.organizationId,
           'file_read',
         )
         return runFileRead(args, transportConfig)
@@ -619,6 +622,7 @@ export const executeBuiltinTool = async (
       return wrapBuiltinResult(inputSummary, async () => {
         const transportConfig = await loadBuiltinTransportConfig(
           context.prisma,
+          context.channel.organizationId,
           'file_write',
         )
         return runFileWrite(args, transportConfig)
@@ -627,6 +631,7 @@ export const executeBuiltinTool = async (
       return wrapBuiltinResult(inputSummary, async () => {
         const transportConfig = await loadBuiltinTransportConfig(
           context.prisma,
+          context.channel.organizationId,
           'file_glob',
         )
         return runFileGlob(args, transportConfig)

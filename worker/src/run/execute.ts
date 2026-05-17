@@ -13,6 +13,7 @@ import type {
   PgRealtimeTransport,
   ProviderMessage,
   QueueProvider,
+  ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import { BUILTIN_TOOL_DEFINITIONS, BUILTIN_TOOL_IDS } from '@nessie/runtime'
 import {
@@ -32,6 +33,8 @@ import {
 import { executeBuiltinTool } from './tools.js'
 import { authorizeToolCall, resolveAgentTools, type ToolDenialReason } from './tool-policy.js'
 import { runAgenticLoop, DEFAULT_BUDGET } from './agentic-loop.js'
+import { buildMcpToolset } from './mcp-toolset.js'
+import { runDelegate } from './delegate.js'
 import { enqueueQueueJob } from '../queue.js'
 import {
   markDelegationStepFinished,
@@ -473,7 +476,8 @@ const loadAllowedToolIds = async (
     BUILTIN_TOOL_DEFINITIONS.map((tool) =>
       prisma.toolRegistryEntry.upsert({
         where: {
-          scopeKey_toolId: {
+          organizationId_scopeKey_toolId: {
+            organizationId: context.channel.organizationId,
             scopeKey: BUILTIN_TOOL_SCOPE_KEY,
             toolId: tool.id,
           },
@@ -484,6 +488,7 @@ const loadAllowedToolIds = async (
           enabled: true,
           handlerKind: 'builtin',
           label: tool.label,
+          organizationId: context.channel.organizationId,
           scopeKey: BUILTIN_TOOL_SCOPE_KEY,
           safe: tool.safe,
           toolId: tool.id,
@@ -1116,6 +1121,17 @@ export const executeRunJob = async (
       context.agent.parentAgentId,
     )
 
+    const mcpToolset = await buildMcpToolset(
+      deps.prisma,
+      context.channel.organizationId,
+      toolPolicy,
+    )
+
+    const subAgentBuiltinDescriptors = toolDefs.filter((d) => d.toolName !== 'delegate')
+    const subAgentBuiltinIds = new Set(
+      [...resolvedToolIds].filter((id) => id !== 'delegate'),
+    )
+
     const conversation = await loadConversation(deps.prisma, context.run.threadId)
     const memories = await retrieveRelevantMemories(deps, context, payload, prompt)
     const injectedRecallIds = memories.flatMap((memory) =>
@@ -1141,6 +1157,77 @@ export const executeRunJob = async (
     })
     streamStarted = true
     let currentTurnStreamed = false
+
+    const runInferenceWithTools = async (
+      messages: ProviderMessage[],
+      tools: ToolSchemaDescriptor[],
+    ) => {
+      currentTurnStreamed = false
+      const mpr = await runInferenceGraph(deps.prisma, {
+        actorContext: payload.actorContext,
+        agent: {
+          id: context.agent.id,
+          model: context.agent.model,
+          provider: context.agent.provider,
+          routingProfileId: null,
+        },
+        baseMessages: messages,
+        modelConfig: runtimeModelConfig,
+        onVisibleReasoningDelta: async (chunk) => {
+          await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.reasoning', {
+            content: chunk,
+            runId: parseRunId(context.run.id),
+          })
+        },
+        onVisibleTextDelta: async (chunk) => {
+          currentTurnStreamed = true
+          await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+            content: chunk,
+            runId: parseRunId(context.run.id),
+          })
+        },
+        organizationId: context.channel.organizationId,
+        toolChoice: 'auto',
+        tools,
+      })
+      if (
+        mpr.status !== 'completed'
+        || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
+      ) {
+        throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
+      }
+      return {
+        correlationId: mpr.correlationId,
+        finishReason: mpr.invocations[0]?.finishReason,
+        invocations: mpr.invocations as unknown as InvocationRecord[],
+        model: mpr.invocations[0]?.model ?? '',
+        outputText: mpr.finalAnswer ?? '',
+        provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi' | 'openai-compatible',
+        requestId: mpr.requestId,
+        toolCalls: mpr.toolCalls,
+      }
+    }
+
+    const buildBuiltinCtx = (toolActorContext: AuthorizedActionContext) => ({
+      agentId: context.agent.id,
+      actorContext: toolActorContext,
+      channel: {
+        id: context.channel.id,
+        organizationId: parseOrganizationId(context.channel.organizationId),
+        systemChannelType: context.channel.systemChannelType,
+      },
+      memoryCaptureConfig: {
+        modelClient: deps.modelClient,
+        pool: deps.searchConfig.pool,
+      },
+      prisma: deps.prisma,
+      realtimeTransport: deps.realtimeTransport,
+      run: {
+        id: context.run.id,
+        messageId: payload.messageId,
+        threadId: context.run.threadId,
+      },
+    })
 
     const loopResult = await runAgenticLoop({
       budget: DEFAULT_BUDGET,
@@ -1205,6 +1292,20 @@ export const executeRunJob = async (
       },
       executeTool: async (toolName, args) => {
         const toolActorContext = buildToolActorContext(payload.actorContext, context, toolName)
+        if (toolName === 'delegate') {
+          const result = await runDelegate(args, {
+            mcpToolset,
+            runInference: runInferenceWithTools,
+            executeBuiltinTool: (n, a) => executeBuiltinTool(n, a, buildBuiltinCtx(toolActorContext)),
+            builtinDescriptors: subAgentBuiltinDescriptors,
+            allowedBuiltinIds: subAgentBuiltinIds,
+          })
+          return {
+            inputSummary: result.inputSummary,
+            output: result.output,
+            success: result.success,
+          }
+        }
         const registryDecision = authorizeToolCall(
           toolName,
           allowedToolIds,
@@ -1271,74 +1372,10 @@ export const executeRunJob = async (
             reason: policyDecision.reason,
           })
         }
-        return executeBuiltinTool(toolName, args, {
-          agentId: context.agent.id,
-          actorContext: toolActorContext,
-          channel: {
-            id: context.channel.id,
-            organizationId: parseOrganizationId(context.channel.organizationId),
-            systemChannelType: context.channel.systemChannelType,
-          },
-          memoryCaptureConfig: {
-            modelClient: deps.modelClient,
-            pool: deps.searchConfig.pool,
-          },
-          prisma: deps.prisma,
-          realtimeTransport: deps.realtimeTransport,
-          run: {
-            id: context.run.id,
-            messageId: payload.messageId,
-            threadId: context.run.threadId,
-          },
-        })
+        return executeBuiltinTool(toolName, args, buildBuiltinCtx(toolActorContext))
       },
       initialMessages,
-      runInference: async (messages) => {
-        currentTurnStreamed = false
-        const mpr = await runInferenceGraph(deps.prisma, {
-          actorContext: payload.actorContext,
-          agent: {
-            id: context.agent.id,
-            model: context.agent.model,
-            provider: context.agent.provider,
-            routingProfileId: null,
-          },
-          baseMessages: messages,
-          modelConfig: runtimeModelConfig,
-          onVisibleReasoningDelta: async (chunk) => {
-            await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.reasoning', {
-              content: chunk,
-              runId: parseRunId(context.run.id),
-            })
-          },
-          onVisibleTextDelta: async (chunk) => {
-            currentTurnStreamed = true
-            await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
-              content: chunk,
-              runId: parseRunId(context.run.id),
-            })
-          },
-          organizationId: context.channel.organizationId,
-          toolChoice: 'auto',
-          tools: toolDefs,
-        })
-        if (
-          mpr.status !== 'completed'
-          || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
-        ) {
-          throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
-        }
-        return {
-          correlationId: mpr.correlationId,
-          finishReason: mpr.invocations[0]?.finishReason,
-          invocations: mpr.invocations as unknown as InvocationRecord[],
-          model: mpr.invocations[0]?.model ?? '',
-          outputText: mpr.finalAnswer ?? '',
-          provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi' | 'openai-compatible',
-          requestId: mpr.requestId,
-          toolCalls: mpr.toolCalls,
-        }
-      },
+      runInference: (messages) => runInferenceWithTools(messages, toolDefs),
       tools: toolDefs,
     })
 

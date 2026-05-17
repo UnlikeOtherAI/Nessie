@@ -268,6 +268,29 @@ export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     },
     safe: true,
   },
+  {
+    id: 'delegate',
+    label: 'Delegate to External-Tools Sub-agent',
+    description:
+      'Hand a task to a sub-agent that has access to external (MCP) tools. The sub-agent runs a tight loop with those tools and returns a concise answer. Use this for any task that requires real outside lookups (web search, third-party APIs, file systems, etc.) — do not pretend to know things you cannot fetch yourself.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description:
+            'A self-contained task description for the sub-agent. Include any relevant context — the sub-agent only sees this string, not the rest of your conversation.',
+        },
+        hint: {
+          type: 'string',
+          description:
+            'Optional hint about which tool category to favor (e.g. "web search", "filesystem", "github").',
+        },
+      },
+      required: ['task'],
+    },
+    safe: true,
+  },
 ]
 
 export const BUILTIN_TOOL_IDS = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id))

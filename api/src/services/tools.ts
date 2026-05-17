@@ -57,12 +57,14 @@ const toToolDescriptor = (entry: ToolRegistryEntry): ToolDescriptor => ({
 
 export const ensureBuiltinToolsRegistered = async (
   prisma: PrismaClient,
+  organizationId: string,
 ): Promise<void> => {
   await Promise.all(
     SYSTEM_TOOL_DEFINITIONS.map((tool) =>
       prisma.toolRegistryEntry.upsert({
         where: {
-          scopeKey_toolId: {
+          organizationId_scopeKey_toolId: {
+            organizationId,
             scopeKey: BUILTIN_TOOL_SCOPE_KEY,
             toolId: tool.id,
           },
@@ -73,6 +75,7 @@ export const ensureBuiltinToolsRegistered = async (
           enabled: true,
           handlerKind: 'builtin',
           label: tool.label,
+          organizationId,
           scopeKey: BUILTIN_TOOL_SCOPE_KEY,
           safe: tool.safe,
           toolId: tool.id,
@@ -94,7 +97,7 @@ export const listToolRegistryEntries = async (
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<ToolRegistryEntry[]> => {
-  await ensureBuiltinToolsRegistered(prisma)
+  await ensureBuiltinToolsRegistered(prisma, organizationId)
 
   const entries = await prisma.toolRegistryEntry.findMany({
     where: {
@@ -134,7 +137,8 @@ export const registerToolRegistryEntry = async (
   if (!builtin) {
     const builtinEntry = await prisma.toolRegistryEntry.findUnique({
       where: {
-        scopeKey_toolId: {
+        organizationId_scopeKey_toolId: {
+          organizationId,
           scopeKey: BUILTIN_TOOL_SCOPE_KEY,
           toolId: input.toolId,
         },
@@ -148,13 +152,14 @@ export const registerToolRegistryEntry = async (
 
   const entry = await prisma.toolRegistryEntry.upsert({
     where: {
-      scopeKey_toolId: {
+      organizationId_scopeKey_toolId: {
+        organizationId,
         scopeKey,
         toolId: input.toolId,
       },
     },
     create: {
-      organizationId: builtin ? null : organizationId,
+      organizationId,
       scopeKey,
       toolId: input.toolId,
       label: input.label,
@@ -166,7 +171,7 @@ export const registerToolRegistryEntry = async (
       metadata: (toInputJsonObject(input.metadata) ?? {}) as Prisma.InputJsonValue,
     },
     update: {
-      organizationId: builtin ? null : organizationId,
+      organizationId,
       label: input.label,
       description: input.description,
       safe: input.safe ?? false,

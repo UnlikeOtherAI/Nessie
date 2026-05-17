@@ -187,7 +187,11 @@ const projectBundleTool = async (
   const toolId = `bundle:${input.bundleId}:${input.tool.toolName}`
   await tx.toolRegistryEntry.upsert({
     where: {
-      scopeKey_toolId: { scopeKey: input.scopeKey, toolId },
+      organizationId_scopeKey_toolId: {
+        organizationId: input.organizationId,
+        scopeKey: input.scopeKey,
+        toolId,
+      },
     },
     create: {
       organizationId: input.organizationId,

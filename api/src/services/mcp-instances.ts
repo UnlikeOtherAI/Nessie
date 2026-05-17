@@ -537,7 +537,7 @@ export const testInstance = async (
         : false
       await tx.toolRegistryEntry.upsert({
         where: {
-          scopeKey_toolId: { scopeKey, toolId },
+          organizationId_scopeKey_toolId: { organizationId, scopeKey, toolId },
         },
         create: {
           organizationId,
