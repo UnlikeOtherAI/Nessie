@@ -295,7 +295,28 @@ export const registerMcpRoutes = (
   helpers: McpRouteHelpers,
 ): void => {
   const { prisma, requireActorContext, requireOwner } = helpers
-  const oauthSecretStore = helpers.oauthSecretStore ?? inMemorySecretStoreStub()
+  // Production deployments MUST inject a KMS-backed `SecretStore`. The default
+  // `inMemorySecretStoreStub` only mints opaque refs and never persists token
+  // material, so any OAuth handshake completed against it silently drops the
+  // access/refresh tokens. Fail loud at startup rather than discover the
+  // data-loss bug after a user authorizes a third-party app.
+  const oauthSecretStore = helpers.oauthSecretStore ?? (() => {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        '[mcp] OAuth SecretStore not configured. registerMcpRoutes() was '
+          + 'called without `oauthSecretStore` while NODE_ENV=production. '
+          + 'The in-memory stub does NOT persist tokens — completing an OAuth '
+          + 'handshake against it would silently drop credentials. Wire a '
+          + 'KMS-backed SecretStore before starting the API in production.',
+      )
+    }
+    app.log.warn(
+      '[mcp] No OAuth SecretStore configured — falling back to '
+        + '`inMemorySecretStoreStub`. Tokens will NOT be persisted; this is '
+        + 'safe for tests and local dev only.',
+    )
+    return inMemorySecretStoreStub()
+  })()
 
   // ─── Catalog ─────────────────────────────────────────────────────────────
   app.get('/api/mcp/catalog', async (request, reply) => {

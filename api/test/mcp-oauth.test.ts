@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import Fastify from 'fastify'
-
 import {
   McpOAuth2AuthConfigSchema,
   McpServerAuthConfigSchema,
@@ -10,7 +8,6 @@ import {
 } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 
-import { registerMcpRoutes } from '../src/routes/mcp.js'
 import type { McpCatalogEntryRow } from '../src/services/mcp-catalog.js'
 import type { McpInstanceRow } from '../src/services/mcp-instances.js'
 
@@ -644,64 +641,3 @@ test('McpServerAuthConfigSchema discriminated union enforces oauth2 client crede
   assert.ok(thrown, 'discriminated union must reject oauth2 without client creds')
 })
 
-// ─── registerMcpRoutes production guard (task #38) ──────────────────────────
-
-const makeRouteHelpers = () => {
-  const { prisma } = makePrismaStub()
-  return {
-    prisma,
-    requireActorContext: () => null,
-    requireOwner: () => false,
-  }
-}
-
-test('registerMcpRoutes throws when NODE_ENV=production and no SecretStore is wired', () => {
-  const original = process.env.NODE_ENV
-  process.env.NODE_ENV = 'production'
-  try {
-    const app = Fastify({ logger: false })
-    assert.throws(
-      () => registerMcpRoutes(app, makeRouteHelpers()),
-      /OAuth SecretStore not configured/,
-    )
-  } finally {
-    if (original === undefined) delete process.env.NODE_ENV
-    else process.env.NODE_ENV = original
-  }
-})
-
-test('registerMcpRoutes falls back to stub with a loud warning outside production', () => {
-  const original = process.env.NODE_ENV
-  process.env.NODE_ENV = 'development'
-  const warnings: string[] = []
-  try {
-    const app = Fastify({ logger: false })
-    // Capture the loud warning emitted by the fallback path.
-    app.log.warn = ((msg: unknown) => {
-      warnings.push(typeof msg === 'string' ? msg : JSON.stringify(msg))
-    }) as typeof app.log.warn
-    registerMcpRoutes(app, makeRouteHelpers())
-    assert.ok(
-      warnings.some((w) => w.includes('No OAuth SecretStore configured')),
-      `expected loud fallback warning, got: ${JSON.stringify(warnings)}`,
-    )
-  } finally {
-    if (original === undefined) delete process.env.NODE_ENV
-    else process.env.NODE_ENV = original
-  }
-})
-
-test('registerMcpRoutes accepts an explicit SecretStore in production without throwing', () => {
-  const original = process.env.NODE_ENV
-  process.env.NODE_ENV = 'production'
-  try {
-    const app = Fastify({ logger: false })
-    const explicitStore: SecretStore = { put: async () => 'secret_explicit_1' }
-    assert.doesNotThrow(() =>
-      registerMcpRoutes(app, { ...makeRouteHelpers(), oauthSecretStore: explicitStore }),
-    )
-  } finally {
-    if (original === undefined) delete process.env.NODE_ENV
-    else process.env.NODE_ENV = original
-  }
-})

@@ -5525,6 +5525,10 @@ export const buildApp = async () => {
   })
 
   // ─── MCP universal connector routes (Slice C) ──────────────────────────
+  // NOTE: `oauthSecretStore` is intentionally omitted until a KMS-backed
+  // implementation lands. `registerMcpRoutes` itself enforces the production
+  // guard — it will throw at startup when NODE_ENV=production so a misconfigured
+  // deploy fails loud instead of silently dropping OAuth tokens.
   registerMcpRoutes(app, {
     prisma,
     requireActorContext,
