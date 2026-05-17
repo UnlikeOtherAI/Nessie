@@ -13,6 +13,7 @@ import {
   type StepErrors,
   type WizardStep,
 } from './add-server-wizard-validation'
+import { ariaFor, renderFieldError } from './add-server-wizard-field'
 
 /**
  * "Add MCP server" wizard. Three steps: transport, catalog identity, auth
@@ -108,11 +109,6 @@ const buildTransportConfig = (
       return { transport: 'ws', url: raw.url.trim() }
   }
 }
-
-const inlineErrorClass = [
-  'mt-1 rounded-md border border-rose-400/40 bg-rose-500/10',
-  'px-2 py-1 text-xs text-rose-200',
-].join(' ')
 
 export const AddServerWizard = ({
   onCancel,
@@ -260,13 +256,10 @@ export const AddServerWizard = ({
                   }
                   type={protocol === 'ws' ? 'text' : 'url'}
                   value={url}
+                  {...ariaFor('url', stepErrors)}
                 />
               </label>
-              {stepErrors.url ? (
-                <div className={inlineErrorClass} data-testid="wizard-url-error">
-                  {stepErrors.url}
-                </div>
-              ) : null}
+              {renderFieldError('url', stepErrors.url, 'wizard-url-error')}
             </div>
           )}
           {protocol === 'stdio' && (
@@ -280,11 +273,10 @@ export const AddServerWizard = ({
                     onChange={onField(setCommand, 'command')}
                     placeholder="/usr/local/bin/my-mcp-server"
                     value={command}
+                    {...ariaFor('command', stepErrors)}
                   />
                 </label>
-                {stepErrors.command ? (
-                  <div className={inlineErrorClass}>{stepErrors.command}</div>
-                ) : null}
+                {renderFieldError('command', stepErrors.command)}
               </div>
               <label className={labelClass}>
                 Args (space separated)
@@ -324,13 +316,10 @@ export const AddServerWizard = ({
                 onChange={onField(setName, 'name')}
                 placeholder="github-search"
                 value={name}
+                {...ariaFor('name', stepErrors)}
               />
             </label>
-            {stepErrors.name ? (
-              <div className={inlineErrorClass} data-testid="wizard-name-error">
-                {stepErrors.name}
-              </div>
-            ) : null}
+            {renderFieldError('name', stepErrors.name, 'wizard-name-error')}
           </div>
           <div>
             <label className={labelClass}>
@@ -341,11 +330,10 @@ export const AddServerWizard = ({
                 onChange={onField(setLabel, 'label')}
                 placeholder="GitHub Search"
                 value={label}
+                {...ariaFor('label', stepErrors)}
               />
             </label>
-            {stepErrors.label ? (
-              <div className={inlineErrorClass}>{stepErrors.label}</div>
-            ) : null}
+            {renderFieldError('label', stepErrors.label)}
           </div>
           <label className={labelClass}>
             Vendor (optional)
@@ -413,11 +401,10 @@ export const AddServerWizard = ({
                     onChange={onField(setHeaderName, 'headerName')}
                     placeholder="Authorization"
                     value={headerName}
+                    {...ariaFor('headerName', stepErrors)}
                   />
                 </label>
-                {stepErrors.headerName ? (
-                  <div className={inlineErrorClass}>{stepErrors.headerName}</div>
-                ) : null}
+                {renderFieldError('headerName', stepErrors.headerName)}
               </div>
               <label className={labelClass}>
                 Value prefix (e.g. "Bearer ", "Token ", or empty)
@@ -441,13 +428,10 @@ export const AddServerWizard = ({
                     placeholder="https://auth.example.com/authorize"
                     type="url"
                     value={authorizationUrl}
+                    {...ariaFor('authorizationUrl', stepErrors)}
                   />
                 </label>
-                {stepErrors.authorizationUrl ? (
-                  <div className={inlineErrorClass}>
-                    {stepErrors.authorizationUrl}
-                  </div>
-                ) : null}
+                {renderFieldError('authorizationUrl', stepErrors.authorizationUrl)}
               </div>
               <div>
                 <label className={labelClass}>
@@ -458,11 +442,10 @@ export const AddServerWizard = ({
                     placeholder="https://auth.example.com/token"
                     type="url"
                     value={tokenUrl}
+                    {...ariaFor('tokenUrl', stepErrors)}
                   />
                 </label>
-                {stepErrors.tokenUrl ? (
-                  <div className={inlineErrorClass}>{stepErrors.tokenUrl}</div>
-                ) : null}
+                {renderFieldError('tokenUrl', stepErrors.tokenUrl)}
               </div>
               <label className={labelClass}>
                 Scopes (space or comma separated)
@@ -476,9 +459,10 @@ export const AddServerWizard = ({
             </>
           )}
           {error ? (
-            <div className="rounded-md border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {error}
-            </div>
+            <div
+              className="rounded-md border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"
+              role="alert"
+            >{error}</div>
           ) : null}
           <div className="flex justify-between gap-2">
             <button
