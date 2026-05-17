@@ -30,14 +30,29 @@ ALTER TABLE "tool_registry_entries"
 -- DropIndex: legacy cross-org unique (replaced by org-scoped variant below)
 DROP INDEX "tool_registry_entries_scope_key_tool_id_key";
 
+-- The three CREATE INDEX statements below intentionally omit `CONCURRENTLY`.
+-- Nessie has no live production load yet, so a brief table-level lock during
+-- a fresh-DB migration is acceptable. Once the system carries live traffic
+-- (multi-tenant org workloads writing into tool_registry_entries), each of
+-- these must be rebuilt with `CREATE INDEX CONCURRENTLY` to avoid blocking
+-- writers. Tracked in the MCP-universal-connector follow-up plan as a
+-- deferred operational hardening, not a spec-equivalent implementation.
+
 -- CreateIndex: org-scoped uniqueness per spec §3.1
 CREATE UNIQUE INDEX "tool_registry_entries_org_scope_tool_key"
   ON "tool_registry_entries" ("organization_id", "scope_key", "tool_id");
 
 -- CreateIndex: GIN tags index for spec §5 discovery filter.
--- The btree_gin extension is not enabled here, so the index covers tags
--- alone and the planner bitmap-ANDs with the existing organization_id
--- composite indexes for org-scoped filtering.
+-- DEFERRED PERF OPTIMIZATION (NOT a spec-equivalent implementation):
+-- The `btree_gin` extension is intentionally not enabled here, so this GIN
+-- index covers `tags` alone. For org-scoped tag filters the planner falls
+-- back to a heuristic bitmap-AND between this index and the existing
+-- `organization_id` composite btree indexes. That heuristic is good enough
+-- for current single-tenant volumes but may degrade at scale (high tag
+-- cardinality + large per-org row counts can flip the planner toward a
+-- seq-scan). When this becomes load-bearing, enable `btree_gin` and rebuild
+-- this index as a composite `(organization_id, tags)` GIN. Tracked in the
+-- MCP-universal-connector follow-up plan.
 CREATE INDEX "tool_registry_entries_tags_idx"
   ON "tool_registry_entries" USING GIN ("tags");
 

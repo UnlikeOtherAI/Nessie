@@ -1398,7 +1398,10 @@ model ToolRegistryEntry {
   toolId           String                  @map("tool_id")
   label            String
   description      String
-  overview         String                  @default("")
+  // Spec §3.1: `overview` is a required human-readable summary. No DB
+  // default — every new row must supply a non-empty value. Pre-reconcile
+  // rows backfilled with `''` remain legal (NOT NULL is preserved).
+  overview         String
   instructions     String                  @default("")
   safe             Boolean                 @default(false)
   builtin          Boolean                 @default(false)
@@ -1415,6 +1418,9 @@ model ToolRegistryEntry {
   tags             String[]                @default([])
   baseSearchTerms  String[]                @default([]) @map("base_search_terms")
   allowSearchTerms String[]                @default([]) @map("allow_search_terms")
+  // The `{content:'',mergeMode:'append'}` default is implementation-chosen,
+  // not spec-mandated. Spec §3.1 only requires that every row carries a
+  // `basePrompt` object; the empty/append seed keeps backfills cheap.
   basePrompt       Json                    @default("{\"content\": \"\", \"mergeMode\": \"append\"}") @map("base_prompt")
   commonPrompt     Json?                   @map("common_prompt")
   defaultConfig    Json                    @default("{}") @map("default_config")

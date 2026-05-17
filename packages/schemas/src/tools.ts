@@ -150,6 +150,10 @@ export type ToolTransportConfig = z.infer<typeof ToolTransportConfigSchema>
 export const PromptMergeModeSchema = z.enum(['append', 'prepend', 'replace'])
 export type PromptMergeMode = z.infer<typeof PromptMergeModeSchema>
 
+// NOTE: the `{content:'',mergeMode:'append'}` default below is an
+// implementation-chosen seed, not a value mandated by the spec. The spec only
+// requires that every row carries a `basePrompt` object; the empty/append seed
+// keeps backfills cheap and lets newly created tools omit the field.
 export const ToolBasePromptSchema = z.object({
   content: z.string().default(''),
   mergeMode: PromptMergeModeSchema.default('append'),
@@ -185,13 +189,19 @@ export const ToolRegistryEntryExtensionsSchema = z.object({
   tags: z.array(z.string()).default([]),
   baseSearchTerms: z.array(z.string()).default([]),
   allowSearchTerms: z.array(z.string()).default([]),
+  // Implementation-chosen default (not spec-mandated): the spec only requires
+  // that every row carries a `basePrompt` object. See `ToolBasePromptSchema`.
   basePrompt: ToolBasePromptSchema.default({
     content: '',
     mergeMode: 'append',
   }),
   commonPrompt: ToolCommonPromptSchema.nullable().optional(),
   defaultConfig: JsonRecordSchema.default({}),
-  overview: z.string().default(''),
+  // Spec §3.1 treats `overview` as a required human-readable summary. No
+  // default — callers must supply a non-empty string. Pre-reconcile rows that
+  // were backfilled with `''` stay legal at the DB level, but new inserts
+  // (Prisma `create` / `upsert.create`) must include this field.
+  overview: z.string().min(1),
   instructions: z.string().default(''),
   searchableText: z.string().default(''),
   owner: z.string().min(1).default('system'),

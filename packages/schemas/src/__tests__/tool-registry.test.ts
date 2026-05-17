@@ -60,9 +60,12 @@ test('ToolCommonPromptSchema accepts optional overview/blocked prompts', () => {
 })
 
 test('ToolRegistryEntryExtensionsSchema backfills every new spec column', () => {
+  // `overview` is required by spec §3.1 (no default) — every other field below
+  // is exercised for its default. See task #42 follow-ups.
   const parsed = ToolRegistryEntryExtensionsSchema.parse({
     source: 'builtin',
     transport: 'direct',
+    overview: 'builtin tool overview',
   })
   assert.deepEqual(parsed.transportConfig, {})
   assert.deepEqual(parsed.inputSchema, {})
@@ -71,13 +74,32 @@ test('ToolRegistryEntryExtensionsSchema backfills every new spec column', () => 
   assert.deepEqual(parsed.allowSearchTerms, [])
   assert.deepEqual(parsed.basePrompt, { content: '', mergeMode: 'append' })
   assert.deepEqual(parsed.defaultConfig, {})
-  assert.equal(parsed.overview, '')
+  assert.equal(parsed.overview, 'builtin tool overview')
   assert.equal(parsed.instructions, '')
   assert.equal(parsed.searchableText, '')
   assert.equal(parsed.owner, 'system')
   assert.equal(parsed.status, 'active')
   assert.equal(parsed.version, '0.0.0')
   assert.equal(parsed.createdBy, 'system')
+})
+
+test('ToolRegistryEntryExtensionsSchema rejects missing overview', () => {
+  assert.throws(() =>
+    ToolRegistryEntryExtensionsSchema.parse({
+      source: 'builtin',
+      transport: 'direct',
+    }),
+  )
+})
+
+test('ToolRegistryEntryExtensionsSchema rejects empty overview', () => {
+  assert.throws(() =>
+    ToolRegistryEntryExtensionsSchema.parse({
+      source: 'builtin',
+      transport: 'direct',
+      overview: '',
+    }),
+  )
 })
 
 test('ToolRegistryEntryExtensionsSchema rejects empty owner', () => {
