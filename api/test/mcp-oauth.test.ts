@@ -1,16 +1,25 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import Fastify from 'fastify'
+
+import {
+  McpOAuth2AuthConfigSchema,
+  McpServerAuthConfigSchema,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 
+import { registerMcpRoutes } from '../src/routes/mcp.js'
 import type { McpCatalogEntryRow } from '../src/services/mcp-catalog.js'
 import type { McpInstanceRow } from '../src/services/mcp-instances.js'
+
 import {
   MCP_OAUTH_ERROR_CODES,
   McpOAuthError,
   completeOAuth,
   createInMemoryStateStore,
+  defaultTokenExchange,
   generateState,
   startOAuth,
   type SecretStore,
@@ -70,6 +79,8 @@ const oauthCatalogEntry: McpCatalogEntryRow = {
     method: 'oauth2',
     authorizationUrl: 'https://provider.example/auth',
     tokenUrl: 'https://provider.example/token',
+    clientId: 'test-client-id',
+    clientSecret: 'test-client-secret',
     scopes: ['read:repo'],
   },
   defaultTransportConfig: { transport: 'http', url: 'https://provider.example/mcp' },
@@ -141,7 +152,7 @@ test('generateState mints cryptographically random base64url tokens', () => {
 
 // ─── startOAuth ─────────────────────────────────────────────────────────────
 
-test('startOAuth returns an authorization URL with state, scope, redirect_uri', async () => {
+test('startOAuth returns an authorization URL with state, scope, redirect_uri, client_id', async () => {
   const { prisma } = makePrismaStub()
   const store = createInMemoryStateStore()
   const result = await startOAuth({
@@ -160,6 +171,8 @@ test('startOAuth returns an authorization URL with state, scope, redirect_uri', 
     'https://app.example/api/mcp/oauth/callback',
   )
   assert.equal(url.searchParams.get('scope'), 'read:repo')
+  // RFC 6749 §4.1.1 — `client_id` is REQUIRED on the authorization request.
+  assert.equal(url.searchParams.get('client_id'), 'test-client-id')
 })
 
 test('startOAuth stores the state with a 10-minute TTL for callback verification', async () => {
@@ -465,4 +478,230 @@ test('completeOAuth rejects missing code parameter', async () => {
     (thrown as McpOAuthError).code,
     MCP_OAUTH_ERROR_CODES.TOKEN_EXCHANGE_FAILED,
   )
+})
+
+// ─── RFC 6749 client_id / client_secret coverage (task #37) ─────────────────
+
+test('completeOAuth forwards client_id + client_secret to the token exchange', async () => {
+  const { prisma } = makePrismaStub()
+  const store = createInMemoryStateStore()
+  const start = await startOAuth({
+    prisma,
+    store,
+    instanceId: 'instance-1',
+    actorContext,
+    callbackUrl: 'https://app.example/cb',
+  })
+  const secret = makeSecretStore()
+  let captured: Parameters<TokenExchangeFn>[0] | undefined
+  const recordingExchange: TokenExchangeFn = async (input) => {
+    captured = input
+    return {
+      accessToken: 'ya29.fake',
+      refreshToken: 'r1.fake',
+      expiresIn: 3600,
+      tokenType: 'Bearer',
+    }
+  }
+
+  await completeOAuth({
+    prisma,
+    store,
+    secretStore: secret.store,
+    tokenExchange: recordingExchange,
+    state: start.state,
+    code: 'auth-code-123',
+    callbackUrl: 'https://app.example/cb',
+  })
+
+  assert.ok(captured)
+  // Catalog → service plumbing must carry both halves of the OAuth2 client
+  // credential through to the token exchange, otherwise the provider rejects
+  // the authorization_code grant.
+  assert.equal(captured?.clientId, 'test-client-id')
+  assert.equal(captured?.clientSecret, 'test-client-secret')
+})
+
+test('defaultTokenExchange POSTs client_id + client_secret in the form body', async () => {
+  // Capture the actual request body sent to the token endpoint by stubbing
+  // global fetch. Proves the body conforms to RFC 6749 §4.1.3 + §2.3.1
+  // (client credentials in the body, not Basic auth — we picked the body
+  // form so a single POST carries everything and we don't have to special-
+  // case providers that reject Basic).
+  const originalFetch = globalThis.fetch
+  let capturedBody: string | undefined
+  let capturedHeaders: Record<string, string> | undefined
+  globalThis.fetch = (async (
+    _url: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    capturedBody = init?.body instanceof URLSearchParams
+      ? init.body.toString()
+      : typeof init?.body === 'string'
+        ? init.body
+        : ''
+    capturedHeaders = (init?.headers ?? {}) as Record<string, string>
+    return new Response(
+      JSON.stringify({
+        access_token: 'ya29.fake',
+        token_type: 'Bearer',
+        expires_in: 3600,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+  }) as typeof globalThis.fetch
+
+  try {
+    await defaultTokenExchange({
+      tokenUrl: 'https://provider.example/token',
+      code: 'auth-code-xyz',
+      redirectUri: 'https://app.example/cb',
+      clientId: 'client-abc',
+      clientSecret: 'shh-secret',
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  assert.ok(capturedBody, 'fetch was not called with a body')
+  const parsedBody = new URLSearchParams(capturedBody)
+  assert.equal(parsedBody.get('grant_type'), 'authorization_code')
+  assert.equal(parsedBody.get('code'), 'auth-code-xyz')
+  assert.equal(parsedBody.get('redirect_uri'), 'https://app.example/cb')
+  assert.equal(parsedBody.get('client_id'), 'client-abc')
+  assert.equal(parsedBody.get('client_secret'), 'shh-secret')
+  assert.equal(
+    capturedHeaders?.['Content-Type'],
+    'application/x-www-form-urlencoded',
+  )
+})
+
+test('McpOAuth2AuthConfigSchema rejects configs missing clientId', () => {
+  let thrown: unknown
+  try {
+    McpOAuth2AuthConfigSchema.parse({
+      method: 'oauth2',
+      authorizationUrl: 'https://provider.example/auth',
+      tokenUrl: 'https://provider.example/token',
+      clientSecret: 'shh',
+      scopes: [],
+    })
+  } catch (error) {
+    thrown = error
+  }
+  assert.ok(thrown, 'expected schema to reject config missing clientId')
+})
+
+test('McpOAuth2AuthConfigSchema rejects configs missing clientSecret', () => {
+  let thrown: unknown
+  try {
+    McpOAuth2AuthConfigSchema.parse({
+      method: 'oauth2',
+      authorizationUrl: 'https://provider.example/auth',
+      tokenUrl: 'https://provider.example/token',
+      clientId: 'abc',
+      scopes: [],
+    })
+  } catch (error) {
+    thrown = error
+  }
+  assert.ok(thrown, 'expected schema to reject config missing clientSecret')
+})
+
+test('McpOAuth2AuthConfigSchema rejects empty clientId / clientSecret strings', () => {
+  for (const bad of [
+    { clientId: '', clientSecret: 'shh' },
+    { clientId: 'abc', clientSecret: '' },
+  ]) {
+    let thrown: unknown
+    try {
+      McpOAuth2AuthConfigSchema.parse({
+        method: 'oauth2',
+        authorizationUrl: 'https://provider.example/auth',
+        tokenUrl: 'https://provider.example/token',
+        scopes: [],
+        ...bad,
+      })
+    } catch (error) {
+      thrown = error
+    }
+    assert.ok(thrown, `expected schema to reject ${JSON.stringify(bad)}`)
+  }
+})
+
+test('McpServerAuthConfigSchema discriminated union enforces oauth2 client credentials', () => {
+  let thrown: unknown
+  try {
+    McpServerAuthConfigSchema.parse({
+      method: 'oauth2',
+      authorizationUrl: 'https://provider.example/auth',
+      tokenUrl: 'https://provider.example/token',
+      scopes: [],
+    })
+  } catch (error) {
+    thrown = error
+  }
+  assert.ok(thrown, 'discriminated union must reject oauth2 without client creds')
+})
+
+// ─── registerMcpRoutes production guard (task #38) ──────────────────────────
+
+const makeRouteHelpers = () => {
+  const { prisma } = makePrismaStub()
+  return {
+    prisma,
+    requireActorContext: () => null,
+    requireOwner: () => false,
+  }
+}
+
+test('registerMcpRoutes throws when NODE_ENV=production and no SecretStore is wired', () => {
+  const original = process.env.NODE_ENV
+  process.env.NODE_ENV = 'production'
+  try {
+    const app = Fastify({ logger: false })
+    assert.throws(
+      () => registerMcpRoutes(app, makeRouteHelpers()),
+      /OAuth SecretStore not configured/,
+    )
+  } finally {
+    if (original === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = original
+  }
+})
+
+test('registerMcpRoutes falls back to stub with a loud warning outside production', () => {
+  const original = process.env.NODE_ENV
+  process.env.NODE_ENV = 'development'
+  const warnings: string[] = []
+  try {
+    const app = Fastify({ logger: false })
+    // Capture the loud warning emitted by the fallback path.
+    app.log.warn = ((msg: unknown) => {
+      warnings.push(typeof msg === 'string' ? msg : JSON.stringify(msg))
+    }) as typeof app.log.warn
+    registerMcpRoutes(app, makeRouteHelpers())
+    assert.ok(
+      warnings.some((w) => w.includes('No OAuth SecretStore configured')),
+      `expected loud fallback warning, got: ${JSON.stringify(warnings)}`,
+    )
+  } finally {
+    if (original === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = original
+  }
+})
+
+test('registerMcpRoutes accepts an explicit SecretStore in production without throwing', () => {
+  const original = process.env.NODE_ENV
+  process.env.NODE_ENV = 'production'
+  try {
+    const app = Fastify({ logger: false })
+    const explicitStore: SecretStore = { put: async () => 'secret_explicit_1' }
+    assert.doesNotThrow(() =>
+      registerMcpRoutes(app, { ...makeRouteHelpers(), oauthSecretStore: explicitStore }),
+    )
+  } finally {
+    if (original === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = original
+  }
 })

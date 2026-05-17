@@ -29,6 +29,8 @@ test('ensureAuthConfigMatchesMethod parses oauth2 with defaulted scopes', () => 
     method: 'oauth2',
     authorizationUrl: 'https://example.com/auth',
     tokenUrl: 'https://example.com/token',
+    clientId: 'test-client-id',
+    clientSecret: 'test-client-secret',
   })
   assert.equal(result.method, 'oauth2')
   if (result.method === 'oauth2') {

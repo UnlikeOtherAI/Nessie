@@ -189,8 +189,12 @@ export const startOAuth = async (
     expiresAt: Date.now() + STATE_TTL_MS,
   })
 
+  // Per RFC 6749 §4.1.1 the authorization request MUST carry `client_id`.
+  // Real providers (GitHub, Google, Atlassian, Notion, …) reject the redirect
+  // outright when it's missing, so we always set it from the catalog config.
   const authUrl = new URL(parsed.authorizationUrl)
   authUrl.searchParams.set('response_type', 'code')
+  authUrl.searchParams.set('client_id', parsed.clientId)
   authUrl.searchParams.set('state', token)
   authUrl.searchParams.set('redirect_uri', callbackUrl)
   if (parsed.scopes.length > 0) {
@@ -212,6 +216,8 @@ export type TokenExchangeFn = (input: {
   tokenUrl: string
   code: string
   redirectUri: string
+  clientId: string
+  clientSecret: string
 }) => Promise<{
   accessToken: string
   refreshToken?: string
@@ -219,15 +225,28 @@ export type TokenExchangeFn = (input: {
   tokenType?: string
 }>
 
+/**
+ * Per RFC 6749 §4.1.3 the `authorization_code` token request MUST include
+ * `client_id`, and confidential clients MUST authenticate. §2.3.1 lets us
+ * authenticate the secret via HTTP Basic OR via the request body; we use the
+ * body form here so a single POST carries everything and we don't have to
+ * special-case providers that reject Basic (e.g. some GitHub Enterprise
+ * installs). Both client_id and client_secret are URL-encoded by
+ * `URLSearchParams` automatically.
+ */
 export const defaultTokenExchange: TokenExchangeFn = async ({
   tokenUrl,
   code,
   redirectUri,
+  clientId,
+  clientSecret,
 }) => {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
     redirect_uri: redirectUri,
+    client_id: clientId,
+    client_secret: clientSecret,
   })
   const response = await fetch(tokenUrl, {
     method: 'POST',
@@ -371,6 +390,8 @@ export const completeOAuth = async (
     tokenUrl: parsed.tokenUrl,
     code: input.code,
     redirectUri: input.callbackUrl,
+    clientId: parsed.clientId,
+    clientSecret: parsed.clientSecret,
   })
   const credentialRef = await input.secretStore.put({
     accessToken: tokens.accessToken,
