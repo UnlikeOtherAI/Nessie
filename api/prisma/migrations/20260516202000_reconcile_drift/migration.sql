@@ -1,59 +1,59 @@
 -- DropForeignKey
-ALTER TABLE "inference_capability_overrides" DROP CONSTRAINT "inference_capability_overrides_organization_id_fkey";
+ALTER TABLE "inference_capability_overrides" DROP CONSTRAINT IF EXISTS "inference_capability_overrides_organization_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "inference_credential_bindings" DROP CONSTRAINT "inference_credential_bindings_organization_id_fkey";
+ALTER TABLE "inference_credential_bindings" DROP CONSTRAINT IF EXISTS "inference_credential_bindings_organization_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "inference_eval_runs" DROP CONSTRAINT "inference_eval_runs_organization_id_fkey";
+ALTER TABLE "inference_eval_runs" DROP CONSTRAINT IF EXISTS "inference_eval_runs_organization_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "inference_eval_suites" DROP CONSTRAINT "inference_eval_suites_organization_id_fkey";
+ALTER TABLE "inference_eval_suites" DROP CONSTRAINT IF EXISTS "inference_eval_suites_organization_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "inference_models" DROP CONSTRAINT "inference_models_organization_id_fkey";
+ALTER TABLE "inference_models" DROP CONSTRAINT IF EXISTS "inference_models_organization_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "inference_providers" DROP CONSTRAINT "inference_providers_organization_id_fkey";
+ALTER TABLE "inference_providers" DROP CONSTRAINT IF EXISTS "inference_providers_organization_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "inference_routing_profiles" DROP CONSTRAINT "inference_routing_profiles_organization_id_fkey";
+ALTER TABLE "inference_routing_profiles" DROP CONSTRAINT IF EXISTS "inference_routing_profiles_organization_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "thought_recalls" DROP CONSTRAINT "thought_recalls_thought_id_fkey";
+ALTER TABLE "thought_recalls" DROP CONSTRAINT IF EXISTS "thought_recalls_thought_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "thread_stream_events" DROP CONSTRAINT "thread_stream_events_thread_id_fkey";
+ALTER TABLE "thread_stream_events" DROP CONSTRAINT IF EXISTS "thread_stream_events_thread_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "tool_mediator_profiles" DROP CONSTRAINT "tool_mediator_profiles_organization_id_fkey";
+ALTER TABLE "tool_mediator_profiles" DROP CONSTRAINT IF EXISTS "tool_mediator_profiles_organization_id_fkey";
 
 -- DropIndex
-DROP INDEX "channels_system_channel_type_idx";
+DROP INDEX IF EXISTS "channels_system_channel_type_idx";
 
 -- DropIndex
-DROP INDEX "plans_organization_id_created_at_idx";
+DROP INDEX IF EXISTS "plans_organization_id_created_at_idx";
 
 -- DropIndex
-DROP INDEX "plans_organization_id_status_created_at_idx";
+DROP INDEX IF EXISTS "plans_organization_id_status_created_at_idx";
 
 -- DropIndex
-DROP INDEX "teams_project_id_system_managed_idx";
+DROP INDEX IF EXISTS "teams_project_id_system_managed_idx";
 
 -- DropIndex
-DROP INDEX "temporary_context_sessions_organization_id_dropped_at_created_a";
+DROP INDEX IF EXISTS "temporary_context_sessions_organization_id_dropped_at_created_a";
 
 -- DropIndex
-DROP INDEX "idx_thoughts_embedding";
+DROP INDEX IF EXISTS "idx_thoughts_embedding";
 
 -- DropIndex
-DROP INDEX "idx_thoughts_metadata";
+DROP INDEX IF EXISTS "idx_thoughts_metadata";
 
 -- DropIndex
-DROP INDEX "idx_thoughts_search_vector";
+DROP INDEX IF EXISTS "idx_thoughts_search_vector";
 
 -- DropIndex
-DROP INDEX "tool_registry_entries_tool_id_key";
+DROP INDEX IF EXISTS "tool_registry_entries_tool_id_key";
 
 -- AlterTable
 ALTER TABLE "agent_trigger_deliveries" ALTER COLUMN "id" DROP DEFAULT;
