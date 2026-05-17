@@ -53,9 +53,10 @@ export const findThreadForUser = async (
     where: {
       id: threadId,
       channel: {
-        members: {
-          some: { userId },
-        },
+        OR: [
+          { visibility: 'public' },
+          { members: { some: { userId } } },
+        ],
       },
     },
     include: {
