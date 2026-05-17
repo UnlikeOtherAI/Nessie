@@ -989,8 +989,9 @@ const createMiniMaxConnector = (
 //
 // Speaks the Anthropic Messages API at https://api.kimi.com/coding/v1/messages.
 // Auth uses `x-api-key` (not Bearer) and requires `anthropic-version`.
-// Supports invoke() and stream() for text generation; no tool-calling support
-// yet — agents that need tools should pick an OpenAI-compatible provider.
+// Tool calling is prompt-translated: tool schemas are injected into the system
+// prompt and `<tool_use>{...}</tool_use>` blocks in the model output are
+// parsed back into ProviderToolCall[].
 
 type AnthropicContentBlock =
   | { type: 'text'; text: string }
@@ -1066,14 +1067,54 @@ const usageFromAnthropic = (
   }
 }
 
+const KIMI_TOOL_PREAMBLE = `You can invoke tools by emitting blocks of the form:
+<tool_use>{"name":"<tool_name>","arguments":{...}}</tool_use>
+Rules:
+- Emit the entire JSON on a single block — name and arguments are required.
+- You may emit multiple <tool_use> blocks; each will be dispatched and the results returned to you.
+- Wait for tool results before drawing final conclusions; do not invent results.
+- If no tool is needed, answer in plain text.`
+
+const renderKimiTools = (tools: ToolSchemaDescriptor[] | undefined): string | undefined => {
+  if (!tools || tools.length === 0) {
+    return undefined
+  }
+  const lines = tools.map((tool) => {
+    const schema = JSON.stringify(tool.inputSchema)
+    return `- ${tool.toolName}: ${tool.description}\n  input_schema: ${schema}`
+  })
+  return `${KIMI_TOOL_PREAMBLE}\n\nAvailable tools:\n${lines.join('\n')}`
+}
+
+const renderAssistantWithToolCalls = (
+  content: string | null,
+  toolCalls: ProviderToolCall[] | undefined,
+): string => {
+  const parts: string[] = []
+  if (content && content.trim()) {
+    parts.push(content)
+  }
+  for (const call of toolCalls ?? []) {
+    parts.push(
+      `<tool_use>${JSON.stringify({ name: call.toolName, arguments: call.arguments })}</tool_use>`,
+    )
+  }
+  return parts.join('\n')
+}
+
 // Anthropic puts the system prompt at the top level and forbids it as a
 // message role. Squash any system entries into a single string, then map the
-// rest. Tool/result messages are folded into text turns since this connector
-// does not yet support tool_use blocks.
+// rest. Tool/result messages are folded into text turns so the prompt-
+// translated tool layer can flow through unchanged.
 const toAnthropicPayload = (
   messages: ProviderMessage[],
+  tools?: ToolSchemaDescriptor[],
 ): { system?: string; messages: Array<{ role: 'user' | 'assistant'; content: string }> } => {
   const systemParts: string[] = []
+  const toolBlock = renderKimiTools(tools)
+  if (toolBlock) {
+    systemParts.push(toolBlock)
+  }
   const out: Array<{ role: 'user' | 'assistant'; content: string }> = []
 
   for (const message of messages) {
@@ -1082,10 +1123,14 @@ const toAnthropicPayload = (
       continue
     }
     const role: 'user' | 'assistant' = message.role === 'assistant' ? 'assistant' : 'user'
-    const content =
-      message.role === 'tool'
-        ? `[tool result]\n${message.content}`
-        : message.content
+    let content: string
+    if (message.role === 'tool') {
+      content = `<tool_result tool_call_id="${message.toolCallId}">\n${message.content}\n</tool_result>`
+    } else if (message.role === 'assistant') {
+      content = renderAssistantWithToolCalls(message.content, message.toolCalls)
+    } else {
+      content = message.content
+    }
     if (!content) {
       continue
     }
@@ -1108,6 +1153,40 @@ const toAnthropicPayload = (
     system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
     messages: out,
   }
+}
+
+const KIMI_TOOL_USE_RE = /<tool_use>\s*(\{[\s\S]*?\})\s*<\/tool_use>/g
+
+const parseKimiToolCalls = (
+  text: string,
+  requestId: string,
+): { outputText: string; toolCalls: ProviderToolCall[] } => {
+  const toolCalls: ProviderToolCall[] = []
+  for (const match of text.matchAll(KIMI_TOOL_USE_RE)) {
+    const jsonPart = match[1]
+    if (!jsonPart) {
+      continue
+    }
+    try {
+      const parsed = JSON.parse(jsonPart) as {
+        name?: string
+        arguments?: Record<string, unknown>
+      }
+      if (parsed.name && typeof parsed.name === 'string') {
+        toolCalls.push({
+          toolCallId: `kimi_${requestId}_${toolCalls.length}`,
+          toolName: parsed.name,
+          arguments: parsed.arguments && typeof parsed.arguments === 'object'
+            ? parsed.arguments
+            : {},
+        })
+      }
+    } catch {
+      // Drop malformed tool_use blocks; the model can retry.
+    }
+  }
+  const outputText = text.replace(KIMI_TOOL_USE_RE, '').trim()
+  return { outputText, toolCalls }
 }
 
 const collectAnthropicStream = async function* (
@@ -1285,7 +1364,7 @@ const createKimiConnector = (
     ): Promise<ProviderInvocationResult> {
       const startedAt = Date.now()
       const model = resolveChatModel(request.model)
-      const payload = toAnthropicPayload(request.messages)
+      const payload = toAnthropicPayload(request.messages, request.tools)
 
       try {
         const response = await invokeRequest({
@@ -1297,11 +1376,14 @@ const createKimiConnector = (
         })
 
         const parsed = (await response.json()) as AnthropicMessagesResponse
-        const outputText = (parsed.content ?? [])
+        const rawText = (parsed.content ?? [])
           .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
           .map((block) => block.text)
           .join('')
-        const finishReason = normalizeAnthropicFinishReason(parsed.stop_reason)
+        const { outputText, toolCalls } = parseKimiToolCalls(rawText, request.requestId)
+        const baseFinishReason = normalizeAnthropicFinishReason(parsed.stop_reason)
+        const finishReason: NormalizedFinishReason | undefined =
+          toolCalls.length > 0 ? 'tool-call' : baseFinishReason
         const usage = usageFromAnthropic(parsed.usage)
 
         return {
@@ -1318,7 +1400,7 @@ const createKimiConnector = (
             usage,
           }),
           outputText,
-          toolCalls: [],
+          toolCalls,
         }
       } catch (error) {
         throw providerError({
@@ -1343,7 +1425,7 @@ const createKimiConnector = (
     ): AsyncGenerator<ProviderStreamEvent, ProviderInvocationResult, undefined> {
       const startedAt = Date.now()
       const model = resolveChatModel(request.model)
-      const payload = toAnthropicPayload(request.messages)
+      const payload = toAnthropicPayload(request.messages, request.tools)
 
       try {
         const response = await invokeRequest({
@@ -1362,11 +1444,18 @@ const createKimiConnector = (
           next = await stream.next()
         }
 
+        const { outputText, toolCalls } = parseKimiToolCalls(
+          next.value.outputText,
+          request.requestId,
+        )
+        const finishReason: NormalizedFinishReason | undefined =
+          toolCalls.length > 0 ? 'tool-call' : next.value.finishReason
+
         return {
-          finishReason: next.value.finishReason,
+          finishReason,
           invocation: createInvocationRecord({
             correlationId: request.correlationId,
-            finishReason: next.value.finishReason,
+            finishReason,
             latencyMs: Date.now() - startedAt,
             metadata: request.metadata,
             model,
@@ -1375,8 +1464,8 @@ const createKimiConnector = (
             requestId: request.requestId,
             usage: next.value.usage,
           }),
-          outputText: next.value.outputText,
-          toolCalls: next.value.toolCalls,
+          outputText,
+          toolCalls,
         }
       } catch (error) {
         throw providerError({

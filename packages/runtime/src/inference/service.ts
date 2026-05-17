@@ -86,9 +86,9 @@ export const createInferenceService = (
     const capabilities = await capabilityCatalog.resolve(config, request.model)
     const model = request.model ?? capabilities.effectiveSnapshot.model
     const providerRequest = buildProviderRequest(
-      capabilities.effectiveSnapshot.toolCallingMode === 'native'
-        ? request
-        : { ...request, toolChoice: undefined, tools: undefined },
+      capabilities.effectiveSnapshot.toolCallingMode === 'disabled'
+        ? { ...request, toolChoice: undefined, tools: undefined }
+        : request,
       requestId,
       model,
     )
@@ -120,9 +120,9 @@ export const createInferenceService = (
     const capabilities = await capabilityCatalog.resolve(config, request.model)
     const model = request.model ?? capabilities.effectiveSnapshot.model
     const providerRequest = buildProviderRequest(
-      capabilities.effectiveSnapshot.toolCallingMode === 'native'
-        ? request
-        : { ...request, toolChoice: undefined, tools: undefined },
+      capabilities.effectiveSnapshot.toolCallingMode === 'disabled'
+        ? { ...request, toolChoice: undefined, tools: undefined }
+        : request,
       requestId,
       model,
     )
