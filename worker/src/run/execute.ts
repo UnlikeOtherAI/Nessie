@@ -485,6 +485,9 @@ const loadAllowedToolIds = async (
         create: {
           builtin: true,
           description: tool.description,
+          // Builtins ship with short one-line descriptions that double as the
+          // human-readable summary required by spec §3.1.
+          overview: tool.description,
           enabled: true,
           handlerKind: 'builtin',
           label: tool.label,

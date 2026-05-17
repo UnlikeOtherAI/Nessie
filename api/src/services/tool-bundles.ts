@@ -199,6 +199,9 @@ const projectBundleTool = async (
       toolId,
       label: input.tool.label,
       description: input.tool.overview,
+      // Spec §3.1 makes `overview` a required non-empty column. The bundle
+      // normaliser already guarantees a non-empty string here.
+      overview: input.tool.overview,
       safe: false,
       builtin: false,
       enabled: input.tool.enabled,

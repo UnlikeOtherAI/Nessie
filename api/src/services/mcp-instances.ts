@@ -550,6 +550,15 @@ export const testInstance = async (
           toolId,
           label: descriptor.title ?? descriptor.name,
           description: descriptor.description ?? '',
+          // Spec §3.1 requires a non-empty `overview`. Prefer the upstream
+          // description; fall back to the human label, then the tool name,
+          // and finally a synthesised string keyed off the instance id so we
+          // never write empty.
+          overview:
+            descriptor.description
+            ?? descriptor.title
+            ?? descriptor.name
+            ?? `MCP tool from instance ${instance.id}`,
           safe: false,
           builtin: false,
           enabled: true,

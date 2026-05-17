@@ -72,6 +72,9 @@ export const ensureBuiltinToolsRegistered = async (
         create: {
           builtin: true,
           description: tool.description,
+          // Builtins ship with concise one-line descriptions that already
+          // double as the human-readable summary (spec §3.1).
+          overview: tool.description,
           enabled: true,
           handlerKind: 'builtin',
           label: tool.label,
@@ -164,6 +167,11 @@ export const registerToolRegistryEntry = async (
       toolId: input.toolId,
       label: input.label,
       description: input.description,
+      // Spec §3.1 mandates a non-empty `overview`. The public
+      // `registerToolRegistryEntry` API doesn't take one yet (callers only
+      // know `description`), so mirror the description — it's a short caller-
+      // supplied string and always non-empty by the surrounding contract.
+      overview: input.description,
       safe: input.safe ?? false,
       builtin,
       enabled: input.enabled ?? true,
