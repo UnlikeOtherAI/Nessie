@@ -288,16 +288,46 @@ test('completeOAuth exchanges code, persists secret, links per-user override', a
   })
 
   assert.equal(result.instanceId, 'instance-1')
-  assert.equal(result.credentialRef, 'secret_test_ref_1')
   assert.equal(secret.calls, 1)
   assert.equal(secret.lastInput.accessToken, 'ya29.fake-access-token')
   assert.equal(secret.lastInput.refreshToken, 'r1.fake-refresh-token')
   // Per-user override created so multiple users sharing the same install
-  // keep separate OAuth identities.
+  // keep separate OAuth identities. The `credentialRef` lives on the override
+  // row, never on the public API response (see "no credentialRef" test below).
   assert.equal(upserts.length, 1)
   assert.equal(upserts[0]?.principalType, 'user')
   assert.equal(upserts[0]?.principalId, USER_A)
   assert.equal(upserts[0]?.credentialRef, 'secret_test_ref_1')
+})
+
+test('completeOAuth response never leaks the internal credentialRef', async () => {
+  // The `credentialRef` is an opaque pointer into the secret store; surfacing
+  // it on the API boundary makes it possible for any caller that triggered
+  // the OAuth flow to address other users' secrets. Pin the response shape
+  // so a future refactor can't accidentally re-introduce it.
+  const { prisma } = makePrismaStub()
+  const store = createInMemoryStateStore()
+  const start = await startOAuth({
+    prisma,
+    store,
+    instanceId: 'instance-1',
+    actorContext,
+    callbackUrl: 'https://app.example/cb',
+  })
+  const secret = makeSecretStore()
+
+  const result = await completeOAuth({
+    prisma,
+    store,
+    secretStore: secret.store,
+    tokenExchange: stubTokenExchange(),
+    state: start.state,
+    code: 'auth-code-123',
+    callbackUrl: 'https://app.example/cb',
+  })
+
+  assert.deepEqual(Object.keys(result).sort(), ['instanceId'])
+  assert.equal('credentialRef' in (result as Record<string, unknown>), false)
 })
 
 test('completeOAuth rejects an unknown state token', async () => {

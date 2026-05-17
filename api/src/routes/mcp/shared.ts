@@ -63,7 +63,12 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
     const status =
       error.code === MCP_CATALOG_ERROR_CODES.NOT_FOUND
         ? 404
+        // `DUPLICATE_NAME` and `INVALID_TRANSITION` both describe a
+        // pre-existing resource that conflicts with the requested mutation
+        // (RFC 7231 §6.5.8) — return 409 so clients can distinguish a
+        // schema problem (400) from a lifecycle conflict (409).
         : error.code === MCP_CATALOG_ERROR_CODES.DUPLICATE_NAME
+            || error.code === MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION
           ? 409
           : 400
     sendApiError(reply, status, error.code, error.message)
@@ -111,7 +116,12 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
           : error.code === MCP_OAUTH_ERROR_CODES.TOKEN_EXCHANGE_FAILED
               || error.code === MCP_OAUTH_ERROR_CODES.TOKEN_RESPONSE_INVALID
             ? 502
-            : 400
+            // `NOT_OAUTH2` means the catalog entry exists but its auth method
+            // disallows the OAuth handshake — a lifecycle conflict, not a
+            // payload validation failure. Surface as 409 (RFC 7231 §6.5.8).
+            : error.code === MCP_OAUTH_ERROR_CODES.NOT_OAUTH2
+              ? 409
+              : 400
     sendApiError(reply, status, error.code, error.message)
     return true
   }

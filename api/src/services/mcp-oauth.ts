@@ -319,9 +319,14 @@ export type CompleteOAuthInput = {
   callbackUrl: string
 }
 
+/**
+ * Public response shape for `completeOAuth`. Deliberately excludes the
+ * internal `credentialRef` — that opaque secret pointer must never cross the
+ * API boundary. Callers that need to look up the override should re-query
+ * `McpServerCredentialOverride` for `(instanceId, principal)` server-side.
+ */
 export type CompleteOAuthResult = {
   instanceId: string
-  credentialRef: string
 }
 
 /**
@@ -413,6 +418,5 @@ export const completeOAuth = async (
 
   return {
     instanceId: record.instanceId,
-    credentialRef,
   }
 }

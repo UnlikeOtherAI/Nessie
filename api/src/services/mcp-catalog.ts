@@ -242,12 +242,23 @@ export const deleteCatalogEntry = async (
  * publish a `deprecated` row is rejected with `INVALID_TRANSITION` — once
  * deprecated, a row should be cloned to a new version rather than resurrected,
  * so existing instance installs keep referring to the deprecated catalog id.
+ *
+ * Concurrency: the draft → published transition is performed via a single
+ * conditional `updateMany` keyed on `status === 'draft'`. Two concurrent
+ * publish calls therefore race at the database level and exactly one update
+ * succeeds (`count === 1`); the loser observes `count === 0` and is told to
+ * re-read the row to decide whether to no-op (already published) or fail
+ * (now deprecated). This closes the read-then-update TOCTOU that the prior
+ * `findFirst` + `update` pattern allowed.
  */
 export const publishCatalogEntry = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
 ): Promise<McpCatalogEntryRow | null> => {
+  // Tenant + existence gate. We still need this read so callers can 404 on
+  // unknown / cross-org ids — the atomic update below is keyed on `id` alone
+  // (status is the conflict guard) and would silently no-op for missing rows.
   const existing = await getCatalogEntry(prisma, organizationId, id)
   if (!existing) return null
   if (existing.status === 'published') return existing
@@ -257,10 +268,26 @@ export const publishCatalogEntry = async (
       `Catalog entry ${id} is deprecated and cannot be re-published`,
     )
   }
-  return prisma.mcpCatalogEntry.update({
-    where: { id },
+
+  // Atomic conditional update — only the row that's still `draft` flips. If
+  // another request beat us to the punch (`count === 0`), re-read and apply
+  // the same transition rules as above so the loser gets a consistent answer
+  // (idempotent success when the winner published, INVALID_TRANSITION when
+  // the row has since been deprecated by another writer).
+  const { count } = await prisma.mcpCatalogEntry.updateMany({
+    where: { id, status: 'draft' },
     data: { status: 'published' },
   })
+  if (count === 0) {
+    const current = await getCatalogEntry(prisma, organizationId, id)
+    if (!current) return null
+    if (current.status === 'published') return current
+    throw new McpCatalogError(
+      MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+      `Catalog entry ${id} is no longer in draft state`,
+    )
+  }
+  return getCatalogEntry(prisma, organizationId, id)
 }
 
 /**

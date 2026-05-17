@@ -105,7 +105,10 @@ const makeRow = (overrides: Partial<McpCatalogEntryRow> = {}): McpCatalogEntryRo
   updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
 })
 
-const makeCatalogStub = (initial: McpCatalogEntryRow[]): CatalogStub => {
+const makeCatalogStub = (
+  initial: McpCatalogEntryRow[],
+  options: { onUpdateMany?: () => Promise<void> | void } = {},
+): CatalogStub => {
   const rows = new Map(initial.map((row) => [row.id, row]))
   const prisma = {
     mcpCatalogEntry: {
@@ -128,6 +131,28 @@ const makeCatalogStub = (initial: McpCatalogEntryRow[]): CatalogStub => {
         }
         rows.set(where.id, next)
         return next
+      },
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { id: string; status?: string }
+        data: { status?: string }
+      }) => {
+        // Optional hook so race tests can pause the loser inside the
+        // serialized critical section (after the winner has flipped state).
+        if (options.onUpdateMany) await options.onUpdateMany()
+        const existing = rows.get(where.id)
+        if (!existing) return { count: 0 }
+        if (where.status !== undefined && existing.status !== where.status) {
+          return { count: 0 }
+        }
+        const next: McpCatalogEntryRow = {
+          ...existing,
+          ...(data.status !== undefined ? { status: data.status } : {}),
+        }
+        rows.set(where.id, next)
+        return { count: 1 }
       },
     },
   }
@@ -209,4 +234,56 @@ test('deprecateCatalogEntry returns null for cross-org access', async () => {
   ])
   const result = await deprecateCatalogEntry(prisma, ORG_A, 'entry-orgB')
   assert.equal(result, null)
+})
+
+// ─── publish TOCTOU coverage (task #39) ─────────────────────────────────────
+//
+// Two concurrent publish calls must resolve to exactly one success + one
+// idempotent re-read; the prior `findFirst → check → update` pattern allowed
+// both calls to pass the status check and both to perform the side effect.
+// The atomic `updateMany` guard makes the database the arbiter so only one
+// row flip happens, and the loser observes `count === 0`.
+
+test('publishCatalogEntry is race-safe under concurrent publish calls', async () => {
+  const { prisma, rows } = makeCatalogStub([makeRow({ status: 'draft' })])
+  // Fire both publish calls without awaiting — they share the same in-memory
+  // `Map`-backed stub, so whichever resolves the `updateMany` first wins.
+  const [a, b] = await Promise.all([
+    publishCatalogEntry(prisma, ORG_A, 'entry-1'),
+    publishCatalogEntry(prisma, ORG_A, 'entry-1'),
+  ])
+  // Both calls resolve to a published row (idempotent on the loser side).
+  assert.ok(a)
+  assert.ok(b)
+  assert.equal(a?.status, 'published')
+  assert.equal(b?.status, 'published')
+  // And the underlying row is still a single record — no double-publish.
+  assert.equal(rows.size, 1)
+  assert.equal(rows.get('entry-1')?.status, 'published')
+})
+
+test('publishCatalogEntry race loser surfaces INVALID_TRANSITION when row deprecated mid-flight', async () => {
+  // Simulate the worst case: the loser arrives at `updateMany` after another
+  // writer has already moved the row from draft → deprecated. The loser must
+  // refuse, not silently no-op, because the intended draft→published
+  // transition is no longer legal.
+  const { prisma, rows } = makeCatalogStub([makeRow({ status: 'draft' })], {
+    onUpdateMany: () => {
+      // Mutate the row out from under the updateMany so it sees status !==
+      // 'draft' and returns `count: 0`.
+      const row = rows.get('entry-1')
+      if (row) rows.set('entry-1', { ...row, status: 'deprecated' })
+    },
+  })
+  let thrown: unknown
+  try {
+    await publishCatalogEntry(prisma, ORG_A, 'entry-1')
+  } catch (error) {
+    thrown = error
+  }
+  assert.ok(thrown instanceof McpCatalogError)
+  assert.equal(
+    (thrown as McpCatalogError).code,
+    MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+  )
 })
