@@ -13,6 +13,7 @@ import type { Orchestrator } from '../agent/Orchestrator.js'
 import { allTools, findToolByName } from '../tools/index.js'
 import type { ToolUseContext } from '../tools/types.js'
 import { CreateTaskSchema } from '../orchestration/task-types.js'
+import { formatAgentError } from '../agent/errors.js'
 import type { TaskRole } from '../orchestration/task-types.js'
 import { runBeforeToolCall, runAfterToolCall } from '../plugins/hook-registry.js'
 import type { BeforeToolCallContext } from '../plugins/hook-types.js'
@@ -128,7 +129,7 @@ export function createMcpAdapter(orchestrator: Orchestrator): McpOrchestrator {
         )
         return JSON.stringify(result.data, null, 2)
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = formatAgentError(err)
         orchestrator.broadcastToolEvent({ type: 'tool.done', name: toolName, output: { error: msg } })
         // Fire after_tool_call with error (fire-and-forget)
         void runAfterToolCall(

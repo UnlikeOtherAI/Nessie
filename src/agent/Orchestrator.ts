@@ -32,6 +32,7 @@ import { runBeforeToolCall, runAfterToolCall } from '../plugins/hook-registry.js
 import type { BeforeToolCallContext } from '../plugins/hook-types.js'
 import type { OpenClawEvent, OpenClawAgentConfig } from '../openclaw/index.js'
 import { dispatchWithFailover } from './dispatch.js'
+import { formatAgentError } from './errors.js'
 
 export class Orchestrator {
   private state: OrchestratorState
@@ -204,7 +205,7 @@ export class Orchestrator {
             yield delta
           }
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
+          const msg = formatAgentError(err)
           this.callbacks.onBroadcast?.({ type: 'error', message: msg })
           yield `LLM error: ${msg}`
           return
@@ -248,7 +249,7 @@ export class Orchestrator {
         yield delta
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = formatAgentError(err)
       this.callbacks.onBroadcast?.({ type: 'error', message: msg })
       yield `LLM error: ${msg}`
       return
@@ -473,7 +474,7 @@ export class Orchestrator {
     try {
       rawResult = await this.spawnSubAgent(subAgent)
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err)
+      const errMsg = formatAgentError(err)
       rawResult = errMsg
       success = false
     }
@@ -627,7 +628,7 @@ export class Orchestrator {
       )
       return data
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = formatAgentError(err)
       this.callbacks.onBroadcast?.({ type: 'tool.done', name: toolName, output: { error: msg } })
       // Fire after_tool_call with error (fire-and-forget)
       void runAfterToolCall(
@@ -666,7 +667,7 @@ export class Orchestrator {
       })
       this.callbacks.onBroadcast?.({ type: 'agent.wake', agentId, reason })
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error)
+      const errMsg = formatAgentError(error)
       this.pushMessage({ role: 'system', threadId: 'main', content: `${agent.name} failed: ${errMsg}` })
     }
   }

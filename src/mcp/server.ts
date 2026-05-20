@@ -8,6 +8,7 @@
  */
 
 import { CreateTaskSchema, SpawnRequestSchema } from '../orchestration/task-types.js'
+import { formatAgentError } from '../agent/errors.js'
 
 // ─── Tool definitions ─────────────────────────────────────────────────────────
 
@@ -491,7 +492,7 @@ export class McpServer {
         id: req.id ?? null,
         error: {
           code: -32603,
-          message: err instanceof Error ? err.message : String(err),
+          message: formatAgentError(err),
         },
       }
     }
@@ -554,7 +555,7 @@ export class McpServer {
           response += delta
         }
       } catch (err) {
-        response = `Error: ${err instanceof Error ? err.message : String(err)}`
+        response = `Error: ${formatAgentError(err)}`
       }
       return {
         jsonrpc: '2.0', id: req.id ?? null,

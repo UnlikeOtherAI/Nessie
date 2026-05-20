@@ -8,6 +8,7 @@ import type { ServerEvent } from './events.js'
 import { McpServer, parseJsonRpcRequest } from './mcp/server.js'
 import { createMcpAdapter } from './mcp/adapter.js'
 import { deleteHistory } from './db/database.js'
+import { formatAgentError } from './agent/errors.js'
 import { loadConfig } from '../packages/config/src/index.js'
 import bonjour from 'bonjour'
 // Workflow RPC handlers
@@ -185,7 +186,7 @@ async function main() {
   try {
     llm = createLlmClient()
   } catch (error) {
-    console.warn(`Warning: chat LLM unavailable — ${error instanceof Error ? error.message : String(error)}`)
+    console.warn(`Warning: chat LLM unavailable — ${formatAgentError(error)}`)
   }
 
   // Use validated backends from loadConfig — parsed and URL-validated via ConfigEnvMap.
@@ -386,7 +387,7 @@ async function main() {
           // nothing to yield — broadcast handles SSE delivery
         }
       } catch (error) {
-        emit({ type: 'error', message: error instanceof Error ? error.message : String(error) })
+        emit({ type: 'error', message: formatAgentError(error) })
       } finally {
         sendSSE(res, 'end', {})
         sseStreams.delete(streamId)
@@ -417,7 +418,7 @@ async function main() {
         res.end(JSON.stringify({ reply }))
       } catch (error) {
         res.writeHead(500, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
+        res.end(JSON.stringify({ error: formatAgentError(error) }))
       }
       return
     }
@@ -669,7 +670,7 @@ async function main() {
       }
       ws.send(JSON.stringify({ type: 'response_done', content: fullResponse }))
     } catch (error) {
-      ws.send(JSON.stringify({ type: 'error', message: error instanceof Error ? error.message : String(error) }))
+      ws.send(JSON.stringify({ type: 'error', message: formatAgentError(error) }))
     }
   }
 

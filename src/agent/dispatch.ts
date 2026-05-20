@@ -7,7 +7,7 @@
  */
 
 import type { LlmClient } from '../llm/client.js'
-import { AgentError, AgentErrorCode } from './errors.js'
+import { AgentError, AgentErrorCode, formatAgentError } from './errors.js'
 
 export interface DispatchOptions {
   /** Fallback backend URLs to try in order. Empty = single-backend mode. */
@@ -102,7 +102,7 @@ export async function dispatchWithFailover(
       throw primaryErr
     }
     // Primary failed with a retryable error — try backends
-    console.warn(`[dispatch] Primary backend failed (${(primaryErr as Error).message}), trying fallback backends...`)
+    console.warn(`[dispatch] Primary backend failed (${formatAgentError(primaryErr)}), trying fallback backends...`)
     errors.push(primaryErr as Error)
   }
 
@@ -122,7 +122,7 @@ export async function dispatchWithFailover(
       if (!isRetryable || i === backends.length - 1) {
         break
       }
-      console.warn(`[dispatch] Backend ${backend} failed (${(err as Error).message}), trying next...`)
+      console.warn(`[dispatch] Backend ${backend} failed (${formatAgentError(err)}), trying next...`)
     }
   }
 

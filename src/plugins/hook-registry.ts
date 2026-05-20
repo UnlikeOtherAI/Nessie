@@ -5,6 +5,7 @@
  * Adapted from OpenClaw plugin-sdk (https://github.com/openclaw/openclaw/pull/18810)
  */
 
+import { formatAgentError } from '../agent/errors.js'
 import type {
   BeforeToolCallEvent,
   BeforeToolCallResult,
@@ -87,7 +88,7 @@ export async function runBeforeToolCall(
       // Fail-resilient: if hook throws, continue with tool execution
       console.warn(
         '[hook-registry] before_tool_call hook threw:',
-        err instanceof Error ? err.message : String(err),
+        formatAgentError(err),
       )
     }
   }
@@ -108,11 +109,11 @@ export function runAfterToolCall(event: AfterToolCallEvent, context: AfterToolCa
       const result = handler(event, context)
       if (result && typeof result === 'object' && 'then' in result) {
         ;(result as Promise<unknown>).catch((err) => {
-          console.error('[hook-registry] after_tool_call hook error:', err)
+          console.error('[hook-registry] after_tool_call hook error:', formatAgentError(err))
         })
       }
     } catch (err) {
-      console.error('[hook-registry] after_tool_call hook error:', err)
+      console.error('[hook-registry] after_tool_call hook error:', formatAgentError(err))
     }
   }
 }
