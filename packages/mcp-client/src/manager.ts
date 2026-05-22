@@ -64,13 +64,19 @@ export class McpClientManager {
     await conn.close()
   }
 
-  async listTools(id: McpConnectionId): Promise<McpToolDescriptor[]> {
-    return this.requireConnection(id).listTools(false)
+  async listTools(
+    id: McpConnectionId,
+    opts?: { timeoutMs?: number; abort?: AbortSignal },
+  ): Promise<McpToolDescriptor[]> {
+    return this.requireConnection(id).listTools(false, opts)
   }
 
   /** Force a fresh `tools/list` round-trip, bypassing the discovery cache. */
-  async refresh(id: McpConnectionId): Promise<McpToolDescriptor[]> {
-    return this.requireConnection(id).listTools(true)
+  async refresh(
+    id: McpConnectionId,
+    opts?: { timeoutMs?: number; abort?: AbortSignal },
+  ): Promise<McpToolDescriptor[]> {
+    return this.requireConnection(id).listTools(true, opts)
   }
 
   async callTool(

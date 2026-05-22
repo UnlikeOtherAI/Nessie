@@ -10,6 +10,7 @@ import {
   type McpConnectionId,
   type McpManagerEvent,
 } from '../src/index.js'
+import { McpConnection } from '../src/client.js'
 import { startHttpFake } from './fake-server.js'
 
 test('Backoff returns null once budget exhausted', () => {
@@ -117,6 +118,36 @@ test('callTool timeoutMs raises a typed TIMEOUT error', async () => {
   } finally {
     await fake.close()
   }
+})
+
+test('listTools timeoutMs raises a typed TIMEOUT error', async () => {
+  const conn = new McpConnection(
+    'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' as McpConnectionId,
+    { transport: 'http', url: 'http://127.0.0.1/mcp' },
+    {
+      onState: () => {},
+      onError: () => {},
+      onNotification: () => {},
+    },
+  )
+  ;(conn as unknown as {
+    client: {
+      listTools: (
+        params?: unknown,
+        opts?: { signal?: AbortSignal },
+      ) => Promise<Record<string, unknown>>
+    }
+  }).client = {
+    listTools: (_params, opts) =>
+      new Promise((_resolve, reject) => {
+        opts?.signal?.addEventListener('abort', () => reject(opts.signal?.reason), { once: true })
+      }),
+  }
+
+  await assert.rejects(
+    () => conn.listTools(false, { timeoutMs: 10 }),
+    (err: unknown) => err instanceof McpTimeoutError && err.kind === 'TIMEOUT',
+  )
 })
 
 test('operations on unknown connection ids raise NOT_CONNECTED', async () => {
