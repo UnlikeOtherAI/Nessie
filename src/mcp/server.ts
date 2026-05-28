@@ -8,6 +8,7 @@
  */
 
 import { CreateTaskSchema, SpawnRequestSchema } from '../orchestration/task-types.js'
+import { normalizePositiveLimit } from '../tools/limits.js'
 
 // ─── Tool definitions ─────────────────────────────────────────────────────────
 
@@ -629,9 +630,10 @@ export class McpServer {
     }
 
     if (name === 'list_messages') {
+      const limit = normalizePositiveLimit(args.limit as number | undefined, 50)
       const result = this.orchestrator.listMessages({
         threadId: args.threadId as string | undefined,
-        limit: typeof args.limit === 'number' ? Math.min(Math.floor(args.limit), 200) : 50,
+        limit: Math.min(limit, 200),
         offset: typeof args.offset === 'number' ? Math.floor(args.offset) : 0,
         direction: args.direction as 'older' | 'newer' | undefined,
       })

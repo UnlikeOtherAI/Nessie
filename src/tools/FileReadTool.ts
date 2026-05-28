@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { buildTool } from './Tool.js'
 import type { Tool } from './Tool.js'
 import { readFile } from 'fs/promises'
+import { normalizePositiveLimit } from './limits.js'
 
 const FileReadSchema = z.object({
   file_path: z.string(),
@@ -19,9 +20,9 @@ export function createFileReadTool(): Tool<FileReadInput, { content: string; fil
 
     async call(args, _ctx) {
       const content = await readFile(args.file_path, 'utf-8')
-      const offset = args.offset ?? 0
-      const limit = args.limit
-      const sliced = limit ? content.slice(offset, offset + limit) : content.slice(offset)
+      const offset = normalizePositiveLimit(args.offset, 0)
+      const limit = args.limit === undefined ? undefined : normalizePositiveLimit(args.limit, 50_000)
+      const sliced = limit !== undefined ? content.slice(offset, offset + limit) : content.slice(offset)
       return { data: { content: sliced, file_path: args.file_path } }
     },
 

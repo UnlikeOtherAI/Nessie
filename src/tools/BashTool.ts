@@ -3,6 +3,7 @@ import { buildTool } from './Tool.js'
 import type { Tool } from './Tool.js'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { normalizePositiveLimit } from './limits.js'
 
 const execAsync = promisify(exec)
 
@@ -21,7 +22,7 @@ export function createBashTool(): Tool<BashToolInput, { stdout: string; stderr: 
     inputSchema: BashToolSchema,
 
     async call(args, _context) {
-      const timeout = args.timeout ?? 30000
+      const timeout = normalizePositiveLimit(args.timeout, 30000)
       try {
         const { stdout, stderr } = await execAsync(args.command, { timeout })
         return { data: { stdout, stderr, exitCode: 0 } }
