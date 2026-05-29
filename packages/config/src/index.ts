@@ -134,6 +134,21 @@ export type LoadConfigOptions = {
 
 type JsonObject = Record<string, unknown>
 
+// Local Postgres default. Derives the role from the environment (same precedence
+// libpq/psql use) instead of hard-coding a single developer's username, and
+// targets the canonical local database `nessie`. Overridden by DATABASE_URL /
+// NESSIE_DB_URL whenever they are set.
+const localPostgresUser = (): string =>
+  process.env['PGUSER']
+  ?? process.env['USER']
+  ?? process.env['LOGNAME']
+  ?? process.env['USERNAME']
+  ?? 'postgres'
+
+const DEFAULT_LOCAL_DATABASE_URL =
+  `postgresql://${encodeURIComponent(localPostgresUser())}`
+  + `@${process.env['PGHOST'] ?? 'localhost'}:${process.env['PGPORT'] ?? '5432'}/nessie`
+
 const DEFAULT_CONFIG: NessieConfig = {
   mode: 'local',
   auth: {
@@ -142,7 +157,7 @@ const DEFAULT_CONFIG: NessieConfig = {
     tokenTtlSeconds: 24 * 60 * 60,
   },
   database: {
-    url: 'postgresql://dictator@localhost:5432/nessie',
+    url: DEFAULT_LOCAL_DATABASE_URL,
     poolMin: 2,
     poolMax: 10,
   },

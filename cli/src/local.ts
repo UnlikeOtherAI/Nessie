@@ -136,7 +136,9 @@ const getDefaultNoDockerDatabaseUrl = (env: NodeJS.ProcessEnv): string => {
   const user = encodeURIComponent(getLocalPostgresUser(env))
   const port = env.PGPORT ?? '5432'
   const host = env.PGHOST ?? '127.0.0.1'
-  return `postgresql://${user}@${host}:${port}/nessie_local`
+  // Canonical local database name, matching @nessie/config's default and the
+  // api migrate scripts so the app and migration tooling never diverge.
+  return `postgresql://${user}@${host}:${port}/nessie`
 }
 
 const ensureDirectories = (): void => {
