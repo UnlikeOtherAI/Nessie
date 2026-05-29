@@ -23,6 +23,9 @@ export type CaptureThoughtInput = {
   sensitivityTier?: 'normal' | 'sensitive' | 'restricted'
   importance?: number
   metadata?: Record<string, unknown>
+  // When set, only this agent may recall the memory. The audience still
+  // governs user-level access; this only narrows recall to the owning agent.
+  privateToAgentId?: string
 }
 
 export type CapturedThought = {
@@ -180,12 +183,14 @@ export const captureThought = async (
          owner_type,
          owner_id
        ) = $4::uuid
+       AND private_to_agent_id IS NOT DISTINCT FROM $5::uuid
      LIMIT 1`,
     [
       contentHash,
       input.organizationId,
       resolvedAudience.audienceType,
       resolvedAudience.audienceId,
+      input.privateToAgentId ?? null,
     ],
   )
 
@@ -227,12 +232,14 @@ export const captureThought = async (
         id, content, content_hash, embedding, owner_id, owner_type,
         audience_type, audience_id,
         organization_id, project_id, team_id, channel_id, thread_id, user_id,
-        visibility, sensitivity_tier, importance, metadata, created_at, updated_at
+        visibility, sensitivity_tier, importance, metadata,
+        private_to_agent_id, created_at, updated_at
       ) VALUES (
         gen_random_uuid(), $1, $2, $3::vector, $4, $5,
         $6::"ThoughtAudienceType", $7::uuid,
         $8, $9, $10, $11, $12, $13,
-        $14, $15, $16, $17, now(), now()
+        $14, $15, $16, $17,
+        $18::uuid, now(), now()
       ) RETURNING id, created_at`,
       [
         input.content,
@@ -252,6 +259,7 @@ export const captureThought = async (
         sensitivityTier,
         importance,
         mergedMetadata ? JSON.stringify(mergedMetadata) : null,
+        input.privateToAgentId ?? null,
       ],
     )
 

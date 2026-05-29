@@ -1,5 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { captureUserMessageMemory } from '@nessie/memory'
+import {
+  captureUserMessageMemory,
+  resolveAccessibleScopes,
+  type ScopeResolutionMode,
+} from '@nessie/memory'
 import { CHAT_MESSAGE_MAX_CHARS, withActionContext } from '@nessie/schemas'
 import {
   parseChannelId,
@@ -44,6 +48,53 @@ const buildVisibleChannelWhere = (organizationId: string, userId: string) => ({
   organizationId,
   OR: [{ visibility: 'public' as const }, { members: { some: { userId } } }],
 })
+
+// The set of channels an agent run may search past conversations in. Shares
+// the exact access model used for curated-memory recall, so search can never
+// return a conversation outside what the agent (or its acting user) can access.
+const resolveAccessibleChannelIds = async (
+  context: BuiltinToolRuntimeContext,
+): Promise<string[]> => {
+  const pool = context.memoryCaptureConfig?.pool
+  if (!pool) {
+    throw new Error(
+      'Conversation search requires a database pool in the runtime context.',
+    )
+  }
+
+  const effectiveUserId =
+    context.actorContext.actionContext.effectiveUserId
+    ?? (context.actorContext.actor.actorType === 'user'
+      ? context.actorContext.actor.actorId
+      : undefined)
+
+  const isPersonalAssistant =
+    context.channel.systemChannelType === 'personal_assistant'
+
+  // The personal assistant acts as its owner; without one there is nothing to
+  // act as, so it sees nothing.
+  if (isPersonalAssistant && !effectiveUserId) {
+    return []
+  }
+
+  const mode: ScopeResolutionMode = isPersonalAssistant
+    ? 'personal_assistant'
+    : effectiveUserId
+      ? 'user_shared'
+      : 'autonomous'
+
+  const scopes = await resolveAccessibleScopes(
+    {
+      agentId: context.agentId,
+      mode,
+      organizationId: context.channel.organizationId,
+      userId: effectiveUserId ?? null,
+    },
+    pool,
+  )
+
+  return scopes.channelIds
+}
 
 const buildSnippet = (content: string, query: string, maxLength = 180): string => {
   const trimmedQuery = query.trim()
@@ -458,20 +509,28 @@ export const runWorkspaceSearchTool = async (
   query: string,
   limit: unknown = MAX_SEARCH_RESULTS,
 ): Promise<ToolExecutionResult> => {
-  const userId = requireUserActor(context.actorContext)
   const searchQuery = query.trim()
   if (!searchQuery) {
     throw new Error('query is required.')
   }
 
   const take = clampLimit(limit, MAX_SEARCH_RESULTS)
-  const visibleChannelWhere = buildVisibleChannelWhere(context.channel.organizationId, userId)
+  const channelIds = await resolveAccessibleChannelIds(context)
+  if (channelIds.length === 0) {
+    return {
+      inputSummary: `query=${searchQuery}`,
+      outputPreview: `No accessible conversations matched "${searchQuery}".`,
+      toolName: 'workspace_search',
+    }
+  }
+
+  const channelFilter = { id: { in: channelIds } }
   const textFilter = { contains: searchQuery, mode: 'insensitive' as const }
 
   const [channels, threads, messages] = await Promise.all([
     context.prisma.channel.findMany({
       where: {
-        ...visibleChannelWhere,
+        ...channelFilter,
         label: textFilter,
       },
       orderBy: { updatedAt: 'desc' },
@@ -491,7 +550,7 @@ export const runWorkspaceSearchTool = async (
     }),
     context.prisma.thread.findMany({
       where: {
-        channel: visibleChannelWhere,
+        channelId: { in: channelIds },
         title: textFilter,
       },
       orderBy: { updatedAt: 'desc' },
@@ -512,7 +571,7 @@ export const runWorkspaceSearchTool = async (
       where: {
         content: textFilter,
         thread: {
-          channel: visibleChannelWhere,
+          channelId: { in: channelIds },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -601,10 +660,24 @@ export const runAuthoredMessageSearchTool = async (
   query: string,
   limit: unknown = MAX_SEARCH_RESULTS,
 ): Promise<ToolExecutionResult> => {
-  const userId = requireUserActor(context.actorContext)
   const searchQuery = query.trim()
   if (!searchQuery) {
     throw new Error('query is required.')
+  }
+
+  // This tool is inherently about "messages authored by the current user", so
+  // it only applies when a user is in the loop. Autonomous runs get nothing.
+  const userId =
+    context.actorContext.actor.actorType === 'user'
+      ? context.actorContext.actor.actorId
+      : context.actorContext.actionContext.effectiveUserId
+  if (!userId) {
+    return {
+      inputSummary: `query=${searchQuery}`,
+      outputPreview:
+        'authored_message_search is only available when acting on behalf of a user.',
+      toolName: 'authored_message_search',
+    }
   }
 
   const take = clampLimit(limit, MAX_SEARCH_RESULTS)

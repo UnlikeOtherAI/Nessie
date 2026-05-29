@@ -9,11 +9,14 @@ type Queryable = Pick<Pool, 'query'>
 
 export type RecallLogEntry = {
   thoughtId: string
-  requesterUserId: string
+  // Null for autonomous agent runs that have no requesting user.
+  requesterUserId: string | null
   sessionId?: string
   channelId?: string
-  outputAudienceType: ThoughtAudienceType
-  outputAudienceId: string
+  // Null for multi-scope (per-agent) recalls, which span several audiences
+  // rather than a single output audience.
+  outputAudienceType: ThoughtAudienceType | null
+  outputAudienceId: string | null
   queryText: string
   queryEmbedding: number[] | null
   similarity: number
@@ -122,8 +125,8 @@ export const logRecalls = async (
       entries.map((entry) => entry.requesterUserId),
       entries.map((entry) => entry.sessionId ?? null),
       entries.map((entry) => entry.channelId ?? null),
-      entries.map((entry) => entry.outputAudienceType),
-      entries.map((entry) => entry.outputAudienceId),
+      entries.map((entry) => entry.outputAudienceType ?? null),
+      entries.map((entry) => entry.outputAudienceId ?? null),
       entries.map((entry) => entry.queryText),
       entries.map((entry) => toVectorLiteral(entry.queryEmbedding)),
       entries.map((entry) => entry.similarity),

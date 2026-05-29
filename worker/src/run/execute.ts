@@ -1,8 +1,11 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  captureThought,
   markRecallsInjected,
   markRecallsReferenced,
-  searchAndLogThoughts,
+  resolveAccessibleScopes,
+  searchAndLogThoughtsInScopes,
+  type ScopeResolutionMode,
   type SearchExecutionConfig,
   type SearchResult,
 } from '@nessie/memory'
@@ -661,12 +664,6 @@ export const detectReferencedRecallIds = (
       : [],
   )
 
-const PERSONAL_ASSISTANT_MEMORY_ORIGINS = new Set([
-  'personal_assistant_dm',
-  'user_authored_workspace_message',
-  'user_conversation_summary',
-])
-
 const isSuppressedMemory = (metadata: unknown): boolean => {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     return false
@@ -675,19 +672,6 @@ const isSuppressedMemory = (metadata: unknown): boolean => {
   const record = metadata as Record<string, unknown>
   return record['suppressed'] === true || record['suppressionState'] === 'suppressed'
 }
-
-const filterPersonalAssistantMemories = (results: SearchResult[]): SearchResult[] =>
-  results.filter((result) => {
-    if (isSuppressedMemory(result.metadata)) {
-      return false
-    }
-    if (!result.metadata || typeof result.metadata !== 'object' || Array.isArray(result.metadata)) {
-      return false
-    }
-
-    const memoryOrigin = (result.metadata as Record<string, unknown>)['memory_origin']
-    return typeof memoryOrigin === 'string' && PERSONAL_ASSISTANT_MEMORY_ORIGINS.has(memoryOrigin)
-  })
 
 const buildScopesForAgent = (
   channel: RunContext['channel'],
@@ -930,38 +914,106 @@ const retrieveRelevantMemories = async (
       ? payload.actorContext.actor.actorId
       : undefined)
 
+  const isPersonalAssistant =
+    context.channel.systemChannelType === 'personal_assistant'
+    || context.agent.agentKind === 'personal_assistant'
+
+  // The personal assistant acts as its owner, so it recalls everything that
+  // user can; without a user there is nothing to act as.
+  if (isPersonalAssistant && !effectiveUserId) {
+    return []
+  }
+
+  const mode: ScopeResolutionMode = isPersonalAssistant
+    ? 'personal_assistant'
+    : effectiveUserId
+      ? 'user_shared'
+      : 'autonomous'
+
   try {
-    const memories = await searchAndLogThoughts(
+    const scopes = await resolveAccessibleScopes(
       {
+        agentId: context.agent.id,
+        mode,
+        organizationId: context.channel.organizationId,
+        userId: effectiveUserId ?? null,
+      },
+      deps.searchConfig.pool,
+    )
+
+    if (scopes.audienceTypes.length === 0) {
+      return []
+    }
+
+    const results = await searchAndLogThoughtsInScopes(
+      {
+        audienceIds: scopes.audienceIds,
+        audienceTypes: scopes.audienceTypes,
         channelId: context.channel.id,
         includeReasoning: false,
         limit: MAX_MEMORY_RESULTS,
-        mode: 'hybrid',
         organizationId: context.channel.organizationId,
-        outputAudienceId:
-          context.channel.systemChannelType === 'personal_assistant' && effectiveUserId
-            ? effectiveUserId
-            : context.channel.id,
-        outputAudienceType:
-          context.channel.systemChannelType === 'personal_assistant' && effectiveUserId
-            ? 'user'
-            : 'channel',
         query: prompt,
+        runningAgentId: context.agent.id,
         sessionId: payload.actorContext.actionContext.sessionId,
-        userId: effectiveUserId ?? payload.actorContext.actor.actorId,
+        userId: effectiveUserId ?? null,
       },
       deps.searchConfig,
     )
 
-    return context.channel.systemChannelType === 'personal_assistant'
-      ? filterPersonalAssistantMemories(memories)
-      : memories
+    return results.filter((result) => !isSuppressedMemory(result.metadata))
   } catch (error) {
     console.warn(
       '[worker] Memory search failed, continuing without memories:',
       error instanceof Error ? error.message : error,
     )
     return []
+  }
+}
+
+const MIN_AGENT_MEMORY_CHARS = 16
+
+// Persist the agent's own response as a memory private to that agent. Its
+// audience is the channel it was produced in, so user-access filtering applies
+// exactly as for any other memory; `privateToAgentId` keeps it out of other
+// agents' recall.
+const captureAgentResponseMemory = async (
+  deps: ExecutionDependencies,
+  context: RunContext,
+  responseText: string,
+  messageId: string,
+): Promise<void> => {
+  const content = responseText.trim()
+  if (content.length < MIN_AGENT_MEMORY_CHARS) {
+    return
+  }
+
+  try {
+    await captureThought(
+      {
+        audienceId: context.channel.id,
+        audienceType: 'channel',
+        channelId: context.channel.id,
+        content,
+        metadata: {
+          memory_origin: 'agent_response',
+          source_message_id: messageId,
+          source_thread_id: context.run.threadId,
+        },
+        organizationId: context.channel.organizationId,
+        ownerId: context.agent.id,
+        ownerType: 'agent',
+        privateToAgentId: context.agent.id,
+        threadId: context.run.threadId,
+        visibility: 'channel',
+      },
+      deps.searchConfig,
+    )
+  } catch (error) {
+    console.warn(
+      '[worker] Agent memory capture failed:',
+      error instanceof Error ? error.message : error,
+    )
   }
 }
 
@@ -1444,6 +1496,13 @@ export const executeRunJob = async (
       messageId: assistantMessage.id,
       role: 'assistant',
     })
+
+    await captureAgentResponseMemory(
+      deps,
+      context,
+      responseText,
+      assistantMessage.id,
+    )
 
     await updateRunStatus(deps.prisma, context.run.id, 'completed')
     await updateTaskStatus(deps.prisma, context.task.id, 'done')

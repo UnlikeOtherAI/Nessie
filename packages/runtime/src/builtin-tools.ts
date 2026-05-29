@@ -54,7 +54,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: 'workspace_search',
     label: 'Workspace Search',
     description:
-      'Search visible workspace channels, threads, and messages for the current user. Returns compact results with IDs and snippets.',
+      'Search past conversations (channels, threads, and messages) you have access to. Returns compact results with IDs and snippets.',
     parameters: {
       type: 'object',
       properties: {

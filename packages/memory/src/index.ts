@@ -10,13 +10,22 @@ export {
 export {
   searchThoughts,
   searchAndLogThoughts,
+  searchThoughtsInScopes,
+  searchAndLogThoughtsInScopes,
   SearchEmbeddingError,
   type SearchThoughtsInput,
+  type SearchThoughtsInScopesInput,
   type SearchThoughtsOutput,
   type SearchResult,
   type SearchConfig,
   type SearchExecutionConfig,
 } from './search.js'
+export {
+  resolveAccessibleScopes,
+  type AccessibleScopes,
+  type ScopeResolutionMode,
+  type ResolveAccessibleScopesInput,
+} from './scopes.js'
 export {
   logRecalls,
   recordRecallSignal,

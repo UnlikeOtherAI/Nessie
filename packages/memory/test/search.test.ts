@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Pool } from 'pg'
-import { searchAndLogThoughts } from '../src/search.js'
+import { searchAndLogThoughts, searchAndLogThoughtsInScopes } from '../src/search.js'
 
 type QueryResult = {
   rowCount?: number | null
@@ -112,6 +112,121 @@ test('searchAndLogThoughts logs hybrid recalls and attaches recall ids', async (
         && (query.params?.[10] as string[])[0] === 'hybrid',
     ),
   )
+})
+
+test('searchAndLogThoughtsInScopes queries the multi-scope function and logs scope-less recalls', async () => {
+  const queries: { params: unknown[] | undefined; sql: string }[] = []
+
+  const pool = createPoolStub((sql, params) => {
+    queries.push({ params, sql })
+
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
+      return { rows: [] }
+    }
+
+    if (sql.includes('match_thoughts_in_scopes')) {
+      return {
+        rows: [
+          {
+            content: 'The team agreed to ship the beta on Friday.',
+            created_at: '2026-04-08T20:00:00.000Z',
+            id: '11111111-1111-1111-1111-111111111111',
+            importance: 0.7,
+            metadata: null,
+            owner_type: 'agent',
+            similarity: 0.71,
+            visibility: 'channel',
+          },
+        ],
+      }
+    }
+
+    if (sql.includes('UPDATE thoughts')) {
+      return { rowCount: 1, rows: [] }
+    }
+
+    if (sql.includes('INSERT INTO thought_recalls')) {
+      return {
+        rowCount: 1,
+        rows: [
+          {
+            id: '22222222-2222-2222-2222-222222222222',
+            rankPosition: 1,
+            retrievalMode: 'hybrid',
+            thoughtId: '11111111-1111-1111-1111-111111111111',
+          },
+        ],
+      }
+    }
+
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  const results = await searchAndLogThoughtsInScopes(
+    {
+      audienceIds: ['66666666-6666-6666-6666-666666666666', '88888888-8888-8888-8888-888888888888'],
+      audienceTypes: ['channel', 'team'],
+      organizationId: '33333333-3333-3333-3333-333333333333',
+      query: 'When does the beta ship?',
+      runningAgentId: '99999999-9999-9999-9999-999999999999',
+      userId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    },
+    {
+      modelClient: {
+        embed: async () => [0.25, 0.5, 0.75],
+      },
+      pool,
+    },
+  )
+
+  assert.equal(results.length, 1)
+  assert.equal(results[0]?.recallId, '22222222-2222-2222-2222-222222222222')
+
+  // The multi-scope function receives the zipped audience arrays + running agent.
+  assert.ok(
+    queries.some(
+      (query) =>
+        query.sql.includes('match_thoughts_in_scopes')
+        && Array.isArray(query.params?.[3])
+        && (query.params?.[3] as string[])[0] === 'channel'
+        && Array.isArray(query.params?.[4])
+        && (query.params?.[4] as string[])[1] === '88888888-8888-8888-8888-888888888888'
+        && query.params?.[5] === '99999999-9999-9999-9999-999999999999',
+    ),
+  )
+
+  // Recalls are logged with a null output audience (multi-scope, not one scope).
+  assert.ok(
+    queries.some(
+      (query) =>
+        query.sql.includes('INSERT INTO thought_recalls')
+        && Array.isArray(query.params?.[4])
+        && (query.params?.[4] as Array<string | null>)[0] === null,
+    ),
+  )
+})
+
+test('searchAndLogThoughtsInScopes returns nothing when no scopes are accessible', async () => {
+  const pool = createPoolStub((sql) => {
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
+      return { rows: [] }
+    }
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  const results = await searchAndLogThoughtsInScopes(
+    {
+      audienceIds: [],
+      audienceTypes: [],
+      organizationId: '33333333-3333-3333-3333-333333333333',
+      query: 'anything',
+      runningAgentId: '99999999-9999-9999-9999-999999999999',
+      userId: null,
+    },
+    { modelClient: { embed: async () => [0.1] }, pool },
+  )
+
+  assert.equal(results.length, 0)
 })
 
 test('searchAndLogThoughts skips embeddings for lexical mode', async () => {

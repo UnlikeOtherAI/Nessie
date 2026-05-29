@@ -307,6 +307,120 @@ export const searchThoughts = async (
   }
 }
 
+export type SearchThoughtsInScopesInput = {
+  query: string
+  organizationId: string
+  // Null for autonomous runs with no requesting user.
+  userId: string | null
+  runningAgentId: string
+  audienceTypes: string[]
+  audienceIds: string[]
+  threshold?: number
+  limit?: number
+  includeReasoning?: boolean
+  sessionId?: string
+  channelId?: string
+}
+
+const IN_SCOPES_MODE: ThoughtSearchMode = 'hybrid'
+
+export const searchThoughtsInScopes = async (
+  input: SearchThoughtsInScopesInput,
+  config: SearchConfig,
+): Promise<SearchThoughtsOutput> => {
+  if (input.audienceTypes.length === 0) {
+    return { results: [], recalls: [] }
+  }
+
+  let queryEmbedding: number[]
+  try {
+    queryEmbedding = await getEmbedding(input.query, config.modelClient)
+  } catch (err) {
+    throw new SearchEmbeddingError(
+      `Failed to embed search query: ${err instanceof Error ? err.message : 'unknown error'}`,
+    )
+  }
+
+  const threshold = input.threshold ?? 0.3
+  const limit = input.limit ?? 10
+  const results = await config.pool.query(
+    'SELECT * FROM match_thoughts_in_scopes($1::vector, $2, $3::uuid, $4::text[], $5::uuid[], $6::uuid, $7, $8)',
+    [
+      `[${queryEmbedding.join(',')}]`,
+      input.query,
+      input.organizationId,
+      input.audienceTypes,
+      input.audienceIds,
+      input.runningAgentId,
+      threshold,
+      limit,
+    ],
+  )
+
+  const mappedResults = mapThoughtRows(results.rows as ThoughtRow[], IN_SCOPES_MODE)
+  const recalls: RecallLogEntry[] = mappedResults.map((result) => ({
+    thoughtId: result.id,
+    requesterUserId: input.userId,
+    sessionId: input.sessionId,
+    channelId: input.channelId,
+    outputAudienceType: null,
+    outputAudienceId: null,
+    queryText: input.query,
+    queryEmbedding,
+    similarity: result.similarity,
+    rankPosition: result.rankPosition,
+    retrievalMode: result.retrievalMode,
+  }))
+
+  await bumpThoughtAccess(
+    mappedResults.map((result) => result.id),
+    config.pool,
+  )
+
+  if (!input.includeReasoning || mappedResults.length === 0) {
+    return { results: mappedResults, recalls }
+  }
+
+  const reasoningByThought = await loadReasoningByThought(
+    mappedResults.map((result) => result.id),
+    config.pool,
+  )
+
+  return {
+    results: mappedResults.map((result) => ({
+      ...result,
+      reasoning: reasoningByThought.get(result.id),
+    })),
+    recalls,
+  }
+}
+
+export const searchAndLogThoughtsInScopes = async (
+  input: SearchThoughtsInScopesInput,
+  config: SearchExecutionConfig,
+): Promise<SearchResult[]> => {
+  const client = await config.pool.connect()
+
+  try {
+    await client.query('BEGIN')
+
+    const searchResult = await searchThoughtsInScopes(input, {
+      ...config,
+      pool: client,
+    })
+    const loggedRecalls = await logRecalls(searchResult.recalls, client)
+
+    await client.query('COMMIT')
+
+    return attachRecallIds(searchResult.results, loggedRecalls)
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export const searchAndLogThoughts = async (
   input: SearchThoughtsInput,
   config: SearchExecutionConfig,

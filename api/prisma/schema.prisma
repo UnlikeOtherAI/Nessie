@@ -1823,6 +1823,11 @@ model Thought {
   audienceType ThoughtAudienceType? @map("audience_type")
   audienceId   String?              @map("audience_id") @db.Uuid
 
+  // Per-agent privacy: when set, only this agent may recall the memory.
+  // Orthogonal to the audience (access) axis — the audience still governs
+  // which users/scopes can access it, so user-access filtering is unchanged.
+  privateToAgentId String? @map("private_to_agent_id") @db.Uuid
+
   // Tenant scoping
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -1860,6 +1865,7 @@ model Thought {
   @@index([contentHash])
   @@index([channelId, createdAt])
   @@index([userId, createdAt])
+  @@index([privateToAgentId])
   @@map("thoughts")
 }
 

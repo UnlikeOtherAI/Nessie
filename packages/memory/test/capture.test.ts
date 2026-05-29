@@ -10,9 +10,18 @@ type QueryResult = {
 
 const createPoolStub = (
   handler: (sql: string, params: unknown[] | undefined) => QueryResult | Promise<QueryResult>,
-): Pool => ({
-  query: async (sql: string, params?: unknown[]) => handler(sql, params),
-} as unknown as Pool)
+): Pool => {
+  const query = async (sql: string, params?: unknown[]) => {
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
+      return { rows: [] }
+    }
+    return handler(sql, params)
+  }
+  return {
+    query,
+    connect: async () => ({ query, release: () => undefined }),
+  } as unknown as Pool
+}
 
 const createModelClientStub = () => ({
   chatJson: async () => ({}),
