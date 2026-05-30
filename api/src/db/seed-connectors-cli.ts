@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { disconnectPrismaClient, getPrismaClient } from '@nessie/db'
 
 import { seedPublicConnectors } from './seed-connectors.js'
 
@@ -7,12 +7,12 @@ import { seedPublicConnectors } from './seed-connectors.js'
  *   pnpm --filter @nessie/api seed:connectors
  */
 const main = async (): Promise<void> => {
-  const prisma = new PrismaClient()
+  const prisma = getPrismaClient()
   try {
     const { seeded } = await seedPublicConnectors(prisma)
     console.log(`Seeded ${seeded} public connector(s) into the MCP App Store.`)
   } finally {
-    await prisma.$disconnect()
+    await disconnectPrismaClient()
   }
 }
 

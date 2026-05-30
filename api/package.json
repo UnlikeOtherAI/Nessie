@@ -22,6 +22,7 @@
     "@fastify/websocket": "^11.2.0",
     "@nessie/config": "workspace:*",
     "@nessie/connectors": "workspace:*",
+    "@nessie/db": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
     "@nessie/memory": "workspace:*",
     "@nessie/runtime": "workspace:*",

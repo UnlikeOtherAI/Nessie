@@ -20,6 +20,7 @@
     "@nessie/memory": "workspace:*",
     "@prisma/client": "^6.17.1",
     "@nessie/config": "workspace:*",
+    "@nessie/db": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",

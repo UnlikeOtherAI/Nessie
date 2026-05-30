@@ -99,6 +99,9 @@ importers:
       '@nessie/connectors':
         specifier: workspace:*
         version: link:../packages/connectors
+      '@nessie/db':
+        specifier: workspace:*
+        version: link:../packages/db
       '@nessie/mcp-client':
         specifier: workspace:*
         version: link:../packages/mcp-client
@@ -157,6 +160,12 @@ importers:
       zod:
         specifier: ^3.25.76
         version: 3.25.76
+
+  packages/db:
+    dependencies:
+      '@prisma/client':
+        specifier: ^6.17.1
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
 
   packages/mcp-client:
     dependencies:
@@ -241,6 +250,9 @@ importers:
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config
+      '@nessie/db':
+        specifier: workspace:*
+        version: link:../packages/db
       '@nessie/mcp-client':
         specifier: workspace:*
         version: link:../packages/mcp-client

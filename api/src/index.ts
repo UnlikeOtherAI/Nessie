@@ -137,7 +137,7 @@ import {
   WorkflowTemplateRecordSchema,
 } from './contracts.js'
 import { DEFAULT_BOOTSTRAP_RECORD_IDS } from './db/bootstrap.js'
-import { getPrismaClient } from './db/client.js'
+import { disconnectPrismaClient, getPrismaClient } from '@nessie/db'
 import { seedBootstrapRecords } from './db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from './lib/api.js'
 import { enqueueOrchestrateDecide, enqueueQueueJob } from './queue/pgqueue.js'
@@ -334,7 +334,10 @@ if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = config.database.url
 }
 const databaseUrl = process.env.DATABASE_URL
-const prisma = getPrismaClient()
+const prisma = getPrismaClient({
+  connectionLimit: config.database.poolMax,
+  log: config.mode === 'local' ? ['warn', 'error'] : ['error'],
+})
 
 const parseOriginList = (...values: Array<string | undefined>): Set<string> => {
   const origins = new Set<string>()
@@ -1302,7 +1305,7 @@ export const buildApp = async () => {
   app.addHook('onClose', async () => {
     await realtimeHub.close()
     await memoryPool.end()
-    await prisma.$disconnect()
+    await disconnectPrismaClient()
   })
 
   app.addHook('preHandler', async (request, reply) => {
@@ -5909,10 +5912,15 @@ export const startApiServer = async () => {
     port: config.api.port,
   })
 
-  // In local mode, start the worker in-process so agents always work
+  // In local mode, start the worker in-process so agents always work. It shares
+  // the API's Prisma client (single pool per process); capture its stop handle so
+  // app shutdown tears the worker down instead of leaking it.
   if (config.mode === 'local') {
     const { startWorker } = await import('@nessie/worker')
-    await startWorker()
+    const embeddedWorker = await startWorker()
+    app.addHook('onClose', async () => {
+      await embeddedWorker.stop()
+    })
     console.log('[api] embedded worker started (local mode)')
   }
 

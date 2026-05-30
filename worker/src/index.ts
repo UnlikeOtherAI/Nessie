@@ -14,7 +14,7 @@ import {
   TriggerEventDispatchJobPayloadSchema,
   WorkflowRunExecuteJobPayloadSchema,
 } from '@nessie/schemas'
-import { getPrismaClient } from './db/client.js'
+import { getPrismaClient } from '@nessie/db'
 import {
   allocateExecutionEnvironmentInstance,
   expireExecutionLeases,
@@ -34,7 +34,10 @@ if (!process.env.DATABASE_URL) {
 }
 const databaseUrl = process.env.DATABASE_URL
 
-const prisma = getPrismaClient()
+const prisma = getPrismaClient({
+  connectionLimit: config.database.poolMax,
+  log: config.mode === 'local' ? ['warn', 'error'] : ['error'],
+})
 
 const isMainModule = (): boolean =>
   Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]!).href
