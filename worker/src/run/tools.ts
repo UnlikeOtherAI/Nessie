@@ -1,6 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   runAuthoredMessageSearchTool,
+  runChannelArchiveTool,
+  runChannelJoinTool,
+  runChannelListTool,
+  runChannelUpdateTool,
   runPeopleSearchTool,
   runSendMessageTool,
   runUpdatePreferencesTool,
@@ -160,6 +164,38 @@ export const executeBuiltinTool = async (
             ? args.preferences
             : null) as Record<string, unknown> | null,
         ),
+      )
+    // sp-channels: channel lifecycle tools
+    case 'channel_list':
+      return wrapTool(inputSummary, () =>
+        runChannelListTool(context, {
+          includeArchived:
+            typeof args.includeArchived === 'boolean' ? args.includeArchived : undefined,
+          limit: args.limit,
+        }),
+      )
+    case 'channel_update':
+      return wrapTool(inputSummary, () =>
+        runChannelUpdateTool(context, {
+          channelId: String(args.channelId ?? ''),
+          label: typeof args.label === 'string' ? args.label : undefined,
+          topic: typeof args.topic === 'string' ? args.topic : undefined,
+          description:
+            typeof args.description === 'string' ? args.description : undefined,
+        }),
+      )
+    case 'channel_archive':
+      return wrapTool(inputSummary, () =>
+        runChannelArchiveTool(context, {
+          channelId: String(args.channelId ?? ''),
+          archived: typeof args.archived === 'boolean' ? args.archived : undefined,
+        }),
+      )
+    case 'channel_join':
+      return wrapTool(inputSummary, () =>
+        runChannelJoinTool(context, {
+          channelId: String(args.channelId ?? ''),
+        }),
       )
     case 'web_search':
       return wrapTool(inputSummary, () =>

@@ -619,6 +619,10 @@ model Channel {
   teamId            String             @map("team_id") @db.Uuid
   visibility        ChannelVisibility  @default(public)
   dmKey             String?            @unique @map("dm_key")
+  // sp-channels: channel lifecycle metadata + soft-archive
+  topic             String?
+  description       String?
+  archivedAt        DateTime?          @map("archived_at")
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -636,10 +640,12 @@ model Channel {
 }
 
 model ChannelMember {
-  id        String   @id @default(uuid()) @db.Uuid
-  channelId String   @map("channel_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String     @id @default(uuid()) @db.Uuid
+  channelId String     @map("channel_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  // sp-channels: per-channel membership role (manager can manage the channel)
+  role      MemberRole @default(member)
+  createdAt DateTime   @default(now()) @map("created_at")
   channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 

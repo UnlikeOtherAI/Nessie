@@ -5,17 +5,22 @@ import {
   ChannelRecordSchema,
   CreateChannelBodySchema,
   PersonalAssistantBootstrapResponseSchema,
+  UpdateChannelBodySchema,
 } from '../contracts.js'
 import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
   addMemberToChannel,
+  ChannelValidationError,
   createChannelForUser,
   createGroupFromDm,
   findOrCreateDmChannel,
+  joinPublicChannel,
   listChannelsForUser,
   removeMemberFromChannel,
+  setChannelArchived,
+  updateChannel,
 } from '../services/channels.js'
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
 import type { RouteDeps } from './types.js'
@@ -35,12 +40,14 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const query = request.query as { teamId?: string }
+    const query = request.query as { teamId?: string; includeArchived?: string }
     const channels = await listChannelsForUser(
       prisma,
       actorContext.actor.actorId,
       actorContext.tenant.organizationId,
       query.teamId,
+      // sp-channels: archived channels are excluded unless explicitly requested
+      query.includeArchived === 'true',
     )
 
     return createApiResponse(ChannelRecordSchema.array().parse(channels))
@@ -118,17 +125,27 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const channel = await createChannelForUser(prisma, {
-      label: body.label,
-      visibility: body.visibility ?? 'public',
-      organizationId: actorContext.tenant.organizationId,
-      teamId:
-        body.teamId
-        ?? actorContext.tenant.teamId
-        ?? actorContext.actionContext.teamId
-        ?? '00000000-0000-4000-8000-000000000003',
-      userId: actorContext.actor.actorId,
-    })
+    let channel
+    try {
+      channel = await createChannelForUser(prisma, {
+        label: body.label,
+        visibility: body.visibility ?? 'public',
+        organizationId: actorContext.tenant.organizationId,
+        teamId:
+          body.teamId
+          ?? actorContext.tenant.teamId
+          ?? actorContext.actionContext.teamId
+          ?? '00000000-0000-4000-8000-000000000003',
+        userId: actorContext.actor.actorId,
+      })
+    } catch (error) {
+      // sp-channels: surface invalid channel names as a 400 instead of a 500
+      if (error instanceof ChannelValidationError) {
+        sendApiError(reply, 400, 'INVALID_CHANNEL_NAME', error.message)
+        return reply
+      }
+      throw error
+    }
 
     if (!channel) {
       sendApiError(reply, 400, 'HIERARCHY_VIOLATION', 'Team does not belong to this organization')
@@ -136,6 +153,126 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(channel)))
+  })
+
+  // ─── sp-channels: channel lifecycle ───────────────────────────────────────
+
+  app.patch('/api/channels/:channelId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    const body = parseInput(UpdateChannelBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    let channel
+    try {
+      channel = await updateChannel(prisma, {
+        channelId,
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+        ...(body.label !== undefined ? { label: body.label } : {}),
+        ...(body.topic !== undefined ? { topic: body.topic } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+      })
+    } catch (error) {
+      if (error instanceof ChannelValidationError) {
+        sendApiError(reply, 400, 'INVALID_CHANNEL_NAME', error.message)
+        return reply
+      }
+      throw error
+    }
+
+    if (!channel) {
+      sendApiError(reply, 403, 'CHANNEL_FORBIDDEN', 'Channel not found or insufficient permissions')
+      return reply
+    }
+
+    return createApiResponse(ChannelRecordSchema.parse(channel))
+  })
+
+  app.post('/api/channels/:channelId/archive', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    const channel = await setChannelArchived(prisma, {
+      archived: true,
+      channelId,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!channel) {
+      sendApiError(reply, 403, 'CHANNEL_FORBIDDEN', 'Channel not found or insufficient permissions')
+      return reply
+    }
+    return createApiResponse(ChannelRecordSchema.parse(channel))
+  })
+
+  app.post('/api/channels/:channelId/unarchive', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    const channel = await setChannelArchived(prisma, {
+      archived: false,
+      channelId,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!channel) {
+      sendApiError(reply, 403, 'CHANNEL_FORBIDDEN', 'Channel not found or insufficient permissions')
+      return reply
+    }
+    return createApiResponse(ChannelRecordSchema.parse(channel))
+  })
+
+  // Soft delete: archive the channel rather than hard-deleting its history.
+  app.delete('/api/channels/:channelId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    const channel = await setChannelArchived(prisma, {
+      archived: true,
+      channelId,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!channel) {
+      sendApiError(reply, 403, 'CHANNEL_FORBIDDEN', 'Channel not found or insufficient permissions')
+      return reply
+    }
+    return reply.code(204).send()
+  })
+
+  app.post('/api/channels/:channelId/join', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    const channel = await joinPublicChannel(prisma, {
+      channelId,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!channel) {
+      sendApiError(reply, 403, 'CHANNEL_JOIN_FORBIDDEN', 'Channel is not a joinable public channel')
+      return reply
+    }
+    return createApiResponse(ChannelRecordSchema.parse(channel))
   })
 
   app.post('/api/channels/:channelId/members', async (request, reply) => {

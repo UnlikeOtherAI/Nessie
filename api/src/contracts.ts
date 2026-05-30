@@ -71,10 +71,31 @@ export const ChannelRecordSchema = z.object({
   teamName: NonEmptyStringSchema,
   defaultThreadId: ThreadIdSchema,
   unreadCount: z.number().int().nonnegative(),
+  // sp-channels: channel lifecycle fields
+  topic: z.string().nullish(),
+  description: z.string().nullish(),
+  archivedAt: TimestampSchema.nullish(),
+  memberRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullish(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
+
+// sp-channels: body for PATCH /api/channels/:channelId
+export const UpdateChannelBodySchema = z
+  .object({
+    label: NonEmptyStringSchema.optional(),
+    topic: z.string().max(500).nullable().optional(),
+    description: z.string().max(2000).nullable().optional(),
+  })
+  .refine(
+    (body) =>
+      body.label !== undefined
+      || body.topic !== undefined
+      || body.description !== undefined,
+    { message: 'At least one of label, topic, or description is required' },
+  )
+export type UpdateChannelBody = z.infer<typeof UpdateChannelBodySchema>
 
 export const ProjectRecordSchema = z.object({
   id: ProjectIdSchema,

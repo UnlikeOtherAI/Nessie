@@ -148,6 +148,10 @@ const mapChannelRecord = async (
     teamId: parseTeamId(channel.teamId),
     teamName: team.name,
     unreadCount,
+    // sp-channels: lifecycle fields
+    topic: channel.topic ?? null,
+    description: channel.description ?? null,
+    archivedAt: channel.archivedAt?.toISOString() ?? null,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
   }
@@ -158,6 +162,7 @@ export const listChannelsForUser = async (
   userId: string,
   organizationId: string,
   teamId?: string,
+  includeArchived = false,
 ): Promise<ChannelRecord[]> => {
   const where: Record<string, unknown> = {
     organizationId,
@@ -169,6 +174,10 @@ export const listChannelsForUser = async (
   if (teamId) {
     where['teamId'] = teamId
   }
+  // sp-channels: exclude soft-archived channels from default listings
+  if (!includeArchived) {
+    where['archivedAt'] = null
+  }
 
   const channels = await prisma.channel.findMany({
     where,
@@ -178,6 +187,12 @@ export const listChannelsForUser = async (
         orderBy: { createdAt: 'asc' },
         take: 1,
         select: { id: true },
+      },
+      // sp-channels: include the caller's membership row to surface memberRole
+      members: {
+        where: { userId },
+        select: { role: true },
+        take: 1,
       },
       team: {
         select: {
@@ -242,6 +257,11 @@ export const listChannelsForUser = async (
     teamName: channel.team.name,
     defaultThreadId: parseThreadId(channel.threads[0]!.id),
     unreadCount: unreadCountsByThread.get(channel.threads[0]!.id) ?? 0,
+    // sp-channels: lifecycle fields
+    topic: channel.topic ?? null,
+    description: channel.description ?? null,
+    archivedAt: channel.archivedAt?.toISOString() ?? null,
+    memberRole: channel.members[0]?.role ?? null,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
   }))
@@ -426,6 +446,29 @@ export const createGroupFromDm = async (
   return mapChannelRecord(prisma, channel, input.currentUserId)
 }
 
+// sp-channels: mirror of the admin `toSlug` rules. Channel labels are validated
+// server-side so the API never persists a name the admin UI would reject.
+export const toChannelSlug = (value: string): string =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[\s]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+export class ChannelValidationError extends Error {}
+
+const validateChannelLabel = (label: string): string => {
+  const trimmed = label.trim()
+  if (toChannelSlug(trimmed).length === 0) {
+    throw new ChannelValidationError(
+      'Channel name must contain at least one letter or number',
+    )
+  }
+  return trimmed
+}
+
 export const createChannelForUser = async (
   prisma: PrismaClient,
   input: {
@@ -436,6 +479,9 @@ export const createChannelForUser = async (
     visibility: 'public' | 'protected' | 'private'
   },
 ): Promise<ChannelRecord | null> => {
+  // sp-channels: enforce the same name/slug rules the admin applies client-side.
+  const label = validateChannelLabel(input.label)
+
   // Enforce tenant hierarchy: team's project must belong to the same org
   if (!(await validateTenantHierarchy(prisma, input.organizationId, input.teamId))) {
     return null
@@ -443,13 +489,15 @@ export const createChannelForUser = async (
 
   const channel = await prisma.channel.create({
     data: {
-      label: input.label,
+      label,
       organizationId: input.organizationId,
       teamId: input.teamId,
       visibility: input.visibility,
       members: {
+        // sp-channels: the creator becomes the channel owner so they can manage it
         create: {
           userId: input.userId,
+          role: 'owner',
         },
       },
     },
@@ -457,4 +505,140 @@ export const createChannelForUser = async (
   })
 
   return mapChannelRecord(prisma, channel, input.userId)
+}
+
+// ─── sp-channels: channel lifecycle ──────────────────────────────────────────
+
+// A principal may manage a channel if they are a channel member with role
+// owner/admin, OR an org owner/admin, OR a team owner/admin. This is the single
+// authz seam shared by the REST routes and the agent built-in tools.
+export const canManageChannel = async (
+  prisma: PrismaClient,
+  input: { userId: string; organizationId: string; channelId: string },
+): Promise<{ channel: Channel } | null> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: input.channelId },
+  })
+  if (!channel || channel.organizationId !== input.organizationId) {
+    return null
+  }
+
+  const [channelMember, orgMember, teamMember] = await Promise.all([
+    prisma.channelMember.findUnique({
+      where: { channelId_userId: { channelId: input.channelId, userId: input.userId } },
+      select: { role: true },
+    }),
+    prisma.organizationMember.findFirst({
+      where: { organizationId: input.organizationId, userId: input.userId },
+      select: { role: true },
+    }),
+    prisma.teamMember.findFirst({
+      where: { teamId: channel.teamId, userId: input.userId },
+      select: { role: true },
+    }),
+  ])
+
+  const isManager =
+    channelMember?.role === 'owner'
+    || channelMember?.role === 'admin'
+    || orgMember?.role === 'owner'
+    || orgMember?.role === 'admin'
+    || teamMember?.role === 'owner'
+    || teamMember?.role === 'admin'
+
+  return isManager ? { channel } : null
+}
+
+export const updateChannel = async (
+  prisma: PrismaClient,
+  input: {
+    userId: string
+    organizationId: string
+    channelId: string
+    label?: string
+    topic?: string | null
+    description?: string | null
+  },
+): Promise<ChannelRecord | null> => {
+  const manage = await canManageChannel(prisma, input)
+  if (!manage) {
+    return null
+  }
+
+  const data: Prisma.ChannelUpdateInput = {}
+  if (input.label !== undefined) {
+    data.label = validateChannelLabel(input.label)
+  }
+  if (input.topic !== undefined) {
+    data.topic = input.topic
+  }
+  if (input.description !== undefined) {
+    data.description = input.description
+  }
+
+  const channel = await prisma.channel.update({
+    where: { id: input.channelId },
+    data,
+    include: channelTeamInclude,
+  })
+  return mapChannelRecord(prisma, channel, input.userId)
+}
+
+export const setChannelArchived = async (
+  prisma: PrismaClient,
+  input: {
+    userId: string
+    organizationId: string
+    channelId: string
+    archived: boolean
+  },
+): Promise<ChannelRecord | null> => {
+  const manage = await canManageChannel(prisma, input)
+  if (!manage) {
+    return null
+  }
+
+  const channel = await prisma.channel.update({
+    where: { id: input.channelId },
+    data: { archivedAt: input.archived ? new Date() : null },
+    include: channelTeamInclude,
+  })
+  return mapChannelRecord(prisma, channel, input.userId)
+}
+
+// Public channels are open to any org member; private/protected still require
+// an explicit invite (addMemberToChannel by an existing member).
+export const joinPublicChannel = async (
+  prisma: PrismaClient,
+  input: { userId: string; organizationId: string; channelId: string },
+): Promise<ChannelRecord | null> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: input.channelId },
+    select: { organizationId: true, visibility: true, archivedAt: true },
+  })
+  if (!channel || channel.organizationId !== input.organizationId) {
+    return null
+  }
+  if (channel.visibility !== 'public' || channel.archivedAt) {
+    return null
+  }
+
+  const isOrgMember = await prisma.organizationMember.count({
+    where: { organizationId: input.organizationId, userId: input.userId },
+  })
+  if (!isOrgMember) {
+    return null
+  }
+
+  await prisma.channelMember.upsert({
+    where: { channelId_userId: { channelId: input.channelId, userId: input.userId } },
+    create: { channelId: input.channelId, userId: input.userId },
+    update: {},
+  })
+
+  const joined = await prisma.channel.findUniqueOrThrow({
+    where: { id: input.channelId },
+    include: channelTeamInclude,
+  })
+  return mapChannelRecord(prisma, joined, input.userId)
 }
