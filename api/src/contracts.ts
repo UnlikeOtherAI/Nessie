@@ -287,8 +287,27 @@ export const ThreadRecordSchema = z.object({
 })
 export type ThreadRecord = z.infer<typeof ThreadRecordSchema>
 
+// ─── File uploads / attachments (Slack-parity files slice) ──────────────────
+export const AttachmentRecordSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: OrganizationIdSchema,
+  uploaderId: z.string().uuid().optional(),
+  messageId: z.string().uuid().optional(),
+  kind: NonEmptyStringSchema,
+  mime: NonEmptyStringSchema,
+  filename: NonEmptyStringSchema,
+  sizeBytes: z.number().int().nonnegative(),
+  width: z.number().int().nonnegative().optional(),
+  height: z.number().int().nonnegative().optional(),
+  createdAt: TimestampSchema,
+})
+export type AttachmentRecord = z.infer<typeof AttachmentRecordSchema>
+
 export const CreateThreadMessageBodySchema = z.object({
   content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
+  // Attachments are uploaded first via POST /api/uploads; the returned ids are
+  // linked to the message after it is created.
+  attachmentIds: z.array(z.string().uuid()).optional(),
 })
 
 // ─── sp-messaging slice: edit, delete, search ──────────────────────────────

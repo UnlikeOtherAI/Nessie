@@ -11,6 +11,7 @@ import {
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { MentionInput, type MentionInputHandle, type MentionEntity } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
+import { MessageAttachments } from '../components/shared/MessageAttachments'
 import {
   useNavigate,
   useOutletContext,
@@ -23,6 +24,7 @@ import {
   useMessageSearch,
   useSendMessage,
   useUpdateMessage,
+  useUploadAttachment,
 } from '../facades/messages/hooks'
 import {
   isPersonalAssistantChannel,
@@ -96,6 +98,7 @@ export const ChannelsPage = () => {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const { data: searchResults = [] } = useMessageSearch(activeChannel?.id, searchQuery)
+  const uploadAttachment = useUploadAttachment()
 
   const channelUsers = useMemo(
     () =>
@@ -952,6 +955,9 @@ export const ChannelsPage = () => {
                           {renderContent(item.message.content)}
                         </p>
                       )}
+                      {!item.message.deletedAt && (
+                        <MessageAttachments messageId={item.message.id} />
+                      )}
                       {item.message.reactions?.length ? (
                         <div className="mt-1 flex flex-wrap gap-1">
                           {Object.entries(
@@ -1451,6 +1457,15 @@ export const ChannelsPage = () => {
         onInsertTrimmed={(trimmed) => {
           setOversizePaste(null)
           mentionRef.current?.insertText(trimmed)
+        }}
+        onSendAsFile={async (text) => {
+          const file = new File([text], 'pasted-text.txt', { type: 'text/plain' })
+          const attachment = await uploadAttachment.mutateAsync(file)
+          await sendMessage.mutateAsync({
+            attachmentIds: [attachment.id],
+            content: `Shared file: ${attachment.filename}`,
+          })
+          setOversizePaste(null)
         }}
         open={oversizePaste !== null}
         pastedText={oversizePaste ?? ''}

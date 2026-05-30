@@ -2078,3 +2078,27 @@ model CallParticipant {
   @@unique([callId, userId])
   @@map("call_participants")
 }
+
+// ─── File uploads / attachments (Slack-parity files slice) ──────────────────
+// Standalone, relation-free model so the files slice can land additively
+// without editing the User / Message / Organization models. The link to a
+// message is a nullable scalar `messageId` set after upload when the message
+// is created; integrity is enforced at the application layer.
+model Attachment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  uploaderId     String?  @map("uploader_id") @db.Uuid
+  messageId      String?  @map("message_id") @db.Uuid
+  kind           String
+  mime           String
+  filename       String
+  sizeBytes      Int      @map("size_bytes")
+  storageKey     String   @map("storage_key")
+  width          Int?
+  height         Int?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([messageId])
+  @@index([organizationId, createdAt])
+  @@map("attachments")
+}

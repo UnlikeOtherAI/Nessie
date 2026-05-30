@@ -16,6 +16,7 @@ if (existsSync(envFile)) {
   }
 }
 import cors from '@fastify/cors'
+import multipart from '@fastify/multipart'
 import websocket from '@fastify/websocket'
 import Fastify from 'fastify'
 import { createModelClient, createPgPool, ModelUsageTracker } from '@nessie/runtime'
@@ -54,6 +55,7 @@ import { registerTaskRoutes } from './routes/tasks.js'
 import { registerTeamRoutes } from './routes/teams.js'
 import { registerThoughtRoutes } from './routes/thoughts.js'
 import { registerThreadRoutes } from './routes/threads.js'
+import { registerUploadRoutes } from './routes/uploads.js'
 import { registerToolBundleRoutes } from './routes/tools-bundles.js'
 import { registerToolRoutes } from './routes/tools.js'
 import { registerTriggerRoutes } from './routes/triggers.js'
@@ -169,6 +171,10 @@ export const buildApp = async () => {
     }),
   })
   await app.register(websocket)
+  // File uploads / attachments slice: 25 MB ceiling, single file per request.
+  await app.register(multipart, {
+    limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  })
 
   // Self-heal: ensure every pre-existing organization has the default policy
   // rules seeded. Bootstrap only runs on first install, so orgs provisioned
@@ -239,6 +245,8 @@ export const buildApp = async () => {
   registerMailboxRoutes(app, deps)
   registerResourceLockRoutes(app, deps)
   registerToolRoutes(app, deps)
+  // File uploads / attachments slice (Slack-parity files).
+  registerUploadRoutes(app, deps)
   registerCapabilityRoutes(app, deps)
   registerUserRoutes(app, deps)
   registerProjectRoutes(app, deps)
