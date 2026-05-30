@@ -552,7 +552,9 @@ export const searchMessages = async (
 
   const conditions: Prisma.Sql[] = [
     Prisma.sql`m."deleted_at" IS NULL`,
-    Prisma.sql`t."channel_id" IN (${Prisma.join(channelIds)})`,
+    Prisma.sql`t."channel_id" IN (${Prisma.join(
+      channelIds.map((id) => Prisma.sql`${id}::uuid`),
+    )})`,
     Prisma.sql`to_tsvector('english', m."content") @@ plainto_tsquery('english', ${input.query})`,
   ]
   if (input.senderId) {
