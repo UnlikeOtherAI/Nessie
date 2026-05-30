@@ -21,6 +21,11 @@ import {
   runWorkspaceSearchTool,
 } from './pa-tools.js'
 import {
+  runCancelScheduledTaskTool,
+  runListScheduledTasksTool,
+  runScheduleTaskTool,
+} from './schedule-tools.js'
+import {
   FileWriteOverwriteError,
   HttpFetchError,
   runFileGlob,
@@ -584,6 +589,21 @@ export const executeBuiltinTool = async (
       )
     case 'web_fetch':
       return wrapTool(inputSummary, () => runWebFetchTool(String(args.url ?? '')))
+    case 'schedule_task':
+      return wrapTool(inputSummary, () =>
+        runScheduleTaskTool(context, {
+          instructions: args.instructions,
+          name: args.name,
+          schedule: args.schedule,
+          target: args.target,
+        }),
+      )
+    case 'list_scheduled_tasks':
+      return wrapTool(inputSummary, () => runListScheduledTasksTool(context))
+    case 'cancel_scheduled_task':
+      return wrapTool(inputSummary, () =>
+        runCancelScheduledTaskTool(context, { id: args.id, name: args.name }),
+      )
     case 'document_read':
       return wrapTool(inputSummary, () => runDocumentReadTool(String(args.query ?? '')))
     case 'spawn_subtask':

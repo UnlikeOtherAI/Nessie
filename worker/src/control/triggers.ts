@@ -11,6 +11,7 @@ import {
   parseTaskId,
   parseTeamId,
   parseThreadId,
+  parseUserId,
   type AuthorizedActionContext,
   type TriggerEventDispatchJobPayload,
   type WorkflowRunExecuteJobPayload,
@@ -126,12 +127,21 @@ const computeNextCronRunAt = (input: {
   }
 }
 
+const isOneOffConfig = (config: unknown): boolean =>
+  isJsonRecord(config) && config['mode'] === 'once'
+
 const buildNextScheduledRunAt = (input: {
   config: unknown
   from: Date
   now: Date
   type: AgentTriggerType
 }): Date | null => {
+  // One-off schedules fire exactly once. Returning null clears next_run_at so the
+  // claim query (which requires next_run_at IS NOT NULL) never picks it up again.
+  if (isOneOffConfig(input.config)) {
+    return null
+  }
+
   if (input.type === 'scheduled') {
     return computeNextCronRunAt({
       config: input.config,
@@ -152,11 +162,71 @@ const buildNextScheduledRunAt = (input: {
   return new Date(base.getTime() + intervalMinutes * 60_000)
 }
 
+const MEMORY_NUDGE =
+  'When you finish, store the key findings in your long-term memory so you can ' +
+  'build on them next time.'
+
+const extractTriggerInstruction = (config: unknown): string | null => {
+  if (!isJsonRecord(config)) {
+    return null
+  }
+  const prompt = config['prompt']
+  return typeof prompt === 'string' && prompt.trim().length > 0 ? prompt.trim() : null
+}
+
+const extractTriggerEffectiveUserId = (config: unknown): string | null => {
+  if (!isJsonRecord(config)) {
+    return null
+  }
+  const userId = config['createdByUserId']
+  return typeof userId === 'string' && userId.trim().length > 0 ? userId : null
+}
+
+/**
+ * Compute the first fire time for a freshly-created schedule. Returns null when
+ * the config is invalid (bad cron, missing interval, malformed one-off date) so
+ * callers can reject the request. Reused by the schedule_task tool handler.
+ */
+export const computeInitialScheduleRunAt = (input: {
+  config: unknown
+  now: Date
+  type: AgentTriggerType
+}): Date | null => {
+  if (isOneOffConfig(input.config)) {
+    const at = isJsonRecord(input.config) ? input.config['at'] : undefined
+    if (typeof at !== 'string') {
+      return null
+    }
+    const parsed = new Date(at)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+
+  if (input.type === 'scheduled') {
+    return computeNextCronRunAt({ config: input.config, currentDate: input.now })
+  }
+
+  if (input.type === 'interval') {
+    const intervalMinutes = parseIntervalMinutes(input.config)
+    return intervalMinutes ? new Date(input.now.getTime() + intervalMinutes * 60_000) : null
+  }
+
+  return null
+}
+
 const buildTriggerPrompt = (input: {
+  config?: unknown
   payload: unknown
   source: string
   triggerType: AgentTriggerType
 }): string => {
+  // A scheduled task carries the user's own instruction in config.prompt. Use it
+  // verbatim as the run's seed so the agent performs whatever work was asked
+  // (any tool it has — not just web search) and reports back in this thread.
+  const instruction = extractTriggerInstruction(input.config)
+  if (instruction) {
+    return `${instruction}\n\n${MEMORY_NUDGE}`
+  }
+
   const prefix = `A ${input.triggerType} trigger fired from ${input.source}.`
   if (input.payload === undefined) {
     return `${prefix}\n\nNo payload was provided.`
@@ -192,6 +262,7 @@ const matchesEventTriggerConfig = (
 const buildActorContext = (input: {
   agentId: string
   channelId: string
+  effectiveUserId?: string | null
   organizationId: string
   projectId?: string | null
   teamId?: string | null
@@ -207,6 +278,13 @@ const buildActorContext = (input: {
   actionContext: {
     agentId: parseAgentId(input.agentId),
     channelId: parseChannelId(input.channelId),
+    // When a scheduled task was created by a specific user (e.g. via the
+    // schedule_task tool, including the personal assistant acting for its
+    // owner), run as that user so memory scoping and "act as user" tools
+    // behave the same as the original conversation.
+    ...(input.effectiveUserId
+      ? { effectiveUserId: parseUserId(input.effectiveUserId) }
+      : {}),
     purpose: input.source,
     requestId: randomUUID(),
     threadId: parseThreadId(input.threadId),
@@ -363,6 +441,7 @@ const queueTriggerRun = async (
         teamId: string | null
       }
       agentId: string
+      config?: unknown
       id: string
       targetChannelId: string
       targetThreadId: string
@@ -413,6 +492,7 @@ const queueTriggerRun = async (
   }
 
   const content = buildTriggerPrompt({
+    config: input.trigger.config,
     payload: input.payload,
     source: input.source,
     triggerType: input.trigger.type,
@@ -466,6 +546,7 @@ const queueTriggerRun = async (
           actorContext: buildActorContext({
             agentId: input.trigger.agentId,
             channelId: input.trigger.targetChannelId,
+            effectiveUserId: extractTriggerEffectiveUserId(input.trigger.config),
             organizationId:
               input.trigger.agent.organizationId ?? thread.channel.organizationId,
             projectId: input.trigger.agent.projectId,
@@ -681,6 +762,7 @@ export const sweepDueScheduledTriggers = async (
           },
         },
         agentId: true,
+        config: true,
         id: true,
         targetChannelId: true,
         targetThreadId: true,
@@ -719,6 +801,7 @@ export const sweepDueScheduledTriggers = async (
         trigger: {
           agent,
           agentId,
+          config: triggerWithAgent.config,
           id: triggerWithAgent.id,
           targetChannelId,
           targetThreadId,
