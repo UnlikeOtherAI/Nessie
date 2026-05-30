@@ -1,5 +1,8 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  runAttachmentListTool,
+  runAttachmentReadTool,
+  runAttachmentUploadTool,
   runAuthoredMessageSearchTool,
   runPeopleSearchTool,
   runSendMessageTool,
@@ -181,6 +184,29 @@ export const executeBuiltinTool = async (
     case 'cancel_scheduled_task':
       return wrapTool(inputSummary, () =>
         runCancelScheduledTaskTool(context, { id: args.id, name: args.name }),
+      )
+    case 'attachment_upload':
+      return wrapTool(inputSummary, () =>
+        runAttachmentUploadTool(context, {
+          contentBase64:
+            typeof args.contentBase64 === 'string' ? args.contentBase64 : undefined,
+          filename: typeof args.filename === 'string' ? args.filename : undefined,
+          mime: typeof args.mime === 'string' ? args.mime : undefined,
+        }),
+      )
+    case 'attachment_list':
+      return wrapTool(inputSummary, () =>
+        runAttachmentListTool(context, {
+          channelId: typeof args.channelId === 'string' ? args.channelId : undefined,
+          limit: args.limit,
+          threadId: typeof args.threadId === 'string' ? args.threadId : undefined,
+        }),
+      )
+    case 'attachment_read':
+      return wrapTool(inputSummary, () =>
+        runAttachmentReadTool(context, {
+          id: typeof args.id === 'string' ? args.id : undefined,
+        }),
       )
     case 'document_read':
       return wrapTool(inputSummary, () => runDocumentReadTool(String(args.query ?? '')))

@@ -117,6 +117,20 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
+    // ─── Attachments (files slice) ──────────────────────────────────────────
+    // Link any pre-uploaded attachments to this message, scoped to the actor's
+    // organization so a stray id cannot poach another tenant's attachment.
+    if (body.attachmentIds && body.attachmentIds.length > 0) {
+      await prisma.attachment.updateMany({
+        where: {
+          id: { in: body.attachmentIds },
+          organizationId: actorContext.tenant.organizationId,
+          messageId: null,
+        },
+        data: { messageId: result.message.id },
+      })
+    }
+
     if (messageMemoryCaptureConfig) {
       // Fire-and-forget: never block the message POST response on memory
       // capture. The handler comment downstream asserts orchestration "never

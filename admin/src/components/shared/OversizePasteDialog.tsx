@@ -1,25 +1,31 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 type Props = {
   limit: number
   onCancel: () => void
   onInsertTrimmed: (trimmed: string) => void
+  // Upload the pasted text as a `.txt` attachment and send it with the message.
+  // Returns once the upload + send has completed (or rejects on failure).
+  onSendAsFile?: (text: string) => Promise<void>
   open: boolean
   pastedText: string
 }
 
 /**
  * Shown when a paste would push the composer over the chat character limit.
- * The user can cancel the paste or insert the first `limit` characters.
- * A "send as attachment" path will land once the attachment subsystem exists.
+ * The user can cancel the paste, insert the first `limit` characters, or send
+ * the whole paste as a `.txt` attachment via `onSendAsFile`.
  */
 export const OversizePasteDialog = ({
   limit,
   onCancel,
   onInsertTrimmed,
+  onSendAsFile,
   open,
   pastedText,
 }: Props) => {
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
@@ -127,14 +133,26 @@ export const OversizePasteDialog = ({
               Insert first {limit.toLocaleString()} chars
             </button>
             <button
-              className="admin-button admin-button-primary opacity-50"
-              disabled
-              title="Attachment upload is not wired up yet"
+              className="admin-button admin-button-primary"
+              disabled={!onSendAsFile || sending}
+              onClick={() => {
+                if (!onSendAsFile) return
+                setError(null)
+                setSending(true)
+                onSendAsFile(pastedText)
+                  .catch((err: unknown) =>
+                    setError(err instanceof Error ? err.message : 'Upload failed'),
+                  )
+                  .finally(() => setSending(false))
+              }}
               type="button"
             >
-              Send as file (soon)
+              {sending ? 'Sending…' : 'Send as file'}
             </button>
           </div>
+          {error ? (
+            <p className="text-sm text-[color:var(--danger,#f87171)]">{error}</p>
+          ) : null}
         </div>
       </div>
     </div>

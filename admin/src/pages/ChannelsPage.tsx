@@ -11,6 +11,7 @@ import {
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { MentionInput, type MentionInputHandle, type MentionEntity } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
+import { MessageAttachments } from '../components/shared/MessageAttachments'
 import {
   useNavigate,
   useOutletContext,
@@ -18,7 +19,7 @@ import {
 } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
-import { useSendMessage } from '../facades/messages/hooks'
+import { useSendMessage, useUploadAttachment } from '../facades/messages/hooks'
 import {
   isPersonalAssistantChannel,
   usePersonalAssistant,
@@ -82,6 +83,7 @@ export const ChannelsPage = () => {
   const markThreadRead = useMarkThreadRead()
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
+  const uploadAttachment = useUploadAttachment()
 
   const channelUsers = useMemo(
     () =>
@@ -777,6 +779,7 @@ export const ChannelsPage = () => {
                       <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
                         {renderContent(item.message.content)}
                       </p>
+                      <MessageAttachments messageId={item.message.id} />
                       {item.message.reactions?.length ? (
                         <div className="mt-1 flex flex-wrap gap-1">
                           {Object.entries(
@@ -1250,6 +1253,15 @@ export const ChannelsPage = () => {
         onInsertTrimmed={(trimmed) => {
           setOversizePaste(null)
           mentionRef.current?.insertText(trimmed)
+        }}
+        onSendAsFile={async (text) => {
+          const file = new File([text], 'pasted-text.txt', { type: 'text/plain' })
+          const attachment = await uploadAttachment.mutateAsync(file)
+          await sendMessage.mutateAsync({
+            attachmentIds: [attachment.id],
+            content: `Shared file: ${attachment.filename}`,
+          })
+          setOversizePaste(null)
         }}
         open={oversizePaste !== null}
         pastedText={oversizePaste ?? ''}

@@ -172,6 +172,67 @@ const CANCEL_SCHEDULED_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
   safe: false,
 }
 
+// ─── File uploads / attachments (Slack-parity files slice) ──────────────────
+// Named `attachment_*` rather than `file_*` because `file_read`/`file_write`/
+// `file_glob` are already sandbox-filesystem tools; these operate on uploaded
+// workspace attachments stored via the blob storage adapter.
+const ATTACHMENT_UPLOAD_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'attachment_upload',
+  label: 'Upload Attachment',
+  description:
+    'Store a file as a workspace attachment. Provide the raw bytes as base64 ' +
+    'in contentBase64 along with a filename and MIME type. Returns the new ' +
+    'attachment id, which can be linked to a message via send_message ' +
+    'attachmentIds.',
+  parameters: {
+    type: 'object',
+    properties: {
+      filename: { type: 'string', description: 'File name including extension' },
+      mime: { type: 'string', description: 'MIME type, e.g. "text/plain" or "image/png"' },
+      contentBase64: { type: 'string', description: 'Base64-encoded file bytes' },
+      channelId: {
+        type: 'string',
+        description: 'Optional channel context the attachment belongs to',
+      },
+    },
+    required: ['filename', 'mime', 'contentBase64'],
+  },
+  safe: false,
+}
+
+const ATTACHMENT_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'attachment_list',
+  label: 'List Attachments',
+  description:
+    'List attachments linked to messages in a thread or channel you can access. ' +
+    'Returns id, filename, mime, and sizeBytes for each.',
+  parameters: {
+    type: 'object',
+    properties: {
+      threadId: { type: 'string', description: 'Thread to list attachments from' },
+      channelId: { type: 'string', description: 'Channel to list attachments from' },
+      limit: { type: 'integer', description: 'Maximum results (default 20)', minimum: 1 },
+    },
+  },
+  safe: true,
+}
+
+const ATTACHMENT_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'attachment_read',
+  label: 'Read Attachment',
+  description:
+    'Return metadata for an attachment, plus the decoded text content for ' +
+    'small text-like files. Binary or oversized files return metadata only.',
+  parameters: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'The attachment id to read' },
+    },
+    required: ['id'],
+  },
+  safe: true,
+}
+
 export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'workspace_search',
@@ -329,6 +390,9 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   SCHEDULE_TASK_TOOL_DEFINITION,
   LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
   CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
+  ATTACHMENT_UPLOAD_TOOL_DEFINITION,
+  ATTACHMENT_LIST_TOOL_DEFINITION,
+  ATTACHMENT_READ_TOOL_DEFINITION,
 ]
 
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
