@@ -4,42 +4,25 @@
   "type": "module",
   "packageManager": "pnpm@10.22.0",
   "scripts": {
-    "dev": "pnpm legacy:dev",
+    "dev": "pnpm --filter @nessie/api dev",
     "dev:mcp-fixture": "pnpm --filter @nessie/mcp-client start:fixture",
-    "lint": "pnpm legacy:lint && node scripts/lint-markdown-structure.mjs && turbo run lint",
+    "lint": "node scripts/lint-markdown-structure.mjs && turbo run lint",
     "lint:markdown-structure": "node scripts/lint-markdown-structure.mjs",
-    "typecheck": "pnpm legacy:typecheck && turbo run typecheck",
-    "build": "pnpm lint && pnpm legacy:compile && turbo run build",
-    "legacy:dev": "bun run src/index.ts",
-    "legacy:typecheck": "tsc --noEmit -p tsconfig.legacy.json",
-    "legacy:lint": "eslint src && pnpm legacy:typecheck",
-    "legacy:build": "pnpm legacy:lint && pnpm legacy:compile",
-    "legacy:compile": "bun build src/index.ts --outdir dist --target=node",
-    "start": "node dist/index.js",
+    "typecheck": "turbo run typecheck",
+    "build": "pnpm lint && turbo run build",
+    "test": "turbo run test",
     "macos:project": "xcodegen generate --spec macos/project.yml",
     "macos:build": "pnpm macos:project && xcodebuild -project macos/Nessie.xcodeproj -scheme Nessie -configuration Debug -destination 'platform=macOS' build"
   },
-  "dependencies": {
-    "bonjour": "^3.5.1",
-    "glob": "^13.0.6",
-    "ws": "^8.18.0",
-    "zod": "^3.25.76"
-  },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
-    "@types/bonjour": "^3.5.13",
     "@types/node": "^20.19.24",
-    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
-    "bun-types": "^1.3.1",
     "eslint": "^10.2.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "markdownlint-cli2": "^0.22.0",
-    "playwright": "^1.59.1",
     "tsx": "^4.20.6",
     "turbo": "^2.5.8",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.4"
+    "typescript": "^5.9.3"
   }
 }

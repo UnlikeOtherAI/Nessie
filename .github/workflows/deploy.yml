@@ -1,7 +1,9 @@
 name: Deploy
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
 
 env:
@@ -17,7 +19,7 @@ jobs:
   deploy-disabled:
     name: Deploy Disabled
     runs-on: ubuntu-latest
-    if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER == '' || vars.GCP_SERVICE_ACCOUNT == '' || vars.GCP_PROJECT_ID == '' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && (vars.GCP_WORKLOAD_IDENTITY_PROVIDER == '' || vars.GCP_SERVICE_ACCOUNT == '' || vars.GCP_PROJECT_ID == '') }}
     steps:
       - name: Report missing deployment configuration
         run: |
@@ -27,7 +29,7 @@ jobs:
   build-and-push:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' && vars.GCP_PROJECT_ID != '' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' && vars.GCP_PROJECT_ID != '' }}
     permissions:
       contents: read
       id-token: write

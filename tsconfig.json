@@ -1,7 +1,6 @@
 {
   "files": [],
   "references": [
-    { "path": "./tsconfig.legacy.json" },
     { "path": "./packages/schemas" },
     { "path": "./packages/config" },
     { "path": "./packages/runtime" },
