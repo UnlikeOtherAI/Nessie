@@ -1682,6 +1682,7 @@ model QueueJob {
   errorMessage   String?   @map("error_message")
 
   @@unique([idempotencyKey])
+  @@index([status, enqueuedAt])
   @@map("queue_jobs")
 }
 

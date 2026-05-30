@@ -10,6 +10,7 @@ import { ChannelsPage } from './pages/ChannelsPage'
 import { LoginPage } from './pages/LoginPage'
 import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ToolsPage } from './pages/ToolsPage'
@@ -119,6 +120,10 @@ export const router = createBrowserRouter([
       {
         path: '/policy',
         element: <PolicyPage />,
+      },
+      {
+        path: '/ops',
+        element: <OpsHealthPage />,
       },
     ],
   },

@@ -720,6 +720,29 @@ export const AdminShellLayout = () => {
                 </svg>
                 <span className="admin-rail-btn-label">Policy</span>
               </Link>
+
+              <Link
+                className={[
+                  'admin-rail-btn',
+                  location.pathname === '/ops' ? 'active' : '',
+                ].join(' ')}
+                to="/ops"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M3 12h4l3 8 4-16 3 8h4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span className="admin-rail-btn-label">Health</span>
+              </Link>
             </>
           )}
 

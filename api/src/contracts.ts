@@ -1670,3 +1670,56 @@ export const AssignableUserSchema = z.object({
   role: NonEmptyStringSchema,
 })
 export type AssignableUser = z.infer<typeof AssignableUserSchema>
+
+// ─── Ops health (observability) ───────────────────────────────────────────
+
+export const WorkerHealthStatusSchema = z.enum(['up', 'stale', 'down'])
+export type WorkerHealthStatus = z.infer<typeof WorkerHealthStatusSchema>
+
+export const OpsWorkerHealthSchema = z.object({
+  status: WorkerHealthStatusSchema,
+  activeRunners: z.number().int().nonnegative(),
+  lastHeartbeatAt: z.string().nullable(),
+  heartbeatAgeSeconds: z.number().int().nonnegative().nullable(),
+})
+
+export const OpsDeadJobSchema = z.object({
+  id: z.string(),
+  topic: z.string(),
+  attempt: z.number().int().nonnegative(),
+  maxAttempts: z.number().int().positive(),
+  errorMessage: z.string().nullable(),
+  enqueuedAt: TimestampSchema,
+})
+
+export const OpsDeadLetterSchema = z.object({
+  id: z.string(),
+  subject: z.string().nullable(),
+  attempts: z.number().int().nonnegative(),
+  createdAt: TimestampSchema,
+})
+
+export const OpsHealthResponseSchema = z.object({
+  worker: OpsWorkerHealthSchema,
+  queue: z.object({
+    pending: z.number().int().nonnegative(),
+    processing: z.number().int().nonnegative(),
+    done: z.number().int().nonnegative(),
+    dead: z.number().int().nonnegative(),
+  }),
+  deadJobs: z.array(OpsDeadJobSchema),
+  deadLetters: z.object({
+    count: z.number().int().nonnegative(),
+    recent: z.array(OpsDeadLetterSchema),
+  }),
+})
+export type OpsHealthResponse = z.infer<typeof OpsHealthResponseSchema>
+
+export const ReadinessResponseSchema = z.object({
+  ready: z.boolean(),
+  checks: z.object({
+    database: z.boolean(),
+    worker: WorkerHealthStatusSchema,
+  }),
+})
+export type ReadinessResponse = z.infer<typeof ReadinessResponseSchema>
