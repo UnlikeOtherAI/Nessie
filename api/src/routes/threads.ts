@@ -16,6 +16,7 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
+import { canManageChannel } from '../services/channels.js'
 import {
   addReaction,
   createThreadMessage,
@@ -399,8 +400,14 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    // Org owners act as channel managers for moderation/delete.
-    const isChannelManager = actorContext.actor.roles?.includes('owner') ?? false
+    // Channel/team/org managers (and the author) may delete a message. Uses the
+    // same authorization as the channel_* agent tools so REST and agents agree.
+    const manage = await canManageChannel(prisma, {
+      channelId: thread.channel.id,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    const isChannelManager = manage !== null
     const result = await softDeleteMessage(prisma, {
       isChannelManager,
       messageId,
