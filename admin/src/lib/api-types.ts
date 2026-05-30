@@ -117,11 +117,26 @@ export type ThreadMessageRecord = {
   agentId?: string | null
   content: string
   createdAt: string
+  editedAt?: string | null
+  deletedAt?: string | null
   id: string
   metadata?: Record<string, unknown>
   reactions?: MessageReaction[]
   role: 'assistant' | 'system' | 'user'
   threadId: string
+  userId?: string | null
+}
+
+// sp-messaging slice: full-text search result.
+export type MessageSearchResult = {
+  id: string
+  threadId: string
+  channelId: string
+  channelLabel: string
+  snippet: string
+  createdAt: string
+  authorName: string
+  agentId?: string | null
   userId?: string | null
 }
 

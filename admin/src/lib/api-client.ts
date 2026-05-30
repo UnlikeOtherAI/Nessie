@@ -94,6 +94,7 @@ export type {
   ChannelMetadataRecord,
   ChannelRecord,
   MessageReaction,
+  MessageSearchResult,
   PersonalAssistantBootstrapResponse,
   PersonalAssistantConfigSummary,
   PersonalAssistantInstanceRecord,
