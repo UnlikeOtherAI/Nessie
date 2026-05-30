@@ -42,6 +42,7 @@ import {
   parseTeamId,
   parseThreadId,
   parseUserId,
+  TaskStatusSchema,
   type AuthorizedActionContext,
   type MeResponse,
   type TriggerEventDispatchJobPayload,
@@ -94,6 +95,11 @@ import {
   CreateChannelBodySchema,
   CreateThreadMessageBodySchema,
   CreateUserBodySchema,
+  AssignableUserSchema,
+  AssignTaskBodySchema,
+  CreateTaskBodySchema,
+  TaskRecordSchema,
+  TransitionTaskBodySchema,
   LoginRequestSchema,
   MailboxMessageRecordSchema,
   PlanRecordSchema,
@@ -285,6 +291,14 @@ import {
   resolveApprovalRequest,
   sweepExpiredApprovals,
 } from './services/approvals.js'
+import {
+  assignTask,
+  createHumanTask,
+  getTask,
+  listAssignableUsers,
+  listTasks,
+  transitionTask,
+} from './services/tasks.js'
 import {
   createPricingProfile,
   deletePricingProfile,
@@ -5412,6 +5426,7 @@ export const buildApp = async () => {
         ALREADY_RESOLVED: { code: 409, message: 'Approval already resolved' },
         SELF_APPROVAL: { code: 403, message: 'Cannot approve your own request' },
         EXPIRED: { code: 410, message: 'Approval request has expired' },
+        ROLE_REQUIRED: { code: 403, message: 'You do not have the required approver role' },
       }
       const err = errorMap[result.error] ?? { code: 400, message: 'Unknown error' }
       sendApiError(reply, err.code, result.error, err.message)
@@ -5435,6 +5450,138 @@ export const buildApp = async () => {
     )
 
     return createApiResponse(result.approval)
+  })
+
+  // ─── Tasks: human work distribution ─────────────────────────────────────
+
+  const resolveTaskUserFilter = (
+    value: string | undefined,
+    actorContext: AuthorizedActionContext,
+  ): string | undefined => {
+    if (!value) return undefined
+    return value === 'me' ? actorContext.actor.actorId : value
+  }
+
+  app.get('/api/tasks', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const statusFilter = TaskStatusSchema.safeParse(query['status'])
+    const tasks = await listTasks(prisma, actorContext.tenant.organizationId, {
+      assigneeUserId: resolveTaskUserFilter(query['assignee'], actorContext),
+      ownerUserId: resolveTaskUserFilter(query['owner'], actorContext),
+      status: statusFilter.success ? statusFilter.data : undefined,
+    })
+    return createApiResponse(TaskRecordSchema.array().parse(tasks))
+  })
+
+  app.get('/api/tasks/assignees', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const users = await listAssignableUsers(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(AssignableUserSchema.array().parse(users))
+  })
+
+  app.post('/api/tasks', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const body = parseInput(CreateTaskBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const result = await createHumanTask(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      createdByUserId: actorContext.actor.actorId,
+      title: body.title,
+      purpose: body.purpose,
+      assigneeUserId: body.assigneeUserId,
+      ownerUserId: body.ownerUserId,
+    })
+
+    if ('error' in result) {
+      sendApiError(reply, 400, result.error, 'Assignee or owner is not a member of this organization')
+      return reply
+    }
+
+    return reply.code(201).send(createApiResponse(TaskRecordSchema.parse(result)))
+  })
+
+  app.get('/api/tasks/:taskId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { taskId } = request.params as { taskId: string }
+    const task = await getTask(prisma, taskId, actorContext.tenant.organizationId)
+    if (!task) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
+      return reply
+    }
+
+    return createApiResponse(TaskRecordSchema.parse(task))
+  })
+
+  app.post('/api/tasks/:taskId/assign', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { taskId } = request.params as { taskId: string }
+    const body = parseInput(AssignTaskBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const result = await assignTask(prisma, {
+      taskId,
+      organizationId: actorContext.tenant.organizationId,
+      assigneeUserId: body.assigneeUserId,
+      actorId: actorContext.actor.actorId,
+    })
+
+    if ('error' in result) {
+      if (result.error === 'NOT_FOUND') {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
+        return reply
+      }
+      sendApiError(reply, 400, result.error, 'Assignee is not a member of this organization')
+      return reply
+    }
+
+    return createApiResponse(TaskRecordSchema.parse(result))
+  })
+
+  app.post('/api/tasks/:taskId/transition', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { taskId } = request.params as { taskId: string }
+    const body = parseInput(TransitionTaskBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const result = await transitionTask(prisma, {
+      taskId,
+      organizationId: actorContext.tenant.organizationId,
+      status: body.status,
+      actorId: actorContext.actor.actorId,
+    })
+
+    if ('error' in result) {
+      if (result.error === 'NOT_FOUND') {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
+        return reply
+      }
+      sendApiError(
+        reply,
+        409,
+        result.error,
+        `Cannot transition task from ${result.from ?? 'unknown'} to ${body.status}`,
+      )
+      return reply
+    }
+
+    return createApiResponse(TaskRecordSchema.parse(result))
   })
 
   // ─── Phase 2: Token Ledger Routes ───────────────────────────────────────

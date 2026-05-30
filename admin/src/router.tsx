@@ -15,6 +15,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { ToolsPage } from './pages/ToolsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
 import { TriggersPage } from './pages/TriggersPage'
+import { WorkPage } from './pages/WorkPage'
 import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 import { WorkflowToolsPage } from './pages/WorkflowToolsPage'
@@ -54,6 +55,10 @@ export const router = createBrowserRouter([
       {
         path: '/agents',
         element: <AgentsPage />,
+      },
+      {
+        path: '/work',
+        element: <WorkPage />,
       },
       {
         path: '/agents/activity',

@@ -13,6 +13,7 @@ export type CreateApprovalInput = {
   context?: Record<string, unknown>
   taskId?: string
   runId?: string
+  requiredApproverRole?: string
 }
 
 export const createApprovalRequest = async (
@@ -35,6 +36,7 @@ export const createApprovalRequest = async (
       action: input.action,
       reason: input.reason,
       context: (input.context as Prisma.InputJsonValue) ?? undefined,
+      requiredApproverRole: input.requiredApproverRole ?? null,
       continuationToken,
       expiresAt,
     },
@@ -140,6 +142,14 @@ export const resolveApprovalRequest = async (
     return { error: 'SELF_APPROVAL' as const, approval: mapApproval(approval) }
   }
 
+  // When the approval is routed to a role, only an actor holding that role may resolve it.
+  if (
+    approval.requiredApproverRole &&
+    !(actorContext.actor.roles ?? []).includes(approval.requiredApproverRole)
+  ) {
+    return { error: 'ROLE_REQUIRED' as const, approval: mapApproval(approval) }
+  }
+
   // Check expiry
   if (approval.expiresAt < new Date()) {
     await prisma.approvalRequest.update({
@@ -235,6 +245,7 @@ const mapApproval = (approval: {
   resolvedAt: Date | null
   resolution: string | null
   resolutionNote: string | null
+  requiredApproverRole: string | null
   continuationToken: string
   expiresAt: Date
   createdAt: Date
@@ -257,6 +268,7 @@ const mapApproval = (approval: {
   resolvedAt: approval.resolvedAt?.toISOString() ?? null,
   resolution: approval.resolution,
   resolutionNote: approval.resolutionNote,
+  requiredApproverRole: approval.requiredApproverRole,
   continuationToken: approval.continuationToken,
   expiresAt: approval.expiresAt.toISOString(),
   createdAt: approval.createdAt.toISOString(),

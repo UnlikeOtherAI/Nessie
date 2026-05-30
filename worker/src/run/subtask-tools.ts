@@ -118,6 +118,7 @@ export const runSpawnSubtaskTool = async (
     const childTask = await tx.task.create({
       data: {
         agentId: childAgent.id,
+        organizationId: context.channel.organizationId,
         purpose: task.slice(0, 200),
         runId: run.id,
         status: 'inbox',

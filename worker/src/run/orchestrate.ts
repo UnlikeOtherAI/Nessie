@@ -112,6 +112,7 @@ export const executeOrchestrateDecideJob = async (
           data: {
             runId: createdRun.id,
             agentId: decision.agentId,
+            organizationId: actorContext.tenant.organizationId,
             status: 'inbox',
             purpose: content.slice(0, 200),
           },

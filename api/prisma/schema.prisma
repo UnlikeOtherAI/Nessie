@@ -498,6 +498,9 @@ model User {
   messages            Message[]
   reactions           MessageReaction[]
   threadReadStates    ThreadReadState[]
+  assignedTasks       Task[]               @relation("TaskAssignee")
+  ownedTasks          Task[]               @relation("TaskOwner")
+  createdTasks        Task[]               @relation("TaskCreatedBy")
 
   @@map("users")
 }
@@ -511,6 +514,7 @@ model Organization {
   projects  Project[]
   channels  Channel[]
   thoughts  Thought[]
+  tasks     Task[]
 
   @@map("organizations")
 }
@@ -1601,20 +1605,32 @@ model TemporaryContextSession {
 model Task {
   id               String            @id @default(uuid()) @db.Uuid
   runId            String?           @map("run_id") @db.Uuid
-  agentId          String            @map("agent_id") @db.Uuid
+  agentId          String?           @map("agent_id") @db.Uuid
+  organizationId   String            @map("organization_id") @db.Uuid
   parentTaskId     String?           @map("parent_task_id") @db.Uuid
   status           TaskStatus        @default(inbox)
+  title            String?
   purpose          String?
+  assigneeUserId   String?           @map("assignee_user_id") @db.Uuid
+  ownerUserId      String?           @map("owner_user_id") @db.Uuid
+  createdByUserId  String?           @map("created_by_user_id") @db.Uuid
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   run              Run?              @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent            Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent            Agent?            @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignee         User?             @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  owner            User?             @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  createdBy        User?             @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   parentTask       Task?             @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
   childTasks       Task[]            @relation("TaskHierarchy")
   events           TaskEvent[]
   workflowStepRuns WorkflowStepRun[] @relation("WorkflowTask")
 
   @@index([agentId, status])
+  @@index([organizationId, status])
+  @@index([assigneeUserId, status])
+  @@index([ownerUserId, status])
   @@index([runId])
   @@map("tasks")
 }
@@ -1721,6 +1737,7 @@ model ApprovalRequest {
   resolvedAt        DateTime?      @map("resolved_at")
   resolution        String?
   resolutionNote    String?        @map("resolution_note")
+  requiredApproverRole String?     @map("required_approver_role")
   continuationToken String         @map("continuation_token")
   expiresAt         DateTime       @map("expires_at") @db.Timestamptz(6)
   createdAt         DateTime       @default(now()) @map("created_at")

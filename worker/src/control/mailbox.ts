@@ -272,6 +272,7 @@ export const dispatchNextMailboxMessage = async (
     const task = await tx.task.create({
       data: {
         agentId: message.toAgentId,
+        organizationId: message.organizationId,
         purpose: (message.subject ?? message.body).slice(0, 200),
         runId: run.id,
         status: 'inbox',

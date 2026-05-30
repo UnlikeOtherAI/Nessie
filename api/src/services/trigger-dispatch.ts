@@ -220,6 +220,7 @@ export const dispatchAgentTrigger = async (
       const task = await tx.task.create({
         data: {
           agentId,
+          organizationId: agent.organizationId ?? threadTarget.organizationId,
           purpose: content.slice(0, 200),
           runId: run.id,
           status: 'inbox',

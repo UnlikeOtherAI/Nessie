@@ -330,6 +330,7 @@ export const queueTriggerRun = async (
       const task = await tx.task.create({
         data: {
           agentId: input.trigger.agentId,
+          organizationId: input.trigger.agent.organizationId ?? thread.channel.organizationId,
           purpose: content.slice(0, 200),
           runId: run.id,
           status: 'inbox',

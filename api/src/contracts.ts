@@ -10,6 +10,8 @@ import {
   PersonalAssistantConfigSummarySchema,
   ProjectIdSchema,
   RunIdSchema,
+  TaskIdSchema,
+  TaskStatusSchema,
   TeamIdSchema,
   ThreadIdSchema,
   UserIdSchema,
@@ -1625,3 +1627,46 @@ export const CreateUserBodySchema = z.object({
   role: NonEmptyStringSchema.optional(),
   channelIds: z.array(ChannelIdSchema).optional(),
 })
+
+// ─── Tasks (human work distribution) ──────────────────────────────────────
+
+export const TaskRecordSchema = z.object({
+  id: TaskIdSchema,
+  organizationId: OrganizationIdSchema,
+  agentId: AgentIdSchema.nullable(),
+  parentTaskId: TaskIdSchema.nullable(),
+  runId: RunIdSchema.nullable(),
+  status: TaskStatusSchema,
+  title: z.string().nullable(),
+  purpose: z.string().nullable(),
+  assigneeUserId: UserIdSchema.nullable(),
+  assigneeName: z.string().nullable(),
+  ownerUserId: UserIdSchema.nullable(),
+  ownerName: z.string().nullable(),
+  createdByUserId: UserIdSchema.nullable(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type TaskRecord = z.infer<typeof TaskRecordSchema>
+
+export const CreateTaskBodySchema = z.object({
+  title: NonEmptyStringSchema,
+  purpose: z.string().optional(),
+  assigneeUserId: UserIdSchema.optional(),
+  ownerUserId: UserIdSchema.optional(),
+})
+
+export const AssignTaskBodySchema = z.object({
+  assigneeUserId: UserIdSchema.nullable(),
+})
+
+export const TransitionTaskBodySchema = z.object({
+  status: TaskStatusSchema,
+})
+
+export const AssignableUserSchema = z.object({
+  id: UserIdSchema,
+  displayName: NonEmptyStringSchema,
+  role: NonEmptyStringSchema,
+})
+export type AssignableUser = z.infer<typeof AssignableUserSchema>
