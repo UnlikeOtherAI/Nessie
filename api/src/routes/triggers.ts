@@ -1,0 +1,423 @@
+import type { FastifyInstance } from 'fastify'
+
+import {
+  AgentTriggerDeliveryRecordSchema,
+  AgentTriggerRecordSchema,
+  CreateAgentTriggerBodySchema,
+  FireAgentTriggerBodySchema,
+  UpdateAgentTriggerBodySchema,
+} from '../contracts.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { checkPolicy } from '../services/policy.js'
+import {
+  createAgentTrigger,
+  deleteAgentTrigger,
+  dispatchAgentTrigger,
+  getAgentTrigger,
+  listAgentTriggerDeliveries,
+  listAgentTriggers,
+  listOrganizationTriggers,
+  listScheduledTriggers,
+  pauseAgentTrigger,
+  resumeAgentTrigger,
+  updateAgentTrigger,
+} from '../services/triggers.js'
+import { registerTriggerIntakeRoutes } from './trigger-intake.js'
+import type { RouteDeps } from './types.js'
+
+export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  const {
+    prisma,
+    requireActorContext,
+    requireOwner,
+    requireUserActor,
+    isAgentAccessibleToActor,
+    isTriggerAccessibleToActor,
+    isTriggerTargetWritableByActor,
+    parseHeaderValue,
+  } = deps
+
+  app.get('/api/agents/:agentId/triggers', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    const triggers = await listAgentTriggers(prisma, agentId)
+    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
+  app.post('/api/agents/:agentId/triggers', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    if (!(await isAgentAccessibleToActor(actorContext, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    const body = parseInput(CreateAgentTriggerBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const trigger = await createAgentTrigger(prisma, agentId, body)
+    if (!trigger) {
+      sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
+      return reply
+    }
+
+    return reply.code(201).send(createApiResponse(AgentTriggerRecordSchema.parse(trigger)))
+  })
+
+  app.put('/api/triggers/:triggerId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const body = parseInput(UpdateAgentTriggerBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const updated = await updateAgentTrigger(prisma, triggerId, body)
+    if (!updated) {
+      sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
+      return reply
+    }
+
+    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
+  })
+
+  app.delete('/api/triggers/:triggerId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const deleted = await deleteAgentTrigger(prisma, triggerId)
+    if (!deleted) {
+      sendApiError(
+        reply,
+        409,
+        'TRIGGER_DELETE_BLOCKED',
+        'Trigger with delivery history cannot be deleted',
+      )
+      return reply
+    }
+
+    return reply.code(204).send()
+  })
+
+  app.post('/api/triggers/:triggerId/pause', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const updated = await pauseAgentTrigger(prisma, triggerId)
+    if (!updated) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
+  })
+
+  app.post('/api/triggers/:triggerId/resume', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const updated = await resumeAgentTrigger(prisma, triggerId)
+    if (!updated) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
+  })
+
+  app.post('/api/triggers/:triggerId/fire', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isTriggerTargetWritableByActor(actorContext, trigger))) {
+      sendApiError(reply, 403, 'FORBIDDEN', 'Trigger target is not writable by this actor')
+      return reply
+    }
+
+    const body = parseInput(FireAgentTriggerBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const dedupeKey =
+      body.dedupeKey?.trim() || parseHeaderValue(request.headers['idempotency-key'])
+    if (!dedupeKey) {
+      sendApiError(
+        reply,
+        400,
+        'IDEMPOTENCY_KEY_REQUIRED',
+        'Manual trigger fire requires a dedupe key or Idempotency-Key header',
+      )
+      return reply
+    }
+
+    if (trigger.agentId) {
+      const invokeDecision = await checkPolicy(prisma, actorContext, 'agent', 'invoke', {
+        agentId: trigger.agentId,
+      })
+      if (!invokeDecision.allowed) {
+        sendApiError(
+          reply,
+          403,
+          'POLICY_DENIED',
+          `Trigger fire denied: ${invokeDecision.reasonCode}`,
+        )
+        return reply
+      }
+    }
+
+    const dispatched = await dispatchAgentTrigger(prisma, {
+      actorContext,
+      dedupeKey,
+      payload: body.payload,
+      prompt: body.prompt,
+      source: body.source ?? 'manual',
+      triggerId,
+    })
+
+    if (dispatched.kind === 'rejected') {
+      if (dispatched.reason === 'agent_not_bound') {
+        sendApiError(reply, 409, 'AGENT_NOT_BOUND', 'Agent must be bound to a channel before firing')
+        return reply
+      }
+      if (dispatched.reason === 'workflow_installation_not_ready') {
+        sendApiError(
+          reply,
+          409,
+          'WORKFLOW_INSTALLATION_NOT_READY',
+          'Workflow installation is not active',
+        )
+        return reply
+      }
+
+      sendApiError(reply, 409, 'TRIGGER_UNAVAILABLE', 'Trigger is not available for execution')
+      return reply
+    }
+
+    return reply.code(202).send(
+      createApiResponse({
+        delivery: AgentTriggerDeliveryRecordSchema.parse(dispatched.delivery),
+        existing: dispatched.existing,
+        runId: dispatched.runId,
+        trigger: AgentTriggerRecordSchema.parse(dispatched.trigger),
+        workflowRunId: dispatched.workflowRunId,
+      }),
+    )
+  })
+
+  app.get('/api/triggers/:triggerId/history', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const trigger = await getAgentTrigger(prisma, triggerId)
+    if (!trigger) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+
+    const rawLimit = (request.query as { limit?: string }).limit
+    const parsedLimit = rawLimit === undefined ? 20 : Number.parseInt(rawLimit, 10)
+    if (Number.isNaN(parsedLimit)) {
+      sendApiError(reply, 400, 'INVALID_LIMIT', 'limit must be an integer')
+      return reply
+    }
+    const limit = Math.min(Math.max(parsedLimit, 1), 100)
+
+    const deliveries = await listAgentTriggerDeliveries(prisma, triggerId, limit)
+    return createApiResponse(AgentTriggerDeliveryRecordSchema.array().parse(deliveries))
+  })
+
+  app.get('/api/triggers', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const triggers = await listOrganizationTriggers(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
+  app.get('/api/triggers/scheduled', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const rawLimit = (request.query as { limit?: string }).limit
+    const parsedLimit = rawLimit === undefined ? 50 : Number.parseInt(rawLimit, 10)
+    if (Number.isNaN(parsedLimit)) {
+      sendApiError(reply, 400, 'INVALID_LIMIT', 'limit must be an integer')
+      return reply
+    }
+
+    const triggers = await listScheduledTriggers(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      limit: Math.min(Math.max(parsedLimit, 1), 200),
+    })
+    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
+  app.get('/api/triggers/upcoming', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const rawLimit = (request.query as { limit?: string }).limit
+    const parsedLimit = rawLimit === undefined ? 50 : Number.parseInt(rawLimit, 10)
+    if (Number.isNaN(parsedLimit)) {
+      sendApiError(reply, 400, 'INVALID_LIMIT', 'limit must be an integer')
+      return reply
+    }
+
+    const triggers = await listScheduledTriggers(prisma, {
+      dueBefore: new Date(),
+      organizationId: actorContext.tenant.organizationId,
+      limit: Math.min(Math.max(parsedLimit, 1), 200),
+    })
+    return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
+  })
+
+  // Inbound intake (public webhook + authenticated event publish) is split into
+  // its own module to keep this file under the 500-line cap. Registered last to
+  // preserve the original route ordering.
+  registerTriggerIntakeRoutes(app, deps)
+}

@@ -1,0 +1,118 @@
+import type { FastifyInstance } from 'fastify'
+
+import { createApiResponse, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
+import type { RouteDeps } from './types.js'
+
+export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
+
+  app.get('/api/teams', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const query = request.query as { projectId?: string }
+    const where: Record<string, unknown> = {
+      project: { organizationId: actorContext.tenant.organizationId },
+      systemManaged: false,
+    }
+    if (query.projectId) {
+      where['projectId'] = query.projectId
+    }
+
+    const teams = await prisma.team.findMany({
+      where,
+      include: { members: { select: { userId: true, role: true } } },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    return createApiResponse(teams.map((t) => ({
+      id: t.id,
+      name: t.name,
+      projectId: t.projectId,
+      memberCount: t.members.length,
+      createdAt: t.createdAt.toISOString(),
+    })))
+  })
+
+  app.post('/api/teams', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const body = request.body as { name?: string; projectId?: string } | undefined
+    if (!body?.name || !body?.projectId) {
+      sendApiError(reply, 400, 'INVALID_INPUT', 'name and projectId are required')
+      return reply
+    }
+
+    const project = await prisma.project.findUnique({ where: { id: body.projectId } })
+    if (!project || project.organizationId !== actorContext.tenant.organizationId) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    const team = await prisma.team.create({
+      data: {
+        name: body.name,
+        projectId: body.projectId,
+        members: {
+          create: { userId: actorContext.actor.actorId, role: 'owner' },
+        },
+      },
+    })
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'team.created' as Parameters<typeof emitAuditEvent>[1]['action'],
+      resourceType: 'team',
+      resourceId: team.id,
+      outcome: 'success',
+    })
+
+    return reply.code(201).send(createApiResponse({
+      id: team.id,
+      name: team.name,
+      projectId: team.projectId,
+      createdAt: team.createdAt.toISOString(),
+    }))
+  })
+
+  app.post('/api/teams/:teamId/members', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { teamId } = request.params as { teamId: string }
+    const body = request.body as { userId?: string; role?: string } | undefined
+    if (!body?.userId) {
+      sendApiError(reply, 400, 'USER_ID_REQUIRED', 'userId is required')
+      return reply
+    }
+
+    const role = resolveMembershipRole(body.role)
+    if (!role) {
+      sendApiError(reply, 400, 'INVALID_ROLE', `role must be one of: ${MEMBERSHIP_ROLES.join(', ')}`)
+      return reply
+    }
+
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: { project: true },
+    })
+    if (!team || team.project.organizationId !== actorContext.tenant.organizationId) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
+      return reply
+    }
+
+    await prisma.teamMember.create({
+      data: {
+        teamId,
+        userId: body.userId,
+        role,
+      },
+    })
+
+    return reply.code(201).send(createApiResponse({ ok: true }))
+  })
+}
