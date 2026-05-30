@@ -933,6 +933,9 @@ model AgentTrigger {
   targetThreadId         String?                @map("target_thread_id") @db.Uuid
   schedulerClaimId       String?                @map("scheduler_claim_id") @db.Uuid
   schedulerClaimedAt     DateTime?              @map("scheduler_claimed_at")
+  // Inbound webhook HMAC signing secret (sp-webhook). When set, the webhook
+  // intake endpoint requires a valid X-Nessie-Signature instead of bearer key.
+  signingSecret          String?                @map("signing_secret")
   lastFiredAt            DateTime?              @map("last_fired_at")
   nextRunAt              DateTime?              @map("next_run_at")
   createdAt              DateTime               @default(now()) @map("created_at")
@@ -967,6 +970,10 @@ model AgentTriggerDelivery {
   payload      Json                       @default("{}")
   errorMessage String?                    @map("error_message")
   deliveredAt  DateTime?                  @map("delivered_at")
+  // Delivery retry/backoff (sp-webhook). A `failed` delivery with
+  // retryCount < max and nextRetryAt <= now is retryable by the worker poller.
+  retryCount   Int                        @default(0) @map("retry_count")
+  nextRetryAt  DateTime?                  @map("next_retry_at")
   createdAt    DateTime                   @default(now()) @map("created_at")
   trigger      AgentTrigger               @relation(fields: [triggerId], references: [id], onDelete: Cascade)
   run          Run?                       @relation("RunTriggerDelivery")
@@ -975,6 +982,8 @@ model AgentTriggerDelivery {
   @@unique([triggerId, dedupeKey])
   @@index([triggerId, createdAt])
   @@index([status, createdAt])
+  // Retry poller scan: find failed deliveries due for re-attempt (sp-webhook).
+  @@index([status, nextRetryAt])
   @@map("agent_trigger_deliveries")
 }
 

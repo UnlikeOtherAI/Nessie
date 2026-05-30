@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { computeNextCronRunAt, parseIntervalMinutes } from '@nessie/runtime'
+import {
+  MAX_DELIVERY_RETRIES,
+  computeNextCronRunAt,
+  computeNextRetryAt,
+  parseIntervalMinutes,
+} from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
@@ -245,6 +250,64 @@ export const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
   }
 
   return {}
+}
+
+// sp-webhook: persist a retryable `failed` delivery after a dispatch failure so
+// the worker retry poller can re-attempt with backoff. Mirrors the worker's
+// recordDeliveryFailure; both share the backoff policy from @nessie/runtime.
+export const recordTriggerDeliveryFailure = async (
+  prisma: PrismaClient,
+  input: {
+    dedupeKey?: string
+    error: unknown
+    payload: Prisma.InputJsonValue
+    source: string
+    triggerId: string
+  },
+): Promise<void> => {
+  const errorMessage = input.error instanceof Error ? input.error.message : String(input.error)
+  const nextRetryAt = computeNextRetryAt(0)
+  const retryCount = Math.min(1, MAX_DELIVERY_RETRIES)
+
+  if (input.dedupeKey) {
+    await prisma.agentTriggerDelivery.upsert({
+      where: {
+        triggerId_dedupeKey: {
+          triggerId: input.triggerId,
+          dedupeKey: input.dedupeKey,
+        },
+      },
+      create: {
+        triggerId: input.triggerId,
+        dedupeKey: input.dedupeKey,
+        payload: input.payload,
+        source: input.source,
+        status: 'failed',
+        errorMessage,
+        retryCount,
+        nextRetryAt,
+      },
+      update: {
+        status: 'failed',
+        errorMessage,
+        retryCount,
+        nextRetryAt,
+      },
+    })
+    return
+  }
+
+  await prisma.agentTriggerDelivery.create({
+    data: {
+      triggerId: input.triggerId,
+      payload: input.payload,
+      source: input.source,
+      status: 'failed',
+      errorMessage,
+      retryCount,
+      nextRetryAt,
+    },
+  })
 }
 
 export const isTriggerDeliveryDedupeConflict = (

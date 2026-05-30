@@ -16,10 +16,52 @@ import {
   type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
 import { enqueueQueueJob, enqueueRunExecution } from '../queue.js'
+import { recordDeliveryFailure } from './trigger-delivery-retry.js'
 
 // Shared "fire a run from a trigger" primitives used by both the scheduler sweep
 // and event dispatch. Kept separate from the scheduling/claim logic so the two
 // callers depend on the run-queueing seam, not on each other.
+
+// sp-webhook: a retry attempt (driven by the delivery-retry poller) reuses an
+// existing `failed` delivery row instead of creating a new one, so the
+// (trigger_id, dedupe_key) uniqueness holds and backoff state accumulates.
+type RetryContext = { reuseDeliveryId?: string; retryCount?: number }
+
+// Create the delivery for a fresh fire, or reuse+reset the row when retrying.
+const upsertDelivery = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    dedupeKey?: string
+    payload: Prisma.InputJsonValue
+    retry?: RetryContext
+    source: string
+    triggerId: string
+  },
+): Promise<{ id: string }> => {
+  if (input.retry?.reuseDeliveryId) {
+    return tx.agentTriggerDelivery.update({
+      where: { id: input.retry.reuseDeliveryId },
+      data: {
+        payload: input.payload,
+        source: input.source,
+        status: 'pending',
+        errorMessage: null,
+      },
+      select: { id: true },
+    })
+  }
+
+  return tx.agentTriggerDelivery.create({
+    data: {
+      dedupeKey: input.dedupeKey,
+      payload: input.payload,
+      source: input.source,
+      status: 'pending',
+      triggerId: input.triggerId,
+    },
+    select: { id: true },
+  })
+}
 
 const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
   if (payload === null) {
@@ -84,6 +126,7 @@ export const queueWorkflowTriggerRun = async (
   input: {
     dedupeKey?: string
     payload: unknown
+    retry?: RetryContext
     source: string
     trigger: {
       id: string
@@ -145,17 +188,15 @@ export const queueWorkflowTriggerRun = async (
     },
   }
 
+  const normalizedPayload = normalizePayload(input.payload)
   try {
     await prisma.$transaction(async (tx) => {
-      const delivery = await tx.agentTriggerDelivery.create({
-        data: {
-          dedupeKey: input.dedupeKey,
-          payload: normalizePayload(input.payload),
-          source: input.source,
-          status: 'pending',
-          triggerId: input.trigger.id,
-        },
-        select: { id: true },
+      const delivery = await upsertDelivery(tx, {
+        dedupeKey: input.dedupeKey,
+        payload: normalizedPayload,
+        retry: input.retry,
+        source: input.source,
+        triggerId: input.trigger.id,
       })
 
       const workflowRun = await tx.workflowRun.create({
@@ -206,6 +247,17 @@ export const queueWorkflowTriggerRun = async (
     ) {
       return
     }
+    // sp-webhook: persist a retryable failed delivery (outside the rolled-back
+    // tx) so the retry poller can re-attempt with backoff.
+    await recordDeliveryFailure(prisma, {
+      dedupeKey: input.dedupeKey,
+      error,
+      existingDeliveryId: input.retry?.reuseDeliveryId,
+      payload: normalizedPayload,
+      retryCount: input.retry?.retryCount ?? 0,
+      source: input.source,
+      triggerId: input.trigger.id,
+    })
     throw error
   }
 }
@@ -215,6 +267,7 @@ export const queueTriggerRun = async (
   input: {
     dedupeKey?: string
     payload: unknown
+    retry?: RetryContext
     source: string
     trigger: {
       agent: {
@@ -295,16 +348,15 @@ export const queueTriggerRun = async (
     triggerType: input.trigger.type,
   })
 
+  const normalizedPayload = normalizePayload(input.payload)
   try {
     await prisma.$transaction(async (tx) => {
-      const delivery = await tx.agentTriggerDelivery.create({
-        data: {
-          dedupeKey: input.dedupeKey,
-          payload: normalizePayload(input.payload),
-          source: input.source,
-          status: 'pending',
-          triggerId: input.trigger.id,
-        },
+      const delivery = await upsertDelivery(tx, {
+        dedupeKey: input.dedupeKey,
+        payload: normalizedPayload,
+        retry: input.retry,
+        source: input.source,
+        triggerId: input.trigger.id,
       })
 
       const message = await tx.message.create({
@@ -385,6 +437,17 @@ export const queueTriggerRun = async (
     ) {
       return
     }
+    // sp-webhook: persist a retryable failed delivery (outside the rolled-back
+    // tx) so the retry poller can re-attempt with backoff.
+    await recordDeliveryFailure(prisma, {
+      dedupeKey: input.dedupeKey,
+      error,
+      existingDeliveryId: input.retry?.reuseDeliveryId,
+      payload: normalizedPayload,
+      retryCount: input.retry?.retryCount ?? 0,
+      source: input.source,
+      triggerId: input.trigger.id,
+    })
     throw error
   }
 }

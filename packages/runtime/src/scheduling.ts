@@ -192,3 +192,23 @@ export const buildTriggerPrompt = (input: {
 
   return `${prefix}\n\nPayload:\n${JSON.stringify(input.payload, null, 2)}`
 }
+
+// --- sp-webhook: trigger-delivery retry/backoff policy -----------------------
+// Single source of truth for delivery retry math, shared by the API dispatch
+// path (webhook intake) and the worker retry poller so the two never drift.
+// Exponential backoff: BASE * 2^retryCount, capped at MAX_BACKOFF. After
+// MAX_DELIVERY_RETRIES attempts a delivery is exhausted (nextRetryAt cleared).
+export const DELIVERY_RETRY_BASE_MS = 30_000
+export const DELIVERY_RETRY_MAX_BACKOFF_MS = 30 * 60_000
+export const MAX_DELIVERY_RETRIES = 5
+
+export const computeNextRetryAt = (
+  retryCount: number,
+  from: Date = new Date(),
+): Date => {
+  const backoff = Math.min(
+    DELIVERY_RETRY_BASE_MS * 2 ** Math.max(0, retryCount),
+    DELIVERY_RETRY_MAX_BACKOFF_MS,
+  )
+  return new Date(from.getTime() + backoff)
+}

@@ -23,7 +23,12 @@ import {
   terminateExecutionEnvironmentInstance,
 } from './control/execution.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
-import { dispatchEventTriggers, sweepDueScheduledTriggers } from './control/triggers.js'
+import {
+  dispatchEventTriggers,
+  reattemptTriggerDelivery,
+  retryFailedTriggerDeliveries,
+  sweepDueScheduledTriggers,
+} from './control/triggers.js'
 import { executeWorkflowRun } from './control/workflows.js'
 import { executeRunJob } from './run/execute.js'
 import { executeOrchestrateDecideJob } from './run/orchestrate.js'
@@ -170,6 +175,25 @@ export const startWorker = async (
     }
   }, 15_000)
 
+  // sp-webhook: re-attempt failed trigger deliveries that are due for retry.
+  let deliveryRetryInFlight = false
+  const deliveryRetryInterval = setInterval(async () => {
+    if (deliveryRetryInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    deliveryRetryInFlight = true
+    try {
+      await retryFailedTriggerDeliveries(prisma, reattemptTriggerDelivery, {
+        limit: 10,
+      })
+    } catch (error) {
+      console.error('[worker.trigger-retry] failed', error)
+    } finally {
+      deliveryRetryInFlight = false
+    }
+  }, 15_000)
+
   let mailboxSweepInFlight = false
   const mailboxSweepInterval = setInterval(async () => {
     if (mailboxSweepInFlight || abortController.signal.aborted) {
@@ -239,6 +263,7 @@ export const startWorker = async (
   const stop = async () => {
     abortController.abort()
     clearInterval(triggerSweepInterval)
+    clearInterval(deliveryRetryInterval)
     clearInterval(mailboxSweepInterval)
     clearInterval(runnerHeartbeatInterval)
     clearInterval(executionLeaseSweepInterval)

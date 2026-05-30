@@ -1064,6 +1064,26 @@ Each workflow and agent has exactly one trigger:
 | `voice` | Voice command pattern match |
 | `on-demand` | @mention or direct message (agent-level trigger only) |
 
+#### Inbound webhook intake (agent-level webhook triggers)
+
+Agent-level `webhook` triggers receive inbound calls on the public API:
+
+- **Bearer-key intake** — `POST /api/triggers/webhook`. The request carries the
+  trigger's `apiKey` via `Authorization: Bearer <key>` or `X-Nessie-Trigger-Key`;
+  the server matches it (timing-safe) against active `webhook` triggers. Triggers
+  that have a `signingSecret` set are excluded from this path.
+- **HMAC-signed intake** — `POST /api/triggers/{triggerId}/webhook`. Used when the
+  trigger has a `signingSecret`. The caller sends `X-Nessie-Signature` containing
+  the hex HMAC-SHA256 of the raw request body (a `sha256=` prefix is accepted,
+  GitHub-style); the server verifies it timing-safe against the trigger's secret
+  and rejects mismatches/missing signatures with `401`.
+
+Both paths dedupe on `X-Nessie-Delivery-Id` / `X-Github-Delivery` / `X-Request-Id`.
+A dispatch that fails transiently is recorded as a `failed` delivery with
+`retry_count` / `next_retry_at`; the worker retry poller re-attempts due
+deliveries with exponential backoff (30s × 2^n, capped at 30 min, up to 5 retries)
+before exhausting them.
+
 ### Human Input suspension model
 
 When a Human Input node is reached:
