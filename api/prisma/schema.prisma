@@ -7,6 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// NOTE: This is a single ~2k-line schema by design. Splitting it across files
+// (prismaSchemaFolder) is DEFERRED: it is still a Prisma preview feature and
+// enabling it now would destabilize migrations. Revisit once it is GA.
+
 enum AgentStatus {
   idle
   thinking
@@ -178,6 +182,16 @@ enum MessageRole {
   user
   assistant
   system
+}
+
+// Membership role vocabulary shared by organization/project/team/channel
+// members. Route-side validation lives in api/src/index.ts (owned by another
+// agent); this enum enforces the same vocabulary at the database layer.
+enum MemberRole {
+  owner
+  admin
+  member
+  viewer
 }
 
 // ─── Phase 2 Enums ──────────────────────────────────────────────────────────
@@ -501,21 +515,39 @@ model User {
   assignedTasks       Task[]               @relation("TaskAssignee")
   ownedTasks          Task[]               @relation("TaskOwner")
   createdTasks        Task[]               @relation("TaskCreatedBy")
+  mcpCatalogOwned     McpCatalogEntry[]    @relation("McpCatalogOwner")
+  mcpCatalogReviewed  McpCatalogEntry[]    @relation("McpCatalogReviewer")
 
   @@map("users")
 }
 
 model Organization {
-  id        String               @id @default(uuid()) @db.Uuid
-  name      String
-  createdAt DateTime             @default(now()) @map("created_at")
-  updatedAt DateTime             @updatedAt @map("updated_at")
-  members   OrganizationMember[]
-  projects  Project[]
-  channels  Channel[]
-  thoughts  Thought[]
-  tasks     Task[]
-  budget    OrganizationBudget?
+  id               String               @id @default(uuid()) @db.Uuid
+  name             String
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  members          OrganizationMember[]
+  projects         Project[]
+  channels         Channel[]
+  thoughts         Thought[]
+  tasks            Task[]
+  budgets          Budget[]
+  plans            Plan[]
+  approvalRequests ApprovalRequest[]
+  resourceLocks    ResourceLock[]
+
+  // Inference control-plane back-relations. The org FKs on these tables were
+  // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
+  // by 20260530170100_reinstate_inference_org_fkeys.
+  inferenceProviders           InferenceProvider[]
+  inferenceModels              InferenceModel[]
+  inferenceCredentialBindings  InferenceCredentialBinding[]
+  inferenceCapabilityOverrides InferenceCapabilityOverride[]
+  inferenceRoutingProfiles     InferenceRoutingProfile[]
+  inferenceEvalSuites          InferenceEvalSuite[]
+  inferenceEvalRuns            InferenceEvalRun[]
+  toolMediatorProfiles         ToolMediatorProfile[]
+  mcpCatalogEntries            McpCatalogEntry[]
 
   @@map("organizations")
 }
@@ -524,7 +556,7 @@ model OrganizationMember {
   id             String       @id @default(uuid()) @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
   userId         String       @map("user_id") @db.Uuid
-  role           String       @default("member")
+  role           MemberRole   @default(member)
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -534,53 +566,57 @@ model OrganizationMember {
 }
 
 model Project {
-  id             String          @id @default(uuid()) @db.Uuid
-  name           String
-  organizationId String          @map("organization_id") @db.Uuid
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  members        ProjectMember[]
-  teams          Team[]
+  id               String            @id @default(uuid()) @db.Uuid
+  name             String
+  organizationId   String            @map("organization_id") @db.Uuid
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members          ProjectMember[]
+  teams            Team[]
+  plans            Plan[]
+  approvalRequests ApprovalRequest[]
 
   @@map("projects")
 }
 
 model ProjectMember {
-  id        String   @id @default(uuid()) @db.Uuid
-  projectId String   @map("project_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  role      String   @default("member")
-  createdAt DateTime @default(now()) @map("created_at")
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String     @id @default(uuid()) @db.Uuid
+  projectId String     @map("project_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  role      MemberRole @default(member)
+  createdAt DateTime   @default(now()) @map("created_at")
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
   @@map("project_members")
 }
 
 model Team {
-  id            String       @id @default(uuid()) @db.Uuid
-  name          String
-  projectId     String       @map("project_id") @db.Uuid
-  systemManaged Boolean      @default(false) @map("system_managed")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
-  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  members       TeamMember[]
-  channels      Channel[]
+  id               String            @id @default(uuid()) @db.Uuid
+  name             String
+  projectId        String            @map("project_id") @db.Uuid
+  systemManaged    Boolean           @default(false) @map("system_managed")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members          TeamMember[]
+  channels         Channel[]
+  plans            Plan[]
+  approvalRequests ApprovalRequest[]
 
   @@map("teams")
 }
 
 model TeamMember {
-  id        String   @id @default(uuid()) @db.Uuid
-  teamId    String   @map("team_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  role      String   @default("member")
-  createdAt DateTime @default(now()) @map("created_at")
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String     @id @default(uuid()) @db.Uuid
+  teamId    String     @map("team_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  role      MemberRole @default(member)
+  createdAt DateTime   @default(now()) @map("created_at")
+  team      Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
   @@map("team_members")
@@ -604,6 +640,8 @@ model Channel {
   agentBindings     AgentBinding[]
   triggerTargets    AgentTrigger[]     @relation("TriggerTargetChannel")
   threads           Thread[]
+  plans             Plan[]
+  approvalRequests  ApprovalRequest[]
 
   @@index([organizationId, type])
   @@map("channels")
@@ -718,6 +756,8 @@ model Agent {
   model                         String?                        @map("model")
   routingProfileId              String?                        @map("routing_profile_id") @db.Uuid
   parentAgentId                 String?                        @map("parent_agent_id") @db.Uuid
+  /// Intentionally nullable and without an Organization FK: system / personal-
+  /// assistant agents may be global (no owning org). Do not "fix" to required.
   organizationId                String?                        @map("organization_id") @db.Uuid
   projectId                     String?                        @map("project_id") @db.Uuid
   teamId                        String?                        @map("team_id") @db.Uuid
@@ -733,6 +773,9 @@ model Agent {
   triggers                      AgentTrigger[]
   tasks                         Task[]
   approvalRequests              ApprovalRequest[]
+  plans                         Plan[]
+  resourceLocks                 ResourceLock[]
+  toolGrants                    ToolGrant[]
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowStepAssignedAgent")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
 
@@ -762,6 +805,7 @@ model InferenceProvider {
   approvedAt                DateTime?                     @map("approved_at")
   createdAt                 DateTime                      @default(now()) @map("created_at")
   updatedAt                 DateTime                      @updatedAt @map("updated_at")
+  organization              Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   activeCredentialBinding   InferenceCredentialBinding?   @relation("ProviderActiveCredentialBinding", fields: [activeCredentialBindingId], references: [id], onDelete: SetNull)
   credentialBindings        InferenceCredentialBinding[]  @relation("ProviderCredentialBindings")
   models                    InferenceModel[]
@@ -784,6 +828,7 @@ model InferenceCredentialBinding {
   revokedAt         DateTime?          @map("revoked_at")
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   provider          InferenceProvider  @relation("ProviderCredentialBindings", fields: [providerId], references: [id], onDelete: Cascade)
   activeForProvider InferenceProvider? @relation("ProviderActiveCredentialBinding")
 
@@ -810,6 +855,7 @@ model InferenceModel {
   approvedAt         DateTime?                 @map("approved_at")
   createdAt          DateTime                  @default(now()) @map("created_at")
   updatedAt          DateTime                  @updatedAt @map("updated_at")
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   provider           InferenceProvider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
   tokenLedgerEvents  TokenLedgerEvent[]
 
@@ -832,6 +878,7 @@ model InferenceCapabilityOverride {
   approvedByActorId String?                  @map("approved_by_actor_id")
   approvedAt        DateTime?                @map("approved_at")
   updatedAt         DateTime                 @updatedAt @map("updated_at")
+  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   provider          InferenceProvider        @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@unique([providerId, model])
@@ -854,6 +901,7 @@ model ToolMediatorProfile {
   approvedAt         DateTime?                 @map("approved_at")
   createdAt          DateTime                  @default(now()) @map("created_at")
   updatedAt          DateTime                  @updatedAt @map("updated_at")
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   routingProfiles    InferenceRoutingProfile[]
 
   @@unique([organizationId, label])
@@ -878,6 +926,7 @@ model InferenceRoutingProfile {
   approvedAt            DateTime?                @map("approved_at")
   createdAt             DateTime                 @default(now()) @map("created_at")
   updatedAt             DateTime                 @updatedAt @map("updated_at")
+  organization          Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   toolMediatorProfile   ToolMediatorProfile?     @relation(fields: [toolMediatorProfileId], references: [id], onDelete: SetNull)
   agents                Agent[]
   targetEvalSuites      InferenceEvalSuite[]     @relation("EvalSuiteTargetRoute")
@@ -905,6 +954,7 @@ model InferenceEvalSuite {
   approvedAt             DateTime?                @map("approved_at")
   createdAt              DateTime                 @default(now()) @map("created_at")
   updatedAt              DateTime                 @updatedAt @map("updated_at")
+  organization           Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   targetRoutingProfile   InferenceRoutingProfile  @relation("EvalSuiteTargetRoute", fields: [targetRoutingProfileId], references: [id], onDelete: Restrict)
   judgeRoutingProfile    InferenceRoutingProfile? @relation("EvalSuiteJudgeRoute", fields: [judgeRoutingProfileId], references: [id], onDelete: SetNull)
   runs                   InferenceEvalRun[]
@@ -930,6 +980,7 @@ model InferenceEvalRun {
   judgeProfileSnapshot  Json?               @map("judge_profile_snapshot_json")
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   evalSuite             InferenceEvalSuite  @relation(fields: [evalSuiteId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status, startedAt(sort: Desc)])
@@ -966,6 +1017,9 @@ model Run {
   triggerDelivery               AgentTriggerDelivery?          @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
   tasks                         Task[]
   toolCalls                     ToolCall[]
+  plans                         Plan[]
+  approvalRequests              ApprovalRequest[]
+  resourceLocks                 ResourceLock[]
   workflowRuns                  WorkflowRun[]                  @relation("WorkflowParentRun")
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowAgentRun")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
@@ -1008,7 +1062,9 @@ model AgentTrigger {
   @@index([workflowInstallationId, enabled, status])
   @@index([targetChannelId])
   @@index([targetThreadId])
-  @@index([type, enabled, status, nextRunAt])
+  // The 4-col (type, enabled, status, nextRunAt) index was dropped in
+  // 20260530170400_trigger_index_prune — it is a strict prefix of the 5-col
+  // index below, which already serves every query the shorter one could.
   @@index([type, enabled, status, nextRunAt, schedulerClaimedAt])
   @@map("agent_triggers")
 }
@@ -1034,21 +1090,28 @@ model AgentTriggerDelivery {
 }
 
 model Plan {
-  id                 String        @id @default(uuid()) @db.Uuid
-  organizationId     String        @map("organization_id") @db.Uuid
-  projectId          String?       @map("project_id") @db.Uuid
-  teamId             String?       @map("team_id") @db.Uuid
-  channelId          String?       @map("channel_id") @db.Uuid
-  runId              String?       @map("run_id") @db.Uuid
-  agentId            String?       @map("agent_id") @db.Uuid
+  id                 String         @id @default(uuid()) @db.Uuid
+  organizationId     String         @map("organization_id") @db.Uuid
+  projectId          String?        @map("project_id") @db.Uuid
+  teamId             String?        @map("team_id") @db.Uuid
+  channelId          String?        @map("channel_id") @db.Uuid
+  runId              String?        @map("run_id") @db.Uuid
+  agentId            String?        @map("agent_id") @db.Uuid
   goal               String
   summary            String?
-  status             PlanStatus    @default(draft)
-  createdByActorType String        @map("created_by_actor_type")
-  createdByActorId   String        @map("created_by_actor_id")
-  createdAt          DateTime      @default(now()) @map("created_at")
-  updatedAt          DateTime      @updatedAt @map("updated_at")
+  status             PlanStatus     @default(draft)
+  createdByActorType String         @map("created_by_actor_type")
+  createdByActorId   String         @map("created_by_actor_id")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project            Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team               Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  channel            Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  run                Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent              Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
   workflowRuns       WorkflowRun[]
+  resourceLocks      ResourceLock[]
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
@@ -1107,6 +1170,11 @@ model AgentMailboxMessage {
   @@index([planId, createdAt])
   @@index([workflowRunId, createdAt])
   @@index([threadId, status, visibleAt])
+  /// The worker dispatch poll filters `status='queued' AND to_agent_id IS NOT
+  /// NULL` ordered by (visible_at, created_at). That is served by a partial
+  /// index Prisma cannot express natively; it lives in raw SQL in migration
+  /// 20260530170300_mailbox_dispatch_partial_index
+  /// (idx_agent_mailbox_messages_dispatch).
   @@map("agent_mailbox_messages")
 }
 
@@ -1368,15 +1436,15 @@ model ExecutionUsageLedger {
   workflowStepRunId String?                      @map("workflow_step_run_id") @db.Uuid
   runId             String?                      @map("run_id") @db.Uuid
   agentId           String?                      @map("agent_id") @db.Uuid
-  actorType         String                       @map("actor_type")
+  actorType         AuditActorType               @map("actor_type")
   actorId           String                       @map("actor_id")
   meterType         String                       @map("meter_type")
-  quantity          Float
-  unitPrice         Float?                       @map("unit_price")
-  costAmount        Float?                       @map("cost_amount")
+  quantity          Decimal                      @db.Decimal(20, 8)
+  unitPrice         Decimal?                     @map("unit_price") @db.Decimal(20, 8)
+  costAmount        Decimal?                     @map("cost_amount") @db.Decimal(14, 4)
   currency          String?
   metadata          Json                         @default("{}")
-  recordedAt        DateTime                     @default(now()) @map("recorded_at")
+  recordedAt        DateTime                     @default(now()) @map("recorded_at") @db.Timestamptz(6)
   instance          ExecutionEnvironmentInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   template          ExecutionEnvironmentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   workflowRun       WorkflowRun?                 @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
@@ -1399,6 +1467,10 @@ model ResourceLock {
   acquiredAt     DateTime         @default(now()) @map("acquired_at")
   expiresAt      DateTime         @map("expires_at")
   releasedAt     DateTime?        @map("released_at")
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent          Agent            @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  plan           Plan?            @relation(fields: [planId], references: [id], onDelete: SetNull)
+  run            Run?             @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, resourcePath, releasedAt])
   @@index([agentId, releasedAt])
@@ -1483,11 +1555,18 @@ model McpCatalogEntry {
   reviewedAt             DateTime?            @map("reviewed_at")
   reviewedBy             String?              @map("reviewed_by") @db.Uuid
   rejectionReason        String?              @map("rejection_reason")
+  /// No FK on `createdBy`: it is NOT NULL, so onDelete:SetNull is impossible and
+  /// onDelete:Restrict would orphan-block legitimate user deletions. Left as a
+  /// bare provenance UUID by design. ownerUserId / reviewedBy (nullable) DO
+  /// carry SetNull FKs.
   createdBy              String               @map("created_by") @db.Uuid
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
 
-  instances McpServerInstance[]
+  organization Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User?               @relation("McpCatalogOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  reviewer     User?               @relation("McpCatalogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  instances    McpServerInstance[]
 
   // Uniqueness is enforced by partial indexes (see migration): public entries
   // are unique on `name` store-wide; private entries are unique per owner. A
@@ -1571,12 +1650,15 @@ model ToolGrant {
   state     ToolGrantState  @default(inherit)
   config    Json            @default("{}")
   source    ToolGrantSource
+  /// roleId is a free-form RBAC role identifier, not a FK: roles are string /
+  /// policy constructs (no Role table exists), so no relation is added here.
   roleId    String?         @map("role_id") @db.Uuid
   agentId   String?         @map("agent_id") @db.Uuid
   createdAt DateTime        @default(now()) @map("created_at")
   updatedAt DateTime        @updatedAt @map("updated_at")
 
-  tool ToolRegistryEntry @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  tool  ToolRegistryEntry @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  agent Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
   @@index([toolId])
   @@index([roleId])
@@ -1628,6 +1710,7 @@ model Task {
   parentTask       Task?             @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
   childTasks       Task[]            @relation("TaskHierarchy")
   events           TaskEvent[]
+  approvalRequests ApprovalRequest[]
   workflowStepRuns WorkflowStepRun[] @relation("WorkflowTask")
 
   @@index([agentId, status])
@@ -1663,8 +1746,11 @@ model ToolCall {
   durationMs    Int?      @map("duration_ms")
   run           Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
 
+  // The only reader (agents.ts buildToolCallTimeline) always filters by runId
+  // (plus agentId) and orders by startedAt — served by [runId, startedAt]. The
+  // standalone [agentId, startedAt] index was unused and dropped in
+  // 20260530170400_trigger_index_prune.
   @@index([runId, startedAt])
-  @@index([agentId, startedAt])
   @@map("tool_calls")
 }
 
@@ -1686,6 +1772,12 @@ model QueueJob {
 
   @@unique([idempotencyKey])
   @@index([status, enqueuedAt])
+  /// Partial poll index `idx_queue_jobs_poll` on (topic, status, locked_until)
+  /// WHERE status IN ('pending','processing') exists in the DB (created in
+  /// 20260408000223_phase1_step1_init). Prisma cannot express partial indexes,
+  /// so it is managed purely in raw SQL; 20260530170500_recreate_queue_poll_index
+  /// recreates it idempotently. Prisma may still report it as drift — this is a
+  /// known limitation, not a missing index.
   @@map("queue_jobs")
 }
 
@@ -1724,29 +1816,35 @@ model PolicyBinding {
 }
 
 model ApprovalRequest {
-  id                String         @id @default(uuid()) @db.Uuid
-  organizationId    String         @map("organization_id") @db.Uuid
-  projectId         String?        @map("project_id") @db.Uuid
-  teamId            String?        @map("team_id") @db.Uuid
-  channelId         String?        @map("channel_id") @db.Uuid
-  taskId            String?        @map("task_id") @db.Uuid
-  runId             String?        @map("run_id") @db.Uuid
-  agentId           String         @map("agent_id") @db.Uuid
-  requesterId       String         @map("requester_id")
-  action            String
-  reason            String
-  context           Json?
-  status            ApprovalStatus @default(pending)
-  resolverId        String?        @map("resolver_id")
-  resolvedAt        DateTime?      @map("resolved_at")
-  resolution        String?
-  resolutionNote    String?        @map("resolution_note")
-  requiredApproverRole String?     @map("required_approver_role")
-  continuationToken String         @map("continuation_token")
-  expiresAt         DateTime       @map("expires_at") @db.Timestamptz(6)
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
-  agent             Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  id                   String         @id @default(uuid()) @db.Uuid
+  organizationId       String         @map("organization_id") @db.Uuid
+  projectId            String?        @map("project_id") @db.Uuid
+  teamId               String?        @map("team_id") @db.Uuid
+  channelId            String?        @map("channel_id") @db.Uuid
+  taskId               String?        @map("task_id") @db.Uuid
+  runId                String?        @map("run_id") @db.Uuid
+  agentId              String         @map("agent_id") @db.Uuid
+  requesterId          String         @map("requester_id")
+  action               String
+  reason               String
+  context              Json?
+  status               ApprovalStatus @default(pending)
+  resolverId           String?        @map("resolver_id")
+  resolvedAt           DateTime?      @map("resolved_at")
+  resolution           String?
+  resolutionNote       String?        @map("resolution_note")
+  requiredApproverRole String?        @map("required_approver_role")
+  continuationToken    String         @map("continuation_token")
+  expiresAt            DateTime       @map("expires_at") @db.Timestamptz(6)
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project              Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  team                 Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  channel              Channel?       @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  task                 Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  run                  Run?           @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status])
   @@index([agentId, status])
@@ -1754,6 +1852,10 @@ model ApprovalRequest {
   @@map("approval_requests")
 }
 
+/// Compliance note: audit_logs INTENTIONALLY has no Organization FK on
+/// organization_id. Audit rows must survive organization deletion for legal /
+/// forensic retention, so org deletes must not cascade them away. Do not add a
+/// FK here.
 model AuditLog {
   id             String         @id @default(uuid()) @db.Uuid
   organizationId String         @map("organization_id") @db.Uuid
@@ -1777,12 +1879,23 @@ model AuditLog {
   @@index([organizationId, action, createdAt(sort: Desc)])
   @@index([organizationId, actorId, createdAt(sort: Desc)])
   @@index([organizationId, resourceType, resourceId])
+  // Serves listAuditLog's resourceType filter + createdAt-desc ordering
+  // (audit.ts): the resourceType/resourceId index above cannot satisfy the sort.
+  @@index([organizationId, resourceType, createdAt(sort: Desc)])
   @@map("audit_logs")
 }
 
+/// Compliance note: token_ledger_events INTENTIONALLY has no Organization FK on
+/// organization_id. Ledger rows must survive organization deletion for billing /
+/// audit retention, so org deletes must not cascade them away. Do not add a FK.
 model TokenLedgerEvent {
   id                    String         @id @default(uuid()) @db.Uuid
   occurredAt            DateTime       @map("occurred_at") @db.Timestamptz(6)
+  /// Stable per-inference idempotency key. The write path
+  /// (worker persistInvocationLedgerEvents) sets this from the inference
+  /// invocation id; a unique constraint + skipDuplicates makes redelivery after
+  /// a crash a no-op instead of double-counting cost. Nullable for legacy rows.
+  inferenceInvocationId String?        @unique @map("inference_invocation_id")
   organizationId        String         @map("organization_id") @db.Uuid
   projectId             String?        @map("project_id") @db.Uuid
   teamId                String?        @map("team_id") @db.Uuid
@@ -1806,14 +1919,14 @@ model TokenLedgerEvent {
   cacheReadTokens       Int?           @map("cache_read_tokens")
   cacheWriteTokens      Int?           @map("cache_write_tokens")
   totalTokens           Int?           @map("total_tokens")
-  providerCostAmount    Float?         @map("provider_cost_amount")
+  providerCostAmount    Decimal?       @map("provider_cost_amount") @db.Decimal(20, 8)
   providerCostCurrency  String?        @map("provider_cost_currency")
   pricingProfileId      String?        @map("pricing_profile_id") @db.Uuid
   pricingSource         PricingSource? @map("pricing_source")
   pricingCurrency       String?        @map("pricing_currency")
-  pricingInputPerM      Float?         @map("pricing_input_per_m")
-  pricingOutputPerM     Float?         @map("pricing_output_per_m")
-  estimatedCostAmount   Float?         @map("estimated_cost_amount")
+  pricingInputPerM      Decimal?       @map("pricing_input_per_m") @db.Decimal(20, 8)
+  pricingOutputPerM     Decimal?       @map("pricing_output_per_m") @db.Decimal(20, 8)
+  estimatedCostAmount   Decimal?       @map("estimated_cost_amount") @db.Decimal(20, 8)
   estimatedCostCurrency String?        @map("estimated_cost_currency")
   metadata              Json?
   inferenceProvider     InferenceProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
@@ -1833,21 +1946,39 @@ enum BudgetMode {
   off
   warn
   enforce
+  unlimited
 }
 
-model OrganizationBudget {
-  id                  String       @id @default(uuid()) @db.Uuid
-  organizationId      String       @unique @map("organization_id") @db.Uuid
-  monthlyCostLimitUsd Float?       @map("monthly_cost_limit_usd")
-  monthlyTokenLimit   Int?         @map("monthly_token_limit")
-  mode                BudgetMode   @default(off)
-  warnThresholdPercent Int         @default(80) @map("warn_threshold_percent")
-  blockHumansWhenOver Boolean      @default(false) @map("block_humans_when_over")
-  createdAt           DateTime     @default(now()) @map("created_at")
-  updatedAt           DateTime     @updatedAt @map("updated_at")
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+enum BudgetScopeType {
+  organization
+  project
+  team
+}
 
-  @@map("organization_budgets")
+enum BudgetPeriod {
+  weekly
+  monthly
+  yearly
+}
+
+model Budget {
+  id                   String          @id @default(uuid()) @db.Uuid
+  organizationId       String          @map("organization_id") @db.Uuid
+  scopeType            BudgetScopeType @map("scope_type")
+  scopeId              String          @map("scope_id") @db.Uuid
+  costLimitUsd         Decimal?        @map("cost_limit_usd") @db.Decimal(14, 4)
+  tokenLimit           Int?            @map("token_limit")
+  mode                 BudgetMode      @default(off)
+  period               BudgetPeriod    @default(monthly)
+  warnThresholdPercent Int             @default(80) @map("warn_threshold_percent")
+  blockHumansWhenOver  Boolean         @default(false) @map("block_humans_when_over")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+  organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([scopeType, scopeId])
+  @@index([organizationId])
+  @@map("budgets")
 }
 
 model ModelPricingProfile {
@@ -1857,18 +1988,23 @@ model ModelPricingProfile {
   modelPattern           String        @map("model_pattern")
   currency               String        @default("USD")
   source                 PricingSource
-  inputPerMillion        Float?        @map("input_per_million")
-  outputPerMillion       Float?        @map("output_per_million")
-  cachedInputPerMillion  Float?        @map("cached_input_per_million")
-  cachedOutputPerMillion Float?        @map("cached_output_per_million")
-  cacheReadPerMillion    Float?        @map("cache_read_per_million")
-  cacheWritePerMillion   Float?        @map("cache_write_per_million")
+  inputPerMillion        Decimal?      @map("input_per_million") @db.Decimal(20, 8)
+  outputPerMillion       Decimal?      @map("output_per_million") @db.Decimal(20, 8)
+  cachedInputPerMillion  Decimal?      @map("cached_input_per_million") @db.Decimal(20, 8)
+  cachedOutputPerMillion Decimal?      @map("cached_output_per_million") @db.Decimal(20, 8)
+  cacheReadPerMillion    Decimal?      @map("cache_read_per_million") @db.Decimal(20, 8)
+  cacheWritePerMillion   Decimal?      @map("cache_write_per_million") @db.Decimal(20, 8)
   effectiveFrom          DateTime      @map("effective_from") @db.Timestamptz(6)
   effectiveTo            DateTime?     @map("effective_to") @db.Timestamptz(6)
   createdAt              DateTime      @default(now()) @map("created_at")
   updatedAt              DateTime      @updatedAt @map("updated_at")
 
   @@index([organizationId, provider, modelPattern])
+  /// At most one ACTIVE profile per (organizationId, provider, modelPattern):
+  /// enforced by partial unique index `model_pricing_profiles_active_unique`
+  /// WHERE effective_to IS NULL (raw SQL, see
+  /// 20260530170600_pricing_profile_active_unique). This makes the active-row
+  /// lookup in findPricingProfile deterministic.
   @@map("model_pricing_profiles")
 }
 

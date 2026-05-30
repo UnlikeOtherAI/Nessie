@@ -1,4 +1,4 @@
-import type { Message, PrismaClient, Thread } from '@prisma/client'
+import type { Message, Prisma, PrismaClient, Thread } from '@prisma/client'
 import { parseAgentId, parseThreadId, parseUserId } from '@nessie/schemas'
 import type { ThreadMessageRecord } from '../contracts.js'
 
@@ -39,6 +39,7 @@ export const findThreadForUser = async (
   prisma: PrismaClient,
   threadId: string,
   userId: string,
+  organizationId: string,
 ): Promise<
   (Thread & {
     channel: {
@@ -53,6 +54,7 @@ export const findThreadForUser = async (
     where: {
       id: threadId,
       channel: {
+        organizationId,
         OR: [
           { visibility: 'public' },
           { members: { some: { userId } } },
@@ -71,26 +73,70 @@ export const findThreadForUser = async (
     },
   })
 
+const DEFAULT_MESSAGE_PAGE_SIZE = 50
+const MAX_MESSAGE_PAGE_SIZE = 200
+
+const parseMessageCursor = (
+  raw: string,
+): { cursorDate: Date; cursorId: string } | null => {
+  const [isoPart, idPart] = raw.split('|')
+  if (!isoPart || !idPart) return null
+  const date = new Date(isoPart)
+  if (Number.isNaN(date.getTime())) return null
+  return { cursorDate: date, cursorId: idPart }
+}
+
+export type ListThreadMessagesPage = {
+  data: ThreadMessageRecord[]
+  meta: {
+    cursor: string | null
+    hasMore: boolean
+  }
+}
+
 export const listThreadMessages = async (
   prisma: PrismaClient,
   threadId: string,
-): Promise<ThreadMessageRecord[]> => {
-  const thread = await prisma.thread.findUnique({
-    where: { id: threadId },
-    select: { id: true },
-  })
+  options: { before?: string; limit?: number } = {},
+): Promise<ListThreadMessagesPage> => {
+  const limit = Math.min(options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE, MAX_MESSAGE_PAGE_SIZE)
 
-  if (!thread) {
-    return []
+  const where: Prisma.MessageWhereInput = { threadId }
+  if (options.before) {
+    const parsed = parseMessageCursor(options.before)
+    if (parsed) {
+      where.AND = [
+        {
+          OR: [
+            { createdAt: { lt: parsed.cursorDate } },
+            { createdAt: parsed.cursorDate, id: { lt: parsed.cursorId } },
+          ],
+        },
+      ]
+    }
   }
 
-  const messages = await prisma.message.findMany({
-    where: { threadId },
-    orderBy: { createdAt: 'asc' },
+  // Keyset pagination over (createdAt, id). We fetch the newest page first
+  // (DESC) so an empty `before` returns the most recent messages, then reverse
+  // to ascending for the response so the UI renders chronologically.
+  const rows = await prisma.message.findMany({
+    where,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit + 1,
     include: { reactions: true },
   })
 
-  return messages.map(mapThreadMessageRecord)
+  const hasMore = rows.length > limit
+  const page = hasMore ? rows.slice(0, limit) : rows
+  const oldest = page.at(-1)
+
+  return {
+    data: page.slice().reverse().map(mapThreadMessageRecord),
+    meta: {
+      cursor: hasMore && oldest ? `${oldest.createdAt.toISOString()}|${oldest.id}` : null,
+      hasMore,
+    },
+  }
 }
 
 export const markThreadRead = async (

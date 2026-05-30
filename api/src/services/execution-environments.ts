@@ -162,7 +162,7 @@ const mapExecutionUsageLedger = (entry: {
   actorType: string
   agentId: string | null
   channelId: string | null
-  costAmount: number | null
+  costAmount: Prisma.Decimal | null
   currency: string | null
   id: string
   instanceId: string
@@ -170,12 +170,12 @@ const mapExecutionUsageLedger = (entry: {
   meterType: string
   organizationId: string
   projectId: string | null
-  quantity: number
+  quantity: Prisma.Decimal
   recordedAt: Date
   runId: string | null
   teamId: string | null
   templateId: string
-  unitPrice: number | null
+  unitPrice: Prisma.Decimal | null
   workflowRunId: string | null
   workflowStepRunId: string | null
 }): ExecutionUsageLedgerRecord => ({
@@ -193,9 +193,9 @@ const mapExecutionUsageLedger = (entry: {
   actorType: entry.actorType,
   actorId: entry.actorId,
   meterType: entry.meterType,
-  quantity: entry.quantity,
-  unitPrice: entry.unitPrice ?? undefined,
-  costAmount: entry.costAmount ?? undefined,
+  quantity: entry.quantity.toNumber(),
+  unitPrice: entry.unitPrice?.toNumber() ?? undefined,
+  costAmount: entry.costAmount?.toNumber() ?? undefined,
   currency: entry.currency ?? undefined,
   metadata: asObject(entry.metadata),
   recordedAt: entry.recordedAt.toISOString(),

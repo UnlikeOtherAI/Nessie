@@ -103,6 +103,7 @@ import {
   OpsHealthResponseSchema,
   ReadinessResponseSchema,
   BudgetStatusResponseSchema,
+  BudgetScopeTypeSchema,
   SetBudgetBodySchema,
   LoginRequestSchema,
   MailboxMessageRecordSchema,
@@ -304,7 +305,7 @@ import {
   transitionTask,
 } from './services/tasks.js'
 import { getOpsHealth, getReadiness } from './services/ops-health.js'
-import { checkBudget, getBudgetStatus, setBudgetConfig } from '@nessie/runtime'
+import { checkBudget, deleteBudget, listBudgetStatuses, setBudgetConfig } from '@nessie/runtime'
 import {
   createPricingProfile,
   deletePricingProfile,
@@ -511,6 +512,21 @@ const requireOwner = (
 
   sendApiError(reply, 403, 'FORBIDDEN', 'Owner access required')
   return false
+}
+
+const MEMBERSHIP_ROLES = ['owner', 'admin', 'member', 'viewer'] as const
+type MembershipRole = (typeof MEMBERSHIP_ROLES)[number]
+
+// Validate a client-supplied membership role against the allowed vocabulary,
+// defaulting to 'member' when omitted. Returns null for an unknown role so the
+// route can surface a 400 instead of persisting an arbitrary string.
+const resolveMembershipRole = (role: string | undefined): MembershipRole | null => {
+  if (role === undefined) {
+    return 'member'
+  }
+  return (MEMBERSHIP_ROLES as readonly string[]).includes(role)
+    ? (role as MembershipRole)
+    : null
 }
 
 const requireUserActor = (
@@ -1818,7 +1834,11 @@ export const buildApp = async () => {
       return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(group)))
     }
 
-    await addMemberToChannel(prisma, channelId, body.userId)
+    const added = await addMemberToChannel(prisma, channelId, body.userId)
+    if (!added) {
+      sendApiError(reply, 403, 'USER_NOT_IN_ORGANIZATION', 'Target user is not a member of this organization')
+      return reply
+    }
     return reply.code(204).send()
   })
 
@@ -4038,6 +4058,12 @@ export const buildApp = async () => {
       return reply
     }
 
+    const role = resolveMembershipRole(body.role)
+    if (!role) {
+      sendApiError(reply, 400, 'INVALID_ROLE', `role must be one of: ${MEMBERSHIP_ROLES.join(', ')}`)
+      return reply
+    }
+
     try {
       const passwordHash = await hashPassword(body.password)
       const user = await createUserForOrganization(prisma, {
@@ -4049,7 +4075,7 @@ export const buildApp = async () => {
         projectId:
           actorContext.tenant.projectId ??
           '00000000-0000-4000-8000-000000000002',
-        role: body.role ?? 'member',
+        role,
         teamId:
           actorContext.tenant.teamId ??
           actorContext.actionContext.teamId ??
@@ -4182,6 +4208,12 @@ export const buildApp = async () => {
       return reply
     }
 
+    const role = resolveMembershipRole(body.role)
+    if (!role) {
+      sendApiError(reply, 400, 'INVALID_ROLE', `role must be one of: ${MEMBERSHIP_ROLES.join(', ')}`)
+      return reply
+    }
+
     const project = await prisma.project.findUnique({ where: { id: projectId } })
     if (!project || project.organizationId !== actorContext.tenant.organizationId) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
@@ -4192,7 +4224,7 @@ export const buildApp = async () => {
       data: {
         projectId,
         userId: body.userId,
-        role: body.role ?? 'member',
+        role,
       },
     })
 
@@ -4284,6 +4316,12 @@ export const buildApp = async () => {
       return reply
     }
 
+    const role = resolveMembershipRole(body.role)
+    if (!role) {
+      sendApiError(reply, 400, 'INVALID_ROLE', `role must be one of: ${MEMBERSHIP_ROLES.join(', ')}`)
+      return reply
+    }
+
     const team = await prisma.team.findUnique({
       where: { id: teamId },
       include: { project: true },
@@ -4297,7 +4335,7 @@ export const buildApp = async () => {
       data: {
         teamId,
         userId: body.userId,
-        role: body.role ?? 'member',
+        role,
       },
     })
 
@@ -4403,14 +4441,26 @@ export const buildApp = async () => {
     }
 
     const { threadId } = request.params as { threadId: string }
-    const thread = await findThreadForUser(prisma, threadId, actorContext.actor.actorId)
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
     if (!thread) {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
       return reply
     }
 
-    const messages = await listThreadMessages(prisma, thread.id)
-    return createApiResponse(ThreadMessageRecordSchema.array().parse(messages))
+    const query = request.query as { before?: string; limit?: string }
+    const page = await listThreadMessages(prisma, thread.id, {
+      before: query.before,
+      limit: query.limit ? parseInt(query.limit, 10) : undefined,
+    })
+    return createApiResponse(
+      ThreadMessageRecordSchema.array().parse(page.data),
+      page.meta,
+    )
   })
 
   app.post('/api/threads/:threadId/messages', async (request, reply) => {
@@ -4449,7 +4499,12 @@ export const buildApp = async () => {
     }
 
     const { threadId } = request.params as { threadId: string }
-    const thread = await findThreadForUser(prisma, threadId, actorContext.actor.actorId)
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
     if (!thread) {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
       return reply
@@ -4573,7 +4628,12 @@ export const buildApp = async () => {
     }
 
     const { threadId } = request.params as { threadId: string }
-    const thread = await findThreadForUser(prisma, threadId, actorContext.actor.actorId)
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
     if (!thread) {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
       return reply
@@ -4594,7 +4654,12 @@ export const buildApp = async () => {
     }
 
     const { threadId, messageId } = request.params as { threadId: string; messageId: string }
-    const thread = await findThreadForUser(prisma, threadId, actorContext.actor.actorId)
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
     if (!thread) {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
       return reply
@@ -4634,7 +4699,12 @@ export const buildApp = async () => {
     }
 
     const { threadId } = request.params as { threadId: string }
-    const thread = await findThreadForUser(prisma, threadId, actorContext.actor.actorId)
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
     if (!thread) {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
       return reply
@@ -5157,9 +5227,15 @@ export const buildApp = async () => {
     // This endpoint calls the model in-process (not via the worker queue), so it
     // must consult the budget gate itself rather than rely on the worker gates.
     // It is an interactive owner action, so it counts as a human request.
-    const budget = await checkBudget(prisma, actorContext.tenant.organizationId, {
-      isHuman: true,
-    })
+    const budget = await checkBudget(
+      prisma,
+      {
+        organizationId: actorContext.tenant.organizationId,
+        projectId: actorContext.tenant.projectId,
+        teamId: actorContext.tenant.teamId,
+      },
+      { isHuman: true },
+    )
     if (!budget.allowed) {
       sendApiError(reply, 402, 'BUDGET_EXCEEDED', budget.reason ?? 'Monthly budget exceeded')
       return reply
@@ -5702,13 +5778,35 @@ export const buildApp = async () => {
     return reply.code(204).send()
   })
 
-  app.get('/api/ledger/budget', async (request, reply) => {
+  // Verify a budget scopeId belongs to the actor's organization before it can be
+  // configured, so an owner cannot write a budget for another tenant's project/team.
+  const budgetScopeBelongsToOrg = async (
+    organizationId: string,
+    scopeType: 'organization' | 'project' | 'team',
+    scopeId: string,
+  ): Promise<boolean> => {
+    if (scopeType === 'organization') return scopeId === organizationId
+    if (scopeType === 'project') {
+      const project = await prisma.project.findFirst({
+        where: { id: scopeId, organizationId },
+        select: { id: true },
+      })
+      return Boolean(project)
+    }
+    const team = await prisma.team.findFirst({
+      where: { id: scopeId, project: { organizationId } },
+      select: { id: true },
+    })
+    return Boolean(team)
+  }
+
+  app.get('/api/ledger/budgets', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
-    const status = await getBudgetStatus(prisma, actorContext.tenant.organizationId)
-    return createApiResponse(BudgetStatusResponseSchema.parse(status))
+    const statuses = await listBudgetStatuses(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(BudgetStatusResponseSchema.array().parse(statuses))
   })
 
   app.put('/api/ledger/budget', async (request, reply) => {
@@ -5719,8 +5817,42 @@ export const buildApp = async () => {
     const body = parseInput(SetBudgetBodySchema, request.body, reply)
     if (!body) return reply
 
-    const status = await setBudgetConfig(prisma, actorContext.tenant.organizationId, body)
+    if (!(await budgetScopeBelongsToOrg(actorContext.tenant.organizationId, body.scopeType, body.scopeId))) {
+      sendApiError(reply, 400, 'INVALID_SCOPE', 'Budget scope does not belong to this organization')
+      return reply
+    }
+
+    const status = await setBudgetConfig(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      ...body,
+    })
     return createApiResponse(BudgetStatusResponseSchema.parse(status))
+  })
+
+  app.delete('/api/ledger/budget', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as { scopeType?: string; scopeId?: string }
+    const parsedScope = BudgetScopeTypeSchema.safeParse(query.scopeType)
+    const parsedScopeId = SetBudgetBodySchema.shape.scopeId.safeParse(query.scopeId)
+    if (!parsedScope.success || !parsedScopeId.success) {
+      sendApiError(reply, 400, 'INVALID_INPUT', 'scopeType and a valid scopeId (UUID) are required')
+      return reply
+    }
+
+    const removed = await deleteBudget(
+      prisma,
+      actorContext.tenant.organizationId,
+      parsedScope.data,
+      parsedScopeId.data,
+    )
+    if (!removed) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'No budget configured for that scope')
+      return reply
+    }
+    return reply.code(204).send()
   })
 
   // ─── Inference control plane routes ─────────────────────────────────────

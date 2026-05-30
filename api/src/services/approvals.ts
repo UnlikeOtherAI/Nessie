@@ -150,17 +150,22 @@ export const resolveApprovalRequest = async (
     return { error: 'ROLE_REQUIRED' as const, approval: mapApproval(approval) }
   }
 
-  // Check expiry
+  // Check expiry. Guard the transition on `status === 'pending'` so a
+  // concurrent resolve can't be clobbered, and skip writing if it already
+  // moved off pending.
   if (approval.expiresAt < new Date()) {
-    await prisma.approvalRequest.update({
-      where: { id: approvalId },
+    await prisma.approvalRequest.updateMany({
+      where: { id: approvalId, status: 'pending' },
       data: { status: 'expired' },
     })
     return { error: 'EXPIRED' as const, approval: mapApproval(approval) }
   }
 
-  const updated = await prisma.approvalRequest.update({
-    where: { id: approvalId },
+  // Atomic claim: only the first resolver of a still-`pending` request wins.
+  // A second approver racing the same request sees `count === 0` and is told
+  // the request is already resolved (re-reading the now-resolved row).
+  const { count } = await prisma.approvalRequest.updateMany({
+    where: { id: approvalId, status: 'pending' },
     data: {
       status: resolution,
       resolution,
@@ -168,6 +173,20 @@ export const resolveApprovalRequest = async (
       resolvedAt: new Date(),
       resolutionNote: note ?? null,
     },
+  })
+
+  if (count === 0) {
+    const current = await prisma.approvalRequest.findFirst({
+      where: { id: approvalId, organizationId: actorContext.tenant.organizationId },
+    })
+    return {
+      error: 'ALREADY_RESOLVED' as const,
+      approval: current ? mapApproval(current) : mapApproval(approval),
+    }
+  }
+
+  const updated = await prisma.approvalRequest.findFirstOrThrow({
+    where: { id: approvalId },
   })
 
   const auditAction = resolution === 'approved' ? 'approval.approved' : 'approval.rejected'

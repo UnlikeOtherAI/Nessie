@@ -1729,13 +1729,18 @@ export type ReadinessResponse = z.infer<typeof ReadinessResponseSchema>
 
 // ─── Budget (spend enforcement) ───────────────────────────────────────────
 
-export const BudgetModeSchema = z.enum(['off', 'warn', 'enforce'])
+export const BudgetModeSchema = z.enum(['off', 'warn', 'enforce', 'unlimited'])
+export const BudgetScopeTypeSchema = z.enum(['organization', 'project', 'team'])
+export const BudgetPeriodSchema = z.enum(['weekly', 'monthly', 'yearly'])
 
 export const BudgetStatusResponseSchema = z.object({
+  scopeType: BudgetScopeTypeSchema,
+  scopeId: z.string(),
   mode: BudgetModeSchema,
+  period: BudgetPeriodSchema,
   costLimitUsd: z.number().nonnegative().nullable(),
-  spentUsd: z.number().nonnegative(),
   tokenLimit: z.number().int().nonnegative().nullable(),
+  spentUsd: z.number().nonnegative(),
   spentTokens: z.number().int().nonnegative(),
   // Read side is lenient (the strict 1–100 bound is enforced on the write schema
   // below) so an out-of-range stored value can never 500 the status read.
@@ -1747,9 +1752,12 @@ export const BudgetStatusResponseSchema = z.object({
 })
 
 export const SetBudgetBodySchema = z.object({
-  monthlyCostLimitUsd: z.number().nonnegative().nullable(),
-  monthlyTokenLimit: z.number().int().nonnegative().nullable(),
+  scopeType: BudgetScopeTypeSchema,
+  scopeId: z.string().uuid(),
+  costLimitUsd: z.number().nonnegative().nullable(),
+  tokenLimit: z.number().int().nonnegative().nullable(),
   mode: BudgetModeSchema,
+  period: BudgetPeriodSchema,
   warnThresholdPercent: z.number().int().min(1).max(100),
   blockHumansWhenOver: z.boolean(),
 })

@@ -1,30 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { BudgetManager } from '../components/features/budgets/BudgetManager'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-
-type BudgetMode = 'off' | 'warn' | 'enforce'
-
-type BudgetStatus = {
-  mode: BudgetMode
-  costLimitUsd: number | null
-  spentUsd: number
-  tokenLimit: number | null
-  spentTokens: number
-  warnThresholdPercent: number
-  blockHumansWhenOver: boolean
-  level: 'ok' | 'warn' | 'over'
-  percentUsed: number | null
-  costTrackingActive: boolean
-}
-
-const parseLimit = (raw: string, integer: boolean): number | null | 'invalid' => {
-  const trimmed = raw.trim()
-  if (trimmed === '') return null
-  const value = Number(trimmed)
-  if (!Number.isFinite(value) || value < 0) return 'invalid'
-  return integer ? Math.round(value) : value
-}
 
 type TokenSummary = {
   totalInputTokens: number
@@ -79,67 +57,7 @@ export const TokenUsagePage = () => {
     enabled: isOwner,
   })
 
-  const queryClient = useQueryClient()
-  const { data: budget } = useQuery<BudgetStatus>({
-    queryKey: ['budget'],
-    queryFn: () => apiClient.get('/api/ledger/budget'),
-    enabled: isOwner,
-  })
-
-  const [mode, setMode] = useState<BudgetMode>('off')
-  const [costLimit, setCostLimit] = useState('')
-  const [tokenLimit, setTokenLimit] = useState('')
-  const [warnThreshold, setWarnThreshold] = useState('80')
-  const [blockHumans, setBlockHumans] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!budget) return
-    setMode(budget.mode)
-    setCostLimit(budget.costLimitUsd != null ? String(budget.costLimitUsd) : '')
-    setTokenLimit(budget.tokenLimit != null ? String(budget.tokenLimit) : '')
-    setWarnThreshold(String(budget.warnThresholdPercent))
-    setBlockHumans(budget.blockHumansWhenOver)
-  }, [budget])
-
-  const saveBudget = useMutation({
-    mutationFn: (payload: {
-      monthlyCostLimitUsd: number | null
-      monthlyTokenLimit: number | null
-      mode: BudgetMode
-      warnThresholdPercent: number
-      blockHumansWhenOver: boolean
-    }) => apiClient.put('/api/ledger/budget', payload),
-    onSuccess: () => {
-      setFormError(null)
-      void queryClient.invalidateQueries({ queryKey: ['budget'] })
-    },
-    onError: (err) => setFormError((err as Error).message),
-  })
-
-  const handleSaveBudget = () => {
-    const cost = parseLimit(costLimit, false)
-    const tokens = parseLimit(tokenLimit, true)
-    if (cost === 'invalid' || tokens === 'invalid') {
-      setFormError('Caps must be non-negative numbers — leave a field blank for no cap.')
-      return
-    }
-    const threshold = Math.round(Number(warnThreshold))
-    if (!Number.isFinite(threshold) || threshold < 1 || threshold > 100) {
-      setFormError('Warn threshold must be between 1 and 100.')
-      return
-    }
-    setFormError(null)
-    saveBudget.mutate({
-      monthlyCostLimitUsd: cost,
-      monthlyTokenLimit: tokens,
-      mode,
-      warnThresholdPercent: threshold,
-      blockHumansWhenOver: blockHumans,
-    })
-  }
-
-  if (!isOwner) {
+  if (!isOwner || !me) {
     return (
       <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
         Owner access required
@@ -192,110 +110,7 @@ export const TokenUsagePage = () => {
           </div>
         </div>
 
-        <div className="admin-card mt-4 p-4">
-          <div className="flex items-center justify-between">
-            <div className={sectionTitle}>Monthly Budget</div>
-            {budget && (
-              <span
-                className={[
-                  'rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em]',
-                  budget.level === 'over'
-                    ? 'bg-red-500/15 text-red-300'
-                    : budget.level === 'warn'
-                      ? 'bg-amber-500/15 text-amber-300'
-                      : 'bg-emerald-500/15 text-emerald-300',
-                ].join(' ')}
-              >
-                {budget.percentUsed != null ? `${budget.percentUsed}% used` : 'no cap'}
-                {budget.level === 'over' ? ' — over' : budget.level === 'warn' ? ' — warning' : ''}
-              </span>
-            )}
-          </div>
-          <div className="mt-1 text-xs text-[color:var(--tx2)]">
-            This month: {formatTokens(budget?.spentTokens ?? 0)} tokens ·{' '}
-            {formatCost(budget?.spentUsd ?? 0, 'USD')} spent. Soft monthly cap —
-            in-flight runs can overshoot slightly before spend is recorded.
-          </div>
-
-          <label className="mt-3 block text-xs text-[color:var(--tx2)]">
-            Mode
-            <select
-              className="admin-input mt-1"
-              onChange={(e) => setMode(e.target.value as BudgetMode)}
-              value={mode}
-            >
-              <option value="off">Off — no budget checks</option>
-              <option value="warn">Warn — track and alert, never block</option>
-              <option value="enforce">Enforce — throttle automations over cap</option>
-            </select>
-          </label>
-
-          {budget && costLimit.trim() !== '' && !budget.costTrackingActive && (
-            <div className="mt-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-              USD cap inactive — no pricing profile is configured, so estimated cost
-              stays $0. Only the token cap applies.
-            </div>
-          )}
-
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <label className="text-xs text-[color:var(--tx2)]">
-              Cost cap (USD / month)
-              <input
-                className="admin-input mt-1"
-                inputMode="decimal"
-                onChange={(e) => setCostLimit(e.target.value)}
-                placeholder="No cap"
-                value={costLimit}
-              />
-            </label>
-            <label className="text-xs text-[color:var(--tx2)]">
-              Token cap (tokens / month)
-              <input
-                className="admin-input mt-1"
-                inputMode="numeric"
-                onChange={(e) => setTokenLimit(e.target.value)}
-                placeholder="No cap"
-                value={tokenLimit}
-              />
-            </label>
-            <label className="text-xs text-[color:var(--tx2)]">
-              Warn at (% of cap)
-              <input
-                className="admin-input mt-1"
-                inputMode="numeric"
-                onChange={(e) => setWarnThreshold(e.target.value)}
-                placeholder="80"
-                value={warnThreshold}
-              />
-            </label>
-          </div>
-
-          {mode === 'enforce' && (
-            <label className="mt-3 flex items-center gap-2 text-sm text-[color:var(--tx2)]">
-              <input
-                checked={blockHumans}
-                onChange={(e) => setBlockHumans(e.target.checked)}
-                type="checkbox"
-              />
-              Also block people&apos;s live requests (off by default — only automations
-              are throttled)
-            </label>
-          )}
-
-          <div className="mt-3 flex items-center justify-end">
-            <button
-              className="admin-button admin-button-primary"
-              disabled={saveBudget.isPending}
-              onClick={handleSaveBudget}
-              type="button"
-            >
-              Save budget
-            </button>
-          </div>
-          {formError && (
-            <div className="mt-2 text-xs text-red-300">{formError}</div>
-          )}
-        </div>
+        <BudgetManager organizationId={me.context.organizationId} />
 
         {(summary?.breakdowns ?? []).length > 0 && (
           <div className="mt-4">

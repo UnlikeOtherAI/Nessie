@@ -795,6 +795,22 @@ const updateRunStatus = async (
   })
 }
 
+// Atomic start claim: flips a still-claimable run to `running` in a single
+// statement. A terminal run (completed/failed/cancelled) matches nothing and
+// returns count === 0, so a re-driven job for a finished run is not resurrected.
+// `running` is kept in the WHERE because the queue lock guarantees a single
+// worker per job, so a re-entrant claim of the same in-flight run is benign.
+const claimRunForExecution = async (
+  prisma: PrismaClient,
+  runId: string,
+): Promise<boolean> => {
+  const { count } = await prisma.run.updateMany({
+    where: { id: runId, status: { in: ['pending', 'running'] } },
+    data: { status: 'running', startedAt: new Date() },
+  })
+  return count === 1
+}
+
 const setAgentStatus = async (
   prisma: PrismaClient,
   agentId: string,
@@ -1143,9 +1159,15 @@ export const executeRunJob = async (
     // Only a live human conversational turn (payload.interactive) is exempt by
     // default; automations — triggers (even manually fired), subtasks, mailbox,
     // scheduled runs — leave interactive unset and are throttled.
-    const budget = await checkBudget(deps.prisma, context.channel.organizationId, {
-      isHuman: payload.interactive === true,
-    })
+    const budget = await checkBudget(
+      deps.prisma,
+      {
+        organizationId: payload.actorContext.tenant.organizationId,
+        projectId: payload.actorContext.tenant.projectId,
+        teamId: payload.actorContext.tenant.teamId,
+      },
+      { isHuman: payload.interactive === true },
+    )
     if (!budget.allowed) {
       const notice = `⚠️ ${budget.reason ?? 'Monthly budget exceeded'} — this request was not run.`
       const blockMessage = await deps.prisma.message.create({
@@ -1185,7 +1207,11 @@ export const executeRunJob = async (
       runId: context.run.id,
     })
 
-    await updateRunStatus(deps.prisma, context.run.id, 'running')
+    const claimed = await claimRunForExecution(deps.prisma, context.run.id)
+    if (!claimed) {
+      console.log(`[worker] run ${context.run.id} already claimed or terminal; skipping`)
+      return
+    }
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')
     await markRunPlanStarted(deps.prisma, planContext)
     await setAgentStatus(deps.prisma, context.agent.id, 'thinking')

@@ -2,8 +2,8 @@
 
 ## Workflow
 
-- Work directly on `main`. Never create branches or PRs.
-- Commit and push to `main` after every turn. No exceptions. If there is nothing to commit, skip.
+- Worktrees are mandatory. The main project checkout always stays on `main`; never edit it directly. Every task — and every parallel agent/CLI — works in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never reset, clean, or discard another worktree's or agent's work. Merge finished work into `main` only after review, linting, and tests pass, then remove the worktree and delete the merged branch.
+- Commit and push after every turn. No exceptions. If there is nothing to commit, skip.
 - Rebuild the admin (`pnpm --filter @nessie/admin build`) after every turn where admin code changed.
 - Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt and the API restarts.
 - After every build or server restart, verify the new version is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.

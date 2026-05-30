@@ -102,28 +102,45 @@ export const sweepDueScheduledTriggers = async (
   const now = input.now ?? new Date()
   const claimedTriggers = await claimDueScheduledTriggers(prisma, input)
 
-  for (const trigger of claimedTriggers) {
-    if (trigger.workflowInstallationId) {
-      const triggerWithInstallation = await prisma.agentTrigger.findUnique({
-        where: { id: trigger.id },
-        select: {
-          id: true,
-          type: true,
-          workflowInstallation: {
-            select: {
-              active: true,
-              channelId: true,
-              id: true,
-              organizationId: true,
-              projectId: true,
-              status: true,
-              teamId: true,
-            },
-          },
-        },
-      })
+  if (claimedTriggers.length === 0) {
+    return
+  }
 
-      if (!triggerWithInstallation?.workflowInstallation) {
+  // Batch-load the related agent/workflowInstallation rows for every claimed
+  // trigger in one query instead of re-fetching per trigger inside the loop.
+  const relations = await prisma.agentTrigger.findMany({
+    where: { id: { in: claimedTriggers.map((trigger) => trigger.id) } },
+    select: {
+      agent: {
+        select: {
+          organizationId: true,
+          projectId: true,
+          teamId: true,
+        },
+      },
+      id: true,
+      workflowInstallation: {
+        select: {
+          active: true,
+          channelId: true,
+          id: true,
+          organizationId: true,
+          projectId: true,
+          status: true,
+          teamId: true,
+        },
+      },
+    },
+  })
+  const relationsById = new Map(relations.map((relation) => [relation.id, relation]))
+
+  for (const trigger of claimedTriggers) {
+    const relation = relationsById.get(trigger.id)
+
+    if (trigger.workflowInstallationId) {
+      const workflowInstallation = relation?.workflowInstallation
+
+      if (!workflowInstallation) {
         await finalizeScheduledTriggerClaim(prisma, {
           claimId: trigger.schedulerClaimId,
           nextRunAt: trigger.nextRunAt,
@@ -142,9 +159,9 @@ export const sweepDueScheduledTriggers = async (
           },
           source: 'scheduler',
           trigger: {
-            id: triggerWithInstallation.id,
-            type: triggerWithInstallation.type,
-            workflowInstallation: triggerWithInstallation.workflowInstallation,
+            id: trigger.id,
+            type: trigger.type,
+            workflowInstallation,
           },
         })
 
@@ -179,31 +196,7 @@ export const sweepDueScheduledTriggers = async (
       continue
     }
 
-    const triggerWithAgent = await prisma.agentTrigger.findUnique({
-      where: { id: trigger.id },
-      select: {
-        agent: {
-          select: {
-            organizationId: true,
-            projectId: true,
-            teamId: true,
-          },
-        },
-        agentId: true,
-        config: true,
-        id: true,
-        targetChannelId: true,
-        targetThreadId: true,
-        type: true,
-      },
-    })
-
-    if (
-      !triggerWithAgent?.targetChannelId ||
-      !triggerWithAgent.targetThreadId ||
-      !triggerWithAgent.agentId ||
-      !triggerWithAgent.agent
-    ) {
+    if (!relation?.agent) {
       await finalizeScheduledTriggerClaim(prisma, {
         claimId: trigger.schedulerClaimId,
         nextRunAt: trigger.nextRunAt,
@@ -214,10 +207,10 @@ export const sweepDueScheduledTriggers = async (
     }
 
     try {
-      const targetChannelId = triggerWithAgent.targetChannelId
-      const targetThreadId = triggerWithAgent.targetThreadId
-      const agentId = triggerWithAgent.agentId
-      const agent = triggerWithAgent.agent
+      const targetChannelId = trigger.targetChannelId
+      const targetThreadId = trigger.targetThreadId
+      const agentId = trigger.agentId
+      const agent = relation.agent
 
       await queueTriggerRun(prisma, {
         dedupeKey: `scheduled:${trigger.id}:${trigger.nextRunAt.toISOString()}`,
@@ -229,11 +222,11 @@ export const sweepDueScheduledTriggers = async (
         trigger: {
           agent,
           agentId,
-          config: triggerWithAgent.config,
-          id: triggerWithAgent.id,
+          config: trigger.config,
+          id: trigger.id,
           targetChannelId,
           targetThreadId,
-          type: triggerWithAgent.type,
+          type: trigger.type,
         },
       })
 

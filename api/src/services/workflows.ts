@@ -416,16 +416,37 @@ const mapWorkflowStepRun = (
   updatedAt: stepRun.updatedAt.toISOString(),
 })
 
+const WORKFLOW_LIST_LIMIT = 200
+
 export const listWorkflowTemplates = async (
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<WorkflowTemplateRecord[]> => {
+  // List view omits the large `graphJson` blob; the full graph is only fetched
+  // by the single-item GET. The contract still requires `graph`, so the list
+  // mapper substitutes an empty graph.
   const templates = await prisma.workflowTemplate.findMany({
     where: { organizationId },
     orderBy: [{ createdAt: 'desc' }],
+    take: WORKFLOW_LIST_LIMIT,
+    select: {
+      id: true,
+      organizationId: true,
+      name: true,
+      description: true,
+      version: true,
+      triggersJson: true,
+      variableSchema: true,
+      bindingSchema: true,
+      requiredEnvironmentTemplateIds: true,
+      createdByActorType: true,
+      createdByActorId: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   })
 
-  return templates.map(mapWorkflowTemplate)
+  return templates.map((template) => mapWorkflowTemplate({ ...template, graphJson: {} }))
 }
 
 export const createWorkflowTemplate = async (
@@ -609,6 +630,7 @@ export const listWorkflowInstallations = async (
   const installations = await prisma.workflowInstallation.findMany({
     where: { organizationId },
     orderBy: [{ createdAt: 'desc' }],
+    take: WORKFLOW_LIST_LIMIT,
   })
 
   return installations.map(mapWorkflowInstallation)
@@ -686,15 +708,39 @@ export const listWorkflowRuns = async (
     installationId?: string
   },
 ): Promise<WorkflowRunRecord[]> => {
+  // List view omits the large `input`/`output` Json blobs; they are only
+  // fetched by the single-run GET. The contract still requires them, so the
+  // list mapper substitutes empty objects.
   const runs = await prisma.workflowRun.findMany({
     where: {
       organizationId,
       ...(input.installationId ? { installationId: input.installationId } : {}),
     },
     orderBy: [{ createdAt: 'desc' }],
+    take: WORKFLOW_LIST_LIMIT,
+    select: {
+      id: true,
+      installationId: true,
+      organizationId: true,
+      triggerId: true,
+      triggerDeliveryId: true,
+      parentRunId: true,
+      retriedFromWorkflowRunId: true,
+      planId: true,
+      planStepId: true,
+      status: true,
+      summary: true,
+      errorMessage: true,
+      startedByActorType: true,
+      startedByActorId: true,
+      startedAt: true,
+      finishedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   })
 
-  return runs.map(mapWorkflowRun)
+  return runs.map((run) => mapWorkflowRun({ ...run, input: {}, output: {} }))
 }
 
 export const cancelWorkflowRun = async (
@@ -735,8 +781,15 @@ export const cancelWorkflowRun = async (
       },
     })
 
-    return tx.workflowRun.update({
-      where: { id: workflowRunId },
+    // Atomic transition guarded on a non-terminal status: a concurrent cancel
+    // or a run that completed between the check above and here writes nothing
+    // (count === 0); either way we return the current row rather than
+    // clobbering a terminal state.
+    await tx.workflowRun.updateMany({
+      where: {
+        id: workflowRunId,
+        status: { in: ['pending', 'running'] },
+      },
       data: {
         status: 'cancelled',
         summary,
@@ -744,6 +797,8 @@ export const cancelWorkflowRun = async (
         finishedAt: now,
       },
     })
+
+    return tx.workflowRun.findUnique({ where: { id: workflowRunId } })
   })
 
   return result ? mapWorkflowRun(result) : null
@@ -966,19 +1021,31 @@ export const skipWorkflowStepRun = async (
     }
 
     const summary = ctx.reason?.trim() || 'Workflow step skipped by operator.'
-    const updated = await tx.workflowStepRun.update({
-      where: { id: ctx.workflowStepRunId },
+    // Atomic transition: guard on the skippable statuses so a concurrent
+    // skip/block/execution write cannot be clobbered. count === 0 means the
+    // step already moved on; return its current row without re-enqueuing.
+    const { count } = await tx.workflowStepRun.updateMany({
+      where: {
+        id: ctx.workflowStepRunId,
+        status: { in: ['pending', 'blocked'] },
+      },
       data: {
         status: 'skipped',
         errorMessage: summary,
         finishedAt: new Date(),
       },
+    })
+
+    const updated = await tx.workflowStepRun.findUnique({
+      where: { id: ctx.workflowStepRunId },
       include: {
         environmentInstance: { select: { id: true } },
       },
     })
 
-    await enqueueWorkflowExecute(tx, ctx.actorContext, existing.workflowRun.id, 'step-skip')
+    if (count > 0) {
+      await enqueueWorkflowExecute(tx, ctx.actorContext, existing.workflowRun.id, 'step-skip')
+    }
 
     return updated
   })
@@ -1014,12 +1081,22 @@ export const blockWorkflowStepRun = async (
     }
 
     const summary = ctx.reason?.trim() || 'Workflow step blocked by operator.'
-    return tx.workflowStepRun.update({
-      where: { id: ctx.workflowStepRunId },
+    // Atomic transition guarded on `status === 'pending'`; a concurrent
+    // block/skip/execution write that already moved the step leaves count === 0
+    // and we just return the current row.
+    await tx.workflowStepRun.updateMany({
+      where: {
+        id: ctx.workflowStepRunId,
+        status: 'pending',
+      },
       data: {
         status: 'blocked',
         errorMessage: summary,
       },
+    })
+
+    return tx.workflowStepRun.findUnique({
+      where: { id: ctx.workflowStepRunId },
       include: {
         environmentInstance: { select: { id: true } },
       },
@@ -1056,18 +1133,30 @@ export const unblockWorkflowStepRun = async (
       )
     }
 
-    const updated = await tx.workflowStepRun.update({
-      where: { id: ctx.workflowStepRunId },
+    // Atomic transition guarded on `status === 'blocked'`. count === 0 means a
+    // concurrent unblock/skip already moved the step; skip the re-enqueue and
+    // return the current row.
+    const { count } = await tx.workflowStepRun.updateMany({
+      where: {
+        id: ctx.workflowStepRunId,
+        status: 'blocked',
+      },
       data: {
         status: 'pending',
         errorMessage: null,
       },
+    })
+
+    const updated = await tx.workflowStepRun.findUnique({
+      where: { id: ctx.workflowStepRunId },
       include: {
         environmentInstance: { select: { id: true } },
       },
     })
 
-    await enqueueWorkflowExecute(tx, ctx.actorContext, existing.workflowRun.id, 'step-unblock')
+    if (count > 0) {
+      await enqueueWorkflowExecute(tx, ctx.actorContext, existing.workflowRun.id, 'step-unblock')
+    }
 
     return updated
   })

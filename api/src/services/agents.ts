@@ -463,6 +463,7 @@ export const buildSnapshotForScopes = async (
   }
 
   const agentIds = new Set<string>()
+  const bindingOr: Prisma.AgentBindingWhereInput[] = []
 
   for (const scope of scopes) {
     if (scope.kind === 'agent') {
@@ -471,49 +472,96 @@ export const buildSnapshotForScopes = async (
     }
 
     if (scope.kind === 'channel') {
-      const bindings = await prisma.agentBinding.findMany({
-        where: {
-          channelId: scope.channelId,
-          ...(options?.visibility
-            ? { channel: buildAccessibleChannelWhere(options.visibility) }
-            : {}),
-        },
-        select: { agentId: true },
+      bindingOr.push({
+        channelId: scope.channelId,
+        ...(options?.visibility
+          ? { channel: buildAccessibleChannelWhere(options.visibility) }
+          : {}),
       })
-      bindings.forEach((binding) => agentIds.add(binding.agentId))
       continue
     }
 
-    const bindings = await prisma.agentBinding.findMany({
-      where: {
-        channel: {
-          ...(options?.visibility
-            ? buildAccessibleChannelWhere(options.visibility)
-            : { organizationId: scope.organizationId }),
-        },
+    bindingOr.push({
+      channel: {
+        ...(options?.visibility
+          ? buildAccessibleChannelWhere(options.visibility)
+          : { organizationId: scope.organizationId }),
       },
+    })
+  }
+
+  // Collapse all channel/org binding lookups into one query.
+  if (bindingOr.length > 0) {
+    const bindings = await prisma.agentBinding.findMany({
+      where: { OR: bindingOr },
       select: { agentId: true },
     })
     bindings.forEach((binding) => agentIds.add(binding.agentId))
   }
 
-  const snapshots = await Promise.all(
-    Array.from(agentIds).map(async (agentId) =>
-      loadAgentStatus(prisma, agentId, { visibility: options?.visibility }),
-    ),
-  )
+  if (agentIds.size === 0) {
+    return { agents: [] }
+  }
+
+  // Batch-load every agent's status data in a single query instead of one
+  // loadAgentStatus call per agent.
+  const runVisibilityWhere = buildAccessibleRunWhere(options?.visibility)
+  const agents = await prisma.agent.findMany({
+    where: { id: { in: Array.from(agentIds) } },
+    include: {
+      messages: {
+        where: options?.visibility
+          ? { thread: buildAccessibleThreadWhere(options.visibility) }
+          : {},
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      runs: {
+        include: {
+          toolCalls: {
+            orderBy: { startedAt: 'desc' },
+            take: 1,
+          },
+        },
+        where: {
+          ...runVisibilityWhere,
+          status: {
+            in: ['pending', 'running'],
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+  })
 
   return {
-    agents: snapshots
-      .filter((snapshot): snapshot is NonNullable<typeof snapshot> => snapshot !== null)
-      .map((snapshot) => ({
-        agentId: snapshot.agentId,
-        status: snapshot.status,
-        since: snapshot.since,
-        currentRunId: snapshot.currentRunId,
-        currentToolName: snapshot.currentToolName,
-        currentToolStartedAt: snapshot.currentToolStartedAt,
-      })),
+    agents: agents
+      .filter((agent) => !isSystemManagedAgent(agent))
+      .map((agent) => {
+        const latestRun = agent.runs[0]
+        const latestToolCall = latestRun?.toolCalls[0]
+        const isActiveRun =
+          latestRun !== undefined &&
+          latestRun.status !== 'completed' &&
+          latestRun.status !== 'failed' &&
+          latestRun.status !== 'cancelled'
+
+        return {
+          agentId: parseAgentId(agent.id),
+          status: agent.status,
+          since: agent.updatedAt.toISOString(),
+          currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
+          currentToolName:
+            isActiveRun && latestToolCall?.endedAt === null
+              ? latestToolCall.toolName
+              : undefined,
+          currentToolStartedAt:
+            isActiveRun && latestToolCall?.endedAt === null
+              ? toTimestamp(latestToolCall.startedAt)
+              : undefined,
+        }
+      }),
   }
 }
 

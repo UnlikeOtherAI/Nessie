@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import { Prisma, type PrismaClient } from '@prisma/client'
+import { type AuditActorType, Prisma, type PrismaClient } from '@prisma/client'
 import { enqueueQueueJob } from '../queue.js'
 import { markWorkflowStepRunFinished } from '../run/workflows.js'
 
@@ -834,7 +834,7 @@ const recordExecutionUsage = async (
   await tx.executionUsageLedger.create({
     data: {
       actorId: input.actorId,
-      actorType: input.actorType,
+      actorType: input.actorType as AuditActorType,
       agentId: input.agentId,
       channelId: input.channelId,
       costAmount: pricing.costAmount,
@@ -1077,6 +1077,19 @@ const loadProvisioningContext = async (
   const now = new Date()
 
   return prisma.$transaction(async (tx) => {
+    // Serialize concurrent provisioners of the same instance. Mirrors the
+    // advisory-lock idiom in api/src/services/resource-locks.ts: the lock is
+    // held for the duration of the transaction, so the read-check-claim below
+    // is atomic — a second worker blocks here, then sees `status` already off
+    // `pending`/`provisioning` and bails (returns null) without issuing a
+    // duplicate lease.
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext('execution_environment_instance'),
+        hashtext(${instanceId})
+      )
+    `
+
     const instance = await tx.executionEnvironmentInstance.findUnique({
       where: { id: instanceId },
       include: {

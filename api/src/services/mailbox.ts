@@ -52,6 +52,8 @@ const mapMailboxMessage = (message: {
   updatedAt: message.updatedAt.toISOString(),
 })
 
+const MAILBOX_LIST_LIMIT = 200
+
 export const listMailboxMessages = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -66,7 +68,30 @@ export const listMailboxMessages = async (
       ...(input.planId ? { planId: input.planId } : {}),
       ...(input.toAgentId ? { toAgentId: input.toAgentId } : {}),
     },
+    select: {
+      attempts: true,
+      body: true,
+      channelId: true,
+      claimedAt: true,
+      correlationId: true,
+      createdAt: true,
+      deliveredAt: true,
+      fromAgentId: true,
+      id: true,
+      organizationId: true,
+      planId: true,
+      planStepId: true,
+      status: true,
+      subject: true,
+      threadId: true,
+      toAgentId: true,
+      updatedAt: true,
+      visibleAt: true,
+      workflowRunId: true,
+      workflowStepRunId: true,
+    },
     orderBy: [{ createdAt: 'desc' }],
+    take: MAILBOX_LIST_LIMIT,
   })
 
   return messages.map(mapMailboxMessage)

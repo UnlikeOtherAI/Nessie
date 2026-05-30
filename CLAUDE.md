@@ -25,9 +25,12 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 
-## Git
+## Git — worktrees mandatory
 
-- Work directly on `main`. Never create branches or PRs.
+- The main project checkout must always stay on `main`. Never switch branches in it.
+- Every task — and every parallel agent/CLI — does its work in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never edit the main checkout directly.
+- Never reset, clean, or discard another worktree's or agent's work.
+- Merge finished work into `main` only after review, linting, and tests pass. Then in the main checkout run `git switch main && git pull --ff-only`, remove the worktree (`git worktree remove …`), and delete the merged branch.
 
 ## Build
 

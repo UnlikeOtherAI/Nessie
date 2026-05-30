@@ -24,6 +24,19 @@ type ThreadUnreadRow = {
   unread_count: bigint | number
 }
 
+// Shared include so create/upsert sites return the channel's team + project in
+// one query — mapChannelRecord then never needs a follow-up team lookup.
+const channelTeamInclude = {
+  team: {
+    select: {
+      name: true,
+      project: {
+        select: { id: true, name: true },
+      },
+    },
+  },
+} satisfies Prisma.ChannelInclude
+
 const loadUnreadCountsByThread = async (
   prisma: PrismaClient,
   threadIds: string[],
@@ -238,12 +251,30 @@ export const addMemberToChannel = async (
   prisma: PrismaClient,
   channelId: string,
   userId: string,
-): Promise<void> => {
+): Promise<boolean> => {
+  // Load the channel's org and confirm the target user belongs to it before
+  // the upsert, so a cross-org user can never be added to a channel.
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: { organizationId: true },
+  })
+  if (!channel) {
+    return false
+  }
+
+  const isOrgMember = await prisma.organizationMember.count({
+    where: { organizationId: channel.organizationId, userId },
+  })
+  if (!isOrgMember) {
+    return false
+  }
+
   await prisma.channelMember.upsert({
     where: { channelId_userId: { channelId, userId } },
     create: { channelId, userId },
     update: {},
   })
+  return true
 }
 
 export const removeMemberFromChannel = async (
@@ -317,13 +348,17 @@ export const findOrCreateDmChannel = async (
         },
       },
       update: {},
+      include: channelTeamInclude,
     })
     return mapChannelRecord(prisma, channel, input.currentUserId)
   } catch (err) {
     // Race condition: another request created the channel between our read and write.
     // The unique index on dmKey guarantees exactly one winner; losers re-fetch.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      const existing = await prisma.channel.findUniqueOrThrow({ where: { dmKey } })
+      const existing = await prisma.channel.findUniqueOrThrow({
+        where: { dmKey },
+        include: channelTeamInclude,
+      })
       return mapChannelRecord(prisma, existing, input.currentUserId)
     }
     throw err
@@ -385,6 +420,7 @@ export const createGroupFromDm = async (
         create: allUserIds.map((userId) => ({ userId })),
       },
     },
+    include: channelTeamInclude,
   })
 
   return mapChannelRecord(prisma, channel, input.currentUserId)
@@ -417,6 +453,7 @@ export const createChannelForUser = async (
         },
       },
     },
+    include: channelTeamInclude,
   })
 
   return mapChannelRecord(prisma, channel, input.userId)

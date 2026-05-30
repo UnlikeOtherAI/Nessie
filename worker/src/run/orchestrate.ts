@@ -43,9 +43,15 @@ export const executeOrchestrateDecideJob = async (
   // Budget gate: the orchestrator decision below is itself a model call, so it must
   // be gated here as well as at run execution. When over budget, post a single
   // notice and skip the decision entirely rather than spend on it.
-  const budget = await checkBudget(deps.prisma, channel.organizationId, {
-    isHuman: actorContext.actor.actorType === 'user',
-  })
+  const budget = await checkBudget(
+    deps.prisma,
+    {
+      organizationId: actorContext.tenant.organizationId,
+      projectId: actorContext.tenant.projectId,
+      teamId: actorContext.tenant.teamId,
+    },
+    { isHuman: actorContext.actor.actorType === 'user' },
+  )
   if (!budget.allowed) {
     const respondingAgentId = channelAgents[0]?.id
     if (respondingAgentId) {

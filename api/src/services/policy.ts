@@ -63,13 +63,17 @@ const evaluateConditions = (
   return true
 }
 
-export const checkPolicy = async (
-  prisma: PrismaClient,
+type PolicyScopeChain = {
+  actorId: string
+  actorRoles: string[]
+  agentId?: string
+  scopeIds: string[]
+}
+
+const buildScopeChain = (
   actorContext: AuthorizedActionContext,
-  resourceType: PolicyResourceType,
-  action: PolicyAction,
   additionalScopeIds?: { agentId?: string; channelId?: string; toolId?: string },
-): Promise<PolicyDecision> => {
+): PolicyScopeChain => {
   const orgId = actorContext.tenant.organizationId
   const projectId = actorContext.tenant.projectId
   const teamId = actorContext.tenant.teamId
@@ -79,31 +83,24 @@ export const checkPolicy = async (
   const actorId = actorContext.actor.actorId
   const actorRoles = actorContext.actor.roles ?? []
 
-  // Build scope chain
-  const scopeIds: Array<{ scope: string; scopeId: string }> = [
-    { scope: 'organization', scopeId: orgId },
-  ]
-  if (projectId) scopeIds.push({ scope: 'project', scopeId: projectId })
-  if (teamId) scopeIds.push({ scope: 'team', scopeId: teamId })
-  if (channelId) scopeIds.push({ scope: 'channel', scopeId: channelId })
-  if (agentId) scopeIds.push({ scope: 'agent', scopeId: agentId })
-  if (toolId) scopeIds.push({ scope: 'tool', scopeId: toolId })
-  scopeIds.push({ scope: 'user', scopeId: actorId })
+  const scopeIds: string[] = [orgId]
+  if (projectId) scopeIds.push(projectId)
+  if (teamId) scopeIds.push(teamId)
+  if (channelId) scopeIds.push(channelId)
+  if (agentId) scopeIds.push(agentId)
+  if (toolId) scopeIds.push(toolId)
+  scopeIds.push(actorId)
 
-  // Fetch all matching rules
-  const scopeIdList = scopeIds.map((scopeEntry) => scopeEntry.scopeId)
-  const rules = await prisma.$queryRaw<PolicyRuleRow[]>(Prisma.sql`
-    SELECT pr.id, pr.scope, pr.scope_id as "scopeId", pr.resource_type as "resourceType",
-           pr.action, pr.effect, pr.priority, pr.conditions,
-           pb.actor_type as "actorType", pb.actor_id as "actorId"
-    FROM policy_rules pr
-    JOIN policy_bindings pb ON pb.policy_rule_id = pr.id
-    WHERE pr.organization_id = ${orgId}::uuid
-      AND pr.resource_type = ${resourceType}::"PolicyResourceType"
-      AND pr.action = ${action}::"PolicyAction"
-      AND pr.scope_id IN (${Prisma.join(scopeIdList)})
-    ORDER BY pr.priority ASC
-  `)
+  return { actorId, actorRoles, agentId, scopeIds }
+}
+
+// Evaluate pre-fetched rules (already filtered to the org + scope chain) for one
+// resourceType/action pair using the deny-overrides resolution.
+const resolveDecision = (
+  rules: PolicyRuleRow[],
+  chain: PolicyScopeChain,
+): PolicyDecision => {
+  const { actorId, actorRoles, agentId } = chain
 
   // Filter by actor match
   const matchingRules = rules.filter((rule) => {
@@ -174,18 +171,93 @@ export const checkPolicy = async (
   }
 }
 
+export const checkPolicy = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  resourceType: PolicyResourceType,
+  action: PolicyAction,
+  additionalScopeIds?: { agentId?: string; channelId?: string; toolId?: string },
+): Promise<PolicyDecision> => {
+  const orgId = actorContext.tenant.organizationId
+  const chain = buildScopeChain(actorContext, additionalScopeIds)
+
+  // Fetch all matching rules
+  const rules = await prisma.$queryRaw<PolicyRuleRow[]>(Prisma.sql`
+    SELECT pr.id, pr.scope, pr.scope_id as "scopeId", pr.resource_type as "resourceType",
+           pr.action, pr.effect, pr.priority, pr.conditions,
+           pb.actor_type as "actorType", pb.actor_id as "actorId"
+    FROM policy_rules pr
+    JOIN policy_bindings pb ON pb.policy_rule_id = pr.id
+    WHERE pr.organization_id = ${orgId}::uuid
+      AND pr.resource_type = ${resourceType}::"PolicyResourceType"
+      AND pr.action = ${action}::"PolicyAction"
+      AND pr.scope_id IN (${Prisma.join(chain.scopeIds)})
+    ORDER BY pr.priority ASC
+  `)
+
+  return resolveDecision(rules, chain)
+}
+
+// Load every rule for the org that matches the scope chain and the requested
+// resourceType/action set in a single query, grouped by (resourceType, action).
+const loadRulesForChecks = async (
+  prisma: PrismaClient,
+  orgId: string,
+  scopeIds: string[],
+  resourceTypes: PolicyResourceType[],
+  actions: PolicyAction[],
+): Promise<Map<string, PolicyRuleRow[]>> => {
+  const rows = await prisma.$queryRaw<PolicyRuleRow[]>(Prisma.sql`
+    SELECT pr.id, pr.scope, pr.scope_id as "scopeId", pr.resource_type as "resourceType",
+           pr.action, pr.effect, pr.priority, pr.conditions,
+           pb.actor_type as "actorType", pb.actor_id as "actorId"
+    FROM policy_rules pr
+    JOIN policy_bindings pb ON pb.policy_rule_id = pr.id
+    WHERE pr.organization_id = ${orgId}::uuid
+      AND pr.resource_type::text IN (${Prisma.join(resourceTypes)})
+      AND pr.action::text IN (${Prisma.join(actions)})
+      AND pr.scope_id IN (${Prisma.join(scopeIds)})
+    ORDER BY pr.priority ASC
+  `)
+
+  const grouped = new Map<string, PolicyRuleRow[]>()
+  for (const row of rows) {
+    const key = `${row.resourceType}|${row.action}`
+    const bucket = grouped.get(key)
+    if (bucket) {
+      bucket.push(row)
+    } else {
+      grouped.set(key, [row])
+    }
+  }
+  return grouped
+}
+
 export const checkPolicyBatch = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   checks: Array<{ resourceType: PolicyResourceType; action: PolicyAction }>,
 ): Promise<PolicyDecision[]> => {
-  // For batch checks, we could optimize by loading all rules once.
-  // For now, sequential evaluation is correct and simple.
-  const results: PolicyDecision[] = []
-  for (const check of checks) {
-    results.push(await checkPolicy(prisma, actorContext, check.resourceType, check.action))
+  if (checks.length === 0) {
+    return []
   }
-  return results
+
+  const orgId = actorContext.tenant.organizationId
+  const chain = buildScopeChain(actorContext)
+  const resourceTypes = Array.from(new Set(checks.map((c) => c.resourceType)))
+  const actions = Array.from(new Set(checks.map((c) => c.action)))
+
+  const grouped = await loadRulesForChecks(
+    prisma,
+    orgId,
+    chain.scopeIds,
+    resourceTypes,
+    actions,
+  )
+
+  return checks.map((check) =>
+    resolveDecision(grouped.get(`${check.resourceType}|${check.action}`) ?? [], chain),
+  )
 }
 
 export const getEffectivePolicy = async (
@@ -203,6 +275,17 @@ export const getEffectivePolicy = async (
     'review', 'search', 'admin', 'bind',
   ]
 
+  const orgId = actorContext.tenant.organizationId
+  const chain = buildScopeChain(actorContext)
+
+  const grouped = await loadRulesForChecks(
+    prisma,
+    orgId,
+    chain.scopeIds,
+    allResourceTypes,
+    allActions,
+  )
+
   const decisions: Array<{
     resourceType: PolicyResourceType
     action: PolicyAction
@@ -211,7 +294,10 @@ export const getEffectivePolicy = async (
 
   for (const resourceType of allResourceTypes) {
     for (const action of allActions) {
-      const decision = await checkPolicy(prisma, actorContext, resourceType, action)
+      const decision = resolveDecision(
+        grouped.get(`${resourceType}|${action}`) ?? [],
+        chain,
+      )
       decisions.push({ resourceType, action, decision })
     }
   }

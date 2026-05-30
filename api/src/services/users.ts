@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Prisma, PrismaClient, User } from '@prisma/client'
+import type { MemberRole, Prisma, PrismaClient, User } from '@prisma/client'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
 import type { UserRecord } from '../contracts.js'
 
@@ -96,7 +96,7 @@ export const createUserForOrganization = async (
     organizationId: string
     passwordHash?: string
     projectId: string
-    role: string
+    role: MemberRole
     teamId: string
     avatarUrl?: string
     pronouns?: string

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext, PricingSource } from '@nessie/schemas'
 import { emitAuditEvent } from './audit.js'
@@ -265,6 +266,11 @@ export const deletePricingProfile = async (
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+// Per-million rates are stored as NUMERIC (Prisma Decimal); collapse them to
+// number so the JSON contract stays `number | null`.
+const decimalToNumber = (value: Prisma.Decimal | null): number | null =>
+  value === null ? null : value.toNumber()
+
 const mapPricingProfile = (profile: {
   id: string
   organizationId: string
@@ -272,12 +278,12 @@ const mapPricingProfile = (profile: {
   modelPattern: string
   currency: string
   source: string
-  inputPerMillion: number | null
-  outputPerMillion: number | null
-  cachedInputPerMillion: number | null
-  cachedOutputPerMillion: number | null
-  cacheReadPerMillion: number | null
-  cacheWritePerMillion: number | null
+  inputPerMillion: Prisma.Decimal | null
+  outputPerMillion: Prisma.Decimal | null
+  cachedInputPerMillion: Prisma.Decimal | null
+  cachedOutputPerMillion: Prisma.Decimal | null
+  cacheReadPerMillion: Prisma.Decimal | null
+  cacheWritePerMillion: Prisma.Decimal | null
   effectiveFrom: Date
   effectiveTo: Date | null
 }) => ({
@@ -287,12 +293,12 @@ const mapPricingProfile = (profile: {
   modelPattern: profile.modelPattern,
   currency: profile.currency,
   source: profile.source,
-  inputPerMillion: profile.inputPerMillion,
-  outputPerMillion: profile.outputPerMillion,
-  cachedInputPerMillion: profile.cachedInputPerMillion,
-  cachedOutputPerMillion: profile.cachedOutputPerMillion,
-  cacheReadPerMillion: profile.cacheReadPerMillion,
-  cacheWritePerMillion: profile.cacheWritePerMillion,
+  inputPerMillion: decimalToNumber(profile.inputPerMillion),
+  outputPerMillion: decimalToNumber(profile.outputPerMillion),
+  cachedInputPerMillion: decimalToNumber(profile.cachedInputPerMillion),
+  cachedOutputPerMillion: decimalToNumber(profile.cachedOutputPerMillion),
+  cacheReadPerMillion: decimalToNumber(profile.cacheReadPerMillion),
+  cacheWritePerMillion: decimalToNumber(profile.cacheWritePerMillion),
   effectiveFrom: profile.effectiveFrom.toISOString(),
   effectiveTo: profile.effectiveTo?.toISOString() ?? null,
 })
