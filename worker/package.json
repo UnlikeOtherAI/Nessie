@@ -24,6 +24,7 @@
     "@nessie/mcp-client": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
-    "cron-parser": "^5.5.0"
+    "cron-parser": "^5.5.0",
+    "zod": "^3.25.76"
   }
 }
