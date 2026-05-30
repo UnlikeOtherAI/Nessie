@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { CronExpressionParser } from 'cron-parser'
+import {
+  buildNextScheduledRunAt,
+  buildTriggerPrompt,
+  extractTriggerEffectiveUserId,
+  isJsonRecord,
+} from '@nessie/runtime'
 import {
   type AgentTriggerType,
   parseAgentId,
@@ -33,9 +38,6 @@ type ClaimedScheduledTrigger = {
   workflowInstallationId: string | null
 }
 
-const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
   if (payload === null) {
     return Prisma.JsonNull as unknown as Prisma.InputJsonValue
@@ -54,193 +56,6 @@ const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
     return payload as Prisma.InputJsonValue
   }
   return {}
-}
-
-const parsePositiveInteger = (value: unknown): number | null => {
-  if (
-    typeof value !== 'number' ||
-    !Number.isFinite(value) ||
-    value <= 0 ||
-    !Number.isInteger(value)
-  ) {
-    return null
-  }
-
-  return value
-}
-
-const parseScheduledCronConfig = (
-  config: unknown,
-): { cron: string; timezone?: string } | null => {
-  if (!isJsonRecord(config)) {
-    return null
-  }
-
-  const cron = config['cron']
-  if (typeof cron !== 'string' || cron.trim().length === 0) {
-    return null
-  }
-
-  const timezone =
-    typeof config['timezone'] === 'string' && config['timezone'].trim().length > 0
-      ? config['timezone']
-      : undefined
-
-  try {
-    CronExpressionParser.parse(cron, {
-      currentDate: new Date(),
-      ...(timezone ? { tz: timezone } : {}),
-    })
-  } catch {
-    return null
-  }
-
-  return { cron, timezone }
-}
-
-const parseIntervalMinutes = (config: unknown): number | null => {
-  if (!isJsonRecord(config)) {
-    return null
-  }
-
-  return parsePositiveInteger(config['interval_minutes'])
-}
-
-const computeNextCronRunAt = (input: {
-  config: unknown
-  currentDate: Date
-}): Date | null => {
-  const scheduled = parseScheduledCronConfig(input.config)
-  if (!scheduled) {
-    return null
-  }
-
-  try {
-    return CronExpressionParser.parse(scheduled.cron, {
-      currentDate: input.currentDate,
-      ...(scheduled.timezone ? { tz: scheduled.timezone } : {}),
-    })
-      .next()
-      .toDate()
-  } catch {
-    return null
-  }
-}
-
-const isOneOffConfig = (config: unknown): boolean =>
-  isJsonRecord(config) && config['mode'] === 'once'
-
-const buildNextScheduledRunAt = (input: {
-  config: unknown
-  from: Date
-  now: Date
-  type: AgentTriggerType
-}): Date | null => {
-  // One-off schedules fire exactly once. Returning null clears next_run_at so the
-  // claim query (which requires next_run_at IS NOT NULL) never picks it up again.
-  if (isOneOffConfig(input.config)) {
-    return null
-  }
-
-  if (input.type === 'scheduled') {
-    return computeNextCronRunAt({
-      config: input.config,
-      currentDate: input.from,
-    })
-  }
-
-  if (input.type !== 'interval') {
-    return input.from
-  }
-
-  const intervalMinutes = parseIntervalMinutes(input.config)
-  if (!intervalMinutes) {
-    return null
-  }
-
-  const base = input.from.getTime() > input.now.getTime() ? input.from : input.now
-  return new Date(base.getTime() + intervalMinutes * 60_000)
-}
-
-const MEMORY_NUDGE =
-  'When you finish, store the key findings in your long-term memory so you can ' +
-  'build on them next time.'
-
-const extractTriggerInstruction = (config: unknown): string | null => {
-  if (!isJsonRecord(config)) {
-    return null
-  }
-  const prompt = config['prompt']
-  return typeof prompt === 'string' && prompt.trim().length > 0 ? prompt.trim() : null
-}
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-const extractTriggerEffectiveUserId = (config: unknown): string | null => {
-  if (!isJsonRecord(config)) {
-    return null
-  }
-  const userId = config['createdByUserId']
-  // Only return a well-formed UUID. A malformed stored value would otherwise make
-  // parseUserId throw inside the fire transaction and wedge the trigger in a retry
-  // loop; degrade to "no effective user" instead.
-  return typeof userId === 'string' && UUID_PATTERN.test(userId.trim())
-    ? userId.trim()
-    : null
-}
-
-/**
- * Compute the first fire time for a freshly-created schedule. Returns null when
- * the config is invalid (bad cron, missing interval, malformed one-off date) so
- * callers can reject the request. Reused by the schedule_task tool handler.
- */
-export const computeInitialScheduleRunAt = (input: {
-  config: unknown
-  now: Date
-  type: AgentTriggerType
-}): Date | null => {
-  if (isOneOffConfig(input.config)) {
-    const at = isJsonRecord(input.config) ? input.config['at'] : undefined
-    if (typeof at !== 'string') {
-      return null
-    }
-    const parsed = new Date(at)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-  }
-
-  if (input.type === 'scheduled') {
-    return computeNextCronRunAt({ config: input.config, currentDate: input.now })
-  }
-
-  if (input.type === 'interval') {
-    const intervalMinutes = parseIntervalMinutes(input.config)
-    return intervalMinutes ? new Date(input.now.getTime() + intervalMinutes * 60_000) : null
-  }
-
-  return null
-}
-
-const buildTriggerPrompt = (input: {
-  config?: unknown
-  payload: unknown
-  source: string
-  triggerType: AgentTriggerType
-}): string => {
-  // A scheduled task carries the user's own instruction in config.prompt. Use it
-  // verbatim as the run's seed so the agent performs whatever work was asked
-  // (any tool it has — not just web search) and reports back in this thread.
-  const instruction = extractTriggerInstruction(input.config)
-  if (instruction) {
-    return `${instruction}\n\n${MEMORY_NUDGE}`
-  }
-
-  const prefix = `A ${input.triggerType} trigger fired from ${input.source}.`
-  if (input.payload === undefined) {
-    return `${prefix}\n\nNo payload was provided.`
-  }
-
-  return `${prefix}\n\nPayload:\n${JSON.stringify(input.payload, null, 2)}`
 }
 
 const matchesEventTriggerConfig = (
@@ -479,7 +294,7 @@ const queueTriggerRun = async (
     where: { id: input.trigger.targetThreadId },
     select: {
       channel: {
-        select: { organizationId: true },
+        select: { organizationId: true, visibility: true },
       },
       channelId: true,
     },
@@ -497,6 +312,21 @@ const queueTriggerRun = async (
   })
   if (!binding) {
     return
+  }
+
+  // The scheduled run acts as the user who created it (config.createdByUserId).
+  // Authorization for the target channel was checked at creation time; re-verify
+  // here so a user later removed from a private channel can't keep the run acting
+  // as them. If they've lost access, fall back to an autonomous (no-user) run.
+  let effectiveUserId = extractTriggerEffectiveUserId(input.trigger.config)
+  if (effectiveUserId && thread.channel.visibility !== 'public') {
+    const membership = await prisma.channelMember.findFirst({
+      where: { channelId: input.trigger.targetChannelId, userId: effectiveUserId },
+      select: { userId: true },
+    })
+    if (!membership) {
+      effectiveUserId = null
+    }
   }
 
   const content = buildTriggerPrompt({
@@ -554,7 +384,7 @@ const queueTriggerRun = async (
           actorContext: buildActorContext({
             agentId: input.trigger.agentId,
             channelId: input.trigger.targetChannelId,
-            effectiveUserId: extractTriggerEffectiveUserId(input.trigger.config),
+            effectiveUserId,
             organizationId:
               input.trigger.agent.organizationId ?? thread.channel.organizationId,
             projectId: input.trigger.agent.projectId,

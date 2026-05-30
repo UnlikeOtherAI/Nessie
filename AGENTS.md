@@ -5,6 +5,7 @@
 - Work directly on `main`. Never create branches or PRs.
 - Commit and push to `main` after every turn. No exceptions. If there is nothing to commit, skip.
 - Rebuild the admin (`pnpm --filter @nessie/admin build`) after every turn where admin code changed.
+- Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt and the API restarts.
 - After every build or server restart, verify the new version is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 

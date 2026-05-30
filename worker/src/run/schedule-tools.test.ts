@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { computeInitialScheduleRunAt } from '../control/triggers.js'
+import { computeInitialScheduleRunAt } from '@nessie/runtime'
 import {
   runCancelScheduledTaskTool,
   runListScheduledTasksTool,
@@ -254,7 +254,12 @@ test('list_scheduled_tasks formats existing schedules', async () => {
       {
         id: 'trigger-1',
         name: 'JWST',
-        config: { prompt: 'research jwst', cron: '0 9 * * *', createdViaTool: true },
+        config: {
+          prompt: 'research jwst',
+          cron: '0 9 * * *',
+          createdViaTool: true,
+          createdByUserId: 'user-1',
+        },
         enabled: true,
         status: 'active',
         nextRunAt: new Date('2026-01-01T09:00:00.000Z'),
@@ -270,13 +275,37 @@ test('list_scheduled_tasks formats existing schedules', async () => {
 
 test('cancel_scheduled_task disables a matching trigger', async () => {
   const prisma = makeFakePrisma({
-    findFirstTrigger: { id: 'trigger-1', name: 'JWST', enabled: true },
+    findFirstTrigger: {
+      id: 'trigger-1',
+      name: 'JWST',
+      enabled: true,
+      config: { createdViaTool: true, createdByUserId: 'user-1' },
+    },
   })
   const result = await runCancelScheduledTaskTool(makeContext(prisma), { id: 'trigger-1' })
   const update = (prisma.calls['agentTrigger.update'] as Array<{ data: Record<string, unknown> }>)[0]!
   assert.equal(update.data.enabled, false)
   assert.equal(update.data.status, 'paused')
   assert.match(result.outputPreview, /Cancelled/)
+})
+
+test('cancel_scheduled_task refuses another user\'s schedule from an autonomous run', async () => {
+  // No effectiveUserId on the context -> autonomous; must not cancel a user-owned task.
+  const prisma = makeFakePrisma({
+    findFirstTrigger: {
+      id: 'trigger-1',
+      name: 'owned',
+      enabled: true,
+      config: { createdViaTool: true, createdByUserId: 'someone-else' },
+    },
+  })
+  const ctx = makeContext(prisma)
+  ;(ctx.actorContext.actor as { actorType: string }).actorType = 'agent'
+  await assert.rejects(
+    () => runCancelScheduledTaskTool(ctx, { id: 'trigger-1' }),
+    /No scheduled task found/,
+  )
+  assert.equal(prisma.calls['agentTrigger.update'], undefined)
 })
 
 test('cancel_scheduled_task errors when nothing matches', async () => {

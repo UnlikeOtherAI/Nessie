@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
+import { computeInitialScheduleRunAt } from '@nessie/runtime'
 import type { AgentTriggerType } from '@nessie/schemas'
-import { computeInitialScheduleRunAt } from '../control/triggers.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
 
 const UUID_PATTERN =
@@ -60,13 +60,15 @@ const parseSchedule = (raw: unknown): ParsedSchedule => {
 
   if (kind === 'recurring') {
     const cron = requireString(schedule['cron'], 'schedule.cron')
+    // Default to UTC when the caller omits a timezone, so cadence is deterministic
+    // rather than dependent on the server's local zone.
     const timezone =
       typeof schedule['timezone'] === 'string' && schedule['timezone'].trim().length > 0
         ? schedule['timezone'].trim()
-        : undefined
+        : 'UTC'
     return {
-      config: { cron, ...(timezone ? { timezone } : {}) },
-      describe: `cron "${cron}"${timezone ? ` (${timezone})` : ''}`,
+      config: { cron, timezone },
+      describe: `cron "${cron}" (${timezone})`,
       type: 'scheduled',
     }
   }
@@ -261,6 +263,15 @@ const buildOwnedScheduleWhere = (
   ],
 })
 
+// Final ownership guard applied in JS. The DB filter narrows the user case, but
+// it can't express "createdByUserId key absent", so an autonomous (no-user) call
+// must additionally exclude schedules a named user created via this agent.
+const scheduleBelongsToCaller = (config: unknown, userId: string | null): boolean => {
+  const owner = asRecord(config)['createdByUserId']
+  const ownerId = typeof owner === 'string' && owner.trim().length > 0 ? owner.trim() : null
+  return userId ? ownerId === userId : ownerId === null
+}
+
 const describeStoredSchedule = (config: unknown): string => {
   const record = asRecord(config)
   if (record['mode'] === 'once' && typeof record['at'] === 'string') {
@@ -281,7 +292,7 @@ export const runListScheduledTasksTool = async (
   context: BuiltinToolRuntimeContext,
 ): Promise<ToolExecutionResult> => {
   const userId = resolveEffectiveUserId(context)
-  const triggers = await context.prisma.agentTrigger.findMany({
+  const allTriggers = await context.prisma.agentTrigger.findMany({
     where: buildOwnedScheduleWhere(context, userId),
     orderBy: [{ enabled: 'desc' }, { nextRunAt: 'asc' }],
     take: 50,
@@ -295,6 +306,7 @@ export const runListScheduledTasksTool = async (
       targetChannel: { select: { label: true } },
     },
   })
+  const triggers = allTriggers.filter((t) => scheduleBelongsToCaller(t.config, userId))
 
   if (triggers.length === 0) {
     return {
@@ -345,10 +357,10 @@ export const runCancelScheduledTaskTool = async (
         id ? { id } : { name: { equals: name as string, mode: 'insensitive' } },
       ],
     },
-    select: { id: true, name: true, enabled: true },
+    select: { id: true, name: true, enabled: true, config: true },
   })
 
-  if (!trigger) {
+  if (!trigger || !scheduleBelongsToCaller(trigger.config, userId)) {
     throw new Error(
       `No scheduled task found matching ${id ? `id "${id}"` : `name "${name}"`}.`,
     )

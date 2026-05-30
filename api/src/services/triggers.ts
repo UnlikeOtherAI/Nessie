@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { CronExpressionParser } from 'cron-parser'
+import {
+  buildTriggerPrompt,
+  computeNextCronRunAt,
+  parseIntervalMinutes,
+  parseScheduledCronConfig,
+} from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
@@ -146,7 +151,7 @@ export const listOrganizationTriggers = async (
       OR: [
         {
           agent: {
-            agentKind: 'shared',
+            agentKind: { in: ['shared', 'personal_assistant'] },
             OR: [
               { organizationId },
               {
@@ -198,7 +203,7 @@ export const listScheduledTriggers = async (
         {
           agent: {
             organizationId: input.organizationId,
-            agentKind: 'shared',
+            agentKind: { in: ['shared', 'personal_assistant'] },
           },
         },
         { workflowInstallation: { organizationId: input.organizationId } },
@@ -571,77 +576,6 @@ const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
 const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const parsePositiveInteger = (value: unknown): number | null => {
-  if (
-    typeof value !== 'number' ||
-    !Number.isFinite(value) ||
-    value <= 0 ||
-    !Number.isInteger(value)
-  ) {
-    return null
-  }
-
-  return value
-}
-
-const parseScheduledCronConfig = (
-  config: unknown,
-): { cron: string; timezone?: string } | null => {
-  if (!isJsonRecord(config)) {
-    return null
-  }
-
-  const cron = config['cron']
-  if (typeof cron !== 'string' || cron.trim().length === 0) {
-    return null
-  }
-
-  const timezone =
-    typeof config['timezone'] === 'string' && config['timezone'].trim().length > 0
-      ? config['timezone']
-      : undefined
-
-  try {
-    CronExpressionParser.parse(cron, {
-      currentDate: new Date(),
-      ...(timezone ? { tz: timezone } : {}),
-    })
-  } catch {
-    return null
-  }
-
-  return { cron, timezone }
-}
-
-const parseIntervalMinutes = (config: unknown): number | null => {
-  if (!isJsonRecord(config)) {
-    return null
-  }
-
-  return parsePositiveInteger(config['interval_minutes'])
-}
-
-const computeNextCronRunAt = (input: {
-  config: unknown
-  currentDate: Date
-}): Date | null => {
-  const scheduled = parseScheduledCronConfig(input.config)
-  if (!scheduled) {
-    return null
-  }
-
-  try {
-    return CronExpressionParser.parse(scheduled.cron, {
-      currentDate: input.currentDate,
-      ...(scheduled.timezone ? { tz: scheduled.timezone } : {}),
-    })
-      .next()
-      .toDate()
-  } catch {
-    return null
-  }
-}
-
 const normalizeNextRunAt = (input: {
   config?: Record<string, unknown>
   nextRunAt?: string
@@ -670,26 +604,6 @@ const normalizeNextRunAt = (input: {
   return input.nextRunAt
     ? new Date(input.nextRunAt)
     : new Date(Date.now() + intervalMinutes * 60_000)
-}
-
-const buildTriggerPrompt = (input: {
-  payload: unknown
-  prompt?: string
-  source: string
-  triggerType: AgentTriggerType
-}): string => {
-  const explicitPrompt = input.prompt?.trim()
-  if (explicitPrompt) {
-    return explicitPrompt
-  }
-
-  const prefix = `A ${input.triggerType} trigger fired from ${input.source}.`
-  if (input.payload === undefined) {
-    return `${prefix}\n\nNo payload was provided.`
-  }
-
-  const serializedPayload = JSON.stringify(input.payload, null, 2)
-  return `${prefix}\n\nPayload:\n${serializedPayload}`
 }
 
 const resolveExecutionTarget = async (

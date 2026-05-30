@@ -95,7 +95,11 @@ const SCHEDULE_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
           },
           at: {
             type: 'string',
-            description: 'ISO 8601 date-time for a one-off run (kind "once").',
+            description:
+              'Absolute ISO 8601 date-time for a one-off run (kind "once"), e.g. '
+              + '"2026-06-01T09:00:00Z". Must include a UTC offset/Z and be in the '
+              + 'future. Resolve relative times ("tomorrow 9am") against the current '
+              + 'time given in your system context.',
           },
           cron: {
             type: 'string',
@@ -110,7 +114,9 @@ const SCHEDULE_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
           timezone: {
             type: 'string',
             description:
-              'Optional IANA timezone (e.g. "Europe/London") applied to cron schedules.',
+              'IANA timezone (e.g. "Europe/London") applied to cron schedules. '
+              + 'Defaults to UTC if omitted — set it when the user means a local '
+              + 'wall-clock time, asking them if their timezone is unknown.',
           },
         },
         required: ['kind'],

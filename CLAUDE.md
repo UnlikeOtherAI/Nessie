@@ -26,6 +26,7 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 ## Build
 
 - Rebuild the admin after every turn where admin code changed: `pnpm --filter @nessie/admin build`
+- Rebuild the worker after every turn where worker code changed: `pnpm --filter @nessie/worker build`. In local mode the API runs the worker **embedded from its built `dist`** (`import('@nessie/worker')`), so worker source edits do not take effect until rebuilt and the API is restarted.
 
 ## Linting
 

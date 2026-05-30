@@ -1026,6 +1026,9 @@ const buildModelPrompt = (
   const systemParts = [
     `You are ${context.agent.name}.`,
     context.agent.systemPrompt?.trim() ?? '',
+    `Current date and time: ${new Date().toISOString()} (UTC). When the user gives a `
+      + 'relative or wall-clock time, resolve it against this; treat wall-clock times '
+      + 'as UTC unless the user states a timezone.',
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
     'When you have enough information, respond directly without calling more tools.',
