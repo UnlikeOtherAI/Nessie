@@ -271,6 +271,8 @@ export const ThreadMessageRecordSchema = z.object({
   role: MessageRoleSchema,
   content: z.string(),
   createdAt: TimestampSchema,
+  editedAt: TimestampSchema.nullish(),
+  deletedAt: TimestampSchema.nullish(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   reactions: MessageReactionRecordSchema.array().optional(),
 })
@@ -288,6 +290,43 @@ export type ThreadRecord = z.infer<typeof ThreadRecordSchema>
 export const CreateThreadMessageBodySchema = z.object({
   content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
 })
+
+// ─── sp-messaging slice: edit, delete, search ──────────────────────────────
+export const UpdateThreadMessageBodySchema = z.object({
+  content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
+})
+export type UpdateThreadMessageBody = z.infer<typeof UpdateThreadMessageBodySchema>
+
+export const ListThreadMessagesQuerySchema = z.object({
+  before: z.string().min(1).optional(),
+  after: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(200).optional(),
+  senderId: z.string().uuid().optional(),
+})
+export type ListThreadMessagesQuery = z.infer<typeof ListThreadMessagesQuerySchema>
+
+export const MessageSearchResultSchema = z.object({
+  id: z.string().uuid(),
+  threadId: ThreadIdSchema,
+  channelId: ChannelIdSchema,
+  channelLabel: z.string(),
+  snippet: z.string(),
+  createdAt: TimestampSchema,
+  authorName: z.string(),
+  agentId: AgentIdSchema.nullish(),
+  userId: z.string().uuid().nullish(),
+})
+export type MessageSearchResult = z.infer<typeof MessageSearchResultSchema>
+
+export const MessageSearchQuerySchema = z.object({
+  query: z.string().min(1),
+  channelId: ChannelIdSchema.optional(),
+  senderId: z.string().uuid().optional(),
+  before: z.string().min(1).optional(),
+  after: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+})
+export type MessageSearchQuery = z.infer<typeof MessageSearchQuerySchema>
 
 export const PersonalAssistantStateResponseSchema = z.object({
   agent: AgentRecordSchema.nullable(),

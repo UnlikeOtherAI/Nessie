@@ -1,6 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   runAuthoredMessageSearchTool,
+  runMessageDeleteTool,
+  runMessageEditTool,
+  runMessageSearchTool,
   runPeopleSearchTool,
   runSendMessageTool,
   runUpdatePreferencesTool,
@@ -181,6 +184,28 @@ export const executeBuiltinTool = async (
     case 'cancel_scheduled_task':
       return wrapTool(inputSummary, () =>
         runCancelScheduledTaskTool(context, { id: args.id, name: args.name }),
+      )
+    case 'message_search':
+      return wrapTool(inputSummary, () =>
+        runMessageSearchTool(context, {
+          channelId:
+            typeof args.channelId === 'string' ? args.channelId : undefined,
+          limit: args.limit,
+          query: String(args.query ?? ''),
+        }),
+      )
+    case 'message_edit':
+      return wrapTool(inputSummary, () =>
+        runMessageEditTool(context, {
+          content: String(args.content ?? ''),
+          messageId: String(args.messageId ?? ''),
+        }),
+      )
+    case 'message_delete':
+      return wrapTool(inputSummary, () =>
+        runMessageDeleteTool(context, {
+          messageId: String(args.messageId ?? ''),
+        }),
       )
     case 'document_read':
       return wrapTool(inputSummary, () => runDocumentReadTool(String(args.query ?? '')))

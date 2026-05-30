@@ -702,6 +702,8 @@ model Message {
   content   String
   metadata  Json?             @default("{}")
   createdAt DateTime          @default(now()) @map("created_at")
+  editedAt  DateTime?         @map("edited_at")
+  deletedAt DateTime?         @map("deleted_at")
   thread    Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
   agent     Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
   user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)

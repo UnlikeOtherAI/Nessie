@@ -18,7 +18,12 @@ import {
 } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
-import { useSendMessage } from '../facades/messages/hooks'
+import {
+  useDeleteMessage,
+  useMessageSearch,
+  useSendMessage,
+  useUpdateMessage,
+} from '../facades/messages/hooks'
 import {
   isPersonalAssistantChannel,
   usePersonalAssistant,
@@ -82,6 +87,15 @@ export const ChannelsPage = () => {
   const markThreadRead = useMarkThreadRead()
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
+  const updateMessage = useUpdateMessage(activeChannel?.defaultThreadId)
+  const deleteMessage = useDeleteMessage(activeChannel?.defaultThreadId)
+
+  // sp-messaging slice: inline edit + channel search state.
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const { data: searchResults = [] } = useMessageSearch(activeChannel?.id, searchQuery)
 
   const channelUsers = useMemo(
     () =>
@@ -172,7 +186,47 @@ export const ChannelsPage = () => {
   useEffect(() => {
     setOptimisticMessages([])
     setShowCallOverlay(false)
+    setEditingMessageId(null)
+    setEditingContent('')
+    setSearchOpen(false)
+    setSearchQuery('')
   }, [activeChannel?.id])
+
+  const submitEdit = useCallback(
+    async (messageId: string) => {
+      const next = editingContent.trim()
+      if (!next) {
+        return
+      }
+      try {
+        await updateMessage.mutateAsync({ content: next, messageId })
+      } finally {
+        setEditingMessageId(null)
+        setEditingContent('')
+      }
+    },
+    [editingContent, updateMessage],
+  )
+
+  const confirmDelete = useCallback(
+    (messageId: string) => {
+      if (!window.confirm('Delete this message? This cannot be undone.')) {
+        return
+      }
+      deleteMessage.mutate(messageId)
+    },
+    [deleteMessage],
+  )
+
+  const jumpToMessage = useCallback((messageId: string) => {
+    const element = document.getElementById(`msg-${messageId}`)
+    if (!element) {
+      return
+    }
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    element.classList.add('admin-msg-highlight')
+    window.setTimeout(() => element.classList.remove('admin-msg-highlight'), 1600)
+  }, [])
 
   const lastReadMarkerRef = useRef<string | null>(null)
   const pendingReadMarkerRef = useRef<string | null>(null)
@@ -529,7 +583,22 @@ export const ChannelsPage = () => {
             )}
           </button>
           <div className="mx-1 h-5 w-px bg-[color:var(--border-strong)]" />
-          <button className={toolbarButtonClass} type="button">
+          <button
+            className={[
+              toolbarButtonClass,
+              searchOpen ? 'text-white' : '',
+            ].join(' ')}
+            onClick={() => {
+              setSearchOpen((open) => {
+                if (open) {
+                  setSearchQuery('')
+                }
+                return !open
+              })
+            }}
+            title="Search messages"
+            type="button"
+          >
             <svg
               className="h-4 w-4"
               fill="none"
@@ -561,6 +630,57 @@ export const ChannelsPage = () => {
           </button>
         </div>
       </header>
+
+      {searchOpen ? (
+        <div className="border-b border-[color:var(--sep)] px-5 py-2">
+          <input
+            autoFocus
+            className="admin-input w-full text-sm"
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setSearchOpen(false)
+                setSearchQuery('')
+              }
+            }}
+            placeholder="Search messages in this channel"
+            type="text"
+            value={searchQuery}
+          />
+          {searchQuery.trim().length > 0 ? (
+            <div className="mt-2 max-h-64 overflow-y-auto">
+              {searchResults.length === 0 ? (
+                <div className="px-1 py-2 text-sm text-[color:var(--tx3)]">
+                  No matches.
+                </div>
+              ) : (
+                searchResults.map((result) => (
+                  <button
+                    key={result.id}
+                    className="flex w-full flex-col gap-0.5 rounded-lg px-2 py-2 text-left hover:bg-white/5"
+                    onClick={() => {
+                      jumpToMessage(result.id)
+                      setSearchOpen(false)
+                      setSearchQuery('')
+                    }}
+                    type="button"
+                  >
+                    <span className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
+                      <span className="font-semibold text-[color:var(--tx2)]">
+                        {result.authorName}
+                      </span>
+                      #{result.channelLabel} · {formatClock(result.createdAt)}
+                    </span>
+                    <span className="truncate text-sm text-[color:var(--tx)]">
+                      {result.snippet}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {activeCall && !isInCall && callEligible && activeParticipants.length > 0 && (
         <CallBanner
@@ -724,7 +844,11 @@ export const ChannelsPage = () => {
                   </span>
                 </div>
               ) : (
-                <article key={item.message.id} className="admin-msg-row py-1">
+                <article
+                  key={item.message.id}
+                  id={`msg-${item.message.id}`}
+                  className="admin-msg-row group relative py-1"
+                >
                   {item.message.role === 'assistant' ? (
                     <div
                       className={[
@@ -766,6 +890,11 @@ export const ChannelsPage = () => {
                       <span className="text-xs text-[color:var(--tx3)]">
                         {formatClock(item.message.createdAt)}
                       </span>
+                      {item.message.editedAt && !item.message.deletedAt ? (
+                        <span className="text-xs italic text-[color:var(--tx3)]">
+                          (edited)
+                        </span>
+                      ) : null}
                     </div>
                     <div
                       className={
@@ -774,9 +903,55 @@ export const ChannelsPage = () => {
                           : 'mt-0.5'
                       }
                     >
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
-                        {renderContent(item.message.content)}
-                      </p>
+                      {item.message.deletedAt ? (
+                        <p className="text-sm italic leading-6 text-[color:var(--tx3)]">
+                          This message was deleted
+                        </p>
+                      ) : editingMessageId === item.message.id ? (
+                        <div className="flex flex-col gap-2">
+                          <textarea
+                            autoFocus
+                            className="admin-input w-full resize-y text-sm"
+                            onChange={(event) => setEditingContent(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' && !event.shiftKey) {
+                                event.preventDefault()
+                                void submitEdit(item.message.id)
+                              }
+                              if (event.key === 'Escape') {
+                                setEditingMessageId(null)
+                                setEditingContent('')
+                              }
+                            }}
+                            rows={2}
+                            value={editingContent}
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="admin-button admin-button-primary"
+                              disabled={updateMessage.isPending}
+                              onClick={() => void submitEdit(item.message.id)}
+                              type="button"
+                            >
+                              Save
+                            </button>
+                            <button
+                              className="admin-button admin-button-secondary"
+                              onClick={() => {
+                                setEditingMessageId(null)
+                                setEditingContent('')
+                              }}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
+                          {renderContent(item.message.content)}
+                        </p>
+                      )}
                       {item.message.reactions?.length ? (
                         <div className="mt-1 flex flex-wrap gap-1">
                           {Object.entries(
@@ -793,6 +968,32 @@ export const ChannelsPage = () => {
                       ) : null}
                     </div>
                   </div>
+                  {item.message.role === 'user' &&
+                  item.message.userId === me.user.id &&
+                  !item.message.deletedAt &&
+                  editingMessageId !== item.message.id ? (
+                    <div className="absolute right-3 top-1 hidden items-center gap-1 group-hover:flex">
+                      <button
+                        className={toolbarButtonClass}
+                        onClick={() => {
+                          setEditingMessageId(item.message.id)
+                          setEditingContent(item.message.content)
+                        }}
+                        title="Edit message"
+                        type="button"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className={toolbarButtonClass}
+                        onClick={() => confirmDelete(item.message.id)}
+                        title="Delete message"
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ) : null}
                 </article>
               ),
             )}

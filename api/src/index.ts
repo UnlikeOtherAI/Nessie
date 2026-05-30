@@ -49,6 +49,7 @@ import { registerPlanRoutes } from './routes/plans.js'
 import { registerPolicyRoutes } from './routes/policy.js'
 import { registerProjectRoutes } from './routes/projects.js'
 import { registerResourceLockRoutes } from './routes/resource-locks.js'
+import { registerSearchRoutes } from './routes/search.js'
 import { registerTaskRoutes } from './routes/tasks.js'
 import { registerTeamRoutes } from './routes/teams.js'
 import { registerThoughtRoutes } from './routes/thoughts.js'
@@ -243,6 +244,7 @@ export const buildApp = async () => {
   registerProjectRoutes(app, deps)
   registerTeamRoutes(app, deps)
   registerThreadRoutes(app, deps)
+  registerSearchRoutes(app, deps)
   registerActivityRoutes(app, deps)
   registerThoughtRoutes(app, deps)
   registerDesignerRoutes(app, deps)

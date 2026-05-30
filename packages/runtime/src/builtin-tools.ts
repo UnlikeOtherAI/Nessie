@@ -329,6 +329,73 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   SCHEDULE_TASK_TOOL_DEFINITION,
   LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
   CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
+  // sp-messaging slice: full-text search + agent-authored message lifecycle
+  {
+    id: 'message_search',
+    label: 'Message Search',
+    description:
+      'Full-text search across messages in channels visible to you. Returns ' +
+      'compact results with message IDs, snippets, channel, and author.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The full-text search query',
+        },
+        channelId: {
+          type: 'string',
+          description: 'Optional channel ID to scope the search to',
+        },
+        limit: {
+          type: 'integer',
+          description: 'Maximum number of results to return',
+        },
+      },
+      required: ['query'],
+    },
+    safe: true,
+  },
+  {
+    id: 'message_edit',
+    label: 'Message Edit',
+    description:
+      'Edit a message you (this agent) previously authored. Replaces the ' +
+      'content and marks the message as edited.',
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'ID of the message to edit',
+        },
+        content: {
+          type: 'string',
+          description: 'New message content',
+        },
+      },
+      required: ['messageId', 'content'],
+    },
+    safe: false,
+  },
+  {
+    id: 'message_delete',
+    label: 'Message Delete',
+    description:
+      'Soft-delete a message you (this agent) previously authored. The message ' +
+      'becomes a tombstone and its content is removed.',
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'ID of the message to delete',
+        },
+      },
+      required: ['messageId'],
+    },
+    safe: false,
+  },
 ]
 
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
