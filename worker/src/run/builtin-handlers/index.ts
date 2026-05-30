@@ -17,6 +17,12 @@ export {
   HttpFetchError,
 } from './http-fetch.js'
 export {
+  runWebSearch,
+  WebSearchError,
+  type WebSearchOutput,
+  type WebSearchResult,
+} from './web-search.js'
+export {
   assertInsideSandbox,
   extractSandboxConfig,
   SandboxViolationError,

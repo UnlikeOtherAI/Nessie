@@ -27,6 +27,7 @@ import {
   runFileRead,
   runFileWrite,
   runHttpFetch,
+  runWebSearch,
   SandboxViolationError,
 } from './builtin-handlers/index.js'
 import { assertSafeUrl } from './builtin-handlers/url-safety.js'
@@ -317,8 +318,8 @@ const collectWebSearchResults = async (
   query: string,
 ): Promise<{
   query: string
-  results: Array<{ title: string; url: string }>
-  searchUrl: string
+  answer: string | null
+  results: Array<{ title: string; url: string; snippet: string }>
   text: string
 }> => {
   const normalizedQuery = query
@@ -326,36 +327,7 @@ const collectWebSearchResults = async (
     .replace(/\s+/g, ' ')
     .trim() || query.trim()
 
-  const searchUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(normalizedQuery)}`
-  const response = await fetch(searchUrl, {
-    headers: {
-      'user-agent': 'NessieWorker/0.0.0',
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
-  const { text: html } = await readResponseText(response, MAX_FETCH_RESPONSE_BYTES)
-  const matches = Array.from(
-    html.matchAll(/result__a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/g),
-  ).slice(0, 3)
-
-  const results =
-    matches.length > 0
-      ? matches.map((match) => ({
-          title: stripHtml(match[2] ?? 'Result'),
-          url: match[1] ?? searchUrl,
-        }))
-      : [{ title: 'DuckDuckGo search', url: searchUrl }]
-
-  const text = results
-    .map((entry, index) => `${index + 1}. ${entry.title} - ${entry.url}`)
-    .join('\n')
-
-  return {
-    query: normalizedQuery,
-    results,
-    searchUrl,
-    text,
-  }
+  return runWebSearch(normalizedQuery)
 }
 
 const readResponseText = async (
@@ -664,8 +636,8 @@ export const executeWorkflowBuiltinTool = async (
         inputSummary,
         output: {
           query: result.query,
+          answer: result.answer,
           results: result.results,
-          searchUrl: result.searchUrl,
           text: result.text,
         },
         summary: `Web search completed for "${result.query}".`,
