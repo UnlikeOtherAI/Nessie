@@ -36,7 +36,17 @@ const databaseUrl = process.env.DATABASE_URL
 
 const prisma = getPrismaClient()
 
-export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
+const isMainModule = (): boolean =>
+  Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]!).href
+
+export const startWorker = async (
+  options: { standalone?: boolean } = {},
+): Promise<{ stop: () => Promise<void> }> => {
+  // Only a standalone worker process owns the OS signals. When the api embeds
+  // the worker (import('@nessie/worker') + startWorker()), registering signal
+  // handlers here would hijack the api's SIGINT/SIGTERM and exit the whole
+  // process before Fastify drains and api onClose hooks run.
+  const standalone = options.standalone ?? isMainModule()
   const pool = createPgPool(databaseUrl, {
     max: config.database.poolMax,
     min: config.database.poolMin,
@@ -235,16 +245,18 @@ export const startWorker = async (): Promise<{ stop: () => Promise<void> }> => {
     await prisma.$disconnect()
   }
 
-  process.once('SIGINT', () => {
-    void stop().finally(() => process.exit(0))
-  })
-  process.once('SIGTERM', () => {
-    void stop().finally(() => process.exit(0))
-  })
+  if (standalone) {
+    process.once('SIGINT', () => {
+      void stop().finally(() => process.exit(0))
+    })
+    process.once('SIGTERM', () => {
+      void stop().finally(() => process.exit(0))
+    })
+  }
 
   return { stop }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await startWorker()
+if (isMainModule()) {
+  await startWorker({ standalone: true })
 }

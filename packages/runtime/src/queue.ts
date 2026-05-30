@@ -39,6 +39,10 @@ type RawQueueJobRow = {
 
 const DEFAULT_LOCK_TTL_SECONDS = 5 * 60
 const DEFAULT_POLL_INTERVAL_MS = 1_000
+// Renew the lock at one third of its TTL so a handler that outlives the TTL
+// (e.g. a long agentic run) keeps its claim and is never re-claimed and
+// double-executed by another worker while still in flight.
+const LOCK_RENEWAL_FRACTION = 3
 
 const logQueueError = (message: string, error: unknown): void => {
   console.error(message, error)
@@ -155,7 +159,7 @@ export class PgQueueProvider implements QueueProvider {
           }
 
           try {
-            await handler(job)
+            await this.withLockRenewal(job.id, () => handler(job))
             if (signal?.aborted) {
               return
             }
@@ -187,6 +191,38 @@ export class PgQueueProvider implements QueueProvider {
 
       logQueueError(`Queue subscription stopped unexpectedly for topic "${topic}"`, error)
     })
+  }
+
+  private async renewLock(jobId: string, lockTtlSeconds: number): Promise<void> {
+    await this.pool.query(
+      `
+        UPDATE queue_jobs
+        SET locked_until = now() + make_interval(secs => $2)
+        WHERE id = $1
+          AND status = 'processing'
+      `,
+      [jobId, lockTtlSeconds],
+    )
+  }
+
+  private async withLockRenewal<T>(jobId: string, run: () => Promise<T>): Promise<T> {
+    const lockTtlSeconds = this.options.lockTtlSeconds ?? DEFAULT_LOCK_TTL_SECONDS
+    const renewalIntervalMs = Math.max(
+      1_000,
+      Math.floor((lockTtlSeconds * 1000) / LOCK_RENEWAL_FRACTION),
+    )
+    const timer = setInterval(() => {
+      void this.renewLock(jobId, lockTtlSeconds).catch((error) => {
+        logQueueError(`Failed to renew lock for queue job ${jobId}`, error)
+      })
+    }, renewalIntervalMs)
+    // Renewal is a background keep-alive; it must never hold the event loop open.
+    timer.unref()
+    try {
+      return await run()
+    } finally {
+      clearInterval(timer)
+    }
   }
 
   private async claimNextJob(topic: string): Promise<QueueJob | null> {

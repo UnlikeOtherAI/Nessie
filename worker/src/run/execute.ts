@@ -471,16 +471,25 @@ const maybeContinueParentWorkflow = async (
   })
 }
 
-const loadAllowedToolIds = async (
+// Builtin registry entries only change on deploy, so seeding them on every run
+// is N pointless writes. Seed each organisation at most once per worker process
+// (lazily on its first run) and read enabled entries on every run thereafter.
+const seededBuiltinOrganizations = new Set<string>()
+
+const seedBuiltinToolRegistry = async (
   prisma: PrismaClient,
-  context: RunContext,
-): Promise<Set<string>> => {
+  organizationId: string,
+): Promise<void> => {
+  if (seededBuiltinOrganizations.has(organizationId)) {
+    return
+  }
+
   await Promise.all(
     BUILTIN_TOOL_DEFINITIONS.map((tool) =>
       prisma.toolRegistryEntry.upsert({
         where: {
           organizationId_scopeKey_toolId: {
-            organizationId: context.channel.organizationId,
+            organizationId,
             scopeKey: BUILTIN_TOOL_SCOPE_KEY,
             toolId: tool.id,
           },
@@ -494,7 +503,7 @@ const loadAllowedToolIds = async (
           enabled: true,
           handlerKind: 'builtin',
           label: tool.label,
-          organizationId: context.channel.organizationId,
+          organizationId,
           scopeKey: BUILTIN_TOOL_SCOPE_KEY,
           safe: tool.safe,
           toolId: tool.id,
@@ -510,6 +519,15 @@ const loadAllowedToolIds = async (
       }),
     ),
   )
+
+  seededBuiltinOrganizations.add(organizationId)
+}
+
+const loadAllowedToolIds = async (
+  prisma: PrismaClient,
+  context: RunContext,
+): Promise<Set<string>> => {
+  await seedBuiltinToolRegistry(prisma, context.channel.organizationId)
 
   const enabledRegistryEntries = await prisma.toolRegistryEntry.findMany({
     where: {
@@ -1119,7 +1137,13 @@ export const executeRunJob = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
 ): Promise<void> => {
-  // Idempotency guard: skip if this run is already completed or failed
+  // Idempotency guard: skip if this run already reached a terminal state.
+  //
+  // We deliberately do NOT skip `running` runs: the queue renews each job's
+  // lock while its handler is in flight (see PgQueueProvider.withLockRenewal),
+  // so a live worker's run is never re-claimed concurrently. A run that is
+  // still `running` when re-claimed therefore means the previous worker
+  // crashed, and re-execution is the intended recovery path.
   const existingRun = await deps.prisma.run.findUnique({
     where: { id: payload.runId },
     select: { status: true, finishedAt: true },
