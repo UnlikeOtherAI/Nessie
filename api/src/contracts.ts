@@ -1317,12 +1317,15 @@ export type SetInferenceProviderHealthBody = z.infer<
   typeof SetInferenceProviderHealthBodySchema
 >
 
+// Note: authSecretRef is intentionally omitted from the response record. It is
+// accepted on create (CreateInferenceCredentialBindingBodySchema) and resolved
+// server-side at inference time; clients never need it back, and returning it
+// would needlessly disclose the secret reference.
 export const InferenceCredentialBindingRecordSchema = z.object({
   id: z.string().uuid(),
   organizationId: OrganizationIdSchema,
   providerId: z.string().uuid(),
   label: NonEmptyStringSchema,
-  authSecretRef: NonEmptyStringSchema,
   createdByActorId: NonEmptyStringSchema,
   revokedAt: TimestampSchema.optional(),
   createdAt: TimestampSchema,

@@ -5624,6 +5624,7 @@ export const buildApp = async () => {
   app.get('/api/ledger/tokens/summary', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
 
     const query = request.query as Record<string, string | undefined>
     const summary = await getTokenUsageSummary(prisma, actorContext.tenant.organizationId, {
@@ -5645,6 +5646,7 @@ export const buildApp = async () => {
   app.get('/api/ledger/tokens/monthly-estimate', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
 
     const estimate = await getMonthlyEstimate(prisma, actorContext.tenant.organizationId)
     return createApiResponse(estimate)
@@ -5653,6 +5655,7 @@ export const buildApp = async () => {
   app.get('/api/ledger/tokens/pricing', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
 
     const profiles = await listPricingProfiles(prisma, actorContext.tenant.organizationId)
     return createApiResponse(profiles)

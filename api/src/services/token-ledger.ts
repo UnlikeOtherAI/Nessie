@@ -1,100 +1,6 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext, OperationType, PricingSource } from '@nessie/schemas'
+import type { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext, PricingSource } from '@nessie/schemas'
 import { emitAuditEvent } from './audit.js'
-
-export type IngestTokenEventInput = {
-  actorContext: AuthorizedActionContext
-  agentId?: string
-  provider: string
-  model: string
-  operationType: OperationType
-  usage: {
-    inputTokens?: number
-    outputTokens?: number
-    cachedInputTokens?: number
-    cachedOutputTokens?: number
-    cacheReadTokens?: number
-    cacheWriteTokens?: number
-    totalTokens?: number
-  }
-  providerReportedCost?: { amount: number; currency: string }
-  metadata?: Record<string, unknown>
-}
-
-type TokenLedgerEventCreateData = Parameters<PrismaClient['tokenLedgerEvent']['create']>[0]['data']
-
-export const ingestTokenEvent = async (
-  prisma: PrismaClient,
-  input: IngestTokenEventInput,
-) => {
-  const orgId = input.actorContext.tenant.organizationId
-
-  // Look up pricing profile
-  const pricingProfile = await findPricingProfile(prisma, orgId, input.provider, input.model)
-
-  // Calculate estimated cost
-  let estimatedCostAmount: number | undefined
-  if (pricingProfile) {
-    estimatedCostAmount = 0
-    if (input.usage.inputTokens && pricingProfile.inputPerMillion) {
-      estimatedCostAmount += (input.usage.inputTokens / 1_000_000) * pricingProfile.inputPerMillion
-    }
-    if (input.usage.outputTokens && pricingProfile.outputPerMillion) {
-      estimatedCostAmount += (input.usage.outputTokens / 1_000_000) * pricingProfile.outputPerMillion
-    }
-    if (input.usage.cachedInputTokens && pricingProfile.cachedInputPerMillion) {
-      estimatedCostAmount +=
-        (input.usage.cachedInputTokens / 1_000_000) * pricingProfile.cachedInputPerMillion
-    }
-    if (input.usage.cacheReadTokens && pricingProfile.cacheReadPerMillion) {
-      estimatedCostAmount +=
-        (input.usage.cacheReadTokens / 1_000_000) * pricingProfile.cacheReadPerMillion
-    }
-    if (input.usage.cacheWriteTokens && pricingProfile.cacheWritePerMillion) {
-      estimatedCostAmount +=
-        (input.usage.cacheWriteTokens / 1_000_000) * pricingProfile.cacheWritePerMillion
-    }
-  }
-
-  const event = await prisma.tokenLedgerEvent.create({
-    data: {
-      occurredAt: new Date(),
-      organizationId: orgId,
-      projectId: input.actorContext.tenant.projectId ?? null,
-      teamId: input.actorContext.tenant.teamId ?? null,
-      channelId: input.actorContext.actionContext.channelId ?? null,
-      threadId: input.actorContext.actionContext.threadId ?? null,
-      sessionId: input.actorContext.actionContext.sessionId ?? null,
-      taskId: input.actorContext.actionContext.taskId ?? null,
-      agentId: input.agentId ?? null,
-      actorId: input.actorContext.actor.actorId,
-      requestId: input.actorContext.actionContext.requestId,
-      correlationId: input.actorContext.actionContext.correlationId ?? null,
-      provider: input.provider,
-      model: input.model,
-      operationType: input.operationType as TokenLedgerEventCreateData['operationType'],
-      inputTokens: input.usage.inputTokens ?? null,
-      outputTokens: input.usage.outputTokens ?? null,
-      cachedInputTokens: input.usage.cachedInputTokens ?? null,
-      cachedOutputTokens: input.usage.cachedOutputTokens ?? null,
-      cacheReadTokens: input.usage.cacheReadTokens ?? null,
-      cacheWriteTokens: input.usage.cacheWriteTokens ?? null,
-      totalTokens: input.usage.totalTokens ?? null,
-      providerCostAmount: input.providerReportedCost?.amount ?? null,
-      providerCostCurrency: input.providerReportedCost?.currency ?? null,
-      pricingProfileId: pricingProfile?.id ?? null,
-      pricingSource: pricingProfile?.source ?? null,
-      pricingCurrency: pricingProfile?.currency ?? null,
-      pricingInputPerM: pricingProfile?.inputPerMillion ?? null,
-      pricingOutputPerM: pricingProfile?.outputPerMillion ?? null,
-      estimatedCostAmount: estimatedCostAmount ?? null,
-      estimatedCostCurrency: pricingProfile?.currency ?? null,
-      metadata: (input.metadata as Prisma.InputJsonValue) ?? undefined,
-    },
-  })
-
-  return event.id
-}
 
 export const getTokenUsageSummary = async (
   prisma: PrismaClient,
@@ -133,7 +39,7 @@ export const getTokenUsageSummary = async (
     params.push(filters.agentId)
   }
   if (filters?.actorId) {
-    conditions.push(`"actor_id" = $${paramIdx++}::uuid`)
+    conditions.push(`"actor_id" = $${paramIdx++}`)
     params.push(filters.actorId)
   }
   if (filters?.provider) {
@@ -250,9 +156,11 @@ export const getMonthlyEstimate = async (
   organizationId: string,
 ) => {
   const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
   const daysElapsed = Math.max(1, Math.ceil((now.getTime() - monthStart.getTime()) / 86400000))
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const daysInMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
+  ).getUTCDate()
 
   const summary = await getTokenUsageSummary(prisma, organizationId, {
     from: monthStart.toISOString(),
@@ -356,29 +264,6 @@ export const deletePricingProfile = async (
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-const findPricingProfile = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  provider: string,
-  model: string,
-) => {
-  // Exact match first, then wildcard
-  const profile = await prisma.modelPricingProfile.findFirst({
-    where: {
-      organizationId,
-      provider,
-      OR: [
-        { modelPattern: model },
-        { modelPattern: '*' },
-      ],
-      effectiveTo: null,
-    },
-    orderBy: { modelPattern: 'desc' }, // exact match sorts after wildcard
-  })
-
-  return profile
-}
 
 const mapPricingProfile = (profile: {
   id: string

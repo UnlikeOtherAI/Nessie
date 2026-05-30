@@ -185,6 +185,15 @@ Suggested MCP/control actions:
 - organization owners/admins can read org-wide token and cost reports.
 - team owners can read team-scoped usage and cost reports.
 - pricing overrides should require organization owner or admin permissions.
+
+> **Current enforcement:** all reporting reads — `GET /api/ledger/tokens/summary`,
+> `GET /api/ledger/tokens/monthly-estimate`, and `GET /api/ledger/tokens/pricing` —
+> require organization-owner permission (`requireOwner`), matching the pricing
+> mutation routes. Finer-grained team-owner-scoped read access is not yet
+> implemented; until it is, non-owner members cannot read ledger reports.
+> Month boundaries for monthly estimates are computed in UTC, consistent with the
+> budget gate. The per-project/team/channel reporting scopes are backed by
+> `(organization_id, <scope>, occurred_at DESC)` indexes on `token_ledger_events`.
 - reports must respect project/team/channel visibility boundaries.
 - pricing overrides must be auditable:
   - who changed it,

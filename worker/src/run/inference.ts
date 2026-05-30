@@ -406,7 +406,15 @@ const hasAgentRoutingProfileColumn = async (prisma: PrismaClient): Promise<boole
             AND column_name = 'routing_profile_id'
         ) AS exists
       `,
-    ).then((rows) => rows[0]?.exists ?? false)
+    )
+      .then((rows) => rows[0]?.exists ?? false)
+      .catch((error) => {
+        // Don't cache a rejected promise — a transient failure here would
+        // otherwise permanently disable routing-profile resolution for the
+        // life of the process. Reset so the next call retries.
+        agentRoutingProfileColumnPromise = null
+        throw error
+      })
   }
 
   return agentRoutingProfileColumnPromise
@@ -414,6 +422,7 @@ const hasAgentRoutingProfileColumn = async (prisma: PrismaClient): Promise<boole
 
 const loadAgentRoutingProfileId = async (
   prisma: PrismaClient,
+  organizationId: string,
   agentId: string,
 ): Promise<string | null> => {
   if (!(await hasAgentRoutingProfileColumn(prisma))) {
@@ -425,6 +434,7 @@ const loadAgentRoutingProfileId = async (
       SELECT routing_profile_id AS "routingProfileId"
       FROM agents
       WHERE id = ${agentId}::uuid
+        AND organization_id = ${organizationId}::uuid
       LIMIT 1
     `,
   )
@@ -1341,7 +1351,8 @@ export const runInferenceGraph = async (
   input: RunInferenceGraphInput,
 ): Promise<MultiProviderResult> => {
   const routingProfileId =
-    input.agent.routingProfileId ?? (await loadAgentRoutingProfileId(prisma, input.agent.id))
+    input.agent.routingProfileId ??
+    (await loadAgentRoutingProfileId(prisma, input.organizationId, input.agent.id))
 
   const route = routingProfileId
     ? await loadRoutingProfile(prisma, {
@@ -1361,6 +1372,12 @@ export const runInferenceGraph = async (
     ? 'routing-profile'
     : 'direct'
 
+  // Tool calling is only wired through `single` mode. The multi-provider modes
+  // (fallback/committee/pipeline/shadow) intentionally do NOT forward `tools`
+  // to their stages, so the model is never offered tools and cannot emit tool
+  // calls — their empty `toolCalls` is correct, not a dropped result. Agents
+  // that require tools must use a single-stage route. Supporting tools across
+  // multi-stage routes is a feature, not a bug fix, and is tracked separately.
   switch (route.mode) {
     case 'single':
       return executeSingleMode(prisma, {

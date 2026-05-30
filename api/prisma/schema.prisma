@@ -1817,6 +1817,9 @@ model TokenLedgerEvent {
   @@index([organizationId, provider, model, occurredAt(sort: Desc)])
   @@index([organizationId, agentId, occurredAt(sort: Desc)])
   @@index([organizationId, actorId, occurredAt(sort: Desc)])
+  @@index([organizationId, projectId, occurredAt(sort: Desc)])
+  @@index([organizationId, teamId, occurredAt(sort: Desc)])
+  @@index([organizationId, channelId, occurredAt(sort: Desc)])
   @@map("token_ledger_events")
 }
 

@@ -125,7 +125,6 @@ const mapCredentialBindingRecord = (binding: {
   organizationId: parseOrganizationId(binding.organizationId),
   providerId: binding.providerId,
   label: binding.label,
-  authSecretRef: binding.authSecretRef,
   createdByActorId: binding.createdByActorId,
   revokedAt: toTimestamp(binding.revokedAt),
   createdAt: binding.createdAt.toISOString(),

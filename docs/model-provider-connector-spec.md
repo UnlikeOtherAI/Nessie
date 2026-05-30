@@ -819,7 +819,7 @@ InferenceCredentialBinding
   organization_id
   provider_id
   label
-  auth_secret_ref
+  auth_secret_ref   // server-only: resolved at inference time, NEVER returned in API responses
   created_by_actor_id
   created_at
   revoked_at?
