@@ -50,7 +50,9 @@ export const submitForReview = async (
       'You do not have permission to submit this catalog entry',
     )
   }
-  if (existing.status === 'pending_approval') return existing
+  if (existing.status === 'pending_approval' && existing.visibility === 'public') {
+    return existing
+  }
   if (existing.status !== 'draft' && existing.status !== 'rejected') {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
@@ -143,8 +145,10 @@ export const rejectSubmission = async (
     )
   }
 
-  return prisma.mcpCatalogEntry.update({
-    where: { id },
+  // Atomic on `status === 'pending_approval'` (mirrors approveSubmission) so a
+  // concurrent approve+reject can't both win and clobber a published entry.
+  const { count } = await prisma.mcpCatalogEntry.updateMany({
+    where: { id, status: 'pending_approval' },
     data: {
       visibility: 'private',
       status: 'rejected',
@@ -153,4 +157,11 @@ export const rejectSubmission = async (
       rejectionReason: reason,
     },
   })
+  if (count === 0) {
+    throw new McpCatalogError(
+      MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+      `Catalog entry ${id} is no longer awaiting approval`,
+    )
+  }
+  return getAccessibleCatalogEntry(prisma, actorContext, id)
 }

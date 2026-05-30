@@ -348,6 +348,41 @@ test('listCatalogEntries mine view returns the actor own entries in any state', 
   assert.deepEqual(entries.map((entry) => entry.id).sort(), ['mine-draft', 'mine-rejected'])
 })
 
+test('listCatalogEntries store view ignores a status sub-filter (no queue leak)', async () => {
+  const { prisma } = makeStub([
+    makeRow({ id: 'pub', status: 'published', visibility: 'public', ownerUserId: null }),
+    makeRow({ id: 'pending', status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  // A non-superuser must not be able to widen the store into the review queue.
+  const entries = await listCatalogEntries(prisma, actorCtx(USER_B), {
+    view: 'store',
+    status: 'pending_approval',
+  })
+  assert.deepEqual(entries.map((entry) => entry.id), ['pub'])
+})
+
+test('deprecateCatalogEntry refuses non-published entries', async () => {
+  const { prisma } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
+  await assert.rejects(
+    () => deprecateCatalogEntry(prisma, actorCtx(USER_A), 'entry-1'),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+  )
+})
+
+test('updateCatalogEntry refuses edits while a submission is under review', async () => {
+  const { prisma } = makeStub([
+    makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  await assert.rejects(
+    () => updateCatalogEntry(prisma, actorCtx(USER_A), 'entry-1', { label: 'Sneaky' }),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+  )
+})
+
 test('listCatalogEntries queue view returns pending submissions', async () => {
   const { prisma } = makeStub([
     makeRow({ id: 'pending', status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),

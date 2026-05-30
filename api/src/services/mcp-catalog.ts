@@ -163,7 +163,7 @@ const listWhere = (
     case 'mine':
       return { ownerUserId }
     case 'queue':
-      return { status: 'pending_approval' }
+      return { status: 'pending_approval', visibility: 'public' }
     case 'all':
       return {}
   }
@@ -176,7 +176,13 @@ export const listCatalogEntries = async (
 ): Promise<McpCatalogEntryRow[]> => {
   const view = filters.view ?? 'store'
   const where = listWhere(actorContext, view)
-  if (filters.status && view !== 'queue') where.status = filters.status
+  // A caller-supplied status sub-filter only narrows the management views
+  // ('mine', 'all'). 'store' and 'queue' pin status (published /
+  // pending_approval) so a status param can never widen them — otherwise
+  // `?view=store&status=pending_approval` would leak the public review queue.
+  if (filters.status && (view === 'mine' || view === 'all')) {
+    where.status = filters.status
+  }
   return prisma.mcpCatalogEntry.findMany({
     where,
     orderBy: [{ status: 'asc' }, { label: 'asc' }],
@@ -230,7 +236,8 @@ export const canManageEntry = (
   actorContext: AuthorizedActionContext,
   entry: McpCatalogEntryRow,
 ): boolean =>
-  isOwnerRole(actorContext) || entry.ownerUserId === actorContext.actor.actorId
+  isOwnerRole(actorContext)
+  || (entry.ownerUserId !== null && entry.ownerUserId === actorContext.actor.actorId)
 
 const requireManageable = async (
   prisma: PrismaClient,
@@ -290,6 +297,14 @@ export const updateCatalogEntry = async (
 ): Promise<McpCatalogEntryRow | null> => {
   const existing = await requireManageable(prisma, actorContext, id)
   if (!existing) return null
+  // Freeze the definition while it is under review so an approver can't be
+  // shown one version and publish another. The owner must retract first.
+  if (existing.status === 'pending_approval') {
+    throw new McpCatalogError(
+      MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+      'Cannot edit a catalog entry while it is under review; retract the submission first',
+    )
+  }
 
   if (input.authConfig !== undefined || input.authMethod !== undefined) {
     const nextMethod = input.authMethod ?? existing.authMethod
@@ -388,6 +403,15 @@ export const deprecateCatalogEntry = async (
   const existing = await requireManageable(prisma, actorContext, id)
   if (!existing) return null
   if (existing.status === 'deprecated') return existing
+  // Deprecation is a retirement of a live listing — only `published` entries
+  // can be deprecated. Deprecating a draft/pending/rejected entry would create
+  // a dead state and (for pending) silently bypass the rejection audit trail.
+  if (existing.status !== 'published') {
+    throw new McpCatalogError(
+      MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+      `Catalog entry ${id} cannot be deprecated from ${existing.status}`,
+    )
+  }
   return prisma.mcpCatalogEntry.update({
     where: { id },
     data: { status: 'deprecated' },
