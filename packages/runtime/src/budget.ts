@@ -19,7 +19,7 @@ import type { PrismaClient } from '@prisma/client'
 // This is a SOFT cap: spend is recorded only after a run completes, so the gate
 // reads period-to-date usage excluding in-flight runs and can overshoot slightly.
 
-export type BudgetMode = 'off' | 'warn' | 'enforce' | 'unlimited'
+export type BudgetMode = 'off' | 'warn' | 'enforce' | 'degrade' | 'unlimited'
 export type BudgetScopeType = 'organization' | 'project' | 'team'
 export type BudgetPeriod = 'weekly' | 'monthly' | 'yearly'
 export type BudgetLevel = 'ok' | 'warn' | 'over'
@@ -30,7 +30,12 @@ export type BudgetScope = {
   teamId?: string | null
 }
 
-export type BudgetCheck = { allowed: boolean; reason: string | null }
+// The gate's decision for a run. 'degrade' keeps the run going but on a cheaper
+// model instead of refusing — so nobody is blocked, spend just slows.
+export type BudgetDecision =
+  | { action: 'allow' }
+  | { action: 'block'; reason: string }
+  | { action: 'degrade'; model: string; provider: string; reason: string }
 
 export type BudgetStatus = {
   scopeType: BudgetScopeType
@@ -43,6 +48,8 @@ export type BudgetStatus = {
   spentTokens: number
   warnThresholdPercent: number
   blockHumansWhenOver: boolean
+  degradeModel: string | null
+  degradeProvider: string | null
   level: BudgetLevel
   percentUsed: number | null
   costTrackingActive: boolean
@@ -58,6 +65,8 @@ type BudgetRow = {
   period: BudgetPeriod
   warnThresholdPercent: number
   blockHumansWhenOver: boolean
+  degradeModel: string | null
+  degradeProvider: string | null
 }
 
 // cost_limit_usd is a Prisma Decimal at runtime; normalize it to a JS number so
@@ -76,6 +85,8 @@ const toBudgetRow = (raw: RawBudgetRow): BudgetRow => ({
   period: raw.period,
   warnThresholdPercent: raw.warnThresholdPercent,
   blockHumansWhenOver: raw.blockHumansWhenOver,
+  degradeModel: raw.degradeModel,
+  degradeProvider: raw.degradeProvider,
 })
 
 const periodStartUtc = (period: BudgetPeriod, now: Date): Date => {
@@ -169,15 +180,16 @@ export const checkBudget = async (
   prisma: PrismaClient,
   scope: BudgetScope,
   opts: { isHuman: boolean },
-): Promise<BudgetCheck> => {
+): Promise<BudgetDecision> => {
   const budget = await resolveBudget(prisma, scope)
 
-  // No governing budget, or a non-blocking mode: allow.
-  if (!budget || budget.mode !== 'enforce') {
-    return { allowed: true, reason: null }
+  // Only enforce and degrade act on spend; off (inherits, never resolved here),
+  // warn, and unlimited always allow.
+  if (!budget || (budget.mode !== 'enforce' && budget.mode !== 'degrade')) {
+    return { action: 'allow' }
   }
   if (budget.costLimitUsd === null && budget.tokenLimit === null) {
-    return { allowed: true, reason: null }
+    return { action: 'allow' }
   }
 
   const { spentUsd, spentTokens } = await getPeriodUsage(
@@ -187,14 +199,28 @@ export const checkBudget = async (
   )
   const reason = overCapReason(budget, spentUsd, spentTokens)
   if (reason === null) {
-    return { allowed: true, reason: null }
+    return { action: 'allow' }
   }
 
-  // Over cap: a live human turn passes unless the org opted into blocking people.
-  if (opts.isHuman && !budget.blockHumansWhenOver) {
-    return { allowed: true, reason: null }
+  // Over cap. Degrade keeps the run going on the cheaper model (never blocks);
+  // it falls back to allow if no degrade target is configured.
+  if (budget.mode === 'degrade') {
+    if (budget.degradeModel) {
+      return {
+        action: 'degrade',
+        model: budget.degradeModel,
+        provider: budget.degradeProvider ?? 'openai',
+        reason,
+      }
+    }
+    return { action: 'allow' }
   }
-  return { allowed: false, reason }
+
+  // Enforce. A live human turn passes unless the org opted into blocking people.
+  if (opts.isHuman && !budget.blockHumansWhenOver) {
+    return { action: 'allow' }
+  }
+  return { action: 'block', reason }
 }
 
 const statusForRow = async (prisma: PrismaClient, row: BudgetRow): Promise<BudgetStatus> => {
@@ -217,6 +243,8 @@ const statusForRow = async (prisma: PrismaClient, row: BudgetRow): Promise<Budge
     spentTokens,
     warnThresholdPercent: row.warnThresholdPercent,
     blockHumansWhenOver: row.blockHumansWhenOver,
+    degradeModel: row.degradeModel,
+    degradeProvider: row.degradeProvider,
     level,
     percentUsed,
     costTrackingActive: pricingProfiles > 0,
@@ -248,6 +276,8 @@ export const setBudgetConfig = async (
     period: BudgetPeriod
     warnThresholdPercent: number
     blockHumansWhenOver: boolean
+    degradeModel: string | null
+    degradeProvider: string | null
   },
 ): Promise<BudgetStatus> => {
   const { organizationId, scopeType, scopeId, ...rest } = input

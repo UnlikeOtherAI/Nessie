@@ -43,7 +43,7 @@ export const executeOrchestrateDecideJob = async (
   // Budget gate: the orchestrator decision below is itself a model call, so it must
   // be gated here as well as at run execution. When over budget, post a single
   // notice and skip the decision entirely rather than spend on it.
-  const budget = await checkBudget(
+  const budgetDecision = await checkBudget(
     deps.prisma,
     {
       organizationId: actorContext.tenant.organizationId,
@@ -52,13 +52,15 @@ export const executeOrchestrateDecideJob = async (
     },
     { isHuman: actorContext.actor.actorType === 'user' },
   )
-  if (!budget.allowed) {
+  // Only a hard block stops the decision; degrade/allow proceed (the reply run is
+  // where the cheaper model is actually applied).
+  if (budgetDecision.action === 'block') {
     const respondingAgentId = channelAgents[0]?.id
     if (respondingAgentId) {
       const notice = await deps.prisma.message.create({
         data: {
           agentId: respondingAgentId,
-          content: `⚠️ ${budget.reason ?? 'Monthly budget exceeded'} — this request was not run.`,
+          content: `⚠️ ${budgetDecision.reason} — this request was not run.`,
           role: 'assistant',
           threadId,
         },
@@ -74,7 +76,7 @@ export const executeOrchestrateDecideJob = async (
         event: 'message.new',
       })
     }
-    console.warn(`[worker] orchestrate.decide blocked by budget (channel ${channelId}): ${budget.reason}`)
+    console.warn(`[worker] orchestrate.decide blocked by budget (channel ${channelId}): ${budgetDecision.reason}`)
     return
   }
 

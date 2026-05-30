@@ -1183,7 +1183,7 @@ export const executeRunJob = async (
     // Only a live human conversational turn (payload.interactive) is exempt by
     // default; automations — triggers (even manually fired), subtasks, mailbox,
     // scheduled runs — leave interactive unset and are throttled.
-    const budget = await checkBudget(
+    const budgetDecision = await checkBudget(
       deps.prisma,
       {
         organizationId: payload.actorContext.tenant.organizationId,
@@ -1192,8 +1192,18 @@ export const executeRunJob = async (
       },
       { isHuman: payload.interactive === true },
     )
-    if (!budget.allowed) {
-      const notice = `⚠️ ${budget.reason ?? 'Monthly budget exceeded'} — this request was not run.`
+    // When over a degrade budget, run on the cheaper model instead of the agent's.
+    const budgetModelOverride =
+      budgetDecision.action === 'degrade'
+        ? { model: budgetDecision.model, provider: budgetDecision.provider }
+        : null
+    if (budgetModelOverride) {
+      console.warn(
+        `[worker] run ${context.run.id} degraded by budget to ${budgetModelOverride.provider}/${budgetModelOverride.model}`,
+      )
+    }
+    if (budgetDecision.action === 'block') {
+      const notice = `⚠️ ${budgetDecision.reason} — this request was not run.`
       const blockMessage = await deps.prisma.message.create({
         data: {
           agentId: context.agent.id,
@@ -1217,7 +1227,7 @@ export const executeRunJob = async (
         context.task.id,
         'failed',
       )
-      console.warn(`[worker] run ${context.run.id} blocked by budget: ${budget.reason}`)
+      console.warn(`[worker] run ${context.run.id} blocked by budget: ${budgetDecision.reason}`)
       return
     }
 
@@ -1336,8 +1346,8 @@ export const executeRunJob = async (
         actorContext: payload.actorContext,
         agent: {
           id: context.agent.id,
-          model: context.agent.model,
-          provider: context.agent.provider,
+          model: budgetModelOverride?.model ?? context.agent.model,
+          provider: budgetModelOverride?.provider ?? context.agent.provider,
           routingProfileId: null,
         },
         baseMessages: messages,

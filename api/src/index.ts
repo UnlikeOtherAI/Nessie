@@ -301,14 +301,10 @@ export const startApiServer = async () => {
     logBootstrapUrl(initialBootstrapState)
   }
 
-  await app.listen({
-    host: config.api.host,
-    port: config.api.port,
-  })
-
   // In local mode, start the worker in-process so agents always work. It shares
   // the API's Prisma client (single pool per process); capture its stop handle so
-  // app shutdown tears the worker down instead of leaking it.
+  // app shutdown tears the worker down instead of leaking it. Register the onClose
+  // hook BEFORE app.listen() — Fastify rejects addHook once the server is listening.
   if (config.mode === 'local') {
     const { startWorker } = await import('@nessie/worker')
     const embeddedWorker = await startWorker()
@@ -317,6 +313,11 @@ export const startApiServer = async () => {
     })
     console.log('[api] embedded worker started (local mode)')
   }
+
+  await app.listen({
+    host: config.api.host,
+    port: config.api.port,
+  })
 
   return app
 }

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { deleteBudget, listBudgetStatuses, setBudgetConfig } from '@nessie/runtime'
 import {
+  BudgetScopeIdSchema,
   BudgetScopeTypeSchema,
   BudgetStatusResponseSchema,
   SetBudgetBodySchema,
@@ -158,7 +159,7 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     const query = request.query as { scopeType?: string; scopeId?: string }
     const parsedScope = BudgetScopeTypeSchema.safeParse(query.scopeType)
-    const parsedScopeId = SetBudgetBodySchema.shape.scopeId.safeParse(query.scopeId)
+    const parsedScopeId = BudgetScopeIdSchema.safeParse(query.scopeId)
     if (!parsedScope.success || !parsedScopeId.success) {
       sendApiError(reply, 400, 'INVALID_INPUT', 'scopeType and a valid scopeId (UUID) are required')
       return reply

@@ -24,7 +24,7 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
     // This endpoint calls the model in-process (not via the worker queue), so it
     // must consult the budget gate itself rather than rely on the worker gates.
     // It is an interactive owner action, so it counts as a human request.
-    const budget = await checkBudget(
+    const budgetDecision = await checkBudget(
       prisma,
       {
         organizationId: actorContext.tenant.organizationId,
@@ -33,10 +33,13 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
       },
       { isHuman: true },
     )
-    if (!budget.allowed) {
-      sendApiError(reply, 402, 'BUDGET_EXCEEDED', budget.reason ?? 'Monthly budget exceeded')
+    if (budgetDecision.action === 'block') {
+      sendApiError(reply, 402, 'BUDGET_EXCEEDED', budgetDecision.reason)
       return reply
     }
+    // A 'degrade' decision is intentionally a no-op here: the designer already runs
+    // on a fixed cheap model (DESIGNER_MODEL = gpt-5-mini), so there is no more
+    // economical model to fall back to. Only a hard block stops this endpoint.
 
     await streamDesignerChat(reply, body, sharedModelClient)
     return reply
