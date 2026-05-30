@@ -14,7 +14,7 @@ Provide a single capability system where:
 - prompt layers compose independently from tool schemas,
 - execution enforcement blocks denied tools before invocation.
 
-This document consolidates the target model from `docs/agent tool capabilities/` chapters 01-03 into a single Phase 3 implementation spec.
+This document consolidates the target model from `docs/agent-tool-capabilities/` chapters 01-03 into a single Phase 3 implementation spec.
 
 ## 2) Current gap
 
@@ -270,7 +270,7 @@ effectiveToolPolicy(agent, rolePolicy) =
 
 ### 3.4 Agent execution loop policy
 
-Provider/model choice and loop strategy must be part of agent configuration, not hidden prompt behavior. See `docs/agent tool capabilities/01-foundations.md` section 3.4a for the full `executionPolicy` schema with multi-stage parallelism, aggregation, and orchestrator configuration.
+Provider/model choice and loop strategy must be part of agent configuration, not hidden prompt behavior. See `docs/agent-tool-capabilities/01-foundations.md` section 3.4a for the full `executionPolicy` schema with multi-stage parallelism, aggregation, and orchestrator configuration.
 
 Key rules:
 

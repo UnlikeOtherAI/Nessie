@@ -1,22 +1,28 @@
 # Nessie
 
-Personal voice-first AI agent for macOS with multi-agent orchestration.
+Multi-tenant, self-hosted agentic work platform. Organisations host their own Nessie instance; users collaborate in a hierarchy of Organisation → Project → Team → Channel, with RBAC, approval gates, an audit trail, a token-cost ledger, MCP connector management, triggers/scheduling, video calling, and human work distribution.
+
+> **Voice:** Voice is a secondary, nice-to-have control surface — used mainly from the companion mobile app to issue commands — not the primary interface. The primary interface is the admin web UI (`admin/`). A voice companion (OpenAI Realtime API, `gpt-4o-realtime-preview`) exists in `macos/` but is optional and architecturally separate from the main control plane.
 
 @./AGENTS.md
 
 ## Architecture
 
-- **Voice Layer** — OpenAI Realtime API (`gpt-realtime-1.5`, audio-in/audio-out WebSocket), single model
-- **Orchestrator** — Main agent, coordinates all activity
-- **Sub-Agents** — Spawned on demand, each with specific purpose
-- **Tool Layer** — File read/write, bash, file search, web search
+- **API** (`api/`, port 5554) — multi-tenant REST control plane: auth (OIDC/session), channels, tasks, approvals, triggers, MCP connector management, token ledger, audit log
+- **Worker** (`worker/`) — async execution service: agentic loop, task scheduling, trigger delivery, mailbox processing
+- **Admin** (`admin/`, port 5555) — full product interface for operators and knowledge workers
+- **Web** (`web/`) — public landing page only
+- **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
+
+Legacy single-user server lives in `src/` and is being removed — do not rely on it for new work.
 
 ## Tech
 
-- OpenAI Realtime API (`gpt-4o-realtime-preview`) for voice-to-voice
-- macOS accessibility / input injection for keyboard mode
-- Multi-agent orchestration with shared tool layer
-- MCP server — all app actions exposed as MCP tools (see `src/mcp/`)
+- Node/TypeScript (strict mode), Fastify, Prisma + PostgreSQL
+- Multi-tenancy: Organisation → Project → Team → Channel schema with `organization_id` scoping on all child tables
+- RBAC policy engine with deny-overrides; OIDC SSO with PKCE
+- Agentic loop: max 12 iterations / 20 tool calls / 90 s / cost cap per run
+- MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 
 ## Git
@@ -47,22 +53,20 @@ Personal voice-first AI agent for macOS with multi-agent orchestration.
 
 ## MCP Integration
 
-All user-facing actions are available via the MCP server (`GET /mcp`, `POST /mcp`) speaking JSON-RPC 2.0. Any MCP client (Claude Code, etc.) can connect and use:
+The live API server (`api/`) exposes a **REST MCP connector-management surface** under `/api/mcp/*`. This is for managing third-party MCP connectors (register, list, approve, activate, delete) — it is not a JSON-RPC tool server.
 
-- Protocol methods: `tools/list`, `tools/call`, `resources/list`, `initialize`, `notifications/initialized`.
-- Tool calls exposed by `tools/list`: chat (`send_message`), tool execution (`invoke_tool` → Bash/FileRead/FileWrite/Glob/Grep/WebSearch), conversation ops (`list_messages`, `delete_history`, `inject_message`, `list_sessions`), screenshot (`screenshot`), task lifecycle (`create_task`, `list_tasks`, `get_task`, `transition_task`, `spawn_task`, `get_spawn_status`), reviews/approvals (`submit_review`, `get_review_history`, `list_roles`, `request_approval`, `approve_task`, `reject_task`, `list_pending_approvals`), validators/metrics/alerts (`run_validators`, `get_metrics`, `get_task_metrics`, `get_alerts`), and OpenClaw interop (`openclaw_export_state`, `openclaw_agent_configs`, `openclaw_session_key`, `openclaw_resolve_key`).
-- Voice placeholders: `voice_start` / `voice_stop` are listed but not implemented; there is no `stream_audio` tool in the server today.
+> **Legacy JSON-RPC MCP server removed.** The old `GET /mcp` / `POST /mcp` JSON-RPC server (`src/mcp/server.ts`) that exposed `send_message`, `invoke_tool`, `tools/list`, and 37 tools existed only in the legacy `src/` tree, which is being deleted. There is no JSON-RPC `/mcp` endpoint on the live `api/` server.
 
-For the full, authoritative list see [docs/functionality.md](docs/functionality.md#72-mcp-methods-available-through-tool-names).
+See [docs/functionality.md](docs/functionality.md) for the authoritative API surface description. Section §7 describes the removed legacy MCP server for historical reference.
 
 ## MDNS
 
-The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. Clients on the same network discover it automatically without hardcoded IPs.
+The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. This feature is part of the legacy `src/` runtime; the new `api/` server does not yet register mDNS. Clients on the same network can discover the legacy server automatically without hardcoded IPs.
 
 ## Docs
 
-- [brief.md](docs/brief.md) — Full project brief
-- [build-ai-coworker.md](docs/build-ai-coworker.md) — macOS app build plan
+- [brief.md](docs/brief.md) — Historical architecture brief (see banner)
+- [build-ai-coworker.md](docs/done/build-ai-coworker.md) — Historical macOS app build plan (moved to done/)
 - Finished documents belong in `docs/done/`.
 
 ## Documentation & Goals — update with every change

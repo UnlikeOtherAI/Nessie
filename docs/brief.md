@@ -1,6 +1,8 @@
 # Helper — Personal Agent Brief
 
-> Status: historical architecture brief. For current implementation state and the active target-state docs, use [functionality.md](./functionality.md).
+> **Status: historical architecture brief.** This document describes the original single-user personal voice agent concept. The project has since evolved into a **multi-tenant, self-hosted agentic work platform** (Organisation → Project → Team → Channel, with RBAC, approvals, audit trail, token ledger, MCP connector management, triggers/scheduling, video calling, and human work distribution). For the current implementation state, see [functionality.md](./functionality.md).
+
+> **Voice layer note:** The brief references both Minimax (in the voice mode section) and OpenAI Realtime API (in the architecture section) — this contradiction reflects the exploratory state of the original brief. The shipping codebase uses OpenAI Realtime API in the legacy macOS client only; voice is not implemented in the `api/` server stack.
 
 ## Vision
 

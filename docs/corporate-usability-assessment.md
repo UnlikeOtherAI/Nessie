@@ -41,14 +41,16 @@ The consistent picture: a genuinely well-architected enterprise core is being bu
 
 ### 1. It cannot assign work to people — only to agents
 
-The `Task` and `PlanStep` models carry `agentId` / `assignedAgentId` but **no human assignee/owner field anywhere** in `api/`, `worker/`, or `admin/`. There is no human work queue, no ownership, no hand-off, no reassignment. "Roles" are agent capability profiles (orchestrator / builder / reviewer / watcher / researcher / debugger), not job functions or people. Approvals can be resolved by any non-requester org member — there is no routing to a named approver or role.
+> **RESOLVED** — commit `2b21b0b` (2026-05-30): human work distribution shipped. `Task` now carries `assigneeUserId` and `ownerUserId`; `/api/tasks` endpoints support assign, hand-off, and route-to-approver flows; the admin Work page exposes a human work queue. The original finding is preserved below for context.
 
-- `api/prisma/schema.prisma:1601` — `Task` model: `agentId` required, no assignee/userId
-- `src/orchestration/task-types.ts:32` — `Task` interface has only role + threadId, no person
-- `src/orchestration/role-registry.ts:11` — roles are tool-capability policies
-- `api/src/services/approvals.ts:119` — any non-requester org actor can resolve
+~~The `Task` and `PlanStep` models carry `agentId` / `assignedAgentId` but **no human assignee/owner field anywhere** in `api/`, `worker/`, or `admin/`. There is no human work queue, no ownership, no hand-off, no reassignment. "Roles" are agent capability profiles (orchestrator / builder / reviewer / watcher / researcher / debugger), not job functions or people. Approvals can be resolved by any non-requester org member — there is no routing to a named approver or role.~~
 
-This is the defining requirement for organisational work distribution and it is absent. (Note: the codebase *does* have a real claim/handoff work queue — `AgentMailboxMessage`, `schema.prisma:1072` — but it is strictly agent-to-agent, which reinforces rather than softens the finding: the system orchestrates AI agents, not people.)
+~~- `api/prisma/schema.prisma:1601` — `Task` model: `agentId` required, no assignee/userId~~
+~~- `src/orchestration/task-types.ts:32` — `Task` interface has only role + threadId, no person~~
+~~- `src/orchestration/role-registry.ts:11` — roles are tool-capability policies~~
+~~- `api/src/services/approvals.ts:119` — any non-requester org actor can resolve~~
+
+~~This is the defining requirement for organisational work distribution and it is absent. (Note: the codebase *does* have a real claim/handoff work queue — `AgentMailboxMessage`, `schema.prisma:1072` — but it is strictly agent-to-agent, which reinforces rather than softens the finding: the system orchestrates AI agents, not people.)~~
 
 ### 2. Two products, and the insecure one runs by default
 
@@ -115,7 +117,7 @@ Not usable today as an org-wide automation / work-distribution platform. A contr
 
 1. Retiring the legacy `src/` server as the default runtime (close the unauthenticated RCE surface and mDNS broadcast).
 2. Shipping the real KMS-backed secret store and removing committed secrets.
-3. Adding human task assignment, ownership, and hand-off to the `Task`/`PlanStep` model.
+3. ~~Adding human task assignment, ownership, and hand-off to the `Task`/`PlanStep` model.~~ **DONE** — commit `2b21b0b`.
 4. Wiring metrics, alerting, and dead-letter surfacing into `api/`/`worker/`.
 5. Making the audit log tamper-evident.
 

@@ -1,5 +1,7 @@
 # The Agents
 
+> **Status:** aspirational target-state design — not implemented in code.
+
 How Nessie agents work today, how they should work, and what needs to change. This is the canonical reference for agent architecture, creation, execution, skills, and the path from single-shot assistant to autonomous planner-executor-critic.
 
 Related documents:

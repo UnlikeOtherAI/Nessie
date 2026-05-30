@@ -1,5 +1,7 @@
 # Conversation Intelligence Platform
 
+> **Status:** aspirational target-state design — not implemented in code.
+
 Nessie is not a transcript processor or an automation tool. It is an event-driven conversation intelligence engine with pluggable ingestion and agent workflows.
 
 The core loop:

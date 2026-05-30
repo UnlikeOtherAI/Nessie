@@ -10,7 +10,7 @@ Interpretation rule:
 - legacy runtime capabilities such as host `Bash`, `FileWrite`, and other privileged local tools must not be treated as Phase 1 MVP requirements for the new `/api` + `/admin` architecture.
 - new Phase 1 backend endpoints for the rebuilt product should be rooted under `/api/...` as defined in [implementation-phases.md](./implementation-phases.md).
 
-The checkbox-based tool policy model is documented as a separate target-state design in [agent tool capabilities](./agent%20tool%20capabilities/index.md), and is currently not fully enforced at runtime.
+The checkbox-based tool policy model is documented as a separate target-state design in [agent-tool-capabilities](./agent-tool-capabilities/index.md), and is currently not fully enforced at runtime.
 
 ## 1) Interface contracts
 
@@ -44,6 +44,8 @@ Root app layout:
 ## 2) Process startup and runtime surface
 
 ### 2.1 Server bootstrap (`src/index.ts`)
+
+> **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5554) + `worker/` + `admin/` (port 5555), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.
 
 - Initializes LLM client via `createLlmClient()` (OpenAI default, MiniMax optional via `LLM_PROVIDER=minimax`).
 - Creates orchestrator with callbacks:
@@ -262,6 +264,8 @@ Message types:
 
 ## 7) MCP server and adapter (`src/mcp/server.ts`, `src/mcp/adapter.ts`)
 
+> **REMOVED — legacy `src/` only.** The JSON-RPC MCP server documented in this section (`GET /mcp`, `POST /mcp`, `tools/list`, `send_message`, `invoke_tool`, and the 37 tools below) existed only in the legacy `src/` tree, which is being deleted. The live `api/` server has no JSON-RPC `/mcp` endpoint. The live API exposes a **REST connector-management surface** under `/api/mcp/*` — see `api/src/routes/mcp.ts` for the authoritative current surface. The sections below are retained as a historical record of what was removed.
+
 ### 7.1 MCP JSON-RPC methods
 
 - `tools/list`
@@ -396,7 +400,7 @@ MCP tool registry runtime status:
 | `openclaw_session_key` | implemented | openclaw translation path |
 | `openclaw_resolve_key` | implemented | openclaw translation path |
 - Agent/tool permission model for inherited + override capabilities is captured in
-  [agent tool capabilities](./agent%20tool%20capabilities/index.md).
+  [agent-tool-capabilities](./agent-tool-capabilities/index.md).
 
 ### 8.3 Tool runtime specifics
 
@@ -737,7 +741,7 @@ type ControlCommandDefinition = {
   - `hidden channel organizer` = `channel-organizer` mode,
   - `stable orchestrator` = the same orchestrator reused across aggregation passes in one pipeline.
 - Cross-link:
-  - [agent tool capabilities](./agent%20tool%20capabilities/01-foundations.md),
+  - [agent-tool-capabilities](./agent-tool-capabilities/01-foundations.md),
   - [agent-communication-spec.md](./agent-communication-spec.md).
 
 ## 13.3) SSH remote execution requirement (single entry tool)
@@ -754,7 +758,7 @@ type ControlCommandDefinition = {
 - Require explicit host allowlist and optional key allowlist in tool policy.
 - Default deny for unsafely configured hosts/keys and unknown command envelopes.
 - Cross-link:
-  - interactive session schema: [agent tool capabilities](./agent%20tool%20capabilities/04-interactive-tools.md).
+  - interactive session schema: [agent-tool-capabilities](./agent-tool-capabilities/04-interactive-tools.md).
 
 ## 13.4) Knowledge base linking and retrieval requirements (no context pollution)
 
@@ -783,7 +787,7 @@ type ControlCommandDefinition = {
 - UI/agent must avoid loading all registered documents at startup; must use scoped search query endpoints with tags/filter/sort/cursor.
 - Cross-link:
   - requirements doc: [knowledge-base-requirements.md](./knowledge-base-requirements.md),
-  - one-file tool family definition patterns: [agent tool capabilities](./agent%20tool%20capabilities/02-checkbox-ui-api.md).
+  - one-file tool family definition patterns: [agent-tool-capabilities](./agent-tool-capabilities/02-checkbox-ui-api.md).
 
 ## 13.4a) Remote worker execution CLI requirement
 
@@ -841,7 +845,7 @@ type ControlCommandDefinition = {
 - Cross-link:
   - [external-tool-integration.md § Remote MCP Servers](./external-tool-integration.md#remote-mcp-servers-self-hosted-runners),
   - [organization-governance-spec.md](./organization-governance-spec.md),
-  - [agent tool capabilities](./agent%20tool%20capabilities/04-interactive-tools.md).
+  - [agent-tool-capabilities](./agent-tool-capabilities/04-interactive-tools.md).
 
 ## 13.5) Organization, project, and channel access control (implementation target)
 

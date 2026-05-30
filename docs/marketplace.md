@@ -1,5 +1,7 @@
 # Marketplace and Agent Library
 
+> **Status:** aspirational target-state design — not implemented in code.
+
 One marketplace. One library. MCP servers, API connectors, skills, workflow templates, and generated plugins all enter through the same marketplace/library flow. The marketplace is where you discover them. The library is where you manage what's installed. Agents consume assignable capabilities from the library, while workflows and plugins are installed, activated, and invoked by the platform.
 
 This document describes the unified experience. The underlying systems are documented separately:

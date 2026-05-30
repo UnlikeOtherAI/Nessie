@@ -249,7 +249,7 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 
 ## 6) Fit with existing docs
 
-- `knowledge-base` tool family in [04-interactive-tools.md](./agent%20tool%20capabilities/04-interactive-tools.md)
+- `knowledge-base` tool family in [04-interactive-tools.md](./agent-tool-capabilities/04-interactive-tools.md)
 - `functionality.md` tool discovery and context-control sections
 - `agent-communication-spec.md` search requirements
 

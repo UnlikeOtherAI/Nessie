@@ -427,7 +427,7 @@ This section should be treated as mandatory acceptance context for later impleme
 ## 10) Reference targets
 
 - [agent-communication-spec.md](./agent-communication-spec.md)
-- [agent tool capabilities](./agent%20tool%20capabilities/index.md)
+- [agent-tool-capabilities](./agent-tool-capabilities/index.md)
 - [functionality.md](./functionality.md)
 - [external-tool-integration.md § Remote MCP Servers](./external-tool-integration.md#remote-mcp-servers-self-hosted-runners)
 - [openclaw-agent-teams-implementation.md](./openclaw-agent-teams-implementation.md)

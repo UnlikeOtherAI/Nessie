@@ -192,7 +192,7 @@ This must work the same way whether the candidates came from:
 - a mixed provider pool.
 
 If the execution policy declares a fixed orchestrator, the same orchestrator identity should perform every aggregation pass for that pipeline unless a stage explicitly opts out.
-This aggregation path should only be active when the execution policy explicitly enables `orchestrator.collectAllFindings`; the canonical execution-pipeline shape lives in [01-foundations.md](./agent%20tool%20capabilities/01-foundations.md).
+This aggregation path should only be active when the execution policy explicitly enables `orchestrator.collectAllFindings`; the canonical execution-pipeline shape lives in [01-foundations.md](./agent-tool-capabilities/01-foundations.md).
 
 ## 4) Sub-agents and depth
 

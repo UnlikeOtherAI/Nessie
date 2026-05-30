@@ -1,5 +1,7 @@
 # External Tool Integration
 
+> **Status:** aspirational target-state design — not implemented in code.
+
 How Nessie agents connect to third-party services — both MCP servers and arbitrary APIs — without writing code, without seeing credentials, and without permanently consuming context window space.
 
 Related documents:
