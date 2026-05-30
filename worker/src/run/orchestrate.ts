@@ -43,7 +43,9 @@ export const executeOrchestrateDecideJob = async (
   // Budget gate: the orchestrator decision below is itself a model call, so it must
   // be gated here as well as at run execution. When over budget, post a single
   // notice and skip the decision entirely rather than spend on it.
-  const budget = await checkBudget(deps.prisma, channel.organizationId)
+  const budget = await checkBudget(deps.prisma, channel.organizationId, {
+    isHuman: actorContext.actor.actorType === 'user',
+  })
   if (!budget.allowed) {
     const respondingAgentId = channelAgents[0]?.id
     if (respondingAgentId) {
@@ -161,6 +163,9 @@ export const executeOrchestrateDecideJob = async (
               threadId: parseThreadId(createdRun.threadId),
             }),
             agentId: parseAgentId(createdRun.agentId),
+            // A reply to a human chat message is a live interactive turn; an agent
+            // posting in a channel is automation. Drives budget human-exemption.
+            interactive: actorContext.actor.actorType === 'user',
             messageId,
             runId: parseRunId(createdRun.id),
             taskId: parseTaskId(createdTask.id),

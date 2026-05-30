@@ -1726,18 +1726,27 @@ export type ReadinessResponse = z.infer<typeof ReadinessResponseSchema>
 
 // ─── Budget (spend enforcement) ───────────────────────────────────────────
 
+export const BudgetModeSchema = z.enum(['off', 'warn', 'enforce'])
+
 export const BudgetStatusResponseSchema = z.object({
-  enforced: z.boolean(),
+  mode: BudgetModeSchema,
   costLimitUsd: z.number().nonnegative().nullable(),
   spentUsd: z.number().nonnegative(),
   tokenLimit: z.number().int().nonnegative().nullable(),
   spentTokens: z.number().int().nonnegative(),
-  allowed: z.boolean(),
+  // Read side is lenient (the strict 1–100 bound is enforced on the write schema
+  // below) so an out-of-range stored value can never 500 the status read.
+  warnThresholdPercent: z.number().int(),
+  blockHumansWhenOver: z.boolean(),
+  level: z.enum(['ok', 'warn', 'over']),
+  percentUsed: z.number().int().nonnegative().nullable(),
   costTrackingActive: z.boolean(),
 })
 
 export const SetBudgetBodySchema = z.object({
   monthlyCostLimitUsd: z.number().nonnegative().nullable(),
   monthlyTokenLimit: z.number().int().nonnegative().nullable(),
-  enforced: z.boolean(),
+  mode: BudgetModeSchema,
+  warnThresholdPercent: z.number().int().min(1).max(100),
+  blockHumansWhenOver: z.boolean(),
 })

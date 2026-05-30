@@ -3,13 +3,18 @@ import { useEffect, useState } from 'react'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
+type BudgetMode = 'off' | 'warn' | 'enforce'
+
 type BudgetStatus = {
-  enforced: boolean
+  mode: BudgetMode
   costLimitUsd: number | null
   spentUsd: number
   tokenLimit: number | null
   spentTokens: number
-  allowed: boolean
+  warnThresholdPercent: number
+  blockHumansWhenOver: boolean
+  level: 'ok' | 'warn' | 'over'
+  percentUsed: number | null
   costTrackingActive: boolean
 }
 
@@ -81,23 +86,29 @@ export const TokenUsagePage = () => {
     enabled: isOwner,
   })
 
-  const [enforced, setEnforced] = useState(false)
+  const [mode, setMode] = useState<BudgetMode>('off')
   const [costLimit, setCostLimit] = useState('')
   const [tokenLimit, setTokenLimit] = useState('')
+  const [warnThreshold, setWarnThreshold] = useState('80')
+  const [blockHumans, setBlockHumans] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!budget) return
-    setEnforced(budget.enforced)
+    setMode(budget.mode)
     setCostLimit(budget.costLimitUsd != null ? String(budget.costLimitUsd) : '')
     setTokenLimit(budget.tokenLimit != null ? String(budget.tokenLimit) : '')
+    setWarnThreshold(String(budget.warnThresholdPercent))
+    setBlockHumans(budget.blockHumansWhenOver)
   }, [budget])
 
   const saveBudget = useMutation({
     mutationFn: (payload: {
       monthlyCostLimitUsd: number | null
       monthlyTokenLimit: number | null
-      enforced: boolean
+      mode: BudgetMode
+      warnThresholdPercent: number
+      blockHumansWhenOver: boolean
     }) => apiClient.put('/api/ledger/budget', payload),
     onSuccess: () => {
       setFormError(null)
@@ -113,8 +124,19 @@ export const TokenUsagePage = () => {
       setFormError('Caps must be non-negative numbers — leave a field blank for no cap.')
       return
     }
+    const threshold = Math.round(Number(warnThreshold))
+    if (!Number.isFinite(threshold) || threshold < 1 || threshold > 100) {
+      setFormError('Warn threshold must be between 1 and 100.')
+      return
+    }
     setFormError(null)
-    saveBudget.mutate({ monthlyCostLimitUsd: cost, monthlyTokenLimit: tokens, enforced })
+    saveBudget.mutate({
+      monthlyCostLimitUsd: cost,
+      monthlyTokenLimit: tokens,
+      mode,
+      warnThresholdPercent: threshold,
+      blockHumansWhenOver: blockHumans,
+    })
   }
 
   if (!isOwner) {
@@ -177,18 +199,15 @@ export const TokenUsagePage = () => {
               <span
                 className={[
                   'rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em]',
-                  !budget.enforced
-                    ? 'bg-white/10 text-[color:var(--tx3)]'
-                    : budget.allowed
-                      ? 'bg-emerald-500/15 text-emerald-300'
-                      : 'bg-red-500/15 text-red-300',
+                  budget.level === 'over'
+                    ? 'bg-red-500/15 text-red-300'
+                    : budget.level === 'warn'
+                      ? 'bg-amber-500/15 text-amber-300'
+                      : 'bg-emerald-500/15 text-emerald-300',
                 ].join(' ')}
               >
-                {!budget.enforced
-                  ? 'not enforced'
-                  : budget.allowed
-                    ? 'within budget'
-                    : 'over budget — blocking'}
+                {budget.percentUsed != null ? `${budget.percentUsed}% used` : 'no cap'}
+                {budget.level === 'over' ? ' — over' : budget.level === 'warn' ? ' — warning' : ''}
               </span>
             )}
           </div>
@@ -197,13 +216,28 @@ export const TokenUsagePage = () => {
             {formatCost(budget?.spentUsd ?? 0, 'USD')} spent. Soft monthly cap —
             in-flight runs can overshoot slightly before spend is recorded.
           </div>
+
+          <label className="mt-3 block text-xs text-[color:var(--tx2)]">
+            Mode
+            <select
+              className="admin-input mt-1"
+              onChange={(e) => setMode(e.target.value as BudgetMode)}
+              value={mode}
+            >
+              <option value="off">Off — no budget checks</option>
+              <option value="warn">Warn — track and alert, never block</option>
+              <option value="enforce">Enforce — throttle automations over cap</option>
+            </select>
+          </label>
+
           {budget && costLimit.trim() !== '' && !budget.costTrackingActive && (
             <div className="mt-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
               USD cap inactive — no pricing profile is configured, so estimated cost
-              stays $0. Only the token cap is enforced.
+              stays $0. Only the token cap applies.
             </div>
           )}
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <label className="text-xs text-[color:var(--tx2)]">
               Cost cap (USD / month)
               <input
@@ -224,16 +258,31 @@ export const TokenUsagePage = () => {
                 value={tokenLimit}
               />
             </label>
-          </div>
-          <div className="mt-3 flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm text-[color:var(--tx2)]">
+            <label className="text-xs text-[color:var(--tx2)]">
+              Warn at (% of cap)
               <input
-                checked={enforced}
-                onChange={(e) => setEnforced(e.target.checked)}
+                className="admin-input mt-1"
+                inputMode="numeric"
+                onChange={(e) => setWarnThreshold(e.target.value)}
+                placeholder="80"
+                value={warnThreshold}
+              />
+            </label>
+          </div>
+
+          {mode === 'enforce' && (
+            <label className="mt-3 flex items-center gap-2 text-sm text-[color:var(--tx2)]">
+              <input
+                checked={blockHumans}
+                onChange={(e) => setBlockHumans(e.target.checked)}
                 type="checkbox"
               />
-              Enforce — block runs once the cap is reached
+              Also block people&apos;s live requests (off by default — only automations
+              are throttled)
             </label>
+          )}
+
+          <div className="mt-3 flex items-center justify-end">
             <button
               className="admin-button admin-button-primary"
               disabled={saveBudget.isPending}

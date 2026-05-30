@@ -1820,12 +1820,20 @@ model TokenLedgerEvent {
   @@map("token_ledger_events")
 }
 
+enum BudgetMode {
+  off
+  warn
+  enforce
+}
+
 model OrganizationBudget {
   id                  String       @id @default(uuid()) @db.Uuid
   organizationId      String       @unique @map("organization_id") @db.Uuid
   monthlyCostLimitUsd Float?       @map("monthly_cost_limit_usd")
   monthlyTokenLimit   Int?         @map("monthly_token_limit")
-  enforced            Boolean      @default(false)
+  mode                BudgetMode   @default(off)
+  warnThresholdPercent Int         @default(80) @map("warn_threshold_percent")
+  blockHumansWhenOver Boolean      @default(false) @map("block_humans_when_over")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

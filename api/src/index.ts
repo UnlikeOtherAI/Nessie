@@ -5156,7 +5156,10 @@ export const buildApp = async () => {
 
     // This endpoint calls the model in-process (not via the worker queue), so it
     // must consult the budget gate itself rather than rely on the worker gates.
-    const budget = await checkBudget(prisma, actorContext.tenant.organizationId)
+    // It is an interactive owner action, so it counts as a human request.
+    const budget = await checkBudget(prisma, actorContext.tenant.organizationId, {
+      isHuman: true,
+    })
     if (!budget.allowed) {
       sendApiError(reply, 402, 'BUDGET_EXCEEDED', budget.reason ?? 'Monthly budget exceeded')
       return reply

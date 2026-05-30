@@ -819,6 +819,11 @@ export const withActionContext = (
 export const RunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   agentId: AgentIdSchema,
+  // True only for a live human conversational turn (a person's chat message and
+  // the agent's direct reply). Triggers (even manually fired), subtasks, mailbox,
+  // and scheduled runs leave this unset — they are background automation and are
+  // subject to budget throttling regardless of who initiated them.
+  interactive: z.boolean().optional(),
   messageId: NonEmptyStringSchema,
   parentPlanId: z.string().uuid().optional(),
   parentPlanStepId: z.string().uuid().optional(),

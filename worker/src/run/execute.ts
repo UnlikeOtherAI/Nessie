@@ -1140,7 +1140,12 @@ export const executeRunJob = async (
     await validateRunActorContext(deps.prisma, payload.actorContext, context)
 
     // Budget gate: refuse to spend on a model when the org is over its monthly cap.
-    const budget = await checkBudget(deps.prisma, context.channel.organizationId)
+    // Only a live human conversational turn (payload.interactive) is exempt by
+    // default; automations — triggers (even manually fired), subtasks, mailbox,
+    // scheduled runs — leave interactive unset and are throttled.
+    const budget = await checkBudget(deps.prisma, context.channel.organizationId, {
+      isHuman: payload.interactive === true,
+    })
     if (!budget.allowed) {
       const notice = `⚠️ ${budget.reason ?? 'Monthly budget exceeded'} — this request was not run.`
       const blockMessage = await deps.prisma.message.create({
