@@ -1,3 +1,5 @@
+import { getInitials } from '../../lib/avatar'
+
 type AvatarProps = {
   label: string
   size?: 'md' | 'sm'
@@ -7,14 +9,6 @@ const sizeClasses = {
   md: 'h-10 w-10 text-sm',
   sm: 'h-8 w-8 text-xs',
 } as const
-
-const getInitials = (value: string): string =>
-  value
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('') || 'N'
 
 export const Avatar = ({ label, size = 'md' }: AvatarProps) => (
   <div

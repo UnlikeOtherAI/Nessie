@@ -2,14 +2,13 @@ import { useState } from 'react'
 import type { AgentChild } from '@nessie/schemas'
 import { useAgentChildren, useCreateAgent } from '../../../facades/agents/hooks'
 import { AgentStatusDot } from './AgentStatusDot'
+import { agentGradient } from '../../../lib/avatar'
 
 type SubAgentPopupProps = {
   onClose: () => void
   parentAgentId: string
   parentAgentName: string
 }
-
-const agentGradient = 'linear-gradient(135deg,#7c3aed,#6d28d9)'
 
 const getAgentGlyph = (status: AgentChild['status']): string => {
   if (status === 'executing' || status === 'thinking') return '\u26A1'

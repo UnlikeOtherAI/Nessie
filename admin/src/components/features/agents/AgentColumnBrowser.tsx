@@ -11,6 +11,7 @@ import { AgentColumnItem } from './AgentColumnItem'
 import { AgentDetailColumn } from './AgentDetailColumn'
 import { AgentStatusDot } from './AgentStatusDot'
 import { SubAgentPopup } from './SubAgentPopup'
+import { agentGradient } from '../../../lib/avatar'
 
 type AgentChildrenListProps = {
   childCountByParentId: Map<string, number>
@@ -49,8 +50,6 @@ const AgentChildrenList = ({
     </div>
   )
 }
-
-const agentGradient = 'linear-gradient(135deg,#7c3aed,#6d28d9)'
 
 const getAgentGlyph = (status: AgentChild['status']): string => {
   if (status === 'executing' || status === 'thinking') return '\u26A1'

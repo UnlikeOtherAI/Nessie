@@ -19,6 +19,7 @@ import { useProjects, useTeams } from '../facades/projects/hooks';
 import { useUsers } from '../facades/users/hooks';
 import type { AgentRecord, ChannelRecord, ProjectRecord } from '../lib/api-client';
 import { getCookie, setCookie } from '../lib/storage';
+import { getDmStyle } from '../lib/avatar';
 import { useAuthSession } from '../providers/AuthSessionProvider';
 
 type StarredItem = { type: 'channel' | 'project' | 'user'; id: string };
@@ -41,13 +42,6 @@ const parseChannelIdFromPath = (pathname: string): string | undefined => {
   return match?.[1];
 };
 
-const dmGradients = [
-  'linear-gradient(135deg,#6d28d9,#4f46e5)',
-  'linear-gradient(135deg,#1d4ed8,#0284c7)',
-  'linear-gradient(135deg,#047857,#065f46)',
-  'linear-gradient(135deg,#9333ea,#7c3aed)',
-] as const;
-
 const railUserButtonClassName = [
   'relative mb-1 flex h-8 w-8 items-center justify-center rounded-full',
   'text-[11px] font-bold text-white',
@@ -62,10 +56,6 @@ const channelHashClassName =
 const unreadCountClassName =
   'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ' +
   'bg-[color:var(--accent)] text-[10px] font-bold text-white';
-
-const getDmStyle = (index: number) => ({
-  background: dmGradients[index % dmGradients.length],
-});
 
 const renderUnreadCount = (count: number) =>
   count > 0 ? <span className={unreadCountClassName}>{count}</span> : null;
