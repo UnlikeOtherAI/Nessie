@@ -663,7 +663,7 @@ const findPricingProfile = async (
   provider: string,
   model: string,
 ): Promise<InvocationPricingProfile | null> => {
-  return prisma.modelPricingProfile.findFirst({
+  const row = await prisma.modelPricingProfile.findFirst({
     where: {
       AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }],
       organizationId,
@@ -683,6 +683,24 @@ const findPricingProfile = async (
       source: true,
     },
   })
+  if (!row) {
+    return null
+  }
+  // ModelPricingProfile per-million columns are Prisma Decimal; the cost math
+  // works in plain numbers, so normalize here.
+  const toNumber = (value: { toNumber: () => number } | null): number | null =>
+    value === null ? null : value.toNumber()
+  return {
+    id: row.id,
+    source: row.source,
+    currency: row.currency,
+    inputPerMillion: toNumber(row.inputPerMillion),
+    outputPerMillion: toNumber(row.outputPerMillion),
+    cachedInputPerMillion: toNumber(row.cachedInputPerMillion),
+    cachedOutputPerMillion: toNumber(row.cachedOutputPerMillion),
+    cacheReadPerMillion: toNumber(row.cacheReadPerMillion),
+    cacheWritePerMillion: toNumber(row.cacheWritePerMillion),
+  }
 }
 
 export const runInferenceGraph = async (
