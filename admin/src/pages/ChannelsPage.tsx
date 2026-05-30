@@ -38,6 +38,9 @@ import { useAuthSession } from '../providers/AuthSessionProvider'
 import { CallBanner } from '../components/shared/CallBanner'
 import { CallOverlay } from '../components/shared/CallOverlay'
 import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
+// sp-channels: channel lifecycle settings dialog + join hook
+import { ChannelSettingsDialog } from '../components/shared/ChannelSettingsDialog'
+import { useJoinChannel } from '../facades/channels/hooks'
 import { AgentInfoCard } from '../components/features/agents/AgentInfoCard'
 import { PersonalAssistantConfigBanner } from '../components/features/personal-assistant/PersonalAssistantSurface'
 import { useActiveCall, useJoinCall, useLeaveCall, useStartCall } from '../facades/calls/hooks'
@@ -111,6 +114,9 @@ export const ChannelsPage = () => {
   const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [message, setMessage] = useState('')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
+  // sp-channels: channel settings dialog state + join hook
+  const [showChannelSettings, setShowChannelSettings] = useState(false)
+  const joinChannel = useJoinChannel()
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
   const [showCallOverlay, setShowCallOverlay] = useState(false)
@@ -532,6 +538,51 @@ export const ChannelsPage = () => {
               {channelUsers.length + boundAgents.length}
             </span>
           </button>
+          {/* sp-channels: Join button for public channels the user has not joined */}
+          {activeChannel
+            && activeChannel.type !== 'dm'
+            && !isPersonalAssistantConversation
+            && activeChannel.visibility === 'public'
+            && !activeChannel.memberRole ? (
+            <button
+              className="admin-button admin-button-secondary h-7 px-2 text-xs"
+              disabled={joinChannel.isPending}
+              onClick={() => joinChannel.mutate({ channelId: activeChannel.id })}
+              type="button"
+            >
+              Join
+            </button>
+          ) : null}
+          {/* sp-channels: channel settings (gear) */}
+          {activeChannel
+            && activeChannel.type !== 'dm'
+            && !isPersonalAssistantConversation ? (
+            <button
+              className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-white/10"
+              onClick={() => setShowChannelSettings(true)}
+              title="Channel settings"
+              type="button"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          ) : null}
           <button
             className={[
               'relative flex h-7 w-7 items-center justify-center rounded',
@@ -1448,6 +1499,15 @@ export const ChannelsPage = () => {
             navigate(`/channels/${newChannelId}`)
           }}
           onSelectAgent={onSelectAgent}
+        />
+      ) : null}
+
+      {/* sp-channels: channel settings dialog */}
+      {activeChannel ? (
+        <ChannelSettingsDialog
+          channel={activeChannel}
+          onClose={() => setShowChannelSettings(false)}
+          open={showChannelSettings}
         />
       ) : null}
 

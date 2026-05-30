@@ -35,6 +35,11 @@ export type ChannelRecord = {
   unreadCount: number
   updatedAt: string
   visibility: 'private' | 'protected' | 'public'
+  // sp-channels: channel lifecycle fields
+  topic?: string | null
+  description?: string | null
+  archivedAt?: string | null
+  memberRole?: 'owner' | 'admin' | 'member' | 'viewer' | null
 }
 
 export type ProjectRecord = {
