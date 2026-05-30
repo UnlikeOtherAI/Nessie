@@ -14,6 +14,18 @@
 - Strict linting. Builds must not pass without all lints passing.
 - No patches on patches. No fallbacks unless required by functionality. Diagnose and fix root causes.
 - Before reusing code that hasn't been reused before: pause, plan a refactor, execute it maintaining best architectural practices, then reuse.
+- Code files: 500 lines max. Exceeding the cap is an architectural signal — split along cohesive responsibility seams via a real refactor, never by dumping into `-extras`/`-helpers` files.
+- No over-engineering. Build the simplest thing that satisfies the current goal. No premature abstractions, no speculative generality, no backwards-compat shims unless functionality requires them.
+
+## Documentation & Goals — update with every change
+
+Every change must keep documentation and stated goals in sync with the code. This is part of the definition of done, not a follow-up.
+
+- When behaviour, architecture, or a public contract changes, update the affected `docs/` document(s) in the same turn.
+- When a change alters a project goal or scope, update the goal where it is stated (`docs/brief.md`, the relevant spec, and this file / `CLAUDE.md` if the standard itself changes).
+- When a feature is removed or superseded, delete or move its doc to `docs/done/` — do not leave stale specs describing code that no longer exists.
+- A change that touches the MCP surface, ports, build steps, or workflow must update `CLAUDE.md`/`AGENTS.md` accordingly.
+- If a change has no documentation impact, that is fine — but the decision to skip must be deliberate, not forgotten.
 
 ## Verification
 

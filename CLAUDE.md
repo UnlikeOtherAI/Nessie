@@ -64,3 +64,14 @@ The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. Cl
 - [brief.md](docs/brief.md) — Full project brief
 - [build-ai-coworker.md](docs/build-ai-coworker.md) — macOS app build plan
 - Finished documents belong in `docs/done/`.
+
+## Documentation & Goals — update with every change
+
+Keeping docs and goals in sync with the code is part of the definition of done, not a follow-up task. With every change:
+
+- Update the affected `docs/` document(s) in the same turn when behaviour, architecture, or a public contract changes.
+- Update the stated goal where it lives (`docs/brief.md`, the relevant spec, `CLAUDE.md`/`AGENTS.md`) when scope or a standard changes.
+- Delete or move superseded docs to `docs/done/` — never leave a spec describing code that no longer exists.
+- Changes to the MCP surface, ports, build steps, or workflow must update `CLAUDE.md`/`AGENTS.md`.
+
+See `AGENTS.md` → "Documentation & Goals" for the authoritative rule.
