@@ -21,6 +21,7 @@ import {
   mapTriggerDeliveryRecord,
   mapTriggerRecord,
   normalizePayload,
+  recordTriggerDeliveryFailure,
 } from './trigger-shared.js'
 
 export type { DispatchTriggerResult } from './trigger-shared.js'
@@ -306,6 +307,16 @@ export const dispatchAgentTrigger = async (
         }
       }
     }
+
+    // sp-webhook: persist a retryable failed delivery so the worker retry poller
+    // can re-attempt with backoff, then surface the error to the caller.
+    await recordTriggerDeliveryFailure(prisma, {
+      dedupeKey: input.dedupeKey,
+      error,
+      payload: normalizedPayload,
+      source: input.source,
+      triggerId: trigger.id,
+    })
 
     throw error
   }
