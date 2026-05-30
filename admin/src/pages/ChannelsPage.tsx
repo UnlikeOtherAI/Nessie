@@ -11,13 +11,6 @@ import {
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { MentionInput, type MentionInputHandle, type MentionEntity } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
-
-type OptimisticMessage = {
-  clientId: string
-  content: string
-  createdAt: string
-  status: 'sending' | 'failed'
-}
 import {
   useNavigate,
   useOutletContext,
@@ -33,7 +26,6 @@ import {
 import { useMarkThreadRead, useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { useTools } from '../facades/tools/hooks'
 import { useUsers } from '../facades/users/hooks'
-import type { AgentRecord, ThreadMessageRecord } from '../lib/api-client'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { CallBanner } from '../components/shared/CallBanner'
@@ -43,104 +35,17 @@ import { AgentInfoCard } from '../components/features/agents/AgentInfoCard'
 import { PersonalAssistantConfigBanner } from '../components/features/personal-assistant/PersonalAssistantSurface'
 import { useActiveCall, useJoinCall, useLeaveCall, useStartCall } from '../facades/calls/hooks'
 import { agentGradient, getInitials, memberGradients, pickGradient } from '../lib/avatar'
-
-type ChannelTab = 'agents' | 'files' | 'info' | 'messages' | 'runs'
-
-type FeedItem =
-  | { kind: 'date'; label: string }
-  | { kind: 'message'; message: ThreadMessageRecord }
-
-const toolbarButtonClass =
-  'flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-white/10'
-
-const runsCardClass = [
-  'admin-card flex items-start gap-3 p-3 text-left',
-  'hover:bg-[color:var(--main-hover)]',
-].join(' ')
-
-const isOperationsTab = (tab: ChannelTab): boolean =>
-  tab === 'agents' || tab === 'runs'
-
-const formatDayLabel = (value: string): string => {
-  const date = new Date(value)
-  const today = new Date()
-  const yesterday = new Date()
-  yesterday.setDate(today.getDate() - 1)
-
-  const sameDay = (left: Date, right: Date) =>
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-
-  if (sameDay(date, today)) {
-    return 'Today'
-  }
-
-  if (sameDay(date, yesterday)) {
-    return 'Yesterday'
-  }
-
-  return date.toLocaleDateString([], {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
-const formatClock = (value: string): string =>
-  new Date(value).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-
-
-const buildFeedItems = (messages: ThreadMessageRecord[]): FeedItem[] => {
-  const items: FeedItem[] = []
-  let previousDateLabel: string | null = null
-
-  for (const message of messages) {
-    const dateLabel = formatDayLabel(message.createdAt)
-    if (dateLabel !== previousDateLabel) {
-      items.push({ kind: 'date', label: dateLabel })
-      previousDateLabel = dateLabel
-    }
-    items.push({ kind: 'message', message })
-  }
-
-  return items
-}
-
-const getAgentGlyph = (agent?: AgentRecord | null): string => {
-  if (!agent) {
-    return '⚡'
-  }
-
-  const role = agent.role.toLowerCase()
-  if (role.includes('research')) {
-    return '🔍'
-  }
-  if (role.includes('write')) {
-    return '📝'
-  }
-  return '⚡'
-}
-
-const getDisplayName = (
-  entry: ThreadMessageRecord,
-  meDisplayName: string,
-  agentMap: Map<string, AgentRecord>,
-  assistantFallbackName = 'Agent',
-): string => {
-  if (entry.role === 'assistant') {
-    return agentMap.get(entry.agentId ?? '')?.name ?? assistantFallbackName
-  }
-
-  if (entry.role === 'system') {
-    return 'System'
-  }
-
-  return meDisplayName
-}
+import {
+  buildFeedItems,
+  formatClock,
+  getAgentGlyph,
+  getDisplayName,
+  isOperationsTab,
+  runsCardClass,
+  toolbarButtonClass,
+  type ChannelTab,
+  type OptimisticMessage,
+} from '../components/features/channels/channel-helpers'
 
 export const ChannelsPage = () => {
   const navigate = useNavigate()
