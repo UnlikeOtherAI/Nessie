@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AgentActivityPanel } from '../components/features/agents/AgentActivityPanel';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
@@ -17,25 +17,20 @@ import {
 } from '../facades/personal-assistant/hooks';
 import { useProjects, useTeams } from '../facades/projects/hooks';
 import { useUsers } from '../facades/users/hooks';
-import type { AgentRecord, ChannelRecord, ProjectRecord } from '../lib/api-client';
-import { getCookie, setCookie } from '../lib/storage';
+import type { AgentRecord, ChannelRecord } from '../lib/api-client';
 import { getDmStyle } from '../lib/avatar';
 import { useAuthSession } from '../providers/AuthSessionProvider';
-
-type StarredItem = { type: 'channel' | 'project' | 'user'; id: string };
-type SidebarProject = ProjectRecord & { channels: ChannelRecord[] };
-type CreateChannelTarget = { projectName?: string; teamId?: string };
-type RenameProjectTarget = { id: string; name: string };
-type SidebarMenu =
-  | { type: 'channels' }
-  | { type: 'project'; projectId: string }
-  | null;
-type VisibleStarredEntry =
-  | { type: 'channel'; channel: ChannelRecord }
-  | { type: 'project'; channels: ChannelRecord[]; project: SidebarProject; starred: boolean }
-  | { type: 'user'; person: { dmChannelId?: string; id: string; label: string; style: CSSProperties } };
-
-const DEFAULT_BOOTSTRAP_PROJECT_ID = '00000000-0000-4000-8000-000000000002';
+import {
+  DEFAULT_BOOTSTRAP_PROJECT_ID,
+  type CreateChannelTarget,
+  type RenameProjectTarget,
+  type SidebarMenu,
+  type SidebarProject,
+  type StarredItem,
+  type VisibleStarredEntry,
+} from './admin-shell/types';
+import { useSidebarTree } from './admin-shell/useSidebarTree';
+import { useStarredItems } from './admin-shell/useStarredItems';
 
 const parseChannelIdFromPath = (pathname: string): string | undefined => {
   const match = pathname.match(/^\/channels(?:\/([^/]+))?$/);
@@ -99,61 +94,49 @@ export const AdminShellLayout = () => {
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [renameProjectTarget, setRenameProjectTarget] = useState<RenameProjectTarget | null>(null);
   const [sidebarMenu, setSidebarMenu] = useState<SidebarMenu>(null);
-  const [channelsCollapsed, setChannelsCollapsed] = useState(
-    () => getCookie('channelsCollapsed') === '1',
-  );
-  const [starredCollapsed, setStarredCollapsed] = useState(
-    () => getCookie('starredCollapsed') === '1',
-  );
-  const [dmCollapsed, setDmCollapsed] = useState(() => getCookie('dmCollapsed') === '1');
-  const [starred, setStarred] = useState<StarredItem[]>(
+  const initialStarred = useMemo<StarredItem[]>(
     () => me?.user.preferences?.starred ?? [],
+    [me?.user.preferences?.starred],
   );
+  const {
+    channelsCollapsed,
+    dmCollapsed,
+    starred,
+    starredChannelIds,
+    starredCollapsed,
+    starredProjectIds,
+    starredUserIds,
+    toggleChannelsCollapsed,
+    toggleDmCollapsed,
+    toggleStar,
+    toggleStarredCollapsed,
+  } = useStarredItems({ initialStarred, token });
+
   const unreadCountByChannelId = useMemo(
     () => new Map(channels.map((channel) => [channel.id, channel.unreadCount])),
     [channels],
   );
-  const standardChannels = useMemo(
-    () => channels.filter((channel) => channel.type !== 'dm'),
-    [channels],
-  );
+
+  const {
+    channelById,
+    defaultProjectChannels,
+    defaultProjectTeamId,
+    projectById,
+    standardChannels,
+    teamIdByProjectId,
+    visibleSidebarProjects,
+  } = useSidebarTree({
+    channels,
+    projects,
+    starredChannelIds,
+    starredProjectIds,
+    teams,
+  });
+
   const currentProjectId = useMemo(
     () => standardChannels.find((channel) => channel.id === currentChannelId)?.projectId,
     [currentChannelId, standardChannels],
   );
-  const sidebarProjects = useMemo<SidebarProject[]>(() => {
-    const channelsByProject = new Map<string, ChannelRecord[]>();
-    const projectById = new Map<string, ProjectRecord>();
-
-    for (const project of projects) {
-      projectById.set(project.id, project);
-    }
-
-    for (const channel of standardChannels) {
-      const projectChannels = channelsByProject.get(channel.projectId) ?? [];
-      projectChannels.push(channel);
-      channelsByProject.set(channel.projectId, projectChannels);
-
-      if (!projectById.has(channel.projectId)) {
-        projectById.set(channel.projectId, {
-          createdAt: channel.createdAt,
-          id: channel.projectId,
-          memberCount: 0,
-          name: channel.projectName,
-          organizationId: channel.organizationId,
-        });
-      }
-    }
-
-    return Array.from(projectById.values())
-      .map((project) => ({
-        ...project,
-        channels: (channelsByProject.get(project.id) ?? [])
-          .slice()
-          .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
-      }))
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-  }, [projects, standardChannels]);
 
   const openCreateChannel = useCallback((target?: CreateChannelTarget) => {
     setSidebarMenu(null);
@@ -170,118 +153,6 @@ export const AdminShellLayout = () => {
     setRenameProjectTarget(target);
   }, []);
   const closeRenameProject = useCallback(() => setRenameProjectTarget(null), []);
-
-  const toggleChannelsCollapsed = useCallback(() => {
-    setChannelsCollapsed((prev) => {
-      const next = !prev;
-      setCookie('channelsCollapsed', next ? '1' : '0');
-      return next;
-    });
-  }, []);
-
-  const toggleStarredCollapsed = useCallback(() => {
-    setStarredCollapsed((prev) => {
-      const next = !prev;
-      setCookie('starredCollapsed', next ? '1' : '0');
-      return next;
-    });
-  }, []);
-
-  const toggleDmCollapsed = useCallback(() => {
-    setDmCollapsed((prev) => {
-      const next = !prev;
-      setCookie('dmCollapsed', next ? '1' : '0');
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    setStarred(me?.user.preferences?.starred ?? []);
-  }, [me?.user.preferences?.starred]);
-
-  const starredChannelIds = useMemo(
-    () => new Set(starred.filter((item) => item.type === 'channel').map((item) => item.id)),
-    [starred],
-  );
-  const starredProjectIds = useMemo(
-    () => new Set(starred.filter((item) => item.type === 'project').map((item) => item.id)),
-    [starred],
-  );
-  const starredUserIds = useMemo(
-    () => new Set(starred.filter((item) => item.type === 'user').map((item) => item.id)),
-    [starred],
-  );
-  const channelById = useMemo(
-    () => new Map(channels.map((channel) => [channel.id, channel])),
-    [channels],
-  );
-  const projectById = useMemo(
-    () => new Map(sidebarProjects.map((project) => [project.id, project])),
-    [sidebarProjects],
-  );
-  const teamIdByProjectId = useMemo(() => {
-    const result = new Map<string, string>();
-
-    for (const team of teams) {
-      if (!result.has(team.projectId)) {
-        result.set(team.projectId, team.id);
-      }
-    }
-
-    for (const channel of standardChannels) {
-      if (!result.has(channel.projectId)) {
-        result.set(channel.projectId, channel.teamId);
-      }
-    }
-
-    return result;
-  }, [standardChannels, teams]);
-  const defaultProjectChannels = useMemo(
-    () =>
-      sidebarProjects.find((project) => project.id === DEFAULT_BOOTSTRAP_PROJECT_ID)?.channels.filter(
-        (channel) => !starredChannelIds.has(channel.id),
-      ) ?? [],
-    [sidebarProjects, starredChannelIds],
-  );
-  const defaultProjectTeamId = useMemo(
-    () =>
-      teamIdByProjectId.get(DEFAULT_BOOTSTRAP_PROJECT_ID)
-      ?? standardChannels.find((channel) => channel.projectId === DEFAULT_BOOTSTRAP_PROJECT_ID)
-        ?.teamId,
-    [standardChannels, teamIdByProjectId],
-  );
-  const visibleSidebarProjects = useMemo(
-    () =>
-      sidebarProjects
-        .filter(
-          (project) =>
-            project.id !== DEFAULT_BOOTSTRAP_PROJECT_ID && !starredProjectIds.has(project.id),
-        )
-        .map((project) => ({
-          ...project,
-          channels: project.channels.filter((channel) => !starredChannelIds.has(channel.id)),
-        }))
-        .filter((project) => project.channels.length > 0 || projectById.get(project.id)?.channels.length === 0),
-    [projectById, sidebarProjects, starredChannelIds, starredProjectIds],
-  );
-
-  const toggleStar = useCallback((type: StarredItem['type'], id: string) => {
-    setStarred((prev) => {
-      const exists = prev.some((s) => s.type === type && s.id === id);
-      const next = exists
-        ? prev.filter((s) => !(s.type === type && s.id === id))
-        : [...prev, { type, id }];
-      if (token) {
-        const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
-        void fetch(`${baseUrl}/api/auth/me/preferences`, {
-          method: 'PATCH',
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-          body: JSON.stringify({ starred: next }),
-        });
-      }
-      return next;
-    });
-  }, [token]);
 
   const navigateToProject = useCallback((projectId: string) => {
     const firstChannel = standardChannels.find((channel) => channel.projectId === projectId);
