@@ -3,71 +3,40 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 import {
-  CreateInferenceCapabilityOverrideBodySchema,
   CreateInferenceCredentialBindingBodySchema,
-  CreateInferenceEvalRunBodySchema,
-  CreateInferenceEvalSuiteBodySchema,
   CreateInferenceModelBodySchema,
   CreateInferenceProviderBodySchema,
   CreateInferenceRoutingProfileBodySchema,
-  CreateToolMediatorProfileBodySchema,
-  InferenceCapabilityOverrideRecordSchema,
   InferenceCredentialBindingRecordSchema,
-  InferenceEvalRunRecordSchema,
-  InferenceEvalSuiteRecordSchema,
   InferenceModelRecordSchema,
   InferenceProviderRecordSchema,
   InferenceRoutingProfileRecordSchema,
   SetInferenceProviderHealthBodySchema,
-  ToolMediatorProfileRecordSchema,
-  UpdateInferenceCapabilityOverrideBodySchema,
-  UpdateInferenceEvalRunBodySchema,
-  UpdateInferenceEvalSuiteBodySchema,
   UpdateInferenceModelBodySchema,
   UpdateInferenceProviderBodySchema,
   UpdateInferenceRoutingProfileBodySchema,
-  UpdateToolMediatorProfileBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
-  approveInferenceCapabilityOverride,
-  approveInferenceEvalSuite,
   approveInferenceModel,
   approveInferenceProvider,
   approveInferenceRoutingProfile,
-  approveToolMediatorProfile,
-  clearInferenceCapabilityOverride,
-  createInferenceCapabilityOverride,
   createInferenceCredentialBinding,
-  createInferenceEvalRun,
-  createInferenceEvalSuite,
   createInferenceModel,
   createInferenceProvider,
   createInferenceRoutingProfile,
-  createToolMediatorProfile,
-  getInferenceEvalRun,
-  getInferenceEvalSuite,
   getInferenceModel,
   getInferenceProvider,
   getInferenceRoutingProfile,
-  getToolMediatorProfile,
-  listInferenceCapabilityOverrides,
   listInferenceCredentialBindings,
-  listInferenceEvalRuns,
-  listInferenceEvalSuites,
   listInferenceModels,
   listInferenceProviders,
   listInferenceRoutingProfiles,
-  listToolMediatorProfiles,
   revokeInferenceCredentialBinding,
   setInferenceProviderHealth,
-  updateInferenceCapabilityOverride,
-  updateInferenceEvalRun,
-  updateInferenceEvalSuite,
   updateInferenceModel,
   updateInferenceProvider,
   updateInferenceRoutingProfile,
-  updateToolMediatorProfile,
 } from '../services/inference-control-plane.js'
 
 // The inference-control-plane service widens PrismaClient because the generated
@@ -115,11 +84,6 @@ const INFERENCE_ERROR_MAP: Record<string, { status: number; code: string; messag
     code: 'INFERENCE_MODEL_CAPABILITY_SNAPSHOT_MISMATCH',
     message: 'Capability snapshot does not match the requested provider/model',
   },
-  INFERENCE_CAPABILITY_OVERRIDE_NOT_FOUND: {
-    status: 404,
-    code: 'INFERENCE_CAPABILITY_OVERRIDE_NOT_FOUND',
-    message: 'Capability override not found',
-  },
   INFERENCE_ROUTING_PROFILE_NOT_FOUND: {
     status: 404,
     code: 'INFERENCE_ROUTING_PROFILE_NOT_FOUND',
@@ -129,26 +93,6 @@ const INFERENCE_ERROR_MAP: Record<string, { status: number; code: string; messag
     status: 400,
     code: 'INFERENCE_ROUTING_PROFILE_INVALID',
     message: 'Inference routing profile failed validation',
-  },
-  INFERENCE_ROUTING_PROFILE_APPROVAL_REQUIRES_PASSING_EVAL: {
-    status: 409,
-    code: 'INFERENCE_ROUTING_PROFILE_APPROVAL_REQUIRES_PASSING_EVAL',
-    message: 'Routing profile cannot be approved without a passing eval run since its last update',
-  },
-  INFERENCE_TOOL_MEDIATOR_NOT_FOUND: {
-    status: 404,
-    code: 'INFERENCE_TOOL_MEDIATOR_NOT_FOUND',
-    message: 'Tool mediator profile not found',
-  },
-  INFERENCE_EVAL_SUITE_NOT_FOUND: {
-    status: 404,
-    code: 'INFERENCE_EVAL_SUITE_NOT_FOUND',
-    message: 'Inference eval suite not found',
-  },
-  INFERENCE_EVAL_RUN_NOT_FOUND: {
-    status: 404,
-    code: 'INFERENCE_EVAL_RUN_NOT_FOUND',
-    message: 'Inference eval run not found',
   },
 }
 
@@ -409,118 +353,6 @@ export const registerInferenceControlPlaneRoutes = (
     return createApiResponse(InferenceModelRecordSchema.parse(model))
   })
 
-  // ─── Capability overrides ───────────────────────────────────────────────
-  app.get('/api/inference/capability-overrides', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const query = request.query as { providerId?: string }
-    const overrides = await listInferenceCapabilityOverrides(
-      prisma,
-      actorContext.tenant.organizationId,
-      query.providerId,
-    )
-    return createApiResponse(
-      InferenceCapabilityOverrideRecordSchema.array().parse(overrides),
-    )
-  })
-
-  app.post('/api/inference/capability-overrides', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const body = parseInput(CreateInferenceCapabilityOverrideBodySchema, request.body, reply)
-    if (!body) return reply
-
-    try {
-      const override = await createInferenceCapabilityOverride(prisma, actorContext, body)
-      return reply
-        .code(201)
-        .send(createApiResponse(InferenceCapabilityOverrideRecordSchema.parse(override)))
-    } catch (error) {
-      if (sendInferenceError(reply, error)) return reply
-      throw error
-    }
-  })
-
-  app.patch('/api/inference/capability-overrides/:overrideId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const { overrideId } = request.params as { overrideId: string }
-    const body = parseInput(UpdateInferenceCapabilityOverrideBodySchema, request.body, reply)
-    if (!body) return reply
-
-    try {
-      const override = await updateInferenceCapabilityOverride(
-        prisma,
-        actorContext,
-        overrideId,
-        body,
-      )
-      if (!override) {
-        sendApiError(
-          reply,
-          404,
-          'INFERENCE_CAPABILITY_OVERRIDE_NOT_FOUND',
-          'Capability override not found',
-        )
-        return reply
-      }
-      return createApiResponse(InferenceCapabilityOverrideRecordSchema.parse(override))
-    } catch (error) {
-      if (sendInferenceError(reply, error)) return reply
-      throw error
-    }
-  })
-
-  app.post(
-    '/api/inference/capability-overrides/:overrideId/approve',
-    async (request, reply) => {
-      const actorContext = requireActorContext(request, reply)
-      if (!actorContext) return reply
-      if (!requireOwner(actorContext, reply)) return reply
-
-      const { overrideId } = request.params as { overrideId: string }
-      const override = await approveInferenceCapabilityOverride(prisma, actorContext, overrideId)
-      if (!override) {
-        sendApiError(
-          reply,
-          404,
-          'INFERENCE_CAPABILITY_OVERRIDE_NOT_FOUND',
-          'Capability override not found',
-        )
-        return reply
-      }
-      return createApiResponse(InferenceCapabilityOverrideRecordSchema.parse(override))
-    },
-  )
-
-  app.post(
-    '/api/inference/capability-overrides/:overrideId/clear',
-    async (request, reply) => {
-      const actorContext = requireActorContext(request, reply)
-      if (!actorContext) return reply
-      if (!requireOwner(actorContext, reply)) return reply
-
-      const { overrideId } = request.params as { overrideId: string }
-      const override = await clearInferenceCapabilityOverride(prisma, actorContext, overrideId)
-      if (!override) {
-        sendApiError(
-          reply,
-          404,
-          'INFERENCE_CAPABILITY_OVERRIDE_NOT_FOUND',
-          'Capability override not found',
-        )
-        return reply
-      }
-      return createApiResponse(InferenceCapabilityOverrideRecordSchema.parse(override))
-    },
-  )
-
   // ─── Routing profiles ───────────────────────────────────────────────────
   app.get('/api/inference/routing-profiles', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -630,273 +462,5 @@ export const registerInferenceControlPlaneRoutes = (
       if (sendInferenceError(reply, error)) return reply
       throw error
     }
-  })
-
-  // ─── Tool mediator profiles ─────────────────────────────────────────────
-  app.get('/api/inference/tool-mediators', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const profiles = await listToolMediatorProfiles(
-      prisma,
-      actorContext.tenant.organizationId,
-    )
-    return createApiResponse(ToolMediatorProfileRecordSchema.array().parse(profiles))
-  })
-
-  app.post('/api/inference/tool-mediators', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const body = parseInput(CreateToolMediatorProfileBodySchema, request.body, reply)
-    if (!body) return reply
-
-    const profile = await createToolMediatorProfile(prisma, actorContext, body)
-    return reply
-      .code(201)
-      .send(createApiResponse(ToolMediatorProfileRecordSchema.parse(profile)))
-  })
-
-  app.get('/api/inference/tool-mediators/:profileId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const { profileId } = request.params as { profileId: string }
-    const profile = await getToolMediatorProfile(
-      prisma,
-      actorContext.tenant.organizationId,
-      profileId,
-    )
-    if (!profile) {
-      sendApiError(
-        reply,
-        404,
-        'INFERENCE_TOOL_MEDIATOR_NOT_FOUND',
-        'Tool mediator profile not found',
-      )
-      return reply
-    }
-    return createApiResponse(ToolMediatorProfileRecordSchema.parse(profile))
-  })
-
-  app.patch('/api/inference/tool-mediators/:profileId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const { profileId } = request.params as { profileId: string }
-    const body = parseInput(UpdateToolMediatorProfileBodySchema, request.body, reply)
-    if (!body) return reply
-
-    const profile = await updateToolMediatorProfile(prisma, actorContext, profileId, body)
-    if (!profile) {
-      sendApiError(
-        reply,
-        404,
-        'INFERENCE_TOOL_MEDIATOR_NOT_FOUND',
-        'Tool mediator profile not found',
-      )
-      return reply
-    }
-    return createApiResponse(ToolMediatorProfileRecordSchema.parse(profile))
-  })
-
-  app.post('/api/inference/tool-mediators/:profileId/approve', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const { profileId } = request.params as { profileId: string }
-    const profile = await approveToolMediatorProfile(prisma, actorContext, profileId)
-    if (!profile) {
-      sendApiError(
-        reply,
-        404,
-        'INFERENCE_TOOL_MEDIATOR_NOT_FOUND',
-        'Tool mediator profile not found',
-      )
-      return reply
-    }
-    return createApiResponse(ToolMediatorProfileRecordSchema.parse(profile))
-  })
-
-  // ─── Eval suites ────────────────────────────────────────────────────────
-  app.get('/api/inference/eval-suites', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const suites = await listInferenceEvalSuites(
-      prisma,
-      actorContext.tenant.organizationId,
-    )
-    return createApiResponse(InferenceEvalSuiteRecordSchema.array().parse(suites))
-  })
-
-  app.post('/api/inference/eval-suites', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const body = parseInput(CreateInferenceEvalSuiteBodySchema, request.body, reply)
-    if (!body) return reply
-
-    try {
-      const suite = await createInferenceEvalSuite(prisma, actorContext, body)
-      return reply
-        .code(201)
-        .send(createApiResponse(InferenceEvalSuiteRecordSchema.parse(suite)))
-    } catch (error) {
-      if (sendInferenceError(reply, error)) return reply
-      throw error
-    }
-  })
-
-  app.get('/api/inference/eval-suites/:suiteId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const { suiteId } = request.params as { suiteId: string }
-    const suite = await getInferenceEvalSuite(
-      prisma,
-      actorContext.tenant.organizationId,
-      suiteId,
-    )
-    if (!suite) {
-      sendApiError(
-        reply,
-        404,
-        'INFERENCE_EVAL_SUITE_NOT_FOUND',
-        'Inference eval suite not found',
-      )
-      return reply
-    }
-    return createApiResponse(InferenceEvalSuiteRecordSchema.parse(suite))
-  })
-
-  app.patch('/api/inference/eval-suites/:suiteId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const { suiteId } = request.params as { suiteId: string }
-    const body = parseInput(UpdateInferenceEvalSuiteBodySchema, request.body, reply)
-    if (!body) return reply
-
-    try {
-      const suite = await updateInferenceEvalSuite(prisma, actorContext, suiteId, body)
-      if (!suite) {
-        sendApiError(
-          reply,
-          404,
-          'INFERENCE_EVAL_SUITE_NOT_FOUND',
-          'Inference eval suite not found',
-        )
-        return reply
-      }
-      return createApiResponse(InferenceEvalSuiteRecordSchema.parse(suite))
-    } catch (error) {
-      if (sendInferenceError(reply, error)) return reply
-      throw error
-    }
-  })
-
-  app.post('/api/inference/eval-suites/:suiteId/approve', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const { suiteId } = request.params as { suiteId: string }
-    const suite = await approveInferenceEvalSuite(prisma, actorContext, suiteId)
-    if (!suite) {
-      sendApiError(
-        reply,
-        404,
-        'INFERENCE_EVAL_SUITE_NOT_FOUND',
-        'Inference eval suite not found',
-      )
-      return reply
-    }
-    return createApiResponse(InferenceEvalSuiteRecordSchema.parse(suite))
-  })
-
-  // ─── Eval runs ──────────────────────────────────────────────────────────
-  app.get('/api/inference/eval-runs', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const query = request.query as { evalSuiteId?: string }
-    const runs = await listInferenceEvalRuns(
-      prisma,
-      actorContext.tenant.organizationId,
-      query.evalSuiteId,
-    )
-    return createApiResponse(InferenceEvalRunRecordSchema.array().parse(runs))
-  })
-
-  app.post('/api/inference/eval-runs', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const body = parseInput(CreateInferenceEvalRunBodySchema, request.body, reply)
-    if (!body) return reply
-
-    try {
-      const run = await createInferenceEvalRun(prisma, actorContext, body)
-      return reply
-        .code(202)
-        .send(createApiResponse(InferenceEvalRunRecordSchema.parse(run)))
-    } catch (error) {
-      if (sendInferenceError(reply, error)) return reply
-      throw error
-    }
-  })
-
-  app.get('/api/inference/eval-runs/:runId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const { runId } = request.params as { runId: string }
-    const run = await getInferenceEvalRun(
-      prisma,
-      actorContext.tenant.organizationId,
-      runId,
-    )
-    if (!run) {
-      sendApiError(reply, 404, 'INFERENCE_EVAL_RUN_NOT_FOUND', 'Inference eval run not found')
-      return reply
-    }
-    return createApiResponse(InferenceEvalRunRecordSchema.parse(run))
-  })
-
-  app.patch('/api/inference/eval-runs/:runId', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
-
-    const { runId } = request.params as { runId: string }
-    const body = parseInput(UpdateInferenceEvalRunBodySchema, request.body, reply)
-    if (!body) return reply
-
-    // parseInput widens nested branded schemas; the service re-normalizes inputs
-    // so passing the parsed body is safe.
-    const run = await updateInferenceEvalRun(
-      prisma,
-      actorContext,
-      runId,
-      body as Parameters<typeof updateInferenceEvalRun>[3],
-    )
-    if (!run) {
-      sendApiError(reply, 404, 'INFERENCE_EVAL_RUN_NOT_FOUND', 'Inference eval run not found')
-      return reply
-    }
-    return createApiResponse(InferenceEvalRunRecordSchema.parse(run))
   })
 }

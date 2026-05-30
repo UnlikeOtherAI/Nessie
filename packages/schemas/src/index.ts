@@ -47,8 +47,6 @@ export const PolicyBindingIdSchema = createUuidBrandSchema<'PolicyBindingId'>()
 export type PolicyBindingId = z.infer<typeof PolicyBindingIdSchema>
 export const TokenLedgerEventIdSchema = createUuidBrandSchema<'TokenLedgerEventId'>()
 export type TokenLedgerEventId = z.infer<typeof TokenLedgerEventIdSchema>
-export const ModelPricingProfileIdSchema = createUuidBrandSchema<'ModelPricingProfileId'>()
-export type ModelPricingProfileId = z.infer<typeof ModelPricingProfileIdSchema>
 export const InferenceProviderIdSchema = createUuidBrandSchema<'InferenceProviderId'>()
 export type InferenceProviderId = z.infer<typeof InferenceProviderIdSchema>
 export const InferenceCredentialBindingIdSchema =
@@ -58,25 +56,11 @@ export type InferenceCredentialBindingId = z.infer<
 >
 export const InferenceModelIdSchema = createUuidBrandSchema<'InferenceModelId'>()
 export type InferenceModelId = z.infer<typeof InferenceModelIdSchema>
-export const InferenceCapabilityOverrideIdSchema =
-  createUuidBrandSchema<'InferenceCapabilityOverrideId'>()
-export type InferenceCapabilityOverrideId = z.infer<
-  typeof InferenceCapabilityOverrideIdSchema
->
 export const InferenceRoutingProfileIdSchema =
   createUuidBrandSchema<'InferenceRoutingProfileId'>()
 export type InferenceRoutingProfileId = z.infer<
   typeof InferenceRoutingProfileIdSchema
 >
-export const ToolMediatorProfileIdSchema =
-  createUuidBrandSchema<'ToolMediatorProfileId'>()
-export type ToolMediatorProfileId = z.infer<typeof ToolMediatorProfileIdSchema>
-export const InferenceEvalSuiteIdSchema =
-  createUuidBrandSchema<'InferenceEvalSuiteId'>()
-export type InferenceEvalSuiteId = z.infer<typeof InferenceEvalSuiteIdSchema>
-export const InferenceEvalRunIdSchema =
-  createUuidBrandSchema<'InferenceEvalRunId'>()
-export type InferenceEvalRunId = z.infer<typeof InferenceEvalRunIdSchema>
 
 export const parseOrganizationId = (value: string): OrganizationId =>
   OrganizationIdSchema.parse(value)
@@ -100,8 +84,6 @@ export const parsePolicyBindingId = (value: string): PolicyBindingId =>
   PolicyBindingIdSchema.parse(value)
 export const parseTokenLedgerEventId = (value: string): TokenLedgerEventId =>
   TokenLedgerEventIdSchema.parse(value)
-export const parseModelPricingProfileId = (value: string): ModelPricingProfileId =>
-  ModelPricingProfileIdSchema.parse(value)
 export const parseInferenceProviderId = (value: string): InferenceProviderId =>
   InferenceProviderIdSchema.parse(value)
 export const parseInferenceCredentialBindingId = (
@@ -109,19 +91,9 @@ export const parseInferenceCredentialBindingId = (
 ): InferenceCredentialBindingId => InferenceCredentialBindingIdSchema.parse(value)
 export const parseInferenceModelId = (value: string): InferenceModelId =>
   InferenceModelIdSchema.parse(value)
-export const parseInferenceCapabilityOverrideId = (
-  value: string,
-): InferenceCapabilityOverrideId => InferenceCapabilityOverrideIdSchema.parse(value)
 export const parseInferenceRoutingProfileId = (
   value: string,
 ): InferenceRoutingProfileId => InferenceRoutingProfileIdSchema.parse(value)
-export const parseToolMediatorProfileId = (
-  value: string,
-): ToolMediatorProfileId => ToolMediatorProfileIdSchema.parse(value)
-export const parseInferenceEvalSuiteId = (value: string): InferenceEvalSuiteId =>
-  InferenceEvalSuiteIdSchema.parse(value)
-export const parseInferenceEvalRunId = (value: string): InferenceEvalRunId =>
-  InferenceEvalRunIdSchema.parse(value)
 
 export type ApiResponse<T> = {
   data: T
@@ -1289,24 +1261,6 @@ export const MonthlyEstimateSchema = z.object({
 })
 export type MonthlyEstimate = z.infer<typeof MonthlyEstimateSchema>
 
-export const ModelPricingProfileResponseSchema = z.object({
-  profileId: ModelPricingProfileIdSchema,
-  organizationId: OrganizationIdSchema,
-  provider: NonEmptyStringSchema,
-  modelPattern: NonEmptyStringSchema,
-  currency: NonEmptyStringSchema,
-  source: PricingSourceSchema,
-  inputPerMillion: z.number().nonnegative().optional(),
-  outputPerMillion: z.number().nonnegative().optional(),
-  cachedInputPerMillion: z.number().nonnegative().optional(),
-  cachedOutputPerMillion: z.number().nonnegative().optional(),
-  cacheReadPerMillion: z.number().nonnegative().optional(),
-  cacheWritePerMillion: z.number().nonnegative().optional(),
-  effectiveFrom: TimestampSchema,
-  effectiveTo: TimestampSchema.optional(),
-})
-export type ModelPricingProfileResponse = z.infer<typeof ModelPricingProfileResponseSchema>
-
 // ─── Phase 2: Inference Connector And Orchestration ───────────────────────
 
 export const ToolCallingModeSchema = z.enum([
@@ -1706,7 +1660,6 @@ export const RoutingProfileSchema = z.object({
   exposure: InferenceExposureSchema,
   mode: RoutingModeSchema,
   streamPolicy: StreamPolicySchema,
-  toolMediatorId: ToolMediatorProfileIdSchema.optional(),
   stages: z.array(RouteStageSchema),
 })
 export type RoutingProfile = z.infer<typeof RoutingProfileSchema>
@@ -1852,37 +1805,6 @@ export const InferenceModelSchema = z.object({
 })
 export type InferenceModel = z.infer<typeof InferenceModelSchema>
 
-export const InferenceCapabilityOverrideSchema = z.object({
-  id: InferenceCapabilityOverrideIdSchema,
-  organizationId: OrganizationIdSchema,
-  providerId: InferenceProviderIdSchema,
-  model: NonEmptyStringSchema,
-  lifecycleStatus: LifecycleStatusSchema,
-  overrideSnapshot: ModelCapabilitySnapshotSchema,
-  createdByActorId: NonEmptyStringSchema,
-  createdAt: TimestampSchema,
-  clearedAt: TimestampSchema.optional(),
-  approvedByActorId: NonEmptyStringSchema.optional(),
-  approvedAt: TimestampSchema.optional(),
-})
-export type InferenceCapabilityOverride = z.infer<
-  typeof InferenceCapabilityOverrideSchema
->
-
-export const ToolMediatorProfileSchema = z.object({
-  id: ToolMediatorProfileIdSchema,
-  organizationId: OrganizationIdSchema,
-  label: NonEmptyStringSchema,
-  enabled: z.boolean(),
-  translatorProvider: NonEmptyStringSchema,
-  translatorModel: NonEmptyStringSchema,
-  mediatorConfig: z.record(z.unknown()),
-  createdByActorId: NonEmptyStringSchema,
-  approvedByActorId: NonEmptyStringSchema.optional(),
-  approvedAt: TimestampSchema.optional(),
-})
-export type ToolMediatorProfile = z.infer<typeof ToolMediatorProfileSchema>
-
 export const InferenceRoutingProfileSchema = RoutingProfileSchema.extend({
   organizationId: OrganizationIdSchema,
   lifecycleStatus: LifecycleStatusSchema,
@@ -1893,78 +1815,6 @@ export const InferenceRoutingProfileSchema = RoutingProfileSchema.extend({
 export type InferenceRoutingProfile = z.infer<
   typeof InferenceRoutingProfileSchema
 >
-
-export const InferenceEvalDatasetRefSchema = z.object({
-  kind: z.enum(['file', 'dataset', 'query']),
-  value: NonEmptyStringSchema,
-})
-export type InferenceEvalDatasetRef = z.infer<
-  typeof InferenceEvalDatasetRefSchema
->
-
-export const InferenceEvalSummarySchema = z.object({
-  totalCases: z.number().int().nonnegative(),
-  passedCases: z.number().int().nonnegative(),
-  failedCases: z.number().int().nonnegative(),
-  score: z.number(),
-  blockingFailures: z.array(z.unknown()),
-})
-export type InferenceEvalSummary = z.infer<typeof InferenceEvalSummarySchema>
-
-export const InferenceEvalCaseResultSchema = z.object({
-  caseId: NonEmptyStringSchema,
-  input: z.unknown(),
-  expected: z.unknown().optional(),
-  actual: z.unknown(),
-  verdict: NonEmptyStringSchema,
-  invocationIds: z.array(NonEmptyStringSchema),
-})
-export type InferenceEvalCaseResult = z.infer<
-  typeof InferenceEvalCaseResultSchema
->
-
-export const InferenceEvalRunStatusSchema = z.enum([
-  'queued',
-  'running',
-  'completed',
-  'failed',
-  'cancelled',
-])
-export type InferenceEvalRunStatus = z.infer<
-  typeof InferenceEvalRunStatusSchema
->
-
-export const InferenceEvalSuiteSchema = z.object({
-  id: InferenceEvalSuiteIdSchema,
-  organizationId: OrganizationIdSchema,
-  label: NonEmptyStringSchema,
-  exposure: InferenceExposureSchema,
-  enabled: z.boolean(),
-  datasetRef: InferenceEvalDatasetRefSchema,
-  targetRoutingProfileId: InferenceRoutingProfileIdSchema,
-  judgeRoutingProfileId: InferenceRoutingProfileIdSchema.optional(),
-  lifecycleStatus: LifecycleStatusSchema,
-  createdByActorId: NonEmptyStringSchema,
-  approvedByActorId: NonEmptyStringSchema.optional(),
-  approvedAt: TimestampSchema.optional(),
-})
-export type InferenceEvalSuite = z.infer<typeof InferenceEvalSuiteSchema>
-
-export const InferenceEvalRunSchema = z.object({
-  id: InferenceEvalRunIdSchema,
-  organizationId: OrganizationIdSchema,
-  evalSuiteId: InferenceEvalSuiteIdSchema,
-  startedByActorId: NonEmptyStringSchema,
-  startedAt: TimestampSchema,
-  finishedAt: TimestampSchema.optional(),
-  status: InferenceEvalRunStatusSchema,
-  summary: InferenceEvalSummarySchema,
-  result: z.record(z.unknown()),
-  caseResults: z.array(InferenceEvalCaseResultSchema),
-  targetProfileSnapshot: RoutingProfileSchema,
-  judgeProfileSnapshot: RoutingProfileSchema.optional(),
-})
-export type InferenceEvalRun = z.infer<typeof InferenceEvalRunSchema>
 
 export const ToolIntentTranslationRequestSchema = z.object({
   requestId: NonEmptyStringSchema,

@@ -2,43 +2,26 @@ import { Prisma, type PrismaClient as PrismaDbClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { parseOrganizationId } from '@nessie/schemas'
 import {
-  EvalCaseResultSchema,
-  EvalDatasetRefSchema,
-  EvalSummarySchema,
-  InferenceRoutingProfileRecordSchema,
   ModelCapabilitySnapshotSchema,
   RouteGraphSchema,
 } from '../contracts.js'
 import type {
-  CreateInferenceCapabilityOverrideBody,
   CreateInferenceCredentialBindingBody,
-  CreateInferenceEvalRunBody,
-  CreateInferenceEvalSuiteBody,
   CreateInferenceModelBody,
   CreateInferenceProviderBody,
   CreateInferenceRoutingProfileBody,
-  CreateToolMediatorProfileBody,
-  InferenceCapabilityOverrideRecord,
   InferenceCredentialBindingRecord,
-  InferenceEvalRunRecord,
-  InferenceEvalSuiteRecord,
   InferenceHealthStatus,
   InferenceModelRecord,
   InferenceProviderRecord,
   InferenceRoutingMode,
   InferenceRoutingProfileRecord,
   RouteGraph,
-  ToolMediatorProfileRecord,
-  UpdateInferenceCapabilityOverrideBody,
-  UpdateInferenceEvalRunBody,
-  UpdateInferenceEvalSuiteBody,
   UpdateInferenceModelBody,
   UpdateInferenceProviderBody,
   UpdateInferenceRoutingProfileBody,
-  UpdateToolMediatorProfileBody,
 } from '../contracts.js'
 import {
-  toInputJsonObjectWithDefault,
   toJsonRecord,
 } from './contract-helpers.js'
 
@@ -58,11 +41,6 @@ const toDbStreamPolicy = (
   value: 'primary-only' | 'buffered-judge' | undefined,
 ): 'primary_only' | 'buffered_judge' =>
   value === 'buffered-judge' ? 'buffered_judge' : 'primary_only'
-
-const toNullableJsonValue = (
-  value: unknown,
-): Prisma.InputJsonValue | typeof Prisma.JsonNull =>
-  value === null ? Prisma.JsonNull : asJsonValue(value)
 
 const toContractStreamPolicy = (
   value: 'primary_only' | 'buffered_judge',
@@ -171,70 +149,6 @@ const mapModelRecord = (model: {
   updatedAt: model.updatedAt.toISOString(),
 })
 
-const mapCapabilityOverrideRecord = (overrideRow: {
-  approvedAt: Date | null
-  approvedByActorId: string | null
-  clearedAt: Date | null
-  createdAt: Date
-  createdByActorId: string
-  id: string
-  lifecycleStatus: 'approved' | 'deprecated' | 'draft'
-  model: string
-  organizationId: string
-  overrideSnapshot: unknown
-  providerId: string
-  updatedAt: Date
-  updatedByActorId: string
-}): InferenceCapabilityOverrideRecord => ({
-  id: overrideRow.id,
-  organizationId: parseOrganizationId(overrideRow.organizationId),
-  providerId: overrideRow.providerId,
-  model: overrideRow.model,
-  lifecycleStatus: overrideRow.lifecycleStatus,
-  overrideSnapshot: ModelCapabilitySnapshotSchema.parse(
-    toJsonRecord(overrideRow.overrideSnapshot),
-  ),
-  createdByActorId: overrideRow.createdByActorId,
-  updatedByActorId: overrideRow.updatedByActorId,
-  createdAt: overrideRow.createdAt.toISOString(),
-  clearedAt: toTimestamp(overrideRow.clearedAt),
-  approvedByActorId: overrideRow.approvedByActorId ?? undefined,
-  approvedAt: toTimestamp(overrideRow.approvedAt),
-  updatedAt: overrideRow.updatedAt.toISOString(),
-})
-
-const mapToolMediatorProfileRecord = (profile: {
-  approvedAt: Date | null
-  approvedByActorId: string | null
-  createdAt: Date
-  createdByActorId: string
-  enabled: boolean
-  id: string
-  label: string
-  lifecycleStatus: 'approved' | 'deprecated' | 'draft'
-  mediatorConfig: unknown
-  organizationId: string
-  translatorModel: string
-  translatorProvider: string
-  updatedAt: Date
-  updatedByActorId: string
-}): ToolMediatorProfileRecord => ({
-  id: profile.id,
-  organizationId: parseOrganizationId(profile.organizationId),
-  label: profile.label,
-  enabled: profile.enabled,
-  lifecycleStatus: profile.lifecycleStatus,
-  translatorProvider: profile.translatorProvider,
-  translatorModel: profile.translatorModel,
-  mediatorConfig: toJsonRecord(profile.mediatorConfig),
-  createdByActorId: profile.createdByActorId,
-  updatedByActorId: profile.updatedByActorId,
-  approvedByActorId: profile.approvedByActorId ?? undefined,
-  approvedAt: toTimestamp(profile.approvedAt),
-  createdAt: profile.createdAt.toISOString(),
-  updatedAt: profile.updatedAt.toISOString(),
-})
-
 const mapRoutingProfileRecord = (profile: {
   approvedAt: Date | null
   approvedByActorId: string | null
@@ -272,79 +186,6 @@ const mapRoutingProfileRecord = (profile: {
   updatedAt: profile.updatedAt.toISOString(),
 })
 
-const mapEvalSuiteRecord = (suite: {
-  approvedAt: Date | null
-  approvedByActorId: string | null
-  createdAt: Date
-  createdByActorId: string
-  datasetRef: unknown
-  enabled: boolean
-  exposure: 'admin_only' | 'standard'
-  id: string
-  judgeRoutingProfileId: string | null
-  label: string
-  lifecycleStatus: 'approved' | 'deprecated' | 'draft'
-  organizationId: string
-  targetRoutingProfileId: string
-  updatedAt: Date
-  updatedByActorId: string
-}): InferenceEvalSuiteRecord => ({
-  id: suite.id,
-  organizationId: parseOrganizationId(suite.organizationId),
-  label: suite.label,
-  exposure:
-    suite.exposure === 'admin_only' ? 'admin-only' : suite.exposure,
-  enabled: suite.enabled,
-  datasetRef: EvalDatasetRefSchema.parse(toJsonRecord(suite.datasetRef)),
-  targetRoutingProfileId: suite.targetRoutingProfileId,
-  judgeRoutingProfileId: suite.judgeRoutingProfileId ?? undefined,
-  lifecycleStatus: suite.lifecycleStatus,
-  createdByActorId: suite.createdByActorId,
-  updatedByActorId: suite.updatedByActorId,
-  approvedByActorId: suite.approvedByActorId ?? undefined,
-  approvedAt: toTimestamp(suite.approvedAt),
-  createdAt: suite.createdAt.toISOString(),
-  updatedAt: suite.updatedAt.toISOString(),
-})
-
-const mapEvalRunRecord = (run: {
-  caseResults: unknown
-  createdAt: Date
-  evalSuiteId: string
-  finishedAt: Date | null
-  id: string
-  judgeProfileSnapshot: unknown
-  organizationId: string
-  result: unknown
-  startedAt: Date
-  startedByActorId: string
-  status: 'cancelled' | 'completed' | 'failed' | 'queued' | 'running'
-  summary: unknown
-  targetProfileSnapshot: unknown
-  updatedAt: Date
-}): InferenceEvalRunRecord => ({
-  id: run.id,
-  organizationId: parseOrganizationId(run.organizationId),
-  evalSuiteId: run.evalSuiteId,
-  startedByActorId: run.startedByActorId,
-  startedAt: run.startedAt.toISOString(),
-  finishedAt: toTimestamp(run.finishedAt),
-  status: run.status,
-  summary: EvalSummarySchema.parse(toJsonRecord(run.summary)),
-  result: toJsonRecord(run.result),
-  caseResults: EvalCaseResultSchema.array().parse(
-    Array.isArray(run.caseResults) ? run.caseResults : [],
-  ),
-  targetProfileSnapshot: InferenceRoutingProfileRecordSchema.parse(
-    toJsonRecord(run.targetProfileSnapshot),
-  ),
-  judgeProfileSnapshot: run.judgeProfileSnapshot
-    ? InferenceRoutingProfileRecordSchema.parse(toJsonRecord(run.judgeProfileSnapshot))
-    : undefined,
-  createdAt: run.createdAt.toISOString(),
-  updatedAt: run.updatedAt.toISOString(),
-})
-
 const ensureProvider = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -374,54 +215,17 @@ const ensureCredentialBinding = async (
     },
   })
 
-const ensureRoutingProfile = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  routingProfileId: string,
-) =>
-  prisma.inferenceRoutingProfile.findFirst({
-    where: {
-      id: routingProfileId,
-      organizationId,
-    },
-  })
-
-const ensureToolMediatorProfile = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  profileId: string,
-) =>
-  prisma.toolMediatorProfile.findFirst({
-    where: {
-      id: profileId,
-      organizationId,
-    },
-  })
-
-const isPassingEvalSummary = (summary: unknown): boolean => {
-  const parsed = EvalSummarySchema.safeParse(toJsonRecord(summary))
-  return (
-    parsed.success &&
-    parsed.data.failedCases === 0 &&
-    parsed.data.blockingFailures.length === 0
-  )
-}
-
-const validateRouteGraph = async (
-  prisma: PrismaClient,
-  organizationId: string,
+const validateRouteGraph = (
   input: {
     mode: InferenceRoutingMode
     routeGraph: RouteGraph
-    toolMediatorProfileId?: string
   },
-): Promise<void> => {
+): void => {
   const graph = RouteGraphSchema.parse(input.routeGraph)
   const stageIds = new Set<string>()
   let visibleStages = 0
   let shadowStages = 0
   let advisorRoots = 0
-  let promptTranslatedStages = 0
 
   for (const stage of graph.stages) {
     if (stageIds.has(stage.id)) {
@@ -437,9 +241,6 @@ const validateRouteGraph = async (
     }
     if (stage.role === 'advisor' && !stage.inputFrom) {
       advisorRoots += 1
-    }
-    if (stage.toolCallingMode === 'prompt-translated') {
-      promptTranslatedStages += 1
     }
   }
 
@@ -509,20 +310,6 @@ const validateRouteGraph = async (
   }
   for (const stage of graph.stages) {
     visit(stage.id)
-  }
-
-  if (promptTranslatedStages > 0) {
-    if (!input.toolMediatorProfileId) {
-      throw new Error('INFERENCE_ROUTING_PROFILE_TOOL_MEDIATOR_REQUIRED')
-    }
-    const mediator = await ensureToolMediatorProfile(
-      prisma,
-      organizationId,
-      input.toolMediatorProfileId,
-    )
-    if (!mediator) {
-      throw new Error('INFERENCE_TOOL_MEDIATOR_PROFILE_NOT_FOUND')
-    }
   }
 }
 
@@ -980,168 +767,6 @@ export const approveInferenceModel = async (
   return mapModelRecord(updated)
 }
 
-// ─── Capability overrides ─────────────────────────────────────────────────
-
-export const listInferenceCapabilityOverrides = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  providerId?: string,
-): Promise<InferenceCapabilityOverrideRecord[]> => {
-  const overrides = await prisma.inferenceCapabilityOverride.findMany({
-    where: providerId
-      ? {
-          organizationId,
-          providerId,
-        }
-      : {
-          organizationId,
-        },
-    orderBy: [{ createdAt: 'desc' }],
-  })
-  return overrides.map(mapCapabilityOverrideRecord)
-}
-
-export const createInferenceCapabilityOverride = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  input: CreateInferenceCapabilityOverrideBody,
-): Promise<InferenceCapabilityOverrideRecord> => {
-  const provider = await ensureProvider(
-    prisma,
-    actorContext.tenant.organizationId,
-    input.providerId,
-  )
-  if (!provider) {
-    throw new Error('INFERENCE_PROVIDER_NOT_FOUND')
-  }
-  const snapshot = ModelCapabilitySnapshotSchema.parse(input.overrideSnapshot)
-  if (snapshot.provider !== provider.providerKey || snapshot.model !== input.model) {
-    throw new Error('INFERENCE_MODEL_CAPABILITY_SNAPSHOT_MISMATCH')
-  }
-
-  const override = await prisma.inferenceCapabilityOverride.create({
-    data: {
-      organizationId: actorContext.tenant.organizationId,
-      providerId: provider.id,
-      model: input.model,
-      lifecycleStatus: 'draft',
-      overrideSnapshot: asJsonValue(snapshot),
-      createdByActorId: actorContext.actor.actorId,
-      updatedByActorId: actorContext.actor.actorId,
-    },
-  })
-
-  return mapCapabilityOverrideRecord(override)
-}
-
-export const updateInferenceCapabilityOverride = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  overrideId: string,
-  input: UpdateInferenceCapabilityOverrideBody,
-): Promise<InferenceCapabilityOverrideRecord | null> => {
-  const override = await prisma.inferenceCapabilityOverride.findFirst({
-    where: {
-      id: overrideId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!override) {
-    return null
-  }
-  const currentSnapshot = ModelCapabilitySnapshotSchema.parse(
-    toJsonRecord(override.overrideSnapshot),
-  )
-
-  const nextSnapshot = input.overrideSnapshot
-    ? ModelCapabilitySnapshotSchema.parse(input.overrideSnapshot)
-    : undefined
-  if (
-    nextSnapshot &&
-    (nextSnapshot.provider !== currentSnapshot.provider ||
-      nextSnapshot.model !== override.model)
-  ) {
-    throw new Error('INFERENCE_MODEL_CAPABILITY_SNAPSHOT_MISMATCH')
-  }
-
-  const materialChanged =
-    (nextSnapshot !== undefined && !sameJson(nextSnapshot, currentSnapshot)) ||
-    (input.clearedAt !== undefined &&
-      (input.clearedAt === null
-        ? override.clearedAt !== null
-        : new Date(input.clearedAt).toISOString() !== override.clearedAt?.toISOString()))
-
-  const updated = await prisma.inferenceCapabilityOverride.update({
-    where: { id: override.id },
-    data: {
-      overrideSnapshot:
-        nextSnapshot !== undefined
-          ? asJsonValue(nextSnapshot)
-          : asJsonValue(override.overrideSnapshot),
-      clearedAt:
-        input.clearedAt === undefined
-          ? override.clearedAt
-          : input.clearedAt === null
-            ? null
-            : new Date(input.clearedAt),
-      ...(materialChanged ? resetApproval(actorContext.actor.actorId) : {}),
-      updatedByActorId: actorContext.actor.actorId,
-    },
-  })
-
-  return mapCapabilityOverrideRecord(updated)
-}
-
-export const approveInferenceCapabilityOverride = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  overrideId: string,
-): Promise<InferenceCapabilityOverrideRecord | null> => {
-  const override = await prisma.inferenceCapabilityOverride.findFirst({
-    where: {
-      id: overrideId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!override) {
-    return null
-  }
-
-  const updated = await prisma.inferenceCapabilityOverride.update({
-    where: { id: override.id },
-    data: approveMutation(actorContext.actor.actorId),
-  })
-
-  return mapCapabilityOverrideRecord(updated)
-}
-
-export const clearInferenceCapabilityOverride = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  overrideId: string,
-): Promise<InferenceCapabilityOverrideRecord | null> => {
-  const override = await prisma.inferenceCapabilityOverride.findFirst({
-    where: {
-      id: overrideId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!override) {
-    return null
-  }
-
-  const updated = await prisma.inferenceCapabilityOverride.update({
-    where: { id: override.id },
-    data: {
-      lifecycleStatus: 'deprecated',
-      clearedAt: new Date(),
-      updatedByActorId: actorContext.actor.actorId,
-    },
-  })
-
-  return mapCapabilityOverrideRecord(updated)
-}
-
 // ─── Routing profiles ─────────────────────────────────────────────────────
 
 export const listInferenceRoutingProfiles = async (
@@ -1171,10 +796,9 @@ export const createInferenceRoutingProfile = async (
   actorContext: AuthorizedActionContext,
   input: CreateInferenceRoutingProfileBody,
 ): Promise<InferenceRoutingProfileRecord> => {
-  await validateRouteGraph(prisma, actorContext.tenant.organizationId, {
+  validateRouteGraph({
     mode: input.mode,
     routeGraph: input.routeGraph,
-    toolMediatorProfileId: input.toolMediatorProfileId,
   })
 
   const profile = await prisma.inferenceRoutingProfile.create({
@@ -1216,16 +840,11 @@ export const updateInferenceRoutingProfile = async (
   const nextRouteGraph = input.routeGraph
     ? RouteGraphSchema.parse(input.routeGraph)
     : undefined
-  const nextToolMediatorProfileId =
-    input.toolMediatorProfileId === undefined
-      ? profile.toolMediatorProfileId
-      : input.toolMediatorProfileId
 
   if (nextRouteGraph || input.mode || input.toolMediatorProfileId !== undefined) {
-    await validateRouteGraph(prisma, actorContext.tenant.organizationId, {
+    validateRouteGraph({
       mode: input.mode ?? profile.mode,
       routeGraph: nextRouteGraph ?? RouteGraphSchema.parse(toJsonRecord(profile.routeGraph)),
-      toolMediatorProfileId: nextToolMediatorProfileId ?? undefined,
     })
   }
 
@@ -1286,449 +905,10 @@ export const approveInferenceRoutingProfile = async (
     return null
   }
 
-  const passingEval = await prisma.inferenceEvalRun.findFirst({
-    where: {
-      status: 'completed',
-      finishedAt: { gte: profile.updatedAt },
-      evalSuite: {
-        targetRoutingProfileId: profile.id,
-      },
-    },
-    orderBy: [{ finishedAt: 'desc' }],
-  })
-
-  if (!passingEval || !isPassingEvalSummary(passingEval.summary)) {
-    throw new Error('INFERENCE_ROUTING_PROFILE_APPROVAL_REQUIRES_PASSING_EVAL')
-  }
-
   const updated = await prisma.inferenceRoutingProfile.update({
     where: { id: profile.id },
     data: approveMutation(actorContext.actor.actorId),
   })
 
   return mapRoutingProfileRecord(updated)
-}
-
-// ─── Tool mediator profiles ───────────────────────────────────────────────
-
-export const listToolMediatorProfiles = async (
-  prisma: PrismaClient,
-  organizationId: string,
-): Promise<ToolMediatorProfileRecord[]> => {
-  const profiles = await prisma.toolMediatorProfile.findMany({
-    where: { organizationId },
-    orderBy: [{ createdAt: 'desc' }],
-  })
-  return profiles.map(mapToolMediatorProfileRecord)
-}
-
-export const getToolMediatorProfile = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  profileId: string,
-): Promise<ToolMediatorProfileRecord | null> => {
-  const profile = await prisma.toolMediatorProfile.findFirst({
-    where: { id: profileId, organizationId },
-  })
-  return profile ? mapToolMediatorProfileRecord(profile) : null
-}
-
-export const createToolMediatorProfile = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  input: CreateToolMediatorProfileBody,
-): Promise<ToolMediatorProfileRecord> => {
-  const profile = await prisma.toolMediatorProfile.create({
-    data: {
-      organizationId: actorContext.tenant.organizationId,
-      label: input.label,
-      enabled: input.enabled ?? false,
-      lifecycleStatus: 'draft',
-      translatorProvider: input.translatorProvider,
-      translatorModel: input.translatorModel,
-      mediatorConfig: toInputJsonObjectWithDefault(input.mediatorConfig),
-      createdByActorId: actorContext.actor.actorId,
-      updatedByActorId: actorContext.actor.actorId,
-    },
-  })
-
-  return mapToolMediatorProfileRecord(profile)
-}
-
-export const updateToolMediatorProfile = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  profileId: string,
-  input: UpdateToolMediatorProfileBody,
-): Promise<ToolMediatorProfileRecord | null> => {
-  const profile = await prisma.toolMediatorProfile.findFirst({
-    where: {
-      id: profileId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!profile) {
-    return null
-  }
-
-  const materialChanged =
-    (input.translatorProvider !== undefined &&
-      input.translatorProvider !== profile.translatorProvider) ||
-    (input.translatorModel !== undefined &&
-      input.translatorModel !== profile.translatorModel) ||
-    (input.mediatorConfig !== undefined &&
-      !sameJson(input.mediatorConfig, profile.mediatorConfig))
-
-  const updated = await prisma.toolMediatorProfile.update({
-    where: { id: profile.id },
-    data: {
-      label: input.label ?? profile.label,
-      enabled: input.enabled ?? profile.enabled,
-      translatorProvider: input.translatorProvider ?? profile.translatorProvider,
-      translatorModel: input.translatorModel ?? profile.translatorModel,
-      mediatorConfig:
-        input.mediatorConfig === undefined
-          ? asJsonValue(profile.mediatorConfig)
-          : toInputJsonObjectWithDefault(input.mediatorConfig),
-      ...(materialChanged ? resetApproval(actorContext.actor.actorId) : {}),
-      updatedByActorId: actorContext.actor.actorId,
-    },
-  })
-
-  return mapToolMediatorProfileRecord(updated)
-}
-
-export const approveToolMediatorProfile = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  profileId: string,
-): Promise<ToolMediatorProfileRecord | null> => {
-  const profile = await prisma.toolMediatorProfile.findFirst({
-    where: {
-      id: profileId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!profile) {
-    return null
-  }
-
-  const updated = await prisma.toolMediatorProfile.update({
-    where: { id: profile.id },
-    data: approveMutation(actorContext.actor.actorId),
-  })
-
-  return mapToolMediatorProfileRecord(updated)
-}
-
-// ─── Evals ────────────────────────────────────────────────────────────────
-
-export const listInferenceEvalSuites = async (
-  prisma: PrismaClient,
-  organizationId: string,
-): Promise<InferenceEvalSuiteRecord[]> => {
-  const suites = await prisma.inferenceEvalSuite.findMany({
-    where: { organizationId },
-    orderBy: [{ createdAt: 'desc' }],
-  })
-  return suites.map(mapEvalSuiteRecord)
-}
-
-export const getInferenceEvalSuite = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  suiteId: string,
-): Promise<InferenceEvalSuiteRecord | null> => {
-  const suite = await prisma.inferenceEvalSuite.findFirst({
-    where: { id: suiteId, organizationId },
-  })
-  return suite ? mapEvalSuiteRecord(suite) : null
-}
-
-export const createInferenceEvalSuite = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  input: CreateInferenceEvalSuiteBody,
-): Promise<InferenceEvalSuiteRecord> => {
-  const targetRoutingProfile = await ensureRoutingProfile(
-    prisma,
-    actorContext.tenant.organizationId,
-    input.targetRoutingProfileId,
-  )
-  if (!targetRoutingProfile) {
-    throw new Error('INFERENCE_ROUTING_PROFILE_NOT_FOUND')
-  }
-
-  const judgeRoutingProfile = input.judgeRoutingProfileId
-    ? await ensureRoutingProfile(
-        prisma,
-        actorContext.tenant.organizationId,
-        input.judgeRoutingProfileId,
-      )
-    : null
-  if (input.judgeRoutingProfileId && !judgeRoutingProfile) {
-    throw new Error('INFERENCE_ROUTING_PROFILE_NOT_FOUND')
-  }
-
-  const suite = await prisma.inferenceEvalSuite.create({
-    data: {
-      organizationId: actorContext.tenant.organizationId,
-      label: input.label,
-      exposure:
-        input.exposure === 'admin-only' ? 'admin_only' : input.exposure ?? 'standard',
-      enabled: input.enabled ?? false,
-      lifecycleStatus: 'draft',
-      datasetRef: asJsonValue(input.datasetRef),
-      targetRoutingProfileId: targetRoutingProfile.id,
-      judgeRoutingProfileId: judgeRoutingProfile?.id ?? null,
-      createdByActorId: actorContext.actor.actorId,
-      updatedByActorId: actorContext.actor.actorId,
-    },
-  })
-
-  return mapEvalSuiteRecord(suite)
-}
-
-export const updateInferenceEvalSuite = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  suiteId: string,
-  input: UpdateInferenceEvalSuiteBody,
-): Promise<InferenceEvalSuiteRecord | null> => {
-  const suite = await prisma.inferenceEvalSuite.findFirst({
-    where: {
-      id: suiteId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!suite) {
-    return null
-  }
-
-  const nextTargetRoutingProfileId =
-    input.targetRoutingProfileId ?? suite.targetRoutingProfileId
-  const targetRoutingProfile = await ensureRoutingProfile(
-    prisma,
-    actorContext.tenant.organizationId,
-    nextTargetRoutingProfileId,
-  )
-  if (!targetRoutingProfile) {
-    throw new Error('INFERENCE_ROUTING_PROFILE_NOT_FOUND')
-  }
-
-  const nextJudgeRoutingProfileId =
-    input.judgeRoutingProfileId === undefined
-      ? suite.judgeRoutingProfileId
-      : input.judgeRoutingProfileId
-  if (nextJudgeRoutingProfileId) {
-    const judgeRoutingProfile = await ensureRoutingProfile(
-      prisma,
-      actorContext.tenant.organizationId,
-      nextJudgeRoutingProfileId,
-    )
-    if (!judgeRoutingProfile) {
-      throw new Error('INFERENCE_ROUTING_PROFILE_NOT_FOUND')
-    }
-  }
-
-  const nextDatasetRef =
-    input.datasetRef !== undefined ? EvalDatasetRefSchema.parse(input.datasetRef) : undefined
-  const materialChanged =
-    (nextDatasetRef !== undefined && !sameJson(nextDatasetRef, suite.datasetRef)) ||
-    (input.targetRoutingProfileId !== undefined &&
-      input.targetRoutingProfileId !== suite.targetRoutingProfileId) ||
-    (input.judgeRoutingProfileId !== undefined &&
-      input.judgeRoutingProfileId !== suite.judgeRoutingProfileId) ||
-    (input.exposure !== undefined &&
-      input.exposure !== (suite.exposure === 'admin_only' ? 'admin-only' : suite.exposure))
-
-  const updated = await prisma.inferenceEvalSuite.update({
-    where: { id: suite.id },
-    data: {
-      label: input.label ?? suite.label,
-      exposure:
-        input.exposure === 'admin-only'
-          ? 'admin_only'
-          : input.exposure ?? suite.exposure,
-      enabled: input.enabled ?? suite.enabled,
-      datasetRef:
-        nextDatasetRef !== undefined
-          ? asJsonValue(nextDatasetRef)
-          : asJsonValue(suite.datasetRef),
-      targetRoutingProfileId: targetRoutingProfile.id,
-      judgeRoutingProfileId:
-        input.judgeRoutingProfileId === undefined
-          ? suite.judgeRoutingProfileId
-          : input.judgeRoutingProfileId,
-      ...(materialChanged ? resetApproval(actorContext.actor.actorId) : {}),
-      updatedByActorId: actorContext.actor.actorId,
-    },
-  })
-
-  return mapEvalSuiteRecord(updated)
-}
-
-export const approveInferenceEvalSuite = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  suiteId: string,
-): Promise<InferenceEvalSuiteRecord | null> => {
-  const suite = await prisma.inferenceEvalSuite.findFirst({
-    where: {
-      id: suiteId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!suite) {
-    return null
-  }
-
-  const updated = await prisma.inferenceEvalSuite.update({
-    where: { id: suite.id },
-    data: approveMutation(actorContext.actor.actorId),
-  })
-
-  return mapEvalSuiteRecord(updated)
-}
-
-export const listInferenceEvalRuns = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  evalSuiteId?: string,
-): Promise<InferenceEvalRunRecord[]> => {
-  const runs = await prisma.inferenceEvalRun.findMany({
-    where: evalSuiteId
-      ? {
-          organizationId,
-          evalSuiteId,
-        }
-      : {
-          organizationId,
-        },
-    orderBy: [{ createdAt: 'desc' }],
-  })
-  return runs.map(mapEvalRunRecord)
-}
-
-export const getInferenceEvalRun = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  runId: string,
-): Promise<InferenceEvalRunRecord | null> => {
-  const run = await prisma.inferenceEvalRun.findFirst({
-    where: { id: runId, organizationId },
-  })
-  return run ? mapEvalRunRecord(run) : null
-}
-
-export const createInferenceEvalRun = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  input: CreateInferenceEvalRunBody,
-): Promise<InferenceEvalRunRecord> => {
-  const suite = await prisma.inferenceEvalSuite.findFirst({
-    where: {
-      id: input.evalSuiteId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!suite) {
-    throw new Error('INFERENCE_EVAL_SUITE_NOT_FOUND')
-  }
-
-  const targetProfile = await prisma.inferenceRoutingProfile.findFirst({
-    where: {
-      id: suite.targetRoutingProfileId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!targetProfile) {
-    throw new Error('INFERENCE_ROUTING_PROFILE_NOT_FOUND')
-  }
-
-  const judgeProfile = suite.judgeRoutingProfileId
-    ? await prisma.inferenceRoutingProfile.findFirst({
-        where: {
-          id: suite.judgeRoutingProfileId,
-          organizationId: actorContext.tenant.organizationId,
-        },
-      })
-    : null
-  if (suite.judgeRoutingProfileId && !judgeProfile) {
-    throw new Error('INFERENCE_ROUTING_PROFILE_NOT_FOUND')
-  }
-
-  const run = await prisma.inferenceEvalRun.create({
-    data: {
-      organizationId: actorContext.tenant.organizationId,
-      evalSuiteId: suite.id,
-      startedByActorId: actorContext.actor.actorId,
-      status: 'queued',
-      summary: asJsonValue({
-        totalCases: 0,
-        passedCases: 0,
-        failedCases: 0,
-        score: 0,
-        blockingFailures: [],
-      }),
-      result: asJsonValue({}),
-      caseResults: asJsonValue([]),
-      targetProfileSnapshot: asJsonValue(mapRoutingProfileRecord(targetProfile)),
-      judgeProfileSnapshot: judgeProfile
-        ? asJsonValue(mapRoutingProfileRecord(judgeProfile))
-        : Prisma.JsonNull,
-    },
-  })
-
-  return mapEvalRunRecord(run)
-}
-
-export const updateInferenceEvalRun = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  runId: string,
-  input: UpdateInferenceEvalRunBody,
-): Promise<InferenceEvalRunRecord | null> => {
-  const run = await prisma.inferenceEvalRun.findFirst({
-    where: {
-      id: runId,
-      organizationId: actorContext.tenant.organizationId,
-    },
-  })
-  if (!run) {
-    return null
-  }
-
-  const updated = await prisma.inferenceEvalRun.update({
-    where: { id: run.id },
-    data: {
-      status: input.status ?? run.status,
-      summary:
-        input.summary === undefined ? asJsonValue(run.summary) : asJsonValue(input.summary),
-      result: input.result === undefined ? asJsonValue(run.result) : asJsonValue(input.result),
-      caseResults:
-        input.caseResults === undefined
-          ? asJsonValue(run.caseResults)
-          : asJsonValue(input.caseResults),
-      targetProfileSnapshot:
-        input.targetProfileSnapshot === undefined
-          ? toNullableJsonValue(run.targetProfileSnapshot)
-          : asJsonValue(input.targetProfileSnapshot),
-      judgeProfileSnapshot:
-        input.judgeProfileSnapshot === undefined
-          ? undefined
-          : input.judgeProfileSnapshot === null
-            ? Prisma.JsonNull
-            : asJsonValue(input.judgeProfileSnapshot),
-      startedAt: input.startedAt ? new Date(input.startedAt) : run.startedAt,
-      finishedAt:
-        input.finishedAt === undefined
-          ? run.finishedAt
-          : input.finishedAt === null
-            ? null
-            : new Date(input.finishedAt),
-    },
-  })
-
-  return mapEvalRunRecord(updated)
 }
