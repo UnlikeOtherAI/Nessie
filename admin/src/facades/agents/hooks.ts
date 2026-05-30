@@ -530,5 +530,3 @@ export const useCloneAgent = () => {
     },
   })
 }
-
-export const useAgentActivityRealtime = useAgentRealtime
