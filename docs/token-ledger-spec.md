@@ -47,6 +47,8 @@ type TokenLedgerEvent = {
   correlationId?: string;
   provider: string;   // e.g. "openai", "anthropic", "minimax", "google", "custom"
   model: string;      // provider-native model name
+  providerId?: string; // FK → inference_providers.id (nullable); resolved at write time, SetNull on delete
+  modelId?: string;    // FK → inference_models.id (nullable); resolved at write time, SetNull on delete
   operationType:
     | 'chat'
     | 'completion'
@@ -90,6 +92,12 @@ type TokenLedgerEvent = {
 Rules:
 
 - top-level scope fields are denormalized index fields for reporting
+- `provider`/`model` strings are the durable record (kept verbatim so a deleted or
+  renamed catalog entry never corrupts an immutable ledger row). `providerId`/`modelId`
+  are nullable FK columns resolved from those strings at write time, added for fast
+  joins to the inference catalog; `onDelete: SetNull` drops the id but keeps the string.
+  Rows whose provider/model are not in the catalog (e.g. the legacy env-key path) keep
+  null ids.
 - `actorId` and `requestId` are required — they must be copied from the canonical `AuthorizedActionContext`; `correlationId` is optional and copied when available
 - `tool-translation` means translation work performed as part of a tool or tool-wrapper path rather than a direct user translation request
 

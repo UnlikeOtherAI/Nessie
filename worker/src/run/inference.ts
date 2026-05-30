@@ -1451,6 +1451,34 @@ const toPrismaOperationType = (
   return operationType
 }
 
+// Resolve the canonical inference-catalog ids for the denormalized provider/model
+// strings the ledger records. The stored `provider` is the provider_key and
+// `model` is the resolved model name (see executeStage), so this join is exact.
+// Returns nulls for runs that used a provider/model not in the catalog (e.g. the
+// legacy env-key fallback path) — the strings remain the durable record.
+const resolveProviderModelIds = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  provider: string,
+  model: string,
+): Promise<{ modelId: string | null; providerId: string | null }> => {
+  const rows = await prisma.$queryRaw<Array<{ modelId: string | null; providerId: string | null }>>(
+    Prisma.sql`
+      SELECT p.id AS "providerId", m.id AS "modelId"
+      FROM inference_providers p
+      LEFT JOIN inference_models m
+        ON m.provider_id = p.id
+        AND m.organization_id = p.organization_id
+        AND m.model = ${model}
+      WHERE p.organization_id = ${organizationId}::uuid
+        AND p.provider_key = ${provider}
+      LIMIT 1
+    `,
+  )
+
+  return { modelId: rows[0]?.modelId ?? null, providerId: rows[0]?.providerId ?? null }
+}
+
 export const persistInvocationLedgerEvents = async (
   prisma: PrismaClient,
   input: PersistInvocationLedgerInput,
@@ -1475,6 +1503,12 @@ export const persistInvocationLedgerEvents = async (
     )
 
     const estimatedCostAmount = calculateEstimatedCost(invocation.usage, pricingProfile)
+    const { modelId, providerId } = await resolveProviderModelIds(
+      prisma,
+      organizationId,
+      invocation.provider,
+      invocation.model,
+    )
 
     await prisma.tokenLedgerEvent.create({
       data: {
@@ -1506,6 +1540,8 @@ export const persistInvocationLedgerEvents = async (
         pricingSource: pricingProfile?.source ?? null,
         projectId,
         provider: invocation.provider,
+        providerId,
+        modelId,
         providerCostAmount: invocation.providerReportedCost?.amount ?? null,
         providerCostCurrency: invocation.providerReportedCost?.currency ?? null,
         requestId,

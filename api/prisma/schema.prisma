@@ -766,6 +766,7 @@ model InferenceProvider {
   credentialBindings        InferenceCredentialBinding[]  @relation("ProviderCredentialBindings")
   models                    InferenceModel[]
   capabilityOverrides       InferenceCapabilityOverride[]
+  tokenLedgerEvents         TokenLedgerEvent[]
 
   @@index([organizationId, providerKey])
   @@index([organizationId, enabled, lifecycleStatus])
@@ -810,6 +811,7 @@ model InferenceModel {
   createdAt          DateTime                  @default(now()) @map("created_at")
   updatedAt          DateTime                  @updatedAt @map("updated_at")
   provider           InferenceProvider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  tokenLedgerEvents  TokenLedgerEvent[]
 
   @@unique([providerId, model])
   @@index([organizationId, providerId, enabled, lifecycleStatus])
@@ -1794,6 +1796,8 @@ model TokenLedgerEvent {
   correlationId         String?        @map("correlation_id")
   provider              String
   model                 String
+  providerId            String?        @map("provider_id") @db.Uuid
+  modelId               String?        @map("model_id") @db.Uuid
   operationType         OperationType  @map("operation_type")
   inputTokens           Int?           @map("input_tokens")
   outputTokens          Int?           @map("output_tokens")
@@ -1812,6 +1816,8 @@ model TokenLedgerEvent {
   estimatedCostAmount   Float?         @map("estimated_cost_amount")
   estimatedCostCurrency String?        @map("estimated_cost_currency")
   metadata              Json?
+  inferenceProvider     InferenceProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  inferenceModel        InferenceModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, provider, model, occurredAt(sort: Desc)])
