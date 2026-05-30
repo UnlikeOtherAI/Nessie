@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react'
+import type { Dispatch, RefObject, SetStateAction } from 'react'
 import type {
   AgentRecord,
   AgentTriggerRecord,
@@ -27,7 +27,7 @@ type TriggerMetaFieldsProps = {
   showWorkflowTarget: boolean
   templatesById: Map<string, WorkflowTemplateRecord>
   trigger?: AgentTriggerRecord
-  nameInputRef: React.RefObject<HTMLInputElement>
+  nameInputRef: RefObject<HTMLInputElement | null>
   workflowInstallations: WorkflowInstallationRecord[]
 }
 
