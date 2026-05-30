@@ -174,12 +174,20 @@ const extractTriggerInstruction = (config: unknown): string | null => {
   return typeof prompt === 'string' && prompt.trim().length > 0 ? prompt.trim() : null
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const extractTriggerEffectiveUserId = (config: unknown): string | null => {
   if (!isJsonRecord(config)) {
     return null
   }
   const userId = config['createdByUserId']
-  return typeof userId === 'string' && userId.trim().length > 0 ? userId : null
+  // Only return a well-formed UUID. A malformed stored value would otherwise make
+  // parseUserId throw inside the fire transaction and wedge the trigger in a retry
+  // loop; degrade to "no effective user" instead.
+  return typeof userId === 'string' && UUID_PATTERN.test(userId.trim())
+    ? userId.trim()
+    : null
 }
 
 /**

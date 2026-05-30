@@ -6,6 +6,8 @@ import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-type
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const MAX_ACTIVE_SCHEDULES = 25
+
 type ParsedSchedule = {
   config: Record<string, unknown>
   describe: string
@@ -188,12 +190,23 @@ export const runScheduleTaskTool = async (
     }
   }
 
+  // Guard against runaway creation: a single misled/looping run could otherwise
+  // create unbounded schedules (each a recurring agent run). Cap active ones.
+  const activeCount = await context.prisma.agentTrigger.count({
+    where: { ...buildOwnedScheduleWhere(context, userId), enabled: true },
+  })
+  if (activeCount >= MAX_ACTIVE_SCHEDULES) {
+    throw new Error(
+      `You already have ${activeCount} active scheduled tasks (limit ${MAX_ACTIVE_SCHEDULES}). ` +
+        'Cancel one before scheduling another.',
+    )
+  }
+
   const config: Record<string, unknown> = {
     ...parsed.config,
     prompt: instructions,
     createdViaTool: true,
     ...(userId ? { createdByUserId: userId } : {}),
-    ...(name ? { label: name } : {}),
   }
 
   const nextRunAt = computeInitialScheduleRunAt({
@@ -293,7 +306,7 @@ export const runListScheduledTasksTool = async (
 
   const lines = triggers.map((trigger) => {
     const record = asRecord(trigger.config)
-    const label = trigger.name ?? (typeof record['label'] === 'string' ? record['label'] : null)
+    const label = trigger.name
     const prompt = typeof record['prompt'] === 'string' ? record['prompt'] : ''
     const channel = trigger.targetChannel?.label ? `#${trigger.targetChannel.label}` : 'a DM'
     const state = trigger.enabled ? 'active' : 'cancelled'

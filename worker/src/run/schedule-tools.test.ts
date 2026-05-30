@@ -12,6 +12,7 @@ import type { BuiltinToolRuntimeContext } from './tool-types.js'
 type FakePrisma = {
   calls: Record<string, unknown[]>
   agentTrigger: {
+    count: (args: unknown) => Promise<number>
     create: (args: unknown) => Promise<{ id: string }>
     findFirst: (args: unknown) => Promise<unknown>
     findMany: (args: unknown) => Promise<unknown[]>
@@ -28,6 +29,7 @@ const makeFakePrisma = (overrides: {
   binding?: unknown
   findFirstTrigger?: unknown
   findManyTriggers?: unknown[]
+  activeCount?: number
 } = {}): FakePrisma => {
   const calls: Record<string, unknown[]> = {}
   const record = (key: string, value: unknown) => {
@@ -37,6 +39,10 @@ const makeFakePrisma = (overrides: {
   return {
     calls,
     agentTrigger: {
+      count: async (args) => {
+        record('agentTrigger.count', args)
+        return overrides.activeCount ?? 0
+      },
       create: async (args) => {
         record('agentTrigger.create', args)
         return { id: 'trigger-1' }
@@ -164,6 +170,19 @@ test('schedule_task recurring stores cron config', async () => {
   const config = create.data.config as Record<string, unknown>
   assert.equal(config.cron, '0 9 * * 1-5')
   assert.equal(config.timezone, 'Europe/London')
+})
+
+test('schedule_task rejects when the active-schedule cap is reached', async () => {
+  const prisma = makeFakePrisma({ activeCount: 25 })
+  await assert.rejects(
+    () =>
+      runScheduleTaskTool(makeContext(prisma), {
+        instructions: 'one too many',
+        schedule: { kind: 'interval', every_minutes: 60 },
+      }),
+    /limit 25/,
+  )
+  assert.equal(prisma.calls['agentTrigger.create'], undefined)
 })
 
 test('schedule_task rejects a one-off in the past', async () => {
