@@ -83,7 +83,41 @@ test('runWebSearch returns answer, results, and snippets on success', async () =
     assert.deepEqual(JSON.parse(String(calls[0]!.init.body)), {
       q: 'meaning of life',
       num: 5,
+      page: 1,
     })
+  })
+})
+
+test('runWebSearch forwards the requested results page to serper.dev', async () => {
+  await withApiKey('test-key', async () => {
+    const { fetchImpl, calls } = makeFakeFetch(
+      () =>
+        new Response(JSON.stringify(SERPER_BODY), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+
+    const result = await runWebSearch('deep query', { fetchImpl, page: 3 })
+
+    assert.equal(result.page, 3)
+    assert.equal(JSON.parse(String(calls[0]!.init.body)).page, 3)
+  })
+})
+
+test('runWebSearch clamps non-positive pages back to page 1', async () => {
+  await withApiKey('test-key', async () => {
+    const { fetchImpl, calls } = makeFakeFetch(
+      () =>
+        new Response(JSON.stringify({ organic: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+
+    const result = await runWebSearch('query', { fetchImpl, page: 0 })
+    assert.equal(result.page, 1)
+    assert.equal(JSON.parse(String(calls[0]!.init.body)).page, 1)
   })
 })
 

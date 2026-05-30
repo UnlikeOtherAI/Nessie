@@ -314,10 +314,22 @@ const resolveDocsPath = (candidatePath: string): string | null => {
     : null
 }
 
+const coercePage = (value: unknown): number | undefined => {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number.parseInt(value, 10)
+        : NaN
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
 const collectWebSearchResults = async (
   query: string,
+  page?: number,
 ): Promise<{
   query: string
+  page: number
   answer: string | null
   results: Array<{ title: string; url: string; snippet: string }>
   text: string
@@ -327,7 +339,7 @@ const collectWebSearchResults = async (
     .replace(/\s+/g, ' ')
     .trim() || query.trim()
 
-  return runWebSearch(normalizedQuery)
+  return runWebSearch(normalizedQuery, { page })
 }
 
 const readResponseText = async (
@@ -567,7 +579,9 @@ export const executeBuiltinTool = async (
         ),
       )
     case 'web_search':
-      return wrapTool(inputSummary, () => runWebSearchTool(String(args.query ?? '')))
+      return wrapTool(inputSummary, () =>
+        runWebSearchTool(String(args.query ?? ''), coercePage(args.page)),
+      )
     case 'web_fetch':
       return wrapTool(inputSummary, () => runWebFetchTool(String(args.url ?? '')))
     case 'document_read':
@@ -631,11 +645,12 @@ export const executeWorkflowBuiltinTool = async (
         return workflowToolFailure(inputSummary, 'Workflow web_search requires query.')
       }
 
-      const result = await collectWebSearchResults(query)
+      const result = await collectWebSearchResults(query, coercePage(args.page))
       return {
         inputSummary,
         output: {
           query: result.query,
+          page: result.page,
           answer: result.answer,
           results: result.results,
           text: result.text,
@@ -858,11 +873,14 @@ export const runWebFetchTool = async (prompt: string): Promise<ToolExecutionResu
   }
 }
 
-export const runWebSearchTool = async (prompt: string): Promise<ToolExecutionResult> => {
-  const result = await collectWebSearchResults(prompt)
+export const runWebSearchTool = async (
+  prompt: string,
+  page?: number,
+): Promise<ToolExecutionResult> => {
+  const result = await collectWebSearchResults(prompt, page)
 
   return {
-    inputSummary: result.query,
+    inputSummary: result.page > 1 ? `${result.query} (page ${result.page})` : result.query,
     outputPreview: truncate(result.text),
     toolName: 'web_search',
   }

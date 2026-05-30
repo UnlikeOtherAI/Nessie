@@ -4,6 +4,7 @@ const SERPER_ENDPOINT = 'https://google.serper.dev/search'
 const SERPER_TIMEOUT_MS = 15_000
 const DEFAULT_RESULT_COUNT = 5
 const MAX_RESULT_COUNT = 10
+const MAX_PAGE = 10
 
 export class WebSearchError extends Error {
   override readonly name = 'WebSearchError'
@@ -21,6 +22,7 @@ export type WebSearchResult = {
 
 export type WebSearchOutput = {
   query: string
+  page: number
   answer: string | null
   results: WebSearchResult[]
   text: string
@@ -62,7 +64,7 @@ const resolveAnswer = (
  */
 export const runWebSearch = async (
   query: string,
-  options: { count?: number; fetchImpl?: typeof fetch } = {},
+  options: { count?: number; page?: number; fetchImpl?: typeof fetch } = {},
 ): Promise<WebSearchOutput> => {
   const trimmedQuery = query.trim()
   if (!trimmedQuery) {
@@ -80,6 +82,7 @@ export const runWebSearch = async (
     Math.max(1, Math.trunc(options.count ?? DEFAULT_RESULT_COUNT)),
     MAX_RESULT_COUNT,
   )
+  const page = Math.min(Math.max(1, Math.trunc(options.page ?? 1)), MAX_PAGE)
   const fetchImpl = options.fetchImpl ?? fetch
 
   let response: Response
@@ -90,7 +93,7 @@ export const runWebSearch = async (
         'X-API-KEY': apiKey,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ q: trimmedQuery, num: count }),
+      body: JSON.stringify({ q: trimmedQuery, num: count, page }),
       signal: AbortSignal.timeout(SERPER_TIMEOUT_MS),
     })
   } catch (error) {
@@ -135,10 +138,13 @@ export const runWebSearch = async (
   })
 
   const text =
-    lines.length > 0 ? lines.join('\n') : `No web results found for "${trimmedQuery}".`
+    lines.length > 0
+      ? lines.join('\n')
+      : `No web results found for "${trimmedQuery}" (page ${page}).`
 
   return {
     query: trimmedQuery,
+    page,
     answer,
     results,
     text,

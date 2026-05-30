@@ -29,6 +29,13 @@ const WEB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
         type: 'string',
         description: 'The search query',
       },
+      page: {
+        type: 'integer',
+        description:
+          'Google results page to fetch (1-indexed, default 1). Use 2, 3, 4… ' +
+          'to reach deeper results beyond the first page.',
+        minimum: 1,
+      },
     },
     required: ['query'],
   },
