@@ -25,7 +25,10 @@ import { Oauth2Fields } from './add-server-wizard-oauth2-fields'
 
 type AddServerWizardProps = {
   onCancel: () => void
-  onSubmit: (input: CreateCatalogEntryInput) => Promise<void>
+  onSubmit: (
+    input: CreateCatalogEntryInput,
+    options: { submitForReview: boolean },
+  ) => Promise<void>
   pending?: boolean
 }
 
@@ -137,6 +140,7 @@ export const AddServerWizard = ({
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [scopes, setScopes] = useState('')
+  const [submitForReview, setSubmitForReview] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [stepErrors, setStepErrors] = useState<StepErrors>({})
 
@@ -183,7 +187,7 @@ export const AddServerWizard = ({
           command,
           args,
         }),
-      })
+      }, { submitForReview })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Failed to create')
     }
@@ -318,7 +322,7 @@ export const AddServerWizard = ({
         <div className="grid gap-3">
           <div>
             <label className={labelClass}>
-              Name (kebab-case, unique per org)
+              Name (kebab-case, unique to you)
               <input
                 className={inputClass}
                 data-testid="wizard-name"
@@ -440,6 +444,39 @@ export const AddServerWizard = ({
               values={{ authorizationUrl, tokenUrl, clientId, clientSecret, scopes }}
             />
           )}
+          <fieldset className="grid gap-2 rounded-md border border-[color:var(--sep)] p-3">
+            <legend className={labelClass}>Visibility</legend>
+            <label className="flex items-start gap-2 text-sm text-white">
+              <input
+                checked={!submitForReview}
+                data-testid="wizard-visibility-private"
+                name="visibility"
+                onChange={() => setSubmitForReview(false)}
+                type="radio"
+              />
+              <span>
+                Keep private
+                <span className="block text-xs text-[color:var(--tx3)]">
+                  Only you can see and install this connector.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-white">
+              <input
+                checked={submitForReview}
+                data-testid="wizard-visibility-public"
+                name="visibility"
+                onChange={() => setSubmitForReview(true)}
+                type="radio"
+              />
+              <span>
+                Submit to public store for review
+                <span className="block text-xs text-[color:var(--tx3)]">
+                  A superuser approves it before it appears in the shared store.
+                </span>
+              </span>
+            </label>
+          </fieldset>
           {error ? (
             <div
               className="rounded-md border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"
@@ -455,7 +492,11 @@ export const AddServerWizard = ({
               Back
             </button>
             <button className={buttonPrimary} disabled={pending} type="submit">
-              {pending ? 'Creating…' : 'Create catalog entry'}
+              {pending
+                ? 'Creating…'
+                : submitForReview
+                  ? 'Create & submit for review'
+                  : 'Create catalog entry'}
             </button>
           </div>
         </div>

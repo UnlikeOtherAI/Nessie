@@ -2,15 +2,23 @@ import { useMemo, useState } from 'react'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import { AddServerWizard } from '../components/features/mcp-app-store/AddServerWizard'
+import { CatalogDetailPanel } from '../components/features/mcp-app-store/CatalogDetailPanel'
 import { CatalogList } from '../components/features/mcp-app-store/CatalogList'
 import { CredentialsDialog } from '../components/features/mcp-app-store/CredentialsDialog'
 import { InstallScopeDialog } from '../components/features/mcp-app-store/InstallScopeDialog'
 import { InstanceList } from '../components/features/mcp-app-store/InstanceList'
+import { RejectDialog } from '../components/features/mcp-app-store/RejectDialog'
 import {
+  useApproveCatalogEntry,
+  useCreateCatalogEntry,
+  useDeleteCatalogEntry,
   useDeprecateCatalogEntry,
   useMcpCatalog,
   usePublishCatalogEntry,
-  useCreateCatalogEntry,
+  useRejectCatalogEntry,
+  useSubmitCatalogEntry,
+  type CatalogView,
+  type McpCatalogEntryRecord,
 } from '../facades/mcp-catalog/hooks'
 import {
   useCreateInstance,
@@ -21,34 +29,56 @@ import {
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 /**
- * `/mcp-app-store` — admin-only surface for the MCP catalog (plan §7 surface 1).
- * Owner-gated by `requireOwner` on the backend, mirrored client-side so
- * non-owners get a clear empty state instead of a 403 cascade.
+ * `/mcp-app-store` — the MCP App Store. Open to every signed-in user:
+ * - "Store" lists approved public connectors anyone can install;
+ * - "My connectors" holds the viewer's own private connectors (self-publish,
+ *   install, or submit for public review);
+ * - "Approval queue" (superusers only) is the pending-review queue where public
+ *   submissions are approved or rejected.
  */
 
-const noticeClass = [
-  'admin-card mx-auto mt-8 max-w-xl rounded-xl border border-amber-400/40',
-  'bg-amber-400/10 p-6 text-amber-100',
-].join(' ')
+type TabConfig = { view: CatalogView; label: string }
+
+const tabClass = (active: boolean): string =>
+  [
+    'rounded-md px-3 py-1 text-xs font-semibold',
+    active
+      ? 'bg-[color:var(--accent)] text-white'
+      : 'border border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-white/5',
+  ].join(' ')
 
 export const McpAppStorePage = () => {
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const currentUserId = me?.user.id ?? ''
   const organizationId = me?.context.organizationId ?? ''
 
-  const catalogQuery = useMcpCatalog({}, { enabled: isOwner })
+  const [view, setView] = useState<CatalogView>('store')
   const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>()
-  const instancesQuery = useMcpInstances({}, { enabled: isOwner })
+
+  const catalogQuery = useMcpCatalog({ view })
+  const instancesQuery = useMcpInstances({})
   const createCatalog = useCreateCatalogEntry()
   const publishCatalog = usePublishCatalogEntry()
   const deprecateCatalog = useDeprecateCatalogEntry()
+  const submitCatalog = useSubmitCatalogEntry()
+  const approveCatalog = useApproveCatalogEntry()
+  const rejectCatalog = useRejectCatalogEntry()
+  const deleteCatalog = useDeleteCatalogEntry()
   const createInstance = useCreateInstance()
   const testInstance = useTestInstance()
 
   const [wizardOpen, setWizardOpen] = useState(false)
   const [installTarget, setInstallTarget] = useState<string | null>(null)
+  const [rejectTarget, setRejectTarget] = useState<McpCatalogEntryRecord | null>(null)
   const [credentialsTarget, setCredentialsTarget] =
     useState<McpServerInstanceRecord | null>(null)
+
+  const tabs: TabConfig[] = [
+    { view: 'store', label: 'Store' },
+    { view: 'mine', label: 'My connectors' },
+    ...(isOwner ? [{ view: 'queue' as const, label: 'Approval queue' }] : []),
+  ]
 
   const catalogEntries = useMemo(
     () =>
@@ -74,16 +104,17 @@ export const McpAppStorePage = () => {
     ? catalogEntries.find((entry) => entry.id === installTarget) ?? null
     : null
 
-  if (!isOwner) {
-    return (
-      <div className={noticeClass}>
-        <h2 className="text-lg font-semibold">Owner access required</h2>
-        <p className="mt-2 text-sm">
-          The MCP App Store catalog is admin-only. Ask an organisation owner to
-          add or publish servers on your behalf.
-        </p>
-      </div>
-    )
+  const busy =
+    publishCatalog.isPending
+    || deprecateCatalog.isPending
+    || submitCatalog.isPending
+    || approveCatalog.isPending
+    || rejectCatalog.isPending
+    || deleteCatalog.isPending
+
+  const switchView = (next: CatalogView) => {
+    setView(next)
+    setSelectedCatalogId(undefined)
   }
 
   const handleInstall = async (input: { scopeType: string; scopeId: string }) => {
@@ -98,6 +129,35 @@ export const McpAppStorePage = () => {
     setInstallTarget(null)
   }
 
+  const handleWizardSubmit = async (
+    input: Parameters<typeof createCatalog.mutateAsync>[0],
+    options: { submitForReview: boolean },
+  ) => {
+    const created = await createCatalog.mutateAsync(input)
+    if (options.submitForReview) {
+      await submitCatalog.mutateAsync(created.id)
+    }
+    setWizardOpen(false)
+    switchView('mine')
+    setSelectedCatalogId(created.id)
+  }
+
+  const tabBar = (
+    <div className="flex items-center gap-2">
+      {tabs.map((tab) => (
+        <button
+          className={tabClass(view === tab.view)}
+          data-testid={`catalog-tab-${tab.view}`}
+          key={tab.view}
+          onClick={() => switchView(tab.view)}
+          type="button"
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  )
+
   const columns = [
     <ColumnBrowserColumn
       headerAction={
@@ -110,69 +170,38 @@ export const McpAppStorePage = () => {
         </button>
       }
       key="catalog"
-      title="MCP App Store catalog"
+      title="MCP App Store"
     >
-      <CatalogList
-        entries={catalogEntries}
-        onSelect={setSelectedCatalogId}
-        selectedId={selectedCatalog?.id}
-      />
+      <div className="grid gap-3">
+        {tabBar}
+        <CatalogList
+          entries={catalogEntries}
+          onSelect={setSelectedCatalogId}
+          selectedId={selectedCatalog?.id}
+        />
+      </div>
     </ColumnBrowserColumn>,
   ]
 
   if (selectedCatalog) {
     columns.push(
       <ColumnBrowserColumn key={`detail-${selectedCatalog.id}`} title={selectedCatalog.label}>
-        <div className="grid gap-4">
-          <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
-            <div className="text-sm text-white">{selectedCatalog.description}</div>
-            <dl className="mt-3 grid grid-cols-2 gap-y-1 text-xs">
-              <dt className="text-[color:var(--tx3)]">Name</dt>
-              <dd className="text-white">{selectedCatalog.name}</dd>
-              <dt className="text-[color:var(--tx3)]">Vendor</dt>
-              <dd className="text-white">{selectedCatalog.vendor ?? '—'}</dd>
-              <dt className="text-[color:var(--tx3)]">Protocol</dt>
-              <dd className="text-white">{selectedCatalog.protocol}</dd>
-              <dt className="text-[color:var(--tx3)]">Auth</dt>
-              <dd className="text-white">{selectedCatalog.authMethod}</dd>
-              <dt className="text-[color:var(--tx3)]">Status</dt>
-              <dd className="text-white">{selectedCatalog.status}</dd>
-            </dl>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                className={[
-                  'admin-button rounded-md border border-[color:var(--sep)]',
-                  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-white/5',
-                  'disabled:cursor-not-allowed disabled:opacity-40',
-                ].join(' ')}
-                disabled={selectedCatalog.status === 'published'}
-                onClick={() => publishCatalog.mutateAsync(selectedCatalog.id)}
-                type="button"
-              >
-                Publish
-              </button>
-              <button
-                className={[
-                  'admin-button rounded-md border border-[color:var(--sep)]',
-                  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-white/5',
-                  'disabled:cursor-not-allowed disabled:opacity-40',
-                ].join(' ')}
-                disabled={selectedCatalog.status === 'deprecated'}
-                onClick={() => deprecateCatalog.mutateAsync(selectedCatalog.id)}
-                type="button"
-              >
-                Deprecate
-              </button>
-              <button
-                className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs font-semibold"
-                onClick={() => setInstallTarget(selectedCatalog.id)}
-                type="button"
-              >
-                Install
-              </button>
-            </div>
-          </div>
-        </div>
+        <CatalogDetailPanel
+          busy={busy}
+          entry={selectedCatalog}
+          isMine={selectedCatalog.ownerUserId === currentUserId}
+          isOwner={isOwner}
+          onApprove={() => void approveCatalog.mutateAsync(selectedCatalog.id)}
+          onDelete={() => {
+            void deleteCatalog.mutateAsync(selectedCatalog.id)
+            setSelectedCatalogId(undefined)
+          }}
+          onDeprecate={() => void deprecateCatalog.mutateAsync(selectedCatalog.id)}
+          onInstall={() => setInstallTarget(selectedCatalog.id)}
+          onPublish={() => void publishCatalog.mutateAsync(selectedCatalog.id)}
+          onReject={() => setRejectTarget(selectedCatalog)}
+          onSubmit={() => void submitCatalog.mutateAsync(selectedCatalog.id)}
+        />
       </ColumnBrowserColumn>,
       <ColumnBrowserColumn key={`instances-${selectedCatalog.id}`} title="Installed scopes">
         <InstanceList
@@ -218,11 +247,8 @@ export const McpAppStorePage = () => {
             <div className="mt-4">
               <AddServerWizard
                 onCancel={() => setWizardOpen(false)}
-                onSubmit={async (input) => {
-                  await createCatalog.mutateAsync(input)
-                  setWizardOpen(false)
-                }}
-                pending={createCatalog.isPending}
+                onSubmit={handleWizardSubmit}
+                pending={createCatalog.isPending || submitCatalog.isPending}
               />
             </div>
           </div>
@@ -231,11 +257,26 @@ export const McpAppStorePage = () => {
 
       {installCandidate ? (
         <InstallScopeDialog
+          canChooseScope={isOwner}
           catalogEntry={installCandidate}
+          currentUserId={currentUserId}
           onCancel={() => setInstallTarget(null)}
           onConfirm={handleInstall}
           organizationId={organizationId}
           pending={createInstance.isPending}
+        />
+      ) : null}
+
+      {rejectTarget ? (
+        <RejectDialog
+          entry={rejectTarget}
+          onCancel={() => setRejectTarget(null)}
+          onConfirm={(reason) => {
+            void rejectCatalog
+              .mutateAsync({ id: rejectTarget.id, reason })
+              .then(() => setRejectTarget(null))
+          }}
+          pending={rejectCatalog.isPending}
         />
       ) : null}
 

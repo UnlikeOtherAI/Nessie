@@ -54,10 +54,23 @@ export type McpCatalogAuthMethod = z.infer<typeof McpCatalogAuthMethodSchema>
 
 export const McpCatalogStatusSchema = z.enum([
   'draft',
+  'pending_approval',
   'published',
+  'rejected',
   'deprecated',
 ])
 export type McpCatalogStatus = z.infer<typeof McpCatalogStatusSchema>
+
+/**
+ * Who can see and install a catalog entry:
+ * - `private` — personal connector, visible only to its `ownerUserId`. The
+ *   owner self-publishes (`draft` → `published`) and installs it without any
+ *   review.
+ * - `public` — listed in the shared App Store. Reaching `published` requires a
+ *   superuser (the `owner` role) to approve a `pending_approval` submission.
+ */
+export const McpCatalogVisibilitySchema = z.enum(['private', 'public'])
+export type McpCatalogVisibility = z.infer<typeof McpCatalogVisibilitySchema>
 
 export const McpServerScopeTypeSchema = z.enum([
   'system',
@@ -218,6 +231,16 @@ export const McpCatalogEntrySchema = z.object({
   sourceUrl: z.string().url().nullable().optional(),
   signature: z.string().nullable().optional(),
   status: McpCatalogStatusSchema.default('draft'),
+  visibility: McpCatalogVisibilitySchema.default('private'),
+  /** Owner of a `private` entry; `null` for `public` (store-wide) entries. */
+  ownerUserId: UserIdRefSchema.nullable(),
+  /** When the entry was submitted for public review (`pending_approval`). */
+  submittedAt: TimestampSchema.nullable().optional(),
+  /** When a superuser approved or rejected the submission. */
+  reviewedAt: TimestampSchema.nullable().optional(),
+  reviewedBy: UserIdRefSchema.nullable().optional(),
+  /** Reason captured when a submission is rejected. */
+  rejectionReason: z.string().nullable().optional(),
   createdBy: UserIdRefSchema,
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,

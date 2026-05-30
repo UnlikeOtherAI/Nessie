@@ -404,8 +404,15 @@ enum McpCatalogAuthMethod {
 
 enum McpCatalogStatus {
   draft
+  pending_approval
   published
+  rejected
   deprecated
+}
+
+enum McpCatalogVisibility {
+  private
+  public
 }
 
 enum McpServerScopeType {
@@ -1463,14 +1470,24 @@ model McpCatalogEntry {
   sourceUrl              String?              @map("source_url")
   signature              String?
   status                 McpCatalogStatus     @default(draft)
+  visibility             McpCatalogVisibility @default(private)
+  ownerUserId            String?              @map("owner_user_id") @db.Uuid
+  submittedAt            DateTime?            @map("submitted_at")
+  reviewedAt             DateTime?            @map("reviewed_at")
+  reviewedBy             String?              @map("reviewed_by") @db.Uuid
+  rejectionReason        String?              @map("rejection_reason")
   createdBy              String               @map("created_by") @db.Uuid
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
 
   instances McpServerInstance[]
 
-  @@unique([organizationId, name])
+  // Uniqueness is enforced by partial indexes (see migration): public entries
+  // are unique on `name` store-wide; private entries are unique per owner. A
+  // single `@@unique` can't express either, so they live in raw SQL.
   @@index([organizationId, status])
+  @@index([ownerUserId, status])
+  @@index([visibility, status])
   @@map("mcp_catalog_entries")
 }
 

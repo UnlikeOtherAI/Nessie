@@ -7,19 +7,22 @@ import type {
   McpCatalogAuthMethod,
   McpCatalogProtocol,
   McpCatalogStatus,
+  McpCatalogVisibility,
   McpServerAuthConfig,
 } from '@nessie/schemas'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
  * Domain facade for `McpCatalogEntry` (the "MCP App Store" catalog). Backs the
- * `/admin/admin/mcp-app-store` surface listed in plan §7 and the architecture
- * doc §5.2 (one facade per entity, no page-local fetch).
+ * `/admin/admin/mcp-app-store` surface.
  *
  * Wire shape mirrors `api/src/services/mcp-catalog.ts > McpCatalogEntryRow`
  * with timestamps left as ISO strings (the api-client envelope strips the
  * `data` wrapper before this layer sees it).
  */
+
+/** Which slice of the catalog to load (mirrors the API `view` query param). */
+export type CatalogView = 'store' | 'mine' | 'queue' | 'all'
 
 export type McpCatalogEntryRecord = {
   id: string
@@ -36,6 +39,12 @@ export type McpCatalogEntryRecord = {
   sourceUrl: string | null
   signature: string | null
   status: McpCatalogStatus
+  visibility: McpCatalogVisibility
+  ownerUserId: string | null
+  submittedAt: string | null
+  reviewedAt: string | null
+  reviewedBy: string | null
+  rejectionReason: string | null
   createdBy: string
   createdAt: string
   updatedAt: string
@@ -53,7 +62,6 @@ export type CreateCatalogEntryInput = {
   vendor?: string | null
   sourceUrl?: string | null
   signature?: string | null
-  organizationId?: string | null
 }
 
 export type UpdateCatalogEntryInput = Partial<{
@@ -67,24 +75,34 @@ export type UpdateCatalogEntryInput = Partial<{
   vendor: string | null
   sourceUrl: string | null
   signature: string | null
-  status: McpCatalogStatus
 }>
 
 const CATALOG_QUERY_KEY = ['mcp-catalog'] as const
 
+const buildSearch = (filters: { view?: CatalogView; status?: McpCatalogStatus }): string => {
+  const params = new URLSearchParams()
+  if (filters.view) params.set('view', filters.view)
+  if (filters.status) params.set('status', filters.status)
+  const query = params.toString()
+  return query ? `?${query}` : ''
+}
+
 export const useMcpCatalog = (
-  filters: { status?: McpCatalogStatus } = {},
+  filters: { view?: CatalogView; status?: McpCatalogStatus } = {},
   options: { enabled?: boolean } = {},
 ) => {
   const apiClient = useApiClient()
-  const search = filters.status ? `?status=${filters.status}` : ''
+  const search = buildSearch(filters)
 
   return useQuery<McpCatalogEntryRecord[]>({
-    queryKey: [...CATALOG_QUERY_KEY, filters.status ?? null],
+    queryKey: [...CATALOG_QUERY_KEY, filters.view ?? 'store', filters.status ?? null],
     queryFn: () => apiClient.get(`/api/mcp/catalog${search}`),
     enabled: options.enabled ?? true,
   })
 }
+
+const invalidateCatalog = (queryClient: ReturnType<typeof useQueryClient>) =>
+  queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY })
 
 export const useCreateCatalogEntry = () => {
   const apiClient = useApiClient()
@@ -94,7 +112,7 @@ export const useCreateCatalogEntry = () => {
     mutationFn: (input: CreateCatalogEntryInput) =>
       apiClient.post<McpCatalogEntryRecord>('/api/mcp/catalog', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY })
+      void invalidateCatalog(queryClient)
     },
   })
 }
@@ -106,36 +124,12 @@ export const useUpdateCatalogEntry = () => {
   return useMutation({
     mutationFn: (input: { id: string } & UpdateCatalogEntryInput) => {
       const { id, ...body } = input
-      return apiClient.patch<McpCatalogEntryRecord>(
-        `/api/mcp/catalog/${id}`,
-        body,
-      )
+      return apiClient.patch<McpCatalogEntryRecord>(`/api/mcp/catalog/${id}`, body)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY })
+      void invalidateCatalog(queryClient)
     },
   })
-}
-
-/**
- * Publish / deprecate are status transitions. We expose them as discrete hooks
- * so callers don't have to remember the magic enum value.
- */
-export const usePublishCatalogEntry = () => {
-  const update = useUpdateCatalogEntry()
-  return {
-    ...update,
-    mutateAsync: (id: string) => update.mutateAsync({ id, status: 'published' }),
-  }
-}
-
-export const useDeprecateCatalogEntry = () => {
-  const update = useUpdateCatalogEntry()
-  return {
-    ...update,
-    mutateAsync: (id: string) =>
-      update.mutateAsync({ id, status: 'deprecated' }),
-  }
 }
 
 export const useDeleteCatalogEntry = () => {
@@ -145,7 +139,56 @@ export const useDeleteCatalogEntry = () => {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/api/mcp/catalog/${id}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY })
+      void invalidateCatalog(queryClient)
     },
   })
+}
+
+/**
+ * Lifecycle transitions go through dedicated POST endpoints rather than a
+ * status PATCH so each carries its own authorization rules:
+ * - `publish` / `deprecate` — owner of a private connector (self-serve);
+ * - `submit` — owner of an entry asks for public listing;
+ * - `approve` / `reject` — superuser decisions on the pending queue.
+ */
+const useCatalogAction = <TBody = void>(action: string) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body?: TBody }) =>
+      apiClient.post<McpCatalogEntryRecord>(`/api/mcp/catalog/${id}/${action}`, body ?? {}),
+    onSuccess: () => {
+      void invalidateCatalog(queryClient)
+    },
+  })
+}
+
+export const usePublishCatalogEntry = () => {
+  const action = useCatalogAction('publish')
+  return { ...action, mutateAsync: (id: string) => action.mutateAsync({ id }) }
+}
+
+export const useDeprecateCatalogEntry = () => {
+  const action = useCatalogAction('deprecate')
+  return { ...action, mutateAsync: (id: string) => action.mutateAsync({ id }) }
+}
+
+export const useSubmitCatalogEntry = () => {
+  const action = useCatalogAction('submit')
+  return { ...action, mutateAsync: (id: string) => action.mutateAsync({ id }) }
+}
+
+export const useApproveCatalogEntry = () => {
+  const action = useCatalogAction('approve')
+  return { ...action, mutateAsync: (id: string) => action.mutateAsync({ id }) }
+}
+
+export const useRejectCatalogEntry = () => {
+  const action = useCatalogAction<{ reason: string }>('reject')
+  return {
+    ...action,
+    mutateAsync: (input: { id: string; reason: string }) =>
+      action.mutateAsync({ id: input.id, body: { reason: input.reason } }),
+  }
 }

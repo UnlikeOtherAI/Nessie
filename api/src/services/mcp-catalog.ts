@@ -5,17 +5,28 @@ import {
   type McpCatalogAuthMethod,
   type McpCatalogProtocol,
   type McpCatalogStatus,
+  type McpCatalogVisibility,
   type McpServerAuthConfig,
 } from '@nessie/schemas'
 
 /**
  * MCP App Store catalog service.
  *
- * Spec: `docs/external-tool-integration.md` §2 + plan §6.
+ * Spec: `docs/external-tool-integration.md` §2,
+ * `docs/plans/2026-05-30-mcp-store-publishing-approval.md`.
  *
- * `McpCatalogEntry` rows are admin-managed definitions of installable MCP
- * servers. A `null` `organizationId` marks a system-level definition that's
- * visible everywhere; otherwise the entry is scoped to a single org.
+ * `McpCatalogEntry` rows are installable MCP-server definitions. Every entry is
+ * created `private` + `draft`, owned by its author (`ownerUserId`):
+ *
+ * - A `private` connector is visible only to its owner, who self-publishes it
+ *   (`draft` → `published`) and installs it without review.
+ * - A `public` connector is listed in the shared store. It gets there by being
+ *   submitted for review (`draft` → `pending_approval`, visibility flips to
+ *   `public`) and approved by a superuser (the `owner` role) → `published`.
+ *
+ * The submit/approve/reject transitions live in `mcp-catalog-review.ts`; this
+ * file owns CRUD, listing, the access predicate, and the private self-publish /
+ * deprecate transitions.
  */
 
 export const MCP_CATALOG_ERROR_CODES = {
@@ -24,6 +35,7 @@ export const MCP_CATALOG_ERROR_CODES = {
   AUTH_METHOD_MISMATCH: 'MCP_CATALOG_AUTH_METHOD_MISMATCH',
   DUPLICATE_NAME: 'MCP_CATALOG_ENTRY_DUPLICATE_NAME',
   INVALID_TRANSITION: 'MCP_CATALOG_ENTRY_INVALID_TRANSITION',
+  FORBIDDEN: 'MCP_CATALOG_ENTRY_FORBIDDEN',
 } as const
 
 export class McpCatalogError extends Error {
@@ -49,6 +61,12 @@ export type McpCatalogEntryRow = {
   sourceUrl: string | null
   signature: string | null
   status: McpCatalogStatus
+  visibility: McpCatalogVisibility
+  ownerUserId: string | null
+  submittedAt: Date | null
+  reviewedAt: Date | null
+  reviewedBy: string | null
+  rejectionReason: string | null
   createdBy: string
   createdAt: Date
   updatedAt: Date
@@ -71,8 +89,6 @@ export type CreateCatalogEntryInput = {
   vendor?: string | null
   sourceUrl?: string | null
   signature?: string | null
-  /** Org scope (defaults to caller's tenant org). Pass `null` for a system entry. */
-  organizationId?: string | null
 }
 
 export type UpdateCatalogEntryInput = Partial<{
@@ -86,8 +102,13 @@ export type UpdateCatalogEntryInput = Partial<{
   vendor: string | null
   sourceUrl: string | null
   signature: string | null
-  status: McpCatalogStatus
 }>
+
+/** Which slice of the catalog a list request wants. */
+export type CatalogView = 'store' | 'mine' | 'queue' | 'all'
+
+export const isOwnerRole = (actorContext: AuthorizedActionContext): boolean =>
+  actorContext.actor.roles?.includes('owner') ?? false
 
 export const ensureAuthConfigMatchesMethod = (
   authMethod: McpCatalogAuthMethod,
@@ -114,38 +135,118 @@ const toJsonRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {}
 
+export const isUniqueViolation = (error: unknown): boolean =>
+  typeof error === 'object'
+  && error !== null
+  && 'code' in error
+  && (error as { code?: unknown }).code === 'P2002'
+
+const duplicateNameError = (name: string): McpCatalogError =>
+  new McpCatalogError(
+    MCP_CATALOG_ERROR_CODES.DUPLICATE_NAME,
+    `An MCP catalog entry named "${name}" already exists in this scope`,
+  )
+
+/**
+ * Build the `where` clause that scopes a listing to what `actorContext` may
+ * see. Superusers (`owner` role) see everything; everyone else sees the public
+ * store plus their own entries.
+ */
+const listWhere = (
+  actorContext: AuthorizedActionContext,
+  view: CatalogView,
+): Record<string, unknown> => {
+  const ownerUserId = actorContext.actor.actorId
+  switch (view) {
+    case 'store':
+      return { visibility: 'public', status: 'published' }
+    case 'mine':
+      return { ownerUserId }
+    case 'queue':
+      return { status: 'pending_approval' }
+    case 'all':
+      return {}
+  }
+}
+
 export const listCatalogEntries = async (
   prisma: PrismaClient,
-  organizationId: string,
-  filters: { status?: McpCatalogStatus } = {},
+  actorContext: AuthorizedActionContext,
+  filters: { view?: CatalogView; status?: McpCatalogStatus } = {},
 ): Promise<McpCatalogEntryRow[]> => {
+  const view = filters.view ?? 'store'
+  const where = listWhere(actorContext, view)
+  if (filters.status && view !== 'queue') where.status = filters.status
   return prisma.mcpCatalogEntry.findMany({
-    where: {
-      OR: [{ organizationId: null }, { organizationId }],
-      ...(filters.status ? { status: filters.status } : {}),
-    },
+    where,
     orderBy: [{ status: 'asc' }, { label: 'asc' }],
   })
 }
 
+/**
+ * Org-scoped by-id read for internal, post-install operations (OAuth handshake,
+ * instance probe/health) where access was already established at install time
+ * and the organization is trusted. Matches system-wide (`null` org) and
+ * same-org entries. User-facing access goes through `getAccessibleCatalogEntry`.
+ */
 export const getCatalogEntry = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
 ): Promise<McpCatalogEntryRow | null> => {
   return prisma.mcpCatalogEntry.findFirst({
+    where: { id, OR: [{ organizationId: null }, { organizationId }] },
+  })
+}
+
+/**
+ * Fetch an entry only if `actorContext` is allowed to see it: the public store
+ * (published), the actor's own entries (any status), or anything when the actor
+ * is a superuser. Used by the detail route, install, and the review service.
+ */
+export const getAccessibleCatalogEntry = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  id: string,
+): Promise<McpCatalogEntryRow | null> => {
+  if (isOwnerRole(actorContext)) {
+    return prisma.mcpCatalogEntry.findFirst({ where: { id } })
+  }
+  return prisma.mcpCatalogEntry.findFirst({
     where: {
       id,
-      OR: [{ organizationId: null }, { organizationId }],
+      OR: [
+        { visibility: 'public', status: 'published' },
+        { ownerUserId: actorContext.actor.actorId },
+      ],
     },
   })
 }
 
-const isUniqueViolation = (error: unknown): boolean =>
-  typeof error === 'object'
-  && error !== null
-  && 'code' in error
-  && (error as { code?: unknown }).code === 'P2002'
+/**
+ * True when `actorContext` may mutate the entry: its owner, or a superuser.
+ */
+export const canManageEntry = (
+  actorContext: AuthorizedActionContext,
+  entry: McpCatalogEntryRow,
+): boolean =>
+  isOwnerRole(actorContext) || entry.ownerUserId === actorContext.actor.actorId
+
+const requireManageable = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  id: string,
+): Promise<McpCatalogEntryRow | null> => {
+  const entry = await getAccessibleCatalogEntry(prisma, actorContext, id)
+  if (!entry) return null
+  if (!canManageEntry(actorContext, entry)) {
+    throw new McpCatalogError(
+      MCP_CATALOG_ERROR_CODES.FORBIDDEN,
+      'You do not have permission to modify this catalog entry',
+    )
+  }
+  return entry
+}
 
 export const createCatalogEntry = async (
   prisma: PrismaClient,
@@ -153,13 +254,11 @@ export const createCatalogEntry = async (
   input: CreateCatalogEntryInput,
 ): Promise<McpCatalogEntryRow> => {
   const authConfig = ensureAuthConfigMatchesMethod(input.authMethod, input.authConfig)
-  const organizationId =
-    input.organizationId === undefined ? actorContext.tenant.organizationId : input.organizationId
 
   try {
     return await prisma.mcpCatalogEntry.create({
       data: {
-        organizationId,
+        organizationId: actorContext.tenant.organizationId,
         name: input.name,
         label: input.label,
         description: input.description ?? '',
@@ -172,27 +271,24 @@ export const createCatalogEntry = async (
         sourceUrl: input.sourceUrl ?? null,
         signature: input.signature ?? null,
         status: 'draft',
+        visibility: 'private',
+        ownerUserId: actorContext.actor.actorId,
         createdBy: actorContext.actor.actorId,
       },
     })
   } catch (error) {
-    if (isUniqueViolation(error)) {
-      throw new McpCatalogError(
-        MCP_CATALOG_ERROR_CODES.DUPLICATE_NAME,
-        `An MCP catalog entry named "${input.name}" already exists in this scope`,
-      )
-    }
+    if (isUniqueViolation(error)) throw duplicateNameError(input.name)
     throw error
   }
 }
 
 export const updateCatalogEntry = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
   id: string,
   input: UpdateCatalogEntryInput,
 ): Promise<McpCatalogEntryRow | null> => {
-  const existing = await getCatalogEntry(prisma, organizationId, id)
+  const existing = await requireManageable(prisma, actorContext, id)
   if (!existing) return null
 
   if (input.authConfig !== undefined || input.authMethod !== undefined) {
@@ -218,68 +314,57 @@ export const updateCatalogEntry = async (
       ...(input.vendor !== undefined ? { vendor: input.vendor } : {}),
       ...(input.sourceUrl !== undefined ? { sourceUrl: input.sourceUrl } : {}),
       ...(input.signature !== undefined ? { signature: input.signature } : {}),
-      ...(input.status !== undefined ? { status: input.status } : {}),
     },
   })
 }
 
 export const deleteCatalogEntry = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
   id: string,
 ): Promise<boolean> => {
-  const existing = await getCatalogEntry(prisma, organizationId, id)
+  const existing = await requireManageable(prisma, actorContext, id)
   if (!existing) return false
   await prisma.mcpCatalogEntry.delete({ where: { id } })
   return true
 }
 
 /**
- * Promote a catalog entry to `published` (task #20, plan §6 `/publish`).
+ * Self-publish a `private` connector (`draft` → `published`) so its owner can
+ * install it. Public connectors must instead go through the review flow
+ * (`submitForReview` → superuser `approveSubmission`) and are rejected here.
  *
- * Defensive transitions: only `draft` → `published` is allowed. Re-publishing
- * a row that's already `published` is a no-op success (idempotent). Trying to
- * publish a `deprecated` row is rejected with `INVALID_TRANSITION` — once
- * deprecated, a row should be cloned to a new version rather than resurrected,
- * so existing instance installs keep referring to the deprecated catalog id.
- *
- * Concurrency: the draft → published transition is performed via a single
- * conditional `updateMany` keyed on `status === 'draft'`. Two concurrent
- * publish calls therefore race at the database level and exactly one update
- * succeeds (`count === 1`); the loser observes `count === 0` and is told to
- * re-read the row to decide whether to no-op (already published) or fail
- * (now deprecated). This closes the read-then-update TOCTOU that the prior
- * `findFirst` + `update` pattern allowed.
+ * Concurrency: the transition is a single conditional `updateMany` keyed on
+ * `status === 'draft'`, so two concurrent publishes race at the database and
+ * exactly one wins; the loser re-reads to return a consistent answer.
  */
 export const publishCatalogEntry = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
   id: string,
 ): Promise<McpCatalogEntryRow | null> => {
-  // Tenant + existence gate. We still need this read so callers can 404 on
-  // unknown / cross-org ids — the atomic update below is keyed on `id` alone
-  // (status is the conflict guard) and would silently no-op for missing rows.
-  const existing = await getCatalogEntry(prisma, organizationId, id)
+  const existing = await requireManageable(prisma, actorContext, id)
   if (!existing) return null
-  if (existing.status === 'published') return existing
-  if (existing.status === 'deprecated') {
+  if (existing.visibility === 'public') {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
-      `Catalog entry ${id} is deprecated and cannot be re-published`,
+      `Catalog entry ${id} is public; use the review flow to publish it`,
+    )
+  }
+  if (existing.status === 'published') return existing
+  if (existing.status !== 'draft') {
+    throw new McpCatalogError(
+      MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+      `Catalog entry ${id} cannot be published from ${existing.status}`,
     )
   }
 
-  // Atomic conditional update — only the row that's still `draft` flips. If
-  // another request beat us to the punch (`count === 0`), re-read and apply
-  // the same transition rules as above so the loser gets a consistent answer
-  // (idempotent success when the winner published, INVALID_TRANSITION when
-  // the row has since been deprecated by another writer).
   const { count } = await prisma.mcpCatalogEntry.updateMany({
-    where: { id, status: 'draft' },
+    where: { id, status: 'draft', visibility: 'private' },
     data: { status: 'published' },
   })
   if (count === 0) {
-    const current = await getCatalogEntry(prisma, organizationId, id)
+    const current = await getAccessibleCatalogEntry(prisma, actorContext, id)
     if (!current) return null
     if (current.status === 'published') return current
     throw new McpCatalogError(
@@ -287,26 +372,20 @@ export const publishCatalogEntry = async (
       `Catalog entry ${id} is no longer in draft state`,
     )
   }
-  return getCatalogEntry(prisma, organizationId, id)
+  return getAccessibleCatalogEntry(prisma, actorContext, id)
 }
 
 /**
- * Mark a published catalog entry `deprecated` (task #20, plan §6 `/deprecate`).
- *
- * Deprecation is non-destructive — existing `McpServerInstance` rows that
- * point at this catalog id keep functioning. The status flag is purely an
- * advisory signal so the App Store UI can hide the row from new-install
- * pickers while leaving existing installs intact.
- *
- * Idempotent: deprecating an already-deprecated row succeeds. Draft rows
- * can also be deprecated (skip publish) — same end state.
+ * Mark a published entry `deprecated`. Non-destructive: existing
+ * `McpServerInstance` rows that point at this catalog id keep working; the flag
+ * just hides the entry from new-install pickers. Idempotent.
  */
 export const deprecateCatalogEntry = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
   id: string,
 ): Promise<McpCatalogEntryRow | null> => {
-  const existing = await getCatalogEntry(prisma, organizationId, id)
+  const existing = await requireManageable(prisma, actorContext, id)
   if (!existing) return null
   if (existing.status === 'deprecated') return existing
   return prisma.mcpCatalogEntry.update({

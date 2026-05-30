@@ -14,7 +14,9 @@ type CatalogListProps = {
 
 const STATUS_TONE = {
   draft: 'warning',
+  pending_approval: 'accent',
   published: 'success',
+  rejected: 'danger',
   deprecated: 'muted',
 } as const
 

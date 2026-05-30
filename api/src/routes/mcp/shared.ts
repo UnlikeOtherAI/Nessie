@@ -63,14 +63,16 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
     const status =
       error.code === MCP_CATALOG_ERROR_CODES.NOT_FOUND
         ? 404
-        // `DUPLICATE_NAME` and `INVALID_TRANSITION` both describe a
-        // pre-existing resource that conflicts with the requested mutation
-        // (RFC 7231 §6.5.8) — return 409 so clients can distinguish a
-        // schema problem (400) from a lifecycle conflict (409).
-        : error.code === MCP_CATALOG_ERROR_CODES.DUPLICATE_NAME
-            || error.code === MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION
-          ? 409
-          : 400
+        : error.code === MCP_CATALOG_ERROR_CODES.FORBIDDEN
+          ? 403
+          // `DUPLICATE_NAME` and `INVALID_TRANSITION` both describe a
+          // pre-existing resource that conflicts with the requested mutation
+          // (RFC 7231 §6.5.8) — return 409 so clients can distinguish a
+          // schema problem (400) from a lifecycle conflict (409).
+          : error.code === MCP_CATALOG_ERROR_CODES.DUPLICATE_NAME
+              || error.code === MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION
+            ? 409
+            : 400
     sendApiError(reply, status, error.code, error.message)
     return true
   }

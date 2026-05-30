@@ -1,8 +1,9 @@
-import { McpServerScopeTypeSchema } from '@nessie/schemas'
-import type { FastifyInstance } from 'fastify'
+import { McpServerScopeTypeSchema, type AuthorizedActionContext } from '@nessie/schemas'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
+import { isOwnerRole } from '../../services/mcp-catalog.js'
 import {
   createInstance,
   deleteInstance,
@@ -12,17 +13,19 @@ import {
   MCP_INSTANCE_ERROR_CODES,
   refreshInstance,
   testInstance,
+  type McpInstanceRow,
 } from '../../services/mcp-instances.js'
 
 import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
 /**
- * Instances sub-registrar (plan §6).
+ * Instances sub-registrar (plan §6,
+ * `docs/plans/2026-05-30-mcp-store-publishing-approval.md`).
  *
  * Owns CRUD + lifecycle (`test`, `refresh`, `healthcheck`) on
- * `McpServerInstance`. Credential-override routes live in `./credentials.ts`
- * because the principal model + `SecretStore` concerns are distinct enough to
- * justify a separate file.
+ * `McpServerInstance`. Superusers (`owner` role) manage installs at any scope;
+ * every other user may install and manage connectors only for themselves — i.e.
+ * at their own `user` scope (`scopeType === 'user'`, `scopeId === actorId`).
  */
 
 const CreateInstanceBodySchema = z.object({
@@ -33,16 +36,59 @@ const CreateInstanceBodySchema = z.object({
   transportConfig: JsonRecordSchema.optional(),
 })
 
+/** Whether the actor may operate on the given install scope. */
+const canManageScope = (
+  actorContext: AuthorizedActionContext,
+  scopeType: string,
+  scopeId: string,
+): boolean =>
+  isOwnerRole(actorContext)
+  || (scopeType === 'user' && scopeId === actorContext.actor.actorId)
+
+const FORBIDDEN_SCOPE = {
+  code: 'MCP_INSTANCE_FORBIDDEN',
+  message: 'You can only install or manage connectors for yourself',
+}
+
+const denyScope = (reply: FastifyReply): FastifyReply => {
+  sendApiError(reply, 403, FORBIDDEN_SCOPE.code, FORBIDDEN_SCOPE.message)
+  return reply
+}
+
 export const registerMcpInstanceRoutes = (
   app: FastifyInstance,
   ctx: McpSubRegistrarContext,
 ): void => {
-  const { prisma, requireActorContext, requireOwner } = ctx
+  const { prisma, requireActorContext } = ctx
+
+  /**
+   * Load an instance and confirm the actor may manage its scope. Returns the
+   * row, or null after writing a 404 / 403 to `reply`.
+   */
+  const loadManageable = async (
+    actorContext: AuthorizedActionContext,
+    instanceId: string,
+    reply: FastifyReply,
+  ): Promise<McpInstanceRow | null> => {
+    const instance = await getInstance(
+      prisma,
+      actorContext.tenant.organizationId,
+      instanceId,
+    )
+    if (!instance) {
+      sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
+      return null
+    }
+    if (!canManageScope(actorContext, instance.scopeType, instance.scopeId)) {
+      denyScope(reply)
+      return null
+    }
+    return instance
+  }
 
   app.get('/api/mcp/instances', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const query = request.query as { scopeType?: string; scopeId?: string }
     const scopeTypeParsed = query.scopeType
@@ -53,20 +99,32 @@ export const registerMcpInstanceRoutes = (
       return reply
     }
 
-    const instances = await listInstances(prisma, actorContext.tenant.organizationId, {
-      scopeType: scopeTypeParsed?.success ? scopeTypeParsed.data : undefined,
-      scopeId: query.scopeId,
-    })
+    // Non-superusers only ever see their own user-scope installs, regardless of
+    // any filter they pass.
+    const filters = isOwnerRole(actorContext)
+      ? {
+          scopeType: scopeTypeParsed?.success ? scopeTypeParsed.data : undefined,
+          scopeId: query.scopeId,
+        }
+      : { scopeType: 'user' as const, scopeId: actorContext.actor.actorId }
+
+    const instances = await listInstances(
+      prisma,
+      actorContext.tenant.organizationId,
+      filters,
+    )
     return createApiResponse(instances)
   })
 
   app.post('/api/mcp/instances', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const body = parseInput(CreateInstanceBodySchema, request.body, reply)
     if (!body) return reply
+    if (!canManageScope(actorContext, body.scopeType, body.scopeId)) {
+      return denyScope(reply)
+    }
 
     try {
       const instance = await createInstance(prisma, actorContext, body)
@@ -80,27 +138,19 @@ export const registerMcpInstanceRoutes = (
   app.get('/api/mcp/instances/:instanceId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const { instanceId } = request.params as { instanceId: string }
-    const instance = await getInstance(
-      prisma,
-      actorContext.tenant.organizationId,
-      instanceId,
-    )
-    if (!instance) {
-      sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
-      return reply
-    }
+    const instance = await loadManageable(actorContext, instanceId, reply)
+    if (!instance) return reply
     return createApiResponse(instance)
   })
 
   app.post('/api/mcp/instances/:instanceId/test', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const { instanceId } = request.params as { instanceId: string }
+    if (!(await loadManageable(actorContext, instanceId, reply))) return reply
     try {
       const instance = await testInstance(
         prisma,
@@ -115,18 +165,12 @@ export const registerMcpInstanceRoutes = (
   })
 
   // ─── Instance lifecycle (refresh / healthcheck) ─────────────────────────
-  // Per plan §6:
-  //   refresh — re-runs probe + registry projection; tolerant of probe
-  //     failure (returns the up-to-date instance row with `error`
-  //     lifecycleState instead of 502).
-  //   healthcheck — synchronous probe with no DB writes; returns
-  //     `{healthy, latencyMs, lastError?}` for admin polling.
   app.post('/api/mcp/instances/:instanceId/refresh', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const { instanceId } = request.params as { instanceId: string }
+    if (!(await loadManageable(actorContext, instanceId, reply))) return reply
     try {
       const instance = await refreshInstance(
         prisma,
@@ -140,15 +184,14 @@ export const registerMcpInstanceRoutes = (
     }
   })
 
-  // Healthcheck is intentionally `requireActorContext` only — any
-  // authenticated user who can already see this instance can run a probe.
-  // Owner-gating is overkill for a read-only call that mutates nothing and
-  // surfaces no secret material.
+  // Healthcheck is read-only and surfaces no secret material; any actor that
+  // can already manage the instance scope may probe it.
   app.post('/api/mcp/instances/:instanceId/healthcheck', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
     const { instanceId } = request.params as { instanceId: string }
+    if (!(await loadManageable(actorContext, instanceId, reply))) return reply
     try {
       const result = await healthcheckInstance(
         prisma,
@@ -165,9 +208,9 @@ export const registerMcpInstanceRoutes = (
   app.delete('/api/mcp/instances/:instanceId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const { instanceId } = request.params as { instanceId: string }
+    if (!(await loadManageable(actorContext, instanceId, reply))) return reply
     const deleted = await deleteInstance(
       prisma,
       actorContext.tenant.organizationId,

@@ -2,15 +2,24 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import {
   MCP_CATALOG_ERROR_CODES,
   McpCatalogError,
+  createCatalogEntry,
   deprecateCatalogEntry,
   ensureAuthConfigMatchesMethod,
+  listCatalogEntries,
   publishCatalogEntry,
+  updateCatalogEntry,
   type McpCatalogEntryRow,
 } from '../src/services/mcp-catalog.js'
+import {
+  approveSubmission,
+  rejectSubmission,
+  submitForReview,
+} from '../src/services/mcp-catalog-review.js'
 
 test('ensureAuthConfigMatchesMethod returns parsed config when method matches', () => {
   const result = ensureAuthConfigMatchesMethod('api_key', {
@@ -39,51 +48,42 @@ test('ensureAuthConfigMatchesMethod parses oauth2 with defaulted scopes', () => 
 })
 
 test('ensureAuthConfigMatchesMethod rejects shape mismatch', () => {
-  let thrown: unknown
-  try {
-    ensureAuthConfigMatchesMethod('api_key', { method: 'api_key' })
-  } catch (error) {
-    thrown = error
-  }
-  assert.ok(thrown instanceof McpCatalogError)
-  assert.equal((thrown as McpCatalogError).code, MCP_CATALOG_ERROR_CODES.AUTH_CONFIG_INVALID)
+  assert.throws(
+    () => ensureAuthConfigMatchesMethod('api_key', { method: 'api_key' }),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.AUTH_CONFIG_INVALID,
+  )
 })
 
 test('ensureAuthConfigMatchesMethod rejects method mismatch', () => {
-  let thrown: unknown
-  try {
-    ensureAuthConfigMatchesMethod('bearer', { method: 'none' })
-  } catch (error) {
-    thrown = error
-  }
-  assert.ok(thrown instanceof McpCatalogError)
-  assert.equal((thrown as McpCatalogError).code, MCP_CATALOG_ERROR_CODES.AUTH_METHOD_MISMATCH)
+  assert.throws(
+    () => ensureAuthConfigMatchesMethod('bearer', { method: 'none' }),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.AUTH_METHOD_MISMATCH,
+  )
 })
 
-test('ensureAuthConfigMatchesMethod rejects entirely bogus payloads', () => {
-  let thrown: unknown
-  try {
-    ensureAuthConfigMatchesMethod('none', { method: 'magic' })
-  } catch (error) {
-    thrown = error
-  }
-  assert.ok(thrown instanceof McpCatalogError)
-  assert.equal((thrown as McpCatalogError).code, MCP_CATALOG_ERROR_CODES.AUTH_CONFIG_INVALID)
-})
-
-// ─── publish / deprecate state machine (task #20) ───────────────────────────
+// ─── In-memory catalog stub ─────────────────────────────────────────────────
 //
-// Lightweight in-memory stub for `prisma.mcpCatalogEntry` — keyed by id,
-// matches the same OR-scoped lookup the real service uses so cross-org
-// access still 404s through the stub.
+// A small generic stub that matches Prisma `where` clauses field-by-field
+// (including `OR`) so the visibility/ownership predicates the service builds
+// exercise the same logic they would against Postgres.
 
-type CatalogStub = {
-  prisma: PrismaClient
-  rows: Map<string, McpCatalogEntryRow>
-}
-
+const USER_A = '00000000-0000-4000-8000-0000000000a1'
+const USER_B = '00000000-0000-4000-8000-0000000000b2'
+const ADMIN = '00000000-0000-4000-8000-0000000000c3'
 const ORG_A = '00000000-0000-4000-8000-00000000000a'
-const ORG_B = '00000000-0000-4000-8000-00000000000b'
+
+const actorCtx = (
+  actorId: string,
+  roles: string[] = [],
+): AuthorizedActionContext =>
+  ({
+    actor: { actorType: 'user', actorId, roles },
+    tenant: { organizationId: ORG_A },
+  }) as unknown as AuthorizedActionContext
 
 const makeRow = (overrides: Partial<McpCatalogEntryRow> = {}): McpCatalogEntryRow => ({
   id: overrides.id ?? 'entry-1',
@@ -100,35 +100,51 @@ const makeRow = (overrides: Partial<McpCatalogEntryRow> = {}): McpCatalogEntryRo
   sourceUrl: overrides.sourceUrl ?? null,
   signature: overrides.signature ?? null,
   status: overrides.status ?? 'draft',
-  createdBy: overrides.createdBy ?? 'actor-1',
+  visibility: overrides.visibility ?? 'private',
+  ownerUserId: overrides.ownerUserId ?? USER_A,
+  submittedAt: overrides.submittedAt ?? null,
+  reviewedAt: overrides.reviewedAt ?? null,
+  reviewedBy: overrides.reviewedBy ?? null,
+  rejectionReason: overrides.rejectionReason ?? null,
+  createdBy: overrides.createdBy ?? USER_A,
   createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
   updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
 })
 
-const makeCatalogStub = (
-  initial: McpCatalogEntryRow[],
-  options: { onUpdateMany?: () => Promise<void> | void } = {},
-): CatalogStub => {
+const matchesWhere = (row: McpCatalogEntryRow, where: Record<string, unknown>): boolean => {
+  for (const [key, value] of Object.entries(where)) {
+    if (key === 'OR') {
+      const ok = (value as Array<Record<string, unknown>>).some((clause) =>
+        matchesWhere(row, clause),
+      )
+      if (!ok) return false
+      continue
+    }
+    if ((row as unknown as Record<string, unknown>)[key] !== value) return false
+  }
+  return true
+}
+
+type CatalogStub = { prisma: PrismaClient; rows: Map<string, McpCatalogEntryRow> }
+
+const makeStub = (initial: McpCatalogEntryRow[]): CatalogStub => {
   const rows = new Map(initial.map((row) => [row.id, row]))
   const prisma = {
     mcpCatalogEntry: {
-      findFirst: async ({ where }: { where: any }) => {
-        const candidate = rows.get(where.id)
-        if (!candidate) return null
-        const orList = where.OR as Array<{ organizationId: string | null }>
-        if (!orList) return candidate
-        const matches = orList.some((clause) =>
-          candidate.organizationId === clause.organizationId,
-        )
-        return matches ? candidate : null
-      },
-      update: async ({ where, data }: { where: { id: string }; data: any }) => {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) =>
+        [...rows.values()].find((row) => matchesWhere(row, where)) ?? null,
+      findMany: async ({ where }: { where: Record<string, unknown> }) =>
+        [...rows.values()].filter((row) => matchesWhere(row, where ?? {})),
+      update: async ({
+        where,
+        data,
+      }: {
+        where: { id: string }
+        data: Record<string, unknown>
+      }) => {
         const existing = rows.get(where.id)
         if (!existing) throw new Error(`row ${where.id} missing`)
-        const next: McpCatalogEntryRow = {
-          ...existing,
-          ...(data.status !== undefined ? { status: data.status } : {}),
-        }
+        const next = { ...existing, ...data } as McpCatalogEntryRow
         rows.set(where.id, next)
         return next
       },
@@ -136,154 +152,207 @@ const makeCatalogStub = (
         where,
         data,
       }: {
-        where: { id: string; status?: string }
-        data: { status?: string }
+        where: Record<string, unknown>
+        data: Record<string, unknown>
       }) => {
-        // Optional hook so race tests can pause the loser inside the
-        // serialized critical section (after the winner has flipped state).
-        if (options.onUpdateMany) await options.onUpdateMany()
-        const existing = rows.get(where.id)
-        if (!existing) return { count: 0 }
-        if (where.status !== undefined && existing.status !== where.status) {
-          return { count: 0 }
-        }
-        const next: McpCatalogEntryRow = {
-          ...existing,
-          ...(data.status !== undefined ? { status: data.status } : {}),
-        }
-        rows.set(where.id, next)
-        return { count: 1 }
+        const matched = [...rows.values()].filter((row) => matchesWhere(row, where))
+        for (const row of matched) rows.set(row.id, { ...row, ...data } as McpCatalogEntryRow)
+        return { count: matched.length }
+      },
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const row = makeRow(data as Partial<McpCatalogEntryRow>)
+        const id = (data.id as string | undefined) ?? `entry-${rows.size + 1}`
+        const next = { ...row, id }
+        rows.set(id, next)
+        return next
       },
     },
   }
   return { prisma: prisma as unknown as PrismaClient, rows }
 }
 
-test('publishCatalogEntry promotes a draft entry to published', async () => {
-  const { prisma, rows } = makeCatalogStub([makeRow({ status: 'draft' })])
-  const result = await publishCatalogEntry(prisma, ORG_A, 'entry-1')
-  assert.ok(result)
+// ─── create ─────────────────────────────────────────────────────────────────
+
+test('createCatalogEntry starts private + draft, owned by the author', async () => {
+  const { prisma } = makeStub([])
+  const entry = await createCatalogEntry(prisma, actorCtx(USER_A), {
+    name: 'my-tool',
+    label: 'My Tool',
+    protocol: 'http',
+    authMethod: 'none',
+    authConfig: { method: 'none' },
+  })
+  assert.equal(entry.visibility, 'private')
+  assert.equal(entry.status, 'draft')
+  assert.equal(entry.ownerUserId, USER_A)
+  assert.equal(entry.createdBy, USER_A)
+})
+
+// ─── private self-publish ─────────────────────────────────────────────────
+
+test('publishCatalogEntry self-publishes a private draft for its owner', async () => {
+  const { prisma, rows } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
+  const result = await publishCatalogEntry(prisma, actorCtx(USER_A), 'entry-1')
   assert.equal(result?.status, 'published')
   assert.equal(rows.get('entry-1')?.status, 'published')
 })
 
-test('publishCatalogEntry is idempotent on an already-published entry', async () => {
-  const { prisma } = makeCatalogStub([makeRow({ status: 'published' })])
-  const result = await publishCatalogEntry(prisma, ORG_A, 'entry-1')
-  assert.ok(result)
-  assert.equal(result?.status, 'published')
-})
-
-test('publishCatalogEntry rejects re-publishing a deprecated entry', async () => {
-  const { prisma } = makeCatalogStub([makeRow({ status: 'deprecated' })])
-  let thrown: unknown
-  try {
-    await publishCatalogEntry(prisma, ORG_A, 'entry-1')
-  } catch (error) {
-    thrown = error
-  }
-  assert.ok(thrown instanceof McpCatalogError)
-  assert.equal(
-    (thrown as McpCatalogError).code,
-    MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+test('publishCatalogEntry refuses public entries (use the review flow)', async () => {
+  const { prisma } = makeStub([
+    makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  await assert.rejects(
+    () => publishCatalogEntry(prisma, actorCtx(USER_A), 'entry-1'),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
   )
 })
 
-test('publishCatalogEntry returns null for cross-org access', async () => {
-  const { prisma } = makeCatalogStub([
-    makeRow({ id: 'entry-orgB', organizationId: ORG_B, status: 'draft' }),
-  ])
-  const result = await publishCatalogEntry(prisma, ORG_A, 'entry-orgB')
+test('publishCatalogEntry returns null when the entry is not visible to the actor', async () => {
+  const { prisma } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
+  const result = await publishCatalogEntry(prisma, actorCtx(USER_B), 'entry-1')
   assert.equal(result, null)
 })
 
-test('publishCatalogEntry succeeds for a global (organizationId=null) entry', async () => {
-  const { prisma } = makeCatalogStub([
-    makeRow({ id: 'entry-global', organizationId: null, status: 'draft' }),
-  ])
-  const result = await publishCatalogEntry(prisma, ORG_A, 'entry-global')
-  assert.ok(result)
+test('publishCatalogEntry lets a superuser publish any private draft', async () => {
+  const { prisma } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
+  const result = await publishCatalogEntry(prisma, actorCtx(ADMIN, ['owner']), 'entry-1')
   assert.equal(result?.status, 'published')
 })
 
-test('deprecateCatalogEntry marks a published entry deprecated', async () => {
-  const { prisma, rows } = makeCatalogStub([makeRow({ status: 'published' })])
-  const result = await deprecateCatalogEntry(prisma, ORG_A, 'entry-1')
-  assert.ok(result)
+// ─── update permission ──────────────────────────────────────────────────────
+
+test('updateCatalogEntry forbids a non-owner editing a public published entry', async () => {
+  const { prisma } = makeStub([
+    makeRow({ status: 'published', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  await assert.rejects(
+    () => updateCatalogEntry(prisma, actorCtx(USER_B), 'entry-1', { label: 'Hijack' }),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.FORBIDDEN,
+  )
+})
+
+// ─── submit for review ──────────────────────────────────────────────────────
+
+test('submitForReview flips a private draft to a public pending submission', async () => {
+  const { prisma, rows } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
+  const result = await submitForReview(prisma, actorCtx(USER_A), 'entry-1')
+  assert.equal(result?.status, 'pending_approval')
+  assert.equal(result?.visibility, 'public')
+  assert.ok(rows.get('entry-1')?.submittedAt)
+})
+
+test('submitForReview rejects submitting an already-published entry', async () => {
+  const { prisma } = makeStub([makeRow({ status: 'published', ownerUserId: USER_A })])
+  await assert.rejects(
+    () => submitForReview(prisma, actorCtx(USER_A), 'entry-1'),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+  )
+})
+
+// ─── approve / reject (superuser) ───────────────────────────────────────────
+
+test('approveSubmission publishes a pending submission', async () => {
+  const { prisma } = makeStub([
+    makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  const result = await approveSubmission(prisma, actorCtx(ADMIN, ['owner']), 'entry-1')
+  assert.equal(result?.status, 'published')
+  assert.equal(result?.visibility, 'public')
+  assert.equal(result?.reviewedBy, ADMIN)
+})
+
+test('approveSubmission forbids non-superusers (even the submitter)', async () => {
+  const { prisma } = makeStub([
+    makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  await assert.rejects(
+    () => approveSubmission(prisma, actorCtx(USER_A), 'entry-1'),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.FORBIDDEN,
+  )
+})
+
+test('approveSubmission rejects entries that are not awaiting approval', async () => {
+  const { prisma } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
+  await assert.rejects(
+    () => approveSubmission(prisma, actorCtx(ADMIN, ['owner']), 'entry-1'),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
+  )
+})
+
+test('rejectSubmission reverts to a private rejected draft with the reason', async () => {
+  const { prisma } = makeStub([
+    makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  const result = await rejectSubmission(
+    prisma,
+    actorCtx(ADMIN, ['owner']),
+    'entry-1',
+    'Needs a clearer description',
+  )
+  assert.equal(result?.status, 'rejected')
+  assert.equal(result?.visibility, 'private')
+  assert.equal(result?.rejectionReason, 'Needs a clearer description')
+  assert.equal(result?.reviewedBy, ADMIN)
+})
+
+test('rejectSubmission forbids non-superusers', async () => {
+  const { prisma } = makeStub([
+    makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  await assert.rejects(
+    () => rejectSubmission(prisma, actorCtx(USER_A), 'entry-1', 'no'),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.FORBIDDEN,
+  )
+})
+
+// ─── deprecate ──────────────────────────────────────────────────────────────
+
+test('deprecateCatalogEntry marks a published entry deprecated for its owner', async () => {
+  const { prisma, rows } = makeStub([makeRow({ status: 'published', ownerUserId: USER_A })])
+  const result = await deprecateCatalogEntry(prisma, actorCtx(USER_A), 'entry-1')
   assert.equal(result?.status, 'deprecated')
   assert.equal(rows.get('entry-1')?.status, 'deprecated')
 })
 
-test('deprecateCatalogEntry is idempotent on already-deprecated entries', async () => {
-  const { prisma } = makeCatalogStub([makeRow({ status: 'deprecated' })])
-  const result = await deprecateCatalogEntry(prisma, ORG_A, 'entry-1')
-  assert.ok(result)
-  assert.equal(result?.status, 'deprecated')
-})
+// ─── visibility-scoped listing ──────────────────────────────────────────────
 
-test('deprecateCatalogEntry can deprecate a draft (skip publish)', async () => {
-  const { prisma } = makeCatalogStub([makeRow({ status: 'draft' })])
-  const result = await deprecateCatalogEntry(prisma, ORG_A, 'entry-1')
-  assert.ok(result)
-  assert.equal(result?.status, 'deprecated')
-})
-
-test('deprecateCatalogEntry returns null for cross-org access', async () => {
-  const { prisma } = makeCatalogStub([
-    makeRow({ id: 'entry-orgB', organizationId: ORG_B, status: 'published' }),
+test('listCatalogEntries store view returns only public published entries', async () => {
+  const { prisma } = makeStub([
+    makeRow({ id: 'pub', status: 'published', visibility: 'public', ownerUserId: null }),
+    makeRow({ id: 'mine-draft', status: 'draft', ownerUserId: USER_B }),
+    makeRow({ id: 'pending', status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
   ])
-  const result = await deprecateCatalogEntry(prisma, ORG_A, 'entry-orgB')
-  assert.equal(result, null)
+  const entries = await listCatalogEntries(prisma, actorCtx(USER_B), { view: 'store' })
+  assert.deepEqual(entries.map((entry) => entry.id), ['pub'])
 })
 
-// ─── publish TOCTOU coverage (task #39) ─────────────────────────────────────
-//
-// Two concurrent publish calls must resolve to exactly one success + one
-// idempotent re-read; the prior `findFirst → check → update` pattern allowed
-// both calls to pass the status check and both to perform the side effect.
-// The atomic `updateMany` guard makes the database the arbiter so only one
-// row flip happens, and the loser observes `count === 0`.
-
-test('publishCatalogEntry is race-safe under concurrent publish calls', async () => {
-  const { prisma, rows } = makeCatalogStub([makeRow({ status: 'draft' })])
-  // Fire both publish calls without awaiting — they share the same in-memory
-  // `Map`-backed stub, so whichever resolves the `updateMany` first wins.
-  const [a, b] = await Promise.all([
-    publishCatalogEntry(prisma, ORG_A, 'entry-1'),
-    publishCatalogEntry(prisma, ORG_A, 'entry-1'),
+test('listCatalogEntries mine view returns the actor own entries in any state', async () => {
+  const { prisma } = makeStub([
+    makeRow({ id: 'pub', status: 'published', visibility: 'public', ownerUserId: null }),
+    makeRow({ id: 'mine-draft', status: 'draft', ownerUserId: USER_B }),
+    makeRow({ id: 'mine-rejected', status: 'rejected', ownerUserId: USER_B }),
   ])
-  // Both calls resolve to a published row (idempotent on the loser side).
-  assert.ok(a)
-  assert.ok(b)
-  assert.equal(a?.status, 'published')
-  assert.equal(b?.status, 'published')
-  // And the underlying row is still a single record — no double-publish.
-  assert.equal(rows.size, 1)
-  assert.equal(rows.get('entry-1')?.status, 'published')
+  const entries = await listCatalogEntries(prisma, actorCtx(USER_B), { view: 'mine' })
+  assert.deepEqual(entries.map((entry) => entry.id).sort(), ['mine-draft', 'mine-rejected'])
 })
 
-test('publishCatalogEntry race loser surfaces INVALID_TRANSITION when row deprecated mid-flight', async () => {
-  // Simulate the worst case: the loser arrives at `updateMany` after another
-  // writer has already moved the row from draft → deprecated. The loser must
-  // refuse, not silently no-op, because the intended draft→published
-  // transition is no longer legal.
-  const { prisma, rows } = makeCatalogStub([makeRow({ status: 'draft' })], {
-    onUpdateMany: () => {
-      // Mutate the row out from under the updateMany so it sees status !==
-      // 'draft' and returns `count: 0`.
-      const row = rows.get('entry-1')
-      if (row) rows.set('entry-1', { ...row, status: 'deprecated' })
-    },
-  })
-  let thrown: unknown
-  try {
-    await publishCatalogEntry(prisma, ORG_A, 'entry-1')
-  } catch (error) {
-    thrown = error
-  }
-  assert.ok(thrown instanceof McpCatalogError)
-  assert.equal(
-    (thrown as McpCatalogError).code,
-    MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,
-  )
+test('listCatalogEntries queue view returns pending submissions', async () => {
+  const { prisma } = makeStub([
+    makeRow({ id: 'pending', status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+    makeRow({ id: 'pub', status: 'published', visibility: 'public', ownerUserId: null }),
+  ])
+  const entries = await listCatalogEntries(prisma, actorCtx(ADMIN, ['owner']), { view: 'queue' })
+  assert.deepEqual(entries.map((entry) => entry.id), ['pending'])
 })

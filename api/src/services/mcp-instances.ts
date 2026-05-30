@@ -8,7 +8,11 @@ import {
   type McpTransportConfig,
 } from '@nessie/schemas'
 
-import { ensureAuthConfigMatchesMethod, getCatalogEntry } from './mcp-catalog.js'
+import {
+  ensureAuthConfigMatchesMethod,
+  getAccessibleCatalogEntry,
+  getCatalogEntry,
+} from './mcp-catalog.js'
 import { toPrismaToolRegistrySource } from './tool-enum-mapping.js'
 
 /**
@@ -169,7 +173,11 @@ export const createInstance = async (
   input: CreateInstanceInput,
 ): Promise<McpInstanceRow> => {
   const organizationId = actorContext.tenant.organizationId
-  const catalogEntry = await getCatalogEntry(prisma, organizationId, input.catalogEntryId)
+  const catalogEntry = await getAccessibleCatalogEntry(
+    prisma,
+    actorContext,
+    input.catalogEntryId,
+  )
   if (!catalogEntry) {
     throw new McpInstanceError(
       MCP_INSTANCE_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND,

@@ -19,10 +19,13 @@ type InstallScopeDialogProps = {
     scopeId: string
   }) => Promise<void>
   organizationId: string
+  currentUserId: string
+  /** Superusers install at any scope; everyone else only at their own user scope. */
+  canChooseScope: boolean
   pending?: boolean
 }
 
-const SCOPE_TYPES: McpServerScopeType[] = [
+const ALL_SCOPE_TYPES: McpServerScopeType[] = [
   'organization',
   'project',
   'team',
@@ -46,11 +49,17 @@ export const InstallScopeDialog = ({
   onCancel,
   onConfirm,
   organizationId,
+  currentUserId,
+  canChooseScope,
   pending = false,
 }: InstallScopeDialogProps) => {
-  const [scopeType, setScopeType] =
-    useState<McpServerScopeType>('organization')
-  const [scopeId, setScopeId] = useState(organizationId)
+  const scopeTypes = canChooseScope ? ALL_SCOPE_TYPES : (['user'] as McpServerScopeType[])
+  const [scopeType, setScopeType] = useState<McpServerScopeType>(
+    canChooseScope ? 'organization' : 'user',
+  )
+  const [scopeId, setScopeId] = useState(
+    canChooseScope ? organizationId : currentUserId,
+  )
   const [error, setError] = useState<string | null>(null)
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -98,11 +107,13 @@ export const InstallScopeDialog = ({
                 setScopeType(next)
                 if (next === 'organization') {
                   setScopeId(organizationId)
+                } else if (next === 'user') {
+                  setScopeId(currentUserId)
                 }
               }}
               value={scopeType}
             >
-              {SCOPE_TYPES.map((value) => (
+              {scopeTypes.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
