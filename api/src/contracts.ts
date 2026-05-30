@@ -1723,3 +1723,21 @@ export const ReadinessResponseSchema = z.object({
   }),
 })
 export type ReadinessResponse = z.infer<typeof ReadinessResponseSchema>
+
+// ─── Budget (spend enforcement) ───────────────────────────────────────────
+
+export const BudgetStatusResponseSchema = z.object({
+  enforced: z.boolean(),
+  costLimitUsd: z.number().nonnegative().nullable(),
+  spentUsd: z.number().nonnegative(),
+  tokenLimit: z.number().int().nonnegative().nullable(),
+  spentTokens: z.number().int().nonnegative(),
+  allowed: z.boolean(),
+  costTrackingActive: z.boolean(),
+})
+
+export const SetBudgetBodySchema = z.object({
+  monthlyCostLimitUsd: z.number().nonnegative().nullable(),
+  monthlyTokenLimit: z.number().int().nonnegative().nullable(),
+  enforced: z.boolean(),
+})

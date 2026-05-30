@@ -102,6 +102,8 @@ import {
   TransitionTaskBodySchema,
   OpsHealthResponseSchema,
   ReadinessResponseSchema,
+  BudgetStatusResponseSchema,
+  SetBudgetBodySchema,
   LoginRequestSchema,
   MailboxMessageRecordSchema,
   PlanRecordSchema,
@@ -302,6 +304,7 @@ import {
   transitionTask,
 } from './services/tasks.js'
 import { getOpsHealth, getReadiness } from './services/ops-health.js'
+import { checkBudget, getBudgetStatus, setBudgetConfig } from '@nessie/runtime'
 import {
   createPricingProfile,
   deletePricingProfile,
@@ -5151,6 +5154,14 @@ export const buildApp = async () => {
       return reply
     }
 
+    // This endpoint calls the model in-process (not via the worker queue), so it
+    // must consult the budget gate itself rather than rely on the worker gates.
+    const budget = await checkBudget(prisma, actorContext.tenant.organizationId)
+    if (!budget.allowed) {
+      sendApiError(reply, 402, 'BUDGET_EXCEEDED', budget.reason ?? 'Monthly budget exceeded')
+      return reply
+    }
+
     await streamDesignerChat(reply, body, sharedModelClient)
     return reply
   })
@@ -5683,6 +5694,27 @@ export const buildApp = async () => {
     const { profileId } = request.params as { profileId: string }
     await deletePricingProfile(prisma, profileId, actorContext.tenant.organizationId, actorContext)
     return reply.code(204).send()
+  })
+
+  app.get('/api/ledger/budget', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const status = await getBudgetStatus(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(BudgetStatusResponseSchema.parse(status))
+  })
+
+  app.put('/api/ledger/budget', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const body = parseInput(SetBudgetBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const status = await setBudgetConfig(prisma, actorContext.tenant.organizationId, body)
+    return createApiResponse(BudgetStatusResponseSchema.parse(status))
   })
 
   // ─── Inference control plane routes ─────────────────────────────────────

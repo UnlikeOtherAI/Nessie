@@ -1,4 +1,5 @@
 import {
+  checkBudget,
   decideAgentEngagement,
   type OrchestratorAgent,
   type PgRealtimeTransport,
@@ -36,6 +37,36 @@ export const executeOrchestrateDecideJob = async (
 
   // Belt-and-suspenders guard — API already checks before enqueueing.
   if (channelAgents.length === 0 || !channel) {
+    return
+  }
+
+  // Budget gate: the orchestrator decision below is itself a model call, so it must
+  // be gated here as well as at run execution. When over budget, post a single
+  // notice and skip the decision entirely rather than spend on it.
+  const budget = await checkBudget(deps.prisma, channel.organizationId)
+  if (!budget.allowed) {
+    const respondingAgentId = channelAgents[0]?.id
+    if (respondingAgentId) {
+      const notice = await deps.prisma.message.create({
+        data: {
+          agentId: respondingAgentId,
+          content: `⚠️ ${budget.reason ?? 'Monthly budget exceeded'} — this request was not run.`,
+          role: 'assistant',
+          threadId,
+        },
+      })
+      await deps.realtimeTransport.publishWs([{ kind: 'channel' as const, channelId }], {
+        data: {
+          agentId: parseAgentId(respondingAgentId),
+          contentPreview: notice.content.slice(0, 200),
+          messageId: notice.id,
+          role: 'assistant',
+          threadId: parseThreadId(threadId),
+        },
+        event: 'message.new',
+      })
+    }
+    console.warn(`[worker] orchestrate.decide blocked by budget (channel ${channelId}): ${budget.reason}`)
     return
   }
 

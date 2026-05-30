@@ -515,6 +515,7 @@ model Organization {
   channels  Channel[]
   thoughts  Thought[]
   tasks     Task[]
+  budget    OrganizationBudget?
 
   @@map("organizations")
 }
@@ -1817,6 +1818,19 @@ model TokenLedgerEvent {
   @@index([organizationId, agentId, occurredAt(sort: Desc)])
   @@index([organizationId, actorId, occurredAt(sort: Desc)])
   @@map("token_ledger_events")
+}
+
+model OrganizationBudget {
+  id                  String       @id @default(uuid()) @db.Uuid
+  organizationId      String       @unique @map("organization_id") @db.Uuid
+  monthlyCostLimitUsd Float?       @map("monthly_cost_limit_usd")
+  monthlyTokenLimit   Int?         @map("monthly_token_limit")
+  enforced            Boolean      @default(false)
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_budgets")
 }
 
 model ModelPricingProfile {

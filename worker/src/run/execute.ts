@@ -18,7 +18,7 @@ import type {
   QueueProvider,
   ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import { BUILTIN_TOOL_DEFINITIONS, BUILTIN_TOOL_IDS } from '@nessie/runtime'
+import { BUILTIN_TOOL_DEFINITIONS, BUILTIN_TOOL_IDS, checkBudget } from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
@@ -1138,6 +1138,37 @@ export const executeRunJob = async (
 
   try {
     await validateRunActorContext(deps.prisma, payload.actorContext, context)
+
+    // Budget gate: refuse to spend on a model when the org is over its monthly cap.
+    const budget = await checkBudget(deps.prisma, context.channel.organizationId)
+    if (!budget.allowed) {
+      const notice = `⚠️ ${budget.reason ?? 'Monthly budget exceeded'} — this request was not run.`
+      const blockMessage = await deps.prisma.message.create({
+        data: {
+          agentId: context.agent.id,
+          content: notice,
+          role: 'assistant',
+          threadId: context.run.threadId,
+        },
+      })
+      await publishMessageCreated(deps.realtimeTransport, context, {
+        content: blockMessage.content,
+        messageId: blockMessage.id,
+        role: blockMessage.role,
+      })
+      await updateRunStatus(deps.prisma, context.run.id, 'failed')
+      await updateTaskStatus(deps.prisma, context.task.id, 'failed')
+      await setAgentStatus(deps.prisma, context.agent.id, 'idle')
+      await publishRunUpdated(deps.realtimeTransport, context, 'failed')
+      await publishTaskUpdated(
+        deps.realtimeTransport,
+        buildScopes(context),
+        context.task.id,
+        'failed',
+      )
+      console.warn(`[worker] run ${context.run.id} blocked by budget: ${budget.reason}`)
+      return
+    }
 
     planContext = await ensureRunPlanContext(deps.prisma, {
       agentId: context.agent.id,
