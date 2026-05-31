@@ -396,6 +396,20 @@ enum OutcomeStatus {
   superseded
 }
 
+enum ThoughtMemoryType {
+  episodic
+  semantic
+  procedural
+}
+
+enum ThoughtMemoryCategory {
+  intent
+  reason
+  constraint
+  preference
+  fact
+}
+
 enum ThoughtLinkRelation {
   supersedes
   derived_from
@@ -1949,9 +1963,11 @@ model Thought {
   userId         String?      @map("user_id") @db.Uuid
 
   // Classification
-  visibility      ThoughtVisibility @default(private)
-  sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
-  importance      Float             @default(0.5)
+  visibility      ThoughtVisibility     @default(private)
+  sensitivityTier SensitivityTier       @default(normal) @map("sensitivity_tier")
+  memoryType      ThoughtMemoryType     @default(semantic) @map("memory_type")
+  memoryCategory  ThoughtMemoryCategory @default(fact) @map("memory_category")
+  importance      Float                 @default(0.5)
 
   // LLM-extracted metadata
   metadata Json?
@@ -1971,6 +1987,7 @@ model Thought {
   recalls    ThoughtRecall[]
 
   @@index([organizationId, visibility, createdAt])
+  @@index([organizationId, memoryType, memoryCategory, createdAt])
   @@index([organizationId, audienceType, audienceId, createdAt])
   @@index([organizationId, ownerId, ownerType])
   @@index([contentHash])

@@ -21,6 +21,8 @@ export type CaptureThoughtInput = {
   userId?: string
   visibility?: 'private' | 'channel' | 'team' | 'project' | 'organization'
   sensitivityTier?: 'normal' | 'sensitive' | 'restricted'
+  memoryType?: ThoughtMemoryType
+  memoryCategory?: ThoughtMemoryCategory
   importance?: number
   metadata?: Record<string, unknown>
   // When set, only this agent may recall the memory. The audience still
@@ -28,12 +30,23 @@ export type CaptureThoughtInput = {
   privateToAgentId?: string
 }
 
+export type ThoughtMemoryType = 'episodic' | 'semantic' | 'procedural'
+
+export type ThoughtMemoryCategory =
+  | 'intent'
+  | 'reason'
+  | 'constraint'
+  | 'preference'
+  | 'fact'
+
 export type CapturedThought = {
   id: string
   content: string
   contentHash: string
   metadata: ThoughtMetadata | null
   reasoning: ReasoningExtraction | null
+  memoryType: ThoughtMemoryType
+  memoryCategory: ThoughtMemoryCategory
   isDuplicate: boolean
   embeddingFailed: boolean
   createdAt: string
@@ -62,6 +75,24 @@ const VISIBILITY_BY_AUDIENCE_TYPE: Record<ThoughtAudienceType, ThoughtVisibility
 
 const CURRENT_EMBEDDING_DIMS = 1536
 const CURRENT_EMBEDDING_MODEL = 'text-embedding-3-small'
+
+const CATEGORY_BY_METADATA_TYPE: Record<ThoughtMetadata['type'], ThoughtMemoryCategory> = {
+  constraint: 'constraint',
+  decision: 'intent',
+  idea: 'intent',
+  note: 'fact',
+  observation: 'fact',
+  preference: 'preference',
+  task: 'intent',
+}
+
+const resolveMemoryCategory = (
+  input: CaptureThoughtInput,
+  metadata: ThoughtMetadata | null,
+): ThoughtMemoryCategory =>
+  input.memoryCategory ?? (
+    metadata ? CATEGORY_BY_METADATA_TYPE[metadata.type] : 'fact'
+  )
 
 const resolveCanonicalAudienceId = (
   explicitAudienceId: string | undefined,
@@ -199,12 +230,18 @@ export const captureThought = async (
 
   const dupRow = dupCheck.rows[0] as { id: string; metadata: unknown } | undefined
   if (dupRow) {
+    const existingMetadata = dupRow.metadata as ThoughtMetadata | null
+    const memoryType = input.memoryType ?? 'semantic'
+    const memoryCategory = resolveMemoryCategory(input, existingMetadata)
+
     return {
       id: dupRow.id,
       content: input.content,
       contentHash,
-      metadata: dupRow.metadata as ThoughtMetadata | null,
+      metadata: existingMetadata,
       reasoning: null,
+      memoryType,
+      memoryCategory,
       isDuplicate: true,
       embeddingFailed: false,
       createdAt: '',
@@ -227,6 +264,8 @@ export const captureThought = async (
 
   // Insert thought
   const sensitivityTier = input.sensitivityTier ?? 'normal'
+  const memoryType = input.memoryType ?? 'semantic'
+  const memoryCategory = resolveMemoryCategory(input, mergedMetadata)
   const importance = input.importance ?? 0.5
 
   return withTransaction(config.pool, async (client) => {
@@ -236,13 +275,15 @@ export const captureThought = async (
         audience_type, audience_id,
         organization_id, project_id, team_id, channel_id, thread_id, user_id,
         visibility, sensitivity_tier, importance, metadata,
-        private_to_agent_id, embedding_model, dims, created_at, updated_at
+        private_to_agent_id, embedding_model, dims, memory_type, memory_category,
+        created_at, updated_at
       ) VALUES (
         gen_random_uuid(), $1, $2, $3::vector, $4, $5,
         $6::"ThoughtAudienceType", $7::uuid,
         $8, $9, $10, $11, $12, $13,
         $14, $15, $16, $17,
-        $18::uuid, $19, $20, now(), now()
+        $18::uuid, $19, $20, $21::"ThoughtMemoryType", $22::"ThoughtMemoryCategory",
+        now(), now()
       ) RETURNING id, created_at`,
       [
         input.content,
@@ -265,6 +306,8 @@ export const captureThought = async (
         input.privateToAgentId ?? null,
         embedding ? CURRENT_EMBEDDING_MODEL : null,
         embedding ? CURRENT_EMBEDDING_DIMS : null,
+        memoryType,
+        memoryCategory,
       ],
     )
 
@@ -313,6 +356,8 @@ export const captureThought = async (
       contentHash,
       metadata: mergedMetadata,
       reasoning,
+      memoryType,
+      memoryCategory,
       isDuplicate: false,
       embeddingFailed: embedding === null,
       createdAt: String(createdAt),

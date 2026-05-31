@@ -278,6 +278,10 @@ export const searchThoughtsInScopes = async (
     return { results: [], recalls: [] }
   }
 
+  if (!input.channelId) {
+    return { results: [], recalls: [] }
+  }
+
   let queryEmbedding: number[]
   try {
     queryEmbedding = await getEmbedding(input.query, config.modelClient)
@@ -291,6 +295,8 @@ export const searchThoughtsInScopes = async (
     {
       audienceIds: input.audienceIds,
       audienceTypes: input.audienceTypes,
+      currentAudienceId: input.channelId,
+      currentAudienceType: 'channel',
       limit: input.limit,
       organizationId: input.organizationId,
       query: input.query,

@@ -1,6 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
-  captureThought,
   markRecallsInjected,
   markRecallsReferenced,
   resolveAccessibleScopes,
@@ -47,6 +46,7 @@ import {
 } from './plans.js'
 import { markWorkflowStepRunFinished } from './workflows.js'
 import { persistInvocationLedgerEvents, runInferenceGraph } from './inference.js'
+import { enqueueRunMemoryConsolidation } from './memory-consolidation.js'
 
 const runtimeModelConfig = loadConfig().model
 
@@ -1005,52 +1005,6 @@ const retrieveRelevantMemories = async (
   }
 }
 
-const MIN_AGENT_MEMORY_CHARS = 16
-
-// Persist the agent's own response as a memory private to that agent. Its
-// audience is the channel it was produced in, so user-access filtering applies
-// exactly as for any other memory; `privateToAgentId` keeps it out of other
-// agents' recall.
-const captureAgentResponseMemory = async (
-  deps: ExecutionDependencies,
-  context: RunContext,
-  responseText: string,
-  messageId: string,
-): Promise<void> => {
-  const content = responseText.trim()
-  if (content.length < MIN_AGENT_MEMORY_CHARS) {
-    return
-  }
-
-  try {
-    await captureThought(
-      {
-        audienceId: context.channel.id,
-        audienceType: 'channel',
-        channelId: context.channel.id,
-        content,
-        metadata: {
-          memory_origin: 'agent_response',
-          source_message_id: messageId,
-          source_thread_id: context.run.threadId,
-        },
-        organizationId: context.channel.organizationId,
-        ownerId: context.agent.id,
-        ownerType: 'agent',
-        privateToAgentId: context.agent.id,
-        threadId: context.run.threadId,
-        visibility: 'channel',
-      },
-      deps.searchConfig,
-    )
-  } catch (error) {
-    console.warn(
-      '[worker] Agent memory capture failed:',
-      error instanceof Error ? error.message : error,
-    )
-  }
-}
-
 const buildModelPrompt = (
   conversation: StoredConversationMessage[],
   context: RunContext,
@@ -1596,15 +1550,22 @@ export const executeRunJob = async (
       role: 'assistant',
     })
 
-    await captureAgentResponseMemory(
-      deps,
-      context,
-      responseText,
-      assistantMessage.id,
-    )
-
     await updateRunStatus(deps.prisma, context.run.id, 'completed')
     await updateTaskStatus(deps.prisma, context.task.id, 'done')
+    // Memory consolidation is best-effort: a failure to enqueue it must never
+    // turn an already-completed run into a failed one (the outer catch would).
+    try {
+      await enqueueRunMemoryConsolidation(deps.prisma, {
+        runId: parseRunId(context.run.id),
+        taskId: parseTaskId(context.task.id),
+      })
+    } catch (consolidationError) {
+      console.error(
+        '[worker.memory] failed to enqueue run memory consolidation for run',
+        context.run.id,
+        consolidationError,
+      )
+    }
     await markRunPlanFinished(deps.prisma, {
       artifacts: {
         iterations: loopResult.iterations,

@@ -26,6 +26,11 @@ import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './con
 import { dispatchEventTriggers, sweepDueScheduledTriggers } from './control/triggers.js'
 import { executeWorkflowRun } from './control/workflows.js'
 import { executeRunJob } from './run/execute.js'
+import {
+  executeRunMemoryConsolidationJob,
+  MEMORY_CONSOLIDATION_TOPIC,
+  RunMemoryConsolidateJobPayloadSchema,
+} from './run/memory-consolidation.js'
 import { executeOrchestrateDecideJob } from './run/orchestrate.js'
 
 const config = loadConfig()
@@ -95,6 +100,23 @@ export const startWorker = async (
       const payload = OrchestrateDecideJobPayloadSchema.parse(job.payload)
       await executeOrchestrateDecideJob(
         { modelClient, prisma, realtimeTransport },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    MEMORY_CONSOLIDATION_TOPIC,
+    async (job) => {
+      const payload = RunMemoryConsolidateJobPayloadSchema.parse(job.payload)
+      await executeRunMemoryConsolidationJob(
+        {
+          captureConfig: {
+            modelClient,
+            pool,
+          },
+        },
         payload,
       )
     },

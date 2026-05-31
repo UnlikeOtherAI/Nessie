@@ -2,7 +2,24 @@ export { getEmbedding } from './embed.js'
 export { computeFingerprint } from './fingerprint.js'
 export { extractMetadata, type ThoughtMetadata } from './extract-metadata.js'
 export { extractReasoning, type ReasoningExtraction } from './extract-reasoning.js'
-export { captureThought, type CaptureThoughtInput, type CapturedThought, type CaptureConfig } from './capture.js'
+export {
+  captureThought,
+  type CaptureThoughtInput,
+  type CapturedThought,
+  type CaptureConfig,
+  type ThoughtMemoryCategory,
+  type ThoughtMemoryType,
+} from './capture.js'
+export {
+  consolidateRunMemories,
+  selectConsolidationCandidates,
+  type ConsolidatedRunMemory,
+  type ConsolidationMemoryCandidate,
+  type ConsolidateRunMemoriesInput,
+  type ConsolidateRunMemoriesOutput,
+  type ConsolidationRunContext,
+  type ConsolidationThreadMessage,
+} from './consolidate.js'
 export {
   captureUserMessageMemory,
   type UserMessageMemoryOrigin,

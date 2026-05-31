@@ -81,9 +81,19 @@ export const ProjectRecordSchema = z.object({
   name: NonEmptyStringSchema,
   organizationId: OrganizationIdSchema,
   memberCount: z.number().int().nonnegative(),
+  teamCount: z.number().int().nonnegative().optional(),
+  channelCount: z.number().int().nonnegative().optional(),
   createdAt: TimestampSchema,
 })
 export type ProjectRecord = z.infer<typeof ProjectRecordSchema>
+
+export const ProjectMemberRecordSchema = z.object({
+  userId: UserIdSchema,
+  displayName: z.string(),
+  email: z.string(),
+  role: z.string(),
+})
+export type ProjectMemberRecord = z.infer<typeof ProjectMemberRecordSchema>
 
 export const CallParticipantRecordSchema = z.object({
   userId: UserIdSchema,

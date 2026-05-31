@@ -92,6 +92,9 @@ const columnRef = (
 ): string => `${tableAlias}.${mapping.columns[column]}`
 
 export const buildInScopesMembershipAccessSql = (input: {
+  currentAudienceIdSql?: string
+  currentAudienceTypeSql?: string
+  compatibilitySqlFunction?: string
   mapping: ScopedContentMapping
   organizationIdSql: string
   resolvedAlias?: string
@@ -102,6 +105,8 @@ export const buildInScopesMembershipAccessSql = (input: {
   const tableAlias = input.tableAlias ?? 't'
   const scopeSetAlias = input.scopeSetAlias ?? 'ss'
   const resolvedAlias = input.resolvedAlias ?? 'resolved'
+  const compatibilitySqlFunction =
+    input.compatibilitySqlFunction ?? 'thought_audience_compatible_with_output'
   const privateToAgent = columnRef(
     tableAlias,
     input.mapping,
@@ -110,6 +115,16 @@ export const buildInScopesMembershipAccessSql = (input: {
   const deletedPredicate = input.mapping.deletedAtColumn
     ? `AND ${tableAlias}.${input.mapping.deletedAtColumn} IS NULL`
     : ''
+  const compatibilityPredicate =
+    input.currentAudienceTypeSql && input.currentAudienceIdSql
+      ? `AND ${compatibilitySqlFunction}(
+        ${resolvedAlias}.audience_type,
+        ${resolvedAlias}.audience_id,
+        ${input.currentAudienceTypeSql},
+        ${input.currentAudienceIdSql},
+        ${columnRef(tableAlias, input.mapping, 'organizationId')}
+      )`
+      : ''
 
   return {
     joinSql: `JOIN scope_set AS ${scopeSetAlias}
@@ -119,6 +134,7 @@ export const buildInScopesMembershipAccessSql = (input: {
       ${deletedPredicate}
       AND ${resolvedAlias}.audience_type IS NOT NULL
       AND ${resolvedAlias}.audience_id IS NOT NULL
+      ${compatibilityPredicate}
       AND (
         ${privateToAgent} IS NULL
         OR ${privateToAgent} = ${input.runningAgentIdSql}
