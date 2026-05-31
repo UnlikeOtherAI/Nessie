@@ -1552,10 +1552,20 @@ export const executeRunJob = async (
 
     await updateRunStatus(deps.prisma, context.run.id, 'completed')
     await updateTaskStatus(deps.prisma, context.task.id, 'done')
-    await enqueueRunMemoryConsolidation(deps.prisma, {
-      runId: parseRunId(context.run.id),
-      taskId: parseTaskId(context.task.id),
-    })
+    // Memory consolidation is best-effort: a failure to enqueue it must never
+    // turn an already-completed run into a failed one (the outer catch would).
+    try {
+      await enqueueRunMemoryConsolidation(deps.prisma, {
+        runId: parseRunId(context.run.id),
+        taskId: parseTaskId(context.task.id),
+      })
+    } catch (consolidationError) {
+      console.error(
+        '[worker.memory] failed to enqueue run memory consolidation for run',
+        context.run.id,
+        consolidationError,
+      )
+    }
     await markRunPlanFinished(deps.prisma, {
       artifacts: {
         iterations: loopResult.iterations,

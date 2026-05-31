@@ -170,13 +170,23 @@ RETURNS boolean
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT thought_audience_is_subset(
-    output_audience_type,
-    output_audience_id,
-    memory_audience_type,
-    memory_audience_id,
-    organization_id
-  );
+  -- A memory is always compatible with its own audience: recall in the exact
+  -- same audience must succeed even if member resolution is momentarily empty
+  -- (e.g. a channel whose membership rows are not yet populated). This can
+  -- never leak — the audiences are identical. Otherwise fall back to the
+  -- deny-bias subset check (output's members must all be able to see source).
+  SELECT
+    (
+      output_audience_type = memory_audience_type
+      AND output_audience_id = memory_audience_id
+    )
+    OR thought_audience_is_subset(
+      output_audience_type,
+      output_audience_id,
+      memory_audience_type,
+      memory_audience_id,
+      organization_id
+    );
 $$;
 
 CREATE OR REPLACE FUNCTION match_thoughts_scoped(
