@@ -1,5 +1,5 @@
 {
-  "name": "@nessie/memory",
+  "name": "@nessie/retrieval",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,13 +11,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "lint": "eslint src --max-warnings 0",
+    "lint": "eslint src test --max-warnings 0",
     "test": "node --test --import tsx test/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@nessie/retrieval": "workspace:*",
-    "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "pg": "^8.16.3"
   },

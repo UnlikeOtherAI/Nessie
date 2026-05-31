@@ -1,4 +1,9 @@
 import type { ModelClient } from '@nessie/runtime'
+import {
+  searchThoughtCandidates,
+  searchThoughtCandidatesInScopes,
+  type ThoughtSearchRow,
+} from '@nessie/retrieval'
 import type { ThoughtAudienceType, ThoughtSearchMode } from '@nessie/schemas'
 import type { Pool } from 'pg'
 import { logRecalls, type LoggedRecall, type RecallLogEntry } from './recalls.js'
@@ -18,17 +23,6 @@ export type SearchThoughtsInput = {
   mode?: ThoughtSearchMode
   sessionId?: string
   channelId?: string
-}
-
-type ThoughtRow = {
-  id: string
-  content: string
-  owner_type: string
-  visibility: string
-  importance: number
-  metadata: unknown
-  similarity: number
-  created_at: string
 }
 
 type ReasoningRow = {
@@ -80,69 +74,10 @@ export type SearchExecutionConfig = {
   modelClient: ModelClient
 }
 
-type SearchQuerySpec = {
-  sql: string
-  params: unknown[]
-}
-
 export class SearchEmbeddingError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'SearchEmbeddingError'
-  }
-}
-
-const buildSearchQuery = (
-  mode: ThoughtSearchMode,
-  input: SearchThoughtsInput,
-  queryEmbedding: number[] | null,
-): SearchQuerySpec => {
-  const threshold = input.threshold ?? 0.3
-  const limit = input.limit ?? 10
-  const embeddingStr = queryEmbedding ? `[${queryEmbedding.join(',')}]` : null
-
-  if (mode === 'semantic') {
-    return {
-      sql: 'SELECT * FROM match_thoughts_scoped($1::vector, $2::uuid, $3::uuid, $4::"ThoughtAudienceType", $5::uuid, $6, $7)',
-      params: [
-        embeddingStr,
-        input.organizationId,
-        input.userId,
-        input.outputAudienceType,
-        input.outputAudienceId,
-        threshold,
-        limit,
-      ],
-    }
-  }
-
-  if (mode === 'lexical') {
-    return {
-      sql: 'SELECT * FROM match_thoughts_lexical($1, $2::uuid, $3::uuid, $4::"ThoughtAudienceType", $5::uuid, $6, $7)',
-      params: [
-        input.query,
-        input.organizationId,
-        input.userId,
-        input.outputAudienceType,
-        input.outputAudienceId,
-        threshold,
-        limit,
-      ],
-    }
-  }
-
-  return {
-    sql: 'SELECT * FROM match_thoughts_hybrid($1::vector, $2, $3::uuid, $4::uuid, $5::"ThoughtAudienceType", $6::uuid, $7, $8)',
-    params: [
-      embeddingStr,
-      input.query,
-      input.organizationId,
-      input.userId,
-      input.outputAudienceType,
-      input.outputAudienceId,
-      threshold,
-      limit,
-    ],
   }
 }
 
@@ -165,7 +100,7 @@ const bumpThoughtAccess = async (
 }
 
 const mapThoughtRows = (
-  rows: ThoughtRow[],
+  rows: ThoughtSearchRow[],
   mode: ThoughtSearchMode,
 ): SearchResult[] =>
   rows.map((thought, index) => ({
@@ -278,9 +213,20 @@ export const searchThoughts = async (
     }
   }
 
-  const searchQuery = buildSearchQuery(mode, input, queryEmbedding)
-  const results = await config.pool.query(searchQuery.sql, searchQuery.params)
-  const thoughts = results.rows as ThoughtRow[]
+  const thoughts = await searchThoughtCandidates(
+    {
+      limit: input.limit,
+      mode,
+      organizationId: input.organizationId,
+      outputAudienceId: input.outputAudienceId,
+      outputAudienceType: input.outputAudienceType,
+      query: input.query,
+      queryEmbedding,
+      threshold: input.threshold,
+      userId: input.userId,
+    },
+    config.pool,
+  )
   const mappedResults = mapThoughtRows(thoughts, mode)
   const recalls = buildRecallLogEntries(mappedResults, input, queryEmbedding)
 
@@ -341,23 +287,21 @@ export const searchThoughtsInScopes = async (
     )
   }
 
-  const threshold = input.threshold ?? 0.3
-  const limit = input.limit ?? 10
-  const results = await config.pool.query(
-    'SELECT * FROM match_thoughts_in_scopes($1::vector, $2, $3::uuid, $4::text[], $5::uuid[], $6::uuid, $7, $8)',
-    [
-      `[${queryEmbedding.join(',')}]`,
-      input.query,
-      input.organizationId,
-      input.audienceTypes,
-      input.audienceIds,
-      input.runningAgentId,
-      threshold,
-      limit,
-    ],
+  const thoughts = await searchThoughtCandidatesInScopes(
+    {
+      audienceIds: input.audienceIds,
+      audienceTypes: input.audienceTypes,
+      limit: input.limit,
+      organizationId: input.organizationId,
+      query: input.query,
+      queryEmbedding,
+      runningAgentId: input.runningAgentId,
+      threshold: input.threshold,
+    },
+    config.pool,
   )
 
-  const mappedResults = mapThoughtRows(results.rows as ThoughtRow[], IN_SCOPES_MODE)
+  const mappedResults = mapThoughtRows(thoughts, IN_SCOPES_MODE)
   const recalls: RecallLogEntry[] = mappedResults.map((result) => ({
     thoughtId: result.id,
     requesterUserId: input.userId,

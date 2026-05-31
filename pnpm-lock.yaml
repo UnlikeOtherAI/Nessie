@@ -175,9 +175,25 @@ importers:
 
   packages/memory:
     dependencies:
+      '@nessie/retrieval':
+        specifier: workspace:*
+        version: link:../retrieval
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+      pg:
+        specifier: ^8.16.3
+        version: 8.20.0
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.15.5
+        version: 8.20.0
+
+  packages/retrieval:
+    dependencies:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../schemas

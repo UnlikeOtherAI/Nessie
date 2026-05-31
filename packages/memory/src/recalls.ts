@@ -3,6 +3,13 @@ import type {
   ThoughtRecallUserSignal,
   ThoughtSearchMode,
 } from '@nessie/schemas'
+import {
+  markRecallLedgerInjected,
+  markRecallLedgerReferenced,
+  THOUGHT_RECALL_LEDGER,
+  writeRecallLedgerEntries,
+  type RecallLedgerEntry,
+} from '@nessie/retrieval'
 import type { Pool } from 'pg'
 
 type Queryable = Pick<Pool, 'query'>
@@ -40,104 +47,37 @@ export type RecordRecallSignalInput = {
   userSignal: ThoughtRecallUserSignal
 }
 
-const toVectorLiteral = (embedding: number[] | null): string | null =>
-  embedding ? `[${embedding.join(',')}]` : null
-
 export const logRecalls = async (
   entries: RecallLogEntry[],
   db: Queryable,
 ): Promise<LoggedRecall[]> => {
-  if (entries.length === 0) {
-    return []
-  }
-
-  const result = await db.query(
-    `INSERT INTO thought_recalls (
-       id,
-       thought_id,
-       requester_user_id,
-       session_id,
-       channel_id,
-       output_audience_type,
-       output_audience_id,
-       query_text,
-       query_embedding,
-       similarity,
-       rank_position,
-       retrieval_mode,
-       was_injected,
-       was_referenced
-     )
-     SELECT
-       gen_random_uuid(),
-       recall.thought_id,
-       recall.requester_user_id,
-       recall.session_id,
-       recall.channel_id,
-       recall.output_audience_type,
-       recall.output_audience_id,
-       recall.query_text,
-       CASE
-         WHEN recall.query_embedding IS NULL THEN NULL
-         ELSE recall.query_embedding::vector
-       END,
-       recall.similarity,
-       recall.rank_position,
-       recall.retrieval_mode,
-       recall.was_injected,
-       recall.was_referenced
-     FROM unnest(
-       $1::uuid[],
-       $2::uuid[],
-       $3::text[],
-       $4::uuid[],
-       $5::"ThoughtAudienceType"[],
-       $6::uuid[],
-       $7::text[],
-       $8::text[],
-       $9::float8[],
-       $10::int[],
-       $11::text[],
-       $12::boolean[],
-       $13::boolean[]
-     ) AS recall(
-       thought_id,
-       requester_user_id,
-       session_id,
-       channel_id,
-       output_audience_type,
-       output_audience_id,
-       query_text,
-       query_embedding,
-       similarity,
-       rank_position,
-       retrieval_mode,
-       was_injected,
-       was_referenced
-     )
-     RETURNING
-       id,
-       thought_id AS "thoughtId",
-       rank_position AS "rankPosition",
-       retrieval_mode AS "retrievalMode"`,
-    [
-      entries.map((entry) => entry.thoughtId),
-      entries.map((entry) => entry.requesterUserId),
-      entries.map((entry) => entry.sessionId ?? null),
-      entries.map((entry) => entry.channelId ?? null),
-      entries.map((entry) => entry.outputAudienceType ?? null),
-      entries.map((entry) => entry.outputAudienceId ?? null),
-      entries.map((entry) => entry.queryText),
-      entries.map((entry) => toVectorLiteral(entry.queryEmbedding)),
-      entries.map((entry) => entry.similarity),
-      entries.map((entry) => entry.rankPosition),
-      entries.map((entry) => entry.retrievalMode),
-      entries.map((entry) => entry.wasInjected ?? false),
-      entries.map((entry) => entry.wasReferenced ?? false),
-    ],
+  const ledgerEntries: RecallLedgerEntry[] = entries.map((entry) => ({
+    channelId: entry.channelId,
+    contentId: entry.thoughtId,
+    outputAudienceId: entry.outputAudienceId,
+    outputAudienceType: entry.outputAudienceType,
+    queryEmbedding: entry.queryEmbedding,
+    queryText: entry.queryText,
+    rankPosition: entry.rankPosition,
+    requesterUserId: entry.requesterUserId,
+    retrievalMode: entry.retrievalMode,
+    sessionId: entry.sessionId,
+    similarity: entry.similarity,
+    wasInjected: entry.wasInjected,
+    wasReferenced: entry.wasReferenced,
+  }))
+  const logged = await writeRecallLedgerEntries(
+    THOUGHT_RECALL_LEDGER,
+    ledgerEntries,
+    db,
   )
 
-  return result.rows as LoggedRecall[]
+  return logged.map((recall) => ({
+    id: recall.id,
+    rankPosition: recall.rankPosition,
+    retrievalMode: recall.retrievalMode as ThoughtSearchMode,
+    thoughtId: recall.contentId,
+  }))
 }
 
 export const recordRecallSignal = async (
@@ -245,35 +185,11 @@ export const recordRecallSignal = async (
 export const markRecallsInjected = async (
   recallIds: string[],
   db: Queryable,
-): Promise<number> => {
-  if (recallIds.length === 0) {
-    return 0
-  }
-
-  const result = await db.query(
-    `UPDATE thought_recalls
-     SET was_injected = true
-     WHERE id = ANY($1::uuid[])`,
-    [recallIds],
-  )
-
-  return result.rowCount ?? 0
-}
+): Promise<number> =>
+  markRecallLedgerInjected(THOUGHT_RECALL_LEDGER, recallIds, db)
 
 export const markRecallsReferenced = async (
   recallIds: string[],
   db: Queryable,
-): Promise<number> => {
-  if (recallIds.length === 0) {
-    return 0
-  }
-
-  const result = await db.query(
-    `UPDATE thought_recalls
-     SET was_referenced = true
-     WHERE id = ANY($1::uuid[])`,
-    [recallIds],
-  )
-
-  return result.rowCount ?? 0
-}
+): Promise<number> =>
+  markRecallLedgerReferenced(THOUGHT_RECALL_LEDGER, recallIds, db)

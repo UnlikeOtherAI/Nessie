@@ -60,6 +60,9 @@ const VISIBILITY_BY_AUDIENCE_TYPE: Record<ThoughtAudienceType, ThoughtVisibility
   organization: 'organization',
 }
 
+const CURRENT_EMBEDDING_DIMS = 1536
+const CURRENT_EMBEDDING_MODEL = 'text-embedding-3-small'
+
 const resolveCanonicalAudienceId = (
   explicitAudienceId: string | undefined,
   canonicalAudienceId: string | undefined,
@@ -233,13 +236,13 @@ export const captureThought = async (
         audience_type, audience_id,
         organization_id, project_id, team_id, channel_id, thread_id, user_id,
         visibility, sensitivity_tier, importance, metadata,
-        private_to_agent_id, created_at, updated_at
+        private_to_agent_id, embedding_model, dims, created_at, updated_at
       ) VALUES (
         gen_random_uuid(), $1, $2, $3::vector, $4, $5,
         $6::"ThoughtAudienceType", $7::uuid,
         $8, $9, $10, $11, $12, $13,
         $14, $15, $16, $17,
-        $18::uuid, now(), now()
+        $18::uuid, $19, $20, now(), now()
       ) RETURNING id, created_at`,
       [
         input.content,
@@ -260,6 +263,8 @@ export const captureThought = async (
         importance,
         mergedMetadata ? JSON.stringify(mergedMetadata) : null,
         input.privateToAgentId ?? null,
+        embedding ? CURRENT_EMBEDDING_MODEL : null,
+        embedding ? CURRENT_EMBEDDING_DIMS : null,
       ],
     )
 

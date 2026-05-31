@@ -1904,6 +1904,8 @@ model Thought {
   content      String
   contentHash  String                       @map("content_hash")
   embedding    Unsupported("vector(1536)")?
+  embeddingModel String?                    @map("embedding_model")
+  dims          Int?
   searchVector Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))")) @map("search_vector")
 
   // Ownership
