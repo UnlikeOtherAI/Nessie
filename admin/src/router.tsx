@@ -12,6 +12,7 @@ import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
+import { ProjectsPage } from './pages/ProjectsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ToolsPage } from './pages/ToolsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
@@ -52,6 +53,10 @@ export const router = createBrowserRouter([
       {
         path: '/channels/:channelId?',
         element: <ChannelsPage />,
+      },
+      {
+        path: '/projects',
+        element: <ProjectsPage />,
       },
       {
         path: '/agents',

@@ -582,8 +582,8 @@ Parity matrix:
 | mcp call | `POST /mcp` | MCP JSON-RPC router | N/A | actorContext | no | yes | implemented |
 | service checks | `GET /healthz`, `GET /readyz` | `system.healthz`, `system.readyz` | N/A | actorContext | no | yes | target-only |
 | organization | `GET/POST /orgs` | `org.create`, `org.update`, `org.list` | `/org create` | org policy | create/update/delete: yes | yes | blocked |
-| project lifecycle | `GET/POST /projects` | `project.create`, `project.update`, `project.delete` | `/project create` | org + project policy | yes for unsafe transitions | yes | blocked |
-| project members | `POST /projects/{projectId}/members` | `project.members.add`, `project.members.remove` | `/project members add/remove` | project policy | yes | yes | blocked |
+| project lifecycle | `GET/POST /api/projects`, `GET/PATCH/DELETE /api/projects/{projectId}` | `project.create`, `project.update`, `project.delete` | `/project create` | org + project policy (delete: owner, refused while project still has channels) | yes for unsafe transitions | yes | implemented (REST admin surface) |
+| project members | `GET/POST /api/projects/{projectId}/members`, `DELETE /api/projects/{projectId}/members/{userId}` | `project.members.add`, `project.members.remove` | `/project members add/remove` | project policy (owner) | yes | yes | implemented (REST admin surface) |
 | channel lifecycle | `POST /channels` | `project.channels.create`, `project.channels.update`, `project.channels.members.search` | `/channel create` | project/channel policy | yes | yes | blocked |
 | agent catalog | `GET/POST /agents` | `agent.register`, `agent.update`, `agent.retire`, `agent.restore`, `agent.delete`, `agent.bind`, `agent.unbind` | `/agent register` | project/team/channel policy | yes | yes | blocked |
 | tool catalog | `POST /tools` | `tool.import`, `tool.update`, `tool.bind`, `tool.unbind` | `/tool import` | project + transport policy | yes | yes | blocked |

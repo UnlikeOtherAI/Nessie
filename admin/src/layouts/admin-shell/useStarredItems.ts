@@ -15,6 +15,9 @@ export const useStarredItems = ({ initialStarred, token }: UseStarredItemsArgs) 
   const [channelsCollapsed, setChannelsCollapsed] = useState(
     () => getCookie('channelsCollapsed') === '1',
   )
+  const [projectsCollapsed, setProjectsCollapsed] = useState(
+    () => getCookie('projectsCollapsed') === '1',
+  )
   const [starredCollapsed, setStarredCollapsed] = useState(
     () => getCookie('starredCollapsed') === '1',
   )
@@ -25,6 +28,14 @@ export const useStarredItems = ({ initialStarred, token }: UseStarredItemsArgs) 
     setChannelsCollapsed((prev) => {
       const next = !prev
       setCookie('channelsCollapsed', next ? '1' : '0')
+      return next
+    })
+  }, [])
+
+  const toggleProjectsCollapsed = useCallback(() => {
+    setProjectsCollapsed((prev) => {
+      const next = !prev
+      setCookie('projectsCollapsed', next ? '1' : '0')
       return next
     })
   }, [])
@@ -83,6 +94,7 @@ export const useStarredItems = ({ initialStarred, token }: UseStarredItemsArgs) 
   return {
     channelsCollapsed,
     dmCollapsed,
+    projectsCollapsed,
     starred,
     starredChannelIds,
     starredCollapsed,
@@ -90,6 +102,7 @@ export const useStarredItems = ({ initialStarred, token }: UseStarredItemsArgs) 
     starredUserIds,
     toggleChannelsCollapsed,
     toggleDmCollapsed,
+    toggleProjectsCollapsed,
     toggleStar,
     toggleStarredCollapsed,
   }
