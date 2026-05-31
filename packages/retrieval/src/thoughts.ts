@@ -3,12 +3,11 @@ import type { Queryable } from './query.js'
 import { toVectorLiteral } from './query.js'
 
 // Thought retrieval ranking currently lives in the `match_thoughts_*` PL/pgSQL
-// functions, which perform RRF(k=60)+recency fusion in SQL. These helpers are
-// the TypeScript invocation layer over those functions; ranking is NOT done
-// here, preserving exact existing behaviour (Phase 0 is zero-behaviour-change).
-// The TypeScript fusion utilities in ./fusion.ts mirror the same math and are
-// the shared substrate for future content types (e.g. KB chunks) whose
-// candidates will be fused in TS; thoughts intentionally keep the SQL path.
+// functions, which perform RRF(k=60)+recency+outcome fusion in SQL. These
+// helpers are the TypeScript invocation layer over those functions. The
+// TypeScript fusion utilities in ./fusion.ts own the shared scoring constants
+// and mirror the SQL math for future content types whose candidates are fused
+// in TS; thoughts intentionally keep the SQL candidate path.
 
 type SearchQuerySpec = {
   params: unknown[]
@@ -52,6 +51,8 @@ export type SearchThoughtCandidatesInScopesInput = {
   organizationId: string
   audienceTypes: string[]
   audienceIds: string[]
+  currentAudienceType: string
+  currentAudienceId: string
   runningAgentId: string
   threshold?: number
   limit?: number
@@ -126,13 +127,15 @@ export const searchThoughtCandidatesInScopes = async (
   const threshold = input.threshold ?? 0.3
   const limit = input.limit ?? 10
   const results = await db.query(
-    'SELECT * FROM match_thoughts_in_scopes($1::vector, $2, $3::uuid, $4::text[], $5::uuid[], $6::uuid, $7, $8)',
+    'SELECT * FROM match_thoughts_in_scopes($1::vector, $2, $3::uuid, $4::text[], $5::uuid[], $6::"ThoughtAudienceType", $7::uuid, $8::uuid, $9, $10)',
     [
       toVectorLiteral(input.queryEmbedding),
       input.query,
       input.organizationId,
       input.audienceTypes,
       input.audienceIds,
+      input.currentAudienceType,
+      input.currentAudienceId,
       input.runningAgentId,
       threshold,
       limit,

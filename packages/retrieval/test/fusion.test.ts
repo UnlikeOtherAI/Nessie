@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  calculateOutcomeScore,
   calculateRecencyScore,
   fuseHybridCandidates,
   HYBRID_FUSION_CONFIG,
@@ -17,6 +18,7 @@ const closeTo = (actual: number, expected: number): void => {
 
 test('fusion constants match the SQL hybrid retrieval formula', () => {
   assert.deepEqual(HYBRID_FUSION_CONFIG, {
+    outcomeWeight: 0.005,
     recencyDecayPerDay: 0.01,
     recencyWeight: 0.01,
     reciprocalRankK: 60,
@@ -36,6 +38,14 @@ test('reciprocal rank and recency scoring match match_thoughts_hybrid', () => {
     ),
     1 / (1 + (1 * 0.01)),
   )
+})
+
+test('outcome scoring orders successful reasoning above partial pending and failed', () => {
+  assert.equal(calculateOutcomeScore(['successful']), 1)
+  assert.equal(calculateOutcomeScore(['partially']), 0.66)
+  assert.equal(calculateOutcomeScore(['pending']), 0.33)
+  assert.equal(calculateOutcomeScore(['failed']), 0)
+  assert.equal(calculateOutcomeScore(['failed', 'successful']), 1)
 })
 
 test('hybrid fusion orders by RRF plus weighted recency, then created_at desc', () => {
@@ -75,15 +85,44 @@ test('hybrid fusion orders by RRF plus weighted recency, then created_at desc', 
   )
   closeTo(
     fused[0]?.similarity ?? 0,
-    (1 / 61) + (1 / 63) + ((1 / 1.01) * 0.01),
+    (1 / 61) + (1 / 63) + ((1 / 1.01) * 0.01) + (0.33 * 0.005),
   )
   closeTo(
     fused[1]?.similarity ?? 0,
-    (1 / 62) + (1 * 0.01),
+    (1 / 62) + (1 * 0.01) + (0.33 * 0.005),
   )
   closeTo(
     fused[2]?.similarity ?? 0,
-    (1 / 61) + ((1 / 1.3) * 0.01),
+    (1 / 61) + ((1 / 1.3) * 0.01) + (0.33 * 0.005),
+  )
+})
+
+test('hybrid fusion includes outcome weighting in the fused similarity', () => {
+  const fused = fuseHybridCandidates({
+    now: '2026-04-10T00:00:00.000Z',
+    semanticCandidates: [
+      {
+        candidate: {
+          createdAt: '2026-04-10T00:00:00.000Z',
+          id: 'failed',
+          outcomeStatuses: ['failed'],
+        },
+        rank: 1,
+      },
+      {
+        candidate: {
+          createdAt: '2026-04-10T00:00:00.000Z',
+          id: 'successful',
+          outcomeStatuses: ['successful'],
+        },
+        rank: 1,
+      },
+    ],
+  })
+
+  assert.deepEqual(
+    fused.map((result) => result.candidate.id),
+    ['successful', 'failed'],
   )
 })
 

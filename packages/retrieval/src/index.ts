@@ -1,6 +1,7 @@
 export type { CandidateGenerator } from './candidates.js'
 export {
   calculateRecencyScore,
+  calculateOutcomeScore,
   fuseHybridCandidates,
   HYBRID_FUSION_CONFIG,
   reciprocalRankScore,
@@ -8,6 +9,7 @@ export {
   type FuseHybridCandidatesInput,
   type RankedRetrievalCandidate,
   type RetrievalCandidateBase,
+  type RetrievalOutcomeStatus,
 } from './fusion.js'
 export {
   markRecallLedgerInjected,

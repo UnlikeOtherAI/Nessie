@@ -1,4 +1,5 @@
 export const HYBRID_FUSION_CONFIG = {
+  outcomeWeight: 0.005,
   recencyDecayPerDay: 0.01,
   recencyWeight: 0.01,
   reciprocalRankK: 60,
@@ -6,10 +7,18 @@ export const HYBRID_FUSION_CONFIG = {
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+export type RetrievalOutcomeStatus =
+  | 'successful'
+  | 'partially'
+  | 'pending'
+  | 'failed'
+  | 'superseded'
+
 export type RetrievalCandidateBase = {
   id: string
   createdAt: Date | string
   lastAccessedAt?: Date | string | null
+  outcomeStatuses?: RetrievalOutcomeStatus[] | null
 }
 
 export type RankedRetrievalCandidate<T extends RetrievalCandidateBase> = {
@@ -20,6 +29,7 @@ export type RankedRetrievalCandidate<T extends RetrievalCandidateBase> = {
 export type FusedRetrievalResult<T extends RetrievalCandidateBase> = {
   candidate: T
   lexicalRank: number | null
+  outcomeScore: number
   recencyScore: number
   rrfScore: number
   semanticRank: number | null
@@ -64,6 +74,31 @@ export const calculateRecencyScore = (
   )
 }
 
+export const calculateOutcomeScore = (
+  statuses: RetrievalOutcomeStatus[] | null | undefined,
+): number => {
+  if (!statuses || statuses.length === 0) {
+    return 0.33
+  }
+
+  return Math.max(
+    ...statuses.map((status) => {
+      switch (status) {
+        case 'successful':
+          return 1
+        case 'partially':
+          return 0.66
+        case 'pending':
+          return 0.33
+        case 'superseded':
+          return 0.16
+        case 'failed':
+          return 0
+      }
+    }),
+  )
+}
+
 export const fuseHybridCandidates = <T extends RetrievalCandidateBase>(
   input: FuseHybridCandidatesInput<T>,
 ): FusedRetrievalResult<T>[] => {
@@ -101,16 +136,20 @@ export const fuseHybridCandidates = <T extends RetrievalCandidateBase>(
     )
     const semanticRank = pair.semantic?.rank ?? null
     const lexicalRank = pair.lexical?.rank ?? null
+    const outcomeScore = calculateOutcomeScore(candidate.outcomeStatuses)
     const rrfScore = reciprocalRankScore(semanticRank)
       + reciprocalRankScore(lexicalRank)
 
     return {
       candidate,
       lexicalRank,
+      outcomeScore,
       recencyScore,
       rrfScore,
       semanticRank,
-      similarity: rrfScore + (recencyScore * HYBRID_FUSION_CONFIG.recencyWeight),
+      similarity: rrfScore
+        + (recencyScore * HYBRID_FUSION_CONFIG.recencyWeight)
+        + (outcomeScore * HYBRID_FUSION_CONFIG.outcomeWeight),
     }
   })
 

@@ -168,6 +168,7 @@ test('searchAndLogThoughtsInScopes queries the multi-scope function and logs sco
     {
       audienceIds: ['66666666-6666-6666-6666-666666666666', '88888888-8888-8888-8888-888888888888'],
       audienceTypes: ['channel', 'team'],
+      channelId: '66666666-6666-6666-6666-666666666666',
       organizationId: '33333333-3333-3333-3333-333333333333',
       query: 'When does the beta ship?',
       runningAgentId: '99999999-9999-9999-9999-999999999999',
@@ -193,7 +194,9 @@ test('searchAndLogThoughtsInScopes queries the multi-scope function and logs sco
         && (query.params?.[3] as string[])[0] === 'channel'
         && Array.isArray(query.params?.[4])
         && (query.params?.[4] as string[])[1] === '88888888-8888-8888-8888-888888888888'
-        && query.params?.[5] === '99999999-9999-9999-9999-999999999999',
+        && query.params?.[5] === 'channel'
+        && query.params?.[6] === '66666666-6666-6666-6666-666666666666'
+        && query.params?.[7] === '99999999-9999-9999-9999-999999999999',
     ),
   )
 
@@ -220,6 +223,7 @@ test('searchAndLogThoughtsInScopes returns nothing when no scopes are accessible
     {
       audienceIds: [],
       audienceTypes: [],
+      channelId: '66666666-6666-6666-6666-666666666666',
       organizationId: '33333333-3333-3333-3333-333333333333',
       query: 'anything',
       runningAgentId: '99999999-9999-9999-9999-999999999999',

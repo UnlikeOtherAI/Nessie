@@ -155,6 +155,10 @@ When a future conversation asks "what framework should we use for the new micros
 
 That's experience, not just memory.
 
+Recall ranking now uses this loop directly: outcome scores feed hybrid memory fusion so successful
+reasoning outranks partially successful, pending, and failed reasoning when the other retrieval
+signals are close.
+
 ---
 
 ## 3. Reasoning Extraction Pipeline

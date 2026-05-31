@@ -66,17 +66,16 @@ Verified against `api/prisma/schema.prisma`, the migrations, and worker code.
 - HNSW (`m=16, ef_construction=64`) + GIN indices exist; PL/pgSQL
   `match_thoughts_scoped/_lexical/_hybrid` (migration `20260408193000`) and
   `match_thoughts_in_scopes` (`20260529120000`) enforce membership-based access **inside** the
-  ranking query, with RRF(k=60) + recency fusion.
+  ranking query, with RRF(k=60) + recency + outcome fusion.
 - `ThoughtReasoning` (outcome lifecycle), `ThoughtLink`
   (supersedes/derived_from/contradicts/supports/relates_to), `ThoughtAuditLog`, `ThoughtRecall`
   (recall ledger: `wasInjected`/`wasReferenced`/`userSignal`) all exist.
 - `packages/memory` (capture/extract/search/scopes/recalls/lifecycle) is operational.
-- **Confirmed noise bug**: every agent reply > 16 chars is captured as a private Thought
-  (`worker/src/run/execute.ts:1021`, `MIN_AGENT_MEMORY_CHARS=16`) — append-only logging mislabelled
-  as memory.
-- **Designed-but-not-built** (per `docs/memory-pipeline-design.md`): `memory_type` taxonomy,
-  `thought_artifacts` (artifact-linked reasons / "why does X exist?"), `recall_training_signals`,
-  reranker, decay/consolidation, contradiction pipeline, audience-compatibility recall check.
+- **Phase A update**: agent replies are no longer captured wholesale. Completed runs enqueue
+  `memory.run.consolidate`, which emits a bounded set of typed episodic/semantic memories.
+- **Still designed-but-not-built** (per `docs/memory-pipeline-design.md`): `thought_artifacts`
+  (artifact-linked reasons / "why does X exist?"), `recall_training_signals`, reranker,
+  decay/consolidation scheduling, and contradiction pipeline.
 
 ### Search / embeddings infra
 
@@ -232,14 +231,14 @@ access logic.
 
 ### Phase A — Memory hygiene + taxonomy *(Phase 0; parallel track)*
 **Goal:** stop polluting the shared index; make memory typed and outcome-aware.
-- Additive migration: `memory_type`, `memory_category` (default existing rows to `semantic`).
-- Replace per-response capture at `execute.ts:1021` with a **post-run consolidation** job on the
-  existing pgqueue that reads Run/Task + thread tail and emits typed episodic + semantic memories.
+- Additive migration: `memory_type`, `memory_category` (existing rows default to `semantic`/`fact`).
+- Replace per-response capture with a **post-run consolidation** job on the existing pgqueue that
+  reads Run/Task + thread tail and emits typed episodic + semantic memories.
 - Wire `ThoughtReasoning.outcome` into recall scoring (SUCCESSFUL > PARTIALLY > PENDING > FAILED) via
-  the new fusion layer (logic exists in `lifecycle.ts`, not consulted at recall time).
+  the shared fusion constants and matching SQL formula.
 - Enforce the **audience-compatibility** recall check (`Audience(current) ⊆ Audience(source)`) in
-  `match_thoughts_scoped` — close the documented cross-channel leakage gap **before** adding document
-  volume. Deny-bias test suite.
+  `match_thoughts_scoped` and `match_thoughts_in_scopes` — close the documented cross-channel leakage
+  gap **before** adding document volume. Deny-bias test suite.
 
 ### Phase B — Governed first-party KB envelope *(Phase 0)*
 **Goal:** a Confluence-grade governed document store — governance and provenance first, no third-party

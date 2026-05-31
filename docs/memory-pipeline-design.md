@@ -214,10 +214,12 @@ Write-heavy, batch-read for training. Each row is a (query, memory, context) -> 
 Add to `thoughts`:
 
 ```
-memory_type  TEXT DEFAULT 'intent'  -- 'intent', 'reason', 'constraint', 'preference', 'fact'
+memory_type      TEXT DEFAULT 'semantic'  -- 'episodic', 'semantic', 'procedural'
+memory_category  TEXT DEFAULT 'fact'      -- 'intent', 'reason', 'constraint', 'preference', 'fact'
 ```
 
-This is set by the extraction pipeline and drives retrieval strategy.
+`memory_type` separates run experiences from durable facts/procedures. `memory_category` is set by
+capture/consolidation and drives retrieval strategy.
 
 ---
 
@@ -312,14 +314,14 @@ AND (
     -- Standard membership check (existing)
     ...existing checks...
     -- NEW: Audience compatibility check
-    -- For channel-scoped memories, verify no member of the
-    -- source channel is excluded from the current channel
+    -- For channel-scoped memories, verify every member of the
+    -- current channel was already in the source channel.
     AND NOT EXISTS (
-      SELECT 1 FROM channel_members source_cm
-      WHERE source_cm.channel_id = t.channel_id
-        AND source_cm.user_id NOT IN (
+      SELECT 1 FROM channel_members current_cm
+      WHERE current_cm.channel_id = $current_channel_id
+        AND current_cm.user_id NOT IN (
           SELECT user_id FROM channel_members
-          WHERE channel_id = $current_channel_id
+          WHERE channel_id = t.channel_id
         )
     )
   )
@@ -328,7 +330,8 @@ AND (
 
 This prevents a memory from a 3-person management channel being surfaced in a 50-person public channel — even if the searching user is in both.
 
-Exception: `organization`-visibility memories are explicitly designated as org-wide and skip audience checks.
+`organization`-visibility memories pass the same subset check because a channel/team/project audience
+must still be a subset of the organization membership.
 
 ### Sensitivity Auto-Classification
 
@@ -375,13 +378,13 @@ Each cycle makes the next retrieval better. The system learns not just what to r
 - This generates the data we need for everything else
 
 ### Phase 2: Memory Types + Artifact Links
-- Add `memory_type` column to thoughts
+- Add `memory_type` and `memory_category` columns to thoughts
 - `thought_artifacts` table for artifact-linked reasons
 - Artifact-based search endpoint ("why does X exist?")
 - Extraction pipeline updates for reason detection and artifact identification
 
 ### Phase 3: Recall Scoping
-- Audience compatibility checks in `match_thoughts_scoped()`
+- Audience compatibility checks in `match_thoughts_scoped()` and `match_thoughts_in_scopes()`
 - Channel-level sensitivity classification
 - Automatic sensitivity inheritance
 
@@ -525,7 +528,7 @@ Implementation: add `artifact_anchors JSONB` to `thought_artifacts` for storing 
 
 ### Security Model (from privacy research)
 
-**Critical: our audience compatibility check has the directionality wrong.** The research confirms our approach is DLM-style "restriction" checking, but flags that the correct check is `Audience(current_channel) <= Audience(source_channel)` — everyone who can see the output was already in the source audience. NOT the reverse. Verify our `match_thoughts_scoped()` implements this correctly.
+**Critical: audience compatibility is a deny-bias subset check.** The research confirms our approach is DLM-style "restriction" checking: `Audience(current) <= Audience(source)` — everyone who can see the output was already in the source audience. `match_thoughts_scoped()` and `match_thoughts_in_scopes()` enforce this via `thought_audience_compatible_with_output(...)`.
 
 **Agent state isolation is mandatory.** If an agent reads confidential memories in one channel and later responds in another, it can leak via retained state even without re-retrieving. Agent instances must be isolated per context — no shared hidden state across channels.
 

@@ -54,6 +54,8 @@ test('scoped content mappings must expose every scoping column', () => {
 
 test('in-scope access predicate enforces membership and per-agent privacy', () => {
   const sql = buildInScopesMembershipAccessSql({
+    currentAudienceIdSql: 'current_audience_id',
+    currentAudienceTypeSql: 'current_audience_type',
     mapping: THOUGHT_SCOPED_CONTENT_MAPPING,
     organizationIdSql: 'match_org_id',
     runningAgentIdSql: 'running_agent_id',
@@ -69,6 +71,9 @@ test('in-scope access predicate enforces membership and per-agent privacy', () =
   assert.match(sql.whereSql, /t\.deleted_at IS NULL/)
   assert.match(sql.whereSql, /resolved\.audience_type IS NOT NULL/)
   assert.match(sql.whereSql, /resolved\.audience_id IS NOT NULL/)
+  assert.match(sql.whereSql, /thought_audience_compatible_with_output/)
+  assert.match(sql.whereSql, /current_audience_type/)
+  assert.match(sql.whereSql, /current_audience_id/)
   assert.match(sql.whereSql, /t\.private_to_agent_id IS NULL/)
   assert.match(sql.whereSql, /t\.private_to_agent_id = running_agent_id/)
 })
