@@ -28,7 +28,6 @@ type TaskRecord = {
 type AssignableUser = {
   id: string
   displayName: string
-  role: string
 }
 
 type Tab = 'mine' | 'all'
@@ -59,6 +58,7 @@ const NEXT_ACTIONS: Partial<Record<TaskStatus, Array<{ label: string; status: Ta
   awaiting_approval: [{ label: 'Done', status: 'done' }],
   done: [{ label: 'Reopen', status: 'in_progress' }],
   failed: [{ label: 'Reopen', status: 'in_progress' }],
+  cancelled: [{ label: 'Reopen', status: 'inbox' }],
 }
 
 const labelFor = (status: TaskStatus): string => status.replace(/_/g, ' ')
@@ -266,7 +266,15 @@ export const WorkPage = () => {
               </div>
             </div>
           ))}
-          {tasks.length === 0 && (
+          {tasksQuery.isError && (
+            <div className="py-10 text-center text-sm text-red-300">
+              Failed to load tasks. Please refresh.
+            </div>
+          )}
+          {tasksQuery.isLoading && (
+            <div className="py-10 text-center text-[color:var(--tx3)]">Loading…</div>
+          )}
+          {!tasksQuery.isError && !tasksQuery.isLoading && tasks.length === 0 && (
             <div className="py-10 text-center text-[color:var(--tx3)]">
               {tab === 'mine' ? 'Nothing assigned to you yet' : 'No work items yet'}
             </div>

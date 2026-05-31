@@ -5,7 +5,8 @@ import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDraw
 import {
   PersonalAssistantSidebarEntry,
 } from '../components/features/personal-assistant/PersonalAssistantSurface';
-import { PresenceDot } from '../components/primitives/PresenceDot';
+import { faArrowRightFromBracket } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { CreateChannelDialog } from '../components/shared/CreateChannelDialog';
 import { CreateProjectDialog } from '../components/shared/CreateProjectDialog';
 import { RenameProjectDialog } from '../components/shared/RenameProjectDialog';
@@ -37,13 +38,19 @@ const parseChannelIdFromPath = (pathname: string): string | undefined => {
   return match?.[1];
 };
 
-const railUserButtonClassName = [
-  'relative mb-1 flex h-8 w-8 items-center justify-center rounded-full',
+const railUserAvatarClassName = [
+  'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
   'text-[11px] font-bold text-white',
 ].join(' ');
 
-const statusIndicatorClassName =
-  'absolute bottom-0 right-0 rounded-full border-2 border-[color:var(--rail)] bg-green-500 p-[3px]';
+const railLogoutRowClassName = 'mt-2 flex w-full items-center gap-1.5';
+
+const railLogoutLineClassName = 'h-px flex-1 rounded-full bg-[color:var(--sep)]';
+
+const railLogoutButtonClassName = [
+  'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded',
+  'text-[color:var(--tx3)] transition-colors hover:text-white',
+].join(' ');
 
 const channelHashClassName =
   'w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]';
@@ -609,17 +616,21 @@ export const AdminShellLayout = () => {
 
           <div className="flex-1" />
 
-          <button
-            className={railUserButtonClassName}
-            onClick={() => void logout().then(() => navigate('/login', { replace: true }))}
-            style={{ background: '#7c3aed' }}
-            type="button"
-          >
+          <div className={railUserAvatarClassName} style={{ background: '#7c3aed' }}>
             <span>{me.user.displayName.slice(0, 2).toUpperCase()}</span>
-            <span className={statusIndicatorClassName}>
-              <PresenceDot active />
-            </span>
-          </button>
+          </div>
+          <div className={railLogoutRowClassName}>
+            <span className={railLogoutLineClassName} />
+            <button
+              aria-label="Log out"
+              className={railLogoutButtonClassName}
+              onClick={() => void logout().then(() => navigate('/login', { replace: true }))}
+              title="Log out"
+              type="button"
+            >
+              <FontAwesomeIcon className="h-3.5 w-3.5" icon={faArrowRightFromBracket} />
+            </button>
+          </div>
         </aside>
 
         {isAgentsRoute && (

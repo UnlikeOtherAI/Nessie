@@ -1835,6 +1835,7 @@ enum BudgetMode {
   off
   warn
   enforce
+  degrade
   unlimited
 }
 
@@ -1861,6 +1862,8 @@ model Budget {
   period               BudgetPeriod    @default(monthly)
   warnThresholdPercent Int             @default(80) @map("warn_threshold_percent")
   blockHumansWhenOver  Boolean         @default(false) @map("block_humans_when_over")
+  degradeModel         String?         @map("degrade_model")
+  degradeProvider      String?         @map("degrade_provider")
   createdAt            DateTime        @default(now()) @map("created_at")
   updatedAt            DateTime        @updatedAt @map("updated_at")
   organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)

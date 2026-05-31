@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { useProjects, useTeams } from '../../../facades/projects/hooks'
 
-type BudgetMode = 'off' | 'warn' | 'enforce' | 'unlimited'
+type BudgetMode = 'off' | 'warn' | 'enforce' | 'degrade' | 'unlimited'
 type BudgetScopeType = 'organization' | 'project' | 'team'
 type BudgetPeriod = 'weekly' | 'monthly' | 'yearly'
 
@@ -18,6 +18,8 @@ type BudgetStatus = {
   spentTokens: number
   warnThresholdPercent: number
   blockHumansWhenOver: boolean
+  degradeModel: string | null
+  degradeProvider: string | null
   level: 'ok' | 'warn' | 'over'
   percentUsed: number | null
   costTrackingActive: boolean
@@ -63,6 +65,8 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
   const [tokenLimit, setTokenLimit] = useState('')
   const [warnThreshold, setWarnThreshold] = useState('80')
   const [blockHumans, setBlockHumans] = useState(false)
+  const [degradeModel, setDegradeModel] = useState('')
+  const [degradeProvider, setDegradeProvider] = useState('openai')
   const [formError, setFormError] = useState<string | null>(null)
 
   const resetForm = () => {
@@ -74,6 +78,8 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
     setTokenLimit('')
     setWarnThreshold('80')
     setBlockHumans(false)
+    setDegradeModel('')
+    setDegradeProvider('openai')
   }
 
   const invalidate = () => {
@@ -113,6 +119,10 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
       setFormError('Warn threshold must be between 1 and 100.')
       return
     }
+    if (mode === 'degrade' && degradeModel.trim() === '') {
+      setFormError('Degrade mode needs a fallback model to route to.')
+      return
+    }
     setFormError(null)
     save.mutate({
       scopeType,
@@ -123,6 +133,8 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
       period,
       warnThresholdPercent: threshold,
       blockHumansWhenOver: blockHumans,
+      degradeModel: mode === 'degrade' ? degradeModel.trim() : null,
+      degradeProvider: mode === 'degrade' ? degradeProvider.trim() || 'openai' : null,
     })
   }
 
@@ -135,6 +147,8 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
     setTokenLimit(b.tokenLimit != null ? String(b.tokenLimit) : '')
     setWarnThreshold(String(b.warnThresholdPercent))
     setBlockHumans(b.blockHumansWhenOver)
+    setDegradeModel(b.degradeModel ?? '')
+    setDegradeProvider(b.degradeProvider ?? 'openai')
   }
 
   const scopeLabel = (b: BudgetStatus): string => {
@@ -198,6 +212,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
             <option value="off">Off — inherit parent</option>
             <option value="warn">Warn — track, never block</option>
             <option value="enforce">Enforce — throttle automations</option>
+            <option value="degrade">Degrade — cheaper model over cap</option>
             <option value="unlimited">Unlimited — exempt, no cap</option>
           </select>
         </label>
@@ -215,7 +230,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
         </label>
       </div>
 
-      {(mode === 'warn' || mode === 'enforce') && (
+      {(mode === 'warn' || mode === 'enforce' || mode === 'degrade') && (
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <label className="text-xs text-[color:var(--tx2)]">
             Cost cap (USD)
@@ -259,6 +274,29 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
           />
           Also block people&apos;s live requests (off by default — only automations are throttled)
         </label>
+      )}
+
+      {mode === 'degrade' && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="text-xs text-[color:var(--tx2)]">
+            Fallback model (used once over cap)
+            <input
+              className="admin-input mt-1"
+              onChange={(e) => setDegradeModel(e.target.value)}
+              placeholder="e.g. gpt-5-mini"
+              value={degradeModel}
+            />
+          </label>
+          <label className="text-xs text-[color:var(--tx2)]">
+            Fallback provider
+            <input
+              className="admin-input mt-1"
+              onChange={(e) => setDegradeProvider(e.target.value)}
+              placeholder="openai"
+              value={degradeProvider}
+            />
+          </label>
+        </div>
       )}
 
       <div className="mt-3 flex items-center justify-end gap-2">

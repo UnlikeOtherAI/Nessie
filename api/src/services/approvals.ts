@@ -142,12 +142,23 @@ export const resolveApprovalRequest = async (
     return { error: 'SELF_APPROVAL' as const, approval: mapApproval(approval) }
   }
 
-  // When the approval is routed to a role, only an actor holding that role may resolve it.
-  if (
-    approval.requiredApproverRole &&
-    !(actorContext.actor.roles ?? []).includes(approval.requiredApproverRole)
-  ) {
-    return { error: 'ROLE_REQUIRED' as const, approval: mapApproval(approval) }
+  // When the approval is routed to a role, only an actor holding that role may
+  // resolve it. Check the LIVE organization membership rather than the JWT `roles`
+  // claim — tokens are long-lived (default 24h), so a user demoted after their
+  // token was issued must not retain approval power on a stale claim.
+  if (approval.requiredApproverRole) {
+    const membership = await prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        },
+      },
+      select: { role: true },
+    })
+    if (membership?.role !== approval.requiredApproverRole) {
+      return { error: 'ROLE_REQUIRED' as const, approval: mapApproval(approval) }
+    }
   }
 
   // Check expiry. Guard the transition on `status === 'pending'` so a
