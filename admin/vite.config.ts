@@ -17,6 +17,11 @@ export default defineConfig({
     port: 5555,
     strictPort: true,
     proxy: apiProxy,
+    // The repo lives under /System/Volumes/Data/.internal/… (a macOS data-volume
+    // firmlink path) where fsevents does not deliver change events, so Vite's
+    // native watcher never fires and HMR appears dead. Poll instead so every
+    // source edit reliably triggers an HMR update.
+    watch: { usePolling: true, interval: 150 },
   },
   preview: {
     host: '0.0.0.0',

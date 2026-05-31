@@ -4,9 +4,10 @@
 
 - Worktrees are mandatory. The main project checkout always stays on `main`; never edit it directly. Every task — and every parallel agent/CLI — works in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never reset, clean, or discard another worktree's or agent's work. Merge finished work into `main` only after review, linting, and tests pass, then remove the worktree and delete the merged branch.
 - Commit and push after every turn. No exceptions. If there is nothing to commit, skip.
-- Rebuild the admin (`pnpm --filter @nessie/admin build`) after every turn where admin code changed.
-- Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt and the API restarts.
-- After every build or server restart, verify the new version is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
+- Local dev runs with hot reload via `pnpm dev` (root) — API (5554, nodemon) + admin (5555, Vite HMR) in parallel. Admin and API source edits reload automatically; **do not hand-build the admin to see changes.** The repo sits on a macOS data-volume path where fsevents is dead, so watchers must poll: Vite `server.watch.usePolling` and `nodemon --legacy-watch`. Don't remove these.
+- Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
+- `pnpm --filter @nessie/admin build` is for production/CI bundles only, not the dev loop.
+- After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 
 ## Code Quality
