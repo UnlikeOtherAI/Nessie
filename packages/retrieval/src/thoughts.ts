@@ -2,6 +2,14 @@ import type { ThoughtAudienceType, ThoughtSearchMode } from '@nessie/schemas'
 import type { Queryable } from './query.js'
 import { toVectorLiteral } from './query.js'
 
+// Thought retrieval ranking currently lives in the `match_thoughts_*` PL/pgSQL
+// functions, which perform RRF(k=60)+recency fusion in SQL. These helpers are
+// the TypeScript invocation layer over those functions; ranking is NOT done
+// here, preserving exact existing behaviour (Phase 0 is zero-behaviour-change).
+// The TypeScript fusion utilities in ./fusion.ts mirror the same math and are
+// the shared substrate for future content types (e.g. KB chunks) whose
+// candidates will be fused in TS; thoughts intentionally keep the SQL path.
+
 type SearchQuerySpec = {
   params: unknown[]
   sql: string
