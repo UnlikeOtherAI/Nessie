@@ -604,8 +604,8 @@ Language and translation (see [language-and-translation-spec.md](./language-and-
 Knowledge base first-party envelope (Phase B):
 
 - `KnowledgeSpaceRecord` with project anchor, scoping columns, visibility, sensitivity tier, provenance envelope
-- `KnowledgePageRecord` with tree position, draft/published/archived status, labels, published head pointer
-- `KnowledgePageVersionRecord` append-only markdown body/bodyRef versions
+- `KnowledgePageRecord` with tree position, draft/published/archived status, labels, published head pointer; archived pages are direct-readable but not mutable
+- `KnowledgePageVersionRecord` append-only markdown body/bodyRef versions with server-derived `authorType`
 - `KnowledgeSearchHit` deterministic title/metadata/label search hit with `sourceRef`, `visibilityReason`, `policyChainTrace`
 - `KnowledgeProvider` capability flags in `packages/knowledge`
 

@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { KnowledgeConflictError } from './errors.js'
 import { replaceLabels } from './native-labels.js'
 import { mapPage, mapSpace, mapVersion, pageInclude } from './native-mappers.js'
 import { searchNativePages } from './native-search.js'
@@ -25,6 +26,9 @@ const nativeCapabilities = {
   supportsDeterministicSearch: true,
 } as const
 
+const VERSION_CREATE_MAX_ATTEMPTS = 3
+const ARCHIVED_PAGE_MESSAGE = 'Archived pages are read-only'
+
 const fetchPage = async (
   client: PrismaClient | Prisma.TransactionClient,
   organizationId: string,
@@ -49,16 +53,71 @@ const nextVersionNumber = async (
   return (latest?.versionNumber ?? 0) + 1
 }
 
+const isVersionNumberConflict = (error: unknown): boolean => {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== 'P2002'
+  ) {
+    return false
+  }
+
+  const target = error.meta?.['target']
+  if (Array.isArray(target)) {
+    const columns = new Set(
+      target.filter((value): value is string => typeof value === 'string'),
+    )
+    return (
+      (columns.has('page_id') || columns.has('pageId')) &&
+      (columns.has('version_number') || columns.has('versionNumber'))
+    )
+  }
+
+  return (
+    typeof target === 'string' &&
+    (target.includes('knowledge_page_versions_page_version_key') ||
+      (target.includes('page_id') && target.includes('version_number')))
+  )
+}
+
+const withVersionNumberRetry = async <T>(operation: () => Promise<T>): Promise<T> => {
+  for (let attempt = 1; attempt <= VERSION_CREATE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation()
+    } catch (error) {
+      if (!isVersionNumberConflict(error)) throw error
+      if (attempt === VERSION_CREATE_MAX_ATTEMPTS) {
+        throw new KnowledgeConflictError('Knowledge page version conflict')
+      }
+    }
+  }
+  throw new KnowledgeConflictError('Knowledge page version conflict')
+}
+
+const getMutablePage = async (
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  pageId: string,
+) => {
+  const page = await tx.knowledgePage.findFirst({
+    where: { id: pageId, organizationId, deletedAt: null },
+    select: { id: true, spaceId: true, status: true },
+  })
+  if (!page) return null
+  if (page.status === 'archived') throw new KnowledgeConflictError(ARCHIVED_PAGE_MESSAGE)
+  return page
+}
+
 const assertMoveDoesNotCycle = async (
   tx: Prisma.TransactionClient,
+  organizationId: string,
   pageId: string,
   parentPageId: string | null | undefined,
 ): Promise<boolean> => {
   let nextParentId = parentPageId ?? null
   while (nextParentId) {
     if (nextParentId === pageId) return false
-    const parent = await tx.knowledgePage.findUnique({
-      where: { id: nextParentId },
+    const parent = await tx.knowledgePage.findFirst({
+      where: { id: nextParentId, organizationId },
       select: { parentPageId: true },
     })
     nextParentId = parent?.parentPageId ?? null
@@ -108,13 +167,15 @@ const movePage = async (
   input: MovePageInput,
 ) =>
   prisma.$transaction(async (tx) => {
-    const page = await tx.knowledgePage.findFirst({
-      where: { id: input.pageId, organizationId: input.organizationId, deletedAt: null },
-      select: { id: true, spaceId: true },
-    })
+    const page = await getMutablePage(tx, input.organizationId, input.pageId)
     if (!page) return null
-    const validMove = await assertMoveDoesNotCycle(tx, input.pageId, input.parentPageId)
-    if (!validMove) throw new Error('Cannot move a page below itself')
+    const validMove = await assertMoveDoesNotCycle(
+      tx,
+      input.organizationId,
+      input.pageId,
+      input.parentPageId,
+    )
+    if (!validMove) throw new KnowledgeConflictError('Cannot move a page below itself')
     if (input.parentPageId) {
       const parent = await tx.knowledgePage.findFirst({
         where: {
@@ -141,10 +202,7 @@ const publishPage = async (
   input: PublishPageInput,
 ) =>
   prisma.$transaction(async (tx) => {
-    const page = await tx.knowledgePage.findFirst({
-      where: { id: input.pageId, organizationId: input.organizationId, deletedAt: null },
-      select: { id: true },
-    })
+    const page = await getMutablePage(tx, input.organizationId, input.pageId)
     if (!page) return null
     const latest = await tx.knowledgePageVersion.findFirst({
       where: { pageId: input.pageId },
@@ -162,12 +220,13 @@ const restoreVersion = async (
   prisma: PrismaClient,
   input: RestorePageVersionInput,
 ) =>
-  prisma.$transaction(async (tx) => {
+  withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
+    const page = await getMutablePage(tx, input.organizationId, input.pageId)
+    if (!page) return null
     const version = await tx.knowledgePageVersion.findFirst({
       where: {
         id: input.versionId,
         pageId: input.pageId,
-        page: { organizationId: input.organizationId, deletedAt: null },
       },
     })
     if (!version) return null
@@ -187,18 +246,15 @@ const restoreVersion = async (
       data: { status: 'draft' },
     })
     return fetchPage(tx, input.organizationId, input.pageId)
-  })
+  }))
 
 const updatePage = async (
   prisma: PrismaClient,
   pageId: string,
   input: UpdatePageInput,
 ) =>
-  prisma.$transaction(async (tx) => {
-    const existing = await tx.knowledgePage.findFirst({
-      where: { id: pageId, organizationId: input.organizationId, deletedAt: null },
-      select: { id: true },
-    })
+  withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
+    const existing = await getMutablePage(tx, input.organizationId, pageId)
     if (!existing) return null
     const createsVersion = input.body !== undefined || input.bodyRef !== undefined
     if (createsVersion) {
@@ -235,7 +291,7 @@ const updatePage = async (
       pageId,
     })
     return fetchPage(tx, input.organizationId, pageId)
-  })
+  }))
 
 export const createNativeKnowledgeProvider = (
   prisma: PrismaClient,

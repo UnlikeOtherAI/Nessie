@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import Fastify from 'fastify'
-import type { PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
-import type {
+import {
+  KnowledgeConflictError,
+  type CreatePageInput,
   KnowledgePageRecord,
   KnowledgeProvider,
   KnowledgeSpaceRecord,
@@ -57,7 +59,7 @@ const makeSpace = (): KnowledgeSpaceRecord => ({
   updatedAt: '2026-05-31T10:00:00.000Z',
 })
 
-const makePage = (): KnowledgePageRecord => ({
+const makePage = (input: Partial<KnowledgePageRecord> = {}): KnowledgePageRecord => ({
   id: pageId,
   spaceId,
   title: 'Runbook',
@@ -93,44 +95,64 @@ const makePage = (): KnowledgePageRecord => ({
   deletedAt: null,
   createdAt: '2026-05-31T10:00:00.000Z',
   updatedAt: '2026-05-31T10:00:00.000Z',
+  ...input,
 })
 
-const makeProvider = (calls: string[]): KnowledgeProvider => ({
-  id: 'test',
-  kind: 'first_party',
-  capabilities: {
-    canWrite: true,
-    canIncrementalSync: false,
-    supportsNativeSearch: true,
-    supportsServerSideACL: true,
-    supportsVersionHistory: true,
-    supportsHierarchicalPages: true,
-    supportsDeterministicSearch: true,
-  },
-  archivePage: async () => null,
-  archiveSpace: async () => null,
-  createPage: async () => {
-    calls.push('createPage')
-    return makePage()
-  },
-  createSpace: async () => {
-    calls.push('createSpace')
-    return makeSpace()
-  },
-  getPage: async () => null,
-  getSpace: async () => null,
-  listPages: async () => [],
-  listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
-  listVersions: async () => [],
-  movePage: async () => null,
-  publishPage: async () => null,
-  restoreVersion: async () => null,
-  searchPages: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
-  updatePage: async () => null,
-  updateSpace: async () => null,
-})
+const versionConflictError = () =>
+  new Prisma.PrismaClientKnownRequestError(
+    'Unique constraint failed on the fields: (`page_id`,`version_number`)',
+    {
+      clientVersion: 'test',
+      code: 'P2002',
+      meta: { target: ['page_id', 'version_number'] },
+    },
+  )
 
-const makeApp = (effect: 'allow' | 'deny') => {
+const makeProvider = (
+  calls: string[],
+  overrides: Partial<KnowledgeProvider> = {},
+): KnowledgeProvider => {
+  const provider: KnowledgeProvider = {
+    id: 'test',
+    kind: 'first_party',
+    capabilities: {
+      canWrite: true,
+      canIncrementalSync: false,
+      supportsNativeSearch: true,
+      supportsServerSideACL: true,
+      supportsVersionHistory: true,
+      supportsHierarchicalPages: true,
+      supportsDeterministicSearch: true,
+    },
+    archivePage: async () => null,
+    archiveSpace: async () => null,
+    createPage: async () => {
+      calls.push('createPage')
+      return makePage()
+    },
+    createSpace: async () => {
+      calls.push('createSpace')
+      return makeSpace()
+    },
+    getPage: async () => null,
+    getSpace: async () => null,
+    listPages: async () => [],
+    listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
+    listVersions: async () => [],
+    movePage: async () => null,
+    publishPage: async () => null,
+    restoreVersion: async () => null,
+    searchPages: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
+    updatePage: async () => null,
+    updateSpace: async () => null,
+  }
+  return { ...provider, ...overrides }
+}
+
+const makeApp = (
+  effect: 'allow' | 'deny',
+  providerOverrides: Partial<KnowledgeProvider> = {},
+) => {
   const auditLogs: Array<Record<string, unknown>> = []
   const calls: string[] = []
   const prisma = {
@@ -144,7 +166,7 @@ const makeApp = (effect: 'allow' | 'deny') => {
   const app = Fastify({ logger: false })
   registerKnowledgeBaseRoutes(app, {
     prisma,
-    knowledgeProvider: makeProvider(calls),
+    knowledgeProvider: makeProvider(calls, providerOverrides),
     requireActorContext: () => actorContext,
   } as unknown as Parameters<typeof registerKnowledgeBaseRoutes>[1])
   return { app, auditLogs, calls }
@@ -185,5 +207,89 @@ test('knowledge page creation emits audit and provenance envelope', async () => 
     'source:organization:00000000-0000-4000-8000-000000000001/allow',
     'rule:00000000-0000-4000-8000-000000000010',
   ])
+  await app.close()
+})
+
+test('knowledge routes derive page authorType from actor context, not request body', async () => {
+  const authorTypes: CreatePageInput['authorType'][] = []
+  const { app } = makeApp('allow', {
+    createPage: async (input) => {
+      authorTypes.push(input.authorType)
+      return makePage({
+        latestVersion: makePage().latestVersion
+          ? { ...makePage().latestVersion, authorType: input.authorType }
+          : null,
+      })
+    },
+  })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/knowledge-base/spaces/${spaceId}/pages`,
+    payload: {
+      title: 'Runbook',
+      body: '# Runbook',
+      authorType: 'agent',
+      projectId,
+    },
+  })
+
+  assert.equal(response.statusCode, 201)
+  assert.deepEqual(authorTypes, ['user'])
+  await app.close()
+})
+
+test('knowledge page listing verifies the space before listing pages', async () => {
+  const { app, calls } = makeApp('allow', {
+    getSpace: async () => null,
+    listPages: async () => {
+      calls.push('listPages')
+      return []
+    },
+  })
+  const response = await app.inject({
+    method: 'GET',
+    url: `/api/knowledge-base/spaces/${spaceId}/pages`,
+  })
+
+  assert.equal(response.statusCode, 404)
+  assert.deepEqual(calls, [])
+  await app.close()
+})
+
+test('knowledge publish maps archived page conflicts to a clean 409', async () => {
+  const { app } = makeApp('allow', {
+    publishPage: async () => {
+      throw new KnowledgeConflictError('Archived pages are read-only')
+    },
+  })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/knowledge-base/pages/${pageId}/publish`,
+  })
+  const payload = response.json() as { error: { code: string; message: string } }
+
+  assert.equal(response.statusCode, 409)
+  assert.equal(payload.error.code, 'KNOWLEDGE_MUTATION_CONFLICT')
+  assert.equal(payload.error.message, 'Archived pages are read-only')
+  await app.close()
+})
+
+test('knowledge mutations map Prisma unique conflicts without leaking constraint text', async () => {
+  const { app } = makeApp('allow', {
+    updatePage: async () => {
+      throw versionConflictError()
+    },
+  })
+  const response = await app.inject({
+    method: 'PATCH',
+    url: `/api/knowledge-base/pages/${pageId}`,
+    payload: { body: '# Updated' },
+  })
+  const payload = response.json() as { error: { code: string; message: string } }
+
+  assert.equal(response.statusCode, 409)
+  assert.equal(payload.error.code, 'KNOWLEDGE_MUTATION_CONFLICT')
+  assert.equal(payload.error.message, 'Knowledge base mutation conflict')
+  assert.equal(payload.error.message.includes('page_id'), false)
   await app.close()
 })

@@ -3,6 +3,7 @@ export {
   buildSpaceSourceRef,
   createNativeKnowledgeProvider,
 } from './native-provider.js'
+export { KnowledgeConflictError, isKnowledgeConflictError } from './errors.js'
 export type {
   CreatePageInput,
   CreateSpaceInput,

@@ -253,7 +253,9 @@ content, no embeddings yet.
   create/edit/publish/move.
 - REST `/api/knowledge-base/*` (spaces, pages, versions) with **deterministic** metadata/title/label
   search, keyset pagination (`(updatedAt, id)`), returning `visibilityReason` + `policyChainTrace` +
-  `sourceRef`.
+  `sourceRef`. Archived pages remain readable by direct id but are immutable; publish/edit/move/restore
+  return conflict, page-version `authorType` is derived from the authenticated actor, and space page
+  listing first proves the space belongs to the caller's organization.
 - Define the `KnowledgeProvider` TypeScript interface + capability flags in `packages/knowledge`;
   native store as the first reference provider.
 - Admin `features/knowledge` surface: page tree + version-diff viewer (React 19 + Tailwind v4 +

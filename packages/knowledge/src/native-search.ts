@@ -69,7 +69,12 @@ export const searchNativePages = async (
   `)
   const pageIds = rows.map((row) => row.id)
   const pages = await prisma.knowledgePage.findMany({
-    where: { id: { in: pageIds } },
+    where: {
+      id: { in: pageIds },
+      organizationId: input.organizationId,
+      deletedAt: null,
+      status: { not: 'archived' },
+    },
     include: pageInclude,
   })
   const pagesById = new Map(pages.map((page) => [page.id, mapPage(page)]))

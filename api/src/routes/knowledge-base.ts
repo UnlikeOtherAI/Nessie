@@ -26,6 +26,7 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { checkPolicy } from '../services/policy.js'
+import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
 import type { RouteDeps } from './types.js'
 
 type KnowledgeRouteDeps = RouteDeps & {
@@ -95,19 +96,13 @@ const requireProjectId = (
   return projectId
 }
 
-const actorAuthorType = (
-  actorContext: AuthorizedActionContext,
-  requested?: 'user' | 'agent',
-): 'user' | 'agent' =>
-  requested ?? (actorContext.actor.actorType === 'agent' ? 'agent' : 'user')
+const actorAuthorType = (actorContext: AuthorizedActionContext): 'user' | 'agent' =>
+  actorContext.actor.actorType === 'agent' ? 'agent' : 'user'
 
 const requestIds = (request: FastifyRequest) => ({
   ipAddress: request.ip,
   userAgent: request.headers['user-agent'],
 })
-
-const mutationErrorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : 'Knowledge base mutation failed'
 
 export const registerKnowledgeBaseRoutes = (
   app: FastifyInstance,
@@ -224,6 +219,8 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'view')
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
+    const space = await provider.getSpace(actorContext.tenant.organizationId, spaceId)
+    if (!space) return sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
     const pages = await provider.listPages({
       organizationId: actorContext.tenant.organizationId,
       spaceId,
@@ -250,11 +247,15 @@ export const registerKnowledgeBaseRoutes = (
         projectId,
         spaceId,
         authorId: actorContext.actor.actorId,
-        authorType: actorAuthorType(actorContext, body.authorType),
+        authorType: actorAuthorType(actorContext),
         createdBy: actorContext.actor.actorId,
       })
     } catch (error) {
-      return sendApiError(reply, 400, 'KNOWLEDGE_PAGE_INVALID', mutationErrorMessage(error))
+      return sendKnowledgeMutationError(request, reply, error, {
+        code: 'KNOWLEDGE_PAGE_INVALID',
+        message: 'Knowledge page could not be created',
+        statusCode: 400,
+      })
     }
     await emitAuditEvent(prisma, {
       actorContext,
@@ -308,12 +309,21 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit')
     if (!decision) return reply
     const { pageId } = request.params as { pageId: string }
-    const page = await provider.updatePage(pageId, {
-      ...body,
-      organizationId: actorContext.tenant.organizationId,
-      authorId: actorContext.actor.actorId,
-      authorType: actorAuthorType(actorContext, body.authorType),
-    })
+    let page: KnowledgePageRecord | null
+    try {
+      page = await provider.updatePage(pageId, {
+        ...body,
+        organizationId: actorContext.tenant.organizationId,
+        authorId: actorContext.actor.actorId,
+        authorType: actorAuthorType(actorContext),
+      })
+    } catch (error) {
+      return sendKnowledgeMutationError(request, reply, error, {
+        code: 'KNOWLEDGE_PAGE_INVALID',
+        message: 'Knowledge page could not be updated',
+        statusCode: 400,
+      })
+    }
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     await emitAuditEvent(prisma, {
       actorContext,
@@ -352,10 +362,19 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'approve')
     if (!decision) return reply
     const { pageId } = request.params as { pageId: string }
-    const page = await provider.publishPage({
-      organizationId: actorContext.tenant.organizationId,
-      pageId,
-    })
+    let page: KnowledgePageRecord | null
+    try {
+      page = await provider.publishPage({
+        organizationId: actorContext.tenant.organizationId,
+        pageId,
+      })
+    } catch (error) {
+      return sendKnowledgeMutationError(request, reply, error, {
+        code: 'KNOWLEDGE_PAGE_INVALID',
+        message: 'Knowledge page could not be published',
+        statusCode: 400,
+      })
+    }
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     await emitAuditEvent(prisma, {
       actorContext,
@@ -386,7 +405,11 @@ export const registerKnowledgeBaseRoutes = (
         position: body.position,
       })
     } catch (error) {
-      return sendApiError(reply, 400, 'KNOWLEDGE_PAGE_MOVE_INVALID', mutationErrorMessage(error))
+      return sendKnowledgeMutationError(request, reply, error, {
+        code: 'KNOWLEDGE_PAGE_MOVE_INVALID',
+        message: 'Knowledge page could not be moved',
+        statusCode: 400,
+      })
     }
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     await emitAuditEvent(prisma, {
@@ -424,14 +447,23 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit')
     if (!decision) return reply
     const { pageId, versionId } = request.params as { pageId: string; versionId: string }
-    const page = await provider.restoreVersion({
-      organizationId: actorContext.tenant.organizationId,
-      pageId,
-      versionId,
-      authorId: actorContext.actor.actorId,
-      authorType: actorAuthorType(actorContext, body.authorType),
-      changeComment: body.changeComment,
-    })
+    let page: KnowledgePageRecord | null
+    try {
+      page = await provider.restoreVersion({
+        organizationId: actorContext.tenant.organizationId,
+        pageId,
+        versionId,
+        authorId: actorContext.actor.actorId,
+        authorType: actorAuthorType(actorContext),
+        changeComment: body.changeComment,
+      })
+    } catch (error) {
+      return sendKnowledgeMutationError(request, reply, error, {
+        code: 'KNOWLEDGE_VERSION_INVALID',
+        message: 'Knowledge version could not be restored',
+        statusCode: 400,
+      })
+    }
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_VERSION_NOT_FOUND', 'Version not found')
     await emitAuditEvent(prisma, {
       actorContext,

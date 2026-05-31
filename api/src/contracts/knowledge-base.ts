@@ -114,7 +114,6 @@ export const CreateKnowledgePageBodySchema = OptionalScopeSchema.extend({
   labels: z.array(NonEmptyStringSchema.max(80)).max(32).optional(),
   body: z.string().nullable().optional(),
   bodyRef: z.string().nullable().optional(),
-  authorType: KnowledgeAuthorTypeSchema.optional(),
   changeComment: z.string().max(1000).nullable().optional(),
 })
 
@@ -127,7 +126,6 @@ export const UpdateKnowledgePageBodySchema = z.object({
   bodyRef: z.string().nullable().optional(),
   visibility: KnowledgeVisibilitySchema.optional(),
   sensitivityTier: KnowledgeSensitivityTierSchema.optional(),
-  authorType: KnowledgeAuthorTypeSchema.optional(),
   changeComment: z.string().max(1000).nullable().optional(),
 })
 
@@ -137,7 +135,6 @@ export const MoveKnowledgePageBodySchema = z.object({
 })
 
 export const RestoreKnowledgePageVersionBodySchema = z.object({
-  authorType: KnowledgeAuthorTypeSchema.optional(),
   changeComment: z.string().max(1000).nullable().optional(),
 })
 
