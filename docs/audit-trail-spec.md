@@ -178,7 +178,17 @@ type AuditAction =
   | 'verification.policy.created'
   | 'verification.policy.updated'
   | 'verification.policy.deleted'
-  // Phase 3 — Knowledge base
+  // Phase 3 — Knowledge base: first-party envelope
+  | 'kb.space.created'
+  | 'kb.space.updated'
+  | 'kb.space.archived'
+  | 'kb.page.created'
+  | 'kb.page.updated'
+  | 'kb.page.published'
+  | 'kb.page.moved'
+  | 'kb.page.restored'
+  | 'kb.page.archived'
+  // Phase 3 — Knowledge base: external facade
   | 'kb.source.linked'
   | 'kb.source.reindexed'
   | 'kb.source.removed'

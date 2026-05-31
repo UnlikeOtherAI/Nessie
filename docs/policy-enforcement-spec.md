@@ -52,6 +52,8 @@ enum PolicyResourceType {
   tool_bundle
   tool_grant
   prompt
+  knowledge_space
+  knowledge_page
   knowledge_source
   knowledge_document
   verification_factor
@@ -383,13 +385,23 @@ Policy checks are mandatory at these access boundaries in Phase 2. Each integrat
 
 ### 6.7 Phase 3: Knowledge base access
 
-- **Before linking a knowledge source**: check `resourceType=knowledge_source, action=link`.
-- **Before reading a knowledge document**: check `resourceType=knowledge_document, action=read`.
-- **Before searching knowledge**: check `resourceType=knowledge_source, action=search`.
-- **Before reindexing a source**: check `resourceType=knowledge_source, action=reindex`.
-- **Before summarizing a source**: check `resourceType=knowledge_source, action=summarize`.
-- **Before generating a search summary**: check `resourceType=knowledge_source, action=search` (search.summary reuses the `search` policy action).
-- **Before sharing a source to another project**: check `resourceType=knowledge_source, action=bind`.
+Phase B ships the governed first-party authoring envelope:
+
+- **Before listing/reading spaces**: check `resourceType=knowledge_space, action=view`.
+- **Before creating a space**: check `resourceType=knowledge_space, action=create`.
+- **Before editing/archiving a space**: check `resourceType=knowledge_space, action=edit`.
+- **Before listing a page tree**: check `resourceType=knowledge_page, action=view`.
+- **Before deterministic page search**: check `resourceType=knowledge_page, action=search`.
+- **Before reading a page or version history**: check `resourceType=knowledge_page, action=read`.
+- **Before creating a page**: check `resourceType=knowledge_page, action=create`.
+- **Before editing, moving, restoring, or archiving a page**: check `resourceType=knowledge_page, action=edit`.
+- **Before publishing a page**: check `resourceType=knowledge_page, action=approve`.
+
+External facade sources remain a later tier:
+
+- **Before linking an external knowledge source**: check `resourceType=knowledge_source, action=link`.
+- **Before reading an external knowledge document**: check `resourceType=knowledge_document, action=read`.
+- **Before reindexing/summarizing an external source**: check `resourceType=knowledge_source, action=reindex|summarize`.
 
 ### 6.8 Phase 3: Verification
 

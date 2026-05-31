@@ -217,6 +217,8 @@ enum PolicyResourceType {
   approval
   admin
   secret
+  knowledge_space
+  knowledge_page
 }
 
 enum PolicyAction {
@@ -364,6 +366,17 @@ enum SensitivityTier {
   normal
   sensitive
   restricted
+}
+
+enum KnowledgePageStatus {
+  draft
+  published
+  archived
+}
+
+enum KnowledgeAuthorType {
+  user
+  agent
 }
 
 enum ReasoningType {
@@ -522,6 +535,8 @@ model Organization {
   projects         Project[]
   channels         Channel[]
   thoughts         Thought[]
+  knowledgeSpaces  KnowledgeSpace[]
+  knowledgePages   KnowledgePage[]
   tasks            Task[]
   budgets          Budget[]
   plans            Plan[]
@@ -1963,6 +1978,123 @@ model Thought {
   @@index([userId, createdAt])
   @@index([privateToAgentId])
   @@map("thoughts")
+}
+
+model KnowledgeSpace {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  metadata    Json?
+
+  // Per-agent privacy: when set, only this agent may access the space.
+  privateToAgentId String? @map("private_to_agent_id") @db.Uuid
+
+  // Tenant scoping mirrors Thought and satisfies the shared scoped-content
+  // contract used by packages/retrieval.
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId      String       @map("project_id") @db.Uuid
+  teamId         String?      @map("team_id") @db.Uuid
+  channelId      String?      @map("channel_id") @db.Uuid
+  threadId       String?      @map("thread_id") @db.Uuid
+  userId         String?      @map("user_id") @db.Uuid
+
+  visibility      ThoughtVisibility @default(project)
+  sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
+  createdBy       String            @map("created_by")
+  deletedAt       DateTime?         @map("deleted_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  pages KnowledgePage[]
+
+  @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_spaces_org_project_updated_id_idx")
+  @@index([organizationId, visibility, updatedAt], map: "knowledge_spaces_org_visibility_updated_idx")
+  @@index([organizationId, sensitivityTier], map: "knowledge_spaces_org_sensitivity_idx")
+  @@index([privateToAgentId], map: "knowledge_spaces_private_to_agent_id_idx")
+  @@map("knowledge_spaces")
+}
+
+model KnowledgePage {
+  id       String @id @default(uuid()) @db.Uuid
+  spaceId  String @map("space_id") @db.Uuid
+  title    String
+  summary  String?
+  metadata Json?
+
+  parentPageId       String? @map("parent_page_id") @db.Uuid
+  position           Int     @default(0)
+  status             KnowledgePageStatus @default(draft)
+  publishedVersionId String? @unique(map: "knowledge_pages_published_version_id_key") @map("published_version_id") @db.Uuid
+
+  // Per-agent privacy: when set, only this agent may access the page.
+  privateToAgentId String? @map("private_to_agent_id") @db.Uuid
+
+  // Tenant scoping mirrors Thought and satisfies the shared scoped-content
+  // contract used by packages/retrieval.
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId      String       @map("project_id") @db.Uuid
+  teamId         String?      @map("team_id") @db.Uuid
+  channelId      String?      @map("channel_id") @db.Uuid
+  threadId       String?      @map("thread_id") @db.Uuid
+  userId         String?      @map("user_id") @db.Uuid
+
+  visibility      ThoughtVisibility @default(project)
+  sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
+  createdBy       String            @map("created_by")
+  deletedAt       DateTime?         @map("deleted_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  space            KnowledgeSpace        @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  parentPage       KnowledgePage?        @relation("KnowledgePageTree", fields: [parentPageId], references: [id], onDelete: SetNull)
+  childPages       KnowledgePage[]       @relation("KnowledgePageTree")
+  versions         KnowledgePageVersion[] @relation("KnowledgePageVersions")
+  publishedVersion KnowledgePageVersion? @relation("KnowledgePagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  labels           PageLabel[]
+
+  @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
+  @@index([organizationId, visibility, updatedAt], map: "knowledge_pages_org_visibility_updated_idx")
+  @@index([organizationId, sensitivityTier], map: "knowledge_pages_org_sensitivity_idx")
+  @@index([spaceId, parentPageId, position], map: "knowledge_pages_space_parent_position_idx")
+  @@index([publishedVersionId], map: "knowledge_pages_published_version_id_idx")
+  @@index([privateToAgentId], map: "knowledge_pages_private_to_agent_id_idx")
+  @@map("knowledge_pages")
+}
+
+model KnowledgePageVersion {
+  id            String              @id @default(uuid()) @db.Uuid
+  pageId        String              @map("page_id") @db.Uuid
+  versionNumber Int                 @map("version_number")
+  body          String?             @db.Text
+  bodyRef       String?             @map("body_ref")
+  authorType    KnowledgeAuthorType @map("author_type")
+  authorId      String              @map("author_id")
+  changeComment String?             @map("change_comment")
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  page             KnowledgePage  @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
+  publishedForPage KnowledgePage? @relation("KnowledgePagePublishedVersion")
+
+  @@unique([pageId, versionNumber], map: "knowledge_page_versions_page_version_key")
+  @@index([pageId, createdAt(sort: Desc)], map: "knowledge_page_versions_page_created_idx")
+  @@map("knowledge_page_versions")
+}
+
+model PageLabel {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  pageId         String   @map("page_id") @db.Uuid
+  name           String
+  normalizedName String   @map("normalized_name")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  page KnowledgePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, normalizedName], map: "page_labels_page_normalized_key")
+  @@index([organizationId, normalizedName], map: "page_labels_org_normalized_idx")
+  @@map("page_labels")
 }
 
 model ThoughtReasoning {

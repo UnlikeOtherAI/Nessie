@@ -42,6 +42,7 @@ import { registerDesignerRoutes } from './routes/designer.js'
 import { registerExecutionEnvironmentRoutes } from './routes/execution-environments.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
+import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerMcpRoutes } from './routes/mcp.js'
@@ -249,6 +250,7 @@ export const buildApp = async () => {
   registerAuditLogRoutes(app, deps)
   registerPolicyRoutes(app, deps)
   registerApprovalRoutes(app, deps)
+  registerKnowledgeBaseRoutes(app, deps)
   registerTaskRoutes(app, deps)
   registerLedgerRoutes(app, deps)
 

@@ -917,6 +917,8 @@ export const PolicyResourceTypeSchema = z.enum([
   'approval',
   'admin',
   'secret',
+  'knowledge_space',
+  'knowledge_page',
 ])
 export type PolicyResourceType = z.infer<typeof PolicyResourceTypeSchema>
 
@@ -1110,6 +1112,15 @@ export const AuditActionSchema = z.enum([
   'policy.updated',
   'policy.deleted',
   'policy.evaluated',
+  'kb.space.created',
+  'kb.space.updated',
+  'kb.space.archived',
+  'kb.page.created',
+  'kb.page.updated',
+  'kb.page.published',
+  'kb.page.moved',
+  'kb.page.restored',
+  'kb.page.archived',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

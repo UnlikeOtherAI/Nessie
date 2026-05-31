@@ -268,7 +268,8 @@ export const getEffectivePolicy = async (
 ) => {
   const allResourceTypes: PolicyResourceType[] = resourceTypes ?? [
     'agent', 'channel', 'project', 'tool', 'session', 'task',
-    'review', 'approval', 'admin', 'secret',
+    'review', 'approval', 'admin', 'secret', 'knowledge_space',
+    'knowledge_page',
   ]
   const allActions: PolicyAction[] = actions ?? [
     'view', 'invoke', 'create', 'edit', 'assign', 'approve',

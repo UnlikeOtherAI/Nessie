@@ -105,6 +105,9 @@ importers:
       '@nessie/db':
         specifier: workspace:*
         version: link:../packages/db
+      '@nessie/knowledge':
+        specifier: workspace:*
+        version: link:../packages/knowledge
       '@nessie/mcp-client':
         specifier: workspace:*
         version: link:../packages/mcp-client
@@ -169,6 +172,19 @@ importers:
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+
+  packages/knowledge:
+    dependencies:
+      '@nessie/retrieval':
+        specifier: workspace:*
+        version: link:../retrieval
+      '@prisma/client':
+        specifier: ^6.17.1
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
 
   packages/mcp-client:
     dependencies:

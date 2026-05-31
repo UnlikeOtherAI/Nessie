@@ -79,6 +79,7 @@ export const AdminShellLayout = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
+  const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base');
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const personalAssistantChannel = useMemo(
     () => channels.find(isPersonalAssistantChannel) ?? null,
@@ -449,6 +450,31 @@ export const AdminShellLayout = () => {
               />
             </svg>
             <span className="admin-rail-btn-label">Work</span>
+          </Link>
+
+          <Link
+            className={`admin-rail-btn ${isKnowledgeRoute ? 'active' : ''}`}
+            to="/knowledge-base"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M4 19.5A2.5 2.5 0 016.5 17H20"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M4 4.5A2.5 2.5 0 016.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="admin-rail-btn-label">Knowledge</span>
           </Link>
 
           <div className="my-2 h-px w-8 bg-white/15" />

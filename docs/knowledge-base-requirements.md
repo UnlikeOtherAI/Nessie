@@ -2,6 +2,11 @@
 
 > Status: target-state design.
 
+> Phase B note: this document now describes the future external facade/source tier.
+> The first-party authoring envelope is implemented as `KnowledgeSpace`,
+> hierarchical `KnowledgePage`, append-only `KnowledgePageVersion`, and `PageLabel`
+> behind the `KnowledgeProvider` interface.
+
 ## 1) Decision on terminology
 
 This is a **knowledge retrieval + summarization system** with optional RAG-like generation.

@@ -7,6 +7,7 @@ import { ApprovalsPage } from './pages/ApprovalsPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelsPage } from './pages/ChannelsPage'
+import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
 import { LoginPage } from './pages/LoginPage'
 import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -60,6 +61,10 @@ export const router = createBrowserRouter([
       {
         path: '/work',
         element: <WorkPage />,
+      },
+      {
+        path: '/knowledge-base',
+        element: <KnowledgeBasePage />,
       },
       {
         path: '/agents/activity',
