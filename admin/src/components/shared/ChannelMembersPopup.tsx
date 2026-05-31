@@ -1,8 +1,25 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { AgentRecord, UserRecord } from '../../lib/api-client'
-import { useAddChannelMember, useRemoveChannelMember } from '../../facades/channels/hooks'
-import { useBindAgent, useCloneAgent, useUnbindAgent } from '../../facades/agents/hooks'
-import { agentGradient, getInitials, pickGradient } from '../../lib/avatar'
+import {
+  useAddChannelMember,
+  useRemoveChannelMember,
+} from '../../facades/channels/hooks'
+import {
+  useBindAgent,
+  useCloneAgent,
+  useUnbindAgent,
+} from '../../facades/agents/hooks'
+import { CloseIcon, SearchIcon } from './channel-members/icons'
+import { useMemberFilters } from './channel-members/use-member-filters'
+import {
+  AvailableUserRow,
+  CurrentUserRow,
+} from './channel-members/MemberUserRow'
+import {
+  AvailableAgentRow,
+  CurrentAgentRow,
+} from './channel-members/MemberAgentRow'
+import { sectionHeadingClass } from './channel-members/styles'
 
 type ChannelMembersPopupProps = {
   allAgents: AgentRecord[]
@@ -17,23 +34,6 @@ type ChannelMembersPopupProps = {
   onGroupCreated: (channelId: string) => void
   onSelectAgent: (agentId: string) => void
 }
-
-const getAgentGlyph = (role: string): string => {
-  const lower = role.toLowerCase()
-  if (lower.includes('research')) return '\u{1F50D}'
-  if (lower.includes('write')) return '\u{1F4DD}'
-  return '\u26A1'
-}
-
-const rowClass = [
-  'flex items-center gap-3 rounded-lg px-3 py-2',
-  'hover:bg-white/5 transition-colors',
-].join(' ')
-
-const actionBtnClass = [
-  'flex h-7 items-center justify-center rounded px-2',
-  'text-xs font-medium transition-colors',
-].join(' ')
 
 export const ChannelMembersPopup = ({
   allAgents,
@@ -56,65 +56,32 @@ export const ChannelMembersPopup = ({
   const unbindAgent = useUnbindAgent()
   const cloneAgent = useCloneAgent()
 
-  const channelUserIds = useMemo(
-    () => new Set(channelUsers.map((u) => u.id)),
-    [channelUsers],
-  )
-  const boundAgentIds = useMemo(
-    () => new Set(boundAgents.map((a) => a.id)),
-    [boundAgents],
-  )
+  const {
+    filteredUsers,
+    filteredAgents,
+    availableUsers,
+    availableAgents,
+    totalMembers,
+    hasAvailable,
+  } = useMemberFilters({
+    allAgents,
+    allUsers,
+    boundAgents,
+    channelUsers,
+    search,
+  })
 
-  const lowerSearch = search.toLowerCase().trim()
-
-  const filteredUsers = useMemo(
-    () =>
-      channelUsers.filter(
-        (u) =>
-          !lowerSearch ||
-          u.displayName.toLowerCase().includes(lowerSearch) ||
-          u.email.toLowerCase().includes(lowerSearch),
-      ),
-    [channelUsers, lowerSearch],
-  )
-
-  const filteredAgents = useMemo(
-    () =>
-      boundAgents.filter(
-        (a) =>
-          !lowerSearch ||
-          a.name.toLowerCase().includes(lowerSearch) ||
-          a.role.toLowerCase().includes(lowerSearch),
-      ),
-    [boundAgents, lowerSearch],
-  )
-
-  const availableUsers = useMemo(
-    () =>
-      allUsers.filter(
-        (u) =>
-          !channelUserIds.has(u.id) &&
-          (!lowerSearch ||
-            u.displayName.toLowerCase().includes(lowerSearch) ||
-            u.email.toLowerCase().includes(lowerSearch)),
-      ),
-    [allUsers, channelUserIds, lowerSearch],
-  )
-
-  const availableAgents = useMemo(
-    () =>
-      allAgents.filter(
-        (a) =>
-          !boundAgentIds.has(a.id) &&
-          (!lowerSearch ||
-            a.name.toLowerCase().includes(lowerSearch) ||
-            a.role.toLowerCase().includes(lowerSearch)),
-      ),
-    [allAgents, boundAgentIds, lowerSearch],
-  )
-
-  const totalMembers = channelUsers.length + boundAgents.length
-  const hasAvailable = availableUsers.length > 0 || availableAgents.length > 0
+  const handleAddUser = (userId: string) =>
+    addMember.mutate(
+      { channelId, userId },
+      {
+        onSuccess: (data) => {
+          if (channelType === 'dm' && data?.id) {
+            onGroupCreated(data.id)
+          }
+        },
+      },
+    )
 
   const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
@@ -162,19 +129,7 @@ export const ChannelMembersPopup = ({
             onClick={onClose}
             type="button"
           >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M6 18L18 6M6 6l12 12"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <CloseIcon />
           </button>
         </div>
 
@@ -186,19 +141,7 @@ export const ChannelMembersPopup = ({
               'border-[color:var(--border-strong)] bg-white/5 px-3 py-2',
             ].join(' ')}
           >
-            <svg
-              className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <SearchIcon />
             <input
               autoFocus
               className={[
@@ -217,202 +160,36 @@ export const ChannelMembersPopup = ({
           {/* Current members */}
           {(filteredUsers.length > 0 || filteredAgents.length > 0) && (
             <div>
-              <div
-                className={[
-                  'px-3 py-1.5 text-[11px] font-semibold uppercase',
-                  'tracking-[0.16em] text-[color:var(--tx3)]',
-                ].join(' ')}
-              >
-                In this channel
-              </div>
+              <div className={sectionHeadingClass}>In this channel</div>
 
               {filteredUsers.map((user) => (
-                <div key={user.id} className={rowClass}>
-                  <div
-                    className={[
-                      'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
-                      'text-xs font-semibold text-white',
-                    ].join(' ')}
-                    style={{ background: pickGradient(user.id) }}
-                  >
-                    {getInitials(user.displayName, '?')}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-white">
-                      {user.displayName}
-                      {user.id === currentUserId && (
-                        <span className="ml-1.5 text-xs text-[color:var(--tx3)]">
-                          (you)
-                        </span>
-                      )}
-                    </div>
-                    <div className="truncate text-xs text-[color:var(--tx3)]">
-                      {user.email}
-                    </div>
-                  </div>
-                  <span
-                    className={[
-                      'rounded bg-white/6 px-1.5 py-0.5 text-[10px] uppercase',
-                      'tracking-[0.12em] text-[color:var(--tx3)]',
-                    ].join(' ')}
-                  >
-                    user
-                  </span>
-                  {user.id !== currentUserId && (
-                    <button
-                      className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-red-500/10 hover:text-red-400`}
-                      disabled={removeMember.isPending}
-                      onClick={() =>
-                        removeMember.mutate({
-                          channelId,
-                          userId: user.id,
-                        })
-                      }
-                      title="Remove from channel"
-                      type="button"
-                    >
-                      <svg
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          d="M6 18L18 6M6 6l12 12"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  )}
-                </div>
+                <CurrentUserRow
+                  key={user.id}
+                  user={user}
+                  currentUserId={currentUserId}
+                  removePending={removeMember.isPending}
+                  onRemove={(userId) =>
+                    removeMember.mutate({ channelId, userId })
+                  }
+                />
               ))}
 
               {filteredAgents.map((agent) => (
-                <div key={agent.id} className={rowClass}>
-                  <div
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm"
-                    style={{ background: agentGradient }}
-                  >
-                    {getAgentGlyph(agent.role)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-white">
-                      {agent.name}
-                    </div>
-                    <div className="truncate text-xs text-[color:var(--tx3)]">
-                      {agent.role}
-                    </div>
-                  </div>
-                  <span
-                    className={[
-                      'rounded border border-[rgba(124,58,237,0.3)]',
-                      'bg-[rgba(124,58,237,0.15)] px-1.5 py-0.5',
-                      'text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a78bfa]',
-                    ].join(' ')}
-                  >
-                    agent
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      className={[
-                        actionBtnClass,
-                        'text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)]',
-                        'hover:text-[#a78bfa]',
-                      ].join(' ')}
-                      disabled={cloneAgent.isPending}
-                      onClick={() => cloneAgent.mutate(agent.id)}
-                      title="Clone to personal collection"
-                      type="button"
-                    >
-                      <svg
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <rect
-                          height="13"
-                          rx="2"
-                          width="13"
-                          x="9"
-                          y="9"
-                        />
-                        <path
-                          d={[
-                            'M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1',
-                          ].join(' ')}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      className={[
-                        actionBtnClass,
-                        'text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)]',
-                        'hover:text-[#a78bfa]',
-                      ].join(' ')}
-                      onClick={() => {
-                        onSelectAgent(agent.id)
-                        onClose()
-                      }}
-                      title="View agent details"
-                      type="button"
-                    >
-                      <svg
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                        <path
-                          d={[
-                            'M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943',
-                            '9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943',
-                            '-9.542-7z',
-                          ].join(' ')}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-red-500/10 hover:text-red-400`}
-                      disabled={unbindAgent.isPending}
-                      onClick={() =>
-                        unbindAgent.mutate({
-                          agentId: agent.id,
-                          channelId,
-                        })
-                      }
-                      title="Remove from channel"
-                      type="button"
-                    >
-                      <svg
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          d="M6 18L18 6M6 6l12 12"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+                <CurrentAgentRow
+                  key={agent.id}
+                  agent={agent}
+                  channelId={channelId}
+                  clonePending={cloneAgent.isPending}
+                  unbindPending={unbindAgent.isPending}
+                  onClone={(agentId) => cloneAgent.mutate(agentId)}
+                  onView={(agentId) => {
+                    onSelectAgent(agentId)
+                    onClose()
+                  }}
+                  onUnbind={(agentId, chId) =>
+                    unbindAgent.mutate({ agentId, channelId: chId })
+                  }
+                />
               ))}
             </div>
           )}
@@ -420,131 +197,29 @@ export const ChannelMembersPopup = ({
           {/* Available to add */}
           {hasAvailable && (
             <div className="mt-2">
-              <div
-                className={[
-                  'px-3 py-1.5 text-[11px] font-semibold uppercase',
-                  'tracking-[0.16em] text-[color:var(--tx3)]',
-                ].join(' ')}
-              >
-                Add to channel
-              </div>
+              <div className={sectionHeadingClass}>Add to channel</div>
 
               {availableUsers.map((user) => (
-                <div key={user.id} className={rowClass}>
-                  <div
-                    className={[
-                      'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
-                      'text-xs font-semibold text-white/60',
-                    ].join(' ')}
-                    style={{
-                      background: pickGradient(user.id),
-                      opacity: 0.6,
-                    }}
-                  >
-                    {getInitials(user.displayName, '?')}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm text-[color:var(--tx2)]">
-                      {user.displayName}
-                    </div>
-                    <div className="truncate text-xs text-[color:var(--tx3)]">
-                      {user.email}
-                    </div>
-                  </div>
-                  <button
-                    className={[
-                      actionBtnClass,
-                      'border border-[color:var(--border-strong)] text-[color:var(--tx2)]',
-                      'hover:border-white/20 hover:text-white',
-                    ].join(' ')}
-                    disabled={addMember.isPending}
-                    onClick={() =>
-                      addMember.mutate(
-                        { channelId, userId: user.id },
-                        {
-                          onSuccess: (data) => {
-                            if (channelType === 'dm' && data?.id) {
-                              onGroupCreated(data.id)
-                            }
-                          },
-                        },
-                      )
-                    }
-                    type="button"
-                  >
-                    Add
-                  </button>
-                </div>
+                <AvailableUserRow
+                  key={user.id}
+                  user={user}
+                  addPending={addMember.isPending}
+                  onAdd={handleAddUser}
+                />
               ))}
 
               {availableAgents.map((agent) => (
-                <div key={agent.id} className={rowClass}>
-                  <div
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm opacity-60"
-                    style={{ background: agentGradient }}
-                  >
-                    {getAgentGlyph(agent.role)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm text-[color:var(--tx2)]">
-                      {agent.name}
-                    </div>
-                    <div className="truncate text-xs text-[color:var(--tx3)]">
-                      {agent.role}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      className={[
-                        actionBtnClass,
-                        'text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)]',
-                        'hover:text-[#a78bfa]',
-                      ].join(' ')}
-                      disabled={cloneAgent.isPending}
-                      onClick={() => cloneAgent.mutate(agent.id)}
-                      title="Clone to personal collection"
-                      type="button"
-                    >
-                      <svg
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <rect
-                          height="13"
-                          rx="2"
-                          width="13"
-                          x="9"
-                          y="9"
-                        />
-                        <path
-                          d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      className={[
-                        actionBtnClass,
-                        'border border-[rgba(124,58,237,0.3)] text-[#a78bfa]',
-                        'hover:bg-[rgba(124,58,237,0.15)]',
-                      ].join(' ')}
-                      disabled={bindAgent.isPending}
-                      onClick={() =>
-                        bindAgent.mutate({
-                          agentId: agent.id,
-                          channelId,
-                        })
-                      }
-                      type="button"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
+                <AvailableAgentRow
+                  key={agent.id}
+                  agent={agent}
+                  channelId={channelId}
+                  clonePending={cloneAgent.isPending}
+                  bindPending={bindAgent.isPending}
+                  onClone={(agentId) => cloneAgent.mutate(agentId)}
+                  onBind={(agentId, chId) =>
+                    bindAgent.mutate({ agentId, channelId: chId })
+                  }
+                />
               ))}
             </div>
           )}
