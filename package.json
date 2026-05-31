@@ -4,7 +4,9 @@
   "type": "module",
   "packageManager": "pnpm@10.22.0",
   "scripts": {
-    "dev": "pnpm --filter @nessie/api dev",
+    "dev": "turbo run dev --parallel --filter=@nessie/api --filter=@nessie/admin",
+    "dev:api": "pnpm --filter @nessie/api dev",
+    "dev:admin": "pnpm --filter @nessie/admin dev",
     "dev:mcp-fixture": "pnpm --filter @nessie/mcp-client start:fixture",
     "lint": "node scripts/lint-markdown-structure.mjs && turbo run lint",
     "lint:markdown-structure": "node scripts/lint-markdown-structure.mjs",

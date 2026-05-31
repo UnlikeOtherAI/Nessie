@@ -32,10 +32,16 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - Never reset, clean, or discard another worktree's or agent's work.
 - Merge finished work into `main` only after review, linting, and tests pass. Then in the main checkout run `git switch main && git pull --ff-only`, remove the worktree (`git worktree remove …`), and delete the merged branch.
 
-## Build
+## Dev mode (hot reload)
 
-- Rebuild the admin after every turn where admin code changed: `pnpm --filter @nessie/admin build`
-- Rebuild the worker after every turn where worker code changed: `pnpm --filter @nessie/worker build`. In local mode the API runs the worker **embedded from its built `dist`** (`import('@nessie/worker')`), so worker source edits do not take effect until rebuilt and the API is restarted.
+- `pnpm dev` (repo root) runs the **API (5554) and admin (5555) together with hot reload** — `turbo run dev --parallel`. Admin source edits hot-reload via Vite HMR; API source edits restart the server via nodemon. Use this for local work; do not hand-build the admin to see changes.
+- **Polling is required.** The repo lives under `/System/Volumes/Data/.internal/…` (a macOS data-volume firmlink path) where fsevents does not deliver change events, so native watchers never fire. Vite uses `server.watch.usePolling` (`admin/vite.config.ts`) and the API uses `nodemon --legacy-watch`; do not remove these or hot reload silently breaks.
+- After starting/restarting a dev server, verify it: hit `GET /health` (5554) and `GET /` (5555), and confirm `@vite/client` is present in the served admin HTML.
+
+## Build (production / CI)
+
+- `pnpm --filter @nessie/admin build` produces the static admin bundle (`dist/`); `pnpm --filter @nessie/admin preview` serves it. This is for prod/CI, **not** the local dev loop — use `pnpm dev` instead.
+- Rebuild the worker after every turn where worker code changed: `pnpm --filter @nessie/worker build`. In local mode the API runs the worker **embedded from its built `dist`** (`import('@nessie/worker')`), so worker source edits do not take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 
 ## Linting
 
