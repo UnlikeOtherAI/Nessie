@@ -62,15 +62,17 @@ export const listAssignableUsers = async (
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<AssignableUser[]> => {
+  // Only id + displayName: an assignee picker does not need each member's role,
+  // and exposing it to every member leaks who holds owner/admin (the owner-gated
+  // /api/users endpoint is the place that returns roles).
   const members = await prisma.organizationMember.findMany({
     where: { organizationId },
-    select: { role: true, user: { select: { id: true, displayName: true } } },
+    select: { user: { select: { id: true, displayName: true } } },
     orderBy: { user: { displayName: 'asc' } },
   })
   return members.map((member) => ({
     id: parseUserId(member.user.id),
     displayName: member.user.displayName,
-    role: member.role,
   }))
 }
 
@@ -181,23 +183,33 @@ export const assignTask = async (
   if (input.assigneeUserId && existing.status === 'inbox') nextStatus = 'assigned'
   if (!input.assigneeUserId && existing.status === 'assigned') nextStatus = 'inbox'
 
-  const task = await prisma.task.update({
-    where: { id: input.taskId },
-    data: {
-      assigneeUserId: input.assigneeUserId,
-      ...(nextStatus ? { status: nextStatus } : {}),
-    },
-    include: taskInclude,
+  // Atomic, org-scoped, optimistic-locked write: the status guard makes the read
+  // above authoritative even under concurrent assigns, and organizationId keeps
+  // the mutation tenant-scoped at the write layer (not just the read).
+  const task = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.task.updateMany({
+      where: {
+        id: input.taskId,
+        organizationId: input.organizationId,
+        status: existing.status,
+      },
+      data: {
+        assigneeUserId: input.assigneeUserId,
+        ...(nextStatus ? { status: nextStatus } : {}),
+      },
+    })
+    if (count === 0) return null
+    await tx.taskEvent.create({
+      data: {
+        taskId: input.taskId,
+        eventType: input.assigneeUserId ? 'assigned' : 'unassigned',
+        payload: { by: input.actorId, assigneeUserId: input.assigneeUserId },
+      },
+    })
+    return tx.task.findFirst({ where: { id: input.taskId }, include: taskInclude })
   })
 
-  await prisma.taskEvent.create({
-    data: {
-      taskId: task.id,
-      eventType: input.assigneeUserId ? 'assigned' : 'unassigned',
-      payload: { by: input.actorId, assigneeUserId: input.assigneeUserId },
-    },
-  })
-
+  if (!task) return { error: 'NOT_FOUND' }
   return mapTask(task)
 }
 
@@ -222,19 +234,30 @@ export const transitionTask = async (
     return { error: 'INVALID_TRANSITION', from: existing.status }
   }
 
-  const task = await prisma.task.update({
-    where: { id: input.taskId },
-    data: { status: input.status },
-    include: taskInclude,
+  // Atomic, org-scoped, optimistic-locked transition: guarding the write on the
+  // status we validated makes isValidTransition authoritative — a concurrent
+  // change (count === 0) is reported as an invalid transition rather than silently
+  // applying against stale state.
+  const task = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.task.updateMany({
+      where: {
+        id: input.taskId,
+        organizationId: input.organizationId,
+        status: existing.status,
+      },
+      data: { status: input.status },
+    })
+    if (count === 0) return null
+    await tx.taskEvent.create({
+      data: {
+        taskId: input.taskId,
+        eventType: 'status_changed',
+        payload: { by: input.actorId, from: existing.status, to: input.status },
+      },
+    })
+    return tx.task.findFirst({ where: { id: input.taskId }, include: taskInclude })
   })
 
-  await prisma.taskEvent.create({
-    data: {
-      taskId: task.id,
-      eventType: 'status_changed',
-      payload: { by: input.actorId, from: existing.status, to: input.status },
-    },
-  })
-
+  if (!task) return { error: 'INVALID_TRANSITION', from: existing.status }
   return mapTask(task)
 }

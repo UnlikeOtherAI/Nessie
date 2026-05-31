@@ -1670,7 +1670,6 @@ export const TransitionTaskBodySchema = z.object({
 export const AssignableUserSchema = z.object({
   id: UserIdSchema,
   displayName: NonEmptyStringSchema,
-  role: NonEmptyStringSchema,
 })
 export type AssignableUser = z.infer<typeof AssignableUserSchema>
 
