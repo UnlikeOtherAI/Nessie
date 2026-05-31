@@ -1,0 +1,31 @@
+export {
+  buildNativeSourceRef,
+  buildSpaceSourceRef,
+  createNativeKnowledgeProvider,
+} from './native-provider.js'
+export { KnowledgeConflictError, isKnowledgeConflictError } from './errors.js'
+export type {
+  CreatePageInput,
+  CreateSpaceInput,
+  KnowledgeAuthorType,
+  KnowledgePageRecord,
+  KnowledgePageStatus,
+  KnowledgePageTreeNode,
+  KnowledgePageVersionRecord,
+  KnowledgeProvider,
+  KnowledgeProviderCapabilities,
+  KnowledgeProviderKind,
+  KnowledgeScopeInput,
+  KnowledgeSearchHit,
+  KnowledgeSensitivityTier,
+  KnowledgeSpaceRecord,
+  KnowledgeVisibility,
+  ListPagesInput,
+  ListSpacesInput,
+  MovePageInput,
+  PublishPageInput,
+  RestorePageVersionInput,
+  SearchPagesInput,
+  UpdatePageInput,
+  UpdateSpaceInput,
+} from './types.js'

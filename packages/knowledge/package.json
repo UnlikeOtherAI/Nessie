@@ -1,0 +1,26 @@
+{
+  "name": "@nessie/knowledge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src test --max-warnings 0",
+    "pretest": "pnpm --filter @nessie/retrieval build",
+    "test": "node --test --import tsx test/**/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nessie/retrieval": "workspace:*",
+    "@prisma/client": "^6.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.24"
+  }
+}

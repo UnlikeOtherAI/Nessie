@@ -762,7 +762,13 @@ type ControlCommandDefinition = {
 
 ## 13.4) Knowledge base linking and retrieval requirements (no context pollution)
 
-- Knowledge sources must be importable as a first-class tool action:
+- Phase B first-party authoring is available under `/api/knowledge-base/*`:
+  - spaces: list/create/read/update/archive,
+  - pages: tree/create/read/update/archive/move/publish,
+  - versions: list/restore-as-new-version,
+  - deterministic search: `POST /api/knowledge-base/search` over title, metadata, and labels.
+- Every first-party search/read response carries `sourceRef`, `visibilityReason`, and `policyChainTrace`.
+- Knowledge sources must be importable as a first-class tool action in the later external facade tier:
   - folder path,
   - local document,
   - MCP docs endpoint,
