@@ -38,11 +38,20 @@ export type ChannelRecord = {
 }
 
 export type ProjectRecord = {
+  channelCount?: number
   createdAt: string
   id: string
   memberCount: number
   name: string
   organizationId: string
+  teamCount?: number
+}
+
+export type ProjectMemberRecord = {
+  displayName: string
+  email: string
+  role: string
+  userId: string
 }
 
 export type TeamRecord = {

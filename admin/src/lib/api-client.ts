@@ -98,6 +98,7 @@ export type {
   PersonalAssistantConfigSummary,
   PersonalAssistantInstanceRecord,
   PersonalAssistantStateResponse,
+  ProjectMemberRecord,
   ProjectRecord,
   SessionState,
   TeamRecord,

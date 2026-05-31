@@ -1,9 +1,37 @@
 import type { FastifyInstance } from 'fastify'
 
-import { ProjectRecordSchema, UpdateProjectBodySchema } from '../contracts.js'
+import {
+  ProjectMemberRecordSchema,
+  ProjectRecordSchema,
+  UpdateProjectBodySchema,
+} from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import type { RouteDeps } from './types.js'
+
+const projectCountsInclude = {
+  members: { select: { userId: true, role: true } },
+  teams: { select: { _count: { select: { channels: true } } } },
+} as const
+
+type ProjectWithCounts = {
+  id: string
+  name: string
+  organizationId: string
+  createdAt: Date
+  members: { userId: string; role: string }[]
+  teams: { _count: { channels: number } }[]
+}
+
+const toProjectRecord = (project: ProjectWithCounts) => ({
+  id: project.id,
+  name: project.name,
+  organizationId: project.organizationId,
+  memberCount: project.members.length,
+  teamCount: project.teams.length,
+  channelCount: project.teams.reduce((total, team) => total + team._count.channels, 0),
+  createdAt: project.createdAt.toISOString(),
+})
 
 export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
@@ -14,16 +42,56 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const projects = await prisma.project.findMany({
       where: { organizationId: actorContext.tenant.organizationId },
-      include: { members: { select: { userId: true, role: true } } },
+      include: projectCountsInclude,
       orderBy: { createdAt: 'asc' },
     })
 
-    return createApiResponse(ProjectRecordSchema.array().parse(projects.map((p) => ({
-      id: p.id,
-      name: p.name,
-      organizationId: p.organizationId,
-      memberCount: p.members.length,
-      createdAt: p.createdAt.toISOString(),
+    return createApiResponse(
+      ProjectRecordSchema.array().parse(projects.map(toProjectRecord)),
+    )
+  })
+
+  app.get('/api/projects/:projectId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { projectId } = request.params as { projectId: string }
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      include: projectCountsInclude,
+    })
+    if (!project) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    return createApiResponse(ProjectRecordSchema.parse(toProjectRecord(project)))
+  })
+
+  app.get('/api/projects/:projectId/members', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { projectId } = request.params as { projectId: string }
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      include: {
+        members: {
+          include: { user: { select: { id: true, displayName: true, email: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    })
+    if (!project) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    return createApiResponse(ProjectMemberRecordSchema.array().parse(project.members.map((m) => ({
+      userId: m.userId,
+      displayName: m.user.displayName,
+      email: m.user.email,
+      role: m.role,
     }))))
   })
 
@@ -61,6 +129,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       name: project.name,
       organizationId: project.organizationId,
       memberCount: 1,
+      teamCount: 0,
+      channelCount: 0,
       createdAt: project.createdAt.toISOString(),
     })))
   })
@@ -79,7 +149,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },
-      include: { members: { select: { userId: true, role: true } } },
+      select: { id: true },
     })
     if (!project) {
       sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
@@ -89,7 +159,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const updatedProject = await prisma.project.update({
       where: { id: project.id },
       data: { name: body.name },
-      include: { members: { select: { userId: true, role: true } } },
+      include: projectCountsInclude,
     })
 
     await emitAuditEvent(prisma, {
@@ -100,13 +170,46 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       outcome: 'success',
     })
 
-    return createApiResponse(ProjectRecordSchema.parse({
-      id: updatedProject.id,
-      name: updatedProject.name,
-      organizationId: updatedProject.organizationId,
-      memberCount: updatedProject.members.length,
-      createdAt: updatedProject.createdAt.toISOString(),
-    }))
+    return createApiResponse(ProjectRecordSchema.parse(toProjectRecord(updatedProject)))
+  })
+
+  app.delete('/api/projects/:projectId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { projectId } = request.params as { projectId: string }
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      include: projectCountsInclude,
+    })
+    if (!project) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    const channelCount = project.teams.reduce((total, team) => total + team._count.channels, 0)
+    if (channelCount > 0) {
+      sendApiError(
+        reply,
+        409,
+        'PROJECT_NOT_EMPTY',
+        'Move or delete the project\'s channels before deleting it',
+      )
+      return reply
+    }
+
+    await prisma.project.delete({ where: { id: project.id } })
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'project.deleted' as Parameters<typeof emitAuditEvent>[1]['action'],
+      resourceType: 'project',
+      resourceId: project.id,
+      outcome: 'success',
+    })
+
+    return createApiResponse({ ok: true })
   })
 
   app.post('/api/projects/:projectId/members', async (request, reply) => {
@@ -142,5 +245,29 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     })
 
     return reply.code(201).send(createApiResponse({ ok: true }))
+  })
+
+  app.delete('/api/projects/:projectId/members/:userId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const { projectId, userId } = request.params as { projectId: string; userId: string }
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      select: { id: true },
+    })
+    if (!project) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    const result = await prisma.projectMember.deleteMany({ where: { projectId, userId } })
+    if (result.count === 0) {
+      sendApiError(reply, 404, 'MEMBER_NOT_FOUND', 'Project member not found')
+      return reply
+    }
+
+    return createApiResponse({ ok: true })
   })
 }
