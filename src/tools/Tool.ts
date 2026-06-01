@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { ToolResult, ToolUseContext, Tools } from './types.js'
 
+import { repairSmartQuotedArgs } from './argument-repair.js'
+
 export type Tool<
   Input extends Record<string, unknown> = Record<string, unknown>,
   Output = unknown,
@@ -25,6 +27,39 @@ export type AnyTool = Tool<Record<string, unknown>, unknown>
 
 export function findToolByName(tools: Tools, name: string): Tool | undefined {
   return tools.find(t => t.name === name)
+}
+
+export function parseToolInput<Input extends Record<string, unknown>>(
+  tool: Tool<Input, unknown>,
+  rawInput: string | Record<string, unknown>,
+): { success: true; data: Input } | { success: false; error: string } {
+  // If already an object, just validate it
+  if (typeof rawInput !== 'string') {
+    const parsed = tool.inputSchema.safeParse(rawInput)
+    if (parsed.success) {
+      return { success: true, data: parsed.data }
+    }
+    return { success: false, error: parsed.error.message }
+  }
+
+  // Try direct parse first
+  let parsed = tool.inputSchema.safeParse(JSON.parse(rawInput))
+  if (parsed.success) {
+    return { success: true, data: parsed.data }
+  }
+
+  // Check for smart quotes and attempt repair
+  if (/[\u201c\u201d\u2018\u2019]/.test(rawInput)) {
+    const repaired = repairSmartQuotedArgs(rawInput, tool.name)
+    if (repaired !== null) {
+      const reparsed = tool.inputSchema.safeParse(JSON.parse(repaired))
+      if (reparsed.success) {
+        return { success: true, data: reparsed.data }
+      }
+    }
+  }
+
+  return { success: false, error: parsed.error.message }
 }
 
 type MutableToolKeys = 'isConcurrencySafe' | 'isReadOnly' | 'isDestructive' | 'isEnabled' | 'userFacingName'

@@ -6,6 +6,7 @@
 
 import type { LlmMessage } from './client.js'
 import { isRetryableInferenceError } from '../agent/dispatch.js'
+import { partitionReasoningTags } from './reasoning-tag-stripper.js'
 
 export type LlmStreamOptions = {
   model?: string
@@ -13,14 +14,54 @@ export type LlmStreamOptions = {
   temperature?: number
   /** Override base URL for OpenAI-compatible backends (used for failover primary). */
   baseUrl?: string
+  /** Maximum time from request start to stream completion (seconds). Guards slow-starting or never-starting requests. */
+  timeoutSeconds?: number
+  /** Maximum milliseconds between consecutive chunks. Protects against stalled mid-stream connections. Defaults to 30000. */
+  idleTimeoutMs?: number
+}
+
+class StreamingWatchdog {
+  private idleMs: number
+  private timer: ReturnType<typeof setTimeout> | null = null
+  private abortController: AbortController | null = null
+
+  constructor(idleMs: number) {
+    this.idleMs = idleMs
+  }
+
+  start(abortController: AbortController) {
+    this.abortController = abortController
+    this.resetTimer()
+  }
+
+  onChunk() {
+    this.resetTimer()
+  }
+
+  stop() {
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = null
+    }
+    this.abortController = null
+  }
+
+  private resetTimer() {
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = setTimeout(() => {
+      this.abortController?.abort(
+        new Error(`Streaming watchdog: no data received for ${this.idleMs}ms`)
+      )
+    }, this.idleMs)
+  }
 }
 
 // Safety net: if a streaming response is abandoned and the generator is GC'd
 // before completion, FinalizationRegistry ensures the reader is cancelled and
 // released back to the connection pool, preventing socket leaks.
 // See: openclaw/openclaw#67461
-const streamFinalizationRegistry = new FinalizationRegistry<ReadableStreamDefaultReader<unknown>>(
-  (reader) => {
+const streamFinalizationRegistry = new (globalThis as any).FinalizationRegistry(
+  (reader: ReadableStreamDefaultReader<unknown>) => {
     reader.cancel().catch(() => { /* ignore cancel errors on already-resolved streams */ })
     reader.releaseLock()
   },
@@ -91,9 +132,15 @@ async function* openaiStream(
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer: string = "" as string
+  let reasoningState: { inReasoning: boolean; buffer: string } = { inReasoning: false, buffer: '' }
 
   // Register reader with finalization registry as a safety net for abandoned streams
-  (streamFinalizationRegistry as FinalizationRegistry<unknown>).register(reader, reader)
+  ;(streamFinalizationRegistry as any).register(reader, reader)
+
+  const idleTimeoutMs = options.idleTimeoutMs ?? (process.env.LLM_STREAM_IDLE_MS ? parseInt(process.env.LLM_STREAM_IDLE_MS, 10) : 30_000)
+  const controller = new AbortController()
+  const watchdog = new StreamingWatchdog(idleTimeoutMs)
+  watchdog.start(controller)
 
   try {
     while (true) {
@@ -110,17 +157,36 @@ async function* openaiStream(
         if (data === '[DONE]') return
         try {
           const chunk = JSON.parse(data) as {
-            choices?: { delta?: { content?: string } }[]
+            choices?: { delta?: { content?: string; reasoning_content?: string; thinking?: string; reasoning?: string } }[]
           }
-          const text = chunk.choices?.[0]?.delta?.content
-          if (text) yield text
+          const delta = chunk.choices?.[0]?.delta
+          const text = delta?.content
+          // First, yield any separate reasoning fields (existing behaviour)
+          const separateReasoning = delta?.reasoning_content ?? delta?.thinking ?? delta?.reasoning
+          if (separateReasoning) {
+            watchdog.onChunk()
+            yield { type: 'reasoning', text: separateReasoning } as any
+          }
+          if (text) {
+            const partitioned: any = partitionReasoningTags(text, reasoningState)
+            reasoningState = partitioned.newState
+            if (partitioned.result.reasoning) {
+              watchdog.onChunk()
+              yield { type: 'reasoning', text: partitioned.result.reasoning } as any
+            }
+            if (partitioned.result.content) {
+              watchdog.onChunk()
+              yield { type: 'content', text: partitioned.result.content } as any
+            }
+          }
         } catch {
           // ignore malformed JSON
         }
       }
     }
   } finally {
-    (streamFinalizationRegistry as FinalizationRegistry<unknown>).unregister(reader)
+    watchdog.stop()
+    ;(streamFinalizationRegistry as any).unregister(reader)
     // Cancel the reader to release the underlying socket back to the pool.
     // This is safe to call even if the stream is already done.
     await reader.cancel().catch(() => { /* ignore cancel errors */ })
@@ -164,9 +230,15 @@ async function* minimaxStream(
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer: string = "" as string
+  let reasoningState: { inReasoning: boolean; buffer: string } = { inReasoning: false, buffer: '' }
 
   // Register reader with finalization registry as a safety net for abandoned streams
-  (streamFinalizationRegistry as FinalizationRegistry<unknown>).register(reader, reader)
+  ;(streamFinalizationRegistry as any).register(reader, reader)
+
+  const idleTimeoutMs = options.idleTimeoutMs ?? (process.env.LLM_STREAM_IDLE_MS ? parseInt(process.env.LLM_STREAM_IDLE_MS, 10) : 30_000)
+  const controller = new AbortController()
+  const watchdog = new StreamingWatchdog(idleTimeoutMs)
+  watchdog.start(controller)
 
   try {
     while (true) {
@@ -183,17 +255,36 @@ async function* minimaxStream(
         if (data === '[DONE]') return
         try {
           const chunk = JSON.parse(data) as {
-            choices?: { delta?: { content?: string } }[]
+            choices?: { delta?: { content?: string; reasoning_content?: string; thinking?: string; reasoning?: string } }[]
           }
-          const text = chunk.choices?.[0]?.delta?.content
-          if (text) yield text
+          const delta = chunk.choices?.[0]?.delta
+          const text = delta?.content
+          // First, yield any separate reasoning fields (existing behaviour)
+          const separateReasoning = delta?.reasoning_content ?? delta?.thinking ?? delta?.reasoning
+          if (separateReasoning) {
+            watchdog.onChunk()
+            yield { type: 'reasoning', text: separateReasoning } as any
+          }
+          if (text) {
+            const partitioned: any = partitionReasoningTags(text, reasoningState)
+            reasoningState = partitioned.newState
+            if (partitioned.result.reasoning) {
+              watchdog.onChunk()
+              yield { type: 'reasoning', text: partitioned.result.reasoning } as any
+            }
+            if (partitioned.result.content) {
+              watchdog.onChunk()
+              yield { type: 'content', text: partitioned.result.content } as any
+            }
+          }
         } catch {
           // ignore malformed JSON
         }
       }
     }
   } finally {
-    (streamFinalizationRegistry as FinalizationRegistry<unknown>).unregister(reader)
+    watchdog.stop()
+    ;(streamFinalizationRegistry as any).unregister(reader)
     // Cancel the reader to release the underlying socket back to the pool.
     // This is safe to call even if the stream is already done.
     await reader.cancel().catch(() => { /* ignore cancel errors */ })
