@@ -530,7 +530,10 @@ export class Orchestrator {
         this.transitionTask(taskId, TaskStatus.Failed, payload.result)
       }
     } catch (err) {
-      console.warn(`[handleAnnounce] Error transitioning task ${taskId} to ${payload.status}:`, err)
+      console.warn(
+        `[handleAnnounce] transitionTask failed for taskId=${taskId}, payload.status=${payload.status}:`,
+        err instanceof Error ? err.message : String(err),
+      )
       // Task may already be in terminal state from explicit complete() call
     }
 
