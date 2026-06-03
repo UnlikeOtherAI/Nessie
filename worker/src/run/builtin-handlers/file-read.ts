@@ -29,7 +29,7 @@ export const runFileRead = async (
 ): Promise<FileReadOutput> => {
   const input = InputSchema.parse(rawArgs)
   const sandbox = await extractSandboxConfig(transportConfig, TOOL_ID)
-  const resolvedPath = await assertInsideSandbox(input.path, sandbox, TOOL_ID)
+  const resolvedPath = await assertInsideSandbox(input.path, sandbox, TOOL_ID, 'read')
   const maxBytes = input.maxBytes ?? DEFAULT_MAX_BYTES
 
   const handle = await open(resolvedPath, 'r')

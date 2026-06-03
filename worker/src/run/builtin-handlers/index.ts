@@ -27,4 +27,8 @@ export {
   extractSandboxConfig,
   SandboxViolationError,
   type SandboxConfig,
+  type SandboxRoot,
+  type SandboxRootKind,
+  type SandboxRootAccess,
+  type OperationType,
 } from './sandbox.js'
