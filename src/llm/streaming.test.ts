@@ -221,3 +221,119 @@ describe('StreamingWatchdog', () => {
     expect(error!.message).toBe('Streaming watchdog: no data received for 10000ms')
   }, 60_000)
 })
+
+describe('StreamingRequestTimeout', () => {
+  const originalEnv = process.env.LLM_STREAM_IDLE_MS
+
+  beforeEach(() => {
+    delete process.env.LLM_STREAM_IDLE_MS
+    process.env.OPENAI_API_KEY = 'test-key'
+    process.env.OPENAI_CHAT_API_KEY = 'test-key'
+  })
+
+  afterEach(() => {
+    if (originalEnv !== undefined) {
+      process.env.LLM_STREAM_IDLE_MS = originalEnv
+    } else {
+      delete process.env.LLM_STREAM_IDLE_MS
+    }
+    delete process.env.OPENAI_API_KEY
+    delete process.env.OPENAI_CHAT_API_KEY
+  })
+
+  it('aborts fetch when timeoutSeconds is exceeded (default 60s)', async () => {
+    const fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    // Simulate a fetch that never resolves (hangs)
+    fetchMock.mockImplementation(() => new Promise(() => {}))
+
+    const gen = llmStream([{ role: 'user', content: 'hi' }])
+    let error: Error | undefined
+
+    try {
+      for await (const _ of gen) { /* consume */ }
+    } catch (err) {
+      error = err as Error
+    }
+
+    expect(error).toBeDefined()
+    expect(error!.message).toMatch(/Streaming request timed out after 60s/)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // Verify signal was passed
+    const callOpts = fetchMock.mock.calls[0][1] as RequestInit
+    expect(callOpts.signal).toBeInstanceOf(AbortSignal)
+  }, 65_000)
+
+  it('aborts fetch with custom timeoutSeconds', async () => {
+    const fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    // Simulate a fetch that never resolves (hangs)
+    fetchMock.mockImplementation(() => new Promise(() => {}))
+
+    const options: LlmStreamOptions = { timeoutSeconds: 2 }
+    const gen = llmStream([{ role: 'user', content: 'hi' }], options)
+    let error: Error | undefined
+
+    try {
+      for await (const _ of gen) { /* consume */ }
+    } catch (err) {
+      error = err as Error
+    }
+
+    expect(error).toBeDefined()
+    expect(error!.message).toMatch(/Streaming request timed out after 2s/)
+  }, 10_000)
+
+  it('completes a fast stream without triggering request timeout', async () => {
+    const fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const stream = makeMockStream([
+      { text: chunkWithContent('fast'), delayMs: 100 },
+      { text: doneLine(), delayMs: 100 },
+    ])
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      body: stream,
+    } as unknown as Response)
+
+    const options: LlmStreamOptions = { timeoutSeconds: 5 }
+    const gen = llmStream([{ role: 'user', content: 'hi' }], options)
+    const results: string[] = []
+
+    for await (const text of gen) {
+      results.push(text)
+    }
+
+    expect(results).toEqual(['fast'])
+  }, 10_000)
+
+  it('does not leave lingering request timeout timers after normal completion', async () => {
+    const fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const stream = makeMockStream([
+      { text: chunkWithContent('done'), delayMs: 100 },
+      { text: doneLine(), delayMs: 100 },
+    ])
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      body: stream,
+    } as unknown as Response)
+
+    const options: LlmStreamOptions = { timeoutSeconds: 1 }
+    const gen = llmStream([{ role: 'user', content: 'hi' }], options)
+    const results: string[] = []
+
+    for await (const text of gen) {
+      results.push(text)
+    }
+
+    expect(results).toEqual(['done'])
+    // If the 1s timeout timer leaks, vitest will hang.
+  })
+})

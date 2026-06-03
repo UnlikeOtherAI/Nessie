@@ -107,90 +107,102 @@ async function* openaiStream(
   if (!apiKey) throw new Error('OPENAI_API_KEY / OPENAI_CHAT_API_KEY is not set')
 
   const url = options.baseUrl ?? 'https://api.openai.com/v1/chat/completions'
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: options.model ?? 'gpt-4o',
-      messages,
-      max_tokens: options.maxTokens ?? 1024,
-      temperature: options.temperature ?? 0.7,
-      stream: true,
-    }),
-  })
-
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`OpenAI streaming error ${res.status}: ${err}`)
-  }
-
-  if (!res.body) throw new Error('OpenAI response has no body')
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer: string = "" as string
-  let reasoningState: { inReasoning: boolean; buffer: string } = { inReasoning: false, buffer: '' }
-
-  // Register reader with finalization registry as a safety net for abandoned streams
-  ;(streamFinalizationRegistry as any).register(reader, reader)
-
-  const idleTimeoutMs = options.idleTimeoutMs ?? (process.env.LLM_STREAM_IDLE_MS ? parseInt(process.env.LLM_STREAM_IDLE_MS, 10) : 30_000)
-  const controller = new AbortController()
-  const watchdog = new StreamingWatchdog(idleTimeoutMs)
-  watchdog.start(controller)
+  const timeoutSeconds = options.timeoutSeconds ?? 60
+  const timeoutMs = timeoutSeconds * 1000
+  const abortController = new AbortController()
+  const timeoutHandle = setTimeout(() => {
+    abortController.abort(new Error(`Streaming request timed out after ${timeoutSeconds}s`))
+  }, timeoutMs)
 
   try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: options.model ?? 'gpt-4o',
+        messages,
+        max_tokens: options.maxTokens ?? 1024,
+        temperature: options.temperature ?? 0.7,
+        stream: true,
+      }),
+      signal: abortController.signal,
+    })
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`OpenAI streaming error ${res.status}: ${err}`)
+    }
 
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const data = line.slice(6).trim()
-        if (data === '[DONE]') return
-        try {
-          const chunk = JSON.parse(data) as {
-            choices?: { delta?: { content?: string; reasoning_content?: string; thinking?: string; reasoning?: string } }[]
-          }
-          const delta = chunk.choices?.[0]?.delta
-          const text = delta?.content
-          // First, yield any separate reasoning fields (existing behaviour)
-          const separateReasoning = delta?.reasoning_content ?? delta?.thinking ?? delta?.reasoning
-          if (separateReasoning) {
-            watchdog.onChunk()
-            yield { type: 'reasoning', text: separateReasoning } as any
-          }
-          if (text) {
-            const partitioned: any = partitionReasoningTags(text, reasoningState)
-            reasoningState = partitioned.newState
-            if (partitioned.result.reasoning) {
-              watchdog.onChunk()
-              yield { type: 'reasoning', text: partitioned.result.reasoning } as any
+    if (!res.body) throw new Error('OpenAI response has no body')
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer: string = "" as string
+    let reasoningState: { inReasoning: boolean; buffer: string } = { inReasoning: false, buffer: '' }
+
+    // Register reader with finalization registry as a safety net for abandoned streams
+    ;(streamFinalizationRegistry as any).register(reader, reader)
+
+    const idleTimeoutMs = options.idleTimeoutMs ?? (process.env.LLM_STREAM_IDLE_MS ? parseInt(process.env.LLM_STREAM_IDLE_MS, 10) : 30_000)
+    const controller = new AbortController()
+    const watchdog = new StreamingWatchdog(idleTimeoutMs)
+    watchdog.start(controller)
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6).trim()
+          if (data === '[DONE]') return
+          try {
+            const chunk = JSON.parse(data) as {
+              choices?: { delta?: { content?: string; reasoning_content?: string; thinking?: string; reasoning?: string } }[]
             }
-            if (partitioned.result.content) {
+            const delta = chunk.choices?.[0]?.delta
+            const text = delta?.content
+            // First, yield any separate reasoning fields (existing behaviour)
+            const separateReasoning = delta?.reasoning_content ?? delta?.thinking ?? delta?.reasoning
+            if (separateReasoning) {
               watchdog.onChunk()
-              yield { type: 'content', text: partitioned.result.content } as any
+              yield { type: 'reasoning', text: separateReasoning } as any
             }
+            if (text) {
+              const partitioned: any = partitionReasoningTags(text, reasoningState)
+              reasoningState = partitioned.newState
+              if (partitioned.result.reasoning) {
+                watchdog.onChunk()
+                yield { type: 'reasoning', text: partitioned.result.reasoning } as any
+              }
+              if (partitioned.result.content) {
+                watchdog.onChunk()
+                yield { type: 'content', text: partitioned.result.content } as any
+              }
+            }
+          } catch {
+            // ignore malformed JSON
           }
-        } catch {
-          // ignore malformed JSON
         }
       }
+    } finally {
+      watchdog.stop()
+      ;(streamFinalizationRegistry as any).unregister(reader)
+      // Cancel the reader to release the underlying socket back to the pool.
+      // This is safe to call even if the stream is already done.
+      await reader.cancel().catch(() => { /* ignore cancel errors */ })
+      reader.releaseLock()
     }
   } finally {
-    watchdog.stop()
-    ;(streamFinalizationRegistry as any).unregister(reader)
-    // Cancel the reader to release the underlying socket back to the pool.
-    // This is safe to call even if the stream is already done.
-    await reader.cancel().catch(() => { /* ignore cancel errors */ })
-    reader.releaseLock()
+    clearTimeout(timeoutHandle)
   }
 }
 
@@ -205,89 +217,101 @@ async function* minimaxStream(
 
   // Note: MiniMax does not support custom baseUrl for text/chatcompletion_v2.
   // Fallback to the default endpoint. Failover for streaming is a known limitation.
-  const res = await fetch('https://api.minimax.io/v1/text/chatcompletion_v2', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: options.model ?? 'MiniMax-M2.5',
-      messages,
-      max_tokens: options.maxTokens ?? 1024,
-      temperature: options.temperature ?? 0.7,
-      stream: true,
-    }),
-  })
-
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`MiniMax streaming error ${res.status}: ${err}`)
-  }
-
-  if (!res.body) throw new Error('MiniMax response has no body')
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer: string = "" as string
-  let reasoningState: { inReasoning: boolean; buffer: string } = { inReasoning: false, buffer: '' }
-
-  // Register reader with finalization registry as a safety net for abandoned streams
-  ;(streamFinalizationRegistry as any).register(reader, reader)
-
-  const idleTimeoutMs = options.idleTimeoutMs ?? (process.env.LLM_STREAM_IDLE_MS ? parseInt(process.env.LLM_STREAM_IDLE_MS, 10) : 30_000)
-  const controller = new AbortController()
-  const watchdog = new StreamingWatchdog(idleTimeoutMs)
-  watchdog.start(controller)
+  const timeoutSeconds = options.timeoutSeconds ?? 60
+  const timeoutMs = timeoutSeconds * 1000
+  const abortController = new AbortController()
+  const timeoutHandle = setTimeout(() => {
+    abortController.abort(new Error(`Streaming request timed out after ${timeoutSeconds}s`))
+  }, timeoutMs)
 
   try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    const res = await fetch('https://api.minimax.io/v1/text/chatcompletion_v2', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: options.model ?? 'MiniMax-M2.5',
+        messages,
+        max_tokens: options.maxTokens ?? 1024,
+        temperature: options.temperature ?? 0.7,
+        stream: true,
+      }),
+      signal: abortController.signal,
+    })
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`MiniMax streaming error ${res.status}: ${err}`)
+    }
 
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const data = line.slice(6).trim()
-        if (data === '[DONE]') return
-        try {
-          const chunk = JSON.parse(data) as {
-            choices?: { delta?: { content?: string; reasoning_content?: string; thinking?: string; reasoning?: string } }[]
-          }
-          const delta = chunk.choices?.[0]?.delta
-          const text = delta?.content
-          // First, yield any separate reasoning fields (existing behaviour)
-          const separateReasoning = delta?.reasoning_content ?? delta?.thinking ?? delta?.reasoning
-          if (separateReasoning) {
-            watchdog.onChunk()
-            yield { type: 'reasoning', text: separateReasoning } as any
-          }
-          if (text) {
-            const partitioned: any = partitionReasoningTags(text, reasoningState)
-            reasoningState = partitioned.newState
-            if (partitioned.result.reasoning) {
-              watchdog.onChunk()
-              yield { type: 'reasoning', text: partitioned.result.reasoning } as any
+    if (!res.body) throw new Error('MiniMax response has no body')
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer: string = "" as string
+    let reasoningState: { inReasoning: boolean; buffer: string } = { inReasoning: false, buffer: '' }
+
+    // Register reader with finalization registry as a safety net for abandoned streams
+    ;(streamFinalizationRegistry as any).register(reader, reader)
+
+    const idleTimeoutMs = options.idleTimeoutMs ?? (process.env.LLM_STREAM_IDLE_MS ? parseInt(process.env.LLM_STREAM_IDLE_MS, 10) : 30_000)
+    const controller = new AbortController()
+    const watchdog = new StreamingWatchdog(idleTimeoutMs)
+    watchdog.start(controller)
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6).trim()
+          if (data === '[DONE]') return
+          try {
+            const chunk = JSON.parse(data) as {
+              choices?: { delta?: { content?: string; reasoning_content?: string; thinking?: string; reasoning?: string } }[]
             }
-            if (partitioned.result.content) {
+            const delta = chunk.choices?.[0]?.delta
+            const text = delta?.content
+            // First, yield any separate reasoning fields (existing behaviour)
+            const separateReasoning = delta?.reasoning_content ?? delta?.thinking ?? delta?.reasoning
+            if (separateReasoning) {
               watchdog.onChunk()
-              yield { type: 'content', text: partitioned.result.content } as any
+              yield { type: 'reasoning', text: separateReasoning } as any
             }
+            if (text) {
+              const partitioned: any = partitionReasoningTags(text, reasoningState)
+              reasoningState = partitioned.newState
+              if (partitioned.result.reasoning) {
+                watchdog.onChunk()
+                yield { type: 'reasoning', text: partitioned.result.reasoning } as any
+              }
+              if (partitioned.result.content) {
+                watchdog.onChunk()
+                yield { type: 'content', text: partitioned.result.content } as any
+              }
+            }
+          } catch {
+            // ignore malformed JSON
           }
-        } catch {
-          // ignore malformed JSON
         }
       }
+    } finally {
+      watchdog.stop()
+      ;(streamFinalizationRegistry as any).unregister(reader)
+      // Cancel the reader to release the underlying socket back to the pool.
+      // This is safe to call even if the stream is already done.
+      await reader.cancel().catch(() => { /* ignore cancel errors */ })
+      reader.releaseLock()
     }
   } finally {
-    watchdog.stop()
-    ;(streamFinalizationRegistry as any).unregister(reader)
-    // Cancel the reader to release the underlying socket back to the pool.
-    // This is safe to call even if the stream is already done.
-    await reader.cancel().catch(() => { /* ignore cancel errors */ })
-    reader.releaseLock()
+    clearTimeout(timeoutHandle)
   }
 }

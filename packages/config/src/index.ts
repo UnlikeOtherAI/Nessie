@@ -42,6 +42,7 @@ export const ModelConfigSchema = z.object({
   maxTokens: z.number().int().positive().default(2048),
   modelName: z.string().min(1).optional(),
   temperature: z.number().min(0).max(2).default(0.2),
+  timeoutSeconds: z.number().int().positive().default(60),
   backends: z.array(
     z.string().url(),
   ).default([]).refine(
@@ -121,6 +122,7 @@ export const ConfigEnvMap = {
   NESSIE_MODEL_NAME: 'model.modelName',
   NESSIE_MODEL_BACKENDS: 'model.backends',
   NESSIE_MODEL_TEMPERATURE: 'model.temperature',
+  NESSIE_MODEL_TIMEOUT: 'model.timeoutSeconds',
   NESSIE_API_HOST: 'api.host',
   NESSIE_API_PORT: 'api.port',
 } as const
@@ -157,6 +159,7 @@ const DEFAULT_CONFIG: NessieConfig = {
     provider: 'openai',
     maxTokens: 2048,
     temperature: 0.2,
+    timeoutSeconds: 60,
     backends: [],
   },
   api: {

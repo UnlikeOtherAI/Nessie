@@ -224,6 +224,7 @@ const streamFinalizationRegistry = new FinalizationRegistry<ReadableStreamDefaul
 
 const collectChatStream = async function* (
   response: Response,
+  timeoutSeconds?: number,
 ): AsyncGenerator<ProviderStreamEvent, CapturedStreamResult, undefined> {
   if (!response.body) {
     throw new Error('Model response has no body')
@@ -244,6 +245,12 @@ const collectChatStream = async function* (
   // cleanup to generator lifetime while heldValue carries the reader for finalization.
   const cleanupToken: object = {}
   streamFinalizationRegistry.register(cleanupToken, reader, cleanupToken)
+
+  const effectiveTimeoutSeconds = timeoutSeconds ?? 60
+  const abortController = new AbortController()
+  const timeoutHandle = setTimeout(() => {
+    abortController.abort(new Error(`Streaming request timed out after ${effectiveTimeoutSeconds}s`))
+  }, effectiveTimeoutSeconds * 1000)
 
   try {
     while (true) {
@@ -339,6 +346,7 @@ const collectChatStream = async function* (
       }
     }
   } finally {
+    clearTimeout(timeoutHandle)
     streamFinalizationRegistry.unregister(cleanupToken)
     // Cancel the reader to release the underlying socket back to the pool.
     // This is safe to call even if the stream is already done.
@@ -546,21 +554,33 @@ const createOpenAiLikeConnector = (
   const resolveChatModel = (model?: string): string =>
     model ?? config.modelName ?? DEFAULT_OPENAI_MODEL
 
+  const timeoutSeconds = config.timeoutSeconds ?? 60
+
   const invokeRequest = async (
     body: Record<string, unknown>,
   ): Promise<Response> => {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      body: JSON.stringify(body),
-      headers,
-      method: 'POST',
-    })
+    const abortController = new AbortController()
+    const timeoutHandle = setTimeout(() => {
+      abortController.abort(new Error(`Streaming request timed out after ${timeoutSeconds}s`))
+    }, timeoutSeconds * 1000)
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`${provider} model error ${response.status}: ${errorText}`)
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        body: JSON.stringify(body),
+        headers,
+        method: 'POST',
+        signal: abortController.signal,
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`${provider} model error ${response.status}: ${errorText}`)
+      }
+
+      return response
+    } finally {
+      clearTimeout(timeoutHandle)
     }
-
-    return response
   }
 
   return {
@@ -765,7 +785,7 @@ const createOpenAiLikeConnector = (
           tools,
         })
 
-        const stream = collectChatStream(response)
+        const stream = collectChatStream(response, timeoutSeconds)
         let next = await stream.next()
         while (!next.done) {
           yield next.value
@@ -820,21 +840,33 @@ const createMiniMaxConnector = (
   const resolveChatModel = (model?: string): string =>
     model ?? config.modelName ?? DEFAULT_MINIMAX_MODEL
 
+  const timeoutSeconds = config.timeoutSeconds ?? 60
+
   const invokeRequest = async (
     body: Record<string, unknown>,
   ): Promise<Response> => {
-    const response = await fetch(`${baseUrl}/text/chatcompletion_v2`, {
-      body: JSON.stringify(body),
-      headers,
-      method: 'POST',
-    })
+    const abortController = new AbortController()
+    const timeoutHandle = setTimeout(() => {
+      abortController.abort(new Error(`Streaming request timed out after ${timeoutSeconds}s`))
+    }, timeoutSeconds * 1000)
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`MiniMax model error ${response.status}: ${errorText}`)
+    try {
+      const response = await fetch(`${baseUrl}/text/chatcompletion_v2`, {
+        body: JSON.stringify(body),
+        headers,
+        method: 'POST',
+        signal: abortController.signal,
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`MiniMax model error ${response.status}: ${errorText}`)
+      }
+
+      return response
+    } finally {
+      clearTimeout(timeoutHandle)
     }
-
-    return response
   }
 
   return {
@@ -891,7 +923,7 @@ const createMiniMaxConnector = (
           temperature: request.temperature,
         })
 
-        const stream = collectChatStream(response)
+        const stream = collectChatStream(response, timeoutSeconds)
         let next = await stream.next()
         while (!next.done) {
           next = await stream.next()
@@ -946,7 +978,7 @@ const createMiniMaxConnector = (
           temperature: request.temperature,
         })
 
-        const stream = collectChatStream(response)
+        const stream = collectChatStream(response, timeoutSeconds)
         let next = await stream.next()
         while (!next.done) {
           yield next.value
@@ -1191,6 +1223,7 @@ const parseKimiToolCalls = (
 
 const collectAnthropicStream = async function* (
   response: Response,
+  timeoutSeconds?: number,
 ): AsyncGenerator<ProviderStreamEvent, CapturedStreamResult, undefined> {
   if (!response.body) {
     throw new Error('Kimi response has no body')
@@ -1206,6 +1239,12 @@ const collectAnthropicStream = async function* (
   // Target/heldValue must be distinct objects; sentinel ties cleanup to generator scope.
   const cleanupToken: object = {}
   streamFinalizationRegistry.register(cleanupToken, reader, cleanupToken)
+
+  const effectiveTimeoutSeconds = timeoutSeconds ?? 60
+  const abortController = new AbortController()
+  const timeoutHandle = setTimeout(() => {
+    abortController.abort(new Error(`Streaming request timed out after ${effectiveTimeoutSeconds}s`))
+  }, effectiveTimeoutSeconds * 1000)
 
   try {
     while (true) {
@@ -1273,6 +1312,7 @@ const collectAnthropicStream = async function* (
       }
     }
   } finally {
+    clearTimeout(timeoutHandle)
     streamFinalizationRegistry.unregister(cleanupToken)
     await reader.cancel().catch(() => { /* ignore */ })
     reader.releaseLock()
@@ -1303,21 +1343,33 @@ const createKimiConnector = (
   const resolveChatModel = (model?: string): string =>
     model ?? config.modelName ?? DEFAULT_KIMI_MODEL
 
+  const timeoutSeconds = config.timeoutSeconds ?? 60
+
   const invokeRequest = async (
     body: Record<string, unknown>,
   ): Promise<Response> => {
-    const response = await fetch(`${baseUrl}/v1/messages`, {
-      body: JSON.stringify(body),
-      headers,
-      method: 'POST',
-    })
+    const abortController = new AbortController()
+    const timeoutHandle = setTimeout(() => {
+      abortController.abort(new Error(`Streaming request timed out after ${timeoutSeconds}s`))
+    }, timeoutSeconds * 1000)
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Kimi model error ${response.status}: ${errorText}`)
+    try {
+      const response = await fetch(`${baseUrl}/v1/messages`, {
+        body: JSON.stringify(body),
+        headers,
+        method: 'POST',
+        signal: abortController.signal,
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Kimi model error ${response.status}: ${errorText}`)
+      }
+
+      return response
+    } finally {
+      clearTimeout(timeoutHandle)
     }
-
-    return response
   }
 
   return {
@@ -1437,7 +1489,7 @@ const createKimiConnector = (
           temperature: request.temperature,
         })
 
-        const stream = collectAnthropicStream(response)
+        const stream = collectAnthropicStream(response, timeoutSeconds)
         let next = await stream.next()
         while (!next.done) {
           yield next.value

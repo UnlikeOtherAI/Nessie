@@ -7,6 +7,7 @@ export type ModelProviderConfig = {
   baseUrl?: string
   modelName?: string
   provider: ModelProviderName
+  timeoutSeconds?: number
 }
 
 export type ProviderHealthStatus =
