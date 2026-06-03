@@ -125,7 +125,7 @@ const walkGlob = async (
       }
       const child = join(cwd, entry.name)
       try {
-        await assertInsideSandbox(child, sandbox, TOOL_ID)
+        await assertInsideSandbox(child, sandbox, TOOL_ID, 'read')
       } catch {
         continue
       }
@@ -161,7 +161,7 @@ const walkGlob = async (
     }
     const childPath = join(cwd, entry.name)
     try {
-      await assertInsideSandbox(childPath, sandbox, TOOL_ID)
+      await assertInsideSandbox(childPath, sandbox, TOOL_ID, 'read')
     } catch {
       continue
     }
@@ -198,13 +198,13 @@ export const runFileGlob = async (
 ): Promise<FileGlobOutput> => {
   const input = InputSchema.parse(rawArgs)
   const sandbox = await extractSandboxConfig(transportConfig, TOOL_ID)
-  const candidateCwd = input.cwd ?? sandbox.allowedRoots[0]
+  const candidateCwd = input.cwd ?? sandbox.allowedRoots[0]?.path
   if (candidateCwd === undefined) {
     // extractSandboxConfig already guarantees at least one root, but keep this
     // explicit for the type narrowing.
     throw new Error('file_glob requires at least one allowed root.')
   }
-  const cwd = await assertInsideSandbox(candidateCwd, sandbox, TOOL_ID)
+  const cwd = await assertInsideSandbox(candidateCwd, sandbox, TOOL_ID, 'read')
   const limit = input.limit ?? DEFAULT_LIMIT
   const segments = compilePattern(input.pattern)
 
