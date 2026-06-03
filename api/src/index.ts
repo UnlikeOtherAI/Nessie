@@ -55,6 +55,7 @@ import { registerTeamRoutes } from './routes/teams.js'
 import { registerThoughtRoutes } from './routes/thoughts.js'
 import { registerThreadRoutes } from './routes/threads.js'
 import { registerToolBundleRoutes } from './routes/tools-bundles.js'
+import { registerRunRoutes } from './routes/runs.js'
 import { registerToolRoutes } from './routes/tools.js'
 import { registerTriggerRoutes } from './routes/triggers.js'
 import { registerUserRoutes } from './routes/users.js'
@@ -277,6 +278,8 @@ export const buildApp = async () => {
     requireActorContext,
     requireOwner,
   })
+
+  registerRunRoutes(app, deps)
 
   // ─── Phase 2: Approval sweep (periodic) ─────────────────────────────────
 

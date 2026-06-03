@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
-const TimestampSchema = z.string().min(1)
-const NonEmptyStringSchema = z.string().min(1)
+export const TimestampSchema = z.string().min(1)
+export const NonEmptyStringSchema = z.string().min(1)
 
 /**
  * Hard upper bound on the length of a single chat message body. Anything
@@ -2057,3 +2057,4 @@ export type AgentToolPolicy = z.infer<typeof AgentToolPolicySchema>
 // ─── MCP Universal Connector (Slice B) ───────────────────────────────────────
 export * from './mcp.js'
 export * from './tools.js'
+export * from './runs.js'

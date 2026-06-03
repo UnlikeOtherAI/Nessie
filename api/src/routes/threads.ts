@@ -311,6 +311,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'Content-Type': 'text/event-stream',
+      'X-Nessie-Run-Id': runId,
     })
     reply.raw.write(': stream connected\n\n')
 

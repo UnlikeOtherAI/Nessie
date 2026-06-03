@@ -6,6 +6,7 @@ import {
   type ThreadStreamEvent,
   type WsEventMessage,
 } from '@nessie/runtime'
+import { parseAgentId, parseRunId } from '@nessie/schemas'
 import type { SseEvent, WsScope } from '@nessie/schemas'
 
 type SseConnection = {
@@ -197,6 +198,24 @@ export const createRealtimeHub = async (input: {
       event: SseEvent['event'],
       data: SseEvent['data'],
     ): Promise<ThreadStreamEvent> => transport.publishSse(threadId, event, data),
+    publishCancellation: async (threadId: string, runId: string): Promise<void> => {
+      await transport.publishSse(threadId, 'stream.done', {
+        agentId: '',
+        content: 'Run cancelled.',
+        createdAt: new Date().toISOString(),
+        messageId: `run-cancelled:${runId}`,
+        runId,
+      })
+    },
+    publishCancellation: async (threadId: string, runId: string): Promise<void> => {
+      await transport.publishSse(threadId, 'stream.done', {
+        agentId: '',
+        content: 'Run cancelled.',
+        createdAt: new Date().toISOString(),
+        messageId: `run-cancelled:${runId}`,
+        runId,
+      })
+    },
     publishWs: async (
       scopes: WsScope[],
       input: {

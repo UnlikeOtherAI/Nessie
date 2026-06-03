@@ -50,6 +50,117 @@ import { enqueueRunMemoryConsolidation } from './memory-consolidation.js'
 
 const runtimeModelConfig = loadConfig().model
 
+// ─── Active Run Lifecycle Tracking ────────────────────────────────────────
+
+export type ActiveRunEntry = {
+  runId: string
+  agentId: string
+  threadId: string
+  status: Extract<RunStatus, 'pending' | 'running' | 'waiting_approval'>
+  startedAt: string
+  abortController: AbortController
+  tokenUsage: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+  }
+  steerQueue: string[]
+}
+
+const activeRuns = new Map<string, ActiveRunEntry>()
+
+export const getActiveRuns = (): Map<string, ActiveRunEntry> => activeRuns
+
+export const getActiveRun = (runId: string): ActiveRunEntry | undefined => activeRuns.get(runId)
+
+export const registerActiveRun = (entry: Omit<ActiveRunEntry, 'abortController' | 'tokenUsage' | 'steerQueue'>): ActiveRunEntry => {
+  const existing = activeRuns.get(entry.runId)
+  if (existing) {
+    return existing
+  }
+  const newEntry: ActiveRunEntry = {
+    ...entry,
+    abortController: new AbortController(),
+    tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    steerQueue: [],
+  }
+  activeRuns.set(entry.runId, newEntry)
+  return newEntry
+}
+
+export const unregisterActiveRun = (runId: string): void => {
+  activeRuns.delete(runId)
+}
+
+export const updateActiveRunTokens = (runId: string, usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): void => {
+  const entry = activeRuns.get(runId)
+  if (!entry) return
+  if (usage.inputTokens !== undefined) entry.tokenUsage.inputTokens += usage.inputTokens
+  if (usage.outputTokens !== undefined) entry.tokenUsage.outputTokens += usage.outputTokens
+  if (usage.totalTokens !== undefined) entry.tokenUsage.totalTokens += usage.totalTokens
+}
+
+export const enqueueSteerInstruction = (runId: string, instruction: string): boolean => {
+  const entry = activeRuns.get(runId)
+  if (!entry) return false
+  entry.steerQueue.push(instruction)
+  return true
+}
+
+export const dequeueSteerInstruction = (runId: string): string | undefined => {
+  const entry = activeRuns.get(runId)
+  if (!entry) return undefined
+  return entry.steerQueue.shift()
+}
+
+export const cancelActiveRun = (runId: string): boolean => {
+  const entry = activeRuns.get(runId)
+  if (!entry) return false
+  entry.abortController.abort()
+  entry.status = 'cancelled' as unknown as Extract<RunStatus, 'pending' | 'running' | 'waiting_approval'>
+  return true
+}
+
+export const isRunCancelled = (runId: string): boolean => {
+  const entry = activeRuns.get(runId)
+  if (!entry) return false
+  return entry.abortController.signal.aborted
+}
+
+export const listActiveRuns = (): Array<{
+  runId: string
+  agentId: string
+  threadId: string
+  status: string
+  startedAt: string
+  tokenUsage: { inputTokens: number; outputTokens: number; totalTokens: number }
+  steerQueueLength: number
+}> => {
+  const result: Array<{
+    runId: string
+    agentId: string
+    threadId: string
+    status: string
+    startedAt: string
+    tokenUsage: { inputTokens: number; outputTokens: number; totalTokens: number }
+    steerQueueLength: number
+  }> = []
+  for (const entry of activeRuns.values()) {
+    result.push({
+      runId: entry.runId,
+      agentId: entry.agentId,
+      threadId: entry.threadId,
+      status: entry.status,
+      startedAt: entry.startedAt,
+      tokenUsage: { ...entry.tokenUsage },
+      steerQueueLength: entry.steerQueue.length,
+    })
+  }
+  return result
+}
+
+// ─── Execution Dependencies ─────────────────────────────────────────────
+
 type ExecutionDependencies = {
   modelClient: ModelClient
   prisma: PrismaClient
@@ -806,7 +917,7 @@ const updateRunStatus = async (
   await prisma.run.update({
     where: { id: runId },
     data: {
-      finishedAt: status === 'completed' || status === 'failed' ? new Date() : null,
+      finishedAt: status === 'completed' || status === 'failed' || status === 'cancelled' ? new Date() : null,
       startedAt: status === 'running' ? new Date() : undefined,
       status,
     },
@@ -1130,6 +1241,15 @@ export const executeRunJob = async (
   let streamStarted = false
   let planContext: RunPlanContext | null = null
 
+  // Register this run in the activeRuns map for lifecycle tracking
+  const activeRun = registerActiveRun({
+    runId: context.run.id,
+    agentId: context.agent.id,
+    threadId: context.run.threadId,
+    status: 'pending',
+    startedAt: new Date().toISOString(),
+  })
+
   try {
     await validateRunActorContext(deps.prisma, payload.actorContext, context)
 
@@ -1200,6 +1320,10 @@ export const executeRunJob = async (
       console.log(`[worker] run ${context.run.id} already claimed or terminal; skipping`)
       return
     }
+
+    // Update active run status to running
+    activeRun.status = 'running'
+
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')
     await markRunPlanStarted(deps.prisma, planContext)
     await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
@@ -1363,6 +1487,18 @@ export const executeRunJob = async (
       budget: DEFAULT_BUDGET,
       callbacks: {
         onIterationStart: async (iteration) => {
+          // Check for cancellation before each iteration
+          if (activeRun.abortController.signal.aborted) {
+            throw new Error('Run cancelled by user')
+          }
+          // Check for steer instructions
+          const steerInstruction = dequeueSteerInstruction(context.run.id)
+          if (steerInstruction) {
+            messages.push({
+              content: `User instruction: ${steerInstruction}`,
+              role: 'user',
+            })
+          }
           await deps.realtimeTransport.publishWs(buildScopes(context), {
             data: {
               agentId: parseAgentId(context.agent.id),
@@ -1514,6 +1650,15 @@ export const executeRunJob = async (
       loopResult.invocations.push(...subAgentInvocations)
     }
 
+    // Update token usage tracking from invocations
+    for (const inv of loopResult.invocations) {
+      updateActiveRunTokens(context.run.id, {
+        inputTokens: inv.usage.inputTokens,
+        outputTokens: inv.usage.outputTokens,
+        totalTokens: inv.usage.totalTokens,
+      })
+    }
+
     const responseText = stripLeadingSectionTag(loopResult.finalText)
 
     await persistInvocationLedgerEvents(deps.prisma, {
@@ -1604,11 +1749,14 @@ export const executeRunJob = async (
     })
   } catch (error) {
     const messageText = error instanceof Error ? error.message : 'Run execution failed unexpectedly'
+    const isCancelled = activeRun.abortController.signal.aborted || messageText.includes('cancelled')
 
     if (streamStarted) {
       const fallbackMessageId = `run-error:${context.run.id}`
       let terminalMessageId = fallbackMessageId
-      let terminalContent = `I hit an error while processing this request: ${messageText}`
+      let terminalContent = isCancelled
+        ? `Run cancelled.`
+        : `I hit an error while processing this request: ${messageText}`
       let terminalCreatedAt = new Date().toISOString()
 
       try {
@@ -1647,8 +1795,9 @@ export const executeRunJob = async (
       }
     }
 
-    await updateRunStatus(deps.prisma, context.run.id, 'failed')
-    await updateTaskStatus(deps.prisma, context.task.id, 'failed')
+    const terminalStatus: RunStatus = isCancelled ? 'cancelled' : 'failed'
+    await updateRunStatus(deps.prisma, context.run.id, terminalStatus)
+    await updateTaskStatus(deps.prisma, context.task.id, terminalStatus === 'cancelled' ? 'cancelled' : 'failed')
     if (planContext) {
       await markRunPlanFinished(deps.prisma, {
         artifacts: {
@@ -1667,6 +1816,7 @@ export const executeRunJob = async (
         taskId: context.task.id,
       },
       planId: payload.parentPlanId,
+
       planStepId: payload.parentPlanStepId,
       success: false,
       summary: messageText.slice(0, 500),
@@ -1680,22 +1830,22 @@ export const executeRunJob = async (
       success: false,
       summary: messageText.slice(0, 500),
     })
-    await setAgentStatus(deps.prisma, context.agent.id, 'error')
-    await publishRunUpdated(deps.realtimeTransport, context, 'failed')
+    await setAgentStatus(deps.prisma, context.agent.id, isCancelled ? 'idle' : 'error')
+    await publishRunUpdated(deps.realtimeTransport, context, terminalStatus)
     await publishTaskUpdated(
       deps.realtimeTransport,
       buildScopes(context),
       context.task.id,
-      'failed',
+      terminalStatus === 'cancelled' ? 'cancelled' : 'failed',
     )
     await publishAgentStatus(deps.realtimeTransport, context, {
       currentRunId: context.run.id,
-      status: 'error',
+      status: isCancelled ? 'idle' : 'error',
     })
 
     await deps.prisma.taskEvent.create({
       data: {
-        eventType: 'run.failed',
+        eventType: isCancelled ? 'run.cancelled' : 'run.failed',
         payload: {
           message: messageText,
         },
@@ -1703,6 +1853,10 @@ export const executeRunJob = async (
       },
     })
 
-    throw error
+    if (!isCancelled) {
+      throw error
+    }
+  } finally {
+    unregisterActiveRun(context.run.id)
   }
 }
