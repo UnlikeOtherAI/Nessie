@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { ProviderInvocationError } from './types.js'
+import { readErrorBodySnippet } from './error-body.js'
 import type {
   ConnectorRegistry,
   InvocationRecord,
@@ -548,15 +549,17 @@ const createOpenAiLikeConnector = (
 
   const invokeRequest = async (
     body: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<Response> => {
     const response = await fetch(`${baseUrl}/chat/completions`, {
       body: JSON.stringify(body),
       headers,
       method: 'POST',
+      signal,
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
+      const errorText = await readErrorBodySnippet(response)
       throw new Error(`${provider} model error ${response.status}: ${errorText}`)
     }
 
@@ -623,7 +626,7 @@ const createOpenAiLikeConnector = (
         })
 
         if (!response.ok) {
-          const errorText = await response.text()
+          const errorText = await readErrorBodySnippet(response)
           throw new Error(`${provider} embedding error ${response.status}: ${errorText}`)
         }
 
@@ -700,7 +703,7 @@ const createOpenAiLikeConnector = (
           temperature: resolveOpenAiTemperature(model, request.temperature),
           tool_choice: request.toolChoice,
           tools,
-        })
+        }, request.signal)
 
         const json = (await response.json()) as OpenAiChatResponse
         const outputText = json.choices?.[0]?.message?.content ?? ''
@@ -763,7 +766,7 @@ const createOpenAiLikeConnector = (
           temperature: resolveOpenAiTemperature(model, request.temperature),
           tool_choice: request.toolChoice,
           tools,
-        })
+        }, request.signal)
 
         const stream = collectChatStream(response)
         let next = await stream.next()
@@ -822,15 +825,17 @@ const createMiniMaxConnector = (
 
   const invokeRequest = async (
     body: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<Response> => {
     const response = await fetch(`${baseUrl}/text/chatcompletion_v2`, {
       body: JSON.stringify(body),
       headers,
       method: 'POST',
+      signal,
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
+      const errorText = await readErrorBodySnippet(response)
       throw new Error(`MiniMax model error ${response.status}: ${errorText}`)
     }
 
@@ -889,7 +894,7 @@ const createMiniMaxConnector = (
           model,
           stream: true,
           temperature: request.temperature,
-        })
+        }, request.signal)
 
         const stream = collectChatStream(response)
         let next = await stream.next()
@@ -944,7 +949,7 @@ const createMiniMaxConnector = (
           model,
           stream: true,
           temperature: request.temperature,
-        })
+        }, request.signal)
 
         const stream = collectChatStream(response)
         let next = await stream.next()
@@ -1305,15 +1310,17 @@ const createKimiConnector = (
 
   const invokeRequest = async (
     body: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<Response> => {
     const response = await fetch(`${baseUrl}/v1/messages`, {
       body: JSON.stringify(body),
       headers,
       method: 'POST',
+      signal,
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
+      const errorText = await readErrorBodySnippet(response)
       throw new Error(`Kimi model error ${response.status}: ${errorText}`)
     }
 
@@ -1373,7 +1380,7 @@ const createKimiConnector = (
           model,
           system: payload.system,
           temperature: request.temperature,
-        })
+        }, request.signal)
 
         const parsed = (await response.json()) as AnthropicMessagesResponse
         const rawText = (parsed.content ?? [])
@@ -1435,7 +1442,7 @@ const createKimiConnector = (
           stream: true,
           system: payload.system,
           temperature: request.temperature,
-        })
+        }, request.signal)
 
         const stream = collectAnthropicStream(response)
         let next = await stream.next()

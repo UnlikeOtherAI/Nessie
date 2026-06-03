@@ -126,6 +126,7 @@ export type ProviderInvocationRequest = {
     | 'none'
     | 'required'
     | { type: 'function'; function: { name: string } }
+  signal?: AbortSignal
 }
 
 export type ProviderInvocationResult = {
@@ -217,6 +218,7 @@ export type InferenceRequest = {
     | 'none'
     | 'required'
     | { type: 'function'; function: { name: string } }
+  signal?: AbortSignal
 }
 
 export type InferenceResult = {

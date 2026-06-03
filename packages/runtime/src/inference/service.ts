@@ -43,6 +43,7 @@ const buildProviderRequest = (
   model,
   requestId,
   responseFormat: request.responseFormat,
+  signal: request.signal,
   temperature: request.temperature,
   toolChoice: request.toolChoice,
   tools: request.tools,

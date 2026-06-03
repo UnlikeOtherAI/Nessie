@@ -348,6 +348,28 @@ const resolveStageProviderConfig = async (
   }
 }
 
+const INFERENCE_TIMEOUT_MS = 120_000
+
+const withTimeoutAndAbort = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> => {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout>
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+  })
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    clearTimeout(timer!)
+  }
+}
+
 const executeStage = async (
   prisma: PrismaClient,
   input: {
@@ -364,6 +386,7 @@ const executeStage = async (
     stage: RouteStage
     stageIndex: number
     stream: boolean
+    timeoutMs?: number
     toolChoice?: 'auto' | 'none' | 'required'
     tools?: ToolSchemaDescriptor[]
     upstream: CandidateOutput[]
@@ -406,6 +429,9 @@ const executeStage = async (
     let outputText = ''
     let invocation: InvocationRecord | undefined
     let toolCalls: ProviderToolCall[] = []
+    const timeoutMs = input.timeoutMs ?? INFERENCE_TIMEOUT_MS
+    const controller = new AbortController()
+
     if (input.stream) {
       const source = service.stream?.({
         actorContext: input.actorContext,
@@ -413,6 +439,7 @@ const executeStage = async (
         messages,
         model: providerConfig.model,
         requestId,
+        signal: controller.signal,
         temperature: input.modelConfig.temperature,
         tools: input.tools,
         toolChoice: input.toolChoice,
@@ -421,35 +448,44 @@ const executeStage = async (
         throw new Error(`Provider ${providerConfig.providerKey} does not support streaming`)
       }
 
-      let next = await source.next()
-      while (!next.done) {
-        if (next.value.type === 'reasoning_text.delta') {
-          if (next.value.text && input.onVisibleReasoningDelta) {
-            await input.onVisibleReasoningDelta(next.value.text)
+      const streamPromise = (async () => {
+        let next = await source.next()
+        while (!next.done) {
+          if (next.value.type === 'reasoning_text.delta') {
+            if (next.value.text && input.onVisibleReasoningDelta) {
+              await input.onVisibleReasoningDelta(next.value.text)
+            }
           }
-        }
-        if (next.value.type === 'output_text.delta') {
-          outputText += next.value.text
-          if (next.value.text && input.onVisibleTextDelta) {
-            await input.onVisibleTextDelta(next.value.text)
+          if (next.value.type === 'output_text.delta') {
+            outputText += next.value.text
+            if (next.value.text && input.onVisibleTextDelta) {
+              await input.onVisibleTextDelta(next.value.text)
+            }
           }
+          next = await source.next()
         }
-        next = await source.next()
-      }
-      outputText = next.value.outputText
-      invocation = next.value.invocations.at(-1)
-      toolCalls = next.value.toolCalls
+        outputText = next.value.outputText
+        invocation = next.value.invocations.at(-1)
+        toolCalls = next.value.toolCalls
+      })()
+
+      await withTimeoutAndAbort(streamPromise, timeoutMs, `Inference stream ${input.stage.id}`)
     } else {
-      const result = await service.run({
-        actorContext: input.actorContext,
-        maxOutputTokens: input.modelConfig.maxTokens,
-        messages,
-        model: providerConfig.model,
-        requestId,
-        temperature: input.modelConfig.temperature,
-        tools: input.tools,
-        toolChoice: input.toolChoice,
-      })
+      const result = await withTimeoutAndAbort(
+        service.run({
+          actorContext: input.actorContext,
+          maxOutputTokens: input.modelConfig.maxTokens,
+          messages,
+          model: providerConfig.model,
+          requestId,
+          signal: controller.signal,
+          temperature: input.modelConfig.temperature,
+          tools: input.tools,
+          toolChoice: input.toolChoice,
+        }),
+        timeoutMs,
+        `Inference run ${input.stage.id}`,
+      )
       outputText = result.outputText
       invocation = result.invocations.at(-1)
       toolCalls = result.toolCalls
