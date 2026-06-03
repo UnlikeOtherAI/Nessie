@@ -205,3 +205,151 @@ test('runAgenticLoop enforces the maxTokens budget', async () => {
   assert.equal(result.totalTokensUsed, 6)
   assert.deepEqual(exhausted, ['tokens'])
 })
+
+test('circuit breaker trips after 3 consecutive tool failures', async () => {
+  let toolCallCount = 0
+
+  const result = await runAgenticLoop({
+    budget: {
+      maxIterations: 6,
+      maxToolCalls: 6,
+      maxWallclockMs: 10_000,
+    },
+    callbacks: {
+      onIterationStart: async () => {},
+      onToolCallStart: async () => {},
+      onToolCallEnd: async () => {},
+      onTextDelta: async () => {},
+      onBudgetExhausted: async () => {},
+    },
+    executeTool: async () => {
+      toolCallCount += 1
+      return {
+        inputSummary: 'fail',
+        output: 'Error: something went wrong',
+        success: false,
+      }
+    },
+    initialMessages: [{ content: 'Run the tool.', role: 'user' }],
+    runInference: async (messages) => {
+      const toolCalls = messages.filter((m) => m.role === 'tool')
+      if (toolCalls.length < 4) {
+        return {
+          correlationId: 'corr-cb',
+          finishReason: 'tool-call',
+          invocations: [makeInvocation()],
+          model: 'gpt-5-mini',
+          outputText: '',
+          provider: 'openai',
+          requestId: 'req-cb',
+          toolCalls: [
+            {
+              arguments: { x: 1 },
+              toolCallId: `call_${toolCalls.length + 1}`,
+              toolName: 'failing_tool',
+            },
+          ],
+        }
+      }
+      return {
+        correlationId: 'corr-cb',
+        finishReason: 'stop',
+        invocations: [makeInvocation()],
+        model: 'gpt-5-mini',
+        outputText: 'Done.',
+        provider: 'openai',
+        requestId: 'req-cb-final',
+        toolCalls: [],
+      }
+    },
+    tools: [
+      {
+        description: 'A tool that always fails.',
+        inputSchema: {
+          properties: { x: { type: 'number' } },
+          required: ['x'],
+          type: 'object',
+        },
+        toolName: 'failing_tool',
+      },
+    ],
+  })
+
+  assert.equal(result.toolCallsUsed, 4)
+  assert.equal(result.finalText, 'Done.')
+})
+
+test('circuit breaker resets on success', async () => {
+  let toolCallCount = 0
+
+  const result = await runAgenticLoop({
+    budget: {
+      maxIterations: 6,
+      maxToolCalls: 6,
+      maxWallclockMs: 10_000,
+    },
+    callbacks: {
+      onIterationStart: async () => {},
+      onToolCallStart: async () => {},
+      onToolCallEnd: async () => {},
+      onTextDelta: async () => {},
+      onBudgetExhausted: async () => {},
+    },
+    executeTool: async () => {
+      toolCallCount += 1
+      // Fail twice, then succeed
+      return {
+        inputSummary: 'test',
+        output: toolCallCount <= 2 ? 'Error' : 'Success',
+        success: toolCallCount > 2,
+      }
+    },
+    initialMessages: [{ content: 'Run the tool.', role: 'user' }],
+    runInference: async (messages) => {
+      const toolCalls = messages.filter((m) => m.role === 'tool')
+      if (toolCalls.length < 5) {
+        return {
+          correlationId: 'corr-cb2',
+          finishReason: 'tool-call',
+          invocations: [makeInvocation()],
+          model: 'gpt-5-mini',
+          outputText: '',
+          provider: 'openai',
+          requestId: 'req-cb2',
+          toolCalls: [
+            {
+              arguments: { x: 1 },
+              toolCallId: `call_${toolCalls.length + 1}`,
+              toolName: 'flaky_tool',
+            },
+          ],
+        }
+      }
+      return {
+        correlationId: 'corr-cb2',
+        finishReason: 'stop',
+        invocations: [makeInvocation()],
+        model: 'gpt-5-mini',
+        outputText: 'Done.',
+        provider: 'openai',
+        requestId: 'req-cb2-final',
+        toolCalls: [],
+      }
+    },
+    tools: [
+      {
+        description: 'A tool that fails then succeeds.',
+        inputSchema: {
+          properties: { x: { type: 'number' } },
+          required: ['x'],
+          type: 'object',
+        },
+        toolName: 'flaky_tool',
+      },
+    ],
+  })
+
+  // 2 failures + 1 success resets + 3 more calls = 5 total, none tripped
+  assert.equal(result.toolCallsUsed, 5)
+  assert.equal(result.finalText, 'Done.')
+})
