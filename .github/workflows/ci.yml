@@ -94,7 +94,9 @@ jobs:
     needs: [lint, typecheck]
     services:
       postgres:
-        image: postgres:16
+        # pgvector image (Postgres 16 + the `vector` extension) — the schema's
+        # enable_pgvector migration needs it; the stock postgres:16 image fails.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: nessie_test
           POSTGRES_USER: nessie
