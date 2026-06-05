@@ -136,5 +136,8 @@ jobs:
           pnpm --filter @nessie/runtime build
           pnpm --filter @nessie/memory build
 
+      - name: Apply database migrations
+        run: pnpm --filter @nessie/api prisma:migrate:deploy
+
       - name: Run tests
         run: pnpm -r --if-present test
