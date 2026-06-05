@@ -1,0 +1,128 @@
+import type { ChannelTab } from './channel-helpers'
+
+interface ChannelTabBarProps {
+  visibleActiveTab: ChannelTab
+  isConversationSurface: boolean
+  onSelectTab: (tab: ChannelTab) => void
+}
+
+export const ChannelTabBar = ({
+  visibleActiveTab,
+  isConversationSurface,
+  onSelectTab,
+}: ChannelTabBarProps) => (
+  <div className="flex h-9 items-center border-b border-[color:var(--sep)] px-3">
+    <button
+      className={`admin-tab ${visibleActiveTab === 'messages' ? 'active' : ''}`}
+      onClick={() => onSelectTab('messages')}
+      type="button"
+    >
+      <svg
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d={[
+            'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8',
+            'a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72',
+            'C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
+          ].join(' ')}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      Messages
+    </button>
+    <button
+      className={`admin-tab ${visibleActiveTab === 'files' ? 'active' : ''}`}
+      onClick={() => onSelectTab('files')}
+      type="button"
+    >
+      <svg
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M15.172 7 8.586 13.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656L5.757 10.757a6 6 0 108.486 8.486L20.5 13"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      Files
+    </button>
+    <button
+      className={`admin-tab ${visibleActiveTab === 'info' ? 'active' : ''}`}
+      onClick={() => onSelectTab('info')}
+      type="button"
+    >
+      <svg
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <circle cx="12" cy="12" r="9" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M12 11v5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="12" cy="8" fill="currentColor" r="0.5" stroke="none" />
+      </svg>
+      Info
+    </button>
+    {!isConversationSurface ? (
+      <button
+        className={`admin-tab ${visibleActiveTab === 'runs' ? 'active' : ''}`}
+        onClick={() => onSelectTab('runs')}
+        type="button"
+      >
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 0a2 2 0 002 2h2a2 2 0 002-2m-6 9l2 2 4-4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Runs
+      </button>
+    ) : null}
+    {!isConversationSurface ? (
+      <button
+        className={`admin-tab ${visibleActiveTab === 'agents' ? 'active' : ''}`}
+        onClick={() => onSelectTab('agents')}
+        type="button"
+      >
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          viewBox="0 0 24 24"
+        >
+          <circle cx="12" cy="8" r="4" />
+          <path
+            d="M4 20c0-4 3.582-7 8-7s8 3 8 7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Agents
+      </button>
+    ) : null}
+  </div>
+)
