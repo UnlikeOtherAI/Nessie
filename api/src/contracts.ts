@@ -71,10 +71,31 @@ export const ChannelRecordSchema = z.object({
   teamName: NonEmptyStringSchema,
   defaultThreadId: ThreadIdSchema,
   unreadCount: z.number().int().nonnegative(),
+  // sp-channels: channel lifecycle fields
+  topic: z.string().nullish(),
+  description: z.string().nullish(),
+  archivedAt: TimestampSchema.nullish(),
+  memberRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullish(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
+
+// sp-channels: body for PATCH /api/channels/:channelId
+export const UpdateChannelBodySchema = z
+  .object({
+    label: NonEmptyStringSchema.optional(),
+    topic: z.string().max(500).nullable().optional(),
+    description: z.string().max(2000).nullable().optional(),
+  })
+  .refine(
+    (body) =>
+      body.label !== undefined
+      || body.topic !== undefined
+      || body.description !== undefined,
+    { message: 'At least one of label, topic, or description is required' },
+  )
+export type UpdateChannelBody = z.infer<typeof UpdateChannelBodySchema>
 
 export const ProjectRecordSchema = z.object({
   id: ProjectIdSchema,
@@ -281,6 +302,8 @@ export const ThreadMessageRecordSchema = z.object({
   role: MessageRoleSchema,
   content: z.string(),
   createdAt: TimestampSchema,
+  editedAt: TimestampSchema.nullish(),
+  deletedAt: TimestampSchema.nullish(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   reactions: MessageReactionRecordSchema.array().optional(),
 })
@@ -295,9 +318,65 @@ export const ThreadRecordSchema = z.object({
 })
 export type ThreadRecord = z.infer<typeof ThreadRecordSchema>
 
+// ─── File uploads / attachments (Slack-parity files slice) ──────────────────
+export const AttachmentRecordSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: OrganizationIdSchema,
+  uploaderId: z.string().uuid().optional(),
+  messageId: z.string().uuid().optional(),
+  kind: NonEmptyStringSchema,
+  mime: NonEmptyStringSchema,
+  filename: NonEmptyStringSchema,
+  sizeBytes: z.number().int().nonnegative(),
+  width: z.number().int().nonnegative().optional(),
+  height: z.number().int().nonnegative().optional(),
+  createdAt: TimestampSchema,
+})
+export type AttachmentRecord = z.infer<typeof AttachmentRecordSchema>
+
 export const CreateThreadMessageBodySchema = z.object({
   content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
+  // Attachments are uploaded first via POST /api/uploads; the returned ids are
+  // linked to the message after it is created.
+  attachmentIds: z.array(z.string().uuid()).optional(),
 })
+
+// ─── sp-messaging slice: edit, delete, search ──────────────────────────────
+export const UpdateThreadMessageBodySchema = z.object({
+  content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
+})
+export type UpdateThreadMessageBody = z.infer<typeof UpdateThreadMessageBodySchema>
+
+export const ListThreadMessagesQuerySchema = z.object({
+  before: z.string().min(1).optional(),
+  after: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(200).optional(),
+  senderId: z.string().uuid().optional(),
+})
+export type ListThreadMessagesQuery = z.infer<typeof ListThreadMessagesQuerySchema>
+
+export const MessageSearchResultSchema = z.object({
+  id: z.string().uuid(),
+  threadId: ThreadIdSchema,
+  channelId: ChannelIdSchema,
+  channelLabel: z.string(),
+  snippet: z.string(),
+  createdAt: TimestampSchema,
+  authorName: z.string(),
+  agentId: AgentIdSchema.nullish(),
+  userId: z.string().uuid().nullish(),
+})
+export type MessageSearchResult = z.infer<typeof MessageSearchResultSchema>
+
+export const MessageSearchQuerySchema = z.object({
+  query: z.string().min(1),
+  channelId: ChannelIdSchema.optional(),
+  senderId: z.string().uuid().optional(),
+  before: z.string().min(1).optional(),
+  after: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+})
+export type MessageSearchQuery = z.infer<typeof MessageSearchQuerySchema>
 
 export const PersonalAssistantStateResponseSchema = z.object({
   agent: AgentRecordSchema.nullable(),

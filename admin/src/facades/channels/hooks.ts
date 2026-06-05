@@ -74,3 +74,53 @@ export const useRemoveChannelMember = () => {
     },
   })
 }
+
+// ─── sp-channels: channel lifecycle hooks ────────────────────────────────────
+
+export const useUpdateChannel = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      channelId: string
+      label?: string
+      topic?: string | null
+      description?: string | null
+    }) => {
+      const { channelId, ...body } = input
+      return apiClient.patch<ChannelRecord>(`/api/channels/${channelId}`, body)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}
+
+export const useArchiveChannel = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { channelId: string; archived: boolean }) =>
+      apiClient.post<ChannelRecord>(
+        `/api/channels/${input.channelId}/${input.archived ? 'archive' : 'unarchive'}`,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}
+
+export const useJoinChannel = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { channelId: string }) =>
+      apiClient.post<ChannelRecord>(`/api/channels/${input.channelId}/join`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}

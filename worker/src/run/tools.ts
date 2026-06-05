@@ -1,6 +1,16 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  runAttachmentListTool,
+  runAttachmentReadTool,
+  runAttachmentUploadTool,
   runAuthoredMessageSearchTool,
+  runChannelArchiveTool,
+  runChannelJoinTool,
+  runChannelListTool,
+  runChannelUpdateTool,
+  runMessageDeleteTool,
+  runMessageEditTool,
+  runMessageSearchTool,
   runPeopleSearchTool,
   runSendMessageTool,
   runUpdatePreferencesTool,
@@ -161,6 +171,38 @@ export const executeBuiltinTool = async (
             : null) as Record<string, unknown> | null,
         ),
       )
+    // sp-channels: channel lifecycle tools
+    case 'channel_list':
+      return wrapTool(inputSummary, () =>
+        runChannelListTool(context, {
+          includeArchived:
+            typeof args.includeArchived === 'boolean' ? args.includeArchived : undefined,
+          limit: args.limit,
+        }),
+      )
+    case 'channel_update':
+      return wrapTool(inputSummary, () =>
+        runChannelUpdateTool(context, {
+          channelId: String(args.channelId ?? ''),
+          label: typeof args.label === 'string' ? args.label : undefined,
+          topic: typeof args.topic === 'string' ? args.topic : undefined,
+          description:
+            typeof args.description === 'string' ? args.description : undefined,
+        }),
+      )
+    case 'channel_archive':
+      return wrapTool(inputSummary, () =>
+        runChannelArchiveTool(context, {
+          channelId: String(args.channelId ?? ''),
+          archived: typeof args.archived === 'boolean' ? args.archived : undefined,
+        }),
+      )
+    case 'channel_join':
+      return wrapTool(inputSummary, () =>
+        runChannelJoinTool(context, {
+          channelId: String(args.channelId ?? ''),
+        }),
+      )
     case 'web_search':
       return wrapTool(inputSummary, () =>
         runWebSearchTool(String(args.query ?? ''), coercePage(args.page)),
@@ -181,6 +223,51 @@ export const executeBuiltinTool = async (
     case 'cancel_scheduled_task':
       return wrapTool(inputSummary, () =>
         runCancelScheduledTaskTool(context, { id: args.id, name: args.name }),
+      )
+    case 'message_search':
+      return wrapTool(inputSummary, () =>
+        runMessageSearchTool(context, {
+          channelId:
+            typeof args.channelId === 'string' ? args.channelId : undefined,
+          limit: args.limit,
+          query: String(args.query ?? ''),
+        }),
+      )
+    case 'message_edit':
+      return wrapTool(inputSummary, () =>
+        runMessageEditTool(context, {
+          content: String(args.content ?? ''),
+          messageId: String(args.messageId ?? ''),
+        }),
+      )
+    case 'message_delete':
+      return wrapTool(inputSummary, () =>
+        runMessageDeleteTool(context, {
+          messageId: String(args.messageId ?? ''),
+        }),
+      )
+    case 'attachment_upload':
+      return wrapTool(inputSummary, () =>
+        runAttachmentUploadTool(context, {
+          contentBase64:
+            typeof args.contentBase64 === 'string' ? args.contentBase64 : undefined,
+          filename: typeof args.filename === 'string' ? args.filename : undefined,
+          mime: typeof args.mime === 'string' ? args.mime : undefined,
+        }),
+      )
+    case 'attachment_list':
+      return wrapTool(inputSummary, () =>
+        runAttachmentListTool(context, {
+          channelId: typeof args.channelId === 'string' ? args.channelId : undefined,
+          limit: args.limit,
+          threadId: typeof args.threadId === 'string' ? args.threadId : undefined,
+        }),
+      )
+    case 'attachment_read':
+      return wrapTool(inputSummary, () =>
+        runAttachmentReadTool(context, {
+          id: typeof args.id === 'string' ? args.id : undefined,
+        }),
       )
     case 'document_read':
       return wrapTool(inputSummary, () => runDocumentReadTool(String(args.query ?? '')))

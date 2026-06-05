@@ -263,6 +263,18 @@ export type WsEventMap = {
     contentPreview: string
     threadId: ThreadId
   }
+  // sp-messaging slice: message lifecycle events
+  'message.updated': {
+    messageId: string
+    threadId: ThreadId
+    contentPreview: string
+    editedAt: string
+  }
+  'message.deleted': {
+    messageId: string
+    threadId: ThreadId
+    deletedAt: string
+  }
   'agent.iteration': {
     agentId: string
     iteration: number
@@ -388,6 +400,20 @@ export const MessageNewEventSchema = z.object({
   threadId: ThreadIdSchema,
 })
 export type MessageNewEvent = z.infer<typeof MessageNewEventSchema>
+// sp-messaging slice: message lifecycle event schemas
+export const MessageUpdatedEventSchema = z.object({
+  messageId: NonEmptyStringSchema,
+  threadId: ThreadIdSchema,
+  contentPreview: z.string(),
+  editedAt: TimestampSchema,
+})
+export type MessageUpdatedEvent = z.infer<typeof MessageUpdatedEventSchema>
+export const MessageDeletedEventSchema = z.object({
+  messageId: NonEmptyStringSchema,
+  threadId: ThreadIdSchema,
+  deletedAt: TimestampSchema,
+})
+export type MessageDeletedEvent = z.infer<typeof MessageDeletedEventSchema>
 export const ApprovalResolvedEventSchema = z.object({
   approvalId: NonEmptyStringSchema,
   taskId: TaskIdSchema,
@@ -408,6 +434,8 @@ export const WsEventNameSchema = z.enum([
   'approval.needed',
   'approval.resolved',
   'message.new',
+  'message.updated',
+  'message.deleted',
   'agent.iteration',
 ])
 
@@ -536,6 +564,18 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('message.new'),
     data: MessageNewEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('message.updated'),
+    data: MessageUpdatedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('message.deleted'),
+    data: MessageDeletedEventSchema,
     ts: TimestampSchema,
   }),
   z.object({

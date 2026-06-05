@@ -1,6 +1,12 @@
-import type { Message, Prisma, PrismaClient, Thread } from '@prisma/client'
-import { parseAgentId, parseThreadId, parseUserId } from '@nessie/schemas'
-import type { ThreadMessageRecord } from '../contracts.js'
+import { Prisma } from '@prisma/client'
+import type { Message, PrismaClient, Thread } from '@prisma/client'
+import {
+  parseAgentId,
+  parseChannelId,
+  parseThreadId,
+  parseUserId,
+} from '@nessie/schemas'
+import type { MessageSearchResult, ThreadMessageRecord } from '../contracts.js'
 
 type MessageWithReactions = Message & {
   reactions: Array<{
@@ -19,8 +25,12 @@ const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRec
   agentId: message.agentId ? parseAgentId(message.agentId) : undefined,
   userId: message.userId ? parseUserId(message.userId) : undefined,
   role: message.role,
-  content: message.content,
+  // Soft-deleted rows are returned as tombstones — content is already blanked
+  // at delete time, but never surface stale content even if that changes.
+  content: message.deletedAt ? '' : message.content,
   createdAt: message.createdAt.toISOString(),
+  editedAt: message.editedAt ? message.editedAt.toISOString() : null,
+  deletedAt: message.deletedAt ? message.deletedAt.toISOString() : null,
   metadata:
     message.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
       ? (message.metadata as Record<string, unknown>)
@@ -34,6 +44,62 @@ const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRec
     createdAt: r.createdAt.toISOString(),
   })),
 })
+
+// ─── sp-messaging slice: mention resolution ────────────────────────────────
+
+export type MessageMentions = {
+  userIds: string[]
+  agentIds: string[]
+  broadcast: 'here' | 'channel' | 'everyone' | null
+}
+
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// Matches a @name token, allowing the name itself to contain spaces (members
+// and agents can have multi-word display names). Same boundary rule the agent
+// orchestrator uses, so resolution is identical on both sides.
+const mentionMatches = (content: string, name: string): boolean => {
+  if (!name) return false
+  const re = new RegExp(`@${escapeRegExp(name)}(?:\\s|$|[^\\w])`, 'i')
+  return re.test(content)
+}
+
+export const resolveMessageMentions = (
+  content: string,
+  input: { members: Array<{ userId: string; displayName: string }> },
+): MessageMentions => {
+  const userIds: string[] = []
+  let broadcast: MessageMentions['broadcast'] = null
+
+  if (content.includes('@')) {
+    for (const member of input.members) {
+      if (mentionMatches(content, member.displayName)) {
+        userIds.push(member.userId)
+      }
+    }
+    // Literal broadcast tokens. `@everyone` wins over `@channel` over `@here`
+    // if multiple are present, mirroring Slack's escalation order.
+    if (/@everyone(?:\s|$|[^\w])/i.test(content)) {
+      broadcast = 'everyone'
+    } else if (/@channel(?:\s|$|[^\w])/i.test(content)) {
+      broadcast = 'channel'
+    } else if (/@here(?:\s|$|[^\w])/i.test(content)) {
+      broadcast = 'here'
+    }
+  }
+
+  return { userIds: [...new Set(userIds)], agentIds: [], broadcast }
+}
+
+export const mentionedAgentIdsFromContent = (
+  content: string,
+  agents: Array<{ id: string; name: string }>,
+): string[] => {
+  if (!content.includes('@')) return []
+  const ids = agents.filter((a) => mentionMatches(content, a.name)).map((a) => a.id)
+  return [...new Set(ids)]
+}
 
 export const findThreadForUser = async (
   prisma: PrismaClient,
@@ -97,23 +163,47 @@ export type ListThreadMessagesPage = {
 export const listThreadMessages = async (
   prisma: PrismaClient,
   threadId: string,
-  options: { before?: string; limit?: number } = {},
+  options: {
+    before?: string
+    after?: string
+    limit?: number
+    senderId?: string
+  } = {},
 ): Promise<ListThreadMessagesPage> => {
   const limit = Math.min(options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE, MAX_MESSAGE_PAGE_SIZE)
 
   const where: Prisma.MessageWhereInput = { threadId }
+  const andClauses: Prisma.MessageWhereInput[] = []
+
   if (options.before) {
     const parsed = parseMessageCursor(options.before)
     if (parsed) {
-      where.AND = [
-        {
-          OR: [
-            { createdAt: { lt: parsed.cursorDate } },
-            { createdAt: parsed.cursorDate, id: { lt: parsed.cursorId } },
-          ],
-        },
-      ]
+      andClauses.push({
+        OR: [
+          { createdAt: { lt: parsed.cursorDate } },
+          { createdAt: parsed.cursorDate, id: { lt: parsed.cursorId } },
+        ],
+      })
     }
+  }
+
+  // `before`/`after` may also be plain ISO timestamps (createdAt range filter),
+  // distinct from the keyset cursor encoding "iso|id". A keyset cursor parse
+  // already consumed `before`; otherwise treat it as a range bound.
+  if (options.after) {
+    const afterDate = new Date(options.after)
+    if (!Number.isNaN(afterDate.getTime())) {
+      andClauses.push({ createdAt: { gt: afterDate } })
+    }
+  }
+  if (options.senderId) {
+    andClauses.push({
+      OR: [{ userId: options.senderId }, { agentId: options.senderId }],
+    })
+  }
+
+  if (andClauses.length > 0) {
+    where.AND = andClauses
   }
 
   // Keyset pagination over (createdAt, id). We fetch the newest page first
@@ -208,6 +298,11 @@ export const createThreadMessage = async (
             },
             orderBy: { createdAt: 'asc' },
           },
+          members: {
+            select: {
+              user: { select: { id: true, displayName: true } },
+            },
+          },
           organizationId: true,
           systemChannelType: true,
         },
@@ -219,12 +314,23 @@ export const createThreadMessage = async (
     return { kind: 'thread_not_found' }
   }
 
+  // Resolve human + broadcast mentions on the inbound content. Agent mentions
+  // are resolved below for engagement; here we record every mention class on
+  // message.metadata.mentions so clients can highlight/notify deterministically.
+  const mentions = resolveMessageMentions(input.content, {
+    members: thread.channel.members.map((m) => ({
+      userId: m.user.id,
+      displayName: m.user.displayName,
+    })),
+  })
+
   const message = await prisma.message.create({
     data: {
       threadId: input.threadId,
       userId: input.userId,
       role: 'user',
       content: input.content,
+      metadata: { mentions } as Prisma.InputJsonValue,
     },
   })
 
@@ -270,9 +376,25 @@ export const createThreadMessage = async (
     }
   }
 
+  // Record which agents the message @mentioned (bound or freshly resolved).
+  // Only persist a metadata update when there are agent mentions to add —
+  // human/broadcast mentions were already written at create time.
+  const mentionedAgentIds = mentionedAgentIdsFromContent(
+    input.content,
+    resolvedChannelAgents,
+  )
+  let persistedMessage = message
+  if (mentionedAgentIds.length > 0) {
+    const merged = { ...mentions, agentIds: mentionedAgentIds }
+    persistedMessage = await prisma.message.update({
+      where: { id: message.id },
+      data: { metadata: { mentions: merged } as Prisma.InputJsonValue },
+    })
+  }
+
   return {
     kind: 'created',
-    message,
+    message: persistedMessage,
     channelAgents: resolvedChannelAgents,
   }
 }
@@ -298,4 +420,191 @@ export const addReaction = async (
       emoji: input.emoji,
     },
   })
+}
+
+// ─── sp-messaging slice: edit, soft-delete, full-text search ───────────────
+
+export type UpdateMessageResult =
+  | { kind: 'updated'; message: MessageWithReactions }
+  | { kind: 'not_found' }
+  | { kind: 'forbidden' }
+
+export const updateMessage = async (
+  prisma: PrismaClient,
+  input: { messageId: string; threadId: string; userId: string; content: string },
+): Promise<UpdateMessageResult> => {
+  const existing = await prisma.message.findFirst({
+    where: { id: input.messageId, threadId: input.threadId },
+    select: { id: true, userId: true, deletedAt: true },
+  })
+  if (!existing || existing.deletedAt) {
+    return { kind: 'not_found' }
+  }
+  // Author-only edit.
+  if (existing.userId !== input.userId) {
+    return { kind: 'forbidden' }
+  }
+
+  const message = await prisma.message.update({
+    where: { id: input.messageId },
+    data: { content: input.content, editedAt: new Date() },
+    include: { reactions: true },
+  })
+  return { kind: 'updated', message }
+}
+
+export type SoftDeleteMessageResult =
+  | { kind: 'deleted'; message: MessageWithReactions }
+  | { kind: 'not_found' }
+  | { kind: 'forbidden' }
+
+export const softDeleteMessage = async (
+  prisma: PrismaClient,
+  input: {
+    messageId: string
+    threadId: string
+    userId: string
+    isChannelManager: boolean
+  },
+): Promise<SoftDeleteMessageResult> => {
+  const existing = await prisma.message.findFirst({
+    where: { id: input.messageId, threadId: input.threadId },
+    select: { id: true, userId: true, deletedAt: true },
+  })
+  if (!existing || existing.deletedAt) {
+    return { kind: 'not_found' }
+  }
+  // Author or channel manager may delete.
+  if (existing.userId !== input.userId && !input.isChannelManager) {
+    return { kind: 'forbidden' }
+  }
+
+  const message = await prisma.message.update({
+    where: { id: input.messageId },
+    // Blank the content for privacy; the row remains so the UI can render a
+    // tombstone and pagination keysets stay stable.
+    data: { deletedAt: new Date(), content: '' },
+    include: { reactions: true },
+  })
+  return { kind: 'deleted', message }
+}
+
+export const mapMessageRecord = (message: MessageWithReactions): ThreadMessageRecord =>
+  mapThreadMessageRecord(message)
+
+type MessageSearchRow = {
+  id: string
+  thread_id: string
+  channel_id: string
+  channel_label: string
+  content: string
+  created_at: Date
+  agent_id: string | null
+  user_id: string | null
+  author_name: string | null
+}
+
+const buildSearchSnippet = (content: string, query: string, maxLength = 180): string => {
+  const trimmed = query.trim().toLowerCase()
+  const lower = content.toLowerCase()
+  const index = trimmed ? lower.indexOf(trimmed.split(/\s+/)[0] ?? '') : -1
+  if (index < 0) {
+    return content.length <= maxLength ? content : `${content.slice(0, maxLength - 1)}…`
+  }
+  const half = Math.floor(maxLength / 2)
+  const start = Math.max(0, index - half)
+  const end = Math.min(content.length, index + half)
+  return `${start > 0 ? '…' : ''}${content.slice(start, end)}${end < content.length ? '…' : ''}`
+}
+
+export const searchMessages = async (
+  prisma: PrismaClient,
+  input: {
+    organizationId: string
+    userId: string
+    isOwner: boolean
+    query: string
+    channelId?: string
+    senderId?: string
+    before?: string
+    after?: string
+    limit?: number
+  },
+): Promise<MessageSearchResult[]> => {
+  const limit = Math.min(input.limit ?? 25, 100)
+
+  // Channels the caller can see — public, or ones they are a member of. Owners
+  // see every channel in the organization.
+  const channels = await prisma.channel.findMany({
+    where: {
+      organizationId: input.organizationId,
+      ...(input.isOwner
+        ? {}
+        : { OR: [{ visibility: 'public' }, { members: { some: { userId: input.userId } } }] }),
+      ...(input.channelId ? { id: input.channelId } : {}),
+    },
+    select: { id: true },
+  })
+  const channelIds = channels.map((c) => c.id)
+  if (channelIds.length === 0) {
+    return []
+  }
+
+  const conditions: Prisma.Sql[] = [
+    Prisma.sql`m."deleted_at" IS NULL`,
+    Prisma.sql`t."channel_id" IN (${Prisma.join(
+      channelIds.map((id) => Prisma.sql`${id}::uuid`),
+    )})`,
+    Prisma.sql`to_tsvector('english', m."content") @@ plainto_tsquery('english', ${input.query})`,
+  ]
+  if (input.senderId) {
+    conditions.push(
+      Prisma.sql`(m."user_id" = ${input.senderId}::uuid OR m."agent_id" = ${input.senderId}::uuid)`,
+    )
+  }
+  if (input.before) {
+    const beforeDate = new Date(input.before)
+    if (!Number.isNaN(beforeDate.getTime())) {
+      conditions.push(Prisma.sql`m."created_at" < ${beforeDate}`)
+    }
+  }
+  if (input.after) {
+    const afterDate = new Date(input.after)
+    if (!Number.isNaN(afterDate.getTime())) {
+      conditions.push(Prisma.sql`m."created_at" > ${afterDate}`)
+    }
+  }
+
+  const rows = await prisma.$queryRaw<MessageSearchRow[]>(Prisma.sql`
+    SELECT
+      m."id",
+      m."thread_id",
+      c."id" AS channel_id,
+      c."label" AS channel_label,
+      m."content",
+      m."created_at",
+      m."agent_id",
+      m."user_id",
+      COALESCE(u."display_name", a."name") AS author_name
+    FROM "messages" m
+    JOIN "threads" t ON t."id" = m."thread_id"
+    JOIN "channels" c ON c."id" = t."channel_id"
+    LEFT JOIN "users" u ON u."id" = m."user_id"
+    LEFT JOIN "agents" a ON a."id" = m."agent_id"
+    WHERE ${Prisma.join(conditions, ' AND ')}
+    ORDER BY m."created_at" DESC
+    LIMIT ${limit}
+  `)
+
+  return rows.map((row) => ({
+    id: row.id,
+    threadId: parseThreadId(row.thread_id),
+    channelId: parseChannelId(row.channel_id),
+    channelLabel: row.channel_label,
+    snippet: buildSearchSnippet(row.content, input.query),
+    createdAt: row.created_at.toISOString(),
+    authorName: row.author_name ?? 'Unknown',
+    agentId: row.agent_id ? parseAgentId(row.agent_id) : undefined,
+    userId: row.user_id ?? undefined,
+  }))
 }

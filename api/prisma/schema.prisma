@@ -648,6 +648,10 @@ model Channel {
   teamId            String             @map("team_id") @db.Uuid
   visibility        ChannelVisibility  @default(public)
   dmKey             String?            @unique @map("dm_key")
+  // sp-channels: channel lifecycle metadata + soft-archive
+  topic             String?
+  description       String?
+  archivedAt        DateTime?          @map("archived_at")
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -665,10 +669,12 @@ model Channel {
 }
 
 model ChannelMember {
-  id        String   @id @default(uuid()) @db.Uuid
-  channelId String   @map("channel_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String     @id @default(uuid()) @db.Uuid
+  channelId String     @map("channel_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  // sp-channels: per-channel membership role (manager can manage the channel)
+  role      MemberRole @default(member)
+  createdAt DateTime   @default(now()) @map("created_at")
   channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -731,6 +737,8 @@ model Message {
   content   String
   metadata  Json?             @default("{}")
   createdAt DateTime          @default(now()) @map("created_at")
+  editedAt  DateTime?         @map("edited_at")
+  deletedAt DateTime?         @map("deleted_at")
   thread    Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
   agent     Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
   user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -962,6 +970,9 @@ model AgentTrigger {
   targetThreadId         String?                @map("target_thread_id") @db.Uuid
   schedulerClaimId       String?                @map("scheduler_claim_id") @db.Uuid
   schedulerClaimedAt     DateTime?              @map("scheduler_claimed_at")
+  // Inbound webhook HMAC signing secret (sp-webhook). When set, the webhook
+  // intake endpoint requires a valid X-Nessie-Signature instead of bearer key.
+  signingSecret          String?                @map("signing_secret")
   lastFiredAt            DateTime?              @map("last_fired_at")
   nextRunAt              DateTime?              @map("next_run_at")
   createdAt              DateTime               @default(now()) @map("created_at")
@@ -996,6 +1007,10 @@ model AgentTriggerDelivery {
   payload      Json                       @default("{}")
   errorMessage String?                    @map("error_message")
   deliveredAt  DateTime?                  @map("delivered_at")
+  // Delivery retry/backoff (sp-webhook). A `failed` delivery with
+  // retryCount < max and nextRetryAt <= now is retryable by the worker poller.
+  retryCount   Int                        @default(0) @map("retry_count")
+  nextRetryAt  DateTime?                  @map("next_retry_at")
   createdAt    DateTime                   @default(now()) @map("created_at")
   trigger      AgentTrigger               @relation(fields: [triggerId], references: [id], onDelete: Cascade)
   run          Run?                       @relation("RunTriggerDelivery")
@@ -1004,6 +1019,8 @@ model AgentTriggerDelivery {
   @@unique([triggerId, dedupeKey])
   @@index([triggerId, createdAt])
   @@index([status, createdAt])
+  // Retry poller scan: find failed deliveries due for re-attempt (sp-webhook).
+  @@index([status, nextRetryAt])
   @@map("agent_trigger_deliveries")
 }
 
@@ -2242,4 +2259,28 @@ model McpOAuthSecret {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("mcp_oauth_secret")
+}
+
+// ─── File uploads / attachments (Slack-parity files slice) ──────────────────
+// Standalone, relation-free model so the files slice can land additively
+// without editing the User / Message / Organization models. The link to a
+// message is a nullable scalar `messageId` set after upload when the message
+// is created; integrity is enforced at the application layer.
+model Attachment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  uploaderId     String?  @map("uploader_id") @db.Uuid
+  messageId      String?  @map("message_id") @db.Uuid
+  kind           String
+  mime           String
+  filename       String
+  sizeBytes      Int      @map("size_bytes")
+  storageKey     String   @map("storage_key")
+  width          Int?
+  height         Int?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([messageId])
+  @@index([organizationId, createdAt])
+  @@map("attachments")
 }

@@ -460,6 +460,20 @@ a {
   background: var(--main-hover);
 }
 
+/* sp-messaging slice: transient highlight when jumping to a search result. */
+.admin-msg-highlight {
+  animation: admin-msg-flash 1.6s ease-out;
+}
+
+@keyframes admin-msg-flash {
+  0% {
+    background: rgba(124, 58, 237, 0.28);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 .streaming-dot {
   display: inline-block;
   width: 6px;

@@ -8,15 +8,24 @@ import {
   parseUserId,
   withActionContext,
 } from '@nessie/schemas'
-import { CreateThreadMessageBodySchema, ThreadMessageRecordSchema } from '../contracts.js'
+import {
+  CreateThreadMessageBodySchema,
+  ListThreadMessagesQuerySchema,
+  ThreadMessageRecordSchema,
+  UpdateThreadMessageBodySchema,
+} from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
+import { canManageChannel } from '../services/channels.js'
 import {
   addReaction,
   createThreadMessage,
   findThreadForUser,
   listThreadMessages,
+  mapMessageRecord,
   markThreadRead,
+  softDeleteMessage,
+  updateMessage,
 } from '../services/messages.js'
 import type { RouteDeps } from './types.js'
 
@@ -48,10 +57,15 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const query = request.query as { before?: string; limit?: string }
+    const query = parseInput(ListThreadMessagesQuerySchema, request.query ?? {}, reply)
+    if (!query) {
+      return reply
+    }
     const page = await listThreadMessages(prisma, thread.id, {
+      after: query.after,
       before: query.before,
-      limit: query.limit ? parseInt(query.limit, 10) : undefined,
+      limit: query.limit,
+      senderId: query.senderId,
     })
     return createApiResponse(
       ThreadMessageRecordSchema.array().parse(page.data),
@@ -115,6 +129,20 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (result.kind === 'thread_not_found') {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
       return reply
+    }
+
+    // ─── Attachments (files slice) ──────────────────────────────────────────
+    // Link any pre-uploaded attachments to this message, scoped to the actor's
+    // organization so a stray id cannot poach another tenant's attachment.
+    if (body.attachmentIds && body.attachmentIds.length > 0) {
+      await prisma.attachment.updateMany({
+        where: {
+          id: { in: body.attachmentIds },
+          organizationId: actorContext.tenant.organizationId,
+          messageId: null,
+        },
+        data: { messageId: result.message.id },
+      })
     }
 
     if (messageMemoryCaptureConfig) {
@@ -286,6 +314,138 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     )
 
     return reply.code(201).send(createApiResponse({ ok: true }))
+  })
+
+  // ─── sp-messaging slice: edit + soft-delete ──────────────────────────────
+  app.patch('/api/threads/:threadId/messages/:messageId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { threadId, messageId } = request.params as {
+      threadId: string
+      messageId: string
+    }
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
+    if (!thread) {
+      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+
+    const body = parseInput(UpdateThreadMessageBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const result = await updateMessage(prisma, {
+      content: body.content,
+      messageId,
+      threadId: thread.id,
+      userId: actorContext.actor.actorId,
+    })
+    if (result.kind === 'not_found') {
+      sendApiError(reply, 404, 'MESSAGE_NOT_FOUND', 'Message not found')
+      return reply
+    }
+    if (result.kind === 'forbidden') {
+      sendApiError(reply, 403, 'FORBIDDEN', 'Only the author can edit this message')
+      return reply
+    }
+
+    const record = mapMessageRecord(result.message)
+    await realtimeHub.publishWs(
+      buildChannelRealtimeScopes({
+        channelId: thread.channel.id,
+        organizationId: actorContext.tenant.organizationId,
+        systemChannelType: thread.channel.systemChannelType,
+      }),
+      {
+        data: {
+          contentPreview: record.content.slice(0, 200),
+          editedAt: record.editedAt ?? new Date().toISOString(),
+          messageId: record.id,
+          threadId: parseThreadId(thread.id),
+        },
+        event: 'message.updated',
+      },
+    )
+
+    return createApiResponse(ThreadMessageRecordSchema.parse(record))
+  })
+
+  app.delete('/api/threads/:threadId/messages/:messageId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { threadId, messageId } = request.params as {
+      threadId: string
+      messageId: string
+    }
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
+    if (!thread) {
+      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+
+    // Channel/team/org managers (and the author) may delete a message. Uses the
+    // same authorization as the channel_* agent tools so REST and agents agree.
+    const manage = await canManageChannel(prisma, {
+      channelId: thread.channel.id,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    const isChannelManager = manage !== null
+    const result = await softDeleteMessage(prisma, {
+      isChannelManager,
+      messageId,
+      threadId: thread.id,
+      userId: actorContext.actor.actorId,
+    })
+    if (result.kind === 'not_found') {
+      sendApiError(reply, 404, 'MESSAGE_NOT_FOUND', 'Message not found')
+      return reply
+    }
+    if (result.kind === 'forbidden') {
+      sendApiError(
+        reply,
+        403,
+        'FORBIDDEN',
+        'Only the author or a channel manager can delete this message',
+      )
+      return reply
+    }
+
+    const record = mapMessageRecord(result.message)
+    await realtimeHub.publishWs(
+      buildChannelRealtimeScopes({
+        channelId: thread.channel.id,
+        organizationId: actorContext.tenant.organizationId,
+        systemChannelType: thread.channel.systemChannelType,
+      }),
+      {
+        data: {
+          deletedAt: record.deletedAt ?? new Date().toISOString(),
+          messageId: record.id,
+          threadId: parseThreadId(thread.id),
+        },
+        event: 'message.deleted',
+      },
+    )
+
+    return createApiResponse(ThreadMessageRecordSchema.parse(record))
   })
 
   app.get('/api/threads/:threadId/stream', async (request, reply) => {

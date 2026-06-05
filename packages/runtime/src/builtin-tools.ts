@@ -172,6 +172,67 @@ const CANCEL_SCHEDULED_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
   safe: false,
 }
 
+// ─── File uploads / attachments (Slack-parity files slice) ──────────────────
+// Named `attachment_*` rather than `file_*` because `file_read`/`file_write`/
+// `file_glob` are already sandbox-filesystem tools; these operate on uploaded
+// workspace attachments stored via the blob storage adapter.
+const ATTACHMENT_UPLOAD_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'attachment_upload',
+  label: 'Upload Attachment',
+  description:
+    'Store a file as a workspace attachment. Provide the raw bytes as base64 ' +
+    'in contentBase64 along with a filename and MIME type. Returns the new ' +
+    'attachment id, which can be linked to a message via send_message ' +
+    'attachmentIds.',
+  parameters: {
+    type: 'object',
+    properties: {
+      filename: { type: 'string', description: 'File name including extension' },
+      mime: { type: 'string', description: 'MIME type, e.g. "text/plain" or "image/png"' },
+      contentBase64: { type: 'string', description: 'Base64-encoded file bytes' },
+      channelId: {
+        type: 'string',
+        description: 'Optional channel context the attachment belongs to',
+      },
+    },
+    required: ['filename', 'mime', 'contentBase64'],
+  },
+  safe: false,
+}
+
+const ATTACHMENT_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'attachment_list',
+  label: 'List Attachments',
+  description:
+    'List attachments linked to messages in a thread or channel you can access. ' +
+    'Returns id, filename, mime, and sizeBytes for each.',
+  parameters: {
+    type: 'object',
+    properties: {
+      threadId: { type: 'string', description: 'Thread to list attachments from' },
+      channelId: { type: 'string', description: 'Channel to list attachments from' },
+      limit: { type: 'integer', description: 'Maximum results (default 20)', minimum: 1 },
+    },
+  },
+  safe: true,
+}
+
+const ATTACHMENT_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'attachment_read',
+  label: 'Read Attachment',
+  description:
+    'Return metadata for an attachment, plus the decoded text content for ' +
+    'small text-like files. Binary or oversized files return metadata only.',
+  parameters: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'The attachment id to read' },
+    },
+    required: ['id'],
+  },
+  safe: true,
+}
+
 export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'workspace_search',
@@ -329,6 +390,170 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   SCHEDULE_TASK_TOOL_DEFINITION,
   LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
   CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
+  // sp-messaging slice: full-text search + agent-authored message lifecycle
+  {
+    id: 'message_search',
+    label: 'Message Search',
+    description:
+      'Full-text search across messages in channels visible to you. Returns ' +
+      'compact results with message IDs, snippets, channel, and author.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The full-text search query',
+        },
+        channelId: {
+          type: 'string',
+          description: 'Optional channel ID to scope the search to',
+        },
+        limit: {
+          type: 'integer',
+          description: 'Maximum number of results to return',
+        },
+      },
+      required: ['query'],
+    },
+    safe: true,
+  },
+  {
+    id: 'message_edit',
+    label: 'Message Edit',
+    description:
+      'Edit a message you (this agent) previously authored. Replaces the ' +
+      'content and marks the message as edited.',
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'ID of the message to edit',
+        },
+        content: {
+          type: 'string',
+          description: 'New message content',
+        },
+      },
+      required: ['messageId', 'content'],
+    },
+    safe: false,
+  },
+  {
+    id: 'message_delete',
+    label: 'Message Delete',
+    description:
+      'Soft-delete a message you (this agent) previously authored. The message ' +
+      'becomes a tombstone and its content is removed.',
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'ID of the message to delete',
+        },
+      },
+      required: ['messageId'],
+    },
+    safe: false,
+  },
+  ATTACHMENT_UPLOAD_TOOL_DEFINITION,
+  ATTACHMENT_LIST_TOOL_DEFINITION,
+  ATTACHMENT_READ_TOOL_DEFINITION,
+  // ─── sp-channels: channel lifecycle tools ─────────────────────────────────
+  {
+    id: 'channel_list',
+    label: 'List Channels',
+    description:
+      'List channels visible in the current organization. Returns each ' +
+      'channel id, label, visibility, topic, and whether it is archived.',
+    parameters: {
+      type: 'object',
+      properties: {
+        includeArchived: {
+          type: 'boolean',
+          description: 'Include archived channels in the result (default false).',
+        },
+        limit: {
+          type: 'integer',
+          description: 'Maximum number of channels to return.',
+        },
+      },
+    },
+    safe: true,
+  },
+  {
+    id: 'channel_update',
+    label: 'Update Channel',
+    description:
+      'Update a channel label, topic, and/or description. Requires the acting ' +
+      'principal to be able to manage the channel (channel owner/admin, or an ' +
+      'org/team owner/admin).',
+    parameters: {
+      type: 'object',
+      properties: {
+        channelId: {
+          type: 'string',
+          description: 'The channel ID to update.',
+        },
+        label: {
+          type: 'string',
+          description: 'New channel name.',
+        },
+        topic: {
+          type: 'string',
+          description: 'New short topic for the channel.',
+        },
+        description: {
+          type: 'string',
+          description: 'New longer description for the channel.',
+        },
+      },
+      required: ['channelId'],
+    },
+    safe: false,
+  },
+  {
+    id: 'channel_archive',
+    label: 'Archive Channel',
+    description:
+      'Archive or unarchive a channel. Archiving hides it from default ' +
+      'listings without deleting its history. Requires channel-manage rights.',
+    parameters: {
+      type: 'object',
+      properties: {
+        channelId: {
+          type: 'string',
+          description: 'The channel ID to archive or unarchive.',
+        },
+        archived: {
+          type: 'boolean',
+          description:
+            'true to archive (default), false to unarchive.',
+        },
+      },
+      required: ['channelId'],
+    },
+    safe: false,
+  },
+  {
+    id: 'channel_join',
+    label: 'Join Channel',
+    description:
+      'Join a public channel in the current organization. Private and ' +
+      'protected channels require an explicit invite and cannot be joined.',
+    parameters: {
+      type: 'object',
+      properties: {
+        channelId: {
+          type: 'string',
+          description: 'The public channel ID to join.',
+        },
+      },
+      required: ['channelId'],
+    },
+    safe: false,
+  },
 ]
 
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [

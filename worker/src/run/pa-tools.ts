@@ -12,6 +12,9 @@ import {
   parseUserId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
+import { randomUUID } from 'node:crypto'
+import { loadConfig } from '@nessie/config'
+import { getStorage, type StorageConfig } from '@nessie/runtime'
 import { enqueueQueueJob } from '../queue.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
 
@@ -930,5 +933,567 @@ export const runSendMessageTool = async (
       `agentsNotified=${queuedReplyCount}`,
     ].join('\n'),
     toolName: 'send_message',
+  }
+}
+
+// ─── sp-messaging slice: agent message search + lifecycle ──────────────────
+
+type MessageSearchRow = {
+  id: string
+  thread_id: string
+  channel_id: string
+  channel_label: string
+  content: string
+  created_at: Date
+  author_name: string | null
+}
+
+export const runMessageSearchTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { query: string; channelId?: string; limit?: unknown },
+): Promise<ToolExecutionResult> => {
+  const searchQuery = input.query.trim()
+  if (!searchQuery) {
+    throw new Error('query is required.')
+  }
+
+  const take = clampLimit(input.limit, MAX_SEARCH_RESULTS)
+  let channelIds = await resolveAccessibleChannelIds(context)
+  if (input.channelId) {
+    channelIds = channelIds.filter((id) => id === input.channelId)
+  }
+  if (channelIds.length === 0) {
+    return {
+      inputSummary: `query=${searchQuery}`,
+      outputPreview: `No accessible channels matched "${searchQuery}".`,
+      toolName: 'message_search',
+    }
+  }
+
+  // Full-text search mirroring the api searchMessages service: english
+  // tsvector match, soft-deleted rows excluded, scoped to visible channels.
+  const rows = await context.prisma.$queryRaw<MessageSearchRow[]>(Prisma.sql`
+    SELECT
+      m."id",
+      m."thread_id",
+      c."id" AS channel_id,
+      c."label" AS channel_label,
+      m."content",
+      m."created_at",
+      COALESCE(u."display_name", a."name") AS author_name
+    FROM "messages" m
+    JOIN "threads" t ON t."id" = m."thread_id"
+    JOIN "channels" c ON c."id" = t."channel_id"
+    LEFT JOIN "users" u ON u."id" = m."user_id"
+    LEFT JOIN "agents" a ON a."id" = m."agent_id"
+    WHERE m."deleted_at" IS NULL
+      AND t."channel_id" IN (${Prisma.join(channelIds)})
+      AND to_tsvector('english', m."content") @@ plainto_tsquery('english', ${searchQuery})
+    ORDER BY m."created_at" DESC
+    LIMIT ${take}
+  `)
+
+  const lines = rows.map((row, index) =>
+    [
+      `${index + 1}. ${row.author_name ?? 'Unknown'} | #${row.channel_label}`,
+      `   ${row.created_at.toISOString()} | messageId=${row.id} | threadId=${row.thread_id}`,
+      `   ${buildSnippet(row.content, searchQuery)}`,
+    ].join('\n'),
+  )
+
+  return {
+    inputSummary: `query=${searchQuery}`,
+    outputPreview:
+      formatSection(`Messages (${lines.length})`, lines) ||
+      `No messages matched "${searchQuery}".`,
+    toolName: 'message_search',
+  }
+}
+
+export const runMessageEditTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { messageId: string; content: string },
+): Promise<ToolExecutionResult> => {
+  const content = input.content.trim()
+  if (!input.messageId) {
+    throw new Error('messageId is required.')
+  }
+  if (!content) {
+    throw new Error('content is required.')
+  }
+  if (content.length > CHAT_MESSAGE_MAX_CHARS) {
+    throw new Error(
+      `Message is ${content.length} characters; the limit is ${CHAT_MESSAGE_MAX_CHARS}.`,
+    )
+  }
+
+  // Agents may only edit messages they authored themselves.
+  const existing = await context.prisma.message.findFirst({
+    where: { id: input.messageId, agentId: context.agentId, deletedAt: null },
+    select: { id: true },
+  })
+  if (!existing) {
+    throw new Error('Message not found or not authored by this agent.')
+  }
+
+  await context.prisma.message.update({
+    where: { id: input.messageId },
+    data: { content, editedAt: new Date() },
+  })
+
+  return {
+    inputSummary: `messageId=${input.messageId}`,
+    outputPreview: `Edited messageId=${input.messageId}`,
+    toolName: 'message_edit',
+  }
+}
+
+export const runMessageDeleteTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { messageId: string },
+): Promise<ToolExecutionResult> => {
+  if (!input.messageId) {
+    throw new Error('messageId is required.')
+  }
+
+  const existing = await context.prisma.message.findFirst({
+    where: { id: input.messageId, agentId: context.agentId, deletedAt: null },
+    select: { id: true },
+  })
+  if (!existing) {
+    throw new Error('Message not found or not authored by this agent.')
+  }
+
+  await context.prisma.message.update({
+    where: { id: input.messageId },
+    data: { deletedAt: new Date(), content: '' },
+  })
+
+  return {
+    inputSummary: `messageId=${input.messageId}`,
+    outputPreview: `Deleted messageId=${input.messageId}`,
+    toolName: 'message_delete',
+  }
+}
+
+// ─── File uploads / attachments (Slack-parity files slice) ──────────────────
+
+const ATTACHMENT_READ_MAX_TEXT_BYTES = 64 * 1024
+
+const attachmentKindFromMime = (mime: string): string => {
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('video/')) return 'video'
+  if (mime.startsWith('audio/')) return 'audio'
+  if (mime === 'application/pdf') return 'pdf'
+  if (mime.startsWith('text/')) return 'text'
+  return 'file'
+}
+
+const isTextLikeMime = (mime: string): boolean =>
+  mime.startsWith('text/') ||
+  mime === 'application/json' ||
+  mime === 'application/xml' ||
+  mime.endsWith('+json') ||
+  mime.endsWith('+xml')
+
+const attachmentStorageConfig = (): StorageConfig => {
+  const config = loadConfig()
+  return {
+    provider: config.storage.provider,
+    bucket: config.storage.bucket,
+    localPath: config.storage.localPath,
+  }
+}
+
+export const runAttachmentUploadTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { filename?: string; mime?: string; contentBase64?: string },
+): Promise<ToolExecutionResult> => {
+  const filename = (input.filename ?? '').trim()
+  const mime = (input.mime ?? '').trim() || 'application/octet-stream'
+  if (!filename) {
+    throw new Error('filename is required.')
+  }
+  if (!input.contentBase64) {
+    throw new Error('contentBase64 is required.')
+  }
+
+  const bytes = Buffer.from(input.contentBase64, 'base64')
+  if (bytes.byteLength === 0) {
+    throw new Error('contentBase64 decoded to zero bytes.')
+  }
+
+  const organizationId = context.channel.organizationId
+  const uploaderId =
+    context.actorContext.actor.actorType === 'user'
+      ? context.actorContext.actor.actorId
+      : context.actorContext.actionContext.effectiveUserId ?? null
+
+  const storageKey = `${organizationId}/${randomUUID()}`
+  const storage = getStorage(attachmentStorageConfig())
+  await storage.put(storageKey, bytes, mime)
+
+  const attachment = await context.prisma.attachment.create({
+    data: {
+      organizationId,
+      uploaderId,
+      kind: attachmentKindFromMime(mime),
+      mime,
+      filename,
+      sizeBytes: bytes.byteLength,
+      storageKey,
+    },
+    select: { id: true, filename: true, mime: true, sizeBytes: true },
+  })
+
+  return {
+    inputSummary: `filename=${filename}`,
+    outputPreview: [
+      `Uploaded attachment id=${attachment.id}`,
+      `filename=${attachment.filename} | mime=${attachment.mime} | sizeBytes=${attachment.sizeBytes}`,
+      'Link it to a message via send_message attachmentIds.',
+    ].join('\n'),
+    toolName: 'attachment_upload',
+  }
+}
+
+export const runAttachmentListTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { threadId?: string; channelId?: string; limit?: unknown },
+): Promise<ToolExecutionResult> => {
+  const userId =
+    context.actorContext.actor.actorType === 'user'
+      ? context.actorContext.actor.actorId
+      : context.actorContext.actionContext.effectiveUserId ?? null
+
+  const organizationId = context.channel.organizationId
+  const take = clampLimit(input.limit, 20)
+
+  // Resolve the candidate message ids in a thread/channel the caller can see,
+  // then list attachments linked to those messages. Without a user context fall
+  // back to the run's own thread.
+  const threadId = input.threadId ?? (input.channelId ? undefined : context.run.threadId)
+  const visibleChannel = userId
+    ? buildVisibleChannelWhere(organizationId, userId)
+    : { organizationId }
+
+  const messageWhere = input.channelId
+    ? { thread: { channelId: input.channelId, channel: visibleChannel } }
+    : { thread: { id: threadId, channel: visibleChannel } }
+
+  const messages = await context.prisma.message.findMany({
+    where: messageWhere,
+    select: { id: true },
+    take: 200,
+  })
+  const messageIds = messages.map((m) => m.id)
+
+  if (messageIds.length === 0) {
+    return {
+      inputSummary: input.channelId ? `channelId=${input.channelId}` : `threadId=${threadId}`,
+      outputPreview: 'No accessible messages found for the requested scope.',
+      toolName: 'attachment_list',
+    }
+  }
+
+  const attachments = await context.prisma.attachment.findMany({
+    where: { organizationId, messageId: { in: messageIds } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, filename: true, mime: true, sizeBytes: true },
+    take,
+  })
+
+  const lines = attachments.map(
+    (a, index) =>
+      `${index + 1}. id=${a.id} | ${a.filename} | mime=${a.mime} | sizeBytes=${a.sizeBytes}`,
+  )
+
+  return {
+    inputSummary: input.channelId ? `channelId=${input.channelId}` : `threadId=${threadId}`,
+    outputPreview:
+      formatSection(`Attachments (${lines.length})`, lines) || 'No attachments found.',
+    toolName: 'attachment_list',
+  }
+}
+
+export const runAttachmentReadTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { id?: string },
+): Promise<ToolExecutionResult> => {
+  const id = (input.id ?? '').trim()
+  if (!id) {
+    throw new Error('id is required.')
+  }
+
+  const attachment = await context.prisma.attachment.findUnique({ where: { id } })
+  if (!attachment || attachment.organizationId !== context.channel.organizationId) {
+    throw new Error('Attachment not found.')
+  }
+
+  const metadataLines = [
+    `id=${attachment.id}`,
+    `filename=${attachment.filename}`,
+    `mime=${attachment.mime}`,
+    `kind=${attachment.kind}`,
+    `sizeBytes=${attachment.sizeBytes}`,
+  ]
+
+  if (!isTextLikeMime(attachment.mime) || attachment.sizeBytes > ATTACHMENT_READ_MAX_TEXT_BYTES) {
+    return {
+      inputSummary: `id=${id}`,
+      outputPreview: [
+        ...metadataLines,
+        'content=(binary or too large to inline; metadata only)',
+      ].join('\n'),
+      toolName: 'attachment_read',
+    }
+  }
+
+  const storage = getStorage(attachmentStorageConfig())
+  const bytes = await storage.get(attachment.storageKey)
+  if (!bytes) {
+    return {
+      inputSummary: `id=${id}`,
+      outputPreview: [...metadataLines, 'content=(stored bytes missing)'].join('\n'),
+      toolName: 'attachment_read',
+    }
+  }
+
+  return {
+    inputSummary: `id=${id}`,
+    outputPreview: [...metadataLines, 'content:', truncate(bytes.toString('utf8'), 8000)].join(
+      '\n',
+    ),
+    toolName: 'attachment_read',
+  }
+}
+
+// ─── sp-channels: channel lifecycle tools ────────────────────────────────────
+
+// Mirror of api/src/services/channels.ts toChannelSlug — the worker cannot
+// import from api/, so the rule is re-implemented here to keep validation
+// consistent across the REST surface and the agent tools.
+const toChannelSlug = (value: string): string =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[\s]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+// Channel-manage authz mirrored from api/src/services/channels.ts canManageChannel:
+// channel owner/admin, org owner/admin, or team owner/admin may manage.
+const canManageChannel = async (
+  prisma: PrismaClient,
+  input: { userId: string; organizationId: string; channelId: string },
+): Promise<boolean> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: input.channelId },
+    select: { organizationId: true, teamId: true },
+  })
+  if (!channel || channel.organizationId !== input.organizationId) {
+    return false
+  }
+
+  const [channelMember, orgMember, teamMember] = await Promise.all([
+    prisma.channelMember.findUnique({
+      where: { channelId_userId: { channelId: input.channelId, userId: input.userId } },
+      select: { role: true },
+    }),
+    prisma.organizationMember.findFirst({
+      where: { organizationId: input.organizationId, userId: input.userId },
+      select: { role: true },
+    }),
+    prisma.teamMember.findFirst({
+      where: { teamId: channel.teamId, userId: input.userId },
+      select: { role: true },
+    }),
+  ])
+
+  return (
+    channelMember?.role === 'owner'
+    || channelMember?.role === 'admin'
+    || orgMember?.role === 'owner'
+    || orgMember?.role === 'admin'
+    || teamMember?.role === 'owner'
+    || teamMember?.role === 'admin'
+  )
+}
+
+export const runChannelListTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { includeArchived?: boolean; limit?: unknown },
+): Promise<ToolExecutionResult> => {
+  const userId = requireUserActor(context.actorContext)
+  const organizationId = context.channel.organizationId
+  const take = clampLimit(input.limit, 20)
+
+  const channels = await context.prisma.channel.findMany({
+    where: {
+      ...buildVisibleChannelWhere(organizationId, userId),
+      ...(input.includeArchived ? {} : { archivedAt: null }),
+    },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      label: true,
+      visibility: true,
+      topic: true,
+      archivedAt: true,
+    },
+    take,
+  })
+
+  const lines = channels.map((channel, index) =>
+    `${index + 1}. #${channel.label} | channelId=${channel.id} | visibility=${channel.visibility}`
+    + ` | archived=${channel.archivedAt ? 'yes' : 'no'}`
+    + (channel.topic ? ` | topic="${channel.topic}"` : ''),
+  )
+
+  return {
+    inputSummary: `includeArchived=${Boolean(input.includeArchived)}`,
+    outputPreview:
+      formatSection(`Channels (${lines.length})`, lines) || 'No channels visible.',
+    toolName: 'channel_list',
+  }
+}
+
+export const runChannelUpdateTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: {
+    channelId: string
+    label?: string
+    topic?: string
+    description?: string
+  },
+): Promise<ToolExecutionResult> => {
+  const userId = requireUserActor(context.actorContext)
+  const organizationId = context.channel.organizationId
+  if (!input.channelId) {
+    throw new Error('channelId is required.')
+  }
+  if (
+    input.label === undefined
+    && input.topic === undefined
+    && input.description === undefined
+  ) {
+    throw new Error('Provide at least one of label, topic, or description.')
+  }
+
+  const canManage = await canManageChannel(context.prisma, {
+    channelId: input.channelId,
+    organizationId,
+    userId,
+  })
+  if (!canManage) {
+    throw new Error('Channel not found or insufficient permissions to manage it.')
+  }
+
+  const data: Prisma.ChannelUpdateInput = {}
+  if (input.label !== undefined) {
+    const label = input.label.trim()
+    if (toChannelSlug(label).length === 0) {
+      throw new Error('Channel name must contain at least one letter or number.')
+    }
+    data.label = label
+  }
+  if (input.topic !== undefined) {
+    data.topic = input.topic
+  }
+  if (input.description !== undefined) {
+    data.description = input.description
+  }
+
+  const channel = await context.prisma.channel.update({
+    where: { id: input.channelId },
+    data,
+    select: { id: true, label: true, topic: true, description: true },
+  })
+
+  return {
+    inputSummary: `channelId=${input.channelId}`,
+    outputPreview: [
+      `Updated channelId=${channel.id}`,
+      `label="${channel.label}"`,
+      `topic=${channel.topic ? `"${channel.topic}"` : '(none)'}`,
+      `description=${channel.description ? `"${truncate(channel.description, 120)}"` : '(none)'}`,
+    ].join('\n'),
+    toolName: 'channel_update',
+  }
+}
+
+export const runChannelArchiveTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { channelId: string; archived?: boolean },
+): Promise<ToolExecutionResult> => {
+  const userId = requireUserActor(context.actorContext)
+  const organizationId = context.channel.organizationId
+  if (!input.channelId) {
+    throw new Error('channelId is required.')
+  }
+
+  const archived = input.archived ?? true
+  const canManage = await canManageChannel(context.prisma, {
+    channelId: input.channelId,
+    organizationId,
+    userId,
+  })
+  if (!canManage) {
+    throw new Error('Channel not found or insufficient permissions to manage it.')
+  }
+
+  const channel = await context.prisma.channel.update({
+    where: { id: input.channelId },
+    data: { archivedAt: archived ? new Date() : null },
+    select: { id: true, label: true, archivedAt: true },
+  })
+
+  return {
+    inputSummary: `channelId=${input.channelId} archived=${archived}`,
+    outputPreview:
+      `${channel.archivedAt ? 'Archived' : 'Unarchived'} channelId=${channel.id} | #${channel.label}`,
+    toolName: 'channel_archive',
+  }
+}
+
+export const runChannelJoinTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { channelId: string },
+): Promise<ToolExecutionResult> => {
+  const userId = requireUserActor(context.actorContext)
+  const organizationId = context.channel.organizationId
+  if (!input.channelId) {
+    throw new Error('channelId is required.')
+  }
+
+  const channel = await context.prisma.channel.findUnique({
+    where: { id: input.channelId },
+    select: { organizationId: true, label: true, visibility: true, archivedAt: true },
+  })
+  if (!channel || channel.organizationId !== organizationId) {
+    throw new Error('Channel not found.')
+  }
+  if (channel.visibility !== 'public' || channel.archivedAt) {
+    throw new Error('Only active public channels can be joined.')
+  }
+
+  const isOrgMember = await context.prisma.organizationMember.count({
+    where: { organizationId, userId },
+  })
+  if (!isOrgMember) {
+    throw new Error('You are not a member of this organization.')
+  }
+
+  await context.prisma.channelMember.upsert({
+    where: { channelId_userId: { channelId: input.channelId, userId } },
+    create: { channelId: input.channelId, userId },
+    update: {},
+  })
+
+  return {
+    inputSummary: `channelId=${input.channelId}`,
+    outputPreview: `Joined channelId=${input.channelId} | #${channel.label}`,
+    toolName: 'channel_join',
   }
 }

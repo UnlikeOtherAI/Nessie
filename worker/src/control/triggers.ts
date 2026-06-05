@@ -4,3 +4,6 @@
 // - trigger-events.ts: dispatch event triggers matching an emitted event
 export { sweepDueScheduledTriggers } from './trigger-scheduler.js'
 export { dispatchEventTriggers } from './trigger-events.js'
+// sp-webhook: delivery retry/backoff poller + its re-attempt dispatcher.
+export { retryFailedTriggerDeliveries } from './trigger-delivery-retry.js'
+export { reattemptTriggerDelivery } from './trigger-retry-dispatch.js'
