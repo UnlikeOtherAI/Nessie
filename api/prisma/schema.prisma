@@ -2230,3 +2230,16 @@ model CallParticipant {
   @@unique([callId, userId])
   @@map("call_participants")
 }
+
+/// Encrypted MCP OAuth token storage (production SecretStore backing table).
+/// Rows hold AES-256-GCM ciphertext of the OAuth token bundle keyed by the
+/// opaque `secret_oauth_*` ref handed back to the credential resolution chain.
+model McpOAuthSecret {
+  ref        String   @id
+  ciphertext String
+  iv         String
+  authTag    String   @map("auth_tag")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("mcp_oauth_secret")
+}

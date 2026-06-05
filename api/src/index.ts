@@ -23,6 +23,7 @@ import { sendApiError } from './lib/api.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
 import { sweepExpiredApprovals } from './services/approvals.js'
+import { createPgSecretStore } from './services/mcp-oauth-secret-store.js'
 import { createThoughtService } from './services/thoughts.js'
 import {
   createCorsOriginChecker,
@@ -67,6 +68,7 @@ const {
   config,
   prisma,
   databaseUrl,
+  authSecret,
   allowedCorsOrigins,
   resolveBootstrapState,
   logBootstrapUrl,
@@ -262,14 +264,15 @@ export const buildApp = async () => {
   })
 
   // ─── MCP universal connector routes (Slice C) ──────────────────────────
-  // NOTE: `oauthSecretStore` is intentionally omitted until a KMS-backed
-  // implementation lands. `registerMcpRoutes` itself enforces the production
-  // guard — it will throw at startup when NODE_ENV=production so a misconfigured
-  // deploy fails loud instead of silently dropping OAuth tokens.
+  // Inject a persistent, encrypted SecretStore so completing an OAuth handshake
+  // durably stores the token bundle (AES-256-GCM, keyed off the auth secret)
+  // instead of dropping it. `registerMcpRoutes` still enforces the production
+  // guard — a deploy without this store fails loud at startup.
   registerMcpRoutes(app, {
     prisma,
     requireActorContext,
     requireOwner,
+    oauthSecretStore: createPgSecretStore(prisma, authSecret ?? ''),
   })
 
   registerToolBundleRoutes(app, {

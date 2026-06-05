@@ -43,6 +43,25 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - `pnpm --filter @nessie/admin build` produces the static admin bundle (`dist/`); `pnpm --filter @nessie/admin preview` serves it. This is for prod/CI, **not** the local dev loop — use `pnpm dev` instead.
 - Rebuild the worker after every turn where worker code changed: `pnpm --filter @nessie/worker build`. In local mode the API runs the worker **embedded from its built `dist`** (`import('@nessie/worker')`), so worker source edits do not take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 
+## Production deployment
+
+- Production is **self-hosted on Hetzner** (`178.105.82.46`) as Docker
+  containers, reusing the host's shared Caddy edge proxy and Docker networks
+  (`edge`/`db`). It is **not** GCP Cloud Run — the old GCP workflow/spec are
+  retired (`docs/done/phase2-gcp-deployment-spec.md` is historical).
+- URLs: admin `https://nessie.unlikeotherai.com`, API
+  `https://api.nessie.unlikeotherai.com`. TLS is automatic (Caddy + Let's
+  Encrypt); DNS is Cloudflare, DNS-only.
+- Stack: `nessie-api` + `nessie-worker` (one `Dockerfile.app` image, command
+  override) + `nessie-admin` (static nginx) + a dedicated `nessie-postgres`
+  (pgvector — the shared Postgres lacks the `vector` extension). No Redis (queue
+  and realtime are Postgres-backed). Mode is `selfHosted`; first login is the
+  one-time bootstrap owner URL.
+- Compose: `infrastructure/compose/docker-compose.prod.yml`. Redeploy with
+  `infrastructure/compose/redeploy.sh` after rsync'ing to `/srv/nessie`.
+- **Authoritative guide: [docs/deployment.md](docs/deployment.md)** — first
+  deploy, redeploy, config reference, MCP secret store, and SSO status.
+
 ## Linting
 
 - **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`

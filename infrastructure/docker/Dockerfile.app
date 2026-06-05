@@ -11,6 +11,12 @@ FROM node:22-slim
 
 WORKDIR /app
 
+# openssl + ca-certificates: Prisma's query engine needs libssl to load, and the
+# slim base omits it (otherwise Prisma warns and falls back to the wrong engine).
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable
 
 # Full workspace: a frozen install validates every workspace member, so all
