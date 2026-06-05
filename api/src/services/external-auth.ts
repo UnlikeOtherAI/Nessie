@@ -1,5 +1,7 @@
 import type { AuthProviderConfig } from '@nessie/config'
 
+import { buildUoaAuthorizeUrl, exchangeUoaCode } from './uoa-auth.js'
+
 type OidcDiscoveryDocument = {
   authorization_endpoint?: string
   token_endpoint?: string
@@ -64,6 +66,10 @@ export const buildExternalAuthAuthorizeUrl = async (
     state: string
   },
 ): Promise<string> => {
+  if (provider.type === 'uoa') {
+    return buildUoaAuthorizeUrl(input)
+  }
+
   const discovery = await loadDiscoveryDocument(provider)
   if (!discovery.authorization_endpoint) {
     throw new Error(`Provider ${provider.providerId} does not expose an authorization endpoint`)
@@ -88,6 +94,10 @@ export const exchangeExternalAuthCode = async (
     redirectUri: string
   },
 ): Promise<ExternalAuthIdentity> => {
+  if (provider.type === 'uoa') {
+    return exchangeUoaCode(input)
+  }
+
   const discovery = await loadDiscoveryDocument(provider)
   if (!discovery.token_endpoint || !discovery.userinfo_endpoint) {
     throw new Error(`Provider ${provider.providerId} is missing token or userinfo endpoints`)

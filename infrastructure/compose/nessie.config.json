@@ -1,6 +1,14 @@
 {
   "mode": "selfHosted",
   "auth": {
-    "providers": []
+    "providers": [
+      {
+        "providerId": "uoa",
+        "type": "uoa",
+        "label": "Sign in with SSO",
+        "enabled": true,
+        "autoRedirect": false
+      }
+    ]
   }
 }

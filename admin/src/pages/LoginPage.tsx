@@ -63,12 +63,15 @@ export const LoginPage = () => {
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     const state = params.get('state')
-    if (!code || !state) {
+    if (!code) {
       return
     }
 
+    // Some providers (e.g. UOA) do not echo `state` on the callback — PKCE plus
+    // the same-origin sessionStorage entry already bind this exchange. Only
+    // enforce a state match when the provider actually returned one.
     const pendingExternalAuth = readPendingExternalAuth()
-    if (!pendingExternalAuth || pendingExternalAuth.state !== state) {
+    if (!pendingExternalAuth || (state !== null && pendingExternalAuth.state !== state)) {
       clearPendingExternalAuth()
       setError('The external sign-in callback could not be verified.')
       return

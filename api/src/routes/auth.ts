@@ -24,6 +24,7 @@ import {
   exchangeExternalAuthCode,
 } from '../services/external-auth.js'
 import { seedDefaultPolicies } from '../services/policy.js'
+import { buildConfigJwt, buildPublicJwks, isUoaConfigured, loadUoaSettings } from '../services/uoa-auth.js'
 import {
   createUserForOrganization,
   loadSessionUserByEmail,
@@ -50,6 +51,27 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       AuthProviderDescriptorSchema.array().parse(listAuthProviders(config)),
     ),
   )
+
+  // UOA (UnlikeOtherAuthenticator) integration endpoints. The signed config JWT
+  // describes this deployment to UOA; the JWKS lets UOA verify it. Both are only
+  // served when UOA is configured via env.
+  app.get('/api/auth/sso/config', { config: { public: true } }, async (_request, reply) => {
+    if (!isUoaConfigured()) {
+      sendApiError(reply, 404, 'SSO_NOT_CONFIGURED', 'UOA SSO is not configured')
+      return reply
+    }
+    return reply
+      .header('content-type', 'application/jwt')
+      .send(buildConfigJwt(loadUoaSettings()))
+  })
+
+  app.get('/.well-known/jwks.json', { config: { public: true } }, async (_request, reply) => {
+    if (!isUoaConfigured()) {
+      sendApiError(reply, 404, 'SSO_NOT_CONFIGURED', 'UOA SSO is not configured')
+      return reply
+    }
+    return reply.send(buildPublicJwks(loadUoaSettings()))
+  })
 
   app.get('/api/auth/providers/:providerId/authorize', { config: { public: true } }, async (request, reply) => {
     const query = parseInput(AuthProviderAuthorizeQuerySchema, request.query, reply)
@@ -236,20 +258,32 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
             : null
 
           if (!defaultOrg || !defaultProject || !defaultTeam) {
-            sendApiError(reply, 500, 'NO_DEFAULT_ORG', 'No organization configured for SSO provisioning')
-            return reply
+            // Fresh instance with no workspace yet: the first SSO user bootstraps
+            // the default org/project/team/channel and becomes its owner. This
+            // makes SSO fully self-serve — no separate owner-account step.
+            if ((await prisma.user.count()) === 0) {
+              const seeded = await seedBootstrapRecords(prisma, {
+                avatarUrl: identity.avatarUrl,
+                displayName: identity.displayName,
+                email: identity.email,
+              })
+              await seedDefaultPolicies(prisma, seeded.organizationId, seeded.user.id)
+            } else {
+              sendApiError(reply, 500, 'NO_DEFAULT_ORG', 'No organization configured for SSO provisioning')
+              return reply
+            }
+          } else {
+            await createUserForOrganization(prisma, {
+              avatarUrl: identity.avatarUrl,
+              channelIds: defaultChannel ? [defaultChannel.id] : [],
+              displayName: identity.displayName,
+              email: identity.email,
+              organizationId: defaultOrg.id,
+              projectId: defaultProject.id,
+              role: 'member',
+              teamId: defaultTeam.id,
+            })
           }
-
-          await createUserForOrganization(prisma, {
-            avatarUrl: identity.avatarUrl,
-            channelIds: defaultChannel ? [defaultChannel.id] : [],
-            displayName: identity.displayName,
-            email: identity.email,
-            organizationId: defaultOrg.id,
-            projectId: defaultProject.id,
-            role: 'member',
-            teamId: defaultTeam.id,
-          })
           sessionUser = await loadSessionUserByEmail(prisma, identity.email)
         }
 
