@@ -95,7 +95,7 @@ const defaultUiTheme = (settings: UoaSettings): Record<string, unknown> => ({
   typography: { font_family: 'Inter, system-ui, sans-serif', base_text_size: 'md' },
   button: { style: 'solid' },
   card: { style: 'shadow' },
-  logo: { url: `https://${settings.domain}/favicon.svg`, alt: 'Nessie' },
+  logo: { url: `https://${settings.domain}/icon.png`, alt: 'Nessie' },
 })
 
 /**

@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import type { FastifyInstance } from 'fastify'
 
 import { MeResponseSchema, UpdatePreferencesSchema } from '@nessie/schemas'
@@ -30,6 +33,21 @@ import {
   loadSessionUserByEmail,
 } from '../services/users.js'
 import type { RouteDeps } from './types.js'
+
+// Brand icon shared with the UOA hosted login page. Bundled in the image at
+// admin/public/icon-1024.png (cwd is the workspace root). Read once and cached.
+let cachedBrandIcon: Buffer | null = null
+const readBrandIcon = (): Buffer | null => {
+  if (cachedBrandIcon) {
+    return cachedBrandIcon
+  }
+  const iconPath = resolve(process.cwd(), 'admin/public/icon-1024.png')
+  if (!existsSync(iconPath)) {
+    return null
+  }
+  cachedBrandIcon = readFileSync(iconPath)
+  return cachedBrandIcon
+}
 
 export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -71,6 +89,21 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
     return reply.send(buildPublicJwks(loadUoaSettings()))
+  })
+
+  // Brand logo for the UOA hosted login page. UOA requires the config `logo.url`
+  // to share the config domain's origin (api.nessie…), so the API serves the
+  // same icon the admin uses. Cached after first read.
+  app.get('/icon.png', { config: { public: true } }, async (_request, reply) => {
+    const icon = readBrandIcon()
+    if (!icon) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Brand icon not found')
+      return reply
+    }
+    return reply
+      .header('content-type', 'image/png')
+      .header('cache-control', 'public, max-age=86400')
+      .send(icon)
   })
 
   app.get('/api/auth/providers/:providerId/authorize', { config: { public: true } }, async (request, reply) => {

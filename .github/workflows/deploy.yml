@@ -1,0 +1,55 @@
+name: Deploy
+
+# Auto-deploy to the self-hosted Hetzner production host on every push to main.
+# Syncs the working tree to /srv/nessie and runs the redeploy script (rebuild
+# images, apply migrations, recreate containers). See docs/deployment.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & deploy to Hetzner
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync source to host
+        # No --delete: never risk removing the host-only .env or Postgres volume
+        # metadata. The host .env is also explicitly excluded.
+        run: |
+          rsync -az \
+            --exclude '.git' \
+            --exclude '**/node_modules' \
+            --exclude '**/dist' \
+            --exclude '.worktrees' \
+            --exclude '.turbo' \
+            --exclude '*.tsbuildinfo' \
+            --exclude '/*.png' \
+            --exclude '/admin/*.png' \
+            --exclude 'infrastructure/compose/.env' \
+            -e "ssh -i ~/.ssh/id_ed25519" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:/srv/nessie/"
+
+      - name: Rebuild & redeploy
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+            'cd /srv/nessie && bash infrastructure/compose/redeploy.sh'

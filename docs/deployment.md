@@ -98,10 +98,22 @@ Requires SSH access to the host and the `CLOUDFLARE_API_TOKEN` env var.
 
 ## Redeploying a new version
 
-From the dev machine: `rsync` the updated tree to `/srv/nessie`, then on the host
-run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
+**Automatic (default):** every push to `main` triggers
+`.github/workflows/deploy.yml`, which rsyncs the tree to `/srv/nessie` and runs
+`infrastructure/compose/redeploy.sh` over SSH. The workflow authenticates with
+the `DEPLOY_SSH_KEY` repo secret (a dedicated key in the host's
+`~/.ssh/authorized_keys`); host/user come from the `DEPLOY_HOST` / `DEPLOY_USER`
+secrets. It never uses `--delete` and excludes `infrastructure/compose/.env`, so
+host-only secrets and the Postgres volume are never touched.
+
+**Manual:** from the dev machine `rsync` the tree to `/srv/nessie`, then on the
+host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
 migrations, recreates the API/worker/admin containers). Postgres and its volume
 are untouched.
+
+To rotate the deploy key: generate a new keypair, append the public key to the
+host's `~/.ssh/authorized_keys`, and `gh secret set DEPLOY_SSH_KEY` with the
+private key.
 
 ## Verifying
 

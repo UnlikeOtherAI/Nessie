@@ -22,6 +22,8 @@ assets
 UI
 docs
 memory
-*.png
+# Root-level screenshots only — keep app assets like admin/public/icon-1024.png.
+/*.png
+/admin/*.png
 *.log
 **/.DS_Store

@@ -15,14 +15,9 @@ const fieldClass = [
 ].join(' ')
 
 const primaryButtonClass = [
-  'rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm',
+  'w-full rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm',
   'font-medium text-white transition hover:opacity-90',
   'disabled:cursor-not-allowed disabled:opacity-60',
-].join(' ')
-
-const providerCardClass = [
-  'flex items-center justify-between rounded-2xl border',
-  'border-[var(--line)] bg-white/70 px-4 py-3',
 ].join(' ')
 
 const errorBoxClass = [
@@ -35,19 +30,22 @@ export const LoginPage = () => {
   const navigate = useNavigate()
   const { devLogin, login, sessionState } = useAuthSession()
   const { data: providers = [] } = useAuthProviders()
-  // Pre-filled dev credentials for convenience.
+  // Pre-filled dev credentials for convenience (local mode only).
   const [email, setEmail] = useState(LOCAL_DEMO_EMAIL)
   const [password, setPassword] = useState(LOCAL_DEMO_PASSWORD)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const enabledProviders = providers.filter((provider) => provider.enabled)
-  const singleEnabledProvider = enabledProviders.length === 1 ? enabledProviders[0] : null
+
+  // The API only advertises a `local-bootstrap` provider when running in local
+  // mode. Internal email/password + dev login are therefore local-only; in
+  // hosted/self-hosted production the sole sign-in path is SSO.
+  const localModeEnabled = providers.some((provider) => provider.type === 'local-bootstrap')
+  const ssoProviders = providers.filter(
+    (provider) => provider.enabled && provider.type !== 'local-bootstrap',
+  )
+  const singleSsoProvider = ssoProviders.length === 1 ? ssoProviders[0] : null
   const autoRedirectProvider =
-    singleEnabledProvider &&
-    singleEnabledProvider.type !== 'local-bootstrap' &&
-    singleEnabledProvider.autoRedirect
-      ? singleEnabledProvider
-      : null
+    singleSsoProvider && singleSsoProvider.autoRedirect ? singleSsoProvider : null
 
   useEffect(() => {
     if (sessionState === 'authenticated') {
@@ -194,90 +192,84 @@ export const LoginPage = () => {
             ].join(' ')}
             src="/icon-1024.png"
           />
-
-          <div className="mt-8 grid gap-3 rounded-[1.5rem] border border-[var(--line)] bg-white/60 p-5">
-            <div className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-              Auth providers
-            </div>
-            <div className="grid gap-2 text-sm">
-              {providers.length > 0 ? (
-                providers.map((provider) => (
-                  <div key={provider.providerId} className={providerCardClass}>
-                    <div>
-                      <div className="font-medium">{provider.label}</div>
-                      <div className="text-xs text-[var(--muted)]">{provider.type}</div>
-                    </div>
-                    {provider.type === 'local-bootstrap' ? (
-                      <div className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">
-                        {provider.enabled ? 'Enabled' : 'Disabled'}
-                      </div>
-                    ) : (
-                      <button
-                        className="text-xs uppercase tracking-[0.18em] text-[var(--accent)] disabled:opacity-50"
-                        disabled={isSubmitting || !provider.enabled}
-                        onClick={() => void handleProviderSignIn(provider.providerId)}
-                        type="button"
-                      >
-                        {provider.autoRedirect ? 'Auto redirect' : 'Continue'}
-                      </button>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div className="text-sm text-[var(--muted)]">Loading providers...</div>
-              )}
-            </div>
-          </div>
         </section>
 
         <section className="glass-panel self-start rounded-[2rem] p-8 md:p-10">
-          <h2 className="text-2xl font-semibold text-white">Account</h2>
-          <form className="mt-6 grid gap-4" onSubmit={handleSubmit}>
-            <label className="grid gap-2 text-sm text-white">
-              <span>Email</span>
-              <input
-                autoComplete="username"
-                className={fieldClass}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-                type="email"
-                value={email}
-              />
-            </label>
-            <label className="grid gap-2 text-sm text-white">
-              <span>Password</span>
-              <input
-                autoComplete="current-password"
-                className={fieldClass}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-                type="password"
-                value={password}
-              />
-            </label>
+          <h2 className="text-2xl font-semibold text-white">Sign in</h2>
+          <p className="mt-2 text-sm text-[var(--muted)]">
+            Continue with single sign-on to access your workspace.
+          </p>
 
+          <div className="mt-6 grid gap-3">
+            {ssoProviders.length > 0 ? (
+              ssoProviders.map((provider) => (
+                <button
+                  key={provider.providerId}
+                  className={primaryButtonClass}
+                  disabled={isSubmitting}
+                  onClick={() => void handleProviderSignIn(provider.providerId)}
+                  type="button"
+                >
+                  {isSubmitting ? 'Signing in...' : provider.label}
+                </button>
+              ))
+            ) : (
+              <div className="text-sm text-[var(--muted)]">
+                {providers.length === 0
+                  ? 'Loading providers...'
+                  : 'No sign-in providers are configured.'}
+              </div>
+            )}
             {error ? <div className={errorBoxClass}>{error}</div> : null}
-
-            <button className={primaryButtonClass} disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Signing in...' : 'Sign in'}
-            </button>
-          </form>
-
-          <div className="mt-4 border-t border-[var(--line)] pt-4">
-            <button
-              className={[
-                'w-full rounded-2xl border border-[var(--line)]',
-                'bg-white/10 px-5 py-3 text-sm font-medium',
-                'text-[var(--muted)] transition hover:bg-white/20',
-                'hover:text-white disabled:cursor-not-allowed disabled:opacity-60',
-              ].join(' ')}
-              disabled={isSubmitting}
-              onClick={() => void handleDevLogin()}
-              type="button"
-            >
-              {isSubmitting ? 'Signing in...' : 'Dev Login (skip password)'}
-            </button>
           </div>
+
+          {localModeEnabled ? (
+            <div className="mt-6 border-t border-[var(--line)] pt-6">
+              <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+                Local development
+              </p>
+              <form className="mt-4 grid gap-4" onSubmit={handleSubmit}>
+                <label className="grid gap-2 text-sm text-white">
+                  <span>Email</span>
+                  <input
+                    autoComplete="username"
+                    className={fieldClass}
+                    onChange={(event) => setEmail(event.target.value)}
+                    required
+                    type="email"
+                    value={email}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm text-white">
+                  <span>Password</span>
+                  <input
+                    autoComplete="current-password"
+                    className={fieldClass}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required
+                    type="password"
+                    value={password}
+                  />
+                </label>
+                <button className={primaryButtonClass} disabled={isSubmitting} type="submit">
+                  {isSubmitting ? 'Signing in...' : 'Sign in'}
+                </button>
+              </form>
+              <button
+                className={[
+                  'mt-3 w-full rounded-2xl border border-[var(--line)]',
+                  'bg-white/10 px-5 py-3 text-sm font-medium',
+                  'text-[var(--muted)] transition hover:bg-white/20',
+                  'hover:text-white disabled:cursor-not-allowed disabled:opacity-60',
+                ].join(' ')}
+                disabled={isSubmitting}
+                onClick={() => void handleDevLogin()}
+                type="button"
+              >
+                {isSubmitting ? 'Signing in...' : 'Dev Login (skip password)'}
+              </button>
+            </div>
+          ) : null}
         </section>
       </div>
     </main>
