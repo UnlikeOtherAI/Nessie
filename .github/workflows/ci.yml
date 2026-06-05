@@ -132,11 +132,10 @@ jobs:
         run: pnpm --filter @nessie/api prisma:generate
 
       - name: Build shared packages
-        run: |
-          pnpm --filter @nessie/schemas build
-          pnpm --filter @nessie/config build
-          pnpm --filter @nessie/runtime build
-          pnpm --filter @nessie/memory build
+        # Build every shared package, not a hand-picked subset: tested packages
+        # import siblings through their dist exports (e.g. memory → retrieval),
+        # so a missing build breaks the run with ERR_MODULE_NOT_FOUND.
+        run: pnpm --filter "./packages/*" build
 
       - name: Apply database migrations
         run: pnpm --filter @nessie/api prisma:migrate:deploy
