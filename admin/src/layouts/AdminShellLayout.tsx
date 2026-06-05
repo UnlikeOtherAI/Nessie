@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
+import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { AgentsSidebarNav } from './admin-shell/AgentsSidebarNav';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
@@ -38,15 +39,19 @@ export const AdminShellLayout = () => {
       <div className="admin-shell">
         <SidebarRail
           displayName={me.user.displayName}
+          isAdminRoute={shell.isAdminRoute}
           isAgentsRoute={shell.isAgentsRoute}
-          isOwner={shell.isOwner}
           onLogout={shell.logoutAndRedirect}
           pathname={shell.pathname}
         />
 
         {shell.isAgentsRoute && <AgentsSidebarNav pathname={shell.pathname} />}
 
-        {!shell.isAgentsRoute && (
+        {shell.isAdminRoute && (
+          <AdminSidebarNav isOwner={shell.isOwner} pathname={shell.pathname} />
+        )}
+
+        {!shell.isAgentsRoute && !shell.isAdminRoute && (
           <SidebarNav
             activeDmChannelId={shell.activeDmChannelId}
             channelsCollapsed={shell.channelsCollapsed}

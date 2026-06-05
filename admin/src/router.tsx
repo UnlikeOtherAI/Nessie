@@ -14,7 +14,11 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { ProjectsPage } from './pages/ProjectsPage'
-import { SettingsPage } from './pages/SettingsPage'
+import { SettingsAgentsPage } from './pages/settings/SettingsAgentsPage'
+import { SettingsChannelsPage } from './pages/settings/SettingsChannelsPage'
+import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
+import { SettingsProfilePage } from './pages/settings/SettingsProfilePage'
+import { SettingsToolsPage } from './pages/settings/SettingsToolsPage'
 import { ToolsPage } from './pages/ToolsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
 import { TriggersPage } from './pages/TriggersPage'
@@ -113,7 +117,27 @@ export const router = createBrowserRouter([
       },
       {
         path: '/settings',
-        element: <SettingsPage />,
+        element: <Navigate to="/settings/profile" replace />,
+      },
+      {
+        path: '/settings/profile',
+        element: <SettingsProfilePage />,
+      },
+      {
+        path: '/settings/members',
+        element: <SettingsMembersPage />,
+      },
+      {
+        path: '/settings/channels',
+        element: <SettingsChannelsPage />,
+      },
+      {
+        path: '/settings/agents',
+        element: <SettingsAgentsPage />,
+      },
+      {
+        path: '/settings/tools',
+        element: <SettingsToolsPage />,
       },
       {
         path: '/audit',

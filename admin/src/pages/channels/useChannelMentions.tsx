@@ -107,7 +107,7 @@ export const useChannelMentions = ({
                   return
                 }
 
-                void navigate('/settings#users')
+                void navigate('/settings/members')
               }}
               title={
                 entity.type === 'agent'

@@ -19,7 +19,7 @@ const railLogoutButtonClassName = [
 type SidebarRailProps = {
   displayName: string;
   isAgentsRoute: boolean;
-  isOwner: boolean;
+  isAdminRoute: boolean;
   onLogout: () => void;
   pathname: string;
 };
@@ -27,7 +27,7 @@ type SidebarRailProps = {
 export const SidebarRail = ({
   displayName,
   isAgentsRoute,
-  isOwner,
+  isAdminRoute,
   onLogout,
   pathname,
 }: SidebarRailProps) => {
@@ -181,7 +181,7 @@ export const SidebarRail = ({
       <div className="my-2 h-px w-8 bg-white/15" />
 
       <Link
-        className={`admin-rail-btn ${pathname.startsWith('/settings') ? 'active' : ''}`}
+        className={`admin-rail-btn ${isAdminRoute ? 'active' : ''}`}
         to="/settings"
       >
         <svg
@@ -214,132 +214,6 @@ export const SidebarRail = ({
         </svg>
         <span className="admin-rail-btn-label">Admin</span>
       </Link>
-
-      {isOwner && (
-        <>
-          <Link
-            className={`admin-rail-btn ${pathname === '/approvals' ? 'active' : ''}`}
-            to="/approvals"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="admin-rail-btn-label">Approvals</span>
-          </Link>
-
-          <Link
-            className={`admin-rail-btn ${pathname === '/audit' ? 'active' : ''}`}
-            to="/audit"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d={[
-                  'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2',
-                  '0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2',
-                  'a2 2 0 012 2',
-                ].join(' ')}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="admin-rail-btn-label">Audit</span>
-          </Link>
-
-          <Link
-            className={[
-              'admin-rail-btn',
-              pathname === '/tokens' ? 'active' : '',
-            ].join(' ')}
-            to="/tokens"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d={[
-                  'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343',
-                  '2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1',
-                  'c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-                ].join(' ')}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="admin-rail-btn-label">Tokens</span>
-          </Link>
-
-          <Link
-            className={[
-              'admin-rail-btn',
-              pathname === '/policy' ? 'active' : '',
-            ].join(' ')}
-            to="/policy"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d={[
-                  'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112',
-                  '2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0',
-                  '5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042',
-                  '-.133-2.052-.382-3.016z',
-                ].join(' ')}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="admin-rail-btn-label">Policy</span>
-          </Link>
-
-          <Link
-            className={[
-              'admin-rail-btn',
-              pathname === '/ops' ? 'active' : '',
-            ].join(' ')}
-            to="/ops"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path
-                d="M3 12h4l3 8 4-16 3 8h4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="admin-rail-btn-label">Health</span>
-          </Link>
-        </>
-      )}
 
       <div className="flex-1" />
 

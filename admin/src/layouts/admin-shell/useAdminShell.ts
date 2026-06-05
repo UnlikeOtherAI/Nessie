@@ -24,6 +24,18 @@ import {
   type VisibleStarredEntry,
 } from './types';
 
+// Route prefixes that make up the admin area. When the active route matches
+// any of these, the shell swaps the channels/DMs second column for the admin
+// sub-pages menu (AdminSidebarNav).
+const ADMIN_ROUTE_PREFIXES = [
+  '/settings',
+  '/approvals',
+  '/audit',
+  '/tokens',
+  '/policy',
+  '/ops',
+];
+
 const parseChannelIdFromPath = (pathname: string): string | undefined => {
   const match = pathname.match(/^\/channels(?:\/([^/]+))?$/);
   return match?.[1];
@@ -44,6 +56,9 @@ export const useAdminShell = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
+  const isAdminRoute = ADMIN_ROUTE_PREFIXES.some(
+    (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`),
+  );
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const personalAssistantChannel = useMemo(
     () => channels.find(isPersonalAssistantChannel) ?? null,
@@ -174,8 +189,8 @@ export const useAdminShell = () => {
     void navigate('/channels');
   }, [navigate]);
 
-  const navigateToSettings = useCallback((hash?: string) => {
-    void navigate(hash ? `/settings${hash}` : '/settings');
+  const navigateToSettings = useCallback((subPage?: string) => {
+    void navigate(subPage ? `/settings/${subPage}` : '/settings');
   }, [navigate]);
 
   const logoutAndRedirect = useCallback(() => {
@@ -323,6 +338,7 @@ export const useAdminShell = () => {
     defaultProjectChannels,
     defaultProjectTeamId,
     dmCollapsed,
+    isAdminRoute,
     isAgentsRoute,
     isOwner,
     logoutAndRedirect,

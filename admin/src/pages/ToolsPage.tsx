@@ -44,7 +44,7 @@ export const ToolsPage = () => {
       headerAction={
         <button
           className="admin-button admin-button-primary"
-          onClick={() => void navigate('/settings#tools')}
+          onClick={() => void navigate('/settings/tools')}
           type="button"
         >
           Manage tools

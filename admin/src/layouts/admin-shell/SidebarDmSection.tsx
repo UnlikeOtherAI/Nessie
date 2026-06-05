@@ -10,7 +10,7 @@ type SidebarDmSectionProps = {
   dmCollapsed: boolean;
   isOwner: boolean;
   onNavigateDm: (userId: string) => void;
-  onNavigateSettings: (hash: string) => void;
+  onNavigateSettings: (subPage?: string) => void;
   onOpenPersonalAssistant: () => void;
   onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
   personalAssistantBootstrapping: boolean;
@@ -64,7 +64,7 @@ export const SidebarDmSection = ({
         <button
           aria-label={isOwner ? 'Invite people' : 'Open workspace profile'}
           className="admin-sidebar-plus"
-          onClick={() => onNavigateSettings('#users')}
+          onClick={() => onNavigateSettings('members')}
           type="button"
         >
           +
