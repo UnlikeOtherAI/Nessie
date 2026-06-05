@@ -143,6 +143,17 @@ export const createServerContext = () => {
   let bootstrapExpiryWarned = false
 
   const resolveBootstrapState = async (): Promise<BootstrapTokenState | null> => {
+    // When an external auth provider (SSO) is configured, the first SSO login
+    // provisions the owner — there is no manual owner-account bootstrap step, so
+    // never arm bootstrap mode (which would otherwise hijack the login screen).
+    const hasExternalAuthProvider = config.auth.providers.some(
+      (provider) => provider.enabled && provider.type !== 'local-bootstrap',
+    )
+    if (hasExternalAuthProvider) {
+      bootstrapTokenState = null
+      return null
+    }
+
     const usersExist = (await prisma.user.count()) > 0
     if (usersExist) {
       bootstrapTokenState = null

@@ -78,20 +78,24 @@ const base64UrlJson = (value: unknown): string =>
  * Minimal but schema-complete UI theme. UOA requires the `colors`, `radii`,
  * `density`, `typography`, `button`, `card`, and `logo` sections to be present.
  */
-const defaultUiTheme = (): Record<string, unknown> => ({
+const defaultUiTheme = (settings: UoaSettings): Record<string, unknown> => ({
   colors: {
     primary: '#7c3aed',
-    background: '#1a1024',
+    bg: '#1a1024',
     surface: '#241634',
     text: '#f5f3ff',
+    primary_text: '#f5f3ff',
     muted: '#a78bfa',
+    border: '#3b2a52',
+    danger: '#ef4444',
+    danger_text: '#ffffff',
   },
-  radii: { sm: '6px', md: '10px', lg: '16px' },
+  radii: { card: '16px', button: '10px', input: '8px' },
   density: 'comfortable',
-  typography: { fontFamily: 'Inter, system-ui, sans-serif' },
-  button: { radius: '10px', weight: 600 },
-  card: { radius: '16px', shadow: 'lg' },
-  logo: { text: 'Nessie' },
+  typography: { font_family: 'Inter, system-ui, sans-serif', base_text_size: 'md' },
+  button: { style: 'solid' },
+  card: { style: 'shadow' },
+  logo: { url: `https://${settings.domain}/favicon.svg`, alt: 'Nessie' },
 })
 
 /**
@@ -106,7 +110,7 @@ export const buildConfigJwt = (settings: UoaSettings): string => {
     redirect_urls: [settings.redirectUrl],
     enabled_auth_methods: ['email_password', 'google'],
     language_config: 'en',
-    ui_theme: defaultUiTheme(),
+    ui_theme: defaultUiTheme(settings),
     jwks_url: settings.jwksUrl,
     contact_email: settings.contactEmail,
   })

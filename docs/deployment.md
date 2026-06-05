@@ -141,25 +141,49 @@ the agent loop.
 
 ## SSO (UnlikeOtherAuthenticator)
 
-SSO targets **`https://authentication.unlikeotherai.com`** (UOA), the same
-identity service the other apps on this host use. Integration notes live at
+The admin login page shows a single **"Sign in with SSO"** button that takes the
+user to **`https://authentication.unlikeotherai.com`** (UOA). UOA is **not**
+standard OIDC — Nessie integrates via UOA's config-JWT flow
+(`api/src/services/uoa-auth.ts`), implemented per the integration guide at
 `https://authentication.unlikeotherai.com/llm` and `/api`.
 
-**Current status:** SSO is **not yet wired**; first login is via the bootstrap
-owner account + email/password. UOA is **not** standard OIDC — it does not serve
-`/.well-known/openid-configuration`, and Nessie's current
-`api/src/services/external-auth.ts` assumes standard OIDC discovery plus a
-`userinfo_endpoint`. To enable UOA SSO, `external-auth.ts` needs a UOA-compatible
-path:
+**How it works**
 
-- Use UOA's public OAuth surface: RFC 8414 metadata at
-  `/.well-known/oauth-authorization-server`, `GET /oauth/authorize`,
-  `POST /oauth/token` (PKCE, public client, no secret).
-- Obtain a `client_id` via `POST /oauth/register` (RFC 7591 dynamic
-  registration) with redirect URI **`https://nessie.unlikeotherai.com/login`**
-  (the admin handles the `?code=` callback on `/login`; byte-exact allowlist).
-- UOA returns an HS256 access token that RPs must not verify cryptographically
-  (trust derives from the backend channel); extract `email`/`sub` from its
-  claims instead of calling a `userinfo_endpoint`.
-- Register the resulting provider in `nessie.config.json` `auth.providers`
-  (`type: "uoa"`, `issuerUrl`, `clientId`).
+- The API serves a signed RS256 **config JWT** at
+  `GET /api/auth/sso/config` (the `config_url`) and the matching **JWKS** at
+  `GET /.well-known/jwks.json`, both on `api.nessie.unlikeotherai.com`.
+- Clicking the button sends the browser to
+  `GET <uoa>/auth?config_url=…&redirect_url=https://nessie.unlikeotherai.com/login&code_challenge=…&code_challenge_method=S256`.
+- UOA renders its login UI (email/password, Google, …). On success it redirects
+  to `https://nessie.unlikeotherai.com/login?code=…` (byte-exact allowlist; the
+  admin handles the callback on `/login`).
+- The API exchanges the code server-to-server at `POST <uoa>/auth/token`
+  authenticated with `Bearer <client_hash>` where
+  `client_hash = SHA256(domain + client_secret)`, then reads `email`/`sub` from
+  the returned access-token claims.
+- The **first** SSO user on a fresh instance bootstraps the default
+  workspace and becomes its owner — there is no separate owner-account step.
+  Bootstrap mode is automatically suppressed whenever an SSO provider is
+  configured.
+
+**One-time onboarding (required before first login works)**
+
+1. Generate an RSA-2048 keypair and set `UOA_CONFIG_JWT_PRIVATE_KEY_B64`
+   (base64 of the PEM, single line) + `UOA_CONFIG_JWT_KID` in the host `.env`,
+   plus `UOA_DOMAIN`, `UOA_CONFIG_URL`, `UOA_JWKS_URL`, `UOA_REDIRECT_URL`,
+   `UOA_CONTACT_EMAIL` (see `.env.prod.example`). The deploy already does this.
+2. Validate the config JWT (optional sanity check):
+   `curl -XPOST <uoa>/config/validate -d '{"config_url":"https://api.nessie.unlikeotherai.com/api/auth/sso/config"}'`
+   — expect `schema_valid: true`, `domain_match: true`. The signature check
+   stays `false` until UOA stores the JWKS at approval time.
+3. Click **Sign in with SSO** once. UOA captures an integration request
+   ("Integration pending review") for `api.nessie.unlikeotherai.com`.
+4. A UOA **superuser approves** the integration; the contact email then receives
+   a **one-time link to copy the `client_secret`**.
+5. Set `UOA_CLIENT_SECRET` in the host `.env` and restart the API
+   (`docker compose -f infrastructure/compose/docker-compose.prod.yml up -d api`).
+   SSO login is now live.
+
+`nessie.config.json` enables the provider (`type: "uoa"`, `enabled: true`); no
+`clientId`/`issuerUrl` are needed (the config-JWT `config_url` identifies the
+client, and the secret derives the bearer hash).
