@@ -7,7 +7,7 @@ cd "$(dirname "$0")/../.."
 COMPOSE="docker compose -f infrastructure/compose/docker-compose.prod.yml"
 
 echo "==> Ensuring Postgres is up"
-$COMPOSE up -d postgres
+$COMPOSE up -d nessie-postgres
 
 echo "==> Building images (api + admin)"
 $COMPOSE build api admin

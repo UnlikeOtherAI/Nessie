@@ -28,7 +28,11 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   `vector` extension (`CREATE EXTENSION vector`, `vector(1536)` columns). The
   host's shared `postgres:17-alpine` lacks pgvector, so Nessie runs its own
   `pgvector/pgvector:pg17` container on the shared `db` network. Fully additive —
-  it does not touch the shared Postgres or any other app's data.
+  it does not touch the shared Postgres or any other app's data. **The Compose
+  service is named `nessie-postgres`, never `postgres`:** the service name becomes
+  a DNS alias on the shared `db` network, so naming it `postgres` would collide
+  with the shared Postgres container and make `postgres:5432` round-robin between
+  two databases, breaking every other app on the host.
 - **No Redis.** The job queue and realtime transport are Postgres-backed
   (`PgQueueProvider` / `PgRealtimeTransport`), so no Redis is needed.
 - **One backend image for API + worker.** The workspace is tightly interlinked
@@ -73,7 +77,7 @@ Requires SSH access to the host and the `CLOUDFLARE_API_TOKEN` env var.
 4. **Build, migrate, start** (see `redeploy.sh` for the scripted version):
    ```sh
    cd /srv/nessie
-   docker compose -f infrastructure/compose/docker-compose.prod.yml up -d postgres
+   docker compose -f infrastructure/compose/docker-compose.prod.yml up -d nessie-postgres
    docker compose -f infrastructure/compose/docker-compose.prod.yml build api admin
    docker compose -f infrastructure/compose/docker-compose.prod.yml \
      run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
