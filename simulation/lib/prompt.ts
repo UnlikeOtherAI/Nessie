@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { listAgents, listChannels } from './api.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const LEDGER_PATH = resolve(__dirname, '../../docs/simulation/ledger.md')
+const LEDGER_PATH = resolve(__dirname, '../state/ledger.md')
 const PERSONAS_PATH = resolve(__dirname, '../personas.json')
 
 type Personas = {
