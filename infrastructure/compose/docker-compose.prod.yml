@@ -1,0 +1,111 @@
+# Nessie production stack (self-hosted, Hetzner).
+#
+# Reuses the shared edge proxy (Caddy) and joins the shared `edge`/`db` Docker
+# networks created by /srv/infra. Postgres is NOT shared: Nessie needs the
+# pgvector extension, which the shared postgres:17-alpine image lacks, so it runs
+# its own pgvector container on the `db` network. Queue + realtime are
+# Postgres-backed (PgQueueProvider / PgRealtimeTransport), so no Redis is needed.
+#
+# Build context is the repo root (../..). Run from the repo root on the server:
+#   docker compose -f infrastructure/compose/docker-compose.prod.yml up -d --build
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: nessie-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nessie
+      POSTGRES_PASSWORD: ${NESSIE_DB_PASSWORD}
+      POSTGRES_DB: nessie
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - nessie_pgdata:/var/lib/postgresql/data
+    networks:
+      - db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nessie -d nessie"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.app
+    image: nessie-app:latest
+    container_name: nessie-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      NESSIE_MODE: selfHosted
+      NESSIE_API_HOST: 0.0.0.0
+      NESSIE_API_PORT: "5554"
+      DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
+      NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
+      NESSIE_CONFIG_PATH: /app/nessie.config.json
+      NESSIE_CORS_ORIGINS: https://nessie.unlikeotherai.com
+    volumes:
+      - ./nessie.config.json:/app/nessie.config.json:ro
+    networks:
+      - edge
+      - db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5554/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  worker:
+    image: nessie-app:latest
+    container_name: nessie-worker
+    restart: unless-stopped
+    command: ["node", "worker/dist/index.js"]
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      NESSIE_MODE: selfHosted
+      DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
+      NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
+      NESSIE_CONFIG_PATH: /app/nessie.config.json
+    volumes:
+      - ./nessie.config.json:/app/nessie.config.json:ro
+    networks:
+      - db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  admin:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.admin
+      args:
+        VITE_API_BASE_URL: https://api.nessie.unlikeotherai.com
+    image: nessie-admin:latest
+    container_name: nessie-admin
+    restart: unless-stopped
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  nessie_pgdata:
+
+networks:
+  edge:
+    external: true
+  db:
+    external: true

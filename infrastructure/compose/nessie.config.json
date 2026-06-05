@@ -1,0 +1,6 @@
+{
+  "mode": "selfHosted",
+  "auth": {
+    "providers": []
+  }
+}

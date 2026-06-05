@@ -1,0 +1,31 @@
+# Admin SPA build → static nginx image.
+#
+# The admin is a Vite/React app. `VITE_API_BASE_URL` is baked in at build time:
+# in production the admin runs on its own origin (nessie.unlikeotherai.com) and
+# talks to the API cross-origin (api.nessie.unlikeotherai.com), so the base URL
+# must be absolute. The API's CORS allowlist must include the admin origin.
+FROM node:22-slim AS builder
+
+WORKDIR /app
+
+ARG VITE_API_BASE_URL=""
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/ packages/
+COPY admin/ admin/
+
+RUN corepack enable && pnpm install --frozen-lockfile
+
+# Admin imports runtime values (not just types) from @nessie/schemas, so the
+# workspace packages it depends on must be built before the Vite bundle.
+RUN pnpm --filter @nessie/schemas build
+RUN pnpm --filter @nessie/config build
+RUN pnpm --filter @nessie/admin build
+
+FROM nginx:alpine
+
+COPY infrastructure/docker/admin-nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/admin/dist /usr/share/nginx/html
+
+EXPOSE 80

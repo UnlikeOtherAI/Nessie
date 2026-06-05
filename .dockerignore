@@ -1,0 +1,27 @@
+# Keep the Docker build context lean. All workspace source (api/, worker/,
+# admin/, packages/*, manifests) is kept so a frozen install + full build work;
+# everything below is rebuilt inside the image or irrelevant to it.
+**/node_modules
+**/dist
+**/build
+**/*.tsbuildinfo
+.git
+.github
+.worktrees
+.turbo
+.nessie
+.playwright-mcp
+macos
+remote
+tmp
+output
+testing
+simulation
+e2e
+assets
+UI
+docs
+memory
+*.png
+*.log
+**/.DS_Store
