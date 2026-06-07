@@ -270,6 +270,36 @@ export const createServerContext = () => {
     return false
   }
 
+  /**
+   * Platform-level guard for super-admin-only surfaces (e.g. push credentials).
+   * Super-admin sits ABOVE the per-organization `owner` role and is a flag on
+   * the user record, so this resolves the actor against the database rather
+   * than trusting the (tenant-scoped) session roles. Returns true only for a
+   * human actor whose `users.super_admin` is set; otherwise sends 403/401 and
+   * returns false.
+   */
+  const requireSuperAdmin = async (
+    actorContext: AuthorizedActionContext,
+    reply: FastifyReply,
+  ): Promise<boolean> => {
+    if (actorContext.actor.actorType !== 'user') {
+      sendApiError(reply, 403, 'FORBIDDEN', 'Super-admin access required')
+      return false
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: actorContext.actor.actorId },
+      select: { superAdmin: true },
+    })
+
+    if (user?.superAdmin) {
+      return true
+    }
+
+    sendApiError(reply, 403, 'FORBIDDEN', 'Super-admin access required')
+    return false
+  }
+
   // Validate a client-supplied membership role against the allowed vocabulary,
   // defaulting to 'member' when omitted. Returns null for an unknown role so the
   // route can surface a 400 instead of persisting an arbitrary string.
@@ -484,6 +514,7 @@ export const createServerContext = () => {
     authenticateRequest,
     requireActorContext,
     requireOwner,
+    requireSuperAdmin,
     resolveMembershipRole,
     requireUserActor,
     isJsonContentType,

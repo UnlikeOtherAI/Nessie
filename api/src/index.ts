@@ -48,6 +48,7 @@ import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerMcpRoutes } from './routes/mcp.js'
+import { registerPlatformPushRoutes } from './routes/platform-push.js'
 import { registerPlanRoutes } from './routes/plans.js'
 import { registerPolicyRoutes } from './routes/policy.js'
 import { registerProjectRoutes } from './routes/projects.js'
@@ -78,6 +79,7 @@ const {
   authenticateRequest,
   requireActorContext,
   requireOwner,
+  requireSuperAdmin,
   canAccessChannelRealtimeEvent,
   checkRateLimit,
   disconnectPrismaClient,
@@ -289,6 +291,17 @@ export const buildApp = async () => {
     prisma,
     requireActorContext,
     requireOwner,
+  })
+
+  // ─── Platform push-credentials surface (super-admin only) ──────────────
+  // Apple/Google credentials for the central push gateway. Secret bytes are
+  // stored encrypted via the SecretStore (keyed off the auth secret) and are
+  // write-only; only metadata is ever returned.
+  registerPlatformPushRoutes(app, {
+    prisma,
+    requireActorContext,
+    requireSuperAdmin,
+    encryptionSecret: authSecret ?? '',
   })
 
   // ─── Phase 2: Approval sweep (periodic) ─────────────────────────────────
