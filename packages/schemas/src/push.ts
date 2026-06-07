@@ -16,6 +16,9 @@ import { z } from 'zod'
 export const PushProviderSchema = z.enum(['apns', 'fcm'])
 export type PushProvider = z.infer<typeof PushProviderSchema>
 
+export const PushDeliveryStatusSchema = z.enum(['sent', 'failed', 'dead'])
+export type PushDeliveryStatus = z.infer<typeof PushDeliveryStatusSchema>
+
 export const PushApnsEnvironmentSchema = z.enum(['sandbox', 'production'])
 export type PushApnsEnvironment = z.infer<typeof PushApnsEnvironmentSchema>
 

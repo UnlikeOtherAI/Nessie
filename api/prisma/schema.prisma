@@ -2329,6 +2329,12 @@ enum PushProvider {
   fcm
 }
 
+enum PushDeliveryStatus {
+  sent
+  failed
+  dead
+}
+
 enum PushApnsEnvironment {
   sandbox
   production
@@ -2352,4 +2358,20 @@ model PushCredential {
   updatedAt       DateTime             @updatedAt @map("updated_at")
 
   @@map("push_credentials")
+}
+
+model PushDelivery {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  userId         String             @map("user_id") @db.Uuid
+  messageId      String?            @map("message_id") @db.Uuid
+  provider       PushProvider
+  status         PushDeliveryStatus
+  errorCode      String?            @map("error_code")
+  attempts       Int                @default(1)
+  createdAt      DateTime           @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([userId])
+  @@map("push_deliveries")
 }
