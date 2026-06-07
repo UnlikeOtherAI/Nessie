@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Nessie",
+    "slug": "nessie",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "scheme": "nessie",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.unlikeotherai.nessie"
+    },
+    "android": {
+      "package": "com.unlikeotherai.nessie",
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#1f2937"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

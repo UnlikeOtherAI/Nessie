@@ -242,6 +242,41 @@ which is per-tenant and therefore the wrong gate for global creds).
   sync; notification channels (Android) / categories (iOS).
 - **Reuse**: all data access via `packages/client-core`.
 
+### Phase 1 skeleton — implemented (2026-06-07)
+
+The Expo app skeleton lives in `mobile/` (`@nessie/mobile`, Expo SDK 54, React
+Native 0.81.4, Expo Router). It proves the end-to-end path and closes the
+device-registration loop:
+
+- **Monorepo wiring**: `mobile/metro.config.js` watches the repo root, resolves
+  from both `mobile/node_modules` and the root store, and resolves
+  `@nessie/client-core` / `@nessie/schemas` to their TS source (the dev tree has
+  no `dist/`), stripping NodeNext `.js` import suffixes. The workspace uses
+  `nodeLinker: hoisted` (`pnpm-workspace.yaml`) so Metro gets the flat
+  `node_modules` it needs. `npx expo export --platform ios` bundles cleanly
+  (1161 modules).
+- **Data layer**: `createApiClient({ baseUrl, token })` from `@nessie/client-core`
+  wrapped in a TanStack Query provider (`createQueryClient`); `{ baseUrl, token }`
+  held in React context and persisted with `expo-secure-store`. PKCE /
+  `beginExternalAuth` is intentionally **not** used in the skeleton.
+- **Auth**: a Login screen with an editable API base URL (default
+  `http://localhost:5554`); email+password → `POST /api/auth/session`, or a Dev
+  login button → `GET /api/auth/dev-login`. On launch a stored token is
+  validated via `GET /api/auth/me`.
+- **Screens** (`/login`, `/(app)/channels`, `/(app)/channels/[id]`): channel
+  list (`GET /api/channels`), thread (loads the channel's `defaultThreadId`,
+  lists `GET /api/threads/:threadId/messages`, composes via `POST`), logout
+  (`DELETE /api/auth/session` + clear secure-store).
+- **Device registration**: `expo-notifications.getDevicePushTokenAsync()` (the
+  **native** APNs/FCM token, not the Expo token) → `POST /api/devices`, wrapped
+  in try/catch so it no-ops on web / Expo Go / simulators. A notification-tap
+  listener deep-links to `/(app)/channels/[id]` via the push payload's
+  `data.channelId`.
+
+Not yet built (later phases): SSE realtime feed, DMs/approvals/settings screens,
+SSO/PKCE browser flow, badges/coalescing, and on-device verification (no
+simulator in CI — verified by `tsc --noEmit` + `expo export`).
+
 ## Desktop app (Tauri) — scope
 
 - Tauri shell loads the `admin/` production build (same artifact as web).

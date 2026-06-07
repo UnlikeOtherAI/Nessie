@@ -4,4 +4,12 @@ packages:
   - "web"
   - "worker"
   - "cli"
+  - "mobile"
   - "packages/*"
+
+# The Expo/React Native toolchain (Metro) cannot follow pnpm's default isolated
+# symlink layout: it resolves deeply-nested transitive deps (whatwg-fetch,
+# react-refresh, the RN polyfills, …) only via a flat node_modules. A hoisted
+# linker gives Metro the flat tree it expects while staying a single pnpm
+# workspace. See mobile/metro.config.js.
+nodeLinker: hoisted
