@@ -34,6 +34,15 @@ type TokenRow = {
 type SecretRow = { ref: string; ciphertext: string; iv: string; authTag: string }
 type MemberRow = { userId: string; muted: boolean }
 type UserRow = { id: string; preferences: unknown }
+type DeliveryRow = {
+  organizationId: string
+  userId: string
+  messageId: string | null
+  provider: 'apns' | 'fcm'
+  status: 'sent' | 'failed' | 'dead'
+  errorCode: string | null
+  attempts: number
+}
 
 const encrypt = (plaintext: string): Omit<SecretRow, 'ref'> =>
   encryptWithKey(deriveSecretKey(AUTH_SECRET), plaintext)
@@ -46,6 +55,7 @@ type FakeState = {
   secrets: SecretRow[]
   channel: { label: string } | null
   deleted: string[]
+  deliveries?: DeliveryRow[]
 }
 
 const member = (userId: string, muted = false): MemberRow => ({ userId, muted })
@@ -78,6 +88,12 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       findMany: async ({ where }: { where: { id: { in: string[] } } }) => {
         const users = state.users ?? state.members.map((m) => ({ id: m.userId, preferences: null }))
         return users.filter((user) => where.id.in.includes(user.id))
+      },
+    },
+    pushDelivery: {
+      create: async ({ data }: { data: DeliveryRow }) => {
+        state.deliveries?.push(data)
+        return { id: crypto.randomUUID(), createdAt: new Date(), ...data }
       },
     },
   }) as unknown as PushDispatchPrisma

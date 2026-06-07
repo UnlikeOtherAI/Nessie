@@ -11,6 +11,12 @@ import {
   type PushTarget,
 } from '@nessie/push'
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
+import {
+  PUSH_MAX_SEND_ATTEMPTS,
+  defaultPushRetryDelayMs,
+  shouldRetryPushFailure,
+  type PushRetryProvider,
+} from './push-retry.js'
 
 /**
  * Worker consumer for the `push.dispatch` queue topic. Resolves the recipients
@@ -27,7 +33,13 @@ import { shouldSuppressPushForPreferences } from './push-preferences.js'
 /** Minimal Prisma surface the dispatch handler touches — keeps tests light. */
 export type PushDispatchPrisma = Pick<
   PrismaClient,
-  'pushCredential' | 'channelMember' | 'deviceToken' | 'channel' | 'mcpOAuthSecret' | 'user'
+  | 'pushCredential'
+  | 'channelMember'
+  | 'deviceToken'
+  | 'channel'
+  | 'mcpOAuthSecret'
+  | 'user'
+  | 'pushDelivery'
 >
 
 export type PushSenders = {
@@ -51,6 +63,8 @@ export type PushDispatchDeps = {
   senders?: PushSenders
   /** Clock injection keeps recipient preference filtering deterministic in tests. */
   now?: () => Date
+  /** Retry backoff injection; tests pass zero to stay fast. */
+  retryDelayMs?: (completedAttempt: number) => number
 }
 
 export type PushDispatchSummary = {
@@ -73,6 +87,118 @@ const decryptSecret = async (
     iv: row.iv,
     authTag: row.authTag,
   })
+}
+
+const errorMessageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+const delay = async (milliseconds: number): Promise<void> => {
+  if (milliseconds <= 0) {
+    return
+  }
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds)
+  })
+}
+
+const resultFromError = (error: unknown): PushResult => ({
+  ok: false,
+  status: 0,
+  deadToken: false,
+  error: errorMessageOf(error),
+})
+
+const errorCodeOf = (result: PushResult): string | null => {
+  if (result.ok) {
+    return null
+  }
+  return result.error ?? `status:${result.status}`
+}
+
+type DeliveryStatus = 'sent' | 'failed' | 'dead'
+
+const deliveryStatusOf = (result: PushResult): DeliveryStatus => {
+  if (result.ok) {
+    return 'sent'
+  }
+  return result.deadToken ? 'dead' : 'failed'
+}
+
+const sendWithRetry = async (
+  input: {
+    provider: PushRetryProvider
+    send: () => Promise<PushResult>
+    retryDelayMs: (completedAttempt: number) => number
+  },
+): Promise<{ attempts: number; result: PushResult }> => {
+  let attempts = 0
+
+  while (attempts < PUSH_MAX_SEND_ATTEMPTS) {
+    attempts += 1
+    const result = await input.send().catch(resultFromError)
+    if (!shouldRetryPushFailure(input.provider, result, attempts)) {
+      return { attempts, result }
+    }
+    await delay(input.retryDelayMs(attempts))
+  }
+
+  throw new Error('push retry loop exhausted without a final result')
+}
+
+type PushDeviceTokenForSend = {
+  platform: 'ios' | 'android'
+  token: string
+}
+
+type PushSendOutcome = {
+  provider: PushRetryProvider
+  attempts: number
+  result: PushResult
+}
+
+const sendConfiguredToken = async (
+  input: {
+    apnsCreds: ApnsCredentials | null
+    fcmCreds: FcmCredentials | null
+    payload: PushPayload
+    retryDelayMs: (completedAttempt: number) => number
+    senders: PushSenders
+    token: PushDeviceTokenForSend
+  },
+): Promise<PushSendOutcome | null> => {
+  if (input.token.platform === 'ios' && input.apnsCreds) {
+    const apnsCreds = input.apnsCreds
+    return {
+      provider: 'apns',
+      ...(await sendWithRetry({
+        provider: 'apns',
+        retryDelayMs: input.retryDelayMs,
+        send: () => input.senders.sendApns(
+          apnsCreds,
+          { token: input.token.token },
+          input.payload,
+        ),
+      })),
+    }
+  }
+
+  if (input.token.platform === 'android' && input.fcmCreds) {
+    const fcmCreds = input.fcmCreds
+    return {
+      provider: 'fcm',
+      ...(await sendWithRetry({
+        provider: 'fcm',
+        retryDelayMs: input.retryDelayMs,
+        send: () => input.senders.sendFcm(
+          fcmCreds,
+          { token: input.token.token },
+          input.payload,
+        ),
+      })),
+    }
+  }
+
+  return null
 }
 
 /**
@@ -126,6 +252,7 @@ export const handlePushDispatch = async (
 ): Promise<PushDispatchSummary> => {
   const summary: PushDispatchSummary = { sent: 0, failed: 0, pruned: 0 }
   const senders: PushSenders = deps.senders ?? { sendApns, sendFcm }
+  const retryDelayMs = deps.retryDelayMs ?? defaultPushRetryDelayMs
 
   // 1. Load credentials. Nothing to do if neither provider is configured.
   const credRows = await deps.prisma.pushCredential.findMany()
@@ -193,28 +320,54 @@ export const handlePushDispatch = async (
   // 5. Deliver per-token; prune dead tokens; never throw out of the loop.
   const deadTokenIds: string[] = []
   for (const token of tokens) {
+    let outcome: PushSendOutcome | null = null
     try {
-      let result: PushResult | null = null
-      if (token.platform === 'ios' && apnsCreds) {
-        result = await senders.sendApns(apnsCreds, { token: token.token }, pushPayload)
-      } else if (token.platform === 'android' && fcmCreds) {
-        result = await senders.sendFcm(fcmCreds, { token: token.token }, pushPayload)
-      } else {
-        // No configured provider for this platform — skip silently.
-        continue
-      }
-
-      if (result.ok) {
-        summary.sent += 1
-      } else {
-        summary.failed += 1
-      }
-      if (result.deadToken) {
-        deadTokenIds.push(token.id)
-      }
+      outcome = await sendConfiguredToken({
+        apnsCreds,
+        fcmCreds,
+        payload: pushPayload,
+        retryDelayMs,
+        senders,
+        token,
+      })
     } catch (err) {
       summary.failed += 1
       console.error('[push-dispatch] send failed', {
+        tokenId: token.id,
+        platform: token.platform,
+        err,
+      })
+      continue
+    }
+
+    if (!outcome) {
+      // No configured provider for this platform — skip silently.
+      continue
+    }
+
+    if (outcome.result.ok) {
+      summary.sent += 1
+    } else {
+      summary.failed += 1
+    }
+    if (outcome.result.deadToken) {
+      deadTokenIds.push(token.id)
+    }
+
+    try {
+      await deps.prisma.pushDelivery.create({
+        data: {
+          organizationId: payload.organizationId,
+          userId: token.userId,
+          messageId: payload.messageId,
+          provider: outcome.provider,
+          status: deliveryStatusOf(outcome.result),
+          errorCode: errorCodeOf(outcome.result),
+          attempts: outcome.attempts,
+        },
+      })
+    } catch (err) {
+      console.error('[push-dispatch] delivery log failed', {
         tokenId: token.id,
         platform: token.platform,
         err,
