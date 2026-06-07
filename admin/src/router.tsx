@@ -14,6 +14,7 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
 import { SettingsAgentsPage } from './pages/settings/SettingsAgentsPage'
 import { SettingsChannelsPage } from './pages/settings/SettingsChannelsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
@@ -138,6 +139,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/tools',
         element: <SettingsToolsPage />,
+      },
+      {
+        path: '/settings/push',
+        element: <PushCredentialsPage />,
       },
       {
         path: '/audit',

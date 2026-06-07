@@ -48,7 +48,11 @@ export const AdminShellLayout = () => {
         {shell.isAgentsRoute && <AgentsSidebarNav pathname={shell.pathname} />}
 
         {shell.isAdminRoute && (
-          <AdminSidebarNav isOwner={shell.isOwner} pathname={shell.pathname} />
+          <AdminSidebarNav
+            isOwner={shell.isOwner}
+            isSuperAdmin={shell.isSuperAdmin}
+            pathname={shell.pathname}
+          />
         )}
 
         {!shell.isAgentsRoute && !shell.isAdminRoute && (

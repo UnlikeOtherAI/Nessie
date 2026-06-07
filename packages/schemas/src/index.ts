@@ -627,6 +627,7 @@ export const MeUserSchema = z.object({
   avatarUrl: z.string().url().optional(),
   pronouns: z.string().optional(),
   roleIds: z.array(NonEmptyStringSchema),
+  superAdmin: z.boolean().default(false),
   preferences: UserPreferencesSchema.optional(),
 })
 export type MeUser = z.infer<typeof MeUserSchema>

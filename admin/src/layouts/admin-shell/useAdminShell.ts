@@ -54,6 +54,7 @@ export const useAdminShell = () => {
   const { data: teams = [] } = useTeams();
   const { data: agents = [] } = useAgents();
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
+  const isSuperAdmin = me?.user.superAdmin ?? false;
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
   const isAdminRoute = ADMIN_ROUTE_PREFIXES.some(
@@ -341,6 +342,7 @@ export const useAdminShell = () => {
     isAdminRoute,
     isAgentsRoute,
     isOwner,
+    isSuperAdmin,
     logoutAndRedirect,
     me,
     navigateHome,

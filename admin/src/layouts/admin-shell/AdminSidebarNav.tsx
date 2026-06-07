@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 type AdminSidebarNavProps = {
   pathname: string;
   isOwner: boolean;
+  isSuperAdmin: boolean;
 };
 
 type AdminNavItem = {
@@ -16,6 +17,7 @@ type AdminNavItem = {
 type AdminNavGroup = {
   heading: string;
   ownerOnly?: boolean;
+  superAdminOnly?: boolean;
   items: AdminNavItem[];
 };
 
@@ -137,9 +139,25 @@ const ADMIN_NAV: AdminNavGroup[] = [
       },
     ],
   },
+  {
+    heading: 'Platform',
+    superAdminOnly: true,
+    items: [
+      {
+        path: '/settings/push',
+        label: 'Push notifications',
+        icon: icon(
+          <>
+            <path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M13.7 21a2 2 0 01-3.4 0" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+    ],
+  },
 ];
 
-export const AdminSidebarNav = ({ pathname, isOwner }: AdminSidebarNavProps) => {
+export const AdminSidebarNav = ({ pathname, isOwner, isSuperAdmin }: AdminSidebarNavProps) => {
   return (
     <aside
       className={[
@@ -151,7 +169,10 @@ export const AdminSidebarNav = ({ pathname, isOwner }: AdminSidebarNavProps) => 
         <span className="text-[15px] font-bold text-white">Admin</span>
       </div>
       <nav className="flex flex-1 flex-col gap-3 px-2 py-1">
-        {ADMIN_NAV.filter((group) => !group.ownerOnly || isOwner).map((group) => (
+        {ADMIN_NAV.filter(
+          (group) =>
+            (!group.ownerOnly || isOwner) && (!group.superAdminOnly || isSuperAdmin),
+        ).map((group) => (
           <div key={group.heading} className="flex flex-col gap-0.5">
             <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
               {group.heading}
