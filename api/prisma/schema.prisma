@@ -679,6 +679,7 @@ model ChannelMember {
   userId    String     @map("user_id") @db.Uuid
   // sp-channels: per-channel membership role (manager can manage the channel)
   role      MemberRole @default(member)
+  muted     Boolean    @default(false) @map("muted")
   createdAt DateTime   @default(now()) @map("created_at")
   channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

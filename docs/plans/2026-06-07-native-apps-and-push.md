@@ -311,8 +311,11 @@ The dispatch loop is live (no standalone gateway yet — the worker calls the
   `device_tokens`, decrypts each provider's secret (`mcp_oauth_secret` row via
   `secretRef`, AES-256-GCM with `deriveSecretKey(config.auth.secret)`), and sends
   ios→APNs / android→FCM. `deadToken` results are pruned from `device_tokens`.
-- **Mute/quiet-hours is NOT yet applied** (no such fields exist) — v1 notifies
-  every member; see the `TODO(push): mute/quiet-hours` marker in the consumer.
+- **Mute/quiet-hours is applied**: `PATCH /api/channels/:channelId/notifications`
+  updates the caller's own
+  `channel_members.muted` flag, and the worker suppresses muted members, users
+  with `preferences.pushEnabled === false`, and users currently inside
+  `preferences.pushQuietHours` in their IANA timezone.
 - The AES-256-GCM crypto now lives in `@nessie/runtime` (`secret-crypto.ts`) so
   both the api secret stores and the worker share one implementation.
 
@@ -344,7 +347,7 @@ The dispatch loop is live (no standalone gateway yet — the worker calls the
      app) and is what makes the gateway configurable.
 3. **Desktop (Tauri)** — shell over the `admin/` build, OS notifications from
    SSE, signed mac + win builds.
-4. **Polish** — badges, mute/quiet-hours, coalescing, unread sync, store
+4. **Polish** — badges, notification UX controls, coalescing, unread sync, store
    submission (TestFlight / Play internal), auto-update.
 
 ## Risks / open questions

@@ -10,6 +10,7 @@ import {
   type PushResult,
   type PushTarget,
 } from '@nessie/push'
+import { shouldSuppressPushForPreferences } from './push-preferences.js'
 
 /**
  * Worker consumer for the `push.dispatch` queue topic. Resolves the recipients
@@ -26,7 +27,7 @@ import {
 /** Minimal Prisma surface the dispatch handler touches — keeps tests light. */
 export type PushDispatchPrisma = Pick<
   PrismaClient,
-  'pushCredential' | 'channelMember' | 'deviceToken' | 'channel' | 'mcpOAuthSecret'
+  'pushCredential' | 'channelMember' | 'deviceToken' | 'channel' | 'mcpOAuthSecret' | 'user'
 >
 
 export type PushSenders = {
@@ -48,6 +49,8 @@ export type PushDispatchDeps = {
   authSecret: string
   /** Push senders, injected so tests can stub them (default: real network). */
   senders?: PushSenders
+  /** Clock injection keeps recipient preference filtering deterministic in tests. */
+  now?: () => Date
 }
 
 export type PushDispatchSummary = {
@@ -138,14 +141,27 @@ export const handlePushDispatch = async (
     return summary
   }
 
-  // 2. Resolve recipients: channel members minus the author.
-  // TODO(push): mute/quiet-hours — no per-channel/per-user mute fields exist
-  // yet, so v1 notifies every member. Mentioned users are already members.
+  // 2. Resolve recipients: channel members minus the author, muted members,
+  // disabled push preferences, and users currently inside quiet hours.
   const members = await deps.prisma.channelMember.findMany({
     where: { channelId: payload.channelId, userId: { not: payload.authorUserId } },
-    select: { userId: true },
+    select: { muted: true, userId: true },
   })
-  const recipientIds = members.map((m) => m.userId)
+  const unmutedRecipientIds = members
+    .filter((member) => !member.muted)
+    .map((member) => member.userId)
+  if (unmutedRecipientIds.length === 0) {
+    return summary
+  }
+
+  const users = await deps.prisma.user.findMany({
+    where: { id: { in: unmutedRecipientIds } },
+    select: { id: true, preferences: true },
+  })
+  const now = deps.now?.() ?? new Date()
+  const recipientIds = users
+    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now))
+    .map((user) => user.id)
   if (recipientIds.length === 0) {
     return summary
   }

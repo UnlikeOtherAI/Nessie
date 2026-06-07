@@ -32,18 +32,23 @@ type TokenRow = {
 }
 
 type SecretRow = { ref: string; ciphertext: string; iv: string; authTag: string }
+type MemberRow = { userId: string; muted: boolean }
+type UserRow = { id: string; preferences: unknown }
 
 const encrypt = (plaintext: string): Omit<SecretRow, 'ref'> =>
   encryptWithKey(deriveSecretKey(AUTH_SECRET), plaintext)
 
 type FakeState = {
   creds: CredRow[]
-  members: { userId: string }[]
+  members: MemberRow[]
+  users?: UserRow[]
   tokens: TokenRow[]
   secrets: SecretRow[]
   channel: { label: string } | null
   deleted: string[]
 }
+
+const member = (userId: string, muted = false): MemberRow => ({ userId, muted })
 
 const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
   ({
@@ -54,7 +59,8 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       findMany: async () => state.members,
     },
     deviceToken: {
-      findMany: async () => state.tokens,
+      findMany: async ({ where }: { where: { userId: { in: string[] } } }) =>
+        state.tokens.filter((token) => where.userId.in.includes(token.userId)),
       deleteMany: async ({ where }: { where: { id: { in: string[] } } }) => {
         state.deleted.push(...where.id.in)
         state.tokens = state.tokens.filter((t) => !where.id.in.includes(t.id))
@@ -67,6 +73,12 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
     mcpOAuthSecret: {
       findUnique: async ({ where }: { where: { ref: string } }) =>
         state.secrets.find((s) => s.ref === where.ref) ?? null,
+    },
+    user: {
+      findMany: async ({ where }: { where: { id: { in: string[] } } }) => {
+        const users = state.users ?? state.members.map((m) => ({ id: m.userId, preferences: null }))
+        return users.filter((user) => where.id.in.includes(user.id))
+      },
     },
   }) as unknown as PushDispatchPrisma
 
@@ -131,7 +143,7 @@ const payload = (over: Record<string, unknown> = {}) => ({
 test('early-returns when no push credentials are configured', async () => {
   const state: FakeState = {
     creds: [],
-    members: [{ userId: 'u2' }],
+    members: [member('u2')],
     tokens: [{ id: 't1', userId: 'u2', token: 'tok', platform: 'ios' }],
     secrets: [],
     channel: { label: 'General' },
@@ -153,7 +165,7 @@ test('excludes the author and notifies only members (via channelMember filter)',
   let appliedWhere: unknown
   const state: FakeState = {
     creds: [apnsCred()],
-    members: [{ userId: 'u2' }],
+    members: [member('u2')],
     tokens: [{ id: 't2', userId: 'u2', token: 'tok-u2', platform: 'ios' }],
     secrets: [apnsSecret()],
     channel: { label: 'General' },
@@ -181,7 +193,7 @@ test('only sends to configured-provider tokens', async () => {
   // APNs configured, FCM not. An android token must be skipped, ios delivered.
   const state: FakeState = {
     creds: [apnsCred()],
-    members: [{ userId: 'u2' }, { userId: 'u3' }],
+    members: [member('u2'), member('u3')],
     tokens: [
       { id: 'ios1', userId: 'u2', token: 'ios-tok', platform: 'ios' },
       { id: 'and1', userId: 'u3', token: 'and-tok', platform: 'android' },
@@ -203,7 +215,7 @@ test('only sends to configured-provider tokens', async () => {
 test('routes ios→apns and android→fcm when both providers configured', async () => {
   const state: FakeState = {
     creds: [apnsCred(), fcmCred()],
-    members: [{ userId: 'u2' }, { userId: 'u3' }],
+    members: [member('u2'), member('u3')],
     tokens: [
       { id: 'ios1', userId: 'u2', token: 'ios-tok', platform: 'ios' },
       { id: 'and1', userId: 'u3', token: 'and-tok', platform: 'android' },
@@ -225,7 +237,7 @@ test('routes ios→apns and android→fcm when both providers configured', async
 test('a deadToken result prunes that device-token row', async () => {
   const state: FakeState = {
     creds: [apnsCred()],
-    members: [{ userId: 'u2' }],
+    members: [member('u2')],
     tokens: [{ id: 'dead1', userId: 'u2', token: 'dead-tok', platform: 'ios' }],
     secrets: [apnsSecret()],
     channel: { label: 'General' },
@@ -245,7 +257,7 @@ test('a deadToken result prunes that device-token row', async () => {
 test('does not throw or prune when a sender rejects', async () => {
   const state: FakeState = {
     creds: [apnsCred()],
-    members: [{ userId: 'u2' }],
+    members: [member('u2')],
     tokens: [{ id: 't1', userId: 'u2', token: 'tok', platform: 'ios' }],
     secrets: [apnsSecret()],
     channel: { label: 'General' },
@@ -264,4 +276,120 @@ test('does not throw or prune when a sender rejects', async () => {
   assert.equal(summary.failed, 1)
   assert.equal(summary.sent, 0)
   assert.deepEqual(state.deleted, [])
+})
+
+test('excludes members who muted the channel', async () => {
+  const state: FakeState = {
+    creds: [apnsCred()],
+    members: [member('u2'), member('u3', true)],
+    tokens: [
+      { id: 't2', userId: 'u2', token: 'tok-u2', platform: 'ios' },
+      { id: 't3', userId: 'u3', token: 'tok-u3', platform: 'ios' },
+    ],
+    secrets: [apnsSecret()],
+    channel: { label: 'General' },
+    deleted: [],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+  const summary = await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload(),
+  )
+
+  assert.equal(summary.sent, 1)
+  assert.deepEqual(apnsCalls.map((c) => c.token), ['tok-u2'])
+})
+
+test('excludes users currently inside quiet hours', async () => {
+  const state: FakeState = {
+    creds: [apnsCred()],
+    members: [member('u2'), member('u3')],
+    users: [
+      { id: 'u2', preferences: null },
+      {
+        id: 'u3',
+        preferences: {
+          pushQuietHours: { start: '09:00', end: '10:00', timezone: 'America/New_York' },
+        },
+      },
+    ],
+    tokens: [
+      { id: 't2', userId: 'u2', token: 'tok-u2', platform: 'ios' },
+      { id: 't3', userId: 'u3', token: 'tok-u3', platform: 'ios' },
+    ],
+    secrets: [apnsSecret()],
+    channel: { label: 'General' },
+    deleted: [],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+  const summary = await handlePushDispatch(
+    {
+      prisma: makeFakePrisma(state),
+      authSecret: AUTH_SECRET,
+      senders,
+      now: () => new Date('2026-06-07T13:30:00.000Z'),
+    },
+    payload(),
+  )
+
+  assert.equal(summary.sent, 1)
+  assert.deepEqual(apnsCalls.map((c) => c.token), ['tok-u2'])
+})
+
+test('excludes users with push disabled', async () => {
+  const state: FakeState = {
+    creds: [apnsCred()],
+    members: [member('u2'), member('u3')],
+    users: [
+      { id: 'u2', preferences: null },
+      { id: 'u3', preferences: { pushEnabled: false } },
+    ],
+    tokens: [
+      { id: 't2', userId: 'u2', token: 'tok-u2', platform: 'ios' },
+      { id: 't3', userId: 'u3', token: 'tok-u3', platform: 'ios' },
+    ],
+    secrets: [apnsSecret()],
+    channel: { label: 'General' },
+    deleted: [],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+  const summary = await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload(),
+  )
+
+  assert.equal(summary.sent, 1)
+  assert.deepEqual(apnsCalls.map((c) => c.token), ['tok-u2'])
+})
+
+test('notifies users outside quiet hours', async () => {
+  const state: FakeState = {
+    creds: [apnsCred()],
+    members: [member('u2')],
+    users: [
+      {
+        id: 'u2',
+        preferences: {
+          pushQuietHours: { start: '09:00', end: '10:00', timezone: 'America/New_York' },
+        },
+      },
+    ],
+    tokens: [{ id: 't2', userId: 'u2', token: 'tok-u2', platform: 'ios' }],
+    secrets: [apnsSecret()],
+    channel: { label: 'General' },
+    deleted: [],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+  const summary = await handlePushDispatch(
+    {
+      prisma: makeFakePrisma(state),
+      authSecret: AUTH_SECRET,
+      senders,
+      now: () => new Date('2026-06-07T15:30:00.000Z'),
+    },
+    payload(),
+  )
+
+  assert.equal(summary.sent, 1)
+  assert.deepEqual(apnsCalls.map((c) => c.token), ['tok-u2'])
 })

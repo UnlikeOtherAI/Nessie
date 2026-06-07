@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { SetChannelMuteRequestSchema } from '@nessie/schemas'
 
 import {
   AddChannelMemberBodySchema,
@@ -156,6 +157,43 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   })
 
   // ─── sp-channels: channel lifecycle ───────────────────────────────────────
+
+  app.patch('/api/channels/:channelId/notifications', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireUserActor(actorContext, reply)) {
+      return reply
+    }
+
+    const { channelId } = request.params as { channelId: string }
+    const body = parseInput(SetChannelMuteRequestSchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const membership = await prisma.channelMember.findFirst({
+      where: {
+        channelId,
+        userId: actorContext.actor.actorId,
+        channel: { is: { organizationId: actorContext.tenant.organizationId } },
+      },
+      select: { id: true },
+    })
+    if (!membership) {
+      sendApiError(reply, 404, 'CHANNEL_MEMBER_NOT_FOUND', 'Channel membership not found')
+      return reply
+    }
+
+    const updated = await prisma.channelMember.update({
+      where: { id: membership.id },
+      data: { muted: body.muted },
+      select: { muted: true },
+    })
+
+    return createApiResponse({ muted: updated.muted })
+  })
 
   app.patch('/api/channels/:channelId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

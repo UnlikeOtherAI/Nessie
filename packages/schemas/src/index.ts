@@ -612,11 +612,33 @@ export const AuthProviderResponseTypeSchema = z.enum([
 ])
 export type AuthProviderResponseType = z.infer<typeof AuthProviderResponseTypeSchema>
 
+const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+
+const isIanaTimeZone = (value: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format()
+    return true
+  } catch {
+    return false
+  }
+}
+
+export const PushQuietHoursSchema = z.object({
+  start: TimeOfDaySchema,
+  end: TimeOfDaySchema,
+  timezone: z.string().min(1).refine(isIanaTimeZone, {
+    message: 'Timezone must be a valid IANA time zone',
+  }),
+})
+export type PushQuietHours = z.infer<typeof PushQuietHoursSchema>
+
 export const UserPreferencesSchema = z.object({
   starred: z.array(z.object({
     type: z.enum(['channel', 'project', 'user']),
     id: z.string(),
   })).optional(),
+  pushEnabled: z.boolean().optional(),
+  pushQuietHours: PushQuietHoursSchema.optional(),
 })
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>
 
@@ -671,6 +693,11 @@ export const MeMembershipSchema = z.object({
   })),
 })
 export type MeMembership = z.infer<typeof MeMembershipSchema>
+
+export const SetChannelMuteRequestSchema = z.object({
+  muted: z.boolean(),
+})
+export type SetChannelMuteRequest = z.infer<typeof SetChannelMuteRequestSchema>
 
 export const MeResponseSchema = z.object({
   user: MeUserSchema,
