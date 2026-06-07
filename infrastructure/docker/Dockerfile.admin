@@ -11,7 +11,7 @@ WORKDIR /app
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
-COPY pnpm-lock.yaml package.json pnpm-workspace.yaml tsconfig.base.json ./
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml tsconfig.base.json turbo.json ./
 COPY packages/ packages/
 COPY admin/ admin/
 
