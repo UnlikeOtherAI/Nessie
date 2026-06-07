@@ -17,11 +17,12 @@ COPY admin/ admin/
 
 RUN corepack enable && pnpm install --frozen-lockfile
 
-# Admin imports runtime values (not just types) from @nessie/schemas, so the
-# workspace packages it depends on must be built before the Vite bundle.
-RUN pnpm --filter @nessie/schemas build
-RUN pnpm --filter @nessie/config build
-RUN pnpm --filter @nessie/admin build
+# Admin imports runtime values (not just types) from its workspace packages
+# (@nessie/schemas, @nessie/config, @nessie/client-core, …) through their dist
+# exports, so every package it depends on must be built before the Vite bundle.
+# Build the admin's full dependency graph via turbo so the order is resolved
+# automatically and adding a new workspace dep never silently breaks the image.
+RUN pnpm exec turbo run build --filter=@nessie/admin
 
 FROM nginx:alpine
 
