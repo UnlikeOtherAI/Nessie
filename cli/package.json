@@ -7,12 +7,16 @@
     "nessie": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "pnpm run build:config && pnpm run prisma:generate && pnpm run build:db && tsc -p tsconfig.build.json",
+    "build:config": "pnpm --filter @nessie/config build",
+    "build:db": "pnpm --filter @nessie/db build",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint src --max-warnings 0",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "prisma:generate": "pnpm --filter @nessie/api exec prisma generate --schema prisma/schema.prisma",
+    "typecheck": "pnpm run prisma:generate && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@nessie/config": "workspace:*"
+    "@nessie/config": "workspace:*",
+    "@nessie/db": "workspace:*"
   }
 }

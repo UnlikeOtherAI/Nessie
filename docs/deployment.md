@@ -100,6 +100,27 @@ Requires SSH access to the host and the `CLOUDFLARE_API_TOKEN` env var.
    owner account. The token has a 15-minute TTL; restart `nessie-api` to mint a
    fresh one.
 
+### Granting the first super-admin
+
+The `/api/platform/push/*` credential-management endpoints, and the
+push-credentials admin page that uses them, are gated by the platform-level
+`users.super_admin` flag. After the owner account exists, grant that tier from
+the deployed tree:
+
+```sh
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+  pnpm --filter @nessie/cli exec tsx src/index.ts grant-super-admin owner@example.com
+```
+
+To audit or remove the tier later:
+
+```sh
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+  pnpm --filter @nessie/cli exec tsx src/index.ts list-super-admins
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+  pnpm --filter @nessie/cli exec tsx src/index.ts revoke-super-admin owner@example.com
+```
+
 ## Redeploying a new version
 
 **Automatic (default):** every push to `main` triggers

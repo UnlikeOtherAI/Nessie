@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
 import { runLocalCommand } from './local.js'
+import {
+  isSuperAdminCommand,
+  runSuperAdminCommand,
+  superAdminHelpLines,
+} from './super-admin.js'
 
 const printHelp = (): void => {
   console.log([
@@ -10,6 +15,7 @@ const printHelp = (): void => {
     'nessie local logs [api|worker|admin|postgres] [--no-follow]',
     'nessie local doctor',
     'nessie local reset --yes',
+    ...superAdminHelpLines,
   ].join('\n'))
 }
 
@@ -18,6 +24,11 @@ const main = async (): Promise<void> => {
 
   if (scope === 'local') {
     await runLocalCommand(rest)
+    return
+  }
+
+  if (isSuperAdminCommand(scope)) {
+    await runSuperAdminCommand(scope, rest)
     return
   }
 
