@@ -10,6 +10,7 @@ import {
   ExecutionEnvironmentAllocateJobPayloadSchema,
   ExecutionEnvironmentTerminateJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
+  PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
   TriggerEventDispatchJobPayloadSchema,
   WorkflowRunExecuteJobPayloadSchema,
@@ -23,6 +24,7 @@ import {
   terminateExecutionEnvironmentInstance,
 } from './control/execution.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
+import { handlePushDispatch } from './control/push-dispatch.js'
 import {
   dispatchEventTriggers,
   reattemptTriggerDelivery,
@@ -105,6 +107,18 @@ export const startWorker = async (
       const payload = OrchestrateDecideJobPayloadSchema.parse(job.payload)
       await executeOrchestrateDecideJob(
         { modelClient, prisma, realtimeTransport },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    'push.dispatch',
+    async (job) => {
+      const payload = PushDispatchJobPayloadSchema.parse(job.payload)
+      await handlePushDispatch(
+        { prisma, authSecret: config.auth.secret ?? '' },
         payload,
       )
     },

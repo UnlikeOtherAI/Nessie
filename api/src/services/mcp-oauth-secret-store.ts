@@ -6,7 +6,7 @@ import {
   decryptWithKey,
   deriveSecretKey,
   encryptWithKey,
-} from '../lib/secret-crypto.js'
+} from '@nessie/runtime'
 
 import type { SecretStore } from './mcp-oauth.js'
 

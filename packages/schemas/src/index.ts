@@ -872,6 +872,25 @@ export const OrchestrateDecideJobPayloadSchema = z.object({
 })
 export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPayloadSchema>
 
+/**
+ * `push.dispatch` queue job — emitted by the api right after a message is
+ * published to realtime, consumed by the worker to fan APNs/FCM push out to the
+ * channel members' registered devices. Ids are plain uuids (not branded) so the
+ * worker can use them directly against Prisma. `contentSnippet` is the
+ * already-truncated notification body; `mentionUserIds` carries the resolved
+ * @mention user ids for future mention-only routing (v1 notifies all members).
+ */
+export const PushDispatchJobPayloadSchema = z.object({
+  messageId: z.string().uuid(),
+  authorUserId: z.string().uuid(),
+  channelId: z.string().uuid(),
+  threadId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  contentSnippet: z.string(),
+  mentionUserIds: z.array(z.string().uuid()),
+})
+export type PushDispatchJobPayload = z.infer<typeof PushDispatchJobPayloadSchema>
+
 export const WorkflowRunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   workflowRunId: z.string().uuid(),

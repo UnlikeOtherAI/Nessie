@@ -329,6 +329,9 @@ importers:
       '@nessie/memory':
         specifier: workspace:*
         version: link:../packages/memory
+      '@nessie/push':
+        specifier: workspace:*
+        version: link:../packages/push
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../packages/runtime

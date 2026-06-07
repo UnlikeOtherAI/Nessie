@@ -258,6 +258,29 @@ which is per-tenant and therefore the wrong gate for global creds).
   recipients, applies mute/quiet-hours, builds payloads, and calls the gateway;
   prunes tokens the gateway reports dead.
 
+### Push-dispatch wiring — implemented (2026-06-07)
+
+The dispatch loop is live (no standalone gateway yet — the worker calls the
+`@nessie/push` senders directly in-process):
+
+- The api enqueues a `push.dispatch` queue job right after the `message.new`
+  realtime publish (`api/src/routes/threads.ts`, fire-and-forget; a push failure
+  never breaks message posting). Payload (`PushDispatchJobPayloadSchema` in
+  `@nessie/schemas`): `{ messageId, authorUserId, channelId, threadId,
+  organizationId, contentSnippet (≤140 chars), mentionUserIds[] }`. Enqueue
+  helper: `enqueuePushDispatch` in `api/src/queue/pgqueue.ts`.
+- The worker consumer (`worker/src/control/push-dispatch.ts`, registered in
+  `worker/src/index.ts`) loads the `push_credentials` rows (early-returns if none
+  configured), resolves recipients = channel members minus the author
+  (`channelMember.findMany` with `userId: { not: authorUserId }`), loads their
+  `device_tokens`, decrypts each provider's secret (`mcp_oauth_secret` row via
+  `secretRef`, AES-256-GCM with `deriveSecretKey(config.auth.secret)`), and sends
+  ios→APNs / android→FCM. `deadToken` results are pruned from `device_tokens`.
+- **Mute/quiet-hours is NOT yet applied** (no such fields exist) — v1 notifies
+  every member; see the `TODO(push): mute/quiet-hours` marker in the consumer.
+- The AES-256-GCM crypto now lives in `@nessie/runtime` (`secret-crypto.ts`) so
+  both the api secret stores and the worker share one implementation.
+
 ## Accounts & infra checklist
 
 - [ ] Apple Developer Program ($99/yr): App ID + Push entitlement, APNs `.p8`

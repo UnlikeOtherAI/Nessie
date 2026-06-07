@@ -6,7 +6,7 @@ import {
   decryptWithKey,
   deriveSecretKey,
   encryptWithKey,
-} from '../lib/secret-crypto.js'
+} from '@nessie/runtime'
 
 /**
  * Encrypted store for raw push-credential secret bytes (the APNs `.p8` key

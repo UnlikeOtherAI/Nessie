@@ -22,6 +22,7 @@
     "@nessie/config": "workspace:*",
     "@nessie/db": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
+    "@nessie/push": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "cron-parser": "^5.5.0",

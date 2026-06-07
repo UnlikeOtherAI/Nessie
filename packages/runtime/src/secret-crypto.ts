@@ -3,11 +3,12 @@ import crypto from 'node:crypto'
 /**
  * AES-256-GCM primitives shared by the encrypted secret stores.
  *
- * Extracted from `services/mcp-oauth-secret-store.ts` so the push-credentials
- * store can encrypt raw secret bytes at rest with the exact same scheme (a key
- * derived from the deployment's auth secret) instead of duplicating crypto.
- * Both stores persist to the `mcp_oauth_secret` table; the ref prefix
- * distinguishes their entries.
+ * Lives in `@nessie/runtime` so both the api's secret stores
+ * (`mcp-oauth-secret-store`, `push-secret-store`) and the worker's push
+ * dispatch can encrypt/decrypt raw secret bytes at rest with the exact same
+ * scheme (a key derived from the deployment's auth secret) instead of
+ * duplicating crypto. Secrets persist to the `mcp_oauth_secret` table; the ref
+ * prefix distinguishes their entries.
  */
 
 const ALGORITHM = 'aes-256-gcm'

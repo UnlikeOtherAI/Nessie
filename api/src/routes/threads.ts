@@ -15,7 +15,7 @@ import {
   UpdateThreadMessageBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
+import { enqueueOrchestrateDecide, enqueuePushDispatch } from '../queue/pgqueue.js'
 import { canManageChannel } from '../services/channels.js'
 import {
   addReaction,
@@ -189,6 +189,41 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         event: 'message.new',
       },
     )
+
+    // Enqueue push dispatch — fan APNs/FCM notifications out to the other
+    // channel members' devices. Fire-and-forget: a push failure must NEVER
+    // break message posting, so a transient queue-insert error is logged and
+    // swallowed here exactly like the orchestrate enqueue below.
+    try {
+      const mentions =
+        result.message.metadata
+        && typeof result.message.metadata === 'object'
+        && !Array.isArray(result.message.metadata)
+          ? (result.message.metadata as { mentions?: { userIds?: unknown } }).mentions
+          : undefined
+      const mentionUserIds =
+        mentions && Array.isArray(mentions.userIds)
+          ? mentions.userIds.filter((id): id is string => typeof id === 'string')
+          : []
+      await enqueuePushDispatch(
+        prisma,
+        {
+          messageId: result.message.id,
+          authorUserId: actorContext.actor.actorId,
+          channelId: thread.channel.id,
+          threadId: thread.id,
+          organizationId: actorContext.tenant.organizationId,
+          contentSnippet: result.message.content.slice(0, 140),
+          mentionUserIds,
+        },
+        `push:${result.message.id}`,
+      )
+    } catch (err) {
+      app.log.error(
+        { err, messageId: result.message.id },
+        '[push] failed to enqueue dispatch job — recipients will not be notified',
+      )
+    }
 
     // Enqueue agent-engagement decision — durable, retryable, never blocks this
     // response. The try/catch ensures a transient queue-insert failure cannot
