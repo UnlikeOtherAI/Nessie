@@ -23,6 +23,10 @@ e2e
 # bloat the backend/admin images (the installs use --filter='!@nessie/mobile').
 mobile/*
 !mobile/package.json
+# Desktop (Tauri) app: same manifest-only treatment as mobile. Rust/native
+# sources and bundles stay out of production backend/admin image contexts.
+desktop/*
+!desktop/package.json
 assets
 UI
 docs
