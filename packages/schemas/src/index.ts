@@ -2101,4 +2101,5 @@ export type AgentToolPolicy = z.infer<typeof AgentToolPolicySchema>
 // ─── MCP Universal Connector (Slice B) ───────────────────────────────────────
 export * from './mcp.js'
 export * from './push.js'
+export * from './devices.js'
 export * from './tools.js'
