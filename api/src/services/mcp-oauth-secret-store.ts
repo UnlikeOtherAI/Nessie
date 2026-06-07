@@ -2,6 +2,12 @@ import crypto from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 
+import {
+  decryptWithKey,
+  deriveSecretKey,
+  encryptWithKey,
+} from '../lib/secret-crypto.js'
+
 import type { SecretStore } from './mcp-oauth.js'
 
 /**
@@ -19,55 +25,11 @@ import type { SecretStore } from './mcp-oauth.js'
  * resolver boundary uses to hand a single credential back to the dispatcher.
  */
 
-const ALGORITHM = 'aes-256-gcm'
-const IV_BYTES = 12
-
-const deriveKey = (secret: string): Buffer => {
-  if (!secret) {
-    throw new Error(
-      '[mcp] PgSecretStore requires a non-empty encryption secret '
-        + '(config.auth.secret / NESSIE_AUTH_SECRET).',
-    )
-  }
-  return crypto.createHash('sha256').update(secret, 'utf8').digest()
-}
-
 type StoredBundle = {
   accessToken: string
   refreshToken?: string
   expiresIn?: number
   tokenType?: string
-}
-
-const encrypt = (key: Buffer, plaintext: string): {
-  ciphertext: string
-  iv: string
-  authTag: string
-} => {
-  const iv = crypto.randomBytes(IV_BYTES)
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv)
-  const ciphertext =
-    cipher.update(plaintext, 'utf8', 'hex') + cipher.final('hex')
-  return {
-    ciphertext,
-    iv: iv.toString('hex'),
-    authTag: cipher.getAuthTag().toString('hex'),
-  }
-}
-
-const decrypt = (
-  key: Buffer,
-  parts: { ciphertext: string; iv: string; authTag: string },
-): string => {
-  const decipher = crypto.createDecipheriv(
-    ALGORITHM,
-    key,
-    Buffer.from(parts.iv, 'hex'),
-  )
-  decipher.setAuthTag(Buffer.from(parts.authTag, 'hex'))
-  return (
-    decipher.update(parts.ciphertext, 'hex', 'utf8') + decipher.final('utf8')
-  )
 }
 
 /**
@@ -78,7 +40,7 @@ export const createPgSecretStore = (
   prisma: PrismaClient,
   encryptionSecret: string,
 ): SecretStore => {
-  const key = deriveKey(encryptionSecret)
+  const key = deriveSecretKey(encryptionSecret)
   return {
     put: async (input) => {
       const ref = `secret_oauth_${crypto.randomBytes(16).toString('hex')}`
@@ -88,7 +50,7 @@ export const createPgSecretStore = (
         expiresIn: input.expiresIn,
         tokenType: input.tokenType,
       }
-      const { ciphertext, iv, authTag } = encrypt(key, JSON.stringify(bundle))
+      const { ciphertext, iv, authTag } = encryptWithKey(key, JSON.stringify(bundle))
       await prisma.mcpOAuthSecret.create({
         data: { ref, ciphertext, iv, authTag },
       })
@@ -107,7 +69,7 @@ export const createPgSecretResolver = (
   prisma: PrismaClient,
   encryptionSecret: string,
 ): { resolve: (ref: string) => Promise<string | null> } => {
-  const key = deriveKey(encryptionSecret)
+  const key = deriveSecretKey(encryptionSecret)
   return {
     resolve: async (ref) => {
       if (!ref.startsWith('secret_oauth_')) {
@@ -118,7 +80,7 @@ export const createPgSecretResolver = (
         return null
       }
       const bundle = JSON.parse(
-        decrypt(key, {
+        decryptWithKey(key, {
           ciphertext: row.ciphertext,
           iv: row.iv,
           authTag: row.authTag,

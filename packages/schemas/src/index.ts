@@ -1161,6 +1161,9 @@ export const AuditActionSchema = z.enum([
   'kb.page.moved',
   'kb.page.restored',
   'kb.page.archived',
+  'push.credential.uploaded',
+  'push.credential.deleted',
+  'push.credential.tested',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 
@@ -2096,4 +2099,5 @@ export type AgentToolPolicy = z.infer<typeof AgentToolPolicySchema>
 
 // ─── MCP Universal Connector (Slice B) ───────────────────────────────────────
 export * from './mcp.js'
+export * from './push.js'
 export * from './tools.js'

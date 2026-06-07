@@ -519,6 +519,11 @@ model User {
   passwordHash        String?              @map("password_hash")
   avatarUrl           String?              @map("avatar_url")
   pronouns            String?
+  // Platform-level super-admin flag. Sits ABOVE the per-organization `owner`
+  // role: org owners administer their own tenant, but only a super-admin may
+  // manage platform-global resources such as the push credentials that drive
+  // the central push gateway. Defaults to false; granted out-of-band.
+  superAdmin          Boolean              @default(false) @map("super_admin")
   preferences         Json?
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
@@ -2283,4 +2288,40 @@ model Attachment {
   @@index([messageId])
   @@index([organizationId, createdAt])
   @@map("attachments")
+}
+
+// ─── Push credentials (platform-global, super-admin only) ───────────────────
+// Non-secret metadata for the Apple APNs / Google FCM credentials that the
+// central push gateway uses. The secret bytes themselves (the `.p8` key, the
+// FCM service-account JSON) live encrypted in `mcp_oauth_secret` via the
+// SecretStore under a stable ref (`secretRef`); they are NEVER stored here and
+// NEVER returned from any endpoint. One row per provider (apns | fcm).
+enum PushProvider {
+  apns
+  fcm
+}
+
+enum PushApnsEnvironment {
+  sandbox
+  production
+}
+
+model PushCredential {
+  id              String               @id @default(uuid()) @db.Uuid
+  provider        PushProvider         @unique
+  // Opaque ref into the encrypted SecretStore (`mcp_oauth_secret`).
+  secretRef       String               @map("secret_ref")
+  // APNs metadata (null for fcm rows).
+  apnsKeyId       String?              @map("apns_key_id")
+  apnsTeamId      String?              @map("apns_team_id")
+  apnsTopic       String?              @map("apns_topic")
+  apnsEnvironment PushApnsEnvironment? @map("apns_environment")
+  // FCM metadata (null for apns rows).
+  fcmProjectId    String?              @map("fcm_project_id")
+  fcmClientEmail  String?              @map("fcm_client_email")
+  updatedByUserId String               @map("updated_by_user_id") @db.Uuid
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@map("push_credentials")
 }
