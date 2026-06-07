@@ -42,6 +42,20 @@ const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/settings/notifications',
+        label: 'Notifications',
+        icon: icon(
+          <>
+            <path
+              d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path d="M13.7 21a2 2 0 01-3.4 0" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
         path: '/settings/members',
         label: 'Members',
         ownerOnly: true,

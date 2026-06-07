@@ -1,0 +1,352 @@
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import type { PushQuietHours, UserPreferences } from '@nessie/schemas'
+import { useUpdatePreferences } from '../../facades/auth/hooks'
+import { useChannels, useSetChannelMute } from '../../facades/channels/hooks'
+import type { ChannelRecord } from '../../lib/api-client'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { sectionTitleClass, SettingsPanel } from './settings-shared'
+
+const DEFAULT_QUIET_START = '22:00'
+const DEFAULT_QUIET_END = '07:00'
+
+const FALLBACK_TIME_ZONES = [
+  'America/Los_Angeles',
+  'America/Denver',
+  'America/Chicago',
+  'America/New_York',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+  'UTC',
+]
+
+type SupportedValuesIntl = typeof Intl & {
+  supportedValuesOf?: (key: 'timeZone') => string[]
+}
+
+type Feedback = {
+  kind: 'error' | 'success'
+  message: string
+}
+
+type ToggleControlProps = {
+  checked: boolean
+  disabled?: boolean
+  label: string
+  onChange: (next: boolean) => void
+}
+
+const getBrowserTimeZone = (): string =>
+  Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+
+const getSupportedTimeZones = (): string[] => {
+  const supportedValuesOf = (Intl as SupportedValuesIntl).supportedValuesOf
+  return supportedValuesOf ? supportedValuesOf('timeZone') : FALLBACK_TIME_ZONES
+}
+
+const getTimeZoneOptions = (selectedTimeZone: string, browserTimeZone: string): string[] => {
+  const values = [selectedTimeZone, browserTimeZone, ...getSupportedTimeZones()]
+  return [...new Set(values.filter((value) => value.length > 0))].sort((a, b) =>
+    a.localeCompare(b),
+  )
+}
+
+const getChannelMuted = (channel: ChannelRecord): boolean | undefined => {
+  const maybeMuted = (channel as ChannelRecord & { muted?: unknown }).muted
+  return typeof maybeMuted === 'boolean' ? maybeMuted : undefined
+}
+
+const buildPreferencesPayload = (
+  current: UserPreferences | undefined,
+  pushEnabled: boolean,
+  quietHours: PushQuietHours | null,
+): UserPreferences => {
+  const next: UserPreferences = {
+    ...(current ?? {}),
+    pushEnabled,
+  }
+
+  if (quietHours) {
+    next.pushQuietHours = quietHours
+  } else {
+    delete next.pushQuietHours
+  }
+
+  return next
+}
+
+const feedbackClass = (kind: Feedback['kind']): string =>
+  [
+    'rounded-md border px-3 py-2 text-sm',
+    kind === 'success'
+      ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.1)] text-[#86efac]'
+      : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.1)] text-[#fca5a5]',
+  ].join(' ')
+
+const FeedbackBanner = ({ feedback }: { feedback: Feedback | null }) => {
+  if (!feedback) {
+    return null
+  }
+
+  return <div className={feedbackClass(feedback.kind)}>{feedback.message}</div>
+}
+
+const ToggleControl = ({ checked, disabled = false, label, onChange }: ToggleControlProps) => (
+  <button
+    aria-checked={checked}
+    aria-label={label}
+    className={[
+      'inline-flex h-8 min-w-[76px] items-center rounded-full border px-1 transition',
+      checked
+        ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-white'
+        : 'border-[color:var(--sep)] bg-black/15 text-[color:var(--tx3)]',
+      disabled ? 'cursor-not-allowed opacity-60' : '',
+    ].join(' ')}
+    disabled={disabled}
+    onClick={() => onChange(!checked)}
+    role="switch"
+    type="button"
+  >
+    <span
+      className={[
+        'h-6 w-6 rounded-full bg-current transition-transform',
+        checked ? 'translate-x-10' : 'translate-x-0',
+      ].join(' ')}
+    />
+  </button>
+)
+
+export const NotificationsPage = () => {
+  const { me } = useAuthSession()
+  const { data: channels = [] } = useChannels()
+  const browserTimeZone = useMemo(() => getBrowserTimeZone(), [])
+  const updatePreferences = useUpdatePreferences()
+  const setChannelMute = useSetChannelMute()
+
+  const [pushEnabled, setPushEnabled] = useState(true)
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(false)
+  const [quietStart, setQuietStart] = useState(DEFAULT_QUIET_START)
+  const [quietEnd, setQuietEnd] = useState(DEFAULT_QUIET_END)
+  const [quietTimezone, setQuietTimezone] = useState(browserTimeZone)
+  const [preferenceFeedback, setPreferenceFeedback] = useState<Feedback | null>(null)
+  const [channelFeedback, setChannelFeedback] = useState<Feedback | null>(null)
+  const [channelMuteOverrides, setChannelMuteOverrides] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    const preferences = me?.user.preferences
+    const quietHours = preferences?.pushQuietHours
+
+    setPushEnabled(preferences?.pushEnabled ?? true)
+    setQuietHoursEnabled(Boolean(quietHours))
+    setQuietStart(quietHours?.start ?? DEFAULT_QUIET_START)
+    setQuietEnd(quietHours?.end ?? DEFAULT_QUIET_END)
+    setQuietTimezone(quietHours?.timezone ?? browserTimeZone)
+  }, [browserTimeZone, me?.user.preferences])
+
+  const timeZoneOptions = useMemo(
+    () => getTimeZoneOptions(quietTimezone, browserTimeZone),
+    [browserTimeZone, quietTimezone],
+  )
+
+  if (!me) {
+    return null
+  }
+
+  const savePreferences = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setPreferenceFeedback(null)
+
+    const quietHours = quietHoursEnabled
+      ? {
+          end: quietEnd,
+          start: quietStart,
+          timezone: quietTimezone,
+        }
+      : null
+
+    try {
+      await updatePreferences.mutateAsync(
+        buildPreferencesPayload(me.user.preferences, pushEnabled, quietHours),
+      )
+      setPreferenceFeedback({ kind: 'success', message: 'Notification preferences saved.' })
+    } catch (error) {
+      setPreferenceFeedback({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Failed to save notification preferences.',
+      })
+    }
+  }
+
+  const saveChannelMute = async (
+    channelId: string,
+    previousMuted: boolean,
+    nextMuted: boolean,
+  ) => {
+    setChannelFeedback(null)
+    setChannelMuteOverrides((current) => ({ ...current, [channelId]: nextMuted }))
+
+    try {
+      const result = await setChannelMute.mutateAsync({ channelId, muted: nextMuted })
+      setChannelMuteOverrides((current) => ({ ...current, [channelId]: result.muted }))
+      setChannelFeedback({ kind: 'success', message: 'Channel notification setting saved.' })
+    } catch (error) {
+      setChannelMuteOverrides((current) => ({ ...current, [channelId]: previousMuted }))
+      setChannelFeedback({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Failed to save channel setting.',
+      })
+    }
+  }
+
+  return (
+    <SettingsPanel
+      eyebrow="General"
+      title="Notifications"
+      actions={
+        <button
+          className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={updatePreferences.isPending}
+          form="notification-preferences-form"
+          type="submit"
+        >
+          {updatePreferences.isPending ? 'Saving...' : 'Save preferences'}
+        </button>
+      }
+    >
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.8fr)]">
+        <form
+          className="grid gap-4"
+          id="notification-preferences-form"
+          onSubmit={savePreferences}
+        >
+          <section className="admin-card p-4">
+            <div className={sectionTitleClass}>Push</div>
+            <div className="mt-4 flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold text-white">Push enabled</div>
+                <div className="mt-1 text-sm text-[color:var(--tx2)]">
+                  {pushEnabled ? 'Enabled' : 'Disabled'}
+                </div>
+              </div>
+              <ToggleControl
+                checked={pushEnabled}
+                disabled={updatePreferences.isPending}
+                label="Toggle push notifications"
+                onChange={setPushEnabled}
+              />
+            </div>
+          </section>
+
+          <section className="admin-card p-4">
+            <div className={sectionTitleClass}>Quiet hours</div>
+            <div className="mt-4 flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold text-white">Quiet hours</div>
+                <div className="mt-1 text-sm text-[color:var(--tx2)]">
+                  {quietHoursEnabled ? 'Enabled' : 'Disabled'}
+                </div>
+              </div>
+              <ToggleControl
+                checked={quietHoursEnabled}
+                disabled={updatePreferences.isPending}
+                label="Toggle quiet hours"
+                onChange={setQuietHoursEnabled}
+              />
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+                Start
+                <input
+                  className="admin-input"
+                  disabled={!quietHoursEnabled || updatePreferences.isPending}
+                  onChange={(event) => setQuietStart(event.target.value)}
+                  required={quietHoursEnabled}
+                  type="time"
+                  value={quietStart}
+                />
+              </label>
+              <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+                End
+                <input
+                  className="admin-input"
+                  disabled={!quietHoursEnabled || updatePreferences.isPending}
+                  onChange={(event) => setQuietEnd(event.target.value)}
+                  required={quietHoursEnabled}
+                  type="time"
+                  value={quietEnd}
+                />
+              </label>
+              <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+                Timezone
+                <select
+                  className="admin-input"
+                  disabled={!quietHoursEnabled || updatePreferences.isPending}
+                  onChange={(event) => setQuietTimezone(event.target.value)}
+                  required={quietHoursEnabled}
+                  value={quietTimezone}
+                >
+                  {timeZoneOptions.map((timeZone) => (
+                    <option key={timeZone} value={timeZone}>
+                      {timeZone}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <FeedbackBanner feedback={preferenceFeedback} />
+        </form>
+
+        <section className="admin-card p-4">
+          <div className={sectionTitleClass}>Muted channels</div>
+          <div className="mt-4 grid gap-2">
+            {channels.length === 0 ? (
+              <div className="admin-card p-3 text-sm text-[color:var(--tx3)]">
+                No channels available.
+              </div>
+            ) : (
+              channels.map((channel) => {
+                const muted = channelMuteOverrides[channel.id] ?? getChannelMuted(channel) ?? false
+                const pending =
+                  setChannelMute.isPending && setChannelMute.variables?.channelId === channel.id
+
+                return (
+                  <div
+                    key={channel.id}
+                    className="admin-card flex items-center justify-between gap-4 p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-white">#{channel.label}</div>
+                      <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+                        {muted ? 'Muted' : channel.visibility}
+                      </div>
+                    </div>
+                    <ToggleControl
+                      checked={muted}
+                      disabled={setChannelMute.isPending}
+                      label={`Toggle ${channel.label} notifications`}
+                      onChange={(nextMuted) =>
+                        void saveChannelMute(channel.id, muted, nextMuted)}
+                    />
+                    {pending ? (
+                      <span className="sr-only" role="status">
+                        Saving channel notification setting
+                      </span>
+                    ) : null}
+                  </div>
+                )
+              })
+            )}
+          </div>
+          <div className="mt-3">
+            <FeedbackBanner feedback={channelFeedback} />
+          </div>
+        </section>
+      </div>
+    </SettingsPanel>
+  )
+}

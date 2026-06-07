@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { SetChannelMuteRequest } from '@nessie/schemas'
 import type { ChannelRecord } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -75,7 +76,7 @@ export const useRemoveChannelMember = () => {
   })
 }
 
-// ─── sp-channels: channel lifecycle hooks ────────────────────────────────────
+// sp-channels: channel lifecycle hooks
 
 export const useUpdateChannel = () => {
   const apiClient = useApiClient()
@@ -119,6 +120,21 @@ export const useJoinChannel = () => {
   return useMutation({
     mutationFn: (input: { channelId: string }) =>
       apiClient.post<ChannelRecord>(`/api/channels/${input.channelId}/join`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}
+
+export const useSetChannelMute = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation<{ muted: boolean }, Error, SetChannelMuteRequest & { channelId: string }>({
+    mutationFn: ({ channelId, muted }) =>
+      apiClient.patch<{ muted: boolean }>(`/api/channels/${channelId}/notifications`, {
+        muted,
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
