@@ -176,6 +176,61 @@ device token**, not an Expo push token:
 - Gateway is stateless w.r.t. tenant data — it stores no messages, only does
   authenticated fan-out and reports back dead tokens.
 
+## Push credentials — super-user upload (admin)
+
+The gateway needs Apple/Google credentials. These are **platform-global** — one
+Apple key + one FCM project for the single published app — so they are NOT a
+per-tenant setting. They are managed by a **platform operator** through a
+dedicated super-user surface, gated to a new **super-admin** role that sits
+*above* the per-organization `owner` role (today "superuser" === org `owner`,
+which is per-tenant and therefore the wrong gate for global creds).
+
+### What the operator uploads — "exactly what Apple/Google give you"
+
+- **Google FCM**: a single file — the Firebase **service-account JSON**
+  (Project Settings → Service accounts → Generate new private key). It already
+  contains `project_id`, `client_email`, `private_key`. Drop it in; nothing else
+  to enter. (The legacy server-key string is deprecated — v1 + service account
+  only.)
+- **Apple APNs (token auth, preferred)**: the `.p8` auth key file, plus three
+  values Apple deliberately keeps *outside* the file:
+  - **Key ID** — auto-extracted from the filename `AuthKey_<KEYID>.p8`.
+  - **Team ID** — from Apple Developer membership.
+  - **Bundle ID / topic** + **environment** (sandbox vs production).
+
+  So FCM is one file; APNs is the `.p8` plus three tiny fields (one auto-filled).
+  Certificate-based `.p12`/`.cer` push is intentionally not supported — `.p8`
+  token auth is one key, no yearly expiry, all environments.
+
+### Validation & test (so "just put them in" really works)
+
+- On `.p8` upload: parse as a PKCS#8 EC key and mint a throwaway ES256 JWT to
+  prove it signs; reject otherwise.
+- On FCM JSON upload: parse, assert `type: "service_account"` and the required
+  fields, and do a token exchange to prove the account is live.
+- A **"Send test push"** action delivers to a chosen registered device so the
+  operator confirms the whole chain before shipping.
+
+### Storage & UX
+
+- Encrypt at rest with the existing **SecretStore** pattern
+  (`createPgSecretStore`, AES-256-GCM; see `api/src/services/mcp-oauth-secret-store.ts`),
+  under stable refs (e.g. `push_apns`, `push_fcm`).
+- **Write-only**: the browser uploads the file/fields; the API never returns the
+  secret bytes. The UI shows only metadata — configured ✓, Key ID/Team ID/topic,
+  FCM project id, last-updated, last successful send — plus replace / delete /
+  test actions.
+- Audit every change (who uploaded/replaced/deleted) via the existing audit log.
+
+### Surface & endpoints (platform-scoped, super-admin only)
+
+- A new **super-admin** role + a platform-operator admin section (not the
+  per-tenant admin menu). Visible only to that role.
+- `PUT /api/platform/push/apns` (multipart: `.p8` + key id / team id / topic /
+  env), `PUT /api/platform/push/fcm` (multipart: service-account JSON),
+  `GET /api/platform/push/status` (metadata only), `POST /api/platform/push/test`,
+  `DELETE /api/platform/push/{apns,fcm}`. These configure the central gateway.
+
 ## Mobile app (Expo) — scope
 
 - **Auth**: `expo-auth-session` (OIDC + PKCE) → system browser → deep-link
@@ -224,6 +279,11 @@ device token**, not an Expo push token:
 2. **Push server v1** — `push-gateway/` (APNs + FCM), `device_tokens` registry +
    endpoints, worker push-dispatch on message/mention/DM/approval; client
    registers token + tap deep-links.
+   - **2a. Push-credentials admin** — new super-admin role + platform-operator
+     surface to upload the APNs `.p8` (+ Key ID/Team ID/topic/env) and the FCM
+     service-account JSON, encrypted via the SecretStore, with validation and a
+     "send test push" button. This is buildable early (independent of the RN
+     app) and is what makes the gateway configurable.
 3. **Desktop (Tauri)** — shell over the `admin/` build, OS notifications from
    SSE, signed mac + win builds.
 4. **Polish** — badges, mute/quiet-hours, coalescing, unread sync, store
