@@ -18,6 +18,11 @@ output
 testing
 simulation
 e2e
+# Mobile (Expo/React Native) app: keep only its package.json so the frozen
+# workspace install can discover it; its source + huge RN dep tree must never
+# bloat the backend/admin images (the installs use --filter='!@nessie/mobile').
+mobile/*
+!mobile/package.json
 assets
 UI
 docs

@@ -14,8 +14,9 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml tsconfig.base.json turbo.json ./
 COPY packages/ packages/
 COPY admin/ admin/
+COPY mobile/package.json mobile/package.json
 
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN corepack enable && pnpm install --frozen-lockfile --filter='!@nessie/mobile'
 
 # Admin imports runtime values (not just types) from its workspace packages
 # (@nessie/schemas, @nessie/config, @nessie/client-core, …) through their dist

@@ -24,7 +24,7 @@ RUN corepack enable
 # build output, git, screenshots, and other non-build cruft from the context.
 COPY . .
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter='!@nessie/mobile'
 
 # Generate the Prisma client into node_modules before building any package that
 # imports it (@nessie/db → @prisma/client).
