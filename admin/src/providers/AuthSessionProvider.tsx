@@ -1,33 +1,19 @@
 import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react'
 import type { MeResponse } from '@nessie/schemas'
 import {
+  createAuthSessionApi,
+  type AuthProviderDescriptor,
+  type AuthSessionState,
+  type BootstrapInput,
+  type BootstrapModeResponse,
+  type LoginInput,
+} from '@nessie/client-core'
+import {
   clearStoredToken,
   loadStoredToken,
   storeToken,
 } from '../lib/storage'
-import type {
-  AuthProviderDescriptor,
-  BootstrapModeResponse,
-} from '../lib/api-client'
-
-type SessionState = 'authenticated' | 'bootstrap' | 'loading' | 'unauthenticated'
-
-type BootstrapInput = {
-  bootstrapToken: string
-  displayName: string
-  email: string
-  password: string
-}
-
-type LoginInput = {
-  email: string
-  password: string
-} | {
-  code: string
-  codeVerifier: string
-  providerId: string
-  redirectUri: string
-}
+import { getBaseUrl } from '../lib/api-client'
 
 type AuthSessionContextValue = {
   bootstrap: (input: BootstrapInput) => Promise<void>
@@ -38,34 +24,18 @@ type AuthSessionContextValue = {
   me: MeResponse | null
   providers: AuthProviderDescriptor[]
   refreshSession: () => Promise<void>
-  sessionState: SessionState
+  sessionState: AuthSessionState
   token: string | null
 }
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null)
 
-const parseResponse = async <TData,>(response: Response): Promise<TData> => {
-  const payload = (await response.json()) as { data: TData }
-  return payload.data
-}
-
-const parseApiError = async (response: Response): Promise<string> => {
-  const text = await response.text()
-  if (!text) {
-    return `${response.status} ${response.statusText}`
-  }
-  try {
-    const payload = JSON.parse(text) as { error?: { code?: string; message?: string } }
-    return payload.error?.message ?? text
-  } catch {
-    return text
-  }
-}
-
-const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
+// Admin (web) supplies the Vite-resolved base URL; @nessie/client-core stays
+// env-agnostic. localStorage is the web TokenStore backing.
+const authApi = createAuthSessionApi(getBaseUrl())
 
 export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
-  const [sessionState, setSessionState] = useState<SessionState>('loading')
+  const [sessionState, setSessionState] = useState<AuthSessionState>('loading')
   const [token, setToken] = useState<string | null>(() => loadStoredToken())
   const [me, setMe] = useState<MeResponse | null>(null)
   const [bootstrapState, setBootstrapState] = useState<BootstrapModeResponse | null>(null)
@@ -74,19 +44,14 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const refreshSession = async (): Promise<void> => {
     setSessionState('loading')
 
-    const providerResponse = await fetch(`${baseUrl}/api/auth/providers`)
-    if (providerResponse.ok) {
-      setProviders(await parseResponse<AuthProviderDescriptor[]>(providerResponse))
-    }
+    setProviders(await authApi.fetchProviders())
 
-    const headers = token ? { authorization: `Bearer ${token}` } : undefined
-    const meResponse = await fetch(`${baseUrl}/api/auth/me`, { headers })
+    const snapshot = await authApi.fetchSession(token)
 
-    if (meResponse.status === 401) {
+    if (snapshot.kind === 'unauthenticated') {
       if (token) {
         clearStoredToken()
       }
-
       setToken(null)
       setMe(null)
       setBootstrapState(null)
@@ -94,20 +59,15 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       return
     }
 
-    if (!meResponse.ok) {
-      throw new Error(await meResponse.text())
-    }
-
-    const payload = await meResponse.json() as { data: BootstrapModeResponse | MeResponse }
-    if ('bootstrapMode' in payload.data) {
-      setBootstrapState(payload.data)
+    if (snapshot.kind === 'bootstrap') {
+      setBootstrapState(snapshot.bootstrap)
       setMe(null)
       setSessionState('bootstrap')
       return
     }
 
     setBootstrapState(null)
-    setMe(payload.data)
+    setMe(snapshot.me)
     setSessionState('authenticated')
   }
 
@@ -121,69 +81,28 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     })
   }, [])
 
-  const bootstrap = async (input: BootstrapInput): Promise<void> => {
-    const response = await fetch(`${baseUrl}/api/auth/bootstrap`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(input),
-    })
-
-    if (!response.ok) {
-      throw new Error(await parseApiError(response))
-    }
-
-    const payload = await response.json() as { data: { me: MeResponse; token: string } }
-    storeToken(payload.data.token)
-    setToken(payload.data.token)
-    setMe(payload.data.me)
+  const applySession = (payload: { me: MeResponse; token: string }): void => {
+    storeToken(payload.token)
+    setToken(payload.token)
+    setMe(payload.me)
     setBootstrapState(null)
     setSessionState('authenticated')
+  }
+
+  const bootstrap = async (input: BootstrapInput): Promise<void> => {
+    applySession(await authApi.bootstrap(input))
   }
 
   const devLogin = async (): Promise<void> => {
-    const response = await fetch(`${baseUrl}/api/auth/dev-login`)
-
-    if (!response.ok) {
-      throw new Error(await parseApiError(response))
-    }
-
-    const payload = await response.json() as { data: { me: MeResponse; token: string } }
-    storeToken(payload.data.token)
-    setToken(payload.data.token)
-    setMe(payload.data.me)
-    setBootstrapState(null)
-    setSessionState('authenticated')
+    applySession(await authApi.devLogin())
   }
 
   const login = async (input: LoginInput): Promise<void> => {
-    const response = await fetch(`${baseUrl}/api/auth/session`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(input),
-    })
-
-    if (!response.ok) {
-      throw new Error(await parseApiError(response))
-    }
-
-    const payload = await response.json() as { data: { me: MeResponse; token: string } }
-    storeToken(payload.data.token)
-    setToken(payload.data.token)
-    setMe(payload.data.me)
-    setBootstrapState(null)
-    setSessionState('authenticated')
+    applySession(await authApi.login(input))
   }
 
   const logout = async (): Promise<void> => {
-    if (token) {
-      await fetch(`${baseUrl}/api/auth/session`, {
-        method: 'DELETE',
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      }).catch(() => undefined)
-    }
-
+    await authApi.logout(token)
     clearStoredToken()
     setToken(null)
     setMe(null)

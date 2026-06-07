@@ -47,6 +47,9 @@ importers:
       '@fortawesome/react-fontawesome':
         specifier: ^3.3.0
         version: 3.3.0(@fortawesome/fontawesome-svg-core@7.2.0)(react@19.2.4)
+      '@nessie/client-core':
+        specifier: workspace:*
+        version: link:../packages/client-core
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config
@@ -157,6 +160,22 @@ importers:
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config
+
+  packages/client-core:
+    dependencies:
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+    devDependencies:
+      '@tanstack/react-query':
+        specifier: ^5.96.2
+        version: 5.96.2(react@19.2.4)
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.14
+      react:
+        specifier: ^19.2.0
+        version: 19.2.4
 
   packages/config:
     dependencies:
