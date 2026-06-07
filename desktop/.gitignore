@@ -1,0 +1,5 @@
+node_modules
+dist
+.turbo
+src-tauri/target
+src-tauri/gen
