@@ -48,7 +48,7 @@ const parseChannelIdFromPath = (pathname: string): string | undefined => {
 export const useAdminShell = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, me, sessionState, token } = useAuthSession();
+  const { logout, me, sessionState } = useAuthSession();
   const { data: channels = [] } = useChannels();
   const { data: projects = [] } = useProjects();
   const { data: teams = [] } = useTeams();
@@ -86,6 +86,10 @@ export const useAdminShell = () => {
     () => me?.user.preferences?.starred ?? [],
     [me?.user.preferences?.starred],
   );
+  const initialPreferences = useMemo(
+    () => me?.user.preferences ?? {},
+    [me?.user.preferences],
+  );
   const {
     channelsCollapsed,
     dmCollapsed,
@@ -100,7 +104,7 @@ export const useAdminShell = () => {
     toggleProjectsCollapsed,
     toggleStar,
     toggleStarredCollapsed,
-  } = useStarredItems({ initialStarred, token });
+  } = useStarredItems({ initialPreferences, initialStarred });
 
   const unreadCountByChannelId = useMemo(
     () => new Map(channels.map((channel) => [channel.id, channel.unreadCount])),

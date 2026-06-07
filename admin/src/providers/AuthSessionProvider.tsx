@@ -16,6 +16,7 @@ import {
 import { getBaseUrl } from '../lib/api-client'
 
 type AuthSessionContextValue = {
+  applyMeResponse: (nextMe: MeResponse) => void
   bootstrap: (input: BootstrapInput) => Promise<void>
   bootstrapState: BootstrapModeResponse | null
   devLogin: () => Promise<void>
@@ -89,6 +90,12 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setSessionState('authenticated')
   }
 
+  const applyMeResponse = (nextMe: MeResponse): void => {
+    setMe(nextMe)
+    setBootstrapState(null)
+    setSessionState('authenticated')
+  }
+
   const bootstrap = async (input: BootstrapInput): Promise<void> => {
     applySession(await authApi.bootstrap(input))
   }
@@ -111,6 +118,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const value = useMemo<AuthSessionContextValue>(
     () => ({
+      applyMeResponse,
       bootstrap,
       bootstrapState,
       devLogin,

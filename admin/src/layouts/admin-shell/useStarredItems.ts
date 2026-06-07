@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { UserPreferences } from '@nessie/schemas'
+import { useUpdatePreferences } from '../../facades/auth/hooks'
 import { getCookie, setCookie } from '../../lib/storage'
 import type { StarredItem } from './types'
 
 type UseStarredItemsArgs = {
+  initialPreferences: UserPreferences
   initialStarred: StarredItem[]
-  token: string | null
 }
 
 /**
  * Owns the cookie-backed sidebar collapse state plus the starred-item list,
  * including persistence to the user preferences endpoint.
  */
-export const useStarredItems = ({ initialStarred, token }: UseStarredItemsArgs) => {
+export const useStarredItems = ({ initialPreferences, initialStarred }: UseStarredItemsArgs) => {
+  const updatePreferences = useUpdatePreferences()
   const [channelsCollapsed, setChannelsCollapsed] = useState(
     () => getCookie('channelsCollapsed') === '1',
   )
@@ -79,17 +82,10 @@ export const useStarredItems = ({ initialStarred, token }: UseStarredItemsArgs) 
       const next = exists
         ? prev.filter((s) => !(s.type === type && s.id === id))
         : [...prev, { type, id }]
-      if (token) {
-        const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? ''
-        void fetch(`${baseUrl}/api/auth/me/preferences`, {
-          method: 'PATCH',
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-          body: JSON.stringify({ starred: next }),
-        })
-      }
+      updatePreferences.mutate({ ...initialPreferences, starred: next })
       return next
     })
-  }, [token])
+  }, [initialPreferences, updatePreferences])
 
   return {
     channelsCollapsed,
