@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -53,6 +54,18 @@ export default function ThreadScreen(): React.JSX.Element {
   }
 
   const loading = channelQuery.isLoading || messagesQuery.isLoading
+  const error = channelQuery.error ?? messagesQuery.error
+  const channelMissing = !loading && !channelQuery.error && !channelQuery.data
+  const refreshing = channelQuery.isRefetching || messagesQuery.isRefetching
+  const canShowComposer = !loading && !error && !channelMissing && Boolean(threadId)
+  const canSend = Boolean(draft.trim() && threadId) && !sendMessage.isPending
+
+  const refreshThread = async (): Promise<void> => {
+    await channelQuery.refetch()
+    if (threadId) {
+      await messagesQuery.refetch()
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -66,6 +79,36 @@ export default function ThreadScreen(): React.JSX.Element {
           <View style={styles.center}>
             <ActivityIndicator size="large" />
           </View>
+        ) : error ? (
+          <View style={styles.center}>
+            <Text style={styles.error}>{error.message}</Text>
+            <Pressable
+              disabled={refreshing}
+              onPress={() => void refreshThread()}
+              style={[styles.retryButton, refreshing && styles.retryButtonDisabled]}
+            >
+              {refreshing ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.retryButtonText}>Retry</Text>
+              )}
+            </Pressable>
+          </View>
+        ) : channelMissing ? (
+          <View style={styles.center}>
+            <Text style={styles.empty}>Channel not found.</Text>
+            <Pressable
+              disabled={refreshing}
+              onPress={() => void refreshThread()}
+              style={[styles.retryButton, refreshing && styles.retryButtonDisabled]}
+            >
+              {refreshing ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.retryButtonText}>Retry</Text>
+              )}
+            </Pressable>
+          </View>
         ) : (
           <FlatList
             data={inverted}
@@ -74,24 +117,29 @@ export default function ThreadScreen(): React.JSX.Element {
             renderItem={({ item }) => <MessageBubble message={item} />}
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={<Text style={styles.empty}>No messages yet.</Text>}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={() => void refreshThread()} />
+            }
           />
         )}
-        <View style={styles.composer}>
-          <TextInput
-            style={styles.composerInput}
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Message"
-            multiline
-          />
-          <Pressable
-            style={[styles.sendButton, (!draft.trim() || sendMessage.isPending) && styles.sendDisabled]}
-            disabled={!draft.trim() || sendMessage.isPending}
-            onPress={onSend}
-          >
-            <Text style={styles.sendText}>Send</Text>
-          </Pressable>
-        </View>
+        {canShowComposer ? (
+          <View style={styles.composer}>
+            <TextInput
+              style={styles.composerInput}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Message"
+              multiline
+            />
+            <Pressable
+              style={[styles.sendButton, !canSend && styles.sendDisabled]}
+              disabled={!canSend}
+              onPress={onSend}
+            >
+              <Text style={styles.sendText}>Send</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   )
@@ -126,8 +174,21 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   empty: { color: '#6b7280', padding: 24, textAlign: 'center' },
+  error: { color: '#b91c1c', paddingHorizontal: 24, textAlign: 'center' },
   flex: { flex: 1 },
   listContent: { paddingVertical: 8 },
+  retryButton: {
+    alignItems: 'center',
+    backgroundColor: '#2563eb',
+    borderRadius: 10,
+    justifyContent: 'center',
+    marginTop: 16,
+    minWidth: 96,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  retryButtonDisabled: { opacity: 0.6 },
+  retryButtonText: { color: '#ffffff', fontWeight: '600' },
   safe: { backgroundColor: '#ffffff', flex: 1 },
   sendButton: {
     backgroundColor: '#2563eb',

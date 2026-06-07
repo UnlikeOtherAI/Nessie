@@ -1,6 +1,8 @@
-import { useRouter } from 'expo-router'
+import { useRootNavigationState, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+
+import { useAuth } from './auth-context'
 
 // The worker push-dispatch sends `data = { channelId, threadId, messageId }`.
 type PushData = {
@@ -17,7 +19,18 @@ const extractChannelId = (response: Notifications.NotificationResponse): string 
  * cold-start case (app launched from a notification) and taps while running.
  */
 export const useNotificationDeepLink = (): void => {
+  const { status } = useAuth()
   const router = useRouter()
+  const rootNavigationState = useRootNavigationState()
+  const [pendingChannelId, setPendingChannelId] = useState<string | null>(null)
+  const rootNavigationReady = Boolean(rootNavigationState?.key)
+
+  const queueResponse = useCallback((response: Notifications.NotificationResponse): void => {
+    const channelId = extractChannelId(response)
+    if (channelId) {
+      setPendingChannelId(channelId)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -27,23 +40,24 @@ export const useNotificationDeepLink = (): void => {
       if (cancelled || !response) {
         return
       }
-      const channelId = extractChannelId(response)
-      if (channelId) {
-        router.push(`/(app)/channels/${channelId}`)
-      }
+      queueResponse(response)
     })
 
     // Warm taps while the app is running.
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const channelId = extractChannelId(response)
-      if (channelId) {
-        router.push(`/(app)/channels/${channelId}`)
-      }
-    })
+    const subscription = Notifications.addNotificationResponseReceivedListener(queueResponse)
 
     return () => {
       cancelled = true
       subscription.remove()
     }
-  }, [router])
+  }, [queueResponse])
+
+  useEffect(() => {
+    if (!pendingChannelId || status !== 'signed-in' || !rootNavigationReady) {
+      return
+    }
+    const channelId = pendingChannelId
+    setPendingChannelId(null)
+    router.push(`/(app)/channels/${channelId}`)
+  }, [pendingChannelId, rootNavigationReady, router, status])
 }

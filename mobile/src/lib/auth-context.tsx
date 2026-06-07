@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { createApiClient, type ApiClient } from '@nessie/client-core'
 import type { MeResponse } from '@nessie/schemas'
@@ -53,6 +54,7 @@ export const useAuth = (): AuthContextValue => {
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }): React.JSX.Element => {
+  const queryClient = useQueryClient()
   const [baseUrl, setBaseUrlState] = useState(DEFAULT_BASE_URL)
   const [token, setToken] = useState<string | null>(null)
   const [me, setMe] = useState<MeResponse | null>(null)
@@ -104,6 +106,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }): React.JSX.E
           return
         }
         await clearToken()
+        queryClient.clear()
         setStatus('signed-out')
       }
     }
@@ -111,7 +114,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }): React.JSX.E
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [queryClient])
 
   const passwordLogin = useCallback(
     async ({ email, password }: { email: string; password: string }) => {
@@ -138,11 +141,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }): React.JSX.E
     } catch {
       // Logout is idempotent on the client side regardless of server result.
     }
+    await queryClient.cancelQueries()
+    queryClient.clear()
     await clearToken()
     setToken(null)
     setMe(null)
     setStatus('signed-out')
-  }, [baseUrl, token])
+  }, [baseUrl, queryClient, token])
 
   const setBaseUrl = useCallback(async (next: string) => {
     const trimmed = next.trim()

@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { createQueryClient } from '@nessie/client-core'
 
 import { AuthProvider } from '../src/lib/auth-context'
+import { useUnreadBadge } from '../src/lib/use-unread-badge'
 import { useNotificationDeepLink } from '../src/lib/use-notification-deep-link'
 
 // One QueryClient for the app lifetime. createQueryClient comes from
@@ -15,6 +16,7 @@ const queryClient = createQueryClient()
 const RootNavigator = (): React.JSX.Element => {
   // Wire notification taps → channel deep links once, at the navigator root.
   useNotificationDeepLink()
+  useUnreadBadge()
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="login" />
