@@ -6,6 +6,7 @@ packages:
   - "cli"
   - "mobile"
   - "desktop"
+  - "gateway"
   - "packages/*"
 
 # The Expo/React Native toolchain (Metro) cannot follow pnpm's default isolated

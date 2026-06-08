@@ -16,8 +16,9 @@ COPY packages/ packages/
 COPY admin/ admin/
 COPY mobile/package.json mobile/package.json
 COPY desktop/package.json desktop/package.json
+COPY gateway/package.json gateway/package.json
 
-RUN corepack enable && pnpm install --frozen-lockfile --filter='!@nessie/mobile' --filter='!@nessie/desktop'
+RUN corepack enable && pnpm install --frozen-lockfile --filter='!@nessie/mobile' --filter='!@nessie/desktop' --filter='!@nessie/gateway'
 
 # Admin imports runtime values (not just types) from its workspace packages
 # (@nessie/schemas, @nessie/config, @nessie/client-core, …) through their dist

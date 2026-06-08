@@ -1,0 +1,24 @@
+# Dockerfile.gateway needs the gateway source and @nessie/push source even
+# though the root .dockerignore keeps gateway source out of existing images.
+**
+
+!pnpm-lock.yaml
+!package.json
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!turbo.json
+
+!packages
+!packages/push
+!packages/push/**
+
+!gateway
+!gateway/**
+
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.turbo
+*.log
+**/.DS_Store

@@ -177,6 +177,19 @@ importers:
         specifier: ^2.11.2
         version: 2.11.2
 
+  gateway:
+    dependencies:
+      '@nessie/push':
+        specifier: workspace:*
+        version: link:../packages/push
+      fastify:
+        specifier: ^5.8.4
+        version: 5.8.4
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
   mobile:
     dependencies:
       '@expo/metro-runtime':

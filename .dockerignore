@@ -27,6 +27,10 @@ mobile/*
 # sources and bundles stay out of production backend/admin image contexts.
 desktop/*
 !desktop/package.json
+# Gateway push relay: keep only its package.json in existing production image
+# contexts; its own Dockerfile builds the service separately.
+gateway/*
+!gateway/package.json
 assets
 UI
 docs
