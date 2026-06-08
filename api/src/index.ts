@@ -42,6 +42,7 @@ import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChannelRoutes } from './routes/channels.js'
 import { registerDesignerRoutes } from './routes/designer.js'
 import { registerDeviceRoutes } from './routes/devices.js'
+import { registerEventRoutes } from './routes/events.js'
 import { registerExecutionEnvironmentRoutes } from './routes/execution-environments.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
@@ -148,6 +149,7 @@ export const buildApp = async () => {
     databaseUrl,
     poolMax: config.database.poolMax,
     poolMin: config.database.poolMin,
+    prisma,
   })
 
   const memoryPool = createPgPool(databaseUrl, {
@@ -258,6 +260,7 @@ export const buildApp = async () => {
   registerUserRoutes(app, deps)
   registerProjectRoutes(app, deps)
   registerTeamRoutes(app, deps)
+  registerEventRoutes(app, deps)
   registerThreadRoutes(app, deps)
   registerSearchRoutes(app, deps)
   registerActivityRoutes(app, deps)
