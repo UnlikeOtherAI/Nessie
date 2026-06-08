@@ -734,6 +734,19 @@ model ThreadStreamEvent {
   @@map("thread_stream_events")
 }
 
+model RealtimeEvent {
+  id             BigInt   @id @default(autoincrement())
+  organizationId String   @map("organization_id") @db.Uuid
+  channelId      String   @map("channel_id") @db.Uuid
+  eventType      String   @map("event_type")
+  payload        Json     @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([channelId, id], map: "idx_realtime_events_replay")
+  @@index([organizationId, createdAt])
+  @@map("realtime_events")
+}
+
 model Message {
   id        String            @id @default(uuid()) @db.Uuid
   threadId  String            @map("thread_id") @db.Uuid

@@ -75,6 +75,21 @@ backgrounded/closed app**. Desktop apps run foreground/tray, so desktop
 "notifications" come from SSE → native OS notification and need **no APNs/FCM**.
 Only the mobile apps need true background push.
 
+Foreground clients should use one user-scoped connection:
+
+- `GET /api/events/stream` authenticates the session, resolves the user's
+  current channel/DM memberships, subscribes to those channel realtime scopes,
+  and fans message, approval, and agent events over one `EventSource`.
+- Each event is emitted with a monotonic SSE `id:` from `realtime_events`, an
+  `event:` name matching the realtime event type, and JSON `data:` matching the
+  existing WebSocket event message shape.
+- Reconnects send `Last-Event-ID`; the API replays rows with higher ids for the
+  user's current channel scopes before live delivery resumes. The replay log is
+  pruned opportunistically after 24 hours, so it is for short reconnect gaps,
+  not offline sync.
+- Memberships are resolved at connect time. Channel joins/leaves take effect on
+  reconnect for v1.
+
 ## The push server (self-operated)
 
 The centerpiece. One central service we run (`push-gateway/`) that owns the

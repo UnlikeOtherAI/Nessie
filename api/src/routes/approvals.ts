@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import { parseAgentId, parseTaskId } from '@nessie/schemas'
+import { parseAgentId, parseChannelId, parseTaskId } from '@nessie/schemas'
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import {
   getApprovalRequest,
@@ -90,7 +90,12 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
 
     // Publish WS event for approval resolution
     await realtimeHub.publishWs(
-      [{ kind: 'organization', organizationId: actorContext.tenant.organizationId }],
+      [
+        { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+        ...(result.approval.channelId
+          ? [{ kind: 'channel' as const, channelId: parseChannelId(result.approval.channelId) }]
+          : []),
+      ],
       {
         data: {
           approvalId,
