@@ -1,5 +1,9 @@
+use std::io::{Error, ErrorKind};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use tauri::Manager;
+use tauri::WebviewWindowBuilder;
+
+const DESKTOP_NOTIFICATIONS_INIT_SCRIPT: &str = include_str!("desktop_notifications_init.js");
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,6 +20,21 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_notification::init())
+        .setup(|app| {
+            let main_window = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|window| window.label == "main")
+                .ok_or_else(|| Error::new(ErrorKind::NotFound, "missing main window config"))?;
+
+            WebviewWindowBuilder::from_config(app.handle(), main_window)?
+                .initialization_script(DESKTOP_NOTIFICATIONS_INIT_SCRIPT)
+                .build()?;
+
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
