@@ -14,6 +14,7 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 |-----------|-----|-----------|------------|
 | Admin SPA | `https://nessie.unlikeotherai.com` | `nessie-admin` (nginx) | `edge` |
 | API (REST + WS) | `https://api.nessie.unlikeotherai.com` | `nessie-api` (Fastify, 5554) | `edge`, `db` |
+| Push relay (optional) | `https://push.unlikeotherai.com` | `nessie-gateway` (Fastify, 5556) | `edge` |
 | Worker | — (no ingress) | `nessie-worker` | `db` |
 | Postgres + pgvector | — (internal) | `nessie-postgres` (pg17) | `db` |
 
@@ -48,10 +49,10 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 
 `/srv/infra/docker-compose.yml` owns the `caddy` and shared `postgres`
 containers and declares the external `edge` and `db` networks. Caddy mounts
-`/srv/infra/caddy/Caddyfile`. Nessie only **appends** its two site blocks to
-that Caddyfile (guarded by a `# === Nessie production ===` marker) and reloads
-Caddy — it never rewrites the file. Other apps (voicepos, hugo) share the same
-proxy and networks.
+`/srv/infra/caddy/Caddyfile`. Nessie only **appends** its site blocks to that
+Caddyfile (guarded by a `# === Nessie production ===` marker) and reloads Caddy
+— it never rewrites the file. Other apps (voicepos, hugo) share the same proxy
+and networks.
 
 ## First deploy (from a dev machine)
 
@@ -139,6 +140,47 @@ are untouched.
 To rotate the deploy key: generate a new keypair, append the public key to the
 host's `~/.ssh/authorized_keys`, and `gh secret set DEPLOY_SSH_KEY` with the
 private key.
+
+### Push relay (optional)
+
+The standalone `@nessie/gateway` push relay is deployable but gated behind the
+Compose `push` profile. The default `redeploy.sh` does not pass
+`--profile push`, so it keeps building and starting only Postgres, API, worker,
+and admin. The relay starts only when an operator deliberately enables that
+profile.
+
+Before enabling it, set the relay values in the host-only
+`/srv/nessie/infrastructure/compose/.env` file. Do not commit real values.
+
+- `GATEWAY_API_KEY` - bearer token accepted by `POST /v1/push`.
+- `PUSH_APNS_P8`, `PUSH_APNS_KEY_ID`, `PUSH_APNS_TEAM_ID`,
+  `PUSH_APNS_TOPIC`, `PUSH_APNS_ENV` - required together for APNs delivery.
+- `PUSH_FCM_SERVICE_ACCOUNT` - Firebase service-account JSON string, required
+  for FCM delivery.
+
+Create a DNS-only A record for `push.unlikeotherai.com` pointing at
+`178.105.82.46`, then append a third Nessie site block to
+`/srv/infra/caddy/Caddyfile`:
+
+```caddyfile
+push.unlikeotherai.com {
+  reverse_proxy nessie-gateway:5556
+}
+```
+
+Validate and reload Caddy after the edit. To build and start only the relay:
+
+```sh
+docker compose -f infrastructure/compose/docker-compose.prod.yml \
+  --profile push build nessie-gateway
+docker compose -f infrastructure/compose/docker-compose.prod.yml \
+  --profile push up -d nessie-gateway
+```
+
+Self-hosted Nessie instances should point at
+`https://push.unlikeotherai.com` for push delivery once their worker/API relay
+client wiring is enabled. This deployment step only hosts the relay; it does not
+make the Nessie API or worker call it yet.
 
 ## Verifying
 
