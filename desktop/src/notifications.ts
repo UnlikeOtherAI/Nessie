@@ -5,8 +5,27 @@ import {
 } from '@tauri-apps/plugin-notification'
 
 export interface NativeNotification {
+  autoCancel?: boolean
   title: string
   body?: string
+  extra?: Record<string, unknown>
+  id?: number
+}
+
+export type DesktopNotificationEventName =
+  | 'approval.created'
+  | 'approval.needed'
+  | 'approval.resolved'
+  | 'mention.created'
+  | 'mention.new'
+  | 'message.mention'
+  | 'message.new'
+
+export interface DesktopNotificationRoute {
+  channelId?: string
+  eventId?: string
+  eventName: DesktopNotificationEventName
+  route: string
 }
 
 export async function notify(notification: NativeNotification): Promise<boolean> {
@@ -24,5 +43,3 @@ export async function notify(notification: NativeNotification): Promise<boolean>
   sendNotification(notification)
   return true
 }
-
-// TODO(desktop): subscribe to admin SSE 'message.new' and call notify().

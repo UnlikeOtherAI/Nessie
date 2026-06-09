@@ -8,8 +8,10 @@
     "frontendDist": "../../admin/dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
+        "create": false,
         "label": "main",
         "title": "Nessie",
         "width": 1280,
