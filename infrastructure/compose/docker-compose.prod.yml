@@ -107,6 +107,31 @@ services:
       timeout: 5s
       retries: 5
 
+  nessie-gateway:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.gateway
+    image: nessie-gateway:latest
+    container_name: nessie-gateway
+    profiles: ["push"]
+    restart: unless-stopped
+    env_file:
+      # Loads GATEWAY_API_KEY, PUSH_APNS_*, and PUSH_FCM_SERVICE_ACCOUNT from
+      # the host-only .env file when the push profile is enabled.
+      - .env
+    environment:
+      NODE_ENV: production
+      GATEWAY_HOST: 0.0.0.0
+      GATEWAY_PORT: "5556"
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5556/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
 volumes:
   nessie_pgdata:
 
