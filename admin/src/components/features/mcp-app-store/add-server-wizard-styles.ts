@@ -10,7 +10,7 @@ export const labelClass = [
 
 export const inputClass = [
   'admin-input mt-1 w-full rounded-md border border-[color:var(--sep)]',
-  'bg-black/20 px-3 py-2 text-sm text-white',
+  'bg-[var(--scrim)] px-3 py-2 text-sm text-[color:var(--on-accent)]',
   'focus:border-[color:var(--accent)] focus:outline-none',
 ].join(' ')
 
@@ -21,5 +21,5 @@ export const buttonPrimary = [
 
 export const buttonGhost = [
   'admin-button rounded-md border border-[color:var(--sep)]',
-  'px-4 py-2 text-sm text-[color:var(--tx2)] hover:bg-white/5',
+  'px-4 py-2 text-sm text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
 ].join(' ')

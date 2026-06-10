@@ -1,3 +1,4 @@
+// Theming exception: deliberate whiteboard canvas; revisit for full theming.
 import type { WorkflowCanvasNodeType } from './types'
 
 export const toolbarButtonClass = [

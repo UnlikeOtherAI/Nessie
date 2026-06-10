@@ -1,3 +1,4 @@
+// Theming exception: deliberate avatar identity palette; revisit for full theming.
 /**
  * Shared avatar helpers — initials and gradient palettes used across the
  * admin UI (Avatar primitive, channel member lists, agent rows).

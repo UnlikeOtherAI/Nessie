@@ -13,8 +13,10 @@ export type FeedItem =
   | { kind: 'date'; label: string }
   | { kind: 'message'; message: ThreadMessageRecord }
 
-export const toolbarButtonClass =
-  'flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-white/10'
+export const toolbarButtonClass = [
+  'flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)]',
+  'hover:bg-[var(--overlay)]',
+].join(' ')
 
 export const runsCardClass = [
   'admin-card flex items-start gap-3 p-3 text-left',

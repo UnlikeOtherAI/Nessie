@@ -1,7 +1,7 @@
 /** Shared layout class strings for channel-members popup rows. */
 export const rowClass = [
   'flex items-center gap-3 rounded-lg px-3 py-2',
-  'hover:bg-white/5 transition-colors',
+  'hover:bg-[var(--overlay-weak)] transition-colors',
 ].join(' ')
 
 /** Shared class string for inline row action buttons. */

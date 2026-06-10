@@ -137,7 +137,7 @@ export const ThemeProvider = ({ children }: PropsWithChildren) => {
 
   return (
     <ThemeContext.Provider value={value}>
-      <div className="min-h-screen text-[var(--ink)]">{children}</div>
+      <div className="min-h-screen text-[color:var(--tx)]">{children}</div>
     </ThemeContext.Provider>
   )
 }

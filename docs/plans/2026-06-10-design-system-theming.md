@@ -125,7 +125,7 @@ ambiguous, leave a `/* TODO theme: <reason> */` and keep the closest token.
 ## Starter themes (ship 3)
 
 1. **Nebula** (default) — current purple-on-dark. Base `:root`, no change.
-2. **Midnight** — neutral slate/blue dark (accent `#3b82f6`, surfaces neutral).
+2. **Midnight** — neutral slate/blue dark (accent `#2563eb`, surfaces neutral).
 3. **Daylight** — light theme (light surfaces, dark text). This is the real test
    that tokenization is complete: if anything is still hardcoded it will glare.
 
@@ -166,21 +166,25 @@ hex in `.css` outside `styles.css`, **0** Tailwind named-color utilities in
 `.tsx`. Kelpie screenshots confirm all three themes render: nebula (default,
 unchanged), midnight (neutral slate/blue dark), daylight (light content).
 
-- Tokens + 3 theme blocks: `admin/src/styles.css` (`:root` = nebula,
-  `[data-theme="midnight"]`, `[data-theme="daylight"]`).
+- Tokens + theme blocks: `admin/src/styles.css` (`:root` = nebula, plus
+  `[data-theme]` blocks for midnight, daylight, forest, ocean, sunset, rose,
+  graphite, and sandstone).
 - Switcher: `admin/src/providers/ThemeProvider.tsx` (`useTheme()`, persists to
   `localStorage["nessie.theme"]`, sets `document.documentElement.dataset.theme`)
   + `admin/src/pages/settings/AppearancePage.tsx` at `/settings/appearance`.
+- Review pass: remaining component CSS and `.ts` style-helper color escapes are
+  tokenized; `admin/index.html` applies the saved theme before first paint;
+  dark/light `color-scheme` is set per theme; daylight and sandstone
+  `--surface-inverse` values are light so login/bootstrap inputs remain legible.
 
 **To add a theme:** add a `[data-theme="<id>"]` block to `styles.css` that
 redeclares **every** token the base `:root` defines, add the id to the `Theme`
 union + `THEMES` list in `ThemeProvider.tsx`. No component edits — that's the
 point.
 
-**Open items for review:** (a) daylight keeps a dark sidebar (`--rail`/`--sb`) —
-intentional contrast or should it lighten? (b) the live in-app switch was not
-kelpie-verified (kelpie's synthetic events don't drive a controlled radio; each
-theme's *rendering* was verified by forcing the initial theme) — the
+**Open items for review:** (a) the live in-app switch was not kelpie-verified
+(kelpie's synthetic events don't drive a controlled radio; each theme's
+*rendering* was verified by forcing the initial theme) — the
 controlled-radio→`onChange`→`setTheme` path is standard React; confirm with a
-real click. (c) `--executing`/`--thinking` legacy tokens vs the new `--success`
+real click. (b) `--executing`/`--thinking` legacy tokens vs the new `--success`
 family — check for redundancy.
