@@ -37,8 +37,18 @@ $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
 echo "==> Recreating api + worker + admin"
 $COMPOSE up -d
 
+# Reclaim Docker build cache + dangling images. Each rebuild adds layers and
+# ~10GB of build cache; left unbounded it filled the shared host disk to 100%,
+# which crashed Postgres (PANIC: No space left on device, stuck in recovery).
+# Keep only cache used in the last 48h so incremental rebuilds stay fast.
+echo "==> Reclaiming old Docker build cache + dangling images"
+docker builder prune -f --filter until=48h >/dev/null 2>&1 || true
+docker image prune -f >/dev/null 2>&1 || true
+
 echo "==> Status"
 docker ps --filter name=nessie --format 'table {{.Names}}\t{{.Status}}'
+echo "==> Host disk"
+df -h / | tail -1
 
 cat <<'NOTE'
 

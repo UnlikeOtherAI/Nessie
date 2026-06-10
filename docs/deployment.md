@@ -141,6 +141,24 @@ To rotate the deploy key: generate a new keypair, append the public key to the
 host's `~/.ssh/authorized_keys`, and `gh secret set DEPLOY_SSH_KEY` with the
 private key.
 
+### Host disk / Docker build cache (operational)
+
+The host disk (`/`, ~300 GB) is **shared with other apps** on the box. Each
+rebuild adds image layers and ~10 GB of Docker build cache; left unbounded this
+filled the disk to 100% on 2026-06-10 and crashed `nessie-postgres`
+(`PANIC: could not write … No space left on device`, stuck in WAL recovery and
+rejecting connections — which also blocks `prisma migrate deploy`). Mitigations
+now in place:
+
+- `redeploy.sh` waits for Postgres to accept connections (`pg_isready`) before
+  migrating, and after recreate prunes build cache older than 48h
+  (`docker builder prune -f --filter until=48h`) plus dangling images.
+- If the disk fills anyway, the safe manual reclaim (does **not** touch named
+  volumes / running images): `docker builder prune -af` (build cache, 0 active)
+  then `docker image prune -f` (dangling only). Avoid `image prune -a` and
+  `--volumes` on this shared host. Check with `docker system df` / `df -h /`.
+  Once space frees, Postgres finishes recovery on its own and goes healthy.
+
 ### Push relay (optional)
 
 The standalone `@nessie/gateway` push relay is deployable but gated behind the
