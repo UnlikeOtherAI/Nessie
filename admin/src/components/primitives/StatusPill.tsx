@@ -8,11 +8,11 @@ type StatusPillProps = {
 }
 
 const toneClasses: Record<StatusPillTone, string> = {
-  accent: 'bg-[rgba(124,58,237,0.16)] text-[#a78bfa]',
-  danger: 'bg-red-500/12 text-red-300',
-  muted: 'bg-white/6 text-[color:var(--tx3)]',
-  success: 'bg-emerald-500/12 text-emerald-300',
-  warning: 'bg-amber-500/12 text-amber-300',
+  accent: 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
+  danger: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+  muted: 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)]',
+  success: 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]',
+  warning: 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
 }
 
 export const StatusPill = ({ children, tone = 'muted' }: StatusPillProps) => (

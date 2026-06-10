@@ -25,15 +25,15 @@ export const ColumnBrowserItem = ({
     className={[
       'w-full rounded-xl border p-3 text-left transition',
       isSelected
-        ? 'border-emerald-400/60 bg-emerald-400/10'
-        : 'border-[color:var(--sep)] bg-black/10 hover:bg-black/20',
+        ? 'border-[color:var(--success-border)] bg-[color:var(--success-soft)]'
+        : 'border-[color:var(--sep)] bg-[color:var(--scrim-weak)] hover:bg-[color:var(--scrim)]',
     ].join(' ')}
     onClick={onClick}
     type="button"
   >
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
-        <div className="truncate font-semibold text-white">{title}</div>
+        <div className="truncate font-semibold text-[color:var(--tx)]">{title}</div>
         {subtitle ? (
           <div className="mt-1 text-xs text-[color:var(--tx3)]">{subtitle}</div>
         ) : null}

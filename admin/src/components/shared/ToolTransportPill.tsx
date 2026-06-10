@@ -23,7 +23,7 @@ export const ToolTransportPill = ({ transport }: ToolTransportPillProps) => (
   <span
     className={[
       'inline-flex rounded-full border border-[color:var(--sep)]',
-      'bg-black/20 px-3 py-1 text-[11px] uppercase',
+      'bg-[color:var(--scrim)] px-3 py-1 text-[11px] uppercase',
       'tracking-[0.18em] text-[color:var(--tx2)]',
     ].join(' ')}
   >

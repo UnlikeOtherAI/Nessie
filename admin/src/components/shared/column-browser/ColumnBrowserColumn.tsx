@@ -19,7 +19,7 @@ export const ColumnBrowserColumn = ({
     <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4">
       {showBack && onBack ? (
         <button
-          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10"
+          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
           onClick={onBack}
           type="button"
         >
@@ -38,7 +38,7 @@ export const ColumnBrowserColumn = ({
           </svg>
         </button>
       ) : null}
-      <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-white">
+      <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">
         {title}
       </h3>
       {headerAction}

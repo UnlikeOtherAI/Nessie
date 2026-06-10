@@ -100,7 +100,7 @@ export const ChannelMembersPopup = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(0, 0, 0, 0.6)',
+        background: 'var(--scrim-strong)',
         backdropFilter: 'blur(4px)',
       }}
     >
@@ -109,12 +109,12 @@ export const ChannelMembersPopup = ({
           'flex max-h-[80vh] w-full max-w-[480px] flex-col rounded-xl',
           'border border-[color:var(--sep)] bg-[color:var(--main)]',
         ].join(' ')}
-        style={{ boxShadow: '0 24px 48px rgba(0,0,0,0.4)' }}
+        style={{ boxShadow: '0 24px 48px var(--scrim-strong)' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[color:var(--sep)] px-5 py-4">
           <div>
-            <h2 className="text-lg font-bold text-white">
+            <h2 className="text-lg font-bold text-[color:var(--tx)]">
               #{channelLabel} members
             </h2>
             <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
@@ -124,7 +124,8 @@ export const ChannelMembersPopup = ({
           <button
             className={[
               'flex h-7 w-7 items-center justify-center rounded',
-              'text-[color:var(--tx3)] hover:bg-white/10 hover:text-white',
+              'text-[color:var(--tx3)] hover:bg-[color:var(--overlay)]',
+              'hover:text-[color:var(--tx)]',
             ].join(' ')}
             onClick={onClose}
             type="button"
@@ -138,7 +139,7 @@ export const ChannelMembersPopup = ({
           <div
             className={[
               'flex items-center gap-2 rounded-lg border',
-              'border-[color:var(--border-strong)] bg-white/5 px-3 py-2',
+              'border-[color:var(--border-strong)] bg-[color:var(--overlay-weak)] px-3 py-2',
             ].join(' ')}
           >
             <SearchIcon />

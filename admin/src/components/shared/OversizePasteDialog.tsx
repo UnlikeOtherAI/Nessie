@@ -56,7 +56,7 @@ export const OversizePasteDialog = ({
       style={{
         alignItems: 'center',
         backdropFilter: 'blur(4px)',
-        background: 'rgba(0, 0, 0, 0.6)',
+        background: 'var(--scrim-strong)',
         display: 'flex',
         inset: 0,
         justifyContent: 'center',
@@ -69,14 +69,14 @@ export const OversizePasteDialog = ({
         style={{ maxWidth: 640, width: '100%' }}
       >
         <div className="create-channel-header">
-          <h2 className="text-lg font-bold text-white">
+          <h2 className="text-lg font-bold text-[color:var(--tx)]">
             That&apos;s too long for chat
           </h2>
           <button
             className={[
               'flex h-7 w-7 items-center justify-center',
               'rounded text-[color:var(--tx3)]',
-              'hover:bg-white/10 hover:text-white',
+              'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
             ].join(' ')}
             onClick={onCancel}
             type="button"
@@ -109,7 +109,7 @@ export const OversizePasteDialog = ({
           <div
             className={[
               'max-h-[260px] overflow-auto rounded-md',
-              'border border-[color:var(--sep)] bg-black/30',
+              'border border-[color:var(--sep)] bg-[color:var(--scrim)]',
               'p-3 font-mono text-xs text-[color:var(--tx2)]',
               'whitespace-pre-wrap break-words',
             ].join(' ')}
@@ -151,7 +151,7 @@ export const OversizePasteDialog = ({
             </button>
           </div>
           {error ? (
-            <p className="text-sm text-[color:var(--danger,#f87171)]">{error}</p>
+            <p className="text-sm text-[color:var(--danger-text)]">{error}</p>
           ) : null}
         </div>
       </div>

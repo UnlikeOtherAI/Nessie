@@ -249,8 +249,8 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
                 className={[
                   'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
                   i === selectedIdx
-                    ? 'bg-[color:var(--accent)] text-white'
-                    : 'text-[color:var(--tx)] hover:bg-white/5',
+                    ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
+                    : 'text-[color:var(--tx)] hover:bg-[color:var(--overlay-weak)]',
                 ].join(' ')}
                 onMouseDown={(e) => {
                   e.preventDefault()
@@ -262,7 +262,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
                 <span
                   className={[
                     'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full',
-                    'bg-white/10 text-xs',
+                    'bg-[color:var(--overlay)] text-xs',
                   ].join(' ')}
                 >
                   {entity.type === 'agent'
@@ -282,7 +282,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           ref={editorRef}
           className={[
             'mention-editor min-h-[82px] max-h-[220px] w-full overflow-y-auto',
-            'bg-transparent px-4 py-3 text-sm text-[#f3f4f6] outline-none',
+            'bg-transparent px-4 py-3 text-sm text-[color:var(--surface-inverse-2)] outline-none',
             !hasContent ? 'is-empty' : '',
           ].join(' ')}
           contentEditable

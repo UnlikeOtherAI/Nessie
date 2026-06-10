@@ -85,21 +85,21 @@ export const ChannelSettingsDialog = (
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(0, 0, 0, 0.6)',
+        background: 'var(--scrim-strong)',
         backdropFilter: 'blur(4px)',
       }}
     >
       <div className="create-channel-panel">
         <div className="create-channel-header">
           <div>
-            <h2 className="text-lg font-bold text-white">Channel settings</h2>
+            <h2 className="text-lg font-bold text-[color:var(--tx)]">Channel settings</h2>
             <div className="text-xs text-[color:var(--tx3)]">#{channel.label}</div>
           </div>
           <button
             className={[
               'flex h-7 w-7 items-center justify-center',
               'rounded text-[color:var(--tx3)]',
-              'hover:bg-white/10 hover:text-white',
+              'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
             ].join(' ')}
             onClick={onClose}
             type="button"
@@ -191,7 +191,7 @@ export const ChannelSettingsDialog = (
                 {isArchived ? 'Unarchive' : 'Archive'}
               </button>
               <button
-                className="admin-button admin-button-secondary text-[color:var(--danger,#f87171)]"
+                className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
                 disabled={archiveChannel.isPending}
                 onClick={handleDelete}
                 type="button"

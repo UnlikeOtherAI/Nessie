@@ -68,14 +68,14 @@ export const CallOverlay = ({ roomId, displayName, onLeave }: CallOverlayProps) 
 
   if (minimized) {
     return (
-      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full border border-emerald-700/50 bg-[color:var(--main)] px-3 py-1.5 shadow-lg">
+      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full border border-[color:var(--success-border)] bg-[color:var(--main)] px-3 py-1.5 shadow-lg">
         <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[color:var(--success)] opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-[color:var(--success)]" />
         </span>
         <span className="text-xs text-[color:var(--tx2)]">In call</span>
         <button
-          className="text-xs text-[color:var(--tx3)] hover:text-white"
+          className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
           onClick={() => setMinimized(false)}
           type="button"
         >
@@ -93,7 +93,7 @@ export const CallOverlay = ({ roomId, displayName, onLeave }: CallOverlayProps) 
         <span className="text-xs font-medium text-[color:var(--tx2)]">Video Call</span>
         <div className="flex items-center gap-1">
           <button
-            className="rounded p-0.5 text-[color:var(--tx3)] hover:text-white"
+            className="rounded p-0.5 text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
             onClick={() => setMinimized(true)}
             title="Minimize"
             type="button"
@@ -103,7 +103,7 @@ export const CallOverlay = ({ roomId, displayName, onLeave }: CallOverlayProps) 
             </svg>
           </button>
           <button
-            className="rounded p-0.5 text-[color:var(--tx3)] hover:text-red-400"
+            className="rounded p-0.5 text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
             onClick={onLeave}
             title="Leave call"
             type="button"

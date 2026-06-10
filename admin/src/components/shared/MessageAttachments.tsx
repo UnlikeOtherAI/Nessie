@@ -84,14 +84,14 @@ const DownloadChip = ({
     <button
       className={[
         'inline-flex items-center gap-2 rounded-md border',
-        'border-[color:var(--sep)] bg-black/20 px-3 py-2',
-        'text-xs text-[color:var(--tx2)] hover:bg-white/5',
+        'border-[color:var(--sep)] bg-[color:var(--scrim)] px-3 py-2',
+        'text-xs text-[color:var(--tx2)] hover:bg-[color:var(--overlay-weak)]',
       ].join(' ')}
       disabled={downloading}
       onClick={handleDownload}
       type="button"
     >
-      <span className="font-semibold text-white">{attachment.filename}</span>
+      <span className="font-semibold text-[color:var(--tx)]">{attachment.filename}</span>
       <span>{formatBytes(attachment.sizeBytes)}</span>
       <span>{downloading ? '…' : '↓'}</span>
     </button>

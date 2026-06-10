@@ -49,7 +49,7 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
       style={{
         alignItems: 'center',
         backdropFilter: 'blur(4px)',
-        background: 'rgba(0, 0, 0, 0.6)',
+        background: 'var(--scrim-strong)',
         display: 'flex',
         inset: 0,
         justifyContent: 'center',
@@ -59,12 +59,12 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
     >
       <div className="create-channel-panel">
         <div className="create-channel-header">
-          <h2 className="text-lg font-bold text-white">Create a project</h2>
+          <h2 className="text-lg font-bold text-[color:var(--tx)]">Create a project</h2>
           <button
             className={[
               'flex h-7 w-7 items-center justify-center',
               'rounded text-[color:var(--tx3)]',
-              'hover:bg-white/10 hover:text-white',
+              'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
             ].join(' ')}
             onClick={handleClose}
             type="button"

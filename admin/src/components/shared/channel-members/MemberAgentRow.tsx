@@ -12,8 +12,8 @@ const getAgentGlyph = (role: string): string => {
 
 const agentActionBtnClass = [
   actionBtnClass,
-  'text-[color:var(--tx3)] hover:bg-[rgba(124,58,237,0.15)]',
-  'hover:text-[#a78bfa]',
+  'text-[color:var(--tx3)] hover:bg-[color:var(--accent-soft)]',
+  'hover:text-[color:var(--thinking)]',
 ].join(' ')
 
 type CurrentAgentRowProps = {
@@ -44,7 +44,7 @@ export const CurrentAgentRow = ({
       {getAgentGlyph(agent.role)}
     </div>
     <div className="min-w-0 flex-1">
-      <div className="truncate text-sm font-medium text-white">
+      <div className="truncate text-sm font-medium text-[color:var(--tx)]">
         {agent.name}
       </div>
       <div className="truncate text-xs text-[color:var(--tx3)]">
@@ -53,9 +53,10 @@ export const CurrentAgentRow = ({
     </div>
     <span
       className={[
-        'rounded border border-[rgba(124,58,237,0.3)]',
-        'bg-[rgba(124,58,237,0.15)] px-1.5 py-0.5',
-        'text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a78bfa]',
+        'rounded border border-[color:var(--accent)]/30',
+        'bg-[color:var(--accent-soft)] px-1.5 py-0.5',
+        'text-[10px] font-semibold uppercase tracking-[0.12em]',
+        'text-[color:var(--thinking)]',
       ].join(' ')}
     >
       agent
@@ -79,7 +80,7 @@ export const CurrentAgentRow = ({
         <ViewIcon />
       </button>
       <button
-        className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-red-500/10 hover:text-red-400`}
+        className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[color:var(--danger-soft)] hover:text-[color:var(--danger-text)]`}
         disabled={unbindPending}
         onClick={() => onUnbind(agent.id, channelId)}
         title="Remove from channel"
@@ -137,8 +138,8 @@ export const AvailableAgentRow = ({
       <button
         className={[
           actionBtnClass,
-          'border border-[rgba(124,58,237,0.3)] text-[#a78bfa]',
-          'hover:bg-[rgba(124,58,237,0.15)]',
+          'border border-[color:var(--accent)]/30 text-[color:var(--thinking)]',
+          'hover:bg-[color:var(--accent-soft)]',
         ].join(' ')}
         disabled={bindPending}
         onClick={() => onBind(agent.id, channelId)}
