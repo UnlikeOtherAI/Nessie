@@ -282,7 +282,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           ref={editorRef}
           className={[
             'mention-editor min-h-[82px] max-h-[220px] w-full overflow-y-auto',
-            'bg-transparent px-4 py-3 text-sm text-[color:var(--surface-inverse-2)] outline-none',
+            'bg-transparent px-4 py-3 text-sm text-[color:var(--tx)] outline-none',
             !hasContent ? 'is-empty' : '',
           ].join(' ')}
           contentEditable
