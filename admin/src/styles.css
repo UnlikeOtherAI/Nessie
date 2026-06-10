@@ -404,7 +404,7 @@ a {
 
 .admin-sb-item.active-parent {
   background: color-mix(in srgb, var(--sb-active) 20%, transparent);
-  color: color-mix(in srgb, var(--on-accent) 78%, var(--tx2) 22%);
+  color: var(--tx);
 }
 
 .admin-sb-item.sidebar-child {

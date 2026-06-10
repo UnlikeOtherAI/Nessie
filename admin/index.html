@@ -26,7 +26,7 @@
         'contrast',
       ]
       document.documentElement.dataset.theme =
-        t === 'system' || !t || themes.indexOf(t) < 0 ? systemTheme : t
+        t === 'system' ? systemTheme : (!t || themes.indexOf(t) < 0 ? 'sandstone' : t)
     </script>
   </head>
   <body>

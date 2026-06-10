@@ -42,9 +42,14 @@ type ThemeContextValue = {
 
 const THEMES = [
   {
-    description: 'The current purple-on-dark Nessie palette.',
+    description: 'Warm sand surfaces with terracotta controls.',
+    id: 'sandstone',
+    label: 'Sandstone',
+  },
+  {
+    description: 'Classic purple-on-dark Nessie palette.',
     id: 'nebula',
-    label: 'Nebula',
+    label: 'Classic',
   },
   {
     description: 'Neutral slate surfaces with a clear blue accent.',
@@ -80,11 +85,6 @@ const THEMES = [
     description: 'Neutral grayscale surfaces with restrained steel accents.',
     id: 'graphite',
     label: 'Graphite',
-  },
-  {
-    description: 'Warm sand surfaces with terracotta controls.',
-    id: 'sandstone',
-    label: 'Sandstone',
   },
   {
     description: 'Maximum separation for text, controls, and surfaces.',
@@ -131,7 +131,7 @@ const writeLocalTheme = (theme: Theme): void => {
 }
 
 const getStoredTheme = (serverTheme?: Theme): Theme =>
-  serverTheme ?? getLocalTheme() ?? 'system'
+  serverTheme ?? getLocalTheme() ?? 'sandstone'
 
 const getSystemTheme = (mediaQuery?: MediaQueryList): AppliedTheme => {
   if (mediaQuery) {

@@ -51,7 +51,7 @@ export const AppearancePage = () => {
                   'focus-within:outline focus-within:outline-2 focus-within:outline-offset-2',
                   'focus-within:outline-[color:var(--accent)]',
                   selected
-                    ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)]'
+                    ? 'bg-[color:var(--accent-soft)] ring-2 ring-[color:var(--accent)]'
                     : 'hover:bg-[color:var(--main-hover)]',
                 ].join(' ')}
               >
