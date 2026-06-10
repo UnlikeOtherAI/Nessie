@@ -26,7 +26,7 @@ export const AgentRow = ({
         <Avatar label={title} size="sm" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <div className="truncate font-medium text-white">{title}</div>
+            <div className="truncate font-medium text-[color:var(--tx)]">{title}</div>
             {statusDot}
           </div>
           <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">

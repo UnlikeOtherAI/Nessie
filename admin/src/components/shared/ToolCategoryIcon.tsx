@@ -21,9 +21,9 @@ const SOURCE_GLYPHS: Record<ToolRegistrySource, string> = {
 
 const SOURCE_TONE: Record<ToolRegistrySource, string> = {
   'builtin': 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
-  'custom': 'bg-amber-500/15 text-amber-300',
-  'mcp-remote': 'bg-violet-500/15 text-violet-300',
-  'interactive-session': 'bg-sky-500/15 text-sky-300',
+  'custom': 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
+  'mcp-remote': 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
+  'interactive-session': 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
 }
 
 export const ToolCategoryIcon = ({ source }: ToolCategoryIconProps) => (

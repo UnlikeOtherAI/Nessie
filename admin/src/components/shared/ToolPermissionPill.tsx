@@ -14,13 +14,16 @@ type ToolPermissionPillProps = {
 
 const STATUS_STYLES: Record<ToolRegistryEntryStatus, string> = {
   active: [
-    'border-emerald-400/30 bg-emerald-400/10 text-emerald-300',
+    'border-[color:var(--success-border)] bg-[color:var(--success-soft)]',
+    'text-[color:var(--success-text)]',
   ].join(' '),
   pending_review: [
-    'border-amber-400/30 bg-amber-400/10 text-amber-300',
+    'border-[color:var(--warning-border)] bg-[color:var(--warning-soft)]',
+    'text-[color:var(--warning-text)]',
   ].join(' '),
   disabled: [
-    'border-rose-400/30 bg-rose-400/10 text-rose-300',
+    'border-[color:var(--danger-border)] bg-[color:var(--danger-soft)]',
+    'text-[color:var(--danger-text)]',
   ].join(' '),
 }
 
