@@ -39,7 +39,7 @@ export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => (
           className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4"
         >
           <div className="flex items-center justify-between gap-3">
-            <div className="font-mono text-sm text-[#a78bfa]">{entry.toolName}</div>
+            <div className="font-mono text-sm text-[var(--thinking)]">{entry.toolName}</div>
             <StatusPill tone={getTone(entry.success)}>
               {entry.success === undefined ? 'running' : entry.success ? 'success' : 'failed'}
             </StatusPill>

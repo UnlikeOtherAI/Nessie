@@ -41,9 +41,9 @@ const parseLimit = (raw: string, integer: boolean): number | null | 'invalid' =>
 }
 
 const levelTone: Record<BudgetStatus['level'], string> = {
-  ok: 'bg-emerald-500/15 text-emerald-300',
-  warn: 'bg-amber-500/15 text-amber-300',
-  over: 'bg-red-500/15 text-red-300',
+  ok: 'bg-[var(--success-soft)] text-[var(--success-text)]',
+  warn: 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
+  over: 'bg-[var(--danger-soft)] text-[var(--danger-text)]',
 }
 
 export const BudgetManager = ({ organizationId }: { organizationId: string }) => {
@@ -312,7 +312,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
           Save budget
         </button>
       </div>
-      {formError && <div className="mt-2 text-xs text-red-300">{formError}</div>}
+      {formError && <div className="mt-2 text-xs text-[var(--danger-text)]">{formError}</div>}
 
       <div className={`${sectionTitle} mt-5`}>Configured budgets ({budgets.length})</div>
       <div className="mt-2 grid gap-2">
@@ -320,7 +320,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
           <div key={`${b.scopeType}:${b.scopeId}`} className="admin-card p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <span className="font-semibold text-white">{scopeLabel(b)}</span>
+                <span className="font-semibold text-[var(--tx)]">{scopeLabel(b)}</span>
                 <span className="ml-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                   {b.scopeType} · {b.mode} · {b.period}
                 </span>
@@ -328,7 +328,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
               <span
                 className={[
                   'shrink-0 rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em]',
-                  b.mode === 'unlimited' ? 'bg-white/10 text-[color:var(--tx3)]' : levelTone[b.level],
+                  b.mode === 'unlimited' ? 'bg-[var(--overlay)] text-[color:var(--tx3)]' : levelTone[b.level],
                 ].join(' ')}
               >
                 {b.mode === 'unlimited'

@@ -72,12 +72,12 @@ const AgentChildrenHeader = ({
   const displayedChildren = children.slice(0, 5)
 
   return (
-    <div className="mb-3 rounded-xl border border-[color:var(--sep)] bg-black/10 p-3">
+    <div className="mb-3 rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <AgentStatusDot status={parentAgent.status} />
           <div>
-            <div className="text-sm font-medium text-white">
+            <div className="text-sm font-medium text-[var(--tx)]">
               {parentAgent.name}
             </div>
             <div className="text-xs text-[color:var(--tx3)]">
@@ -86,7 +86,7 @@ const AgentChildrenHeader = ({
           </div>
         </div>
         <button
-          className="flex items-center gap-0.5 rounded-full px-1 py-0.5 transition-colors hover:bg-white/10"
+          className="flex items-center gap-0.5 rounded-full px-1 py-0.5 transition-colors hover:bg-[var(--overlay)]"
           onClick={onOpenPopup}
           title="Manage sub-agents"
           type="button"
@@ -109,7 +109,7 @@ const AgentChildrenHeader = ({
           <div
             className={[
               'flex h-[22px] w-[22px] items-center justify-center rounded-full',
-              'border-2 border-[color:var(--main)] bg-white/10 text-xs',
+              'border-2 border-[color:var(--main)] bg-[var(--overlay)] text-xs',
               'text-[color:var(--tx3)]',
             ].join(' ')}
           >

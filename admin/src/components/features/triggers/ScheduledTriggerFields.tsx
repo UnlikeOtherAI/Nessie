@@ -16,7 +16,7 @@ export const ScheduledTriggerFields = ({
   isEditMode,
   setForm,
 }: ScheduledTriggerFieldsProps) => (
-  <section className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+  <section className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
     <div className="grid gap-4 md:grid-cols-2">
       <div className="grid gap-1.5">
         <label className={fieldLabelClass} htmlFor="trigger-schedule-mode">

@@ -12,7 +12,7 @@ export const WebhookTriggerFields = ({
   trigger,
   webhookUrl,
 }: WebhookTriggerFieldsProps) => (
-  <section className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+  <section className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
     <div className="grid gap-4 md:grid-cols-2">
       <div className="grid gap-1.5 md:col-span-2">
         <label className={fieldLabelClass} htmlFor="trigger-webhook-endpoint">
@@ -68,7 +68,7 @@ export const WebhookTriggerFields = ({
       </div>
     </div>
 
-    <div className="mt-4 rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-3 text-sm text-[color:var(--tx3)]">
+    <div className="mt-4 rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-3 text-sm text-[color:var(--tx3)]">
       Nessie routes every webhook call through this single endpoint and uses the
       trigger API key to identify which trigger should fire.
     </div>

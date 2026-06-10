@@ -11,13 +11,13 @@ export const sectionTitle =
 const pillBase =
   'rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.15em]'
 export const dangerPill =
-  `${pillBase} bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 disabled:opacity-40`
+  `${pillBase} bg-[var(--danger-soft)] text-[var(--danger-text)] hover:bg-[var(--danger-soft)] disabled:opacity-40`
 export const infoPill =
-  `${pillBase} bg-sky-500/20 text-sky-200 hover:bg-sky-500/30 disabled:opacity-40`
+  `${pillBase} bg-[var(--info-soft)] text-[var(--info-text)] hover:bg-[var(--info-soft)] disabled:opacity-40`
 const stepActionPillBase =
-  'rounded-full bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase'
+  'rounded-full bg-[var(--overlay-weak)] px-3 py-1 text-[11px] font-semibold uppercase'
 export const stepActionPill =
-  `${stepActionPillBase} tracking-[0.12em] text-[color:var(--tx2)] hover:bg-white/10 disabled:opacity-30`
+  `${stepActionPillBase} tracking-[0.12em] text-[color:var(--tx2)] hover:bg-[var(--overlay)] disabled:opacity-30`
 
 export const formatTimestamp = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : '—'
@@ -45,11 +45,11 @@ export const JsonBlock = ({
   label: string
   value: unknown
 }) => (
-  <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-3">
+  <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3">
     <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
       {label}
     </div>
-    <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-white">
+    <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-[var(--tx)]">
       {formatJsonValue(value)}
     </pre>
   </div>
@@ -97,17 +97,17 @@ export const getRunTone = (status: WorkflowRunRecord['status']) => {
 export const runStatusClass = (status: WorkflowRunRecord['status']): string => {
   switch (status) {
     case 'running':
-      return 'text-emerald-300'
+      return 'text-[var(--success-text)]'
     case 'pending':
-      return 'text-amber-300'
+      return 'text-[var(--warning-text)]'
     case 'completed':
-      return 'text-sky-300'
+      return 'text-[var(--info-text)]'
     case 'failed':
-      return 'text-rose-300'
+      return 'text-[var(--danger-text)]'
     case 'cancelled':
       return 'text-[color:var(--tx3)]'
     default:
-      return 'text-white'
+      return 'text-[var(--tx)]'
   }
 }
 
@@ -116,19 +116,19 @@ export const stepStatusClass = (
 ): string => {
   switch (status) {
     case 'running':
-      return 'text-emerald-300'
+      return 'text-[var(--success-text)]'
     case 'pending':
-      return 'text-amber-300'
+      return 'text-[var(--warning-text)]'
     case 'completed':
-      return 'text-sky-300'
+      return 'text-[var(--info-text)]'
     case 'failed':
-      return 'text-rose-300'
+      return 'text-[var(--danger-text)]'
     case 'skipped':
       return 'text-[color:var(--tx3)]'
     case 'blocked':
-      return 'text-orange-300'
+      return 'text-[var(--warning-text)]'
     default:
-      return 'text-white'
+      return 'text-[var(--tx)]'
   }
 }
 

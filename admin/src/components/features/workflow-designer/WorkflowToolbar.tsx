@@ -23,7 +23,7 @@ export const WorkflowToolbar = ({
   onMenuItemClick,
 }: WorkflowToolbarProps) => {
   return (
-    <header className="flex h-12 items-center gap-2 border-b border-black/8 bg-[#faf8fc] px-4">
+    <header className="flex h-12 items-center gap-2 border-b border-[var(--line)] bg-[var(--surface-inverse)] px-4">
       {toolbarActions.map((action) => {
         const isOpen = openMenu === action.key
 
@@ -45,7 +45,7 @@ export const WorkflowToolbar = ({
               <span>{action.label}</span>
               <FontAwesomeIcon
                 className={[
-                  'text-[10px] text-[#6f5b77] transition-transform',
+                  'text-[10px] text-[var(--muted)] transition-transform',
                   isOpen ? 'rotate-180' : '',
                 ].join(' ')}
                 fixedWidth
@@ -55,7 +55,7 @@ export const WorkflowToolbar = ({
 
             {isOpen ? (
               <div
-                className="absolute left-0 top-full z-10 mt-1 w-64 rounded-lg border border-black/10 bg-white p-1 shadow-[0_12px_30px_rgba(31,22,38,0.14)]"
+                className="absolute left-0 top-full z-10 mt-1 w-64 rounded-lg border border-[var(--line)] bg-[var(--surface-inverse)] p-1 shadow-[0_12px_30px_var(--scrim)]"
                 role="menu"
               >
                 {action.createItem ? (
@@ -99,14 +99,14 @@ export const WorkflowToolbar = ({
                           {item.label}
                         </span>
                         {item.meta ? (
-                          <span className="truncate text-[10px] text-[#8b7a93]">
+                          <span className="truncate text-[10px] text-[var(--tx3)]">
                             {item.meta}
                           </span>
                         ) : null}
                       </button>
                     ))
                   ) : (
-                    <div className="px-2.5 py-2 text-[11px] text-[#8b7a93]">
+                    <div className="px-2.5 py-2 text-[11px] text-[var(--tx3)]">
                       {action.emptyLabel}
                     </div>
                   )}

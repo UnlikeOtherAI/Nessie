@@ -131,11 +131,11 @@ export const WorkflowCanvas = ({
 
       {nodes.length === 0 ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
-          <div className="max-w-md rounded-2xl border border-dashed border-[#d6cbe0] bg-white/80 px-6 py-5 text-center shadow-[0_18px_40px_rgba(31,22,38,0.06)] backdrop-blur">
-            <p className="text-[13px] font-semibold text-[#433349]">
+          <div className="max-w-md rounded-2xl border border-dashed border-[var(--line)] bg-[var(--surface-inverse)] px-6 py-5 text-center shadow-[0_18px_40px_var(--scrim-weak)] backdrop-blur">
+            <p className="text-[13px] font-semibold text-[var(--border-strong)]">
               Select a trigger, tool, or agent to place it on the canvas.
             </p>
-            <p className="mt-2 text-[11px] leading-5 text-[#7c6b86]">
+            <p className="mt-2 text-[11px] leading-5 text-[var(--muted)]">
               Nodes drop into the middle of the workflow and can be dragged into
               position. Connect them from right to left using the circular handles.
             </p>
@@ -147,7 +147,7 @@ export const WorkflowCanvas = ({
         hoveredConnectionId === connectionLayout.id ? (
           <button
             key={connectionLayout.id}
-            className="absolute z-40 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow-[0_10px_24px_rgba(31,22,38,0.16)] transition-transform hover:scale-105"
+            className="absolute z-40 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-[var(--surface-inverse)] shadow-[0_10px_24px_var(--scrim)] transition-transform hover:scale-105"
             data-connection-delete-id={connectionLayout.id}
             onClick={() => onConnectionDelete(connectionLayout.id)}
             onMouseEnter={() => setHoveredConnectionId(connectionLayout.id)}

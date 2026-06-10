@@ -112,10 +112,10 @@ export const TriggerMetaFields = ({
           <label className={fieldLabelClass} htmlFor="trigger-enabled">
             Status
           </label>
-          <label className="flex h-full items-center gap-3 rounded-lg border border-[color:var(--sep)] bg-black/10 px-3 py-2 text-sm text-white">
+          <label className="flex h-full items-center gap-3 rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2 text-sm text-[var(--tx)]">
             <input
               checked={form.enabled}
-              className="accent-[#7c3aed]"
+              className="accent-[var(--accent)]"
               id="trigger-enabled"
               onChange={(nextEvent) =>
                 setForm((current) => ({
@@ -149,10 +149,10 @@ export const TriggerMetaFields = ({
 
         <div className="grid gap-1.5">
           <div className={fieldLabelClass}>Status</div>
-          <label className="flex h-full items-center gap-3 rounded-lg border border-[color:var(--sep)] bg-black/10 px-3 py-2 text-sm text-white">
+          <label className="flex h-full items-center gap-3 rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2 text-sm text-[var(--tx)]">
             <input
               checked={form.enabled}
-              className="accent-[#7c3aed]"
+              className="accent-[var(--accent)]"
               onChange={(nextEvent) =>
                 setForm((current) => ({
                   ...current,

@@ -33,7 +33,7 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
 
   if (isLoading || !data) {
     return (
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4 text-[color:var(--tx3)]">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4 text-[color:var(--tx3)]">
         Loading run…
       </div>
     )
@@ -43,11 +43,11 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
 
   return (
     <div className="grid gap-4">
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className={sectionTitle}>Run detail</div>
-            <div className="mt-1 text-sm font-semibold text-white">
+            <div className="mt-1 text-sm font-semibold text-[var(--tx)]">
               {run.id.slice(0, 8)} ·{' '}
               <span className={runStatusClass(run.status)}>{run.status}</span>
             </div>
@@ -61,7 +61,7 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
               </div>
             ) : null}
             {run.errorMessage ? (
-              <div className="mt-1 text-xs text-rose-300">{run.errorMessage}</div>
+              <div className="mt-1 text-xs text-[var(--danger-text)]">{run.errorMessage}</div>
             ) : null}
           </div>
 
@@ -86,7 +86,7 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
         </div>
       </div>
 
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className={sectionTitle}>Run payload</div>
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           <JsonBlock label="Input" value={run.input} />
@@ -104,12 +104,12 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
 
           return (
             <div
-              className="rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-2"
+              className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2"
               key={step.id}
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="font-semibold text-white">
+                  <div className="font-semibold text-[var(--tx)]">
                     {step.sequence + 1}. {step.title}
                   </div>
                   <div className="text-xs text-[color:var(--tx3)]">
@@ -123,7 +123,7 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
                 </span>
               </div>
               {step.errorMessage ? (
-                <div className="mt-1 text-xs text-rose-300">{step.errorMessage}</div>
+                <div className="mt-1 text-xs text-[var(--danger-text)]">{step.errorMessage}</div>
               ) : null}
               <div className="mt-3 grid gap-3 lg:grid-cols-2">
                 <JsonBlock label="Step input" value={step.input} />
@@ -174,7 +174,7 @@ export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => 
           )
         })}
         {steps.length === 0 ? (
-          <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4 text-center text-sm text-[color:var(--tx3)]">
+          <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4 text-center text-sm text-[color:var(--tx3)]">
             No step runs recorded yet.
           </div>
         ) : null}

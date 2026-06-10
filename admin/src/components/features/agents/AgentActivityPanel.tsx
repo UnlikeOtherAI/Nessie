@@ -42,10 +42,10 @@ const connectionLabel: Record<AgentRealtimeState['connectionState'], string> = {
 };
 
 const iconPalette = [
-  'rgba(124,58,237,0.2)',
-  'rgba(8,145,178,0.2)',
-  'rgba(5,150,105,0.2)',
-  'rgba(234,179,8,0.18)',
+  'var(--accent-soft)',
+  'var(--info-soft)',
+  'var(--success-soft)',
+  'var(--warning-soft)',
 ] as const;
 
 const getAgentIcon = (agent: AgentRecord): string => {
@@ -139,7 +139,7 @@ export const AgentActivityPanel = ({
           <span>{title}</span>
           <span
             className={[
-              'ml-auto rounded bg-white/6 px-1.5 py-0.5 text-[10px]',
+              'ml-auto rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px]',
               'font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]',
             ].join(' ')}
           >
@@ -151,7 +151,7 @@ export const AgentActivityPanel = ({
           <span>{title}</span>
           <span
             className={[
-              'ml-auto rounded bg-white/6 px-1.5 py-0.5 text-[10px]',
+              'ml-auto rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px]',
               'font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]',
             ].join(' ')}
           >
@@ -166,7 +166,7 @@ export const AgentActivityPanel = ({
             <div
               className={[
                 'mx-2 rounded-md border border-dashed border-[color:var(--sep)]',
-                'bg-white/4 px-3 py-3 text-sm text-[color:var(--tx3)]',
+                'bg-[var(--overlay-weak)] px-3 py-3 text-sm text-[color:var(--tx3)]',
               ].join(' ')}
             >
               No agents created yet.
@@ -194,9 +194,9 @@ export const AgentActivityPanel = ({
                   key={agent.id}
                   className={[
                     'group mx-2 flex w-[calc(100%-1rem)] items-start gap-2 rounded-md px-2 py-2',
-                    'text-left transition hover:bg-white/8',
+                    'text-left transition hover:bg-[var(--overlay-weak)]',
                     selectedAgentId === agent.id
-                      ? 'bg-[color:var(--sb-active)] text-white'
+                      ? 'bg-[color:var(--sb-active)] text-[var(--on-accent)]'
                       : currentChannelId && !isBound
                         ? 'text-[color:var(--tx3)]'
                         : 'text-[color:var(--tx2)]',
@@ -220,7 +220,7 @@ export const AgentActivityPanel = ({
                         <span
                           className={[
                             'rounded bg-[color:var(--accent-soft)] px-1.5 py-0.5',
-                            'text-[10px] font-semibold uppercase tracking-[0.16em] text-[#a78bfa]',
+                            'text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--thinking)]',
                           ].join(' ')}
                         >
                           {status}
@@ -237,7 +237,7 @@ export const AgentActivityPanel = ({
                       <span
                         className={[
                           'hidden rounded p-0.5 text-[color:var(--tx3)]',
-                          'hover:bg-white/10 hover:text-white',
+                          'hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
                           'group-hover:inline-flex',
                         ].join(' ')}
                         onClick={(e) => handleAddToChannel(e, agent.id)}

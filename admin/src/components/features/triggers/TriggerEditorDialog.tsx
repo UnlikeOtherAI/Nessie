@@ -264,7 +264,7 @@ export const TriggerEditorDialog = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(0, 0, 0, 0.6)',
+        background: 'var(--scrim-strong)',
         backdropFilter: 'blur(4px)',
       }}
     >
@@ -274,7 +274,7 @@ export const TriggerEditorDialog = ({
       >
         <div className="create-channel-header">
           <div>
-            <h2 className="text-lg font-bold text-white">
+            <h2 className="text-lg font-bold text-[var(--tx)]">
               {mode === 'edit' ? 'Edit trigger' : 'Create a trigger'}
             </h2>
             <div className="mt-1 text-sm text-[color:var(--tx3)]">
@@ -287,7 +287,7 @@ export const TriggerEditorDialog = ({
             className={[
               'flex h-7 w-7 items-center justify-center',
               'rounded text-[color:var(--tx3)]',
-              'hover:bg-white/10 hover:text-white',
+              'hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
             ].join(' ')}
             disabled={isSubmitting}
             onClick={handleClose}
@@ -349,7 +349,7 @@ export const TriggerEditorDialog = ({
           ) : null}
 
           {formError ? (
-            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-3 text-sm text-rose-200">
+            <div className="rounded-xl border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-3 text-sm text-[var(--danger-text)]">
               {formError}
             </div>
           ) : null}

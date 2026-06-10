@@ -37,15 +37,15 @@ const TriggerRow = ({
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <div className="font-semibold text-white">{trigger.name ?? trigger.type}</div>
+            <div className="font-semibold text-[var(--tx)]">{trigger.name ?? trigger.type}</div>
             <span
               className={[
                 'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
                 trigger.status === 'active'
-                  ? 'bg-emerald-500/15 text-emerald-400'
+                  ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
                   : trigger.status === 'paused'
-                    ? 'bg-amber-500/15 text-amber-400'
-                    : 'bg-red-500/15 text-red-400',
+                    ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
+                    : 'bg-[var(--danger-soft)] text-[var(--danger-text)]',
               ].join(' ')}
             >
               {trigger.status}
@@ -98,7 +98,7 @@ const TriggerRow = ({
             history.map((delivery) => (
               <div
                 key={delivery.id}
-                className="rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-2"
+                className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">

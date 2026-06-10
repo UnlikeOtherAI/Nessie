@@ -40,7 +40,7 @@ const labelClass = [
 
 const inputClass = [
   'admin-input mt-1 w-full rounded-md border border-[color:var(--sep)]',
-  'bg-black/20 px-3 py-2 text-sm text-white',
+  'bg-[var(--scrim)] px-3 py-2 text-sm text-[var(--tx)]',
   'focus:border-[color:var(--accent)] focus:outline-none',
 ].join(' ')
 
@@ -80,7 +80,7 @@ export const InstallScopeDialog = ({
     <div
       className={[
         'fixed inset-0 z-50 flex items-center justify-center',
-        'bg-black/50 px-4',
+        'bg-[var(--scrim-strong)] px-4',
       ].join(' ')}
     >
       <form
@@ -90,7 +90,7 @@ export const InstallScopeDialog = ({
         ].join(' ')}
         onSubmit={(event) => void submit(event)}
       >
-        <h2 className="text-lg font-semibold text-white">
+        <h2 className="text-lg font-semibold text-[var(--tx)]">
           Install {catalogEntry.label}
         </h2>
         <p className="mt-1 text-sm text-[color:var(--tx3)]">
@@ -130,7 +130,7 @@ export const InstallScopeDialog = ({
             />
           </label>
           {error ? (
-            <div className="rounded-md border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+            <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]">
               {error}
             </div>
           ) : null}
@@ -140,7 +140,7 @@ export const InstallScopeDialog = ({
           <button
             className={[
               'admin-button rounded-md border border-[color:var(--sep)]',
-              'px-4 py-2 text-sm text-[color:var(--tx2)] hover:bg-white/5',
+              'px-4 py-2 text-sm text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
             ].join(' ')}
             onClick={onCancel}
             type="button"

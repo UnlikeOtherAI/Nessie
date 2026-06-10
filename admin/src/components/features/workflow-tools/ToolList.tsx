@@ -33,8 +33,8 @@ export const ToolList = ({ onSelect, selectedId, tools }: ToolListProps) => {
           className={[
             'w-full rounded-xl border p-3 text-left transition',
             tool.id === selectedId
-              ? 'border-emerald-400/60 bg-emerald-400/10'
-              : 'border-[color:var(--sep)] bg-black/10 hover:bg-black/20',
+              ? 'border-[var(--success-border)] bg-[var(--success-soft)]'
+              : 'border-[color:var(--sep)] bg-[var(--scrim-weak)] hover:bg-[var(--scrim)]',
           ].join(' ')}
           key={tool.id}
           onClick={() => onSelect(tool)}
@@ -44,7 +44,7 @@ export const ToolList = ({ onSelect, selectedId, tools }: ToolListProps) => {
             <ToolCategoryIcon source={tool.source} />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-sm font-semibold text-white">
+                <span className="truncate text-sm font-semibold text-[var(--tx)]">
                   {tool.label}
                 </span>
                 <ToolBadge label={tool.source} source={tool.source} />
@@ -64,7 +64,7 @@ export const ToolList = ({ onSelect, selectedId, tools }: ToolListProps) => {
                   {tool.tags.map((tag) => (
                     <span
                       className={[
-                        'rounded-full border border-[color:var(--sep)] bg-black/20',
+                        'rounded-full border border-[color:var(--sep)] bg-[var(--scrim)]',
                         'px-2 py-0.5 text-[10px] uppercase tracking-[0.18em]',
                         'text-[color:var(--tx3)]',
                       ].join(' ')}

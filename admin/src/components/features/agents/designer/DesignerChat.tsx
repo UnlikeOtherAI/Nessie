@@ -87,7 +87,7 @@ export const DesignerChat = ({
             strokeLinejoin="round"
           />
         </svg>
-        <span className="text-sm font-semibold text-white">Design Assistant</span>
+        <span className="text-sm font-semibold text-[var(--tx)]">Design Assistant</span>
         {streaming && <span className="streaming-dot" />}
       </div>
 
@@ -114,7 +114,7 @@ export const DesignerChat = ({
                 className={[
                   'max-w-[90%] rounded-xl px-3 py-2 text-sm',
                   msg.role === 'user'
-                    ? 'ml-auto bg-[color:var(--accent)] text-white'
+                    ? 'ml-auto bg-[color:var(--accent)] text-[var(--on-accent)]'
                     : [
                         'mr-auto border border-[color:var(--sep)]',
                         'bg-[color:var(--panel)] text-[color:var(--tx)]',
@@ -136,8 +136,8 @@ export const DesignerChat = ({
         {error && (
           <div
             className={[
-              'mt-2 rounded-lg border border-[color:var(--danger)]/30',
-              'bg-[color:var(--danger)]/10 px-3 py-2 text-xs text-[color:var(--danger)]',
+              'mt-2 rounded-lg border border-[var(--danger-border)]',
+              'bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger-text)]',
             ].join(' ')}
           >
             {error}

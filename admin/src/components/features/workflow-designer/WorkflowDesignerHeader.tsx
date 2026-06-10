@@ -30,13 +30,13 @@ export const WorkflowDesignerHeader = ({
   onSave,
 }: WorkflowDesignerHeaderProps) => {
   return (
-    <header className="flex h-14 items-center justify-between gap-4 border-b border-black/8 bg-white px-4">
+    <header className="flex h-14 items-center justify-between gap-4 border-b border-[var(--line)] bg-[var(--surface-inverse)] px-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <button
           className={[
             'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded',
-            'text-[#8b7a93] transition-colors',
-            'hover:bg-[#f4eff8] hover:text-[#2f2237]',
+            'text-[var(--tx3)] transition-colors',
+            'hover:bg-[var(--surface-inverse-2)] hover:text-[var(--ink)]',
           ].join(' ')}
           onClick={onBack}
           title="Back"
@@ -58,7 +58,7 @@ export const WorkflowDesignerHeader = ({
         </button>
         <input
           aria-label="Workflow name"
-          className="w-full max-w-xl border-none bg-transparent text-[15px] font-semibold text-[#2f2237] outline-none placeholder:text-[#9a8aa2]"
+          className="w-full max-w-xl border-none bg-[color:var(--surface-inverse)]/0 text-[15px] font-semibold text-[var(--ink)] outline-none placeholder:text-[var(--tx3)]"
           onChange={(event) => onWorkflowNameChange(event.target.value)}
           placeholder={DEFAULT_WORKFLOW_NAME}
           value={workflowName}
@@ -66,7 +66,7 @@ export const WorkflowDesignerHeader = ({
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="min-w-[96px] text-right text-[11px] text-[#7c6b86]">
+        <div className="min-w-[96px] text-right text-[11px] text-[var(--muted)]">
           {isWorkflowTemplateLoading ? (
             'Loading workflow...'
           ) : saveMessage ? (
@@ -81,21 +81,21 @@ export const WorkflowDesignerHeader = ({
           )}
         </div>
 
-        <label className="flex items-center gap-2 text-[11px] font-medium text-[#5f4e67]">
+        <label className="flex items-center gap-2 text-[11px] font-medium text-[var(--muted)]">
           <span>Auto save</span>
           <button
             aria-label="Toggle auto save"
             aria-pressed={autoSaveDraft}
             className={[
               'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              autoSaveDraft ? 'bg-[#7445c7]' : 'bg-[#d9d1df]',
+              autoSaveDraft ? 'bg-[var(--accent-hover)]' : 'bg-[var(--line)]',
             ].join(' ')}
             onClick={onToggleAutoSaveDraft}
             type="button"
           >
             <span
               className={[
-                'inline-block h-5 w-5 rounded-full bg-white shadow transition-transform',
+                'inline-block h-5 w-5 rounded-full bg-[var(--surface-inverse)] shadow transition-transform',
                 autoSaveDraft ? 'translate-x-5' : 'translate-x-1',
               ].join(' ')}
             />

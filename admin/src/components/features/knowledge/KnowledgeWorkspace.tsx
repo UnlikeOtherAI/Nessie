@@ -120,8 +120,8 @@ export const KnowledgeWorkspace = () => {
                 className={[
                   'rounded-md border px-3 py-2 text-left text-sm',
                   selectedSpaceId === space.id
-                    ? 'border-[color:var(--accent)] bg-[color:var(--accent)] text-white'
-                    : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-white/5',
+                    ? 'border-[color:var(--accent)] bg-[color:var(--accent)] text-[var(--on-accent)]'
+                    : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
                 ].join(' ')}
                 key={space.id}
                 onClick={() => {
@@ -158,7 +158,7 @@ export const KnowledgeWorkspace = () => {
               Add
             </button>
           </div>
-          {spaceError ? <div className="mt-2 text-xs text-red-300">{spaceError}</div> : null}
+          {spaceError ? <div className="mt-2 text-xs text-[var(--danger-text)]">{spaceError}</div> : null}
         </div>
 
         <div>
@@ -216,14 +216,14 @@ export const KnowledgeWorkspace = () => {
               <span>{selectedPage.status}</span>
               <span>{selectedPage.visibilityReason}</span>
             </div>
-            <h1 className="mt-2 text-2xl font-semibold text-white">{selectedPage.title}</h1>
+            <h1 className="mt-2 text-2xl font-semibold text-[var(--tx)]">{selectedPage.title}</h1>
             {selectedPage.summary ? (
               <p className="mt-2 text-sm text-[color:var(--tx2)]">{selectedPage.summary}</p>
             ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               {selectedPage.labels.map((label) => (
                 <span
-                  className="rounded bg-white/5 px-2 py-1 text-xs text-[color:var(--tx2)]"
+                  className="rounded bg-[var(--overlay-weak)] px-2 py-1 text-xs text-[color:var(--tx2)]"
                   key={label}
                 >
                   {label}

@@ -5,12 +5,12 @@ type AgentInfoCardProps = {
 }
 
 const badgeClassName =
-  'rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ' +
+  'rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ' +
   'text-[color:var(--tx3)]'
 
 const pillClassName =
-  'rounded-full border border-[rgba(124,58,237,0.18)] bg-[rgba(124,58,237,0.12)] ' +
-  'px-2 py-0.5 text-[10px] font-semibold text-[#d8b4fe]'
+  'rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] ' +
+  'px-2 py-0.5 text-[10px] font-semibold text-[var(--thinking)]'
 
 const getGlyph = (agent: AgentRecord): string => {
   const role = agent.role.toLowerCase()
@@ -33,14 +33,14 @@ export const AgentInfoCard = ({ agent }: AgentInfoCardProps) => {
   if (providerModel) pills.push(providerModel)
 
   return (
-    <section className="mx-5 mt-3 rounded-xl border border-[rgba(124,58,237,0.18)] bg-[rgba(124,58,237,0.08)] px-4 py-3">
+    <section className="mx-5 mt-3 rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3">
       <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[rgba(124,58,237,0.18)] text-lg">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-lg">
           {getGlyph(agent)}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-white">{agent.name}</span>
+            <span className="text-sm font-semibold text-[var(--tx)]">{agent.name}</span>
             {agent.systemManaged && (
               <span className={badgeClassName}>system managed</span>
             )}
@@ -60,17 +60,17 @@ export const AgentInfoCard = ({ agent }: AgentInfoCardProps) => {
           <div className="mt-3 grid gap-2 text-xs leading-5 text-[color:var(--tx2)]">
             {agent.systemPrompt ? (
               <div>
-                <span className="font-semibold text-white/85">Prompt preview:</span>{' '}
+                <span className="font-semibold text-[var(--tx)]">Prompt preview:</span>{' '}
                 {agent.systemPrompt.slice(0, 120).trim()}
                 {agent.systemPrompt.length > 120 ? '…' : ''}
               </div>
             ) : null}
             <div>
-              <span className="font-semibold text-white/85">Status:</span>{' '}
+              <span className="font-semibold text-[var(--tx)]">Status:</span>{' '}
               {agent.status}
             </div>
             <div>
-              <span className="font-semibold text-white/85">Config updated:</span>{' '}
+              <span className="font-semibold text-[var(--tx)]">Config updated:</span>{' '}
               {new Date(agent.updatedAt).toLocaleString()}
             </div>
           </div>

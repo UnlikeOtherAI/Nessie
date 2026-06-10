@@ -36,7 +36,7 @@ export const AddServerWizard = ({
             className={[
               'rounded-full px-3 py-1',
               step === value
-                ? 'bg-[color:var(--accent)] text-white'
+                ? 'bg-[color:var(--accent)] text-[var(--on-accent)]'
                 : 'border border-[color:var(--sep)]',
             ].join(' ')}
             key={value}

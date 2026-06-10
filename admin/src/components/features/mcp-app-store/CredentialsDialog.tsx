@@ -38,13 +38,13 @@ const labelClass = [
 
 const inputClass = [
   'admin-input mt-1 w-full rounded-md border border-[color:var(--sep)]',
-  'bg-black/20 px-3 py-2 text-sm text-white',
+  'bg-[var(--scrim)] px-3 py-2 text-sm text-[var(--tx)]',
   'focus:border-[color:var(--accent)] focus:outline-none',
 ].join(' ')
 
 const ghostBtn = [
   'admin-button rounded-md border border-[color:var(--sep)]',
-  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-white/5',
+  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
 ].join(' ')
 
 type OverrideRowProps = {
@@ -72,11 +72,11 @@ const OverrideRow = ({
     <div
       className={[
         'flex items-center justify-between gap-3 rounded-md',
-        'border border-[color:var(--sep)] bg-black/10 px-3 py-2',
+        'border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2',
       ].join(' ')}
     >
       <div className="min-w-0 text-sm">
-        <div className="truncate text-white">
+        <div className="truncate text-[var(--tx)]">
           {principalType}:{principalId.slice(0, 8)}…
         </div>
         <div className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
@@ -156,7 +156,7 @@ export const CredentialsDialog = ({
     <div
       className={[
         'fixed inset-0 z-50 flex items-center justify-center',
-        'bg-black/50 px-4',
+        'bg-[var(--scrim-strong)] px-4',
       ].join(' ')}
     >
       <div
@@ -167,7 +167,7 @@ export const CredentialsDialog = ({
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-white">
+            <h2 className="text-lg font-semibold text-[var(--tx)]">
               Credentials for {instance.scopeType}:{instance.scopeId.slice(0, 8)}…
             </h2>
             <p className="mt-1 text-sm text-[color:var(--tx3)]">
@@ -240,7 +240,7 @@ export const CredentialsDialog = ({
             </label>
           </div>
           {error ? (
-            <div className="rounded-md border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+            <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]">
               {error}
             </div>
           ) : null}

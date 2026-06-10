@@ -67,8 +67,8 @@ export const WorkflowCanvasNode = ({
   return (
     <div
       className={[
-        'absolute z-20 cursor-grab select-none rounded-2xl border bg-white shadow-[0_18px_40px_rgba(31,22,38,0.12)] active:cursor-grabbing',
-        isSelected ? 'ring-2 ring-[#7445c7] ring-offset-2 ring-offset-[#faf8fc]' : '',
+        'absolute z-20 cursor-grab select-none rounded-2xl border bg-[var(--surface-inverse)] shadow-[0_18px_40px_var(--scrim)] active:cursor-grabbing',
+        isSelected ? 'ring-2 ring-[var(--accent-hover)] ring-offset-2 ring-offset-[var(--surface-inverse)]' : '',
         isDragging ? 'z-30' : '',
       ].join(' ')}
       onPointerDown={(event) => onNodePointerDown(event, node.id)}
@@ -94,13 +94,13 @@ export const WorkflowCanvasNode = ({
           style={{
             backgroundColor: isHoveredInput
               ? isInvalidInputTarget
-                ? '#dc2626'
+                ? 'var(--danger-strong)'
                 : theme.border
               : hasIncomingConnection
                 ? 'transparent'
-                : '#ffffff',
-            borderColor: isInvalidInputTarget ? '#dc2626' : theme.border,
-            color: isInvalidInputTarget ? '#dc2626' : theme.border,
+                : 'var(--surface-inverse)',
+            borderColor: isInvalidInputTarget ? 'var(--danger-strong)' : theme.border,
+            color: isInvalidInputTarget ? 'var(--danger-strong)' : theme.border,
             top: CANVAS_NODE_HANDLE_Y,
             transform: isHoveredInput
               ? 'translateY(-50%) scale(1.1)'
@@ -112,7 +112,7 @@ export const WorkflowCanvasNode = ({
 
       <button
         aria-label={`Connect from ${node.label}`}
-        className="absolute -right-2 h-4 w-4 rounded-full border-2 bg-white transition-all hover:bg-current"
+        className="absolute -right-2 h-4 w-4 rounded-full border-2 bg-[var(--surface-inverse)] transition-all hover:bg-current"
         data-workflow-handle-kind="output"
         data-workflow-node-id={node.id}
         onPointerDown={(event) =>
@@ -121,13 +121,13 @@ export const WorkflowCanvasNode = ({
         style={{
           backgroundColor: isHoveredOutput
             ? isInvalidOutputTarget
-              ? '#dc2626'
+              ? 'var(--danger-strong)'
               : theme.border
             : hasOutgoingConnection
               ? 'transparent'
-              : '#ffffff',
-          borderColor: isInvalidOutputTarget ? '#dc2626' : theme.border,
-          color: isInvalidOutputTarget ? '#dc2626' : theme.border,
+              : 'var(--surface-inverse)',
+          borderColor: isInvalidOutputTarget ? 'var(--danger-strong)' : theme.border,
+          color: isInvalidOutputTarget ? 'var(--danger-strong)' : theme.border,
           top: CANVAS_NODE_HANDLE_Y,
           transform: isHoveredOutput
             ? 'translateY(-50%) scale(1.1)'
@@ -158,7 +158,7 @@ export const WorkflowCanvasNode = ({
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold text-[#2f2237]">
+            <div className="truncate text-[13px] font-semibold text-[var(--ink)]">
               {node.label}
             </div>
             <div className="mt-1 flex items-center gap-2">
@@ -172,7 +172,7 @@ export const WorkflowCanvasNode = ({
                 {theme.label}
               </span>
               {node.meta ? (
-                <span className="truncate text-[10px] text-[#6f5b77]">
+                <span className="truncate text-[10px] text-[var(--muted)]">
                   {node.meta}
                 </span>
               ) : null}
@@ -180,7 +180,7 @@ export const WorkflowCanvasNode = ({
           </div>
         </div>
 
-        <div className="mt-auto text-[11px] leading-5 text-[#6f5b77]">
+        <div className="mt-auto text-[11px] leading-5 text-[var(--muted)]">
           Drag to position. Use the connector circles to build the workflow.
         </div>
       </div>

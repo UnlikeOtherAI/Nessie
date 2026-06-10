@@ -31,11 +31,11 @@ export const WorkflowTemplateDetail = ({
 
   return (
     <div className="grid gap-4">
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="min-w-0 flex-1 text-xl font-semibold text-white">
+              <h2 className="min-w-0 flex-1 text-xl font-semibold text-[var(--tx)]">
                 {template.name}
               </h2>
               <StatusPill tone={latestInstallation ? 'accent' : 'muted'}>
@@ -74,23 +74,23 @@ export const WorkflowTemplateDetail = ({
           ['Environment templates', `${environmentCount}`],
         ].map(([label, value]) => (
           <div
-            className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-3"
+            className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3"
             key={label}
           >
             <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
               {label}
             </div>
-            <div className="mt-2 text-sm text-white">{value}</div>
+            <div className="mt-2 text-sm text-[var(--tx)]">{value}</div>
           </div>
         ))}
       </div>
 
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className={sectionTitle}>Latest installation</div>
         {latestInstallation ? (
-          <div className="mt-3 rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-3">
+          <div className="mt-3 rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-3">
             <div className="flex items-center justify-between gap-3">
-              <div className="font-semibold text-white">
+              <div className="font-semibold text-[var(--tx)]">
                 {latestInstallation.id.slice(0, 8)}
               </div>
               <StatusPill tone={getInstallationTone(latestInstallation.status)}>
@@ -108,22 +108,22 @@ export const WorkflowTemplateDetail = ({
             </div>
           </div>
         ) : (
-          <div className="mt-3 rounded-xl border border-[color:var(--sep)] bg-black/10 p-4 text-sm text-[color:var(--tx3)]">
+          <div className="mt-3 rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4 text-sm text-[color:var(--tx3)]">
             This workflow has not been installed yet.
           </div>
         )}
       </div>
 
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className={sectionTitle}>Workflow structure</div>
         <div className="mt-3 grid gap-2">
           {template.graph.steps.map((step, index) => (
             <div
-              className="rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-2"
+              className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2"
               key={step.id}
             >
               <div className="flex items-center justify-between gap-3">
-                <div className="font-semibold text-white">
+                <div className="font-semibold text-[var(--tx)]">
                   {index + 1}. {step.title ?? step.type}
                 </div>
                 <span className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
@@ -134,7 +134,7 @@ export const WorkflowTemplateDetail = ({
             </div>
           ))}
           {template.graph.steps.length === 0 ? (
-            <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4 text-center text-sm text-[color:var(--tx3)]">
+            <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4 text-center text-sm text-[color:var(--tx3)]">
               No steps defined yet.
             </div>
           ) : null}

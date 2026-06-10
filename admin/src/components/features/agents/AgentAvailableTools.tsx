@@ -17,7 +17,7 @@ export const AgentAvailableTools = () => (
                 key={tool.id}
                 className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4"
               >
-                <div className="font-mono text-sm text-[#a78bfa]">{tool.name}</div>
+                <div className="font-mono text-sm text-[var(--thinking)]">{tool.name}</div>
                 <div className="mt-1 text-xs text-[color:var(--tx3)]">{tool.description}</div>
               </div>
             ))}

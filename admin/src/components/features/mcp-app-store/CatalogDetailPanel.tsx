@@ -24,7 +24,7 @@ type CatalogDetailPanelProps = {
 
 const ghostButton = [
   'admin-button rounded-md border border-[color:var(--sep)]',
-  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-white/5',
+  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
   'disabled:cursor-not-allowed disabled:opacity-40',
 ].join(' ')
 
@@ -34,8 +34,8 @@ const primaryButton = [
 ].join(' ')
 
 const dangerButton = [
-  'admin-button rounded-md border border-rose-400/40',
-  'px-3 py-1 text-xs text-rose-200 hover:bg-rose-500/10',
+  'admin-button rounded-md border border-[var(--danger-border)]',
+  'px-3 py-1 text-xs text-[var(--danger-text)] hover:bg-[var(--danger-soft)]',
   'disabled:cursor-not-allowed disabled:opacity-40',
 ].join(' ')
 
@@ -59,26 +59,26 @@ export const CatalogDetailPanel = ({
 
   return (
     <div className="grid gap-4">
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
-        <div className="text-sm text-white">{entry.description || entry.name}</div>
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
+        <div className="text-sm text-[var(--tx)]">{entry.description || entry.name}</div>
         <dl className="mt-3 grid grid-cols-2 gap-y-1 text-xs">
           <dt className="text-[color:var(--tx3)]">Name</dt>
-          <dd className="text-white">{entry.name}</dd>
+          <dd className="text-[var(--tx)]">{entry.name}</dd>
           <dt className="text-[color:var(--tx3)]">Vendor</dt>
-          <dd className="text-white">{entry.vendor ?? '—'}</dd>
+          <dd className="text-[var(--tx)]">{entry.vendor ?? '—'}</dd>
           <dt className="text-[color:var(--tx3)]">Protocol</dt>
-          <dd className="text-white">{entry.protocol}</dd>
+          <dd className="text-[var(--tx)]">{entry.protocol}</dd>
           <dt className="text-[color:var(--tx3)]">Auth</dt>
-          <dd className="text-white">{entry.authMethod}</dd>
+          <dd className="text-[var(--tx)]">{entry.authMethod}</dd>
           <dt className="text-[color:var(--tx3)]">Visibility</dt>
-          <dd className="text-white">{entry.visibility}</dd>
+          <dd className="text-[var(--tx)]">{entry.visibility}</dd>
           <dt className="text-[color:var(--tx3)]">Status</dt>
-          <dd className="text-white">{entry.status}</dd>
+          <dd className="text-[var(--tx)]">{entry.status}</dd>
         </dl>
 
         {entry.status === 'rejected' && entry.rejectionReason ? (
           <div
-            className="mt-3 rounded-md border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200"
+            className="mt-3 rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger-text)]"
             role="alert"
           >
             <span className="font-semibold">Rejected:</span> {entry.rejectionReason}
@@ -86,7 +86,7 @@ export const CatalogDetailPanel = ({
         ) : null}
 
         {inReview ? (
-          <div className="mt-3 rounded-md border border-[color:var(--sep)] bg-white/5 px-3 py-2 text-xs text-[color:var(--tx2)]">
+          <div className="mt-3 rounded-md border border-[color:var(--sep)] bg-[var(--overlay-weak)] px-3 py-2 text-xs text-[color:var(--tx2)]">
             {isOwner
               ? 'Awaiting your review. Approve to publish it to the public store, or reject with a reason.'
               : 'Submitted to the public store. Awaiting a superuser review.'}

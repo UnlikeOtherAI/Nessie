@@ -8,8 +8,8 @@ type PageTreeProps = {
 }
 
 const statusTone: Record<KnowledgePageRecord['status'], string> = {
-  draft: 'text-amber-300',
-  published: 'text-emerald-300',
+  draft: 'text-[var(--warning-text)]',
+  published: 'text-[var(--success-text)]',
   archived: 'text-[color:var(--tx3)]',
 }
 
@@ -38,8 +38,8 @@ const TreeRow = ({
           className={[
             'min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-sm',
             active
-              ? 'bg-[color:var(--accent)] text-white'
-              : 'text-[color:var(--tx2)] hover:bg-white/5 hover:text-white',
+              ? 'bg-[color:var(--accent)] text-[var(--on-accent)]'
+              : 'text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)] hover:text-[var(--tx)]',
           ].join(' ')}
           onClick={() => onSelectPage(page.id)}
           style={{ paddingLeft: `${8 + depth * 14}px` }}
@@ -54,7 +54,7 @@ const TreeRow = ({
           aria-label={`Create child page under ${page.title}`}
           className={[
             'hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded',
-            'text-[color:var(--tx3)] hover:bg-white/10 hover:text-white group-hover:flex',
+            'text-[color:var(--tx3)] hover:bg-[var(--overlay)] hover:text-[var(--tx)] group-hover:flex',
           ].join(' ')}
           onClick={() => onCreateChild(page.id)}
           type="button"

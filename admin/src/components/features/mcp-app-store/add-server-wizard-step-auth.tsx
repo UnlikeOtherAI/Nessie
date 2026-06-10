@@ -101,7 +101,7 @@ export const StepAuth = ({ controller, pending }: StepAuthProps) => {
       )}
       <fieldset className="grid gap-2 rounded-md border border-[color:var(--sep)] p-3">
         <legend className={labelClass}>Visibility</legend>
-        <label className="flex items-start gap-2 text-sm text-white">
+        <label className="flex items-start gap-2 text-sm text-[var(--tx)]">
           <input
             checked={!submitForReview}
             data-testid="wizard-visibility-private"
@@ -116,7 +116,7 @@ export const StepAuth = ({ controller, pending }: StepAuthProps) => {
             </span>
           </span>
         </label>
-        <label className="flex items-start gap-2 text-sm text-white">
+        <label className="flex items-start gap-2 text-sm text-[var(--tx)]">
           <input
             checked={submitForReview}
             data-testid="wizard-visibility-public"
@@ -134,7 +134,7 @@ export const StepAuth = ({ controller, pending }: StepAuthProps) => {
       </fieldset>
       {error ? (
         <div
-          className="rounded-md border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"
+          className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]"
           role="alert"
         >{error}</div>
       ) : null}

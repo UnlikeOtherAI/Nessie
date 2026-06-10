@@ -71,7 +71,7 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
               className={[
                 'flex-1 py-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] transition-colors',
                 activeTab === tab.id
-                  ? 'text-white'
+                  ? 'text-[var(--tx)]'
                   : 'text-[color:var(--tx3)] hover:text-[color:var(--tx2)]',
               ].join(' ')}
               onClick={() => handleTabChange(tab.id)}
@@ -88,7 +88,7 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
             transform: `translateX(${activeIndex * 100}%)`,
           }}
         >
-          <div className="mx-4 h-[2px] flex-1 rounded-full bg-[#7c3aed]" />
+          <div className="mx-4 h-[2px] flex-1 rounded-full bg-[var(--accent)]" />
         </div>
       </div>
 

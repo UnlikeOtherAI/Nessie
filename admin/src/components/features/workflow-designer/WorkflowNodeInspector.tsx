@@ -29,10 +29,10 @@ export const WorkflowNodeInspector = ({
   onConfigChange,
 }: WorkflowNodeInspectorProps) => {
   return (
-    <aside className="hidden w-[352px] shrink-0 border-l border-black/8 bg-[#fbf9fd] lg:flex lg:flex-col">
-      <div className="border-b border-black/8 px-4 py-3">
+    <aside className="hidden w-[352px] shrink-0 border-l border-[var(--line)] bg-[var(--surface-inverse)] lg:flex lg:flex-col">
+      <div className="border-b border-[var(--line)] px-4 py-3">
         <div className={sectionLabelClass}>Node inspector</div>
-        <div className="mt-1 text-sm text-[#5f4e67]">
+        <div className="mt-1 text-sm text-[var(--muted)]">
           Edit the selected trigger, tool, or agent node.
         </div>
       </div>
@@ -40,13 +40,13 @@ export const WorkflowNodeInspector = ({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {selectedNode ? (
           <div className="grid gap-4">
-            <div className="rounded-2xl border border-black/8 bg-white p-4 shadow-[0_12px_24px_rgba(31,22,38,0.04)]">
+            <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-inverse)] p-4 shadow-[0_12px_24px_var(--scrim-weak)]">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#8b7a93]">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--tx3)]">
                     Selected node
                   </div>
-                  <div className="mt-1 text-base font-semibold text-[#2f2237]">
+                  <div className="mt-1 text-base font-semibold text-[var(--ink)]">
                     {selectedNode.label}
                   </div>
                 </div>
@@ -62,8 +62,8 @@ export const WorkflowNodeInspector = ({
               </div>
 
               <div className="mt-4 grid gap-3">
-                <label className="grid gap-1.5 text-sm text-[#433349]">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8b7a93]">
+                <label className="grid gap-1.5 text-sm text-[var(--border-strong)]">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tx3)]">
                     Label
                   </span>
                   <input
@@ -73,8 +73,8 @@ export const WorkflowNodeInspector = ({
                   />
                 </label>
 
-                <label className="grid gap-1.5 text-sm text-[#433349]">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8b7a93]">
+                <label className="grid gap-1.5 text-sm text-[var(--border-strong)]">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tx3)]">
                     Source
                   </span>
                   <select
@@ -98,8 +98,8 @@ export const WorkflowNodeInspector = ({
                   </select>
                 </label>
 
-                <div className="grid gap-1.5 text-sm text-[#433349]">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8b7a93]">
+                <div className="grid gap-1.5 text-sm text-[var(--border-strong)]">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tx3)]">
                     Config
                   </span>
                   <textarea
@@ -111,7 +111,7 @@ export const WorkflowNodeInspector = ({
                     value={selectedNodeConfigDraft}
                   />
                   {selectedNodeConfigError ? (
-                    <div className="text-xs text-rose-500">
+                    <div className="text-xs text-[var(--danger)]">
                       {selectedNodeConfigError}
                     </div>
                   ) : null}
@@ -119,7 +119,7 @@ export const WorkflowNodeInspector = ({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-black/8 bg-white p-4 shadow-[0_12px_24px_rgba(31,22,38,0.04)]">
+            <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-inverse)] p-4 shadow-[0_12px_24px_var(--scrim-weak)]">
               <div className={sectionLabelClass}>Node metadata</div>
               <div className="mt-3 grid gap-3 text-sm">
                 {[
@@ -129,23 +129,23 @@ export const WorkflowNodeInspector = ({
                   ['Position', `${Math.round(selectedNode.x)}, ${Math.round(selectedNode.y)}`],
                 ].map(([label, value]) => (
                   <div
-                    className="rounded-xl border border-black/8 bg-[#faf8fc] px-3 py-2"
+                    className="rounded-xl border border-[var(--line)] bg-[var(--surface-inverse)] px-3 py-2"
                     key={label}
                   >
-                    <div className="text-[11px] uppercase tracking-[0.14em] text-[#8b7a93]">
+                    <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--tx3)]">
                       {label}
                     </div>
-                    <div className="mt-1 break-all text-[#2f2237]">{value}</div>
+                    <div className="mt-1 break-all text-[var(--ink)]">{value}</div>
                   </div>
                 ))}
                 {selectedNodeSource ? (
-                  <div className="rounded-xl border border-black/8 bg-[#faf8fc] px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-[0.14em] text-[#8b7a93]">
+                  <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-inverse)] px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--tx3)]">
                       Resolved source
                     </div>
-                    <div className="mt-1 text-[#2f2237]">{selectedNodeSource.label}</div>
+                    <div className="mt-1 text-[var(--ink)]">{selectedNodeSource.label}</div>
                     {selectedNodeSource.meta ? (
-                      <div className="mt-1 text-xs text-[#6f5b77]">
+                      <div className="mt-1 text-xs text-[var(--muted)]">
                         {selectedNodeSource.meta}
                       </div>
                     ) : null}
@@ -155,7 +155,7 @@ export const WorkflowNodeInspector = ({
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-[#d6cbe0] bg-white px-5 py-6 text-center text-sm text-[#6f5b77]">
+          <div className="rounded-2xl border border-dashed border-[var(--line)] bg-[var(--surface-inverse)] px-5 py-6 text-center text-sm text-[var(--muted)]">
             Select a node to edit its source and config.
           </div>
         )}
