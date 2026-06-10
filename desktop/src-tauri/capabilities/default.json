@@ -2,9 +2,14 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default permissions for the Nessie desktop window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "remote": {
-    "urls": ["http://localhost:5555/**"]
+    "urls": [
+      "http://localhost:5555/**",
+      "https://nessie.unlikeotherai.com/**"
+    ]
   },
   "permissions": [
     "core:default",
