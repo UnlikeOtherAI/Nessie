@@ -156,3 +156,31 @@ partition; keep `tsc --noEmit` + `eslint --max-warnings 0` + `vite build` green.
   with no orphaned colors (verified with kelpie screenshots of each theme on a
   few representative pages).
 - Typecheck + lint + build green; default theme is visually identical to today.
+
+## Implemented (2026-06-10)
+
+Done across 5 parallel worktrees, merged to `main` (held from prod until the
+review pass clears). Verified: admin `tsc --noEmit` + `eslint --max-warnings 0`
++ `vite build` all green; audit greps return **0** raw hex in `.tsx`, **0** raw
+hex in `.css` outside `styles.css`, **0** Tailwind named-color utilities in
+`.tsx`. Kelpie screenshots confirm all three themes render: nebula (default,
+unchanged), midnight (neutral slate/blue dark), daylight (light content).
+
+- Tokens + 3 theme blocks: `admin/src/styles.css` (`:root` = nebula,
+  `[data-theme="midnight"]`, `[data-theme="daylight"]`).
+- Switcher: `admin/src/providers/ThemeProvider.tsx` (`useTheme()`, persists to
+  `localStorage["nessie.theme"]`, sets `document.documentElement.dataset.theme`)
+  + `admin/src/pages/settings/AppearancePage.tsx` at `/settings/appearance`.
+
+**To add a theme:** add a `[data-theme="<id>"]` block to `styles.css` that
+redeclares **every** token the base `:root` defines, add the id to the `Theme`
+union + `THEMES` list in `ThemeProvider.tsx`. No component edits — that's the
+point.
+
+**Open items for review:** (a) daylight keeps a dark sidebar (`--rail`/`--sb`) —
+intentional contrast or should it lighten? (b) the live in-app switch was not
+kelpie-verified (kelpie's synthetic events don't drive a controlled radio; each
+theme's *rendering* was verified by forcing the initial theme) — the
+controlled-radio→`onChange`→`setTheme` path is standard React; confirm with a
+real click. (c) `--executing`/`--thinking` legacy tokens vs the new `--success`
+family — check for redundancy.

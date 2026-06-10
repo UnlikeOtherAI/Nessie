@@ -67,6 +67,18 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - **TypeScript**: strict mode (`strict: true` in tsconfig), ESLint with `max-len`, `noImplicitAny`, `noUnusedLocals`
 - **Swift**: SwiftLint with strict mode, warning treated as error in CI
 
+## Theming / design system
+
+- The admin is fully color-themed via CSS custom properties. **All color lives in
+  `admin/src/styles.css`** — the base `:root` is the default "nebula" theme, and
+  each `[data-theme="<id>"]` block re-declares the same tokens. Components carry
+  **no** raw hex or Tailwind named-color utilities; they reference tokens via
+  `var(--x)` / `bg-[var(--x)]`.
+- Switcher: `ThemeProvider` (`admin/src/providers/`) + Appearance page
+  (`/settings/appearance`); choice persists to `localStorage["nessie.theme"]`.
+- Adding a theme = add a `[data-theme]` block (redeclare every token) + register
+  the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](docs/plans/2026-06-10-design-system-theming.md).
+
 ## Ports — NON-NEGOTIABLE
 
 - **API**: `5554` — always. Do not kill or restart without restarting on the same port.
