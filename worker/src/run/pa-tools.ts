@@ -880,6 +880,7 @@ export const runSendMessageTool = async (
     {
       data: {
         agentId: undefined,
+        channelId: parseChannelId(destination.channelId),
         contentPreview: content.slice(0, 200),
         messageId: message.id,
         role: 'user',

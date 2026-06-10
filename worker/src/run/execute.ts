@@ -763,6 +763,7 @@ const publishMessageCreated = async (
   await realtimeTransport.publishWs(buildScopes(context), {
     data: {
       agentId: parseAgentId(context.agent.id),
+      channelId: parseChannelId(context.channel.id),
       contentPreview: input.content.slice(0, 200),
       messageId: input.messageId,
       role: input.role,

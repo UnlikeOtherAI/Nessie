@@ -366,6 +366,7 @@ export const dispatchNextMailboxMessage = async (
     {
       data: {
         agentId: parseAgentId(message.toAgentId),
+        channelId: parseChannelId(thread.channelId),
         contentPreview: message.body.slice(0, 200),
         messageId: publishPayload.messageId,
         role: 'user',

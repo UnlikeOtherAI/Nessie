@@ -181,6 +181,8 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       {
         data: {
           agentId: undefined,
+          authorUserId: parseUserId(actorContext.actor.actorId),
+          channelId: parseChannelId(thread.channel.id),
           contentPreview: result.message.content.slice(0, 200),
           messageId: result.message.id,
           role: result.message.role,

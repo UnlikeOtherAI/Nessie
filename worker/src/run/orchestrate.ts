@@ -68,6 +68,7 @@ export const executeOrchestrateDecideJob = async (
       await deps.realtimeTransport.publishWs([{ kind: 'channel' as const, channelId }], {
         data: {
           agentId: parseAgentId(respondingAgentId),
+          channelId,
           contentPreview: notice.content.slice(0, 200),
           messageId: notice.id,
           role: 'assistant',
@@ -205,6 +206,7 @@ export const executeOrchestrateDecideJob = async (
         {
           data: {
             agentId: parseAgentId(run.agentId),
+            channelId,
             contentPreview: content.slice(0, 200),
             messageId,
             role,
