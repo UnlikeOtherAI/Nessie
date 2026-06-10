@@ -334,6 +334,37 @@ The dispatch loop is live (no standalone gateway yet — the worker calls the
 - The AES-256-GCM crypto now lives in `@nessie/runtime` (`secret-crypto.ts`) so
   both the api secret stores and the worker share one implementation.
 
+### Web + desktop notification consumer — implemented (2026-06-10)
+
+The in-app + native notification consumer for the `admin/` bundle is live, so
+both the **web admin** and the **desktop (Tauri) app** (which loads the same
+bundle) notify on new messages with **no APNs/FCM** — they ride the per-user SSE
+stream directly:
+
+- `admin/src/facades/notifications/useMessageNotifications.ts` opens a fetch-based
+  SSE connection to `GET /api/events/stream` (bearer token + `Last-Event-ID`
+  reconnect, shared frame reader in `admin/src/lib/sse.ts`, also used by
+  `useThreadStream`). On each `message.new` it fires a native
+  `Notification` (when permission is granted) **and** an in-app toast
+  (`admin/src/providers/NotificationsProvider.tsx`), deep-linking to
+  `/channels/:channelId` on click. Wired into `AdminShellLayout`.
+- Suppression rules: never notify for the recipient's **own** message
+  (`authorUserId === me`) and never for the **channel currently being viewed**
+  (`channelId === active route` while the tab is focused/visible). Backlog
+  replay events (ts < connect time) are ignored; notified message ids are
+  de-duplicated.
+- To make those rules reliable the `message.new` realtime event now carries
+  `channelId` + `authorUserId` (optional fields on `MessageNewEventSchema` in
+  `@nessie/schemas`), populated by every publisher (`api/src/routes/threads.ts`
+  for human messages — which also sets `authorUserId` — and the worker
+  publishers in `pa-tools`/`orchestrate`/`execute`/`mailbox`, which set
+  `channelId`). Verified live: a message posted by another user lands a toast on
+  the recipient's stream; the recipient's own message does not.
+- The desktop app's native OS notifications use this exact path (the Tauri
+  WKWebView/WebView2 surfaces the Web `Notification` API), so desktop needs no
+  extra dispatch service. Mobile (backgrounded/closed) still requires the
+  APNs/FCM pipeline above.
+
 ## Accounts & infra checklist
 
 - [ ] Apple Developer Program ($99/yr): App ID + Push entitlement, APNs `.p8`
