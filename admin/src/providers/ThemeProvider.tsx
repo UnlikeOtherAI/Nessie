@@ -10,7 +10,16 @@ import {
 
 const STORAGE_KEY = 'nessie.theme'
 
-export type Theme = 'nebula' | 'midnight' | 'daylight'
+export type Theme =
+  | 'nebula'
+  | 'midnight'
+  | 'daylight'
+  | 'forest'
+  | 'ocean'
+  | 'sunset'
+  | 'rose'
+  | 'graphite'
+  | 'sandstone'
 
 type ThemeOption = {
   description: string
@@ -39,6 +48,36 @@ const THEMES = [
     description: 'Light surfaces, dark text, and readable blue accents.',
     id: 'daylight',
     label: 'Daylight',
+  },
+  {
+    description: 'Deep green-charcoal surfaces with a calm emerald accent.',
+    id: 'forest',
+    label: 'Forest',
+  },
+  {
+    description: 'Navy-teal depth with clear cyan controls and links.',
+    id: 'ocean',
+    label: 'Ocean',
+  },
+  {
+    description: 'Warm dark brown surfaces with a grounded orange accent.',
+    id: 'sunset',
+    label: 'Sunset',
+  },
+  {
+    description: 'Dark plum surfaces with rose and magenta emphasis.',
+    id: 'rose',
+    label: 'Rose',
+  },
+  {
+    description: 'Neutral grayscale surfaces with restrained steel accents.',
+    id: 'graphite',
+    label: 'Graphite',
+  },
+  {
+    description: 'Warm sand surfaces with terracotta controls.',
+    id: 'sandstone',
+    label: 'Sandstone',
   },
 ] as const satisfies readonly ThemeOption[]
 
