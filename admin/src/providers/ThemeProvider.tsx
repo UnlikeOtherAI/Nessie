@@ -7,8 +7,11 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import { useUpdatePreferences } from '../facades/auth/hooks'
+import { useAuthSession } from './AuthSessionProvider'
 
 const STORAGE_KEY = 'nessie.theme'
+const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)'
 
 export type Theme =
   | 'nebula'
@@ -20,6 +23,10 @@ export type Theme =
   | 'rose'
   | 'graphite'
   | 'sandstone'
+  | 'contrast'
+  | 'system'
+
+type AppliedTheme = Exclude<Theme, 'system'>
 
 type ThemeOption = {
   description: string
@@ -79,6 +86,16 @@ const THEMES = [
     id: 'sandstone',
     label: 'Sandstone',
   },
+  {
+    description: 'Maximum separation for text, controls, and surfaces.',
+    id: 'contrast',
+    label: 'High Contrast',
+  },
+  {
+    description: 'Follow your OS light/dark setting.',
+    id: 'system',
+    label: 'System',
+  },
 ] as const satisfies readonly ThemeOption[]
 
 const THEME_IDS = new Set<Theme>(THEMES.map((theme) => theme.id))
@@ -88,43 +105,92 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 const isTheme = (value: string | null): value is Theme =>
   value !== null && THEME_IDS.has(value as Theme)
 
-const getStoredTheme = (): Theme => {
+const getLocalTheme = (): Theme | null => {
   if (typeof window === 'undefined') {
-    return 'nebula'
+    return null
   }
 
   try {
     const storedTheme = window.localStorage.getItem(STORAGE_KEY)
-    return isTheme(storedTheme) ? storedTheme : 'nebula'
+    return isTheme(storedTheme) ? storedTheme : null
   } catch {
-    return 'nebula'
+    return null
   }
 }
 
+const writeLocalTheme = (theme: Theme): void => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, theme)
+  } catch {
+    // Storage can be unavailable in private or constrained browser contexts.
+  }
+}
+
+const getStoredTheme = (serverTheme?: Theme): Theme =>
+  serverTheme ?? getLocalTheme() ?? 'system'
+
+const getSystemTheme = (mediaQuery?: MediaQueryList): AppliedTheme => {
+  if (mediaQuery) {
+    return mediaQuery.matches ? 'nebula' : 'daylight'
+  }
+
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return 'daylight'
+  }
+
+  return window.matchMedia(SYSTEM_THEME_QUERY).matches ? 'nebula' : 'daylight'
+}
+
+const resolveTheme = (theme: Theme): AppliedTheme =>
+  theme === 'system' ? getSystemTheme() : theme
+
 export const ThemeProvider = ({ children }: PropsWithChildren) => {
-  const [theme, setThemeState] = useState<Theme>(getStoredTheme)
+  const { me } = useAuthSession()
+  const { mutate: updatePreferences } = useUpdatePreferences()
+  const serverTheme = me?.user.preferences?.theme
+  const [theme, setThemeState] = useState<Theme>(() => getStoredTheme(serverTheme))
 
   useEffect(() => {
+    const nextTheme = getStoredTheme(serverTheme)
+    setThemeState((currentTheme) => (currentTheme === nextTheme ? currentTheme : nextTheme))
+  }, [serverTheme])
+
+  useEffect(() => {
+    writeLocalTheme(theme)
+
     if (typeof document === 'undefined') {
       return
     }
 
-    document.documentElement.dataset.theme = theme
+    document.documentElement.dataset.theme = resolveTheme(theme)
 
-    if (typeof window === 'undefined') {
+    if (theme !== 'system' || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return
     }
 
-    try {
-      window.localStorage.setItem(STORAGE_KEY, theme)
-    } catch {
-      // Storage can be unavailable in private or constrained browser contexts.
+    const mediaQuery = window.matchMedia(SYSTEM_THEME_QUERY)
+    const resolveSystemTheme = () => {
+      document.documentElement.dataset.theme = getSystemTheme(mediaQuery)
+    }
+    mediaQuery.addEventListener('change', resolveSystemTheme)
+
+    return () => {
+      mediaQuery.removeEventListener('change', resolveSystemTheme)
     }
   }, [theme])
 
   const setTheme = useCallback((nextTheme: Theme) => {
     setThemeState(nextTheme)
-  }, [])
+    writeLocalTheme(nextTheme)
+
+    if (me) {
+      updatePreferences({ theme: nextTheme })
+    }
+  }, [me, updatePreferences])
 
   const value = useMemo(
     () => ({
