@@ -1,17 +1,72 @@
 :root {
-  color: #111111;
-  background:
-    radial-gradient(circle at top left, rgba(255, 159, 67, 0.18), transparent 30%),
-    radial-gradient(circle at top right, rgba(11, 98, 87, 0.16), transparent 32%),
-    linear-gradient(180deg, #f5efe4 0%, #fbf8f1 48%, #efe6d8 100%);
+  color-scheme: light;
+  --background: #f8fafc;
+  --background-wash-start: #eef2f7;
+  --background-wash-end: #e2e8f0;
+  --surface: #ffffff;
+  --surface-soft: #eef2f7;
+  --text: #111827;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  --border: rgba(15, 23, 42, 0.14);
+  --border-soft: rgba(15, 23, 42, 0.1);
+  --glow-warm: rgba(217, 119, 6, 0.14);
+  --glow-accent: rgba(37, 99, 235, 0.14);
+  --grid-line: rgba(15, 23, 42, 0.05);
+  --mask-strong: rgba(0, 0, 0, 0.65);
+  --card-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+  --button-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+  --surface-glass: rgba(255, 255, 255, 0.72);
+  --surface-glass-strong: rgba(255, 255, 255, 0.84);
+  --status-pending: #64748b;
+  --status-in-progress: #2563eb;
+  --status-completed: #16a34a;
+  --status-failed: #dc2626;
+  --danger: #dc2626;
+  --danger-text: #b91c1c;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  color: var(--text);
+  background: var(--background);
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #1a1d21;
+    --background-wash-start: #2e1132;
+    --background-wash-end: #111827;
+    --surface: #222629;
+    --surface-soft: #1e1222;
+    --text: #d1d2d3;
+    --muted: #949597;
+    --accent: #7c3aed;
+    --accent-contrast: #ffffff;
+    --border: rgba(255, 255, 255, 0.14);
+    --border-soft: rgba(255, 255, 255, 0.1);
+    --glow-warm: rgba(234, 179, 8, 0.1);
+    --glow-accent: rgba(124, 58, 237, 0.2);
+    --grid-line: rgba(255, 255, 255, 0.06);
+    --mask-strong: rgba(0, 0, 0, 0.72);
+    --card-shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
+    --button-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
+    --surface-glass: rgba(34, 38, 41, 0.72);
+    --surface-glass-strong: rgba(34, 38, 41, 0.86);
+    --status-pending: #949597;
+    --status-in-progress: #1d9bd1;
+    --status-completed: #22c55e;
+    --status-failed: #ef4444;
+    --danger: #ef4444;
+    --danger-text: #fca5a5;
+    --danger-soft: rgba(239, 68, 68, 0.12);
+  }
 }
 
 * {
@@ -21,6 +76,8 @@
 body {
   margin: 0;
   min-width: 320px;
+  color: var(--text);
+  background: var(--background);
 }
 
 a {
@@ -40,17 +97,27 @@ select {
   min-height: 100vh;
   overflow: hidden;
   padding: 48px 24px 72px;
+  background:
+    radial-gradient(circle at top left, var(--glow-warm), transparent 30%),
+    radial-gradient(circle at top right, var(--glow-accent), transparent 32%),
+    linear-gradient(
+      180deg,
+      var(--background-wash-start) 0%,
+      var(--background) 48%,
+      var(--background-wash-end) 100%
+    );
+  color: var(--text);
 }
 
 .landing-grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(17, 17, 17, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(17, 17, 17, 0.05) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-position: center;
   background-size: 44px 44px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.65), transparent 90%);
+  mask-image: linear-gradient(180deg, var(--mask-strong), transparent 90%);
   pointer-events: none;
 }
 
@@ -109,18 +176,18 @@ select {
 }
 
 .button:hover {
-  box-shadow: 0 14px 28px rgba(17, 17, 17, 0.12);
+  box-shadow: var(--button-shadow);
   transform: translateY(-1px);
 }
 
 .button-primary {
-  background: #111111;
-  color: #f7f1e8;
+  background: var(--text);
+  color: var(--background);
 }
 
 .button-secondary {
-  border: 1px solid rgba(17, 17, 17, 0.16);
-  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--border);
+  background: var(--surface-glass);
 }
 
 .steps {
@@ -146,11 +213,11 @@ select {
 .pillar-card {
   min-height: 240px;
   padding: 24px;
-  border: 1px solid rgba(17, 17, 17, 0.12);
+  border: 1px solid var(--border-soft);
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.66);
+  background: var(--surface-glass-strong);
   backdrop-filter: blur(12px);
-  box-shadow: 0 18px 48px rgba(17, 17, 17, 0.08);
+  box-shadow: var(--card-shadow);
 }
 
 .pillar-index {

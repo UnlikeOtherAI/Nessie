@@ -141,11 +141,11 @@ export function WorkflowApp() {
 
   function getStatusColor(status: string): string {
     switch (status) {
-      case 'pending': return '#9ca3af'
-      case 'in_progress': return '#3b82f6'
-      case 'completed': return '#22c55e'
-      case 'failed': return '#ef4444'
-      default: return '#9ca3af'
+      case 'pending': return 'var(--status-pending)'
+      case 'in_progress': return 'var(--status-in-progress)'
+      case 'completed': return 'var(--status-completed)'
+      case 'failed': return 'var(--status-failed)'
+      default: return 'var(--status-pending)'
     }
   }
 
@@ -154,7 +154,15 @@ export function WorkflowApp() {
       <h1>Workflow Management</h1>
 
       {error && (
-        <div style={{ padding: '10px', background: '#fee', color: '#c00', borderRadius: '4px', marginBottom: '10px' }}>
+        <div
+          style={{
+            padding: '10px',
+            background: 'var(--danger-soft)',
+            color: 'var(--danger-text)',
+            borderRadius: '4px',
+            marginBottom: '10px',
+          }}
+        >
           {error}
           <button onClick={() => setError(null)} style={{ marginLeft: '10px' }}>Dismiss</button>
         </div>
@@ -173,7 +181,7 @@ export function WorkflowApp() {
           {showCreate && (
             <form
       onSubmit={createWorkflow}
-      style={{ padding: '10px', background: '#f5f5f5', borderRadius: '4px', marginBottom: '10px' }}
+      style={{ padding: '10px', background: 'var(--surface-soft)', borderRadius: '4px', marginBottom: '10px' }}
     >
               <input
                 type="text"
@@ -198,13 +206,16 @@ export function WorkflowApp() {
           ) : (
             <ul style={{ listStyle: 'none', padding: 0 }}>
               {workflows.map((wf) => (
-                <li key={wf.id} style={{ padding: '10px', borderBottom: '1px solid #eee', cursor: 'pointer' }}>
+                <li
+                  key={wf.id}
+                  style={{ padding: '10px', borderBottom: '1px solid var(--border-soft)', cursor: 'pointer' }}
+                >
                   <div
                     style={{ fontWeight: selectedWorkflow?.id === wf.id ? 'bold' : 'normal' }}
                     onClick={() => fetchWorkflowTasks(wf.id)}
                   >
                     <span style={{ marginRight: '10px' }}>{wf.name}</span>
-                    <span style={{ fontSize: '12px', color: '#666' }}>{wf.status}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{wf.status}</span>
                   </div>
                 </li>
               ))}
@@ -225,7 +236,7 @@ export function WorkflowApp() {
             {showCreateTask && (
               <form
               onSubmit={createTask}
-              style={{ padding: '10px', background: '#f5f5f5', borderRadius: '4px', marginBottom: '10px' }}
+              style={{ padding: '10px', background: 'var(--surface-soft)', borderRadius: '4px', marginBottom: '10px' }}
             >
                 <input
                   type="text"
@@ -256,7 +267,7 @@ export function WorkflowApp() {
             ) : (
               <ul style={{ listStyle: 'none', padding: 0 }}>
                 {tasks.map((task) => (
-                  <li key={task.id} style={{ padding: '10px', borderBottom: '1px solid #eee' }}>
+                  <li key={task.id} style={{ padding: '10px', borderBottom: '1px solid var(--border-soft)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span
                         style={{
@@ -267,12 +278,12 @@ export function WorkflowApp() {
                         }}
                       />
                       <strong>{task.label}</strong>
-                      <span style={{ fontSize: '12px', color: '#666' }}>({task.status})</span>
+                      <span style={{ fontSize: '12px', color: 'var(--muted)' }}>({task.status})</span>
                     </div>
-                    {task.description && <p style={{ margin: '5px 0', color: '#666' }}>{task.description}</p>}
-                    {task.error && <p style={{ margin: '5px 0', color: '#ef4444' }}>Error: {task.error}</p>}
+                    {task.description && <p style={{ margin: '5px 0', color: 'var(--muted)' }}>{task.description}</p>}
+                    {task.error && <p style={{ margin: '5px 0', color: 'var(--danger)' }}>Error: {task.error}</p>}
                     {task.dependencies.length > 0 && (
-                      <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>
+                      <p style={{ margin: '5px 0', fontSize: '12px', color: 'var(--muted)' }}>
                         Depends on: {task.dependencies.join(', ')}
                       </p>
                     )}
@@ -292,15 +303,15 @@ export function WorkflowApp() {
             style={{
               marginTop: '20px',
               padding: '20px',
-              background: '#f9f9f9',
+              background: 'var(--surface)',
               borderRadius: '4px',
               textAlign: 'center',
             }}
           >
-              <p style={{ color: '#666' }}>
+              <p style={{ color: 'var(--muted)' }}>
                 DAG visualization available at <code>/workflow</code> endpoint
               </p>
-              <p style={{ fontSize: '12px', color: '#999' }}>
+              <p style={{ fontSize: '12px', color: 'var(--muted)' }}>
                 (Full @antv/x6 visualization coming soon)
               </p>
             </div>
