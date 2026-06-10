@@ -31,7 +31,7 @@ export const SettingsPanel = ({ eyebrow, title, actions, children }: SettingsPan
     >
       <div>
         <div className={sectionTitleClass}>{eyebrow}</div>
-        <h1 className="mt-1 text-[17px] font-bold text-white">{title}</h1>
+        <h1 className="mt-1 text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
       </div>
       {actions}
     </header>

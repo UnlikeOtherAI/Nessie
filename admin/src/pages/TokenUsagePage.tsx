@@ -85,7 +85,7 @@ export const TokenUsagePage = () => {
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="admin-card p-4">
             <div className={sectionTitle}>Total Tokens</div>
-            <div className="mt-2 text-2xl font-bold text-white">
+            <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
               {formatTokens(summary?.totalTokens ?? 0)}
             </div>
             <div className="mt-1 text-xs text-[color:var(--tx2)]">
@@ -95,13 +95,13 @@ export const TokenUsagePage = () => {
           </div>
           <div className="admin-card p-4">
             <div className={sectionTitle}>Estimated Cost</div>
-            <div className="mt-2 text-2xl font-bold text-white">
+            <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
               {formatCost(summary?.totalEstimatedCost ?? 0, summary?.currency ?? 'USD')}
             </div>
           </div>
           <div className="admin-card p-4">
             <div className={sectionTitle}>Monthly Projection</div>
-            <div className="mt-2 text-2xl font-bold text-white">
+            <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
               {formatCost(estimate?.projectedMonthlyCost ?? 0, estimate?.currency ?? 'USD')}
             </div>
             <div className="mt-1 text-xs text-[color:var(--tx2)]">
@@ -119,13 +119,13 @@ export const TokenUsagePage = () => {
               {(summary?.breakdowns ?? []).map((b) => (
                 <div key={b.key} className="admin-card flex items-center justify-between p-3">
                   <div>
-                    <div className="font-semibold text-white">{b.key}</div>
+                    <div className="font-semibold text-[color:var(--tx)]">{b.key}</div>
                     <div className="text-xs text-[color:var(--tx2)]">
                       {formatTokens(b.inputTokens)} in / {formatTokens(b.outputTokens)} out
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-mono text-sm text-white">
+                    <div className="font-mono text-sm text-[color:var(--tx)]">
                       {formatTokens(b.totalTokens)}
                     </div>
                     <div className="text-xs text-[color:var(--tx2)]">

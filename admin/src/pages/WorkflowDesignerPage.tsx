@@ -69,7 +69,10 @@ export const WorkflowDesignerPage = () => {
   }
 
   return (
-    <div aria-label="Workflow Designer" className="flex h-full w-full flex-col bg-white">
+    <div
+      aria-label="Workflow Designer"
+      className="flex h-full w-full flex-col bg-[color:var(--surface-inverse)]"
+    >
       <WorkflowDesignerHeader
         workflowName={state.workflowName}
         onWorkflowNameChange={state.setWorkflowName}

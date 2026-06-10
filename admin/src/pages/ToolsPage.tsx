@@ -84,9 +84,9 @@ export const ToolsPage = () => {
         title={selectedTool.label}
       >
         <div className="grid gap-4">
-          <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+          <div className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--scrim-weak)] p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="min-w-0 flex-1 text-xl font-semibold text-white">
+              <h2 className="min-w-0 flex-1 text-xl font-semibold text-[color:var(--tx)]">
                 {selectedTool.label}
               </h2>
               <StatusPill tone={selectedTool.safe ? 'success' : 'warning'}>
@@ -106,13 +106,13 @@ export const ToolsPage = () => {
               ['ID', selectedTool.id],
             ].map(([label, value]) => (
               <div
-                className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-3"
+                className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--scrim-weak)] p-3"
                 key={label}
               >
                 <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                   {label}
                 </div>
-                <div className="mt-2 text-sm text-white">{value}</div>
+                <div className="mt-2 text-sm text-[color:var(--tx)]">{value}</div>
               </div>
             ))}
           </div>

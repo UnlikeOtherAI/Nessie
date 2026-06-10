@@ -27,9 +27,9 @@ type OpsHealth = {
 }
 
 const WORKER_TONE: Record<WorkerHealthStatus, string> = {
-  up: 'bg-emerald-500/15 text-emerald-300',
-  stale: 'bg-amber-500/15 text-amber-300',
-  down: 'bg-red-500/15 text-red-300',
+  up: 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]',
+  stale: 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
+  down: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
 }
 
 const sectionTitle =
@@ -41,7 +41,7 @@ const Stat = ({ label, value, danger }: { label: string; value: number; danger?:
     <span
       className={[
         'text-2xl font-semibold',
-        danger && value > 0 ? 'text-red-300' : 'text-white',
+        danger && value > 0 ? 'text-[color:var(--danger-text)]' : 'text-[color:var(--tx)]',
       ].join(' ')}
     >
       {value}
@@ -98,7 +98,7 @@ export const OpsHealthPage = () => {
           messages are scoped to your organization.
         </p>
         {isError && (
-          <div className="admin-card mb-4 p-4 text-sm text-red-300">
+          <div className="admin-card mb-4 p-4 text-sm text-[color:var(--danger-text)]">
             {(error as Error)?.message ?? 'Failed to load system health'}
           </div>
         )}
@@ -110,7 +110,9 @@ export const OpsHealthPage = () => {
             <span
               className={[
                 'inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em]',
-                worker ? WORKER_TONE[worker.status] : 'bg-white/10 text-[color:var(--tx3)]',
+                worker
+                  ? WORKER_TONE[worker.status]
+                  : 'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
               ].join(' ')}
             >
               {worker?.status ?? '—'}
@@ -119,7 +121,7 @@ export const OpsHealthPage = () => {
           <Stat label="Active runners" value={worker?.activeRunners ?? 0} />
           <div className="admin-card flex flex-col gap-1 p-3">
             <span className={sectionTitle}>Last heartbeat</span>
-            <span className="text-2xl font-semibold text-white">
+            <span className="text-2xl font-semibold text-[color:var(--tx)]">
               {heartbeat == null ? '—' : `${heartbeat}s`}
             </span>
           </div>
@@ -140,13 +142,13 @@ export const OpsHealthPage = () => {
           {(data?.deadJobs ?? []).map((job) => (
             <div key={job.id} className="admin-card p-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-sm font-semibold text-white">{job.topic}</span>
+                <span className="font-mono text-sm font-semibold text-[color:var(--tx)]">{job.topic}</span>
                 <span className="text-xs text-[color:var(--tx3)]">
                   attempt {job.attempt}/{job.maxAttempts} · {new Date(job.enqueuedAt).toLocaleString()}
                 </span>
               </div>
               {job.errorMessage && (
-                <pre className="mt-2 max-h-28 overflow-auto rounded bg-black/30 p-2 text-[11px] text-[color:var(--tx2)]">
+                <pre className="mt-2 max-h-28 overflow-auto rounded bg-[color:var(--scrim)] p-2 text-[11px] text-[color:var(--tx2)]">
                   {job.errorMessage}
                 </pre>
               )}
@@ -163,7 +165,7 @@ export const OpsHealthPage = () => {
         <div className="mt-2 grid gap-2">
           {(data?.deadLetters.recent ?? []).map((message) => (
             <div key={message.id} className="admin-card flex items-center justify-between p-3">
-              <span className="text-sm text-white">{message.subject ?? '(no subject)'}</span>
+              <span className="text-sm text-[color:var(--tx)]">{message.subject ?? '(no subject)'}</span>
               <span className="text-xs text-[color:var(--tx3)]">
                 {message.attempts} attempts · {new Date(message.createdAt).toLocaleString()}
               </span>

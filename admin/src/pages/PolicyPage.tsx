@@ -153,13 +153,13 @@ export const PolicyPage = () => {
                     className={[
                       'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
                       rule.effect === 'allow'
-                        ? 'bg-emerald-500/15 text-emerald-400'
-                        : 'bg-red-500/15 text-red-400',
+                        ? 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
+                        : 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
                     ].join(' ')}
                   >
                     {rule.effect}
                   </span>
-                  <span className="font-mono text-xs text-white">
+                  <span className="font-mono text-xs text-[color:var(--tx)]">
                     {rule.resourceType}.{rule.action}
                   </span>
                   <span className="text-xs text-[color:var(--tx3)]">
@@ -172,7 +172,7 @@ export const PolicyPage = () => {
                 </div>
               </div>
               <button
-                className="text-xs text-red-400 hover:text-red-300"
+                className="text-xs text-[color:var(--danger-text)] hover:text-[color:var(--danger)]"
                 onClick={() => deleteRule.mutate(rule.id)}
                 type="button"
               >

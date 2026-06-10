@@ -90,7 +90,7 @@ export const WorkflowToolsPage = () => {
         <div className="grid gap-6">
           <ToolDetailDrawer tool={selectedTool} />
           <section>
-            <h3 className="text-sm font-semibold text-white">Per-agent grants</h3>
+            <h3 className="text-sm font-semibold text-[color:var(--tx)]">Per-agent grants</h3>
             <p className="mt-1 text-xs text-[color:var(--tx3)]">
               Tick a cell to grant the tool to that agent. The grant is created
               as `allowed`; removing access uses the dedicated DELETE endpoint

@@ -77,7 +77,7 @@ export const SettingsAgentsPage = () => {
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="font-semibold text-white">{agent.name}</div>
+                    <div className="font-semibold text-[color:var(--tx)]">{agent.name}</div>
                     <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                       {agent.role}
                     </div>

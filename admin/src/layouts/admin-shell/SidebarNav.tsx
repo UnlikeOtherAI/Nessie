@@ -113,11 +113,11 @@ export const SidebarNav = (props: SidebarNavProps) => {
     >
       <div className="flex h-[50px] items-center justify-between px-4">
         <button
-          className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-white/10"
+          className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-[color:var(--overlay)]"
           onClick={onNavigateHome}
           type="button"
         >
-          <span className="text-[17px] font-black tracking-[-0.01em] text-white">Nessie</span>
+          <span className="text-[17px] font-black tracking-[-0.01em] text-[color:var(--tx)]">Nessie</span>
           <svg
             className="h-4 w-4 text-[color:var(--tx2)]"
             fill="none"
@@ -134,7 +134,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
         </button>
 
         <button
-          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10"
+          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
           onClick={() => onNavigateSettings()}
           type="button"
         >

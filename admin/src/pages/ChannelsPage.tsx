@@ -303,7 +303,7 @@ export const ChannelsPage = () => {
                 searchResults.map((result) => (
                   <button
                     key={result.id}
-                    className="flex w-full flex-col gap-0.5 rounded-lg px-2 py-2 text-left hover:bg-white/5"
+                    className="flex w-full flex-col gap-0.5 rounded-lg px-2 py-2 text-left hover:bg-[color:var(--overlay-weak)]"
                     onClick={() => {
                       jumpToMessage(result.id)
                       setSearchOpen(false)

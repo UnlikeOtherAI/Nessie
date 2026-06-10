@@ -9,21 +9,21 @@ const LOCAL_DEMO_PASSWORD = 'Password123!'
 
 const fieldClass = [
   'w-full rounded-2xl border border-[var(--line)]',
-  'bg-white/80 px-4 py-3 text-sm text-[var(--ink)]',
+  'bg-[color:var(--surface-inverse)] px-4 py-3 text-sm text-[var(--ink)]',
   'outline-none transition focus:border-[var(--accent)]',
   'focus:ring-2 focus:ring-[var(--accent-soft)]',
 ].join(' ')
 
 const primaryButtonClass = [
   'w-full rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm',
-  'font-medium text-white transition hover:opacity-90',
+  'font-medium text-[color:var(--on-accent)] transition hover:opacity-90',
   'disabled:cursor-not-allowed disabled:opacity-60',
 ].join(' ')
 
 const errorBoxClass = [
-  'rounded-2xl border border-red-500/30',
-  'bg-red-500/8 px-4 py-3 text-sm',
-  'text-red-300',
+  'rounded-2xl border border-[color:var(--danger-border)]',
+  'bg-[color:var(--danger-soft)] px-4 py-3 text-sm',
+  'text-[color:var(--danger-text)]',
 ].join(' ')
 
 export const LoginPage = () => {
@@ -178,7 +178,7 @@ export const LoginPage = () => {
           <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
             Sign in
           </p>
-          <h1 className="mt-4 max-w-[26rem] text-4xl font-semibold tracking-tight text-white md:text-5xl">
+          <h1 className="mt-4 max-w-[26rem] text-4xl font-semibold tracking-tight text-[color:var(--tx)] md:text-5xl">
             Open the Nessie workspace.
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--muted)] md:text-base">
@@ -188,14 +188,14 @@ export const LoginPage = () => {
             alt="Nessie icon"
             className={[
               'absolute right-8 top-8 h-[100px] w-[100px] rounded-[1.75rem] object-cover',
-              'shadow-[0_20px_40px_rgba(13,6,17,0.28)]',
+              'shadow-[0_20px_40px_var(--scrim)]',
             ].join(' ')}
             src="/icon-1024.png"
           />
         </section>
 
         <section className="glass-panel self-start rounded-[2rem] p-8 md:p-10">
-          <h2 className="text-2xl font-semibold text-white">Sign in</h2>
+          <h2 className="text-2xl font-semibold text-[color:var(--tx)]">Sign in</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Continue with single sign-on to access your workspace.
           </p>
@@ -229,7 +229,7 @@ export const LoginPage = () => {
                 Local development
               </p>
               <form className="mt-4 grid gap-4" onSubmit={handleSubmit}>
-                <label className="grid gap-2 text-sm text-white">
+                <label className="grid gap-2 text-sm text-[color:var(--tx)]">
                   <span>Email</span>
                   <input
                     autoComplete="username"
@@ -240,7 +240,7 @@ export const LoginPage = () => {
                     value={email}
                   />
                 </label>
-                <label className="grid gap-2 text-sm text-white">
+                <label className="grid gap-2 text-sm text-[color:var(--tx)]">
                   <span>Password</span>
                   <input
                     autoComplete="current-password"
@@ -258,9 +258,9 @@ export const LoginPage = () => {
               <button
                 className={[
                   'mt-3 w-full rounded-2xl border border-[var(--line)]',
-                  'bg-white/10 px-5 py-3 text-sm font-medium',
-                  'text-[var(--muted)] transition hover:bg-white/20',
-                  'hover:text-white disabled:cursor-not-allowed disabled:opacity-60',
+                  'bg-[color:var(--overlay)] px-5 py-3 text-sm font-medium',
+                  'text-[var(--muted)] transition hover:bg-[color:var(--overlay-strong)]',
+                  'hover:text-[color:var(--tx)] disabled:cursor-not-allowed disabled:opacity-60',
                 ].join(' ')}
                 disabled={isSubmitting}
                 onClick={() => void handleDevLogin()}

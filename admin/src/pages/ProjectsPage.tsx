@@ -70,7 +70,7 @@ const ProjectCard = ({
       <div className="flex items-center gap-3">
         <FolderIcon />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-semibold text-white">{project.name}</div>
+          <div className="truncate font-semibold text-[color:var(--tx)]">{project.name}</div>
           <div className="text-xs text-[color:var(--tx3)]">
             {project.memberCount} {project.memberCount === 1 ? 'member' : 'members'}
             {' · '}Teams: {project.teamCount ?? 0}
@@ -86,7 +86,7 @@ const ProjectCard = ({
               Rename
             </button>
             <button
-              className="admin-button admin-button-secondary text-[color:var(--danger,#f87171)]"
+              className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
               onClick={onDelete}
               type="button"
             >
@@ -106,7 +106,7 @@ const ProjectCard = ({
                 key={member.userId}
                 className="flex items-center gap-2 text-sm"
               >
-                <span className="min-w-0 flex-1 truncate text-white">
+                <span className="min-w-0 flex-1 truncate text-[color:var(--tx)]">
                   {member.displayName}
                   <span className="ml-2 text-xs text-[color:var(--tx3)]">{member.email}</span>
                 </span>
@@ -115,7 +115,7 @@ const ProjectCard = ({
                 </span>
                 {isOwner ? (
                   <button
-                    className="admin-button admin-button-secondary text-[color:var(--danger,#f87171)]"
+                    className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
                     onClick={() =>
                       removeMember.mutate({ projectId: project.id, userId: member.userId })
                     }
@@ -201,7 +201,7 @@ export const ProjectsPage = () => {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {error ? (
-          <div className="admin-card mb-3 border-[color:var(--danger,#f87171)] p-3 text-sm text-[color:var(--danger,#f87171)]">
+          <div className="admin-card mb-3 border-[color:var(--danger-border)] p-3 text-sm text-[color:var(--danger-text)]">
             {error}
           </div>
         ) : null}

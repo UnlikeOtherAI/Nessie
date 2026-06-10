@@ -27,7 +27,7 @@ export const SettingsProfilePage = () => {
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="admin-card p-4">
           <div className={sectionTitleClass}>Profile</div>
-          <div className="mt-4 text-2xl font-semibold text-white">
+          <div className="mt-4 text-2xl font-semibold text-[color:var(--tx)]">
             {me.user.displayName}
           </div>
           <div className="mt-1 text-sm text-[color:var(--tx2)]">{me.user.email}</div>
@@ -48,7 +48,7 @@ export const SettingsProfilePage = () => {
               <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                 Session ID
               </div>
-              <div className="mt-1 break-all font-mono text-xs text-white">
+              <div className="mt-1 break-all font-mono text-xs text-[color:var(--tx)]">
                 {me.session.sessionId}
               </div>
             </div>
