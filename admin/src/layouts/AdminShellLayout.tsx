@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
+import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { AgentsSidebarNav } from './admin-shell/AgentsSidebarNav';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
@@ -35,7 +36,7 @@ export const AdminShellLayout = () => {
   }
 
   return (
-    <>
+    <NotificationsProvider>
       <div className="admin-shell">
         <SidebarRail
           displayName={me.user.displayName}
@@ -126,6 +127,6 @@ export const AdminShellLayout = () => {
         onClose={shell.closeAgentDrawer}
         onSelectAgent={shell.selectAgent}
       />
-    </>
+    </NotificationsProvider>
   );
 };

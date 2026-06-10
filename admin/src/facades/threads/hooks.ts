@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
+import { readSseStream } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
@@ -76,12 +77,12 @@ export const useThreadStream = (threadId?: string): StreamState => {
 
     let cancelled = false
     let lastEventId = ''
+    let activeController: AbortController | null = null
 
     const connectStream = async () => {
       while (!cancelled) {
         const controller = new AbortController()
-        const decoder = new TextDecoder()
-        let buffer = ''
+        activeController = controller
 
         try {
           const headers: Record<string, string> = {
@@ -101,127 +102,106 @@ export const useThreadStream = (threadId?: string): StreamState => {
             break
           }
 
-          const reader = response.body.getReader()
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done || cancelled) {
-              break
+          await readSseStream(response.body, (frame) => {
+            if (cancelled) {
+              return
             }
 
-            buffer += decoder.decode(value, { stream: true })
-            const frames = buffer.split('\n\n')
-            buffer = frames.pop() ?? ''
+            // Track Last-Event-ID for reconnection
+            if (frame.id) {
+              lastEventId = frame.id
+            }
 
-            for (const frame of frames) {
-              const trimmed = frame.trim()
-              if (!trimmed || trimmed.startsWith(':')) {
-                continue
-              }
+            if (!frame.event || !frame.data) {
+              return
+            }
 
-              // Track Last-Event-ID for reconnection
-              const idLine = trimmed
-                .split('\n')
-                .find((line) => line.startsWith('id: '))
-              if (idLine) {
-                lastEventId = idLine.slice(4)
-              }
+            const data = JSON.parse(frame.data) as StreamEventData
 
-              const event = trimmed
-                .split('\n')
-                .find((line) => line.startsWith('event: '))
-                ?.slice(7)
-              const dataLine = trimmed
-                .split('\n')
-                .find((line) => line.startsWith('data: '))
-                ?.slice(6)
+            if (frame.event === 'stream.start') {
+              setPendingMessages((current) =>
+                current.some((message) => message.runId === data.runId)
+                  ? current
+                  : [
+                      ...current,
+                      {
+                        agentId: data.agentId ?? '',
+                        content: '',
+                        reasoningContent: '',
+                        runId: data.runId,
+                      },
+                    ],
+              )
+              return
+            }
 
-              if (!event || !dataLine) {
-                continue
-              }
-
-              const data = JSON.parse(dataLine) as StreamEventData
-
-              if (event === 'stream.start') {
-                setPendingMessages((current) =>
-                  current.some((message) => message.runId === data.runId)
-                    ? current
-                    : [
-                        ...current,
-                        {
-                          agentId: data.agentId ?? '',
-                          content: '',
-                          reasoningContent: '',
-                          runId: data.runId,
-                        },
-                      ],
-                )
-                continue
-              }
-
-              if (event === 'stream.reasoning') {
-                setPendingMessages((current) =>
-                  current.map((message) =>
-                    message.runId === data.runId
-                      ? {
-                          ...message,
-                          reasoningContent: `${message.reasoningContent}${data.content ?? ''}`,
-                        }
-                      : message,
-                  ),
-                )
-                continue
-              }
-
-              if (event === 'stream.delta') {
-                setPendingMessages((current) =>
-                  current.map((message) =>
-                    message.runId === data.runId
-                      ? {
-                          ...message,
-                          content: `${message.content}${data.content ?? ''}`,
-                        }
-                      : message,
-                  ),
-                )
-                continue
-              }
-
-              if (event === 'stream.done') {
-                if (data.messageId && data.content !== undefined) {
-                  queryClient.setQueryData<ThreadMessageRecord[] | undefined>(
-                    ['threads', threadId, 'messages'],
-                    (current) => {
-                      const finalMessage: ThreadMessageRecord = {
-                        agentId: data.agentId ?? null,
-                        content: data.content ?? '',
-                        createdAt: data.createdAt ?? new Date().toISOString(),
-                        id: data.messageId ?? '',
-                        reactions: [],
-                        role: 'assistant',
-                        threadId,
+            if (frame.event === 'stream.reasoning') {
+              setPendingMessages((current) =>
+                current.map((message) =>
+                  message.runId === data.runId
+                    ? {
+                        ...message,
+                        reasoningContent: `${message.reasoningContent}${data.content ?? ''}`,
                       }
-                      const messages = current ?? []
-                      return [
-                        ...messages.filter((message) => message.id !== finalMessage.id),
-                        finalMessage,
-                      ]
-                    },
-                  )
-                }
-                setPendingMessages((current) =>
-                  current.filter((message) => message.runId !== data.runId),
-                )
-                void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
-                continue
-              }
-
-              if (event === 'message.reaction') {
-                void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
-              }
+                    : message,
+                ),
+              )
+              return
             }
-          }
+
+            if (frame.event === 'stream.delta') {
+              setPendingMessages((current) =>
+                current.map((message) =>
+                  message.runId === data.runId
+                    ? {
+                        ...message,
+                        content: `${message.content}${data.content ?? ''}`,
+                      }
+                    : message,
+                ),
+              )
+              return
+            }
+
+            if (frame.event === 'stream.done') {
+              if (data.messageId && data.content !== undefined) {
+                queryClient.setQueryData<ThreadMessageRecord[] | undefined>(
+                  ['threads', threadId, 'messages'],
+                  (current) => {
+                    const finalMessage: ThreadMessageRecord = {
+                      agentId: data.agentId ?? null,
+                      content: data.content ?? '',
+                      createdAt: data.createdAt ?? new Date().toISOString(),
+                      id: data.messageId ?? '',
+                      reactions: [],
+                      role: 'assistant',
+                      threadId,
+                    }
+                    const messages = current ?? []
+                    return [
+                      ...messages.filter((message) => message.id !== finalMessage.id),
+                      finalMessage,
+                    ]
+                  },
+                )
+              }
+              setPendingMessages((current) =>
+                current.filter((message) => message.runId !== data.runId),
+              )
+              void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+              return
+            }
+
+            if (frame.event === 'message.reaction') {
+              void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+            }
+          })
         } catch {
           // Connection lost — will reconnect
+        } finally {
+          if (activeController === controller) {
+            activeController = null
+          }
         }
 
         // Reconnect after 2 seconds unless cancelled
@@ -235,6 +215,7 @@ export const useThreadStream = (threadId?: string): StreamState => {
 
     return () => {
       cancelled = true
+      activeController?.abort()
     }
   }, [queryClient, threadId, token])
 

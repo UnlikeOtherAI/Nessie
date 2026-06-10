@@ -10,6 +10,7 @@ import { useProjects, useTeams } from '../../facades/projects/hooks';
 import { useUsers } from '../../facades/users/hooks';
 import type { ChannelRecord } from '../../lib/api-client';
 import { getDmStyle } from '../../lib/avatar';
+import { parseChannelIdFromPath } from '../../lib/channel-route';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { useSidebarTree } from './useSidebarTree';
 import { useStarredItems } from './useStarredItems';
@@ -35,11 +36,6 @@ const ADMIN_ROUTE_PREFIXES = [
   '/policy',
   '/ops',
 ];
-
-const parseChannelIdFromPath = (pathname: string): string | undefined => {
-  const match = pathname.match(/^\/channels(?:\/([^/]+))?$/);
-  return match?.[1];
-};
 
 /**
  * Owns the admin shell's layout-local state, derived sidebar data, realtime

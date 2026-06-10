@@ -1,0 +1,77 @@
+.notification-toast-viewport {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: grid;
+  width: min(360px, calc(100vw - 32px));
+  gap: 8px;
+  pointer-events: none;
+}
+
+.notification-toast {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  overflow: hidden;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  pointer-events: auto;
+}
+
+.notification-toast-content {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  padding: 10px 12px;
+  color: var(--tx);
+  cursor: pointer;
+  text-align: left;
+}
+
+.notification-toast-content:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.notification-toast-title {
+  overflow: hidden;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-toast-body {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--tx2);
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.notification-toast-dismiss {
+  border: 0;
+  border-left: 1px solid var(--sep);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--tx3);
+  cursor: pointer;
+}
+
+.notification-toast-dismiss:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .notification-toast-viewport {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+  }
+}
