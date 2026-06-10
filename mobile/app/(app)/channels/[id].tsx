@@ -17,8 +17,18 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import type { ThreadMessageRecord } from '@nessie/client-core'
 
 import { useChannel, useSendMessage, useThreadMessages } from '../../../src/lib/queries'
+import { useTheme } from '../../../src/lib/theme-context'
+import type { ThemePalette } from '../../../src/lib/theme'
 
-const MessageBubble = ({ message }: { message: ThreadMessageRecord }): React.JSX.Element => {
+type ThreadStyles = ReturnType<typeof createStyles>
+
+const MessageBubble = ({
+  message,
+  styles,
+}: {
+  message: ThreadMessageRecord
+  styles: ThreadStyles
+}): React.JSX.Element => {
   const mine = message.role === 'user'
   return (
     <View style={[styles.bubbleRow, mine ? styles.bubbleRowMine : styles.bubbleRowOther]}>
@@ -31,6 +41,8 @@ const MessageBubble = ({ message }: { message: ThreadMessageRecord }): React.JSX
 
 export default function ThreadScreen(): React.JSX.Element {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const theme = useTheme()
+  const styles = useMemo(() => createStyles(theme), [theme])
   const channelQuery = useChannel(id)
   const threadId = channelQuery.data?.defaultThreadId
   const messagesQuery = useThreadMessages(threadId)
@@ -77,7 +89,7 @@ export default function ThreadScreen(): React.JSX.Element {
       >
         {loading ? (
           <View style={styles.center}>
-            <ActivityIndicator size="large" />
+            <ActivityIndicator color={theme.accent} size="large" />
           </View>
         ) : error ? (
           <View style={styles.center}>
@@ -88,7 +100,7 @@ export default function ThreadScreen(): React.JSX.Element {
               style={[styles.retryButton, refreshing && styles.retryButtonDisabled]}
             >
               {refreshing ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={theme.onAccent} />
               ) : (
                 <Text style={styles.retryButtonText}>Retry</Text>
               )}
@@ -103,7 +115,7 @@ export default function ThreadScreen(): React.JSX.Element {
               style={[styles.retryButton, refreshing && styles.retryButtonDisabled]}
             >
               {refreshing ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={theme.onAccent} />
               ) : (
                 <Text style={styles.retryButtonText}>Retry</Text>
               )}
@@ -114,11 +126,17 @@ export default function ThreadScreen(): React.JSX.Element {
             data={inverted}
             inverted
             keyExtractor={(message) => message.id}
-            renderItem={({ item }) => <MessageBubble message={item} />}
+            renderItem={({ item }) => <MessageBubble message={item} styles={styles} />}
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={<Text style={styles.empty}>No messages yet.</Text>}
             refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={() => void refreshThread()} />
+              <RefreshControl
+                colors={[theme.accent]}
+                progressBackgroundColor={theme.panel}
+                refreshing={refreshing}
+                tintColor={theme.accent}
+                onRefresh={() => void refreshThread()}
+              />
             }
           />
         )}
@@ -129,6 +147,8 @@ export default function ThreadScreen(): React.JSX.Element {
               value={draft}
               onChangeText={setDraft}
               placeholder="Message"
+              placeholderTextColor={theme.tx3}
+              selectionColor={theme.accent}
               multiline
             />
             <Pressable
@@ -145,19 +165,20 @@ export default function ThreadScreen(): React.JSX.Element {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: ThemePalette) => StyleSheet.create({
   bubble: { borderRadius: 14, maxWidth: '80%', paddingHorizontal: 14, paddingVertical: 9 },
-  bubbleMine: { backgroundColor: '#2563eb' },
-  bubbleOther: { backgroundColor: '#f3f4f6' },
+  bubbleMine: { backgroundColor: theme.accent },
+  bubbleOther: { backgroundColor: theme.mainHover },
   bubbleRow: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 4 },
   bubbleRowMine: { justifyContent: 'flex-end' },
   bubbleRowOther: { justifyContent: 'flex-start' },
-  bubbleText: { color: '#111827', fontSize: 15 },
-  bubbleTextMine: { color: '#ffffff', fontSize: 15 },
+  bubbleText: { color: theme.tx, fontSize: 15 },
+  bubbleTextMine: { color: theme.onAccent, fontSize: 15 },
   center: { alignItems: 'center', flex: 1, justifyContent: 'center' },
   composer: {
     alignItems: 'flex-end',
-    borderTopColor: '#e5e7eb',
+    backgroundColor: theme.main,
+    borderTopColor: theme.sep,
     borderTopWidth: 1,
     flexDirection: 'row',
     gap: 8,
@@ -165,21 +186,23 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   composerInput: {
-    borderColor: '#d1d5db',
+    backgroundColor: theme.panel,
+    borderColor: theme.borderStrong,
     borderRadius: 18,
     borderWidth: 1,
+    color: theme.tx,
     flex: 1,
     maxHeight: 120,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  empty: { color: '#6b7280', padding: 24, textAlign: 'center' },
-  error: { color: '#b91c1c', paddingHorizontal: 24, textAlign: 'center' },
+  empty: { color: theme.tx3, padding: 24, textAlign: 'center' },
+  error: { color: theme.dangerText, paddingHorizontal: 24, textAlign: 'center' },
   flex: { flex: 1 },
   listContent: { paddingVertical: 8 },
   retryButton: {
     alignItems: 'center',
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.accent,
     borderRadius: 10,
     justifyContent: 'center',
     marginTop: 16,
@@ -188,14 +211,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   retryButtonDisabled: { opacity: 0.6 },
-  retryButtonText: { color: '#ffffff', fontWeight: '600' },
-  safe: { backgroundColor: '#ffffff', flex: 1 },
+  retryButtonText: { color: theme.onAccent, fontWeight: '600' },
+  safe: { backgroundColor: theme.main, flex: 1 },
   sendButton: {
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.accent,
     borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
   sendDisabled: { opacity: 0.5 },
-  sendText: { color: '#ffffff', fontWeight: '600' },
+  sendText: { color: theme.onAccent, fontWeight: '600' },
 })

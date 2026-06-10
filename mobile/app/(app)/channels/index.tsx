@@ -1,4 +1,5 @@
 import { Link, Stack } from 'expo-router'
+import { useMemo } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -13,8 +14,18 @@ import type { ChannelRecord } from '@nessie/client-core'
 
 import { useAuth } from '../../../src/lib/auth-context'
 import { useChannels } from '../../../src/lib/queries'
+import { useTheme } from '../../../src/lib/theme-context'
+import type { ThemePalette } from '../../../src/lib/theme'
 
-const ChannelRow = ({ channel }: { channel: ChannelRecord }): React.JSX.Element => (
+type ChannelStyles = ReturnType<typeof createStyles>
+
+const ChannelRow = ({
+  channel,
+  styles,
+}: {
+  channel: ChannelRecord
+  styles: ChannelStyles
+}): React.JSX.Element => (
   <Link href={`/(app)/channels/${channel.id}`} asChild>
     <Pressable
       accessibilityLabel={`${channel.label}, ${channel.unreadCount} unread`}
@@ -36,6 +47,8 @@ const ChannelRow = ({ channel }: { channel: ChannelRecord }): React.JSX.Element 
 
 export default function ChannelsScreen(): React.JSX.Element {
   const { logout } = useAuth()
+  const theme = useTheme()
+  const styles = useMemo(() => createStyles(theme), [theme])
   const { data, error, isLoading, isRefetching, refetch } = useChannels()
 
   return (
@@ -51,7 +64,7 @@ export default function ChannelsScreen(): React.JSX.Element {
       />
       {isLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator color={theme.accent} size="large" />
         </View>
       ) : error ? (
         <View style={styles.center}>
@@ -62,7 +75,7 @@ export default function ChannelsScreen(): React.JSX.Element {
             style={[styles.retryButton, isRefetching && styles.retryButtonDisabled]}
           >
             {isRefetching ? (
-              <ActivityIndicator color="#ffffff" />
+              <ActivityIndicator color={theme.onAccent} />
             ) : (
               <Text style={styles.retryButtonText}>Retry</Text>
             )}
@@ -72,11 +85,17 @@ export default function ChannelsScreen(): React.JSX.Element {
         <FlatList
           data={data ?? []}
           keyExtractor={(channel) => channel.id}
-          renderItem={({ item }) => <ChannelRow channel={item} />}
+          renderItem={({ item }) => <ChannelRow channel={item} styles={styles} />}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={<Text style={styles.empty}>No channels yet.</Text>}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} />
+            <RefreshControl
+              colors={[theme.accent]}
+              progressBackgroundColor={theme.panel}
+              refreshing={isRefetching}
+              tintColor={theme.accent}
+              onRefresh={() => void refetch()}
+            />
           }
         />
       )}
@@ -84,15 +103,15 @@ export default function ChannelsScreen(): React.JSX.Element {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: ThemePalette) => StyleSheet.create({
   center: { alignItems: 'center', flex: 1, justifyContent: 'center' },
-  container: { backgroundColor: '#ffffff', flex: 1 },
-  empty: { color: '#6b7280', padding: 24, textAlign: 'center' },
-  error: { color: '#b91c1c', paddingHorizontal: 24, textAlign: 'center' },
-  logout: { color: '#2563eb', fontSize: 15, fontWeight: '600' },
+  container: { backgroundColor: theme.main, flex: 1 },
+  empty: { color: theme.tx3, padding: 24, textAlign: 'center' },
+  error: { color: theme.dangerText, paddingHorizontal: 24, textAlign: 'center' },
+  logout: { color: theme.link, fontSize: 15, fontWeight: '600' },
   retryButton: {
     alignItems: 'center',
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.accent,
     borderRadius: 10,
     justifyContent: 'center',
     marginTop: 16,
@@ -101,7 +120,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   retryButtonDisabled: { opacity: 0.6 },
-  retryButtonText: { color: '#ffffff', fontWeight: '600' },
+  retryButtonText: { color: theme.onAccent, fontWeight: '600' },
   row: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -109,9 +128,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  rowLabel: { color: '#111827', fontSize: 16, fontWeight: '600' },
+  rowLabel: { color: theme.tx, fontSize: 16, fontWeight: '600' },
   rowMain: { flex: 1 },
-  rowMeta: { color: '#6b7280', fontSize: 13, marginTop: 2 },
-  separator: { backgroundColor: '#f3f4f6', height: 1, marginLeft: 16 },
-  unreadDot: { backgroundColor: '#2563eb', borderRadius: 5, height: 10, width: 10 },
+  rowMeta: { color: theme.tx3, fontSize: 13, marginTop: 2 },
+  separator: { backgroundColor: theme.sep, height: 1, marginLeft: 16 },
+  unreadDot: { backgroundColor: theme.accent, borderRadius: 5, height: 10, width: 10 },
 })

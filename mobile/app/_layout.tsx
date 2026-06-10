@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { createQueryClient } from '@nessie/client-core'
 
 import { AuthProvider } from '../src/lib/auth-context'
+import { ThemeProvider, useThemeContext } from '../src/lib/theme-context'
 import { useUnreadBadge } from '../src/lib/use-unread-badge'
 import { useNotificationDeepLink } from '../src/lib/use-notification-deep-link'
 
@@ -25,13 +26,28 @@ const RootNavigator = (): React.JSX.Element => {
   )
 }
 
+const ThemedRoot = (): React.JSX.Element => {
+  const { mode, theme } = useThemeContext()
+
+  return (
+    <>
+      <StatusBar
+        backgroundColor={theme.main}
+        style={mode === 'dark' ? 'light' : 'dark'}
+      />
+      <RootNavigator />
+    </>
+  )
+}
+
 export default function RootLayout(): React.JSX.Element {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <StatusBar style="auto" />
-          <RootNavigator />
+          <ThemeProvider>
+            <ThemedRoot />
+          </ThemeProvider>
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

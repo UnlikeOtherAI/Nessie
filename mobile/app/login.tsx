@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,9 +13,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { useAuth } from '../src/lib/auth-context'
+import { useTheme } from '../src/lib/theme-context'
+import type { ThemePalette } from '../src/lib/theme'
 
 export default function LoginScreen(): React.JSX.Element {
   const { baseUrl, devLogin, passwordLogin, setBaseUrl, status } = useAuth()
+  const theme = useTheme()
+  const styles = useMemo(() => createStyles(theme), [theme])
   const router = useRouter()
 
   const [urlField, setUrlField] = useState(baseUrl)
@@ -68,6 +72,8 @@ export default function LoginScreen(): React.JSX.Element {
             autoCorrect={false}
             keyboardType="url"
             placeholder="http://localhost:5554"
+            placeholderTextColor={theme.tx3}
+            selectionColor={theme.accent}
           />
 
           <Text style={styles.label}>Email</Text>
@@ -79,6 +85,8 @@ export default function LoginScreen(): React.JSX.Element {
             autoCorrect={false}
             keyboardType="email-address"
             placeholder="you@example.com"
+            placeholderTextColor={theme.tx3}
+            selectionColor={theme.accent}
           />
 
           <Text style={styles.label}>Password</Text>
@@ -88,6 +96,8 @@ export default function LoginScreen(): React.JSX.Element {
             onChangeText={setPassword}
             secureTextEntry
             placeholder="••••••••"
+            placeholderTextColor={theme.tx3}
+            selectionColor={theme.accent}
           />
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -98,7 +108,7 @@ export default function LoginScreen(): React.JSX.Element {
             onPress={() => void runLogin(() => passwordLogin({ email, password }))}
           >
             {busy ? (
-              <ActivityIndicator color="#ffffff" />
+              <ActivityIndicator color={theme.onAccent} />
             ) : (
               <Text style={styles.buttonText}>Sign in</Text>
             )}
@@ -117,10 +127,10 @@ export default function LoginScreen(): React.JSX.Element {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: ThemePalette) => StyleSheet.create({
   button: {
     alignItems: 'center',
-    backgroundColor: '#1f2937',
+    backgroundColor: theme.accent,
     borderRadius: 10,
     marginTop: 24,
     paddingVertical: 14,
@@ -128,27 +138,29 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.6 },
   buttonSecondary: {
     alignItems: 'center',
-    borderColor: '#1f2937',
+    borderColor: theme.accent,
     borderRadius: 10,
     borderWidth: 1,
     marginTop: 12,
     paddingVertical: 14,
   },
-  buttonSecondaryText: { color: '#1f2937', fontSize: 16, fontWeight: '600' },
-  buttonText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
+  buttonSecondaryText: { color: theme.accent, fontSize: 16, fontWeight: '600' },
+  buttonText: { color: theme.onAccent, fontSize: 16, fontWeight: '600' },
   container: { flex: 1, justifyContent: 'center', padding: 24 },
-  error: { color: '#b91c1c', marginTop: 12 },
+  error: { color: theme.dangerText, marginTop: 12 },
   flex: { flex: 1 },
   input: {
-    borderColor: '#d1d5db',
+    backgroundColor: theme.panel,
+    borderColor: theme.borderStrong,
     borderRadius: 10,
     borderWidth: 1,
+    color: theme.tx,
     marginTop: 6,
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
-  label: { color: '#374151', fontSize: 13, fontWeight: '600', marginTop: 16 },
-  safe: { backgroundColor: '#ffffff', flex: 1 },
-  subtitle: { color: '#6b7280', fontSize: 15, marginTop: 4 },
-  title: { color: '#111827', fontSize: 32, fontWeight: '700' },
+  label: { color: theme.tx2, fontSize: 13, fontWeight: '600', marginTop: 16 },
+  safe: { backgroundColor: theme.main, flex: 1 },
+  subtitle: { color: theme.tx3, fontSize: 15, marginTop: 4 },
+  title: { color: theme.tx, fontSize: 32, fontWeight: '700' },
 })
