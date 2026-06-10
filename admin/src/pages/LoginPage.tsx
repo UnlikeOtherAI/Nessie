@@ -4,6 +4,7 @@ import { useAuthProviders } from '../facades/auth/hooks'
 import { isDesktopApp } from '../lib/desktop'
 import { beginExternalAuth, clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { useTheme, type Theme } from '../providers/ThemeProvider'
 
 const LOCAL_DEMO_EMAIL = 'owner@example.com'
 const LOCAL_DEMO_PASSWORD = 'Password123!'
@@ -62,6 +63,7 @@ const parseDesktopAuthCallback = (value: string): Omit<ExternalSignInCallback, '
 export const LoginPage = () => {
   const navigate = useNavigate()
   const { devLogin, login, sessionState } = useAuthSession()
+  const { setTheme, theme, themes } = useTheme()
   const { data: providers = [] } = useAuthProviders()
   const handledDesktopCallbackUrls = useRef(new Set<string>())
   // Pre-filled dev credentials for convenience (local mode only).
@@ -87,7 +89,12 @@ export const LoginPage = () => {
       // the sessionStorage entry already bind this exchange. Only enforce a
       // state match when the provider actually returned one.
       const pendingExternalAuth = readPendingExternalAuth()
-      if (!pendingExternalAuth || (state !== null && pendingExternalAuth.state !== state)) {
+      if (!pendingExternalAuth) {
+        // No sign-in is in progress (e.g. a stale deep link replayed after a
+        // logout/relaunch) — nothing to verify, so ignore quietly.
+        return
+      }
+      if (state !== null && pendingExternalAuth.state !== state) {
         clearPendingExternalAuth()
         setError('The external sign-in callback could not be verified.')
         return
@@ -280,24 +287,23 @@ export const LoginPage = () => {
   return (
     <main className="min-h-screen px-6 py-10">
       <div className="mx-auto grid max-w-6xl items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="glass-panel relative self-start rounded-[2rem] p-8 md:p-10">
-          <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-            Sign in
-          </p>
-          <h1 className="mt-4 max-w-[26rem] text-4xl font-semibold tracking-tight text-[color:var(--tx)] md:text-5xl">
-            Open the Nessie workspace.
-          </h1>
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--muted)] md:text-base">
-            Use your account to enter channels, create agents, and watch their activity live.
-          </p>
+        <section className="glass-panel flex flex-col gap-8 self-stretch rounded-[2rem] p-8 md:p-10">
           <img
             alt="Nessie icon"
-            className={[
-              'absolute right-8 top-8 h-[100px] w-[100px] rounded-[1.75rem] object-cover',
-              'shadow-[0_20px_40px_var(--scrim)]',
-            ].join(' ')}
+            className="h-[88px] w-[88px] rounded-[1.5rem] object-cover shadow-[0_20px_40px_var(--scrim)]"
             src="/icon-1024.png"
           />
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+              Sign in
+            </p>
+            <h1 className="mt-4 max-w-[26rem] text-4xl font-semibold tracking-tight text-[color:var(--tx)] md:text-5xl">
+              Open the Nessie workspace.
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--muted)] md:text-base">
+              Use your account to enter channels, create agents, and watch their activity live.
+            </p>
+          </div>
         </section>
 
         <section className="glass-panel self-start rounded-[2rem] p-8 md:p-10">
@@ -377,6 +383,24 @@ export const LoginPage = () => {
             </div>
           ) : null}
         </section>
+
+        <div className="flex items-center justify-center gap-3 lg:col-span-2">
+          <span className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+            Theme
+          </span>
+          <select
+            aria-label="Theme"
+            className="rounded-xl border border-[var(--line)] bg-[color:var(--surface-inverse)] px-3 py-2 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
+            onChange={(event) => setTheme(event.target.value as Theme)}
+            value={theme}
+          >
+            {themes.map((themeOption) => (
+              <option key={themeOption.id} value={themeOption.id}>
+                {themeOption.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </main>
   )

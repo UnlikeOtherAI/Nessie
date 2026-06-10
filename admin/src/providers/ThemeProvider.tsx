@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from 'react'
@@ -158,6 +159,21 @@ export const ThemeProvider = ({ children }: PropsWithChildren) => {
     const nextTheme = getStoredTheme(serverTheme)
     setThemeState((currentTheme) => (currentTheme === nextTheme ? currentTheme : nextTheme))
   }, [serverTheme])
+
+  // Transfer a pre-login theme choice (made on the login page, stored locally)
+  // to the account the first time the user signs in without a server-side theme.
+  const transferredTheme = useRef(false)
+  useEffect(() => {
+    if (!me || transferredTheme.current || serverTheme !== undefined) {
+      return
+    }
+
+    const localTheme = getLocalTheme()
+    if (localTheme) {
+      transferredTheme.current = true
+      updatePreferences({ theme: localTheme })
+    }
+  }, [me, serverTheme, updatePreferences])
 
   useEffect(() => {
     writeLocalTheme(theme)
