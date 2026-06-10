@@ -19,6 +19,8 @@
     "deep-link:default",
     "opener:allow-open-url",
     "opener:default",
-    "notification:default"
+    "notification:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging"
   ]
 }
