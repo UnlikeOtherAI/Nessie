@@ -2,18 +2,32 @@
   "expo": {
     "name": "Nessie",
     "slug": "nessie",
-    "version": "0.0.0",
+    "owner": "TODO-expo-account",
+    "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "scheme": "nessie",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.unlikeotherai.nessie"
+      "bundleIdentifier": "com.unlikeotherai.nessie",
+      "icon": "./assets/icon.png",
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.unlikeotherai.nessie",
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +45,15 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "TODO-run-eas-init"
+      },
+      "setupNotes": {
+        "easProjectId": "TODO: eas init fills extra.eas.projectId.",
+        "owner": "TODO: replace expo.owner with the Expo account name."
+      }
     }
   }
 }
