@@ -56,6 +56,25 @@ const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/settings/appearance',
+        label: 'Appearance',
+        icon: icon(
+          <>
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 3v2M12 19v2M3 12h2M19 12h2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M5 5l1.4 1.4M17.6 17.6 19 19M5 19l1.4-1.4M17.6 6.4 19 5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </>,
+        ),
+      },
+      {
         path: '/settings/members',
         label: 'Members',
         ownerOnly: true,

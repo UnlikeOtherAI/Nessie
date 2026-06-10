@@ -14,6 +14,7 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { AppearancePage } from './pages/settings/AppearancePage'
 import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
 import { SettingsAgentsPage } from './pages/settings/SettingsAgentsPage'
@@ -128,6 +129,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/notifications',
         element: <NotificationsPage />,
+      },
+      {
+        path: '/settings/appearance',
+        element: <AppearancePage />,
       },
       {
         path: '/settings/members',
