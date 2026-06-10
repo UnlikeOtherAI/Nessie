@@ -9,6 +9,16 @@ COMPOSE="docker compose -f infrastructure/compose/docker-compose.prod.yml"
 echo "==> Ensuring Postgres is up"
 $COMPOSE up -d nessie-postgres
 
+# Reclaim Docker build cache + dangling images BEFORE building. The shared host
+# disk filled to 100% repeatedly (frequent deploys accumulate build cache faster
+# than time-based eviction), crashing Postgres mid-deploy (PANIC: No space left
+# on device). Pruning all build cache (0 active, safe) + dangling images up front
+# guarantees the build has room. Image layer caching is separate and unaffected.
+echo "==> Reclaiming Docker build cache + dangling images (pre-build)"
+docker builder prune -af >/dev/null 2>&1 || true
+docker image prune -f >/dev/null 2>&1 || true
+df -h / | tail -1
+
 echo "==> Building images (api + admin)"
 $COMPOSE build api admin
 
@@ -41,8 +51,8 @@ $COMPOSE up -d
 # ~10GB of build cache; left unbounded it filled the shared host disk to 100%,
 # which crashed Postgres (PANIC: No space left on device, stuck in recovery).
 # Keep only cache used in the last 48h so incremental rebuilds stay fast.
-echo "==> Reclaiming old Docker build cache + dangling images"
-docker builder prune -f --filter until=48h >/dev/null 2>&1 || true
+echo "==> Reclaiming Docker build cache + dangling images (post-deploy)"
+docker builder prune -af >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
 
 echo "==> Status"
