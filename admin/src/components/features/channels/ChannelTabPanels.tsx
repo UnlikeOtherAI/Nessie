@@ -48,13 +48,13 @@ export const ChannelTabPanels = ({
                 live here instead of getting mixed into runs or agent controls.
               </p>
             </div>
-            <span className="rounded-full border border-[color:var(--sep)] bg-black/10 px-3 py-1 text-xs font-semibold text-[color:var(--tx3)]">
+            <span className="rounded-full border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-1 text-xs font-semibold text-[color:var(--tx3)]">
               Upload backend next
             </span>
           </div>
 
-          <div className="mt-5 rounded-xl border border-dashed border-[color:var(--sep)] bg-black/10 p-8 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-white/6 text-[color:var(--tx2)]">
+          <div className="mt-5 rounded-xl border border-dashed border-[color:var(--sep)] bg-[var(--scrim-weak)] p-8 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--overlay-weak)] text-[color:var(--tx2)]">
               <svg
                 className="h-6 w-6"
                 fill="none"
@@ -69,7 +69,7 @@ export const ChannelTabPanels = ({
                 />
               </svg>
             </div>
-            <div className="mt-4 text-sm font-semibold text-white">No files yet</div>
+            <div className="mt-4 text-sm font-semibold text-[var(--tx)]">No files yet</div>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[color:var(--tx3)]">
               Attachment upload is the next backend step. Once it lands, files attached to
               messages and added directly to this surface will be searchable and manageable
@@ -83,21 +83,21 @@ export const ChannelTabPanels = ({
             Scope
           </div>
           <div className="mt-4 grid gap-3 text-sm">
-            <div className="rounded-lg border border-[color:var(--sep)] bg-black/10 p-3">
+            <div className="rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3">
               <div className="text-[color:var(--tx3)]">Surface</div>
-              <div className="mt-1 font-semibold text-white">
+              <div className="mt-1 font-semibold text-[var(--tx)]">
                 {isConversationSurface ? 'Conversation' : 'Channel'}
               </div>
             </div>
-            <div className="rounded-lg border border-[color:var(--sep)] bg-black/10 p-3">
+            <div className="rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3">
               <div className="text-[color:var(--tx3)]">Owner</div>
-              <div className="mt-1 font-semibold text-white">
+              <div className="mt-1 font-semibold text-[var(--tx)]">
                 {isPersonalAssistantConversation
                   ? 'Personal Assistant DM'
                   : activeChannel?.label ?? 'Current channel'}
               </div>
             </div>
-            <div className="rounded-lg border border-[color:var(--sep)] bg-black/10 p-3 text-[color:var(--tx2)]">
+            <div className="rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3 text-[color:var(--tx2)]">
               This tab is intentionally visible on every channel so file management has one
               predictable home.
             </div>
@@ -146,19 +146,19 @@ export const ChannelTabPanels = ({
                   <div
                     className={[
                       'mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center',
-                      'rounded-md bg-[rgba(124,58,237,0.14)]',
+                      'rounded-md bg-[var(--accent-soft)]',
                     ].join(' ')}
                   >
                     {getAgentGlyph(agent)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-semibold text-white">
+                      <span className="truncate font-semibold text-[var(--tx)]">
                         {agent.name}
                       </span>
                       <span
                         className={[
-                          'rounded bg-white/6 px-1.5 py-0.5 text-[10px]',
+                          'rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px]',
                           'uppercase tracking-[0.16em] text-[color:var(--tx3)]',
                         ].join(' ')}
                       >
@@ -189,19 +189,19 @@ export const ChannelTabPanels = ({
           <div className="mt-4 grid gap-3 text-sm">
             <div className="admin-card p-3">
               <div className="text-[color:var(--tx3)]">Safe tools</div>
-              <div className="mt-1 text-2xl font-semibold text-white">
+              <div className="mt-1 text-2xl font-semibold text-[var(--tx)]">
                 {toolsCount}
               </div>
             </div>
             <div className="admin-card p-3">
               <div className="text-[color:var(--tx3)]">Streaming messages</div>
-              <div className="mt-1 text-2xl font-semibold text-white">
+              <div className="mt-1 text-2xl font-semibold text-[var(--tx)]">
                 {pendingMessagesCount}
               </div>
             </div>
             <div className="admin-card p-3">
               <div className="text-[color:var(--tx3)]">Bound agents</div>
-              <div className="mt-1 text-2xl font-semibold text-white">
+              <div className="mt-1 text-2xl font-semibold text-[var(--tx)]">
                 {boundAgents.length}
               </div>
             </div>
@@ -220,13 +220,13 @@ export const ChannelTabPanels = ({
                   <div
                     className={[
                       'flex h-9 w-9 items-center justify-center rounded-lg',
-                      'bg-[rgba(124,58,237,0.14)] text-lg',
+                      'bg-[var(--accent-soft)] text-lg',
                     ].join(' ')}
                   >
                     {getAgentGlyph(agent)}
                   </div>
                   <div>
-                    <div className="font-semibold text-white">{agent.name}</div>
+                    <div className="font-semibold text-[var(--tx)]">{agent.name}</div>
                     <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                       {agent.role}
                     </div>

@@ -39,13 +39,13 @@ export const AgentDetailDrawer = ({
 
   return (
     <>
-      <button className="fixed inset-0 z-40 bg-black/45" onClick={onClose} type="button" />
+      <button className="fixed inset-0 z-40 bg-[var(--scrim-strong)]" onClick={onClose} type="button" />
       <aside
         className={[
           'fixed inset-y-3 right-3 z-50 flex',
           'w-[min(620px,calc(100vw-1.5rem))] flex-col overflow-hidden',
           'rounded-2xl border border-[color:var(--sep)] bg-[color:var(--sb)]',
-          'shadow-[0_32px_80px_rgba(0,0,0,0.38)]',
+          'shadow-[0_32px_80px_var(--scrim-strong)]',
         ].join(' ')}
       >
         <header
@@ -56,7 +56,7 @@ export const AgentDetailDrawer = ({
         >
           <div>
             <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-semibold text-white">{agent.name}</h2>
+              <h2 className="text-2xl font-semibold text-[var(--tx)]">{agent.name}</h2>
               <AgentStatusDot status={agent.status} />
               <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
             </div>

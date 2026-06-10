@@ -30,11 +30,11 @@ export const AgentDetailColumn = ({
   return (
     <div className="flex h-full flex-col bg-[color:var(--main)]">
       <div className="flex-shrink-0 border-b border-[color:var(--sep)] px-6 py-5">
-        <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+        <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
           <div className="flex flex-wrap items-center gap-2">
             {showBack && onBack ? (
               <button
-                className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-white/10"
+                className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[var(--overlay)]"
                 onClick={onBack}
                 type="button"
               >
@@ -53,7 +53,7 @@ export const AgentDetailColumn = ({
                 </svg>
               </button>
             ) : null}
-            <h2 className="min-w-0 flex-1 text-xl font-semibold text-white">
+            <h2 className="min-w-0 flex-1 text-xl font-semibold text-[var(--tx)]">
               {agent.name}
             </h2>
             <AgentStatusDot status={agent.status} />
@@ -63,7 +63,7 @@ export const AgentDetailColumn = ({
             <button
               className={[
                 'flex h-7 w-7 items-center justify-center rounded',
-                'text-[color:var(--tx2)] hover:bg-white/10 hover:text-white',
+                'text-[color:var(--tx2)] hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
               ].join(' ')}
               onClick={() => void navigate(`/agents/designer/${agent.id}`)}
               title="Edit agent"

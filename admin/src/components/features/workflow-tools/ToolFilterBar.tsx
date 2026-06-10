@@ -38,8 +38,8 @@ const pillClass = (active: boolean) =>
   [
     'rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]',
     active
-      ? 'border-[color:var(--accent)] bg-[color:var(--accent)]/15 text-white'
-      : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-white/5',
+      ? 'border-[color:var(--accent)] bg-[var(--accent-soft)] text-[var(--tx)]'
+      : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
   ].join(' ')
 
 export const ToolFilterBar = ({

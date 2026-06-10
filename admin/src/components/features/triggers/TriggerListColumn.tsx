@@ -47,7 +47,7 @@ export const TriggerListColumn = ({
       <div>
         <div className="flex items-center justify-between gap-3">
           <div className={sectionTitle}>Configured</div>
-          <div className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+          <div className="rounded-full bg-[var(--overlay-weak)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
             {activeCount} active
           </div>
         </div>
@@ -80,14 +80,14 @@ export const TriggerListColumn = ({
         <div className="mt-3 grid gap-2">
           {scheduledTriggers.map((trigger) => (
             <button
-              className="rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-2 text-left transition hover:bg-black/20"
+              className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2 text-left transition hover:bg-[var(--scrim)]"
               key={trigger.id}
               onClick={() => onSelect(trigger.id)}
               type="button"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold text-white">
+                  <div className="truncate font-semibold text-[var(--tx)]">
                     {trigger.name ?? trigger.type}
                   </div>
                   <div className="mt-1 text-xs text-[color:var(--tx3)]">

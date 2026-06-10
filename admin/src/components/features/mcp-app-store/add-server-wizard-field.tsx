@@ -10,8 +10,8 @@ import type { StepErrors } from './add-server-wizard-validation'
  */
 
 const inlineErrorClass = [
-  'mt-1 rounded-md border border-rose-400/40 bg-rose-500/10',
-  'px-2 py-1 text-xs text-rose-200',
+  'mt-1 rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)]',
+  'px-2 py-1 text-xs text-[var(--danger-text)]',
 ].join(' ')
 
 export const ariaFor = (

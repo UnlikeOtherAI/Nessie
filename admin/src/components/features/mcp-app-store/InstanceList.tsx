@@ -59,8 +59,8 @@ export const InstanceList = ({
           className={[
             'rounded-xl border p-3 transition',
             instance.id === selectedId
-              ? 'border-emerald-400/60 bg-emerald-400/10'
-              : 'border-[color:var(--sep)] bg-black/10',
+              ? 'border-[var(--success-border)] bg-[var(--success-soft)]'
+              : 'border-[color:var(--sep)] bg-[var(--scrim-weak)]',
           ].join(' ')}
           key={instance.id}
         >
@@ -70,7 +70,7 @@ export const InstanceList = ({
             type="button"
           >
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-white">
+              <div className="truncate text-sm font-semibold text-[var(--tx)]">
                 {instance.scopeType} · {instance.scopeId.slice(0, 8)}…
               </div>
               <div className="mt-1 text-xs text-[color:var(--tx3)]">
@@ -87,7 +87,7 @@ export const InstanceList = ({
             <button
               className={[
                 'admin-button rounded-md border border-[color:var(--sep)]',
-                'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-white/5',
+                'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
                 'disabled:cursor-not-allowed disabled:opacity-40',
               ].join(' ')}
               disabled={testingId === instance.id}
@@ -99,7 +99,7 @@ export const InstanceList = ({
             <button
               className={[
                 'admin-button rounded-md border border-[color:var(--sep)]',
-                'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-white/5',
+                'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
               ].join(' ')}
               onClick={() => onCredentials(instance)}
               type="button"

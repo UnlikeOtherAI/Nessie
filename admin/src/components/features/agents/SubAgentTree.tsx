@@ -22,8 +22,8 @@ export const SubAgentTree = ({ onSelect, selectedAgentId, subAgents }: SubAgentT
           key={agent.agentId}
           className={`rounded-[1.5rem] border ${
             selectedAgentId === agent.agentId
-              ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)]/60'
-              : 'border-transparent'
+              ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
+              : 'border-[color:var(--line)]/0'
           }`}
         >
           <AgentRow

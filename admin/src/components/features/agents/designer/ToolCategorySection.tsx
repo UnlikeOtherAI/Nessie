@@ -48,7 +48,7 @@ export const ToolCategorySection = ({
       <button
         className={[
           'flex w-full items-center justify-between px-3 py-2.5',
-          'text-left transition-colors hover:bg-white/5',
+          'text-left transition-colors hover:bg-[var(--overlay-weak)]',
         ].join(' ')}
         onClick={() => setExpanded((prev) => !prev)}
         type="button"
@@ -66,7 +66,7 @@ export const ToolCategorySection = ({
           >
             <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="text-sm font-medium text-white">{category.name}</span>
+          <span className="text-sm font-medium text-[var(--tx)]">{category.name}</span>
         </div>
         <span className="text-xs text-[color:var(--tx3)]">
           {enabledCount}/{category.tools.length}
@@ -79,18 +79,18 @@ export const ToolCategorySection = ({
             <label
               className={[
                 'flex cursor-pointer items-center gap-3 rounded-md px-1 py-2',
-                'transition-colors hover:bg-white/5',
+                'transition-colors hover:bg-[var(--overlay-weak)]',
               ].join(' ')}
               key={tool.id}
             >
               <input
                 checked={tools[tool.id] ?? false}
-                className="accent-[#7c3aed]"
+                className="accent-[var(--accent)]"
                 onChange={(e) => onToggle(tool.id, e.target.checked)}
                 type="checkbox"
               />
               <div className="min-w-0 flex-1">
-                <div className="text-sm text-white">{tool.name}</div>
+                <div className="text-sm text-[var(--tx)]">{tool.name}</div>
                 <div className="text-xs text-[color:var(--tx3)]">{tool.description}</div>
               </div>
             </label>

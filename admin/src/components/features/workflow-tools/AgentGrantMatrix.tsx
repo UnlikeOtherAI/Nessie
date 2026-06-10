@@ -49,11 +49,11 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[color:var(--sep)] bg-black/10">
+    <div className="overflow-x-auto rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)]">
       <table className="min-w-full border-collapse text-xs">
         <thead>
           <tr>
-            <th className={`${TINY_LABEL} sticky left-0 bg-black/30 px-3 py-2 text-left`}>
+            <th className={`${TINY_LABEL} sticky left-0 bg-[var(--scrim)] px-3 py-2 text-left`}>
               Tool
             </th>
             {agents.map((agent) => (
@@ -68,8 +68,8 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
             <tr className="border-t border-[color:var(--sep)]" key={tool.id}>
               <th
                 className={[
-                  'sticky left-0 bg-black/30 px-3 py-2 text-left',
-                  'text-xs font-medium text-white',
+                  'sticky left-0 bg-[var(--scrim)] px-3 py-2 text-left',
+                  'text-xs font-medium text-[var(--tx)]',
                 ].join(' ')}
               >
                 {tool.label}
@@ -188,7 +188,7 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
                       </span>
                     </label>
                     {error ? (
-                      <div className="mt-1 text-[10px] text-rose-300">
+                      <div className="mt-1 text-[10px] text-[var(--danger-text)]">
                         {error}
                       </div>
                     ) : null}

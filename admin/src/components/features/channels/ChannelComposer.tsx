@@ -87,7 +87,7 @@ export const ChannelComposer = ({
           </button>
         </div>
         <button
-          className="flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-white"
+          className="flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)]"
           disabled={!message.trim() || isSendPending}
           type="submit"
         >

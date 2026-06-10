@@ -54,11 +54,11 @@ export const WorkflowInstallationDetail = ({
 
   return (
     <div className="grid gap-4">
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="min-w-0 flex-1 text-xl font-semibold text-white">
+              <h2 className="min-w-0 flex-1 text-xl font-semibold text-[var(--tx)]">
                 {getWorkflowTemplateLabel(template, installation)}
               </h2>
               <StatusPill tone={getInstallationTone(installation.status)}>
@@ -92,27 +92,27 @@ export const WorkflowInstallationDetail = ({
           ['Updated', formatTimestamp(installation.updatedAt)],
         ].map(([label, value]) => (
           <div
-            className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-3"
+            className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3"
             key={label}
           >
             <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
               {label}
             </div>
-            <div className="mt-2 break-all text-sm text-white">{value}</div>
+            <div className="mt-2 break-all text-sm text-[var(--tx)]">{value}</div>
           </div>
         ))}
       </div>
 
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className={sectionTitle}>Triggers</div>
         <div className="mt-3 grid gap-2">
           {sortedTriggers.map((trigger) => (
             <div
-              className="rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-2"
+              className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2"
               key={trigger.id}
             >
               <div className="flex items-center justify-between gap-3">
-                <div className="font-semibold text-white">
+                <div className="font-semibold text-[var(--tx)]">
                   {trigger.name ?? trigger.type}
                 </div>
                 <StatusPill tone={trigger.status === 'active' ? 'success' : 'warning'}>
@@ -132,7 +132,7 @@ export const WorkflowInstallationDetail = ({
         </div>
       </div>
 
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className="flex items-center justify-between gap-3">
           <div className={sectionTitle}>Runs</div>
           <div className="text-xs text-[color:var(--tx3)]">{sortedRuns.length} total</div>

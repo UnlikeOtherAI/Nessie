@@ -74,7 +74,7 @@ export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesi
           autoComplete="off"
           className={[
             'admin-input',
-            isStreaming('name') ? 'border-[#7c3aed] shadow-[0_0_0_1px_rgba(124,58,237,0.3)]' : '',
+            isStreaming('name') ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : '',
           ].join(' ')}
           id="agent-name"
           onChange={(e) => actions.setName(e.target.value)}
@@ -92,7 +92,7 @@ export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesi
           autoComplete="off"
           className={[
             'admin-input',
-            isStreaming('role') ? 'border-[#7c3aed] shadow-[0_0_0_1px_rgba(124,58,237,0.3)]' : '',
+            isStreaming('role') ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : '',
           ].join(' ')}
           id="agent-role"
           onChange={(e) => actions.setRole(e.target.value)}
@@ -129,7 +129,7 @@ export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesi
               className={[
                 'admin-input',
                 isStreaming('model')
-                  ? 'border-[#7c3aed] shadow-[0_0_0_1px_rgba(124,58,237,0.3)]'
+                  ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
                   : '',
               ].join(' ')}
               id="agent-model"
@@ -154,7 +154,7 @@ export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesi
               className={[
                 'admin-input',
                 isStreaming('model')
-                  ? 'border-[#7c3aed] shadow-[0_0_0_1px_rgba(124,58,237,0.3)]'
+                  ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
                   : '',
               ].join(' ')}
               id="agent-model"
@@ -176,7 +176,7 @@ export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesi
           className={[
             'admin-input resize-none font-mono text-xs leading-relaxed',
             isStreaming('systemPrompt')
-              ? 'border-[#7c3aed] shadow-[0_0_0_1px_rgba(124,58,237,0.3)]'
+              ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
               : '',
           ].join(' ')}
           id="agent-system-prompt"

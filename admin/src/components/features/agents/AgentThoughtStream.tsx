@@ -1,5 +1,5 @@
 export const AgentThoughtStream = () => (
-  <div className="rounded-xl border border-dashed border-[color:var(--sep)] bg-white/4 p-4">
+  <div className="rounded-xl border border-dashed border-[color:var(--sep)] bg-[var(--overlay-weak)] p-4">
     <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
       Thought stream
     </div>

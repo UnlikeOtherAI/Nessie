@@ -24,14 +24,14 @@ export const RejectDialog = ({
   const trimmed = reason.trim()
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim-strong)] px-4">
       <div
         className={[
           'admin-card w-full max-w-md rounded-xl border border-[color:var(--sep)]',
           'bg-[color:var(--main)] p-6 text-[color:var(--tx)]',
         ].join(' ')}
       >
-        <h2 className="text-lg font-semibold text-white">
+        <h2 className="text-lg font-semibold text-[var(--tx)]">
           Reject “{entry.label}”
         </h2>
         <p className="mt-1 text-sm text-[color:var(--tx3)]">
@@ -44,7 +44,7 @@ export const RejectDialog = ({
             autoFocus
             className={[
               'admin-input mt-1 w-full rounded-md border border-[color:var(--sep)]',
-              'bg-black/20 px-3 py-2 text-sm text-white',
+              'bg-[var(--scrim)] px-3 py-2 text-sm text-[var(--tx)]',
               'focus:border-[color:var(--accent)] focus:outline-none',
             ].join(' ')}
             data-testid="reject-reason"
@@ -57,7 +57,7 @@ export const RejectDialog = ({
           <button
             className={[
               'admin-button rounded-md border border-[color:var(--sep)]',
-              'px-4 py-2 text-sm text-[color:var(--tx2)] hover:bg-white/5',
+              'px-4 py-2 text-sm text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
             ].join(' ')}
             onClick={onCancel}
             type="button"
@@ -66,8 +66,8 @@ export const RejectDialog = ({
           </button>
           <button
             className={[
-              'admin-button rounded-md border border-rose-400/40',
-              'px-4 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-500/10',
+              'admin-button rounded-md border border-[var(--danger-border)]',
+              'px-4 py-2 text-sm font-semibold text-[var(--danger-text)] hover:bg-[var(--danger-soft)]',
               'disabled:cursor-not-allowed disabled:opacity-40',
             ].join(' ')}
             data-testid="reject-confirm"

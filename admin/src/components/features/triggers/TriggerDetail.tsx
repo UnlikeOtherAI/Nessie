@@ -31,11 +31,11 @@ export const TriggerDetail = ({ onEdit, registry, trigger }: TriggerDetailProps)
 
   return (
     <div className="grid gap-4">
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="min-w-0 flex-1 text-xl font-semibold text-white">
+              <h2 className="min-w-0 flex-1 text-xl font-semibold text-[var(--tx)]">
                 {trigger.name ?? trigger.type}
               </h2>
               <StatusPill tone={getTriggerTone(trigger.status)}>
@@ -101,23 +101,23 @@ export const TriggerDetail = ({ onEdit, registry, trigger }: TriggerDetailProps)
           ...triggerConfigRows,
         ].map(([label, value]) => (
           <div
-            className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-3"
+            className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3"
             key={label}
           >
             <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
               {label}
             </div>
-            <div className="mt-2 text-sm text-white">{value}</div>
+            <div className="mt-2 text-sm text-[var(--tx)]">{value}</div>
           </div>
         ))}
       </div>
 
-      <div className="rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+      <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
         <div className={sectionTitle}>Recent deliveries</div>
         <div className="mt-3 grid gap-2">
           {history.map((delivery) => (
             <div
-              className="rounded-xl border border-[color:var(--sep)] bg-black/10 px-3 py-2"
+              className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2"
               key={delivery.id}
             >
               <div className="flex items-center justify-between gap-3">
@@ -133,7 +133,7 @@ export const TriggerDetail = ({ onEdit, registry, trigger }: TriggerDetailProps)
                 {delivery.runId ? ` · run ${delivery.runId.slice(0, 8)}` : ''}
               </div>
               {delivery.errorMessage ? (
-                <div className="mt-1 text-xs text-rose-300">
+                <div className="mt-1 text-xs text-[var(--danger-text)]">
                   {delivery.errorMessage}
                 </div>
               ) : null}

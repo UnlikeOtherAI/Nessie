@@ -20,15 +20,15 @@ type PersonalAssistantConfigBannerProps = {
 
 const assistantGlyphClassName =
   'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ' +
-  'bg-[rgba(124,58,237,0.18)] text-[10px] font-bold text-white'
+  'bg-[var(--accent-soft)] text-[10px] font-bold text-[var(--thinking)]'
 
 const badgeClassName =
-  'rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ' +
+  'rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ' +
   'text-[color:var(--tx3)]'
 
 const pillClassName =
-  'rounded-full border border-[rgba(124,58,237,0.18)] bg-[rgba(124,58,237,0.12)] ' +
-  'px-2 py-0.5 text-[10px] font-semibold text-[#d8b4fe]'
+  'rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] ' +
+  'px-2 py-0.5 text-[10px] font-semibold text-[var(--thinking)]'
 
 const assistantPills = (
   agent?: AgentRecord | null,
@@ -97,9 +97,9 @@ export const PersonalAssistantSidebarEntry = ({
     </span>
     <span className={badgeClassName}>PA</span>
     {bootstrapping ? (
-      <span className="ml-1 h-4 w-4 animate-spin rounded-full border border-white/20 border-t-white/70" />
+      <span className="ml-1 h-4 w-4 animate-spin rounded-full border border-[var(--overlay-strong)] border-t-[var(--on-accent)]" />
     ) : unreadCount > 0 ? (
-      <span className="ml-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-[10px] font-bold text-white">
+      <span className="ml-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-[10px] font-bold text-[var(--on-accent)]">
         {unreadCount}
       </span>
     ) : null}
@@ -118,14 +118,14 @@ export const PersonalAssistantConfigBanner = ({
   const pills = assistantPills(agent, channel, configSummary)
 
   return (
-    <section className="mx-5 mt-3 rounded-xl border border-[rgba(124,58,237,0.18)] bg-[rgba(124,58,237,0.08)] px-4 py-3">
+    <section className="mx-5 mt-3 rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3">
       <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[rgba(124,58,237,0.18)] text-lg">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-lg">
           ⚡
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-white">
+            <span className="text-sm font-semibold text-[var(--tx)]">
               {agent?.name ?? 'Personal Assistant'}
             </span>
             <span className={badgeClassName}>system managed</span>
@@ -146,15 +146,15 @@ export const PersonalAssistantConfigBanner = ({
           {configSummary ? (
             <div className="mt-3 grid gap-2 text-xs leading-5 text-[color:var(--tx2)]">
               <div>
-                <span className="font-semibold text-white/85">Prompt preview:</span>{' '}
+                <span className="font-semibold text-[var(--tx)]">Prompt preview:</span>{' '}
                 {configSummary.systemPromptPreview?.trim() || 'No custom system prompt configured.'}
               </div>
               <div>
-                <span className="font-semibold text-white/85">Enabled tools:</span>{' '}
+                <span className="font-semibold text-[var(--tx)]">Enabled tools:</span>{' '}
                 {configSummary.toolIds.length > 0 ? configSummary.toolIds.join(', ') : 'No tool overrides enabled.'}
               </div>
               <div>
-                <span className="font-semibold text-white/85">Config updated:</span>{' '}
+                <span className="font-semibold text-[var(--tx)]">Config updated:</span>{' '}
                 {new Date(configSummary.updatedAt).toLocaleString()}
               </div>
             </div>

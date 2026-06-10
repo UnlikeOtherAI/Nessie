@@ -106,7 +106,7 @@ export const PageEditor = ({
           placeholder="Change comment"
           value={changeComment}
         />
-        {error ? <div className="text-sm text-red-300">{error}</div> : null}
+        {error ? <div className="text-sm text-[var(--danger-text)]">{error}</div> : null}
         <div className="flex items-center gap-2">
           <button
             className="admin-button admin-button-primary"

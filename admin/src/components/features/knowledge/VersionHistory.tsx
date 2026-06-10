@@ -39,9 +39,9 @@ const buildLineDiff = (leftBody: string, rightBody: string): DiffLine[] => {
 
 const lineTone: Record<DiffLine['state'], string> = {
   same: 'text-[color:var(--tx2)]',
-  changed: 'bg-amber-500/10 text-amber-100',
-  added: 'bg-emerald-500/10 text-emerald-100',
-  removed: 'bg-red-500/10 text-red-100',
+  changed: 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
+  added: 'bg-[var(--success-soft)] text-[var(--success-text)]',
+  removed: 'bg-[var(--danger-soft)] text-[var(--danger-text)]',
 }
 
 export const VersionHistory = ({
@@ -72,8 +72,8 @@ export const VersionHistory = ({
               className={[
                 'rounded-md border px-2 py-1 text-xs',
                 selectedVersion?.id === version.id
-                  ? 'border-[color:var(--accent)] bg-[color:var(--accent)] text-white'
-                  : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-white/5',
+                  ? 'border-[color:var(--accent)] bg-[color:var(--accent)] text-[var(--on-accent)]'
+                  : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
               ].join(' ')}
               key={version.id}
               onClick={() => setSelectedVersionId(version.id)}
@@ -88,7 +88,7 @@ export const VersionHistory = ({
       {selectedVersion ? (
         <>
           <div className="border-b border-[color:var(--sep)] p-4 text-sm text-[color:var(--tx2)]">
-            <div className="font-semibold text-white">v{selectedVersion.versionNumber}</div>
+            <div className="font-semibold text-[var(--tx)]">v{selectedVersion.versionNumber}</div>
             <div className="mt-1">
               {new Date(selectedVersion.createdAt).toLocaleString()} by {selectedVersion.authorType}
             </div>

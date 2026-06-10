@@ -38,13 +38,15 @@ export const ChannelHeader = ({
   <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
     <div className="flex min-w-0 flex-1 items-center gap-2">
       {isPersonalAssistantConversation ? (
-        <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(124,58,237,0.18)] text-[9px] font-bold text-white">
+        <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[9px] font-bold text-[var(--thinking)]">
           ⚡
         </div>
       ) : activeChannel?.type === 'dm' ? (
         <div
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
-          style={{ background: 'linear-gradient(135deg,#6d28d9,#4f46e5)' }}
+          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-[var(--on-accent)]"
+          style={{
+            background: 'linear-gradient(135deg,var(--accent-hover),var(--accent-strong))',
+          }}
         >
           {activeChannel.label.slice(0, 1).toUpperCase()}
         </div>
@@ -53,13 +55,13 @@ export const ChannelHeader = ({
           #
         </span>
       )}
-      <h1 className="truncate text-[17px] font-bold text-white">
+      <h1 className="truncate text-[17px] font-bold text-[var(--tx)]">
         {isPersonalAssistantConversation
           ? 'Personal Assistant'
           : activeChannel?.label ?? 'channels'}
       </h1>
       {isPersonalAssistantConversation && (
-        <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+        <span className="rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
           system managed
         </span>
       )}
@@ -69,7 +71,7 @@ export const ChannelHeader = ({
       <button
         className={[
           'flex items-center gap-2 rounded-lg px-2 py-1',
-          isPersonalAssistantConversation ? 'cursor-default opacity-90' : 'hover:bg-white/5',
+          isPersonalAssistantConversation ? 'cursor-default opacity-90' : 'hover:bg-[var(--overlay-weak)]',
         ].join(' ')}
         onClick={() => {
           if (!isPersonalAssistantConversation) {
@@ -89,7 +91,7 @@ export const ChannelHeader = ({
               key={user.id}
               className={[
                 'flex h-6 w-6 items-center justify-center rounded-full border-2',
-                'border-[color:var(--main)] text-[8px] font-bold text-white',
+                'border-[color:var(--main)] text-[8px] font-bold text-[var(--on-accent)]',
               ].join(' ')}
               style={{ background: pickGradient(user.id) }}
             >
@@ -131,7 +133,7 @@ export const ChannelHeader = ({
         && activeChannel.type !== 'dm'
         && !isPersonalAssistantConversation ? (
         <button
-          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-white/10"
+          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-[var(--overlay)]"
           onClick={onOpenSettings}
           title="Channel settings"
           type="button"
@@ -161,8 +163,8 @@ export const ChannelHeader = ({
           'relative flex h-7 w-7 items-center justify-center rounded',
           callEligible
             ? isInCall
-              ? 'text-emerald-400 hover:bg-white/10'
-              : 'text-[color:var(--tx3)] hover:bg-white/10'
+              ? 'text-[var(--success-text)] hover:bg-[var(--overlay)]'
+              : 'text-[color:var(--tx3)] hover:bg-[var(--overlay)]'
           : 'cursor-not-allowed text-[color:var(--tx3)] opacity-40',
         ].join(' ')}
         disabled={!callEligible}
@@ -195,14 +197,14 @@ export const ChannelHeader = ({
         </svg>
         {activeCall && !isInCall && (
           <span className="absolute right-0.5 top-0.5 flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--success)] opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--success)]" />
           </span>
         )}
       </button>
       <div className="mx-1 h-5 w-px bg-[color:var(--border-strong)]" />
       <button
-        className={[toolbarButtonClass, searchOpen ? 'text-white' : ''].join(' ')}
+        className={[toolbarButtonClass, searchOpen ? 'text-[var(--tx)]' : ''].join(' ')}
         onClick={onToggleSearch}
         title="Search messages"
         type="button"

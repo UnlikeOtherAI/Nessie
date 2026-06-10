@@ -98,8 +98,8 @@ export const ChannelMessageFeed = ({
             <div
               className={[
                 'flex h-9 w-9 flex-shrink-0 items-center justify-center',
-                'rounded-lg border border-[rgba(124,58,237,0.4)]',
-                'bg-[rgba(124,58,237,0.1)] text-lg',
+                'rounded-lg border border-[var(--accent)]',
+                'bg-[var(--accent-soft)] text-lg',
               ].join(' ')}
             >
               {getAgentGlyph(agentMap.get(item.message.agentId ?? ''))}
@@ -112,7 +112,7 @@ export const ChannelMessageFeed = ({
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
-              <span className="text-sm font-bold text-white">
+              <span className="text-sm font-bold text-[var(--tx)]">
                 {getDisplayName(
                   item.message,
                   meDisplayName,
@@ -124,9 +124,9 @@ export const ChannelMessageFeed = ({
                 <span
                   className={[
                     'inline-flex items-center gap-1 rounded',
-                    'border border-[rgba(124,58,237,0.3)]',
-                    'bg-[rgba(124,58,237,0.15)] px-1.5 py-0.5',
-                    'text-[11px] font-semibold text-[#a78bfa]',
+                    'border border-[var(--accent)]',
+                    'bg-[var(--accent-soft)] px-1.5 py-0.5',
+                    'text-[11px] font-semibold text-[var(--thinking)]',
                   ].join(' ')}
                 >
                   agent
@@ -144,7 +144,7 @@ export const ChannelMessageFeed = ({
             <div
               className={
                 item.message.role === 'assistant'
-                  ? 'mt-0.5 border-l-2 border-[rgba(124,58,237,0.5)] pl-3'
+                  ? 'mt-0.5 border-l-2 border-[var(--accent)] pl-3'
                   : 'mt-0.5'
               }
             >
@@ -251,14 +251,14 @@ export const ChannelMessageFeed = ({
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className="text-sm font-bold text-white">
+            <span className="text-sm font-bold text-[var(--tx)]">
               {meDisplayName}
             </span>
             {entry.status === 'failed' ? (
               <span
                 className={[
                   'inline-flex items-center rounded px-1.5 py-0.5',
-                  'bg-[rgba(239,68,68,0.18)] text-[11px] font-semibold text-[#fca5a5]',
+                  'bg-[var(--danger-soft)] text-[11px] font-semibold text-[var(--danger-text)]',
                 ].join(' ')}
               >
                 failed
@@ -314,28 +314,28 @@ export const ChannelMessageFeed = ({
           <div
             className={[
               'flex h-9 w-9 flex-shrink-0 items-center justify-center',
-              'rounded-lg border border-[rgba(124,58,237,0.4)]',
-              'bg-[rgba(124,58,237,0.1)] text-lg',
+              'rounded-lg border border-[var(--accent)]',
+              'bg-[var(--accent-soft)] text-lg',
             ].join(' ')}
           >
             {getAgentGlyph(pendingAgent)}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
-              <span className="text-sm font-bold text-white">
+              <span className="text-sm font-bold text-[var(--tx)]">
                 {pendingDisplayName}
               </span>
               <span
                 className={[
                   'inline-flex items-center rounded',
-                  'bg-[rgba(124,58,237,0.2)] px-2 py-0.5',
-                  'text-[11px] font-semibold text-[#a78bfa]',
+                  'bg-[var(--accent-soft)] px-2 py-0.5',
+                  'text-[11px] font-semibold text-[var(--thinking)]',
                 ].join(' ')}
               >
                 {isPersonalAssistantConversation ? 'responding' : 'running'}
               </span>
             </div>
-            <div className="mt-0.5 border-l-2 border-[rgba(124,58,237,0.5)] pl-3">
+            <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
               <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
                 {entry.content ? renderContent(entry.content) : 'Streaming response'}
                 <span className="streaming-dot" />

@@ -17,8 +17,8 @@ const getAgentGlyph = (status: AgentChild['status']): string => {
 }
 
 const rowClass = [
-  'rounded-xl border border-[color:var(--sep)] bg-black/10 p-3',
-  'transition hover:bg-black/20',
+  'rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3',
+  'transition hover:bg-[var(--scrim)]',
 ].join(' ')
 
 export const SubAgentPopup = ({
@@ -74,7 +74,7 @@ export const SubAgentPopup = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(0, 0, 0, 0.6)',
+        background: 'var(--scrim-strong)',
         backdropFilter: 'blur(4px)',
       }}
     >
@@ -83,11 +83,11 @@ export const SubAgentPopup = ({
           'flex max-h-[80vh] w-full max-w-[480px] flex-col rounded-xl border',
           'border-[color:var(--sep)] bg-[color:var(--main)]',
         ].join(' ')}
-        style={{ boxShadow: '0 24px 48px rgba(0,0,0,0.4)' }}
+        style={{ boxShadow: '0 24px 48px var(--scrim-strong)' }}
       >
         <div className="flex items-center justify-between border-b border-[color:var(--sep)] px-5 py-4">
           <div>
-            <h2 className="text-lg font-bold text-white">
+            <h2 className="text-lg font-bold text-[var(--tx)]">
               Team under {parentAgentName}
             </h2>
             <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
@@ -97,7 +97,7 @@ export const SubAgentPopup = ({
           <button
             className={[
               'flex h-7 w-7 items-center justify-center rounded',
-              'text-[color:var(--tx3)] hover:bg-white/10 hover:text-white',
+              'text-[color:var(--tx3)] hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
             ].join(' ')}
             onClick={onClose}
             type="button"
@@ -132,7 +132,7 @@ export const SubAgentPopup = ({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium text-white">
+                        <span className="truncate text-sm font-medium text-[var(--tx)]">
                           {child.name}
                         </span>
                         <AgentStatusDot status={child.status} />
@@ -154,16 +154,16 @@ export const SubAgentPopup = ({
             </div>
           )}
 
-          <div className="mt-4 rounded-xl border border-[color:var(--sep)] bg-black/10 p-4">
+          <div className="mt-4 rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
               Add team member
             </div>
             <div className="mt-3 space-y-2">
               <input
                 className={[
-                  'w-full rounded-lg border border-[color:var(--border-strong)] bg-white/5',
+                  'w-full rounded-lg border border-[color:var(--border-strong)] bg-[var(--overlay-weak)]',
                   'px-3 py-2 text-sm text-[color:var(--tx)] outline-none',
-                  'placeholder:text-[color:var(--tx3)] focus:border-[#7c3aed]',
+                  'placeholder:text-[color:var(--tx3)] focus:border-[var(--accent)]',
                 ].join(' ')}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -172,9 +172,9 @@ export const SubAgentPopup = ({
               />
               <input
                 className={[
-                  'w-full rounded-lg border border-[color:var(--border-strong)] bg-white/5',
+                  'w-full rounded-lg border border-[color:var(--border-strong)] bg-[var(--overlay-weak)]',
                   'px-3 py-2 text-sm text-[color:var(--tx)] outline-none',
-                  'placeholder:text-[color:var(--tx3)] focus:border-[#7c3aed]',
+                  'placeholder:text-[color:var(--tx3)] focus:border-[var(--accent)]',
                 ].join(' ')}
                 onChange={(e) => setRole(e.target.value)}
                 onKeyDown={handleKeyDown}
