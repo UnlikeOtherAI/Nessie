@@ -11,6 +11,9 @@
     "core:window:allow-set-focus",
     "core:window:allow-show",
     "core:window:allow-unminimize",
+    "deep-link:default",
+    "opener:allow-open-url",
+    "opener:default",
     "notification:default"
   ]
 }

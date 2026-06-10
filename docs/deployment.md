@@ -248,12 +248,19 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
 
 - The API serves a signed RS256 **config JWT** at
   `GET /api/auth/sso/config` (the `config_url`) and the matching **JWKS** at
-  `GET /.well-known/jwks.json`, both on `api.nessie.unlikeotherai.com`.
-- Clicking the button sends the browser to
+  `GET /.well-known/jwks.json`, both on `api.nessie.unlikeotherai.com`. The
+  config allowlists both the hosted web callback and the native desktop
+  callback: `nessie://auth/callback`.
+- On the web, clicking the button sends the browser to
   `GET <uoa>/auth?config_url=…&redirect_url=https://nessie.unlikeotherai.com/login&code_challenge=…&code_challenge_method=S256`.
-- UOA renders its login UI (email/password, Google, …). On success it redirects
+- In the Tauri desktop app, clicking the button keeps the admin webview on the
+  login page, opens the UOA authorize URL in the user's system browser, and uses
+  `redirect_url=nessie://auth/callback`.
+- UOA renders its login UI (email/password, Google, …). On web success it redirects
   to `https://nessie.unlikeotherai.com/login?code=…` (byte-exact allowlist; the
-  admin handles the callback on `/login`).
+  admin handles the callback on `/login`). On desktop success macOS opens
+  `nessie://auth/callback?code=…`; Tauri's deep-link plugin delivers that URL to
+  the admin login page, which exchanges the code with the same redirect URL.
 - The API exchanges the code server-to-server at `POST <uoa>/auth/token`
   authenticated with `Bearer <client_hash>` where
   `client_hash = SHA256(domain + client_secret)`, then reads `email`/`sub` from

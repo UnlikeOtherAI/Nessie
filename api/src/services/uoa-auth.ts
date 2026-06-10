@@ -36,6 +36,8 @@ export type UoaSettings = {
   clientSecret: string
 }
 
+export const DESKTOP_REDIRECT_URL = 'nessie://auth/callback'
+
 // Mirrors the admin nebula brand tokens for the fixed hosted-login brand.
 // This external-surface exception is intentional because the IdP page cannot
 // read Nessie's CSS variables.
@@ -105,6 +107,17 @@ const defaultUiTheme = (settings: UoaSettings): Record<string, unknown> => ({
   logo: { url: `https://${settings.domain}/icon.png`, alt: 'Nessie' },
 })
 
+const allowedRedirectUrls = (settings: UoaSettings): string[] => [
+  settings.redirectUrl,
+  DESKTOP_REDIRECT_URL,
+]
+
+const ensureAllowedRedirectUrl = (settings: UoaSettings, redirectUri: string): void => {
+  if (!new Set(allowedRedirectUrls(settings)).has(redirectUri)) {
+    throw new Error(`[uoa] redirect_url is not allowed: ${redirectUri}`)
+  }
+}
+
 /**
  * Build and sign the config JWT served at the `config_url`. `jwks_url` and
  * `contact_email` are always included so the first call against a new domain
@@ -114,7 +127,7 @@ export const buildConfigJwt = (settings: UoaSettings): string => {
   const header = base64UrlJson({ alg: 'RS256', kid: settings.kid, typ: 'JWT' })
   const payload = base64UrlJson({
     domain: settings.domain,
-    redirect_urls: [settings.redirectUrl],
+    redirect_urls: [settings.redirectUrl, DESKTOP_REDIRECT_URL],
     enabled_auth_methods: ['email_password', 'google'],
     language_config: 'en',
     ui_theme: defaultUiTheme(settings),
@@ -152,6 +165,8 @@ export const buildUoaAuthorizeUrl = (input: {
   redirectUri: string
 }): string => {
   const settings = loadUoaSettings()
+  ensureAllowedRedirectUrl(settings, input.redirectUri)
+
   const url = new URL(`${settings.baseUrl}/auth`)
   url.searchParams.set('config_url', settings.configUrl)
   url.searchParams.set('redirect_url', input.redirectUri)
@@ -180,6 +195,8 @@ export const exchangeUoaCode = async (input: {
   redirectUri: string
 }): Promise<ExternalAuthIdentity> => {
   const settings = loadUoaSettings()
+  ensureAllowedRedirectUrl(settings, input.redirectUri)
+
   if (!settings.clientSecret) {
     throw new Error('[uoa] UOA_CLIENT_SECRET is not set — approve the integration and configure the secret')
   }

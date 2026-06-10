@@ -28,6 +28,11 @@ pnpm --filter @nessie/desktop exec tauri dev
 
 The Nessie desktop window opens and loads the local admin app.
 
+Desktop SSO uses the user's default browser instead of the Tauri webview. The
+desktop bundle declares the `nessie` URL scheme; after UOA redirects to
+`nessie://auth/callback`, macOS focuses the running app and the admin login page
+finishes the PKCE exchange from the deep link.
+
 To create a local distributable:
 
 ```sh

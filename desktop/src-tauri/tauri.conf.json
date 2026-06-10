@@ -5,7 +5,7 @@
   "identifier": "com.unlikeotherai.nessie.desktop",
   "build": {
     "devUrl": "http://localhost:5555",
-    "frontendDist": "https://nessie.unlikeotherai.com"
+    "frontendDist": "../../admin/dist"
   },
   "app": {
     "withGlobalTauri": true,
@@ -60,6 +60,13 @@
         "languages": [
           "English"
         ]
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["nessie"]
       }
     }
   }

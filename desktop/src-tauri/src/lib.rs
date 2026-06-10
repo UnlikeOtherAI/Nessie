@@ -19,6 +19,8 @@ pub fn run() {
     }
 
     builder
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let main_window = app

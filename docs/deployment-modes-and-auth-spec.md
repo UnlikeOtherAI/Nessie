@@ -259,10 +259,12 @@ Phase 1 hardcodes a single project/team in JWT claims. Phase 2 must evolve to su
 ```
 
 For SSO providers, the flow is:
-1. frontend redirects to the SSO provider's authorize URL
-2. SSO provider redirects back with an authorization code
-3. frontend calls `POST /api/auth/session` with `{ providerId, code }`
-4. API exchanges code for user info, creates or matches the user, issues JWT
+1. frontend requests an authorize URL with PKCE and an explicit redirect URI
+2. web frontend navigates to the SSO provider and returns to `/login?code=...`
+3. Tauri desktop opens the authorize URL in the system browser and returns via
+   `nessie://auth/callback?code=...`
+4. frontend calls `POST /api/auth/session` with `{ providerId, code, codeVerifier, redirectUri }`
+5. API exchanges code for user info, creates or matches the user, issues JWT
 
 ### 4.3c Fastify auth middleware
 
