@@ -61,6 +61,12 @@ const localCorsOrigins = new Set([
   'http://localhost:5555',
 ])
 
+// Fixed Tauri WKWebView/WebView2 origins for the Nessie desktop app.
+const desktopAppCorsOrigins = new Set([
+  'tauri://localhost',
+  'http://tauri.localhost',
+])
+
 export const createCorsOriginChecker = (input: {
   allowedOrigins: Set<string>
   mode: AppConfig['mode']
@@ -74,6 +80,7 @@ export const createCorsOriginChecker = (input: {
     const normalizedOrigin = origin.replace(/\/$/, '')
     if (
       input.allowedOrigins.has(normalizedOrigin)
+      || desktopAppCorsOrigins.has(normalizedOrigin)
       || (input.mode === 'local' && localCorsOrigins.has(normalizedOrigin))
     ) {
       callback(null, true)
