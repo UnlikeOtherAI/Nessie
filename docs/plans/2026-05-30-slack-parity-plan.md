@@ -183,8 +183,16 @@ The legitimate inbound side agents don't cover.
 
 ## Phase 8 — Productivity UX  *(mostly S, additive)*
 Pin messages; bookmarks / save-for-later (`User.preferences`); drafts; scheduled
-send; custom status with expiry; reminders (lean on agent scheduling). Pick off
-opportunistically alongside larger phases.
+send; reminders (lean on agent scheduling). Pick off opportunistically alongside
+larger phases.
+
+- **Custom status with schedules** *(implemented 2026-06-10)*: `/settings/statuses`
+  lets users create emoji-backed statuses, set one active manually, attach weekly
+  or date-range schedules, and persist response-agent instructions plus
+  channel/project-specific contact rules.
+- **Remaining status automation**: inbound message dispatch still needs to
+  evaluate active contact rules and start the configured response agent with the
+  stored instructions.
 
 ---
 

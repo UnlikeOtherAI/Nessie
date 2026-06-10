@@ -584,6 +584,7 @@ Parity matrix:
 | organization | `GET/POST /orgs` | `org.create`, `org.update`, `org.list` | `/org create` | org policy | create/update/delete: yes | yes | blocked |
 | project lifecycle | `GET/POST /api/projects`, `GET/PATCH/DELETE /api/projects/{projectId}` | `project.create`, `project.update`, `project.delete` | `/project create` | org + project policy (delete: owner, refused while project still has channels) | yes for unsafe transitions | yes | implemented (REST admin surface) |
 | project members | `GET/POST /api/projects/{projectId}/members`, `DELETE /api/projects/{projectId}/members/{userId}` | `project.members.add`, `project.members.remove` | `/project members add/remove` | project policy (owner) | yes | yes | implemented (REST admin surface) |
+| user statuses | `GET/POST/PATCH/DELETE /api/statuses`, `POST /api/statuses/{statusId}/activate`, `DELETE /api/statuses/active`, status schedule/rule subroutes | `status.*` | `/status set` | self-user policy | no | no | implemented (REST admin surface; contact-rule dispatch not wired) |
 | channel lifecycle | `POST /channels` | `project.channels.create`, `project.channels.update`, `project.channels.members.search` | `/channel create` | project/channel policy | yes | yes | blocked |
 | agent catalog | `GET/POST /agents` | `agent.register`, `agent.update`, `agent.retire`, `agent.restore`, `agent.delete`, `agent.bind`, `agent.unbind` | `/agent register` | project/team/channel policy | yes | yes | blocked |
 | tool catalog | `POST /tools` | `tool.import`, `tool.update`, `tool.bind`, `tool.unbind` | `/tool import` | project + transport policy | yes | yes | blocked |
@@ -1149,6 +1150,7 @@ Evals use a standard Agent node with a structured verification prompt, not a sep
 - No `invoke_workflow` tool or workflow CRUD endpoints.
 - No Human Input suspension mechanism (`waiting_for_input` run status).
 - No trigger scheduler for `scheduled`, `webhook`, or `event` trigger subtypes on workflows. Agent-level triggers are specified in the-agents.md § 17 but not yet implemented.
+- User status contact rules are persisted and editable in `/settings/statuses`, but inbound message dispatch does not yet evaluate them to start response agents.
 - No remote worker registration, heartbeat, websocket-connect, or effective-policy evaluation path yet.
 - No worker-scoped API-key/bootstrap generation path yet for parent-instance registration.
 - No project/channel/agent-scoped remote worker bindings yet.

@@ -3,6 +3,13 @@ import { getInitials, pickGradient } from '../../../lib/avatar'
 import { CloseIcon } from './icons'
 import { actionBtnClass, rowClass } from './styles'
 
+const StatusEmoji = ({ user }: { user: UserRecord }) =>
+  user.activeStatus?.emoji ? (
+    <span className="ml-1.5" title={user.activeStatus.label}>
+      {user.activeStatus.emoji}
+    </span>
+  ) : null
+
 type CurrentUserRowProps = {
   user: UserRecord
   currentUserId: string
@@ -30,6 +37,7 @@ export const CurrentUserRow = ({
     <div className="min-w-0 flex-1">
       <div className="truncate text-sm font-medium text-[color:var(--tx)]">
         {user.displayName}
+        <StatusEmoji user={user} />
         {user.id === currentUserId && (
           <span className="ml-1.5 text-xs text-[color:var(--tx3)]">(you)</span>
         )}
@@ -85,6 +93,7 @@ export const AvailableUserRow = ({
     <div className="min-w-0 flex-1">
       <div className="truncate text-sm text-[color:var(--tx2)]">
         {user.displayName}
+        <StatusEmoji user={user} />
       </div>
       <div className="truncate text-xs text-[color:var(--tx3)]">
         {user.email}

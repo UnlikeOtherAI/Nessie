@@ -115,7 +115,65 @@ export type UserRecord = {
   email: string
   id: string
   role: string
+  activeStatus?: UserActiveStatus | null
   updatedAt: string
+}
+
+export type UserActiveStatus = {
+  activeNow: boolean
+  emoji: string | null
+  id: string
+  label: string
+}
+
+export type UserStatusScheduleKind = 'date_range' | 'weekly'
+
+export type UserStatusRuleScope = 'fallback' | 'channel' | 'project'
+
+export type UserStatusScheduleRecord = {
+  createdAt: string
+  dayOfWeek: number | null
+  enabled: boolean
+  endTime: string | null
+  endsAt: string | null
+  id: string
+  kind: UserStatusScheduleKind
+  label: string | null
+  startTime: string | null
+  startsAt: string | null
+  statusId: string
+  timezone: string
+  updatedAt: string
+}
+
+export type UserStatusRuleRecord = {
+  agentEnabled: boolean
+  agentId: string | null
+  channelId: string | null
+  createdAt: string
+  id: string
+  instructions: string
+  priority: number
+  projectId: string | null
+  scope: UserStatusRuleScope
+  statusId: string
+  updatedAt: string
+}
+
+export type UserStatusRecord = {
+  activeNow: boolean
+  agentEnabled: boolean
+  agentInstructions: string | null
+  createdAt: string
+  emoji: string | null
+  id: string
+  isActive: boolean
+  label: string
+  organizationId: string
+  rules: UserStatusRuleRecord[]
+  schedules: UserStatusScheduleRecord[]
+  updatedAt: string
+  userId: string
 }
 
 export type MessageReaction = {
