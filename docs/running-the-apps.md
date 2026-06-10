@@ -23,7 +23,7 @@ This starts the API on port `5554` and the admin app on port `5555`.
 Terminal 2:
 
 ```sh
-pnpm --filter @nessie/desktop tauri dev
+pnpm --filter @nessie/desktop exec tauri dev
 ```
 
 The Nessie desktop window opens and loads the local admin app.
@@ -31,7 +31,7 @@ The Nessie desktop window opens and loads the local admin app.
 To create a local distributable:
 
 ```sh
-pnpm --filter @nessie/desktop tauri build
+pnpm --filter @nessie/desktop exec tauri build
 ```
 
 This produces an unsigned `.app` and `.dmg`. On first open, right-click the app and choose **Open**. A signed and notarized macOS release needs the operator's Apple Developer ID certificate; `desktop/src-tauri/tauri.conf.json` keeps `signingIdentity` set to `null` until that certificate is available.
@@ -121,7 +121,7 @@ Run the build on a Windows machine:
 
 ```sh
 pnpm install
-pnpm --filter @nessie/desktop tauri build
+pnpm --filter @nessie/desktop exec tauri build
 ```
 
 Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` for NSIS and WiX packaging.
