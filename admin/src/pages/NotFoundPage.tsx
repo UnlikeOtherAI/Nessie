@@ -16,7 +16,7 @@ export const NotFoundPage = () => {
         <div className="text-xs font-semibold uppercase tracking-[0.3em] text-[color:var(--tx3)]">
           404
         </div>
-        <h1 className="text-2xl font-semibold text-white">Page not found</h1>
+        <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Page not found</h1>
         <p className="text-sm text-[color:var(--tx2)]">
           The page you were looking for does not exist or has moved.
         </p>

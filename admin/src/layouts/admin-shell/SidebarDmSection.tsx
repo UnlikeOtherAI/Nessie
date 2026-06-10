@@ -100,7 +100,7 @@ export const SidebarDmSection = ({
                   className={[
                     'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
                     isStarredUser
-                      ? 'ml-1 text-yellow-400 opacity-100'
+                      ? 'ml-1 text-[color:var(--warning-text)] opacity-100'
                       : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
                   ].join(' ')}
                   onClick={(e) => {

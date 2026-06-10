@@ -43,8 +43,8 @@ const tabClass = (active: boolean): string =>
   [
     'rounded-md px-3 py-1 text-xs font-semibold',
     active
-      ? 'bg-[color:var(--accent)] text-white'
-      : 'border border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-white/5',
+      ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
+      : 'border border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[color:var(--overlay-weak)]',
   ].join(' ')
 
 export const McpAppStorePage = () => {
@@ -224,7 +224,7 @@ export const McpAppStorePage = () => {
       <ColumnBrowserViewport activeColumn={selectedCatalog ? 1 : 0} columns={columns} />
 
       {wizardOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--scrim-strong)] px-4">
           <div
             className={[
               'admin-card w-full max-w-2xl rounded-xl border border-[color:var(--sep)]',
@@ -232,11 +232,11 @@ export const McpAppStorePage = () => {
             ].join(' ')}
           >
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-white">Add MCP server</h2>
+              <h2 className="text-lg font-semibold text-[color:var(--tx)]">Add MCP server</h2>
               <button
                 className={[
                   'admin-button rounded-md border border-[color:var(--sep)]',
-                  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-white/5',
+                  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[color:var(--overlay-weak)]',
                 ].join(' ')}
                 onClick={() => setWizardOpen(false)}
                 type="button"

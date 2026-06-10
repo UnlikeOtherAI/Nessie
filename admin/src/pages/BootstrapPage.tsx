@@ -8,21 +8,21 @@ const LOCAL_BOOTSTRAP_PASSWORD = 'Password123!'
 
 const fieldClass = [
   'w-full rounded-2xl border border-[var(--line)]',
-  'bg-white/80 px-4 py-3 text-sm text-[var(--ink)]',
+  'bg-[color:var(--surface-inverse)] px-4 py-3 text-sm text-[var(--ink)]',
   'outline-none transition focus:border-[var(--accent)]',
   'focus:ring-2 focus:ring-[var(--accent-soft)]',
 ].join(' ')
 
 const primaryButtonClass = [
   'rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm',
-  'font-medium text-white transition hover:opacity-90',
+  'font-medium text-[color:var(--on-accent)] transition hover:opacity-90',
   'disabled:cursor-not-allowed disabled:opacity-60',
 ].join(' ')
 
 const errorBoxClass = [
-  'rounded-2xl border border-red-500/30',
-  'bg-red-500/8 px-4 py-3 text-sm',
-  'text-red-300',
+  'rounded-2xl border border-[color:var(--danger-border)]',
+  'bg-[color:var(--danger-soft)] px-4 py-3 text-sm',
+  'text-[color:var(--danger-text)]',
 ].join(' ')
 
 export const BootstrapPage = () => {
@@ -87,7 +87,7 @@ export const BootstrapPage = () => {
             bootstrap URL unlocks the one-time owner setup flow.
           </p>
 
-          <div className="mt-8 grid gap-4 rounded-[1.5rem] border border-[var(--line)] bg-white/60 p-5">
+          <div className="mt-8 grid gap-4 rounded-[1.5rem] border border-[var(--line)] bg-[color:var(--surface-inverse)] p-5">
             <div>
               <div className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
                 Bootstrap URL

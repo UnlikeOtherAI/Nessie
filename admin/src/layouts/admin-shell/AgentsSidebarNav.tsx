@@ -13,7 +13,7 @@ export const AgentsSidebarNav = ({ pathname }: AgentsSidebarNavProps) => {
       ].join(' ')}
     >
       <div className="flex h-[50px] items-center px-4">
-        <span className="text-[15px] font-bold text-white">Agents</span>
+        <span className="text-[15px] font-bold text-[color:var(--tx)]">Agents</span>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 px-2 py-1">
         {[

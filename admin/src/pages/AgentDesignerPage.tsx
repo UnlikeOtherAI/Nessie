@@ -124,7 +124,7 @@ export const AgentDesignerPage = () => {
             className={[
               'flex h-8 w-8 items-center justify-center rounded',
               'text-[color:var(--tx3)] transition-colors',
-              'hover:bg-white/10 hover:text-white',
+              'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
             ].join(' ')}
             onClick={handleBack}
             title="Back to agents"
@@ -140,7 +140,7 @@ export const AgentDesignerPage = () => {
               <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <h1 className="text-base font-bold text-white">
+          <h1 className="text-base font-bold text-[color:var(--tx)]">
             {isEditMode ? 'Edit Agent' : 'Agent Designer'}
           </h1>
         </div>

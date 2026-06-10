@@ -46,7 +46,7 @@ export const SettingsMembersPage = () => {
           <div className="mt-4 grid gap-2">
             {users.map((user) => (
               <div key={user.id} className="admin-card p-3">
-                <div className="font-semibold text-white">{user.displayName}</div>
+                <div className="font-semibold text-[color:var(--tx)]">{user.displayName}</div>
                 <div className="mt-1 text-sm text-[color:var(--tx2)]">{user.email}</div>
                 <div className="mt-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                   {user.role}

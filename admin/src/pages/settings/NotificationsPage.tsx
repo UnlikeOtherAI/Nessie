@@ -81,8 +81,8 @@ const feedbackClass = (kind: Feedback['kind']): string =>
   [
     'rounded-md border px-3 py-2 text-sm',
     kind === 'success'
-      ? 'border-[rgba(34,197,94,0.35)] bg-[rgba(34,197,94,0.1)] text-[#86efac]'
-      : 'border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.1)] text-[#fca5a5]',
+      ? 'border-[color:var(--success-border)] bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
+      : 'border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
   ].join(' ')
 
 const FeedbackBanner = ({ feedback }: { feedback: Feedback | null }) => {
@@ -100,8 +100,8 @@ const ToggleControl = ({ checked, disabled = false, label, onChange }: ToggleCon
     className={[
       'inline-flex h-8 min-w-[76px] items-center rounded-full border px-1 transition',
       checked
-        ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-white'
-        : 'border-[color:var(--sep)] bg-black/15 text-[color:var(--tx3)]',
+        ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--on-accent)]'
+        : 'border-[color:var(--sep)] bg-[color:var(--scrim)] text-[color:var(--tx3)]',
       disabled ? 'cursor-not-allowed opacity-60' : '',
     ].join(' ')}
     disabled={disabled}
@@ -225,7 +225,7 @@ export const NotificationsPage = () => {
             <div className={sectionTitleClass}>Push</div>
             <div className="mt-4 flex items-center justify-between gap-4">
               <div>
-                <div className="font-semibold text-white">Push enabled</div>
+                <div className="font-semibold text-[color:var(--tx)]">Push enabled</div>
                 <div className="mt-1 text-sm text-[color:var(--tx2)]">
                   {pushEnabled ? 'Enabled' : 'Disabled'}
                 </div>
@@ -243,7 +243,7 @@ export const NotificationsPage = () => {
             <div className={sectionTitleClass}>Quiet hours</div>
             <div className="mt-4 flex items-center justify-between gap-4">
               <div>
-                <div className="font-semibold text-white">Quiet hours</div>
+                <div className="font-semibold text-[color:var(--tx)]">Quiet hours</div>
                 <div className="mt-1 text-sm text-[color:var(--tx2)]">
                   {quietHoursEnabled ? 'Enabled' : 'Disabled'}
                 </div>
@@ -320,7 +320,7 @@ export const NotificationsPage = () => {
                     className="admin-card flex items-center justify-between gap-4 p-3"
                   >
                     <div className="min-w-0">
-                      <div className="truncate font-semibold text-white">#{channel.label}</div>
+                      <div className="truncate font-semibold text-[color:var(--tx)]">#{channel.label}</div>
                       <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                         {muted ? 'Muted' : channel.visibility}
                       </div>

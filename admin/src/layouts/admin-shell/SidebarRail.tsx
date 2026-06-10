@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
 const railUserAvatarClassName = [
   'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
-  'text-[11px] font-bold text-white',
+  'text-[11px] font-bold text-[color:var(--on-accent)]',
 ].join(' ');
 
 const railLogoutRowClassName = 'mt-2 flex w-full items-center gap-1.5';
@@ -13,7 +13,7 @@ const railLogoutLineClassName = 'h-px flex-1 rounded-full bg-[color:var(--sep)]'
 
 const railLogoutButtonClassName = [
   'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded',
-  'text-[color:var(--tx3)] transition-colors hover:text-white',
+  'text-[color:var(--tx3)] transition-colors hover:text-[color:var(--tx)]',
 ].join(' ');
 
 type SidebarRailProps = {
@@ -40,13 +40,13 @@ export const SidebarRail = ({
     >
       <Link
         className="mb-4 flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl"
-        style={{ background: 'linear-gradient(135deg,#5b21b6,#7c3aed)' }}
+        style={{ background: 'linear-gradient(135deg,var(--accent-strong),var(--accent))' }}
         to="/channels"
       >
         <svg
           fill="none"
           height="22"
-          stroke="white"
+          stroke="var(--on-accent)"
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth="2"
@@ -55,7 +55,7 @@ export const SidebarRail = ({
         >
           <path
             d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"
-            fill="rgba(255,255,255,0.15)"
+            fill="var(--overlay)"
           />
           <path d="M8 14s1.5 2 4 2 4-2 4-2" />
           <line x1="9" x2="9.01" y1="9" y2="9" />
@@ -124,7 +124,7 @@ export const SidebarRail = ({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          <circle cx="19" cy="13" r="2.5" style={{ stroke: '#a78bfa' }} />
+          <circle cx="19" cy="13" r="2.5" style={{ stroke: 'var(--thinking)' }} />
         </svg>
         <span className="admin-rail-btn-label">Agents</span>
       </Link>
@@ -178,7 +178,7 @@ export const SidebarRail = ({
         <span className="admin-rail-btn-label">Knowledge</span>
       </Link>
 
-      <div className="my-2 h-px w-8 bg-white/15" />
+      <div className="my-2 h-px w-8 bg-[color:var(--overlay)]" />
 
       <Link
         className={`admin-rail-btn ${isAdminRoute ? 'active' : ''}`}
@@ -217,7 +217,7 @@ export const SidebarRail = ({
 
       <div className="flex-1" />
 
-      <div className={railUserAvatarClassName} style={{ background: '#7c3aed' }}>
+      <div className={railUserAvatarClassName} style={{ background: 'var(--accent)' }}>
         <span>{displayName.slice(0, 2).toUpperCase()}</span>
       </div>
       <div className={railLogoutRowClassName}>

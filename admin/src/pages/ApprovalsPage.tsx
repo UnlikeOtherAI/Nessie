@@ -53,7 +53,7 @@ export const ApprovalsPage = () => {
       <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
         <div className={sectionTitle}>Approvals</div>
         {pending.length > 0 && (
-          <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400">
+          <span className="ml-2 rounded-full bg-[color:var(--warning-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--warning-text)]">
             {pending.length} pending
           </span>
         )}
@@ -68,7 +68,7 @@ export const ApprovalsPage = () => {
                 <div key={approval.id} className="admin-card p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="font-mono text-sm font-semibold text-white">
+                      <span className="font-mono text-sm font-semibold text-[color:var(--tx)]">
                         {approval.action}
                       </span>
                       <span className="ml-2 text-xs text-[color:var(--tx3)]">
@@ -117,15 +117,15 @@ export const ApprovalsPage = () => {
               <div key={approval.id} className="admin-card p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-white">{approval.action}</span>
+                    <span className="font-mono text-xs text-[color:var(--tx)]">{approval.action}</span>
                     <span
                       className={[
                         'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
                         approval.status === 'approved'
-                          ? 'bg-emerald-500/15 text-emerald-400'
+                          ? 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
                           : approval.status === 'rejected'
-                            ? 'bg-red-500/15 text-red-400'
-                            : 'bg-white/10 text-[color:var(--tx3)]',
+                            ? 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]'
+                            : 'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
                       ].join(' ')}
                     >
                       {approval.status}

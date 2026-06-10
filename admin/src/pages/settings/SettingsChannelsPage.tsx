@@ -36,7 +36,7 @@ export const SettingsChannelsPage = () => {
               type="button"
             >
               <div>
-                <div className="font-semibold text-white">#{channel.label}</div>
+                <div className="font-semibold text-[color:var(--tx)]">#{channel.label}</div>
                 <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                   {channel.visibility}
                 </div>

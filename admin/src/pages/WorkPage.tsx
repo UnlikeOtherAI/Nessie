@@ -33,14 +33,14 @@ type AssignableUser = {
 type Tab = 'mine' | 'all'
 
 const STATUS_TONE: Record<TaskStatus, string> = {
-  inbox: 'bg-white/10 text-[color:var(--tx3)]',
-  assigned: 'bg-[rgba(124,58,237,0.16)] text-[#a78bfa]',
-  in_progress: 'bg-sky-500/15 text-sky-300',
-  review: 'bg-amber-500/15 text-amber-300',
-  awaiting_approval: 'bg-amber-500/15 text-amber-300',
-  done: 'bg-emerald-500/15 text-emerald-300',
-  failed: 'bg-red-500/15 text-red-300',
-  cancelled: 'bg-white/10 text-[color:var(--tx3)]',
+  inbox: 'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
+  assigned: 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
+  in_progress: 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
+  review: 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
+  awaiting_approval: 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
+  done: 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]',
+  failed: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+  cancelled: 'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
 }
 
 // Primary lifecycle actions surfaced as buttons, per current status.
@@ -134,7 +134,9 @@ export const WorkPage = () => {
           <button
             className={[
               'rounded-md px-2.5 py-1 text-xs font-semibold',
-              tab === 'mine' ? 'bg-white/10 text-white' : 'text-[color:var(--tx3)]',
+              tab === 'mine'
+                ? 'bg-[color:var(--overlay)] text-[color:var(--tx)]'
+                : 'text-[color:var(--tx3)]',
             ].join(' ')}
             onClick={() => setTab('mine')}
             type="button"
@@ -144,7 +146,9 @@ export const WorkPage = () => {
           <button
             className={[
               'rounded-md px-2.5 py-1 text-xs font-semibold',
-              tab === 'all' ? 'bg-white/10 text-white' : 'text-[color:var(--tx3)]',
+              tab === 'all'
+                ? 'bg-[color:var(--overlay)] text-[color:var(--tx)]'
+                : 'text-[color:var(--tx3)]',
             ].join(' ')}
             onClick={() => setTab('all')}
             type="button"
@@ -198,7 +202,7 @@ export const WorkPage = () => {
             </button>
           </div>
           {createTask.isError && (
-            <div className="text-xs text-red-300">
+            <div className="text-xs text-[color:var(--danger-text)]">
               {(createTask.error as Error).message}
             </div>
           )}
@@ -212,7 +216,7 @@ export const WorkPage = () => {
             <div key={task.id} className="admin-card p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="truncate font-semibold text-white">
+                  <div className="truncate font-semibold text-[color:var(--tx)]">
                     {task.title ?? task.purpose ?? 'Untitled task'}
                   </div>
                   {task.purpose && task.title && (
@@ -267,7 +271,7 @@ export const WorkPage = () => {
             </div>
           ))}
           {tasksQuery.isError && (
-            <div className="py-10 text-center text-sm text-red-300">
+            <div className="py-10 text-center text-sm text-[color:var(--danger-text)]">
               Failed to load tasks. Please refresh.
             </div>
           )}

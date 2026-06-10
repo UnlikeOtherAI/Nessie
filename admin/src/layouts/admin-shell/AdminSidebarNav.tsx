@@ -199,7 +199,7 @@ export const AdminSidebarNav = ({ pathname, isOwner, isSuperAdmin }: AdminSideba
       ].join(' ')}
     >
       <div className="flex h-[50px] items-center px-4">
-        <span className="text-[15px] font-bold text-white">Admin</span>
+        <span className="text-[15px] font-bold text-[color:var(--tx)]">Admin</span>
       </div>
       <nav className="flex flex-1 flex-col gap-3 px-2 py-1">
         {ADMIN_NAV.filter(

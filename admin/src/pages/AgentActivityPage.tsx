@@ -15,7 +15,7 @@ export const AgentActivityPage = () => {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
             Agents
           </p>
-          <h1 className="text-2xl font-semibold text-white">Activity</h1>
+          <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Activity</h1>
           <p className="max-w-2xl text-sm text-[color:var(--tx3)]">
             Live workspace activity for every agent. Select an agent to inspect the current run,
             recent tool usage, messages, and spawned children.
