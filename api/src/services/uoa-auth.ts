@@ -36,6 +36,23 @@ export type UoaSettings = {
   clientSecret: string
 }
 
+// Mirrors the admin nebula brand tokens for the fixed hosted-login brand.
+// This external-surface exception is intentional because the IdP page cannot
+// read Nessie's CSS variables.
+const UOA_SIGN_IN_THEME = {
+  colors: {
+    primary: '#7c3aed',
+    bg: '#1a1024',
+    surface: '#241634',
+    text: '#f5f3ff',
+    primary_text: '#f5f3ff',
+    muted: '#a78bfa',
+    border: '#3b2a52',
+    danger: '#ef4444',
+    danger_text: '#ffffff',
+  },
+} as const
+
 const requireEnv = (name: string): string => {
   const value = process.env[name]
   if (!value || value.trim().length === 0) {
@@ -79,17 +96,7 @@ const base64UrlJson = (value: unknown): string =>
  * `density`, `typography`, `button`, `card`, and `logo` sections to be present.
  */
 const defaultUiTheme = (settings: UoaSettings): Record<string, unknown> => ({
-  colors: {
-    primary: '#7c3aed',
-    bg: '#1a1024',
-    surface: '#241634',
-    text: '#f5f3ff',
-    primary_text: '#f5f3ff',
-    muted: '#a78bfa',
-    border: '#3b2a52',
-    danger: '#ef4444',
-    danger_text: '#ffffff',
-  },
+  colors: UOA_SIGN_IN_THEME.colors,
   radii: { card: '16px', button: '10px', input: '8px' },
   density: 'comfortable',
   typography: { font_family: 'Inter, system-ui, sans-serif', base_text_size: 'md' },
