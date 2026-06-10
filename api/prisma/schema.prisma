@@ -512,6 +512,17 @@ enum ToolGrantSource {
   agent_override @map("agent-override")
 }
 
+enum UserStatusScheduleKind {
+  date_range
+  weekly
+}
+
+enum UserStatusRuleScope {
+  fallback
+  channel
+  project
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique
@@ -541,6 +552,7 @@ model User {
   createdTasks        Task[]               @relation("TaskCreatedBy")
   mcpCatalogOwned     McpCatalogEntry[]    @relation("McpCatalogOwner")
   mcpCatalogReviewed  McpCatalogEntry[]    @relation("McpCatalogReviewer")
+  statuses            UserStatus[]
 
   @@map("users")
 }
@@ -561,15 +573,16 @@ model Organization {
   plans            Plan[]
   approvalRequests ApprovalRequest[]
   resourceLocks    ResourceLock[]
+  userStatuses     UserStatus[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
   // by 20260530170100_reinstate_inference_org_fkeys.
-  inferenceProviders           InferenceProvider[]
-  inferenceModels              InferenceModel[]
-  inferenceCredentialBindings  InferenceCredentialBinding[]
-  inferenceRoutingProfiles     InferenceRoutingProfile[]
-  mcpCatalogEntries            McpCatalogEntry[]
+  inferenceProviders          InferenceProvider[]
+  inferenceModels             InferenceModel[]
+  inferenceCredentialBindings InferenceCredentialBinding[]
+  inferenceRoutingProfiles    InferenceRoutingProfile[]
+  mcpCatalogEntries           McpCatalogEntry[]
 
   @@map("organizations")
 }
@@ -598,6 +611,7 @@ model Project {
   teams            Team[]
   plans            Plan[]
   approvalRequests ApprovalRequest[]
+  statusRules      UserStatusRule[]
 
   @@map("projects")
 }
@@ -668,6 +682,7 @@ model Channel {
   threads           Thread[]
   plans             Plan[]
   approvalRequests  ApprovalRequest[]
+  statusRules       UserStatusRule[]
 
   @@index([organizationId, type])
   @@map("channels")
@@ -681,8 +696,8 @@ model ChannelMember {
   role      MemberRole @default(member)
   muted     Boolean    @default(false) @map("muted")
   createdAt DateTime   @default(now()) @map("created_at")
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([channelId, userId])
   @@index([userId])
@@ -762,6 +777,72 @@ model UserPresence {
   @@map("user_presence")
 }
 
+model UserStatus {
+  id                String               @id @default(uuid()) @db.Uuid
+  organizationId    String               @map("organization_id") @db.Uuid
+  userId            String               @map("user_id") @db.Uuid
+  label             String
+  emoji             String?
+  isActive          Boolean              @default(false) @map("is_active")
+  agentEnabled      Boolean              @default(false) @map("agent_enabled")
+  agentInstructions String?              @map("agent_instructions")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules         UserStatusSchedule[]
+  rules             UserStatusRule[]
+
+  @@index([organizationId, userId])
+  @@index([userId, isActive])
+  @@map("user_statuses")
+}
+
+model UserStatusSchedule {
+  id        String                 @id @default(uuid()) @db.Uuid
+  statusId  String                 @map("status_id") @db.Uuid
+  kind      UserStatusScheduleKind
+  label     String?
+  enabled   Boolean                @default(true)
+  startsAt  DateTime?              @map("starts_at")
+  endsAt    DateTime?              @map("ends_at")
+  dayOfWeek Int?                   @map("day_of_week")
+  startTime String?                @map("start_time")
+  endTime   String?                @map("end_time")
+  timezone  String                 @default("UTC")
+  createdAt DateTime               @default(now()) @map("created_at")
+  updatedAt DateTime               @updatedAt @map("updated_at")
+  status    UserStatus             @relation(fields: [statusId], references: [id], onDelete: Cascade)
+
+  @@index([statusId])
+  @@index([kind, enabled])
+  @@map("user_status_schedules")
+}
+
+model UserStatusRule {
+  id           String              @id @default(uuid()) @db.Uuid
+  statusId     String              @map("status_id") @db.Uuid
+  scope        UserStatusRuleScope @default(fallback)
+  channelId    String?             @map("channel_id") @db.Uuid
+  projectId    String?             @map("project_id") @db.Uuid
+  agentId      String?             @map("agent_id") @db.Uuid
+  agentEnabled Boolean             @default(true) @map("agent_enabled")
+  instructions String
+  priority     Int                 @default(0)
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+  status       UserStatus          @relation(fields: [statusId], references: [id], onDelete: Cascade)
+  channel      Channel?            @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  project      Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  agent        Agent?              @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([statusId, priority])
+  @@index([channelId])
+  @@index([projectId])
+  @@index([agentId])
+  @@map("user_status_rules")
+}
+
 model Message {
   id        String            @id @default(uuid()) @db.Uuid
   threadId  String            @map("thread_id") @db.Uuid
@@ -835,6 +916,7 @@ model Agent {
   plans                         Plan[]
   resourceLocks                 ResourceLock[]
   toolGrants                    ToolGrant[]
+  statusRules                   UserStatusRule[]
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowStepAssignedAgent")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
 
@@ -846,27 +928,27 @@ model Agent {
 }
 
 model InferenceProvider {
-  id                        String                        @id @default(uuid()) @db.Uuid
-  organizationId            String                        @map("organization_id") @db.Uuid
-  providerKey               String                        @map("provider_key")
-  connectorKind             InferenceConnectorKind        @map("connector_kind")
-  displayName               String                        @map("display_name")
-  enabled                   Boolean                       @default(false)
-  lifecycleStatus           InferenceLifecycleStatus      @default(draft) @map("lifecycle_status")
-  baseUrl                   String?                       @map("base_url")
-  supportsModelDiscovery    Boolean                       @default(true) @map("supports_model_discovery")
-  activeCredentialBindingId String?                       @unique @map("active_credential_binding_id") @db.Uuid
-  healthStatus              InferenceHealthStatus         @default(unknown) @map("health_status")
-  lastCheckedAt             DateTime?                     @map("last_checked_at")
-  createdByActorId          String                        @map("created_by_actor_id")
-  updatedByActorId          String                        @map("updated_by_actor_id")
-  approvedByActorId         String?                       @map("approved_by_actor_id")
-  approvedAt                DateTime?                     @map("approved_at")
-  createdAt                 DateTime                      @default(now()) @map("created_at")
-  updatedAt                 DateTime                      @updatedAt @map("updated_at")
-  organization              Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  activeCredentialBinding   InferenceCredentialBinding?   @relation("ProviderActiveCredentialBinding", fields: [activeCredentialBindingId], references: [id], onDelete: SetNull)
-  credentialBindings        InferenceCredentialBinding[]  @relation("ProviderCredentialBindings")
+  id                        String                       @id @default(uuid()) @db.Uuid
+  organizationId            String                       @map("organization_id") @db.Uuid
+  providerKey               String                       @map("provider_key")
+  connectorKind             InferenceConnectorKind       @map("connector_kind")
+  displayName               String                       @map("display_name")
+  enabled                   Boolean                      @default(false)
+  lifecycleStatus           InferenceLifecycleStatus     @default(draft) @map("lifecycle_status")
+  baseUrl                   String?                      @map("base_url")
+  supportsModelDiscovery    Boolean                      @default(true) @map("supports_model_discovery")
+  activeCredentialBindingId String?                      @unique @map("active_credential_binding_id") @db.Uuid
+  healthStatus              InferenceHealthStatus        @default(unknown) @map("health_status")
+  lastCheckedAt             DateTime?                    @map("last_checked_at")
+  createdByActorId          String                       @map("created_by_actor_id")
+  updatedByActorId          String                       @map("updated_by_actor_id")
+  approvedByActorId         String?                      @map("approved_by_actor_id")
+  approvedAt                DateTime?                    @map("approved_at")
+  createdAt                 DateTime                     @default(now()) @map("created_at")
+  updatedAt                 DateTime                     @updatedAt @map("updated_at")
+  organization              Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  activeCredentialBinding   InferenceCredentialBinding?  @relation("ProviderActiveCredentialBinding", fields: [activeCredentialBindingId], references: [id], onDelete: SetNull)
+  credentialBindings        InferenceCredentialBinding[] @relation("ProviderCredentialBindings")
   models                    InferenceModel[]
   tokenLedgerEvents         TokenLedgerEvent[]
 
@@ -1858,45 +1940,45 @@ model AuditLog {
 /// organization_id. Ledger rows must survive organization deletion for billing /
 /// audit retention, so org deletes must not cascade them away. Do not add a FK.
 model TokenLedgerEvent {
-  id                    String         @id @default(uuid()) @db.Uuid
-  occurredAt            DateTime       @map("occurred_at") @db.Timestamptz(6)
+  id                    String             @id @default(uuid()) @db.Uuid
+  occurredAt            DateTime           @map("occurred_at") @db.Timestamptz(6)
   /// Stable per-inference idempotency key. The write path
   /// (worker persistInvocationLedgerEvents) sets this from the inference
   /// invocation id; a unique constraint + skipDuplicates makes redelivery after
   /// a crash a no-op instead of double-counting cost. Nullable for legacy rows.
-  inferenceInvocationId String?        @unique @map("inference_invocation_id")
-  organizationId        String         @map("organization_id") @db.Uuid
-  projectId             String?        @map("project_id") @db.Uuid
-  teamId                String?        @map("team_id") @db.Uuid
-  channelId             String?        @map("channel_id") @db.Uuid
-  threadId              String?        @map("thread_id") @db.Uuid
-  sessionId             String?        @map("session_id")
-  taskId                String?        @map("task_id") @db.Uuid
-  agentId               String?        @map("agent_id") @db.Uuid
-  actorId               String         @map("actor_id")
-  requestId             String         @map("request_id")
-  correlationId         String?        @map("correlation_id")
+  inferenceInvocationId String?            @unique @map("inference_invocation_id")
+  organizationId        String             @map("organization_id") @db.Uuid
+  projectId             String?            @map("project_id") @db.Uuid
+  teamId                String?            @map("team_id") @db.Uuid
+  channelId             String?            @map("channel_id") @db.Uuid
+  threadId              String?            @map("thread_id") @db.Uuid
+  sessionId             String?            @map("session_id")
+  taskId                String?            @map("task_id") @db.Uuid
+  agentId               String?            @map("agent_id") @db.Uuid
+  actorId               String             @map("actor_id")
+  requestId             String             @map("request_id")
+  correlationId         String?            @map("correlation_id")
   provider              String
   model                 String
-  providerId            String?        @map("provider_id") @db.Uuid
-  modelId               String?        @map("model_id") @db.Uuid
-  operationType         OperationType  @map("operation_type")
-  inputTokens           Int?           @map("input_tokens")
-  outputTokens          Int?           @map("output_tokens")
-  cachedInputTokens     Int?           @map("cached_input_tokens")
-  cachedOutputTokens    Int?           @map("cached_output_tokens")
-  cacheReadTokens       Int?           @map("cache_read_tokens")
-  cacheWriteTokens      Int?           @map("cache_write_tokens")
-  totalTokens           Int?           @map("total_tokens")
-  providerCostAmount    Decimal?       @map("provider_cost_amount") @db.Decimal(20, 8)
-  providerCostCurrency  String?        @map("provider_cost_currency")
-  pricingProfileId      String?        @map("pricing_profile_id") @db.Uuid
-  pricingSource         PricingSource? @map("pricing_source")
-  pricingCurrency       String?        @map("pricing_currency")
-  pricingInputPerM      Decimal?       @map("pricing_input_per_m") @db.Decimal(20, 8)
-  pricingOutputPerM     Decimal?       @map("pricing_output_per_m") @db.Decimal(20, 8)
-  estimatedCostAmount   Decimal?       @map("estimated_cost_amount") @db.Decimal(20, 8)
-  estimatedCostCurrency String?        @map("estimated_cost_currency")
+  providerId            String?            @map("provider_id") @db.Uuid
+  modelId               String?            @map("model_id") @db.Uuid
+  operationType         OperationType      @map("operation_type")
+  inputTokens           Int?               @map("input_tokens")
+  outputTokens          Int?               @map("output_tokens")
+  cachedInputTokens     Int?               @map("cached_input_tokens")
+  cachedOutputTokens    Int?               @map("cached_output_tokens")
+  cacheReadTokens       Int?               @map("cache_read_tokens")
+  cacheWriteTokens      Int?               @map("cache_write_tokens")
+  totalTokens           Int?               @map("total_tokens")
+  providerCostAmount    Decimal?           @map("provider_cost_amount") @db.Decimal(20, 8)
+  providerCostCurrency  String?            @map("provider_cost_currency")
+  pricingProfileId      String?            @map("pricing_profile_id") @db.Uuid
+  pricingSource         PricingSource?     @map("pricing_source")
+  pricingCurrency       String?            @map("pricing_currency")
+  pricingInputPerM      Decimal?           @map("pricing_input_per_m") @db.Decimal(20, 8)
+  pricingOutputPerM     Decimal?           @map("pricing_output_per_m") @db.Decimal(20, 8)
+  estimatedCostAmount   Decimal?           @map("estimated_cost_amount") @db.Decimal(20, 8)
+  estimatedCostCurrency String?            @map("estimated_cost_currency")
   metadata              Json?
   inferenceProvider     InferenceProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   inferenceModel        InferenceModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
@@ -1983,13 +2065,13 @@ model ModelPricingProfile {
 // ─── Memory Models ──────────────────────────────────────────────────────────
 
 model Thought {
-  id           String                       @id @default(uuid()) @db.Uuid
-  content      String
-  contentHash  String                       @map("content_hash")
-  embedding    Unsupported("vector(1536)")?
-  embeddingModel String?                    @map("embedding_model")
-  dims          Int?
-  searchVector Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))")) @map("search_vector")
+  id             String                       @id @default(uuid()) @db.Uuid
+  content        String
+  contentHash    String                       @map("content_hash")
+  embedding      Unsupported("vector(1536)")?
+  embeddingModel String?                      @map("embedding_model")
+  dims           Int?
+  searchVector   Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))")) @map("search_vector")
 
   // Ownership
   ownerId   String           @map("owner_id")
@@ -2084,16 +2166,16 @@ model KnowledgeSpace {
 }
 
 model KnowledgePage {
-  id       String @id @default(uuid()) @db.Uuid
-  spaceId  String @map("space_id") @db.Uuid
+  id       String  @id @default(uuid()) @db.Uuid
+  spaceId  String  @map("space_id") @db.Uuid
   title    String
   summary  String?
   metadata Json?
 
-  parentPageId       String? @map("parent_page_id") @db.Uuid
-  position           Int     @default(0)
+  parentPageId       String?             @map("parent_page_id") @db.Uuid
+  position           Int                 @default(0)
   status             KnowledgePageStatus @default(draft)
-  publishedVersionId String? @unique(map: "knowledge_pages_published_version_id_key") @map("published_version_id") @db.Uuid
+  publishedVersionId String?             @unique(map: "knowledge_pages_published_version_id_key") @map("published_version_id") @db.Uuid
 
   // Per-agent privacy: when set, only this agent may access the page.
   privateToAgentId String? @map("private_to_agent_id") @db.Uuid
@@ -2115,11 +2197,11 @@ model KnowledgePage {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  space            KnowledgeSpace        @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  parentPage       KnowledgePage?        @relation("KnowledgePageTree", fields: [parentPageId], references: [id], onDelete: SetNull)
-  childPages       KnowledgePage[]       @relation("KnowledgePageTree")
+  space            KnowledgeSpace         @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  parentPage       KnowledgePage?         @relation("KnowledgePageTree", fields: [parentPageId], references: [id], onDelete: SetNull)
+  childPages       KnowledgePage[]        @relation("KnowledgePageTree")
   versions         KnowledgePageVersion[] @relation("KnowledgePageVersions")
-  publishedVersion KnowledgePageVersion? @relation("KnowledgePagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  publishedVersion KnowledgePageVersion?  @relation("KnowledgePagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
   labels           PageLabel[]
 
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")

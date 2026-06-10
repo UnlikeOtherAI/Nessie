@@ -21,6 +21,7 @@ import { SettingsAgentsPage } from './pages/settings/SettingsAgentsPage'
 import { SettingsChannelsPage } from './pages/settings/SettingsChannelsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
 import { SettingsProfilePage } from './pages/settings/SettingsProfilePage'
+import { StatusesPage } from './pages/settings/StatusesPage'
 import { SettingsToolsPage } from './pages/settings/SettingsToolsPage'
 import { ToolsPage } from './pages/ToolsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
@@ -125,6 +126,14 @@ export const router = createBrowserRouter([
       {
         path: '/settings/profile',
         element: <SettingsProfilePage />,
+      },
+      {
+        path: '/settings/statuses',
+        element: <StatusesPage />,
+      },
+      {
+        path: '/settings/statuses/:statusId',
+        element: <StatusesPage />,
       },
       {
         path: '/settings/notifications',

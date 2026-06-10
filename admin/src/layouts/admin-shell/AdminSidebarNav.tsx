@@ -56,6 +56,17 @@ const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/settings/statuses',
+        label: 'Statuses',
+        icon: icon(
+          <>
+            <circle cx="8" cy="8" r="3" />
+            <path d="M4 20c0-3 1.8-5 4-5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M14 6h6M14 11h4M14 16h6" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
         path: '/settings/appearance',
         label: 'Appearance',
         icon: icon(

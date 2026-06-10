@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { MemberRole, Prisma, PrismaClient, User } from '@prisma/client'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
 import type { UserRecord } from '../contracts.js'
+import { resolveActiveStatus, type StatusWithRelations } from './user-statuses.js'
 
 const mapUserRecord = (record: {
   channelMembers: Array<{ channelId: string }>
@@ -10,6 +11,7 @@ const mapUserRecord = (record: {
   email: string
   id: string
   organizationMembers: Array<{ role: string }>
+  statuses: StatusWithRelations[]
   updatedAt: Date
 }): UserRecord => ({
   id: parseUserId(record.id),
@@ -17,6 +19,7 @@ const mapUserRecord = (record: {
   displayName: record.displayName,
   role: record.organizationMembers[0]?.role ?? 'member',
   channelIds: record.channelMembers.map((member) => parseChannelId(member.channelId)),
+  activeStatus: resolveActiveStatus(record.statuses),
   createdAt: record.createdAt.toISOString(),
   updatedAt: record.updatedAt.toISOString(),
 })
@@ -79,6 +82,11 @@ export const listUsersForOrganization = async (
         where: { organizationId },
         select: { role: true },
         take: 1,
+      },
+      statuses: {
+        where: { organizationId },
+        include: { schedules: true, rules: true },
+        orderBy: { createdAt: 'asc' },
       },
     },
     orderBy: { createdAt: 'asc' },
@@ -154,6 +162,9 @@ export const createUserForOrganization = async (
         organizationMembers: {
           select: { role: true },
         },
+        statuses: {
+          include: { schedules: true, rules: true },
+        },
       },
     })
 
@@ -208,6 +219,11 @@ export const createUserForOrganization = async (
         where: { organizationId: input.organizationId },
         select: { role: true },
         take: 1,
+      },
+      statuses: {
+        where: { organizationId: input.organizationId },
+        include: { schedules: true, rules: true },
+        orderBy: { createdAt: 'asc' },
       },
     },
   })
