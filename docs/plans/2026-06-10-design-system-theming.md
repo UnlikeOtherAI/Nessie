@@ -188,3 +188,47 @@ point.
 controlled-radio→`onChange`→`setTheme` path is standard React; confirm with a
 real click. (b) `--executing`/`--thinking` legacy tokens vs the new `--success`
 family — check for redundancy.
+
+## P1–P3 + all surfaces (2026-06-10)
+
+Shipped across 5 parallel worktrees, reviewed + verified, merged to `main`.
+
+**P1 — UX & persistence (admin):**
+
+- **System/auto theme**: a `system` option resolves via
+  `matchMedia('(prefers-color-scheme: dark)')` → nebula (dark) / daylight
+  (light); the `index.html` first-paint script handles it too.
+- **Server-side per-user persistence**: `UserPreferencesSchema` gained a `theme`
+  enum (stored in the existing `preferences` JSON — no migration);
+  `ThemeProvider` hydrates from `me.user.preferences.theme` and `setTheme`
+  writes through `PATCH /api/auth/me/preferences` (localStorage stays the
+  pre-login fallback). The PATCH now *merges* a theme-only body so it can't wipe
+  `starred`/`pushEnabled`. Verified live: theme-only PATCH persists + preserves
+  other prefs; a `contrast` server pref hydrates on reload.
+- **Swatches** on each Appearance card (rail/accent/tx preview).
+
+**P2 — design-system tokens (admin `styles.css`, `:root` only):** typography
+(`--font-family-body/-mono`, `--font-size-base`, `--line-height-base`,
+`--font-weight-*`), radius (`--radius-sm..xl`, `--radius-panel`), motion
+(`--duration-*`, `--easing-standard`) + a global `prefers-reduced-motion` block,
+tokenized `::selection`.
+
+**P3 — more themes + all surfaces:**
+
+- **11 themes** total: nebula, midnight, daylight, forest, ocean, sunset, rose,
+  graphite, sandstone + **High Contrast** (`[data-theme="contrast"]`, AA+).
+- **Mobile** (`mobile/`): `src/lib/theme.ts` (dark+light semantic palettes
+  mirroring nebula/daylight) + `theme-context.tsx`; resolves from the user's
+  server theme preference / `useColorScheme`; screens swept of hardcoded color.
+- **Public web** (`web/`): palette tokenized into CSS vars + a
+  `prefers-color-scheme: dark` variant.
+- **Desktop** (`desktop/`): Tauri window chrome follows the theme (overlay
+  titlebar / themed window background).
+- **UOA hosted sign-in** (`api/src/services/uoa-auth.ts`): brand colors
+  centralized into `UOA_SIGN_IN_THEME` (documented external-surface exception —
+  the IdP page can't read our CSS vars).
+
+**Verified**: admin/api `tsc` + `eslint --max-warnings 0` + `vite build`, web +
+mobile `tsc`/build, desktop `cargo check` — all green. Kelpie: 11 cards +
+swatches render; daylight, sandstone, and high-contrast render correctly; server
+theme hydrates on reload.
