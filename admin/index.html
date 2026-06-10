@@ -5,7 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nessie Admin</title>
     <script>
-      try{var t=localStorage.getItem('nessie.theme');if(t&&['nebula','midnight','daylight','forest','ocean','sunset','rose','graphite','sandstone'].indexOf(t)>=0)document.documentElement.dataset.theme=t;}catch(e){}
+      var t = null
+      try {
+        t = localStorage.getItem('nessie.theme')
+      } catch (e) {}
+      var systemTheme =
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'nebula'
+          : 'daylight'
+      var themes = [
+        'nebula',
+        'midnight',
+        'daylight',
+        'forest',
+        'ocean',
+        'sunset',
+        'rose',
+        'graphite',
+        'sandstone',
+        'contrast',
+      ]
+      document.documentElement.dataset.theme =
+        t === 'system' || !t || themes.indexOf(t) < 0 ? systemTheme : t
     </script>
   </head>
   <body>

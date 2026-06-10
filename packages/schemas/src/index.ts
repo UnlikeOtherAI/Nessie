@@ -643,6 +643,19 @@ export const UserPreferencesSchema = z.object({
   })).optional(),
   pushEnabled: z.boolean().optional(),
   pushQuietHours: PushQuietHoursSchema.optional(),
+  theme: z.enum([
+    'nebula',
+    'midnight',
+    'daylight',
+    'forest',
+    'ocean',
+    'sunset',
+    'rose',
+    'graphite',
+    'sandstone',
+    'contrast',
+    'system',
+  ]).optional(),
 })
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>
 

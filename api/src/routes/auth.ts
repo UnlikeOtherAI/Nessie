@@ -17,22 +17,15 @@ import {
 import { seedBootstrapRecords } from '../db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
-  LOCAL_AUTH_PROVIDER_ID,
-  buildMeResponse,
-  listAuthProviders,
-  resolveConfiguredAuthProvider,
+  LOCAL_AUTH_PROVIDER_ID, buildMeResponse, listAuthProviders, resolveConfiguredAuthProvider,
 } from '../services/auth.js'
-import {
-  buildExternalAuthAuthorizeUrl,
-  exchangeExternalAuthCode,
-} from '../services/external-auth.js'
+import { buildExternalAuthAuthorizeUrl, exchangeExternalAuthCode } from '../services/external-auth.js'
 import { seedDefaultPolicies } from '../services/policy.js'
 import { buildConfigJwt, buildPublicJwks, isUoaConfigured, loadUoaSettings } from '../services/uoa-auth.js'
-import {
-  createUserForOrganization,
-  loadSessionUserByEmail,
-} from '../services/users.js'
+import { createUserForOrganization, loadSessionUserByEmail } from '../services/users.js'
 import type { RouteDeps } from './types.js'
+
+const CREATED_AT_ASC = { createdAt: 'asc' } as const
 
 // Brand icon shared with the UOA hosted login page. Bundled in the image at
 // admin/public/icon-1024.png (cwd is the workspace root). Read once and cached.
@@ -50,24 +43,12 @@ const readBrandIcon = (): Buffer | null => {
 }
 
 export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const {
-    config,
-    prisma,
-    authSecret,
-    DEFAULT_LOCAL_PROVIDER_TYPE,
-    requireActorContext,
-    resolveBootstrapState,
-    clearBootstrapState,
-    getAuthorizationToken,
-    authenticateRequest,
-    buildLocalSession,
-    buildSessionForUser,
-  } = deps
+  const { config, prisma, authSecret, DEFAULT_LOCAL_PROVIDER_TYPE } = deps
+  const { requireActorContext, resolveBootstrapState, clearBootstrapState, getAuthorizationToken } = deps
+  const { authenticateRequest, buildLocalSession, buildSessionForUser } = deps
 
   app.get('/api/auth/providers', { config: { public: true } }, async () =>
-    createApiResponse(
-      AuthProviderDescriptorSchema.array().parse(listAuthProviders(config)),
-    ),
+    createApiResponse(AuthProviderDescriptorSchema.array().parse(listAuthProviders(config))),
   )
 
   // UOA (UnlikeOtherAuthenticator) integration endpoints. The signed config JWT
@@ -144,10 +125,7 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     if (!token) {
       const state = await resolveBootstrapState()
       if (state) {
-        return createApiResponse(BootstrapModeResponseSchema.parse({
-          bootstrapMode: true,
-          bootstrapUrl: '/bootstrap',
-        }))
+        return createApiResponse(BootstrapModeResponseSchema.parse({ bootstrapMode: true, bootstrapUrl: '/bootstrap' }))
       }
 
       sendApiError(reply, 401, 'AUTH_REQUIRED', 'Authentication required')
@@ -173,9 +151,13 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
+    const nextPreferences = Object.keys(body).length === 1 && body.theme
+      ? { ...(authenticatedState.me.user.preferences ?? {}), theme: body.theme }
+      : body
+
     const updatedUser = await prisma.user.update({
       where: { id: authenticatedState.claims.sub },
-      data: { preferences: body },
+      data: { preferences: nextPreferences },
     })
 
     const me = await buildMeResponse(prisma, updatedUser, authenticatedState.claims, config)
@@ -270,23 +252,17 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         let sessionUser = await loadSessionUserByEmail(prisma, identity.email)
         if (!sessionUser) {
           // Resolve the default org/project/team from DB for SSO auto-provisioning
-          const defaultOrg = await prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } })
+          const defaultOrg = await prisma.organization.findFirst({ orderBy: CREATED_AT_ASC })
           const defaultProject = defaultOrg
-            ? await prisma.project.findFirst({
-                where: { organizationId: defaultOrg.id },
-                orderBy: { createdAt: 'asc' },
-              })
+            ? await prisma.project.findFirst({ where: { organizationId: defaultOrg.id }, orderBy: CREATED_AT_ASC })
             : null
           const defaultTeam = defaultProject
-            ? await prisma.team.findFirst({
-                where: { projectId: defaultProject.id },
-                orderBy: { createdAt: 'asc' },
-              })
+            ? await prisma.team.findFirst({ where: { projectId: defaultProject.id }, orderBy: CREATED_AT_ASC })
             : null
           const defaultChannel = defaultOrg
             ? await prisma.channel.findFirst({
                 where: { organizationId: defaultOrg.id, visibility: 'public' },
-                orderBy: { createdAt: 'asc' },
+                orderBy: CREATED_AT_ASC,
               })
             : null
 
@@ -350,7 +326,7 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
         return createApiResponse({
           token: session.token,
-          me: MeResponseSchema.parse(await buildMeResponse(prisma,sessionUser, verification.claims, config)),
+          me: MeResponseSchema.parse(await buildMeResponse(prisma, sessionUser, verification.claims, config)),
         })
       } catch (error) {
         sendApiError(
@@ -391,7 +367,7 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
     return createApiResponse({
       token: session.token,
-      me: MeResponseSchema.parse(await buildMeResponse(prisma,user, verification.claims, config)),
+      me: MeResponseSchema.parse(await buildMeResponse(prisma, user, verification.claims, config)),
     })
   })
 
@@ -401,23 +377,15 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    const remoteIp = request.ip
-    const isLoopback =
-      remoteIp === '127.0.0.1'
-      || remoteIp === '::1'
-      || remoteIp === '::ffff:127.0.0.1'
+    const isLoopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(request.ip)
     if (!isLoopback) {
       sendApiError(reply, 403, 'FORBIDDEN', 'Dev login is only available from localhost')
       return reply
     }
 
     const user = await prisma.user.findFirst({
-      include: {
-        organizationMembers: true,
-        projectMembers: true,
-        teamMembers: true,
-      },
-      orderBy: { createdAt: 'asc' },
+      include: { organizationMembers: true, projectMembers: true, teamMembers: true },
+      orderBy: CREATED_AT_ASC,
     })
 
     if (!user) {
@@ -441,7 +409,7 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
     return createApiResponse({
       token: session.token,
-      me: MeResponseSchema.parse(await buildMeResponse(prisma,user, verification.claims, config)),
+      me: MeResponseSchema.parse(await buildMeResponse(prisma, user, verification.claims, config)),
     })
   })
 
@@ -454,58 +422,47 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
-    const body = request.body as {
-      organizationId?: string
-      projectId?: string
-      teamId?: string
-    } | undefined
+    const body = request.body as { organizationId?: string; projectId?: string; teamId?: string } | undefined
 
     if (!body?.organizationId || !body?.projectId || !body?.teamId) {
       sendApiError(reply, 400, 'INVALID_INPUT', 'organizationId, projectId, and teamId are required')
       return reply
     }
 
+    const { organizationId, projectId, teamId } = body
+    const userId = actorContext.actor.actorId
+
     // Verify membership
     const orgMember = await prisma.organizationMember.findUnique({
-      where: { organizationId_userId: { organizationId: body.organizationId, userId: actorContext.actor.actorId } },
+      where: { organizationId_userId: { organizationId, userId } },
     })
     if (!orgMember) {
       sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this organization')
       return reply
     }
 
-    const project = await prisma.project.findUnique({ where: { id: body.projectId } })
-    if (!project || project.organizationId !== body.organizationId) {
+    const project = await prisma.project.findUnique({ where: { id: projectId } })
+    if (!project || project.organizationId !== organizationId) {
       sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this project/team')
       return reply
     }
 
     const projectMember = await prisma.projectMember.findUnique({
-      where: {
-        projectId_userId: {
-          projectId: body.projectId,
-          userId: actorContext.actor.actorId,
-        },
-      },
+      where: { projectId_userId: { projectId, userId } },
     })
     if (!projectMember) {
       sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this project/team')
       return reply
     }
 
-    const team = await prisma.team.findUnique({ where: { id: body.teamId } })
-    if (!team || team.projectId !== body.projectId) {
+    const team = await prisma.team.findUnique({ where: { id: teamId } })
+    if (!team || team.projectId !== projectId) {
       sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this project/team')
       return reply
     }
 
     const teamMember = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: {
-          teamId: body.teamId,
-          userId: actorContext.actor.actorId,
-        },
-      },
+      where: { teamId_userId: { teamId, userId } },
     })
     if (!teamMember) {
       sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this project/team')
@@ -513,13 +470,13 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     }
 
     const session = buildSessionForUser({
-      organizationId: body.organizationId,
-      projectId: body.projectId,
+      organizationId,
+      projectId,
       providerId: LOCAL_AUTH_PROVIDER_ID,
       providerType: DEFAULT_LOCAL_PROVIDER_TYPE as SessionTokenClaims['providerType'],
       roles: [orgMember.role],
-      teamId: body.teamId,
-      userId: actorContext.actor.actorId,
+      teamId,
+      userId,
     })
 
     const verification = verifySessionToken(session.token, authSecret)
@@ -528,7 +485,7 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    const user = await prisma.user.findUnique({ where: { id: actorContext.actor.actorId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) {
       sendApiError(reply, 500, 'USER_NOT_FOUND', 'User not found')
       return reply
