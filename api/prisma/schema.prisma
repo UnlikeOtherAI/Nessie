@@ -563,6 +563,7 @@ model User {
   projectMembers      ProjectMember[]
   teamMembers         TeamMember[]
   channelMembers      ChannelMember[]
+  knowledgeSpaceMembers KnowledgeSpaceMember[]
   callsStarted        Call[]               @relation("CallStarter")
   callParticipants    CallParticipant[]    @relation("CallParticipation")
   messages            Message[]
@@ -2284,19 +2285,42 @@ model KnowledgeSpace {
   userId         String?      @map("user_id") @db.Uuid
 
   visibility      ThoughtVisibility @default(project)
+  // When true, reading follows `visibility` but writing is limited to members +
+  // creator — i.e. the "public read-only, private write" mode.
+  writeRestricted Boolean           @default(false) @map("write_restricted")
   sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
   createdBy       String            @map("created_by")
   deletedAt       DateTime?         @map("deleted_at")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  pages KnowledgePage[]
+  pages   KnowledgePage[]
+  members KnowledgeSpaceMember[]
 
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_spaces_org_project_updated_id_idx")
   @@index([organizationId, visibility, updatedAt], map: "knowledge_spaces_org_visibility_updated_idx")
   @@index([organizationId, sensitivityTier], map: "knowledge_spaces_org_sensitivity_idx")
   @@index([privateToAgentId], map: "knowledge_spaces_private_to_agent_id_idx")
   @@map("knowledge_spaces")
+}
+
+// Explicit per-space access grants. Used by `private` visibility (who can read)
+// and by `writeRestricted` spaces (who can write). The space creator always has
+// full access regardless of membership.
+model KnowledgeSpaceMember {
+  id             String   @id @default(uuid()) @db.Uuid
+  spaceId        String   @map("space_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  space KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("knowledge_space_members")
 }
 
 model KnowledgePage {

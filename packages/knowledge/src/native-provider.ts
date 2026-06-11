@@ -1,7 +1,8 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { KnowledgeConflictError } from './errors.js'
 import { replaceLabels } from './native-labels.js'
-import { mapPage, mapSpace, mapVersion, pageInclude } from './native-mappers.js'
+import { canReadSpace } from './access.js'
+import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './native-mappers.js'
 import { searchNativePages } from './native-search.js'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import type {
@@ -308,7 +309,10 @@ export const createNativeKnowledgeProvider = (
       data: { deletedAt: new Date() },
     })
     if (result.count === 0) return null
-    const space = await prisma.knowledgeSpace.findFirst({ where: { id: spaceId, organizationId } })
+    const space = await prisma.knowledgeSpace.findFirst({
+      where: { id: spaceId, organizationId },
+      include: spaceInclude,
+    })
     return space ? mapSpace(space) : null
   },
 
@@ -374,6 +378,7 @@ export const createNativeKnowledgeProvider = (
     }),
 
   createSpace: async (input) => {
+    const memberUserIds = Array.from(new Set(input.memberUserIds ?? []))
     const space = await prisma.knowledgeSpace.create({
       data: {
         name: input.name,
@@ -386,10 +391,20 @@ export const createNativeKnowledgeProvider = (
         threadId: input.threadId ?? null,
         userId: input.userId ?? null,
         visibility: input.visibility ?? 'project',
+        writeRestricted: input.writeRestricted ?? false,
         sensitivityTier: input.sensitivityTier ?? 'normal',
         privateToAgentId: input.privateToAgentId ?? null,
         createdBy: input.createdBy,
+        members: memberUserIds.length
+          ? {
+              create: memberUserIds.map((userId) => ({
+                userId,
+                organizationId: input.organizationId,
+              })),
+            }
+          : undefined,
       },
+      include: spaceInclude,
     })
     return mapSpace(space)
   },
@@ -399,6 +414,7 @@ export const createNativeKnowledgeProvider = (
   getSpace: async (organizationId, spaceId) => {
     const space = await prisma.knowledgeSpace.findFirst({
       where: { id: spaceId, organizationId, deletedAt: null },
+      include: spaceInclude,
     })
     return space ? mapSpace(space) : null
   },
@@ -423,9 +439,16 @@ export const createNativeKnowledgeProvider = (
           : {}),
       },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      include: spaceInclude,
       take: limit + 1,
     })
-    return trimPage(spaces.map(mapSpace), limit)
+    const records = spaces.map(mapSpace)
+    const viewer = input.viewer
+    const visible =
+      viewer && !viewer.bypass
+        ? records.filter((space) => canReadSpace(space, viewer))
+        : records
+    return trimPage(visible, limit)
   },
 
   listVersions: async (organizationId, pageId) => {
@@ -450,23 +473,38 @@ export const createNativeKnowledgeProvider = (
   updatePage: (pageId, input) => updatePage(prisma, pageId, input),
 
   updateSpace: async (organizationId, spaceId, input) => {
-    const result = await prisma.knowledgeSpace.updateMany({
-      where: { id: spaceId, organizationId, deletedAt: null },
-      data: {
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.description !== undefined ? { description: input.description } : {}),
-        ...(input.metadata !== undefined
-          ? { metadata: input.metadata as Prisma.InputJsonValue }
-          : {}),
-        ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
-        ...(input.sensitivityTier !== undefined
-          ? { sensitivityTier: input.sensitivityTier }
-          : {}),
-      },
-    })
-    if (result.count === 0) return null
-    const space = await prisma.knowledgeSpace.findFirst({
-      where: { id: spaceId, organizationId, deletedAt: null },
+    const space = await prisma.$transaction(async (tx) => {
+      const result = await tx.knowledgeSpace.updateMany({
+        where: { id: spaceId, organizationId, deletedAt: null },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.metadata !== undefined
+            ? { metadata: input.metadata as Prisma.InputJsonValue }
+            : {}),
+          ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
+          ...(input.writeRestricted !== undefined
+            ? { writeRestricted: input.writeRestricted }
+            : {}),
+          ...(input.sensitivityTier !== undefined
+            ? { sensitivityTier: input.sensitivityTier }
+            : {}),
+        },
+      })
+      if (result.count === 0) return null
+      if (input.memberUserIds !== undefined) {
+        const memberUserIds = Array.from(new Set(input.memberUserIds))
+        await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId } })
+        if (memberUserIds.length) {
+          await tx.knowledgeSpaceMember.createMany({
+            data: memberUserIds.map((userId) => ({ spaceId, userId, organizationId })),
+          })
+        }
+      }
+      return tx.knowledgeSpace.findFirst({
+        where: { id: spaceId, organizationId, deletedAt: null },
+        include: spaceInclude,
+      })
     })
     return space ? mapSpace(space) : null
   },

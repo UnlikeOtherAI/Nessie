@@ -13,6 +13,12 @@ export const pageInclude = {
 
 export type PageRow = Prisma.KnowledgePageGetPayload<{ include: typeof pageInclude }>
 
+export const spaceInclude = {
+  members: { select: { userId: true } },
+} satisfies Prisma.KnowledgeSpaceInclude
+
+export type SpaceRow = Prisma.KnowledgeSpaceGetPayload<{ include: typeof spaceInclude }>
+
 const toJsonRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -37,13 +43,13 @@ export const mapVersion = (
       }
     : null
 
-export const mapSpace = (
-  space: Prisma.KnowledgeSpaceGetPayload<Record<string, never>>,
-): KnowledgeSpaceRecord => ({
+export const mapSpace = (space: SpaceRow): KnowledgeSpaceRecord => ({
   id: space.id,
   name: space.name,
   description: space.description,
   metadata: toJsonRecord(space.metadata),
+  writeRestricted: space.writeRestricted,
+  memberUserIds: space.members.map((member) => member.userId),
   organizationId: space.organizationId,
   projectId: space.projectId,
   teamId: space.teamId,

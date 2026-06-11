@@ -2,10 +2,14 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import {
   buildNativeSourceRef,
   buildSpaceSourceRef,
+  canReadSpace,
+  canWriteSpace,
   createNativeKnowledgeProvider,
+  loadSpaceViewer,
   type KnowledgePageRecord,
   type KnowledgeProvider,
   type KnowledgeSpaceRecord,
+  type SpaceViewer,
 } from '@nessie/knowledge'
 import type {
   AuthorizedActionContext,
@@ -51,8 +55,10 @@ const pageVersionRef = (page: KnowledgePageRecord): string | null =>
 const attachSpaceEnvelope = (
   space: KnowledgeSpaceRecord,
   decision: PolicyDecision,
+  viewer: SpaceViewer,
 ) => ({
   ...space,
+  canWrite: canWriteSpace(space, viewer),
   policyChainTrace: policyTrace(decision),
   sourceRef: buildSpaceSourceRef(space.id),
   visibilityReason: visibilityReason(space, decision),
@@ -111,6 +117,46 @@ export const registerKnowledgeBaseRoutes = (
   const { prisma, requireActorContext } = deps
   const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma)
 
+  // Per-space access layer (finer-grained than the coarse policy gate above).
+  const buildViewer = (actorContext: AuthorizedActionContext): Promise<SpaceViewer> => {
+    const isUser = actorContext.actor.actorType === 'user'
+    return loadSpaceViewer(prisma, isUser ? actorContext.actor.actorId : null, !isUser)
+  }
+
+  const denyAccess = (reply: FastifyReply, reason: string) =>
+    sendApiError(reply, 403, 'POLICY_DENIED', `Knowledge base access denied: ${reason}`)
+
+  // Loads a space and enforces read/write access; sends 404/403 and returns
+  // null when the caller may not proceed.
+  const accessSpace = async (
+    actorContext: AuthorizedActionContext,
+    spaceId: string,
+    viewer: SpaceViewer,
+    mode: 'read' | 'write',
+    reply: FastifyReply,
+  ): Promise<KnowledgeSpaceRecord | null> => {
+    const space = await provider.getSpace(actorContext.tenant.organizationId, spaceId)
+    if (!space) {
+      sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
+      return null
+    }
+    if (!(mode === 'read' ? canReadSpace(space, viewer) : canWriteSpace(space, viewer))) {
+      denyAccess(reply, mode === 'read' ? 'NOT_A_SPACE_MEMBER' : 'WRITE_NOT_PERMITTED')
+      return null
+    }
+    return space
+  }
+
+  // Enforces access on the space a page belongs to.
+  const accessPageSpace = async (
+    actorContext: AuthorizedActionContext,
+    page: KnowledgePageRecord,
+    viewer: SpaceViewer,
+    mode: 'read' | 'write',
+    reply: FastifyReply,
+  ): Promise<boolean> =>
+    (await accessSpace(actorContext, page.spaceId, viewer, mode, reply)) !== null
+
   app.get('/api/knowledge-base/spaces', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -124,13 +170,18 @@ export const registerKnowledgeBaseRoutes = (
       'view',
     )
     if (!decision) return reply
+    const viewer = await buildViewer(actorContext)
     const result = await provider.listSpaces({
       organizationId: actorContext.tenant.organizationId,
       projectId: query.projectId ?? actorContext.tenant.projectId ?? undefined,
       cursor: query.cursor,
       limit: query.limit,
+      viewer,
     })
-    return createApiResponse(result.data.map((space) => attachSpaceEnvelope(space, decision)), result.meta)
+    return createApiResponse(
+      result.data.map((space) => attachSpaceEnvelope(space, decision, viewer)),
+      result.meta,
+    )
   })
 
   app.post('/api/knowledge-base/spaces', async (request, reply) => {
@@ -142,6 +193,7 @@ export const registerKnowledgeBaseRoutes = (
     if (!projectId) return reply
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_space', 'create')
     if (!decision) return reply
+    const viewer = await buildViewer(actorContext)
     const space = await provider.createSpace({
       ...body,
       organizationId: actorContext.tenant.organizationId,
@@ -157,7 +209,7 @@ export const registerKnowledgeBaseRoutes = (
       metadata: { name: space.name },
       ...requestIds(request),
     })
-    return reply.code(201).send(createApiResponse(attachSpaceEnvelope(space, decision)))
+    return reply.code(201).send(createApiResponse(attachSpaceEnvelope(space, decision, viewer)))
   })
 
   app.get('/api/knowledge-base/spaces/:spaceId', async (request, reply) => {
@@ -166,9 +218,10 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_space', 'view')
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
-    const space = await provider.getSpace(actorContext.tenant.organizationId, spaceId)
-    if (!space) return sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
-    return createApiResponse(attachSpaceEnvelope(space, decision))
+    const viewer = await buildViewer(actorContext)
+    const space = await accessSpace(actorContext, spaceId, viewer, 'read', reply)
+    if (!space) return reply
+    return createApiResponse(attachSpaceEnvelope(space, decision, viewer))
   })
 
   app.patch('/api/knowledge-base/spaces/:spaceId', async (request, reply) => {
@@ -179,6 +232,8 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_space', 'edit')
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessSpace(actorContext, spaceId, viewer, 'write', reply))) return reply
     const space = await provider.updateSpace(actorContext.tenant.organizationId, spaceId, body)
     if (!space) return sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
     await emitAuditEvent(prisma, {
@@ -189,7 +244,7 @@ export const registerKnowledgeBaseRoutes = (
       outcome: 'success',
       ...requestIds(request),
     })
-    return createApiResponse(attachSpaceEnvelope(space, decision))
+    return createApiResponse(attachSpaceEnvelope(space, decision, viewer))
   })
 
   app.delete('/api/knowledge-base/spaces/:spaceId', async (request, reply) => {
@@ -198,6 +253,8 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_space', 'edit')
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessSpace(actorContext, spaceId, viewer, 'write', reply))) return reply
     const space = await provider.archiveSpace(actorContext.tenant.organizationId, spaceId)
     if (!space) return sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
     await emitAuditEvent(prisma, {
@@ -208,7 +265,7 @@ export const registerKnowledgeBaseRoutes = (
       outcome: 'success',
       ...requestIds(request),
     })
-    return createApiResponse(attachSpaceEnvelope(space, decision))
+    return createApiResponse(attachSpaceEnvelope(space, decision, viewer))
   })
 
   app.get('/api/knowledge-base/spaces/:spaceId/pages', async (request, reply) => {
@@ -219,8 +276,8 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'view')
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
-    const space = await provider.getSpace(actorContext.tenant.organizationId, spaceId)
-    if (!space) return sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessSpace(actorContext, spaceId, viewer, 'read', reply))) return reply
     const pages = await provider.listPages({
       organizationId: actorContext.tenant.organizationId,
       spaceId,
@@ -239,6 +296,8 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'create')
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessSpace(actorContext, spaceId, viewer, 'write', reply))) return reply
     let page: KnowledgePageRecord
     try {
       page = await provider.createPage({
@@ -276,13 +335,26 @@ export const registerKnowledgeBaseRoutes = (
     if (!body) return reply
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'search')
     if (!decision) return reply
+    const viewer = await buildViewer(actorContext)
     const result = await provider.searchPages({
       ...body,
       organizationId: actorContext.tenant.organizationId,
       projectId: body.projectId ?? actorContext.tenant.projectId ?? undefined,
     })
+    // Drop hits the viewer may not read (decision cached per space).
+    const readableBySpace = new Map<string, boolean>()
+    const allowed: typeof result.data = []
+    for (const hit of result.data) {
+      let readable = readableBySpace.get(hit.page.spaceId)
+      if (readable === undefined) {
+        const space = await provider.getSpace(actorContext.tenant.organizationId, hit.page.spaceId)
+        readable = space ? canReadSpace(space, viewer) : false
+        readableBySpace.set(hit.page.spaceId, readable)
+      }
+      if (readable) allowed.push(hit)
+    }
     return createApiResponse(
-      result.data.map((hit) => ({
+      allowed.map((hit) => ({
         page: attachPageEnvelope(hit.page, decision),
         snippet: hit.snippet,
       })),
@@ -298,6 +370,8 @@ export const registerKnowledgeBaseRoutes = (
     const { pageId } = request.params as { pageId: string }
     const page = await provider.getPage(actorContext.tenant.organizationId, pageId)
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
     return createApiResponse(attachPageEnvelope(page, decision))
   })
 
@@ -309,6 +383,10 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit')
     if (!decision) return reply
     const { pageId } = request.params as { pageId: string }
+    const existingPage = await provider.getPage(actorContext.tenant.organizationId, pageId)
+    if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
     let page: KnowledgePageRecord | null
     try {
       page = await provider.updatePage(pageId, {
@@ -343,6 +421,10 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit')
     if (!decision) return reply
     const { pageId } = request.params as { pageId: string }
+    const existingPage = await provider.getPage(actorContext.tenant.organizationId, pageId)
+    if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
     const page = await provider.archivePage(actorContext.tenant.organizationId, pageId)
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     await emitAuditEvent(prisma, {
@@ -362,6 +444,10 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'approve')
     if (!decision) return reply
     const { pageId } = request.params as { pageId: string }
+    const existingPage = await provider.getPage(actorContext.tenant.organizationId, pageId)
+    if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
     let page: KnowledgePageRecord | null
     try {
       page = await provider.publishPage({
@@ -396,6 +482,10 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit')
     if (!decision) return reply
     const { pageId } = request.params as { pageId: string }
+    const existingPage = await provider.getPage(actorContext.tenant.organizationId, pageId)
+    if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
     let page: KnowledgePageRecord | null
     try {
       page = await provider.movePage({
@@ -430,6 +520,10 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'read')
     if (!decision) return reply
     const { pageId } = request.params as { pageId: string }
+    const versionsPage = await provider.getPage(actorContext.tenant.organizationId, pageId)
+    if (!versionsPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessPageSpace(actorContext, versionsPage, viewer, 'read', reply))) return reply
     const versions = await provider.listVersions(actorContext.tenant.organizationId, pageId)
     return createApiResponse(versions.map((version) => ({
       ...version,
@@ -447,6 +541,10 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit')
     if (!decision) return reply
     const { pageId, versionId } = request.params as { pageId: string; versionId: string }
+    const existingPage = await provider.getPage(actorContext.tenant.organizationId, pageId)
+    if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
     let page: KnowledgePageRecord | null
     try {
       page = await provider.restoreVersion({

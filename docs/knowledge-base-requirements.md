@@ -259,8 +259,22 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
   `knowledge_page` view/create/edit/read/search, and owners `knowledge_page`
   approve. It is idempotent and runs on every API start, so it backfills existing
   organizations. This is the coarse gate only — fine-grained per-space privacy
-  (public / project / specific people) is enforced separately in the knowledge
-  provider and is the next increment.
+  is enforced separately in the knowledge provider (below).
+- **Per-space access (fine-grained).** Each space has an access mode enforced in
+  `packages/knowledge` (`access.ts`) and applied by every route handler:
+  - **Public** — `visibility = organization`: any org member reads and writes.
+  - **Public read-only** — `visibility = organization` + `writeRestricted`: any
+    org member reads; only members + creator write.
+  - **Project** — `visibility = project`: members of the space's `projectId`
+    (via `ProjectMember`) read and write.
+  - **Private** — `visibility = private`: only listed `KnowledgeSpaceMember`s +
+    creator read and write.
+  The creator always has full access. `listSpaces` filters to readable spaces;
+  `getSpace`/page reads return 403 to non-readers; create/edit/delete/publish/
+  move/restore return 403 to non-writers; search drops unreadable hits. The space
+  record exposes the caller's effective `canWrite`. Non-human actors (agents /
+  services) bypass per-user checks for now — refined in the MCP / agent-tools
+  phase. (Schema: `KnowledgeSpace.writeRestricted` + `KnowledgeSpaceMember`.)
 
 ## 6) Fit with existing docs
 

@@ -3,6 +3,8 @@ export {
   buildSpaceSourceRef,
   createNativeKnowledgeProvider,
 } from './native-provider.js'
+export { canReadSpace, canWriteSpace, loadSpaceViewer } from './access.js'
+export type { SpaceViewer } from './access.js'
 export { KnowledgeConflictError, isKnowledgeConflictError } from './errors.js'
 export type {
   CreatePageInput,

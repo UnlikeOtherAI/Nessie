@@ -1,3 +1,5 @@
+import type { SpaceViewer } from './access.js'
+
 export type KnowledgeProviderKind =
   | 'first_party'
   | 'github'
@@ -57,6 +59,8 @@ export type KnowledgeSpaceRecord = KnowledgeScopeInput & {
   name: string
   description: string | null
   metadata: Record<string, unknown> | null
+  writeRestricted: boolean
+  memberUserIds: string[]
   createdBy: string
   deletedAt: string | null
   createdAt: string
@@ -104,6 +108,9 @@ export type ListSpacesInput = {
   limit?: number
   organizationId: string
   projectId?: string
+  // When set (and not a bypass viewer), results are filtered to spaces the
+  // viewer is allowed to read.
+  viewer?: SpaceViewer
 }
 
 export type ListPagesInput = {
@@ -125,16 +132,20 @@ export type SearchPagesInput = {
 export type CreateSpaceInput = KnowledgeScopeInput & {
   createdBy: string
   description?: string | null
+  memberUserIds?: string[]
   metadata?: Record<string, unknown> | null
   name: string
+  writeRestricted?: boolean
 }
 
 export type UpdateSpaceInput = Partial<{
   description: string | null
+  memberUserIds: string[]
   metadata: Record<string, unknown> | null
   name: string
   sensitivityTier: KnowledgeSensitivityTier
   visibility: KnowledgeVisibility
+  writeRestricted: boolean
 }>
 
 export type CreatePageInput = KnowledgeScopeInput & {

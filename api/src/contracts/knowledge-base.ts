@@ -53,6 +53,10 @@ export const KnowledgeSpaceRecordSchema = OptionalScopeSchema.extend({
   name: NonEmptyStringSchema,
   description: z.string().nullable(),
   metadata: JsonRecordSchema.nullable(),
+  writeRestricted: z.boolean(),
+  memberUserIds: z.array(UuidSchema),
+  // The requesting actor's effective write permission on this space.
+  canWrite: z.boolean(),
   organizationId: UuidSchema,
   projectId: UuidSchema,
   visibility: KnowledgeVisibilitySchema,
@@ -95,6 +99,8 @@ export const CreateKnowledgeSpaceBodySchema = OptionalScopeSchema.extend({
   name: NonEmptyStringSchema.max(200),
   description: z.string().max(2000).nullable().optional(),
   metadata: JsonRecordSchema.nullable().optional(),
+  writeRestricted: z.boolean().optional(),
+  memberUserIds: z.array(UuidSchema).max(500).optional(),
 })
 
 export const UpdateKnowledgeSpaceBodySchema = z.object({
@@ -103,6 +109,8 @@ export const UpdateKnowledgeSpaceBodySchema = z.object({
   metadata: JsonRecordSchema.nullable().optional(),
   visibility: KnowledgeVisibilitySchema.optional(),
   sensitivityTier: KnowledgeSensitivityTierSchema.optional(),
+  writeRestricted: z.boolean().optional(),
+  memberUserIds: z.array(UuidSchema).max(500).optional(),
 })
 
 export const CreateKnowledgePageBodySchema = OptionalScopeSchema.extend({
