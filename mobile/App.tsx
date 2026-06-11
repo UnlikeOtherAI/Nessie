@@ -166,7 +166,7 @@ const Shell = (): React.JSX.Element => {
 
   const navigationState = {
     index,
-    routes: TABS.map((tab) => ({ key: tab.key, title: tab.title })),
+    routes: TABS.map((tab) => ({ key: tab.key, title: tab.title, role: tab.role })),
   }
 
   return (

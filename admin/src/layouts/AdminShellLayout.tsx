@@ -5,7 +5,6 @@ import { isDesktopApp } from '../lib/desktop';
 import { isReactNativeWebView, useMobileLayout } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
-import { AgentsSidebarNav } from './admin-shell/AgentsSidebarNav';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
@@ -111,8 +110,6 @@ export const AdminShellLayout = () => {
   // desktop; everything else falls back to the channels/DMs SidebarNav.
   const secNavElement = shell.isKnowledgeRoute ? (
     <KnowledgeSidebarNav />
-  ) : shell.isAgentsRoute ? (
-    <AgentsSidebarNav pathname={shell.pathname} />
   ) : shell.isProjectsRoute ? (
     <ProjectsSidebarNav isOwner={shell.isOwner} pathname={shell.pathname} />
   ) : shell.isAdminRoute ? (

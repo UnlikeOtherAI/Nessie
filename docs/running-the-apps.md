@@ -47,10 +47,14 @@ The mobile app is a **WebView shell around the admin web UI** wrapped in native
 chrome, mirroring the desktop app. `mobile/App.tsx` renders **one persistent**
 `react-native-webview` that loads the admin, sitting under a **native bottom tab
 bar** (`react-native-bottom-tabs`; iOS 26 Liquid-Glass on iPhone/iPad, Material
-on Android) with five tabs — Channels · Projects · Agents · Knowledge · Admin.
-On iPhone and Android the bar sits at the bottom; on iPad (iPadOS 26) the native
-tab bar renders at the **top**, so `App.tsx` insets the WebView accordingly
-(`IS_IPAD`). The URL split lives in `mobile/src/config.ts`:
+on Android) with five tabs — Channels · Projects · Knowledge · Admin · Search.
+Agents now live **under Admin** (the Admin section's nav lists Agents/Activity/
+Designer/Workflows/Triggers/Tools), and **Search** is the trailing tab (iOS 26
+separated search role) backed by a global `/search` page. The bar is hidden on
+the login / bootstrap screens. On iPhone and Android the bar sits at the bottom;
+on iPad (iPadOS 26) the native tab bar renders at the **top**, so `App.tsx`
+insets the WebView accordingly (`IS_IPAD`). The URL split lives in
+`mobile/src/config.ts`:
 
 - **dev** → `http://<YOUR-MAC-LAN-IP>:5455` (the admin Vite dev server; edits
   hot-reload on the device, and the admin's `/api` calls are proxied to the API)

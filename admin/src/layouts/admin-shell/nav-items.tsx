@@ -5,6 +5,9 @@ import type { ReactNode } from 'react';
 // (useAdminShell imports this so there is a single source of truth).
 export const ADMIN_ROUTE_PREFIXES = [
   '/settings',
+  '/agents',
+  '/workflows',
+  '/mcp-app-store',
   '/approvals',
   '/audit',
   '/tokens',
@@ -17,7 +20,7 @@ export const matchesAdminRoute = (pathname: string): boolean =>
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-export type NavSectionId = 'channels' | 'projects' | 'agents' | 'knowledge' | 'admin';
+export type NavSectionId = 'channels' | 'projects' | 'knowledge' | 'admin' | 'search';
 
 export type NavItem = {
   id: NavSectionId;
@@ -58,11 +61,10 @@ const ProjectsIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
   </svg>
 );
 
-const AgentsIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
+const SearchIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
   <svg className={className} {...svgProps}>
-    <circle cx="12" cy="8" r="4" />
-    <path d="M4 20c0-4 3.582-7 8-7s8 3 8 7" strokeLinecap="round" strokeLinejoin="round" />
-    <circle cx="19" cy="13" r="2.5" style={{ stroke: 'var(--thinking)' }} />
+    <circle cx="11" cy="11" r="7" />
+    <path d="M21 21l-4.35-4.35" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -116,13 +118,6 @@ export const NAV_ITEMS: NavItem[] = [
     icon: ProjectsIcon,
   },
   {
-    id: 'agents',
-    label: 'Agents',
-    to: '/agents',
-    isActive: (pathname) => pathname.startsWith('/agents'),
-    icon: AgentsIcon,
-  },
-  {
     id: 'knowledge',
     label: 'Knowledge',
     to: '/knowledge-base',
@@ -135,6 +130,13 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/settings',
     isActive: matchesAdminRoute,
     icon: AdminIcon,
+  },
+  {
+    id: 'search',
+    label: 'Search',
+    to: '/search',
+    isActive: (pathname) => pathname.startsWith('/search'),
+    icon: SearchIcon,
   },
 ];
 

@@ -12,6 +12,7 @@ type AdminNavItem = {
   label: string;
   icon: ReactNode;
   ownerOnly?: boolean;
+  exact?: boolean;
 };
 
 type AdminNavGroup = {
@@ -28,6 +29,81 @@ const icon = (path: ReactNode) => (
 );
 
 const ADMIN_NAV: AdminNavGroup[] = [
+  {
+    heading: 'Agents',
+    items: [
+      {
+        path: '/agents',
+        label: 'Agents',
+        exact: true,
+        icon: icon(
+          <>
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 20c0-4 3.582-7 8-7s8 3 8 7" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
+        path: '/agents/activity',
+        label: 'Activity',
+        icon: icon(
+          <path
+            d="M4 12h3l2 6 4-14 2 8h5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />,
+        ),
+      },
+      {
+        path: '/agents/designer',
+        label: 'Designer',
+        icon: icon(
+          <>
+            <path
+              d="M14.7 6.3a4 4 0 105 5l-6.9 6.9a2 2 0 11-2.8-2.8l6.9-6.9z"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path d="M7 17l-1.5 1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
+        path: '/agents/workflows',
+        label: 'Workflows',
+        icon: icon(
+          <>
+            <rect height="4" rx="1" width="6" x="4" y="4" />
+            <rect height="4" rx="1" width="6" x="14" y="10" />
+            <rect height="4" rx="1" width="6" x="4" y="16" />
+            <path d="M10 6h2a2 2 0 012 2v4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M14 12h-2a2 2 0 00-2 2v4" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
+        path: '/agents/triggers',
+        label: 'Triggers',
+        icon: icon(
+          <>
+            <path d="M12 4v6M12 16v4M20 12h-4M8 12H4" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="12" cy="12" r="3.5" />
+          </>,
+        ),
+      },
+      {
+        path: '/agents/tools',
+        label: 'Tools',
+        icon: icon(
+          <path
+            d="M14.7 6.3a4 4 0 105 5l-6.9 6.9a2 2 0 11-2.8-2.8l6.9-6.9a4 4 0 00-2.2-2.2z"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />,
+        ),
+      },
+    ],
+  },
   {
     heading: 'General',
     items: [
@@ -224,7 +300,9 @@ export const AdminSidebarNav = ({ pathname, isOwner, isSuperAdmin }: AdminSideba
             {group.items
               .filter((item) => !item.ownerOnly || isOwner)
               .map((item) => {
-                const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`);
+                const isActive = item.exact
+                  ? pathname === item.path
+                  : pathname === item.path || pathname.startsWith(`${item.path}/`);
                 return (
                   <Link
                     key={item.path}

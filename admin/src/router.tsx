@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
+import { SearchPage } from './pages/SearchPage'
 import { AgentActivityPage } from './pages/AgentActivityPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentsPage } from './pages/AgentsPage'
@@ -205,6 +206,10 @@ export const router = createBrowserRouter([
       {
         path: '/ops',
         element: <OpsHealthPage />,
+      },
+      {
+        path: '/search',
+        element: <SearchPage />,
       },
       {
         path: '/feedback',
