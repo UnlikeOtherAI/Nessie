@@ -5,9 +5,11 @@ import { useCreateTask, useTaskAssignees } from '../../facades/tasks/hooks'
 type NewTaskBarProps = {
   // When set, new tasks belong to this project; otherwise a project picker is shown.
   projectId?: string
+  // When set (scrum board), new tasks land in this iteration.
+  iterationId?: string
 }
 
-export const NewTaskBar = ({ projectId }: NewTaskBarProps) => {
+export const NewTaskBar = ({ projectId, iterationId }: NewTaskBarProps) => {
   const { data: projects = [] } = useProjects()
   const { data: assignees = [] } = useTaskAssignees()
   const createTask = useCreateTask()
@@ -23,6 +25,7 @@ export const NewTaskBar = ({ projectId }: NewTaskBarProps) => {
       {
         title: title.trim(),
         projectId: projectId ?? (formProjectId || undefined),
+        iterationId: iterationId || undefined,
         assigneeUserId: assigneeUserId || undefined,
       },
       {

@@ -55,6 +55,7 @@ import { registerPlatformPushRoutes } from './routes/platform-push.js'
 import { registerPlanRoutes } from './routes/plans.js'
 import { registerPolicyRoutes } from './routes/policy.js'
 import { registerBoardRoutes } from './routes/board.js'
+import { registerIterationRoutes } from './routes/iterations.js'
 import { registerProjectRoutes } from './routes/projects.js'
 import { registerResourceLockRoutes } from './routes/resource-locks.js'
 import { registerSearchRoutes } from './routes/search.js'
@@ -265,6 +266,7 @@ export const buildApp = async () => {
   registerOrganizationRoutes(app, deps)
   registerProjectRoutes(app, deps)
   registerBoardRoutes(app, deps)
+  registerIterationRoutes(app, deps)
   registerTeamRoutes(app, deps)
   registerEventRoutes(app, deps)
   registerThreadRoutes(app, deps)

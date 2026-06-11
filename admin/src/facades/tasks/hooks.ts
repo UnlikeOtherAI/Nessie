@@ -15,6 +15,8 @@ export type TaskRecord = {
   id: string
   projectId: string | null
   columnId: string | null
+  iterationId: string | null
+  storyPoints: number | null
   status: TaskStatus
   title: string | null
   purpose: string | null
@@ -58,10 +60,40 @@ export const useCreateTask = () => {
       title: string
       purpose?: string
       projectId?: string
+      iterationId?: string
+      storyPoints?: number
       assigneeUserId?: string
     }) => apiClient.post<TaskRecord>('/api/tasks', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
+export const useSetTaskIteration = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { id: string; iterationId: string | null }) =>
+      apiClient.post<TaskRecord>(`/api/tasks/${input.id}/iteration`, {
+        iterationId: input.iterationId,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['iterations'] })
+    },
+  })
+}
+
+export const useUpdateTaskPoints = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { id: string; storyPoints: number | null }) =>
+      apiClient.patch<TaskRecord>(`/api/tasks/${input.id}`, { storyPoints: input.storyPoints }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['iterations'] })
     },
   })
 }

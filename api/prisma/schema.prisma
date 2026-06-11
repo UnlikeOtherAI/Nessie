@@ -178,6 +178,12 @@ enum ColumnCategory {
   done
 }
 
+enum IterationStatus {
+  planned
+  active
+  completed
+}
+
 enum ChannelType {
   standard
   dm
@@ -632,6 +638,7 @@ model Project {
   statusRules      UserStatusRule[]
   tasks            Task[]
   boardColumns     BoardColumn[]
+  iterations       Iteration[]
 
   @@map("projects")
 }
@@ -650,6 +657,28 @@ model BoardColumn {
 
   @@index([projectId, position])
   @@map("board_columns")
+}
+
+model Iteration {
+  id             String          @id @default(uuid()) @db.Uuid
+  projectId      String          @map("project_id") @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  name           String
+  goal           String?
+  status         IterationStatus @default(planned)
+  startDate      DateTime?       @map("start_date")
+  endDate        DateTime?       @map("end_date")
+  capacity       Int?
+  position       Int
+  completedAt    DateTime?       @map("completed_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+
+  @@index([projectId, position])
+  @@index([projectId, status])
+  @@map("iterations")
 }
 
 model ProjectMember {
@@ -1781,6 +1810,8 @@ model Task {
   organizationId   String            @map("organization_id") @db.Uuid
   projectId        String?           @map("project_id") @db.Uuid
   columnId         String?           @map("column_id") @db.Uuid
+  iterationId      String?           @map("iteration_id") @db.Uuid
+  storyPoints      Int?              @map("story_points")
   parentTaskId     String?           @map("parent_task_id") @db.Uuid
   status           TaskStatus        @default(inbox)
   title            String?
@@ -1795,6 +1826,7 @@ model Task {
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
   column           BoardColumn?      @relation(fields: [columnId], references: [id], onDelete: SetNull)
+  iteration        Iteration?        @relation(fields: [iterationId], references: [id], onDelete: SetNull)
   assignee         User?             @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   owner            User?             @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   createdBy        User?             @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -1808,6 +1840,7 @@ model Task {
   @@index([organizationId, status])
   @@index([organizationId, projectId, status])
   @@index([columnId])
+  @@index([iterationId])
   @@index([assigneeUserId, status])
   @@index([ownerUserId, status])
   @@index([runId])

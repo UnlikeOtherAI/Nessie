@@ -6,8 +6,10 @@ import {
   AssignTaskBodySchema,
   CreateTaskBodySchema,
   MoveTaskBodySchema,
+  SetTaskIterationBodySchema,
   TaskRecordSchema,
   TransitionTaskBodySchema,
+  UpdateTaskBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
@@ -17,7 +19,9 @@ import {
   listAssignableUsers,
   listTasks,
   moveTaskToColumn,
+  setTaskIteration,
   transitionTask,
+  updateTaskStoryPoints,
 } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
 
@@ -70,13 +74,15 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       title: body.title,
       purpose: body.purpose,
       projectId: body.projectId,
+      iterationId: body.iterationId,
+      storyPoints: body.storyPoints,
       assigneeUserId: body.assigneeUserId,
       ownerUserId: body.ownerUserId,
     })
 
     if ('error' in result) {
-      if (result.error === 'PROJECT_NOT_FOUND') {
-        sendApiError(reply, 404, result.error, 'Project not found in this organization')
+      if (result.error === 'PROJECT_NOT_FOUND' || result.error === 'ITERATION_NOT_FOUND') {
+        sendApiError(reply, 404, result.error, 'Project or iteration not found in this organization')
         return reply
       }
       sendApiError(reply, 400, result.error, 'Assignee or owner is not a member of this organization')
@@ -162,6 +168,56 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
+    return createApiResponse(TaskRecordSchema.parse(result))
+  })
+
+  app.post('/api/tasks/:taskId/iteration', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { taskId } = request.params as { taskId: string }
+    const body = parseInput(SetTaskIterationBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const result = await setTaskIteration(prisma, {
+      taskId,
+      organizationId: actorContext.tenant.organizationId,
+      iterationId: body.iterationId,
+    })
+    if ('error' in result) {
+      if (result.error === 'NOT_FOUND') {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
+        return reply
+      }
+      sendApiError(reply, 404, result.error, 'Iteration not found in this task\'s project')
+      return reply
+    }
+    return createApiResponse(TaskRecordSchema.parse(result))
+  })
+
+  app.patch('/api/tasks/:taskId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { taskId } = request.params as { taskId: string }
+    const body = parseInput(UpdateTaskBodySchema, request.body, reply)
+    if (!body) return reply
+    if (body.storyPoints === undefined) {
+      sendApiError(reply, 400, 'NO_FIELDS', 'No updatable fields provided')
+      return reply
+    }
+
+    const result = await updateTaskStoryPoints(prisma, {
+      taskId,
+      organizationId: actorContext.tenant.organizationId,
+      storyPoints: body.storyPoints,
+    })
+    if ('error' in result) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
+      return reply
+    }
     return createApiResponse(TaskRecordSchema.parse(result))
   })
 

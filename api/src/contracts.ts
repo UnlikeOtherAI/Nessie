@@ -1900,6 +1900,8 @@ export const TaskRecordSchema = z.object({
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema.nullable(),
   columnId: z.string().uuid().nullable(),
+  iterationId: z.string().uuid().nullable(),
+  storyPoints: z.number().int().nullable(),
   agentId: AgentIdSchema.nullable(),
   parentTaskId: TaskIdSchema.nullable(),
   runId: RunIdSchema.nullable(),
@@ -1920,8 +1922,18 @@ export const CreateTaskBodySchema = z.object({
   title: NonEmptyStringSchema,
   purpose: z.string().optional(),
   projectId: ProjectIdSchema.optional(),
+  iterationId: z.string().uuid().optional(),
+  storyPoints: z.number().int().min(0).optional(),
   assigneeUserId: UserIdSchema.optional(),
   ownerUserId: UserIdSchema.optional(),
+})
+
+export const UpdateTaskBodySchema = z.object({
+  storyPoints: z.number().int().min(0).nullable().optional(),
+})
+
+export const SetTaskIterationBodySchema = z.object({
+  iterationId: z.string().uuid().nullable(),
 })
 
 export const AssignTaskBodySchema = z.object({
@@ -1979,6 +1991,45 @@ export const UpdateColumnBodySchema = z.object({
   name: NonEmptyStringSchema.optional(),
   category: ColumnCategorySchema.optional(),
   position: z.number().int().optional(),
+})
+
+// ─── Iterations (scrum sprints) ───────────────────────────────────────────
+
+export const IterationStatusSchema = z.enum(['planned', 'active', 'completed'])
+export type IterationStatusValue = z.infer<typeof IterationStatusSchema>
+
+export const IterationRecordSchema = z.object({
+  id: z.string().uuid(),
+  projectId: ProjectIdSchema,
+  name: NonEmptyStringSchema,
+  goal: z.string().nullable(),
+  status: IterationStatusSchema,
+  startDate: z.string().nullable(),
+  endDate: z.string().nullable(),
+  capacity: z.number().int().nullable(),
+  position: z.number().int(),
+  completedAt: z.string().nullable(),
+  taskCount: z.number().int(),
+  pointsTotal: z.number().int(),
+  pointsDone: z.number().int(),
+})
+export type IterationRecord = z.infer<typeof IterationRecordSchema>
+
+export const CreateIterationBodySchema = z.object({
+  name: NonEmptyStringSchema,
+  goal: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  capacity: z.number().int().positive().optional(),
+})
+
+export const UpdateIterationBodySchema = z.object({
+  name: NonEmptyStringSchema.optional(),
+  goal: z.string().nullable().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+  capacity: z.number().int().positive().nullable().optional(),
+  action: z.enum(['start', 'complete']).optional(),
 })
 
 // ─── Ops health (observability) ───────────────────────────────────────────

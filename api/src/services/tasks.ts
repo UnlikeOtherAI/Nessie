@@ -40,6 +40,8 @@ const mapTask = (task: TaskWithUsers): TaskRecord => ({
   organizationId: parseOrganizationId(task.organizationId),
   projectId: task.projectId ? parseProjectId(task.projectId) : null,
   columnId: task.columnId ?? null,
+  iterationId: task.iterationId ?? null,
+  storyPoints: task.storyPoints ?? null,
   agentId: task.agentId ? parseAgentId(task.agentId) : null,
   parentTaskId: task.parentTaskId ? parseTaskId(task.parentTaskId) : null,
   runId: task.runId ? (task.runId as TaskRecord['runId']) : null,
@@ -140,11 +142,15 @@ type CreateTaskInput = {
   title: string
   purpose?: string
   projectId?: string
+  iterationId?: string
+  storyPoints?: number
   assigneeUserId?: string
   ownerUserId?: string
 }
 
-type TaskError = { error: 'ASSIGNEE_NOT_MEMBER' | 'OWNER_NOT_MEMBER' | 'PROJECT_NOT_FOUND' }
+type TaskError = {
+  error: 'ASSIGNEE_NOT_MEMBER' | 'OWNER_NOT_MEMBER' | 'PROJECT_NOT_FOUND' | 'ITERATION_NOT_FOUND'
+}
 
 export const createHumanTask = async (
   prisma: PrismaClient,
@@ -152,6 +158,13 @@ export const createHumanTask = async (
 ): Promise<TaskRecord | TaskError> => {
   if (input.projectId && !(await isOrgProject(prisma, input.organizationId, input.projectId))) {
     return { error: 'PROJECT_NOT_FOUND' }
+  }
+  if (input.iterationId) {
+    const iteration = await prisma.iteration.findFirst({
+      where: { id: input.iterationId, projectId: input.projectId ?? undefined, organizationId: input.organizationId },
+      select: { id: true },
+    })
+    if (!input.projectId || !iteration) return { error: 'ITERATION_NOT_FOUND' }
   }
   if (input.assigneeUserId && !(await isOrgMember(prisma, input.organizationId, input.assigneeUserId))) {
     return { error: 'ASSIGNEE_NOT_MEMBER' }
@@ -165,6 +178,8 @@ export const createHumanTask = async (
     data: {
       organizationId: input.organizationId,
       projectId: input.projectId ?? null,
+      iterationId: input.iterationId ?? null,
+      storyPoints: input.storyPoints ?? null,
       createdByUserId: input.createdByUserId,
       title: input.title,
       purpose: input.purpose ?? null,
@@ -291,6 +306,56 @@ export const transitionTask = async (
   })
 
   if (!task) return { error: 'INVALID_TRANSITION', from: existing.status }
+  return mapTask(task)
+}
+
+type TaskMutationError = { error: 'NOT_FOUND' | 'ITERATION_NOT_FOUND' }
+
+export const setTaskIteration = async (
+  prisma: PrismaClient,
+  input: { taskId: string; organizationId: string; iterationId: string | null },
+): Promise<TaskRecord | TaskMutationError> => {
+  const existing = await prisma.task.findFirst({
+    where: { id: input.taskId, organizationId: input.organizationId },
+    select: { id: true, projectId: true },
+  })
+  if (!existing) return { error: 'NOT_FOUND' }
+
+  if (input.iterationId) {
+    const iteration = await prisma.iteration.findFirst({
+      where: {
+        id: input.iterationId,
+        organizationId: input.organizationId,
+        projectId: existing.projectId ?? undefined,
+      },
+      select: { id: true },
+    })
+    if (!existing.projectId || !iteration) return { error: 'ITERATION_NOT_FOUND' }
+  }
+
+  const task = await prisma.task.update({
+    where: { id: existing.id },
+    data: { iterationId: input.iterationId },
+    include: taskInclude,
+  })
+  return mapTask(task)
+}
+
+export const updateTaskStoryPoints = async (
+  prisma: PrismaClient,
+  input: { taskId: string; organizationId: string; storyPoints: number | null },
+): Promise<TaskRecord | { error: 'NOT_FOUND' }> => {
+  const existing = await prisma.task.findFirst({
+    where: { id: input.taskId, organizationId: input.organizationId },
+    select: { id: true },
+  })
+  if (!existing) return { error: 'NOT_FOUND' }
+
+  const task = await prisma.task.update({
+    where: { id: existing.id },
+    data: { storyPoints: input.storyPoints },
+    include: taskInclude,
+  })
   return mapTask(task)
 }
 

@@ -1,6 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useProjects } from '../../facades/projects/hooks'
+import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
 
@@ -16,10 +17,18 @@ export const ProjectView = () => {
   if (!projectId) return null
 
   const project = projects.find((p) => p.id === projectId)
-  const tab = location.pathname.endsWith('/settings') ? 'settings' : 'board'
+  const isScrum = board?.style === 'scrum'
+  const tab = location.pathname.endsWith('/settings')
+    ? 'settings'
+    : location.pathname.endsWith('/backlog')
+      ? 'backlog'
+      : 'board'
 
   const tabs = [
     { id: 'board', label: 'Board', to: `/projects/${projectId}` },
+    ...(isScrum
+      ? [{ id: 'backlog', label: 'Backlog', to: `/projects/${projectId}/backlog` }]
+      : []),
     { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
   ]
 
@@ -53,6 +62,8 @@ export const ProjectView = () => {
       <div className="min-h-0 flex-1">
         {tab === 'settings' ? (
           <ProjectSettingsPage projectId={projectId} />
+        ) : tab === 'backlog' ? (
+          <ProjectBacklogTab projectId={projectId} />
         ) : (
           <ProjectBoardTab projectId={projectId} />
         )}
