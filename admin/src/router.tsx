@@ -76,6 +76,10 @@ export const router = createBrowserRouter([
         element: <ProjectView />,
       },
       {
+        path: '/projects/:projectId/insights',
+        element: <ProjectView />,
+      },
+      {
         path: '/projects/:projectId/settings',
         element: <ProjectView />,
       },

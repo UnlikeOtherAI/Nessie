@@ -3,6 +3,7 @@ import { useProjectBoard } from '../../facades/board/hooks'
 import { useProjects } from '../../facades/projects/hooks'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
+import { ProjectInsightsTab } from './ProjectInsightsTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
 
 const sectionTitle =
@@ -22,12 +23,17 @@ export const ProjectView = () => {
     ? 'settings'
     : location.pathname.endsWith('/backlog')
       ? 'backlog'
-      : 'board'
+      : location.pathname.endsWith('/insights')
+        ? 'insights'
+        : 'board'
 
   const tabs = [
     { id: 'board', label: 'Board', to: `/projects/${projectId}` },
     ...(isScrum
-      ? [{ id: 'backlog', label: 'Backlog', to: `/projects/${projectId}/backlog` }]
+      ? [
+          { id: 'backlog', label: 'Backlog', to: `/projects/${projectId}/backlog` },
+          { id: 'insights', label: 'Insights', to: `/projects/${projectId}/insights` },
+        ]
       : []),
     { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
   ]
@@ -64,6 +70,8 @@ export const ProjectView = () => {
           <ProjectSettingsPage projectId={projectId} />
         ) : tab === 'backlog' ? (
           <ProjectBacklogTab projectId={projectId} />
+        ) : tab === 'insights' ? (
+          <ProjectInsightsTab projectId={projectId} />
         ) : (
           <ProjectBoardTab projectId={projectId} />
         )}

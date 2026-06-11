@@ -1,6 +1,6 @@
 import type { Iteration, PrismaClient } from '@prisma/client'
 import { parseProjectId } from '@nessie/schemas'
-import type { IterationRecord } from '../contracts.js'
+import type { IterationRecord, ProjectInsightsRecord } from '../contracts.js'
 
 type IterationStats = { taskCount: number; pointsTotal: number; pointsDone: number }
 
@@ -142,4 +142,84 @@ export const deleteIteration = async (
 ): Promise<boolean> => {
   const result = await prisma.iteration.deleteMany({ where: { id: iterationId, projectId } })
   return result.count > 0
+}
+
+const DAY_MS = 86_400_000
+
+const toUtcDay = (date: Date): number =>
+  Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+
+// Velocity (points delivered per completed sprint) + an active-sprint burndown
+// derived from the task status-changed→done events (no snapshot table needed).
+export const getProjectInsights = async (
+  prisma: PrismaClient,
+  projectId: string,
+): Promise<ProjectInsightsRecord> => {
+  const iterations = await prisma.iteration.findMany({
+    where: { projectId },
+    orderBy: { position: 'asc' },
+  })
+
+  const velocity = await Promise.all(
+    iterations
+      .filter((iteration) => iteration.status === 'completed')
+      .map(async (iteration) => ({
+        iterationId: iteration.id,
+        name: iteration.name,
+        points:
+          (
+            await prisma.task.aggregate({
+              where: { iterationId: iteration.id, status: 'done' },
+              _sum: { storyPoints: true },
+            })
+          )._sum.storyPoints ?? 0,
+      })),
+  )
+
+  const active = iterations.find((iteration) => iteration.status === 'active')
+  let burndown: ProjectInsightsRecord['burndown'] = null
+
+  if (active && active.startDate && active.endDate) {
+    const tasks = await prisma.task.findMany({
+      where: { iterationId: active.id },
+      select: { id: true, storyPoints: true, status: true },
+    })
+    const totalPoints = tasks.reduce((sum, task) => sum + (task.storyPoints ?? 0), 0)
+    const pointsByTask = new Map(tasks.map((task) => [task.id, task.storyPoints ?? 0]))
+
+    const doneTaskIds = tasks.filter((task) => task.status === 'done').map((task) => task.id)
+    const events = doneTaskIds.length
+      ? await prisma.taskEvent.findMany({
+          where: { taskId: { in: doneTaskIds }, eventType: 'status_changed' },
+          orderBy: { createdAt: 'asc' },
+        })
+      : []
+    // The day each currently-done task reached 'done' (latest such transition).
+    const doneDayByTask = new Map<string, number>()
+    for (const event of events) {
+      if ((event.payload as { to?: string } | null)?.to === 'done') {
+        doneDayByTask.set(event.taskId, toUtcDay(event.createdAt))
+      }
+    }
+
+    const startDay = toUtcDay(active.startDate)
+    const endDay = toUtcDay(active.endDate)
+    const totalDays = Math.max(1, Math.round((endDay - startDay) / DAY_MS))
+    const days = []
+    for (let index = 0; index <= totalDays; index += 1) {
+      const day = startDay + index * DAY_MS
+      let donePoints = 0
+      for (const [taskId, doneDay] of doneDayByTask) {
+        if (doneDay <= day) donePoints += pointsByTask.get(taskId) ?? 0
+      }
+      days.push({
+        date: new Date(day).toISOString().slice(0, 10),
+        remaining: totalPoints - donePoints,
+        ideal: Math.round(totalPoints * (1 - index / totalDays) * 10) / 10,
+      })
+    }
+    burndown = { iterationId: active.id, name: active.name, totalPoints, days }
+  }
+
+  return { velocity, burndown }
 }

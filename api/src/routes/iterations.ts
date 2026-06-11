@@ -3,12 +3,14 @@ import type { FastifyInstance } from 'fastify'
 import {
   CreateIterationBodySchema,
   IterationRecordSchema,
+  ProjectInsightsRecordSchema,
   UpdateIterationBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   createIteration,
   deleteIteration,
+  getProjectInsights,
   listIterations,
   updateIteration,
 } from '../services/iterations.js'
@@ -43,6 +45,21 @@ export const registerIterationRoutes = (app: FastifyInstance, deps: RouteDeps): 
 
     const iterations = await listIterations(prisma, project.id)
     return createApiResponse(IterationRecordSchema.array().parse(iterations))
+  })
+
+  app.get('/api/projects/:projectId/insights', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { projectId } = request.params as { projectId: string }
+    const project = await loadProject(projectId, actorContext.tenant.organizationId)
+    if (!project) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
+
+    const insights = await getProjectInsights(prisma, project.id)
+    return createApiResponse(ProjectInsightsRecordSchema.parse(insights))
   })
 
   app.post('/api/projects/:projectId/iterations', async (request, reply) => {

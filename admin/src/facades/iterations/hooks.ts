@@ -36,6 +36,25 @@ export type UpdateIterationInput = {
   action?: 'start' | 'complete'
 }
 
+export type ProjectInsights = {
+  velocity: { iterationId: string; name: string; points: number }[]
+  burndown: {
+    iterationId: string
+    name: string
+    totalPoints: number
+    days: { date: string; remaining: number; ideal: number }[]
+  } | null
+}
+
+export const useProjectInsights = (projectId?: string) => {
+  const apiClient = useApiClient()
+  return useQuery<ProjectInsights>({
+    queryKey: ['project-insights', projectId ?? ''],
+    queryFn: () => apiClient.get(`/api/projects/${projectId}/insights`),
+    enabled: Boolean(projectId),
+  })
+}
+
 const iterationsKey = (projectId: string) => ['iterations', projectId] as const
 
 export const useIterations = (projectId?: string) => {

@@ -2032,6 +2032,23 @@ export const UpdateIterationBodySchema = z.object({
   action: z.enum(['start', 'complete']).optional(),
 })
 
+export const ProjectInsightsRecordSchema = z.object({
+  velocity: z
+    .object({ iterationId: z.string().uuid(), name: z.string(), points: z.number() })
+    .array(),
+  burndown: z
+    .object({
+      iterationId: z.string().uuid(),
+      name: z.string(),
+      totalPoints: z.number(),
+      days: z
+        .object({ date: z.string(), remaining: z.number(), ideal: z.number() })
+        .array(),
+    })
+    .nullable(),
+})
+export type ProjectInsightsRecord = z.infer<typeof ProjectInsightsRecordSchema>
+
 // ─── Ops health (observability) ───────────────────────────────────────────
 
 export const WorkerHealthStatusSchema = z.enum(['up', 'stale', 'down'])
