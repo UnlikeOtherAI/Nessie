@@ -241,9 +241,6 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^7.0.1
         version: 7.0.1(eslint@10.2.0(jiti@2.6.1))
-      react-native-appreveal:
-        specifier: file:/tmp/AppReveal/ReactNative/appreveal/react-native-appreveal-0.8.0.tgz
-        version: file:../../../../../../../tmp/AppReveal/ReactNative/appreveal/react-native-appreveal-0.8.0.tgz(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -4502,13 +4499,6 @@ packages:
 
   react-is@19.2.7:
     resolution: {integrity: sha512-kZFnouyVv7eP/Phmrlo9FK+zcAdriZJvzxXHF1Sl1P377WSGe2G/JxVolhTrB/jeV47lKImhNUsijjHAAbcl/A==}
-
-  react-native-appreveal@file:../../../../../../../tmp/AppReveal/ReactNative/appreveal/react-native-appreveal-0.8.0.tgz:
-    resolution: {integrity: sha512-b0dwyBVXBk1NlJQwT1dNh5fTpOAbxbnqcEphZR2RU1Nphgt3+EcJdtFTN6nXmp6zvmUPvNJxsdTzOXZ8m/774g==, tarball: file:../../../../../../../tmp/AppReveal/ReactNative/appreveal/react-native-appreveal-0.8.0.tgz}
-    version: 0.8.0
-    peerDependencies:
-      react: '*'
-      react-native: '*'
 
   react-native-is-edge-to-edge@1.3.1:
     resolution: {integrity: sha512-NIXU/iT5+ORyCc7p0z2nnlkouYKX425vuU1OEm6bMMtWWR9yvb+Xg5AZmImTKoF9abxCPqrKC3rOZsKzUYgYZA==}
@@ -10202,11 +10192,6 @@ snapshots:
 
   react-is@19.2.7:
     optional: true
-
-  react-native-appreveal@file:../../../../../../../tmp/AppReveal/ReactNative/appreveal/react-native-appreveal-0.8.0.tgz(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
-    dependencies:
-      react: 19.1.0
-      react-native: 0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 
   react-native-is-edge-to-edge@1.3.1(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:

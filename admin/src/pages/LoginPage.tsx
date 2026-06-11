@@ -401,7 +401,7 @@ export const LoginPage = () => {
 
       </div>
 
-      <div className="mt-auto flex items-center gap-3 self-end pt-8">
+      <div className="mx-auto mt-auto flex w-full max-w-6xl items-center justify-end gap-3 pt-8">
         <span className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
           Theme
         </span>

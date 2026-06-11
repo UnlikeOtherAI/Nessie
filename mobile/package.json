@@ -25,7 +25,6 @@
     "@typescript-eslint/parser": "^8.58.0",
     "eslint": "^10.2.0",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "react-native-appreveal": "file:/tmp/AppReveal/ReactNative/appreveal/react-native-appreveal-0.8.0.tgz",
     "typescript": "^5.9.3"
   }
 }
