@@ -732,3 +732,105 @@ a {
 .animate-slide-in-right {
   animation: slide-in-right 300ms ease-out;
 }
+
+/* Knowledge rich text — the TipTap editor and the read-only renderer share
+   .kb-prose so edited and published content look identical. */
+.kb-prose {
+  color: var(--tx);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.kb-prose:focus {
+  outline: none;
+}
+.kb-prose > :first-child {
+  margin-top: 0;
+}
+.kb-prose h1 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--tx);
+}
+.kb-prose h2 {
+  margin: 0.9rem 0 0.4rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--tx);
+}
+.kb-prose h3 {
+  margin: 0.8rem 0 0.3rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--tx);
+}
+.kb-prose p {
+  margin: 0.5rem 0;
+}
+.kb-prose ul {
+  margin: 0.5rem 0;
+  padding-left: 1.4rem;
+  list-style: disc;
+}
+.kb-prose ol {
+  margin: 0.5rem 0;
+  padding-left: 1.4rem;
+  list-style: decimal;
+}
+.kb-prose li {
+  margin: 0.2rem 0;
+}
+.kb-prose li > p {
+  margin: 0;
+}
+.kb-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.kb-prose strong {
+  font-weight: 700;
+}
+.kb-prose blockquote {
+  margin: 0.6rem 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid var(--sep);
+  color: var(--tx2);
+}
+.kb-prose code {
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  background: var(--overlay-weak);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+.kb-prose pre {
+  margin: 0.6rem 0;
+  padding: 0.75rem;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: var(--overlay-weak);
+}
+.kb-prose pre code {
+  padding: 0;
+  background: transparent;
+}
+.kb-prose hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px solid var(--sep);
+}
+
+/* TipTap editor surface + empty-state placeholder */
+.kb-editor .ProseMirror {
+  min-height: 160px;
+}
+.kb-editor .ProseMirror:focus {
+  outline: none;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--tx3);
+  pointer-events: none;
+}

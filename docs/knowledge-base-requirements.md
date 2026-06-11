@@ -305,6 +305,23 @@ derived client-side from the flat `GET /spaces/:id/pages` list via `parentPageId
 (the list already includes each page's latest version body), so drill-down needs
 no extra requests.
 
+### First-visit seeding
+
+When the spaces list loads empty, `KnowledgeProvider` seeds a **"General"** space
+with one example page (`useSeedKnowledgeBase`, fired once via a ref guard). The
+example page (`example-page.ts`) is authored as HTML and demonstrates the editor.
+
+### Page bodies are rich HTML (TipTap)
+
+Page bodies are stored as HTML. Editing uses a **TipTap** (ProseMirror) WYSIWYG —
+`RichTextEditor` (StarterKit + Placeholder; toolbar for bold/italic/headings/
+lists/quote/code/link). Rendering uses `RichTextContent`, a **read-only** TipTap
+instance: parsing through the ProseMirror schema drops scripts, event handlers and
+unknown tags, so stored HTML cannot execute as markup — the content never reaches
+the DOM as a raw HTML string, so no separate sanitizer is needed. Editor and
+reader share the `.kb-prose` token-themed styles in `admin/src/styles.css`. Older
+plain-text bodies still render (as a paragraph).
+
 ## 10) Phase annotation
 
 This spec targets **Phase 3**.

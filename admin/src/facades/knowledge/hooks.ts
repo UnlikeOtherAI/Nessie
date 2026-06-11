@@ -134,6 +134,36 @@ export const useCreateKnowledgeSpace = () => {
   })
 }
 
+type SeedKnowledgeInput = {
+  body: string
+  projectId?: string
+  spaceName: string
+  summary?: string | null
+  title: string
+}
+
+// Creates a space and seeds it with a single page in one shot — used to
+// bootstrap an empty knowledge base on first visit.
+export const useSeedKnowledgeBase = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: SeedKnowledgeInput) => {
+      const space = await apiClient.post<KnowledgeSpaceRecord>('/api/knowledge-base/spaces', {
+        name: input.spaceName,
+        projectId: input.projectId,
+      })
+      await apiClient.post<KnowledgePageRecord>(
+        `/api/knowledge-base/spaces/${space.id}/pages`,
+        { body: input.body, summary: input.summary ?? null, title: input.title },
+      )
+      return space
+    },
+    onSuccess: () => invalidateKnowledge(queryClient),
+  })
+}
+
 export const useCreateKnowledgePage = (spaceId?: string) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
