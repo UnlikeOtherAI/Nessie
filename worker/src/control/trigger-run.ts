@@ -376,18 +376,19 @@ export const queueTriggerRun = async (
       const message = await tx.message.create({
         data: {
           content,
-          // The personal assistant's scheduled kickoff prompt is an internal
-          // instruction, not a post the owner made; hide it from the target
-          // channel feed so only the assistant's owner-authored result shows.
+          // A PA-owned scheduled run posts AS the owner, so its kickoff prompt is
+          // an internal system-injected directive rather than a post the owner
+          // made. Mark it `system` so it drives the run but is excluded from both
+          // the channel feed and future model context (see listThreadMessages /
+          // loadConversation). Shared agents keep the visible `user` kickoff.
           ...(isPersonalAssistantTrigger
             ? {
                 metadata: {
-                  hidden: true,
                   delegatedByAgentId: input.trigger.agentId,
                 } as Prisma.InputJsonValue,
               }
             : {}),
-          role: 'user',
+          role: isPersonalAssistantTrigger ? 'system' : 'user',
           threadId: input.trigger.targetThreadId,
         },
         select: { id: true },

@@ -283,9 +283,11 @@ MVP policy should be explicit:
 > PA-owned scheduled task fires into a shared channel, the run's final message is
 > authored as the owner (`userId = owner`, `role = user`, `metadata`
 > `delegatedByAgentId` + `delegatedFromRunId`) instead of as the assistant bot.
-> The task's internal kickoff/instruction message is written with
-> `metadata.hidden = true` so it drives the run but never renders in the target
-> channel feed. PA replies **inside the PA DM** stay assistant-authored.
+> The task's internal kickoff/instruction message is written with `role = system`
+> so it drives the run but is excluded from both the channel feed
+> (`listThreadMessages`) and model context (`loadConversation`); shared agents
+> keep their visible `role = user` kickoff. PA replies **inside the PA DM** stay
+> assistant-authored.
 
 ### `Agent` execution policy
 
