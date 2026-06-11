@@ -136,13 +136,12 @@ const resolvePersonalAssistantScopes = async (
   userId: string,
 ): Promise<{ channelIds: string[]; teamIds: string[]; projectIds: string[] }> => {
   const [channels, teams, projects] = await Promise.all([
+    // The personal assistant is its owner's delegate and reaches every channel
+    // in the organization — not just public ones or ones the owner joined.
     db.query(
       `SELECT c.id FROM channels c
-       WHERE c.organization_id = $1
-         AND (c.visibility = 'public'
-              OR EXISTS (SELECT 1 FROM channel_members cm
-                         WHERE cm.channel_id = c.id AND cm.user_id = $2))`,
-      [organizationId, userId],
+       WHERE c.organization_id = $1`,
+      [organizationId],
     ),
     db.query(
       `SELECT t.id FROM teams t

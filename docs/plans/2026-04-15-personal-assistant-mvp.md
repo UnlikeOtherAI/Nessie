@@ -90,6 +90,18 @@ Special policies:
 - user-equivalent action scope: if the user can do it, the assistant can do it;
   if the user would need to delegate another agent, the assistant does that too
 
+> **Update (2026-06-11) — privileged delegate, org-wide reach.** The personal
+> assistant is treated as its owner's privileged delegate and reaches **every
+> channel in the organization** — not only public channels plus the ones the
+> owner has joined. It is exempt from the `AgentBinding` "is this bot a member of
+> the channel?" gate (both when scheduling a task and when the scheduled task
+> fires), because binding does not apply to a delegate that acts as the user.
+> Channel resolution (post/schedule/list), workspace + message search, and
+> curated-thought recall (`resolveAccessibleScopes` `personal_assistant` mode)
+> all resolve org-wide for the PA. This deliberately broadens the original
+> "same scope as the user" framing above; the gate is `agentKind =
+> personal_assistant`, so ordinary (`shared`) agents are unaffected.
+
 This keeps the MVP small and gives us a clean path to future managed assistants.
 
 ## 4. MVP Behavior
@@ -265,6 +277,15 @@ MVP policy should be explicit:
 - provenance remains available in audit and can be surfaced to the sender,
   admins, or later recipient-facing UI if product decides that trust tradeoff is
   worth exposing
+
+> **Update (2026-06-11) — scheduled posts are delegated too.** This author model
+> now applies to **scheduled** PA posts as well, not just immediate sends. When a
+> PA-owned scheduled task fires into a shared channel, the run's final message is
+> authored as the owner (`userId = owner`, `role = user`, `metadata`
+> `delegatedByAgentId` + `delegatedFromRunId`) instead of as the assistant bot.
+> The task's internal kickoff/instruction message is written with
+> `metadata.hidden = true` so it drives the run but never renders in the target
+> channel feed. PA replies **inside the PA DM** stay assistant-authored.
 
 ### `Agent` execution policy
 

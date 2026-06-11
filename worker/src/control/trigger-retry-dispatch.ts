@@ -23,7 +23,13 @@ export const reattemptTriggerDelivery = async (
     where: { id: input.triggerId },
     include: {
       agent: {
-        select: { id: true, organizationId: true, projectId: true, teamId: true },
+        select: {
+          id: true,
+          agentKind: true,
+          organizationId: true,
+          projectId: true,
+          teamId: true,
+        },
       },
       workflowInstallation: {
         select: {
@@ -81,6 +87,7 @@ export const reattemptTriggerDelivery = async (
     source: input.source,
     trigger: {
       agent: {
+        agentKind: trigger.agent.agentKind,
         organizationId: trigger.agent.organizationId,
         projectId: trigger.agent.projectId,
         teamId: trigger.agent.teamId,

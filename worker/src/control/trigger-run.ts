@@ -271,6 +271,7 @@ export const queueTriggerRun = async (
     source: string
     trigger: {
       agent: {
+        agentKind: 'personal_assistant' | 'shared'
         organizationId: string | null
         projectId: string | null
         teamId: string | null
@@ -284,6 +285,11 @@ export const queueTriggerRun = async (
     }
   },
 ): Promise<void> => {
+  // The personal assistant is its owner's delegate: it reaches every channel in
+  // the organization, so the binding gate and the membership re-check below do
+  // not apply to it. It always keeps acting as its owner.
+  const isPersonalAssistantTrigger =
+    input.trigger.agent.agentKind === 'personal_assistant'
   const existingDelivery = input.dedupeKey
     ? await prisma.agentTriggerDelivery.findFirst({
         where: {
@@ -315,23 +321,31 @@ export const queueTriggerRun = async (
     return
   }
 
-  const binding = await prisma.agentBinding.findFirst({
-    where: {
-      agentId: input.trigger.agentId,
-      channelId: input.trigger.targetChannelId,
-    },
-    select: { id: true },
-  })
-  if (!binding) {
-    return
+  if (!isPersonalAssistantTrigger) {
+    const binding = await prisma.agentBinding.findFirst({
+      where: {
+        agentId: input.trigger.agentId,
+        channelId: input.trigger.targetChannelId,
+      },
+      select: { id: true },
+    })
+    if (!binding) {
+      return
+    }
   }
 
   // The scheduled run acts as the user who created it (config.createdByUserId).
   // Authorization for the target channel was checked at creation time; re-verify
   // here so a user later removed from a private channel can't keep the run acting
   // as them. If they've lost access, fall back to an autonomous (no-user) run.
+  // The personal assistant is exempt: it reaches every channel as its owner, so
+  // it keeps acting as the owner regardless of that user's channel membership.
   let effectiveUserId = extractTriggerEffectiveUserId(input.trigger.config)
-  if (effectiveUserId && thread.channel.visibility !== 'public') {
+  if (
+    !isPersonalAssistantTrigger
+    && effectiveUserId
+    && thread.channel.visibility !== 'public'
+  ) {
     const membership = await prisma.channelMember.findFirst({
       where: { channelId: input.trigger.targetChannelId, userId: effectiveUserId },
       select: { userId: true },
@@ -362,6 +376,17 @@ export const queueTriggerRun = async (
       const message = await tx.message.create({
         data: {
           content,
+          // The personal assistant's scheduled kickoff prompt is an internal
+          // instruction, not a post the owner made; hide it from the target
+          // channel feed so only the assistant's owner-authored result shows.
+          ...(isPersonalAssistantTrigger
+            ? {
+                metadata: {
+                  hidden: true,
+                  delegatedByAgentId: input.trigger.agentId,
+                } as Prisma.InputJsonValue,
+              }
+            : {}),
           role: 'user',
           threadId: input.trigger.targetThreadId,
         },

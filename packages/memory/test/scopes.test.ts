@@ -125,6 +125,36 @@ test('personal_assistant grants the user full accessible scope plus private memo
   assert.ok(pairs.some(([t, i]) => t === 'user' && i === USER))
 })
 
+test('personal_assistant reaches every channel in the org (no membership filter)', async () => {
+  let channelsSql = ''
+  const pool = createPoolStub((sql) => {
+    if (sql.includes('FROM channels c') && !sql.includes('agent_bindings')) {
+      channelsSql = sql
+      return { rows: [{ id: 'chan-private' }, { id: 'chan-public' }] }
+    }
+    if (sql.includes('FROM teams t') && sql.includes('JOIN projects p')) {
+      return { rows: [] }
+    }
+    if (sql.includes('FROM projects p') && !sql.includes('FROM teams')) {
+      return { rows: [] }
+    }
+    if (sql.includes('organization_members')) {
+      return { rowCount: 1, rows: [{}] }
+    }
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  const scopes = await resolveAccessibleScopes(
+    { agentId: AGENT, mode: 'personal_assistant', organizationId: ORG, userId: USER },
+    pool,
+  )
+
+  // Org-wide: the channels query must not filter by membership or visibility.
+  assert.ok(!channelsSql.includes('channel_members'))
+  assert.ok(!channelsSql.includes('visibility'))
+  assert.deepEqual(scopes.channelIds.sort(), ['chan-private', 'chan-public'])
+})
+
 test('autonomous is bound by the agent configured scope, with no user-private', async () => {
   const pool = createPoolStub((sql) => {
     if (sql.includes('JOIN agent_bindings')) {

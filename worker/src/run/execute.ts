@@ -765,11 +765,14 @@ const publishMessageCreated = async (
     content: string
     messageId: string
     role: 'assistant' | 'system' | 'user'
+    // A delegated owner-authored post (the personal assistant acting for its
+    // owner) carries no agent author, mirroring a human-authored message.
+    authoredByOwner?: boolean
   },
 ): Promise<void> => {
   await realtimeTransport.publishWs(buildScopes(context), {
     data: {
-      agentId: parseAgentId(context.agent.id),
+      agentId: input.authoredByOwner ? undefined : parseAgentId(context.agent.id),
       channelId: parseChannelId(context.channel.id),
       contentPreview: input.content.slice(0, 200),
       messageId: input.messageId,
@@ -1381,6 +1384,7 @@ export const executeRunJob = async (
 
     const buildBuiltinCtx = (toolActorContext: AuthorizedActionContext) => ({
       agentId: context.agent.id,
+      agentKind: context.agent.agentKind,
       actorContext: toolActorContext,
       channel: {
         id: context.channel.id,
@@ -1569,13 +1573,37 @@ export const executeRunJob = async (
       await markRecallsReferenced(referencedRecallIds, deps.searchConfig.pool)
     }
 
+    // The personal assistant is its owner's delegate: anything it posts into a
+    // shared channel is authored as that owner (mirroring the immediate
+    // send_message tool), not as the assistant bot. Replies inside its own DM
+    // stay assistant-authored so the DM still renders the assistant.
+    const delegatedOwnerId =
+      context.agent.agentKind === 'personal_assistant'
+      && context.channel.systemChannelType !== 'personal_assistant'
+        ? payload.actorContext.actionContext.effectiveUserId
+          ?? (payload.actorContext.actor.actorType === 'user'
+            ? payload.actorContext.actor.actorId
+            : null)
+        : null
+
     const assistantMessage = await deps.prisma.message.create({
-      data: {
-        agentId: context.agent.id,
-        content: responseText,
-        role: 'assistant',
-        threadId: context.run.threadId,
-      },
+      data: delegatedOwnerId
+        ? {
+            content: responseText,
+            metadata: {
+              delegatedByAgentId: context.agent.id,
+              delegatedFromRunId: context.run.id,
+            } as Prisma.InputJsonValue,
+            role: 'user',
+            threadId: context.run.threadId,
+            userId: delegatedOwnerId,
+          }
+        : {
+            agentId: context.agent.id,
+            content: responseText,
+            role: 'assistant',
+            threadId: context.run.threadId,
+          },
     })
 
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
@@ -1587,9 +1615,10 @@ export const executeRunJob = async (
     })
 
     await publishMessageCreated(deps.realtimeTransport, context, {
+      authoredByOwner: delegatedOwnerId !== null,
       content: responseText,
       messageId: assistantMessage.id,
-      role: 'assistant',
+      role: delegatedOwnerId ? 'user' : 'assistant',
     })
 
     await updateRunStatus(deps.prisma, context.run.id, 'completed')

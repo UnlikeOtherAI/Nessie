@@ -113,6 +113,7 @@ export const sweepDueScheduledTriggers = async (
     select: {
       agent: {
         select: {
+          agentKind: true,
           organizationId: true,
           projectId: true,
           teamId: true,
