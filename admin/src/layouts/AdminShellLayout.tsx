@@ -3,9 +3,7 @@ import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDraw
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import { isDesktopApp } from '../lib/desktop';
 import { isReactNativeWebView, useMobileLayout } from '../lib/mobile-shell';
-import { NativeShellBridge } from '../providers/NativeShellBridge';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
-import { ShakeFeedbackProvider } from '../providers/ShakeFeedbackContext';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { AgentsSidebarNav } from './admin-shell/AgentsSidebarNav';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
@@ -154,40 +152,37 @@ export const AdminShellLayout = () => {
     .join(' ');
 
   return (
-    <ShakeFeedbackProvider>
-      <NotificationsProvider>
-        <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
-          <div className={shellClassName}>
-            {!mobileLayout && (
-              <SidebarRail onLogout={shell.logoutAndRedirect} pathname={shell.pathname} />
-            )}
+    <NotificationsProvider>
+      <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
+        <div className={shellClassName}>
+          {!mobileLayout && (
+            <SidebarRail onLogout={shell.logoutAndRedirect} pathname={shell.pathname} />
+          )}
 
-            {shell.isKnowledgeRoute ? (
-              <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
-            ) : (
-              contentRegion
-            )}
-          </div>
+          {shell.isKnowledgeRoute ? (
+            <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
+          ) : (
+            contentRegion
+          )}
+        </div>
 
-          {showWebTabBar && <MobileTabBar />}
-          {nativeShell && <NativeShellBridge />}
+        {showWebTabBar && <MobileTabBar />}
 
-          <SidebarDialogs
-            createChannelTarget={shell.createChannelTarget}
-            createProjectOpen={shell.createProjectOpen}
-            onCloseCreateChannel={shell.closeCreateChannel}
-            onCloseCreateProject={shell.closeCreateProject}
-            onCloseRenameProject={shell.closeRenameProject}
-            renameProjectTarget={shell.renameProjectTarget}
-          />
+        <SidebarDialogs
+          createChannelTarget={shell.createChannelTarget}
+          createProjectOpen={shell.createProjectOpen}
+          onCloseCreateChannel={shell.closeCreateChannel}
+          onCloseCreateProject={shell.closeCreateProject}
+          onCloseRenameProject={shell.closeRenameProject}
+          renameProjectTarget={shell.renameProjectTarget}
+        />
 
-          <AgentDetailDrawer
-            agent={shell.selectedAgent}
-            onClose={shell.closeAgentDrawer}
-            onSelectAgent={shell.selectAgent}
-          />
-        </MobileNavProvider>
-      </NotificationsProvider>
-    </ShakeFeedbackProvider>
+        <AgentDetailDrawer
+          agent={shell.selectedAgent}
+          onClose={shell.closeAgentDrawer}
+          onSelectAgent={shell.selectAgent}
+        />
+      </MobileNavProvider>
+    </NotificationsProvider>
   );
 };

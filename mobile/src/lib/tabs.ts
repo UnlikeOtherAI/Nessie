@@ -1,9 +1,13 @@
+import type { ComponentProps } from 'react'
+import type MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import type { SFSymbol } from 'sf-symbols-typescript'
+
+type MaterialIconName = ComponentProps<typeof MaterialIcons>['name']
 
 // The native bottom tab bar mirrors the admin's top-level sections. Tapping a tab
 // drives the WebView to `path` (window.__nessieNavigate); the SPA reports its
-// route back so `matches` can resync the selected tab. SF Symbols give the iOS
-// glass tab bar its native icons.
+// route back so `matches` can resync the selected tab. iOS uses SF Symbols for
+// the glass bar; Android uses Material icons (rendered to image sources).
 export type TabKey = 'channels' | 'projects' | 'agents' | 'knowledge' | 'admin'
 
 export type TabDef = {
@@ -11,6 +15,7 @@ export type TabDef = {
   title: string
   path: string
   sfSymbol: SFSymbol
+  materialIcon: MaterialIconName
   matches: (pathname: string) => boolean
 }
 
@@ -25,6 +30,7 @@ export const TABS: TabDef[] = [
     title: 'Channels',
     path: '/channels',
     sfSymbol: 'message',
+    materialIcon: 'forum',
     matches: (p) => p.startsWith('/channels'),
   },
   {
@@ -32,6 +38,7 @@ export const TABS: TabDef[] = [
     title: 'Projects',
     path: '/projects',
     sfSymbol: 'folder',
+    materialIcon: 'folder',
     matches: (p) => p.startsWith('/projects'),
   },
   {
@@ -39,6 +46,7 @@ export const TABS: TabDef[] = [
     title: 'Agents',
     path: '/agents',
     sfSymbol: 'sparkles',
+    materialIcon: 'smart-toy',
     matches: (p) => p.startsWith('/agents'),
   },
   {
@@ -46,6 +54,7 @@ export const TABS: TabDef[] = [
     title: 'Knowledge',
     path: '/knowledge-base',
     sfSymbol: 'book',
+    materialIcon: 'menu-book',
     matches: (p) => p.startsWith('/knowledge-base'),
   },
   {
@@ -53,6 +62,7 @@ export const TABS: TabDef[] = [
     title: 'Admin',
     path: '/settings',
     sfSymbol: 'gearshape',
+    materialIcon: 'settings',
     matches: matchesAdmin,
   },
 ]

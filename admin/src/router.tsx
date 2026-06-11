@@ -1,5 +1,6 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
+import { RootLayout } from './layouts/RootLayout'
 import { AgentActivityPage } from './pages/AgentActivityPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentsPage } from './pages/AgentsPage'
@@ -33,6 +34,9 @@ import { WorkflowsPage } from './pages/WorkflowsPage'
 import { WorkflowToolsPage } from './pages/WorkflowToolsPage'
 
 export const router = createBrowserRouter([
+  {
+    element: <RootLayout />,
+    children: [
   {
     path: '/',
     element: <Navigate to="/channels" replace />,
@@ -211,5 +215,7 @@ export const router = createBrowserRouter([
   {
     path: '*',
     element: <NotFoundPage />,
+  },
+    ],
   },
 ])

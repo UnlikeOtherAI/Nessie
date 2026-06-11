@@ -44,14 +44,27 @@ export const INJECTED = `
     var c = pick();
     if (c) { try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bg', color: c })) } catch (e) {} }
   }
-  post();
-  new MutationObserver(post).observe(document.documentElement, {
+  function cssVar(name) {
+    try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() } catch (e) { return '' }
+  }
+  function postTheme() {
+    var accent = cssVar('--accent');
+    var inactive = cssVar('--tx3');
+    if (accent) {
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'theme', accent: accent, inactive: inactive }))
+      } catch (e) {}
+    }
+  }
+  function sync() { post(); postTheme(); }
+  sync();
+  new MutationObserver(sync).observe(document.documentElement, {
     attributes: true, attributeFilter: ['data-theme', 'class', 'style'],
   });
   if (document.body) {
     new MutationObserver(post).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
   }
-  window.addEventListener('load', post);
+  window.addEventListener('load', sync);
   true;
 })();
 `

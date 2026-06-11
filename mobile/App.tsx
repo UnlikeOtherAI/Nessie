@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Platform, StyleSheet, View } from 'react-native'
+import { type ImageSourcePropType, Platform, StyleSheet, View } from 'react-native'
+import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import TabView from 'react-native-bottom-tabs'
@@ -23,20 +24,60 @@ const AUTH_CALLBACK_URL = 'nessie://auth/callback'
 const TAB_BAR_BASE_HEIGHT = Platform.OS === 'ios' ? 49 : 64
 const IPAD_TAB_BAR_HEIGHT = 50
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
+const IS_ANDROID = Platform.OS === 'android'
 
-const TAB_TINT = '#7c3aed'
+const DEFAULT_ACTIVE_TINT = '#7c3aed'
+const DEFAULT_INACTIVE_TINT = '#8a8f98'
+const ANDROID_ICON_SIZE = 26
+
+// The tab bar only makes sense once the user is inside the workspace; hide it on
+// the login / bootstrap screens (reported via nessie:route).
+const isAuthGateRoute = (path: string): boolean =>
+  path.startsWith('/login') || path.startsWith('/bootstrap')
+
+type AndroidIconSet = { active: Record<string, ImageSourcePropType>; inactive: Record<string, ImageSourcePropType> }
 
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
   const [bg, setBg] = useState(DEFAULT_BG)
   const [index, setIndex] = useState(0)
+  const [currentPath, setCurrentPath] = useState<string | null>(null)
+  const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
+  const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
+  const [androidIcons, setAndroidIcons] = useState<AndroidIconSet | null>(null)
   const capturing = useRef(false)
 
   useEffect(() => {
     // Dev-only: expose the AppReveal debug server for on-device inspection.
     startDevInspector()
   }, [])
+
+  // Android tab icons are Material glyphs rendered to image sources (SF Symbols
+  // are iOS-only); re-render them whenever the theme tints change.
+  useEffect(() => {
+    if (!IS_ANDROID) return undefined
+    let cancelled = false
+    const resolve = async (): Promise<void> => {
+      const activeIcons: Record<string, ImageSourcePropType> = {}
+      const inactiveIcons: Record<string, ImageSourcePropType> = {}
+      await Promise.all(
+        TABS.map(async (tab) => {
+          const [activeIcon, inactiveIcon] = await Promise.all([
+            MaterialIcons.getImageSource(tab.materialIcon, ANDROID_ICON_SIZE, accent),
+            MaterialIcons.getImageSource(tab.materialIcon, ANDROID_ICON_SIZE, inactive),
+          ])
+          if (activeIcon) activeIcons[tab.key] = activeIcon
+          if (inactiveIcon) inactiveIcons[tab.key] = inactiveIcon
+        }),
+      )
+      if (!cancelled) setAndroidIcons({ active: activeIcons, inactive: inactiveIcons })
+    }
+    void resolve()
+    return () => {
+      cancelled = true
+    }
+  }, [accent, inactive])
 
   const runScript = (script: string): void => {
     webRef.current?.injectJavaScript(`${script} true;`)
@@ -81,7 +122,7 @@ const Shell = (): React.JSX.Element => {
   })
 
   const onMessage = (event: WebViewMessageEvent): void => {
-    let msg: { type?: string; color?: string; url?: string; path?: string }
+    let msg: { type?: string; color?: string; url?: string; path?: string; accent?: string; inactive?: string }
     try {
       msg = JSON.parse(event.nativeEvent.data)
     } catch {
@@ -92,11 +133,17 @@ const Shell = (): React.JSX.Element => {
       if (rgb && rgb[3] !== 0) setBg(msg.color)
       return
     }
+    if (msg.type === 'theme') {
+      if (typeof msg.accent === 'string' && msg.accent) setAccent(msg.accent)
+      if (typeof msg.inactive === 'string' && msg.inactive) setInactive(msg.inactive)
+      return
+    }
     if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
       void runExternalAuth(msg.url)
       return
     }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
+      setCurrentPath(msg.path)
       const next = tabIndexForPath(msg.path)
       setIndex((current) => (current === next ? current : next))
     }
@@ -107,34 +154,46 @@ const Shell = (): React.JSX.Element => {
     navigateTo(TABS[next].path)
   }
 
-  // Inset the WebView so it fills the area *next to* the native tab bar (top on
-  // iPad, bottom elsewhere), leaving the bar visible and tappable.
-  const webviewLayerStyle = IS_IPAD
-    ? { ...styles.webviewLayer, top: insets.top + IPAD_TAB_BAR_HEIGHT, bottom: 0 }
-    : { ...styles.webviewLayer, top: 0, bottom: TAB_BAR_BASE_HEIGHT + insets.bottom }
+  // Hide the tab bar until we know the user is past the login/bootstrap gate.
+  const showBar = currentPath != null && !isAuthGateRoute(currentPath)
+
+  // Inset the WebView for the status bar (Android draws edge-to-edge) and for the
+  // native tab bar when it's shown (top on iPad, bottom elsewhere).
+  const topInset = IS_IPAD && showBar ? insets.top + IPAD_TAB_BAR_HEIGHT : IS_ANDROID ? insets.top : 0
+  const bottomInset =
+    showBar && !IS_IPAD ? TAB_BAR_BASE_HEIGHT + insets.bottom : IS_ANDROID ? insets.bottom : 0
+  const webviewLayerStyle = { ...styles.webviewLayer, top: topInset, bottom: bottomInset }
 
   const navigationState = {
     index,
-    routes: TABS.map((tab) => ({
-      key: tab.key,
-      title: tab.title,
-      focusedIcon: { sfSymbol: tab.sfSymbol },
-    })),
+    routes: TABS.map((tab) => ({ key: tab.key, title: tab.title })),
   }
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={isDark(bg) ? 'light' : 'dark'} />
 
-      <View style={StyleSheet.absoluteFill}>
-        <TabView
-          navigationState={navigationState}
-          onIndexChange={onIndexChange}
-          renderScene={() => <View style={styles.scene} />}
-          tabBarActiveTintColor={TAB_TINT}
-          translucent
-        />
-      </View>
+      {showBar && (
+        <View style={StyleSheet.absoluteFill}>
+          <TabView
+            getIcon={({ route, focused }) => {
+              const tab = TABS.find((item) => item.key === route.key)
+              if (!tab) return undefined
+              if (IS_ANDROID) {
+                if (!androidIcons) return undefined
+                return focused ? androidIcons.active[tab.key] : androidIcons.inactive[tab.key]
+              }
+              return { sfSymbol: tab.sfSymbol }
+            }}
+            navigationState={navigationState}
+            onIndexChange={onIndexChange}
+            renderScene={() => <View style={styles.scene} />}
+            tabBarActiveTintColor={accent}
+            tabBarInactiveTintColor={inactive}
+            translucent
+          />
+        </View>
+      )}
 
       <View style={webviewLayerStyle}>
         <WebView
