@@ -6,16 +6,19 @@ import { useKnowledge } from './KnowledgeProvider'
 import { PageColumn } from './PageColumn'
 import { PageEditor } from './PageEditor'
 import { VersionHistory } from './VersionHistory'
+import { pageStatusTone } from './page-status'
 
 export const KnowledgeWorkspace = () => {
   const {
-    selectedSpace,
+    selectedSpaceId,
+    rootPages,
     pagePath,
     pageById,
     childrenOf,
     editor,
     openCreate,
     openEdit,
+    openRootPage,
     closeEditor,
     savePage,
     savePending,
@@ -37,33 +40,76 @@ export const KnowledgeWorkspace = () => {
 
   const columns: ReactNode[] = []
 
-  if (pathPages.length === 0) {
-    columns.push(
-      <ColumnBrowserColumn key="empty" title={selectedSpace?.name ?? 'Page'}>
+  // First main column: the selected space's top-level pages.
+  columns.push(
+    <ColumnBrowserColumn
+      headerAction={
+        selectedSpaceId ? (
+          <button
+            className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
+            onClick={() => openCreate(null)}
+            type="button"
+          >
+            New page
+          </button>
+        ) : undefined
+      }
+      key="pages"
+      title="Pages"
+    >
+      {!selectedSpaceId ? (
         <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
-          {selectedSpace ? 'Select a page' : 'Create or select a space'}
+          Select a space
         </div>
-      </ColumnBrowserColumn>,
+      ) : rootPages.length === 0 ? (
+        <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
+          No pages yet
+        </div>
+      ) : (
+        <div className="grid gap-1">
+          {rootPages.map((page) => (
+            <button
+              className={[
+                'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                pagePath[0] === page.id
+                  ? 'bg-[color:var(--accent)] text-[var(--on-accent)]'
+                  : 'text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)] hover:text-[var(--tx)]',
+              ].join(' ')}
+              key={page.id}
+              onClick={() => openRootPage(page.id)}
+              type="button"
+            >
+              <span className="min-w-0 flex-1 truncate">{page.title}</span>
+              <span className={`text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[page.status]}`}>
+                {page.status}
+              </span>
+              <span aria-hidden className="opacity-60">
+                →
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </ColumnBrowserColumn>,
+  )
+
+  pathPages.forEach((page, depth) => {
+    columns.push(
+      <PageColumn
+        activeChildId={pagePath[depth + 1]}
+        key={`page-${page.id}`}
+        onBack={() => popTo(depth)}
+        onCreateChild={() => openCreate(page.id)}
+        onDrill={(childPageId) => drillTo(depth, childPageId)}
+        onEdit={() => openEdit(page)}
+        onOpenHistory={() => openHistory(page.id)}
+        onPublish={() => publishPage(page.id)}
+        page={page}
+        publishPending={publishPending}
+        subPages={childrenOf(page.id)}
+      />,
     )
-  } else {
-    pathPages.forEach((page, depth) => {
-      columns.push(
-        <PageColumn
-          activeChildId={pagePath[depth + 1]}
-          key={`page-${page.id}`}
-          onBack={depth > 0 ? () => popTo(depth) : undefined}
-          onCreateChild={() => openCreate(page.id)}
-          onDrill={(childPageId) => drillTo(depth, childPageId)}
-          onEdit={() => openEdit(page)}
-          onOpenHistory={() => openHistory(page.id)}
-          onPublish={() => publishPage(page.id)}
-          page={page}
-          publishPending={publishPending}
-          subPages={childrenOf(page.id)}
-        />,
-      )
-    })
-  }
+  })
 
   const historyPage = historyPageId ? pageById(historyPageId) : undefined
   if (historyPage) {
@@ -104,8 +150,7 @@ export const KnowledgeWorkspace = () => {
     )
   }
 
-  const activeColumn =
-    editor || historyPage ? columns.length - 1 : Math.max(0, pathPages.length - 1)
+  const activeColumn = editor || historyPage ? columns.length - 1 : pathPages.length
 
   return (
     <div className="h-full w-full">

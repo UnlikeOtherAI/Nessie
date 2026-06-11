@@ -289,13 +289,14 @@ On `/knowledge-base` the shell swaps the channels/DMs second column for a
 dedicated `KnowledgeSidebarNav` (mirrors how `/agents` and the admin routes swap
 that column):
 
-- The second column holds a **Spaces dropdown switcher** (open space + a list to
-  switch / create a space) and a **Pages** list showing only the open space's
-  **top-level** pages.
-- Selecting a top-level page opens it in the main area, which is a Miller-style
-  **drill-down**: each page column shows the page body plus its direct
-  sub-pages; clicking a sub-page opens the next column to the right, one column
-  per hierarchy level. Edit and version History append as further columns.
+- The second column is **only the Spaces list** — styled like the channels list
+  (a collapsible "Spaces" header with a `+` that opens a centered
+  `CreateSpaceDialog` modal). No pages live here.
+- Selecting a space reveals its **top-level pages** in the next column (the first
+  main-area column, titled "Pages"). Selecting a top-level page opens a
+  Miller-style **drill-down** to the right: each page column shows the page body
+  plus its direct sub-pages; clicking a sub-page opens the next column, one
+  column per hierarchy level. Edit and version History append as further columns.
 
 Shared state for both the sidebar and the drill-down lives in
 `KnowledgeProvider` (`admin/src/components/features/knowledge/`), which wraps the
