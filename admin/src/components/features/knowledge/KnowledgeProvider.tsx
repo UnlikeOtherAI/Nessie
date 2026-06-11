@@ -105,6 +105,8 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const seededRef = useRef(false)
   useEffect(() => {
     if (seededRef.current || !spacesQuery.isSuccess || spaces.length > 0) return
+    // Seed at most once per mount — never reset the guard on error, so a
+    // persistent failure can't spin into a retry loop of failed POSTs.
     seededRef.current = true
     seedMutation.mutate(
       {
@@ -115,9 +117,6 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
         title: EXAMPLE_PAGE_TITLE,
       },
       {
-        onError: () => {
-          seededRef.current = false
-        },
         onSuccess: (space) => setSelectedSpaceId(space.id),
       },
     )

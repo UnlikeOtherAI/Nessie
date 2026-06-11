@@ -251,6 +251,16 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 - Per-team/channel/project per-action roles for search/read/summarize/reindex.
 - Source allowlist/denylist for remote URLs and MCP hosts.
 - Audit events use the canonical `AuditAction` names from [audit-trail-spec.md](./audit-trail-spec.md): `kb.source.linked`, `kb.search.executed`, `kb.document.read`, `kb.search.summary`, `kb.source.reindexed`, `kb.source.removed`, `kb.share.granted`, `kb.share.revoked`.
+- **Default policy rules.** The RBAC engine is deny-by-default, and the original
+  default rule set seeded nothing for `knowledge_space` / `knowledge_page`, so
+  every knowledge action returned `POLICY_DENIED` (the feature was unusable).
+  `seedDefaultPolicies` now calls `ensureKnowledgeDefaultPolicies`, which grants
+  org members (`*`) allow rules for `knowledge_space` view/create/edit and
+  `knowledge_page` view/create/edit/read/search, and owners `knowledge_page`
+  approve. It is idempotent and runs on every API start, so it backfills existing
+  organizations. This is the coarse gate only — fine-grained per-space privacy
+  (public / project / specific people) is enforced separately in the knowledge
+  provider and is the next increment.
 
 ## 6) Fit with existing docs
 
