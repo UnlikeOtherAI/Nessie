@@ -450,7 +450,7 @@ a {
 
 .admin-tab.active {
   border-bottom-color: var(--accent);
-  color: var(--on-accent);
+  color: var(--tx);
 }
 
 .admin-compose {
