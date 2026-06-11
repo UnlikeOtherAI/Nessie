@@ -1,13 +1,15 @@
 import { useRouter } from 'expo-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -23,8 +25,8 @@ export default function LoginScreen(): React.JSX.Element {
   const router = useRouter()
 
   const [urlField, setUrlField] = useState(baseUrl)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState(__DEV__ ? 'owner@example.com' : '')
+  const [password, setPassword] = useState(__DEV__ ? 'Password123!' : '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -32,6 +34,13 @@ export default function LoginScreen(): React.JSX.Element {
   useEffect(() => {
     setUrlField(baseUrl)
   }, [baseUrl])
+
+  // iOS password autofill can grab focus on mount and raise the keyboard over
+  // the submit button; clear it so the form is fully reachable.
+  useEffect(() => {
+    const timer = setTimeout(() => Keyboard.dismiss(), 250)
+    return () => clearTimeout(timer)
+  }, [])
 
   // A successful login flips auth status; bounce to the app.
   useEffect(() => {
@@ -53,12 +62,31 @@ export default function LoginScreen(): React.JSX.Element {
     }
   }
 
+  const submitPassword = (): void => {
+    Keyboard.dismiss()
+    void runLogin(() => passwordLogin({ email, password }))
+  }
+
+  // Dev convenience: when the form still holds the seeded dev credentials,
+  // sign in automatically so a physical device lands straight in the app.
+  // Editing any field cancels this, so it never blocks login-screen work.
+  const autoLoginDone = useRef(false)
+  useEffect(() => {
+    if (!__DEV__ || autoLoginDone.current) return
+    if (status !== 'signed-out' || busy) return
+    if (email !== 'owner@example.com' || password !== 'Password123!') return
+    autoLoginDone.current = true
+    void runLogin(() => passwordLogin({ email, password }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.flex}
       >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <View style={styles.container}>
           <Text style={styles.title}>Nessie</Text>
           <Text style={styles.subtitle}>Sign in to your instance</Text>
@@ -95,6 +123,8 @@ export default function LoginScreen(): React.JSX.Element {
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            returnKeyType="go"
+            onSubmitEditing={submitPassword}
             placeholder="••••••••"
             placeholderTextColor={theme.tx3}
             selectionColor={theme.accent}
@@ -103,9 +133,12 @@ export default function LoginScreen(): React.JSX.Element {
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Pressable
+            testID="sign-in-button"
+            accessibilityRole="button"
+            accessibilityLabel="Sign in"
             style={[styles.button, busy && styles.buttonDisabled]}
             disabled={busy}
-            onPress={() => void runLogin(() => passwordLogin({ email, password }))}
+            onPress={submitPassword}
           >
             {busy ? (
               <ActivityIndicator color={theme.onAccent} />
@@ -115,6 +148,9 @@ export default function LoginScreen(): React.JSX.Element {
           </Pressable>
 
           <Pressable
+            testID="dev-login-button"
+            accessibilityRole="button"
+            accessibilityLabel="Dev login"
             style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
             disabled={busy}
             onPress={() => void runLogin(devLogin)}
@@ -122,6 +158,7 @@ export default function LoginScreen(): React.JSX.Element {
             <Text style={styles.buttonSecondaryText}>Dev login (localhost)</Text>
           </Pressable>
         </View>
+        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
   )

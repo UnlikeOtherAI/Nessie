@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
@@ -5,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { createQueryClient } from '@nessie/client-core'
 
+import { startDevInspector } from '../src/lib/dev-inspector'
 import { AuthProvider } from '../src/lib/auth-context'
 import { ThemeProvider, useThemeContext } from '../src/lib/theme-context'
 import { useUnreadBadge } from '../src/lib/use-unread-badge'
@@ -41,6 +43,10 @@ const ThemedRoot = (): React.JSX.Element => {
 }
 
 export default function RootLayout(): React.JSX.Element {
+  useEffect(() => {
+    startDevInspector()
+  }, [])
+
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>

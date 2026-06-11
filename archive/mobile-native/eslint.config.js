@@ -7,8 +7,6 @@ module.exports = [
     ignores: [
       'dist/**',
       '.expo/**',
-      'ios/**',
-      'android/**',
       'node_modules/**',
       'babel.config.js',
       'metro.config.js',

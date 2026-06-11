@@ -4,7 +4,11 @@ import * as SecureStore from 'expo-secure-store'
 const TOKEN_KEY = 'nessie.token'
 const BASE_URL_KEY = 'nessie.baseUrl'
 
-export const DEFAULT_BASE_URL = 'http://localhost:5554'
+// Dev builds default to the Mac's LAN address so a physical device can reach
+// the local API; production builds default to the hosted API.
+export const DEFAULT_BASE_URL = __DEV__
+  ? 'http://192.168.1.229:5554'
+  : 'https://api.nessie.unlikeotherai.com'
 
 export const loadToken = async (): Promise<string | null> => {
   return SecureStore.getItemAsync(TOKEN_KEY)

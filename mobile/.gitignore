@@ -1,20 +1,8 @@
-# Expo
+# Expo / RN native projects are generated via `expo prebuild`.
+node_modules/
 .expo/
 dist/
-web-build/
-expo-env.d.ts
-
-# Native
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# Build outputs
-/ios
-/android
+ios/
+android/
+*.log
+.DS_Store

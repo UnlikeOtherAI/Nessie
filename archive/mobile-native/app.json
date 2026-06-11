@@ -2,8 +2,9 @@
   "expo": {
     "name": "Nessie",
     "slug": "nessie",
+    "owner": "TODO-expo-account",
     "version": "0.1.0",
-    "orientation": "default",
+    "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "nessie",
     "userInterfaceStyle": "automatic",
@@ -11,11 +12,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.unlikeotherai.nessie",
+      "icon": "./assets/icon.png",
       "buildNumber": "1",
       "infoPlist": {
-        "NSAppTransportSecurity": {
-          "NSAllowsLocalNetworking": true
-        },
         "NSLocalNetworkUsageDescription": "AppReveal exposes a debug MCP server on the local network for AI-assisted testing.",
         "NSBonjourServices": [
           "_appreveal._tcp"
@@ -26,7 +25,6 @@
       "package": "com.unlikeotherai.nessie",
       "edgeToEdgeEnabled": true,
       "versionCode": 1,
-      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0f172a"
@@ -37,19 +35,30 @@
       "resizeMode": "contain",
       "backgroundColor": "#0f172a"
     },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
     "plugins": [
+      "expo-router",
+      "expo-secure-store",
       [
-        "expo-build-properties",
+        "expo-notifications",
         {
-          "ios": {
-            "deploymentTarget": "16.0"
-          }
+          "color": "#1f2937"
         }
       ]
     ],
+    "experiments": {
+      "typedRoutes": true
+    },
     "extra": {
       "eas": {
         "projectId": "TODO-run-eas-init"
+      },
+      "setupNotes": {
+        "easProjectId": "TODO: eas init fills extra.eas.projectId.",
+        "owner": "TODO: replace expo.owner with the Expo account name."
       }
     }
   }

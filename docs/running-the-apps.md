@@ -1,12 +1,12 @@
 # Running the Native Apps
 
-This guide gives copy-paste paths for running Nessie's native desktop and mobile apps. The paths that work today do not require an Apple Developer account.
+This guide gives copy-paste paths for running Nessie's desktop and mobile apps. The desktop path works without an Apple Developer account; the mobile WebView shell needs Apple Developer signing to run on a physical device.
 
 ## Prerequisites
 
 - Work from the Nessie repository root.
 - Node.js, pnpm, and Rust are already installed locally.
-- For iPhone with Expo Go, use an iPhone on the same Wi-Fi network as your Mac.
+- For the mobile app on a physical device, use an iPhone/iPad on the same Wi-Fi network as your Mac and an Apple Developer Program membership for signing (the app uses a native WebView module, so Expo Go cannot host it).
 - For EAS iOS builds later, use an Expo account and an Apple Developer Program membership.
 
 ## Mac Desktop - Works Now
@@ -41,33 +41,48 @@ pnpm --filter @nessie/desktop exec tauri build
 
 This produces an unsigned `.app` and `.dmg`. On first open, right-click the app and choose **Open**. A signed and notarized macOS release needs the operator's Apple Developer ID certificate; `desktop/src-tauri/tauri.conf.json` keeps `signingIdentity` set to `null` until that certificate is available.
 
-## iPhone Via Expo Go - Works Now
+## Mobile app — WebView shell
 
-Install **Expo Go** from the App Store. It is free and does not require an Apple Developer account.
+The mobile app is a **thin WebView shell around the admin web UI**, mirroring the
+desktop app. There are no hand-built native screens: `mobile/App.tsx` renders a
+single full-screen `react-native-webview` that loads the admin. The URL split
+lives in `mobile/src/config.ts`:
 
-Terminal:
+- **dev** → `http://<YOUR-MAC-LAN-IP>:5555` (the admin Vite dev server; edits
+  hot-reload on the device, and the admin's `/api` calls are proxied to the API)
+- **prod** → `https://nessie.unlikeotherai.com` (the hosted admin)
+
+Update the dev branch of `ADMIN_URL` to your Mac's LAN IP before building. The
+old native app (login/channels screens) is archived at `archive/mobile-native`.
+
+`react-native-webview` is a native module, so **Expo Go cannot host it** — you
+need a prebuilt build installed on the device. Building for a physical device
+requires Apple Developer signing.
 
 ```sh
+# 1. Run the admin + API dev servers (repo root); the admin must be LAN-reachable.
+pnpm dev                      # API :5554, admin :5555
+
+# 2. Build + install on a connected iPhone/iPad:
 cd mobile
-npx expo start
+npx expo run:ios --device     # prebuild + pods + build + install + launch + Metro
 ```
 
-If the iPhone cannot reach the Metro server over LAN, use a tunnel:
+On Xcode 26 the Expo installer can hang at "Connecting to device". If so, build
+and install manually after `expo prebuild`:
 
 ```sh
-cd mobile
-npx expo start --tunnel
+cd mobile/ios
+xcodebuild -workspace Nessie.xcworkspace -scheme Nessie -configuration Debug \
+  -destination "id=<DEVICE-UDID>" -allowProvisioningUpdates build
+# then locate Nessie.app from the build log and:
+xcrun devicectl device install app --device <DEVICE-UDID> <path/to/Nessie.app>
+xcrun devicectl device process launch --device <DEVICE-UDID> com.unlikeotherai.nessie
 ```
 
-Scan the QR code with the iPhone Camera app or Expo Go.
-
-On the app's login screen:
-
-1. Set **API base URL** to `http://<YOUR-MAC-LAN-IP>:5554`.
-2. Confirm the iPhone and Mac are on the same Wi-Fi network.
-3. Tap **Dev login (localhost)**.
-
-Use the LAN IP because production login is SSO-only and not configured for this local flow. Push notifications do not work in Expo Go.
+The WebView shows the admin's own login (SSO + local-dev email/password); there
+is no separate native login. ATS allows the dev LAN `http://` origin via
+`NSAllowsLocalNetworking` in `mobile/app.json`.
 
 ## iPhone Dev Build And Push - After Apple Enrollment
 
@@ -133,4 +148,7 @@ Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` fo
 
 ## Status And Caveats
 
-The mobile and desktop apps are configured to compile and bundle, but they have not been run on a real device or simulator yet. Expect a rough edge or two on first launch.
+The mobile WebView shell has been built and run on a physical iPad (signed with
+a development team, installed via `devicectl`): it loads the admin over the LAN
+and renders the admin login/workspace. EAS/TestFlight and Android paths are
+configured but not yet exercised on those targets.

@@ -1,0 +1,27 @@
+{
+  "cli": {
+    "version": ">= 13.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "TODO-apple-id",
+        "ascAppId": "TODO-app-store-connect-app-id",
+        "appleTeamId": "TODO-apple-team-id"
+      }
+    }
+  }
+}
