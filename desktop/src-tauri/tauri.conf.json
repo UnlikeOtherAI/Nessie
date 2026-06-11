@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.unlikeotherai.nessie.desktop",
   "build": {
-    "devUrl": "http://localhost:5555",
+    "devUrl": "http://localhost:5455",
     "frontendDist": "https://nessie.unlikeotherai.com"
   },
   "app": {

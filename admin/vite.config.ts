@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 const apiProxy = {
   '/api': {
-    target: `http://127.0.0.1:${process.env.NESSIE_API_PORT ?? '5554'}`,
+    target: `http://127.0.0.1:${process.env.NESSIE_API_PORT ?? '5454'}`,
     changeOrigin: true,
     ws: true,
   },
@@ -17,7 +17,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5555,
+    port: 5455,
     strictPort: true,
     proxy: apiProxy,
     // The repo lives under /System/Volumes/Data/.internal/… (a macOS data-volume
@@ -28,7 +28,7 @@ export default defineConfig({
   },
   preview: {
     host: '0.0.0.0',
-    port: 5555,
+    port: 5455,
     strictPort: true,
     proxy: apiProxy,
   },

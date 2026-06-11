@@ -10,5 +10,5 @@ export const ADMIN_URL =
   adminUrlOverride && adminUrlOverride.length > 0
     ? adminUrlOverride
     : __DEV__
-      ? 'http://192.168.1.229:5555'
+      ? 'http://192.168.1.229:5455'
       : 'https://nessie.unlikeotherai.com'

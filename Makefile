@@ -1,7 +1,7 @@
 # Nessie monorepo task runner.
 # Prereqs: Node.js + pnpm; Rust + Tauri prerequisites for desktop builds;
 # Apple Developer account, eas login, and eas init for iOS builds; same-wifi
-# LAN access for mobile login against a local API URL such as http://<ip>:5554.
+# LAN access for mobile login against a local API URL such as http://<ip>:5454.
 
 .DEFAULT_GOAL := help
 
@@ -15,15 +15,15 @@ install: ## Install workspace dependencies.
 	pnpm install
 
 ##@ Dev
-dev: ## Run API (:5554) and admin (:5555) with hot reload.
+dev: ## Run API (:5454) and admin (:5455) with hot reload.
 	pnpm dev
 
 ##@ Desktop
-# Requires `make dev` running in another terminal; desktop loads admin at :5555.
+# Requires `make dev` running in another terminal; desktop loads admin at :5455.
 desktop: ## Launch the Tauri desktop app for macOS/Windows.
 	pnpm --filter @nessie/desktop exec tauri dev
 
-# Requires `make dev` running in another terminal; desktop loads admin at :5555.
+# Requires `make dev` running in another terminal; desktop loads admin at :5455.
 mac: ## Launch the Tauri desktop app for macOS.
 	pnpm --filter @nessie/desktop exec tauri dev
 
@@ -32,7 +32,7 @@ desktop-build: ## Build the Tauri desktop app.
 	pnpm --filter @nessie/desktop exec tauri build
 
 ##@ Mobile
-# Expo Go. Set the app API base URL to your Mac LAN IP, http://<ip>:5554,
+# Expo Go. Set the app API base URL to your Mac LAN IP, http://<ip>:5454,
 # on the same wifi because production is SSO-only.
 mobile: ## Start the Expo mobile app.
 	cd mobile && npx expo start

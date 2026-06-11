@@ -155,7 +155,7 @@ test('runHttpFetch refuses requests to localhost', async () => {
 
   await assert.rejects(
     runHttpFetch(
-      { url: 'http://localhost:5554/whatever' },
+      { url: 'http://localhost:5454/whatever' },
       {
         fetchImpl,
         resolveHost: makeFakeResolver({ localhost: ['127.0.0.1'] }),

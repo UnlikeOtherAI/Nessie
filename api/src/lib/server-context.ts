@@ -56,9 +56,9 @@ const parseOriginList = (...values: Array<string | undefined>): Set<string> => {
 
 const localCorsOrigins = new Set([
   'http://127.0.0.1:3000',
-  'http://127.0.0.1:5555',
+  'http://127.0.0.1:5455',
   'http://localhost:3000',
-  'http://localhost:5555',
+  'http://localhost:5455',
 ])
 
 // Fixed Tauri WKWebView/WebView2 origins for the Nessie desktop app.

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "predev": "lsof -ti :5554 | xargs kill -9 2>/dev/null || true",
+    "predev": "lsof -ti :5454 | xargs kill -9 2>/dev/null || true",
     "dev": "nodemon --legacy-watch --watch src --watch ../worker/dist --ext ts,js,json,mjs --exec \"tsx --env-file=../.env src/index.ts\"",
     "db:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} prisma validate --schema prisma/schema.prisma",
     "lint": "eslint src --max-warnings 0",

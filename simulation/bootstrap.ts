@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const API = process.env.NESSIE_API ?? 'http://localhost:5554'
+const API = process.env.NESSIE_API ?? 'http://localhost:5454'
 const OWNER_EMAIL = 'owner@example.com'
 const OWNER_PASSWORD = 'Password123!'
 

@@ -59,7 +59,7 @@ type DoctorSummary = {
   pnpmAvailable: boolean
 }
 
-const API_PORT = 5554
+const API_PORT = 5454
 const ADMIN_PORT = 4173
 const LAN_BIND_HOST = '0.0.0.0'
 const DOCKER_POSTGRES_PORT = 55432

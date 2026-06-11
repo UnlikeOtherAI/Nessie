@@ -45,7 +45,7 @@ Root app layout:
 
 ### 2.1 Server bootstrap (`src/index.ts`)
 
-> **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5554) + `worker/` + `admin/` (port 5555), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.
+> **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5454) + `worker/` + `admin/` (port 5455), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.
 
 - Initializes LLM client via `createLlmClient()` (OpenAI default, MiniMax optional via `LLM_PROVIDER=minimax`).
 - Creates orchestrator with callbacks:

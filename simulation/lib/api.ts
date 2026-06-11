@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { getCredentials } from './employee.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const API_URL = process.env.NESSIE_API ?? 'http://localhost:5554'
+const API_URL = process.env.NESSIE_API ?? 'http://localhost:5454'
 
 const TOKEN_TTL_MS = 23 * 60 * 60 * 1000
 const TOKEN_CACHE_PATH = resolve(__dirname, '../state/tokens.json')
