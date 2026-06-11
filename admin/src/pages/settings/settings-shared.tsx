@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
 
 export const sectionTitleClass =
   'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
@@ -29,9 +30,12 @@ export const SettingsPanel = ({ eyebrow, title, actions, children }: SettingsPan
         'border-b border-[color:var(--sep)] px-5',
       ].join(' ')}
     >
-      <div>
-        <div className={sectionTitleClass}>{eyebrow}</div>
-        <h1 className="mt-1 text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
+      <div className="flex min-w-0 items-center gap-1">
+        <MobileMenuButton />
+        <div className="min-w-0">
+          <div className={sectionTitleClass}>{eyebrow}</div>
+          <h1 className="mt-1 truncate text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
+        </div>
       </div>
       {actions}
     </header>

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -71,6 +72,7 @@ export const OpsHealthPage = () => {
   return (
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex h-[50px] items-center gap-3 border-b border-[color:var(--sep)] px-5">
+        <MobileMenuButton />
         <div className={sectionTitle}>System Health</div>
         {worker && (
           <span

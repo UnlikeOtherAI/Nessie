@@ -1,99 +1,47 @@
 import { useEffect, useRef, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Platform, StyleSheet, View } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
+import TabView from 'react-native-bottom-tabs'
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { captureScreen } from 'react-native-view-shot'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 
 import { ADMIN_URL } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
+import { TABS, tabIndexForPath } from './src/lib/tabs'
+import { useShake } from './src/lib/use-shake'
+import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 
 // Deep-link callback the OS browser redirects to after external sign-in. Must
 // match the admin's externalAuthRedirectUri and the API's allow-listed URL.
 const AUTH_CALLBACK_URL = 'nessie://auth/callback'
 
-// Injected into the admin page. The WebView fills the whole screen, so the
-// admin's full-height columns (rail/nav/page) already run edge to edge with no
-// seam. This (1) enables CSS safe-area insets via viewport-fit=cover, (2) pads
-// the column *content* down past the status bar / home indicator while the
-// column backgrounds still reach the screen edges, and (3) reports the document
-// background so the native view behind the WebView matches during load/overscroll.
-const INJECTED = `
-(function () {
-  var vp = document.querySelector('meta[name=viewport]');
-  if (vp && vp.content.indexOf('viewport-fit') === -1) { vp.content += ', viewport-fit=cover'; }
-  else if (!vp) {
-    vp = document.createElement('meta');
-    vp.name = 'viewport';
-    vp.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
-    (document.head || document.documentElement).appendChild(vp);
-  }
+// The native tab bar floats over the bottom of the WebView; reserve room for it
+// so the WebView's own content (e.g. the channel composer) is never hidden.
+const TAB_BAR_BASE_HEIGHT = Platform.OS === 'ios' ? 49 : 64
 
-  var styleId = 'nessie-mobile-safe-area';
-  if (!document.getElementById(styleId)) {
-    var st = document.createElement('style');
-    st.id = styleId;
-    st.textContent =
-      '.admin-shell > aside, .admin-shell > main {' +
-      '  padding-top: env(safe-area-inset-top);' +
-      '  padding-bottom: env(safe-area-inset-bottom);' +
-      '}';
-    (document.head || document.documentElement).appendChild(st);
-  }
+const TAB_TINT = '#7c3aed'
 
-  function bgOf(el) { try { return getComputedStyle(el).backgroundColor } catch (e) { return '' } }
-  function transparent(c) {
-    if (!c || c === 'transparent') return true;
-    var n = c.replace(/[^0-9.,]/g, '').split(',');
-    return n.length >= 4 && parseFloat(n[3]) === 0;
-  }
-  function pick() {
-    var els = [document.body, document.documentElement, document.getElementById('root')];
-    for (var i = 0; i < els.length; i++) {
-      if (els[i]) { var c = bgOf(els[i]); if (!transparent(c)) return c; }
-    }
-    return '';
-  }
-  function post() {
-    var c = pick();
-    if (c) { try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bg', color: c })) } catch (e) {} }
-  }
-  post();
-  new MutationObserver(post).observe(document.documentElement, {
-    attributes: true, attributeFilter: ['data-theme', 'class', 'style'],
-  });
-  if (document.body) {
-    new MutationObserver(post).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
-  }
-  window.addEventListener('load', post);
-  true;
-})();
-`
-
-const DEFAULT_BG = '#1a1d21'
-
-const parseRgb = (c: string): [number, number, number, number] | null => {
-  const m = c.match(/rgba?\(([^)]+)\)/)
-  if (!m) return null
-  const p = m[1].split(',').map((s) => parseFloat(s.trim()))
-  if (p.length < 3 || p.some((n) => Number.isNaN(n))) return null
-  return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]
-}
-
-const isDark = (c: string): boolean => {
-  const rgb = parseRgb(c)
-  if (!rgb) return true
-  const [r, g, b] = rgb
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5
-}
-
-export default function App(): React.JSX.Element {
+const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
+  const insets = useSafeAreaInsets()
   const [bg, setBg] = useState(DEFAULT_BG)
+  const [index, setIndex] = useState(0)
+  const capturing = useRef(false)
 
   useEffect(() => {
     // Dev-only: expose the AppReveal debug server for on-device inspection.
     startDevInspector()
   }, [])
+
+  const runScript = (script: string): void => {
+    webRef.current?.injectJavaScript(`${script} true;`)
+  }
+
+  const navigateTo = (path: string): void => {
+    runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
+  }
 
   // Google blocks OAuth inside embedded webviews, so the admin hands SSO off to
   // us: open the authorize URL in the OS browser (ASWebAuthenticationSession),
@@ -102,14 +50,35 @@ export default function App(): React.JSX.Element {
     const result = await WebBrowser.openAuthSessionAsync(authorizeUrl, AUTH_CALLBACK_URL)
     if (result.type === 'success' && result.url) {
       const payload = JSON.stringify(result.url)
-      webRef.current?.injectJavaScript(
-        `window.__nessieExternalAuthCallback && window.__nessieExternalAuthCallback(${payload}); true;`,
-      )
+      runScript(`window.__nessieExternalAuthCallback && window.__nessieExternalAuthCallback(${payload});`)
     }
   }
 
+  // Shake to file feedback: capture the current screen and hand it to the admin
+  // feedback composer, which previews and attaches it.
+  const onShake = async (): Promise<void> => {
+    if (capturing.current) return
+    capturing.current = true
+    try {
+      const uri = await captureScreen({ format: 'png', quality: 0.9, result: 'data-uri' })
+      const payload = JSON.stringify(uri)
+      runScript(
+        `window.__nessieNavigate && window.__nessieNavigate('/feedback');` +
+          `window.__nessieShakeScreenshot && window.__nessieShakeScreenshot(${payload});`,
+      )
+    } catch {
+      // Capture can fail transiently (e.g. mid-transition); ignore and let the
+      // next shake try again.
+    } finally {
+      capturing.current = false
+    }
+  }
+  useShake(() => {
+    void onShake()
+  })
+
   const onMessage = (event: WebViewMessageEvent): void => {
-    let msg: { type?: string; color?: string; url?: string }
+    let msg: { type?: string; color?: string; url?: string; path?: string }
     try {
       msg = JSON.parse(event.nativeEvent.data)
     } catch {
@@ -122,29 +91,73 @@ export default function App(): React.JSX.Element {
     }
     if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
       void runExternalAuth(msg.url)
+      return
     }
+    if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
+      const next = tabIndexForPath(msg.path)
+      setIndex((current) => (current === next ? current : next))
+    }
+  }
+
+  const onIndexChange = (next: number): void => {
+    setIndex(next)
+    navigateTo(TABS[next].path)
+  }
+
+  const tabBarHeight = TAB_BAR_BASE_HEIGHT + insets.bottom
+
+  const navigationState = {
+    index,
+    routes: TABS.map((tab) => ({
+      key: tab.key,
+      title: tab.title,
+      focusedIcon: { sfSymbol: tab.sfSymbol },
+    })),
   }
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={isDark(bg) ? 'light' : 'dark'} />
-      <WebView
-        ref={webRef}
-        source={{ uri: ADMIN_URL }}
-        style={[styles.fill, { backgroundColor: bg }]}
-        originWhitelist={['*']}
-        allowsBackForwardNavigationGestures
-        sharedCookiesEnabled
-        domStorageEnabled
-        pullToRefreshEnabled
-        mediaPlaybackRequiresUserAction={false}
-        injectedJavaScript={INJECTED}
-        onMessage={onMessage}
-      />
+
+      <View style={StyleSheet.absoluteFill}>
+        <TabView
+          navigationState={navigationState}
+          onIndexChange={onIndexChange}
+          renderScene={() => <View style={styles.scene} />}
+          tabBarActiveTintColor={TAB_TINT}
+          translucent
+        />
+      </View>
+
+      <View style={[styles.webviewLayer, { bottom: tabBarHeight }]}>
+        <WebView
+          allowsBackForwardNavigationGestures
+          domStorageEnabled
+          injectedJavaScript={INJECTED}
+          mediaPlaybackRequiresUserAction={false}
+          onMessage={onMessage}
+          originWhitelist={['*']}
+          pullToRefreshEnabled
+          ref={webRef}
+          sharedCookiesEnabled
+          source={{ uri: ADMIN_URL }}
+          style={[styles.fill, { backgroundColor: bg }]}
+        />
+      </View>
     </View>
+  )
+}
+
+export default function App(): React.JSX.Element {
+  return (
+    <SafeAreaProvider>
+      <Shell />
+    </SafeAreaProvider>
   )
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  scene: { flex: 1 },
+  webviewLayer: { position: 'absolute', top: 0, right: 0, left: 0 },
 })

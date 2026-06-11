@@ -9,6 +9,7 @@ import {
 import { useProjects } from '../facades/projects/hooks'
 import { useTaskAssignees, useTasks, useTransitionTask } from '../facades/tasks/hooks'
 import type { ColumnCategory } from '../facades/board/hooks'
+import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 
 const sectionTitle =
   'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
@@ -33,6 +34,7 @@ export const AggregateBoardPage = () => {
   return (
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex h-[50px] items-center gap-3 border-b border-[color:var(--sep)] px-5">
+        <MobileMenuButton />
         <div className={sectionTitle}>All projects</div>
         <span className="text-xs text-[color:var(--tx3)]">Kanban</span>
       </header>

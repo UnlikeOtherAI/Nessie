@@ -43,10 +43,12 @@ This produces an unsigned `.app` and `.dmg`. On first open, right-click the app 
 
 ## Mobile app — WebView shell
 
-The mobile app is a **thin WebView shell around the admin web UI**, mirroring the
-desktop app. There are no hand-built native screens: `mobile/App.tsx` renders a
-single full-screen `react-native-webview` that loads the admin. The URL split
-lives in `mobile/src/config.ts`:
+The mobile app is a **WebView shell around the admin web UI** wrapped in native
+chrome, mirroring the desktop app. `mobile/App.tsx` renders **one persistent**
+`react-native-webview` that loads the admin, sitting under a **native bottom tab
+bar** (`react-native-bottom-tabs`; iOS 26 Liquid-Glass on iPhone/iPad, Material
+on Android) with five tabs — Channels · Projects · Agents · Knowledge · Admin.
+The URL split lives in `mobile/src/config.ts`:
 
 - **dev** → `http://<YOUR-MAC-LAN-IP>:5555` (the admin Vite dev server; edits
   hot-reload on the device, and the admin's `/api` calls are proxied to the API)
@@ -55,9 +57,28 @@ lives in `mobile/src/config.ts`:
 Update the dev branch of `ADMIN_URL` to your Mac's LAN IP before building. The
 old native app (login/channels screens) is archived at `archive/mobile-native`.
 
-`react-native-webview` is a native module, so **Expo Go cannot host it** — you
-need a prebuilt build installed on the device. Building for a physical device
-requires Apple Developer signing.
+**Navigation bridge.** The tab bar does not host separate WebViews — it drives
+the single WebView via the postMessage bridge. Tapping a tab calls
+`window.__nessieNavigate(path)` in the SPA; the SPA reports route changes back as
+`{ type: 'nessie:route', path }` so the selected tab resyncs. On the web side
+this lives in `admin/src/providers/NativeShellBridge.tsx`, gated on
+`isReactNativeWebView()` (`admin/src/lib/mobile-shell.ts`). In the native shell
+the admin hides its own left rail and bottom tab bar; the per-section secondary
+sidebar (channel list, admin sub-pages, …) opens from a **top-left hamburger** as
+a slide-in drawer. Mobile *web* (a phone browser, no native shell) gets an
+equivalent web-rendered bottom tab bar instead.
+
+**Shake to feedback.** Shaking the device (iOS/iPad/Android, via `expo-sensors`)
+captures a screenshot (`react-native-view-shot`), navigates the WebView to
+`/feedback`, and hands the screenshot to the admin feedback composer
+(`window.__nessieShakeScreenshot`), which previews and attaches it. Feedback is
+therefore not a tab in the native app.
+
+`react-native-webview`, `react-native-bottom-tabs`, `expo-sensors`, and
+`react-native-view-shot` are native modules, so **Expo Go cannot host the app** —
+you need a prebuilt build (`npx expo prebuild` regenerates `mobile/ios` /
+`mobile/android` with autolinking). Building for a physical device requires Apple
+Developer signing.
 
 ```sh
 # 1. Run the admin + API dev servers (repo root); the admin must be LAN-reachable.

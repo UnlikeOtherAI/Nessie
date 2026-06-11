@@ -1,6 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useProjects } from '../../facades/projects/hooks'
+import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectInsightsTab } from './ProjectInsightsTab'
@@ -41,6 +42,7 @@ export const ProjectView = () => {
   return (
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
+        <MobileMenuButton />
         <div className={sectionTitle}>{project?.name ?? 'Project'}</div>
         <nav className="flex gap-1">
           {tabs.map((item) => (

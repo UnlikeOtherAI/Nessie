@@ -1,21 +1,44 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCreateFeedback } from '../../facades/feedback/hooks'
 import { uploadAttachment } from '../../lib/uploads'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useShakeFeedback } from '../../providers/ShakeFeedbackContext'
 import { sectionTitleClass } from '../settings/settings-shared'
 
 export const FeedbackComposer = () => {
   const { token } = useAuthSession()
   const createFeedback = useCreateFeedback()
+  const { screenshot, setScreenshot } = useShakeFeedback()
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const busy = submitting || createFeedback.isPending
   const canSubmit = title.trim().length > 0 && body.trim().length > 0 && !busy
+
+  // A device shake delivers a screenshot via the native shell bridge; pick it up
+  // as the attachment and clear it from the shared context.
+  useEffect(() => {
+    if (screenshot) {
+      setFile(screenshot)
+      setScreenshot(null)
+    }
+  }, [screenshot, setScreenshot])
+
+  // Build an object URL so image attachments (screenshots, etc.) preview inline.
+  useEffect(() => {
+    if (!file || !file.type.startsWith('image/')) {
+      setPreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const next = event.target.files?.[0] ?? null
@@ -75,7 +98,7 @@ export const FeedbackComposer = () => {
         />
       </label>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
           className="admin-button admin-button-secondary"
           disabled={busy}
@@ -85,16 +108,25 @@ export const FeedbackComposer = () => {
           {file ? 'Change attachment' : 'Attach file'}
         </button>
         {file && (
-          <span className="text-xs text-[color:var(--tx2)]">
-            📎 {file.name}
-            <button
-              className="ml-2 text-[color:var(--lnk)] hover:underline"
-              onClick={() => setFile(null)}
-              type="button"
-            >
-              remove
-            </button>
-          </span>
+          <div className="flex items-center gap-2">
+            {previewUrl && (
+              <img
+                alt="Attachment preview"
+                className="h-14 w-14 rounded-md border border-[color:var(--sep)] object-cover"
+                src={previewUrl}
+              />
+            )}
+            <span className="text-xs text-[color:var(--tx2)]">
+              {previewUrl ? file.name : `📎 ${file.name}`}
+              <button
+                className="ml-2 text-[color:var(--lnk)] hover:underline"
+                onClick={() => setFile(null)}
+                type="button"
+              >
+                remove
+              </button>
+            </span>
+          </div>
         )}
         <input className="hidden" onChange={handleFileChange} ref={inputRef} type="file" />
       </div>

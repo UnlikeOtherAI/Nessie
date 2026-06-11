@@ -12,6 +12,7 @@ import type { ChannelRecord } from '../../lib/api-client';
 import { getDmStyle } from '../../lib/avatar';
 import { parseChannelIdFromPath } from '../../lib/channel-route';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
+import { matchesAdminRoute } from './nav-items';
 import { useSidebarTree } from './useSidebarTree';
 import { useStarredItems } from './useStarredItems';
 import {
@@ -24,18 +25,6 @@ import {
   type StarredItem,
   type VisibleStarredEntry,
 } from './types';
-
-// Route prefixes that make up the admin area. When the active route matches
-// any of these, the shell swaps the channels/DMs second column for the admin
-// sub-pages menu (AdminSidebarNav).
-const ADMIN_ROUTE_PREFIXES = [
-  '/settings',
-  '/approvals',
-  '/audit',
-  '/tokens',
-  '/policy',
-  '/ops',
-];
 
 /**
  * Owns the admin shell's layout-local state, derived sidebar data, realtime
@@ -56,9 +45,7 @@ export const useAdminShell = () => {
   const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base');
   const isProjectsRoute = location.pathname.startsWith('/projects');
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
-  const isAdminRoute = ADMIN_ROUTE_PREFIXES.some(
-    (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`),
-  );
+  const isAdminRoute = matchesAdminRoute(location.pathname);
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const personalAssistantChannel = useMemo(
     () => channels.find(isPersonalAssistantChannel) ?? null,
@@ -81,6 +68,7 @@ export const useAdminShell = () => {
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [renameProjectTarget, setRenameProjectTarget] = useState<RenameProjectTarget | null>(null);
   const [sidebarMenu, setSidebarMenu] = useState<SidebarMenu>(null);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const initialStarred = useMemo<StarredItem[]>(
     () => me?.user.preferences?.starred ?? [],
     [me?.user.preferences?.starred],
@@ -146,6 +134,8 @@ export const useAdminShell = () => {
     setRenameProjectTarget(target);
   }, []);
   const closeRenameProject = useCallback(() => setRenameProjectTarget(null), []);
+  const openMobileDrawer = useCallback(() => setMobileDrawerOpen(true), []);
+  const closeMobileDrawer = useCallback(() => setMobileDrawerOpen(false), []);
 
   const navigateToProject = useCallback((projectId: string) => {
     const firstChannel = standardChannels.find((channel) => channel.projectId === projectId);
@@ -317,6 +307,12 @@ export const useAdminShell = () => {
     setSelectedAgentId(null);
   }, [currentChannelId]);
 
+  // Close the mobile nav drawer whenever the route changes (navigating from
+  // inside the drawer should dismiss it).
+  useEffect(() => {
+    setMobileDrawerOpen(false);
+  }, [location.pathname]);
+
   useEffect(() => {
     if (scopedAgents.length === 0 || !currentChannelId) {
       setSelectedAgentId(null);
@@ -351,6 +347,9 @@ export const useAdminShell = () => {
     isSuperAdmin,
     logoutAndRedirect,
     me,
+    mobileDrawerOpen,
+    openMobileDrawer,
+    closeMobileDrawer,
     navigateHome,
     navigateToChannel,
     navigateToDm,

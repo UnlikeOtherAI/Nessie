@@ -1,12 +1,10 @@
 import { isDesktopApp } from './desktop'
+import { isReactNativeWebView } from './mobile-shell'
 
 // Disable user zoom inside the embedded webviews (Tauri desktop + React Native
 // WebView on iPad/iPhone). Accidental pinch / Cmd+/- zoom in an app shell looks
 // broken and has no browser chrome to reset it. Regular browsers are left alone
 // so their native zoom/accessibility still works.
-const isReactNativeWebView = (): boolean =>
-  typeof window !== 'undefined' && 'ReactNativeWebView' in window
-
 export const disableWebviewZoom = (): void => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return
   if (!isDesktopApp() && !isReactNativeWebView()) return

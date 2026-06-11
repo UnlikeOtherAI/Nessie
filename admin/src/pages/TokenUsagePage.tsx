@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { BudgetManager } from '../components/features/budgets/BudgetManager'
+import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -90,6 +91,7 @@ export const TokenUsagePage = () => {
   return (
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
+        <MobileMenuButton />
         <div className={sectionTitle}>Token Usage</div>
         <select
           className="admin-input ml-auto w-36"

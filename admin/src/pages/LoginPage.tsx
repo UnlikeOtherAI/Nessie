@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuthProviders } from '../facades/auth/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { isDesktopApp } from '../lib/desktop'
+import { isReactNativeWebView } from '../lib/mobile-shell'
 import { beginExternalAuth, clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { useTheme, type Theme } from '../providers/ThemeProvider'
@@ -45,14 +46,12 @@ type RnWebViewWindow = Window & {
 const reactNativeWebView = (): RnWebViewWindow['ReactNativeWebView'] =>
   (window as RnWebViewWindow).ReactNativeWebView
 
-const isMobileWebView = (): boolean => reactNativeWebView() !== undefined
-
 // Embedded webviews (Tauri desktop + React Native mobile) cannot run Google
 // OAuth inline — Google blocks embedded user-agents (error 403
 // disallowed_useragent). They round-trip through the OS browser and return via
 // the nessie:// deep link instead.
 const externalAuthRedirectUri = (): string =>
-  isDesktopApp() || isMobileWebView() ? DESKTOP_REDIRECT_URI : webRedirectUri()
+  isDesktopApp() || isReactNativeWebView() ? DESKTOP_REDIRECT_URI : webRedirectUri()
 
 const parseDesktopAuthCallback = (value: string): Omit<ExternalSignInCallback, 'redirectUri'> | null => {
   let url: URL
@@ -182,7 +181,7 @@ export const LoginPage = () => {
   // Mobile shell delivers the OS-browser OAuth callback URL here — the analogue
   // of the desktop deep-link listener below.
   useEffect(() => {
-    if (sessionState !== 'unauthenticated' || !isMobileWebView()) {
+    if (sessionState !== 'unauthenticated' || !isReactNativeWebView()) {
       return undefined
     }
 

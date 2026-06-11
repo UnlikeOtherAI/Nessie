@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
+import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -87,6 +88,7 @@ export const PolicyPage = () => {
   return (
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
+        <MobileMenuButton />
         <div className={sectionTitle}>Policy Rules</div>
       </header>
 

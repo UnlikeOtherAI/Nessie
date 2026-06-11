@@ -51,8 +51,8 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
   return (
     <aside
       className={[
-        'hidden h-full w-[220px] flex-col overflow-hidden',
-        'border-r border-[color:var(--sep)] bg-[color:var(--sb)] md:flex',
+        'flex h-full w-[220px] flex-col overflow-hidden',
+        'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
       ].join(' ')}
     >
       <div className="flex h-[50px] items-center px-4">

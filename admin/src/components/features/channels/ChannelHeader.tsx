@@ -1,5 +1,6 @@
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../lib/api-client'
 import { agentGradient, getInitials, pickGradient } from '../../../lib/avatar'
+import { MobileMenuButton } from '../../../layouts/admin-shell/MobileMenuButton'
 import { getAgentGlyph, toolbarButtonClass } from './channel-helpers'
 
 interface ChannelHeaderProps {
@@ -36,6 +37,7 @@ export const ChannelHeader = ({
   onToggleSearch,
 }: ChannelHeaderProps) => (
   <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
+    <MobileMenuButton />
     <div className="flex min-w-0 flex-1 items-center gap-2">
       {isPersonalAssistantConversation ? (
         <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[9px] font-bold text-[var(--thinking)]">

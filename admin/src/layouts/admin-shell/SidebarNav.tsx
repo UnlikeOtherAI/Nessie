@@ -107,8 +107,8 @@ export const SidebarNav = (props: SidebarNavProps) => {
   return (
     <aside
       className={[
-        'hidden h-full w-[260px] flex-col overflow-hidden',
-        'border-r border-[color:var(--sep)] bg-[color:var(--sb)] md:flex',
+        'flex h-full w-[260px] flex-col overflow-hidden',
+        'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
       ].join(' ')}
     >
       <div className="flex h-[50px] items-center justify-between px-4">

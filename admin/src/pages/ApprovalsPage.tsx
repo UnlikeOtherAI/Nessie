@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -51,6 +52,7 @@ export const ApprovalsPage = () => {
   return (
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
+        <MobileMenuButton />
         <div className={sectionTitle}>Approvals</div>
         {pending.length > 0 && (
           <span className="ml-2 rounded-full bg-[color:var(--warning-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--warning-text)]">

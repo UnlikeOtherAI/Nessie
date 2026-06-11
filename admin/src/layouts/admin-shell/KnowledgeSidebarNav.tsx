@@ -10,8 +10,8 @@ export const KnowledgeSidebarNav = () => {
   return (
     <aside
       className={[
-        'hidden h-full w-[260px] flex-col overflow-hidden',
-        'border-r border-[color:var(--sep)] bg-[color:var(--sb)] md:flex',
+        'flex h-full w-[260px] flex-col overflow-hidden',
+        'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
       ].join(' ')}
     >
       <div className="flex h-[50px] flex-shrink-0 items-center px-4">
