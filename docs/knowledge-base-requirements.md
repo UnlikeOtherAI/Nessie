@@ -282,6 +282,28 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 - No deterministic index/ephemeral cache exists yet.
 - Current implementation has no `knowledge-base` runtime family or shared retrieval pipeline; this is target-state only.
 
+## 9.1) Admin presentation (column UX)
+
+The admin renders Knowledge in its own section, not inside the channels column.
+On `/knowledge-base` the shell swaps the channels/DMs second column for a
+dedicated `KnowledgeSidebarNav` (mirrors how `/agents` and the admin routes swap
+that column):
+
+- The second column holds a **Spaces dropdown switcher** (open space + a list to
+  switch / create a space) and a **Pages** list showing only the open space's
+  **top-level** pages.
+- Selecting a top-level page opens it in the main area, which is a Miller-style
+  **drill-down**: each page column shows the page body plus its direct
+  sub-pages; clicking a sub-page opens the next column to the right, one column
+  per hierarchy level. Edit and version History append as further columns.
+
+Shared state for both the sidebar and the drill-down lives in
+`KnowledgeProvider` (`admin/src/components/features/knowledge/`), which wraps the
+sidebar and the route outlet on the Knowledge route. The page hierarchy is
+derived client-side from the flat `GET /spaces/:id/pages` list via `parentPageId`
+(the list already includes each page's latest version body), so drill-down needs
+no extra requests.
+
 ## 10) Phase annotation
 
 This spec targets **Phase 3**.

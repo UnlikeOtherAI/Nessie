@@ -1,9 +1,11 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
+import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import { isDesktopApp } from '../lib/desktop';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { AgentsSidebarNav } from './admin-shell/AgentsSidebarNav';
+import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
@@ -36,6 +38,18 @@ export const AdminShellLayout = () => {
     return <Navigate to="/login" replace />;
   }
 
+  const mainContent = (
+    <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
+      <Outlet
+        context={{
+          onCreateChannel: shell.openCreateChannel,
+          onSelectAgent: shell.selectAgent,
+          scopedAgents: shell.scopedAgents,
+        }}
+      />
+    </main>
+  );
+
   return (
     <NotificationsProvider>
       <div className={`admin-shell${isDesktopApp() ? ' pt-[28px]' : ''}`}>
@@ -47,17 +61,24 @@ export const AdminShellLayout = () => {
           pathname={shell.pathname}
         />
 
-        {shell.isAgentsRoute && <AgentsSidebarNav pathname={shell.pathname} />}
+        {shell.isKnowledgeRoute ? (
+          <KnowledgeProvider>
+            <KnowledgeSidebarNav />
+            {mainContent}
+          </KnowledgeProvider>
+        ) : (
+          <>
+            {shell.isAgentsRoute && <AgentsSidebarNav pathname={shell.pathname} />}
 
-        {shell.isAdminRoute && (
-          <AdminSidebarNav
-            isOwner={shell.isOwner}
-            isSuperAdmin={shell.isSuperAdmin}
-            pathname={shell.pathname}
-          />
-        )}
+            {shell.isAdminRoute && (
+              <AdminSidebarNav
+                isOwner={shell.isOwner}
+                isSuperAdmin={shell.isSuperAdmin}
+                pathname={shell.pathname}
+              />
+            )}
 
-        {!shell.isAgentsRoute && !shell.isAdminRoute && (
+            {!shell.isAgentsRoute && !shell.isAdminRoute && (
           <SidebarNav
             activeDmChannelId={shell.activeDmChannelId}
             channelsCollapsed={shell.channelsCollapsed}
@@ -101,17 +122,11 @@ export const AdminShellLayout = () => {
             visibleSidebarProjects={shell.visibleSidebarProjects}
             visibleStarredEntries={shell.visibleStarredEntries}
           />
-        )}
+            )}
 
-        <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
-          <Outlet
-            context={{
-              onCreateChannel: shell.openCreateChannel,
-              onSelectAgent: shell.selectAgent,
-              scopedAgents: shell.scopedAgents,
-            }}
-          />
-        </main>
+            {mainContent}
+          </>
+        )}
       </div>
 
       <SidebarDialogs
