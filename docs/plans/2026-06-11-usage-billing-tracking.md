@@ -63,14 +63,21 @@ call sites simply pass no `usage` and behave as today (safe incremental rollout)
 - **Phase 1 — DONE.** Orchestrator engagement decision, memory
   capture/search/consolidation, thoughts, and the agent designer all bill to the
   token ledger. Every AI/LLM call path is now ledgered.
-- **Phase 2 — PARTIAL.** Builtin external connectors (`web_search`, `web_fetch`,
+- **Phase 2 — DONE.** Builtin external connectors (`web_search`, `web_fetch`,
   `http_fetch`) write `connector_usage_events` via the single `recordToolEnd`
-  choke point. **Remaining:** MCP runtime tool calls (the delegate/`mcp-toolset`
-  path drops attribution before dispatch — see `mcp-toolset.ts:146`), push, and
-  storage. Verified by build/lint/unit tests; **live end-to-end ledger write not
-  yet confirmed** (start API+worker, exercise a path, check the tables).
-- **Phase 3 — TODO.** Reporting group-by `runId` + connector-usage summary
-  endpoint + admin surface; optional agent/channel budgets; functionality docs.
+  choke point, and MCP runtime tool calls write them from `buildMcpToolset`'s
+  dispatch (connectorId = MCP instance id, attribution from the run's
+  actorContext). **Remaining:** push and storage connectors. A live DB write of
+  both ledgers was confirmed via a smoke test.
+- **Phase 3 — PARTIAL.** Reporting: token summary now supports `runId`/`channel`
+  grouping; `GET /api/ledger/connectors/summary` (owner-only) added. Admin Token
+  Usage page (`/tokens`) shows a Connector Usage section + By Run / By Channel
+  grouping. **Verification note:** the admin change is build- and lint-verified
+  and the new endpoint is live (returns 401, not 404), but an authenticated
+  visual screenshot is still pending — kelpie renders the local dev SPA blank in
+  this environment (see kelpie issue #79) and the Playwright MCP browser was
+  locked by a concurrent session. **Remaining:** optional agent/channel budget
+  scopes; `docs/functionality.md` update.
 
 ## Phases
 
