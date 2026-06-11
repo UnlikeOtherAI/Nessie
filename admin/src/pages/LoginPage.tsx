@@ -286,7 +286,16 @@ export const LoginPage = () => {
   }
 
   return (
-    <main className="min-h-screen px-6 py-10">
+    <main
+      className="relative flex min-h-screen flex-col px-6"
+      style={{
+        // Clear the device status bar / home indicator in the mobile WebView
+        // (viewport-fit=cover is injected by the native shell). env() is 0 on
+        // web/desktop, so this is a no-op there.
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2.5rem)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)',
+      }}
+    >
       <div className="mx-auto grid max-w-6xl items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="glass-panel flex flex-col gap-8 self-stretch rounded-[2rem] p-8 md:p-10">
           <img
@@ -390,23 +399,24 @@ export const LoginPage = () => {
           ) : null}
         </section>
 
-        <div className="flex items-center justify-center gap-3 lg:col-span-2">
-          <span className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-            Theme
-          </span>
-          <select
-            aria-label="Theme"
-            className="rounded-xl border border-[var(--line)] bg-[color:var(--surface-inverse)] px-3 py-2 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
-            onChange={(event) => setTheme(event.target.value as Theme)}
-            value={theme}
-          >
-            {themes.map((themeOption) => (
-              <option key={themeOption.id} value={themeOption.id}>
-                {themeOption.label}
-              </option>
-            ))}
-          </select>
-        </div>
+      </div>
+
+      <div className="mt-auto flex items-center gap-3 self-end pt-8">
+        <span className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+          Theme
+        </span>
+        <select
+          aria-label="Theme"
+          className="rounded-xl border border-[var(--line)] bg-[color:var(--surface-inverse)] px-3 py-2 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
+          onChange={(event) => setTheme(event.target.value as Theme)}
+          value={theme}
+        >
+          {themes.map((themeOption) => (
+            <option key={themeOption.id} value={themeOption.id}>
+              {themeOption.label}
+            </option>
+          ))}
+        </select>
       </div>
     </main>
   )
