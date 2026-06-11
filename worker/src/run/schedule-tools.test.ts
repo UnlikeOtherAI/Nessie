@@ -81,9 +81,13 @@ const makeFakePrisma = (overrides: {
   }
 }
 
-const makeContext = (prisma: FakePrisma): BuiltinToolRuntimeContext =>
+const makeContext = (
+  prisma: FakePrisma,
+  overrides: { agentKind?: 'personal_assistant' | 'shared' } = {},
+): BuiltinToolRuntimeContext =>
   ({
     agentId: 'agent-1',
+    agentKind: overrides.agentKind ?? 'shared',
     actorContext: {
       actor: { actorId: 'user-1', actorType: 'user', roles: [] },
       actionContext: {},
@@ -224,6 +228,33 @@ test('schedule_task into another channel requires the agent to be a member', asy
       }),
     /not a member/,
   )
+})
+
+test('schedule_task: personal assistant reaches any channel without a binding', async () => {
+  const prisma = makeFakePrisma({
+    channel: { id: 'channel-2', label: 'general' },
+    thread: { id: 'thread-2' },
+    binding: null, // unbound — must not matter for the personal assistant
+  })
+  const result = await runScheduleTaskTool(
+    makeContext(prisma, { agentKind: 'personal_assistant' }),
+    {
+      instructions: 'post the weekly update',
+      schedule: { kind: 'interval', every_minutes: 60 },
+      target: 'general',
+    },
+  )
+
+  assert.equal(result.toolName, 'schedule_task')
+  const create = (prisma.calls['agentTrigger.create'] as Array<{ data: Record<string, unknown> }>)[0]!
+  assert.equal(create.data.targetChannelId, 'channel-2')
+  // No binding lookup: the personal assistant is its owner's delegate.
+  assert.equal(prisma.calls['agentBinding.findFirst'], undefined)
+  // Channel resolution is org-wide (no public/membership access clause).
+  const lookup = (
+    prisma.calls['channel.findFirst'] as Array<{ where: { AND: Array<Record<string, unknown>> } }>
+  )[0]!
+  assert.deepEqual(lookup.where.AND[0], { organizationId: 'org-1' })
 })
 
 test('schedule_task into another channel succeeds when bound', async () => {

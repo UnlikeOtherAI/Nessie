@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { computeInitialScheduleRunAt } from '@nessie/runtime'
 import type { AgentTriggerType } from '@nessie/schemas'
+import { isDelegatingPersonalAssistant } from './pa-tools.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
 
 const UUID_PATTERN =
@@ -95,13 +96,16 @@ const parseSchedule = (raw: unknown): ParsedSchedule => {
 const visibleChannelWhere = (
   organizationId: string,
   userId: string | null,
+  orgWide: boolean,
 ): Prisma.ChannelWhereInput =>
-  userId
-    ? {
-        organizationId,
-        OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
-      }
-    : { organizationId, visibility: 'public' }
+  orgWide
+    ? { organizationId }
+    : userId
+      ? {
+          organizationId,
+          OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
+        }
+      : { organizationId, visibility: 'public' }
 
 type ResolvedTarget = {
   channelId: string
@@ -131,7 +135,11 @@ const resolveTarget = async (
   const channel = await context.prisma.channel.findFirst({
     where: {
       AND: [
-        visibleChannelWhere(context.channel.organizationId, userId),
+        visibleChannelWhere(
+          context.channel.organizationId,
+          userId,
+          isDelegatingPersonalAssistant(context),
+        ),
         UUID_PATTERN.test(target)
           ? { id: target }
           : { label: { equals: target, mode: 'insensitive' } },
@@ -180,7 +188,12 @@ export const runScheduleTaskTool = async (
 
   // Posting into a channel other than the current one requires the agent to be a
   // member there, mirroring the binding check the scheduler enforces at fire time.
-  if (target.channelId !== context.channel.id) {
+  // The personal assistant is exempt: it is its owner's delegate and reaches
+  // every channel in the organization, so binding does not apply to it.
+  if (
+    target.channelId !== context.channel.id
+    && !isDelegatingPersonalAssistant(context)
+  ) {
     const binding = await context.prisma.agentBinding.findFirst({
       where: { agentId: context.agentId, channelId: target.channelId },
       select: { id: true },
