@@ -11,6 +11,7 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   createPricingProfile,
   deletePricingProfile,
+  getConnectorUsageSummary,
   getMonthlyEstimate,
   getTokenUsageSummary,
   listPricingProfiles,
@@ -30,10 +31,30 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       projectId: query['projectId'],
       teamId: query['teamId'],
       channelId: query['channelId'],
+      runId: query['runId'],
       agentId: query['agentId'],
       actorId: query['actorId'],
       provider: query['provider'],
       model: query['model'],
+      from: query['from'],
+      to: query['to'],
+      groupBy: query['groupBy'],
+    })
+
+    return createApiResponse(summary)
+  })
+
+  app.get('/api/ledger/connectors/summary', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const summary = await getConnectorUsageSummary(prisma, actorContext.tenant.organizationId, {
+      connectorType: query['connectorType'],
+      agentId: query['agentId'],
+      channelId: query['channelId'],
+      connectorId: query['connectorId'],
       from: query['from'],
       to: query['to'],
       groupBy: query['groupBy'],
