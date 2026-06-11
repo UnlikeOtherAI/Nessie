@@ -1112,7 +1112,10 @@ const loadConversation = async (
   threadId: string,
 ): Promise<StoredConversationMessage[]> => {
   const messages = await prisma.message.findMany({
-    where: { threadId },
+    // Exclude internal `system`-role messages (e.g. a PA scheduled kickoff
+    // prompt) so they never leak into the model's conversation window. The
+    // current run still receives its prompt directly via payload.messageId.
+    where: { threadId, role: { not: 'system' } },
     orderBy: { createdAt: 'desc' },
     select: {
       content: true,

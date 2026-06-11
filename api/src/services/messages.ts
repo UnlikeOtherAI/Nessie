@@ -172,12 +172,10 @@ export const listThreadMessages = async (
 ): Promise<ListThreadMessagesPage> => {
   const limit = Math.min(options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE, MAX_MESSAGE_PAGE_SIZE)
 
-  const where: Prisma.MessageWhereInput = { threadId }
-  const andClauses: Prisma.MessageWhereInput[] = [
-    // Internal/hidden messages (e.g. the personal assistant's scheduled kickoff
-    // prompt) drive a run but are never rendered in the thread feed.
-    { NOT: { metadata: { path: ['hidden'], equals: true } } },
-  ]
+  // Internal `system`-role messages (e.g. the personal assistant's scheduled
+  // kickoff prompt) drive a run but are never rendered in the thread feed.
+  const where: Prisma.MessageWhereInput = { threadId, role: { not: 'system' } }
+  const andClauses: Prisma.MessageWhereInput[] = []
 
   if (options.before) {
     const parsed = parseMessageCursor(options.before)

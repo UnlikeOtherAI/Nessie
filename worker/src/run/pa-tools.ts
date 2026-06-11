@@ -100,9 +100,7 @@ const resolveAccessibleChannelIds = async (
 
   const effectiveUserId = resolveEffectiveUserId(context)
 
-  const isPersonalAssistant =
-    context.agentKind === 'personal_assistant'
-    || context.channel.systemChannelType === 'personal_assistant'
+  const isPersonalAssistant = context.agentKind === 'personal_assistant'
 
   // The personal assistant acts as its owner; without one there is nothing to
   // act as, so it sees nothing.
