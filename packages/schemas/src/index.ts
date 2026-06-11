@@ -725,6 +725,23 @@ export const MeResponseSchema = z.object({
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 
+// Organisation summary surfaced to the admin (current-org settings, sidebar
+// badge). `role` is the requesting actor's membership role; `logoAttachmentId`
+// points at an Attachment served via GET /api/attachments/:id.
+export const OrganizationSummarySchema = z.object({
+  id: OrganizationIdSchema,
+  name: z.string(),
+  role: z.string(),
+  logoAttachmentId: z.string().uuid().nullable(),
+})
+export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
+
+// Owners/admins set or clear the org's round logo. `null` clears it.
+export const UpdateOrganizationLogoRequestSchema = z.object({
+  logoAttachmentId: z.string().uuid().nullable(),
+})
+export type UpdateOrganizationLogoRequest = z.infer<typeof UpdateOrganizationLogoRequestSchema>
+
 export const ToolCallEntrySchema = z.object({
   toolName: NonEmptyStringSchema,
   runId: RunIdSchema,

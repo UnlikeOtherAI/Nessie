@@ -32,6 +32,7 @@ export type {
   MeResponse,
   MessageReaction,
   MessageSearchResult,
+  OrganizationSummary,
   PersonalAssistantBootstrapResponse,
   PersonalAssistantConfigSummary,
   PersonalAssistantInstanceRecord,

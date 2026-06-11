@@ -172,6 +172,14 @@ unchanged), midnight (neutral slate/blue dark), daylight (light content).
 - Switcher: `admin/src/providers/ThemeProvider.tsx` (`useTheme()`, persists to
   `localStorage["nessie.theme"]`, sets `document.documentElement.dataset.theme`)
   + `admin/src/pages/settings/AppearancePage.tsx` at `/settings/appearance`.
+- Appearance now has two tabs (`AppearancePage.tsx` shell → `appearance/`
+  `ColoursPanel` + `LogoPanel`): **Colours** (the theme picker above) and
+  **Logo**, where owners/admins upload a round company logo. Selecting a file
+  opens `appearance/CircleLogoCropper.tsx` (square stage, masked edges, circular
+  crop, pan/zoom → 512×512 circular PNG); the crop uploads via `/api/uploads`
+  and is set as the org's `logoAttachmentId` (`facades/organization/hooks.ts`).
+  The logo replaces the workspace mark in `SidebarRail` and brands the login
+  screen via the public `GET /api/brand/logo`.
 - Review pass: remaining component CSS and `.ts` style-helper color escapes are
   tokenized; `admin/index.html` applies the saved theme before first paint;
   dark/light `color-scheme` is set per theme; daylight and sandstone

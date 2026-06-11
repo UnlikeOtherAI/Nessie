@@ -52,7 +52,9 @@ export type {
   AgentMessage,
   AgentStatusResponse,
   MeResponse,
+  OrganizationSummary,
   ToolCallEntry,
+  UpdateOrganizationLogoRequest,
 } from '@nessie/schemas'
 
 // React context + hook for the API client.

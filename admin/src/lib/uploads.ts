@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { ApiResponse } from '@nessie/schemas'
 import { getBaseUrl } from './api-client'
 
@@ -46,3 +47,33 @@ export const uploadAttachment = async (
 
 // URL the browser can use to fetch attachment bytes (image preview / download).
 export const attachmentUrl = (id: string): string => `${getBaseUrl()}/api/attachments/${id}`
+
+// Fetch attachment bytes with the bearer token and expose them as an object URL
+// so authenticated images work (a bare <img src> cannot send an auth header).
+// Returns null while loading, on error, or when `id` is null.
+export const useAuthedObjectUrl = (id: string | null, token: string | null): string | null => {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!id) {
+      setUrl(null)
+      return
+    }
+    let revoked = false
+    let objectUrl: string | null = null
+    const headers = new Headers()
+    if (token) headers.set('authorization', `Bearer ${token}`)
+    fetch(attachmentUrl(id), { headers })
+      .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
+      .then((blob) => {
+        if (revoked) return
+        objectUrl = URL.createObjectURL(blob)
+        setUrl(objectUrl)
+      })
+      .catch(() => setUrl(null))
+    return () => {
+      revoked = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [id, token])
+  return url
+}

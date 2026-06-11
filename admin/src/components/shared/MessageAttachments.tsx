@@ -1,39 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { ApiResponse } from '@nessie/schemas'
 import { getBaseUrl } from '../../lib/api-client'
-import { attachmentUrl, type AttachmentRecord } from '../../lib/uploads'
+import { attachmentUrl, useAuthedObjectUrl, type AttachmentRecord } from '../../lib/uploads'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
 const formatBytes = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-// Fetch attachment bytes with the bearer token and expose them as an object URL
-// so authenticated images/downloads work (a bare <img src> cannot send auth).
-const useAuthedObjectUrl = (id: string, token: string | null, enabled: boolean): string | null => {
-  const [url, setUrl] = useState<string | null>(null)
-  useEffect(() => {
-    if (!enabled) return
-    let revoked = false
-    let objectUrl: string | null = null
-    const headers = new Headers()
-    if (token) headers.set('authorization', `Bearer ${token}`)
-    fetch(attachmentUrl(id), { headers })
-      .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
-      .then((blob) => {
-        if (revoked) return
-        objectUrl = URL.createObjectURL(blob)
-        setUrl(objectUrl)
-      })
-      .catch(() => setUrl(null))
-    return () => {
-      revoked = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [id, token, enabled])
-  return url
 }
 
 const ImageAttachment = ({
@@ -43,7 +17,7 @@ const ImageAttachment = ({
   attachment: AttachmentRecord
   token: string | null
 }) => {
-  const url = useAuthedObjectUrl(attachment.id, token, true)
+  const url = useAuthedObjectUrl(attachment.id, token)
   if (!url) {
     return <DownloadChip attachment={attachment} token={token} />
   }

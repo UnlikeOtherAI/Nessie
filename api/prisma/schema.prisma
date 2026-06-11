@@ -560,8 +560,10 @@ model User {
 model Organization {
   id               String               @id @default(uuid()) @db.Uuid
   name             String
+  logoAttachmentId String?              @map("logo_attachment_id") @db.Uuid
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
+  logoAttachment   Attachment?          @relation("OrganizationLogo", fields: [logoAttachmentId], references: [id], onDelete: SetNull)
   members          OrganizationMember[]
   projects         Project[]
   channels         Channel[]
@@ -2395,6 +2397,8 @@ model Attachment {
   width          Int?
   height         Int?
   createdAt      DateTime @default(now()) @map("created_at")
+
+  logoForOrganizations Organization[] @relation("OrganizationLogo")
 
   @@index([messageId])
   @@index([organizationId, createdAt])

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuthProviders } from '../facades/auth/hooks'
+import { getBaseUrl } from '../lib/api-client'
 import { isDesktopApp } from '../lib/desktop'
 import { beginExternalAuth, clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -289,9 +290,14 @@ export const LoginPage = () => {
       <div className="mx-auto grid max-w-6xl items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="glass-panel flex flex-col gap-8 self-stretch rounded-[2rem] p-8 md:p-10">
           <img
-            alt="Nessie icon"
+            alt="Workspace logo"
             className="h-[88px] w-[88px] rounded-[1.5rem] object-cover shadow-[0_20px_40px_var(--scrim)]"
-            src="/icon-1024.png"
+            onError={(event) => {
+              const img = event.currentTarget
+              if (img.src.endsWith('/icon-1024.png')) return
+              img.src = '/icon-1024.png'
+            }}
+            src={`${getBaseUrl()}/api/brand/logo`}
           />
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">

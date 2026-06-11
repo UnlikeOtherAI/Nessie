@@ -50,6 +50,7 @@ import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerMcpRoutes } from './routes/mcp.js'
+import { registerOrganizationRoutes } from './routes/organizations.js'
 import { registerPlatformPushRoutes } from './routes/platform-push.js'
 import { registerPlanRoutes } from './routes/plans.js'
 import { registerPolicyRoutes } from './routes/policy.js'
@@ -260,6 +261,7 @@ export const buildApp = async () => {
   registerCapabilityRoutes(app, deps)
   registerUserRoutes(app, deps)
   registerStatusRoutes(app, deps)
+  registerOrganizationRoutes(app, deps)
   registerProjectRoutes(app, deps)
   registerTeamRoutes(app, deps)
   registerEventRoutes(app, deps)

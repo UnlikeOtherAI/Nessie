@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom';
 import { faArrowRightFromBracket } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { useCurrentOrganization } from '../../facades/organization/hooks';
+import { useAuthedObjectUrl } from '../../lib/uploads';
+import { useAuthSession } from '../../providers/AuthSessionProvider';
 
 const railUserAvatarClassName = [
   'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
@@ -31,6 +34,10 @@ export const SidebarRail = ({
   onLogout,
   pathname,
 }: SidebarRailProps) => {
+  const { token } = useAuthSession();
+  const { data: organization } = useCurrentOrganization();
+  const logoUrl = useAuthedObjectUrl(organization?.logoAttachmentId ?? null, token);
+
   return (
     <aside
       className={[
@@ -39,28 +46,44 @@ export const SidebarRail = ({
       ].join(' ')}
     >
       <Link
-        className="mb-4 flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl"
-        style={{ background: 'linear-gradient(135deg,var(--accent-strong),var(--accent))' }}
+        className={[
+          'mb-4 flex h-9 w-9 items-center justify-center overflow-hidden',
+          logoUrl ? 'rounded-full' : 'rounded-xl',
+        ].join(' ')}
+        style={
+          logoUrl
+            ? undefined
+            : { background: 'linear-gradient(135deg,var(--accent-strong),var(--accent))' }
+        }
+        title={organization?.name}
         to="/channels"
       >
-        <svg
-          fill="none"
-          height="22"
-          stroke="var(--on-accent)"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-          width="22"
-        >
-          <path
-            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"
-            fill="var(--overlay)"
+        {logoUrl ? (
+          <img
+            alt={organization?.name ?? 'Workspace'}
+            className="h-full w-full object-cover"
+            src={logoUrl}
           />
-          <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-          <line x1="9" x2="9.01" y1="9" y2="9" />
-          <line x1="15" x2="15.01" y1="9" y2="9" />
-        </svg>
+        ) : (
+          <svg
+            fill="none"
+            height="22"
+            stroke="var(--on-accent)"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            width="22"
+          >
+            <path
+              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"
+              fill="var(--overlay)"
+            />
+            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+            <line x1="9" x2="9.01" y1="9" y2="9" />
+            <line x1="15" x2="15.01" y1="9" y2="9" />
+          </svg>
+        )}
       </Link>
 
       <Link
