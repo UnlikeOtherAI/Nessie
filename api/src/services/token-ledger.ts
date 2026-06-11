@@ -10,6 +10,7 @@ export const getTokenUsageSummary = async (
     projectId?: string
     teamId?: string
     channelId?: string
+    runId?: string
     agentId?: string
     actorId?: string
     provider?: string
@@ -34,6 +35,10 @@ export const getTokenUsageSummary = async (
   if (filters?.channelId) {
     conditions.push(`"channel_id" = $${paramIdx++}::uuid`)
     params.push(filters.channelId)
+  }
+  if (filters?.runId) {
+    conditions.push(`"run_id" = $${paramIdx++}::uuid`)
+    params.push(filters.runId)
   }
   if (filters?.agentId) {
     conditions.push(`"agent_id" = $${paramIdx++}::uuid`)
@@ -65,6 +70,8 @@ export const getTokenUsageSummary = async (
     ? {
         provider: '"provider"',
         model: '"model"',
+        runId: '"run_id"',
+        channelId: '"channel_id"',
         agentId: '"agent_id"',
         actorId: '"actor_id"',
         operationType: '"operation_type"',
@@ -147,6 +154,123 @@ export const getTokenUsageSummary = async (
     totalTokens: Number(row?.total_tokens ?? 0),
     totalEstimatedCost: Number(row?.total_estimated ?? 0),
     totalProviderReportedCost: Number(row?.total_provider ?? 0),
+    currency: 'USD',
+    breakdowns,
+  }
+}
+
+export const getConnectorUsageSummary = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  filters?: {
+    connectorType?: string
+    agentId?: string
+    channelId?: string
+    connectorId?: string
+    from?: string
+    to?: string
+    groupBy?: string | null
+  },
+) => {
+  const conditions: string[] = ['"organization_id" = $1::uuid']
+  const params: unknown[] = [organizationId]
+  let paramIdx = 2
+
+  if (filters?.connectorType) {
+    conditions.push(`"connector_type" = $${paramIdx++}`)
+    params.push(filters.connectorType)
+  }
+  if (filters?.agentId) {
+    conditions.push(`"agent_id" = $${paramIdx++}::uuid`)
+    params.push(filters.agentId)
+  }
+  if (filters?.channelId) {
+    conditions.push(`"channel_id" = $${paramIdx++}::uuid`)
+    params.push(filters.channelId)
+  }
+  if (filters?.connectorId) {
+    conditions.push(`"connector_id" = $${paramIdx++}::uuid`)
+    params.push(filters.connectorId)
+  }
+  if (filters?.from) {
+    conditions.push(`"occurred_at" >= $${paramIdx++}`)
+    params.push(new Date(filters.from))
+  }
+  if (filters?.to) {
+    conditions.push(`"occurred_at" <= $${paramIdx++}`)
+    params.push(new Date(filters.to))
+  }
+
+  const whereClause = conditions.join(' AND ')
+  const groupByColumn = filters?.groupBy
+    ? {
+        connectorType: '"connector_type"',
+        agentId: '"agent_id"',
+        channelId: '"channel_id"',
+        connectorId: '"connector_id"',
+        operation: '"operation"',
+      }[filters.groupBy] ?? '"connector_type"'
+    : null
+
+  const totals = await prisma.$queryRawUnsafe<
+    Array<{
+      total_calls: bigint
+      total_units: bigint
+      total_cost: number
+    }>
+  >(
+    `SELECT
+       COALESCE(SUM(calls), 0) as total_calls,
+       COALESCE(SUM(units), 0) as total_units,
+       COALESCE(SUM(cost_amount), 0) as total_cost
+     FROM connector_usage_events
+     WHERE ${whereClause}`,
+    ...params,
+  )
+
+  const row = totals[0]
+  const breakdowns: Array<{
+    key: string
+    calls: number
+    units: number
+    cost: number
+  }> = []
+
+  if (groupByColumn) {
+    const grouped = await prisma.$queryRawUnsafe<
+      Array<{
+        key: string
+        calls: bigint
+        units: bigint
+        cost: number
+      }>
+    >(
+      `SELECT
+         ${groupByColumn} as key,
+         COALESCE(SUM(calls), 0) as calls,
+         COALESCE(SUM(units), 0) as units,
+         COALESCE(SUM(cost_amount), 0) as cost
+       FROM connector_usage_events
+       WHERE ${whereClause}
+       GROUP BY ${groupByColumn}
+       ORDER BY calls DESC`,
+      ...params,
+    )
+
+    for (const g of grouped) {
+      breakdowns.push({
+        key: g.key ?? 'unknown',
+        calls: Number(g.calls),
+        units: Number(g.units),
+        cost: Number(g.cost),
+      })
+    }
+  }
+
+  return {
+    totalCalls: Number(row?.total_calls ?? 0),
+    totalUnits: Number(row?.total_units ?? 0),
+    totalCost: Number(row?.total_cost ?? 0),
     currency: 'USD',
     breakdowns,
   }
