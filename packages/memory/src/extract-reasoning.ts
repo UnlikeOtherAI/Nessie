@@ -1,4 +1,4 @@
-import type { ModelClient } from '@nessie/runtime'
+import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
 
 export type ReasoningExtraction = {
   hasReasoning: boolean
@@ -53,6 +53,7 @@ Text: `
 export const extractReasoning = async (
   content: string,
   client: ModelClient,
+  usage?: LedgerAttribution,
 ): Promise<ReasoningExtraction> => {
   try {
     const parsed = await client.chatJson<Partial<ReasoningExtraction>>(
@@ -68,7 +69,7 @@ export const extractReasoning = async (
         },
         { role: 'user', content: `${REASONING_PROMPT}${content.slice(0, 4000)}` },
       ],
-      { maxTokens: 1024, temperature: 0 },
+      { maxTokens: 1024, temperature: 0, usage },
     )
 
     if (!parsed.hasReasoning) {

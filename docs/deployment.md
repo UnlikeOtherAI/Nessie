@@ -223,6 +223,7 @@ production settings:
 | Auth secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions, bootstrap tokens, and encrypts MCP OAuth secrets |
 | Model | `NESSIE_MODEL_PROVIDER` + key | `openai` → `gpt-5-mini` chat, `text-embedding-3-small` (1536-dim) embeddings |
 | Auth providers (SSO) | `nessie.config.json` `auth.providers` | see SSO below |
+| Feedback → GitHub | `NESSIE_GITHUB_TOKEN`, `NESSIE_GITHUB_OWNER`, `NESSIE_GITHUB_REPO` | token (repo-scoped PAT) required to file issues from the Feedback section; owner/repo default to `UnlikeOtherAI`/`Nessie`. Without a token, feedback is stored but no issue is created (`status: saved`) |
 
 ### MCP OAuth secret store
 

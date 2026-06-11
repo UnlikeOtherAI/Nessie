@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import {
   useCreateKnowledgePage,
@@ -7,11 +15,17 @@ import {
   useKnowledgeSpaces,
   usePublishKnowledgePage,
   useRestoreKnowledgeVersion,
+  useSeedKnowledgeBase,
   useUpdateKnowledgePage,
   type KnowledgePageRecord,
   type KnowledgeSpaceRecord,
   type SavePageInput,
 } from '../../../facades/knowledge/hooks'
+import {
+  EXAMPLE_PAGE_HTML,
+  EXAMPLE_PAGE_SUMMARY,
+  EXAMPLE_PAGE_TITLE,
+} from './example-page'
 
 export type KnowledgeEditorState =
   | { mode: 'create'; parentPageId: string | null }
@@ -79,12 +93,34 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const updatePageMutation = useUpdateKnowledgePage()
   const publishPageMutation = usePublishKnowledgePage()
   const restoreVersionMutation = useRestoreKnowledgeVersion()
+  const seedMutation = useSeedKnowledgeBase()
 
   useEffect(() => {
     if (!selectedSpaceId && spaces[0]) {
       setSelectedSpaceId(spaces[0].id)
     }
   }, [selectedSpaceId, spaces])
+
+  // First visit with no spaces: seed a "General" space + one example page.
+  const seededRef = useRef(false)
+  useEffect(() => {
+    if (seededRef.current || !spacesQuery.isSuccess || spaces.length > 0) return
+    // Seed at most once per mount — never reset the guard on error, so a
+    // persistent failure can't spin into a retry loop of failed POSTs.
+    seededRef.current = true
+    seedMutation.mutate(
+      {
+        body: EXAMPLE_PAGE_HTML,
+        projectId: me?.context.projectId,
+        spaceName: 'General',
+        summary: EXAMPLE_PAGE_SUMMARY,
+        title: EXAMPLE_PAGE_TITLE,
+      },
+      {
+        onSuccess: (space) => setSelectedSpaceId(space.id),
+      },
+    )
+  }, [spacesQuery.isSuccess, spaces.length, me, seedMutation])
 
   const pagesById = useMemo(() => {
     const map = new Map<string, KnowledgePageRecord>()

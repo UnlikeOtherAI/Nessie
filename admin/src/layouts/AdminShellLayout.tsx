@@ -83,7 +83,10 @@ export const AdminShellLayout = () => {
               />
             )}
 
-            {!shell.isAgentsRoute && !shell.isAdminRoute && !shell.isProjectsRoute && (
+            {!shell.isAgentsRoute &&
+              !shell.isAdminRoute &&
+              !shell.isProjectsRoute &&
+              !shell.isFeedbackRoute && (
           <SidebarNav
             activeDmChannelId={shell.activeDmChannelId}
             channelsCollapsed={shell.channelsCollapsed}

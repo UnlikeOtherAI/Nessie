@@ -3,6 +3,7 @@ import type {
   KnowledgePageRecord,
   SavePageInput,
 } from '../../../facades/knowledge/hooks'
+import { RichTextEditor } from './RichTextEditor'
 
 type PageEditorProps = {
   mode: 'create' | 'edit'
@@ -90,14 +91,14 @@ export const PageEditor = ({
         </label>
       </div>
 
-      <label className="flex min-h-0 flex-1 flex-col p-4 text-xs text-[color:var(--tx2)]">
-        Markdown
-        <textarea
-          className="admin-input mt-1 min-h-0 flex-1 resize-none font-mono text-sm"
-          onChange={(event) => setBody(event.target.value)}
+      <div className="flex min-h-0 flex-1 flex-col p-4">
+        <span className="mb-1 text-xs text-[color:var(--tx2)]">Body</span>
+        <RichTextEditor
+          onChange={setBody}
+          placeholder="Write the page…"
           value={body}
         />
-      </label>
+      </div>
 
       <div className="grid gap-3 border-t border-[color:var(--sep)] p-4">
         <input

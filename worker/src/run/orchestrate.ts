@@ -1,4 +1,5 @@
 import {
+  attributionFromActorContext,
   checkBudget,
   decideAgentEngagement,
   type OrchestratorAgent,
@@ -107,6 +108,7 @@ export const executeOrchestrateDecideJob = async (
     agents: channelAgents satisfies OrchestratorAgent[],
     content,
     recentMessages,
+    usage: attributionFromActorContext(actorContext),
   })
 
   if (decisions.length === 0) {

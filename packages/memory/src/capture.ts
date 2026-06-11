@@ -1,4 +1,4 @@
-import type { ModelClient } from '@nessie/runtime'
+import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
 import type { ThoughtAudienceType, ThoughtVisibility } from '@nessie/schemas'
 import type { Pool } from 'pg'
 import { computeFingerprint } from './fingerprint.js'
@@ -171,6 +171,21 @@ const resolveAudience = (
   }
 }
 
+// Attribution for the embedding/extraction model calls, derived from the
+// capture input the memory already carries (owner is the actor; the scope is the
+// tenant). Lets memory usage be billed without threading actorContext through
+// every caller.
+const buildCaptureAttribution = (input: CaptureThoughtInput): LedgerAttribution => ({
+  organizationId: input.organizationId,
+  projectId: input.projectId ?? null,
+  teamId: input.teamId ?? null,
+  channelId: input.channelId ?? null,
+  threadId: input.threadId ?? null,
+  actorId: input.ownerId,
+  actorType: input.ownerType,
+  agentId: input.privateToAgentId ?? (input.ownerType === 'agent' ? input.ownerId : null),
+})
+
 export const captureThought = async (
   input: CaptureThoughtInput,
   config: CaptureConfig,
@@ -248,11 +263,14 @@ export const captureThought = async (
     }
   }
 
+  // Bill the embedding + extraction LLM calls to the memory's owner/scope.
+  const usage = buildCaptureAttribution(input)
+
   // Run embedding + metadata extraction + reasoning extraction in parallel
   const [embedding, metadata, reasoning] = await Promise.all([
-    getEmbedding(input.content, config.modelClient).catch(() => null),
-    extractMetadata(input.content, config.modelClient).catch(() => null),
-    extractReasoning(input.content, config.modelClient).catch(() => null),
+    getEmbedding(input.content, config.modelClient, usage).catch(() => null),
+    extractMetadata(input.content, config.modelClient, usage).catch(() => null),
+    extractReasoning(input.content, config.modelClient, usage).catch(() => null),
   ])
   const mergedMetadata =
     metadata || input.metadata

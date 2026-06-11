@@ -14,6 +14,7 @@
     "expo": "~54.0.0",
     "expo-build-properties": "~1.0.10",
     "expo-status-bar": "~3.0.0",
+    "expo-web-browser": "~15.0.11",
     "react": "19.1.0",
     "react-native": "0.81.4",
     "react-native-safe-area-context": "~5.6.0",
@@ -25,7 +26,6 @@
     "@typescript-eslint/parser": "^8.58.0",
     "eslint": "^10.2.0",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "react-native-appreveal": "file:/tmp/AppReveal/ReactNative/appreveal/react-native-appreveal-0.8.0.tgz",
     "typescript": "^5.9.3"
   }
 }

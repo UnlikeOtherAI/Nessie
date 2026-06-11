@@ -574,6 +574,7 @@ model User {
   mcpCatalogOwned     McpCatalogEntry[]    @relation("McpCatalogOwner")
   mcpCatalogReviewed  McpCatalogEntry[]    @relation("McpCatalogReviewer")
   statuses            UserStatus[]
+  feedback            Feedback[]
 
   @@map("users")
 }
@@ -597,6 +598,7 @@ model Organization {
   approvalRequests ApprovalRequest[]
   resourceLocks    ResourceLock[]
   userStatuses     UserStatus[]
+  feedback         Feedback[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -2029,8 +2031,10 @@ model TokenLedgerEvent {
   threadId              String?            @map("thread_id") @db.Uuid
   sessionId             String?            @map("session_id")
   taskId                String?            @map("task_id") @db.Uuid
+  runId                 String?            @map("run_id") @db.Uuid
   agentId               String?            @map("agent_id") @db.Uuid
   actorId               String             @map("actor_id")
+  actorType             AuditActorType?    @map("actor_type")
   requestId             String             @map("request_id")
   correlationId         String?            @map("correlation_id")
   provider              String
@@ -2065,6 +2069,7 @@ model TokenLedgerEvent {
   @@index([organizationId, projectId, occurredAt(sort: Desc)])
   @@index([organizationId, teamId, occurredAt(sort: Desc)])
   @@index([organizationId, channelId, occurredAt(sort: Desc)])
+  @@index([organizationId, runId, occurredAt(sort: Desc)])
   @@map("token_ledger_events")
 }
 
@@ -2135,6 +2140,60 @@ model ModelPricingProfile {
   /// 20260530170600_pricing_profile_active_unique). This makes the active-row
   /// lookup in findPricingProfile deterministic.
   @@map("model_pricing_profiles")
+}
+
+enum ConnectorType {
+  mcp
+  http
+  web_search
+  web_fetch
+  storage
+  push
+  github
+  oauth
+  other
+}
+
+// Per-call usage ledger for non-AI third-party connectors (MCP servers, HTTP
+// tools, web search/fetch, push, storage, GitHub, OAuth). Sibling to
+// TokenLedgerEvent: same attribution dimensions (who / where-from), but counts
+// calls + units instead of tokens. Written by recordConnectorUsage
+// (@nessie/runtime) at the runtime dispatch site.
+model ConnectorUsageEvent {
+  id             String         @id @default(uuid()) @db.Uuid
+  occurredAt     DateTime       @map("occurred_at") @db.Timestamptz(6)
+  organizationId String         @map("organization_id") @db.Uuid
+  projectId      String?        @map("project_id") @db.Uuid
+  teamId         String?        @map("team_id") @db.Uuid
+  channelId      String?        @map("channel_id") @db.Uuid
+  threadId       String?        @map("thread_id") @db.Uuid
+  taskId         String?        @map("task_id") @db.Uuid
+  runId          String?        @map("run_id") @db.Uuid
+  agentId        String?        @map("agent_id") @db.Uuid
+  actorId        String         @map("actor_id")
+  actorType      AuditActorType? @map("actor_type")
+  requestId      String?        @map("request_id")
+  correlationId  String?        @map("correlation_id")
+  connectorType  ConnectorType  @map("connector_type")
+  connectorId    String?        @map("connector_id") @db.Uuid
+  target         String?
+  operation      String?
+  calls          Int            @default(1)
+  units          Int?
+  unitType       String?        @map("unit_type")
+  costAmount     Decimal?       @map("cost_amount") @db.Decimal(20, 8)
+  costCurrency   String?        @map("cost_currency")
+  success        Boolean?
+  latencyMs      Int?           @map("latency_ms")
+  metadata       Json?
+
+  @@index([organizationId, occurredAt(sort: Desc)])
+  @@index([organizationId, connectorType, occurredAt(sort: Desc)])
+  @@index([organizationId, agentId, occurredAt(sort: Desc)])
+  @@index([organizationId, channelId, occurredAt(sort: Desc)])
+  @@index([organizationId, connectorId, occurredAt(sort: Desc)])
+  @@index([organizationId, runId, occurredAt(sort: Desc)])
+  @@map("connector_usage_events")
 }
 
 // ─── Memory Models ──────────────────────────────────────────────────────────
@@ -2472,10 +2531,33 @@ model Attachment {
   createdAt      DateTime @default(now()) @map("created_at")
 
   logoForOrganizations Organization[] @relation("OrganizationLogo")
+  feedbackItems        Feedback[]     @relation("FeedbackAttachment")
 
   @@index([messageId])
   @@index([organizationId, createdAt])
   @@map("attachments")
+}
+
+// In-app user feedback. Each row is one submission; when GitHub is configured
+// it is mirrored to an issue (github_issue_number/url) and status becomes
+// "submitted" (else "saved"; "failed" if the GitHub call errored).
+model Feedback {
+  id                String       @id @default(uuid()) @db.Uuid
+  organizationId    String       @map("organization_id") @db.Uuid
+  userId            String       @map("user_id") @db.Uuid
+  title             String
+  body              String
+  attachmentId      String?      @map("attachment_id") @db.Uuid
+  githubIssueNumber Int?         @map("github_issue_number")
+  githubIssueUrl    String?      @map("github_issue_url")
+  status            String       @default("saved")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachment        Attachment?  @relation("FeedbackAttachment", fields: [attachmentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, userId, createdAt])
+  @@map("feedback")
 }
 
 // ─── Device-token registry (native push targeting) ──────────────────────────

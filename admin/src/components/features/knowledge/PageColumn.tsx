@@ -1,6 +1,7 @@
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { pageStatusTone } from './page-status'
+import { RichTextContent } from './RichTextContent'
 
 type PageColumnProps = {
   activeChildId?: string
@@ -82,9 +83,13 @@ export const PageColumn = ({
         ) : null}
       </div>
 
-      <pre className="min-h-[160px] flex-1 overflow-auto whitespace-pre-wrap rounded-md border border-[color:var(--sep)] p-4 text-sm text-[color:var(--tx)]">
-        {page.latestVersion?.body || 'No body yet.'}
-      </pre>
+      <div className="min-h-[160px] flex-1 overflow-auto rounded-md border border-[color:var(--sep)] p-4">
+        {page.latestVersion?.body ? (
+          <RichTextContent html={page.latestVersion.body} />
+        ) : (
+          <p className="text-sm text-[color:var(--tx3)]">No content yet.</p>
+        )}
+      </div>
 
       <div>
         <div className="flex items-center justify-between">

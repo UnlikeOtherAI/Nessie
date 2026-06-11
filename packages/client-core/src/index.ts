@@ -51,6 +51,8 @@ export type {
   AgentChild,
   AgentMessage,
   AgentStatusResponse,
+  CreateFeedbackRequest,
+  FeedbackRecord,
   MeResponse,
   OrganizationSummary,
   ToolCallEntry,

@@ -506,12 +506,65 @@ const ensureAgentBindDefaultPolicies = async (
   await ensureRule({ actorId: 'owner', effect: 'allow', priority: 10 })
 }
 
+// The original default rule set had no knowledge_space / knowledge_page rules,
+// which left every knowledge action denied (deny-by-default). Grant org members
+// the authoring actions so the knowledge base is usable; reserve approve for
+// owners. Fine-grained per-space privacy is enforced separately in the knowledge
+// provider, not here. Idempotent so it also backfills existing organizations on
+// startup.
+const ensureKnowledgeDefaultPolicies = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  createdBy: string,
+): Promise<void> => {
+  const ensure = async (
+    resourceType: PolicyResourceType,
+    action: PolicyAction,
+    actorId: string,
+    priority: number,
+  ) => {
+    const existingRule = await prisma.policyRule.findFirst({
+      where: {
+        action: actionToPrisma(action) as Exclude<PolicyAction, 'export' | 'import'>,
+        bindings: { some: { actorId, actorType: 'role' } },
+        effect: 'allow',
+        organizationId,
+        resourceType,
+        scope: 'organization',
+        scopeId: organizationId,
+      },
+      select: { id: true },
+    })
+    if (existingRule) return
+    await createPolicyRule(prisma, {
+      organizationId,
+      scope: 'organization',
+      scopeId: organizationId,
+      resourceType,
+      action,
+      effect: 'allow',
+      priority,
+      createdBy,
+      bindings: [{ actorType: 'role', actorId }],
+    })
+  }
+
+  for (const action of ['view', 'create', 'edit'] as const) {
+    await ensure('knowledge_space', action, '*', 100)
+  }
+  for (const action of ['view', 'create', 'edit', 'read', 'search'] as const) {
+    await ensure('knowledge_page', action, '*', 100)
+  }
+  await ensure('knowledge_page', 'approve', 'owner', 10)
+}
+
 export const seedDefaultPolicies = async (
   prisma: PrismaClient,
   organizationId: string,
   createdBy: string,
 ) => {
   const existing = await prisma.policyRule.count({ where: { organizationId } })
+  await ensureKnowledgeDefaultPolicies(prisma, organizationId, createdBy)
   if (existing > 0) {
     await ensureAgentBindDefaultPolicies(prisma, organizationId, createdBy)
     return

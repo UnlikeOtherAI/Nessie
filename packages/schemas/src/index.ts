@@ -656,6 +656,7 @@ export const UserPreferencesSchema = z.object({
     'contrast',
     'system',
   ]).optional(),
+  fontScale: z.enum(['small', 'medium', 'large']).optional(),
 })
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>
 
@@ -741,6 +742,29 @@ export const UpdateOrganizationLogoRequestSchema = z.object({
   logoAttachmentId: z.string().uuid().nullable(),
 })
 export type UpdateOrganizationLogoRequest = z.infer<typeof UpdateOrganizationLogoRequestSchema>
+
+// A feedback submission as shown in the user's history. `status` is one of
+// "saved" (stored, GitHub not configured), "submitted" (issue created), or
+// "failed" (GitHub configured but the issue call errored).
+export const FeedbackRecordSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  body: z.string(),
+  attachmentId: z.string().uuid().nullable(),
+  attachmentFilename: z.string().nullable(),
+  githubIssueNumber: z.number().int().nullable(),
+  githubIssueUrl: z.string().nullable(),
+  status: z.string(),
+  createdAt: z.string(),
+})
+export type FeedbackRecord = z.infer<typeof FeedbackRecordSchema>
+
+export const CreateFeedbackRequestSchema = z.object({
+  title: z.string().min(1).max(200),
+  body: z.string().min(1).max(20000),
+  attachmentId: z.string().uuid().nullable().optional(),
+})
+export type CreateFeedbackRequest = z.infer<typeof CreateFeedbackRequestSchema>
 
 export const ToolCallEntrySchema = z.object({
   toolName: NonEmptyStringSchema,

@@ -91,6 +91,18 @@ export const NessieConfigSchema = z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.number().int().positive().default(5554),
   }),
+  // GitHub integration for the in-app Feedback section: submitted feedback
+  // becomes an issue in this repo. The token is required to actually create
+  // issues; without it feedback is still stored (status "saved").
+  github: z
+    .object({
+      token: z.string().min(1).optional(),
+      // Restrict to the GitHub owner/repo charset — these are interpolated into
+      // the issues API URL, so a stray slash must not redirect the token.
+      owner: z.string().min(1).regex(/^[A-Za-z0-9_.-]+$/).default('UnlikeOtherAI'),
+      repo: z.string().min(1).regex(/^[A-Za-z0-9_.-]+$/).default('Nessie'),
+    })
+    .default({ owner: 'UnlikeOtherAI', repo: 'Nessie' }),
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
 
@@ -123,6 +135,9 @@ export const ConfigEnvMap = {
   NESSIE_MODEL_TEMPERATURE: 'model.temperature',
   NESSIE_API_HOST: 'api.host',
   NESSIE_API_PORT: 'api.port',
+  NESSIE_GITHUB_TOKEN: 'github.token',
+  NESSIE_GITHUB_OWNER: 'github.owner',
+  NESSIE_GITHUB_REPO: 'github.repo',
 } as const
 
 export type LoadConfigOptions = {
@@ -177,6 +192,10 @@ const DEFAULT_CONFIG: NessieConfig = {
   api: {
     host: '0.0.0.0',
     port: 5554,
+  },
+  github: {
+    owner: 'UnlikeOtherAI',
+    repo: 'Nessie',
   },
 }
 

@@ -1,20 +1,11 @@
+import { useState } from 'react'
+import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
 import { useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
-import { pageStatusTone } from '../../components/features/knowledge/page-status'
-import { SpaceSwitcher } from '../../components/features/knowledge/SpaceSwitcher'
 
 export const KnowledgeSidebarNav = () => {
-  const {
-    spaces,
-    selectedSpace,
-    selectedSpaceId,
-    selectSpace,
-    createSpace,
-    createSpacePending,
-    rootPages,
-    openRootPage,
-    openCreate,
-    pagePath,
-  } = useKnowledge()
+  const { spaces, selectedSpaceId, selectSpace, createSpace, createSpacePending } = useKnowledge()
+  const [collapsed, setCollapsed] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
 
   return (
     <aside
@@ -27,58 +18,68 @@ export const KnowledgeSidebarNav = () => {
         <span className="text-[15px] font-bold text-[color:var(--tx)]">Knowledge</span>
       </div>
 
-      <SpaceSwitcher
-        creating={createSpacePending}
-        onCreateSpace={async (name) => {
-          await createSpace(name)
-        }}
-        onSelect={selectSpace}
-        selectedSpace={selectedSpace}
-        spaces={spaces}
-      />
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-        <div className="flex items-center justify-between px-1 py-1">
-          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-            Pages
-          </span>
+      <div className="min-h-0 flex-1 overflow-y-auto py-1">
+        <div className="admin-sec-row">
+          <button className="admin-sec-hdr" onClick={() => setCollapsed((value) => !value)} type="button">
+            <svg
+              className={[
+                'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                collapsed ? '-rotate-90' : '',
+              ].join(' ')}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Spaces
+          </button>
           <button
-            aria-label="New page"
+            aria-label="Create space"
             className="admin-sidebar-plus"
-            disabled={!selectedSpaceId}
-            onClick={() => openCreate(null)}
+            onClick={() => setCreateOpen(true)}
             type="button"
           >
             +
           </button>
         </div>
 
-        {!selectedSpaceId ? (
-          <div className="px-2 py-8 text-center text-sm text-[color:var(--tx3)]">
-            Select a space
-          </div>
-        ) : rootPages.length === 0 ? (
-          <div className="px-2 py-8 text-center text-sm text-[color:var(--tx3)]">No pages yet</div>
-        ) : (
-          <div className="grid gap-0.5">
-            {rootPages.map((page) => (
+        {!collapsed &&
+          (spaces.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-[color:var(--tx3)]">No spaces yet</div>
+          ) : (
+            spaces.map((space) => (
               <button
-                className={['admin-sb-item', pagePath[0] === page.id ? 'active' : ''].join(' ')}
-                key={page.id}
-                onClick={() => openRootPage(page.id)}
+                className={['admin-sb-item', space.id === selectedSpaceId ? 'active' : ''].join(' ')}
+                key={space.id}
+                onClick={() => selectSpace(space.id)}
                 type="button"
               >
-                <span className="min-w-0 flex-1 truncate">{page.title}</span>
-                <span
-                  className={`text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[page.status]}`}
+                <svg
+                  className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--tx3)]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  viewBox="0 0 24 24"
                 >
-                  {page.status}
-                </span>
+                  <path d="M12 3l9 5-9 5-9-5 9-5z" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M3 13l9 5 9-5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="min-w-0 flex-1 truncate">{space.name}</span>
               </button>
-            ))}
-          </div>
-        )}
+            ))
+          ))}
       </div>
+
+      <CreateSpaceDialog
+        onClose={() => setCreateOpen(false)}
+        onCreate={async (name) => {
+          await createSpace(name)
+        }}
+        open={createOpen}
+        pending={createSpacePending}
+      />
     </aside>
   )
 }

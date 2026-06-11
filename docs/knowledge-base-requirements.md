@@ -251,6 +251,16 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 - Per-team/channel/project per-action roles for search/read/summarize/reindex.
 - Source allowlist/denylist for remote URLs and MCP hosts.
 - Audit events use the canonical `AuditAction` names from [audit-trail-spec.md](./audit-trail-spec.md): `kb.source.linked`, `kb.search.executed`, `kb.document.read`, `kb.search.summary`, `kb.source.reindexed`, `kb.source.removed`, `kb.share.granted`, `kb.share.revoked`.
+- **Default policy rules.** The RBAC engine is deny-by-default, and the original
+  default rule set seeded nothing for `knowledge_space` / `knowledge_page`, so
+  every knowledge action returned `POLICY_DENIED` (the feature was unusable).
+  `seedDefaultPolicies` now calls `ensureKnowledgeDefaultPolicies`, which grants
+  org members (`*`) allow rules for `knowledge_space` view/create/edit and
+  `knowledge_page` view/create/edit/read/search, and owners `knowledge_page`
+  approve. It is idempotent and runs on every API start, so it backfills existing
+  organizations. This is the coarse gate only — fine-grained per-space privacy
+  (public / project / specific people) is enforced separately in the knowledge
+  provider and is the next increment.
 
 ## 6) Fit with existing docs
 
@@ -289,13 +299,14 @@ On `/knowledge-base` the shell swaps the channels/DMs second column for a
 dedicated `KnowledgeSidebarNav` (mirrors how `/agents` and the admin routes swap
 that column):
 
-- The second column holds a **Spaces dropdown switcher** (open space + a list to
-  switch / create a space) and a **Pages** list showing only the open space's
-  **top-level** pages.
-- Selecting a top-level page opens it in the main area, which is a Miller-style
-  **drill-down**: each page column shows the page body plus its direct
-  sub-pages; clicking a sub-page opens the next column to the right, one column
-  per hierarchy level. Edit and version History append as further columns.
+- The second column is **only the Spaces list** — styled like the channels list
+  (a collapsible "Spaces" header with a `+` that opens a centered
+  `CreateSpaceDialog` modal). No pages live here.
+- Selecting a space reveals its **top-level pages** in the next column (the first
+  main-area column, titled "Pages"). Selecting a top-level page opens a
+  Miller-style **drill-down** to the right: each page column shows the page body
+  plus its direct sub-pages; clicking a sub-page opens the next column, one
+  column per hierarchy level. Edit and version History append as further columns.
 
 Shared state for both the sidebar and the drill-down lives in
 `KnowledgeProvider` (`admin/src/components/features/knowledge/`), which wraps the
@@ -303,6 +314,23 @@ sidebar and the route outlet on the Knowledge route. The page hierarchy is
 derived client-side from the flat `GET /spaces/:id/pages` list via `parentPageId`
 (the list already includes each page's latest version body), so drill-down needs
 no extra requests.
+
+### First-visit seeding
+
+When the spaces list loads empty, `KnowledgeProvider` seeds a **"General"** space
+with one example page (`useSeedKnowledgeBase`, fired once via a ref guard). The
+example page (`example-page.ts`) is authored as HTML and demonstrates the editor.
+
+### Page bodies are rich HTML (TipTap)
+
+Page bodies are stored as HTML. Editing uses a **TipTap** (ProseMirror) WYSIWYG —
+`RichTextEditor` (StarterKit + Placeholder; toolbar for bold/italic/headings/
+lists/quote/code/link). Rendering uses `RichTextContent`, a **read-only** TipTap
+instance: parsing through the ProseMirror schema drops scripts, event handlers and
+unknown tags, so stored HTML cannot execute as markup — the content never reaches
+the DOM as a raw HTML string, so no separate sanitizer is needed. Editor and
+reader share the `.kb-prose` token-themed styles in `admin/src/styles.css`. Older
+plain-text bodies still render (as a paragraph).
 
 ## 10) Phase annotation
 

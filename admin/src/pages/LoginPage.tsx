@@ -38,8 +38,21 @@ type ExternalSignInCallback = {
 
 const webRedirectUri = (): string => `${window.location.origin}/login`
 
+type RnWebViewWindow = Window & {
+  ReactNativeWebView?: { postMessage: (data: string) => void }
+}
+
+const reactNativeWebView = (): RnWebViewWindow['ReactNativeWebView'] =>
+  (window as RnWebViewWindow).ReactNativeWebView
+
+const isMobileWebView = (): boolean => reactNativeWebView() !== undefined
+
+// Embedded webviews (Tauri desktop + React Native mobile) cannot run Google
+// OAuth inline — Google blocks embedded user-agents (error 403
+// disallowed_useragent). They round-trip through the OS browser and return via
+// the nessie:// deep link instead.
 const externalAuthRedirectUri = (): string =>
-  isDesktopApp() ? DESKTOP_REDIRECT_URI : webRedirectUri()
+  isDesktopApp() || isMobileWebView() ? DESKTOP_REDIRECT_URI : webRedirectUri()
 
 const parseDesktopAuthCallback = (value: string): Omit<ExternalSignInCallback, 'redirectUri'> | null => {
   let url: URL
@@ -133,6 +146,15 @@ export const LoginPage = () => {
       return
     }
 
+    const mobileWebView = reactNativeWebView()
+    if (mobileWebView) {
+      // Hand the authorize URL to the native shell; it opens the OS browser
+      // (ASWebAuthenticationSession) and posts the callback URL back to
+      // window.__nessieExternalAuthCallback below.
+      mobileWebView.postMessage(JSON.stringify({ type: 'nessie:external-auth', url: authorizeUrl }))
+      return
+    }
+
     window.location.assign(authorizeUrl)
   }, [])
 
@@ -155,6 +177,37 @@ export const LoginPage = () => {
     }
 
     void completeExternalSignIn({ code, redirectUri: webRedirectUri(), state })
+  }, [completeExternalSignIn, sessionState])
+
+  // Mobile shell delivers the OS-browser OAuth callback URL here — the analogue
+  // of the desktop deep-link listener below.
+  useEffect(() => {
+    if (sessionState !== 'unauthenticated' || !isMobileWebView()) {
+      return undefined
+    }
+
+    const target = window as Window & { __nessieExternalAuthCallback?: (url: string) => void }
+    target.__nessieExternalAuthCallback = (url: string) => {
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        return
+      }
+      const code = parsed.searchParams.get('code')
+      if (!code) {
+        return
+      }
+      void completeExternalSignIn({
+        code,
+        redirectUri: DESKTOP_REDIRECT_URI,
+        state: parsed.searchParams.get('state'),
+      })
+    }
+
+    return () => {
+      delete target.__nessieExternalAuthCallback
+    }
   }, [completeExternalSignIn, sessionState])
 
   useEffect(() => {
@@ -286,7 +339,16 @@ export const LoginPage = () => {
   }
 
   return (
-    <main className="min-h-screen px-6 py-10">
+    <main
+      className="relative flex min-h-screen flex-col px-6"
+      style={{
+        // Clear the device status bar / home indicator in the mobile WebView
+        // (viewport-fit=cover is injected by the native shell). env() is 0 on
+        // web/desktop, so this is a no-op there.
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2.5rem)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)',
+      }}
+    >
       <div className="mx-auto grid max-w-6xl items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="glass-panel flex flex-col gap-8 self-stretch rounded-[2rem] p-8 md:p-10">
           <img
@@ -390,23 +452,24 @@ export const LoginPage = () => {
           ) : null}
         </section>
 
-        <div className="flex items-center justify-center gap-3 lg:col-span-2">
-          <span className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-            Theme
-          </span>
-          <select
-            aria-label="Theme"
-            className="rounded-xl border border-[var(--line)] bg-[color:var(--surface-inverse)] px-3 py-2 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
-            onChange={(event) => setTheme(event.target.value as Theme)}
-            value={theme}
-          >
-            {themes.map((themeOption) => (
-              <option key={themeOption.id} value={themeOption.id}>
-                {themeOption.label}
-              </option>
-            ))}
-          </select>
-        </div>
+      </div>
+
+      <div className="mx-auto mt-auto flex w-full max-w-6xl items-center justify-end gap-3 pt-8">
+        <span className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
+          Theme
+        </span>
+        <select
+          aria-label="Theme"
+          className="rounded-xl border border-[var(--line)] bg-[color:var(--surface-inverse)] px-3 py-2 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent)]"
+          onChange={(event) => setTheme(event.target.value as Theme)}
+          value={theme}
+        >
+          {themes.map((themeOption) => (
+            <option key={themeOption.id} value={themeOption.id}>
+              {themeOption.label}
+            </option>
+          ))}
+        </select>
       </div>
     </main>
   )

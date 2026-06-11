@@ -205,7 +205,13 @@ export const searchThoughts = async (
   let queryEmbedding: number[] | null = null
   if (mode !== 'lexical') {
     try {
-      queryEmbedding = await getEmbedding(input.query, config.modelClient)
+      queryEmbedding = await getEmbedding(input.query, config.modelClient, {
+        organizationId: input.organizationId,
+        channelId: input.channelId ?? null,
+        sessionId: input.sessionId ?? null,
+        actorId: input.userId,
+        actorType: 'user',
+      })
     } catch (err) {
       throw new SearchEmbeddingError(
         `Failed to embed search query: ${err instanceof Error ? err.message : 'unknown error'}`,
@@ -284,7 +290,14 @@ export const searchThoughtsInScopes = async (
 
   let queryEmbedding: number[]
   try {
-    queryEmbedding = await getEmbedding(input.query, config.modelClient)
+    queryEmbedding = await getEmbedding(input.query, config.modelClient, {
+      organizationId: input.organizationId,
+      channelId: input.channelId ?? null,
+      sessionId: input.sessionId ?? null,
+      agentId: input.runningAgentId,
+      actorId: input.userId ?? input.runningAgentId,
+      actorType: input.userId ? 'user' : 'agent',
+    })
   } catch (err) {
     throw new SearchEmbeddingError(
       `Failed to embed search query: ${err instanceof Error ? err.message : 'unknown error'}`,
