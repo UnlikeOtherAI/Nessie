@@ -30,6 +30,21 @@ type MonthlyEstimate = {
   daysInMonth: number
 }
 
+type ConnectorSummary = {
+  totalCalls: number
+  totalUnits: number
+  totalCost: number
+  currency: string
+  breakdowns: Array<{
+    key: string
+    calls: number
+    units: number
+    cost: number
+  }>
+}
+
+const formatCount = (count: number) => new Intl.NumberFormat('en-US').format(count)
+
 const sectionTitle =
   'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
@@ -43,11 +58,18 @@ export const TokenUsagePage = () => {
   const { me } = useAuthSession()
   const apiClient = useApiClient()
   const [groupBy, setGroupBy] = useState('model')
+  const [connectorGroupBy, setConnectorGroupBy] = useState('connectorType')
   const isOwner = me?.user.roleIds.includes('owner') ?? false
 
   const { data: summary } = useQuery<TokenSummary>({
     queryKey: ['token-summary', groupBy],
     queryFn: () => apiClient.get(`/api/ledger/tokens/summary?groupBy=${groupBy}`),
+    enabled: isOwner,
+  })
+
+  const { data: connectors } = useQuery<ConnectorSummary>({
+    queryKey: ['connector-summary', connectorGroupBy],
+    queryFn: () => apiClient.get(`/api/ledger/connectors/summary?groupBy=${connectorGroupBy}`),
     enabled: isOwner,
   })
 
@@ -78,6 +100,8 @@ export const TokenUsagePage = () => {
           <option value="provider">By Provider</option>
           <option value="agentId">By Agent</option>
           <option value="actorId">By User</option>
+          <option value="channelId">By Channel</option>
+          <option value="runId">By Run</option>
         </select>
       </header>
 
@@ -135,6 +159,52 @@ export const TokenUsagePage = () => {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        <div className="mt-6 flex items-center gap-4">
+          <div className={sectionTitle}>Connector Usage</div>
+          <select
+            className="admin-input ml-auto w-44"
+            onChange={(e) => setConnectorGroupBy(e.target.value)}
+            value={connectorGroupBy}
+          >
+            <option value="connectorType">By Type</option>
+            <option value="agentId">By Agent</option>
+            <option value="channelId">By Channel</option>
+            <option value="connectorId">By Connector</option>
+            <option value="operation">By Operation</option>
+          </select>
+        </div>
+        <div className="mt-2 grid gap-4 lg:grid-cols-2">
+          <div className="admin-card p-4">
+            <div className={sectionTitle}>Total Calls</div>
+            <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
+              {formatCount(connectors?.totalCalls ?? 0)}
+            </div>
+          </div>
+          <div className="admin-card p-4">
+            <div className={sectionTitle}>Connector Cost</div>
+            <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
+              {formatCost(connectors?.totalCost ?? 0, connectors?.currency ?? 'USD')}
+            </div>
+          </div>
+        </div>
+        {(connectors?.breakdowns ?? []).length > 0 && (
+          <div className="mt-2 grid gap-2">
+            {(connectors?.breakdowns ?? []).map((b) => (
+              <div key={b.key} className="admin-card flex items-center justify-between p-3">
+                <div className="font-semibold text-[color:var(--tx)]">{b.key}</div>
+                <div className="text-right">
+                  <div className="font-mono text-sm text-[color:var(--tx)]">
+                    {formatCount(b.calls)} calls
+                  </div>
+                  <div className="text-xs text-[color:var(--tx2)]">
+                    {formatCost(b.cost, connectors?.currency ?? 'USD')}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

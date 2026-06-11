@@ -1270,6 +1270,10 @@ export const executeRunJob = async (
       deps.prisma,
       context.channel.organizationId,
       toolPolicy,
+      attributionFromActorContext(payload.actorContext, {
+        agentId: context.agent.id,
+        runId: context.run.id,
+      }),
     )
 
     const subAgentBuiltinDescriptors = toolDefs.filter((d) => d.toolName !== 'delegate')
