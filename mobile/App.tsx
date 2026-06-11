@@ -17,9 +17,12 @@ import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject
 // match the admin's externalAuthRedirectUri and the API's allow-listed URL.
 const AUTH_CALLBACK_URL = 'nessie://auth/callback'
 
-// The native tab bar floats over the bottom of the WebView; reserve room for it
-// so the WebView's own content (e.g. the channel composer) is never hidden.
+// The native tab bar sits beside the WebView; reserve room for it so the
+// WebView's own content (e.g. the channel composer) is never hidden. iOS 26 on
+// iPad puts the tab bar at the TOP; iPhone and Android keep it at the bottom.
 const TAB_BAR_BASE_HEIGHT = Platform.OS === 'ios' ? 49 : 64
+const IPAD_TAB_BAR_HEIGHT = 50
+const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 
 const TAB_TINT = '#7c3aed'
 
@@ -104,7 +107,11 @@ const Shell = (): React.JSX.Element => {
     navigateTo(TABS[next].path)
   }
 
-  const tabBarHeight = TAB_BAR_BASE_HEIGHT + insets.bottom
+  // Inset the WebView so it fills the area *next to* the native tab bar (top on
+  // iPad, bottom elsewhere), leaving the bar visible and tappable.
+  const webviewLayerStyle = IS_IPAD
+    ? { ...styles.webviewLayer, top: insets.top + IPAD_TAB_BAR_HEIGHT, bottom: 0 }
+    : { ...styles.webviewLayer, top: 0, bottom: TAB_BAR_BASE_HEIGHT + insets.bottom }
 
   const navigationState = {
     index,
@@ -129,7 +136,7 @@ const Shell = (): React.JSX.Element => {
         />
       </View>
 
-      <View style={[styles.webviewLayer, { bottom: tabBarHeight }]}>
+      <View style={webviewLayerStyle}>
         <WebView
           allowsBackForwardNavigationGestures
           domStorageEnabled
@@ -159,5 +166,5 @@ export default function App(): React.JSX.Element {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   scene: { flex: 1 },
-  webviewLayer: { position: 'absolute', top: 0, right: 0, left: 0 },
+  webviewLayer: { position: 'absolute', right: 0, left: 0 },
 })

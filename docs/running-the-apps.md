@@ -48,7 +48,9 @@ chrome, mirroring the desktop app. `mobile/App.tsx` renders **one persistent**
 `react-native-webview` that loads the admin, sitting under a **native bottom tab
 bar** (`react-native-bottom-tabs`; iOS 26 Liquid-Glass on iPhone/iPad, Material
 on Android) with five tabs — Channels · Projects · Agents · Knowledge · Admin.
-The URL split lives in `mobile/src/config.ts`:
+On iPhone and Android the bar sits at the bottom; on iPad (iPadOS 26) the native
+tab bar renders at the **top**, so `App.tsx` insets the WebView accordingly
+(`IS_IPAD`). The URL split lives in `mobile/src/config.ts`:
 
 - **dev** → `http://<YOUR-MAC-LAN-IP>:5555` (the admin Vite dev server; edits
   hot-reload on the device, and the admin's `/api` calls are proxied to the API)
@@ -100,6 +102,32 @@ xcodebuild -workspace Nessie.xcworkspace -scheme Nessie -configuration Debug \
 xcrun devicectl device install app --device <DEVICE-UDID> <path/to/Nessie.app>
 xcrun devicectl device process launch --device <DEVICE-UDID> com.unlikeotherai.nessie
 ```
+
+### Simulators & emulators (headless verification)
+
+```sh
+cd mobile
+# iOS simulator (boot one first, e.g. iPhone 17 Pro):
+npx expo run:ios --port 8082            # --port avoids the faces-metro clash on 8081
+# Android emulator (boot an AVD first):
+adb reverse tcp:8082 tcp:8082
+npx expo run:android --port 8082
+```
+
+**Metro port 8081 is contended on this Mac.** A separate `faces-metro` launchd
+job pins Metro to 8081, and the Nessie dev build (no `expo-dev-client`) hardwires
+8081, so it red-screens with "Unable to resolve … `/Faces/…`". Until we add
+`expo-dev-client` (the durable fix — then `--port`/the dev-launcher URL is
+honoured directly), run Nessie's Metro on **8082** and point each device at it:
+
+- iOS sim: `xcrun simctl spawn booted defaults write com.unlikeotherai.nessie RCT_jsLocation "<MAC-LAN-IP>:8082"` then relaunch.
+- Android emu: `adb reverse tcp:8082 tcp:8082` (the run command above sets this).
+
+Metro shares the data-volume fsevents problem (see Dev mode), so after editing
+RN source restart it with `--reset-cache` for the change to be served.
+
+The build outputs land at `/tmp/gpteen-xcode2/Prod/Debug-iphonesimulator/Nessie.app`
+(iOS sim) and `mobile/android/app/build/outputs/apk/debug/app-debug.apk` (Android).
 
 The WebView shows the admin's own login (SSO + local-dev email/password); there
 is no separate native login. ATS allows the dev LAN `http://` origin via

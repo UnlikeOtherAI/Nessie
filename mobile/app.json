@@ -17,6 +17,8 @@
           "NSAllowsLocalNetworking": true
         },
         "NSLocalNetworkUsageDescription": "AppReveal exposes a debug MCP server on the local network for AI-assisted testing.",
+        "NSCameraUsageDescription": "Attach a photo to a channel message or feedback report.",
+        "NSPhotoLibraryUsageDescription": "Attach an image from your library to a channel message or feedback report.",
         "NSBonjourServices": [
           "_appreveal._tcp"
         ]
