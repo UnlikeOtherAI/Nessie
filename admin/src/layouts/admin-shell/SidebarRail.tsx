@@ -238,6 +238,29 @@ export const SidebarRail = ({
         <span className="admin-rail-btn-label">Admin</span>
       </Link>
 
+      <div className="my-2 h-px w-8 bg-[color:var(--overlay)]" />
+
+      <Link
+        className={`admin-rail-btn ${pathname.startsWith('/feedback') ? 'active' : ''}`}
+        to="/feedback"
+      >
+        <svg
+          className="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path d="m3 11 18-5v12L3 14v-3z" strokeLinecap="round" strokeLinejoin="round" />
+          <path
+            d="M11.6 16.8a3 3 0 1 1-5.8-1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="admin-rail-btn-label">Feedback</span>
+      </Link>
+
       <div className="flex-1" />
 
       <div className={railUserAvatarClassName} style={{ background: 'var(--accent)' }}>

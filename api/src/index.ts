@@ -49,6 +49,7 @@ import { registerInferenceControlPlaneRoutes } from './routes/inference-control-
 import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
+import { registerFeedbackRoutes } from './routes/feedback.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerOrganizationRoutes } from './routes/organizations.js'
 import { registerPlatformPushRoutes } from './routes/platform-push.js'
@@ -262,6 +263,7 @@ export const buildApp = async () => {
   registerUserRoutes(app, deps)
   registerStatusRoutes(app, deps)
   registerOrganizationRoutes(app, deps)
+  registerFeedbackRoutes(app, deps)
   registerProjectRoutes(app, deps)
   registerTeamRoutes(app, deps)
   registerEventRoutes(app, deps)

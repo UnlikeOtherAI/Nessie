@@ -29,6 +29,8 @@ export type {
   CallRecord,
   ChannelMetadataRecord,
   ChannelRecord,
+  CreateFeedbackRequest,
+  FeedbackRecord,
   MeResponse,
   MessageReaction,
   MessageSearchResult,

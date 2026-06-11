@@ -7,6 +7,7 @@ import { ApprovalsPage } from './pages/ApprovalsPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelsPage } from './pages/ChannelsPage'
+import { FeedbackPage } from './pages/FeedbackPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
 import { LoginPage } from './pages/LoginPage'
 import { McpAppStorePage } from './pages/McpAppStorePage'
@@ -182,6 +183,10 @@ export const router = createBrowserRouter([
       {
         path: '/ops',
         element: <OpsHealthPage />,
+      },
+      {
+        path: '/feedback',
+        element: <FeedbackPage />,
       },
     ],
   },
