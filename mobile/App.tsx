@@ -1,36 +1,65 @@
 import { useEffect, useState } from 'react'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 
 import { ADMIN_URL } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
 
-// Injected into the admin page: report the document background colour so the
-// native safe-area padding and overscroll match it. This removes the white
-// bars/flashes around the dark admin and stays seamless across theme changes.
-const REPORT_BG = `
+// Injected into the admin page. The WebView fills the whole screen, so the
+// admin's full-height columns (rail/nav/page) already run edge to edge with no
+// seam. This (1) enables CSS safe-area insets via viewport-fit=cover, (2) pads
+// the column *content* down past the status bar / home indicator while the
+// column backgrounds still reach the screen edges, and (3) reports the document
+// background so the native view behind the WebView matches during load/overscroll.
+const INJECTED = `
 (function () {
+  var vp = document.querySelector('meta[name=viewport]');
+  if (vp && vp.content.indexOf('viewport-fit') === -1) { vp.content += ', viewport-fit=cover'; }
+  else if (!vp) {
+    vp = document.createElement('meta');
+    vp.name = 'viewport';
+    vp.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
+    (document.head || document.documentElement).appendChild(vp);
+  }
+
+  var styleId = 'nessie-mobile-safe-area';
+  if (!document.getElementById(styleId)) {
+    var st = document.createElement('style');
+    st.id = styleId;
+    st.textContent =
+      '.admin-shell > aside, .admin-shell > main {' +
+      '  padding-top: env(safe-area-inset-top);' +
+      '  padding-bottom: env(safe-area-inset-bottom);' +
+      '}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+
   function bgOf(el) { try { return getComputedStyle(el).backgroundColor } catch (e) { return '' } }
-  function transparent(c) { return !c || c === 'transparent' || /rgba?\\([^)]*,\\s*0\\s*\\)/.test(c) }
+  function transparent(c) {
+    if (!c || c === 'transparent') return true;
+    var n = c.replace(/[^0-9.,]/g, '').split(',');
+    return n.length >= 4 && parseFloat(n[3]) === 0;
+  }
   function pick() {
-    var els = [document.body, document.documentElement, document.getElementById('root')]
+    var els = [document.body, document.documentElement, document.getElementById('root')];
     for (var i = 0; i < els.length; i++) {
-      if (els[i]) { var c = bgOf(els[i]); if (!transparent(c)) return c }
+      if (els[i]) { var c = bgOf(els[i]); if (!transparent(c)) return c; }
     }
-    return ''
+    return '';
   }
   function post() {
-    var c = pick()
+    var c = pick();
     if (c) { try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bg', color: c })) } catch (e) {} }
   }
-  post()
+  post();
   new MutationObserver(post).observe(document.documentElement, {
     attributes: true, attributeFilter: ['data-theme', 'class', 'style'],
-  })
-  new MutationObserver(post).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] })
-  window.addEventListener('load', post)
+  });
+  if (document.body) {
+    new MutationObserver(post).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
+  window.addEventListener('load', post);
   true;
 })();
 `
@@ -73,23 +102,21 @@ export default function App(): React.JSX.Element {
   }
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={[styles.fill, { backgroundColor: bg }]} edges={['top', 'bottom']}>
-        <StatusBar style={isDark(bg) ? 'light' : 'dark'} />
-        <WebView
-          source={{ uri: ADMIN_URL }}
-          style={[styles.fill, { backgroundColor: bg }]}
-          originWhitelist={['*']}
-          allowsBackForwardNavigationGestures
-          sharedCookiesEnabled
-          domStorageEnabled
-          pullToRefreshEnabled
-          mediaPlaybackRequiresUserAction={false}
-          injectedJavaScript={REPORT_BG}
-          onMessage={onMessage}
-        />
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <View style={[styles.fill, { backgroundColor: bg }]}>
+      <StatusBar style={isDark(bg) ? 'light' : 'dark'} />
+      <WebView
+        source={{ uri: ADMIN_URL }}
+        style={[styles.fill, { backgroundColor: bg }]}
+        originWhitelist={['*']}
+        allowsBackForwardNavigationGestures
+        sharedCookiesEnabled
+        domStorageEnabled
+        pullToRefreshEnabled
+        mediaPlaybackRequiresUserAction={false}
+        injectedJavaScript={INJECTED}
+        onMessage={onMessage}
+      />
+    </View>
   )
 }
 
