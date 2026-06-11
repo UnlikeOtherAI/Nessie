@@ -89,7 +89,7 @@ export const NessieConfigSchema = z.object({
   model: ModelConfigSchema,
   api: z.object({
     host: z.string().min(1).default('0.0.0.0'),
-    port: z.number().int().positive().default(5554),
+    port: z.number().int().positive().default(5454),
   }),
   // GitHub integration for the in-app Feedback section: submitted feedback
   // becomes an issue in this repo. The token is required to actually create
@@ -191,7 +191,7 @@ const DEFAULT_CONFIG: NessieConfig = {
   },
   api: {
     host: '0.0.0.0',
-    port: 5554,
+    port: 5454,
   },
   github: {
     owner: 'UnlikeOtherAI',

@@ -8,9 +8,9 @@ Multi-tenant, self-hosted agentic work platform. Organisations host their own Ne
 
 ## Architecture
 
-- **API** (`api/`, port 5554) — multi-tenant REST control plane: auth (OIDC/session), channels, tasks, approvals, triggers, MCP connector management, token ledger, audit log
+- **API** (`api/`, port 5454) — multi-tenant REST control plane: auth (OIDC/session), channels, tasks, approvals, triggers, MCP connector management, token ledger, audit log
 - **Worker** (`worker/`) — async execution service: agentic loop, task scheduling, trigger delivery, mailbox processing
-- **Admin** (`admin/`, port 5555) — full product interface for operators and knowledge workers
+- **Admin** (`admin/`, port 5455) — full product interface for operators and knowledge workers
 - **Web** (`web/`) — public landing page only
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
 
@@ -34,9 +34,9 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 
 ## Dev mode (hot reload)
 
-- `pnpm dev` (repo root) runs the **API (5554) and admin (5555) together with hot reload** — `turbo run dev --parallel`. Admin source edits hot-reload via Vite HMR; API source edits restart the server via nodemon. Use this for local work; do not hand-build the admin to see changes.
+- `pnpm dev` (repo root) runs the **API (5454) and admin (5455) together with hot reload** — `turbo run dev --parallel`. Admin source edits hot-reload via Vite HMR; API source edits restart the server via nodemon. Use this for local work; do not hand-build the admin to see changes.
 - **Polling is required.** The repo lives under `/System/Volumes/Data/.internal/…` (a macOS data-volume firmlink path) where fsevents does not deliver change events, so native watchers never fire. Vite uses `server.watch.usePolling` (`admin/vite.config.ts`) and the API uses `nodemon --legacy-watch`; do not remove these or hot reload silently breaks.
-- After starting/restarting a dev server, verify it: hit `GET /health` (5554) and `GET /` (5555), and confirm `@vite/client` is present in the served admin HTML.
+- After starting/restarting a dev server, verify it: hit `GET /health` (5454) and `GET /` (5455), and confirm `@vite/client` is present in the served admin HTML.
 
 ## Build (production / CI)
 
@@ -81,14 +81,16 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 
 ## Ports — NON-NEGOTIABLE
 
-- **API**: `5554` — always. Do not kill or restart without restarting on the same port.
-- **Admin**: `5555` — always. Kelpie verification MUST use `http://localhost:5555`.
-- Never use any other port for these services.
+- **API**: `5454` (local dev) — always. Do not kill or restart without restarting on the same port.
+- **Admin**: `5455` (local dev) — always. Kelpie verification MUST use `http://localhost:5455`.
+- Never use any other port for these services in local dev.
+- Moved from 5554/5555 on 2026-06-11 because an Android emulator (`gpteen_api34`) squats on 5554/5555 — see the emulator-port-conflict memory.
+- **Production is unchanged:** the API container's internal port stays `5554`, pinned via `NESSIE_API_PORT` in `infrastructure/compose/docker-compose.prod.yml` (behind the shared Caddy proxy). Only local dev moved.
 
 ## Verification
 
 - Every UI/frontend change must be verified using kelpie before the work is considered done.
-- Run `kelpie "http://localhost:5555/<path>"` to screenshot the affected page and confirm correct rendering.
+- Run `kelpie "http://localhost:5455/<path>"` to screenshot the affected page and confirm correct rendering.
 - Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched. Always run Playwright headless unless the user explicitly requests otherwise.
 
 ## MCP Integration

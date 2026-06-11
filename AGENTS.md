@@ -4,7 +4,7 @@
 
 - Worktrees are mandatory. The main project checkout always stays on `main`; never edit it directly. Every task — and every parallel agent/CLI — works in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never reset, clean, or discard another worktree's or agent's work. Merge finished work into `main` only after review, linting, and tests pass, then remove the worktree and delete the merged branch.
 - Commit and push after every turn. No exceptions. If there is nothing to commit, skip.
-- Local dev runs with hot reload via `pnpm dev` (root) — API (5554, nodemon) + admin (5555, Vite HMR) in parallel. Admin and API source edits reload automatically; **do not hand-build the admin to see changes.** The repo sits on a macOS data-volume path where fsevents is dead, so watchers must poll: Vite `server.watch.usePolling` and `nodemon --legacy-watch`. Don't remove these.
+- Local dev runs with hot reload via `pnpm dev` (root) — API (5454, nodemon) + admin (5455, Vite HMR) in parallel. (Moved from 5554/5555 to dodge an Android emulator squatting on those ports; production internal port stays 5554.) Admin and API source edits reload automatically; **do not hand-build the admin to see changes.** The repo sits on a macOS data-volume path where fsevents is dead, so watchers must poll: Vite `server.watch.usePolling` and `nodemon --legacy-watch`. Don't remove these.
 - Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 - `pnpm --filter @nessie/admin build` is for production/CI bundles only, not the dev loop.
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
@@ -31,7 +31,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 ## Verification
 
 - Every UI change must be visually verified using kelpie before considering the work complete.
-- Run `kelpie "http://localhost:5555/<path>"` to screenshot the affected page and confirm the feature renders correctly.
+- Run `kelpie "http://localhost:5455/<path>"` to screenshot the affected page and confirm the feature renders correctly.
 - Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched. Always run Playwright headless unless the user explicitly requests otherwise.
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
 

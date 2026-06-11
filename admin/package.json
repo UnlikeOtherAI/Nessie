@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "predev": "lsof -ti :5555 | xargs kill -9 2>/dev/null || true",
+    "predev": "lsof -ti :5455 | xargs kill -9 2>/dev/null || true",
     "dev": "vite",
     "preview": "vite preview",
     "lint": "eslint src --max-warnings 0",

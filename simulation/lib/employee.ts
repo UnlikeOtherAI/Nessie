@@ -6,8 +6,8 @@ import { writeLedger } from './ledger.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-export const ADMIN_URL = process.env.NESSIE_ADMIN_URL ?? 'http://localhost:5555'
-export const API_URL = process.env.NESSIE_API ?? 'http://localhost:5554'
+export const ADMIN_URL = process.env.NESSIE_ADMIN_URL ?? 'http://localhost:5455'
+export const API_URL = process.env.NESSIE_API ?? 'http://localhost:5454'
 
 type CredentialEntry = {
   slug: string

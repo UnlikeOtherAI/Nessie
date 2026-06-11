@@ -18,7 +18,7 @@ pnpm install
 pnpm dev
 ```
 
-This starts the API on port `5554` and the admin app on port `5555`.
+This starts the API on port `5454` and the admin app on port `5455`.
 
 Terminal 2:
 
@@ -52,7 +52,7 @@ On iPhone and Android the bar sits at the bottom; on iPad (iPadOS 26) the native
 tab bar renders at the **top**, so `App.tsx` insets the WebView accordingly
 (`IS_IPAD`). The URL split lives in `mobile/src/config.ts`:
 
-- **dev** → `http://<YOUR-MAC-LAN-IP>:5555` (the admin Vite dev server; edits
+- **dev** → `http://<YOUR-MAC-LAN-IP>:5455` (the admin Vite dev server; edits
   hot-reload on the device, and the admin's `/api` calls are proxied to the API)
 - **prod** → `https://nessie.unlikeotherai.com` (the hosted admin)
 
@@ -84,7 +84,7 @@ Developer signing.
 
 ```sh
 # 1. Run the admin + API dev servers (repo root); the admin must be LAN-reachable.
-pnpm dev                      # API :5554, admin :5555
+pnpm dev                      # API :5454, admin :5455
 
 # 2. Build + install on a connected iPhone/iPad:
 cd mobile
