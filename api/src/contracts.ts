@@ -1898,6 +1898,7 @@ export const CreateUserBodySchema = z.object({
 export const TaskRecordSchema = z.object({
   id: TaskIdSchema,
   organizationId: OrganizationIdSchema,
+  projectId: ProjectIdSchema.nullable(),
   agentId: AgentIdSchema.nullable(),
   parentTaskId: TaskIdSchema.nullable(),
   runId: RunIdSchema.nullable(),
@@ -1917,6 +1918,7 @@ export type TaskRecord = z.infer<typeof TaskRecordSchema>
 export const CreateTaskBodySchema = z.object({
   title: NonEmptyStringSchema,
   purpose: z.string().optional(),
+  projectId: ProjectIdSchema.optional(),
   assigneeUserId: UserIdSchema.optional(),
   ownerUserId: UserIdSchema.optional(),
 })

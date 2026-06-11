@@ -54,6 +54,7 @@ export const useAdminShell = () => {
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
   const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base');
+  const isProjectsRoute = location.pathname.startsWith('/projects');
   const isAdminRoute = ADMIN_ROUTE_PREFIXES.some(
     (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`),
   );
@@ -343,6 +344,7 @@ export const useAdminShell = () => {
     isAdminRoute,
     isAgentsRoute,
     isKnowledgeRoute,
+    isProjectsRoute,
     isOwner,
     isSuperAdmin,
     logoutAndRedirect,

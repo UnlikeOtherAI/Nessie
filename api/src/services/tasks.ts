@@ -2,18 +2,25 @@ import type { Prisma, PrismaClient, TaskStatus } from '@prisma/client'
 import {
   parseAgentId,
   parseOrganizationId,
+  parseProjectId,
   parseTaskId,
   parseUserId,
 } from '@nessie/schemas'
 import type { AssignableUser, TaskRecord } from '../contracts.js'
 
+// The four Kanban board columns map to the canonical statuses
+// {inbox, in_progress, review, done}. Human users drag cards freely between
+// those columns, so every column-to-column move must be a legal transition —
+// including the backward ones a strict lifecycle would forbid. The extra edges
+// below are purely additive; the agent-only paths (awaiting_approval, failed,
+// cancelled) keep their original transitions.
 const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  inbox: ['assigned', 'in_progress', 'cancelled'],
-  assigned: ['in_progress', 'review', 'inbox', 'cancelled'],
-  in_progress: ['review', 'awaiting_approval', 'done', 'failed', 'cancelled'],
-  review: ['in_progress', 'done', 'failed', 'cancelled'],
-  awaiting_approval: ['in_progress', 'done', 'failed', 'cancelled'],
-  done: ['in_progress'],
+  inbox: ['assigned', 'in_progress', 'review', 'done', 'cancelled'],
+  assigned: ['in_progress', 'review', 'done', 'inbox', 'cancelled'],
+  in_progress: ['inbox', 'review', 'awaiting_approval', 'done', 'failed', 'cancelled'],
+  review: ['inbox', 'in_progress', 'done', 'failed', 'cancelled'],
+  awaiting_approval: ['inbox', 'in_progress', 'done', 'failed', 'cancelled'],
+  done: ['inbox', 'in_progress', 'review'],
   failed: ['in_progress', 'cancelled'],
   cancelled: ['inbox'],
 }
@@ -31,6 +38,7 @@ type TaskWithUsers = Prisma.TaskGetPayload<{ include: typeof taskInclude }>
 const mapTask = (task: TaskWithUsers): TaskRecord => ({
   id: parseTaskId(task.id),
   organizationId: parseOrganizationId(task.organizationId),
+  projectId: task.projectId ? parseProjectId(task.projectId) : null,
   agentId: task.agentId ? parseAgentId(task.agentId) : null,
   parentTaskId: task.parentTaskId ? parseTaskId(task.parentTaskId) : null,
   runId: task.runId ? (task.runId as TaskRecord['runId']) : null,
@@ -58,6 +66,18 @@ const isOrgMember = async (
   return Boolean(membership)
 }
 
+const isOrgProject = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  projectId: string,
+): Promise<boolean> => {
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, organizationId },
+    select: { id: true },
+  })
+  return Boolean(project)
+}
+
 export const listAssignableUsers = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -79,7 +99,12 @@ export const listAssignableUsers = async (
 export const listTasks = async (
   prisma: PrismaClient,
   organizationId: string,
-  filters: { assigneeUserId?: string; ownerUserId?: string; status?: TaskStatus },
+  filters: {
+    assigneeUserId?: string
+    ownerUserId?: string
+    status?: TaskStatus
+    projectId?: string
+  },
 ): Promise<TaskRecord[]> => {
   const tasks = await prisma.task.findMany({
     where: {
@@ -87,6 +112,7 @@ export const listTasks = async (
       ...(filters.assigneeUserId ? { assigneeUserId: filters.assigneeUserId } : {}),
       ...(filters.ownerUserId ? { ownerUserId: filters.ownerUserId } : {}),
       ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.projectId ? { projectId: filters.projectId } : {}),
     },
     include: taskInclude,
     orderBy: [{ updatedAt: 'desc' }],
@@ -112,16 +138,20 @@ type CreateTaskInput = {
   createdByUserId: string
   title: string
   purpose?: string
+  projectId?: string
   assigneeUserId?: string
   ownerUserId?: string
 }
 
-type TaskError = { error: 'ASSIGNEE_NOT_MEMBER' | 'OWNER_NOT_MEMBER' }
+type TaskError = { error: 'ASSIGNEE_NOT_MEMBER' | 'OWNER_NOT_MEMBER' | 'PROJECT_NOT_FOUND' }
 
 export const createHumanTask = async (
   prisma: PrismaClient,
   input: CreateTaskInput,
 ): Promise<TaskRecord | TaskError> => {
+  if (input.projectId && !(await isOrgProject(prisma, input.organizationId, input.projectId))) {
+    return { error: 'PROJECT_NOT_FOUND' }
+  }
   if (input.assigneeUserId && !(await isOrgMember(prisma, input.organizationId, input.assigneeUserId))) {
     return { error: 'ASSIGNEE_NOT_MEMBER' }
   }
@@ -133,6 +163,7 @@ export const createHumanTask = async (
   const task = await prisma.task.create({
     data: {
       organizationId: input.organizationId,
+      projectId: input.projectId ?? null,
       createdByUserId: input.createdByUserId,
       title: input.title,
       purpose: input.purpose ?? null,

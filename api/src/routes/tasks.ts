@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import { type AuthorizedActionContext, TaskStatusSchema } from '@nessie/schemas'
+import { type AuthorizedActionContext, ProjectIdSchema, TaskStatusSchema } from '@nessie/schemas'
 import {
   AssignableUserSchema,
   AssignTaskBodySchema,
@@ -36,10 +36,12 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
     const query = request.query as Record<string, string | undefined>
     const statusFilter = TaskStatusSchema.safeParse(query['status'])
+    const projectFilter = ProjectIdSchema.safeParse(query['project'])
     const tasks = await listTasks(prisma, actorContext.tenant.organizationId, {
       assigneeUserId: resolveTaskUserFilter(query['assignee'], actorContext),
       ownerUserId: resolveTaskUserFilter(query['owner'], actorContext),
       status: statusFilter.success ? statusFilter.data : undefined,
+      projectId: projectFilter.success ? projectFilter.data : undefined,
     })
     return createApiResponse(TaskRecordSchema.array().parse(tasks))
   })
@@ -65,11 +67,16 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       createdByUserId: actorContext.actor.actorId,
       title: body.title,
       purpose: body.purpose,
+      projectId: body.projectId,
       assigneeUserId: body.assigneeUserId,
       ownerUserId: body.ownerUserId,
     })
 
     if ('error' in result) {
+      if (result.error === 'PROJECT_NOT_FOUND') {
+        sendApiError(reply, 404, result.error, 'Project not found in this organization')
+        return reply
+      }
       sendApiError(reply, 400, result.error, 'Assignee or owner is not a member of this organization')
       return reply
     }

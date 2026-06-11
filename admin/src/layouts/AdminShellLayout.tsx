@@ -6,6 +6,7 @@ import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { AgentsSidebarNav } from './admin-shell/AgentsSidebarNav';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
+import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
@@ -70,6 +71,10 @@ export const AdminShellLayout = () => {
           <>
             {shell.isAgentsRoute && <AgentsSidebarNav pathname={shell.pathname} />}
 
+            {shell.isProjectsRoute && (
+              <ProjectsSidebarNav isOwner={shell.isOwner} pathname={shell.pathname} />
+            )}
+
             {shell.isAdminRoute && (
               <AdminSidebarNav
                 isOwner={shell.isOwner}
@@ -78,7 +83,7 @@ export const AdminShellLayout = () => {
               />
             )}
 
-            {!shell.isAgentsRoute && !shell.isAdminRoute && (
+            {!shell.isAgentsRoute && !shell.isAdminRoute && !shell.isProjectsRoute && (
           <SidebarNav
             activeDmChannelId={shell.activeDmChannelId}
             channelsCollapsed={shell.channelsCollapsed}

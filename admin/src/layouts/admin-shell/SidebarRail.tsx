@@ -153,30 +153,6 @@ export const SidebarRail = ({
       </Link>
 
       <Link
-        className={`admin-rail-btn ${pathname.startsWith('/work') ? 'active' : ''}`}
-        to="/work"
-      >
-        <svg
-          className="h-5 w-5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          viewBox="0 0 24 24"
-        >
-          <path
-            d={[
-              'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2',
-              '0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2',
-              'a2 2 0 012 2M9 12l2 2 4-4',
-            ].join(' ')}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className="admin-rail-btn-label">Work</span>
-      </Link>
-
-      <Link
         className={`admin-rail-btn ${pathname.startsWith('/knowledge-base') ? 'active' : ''}`}
         to="/knowledge-base"
       >

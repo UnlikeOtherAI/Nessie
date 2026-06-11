@@ -614,6 +614,7 @@ model Project {
   plans            Plan[]
   approvalRequests ApprovalRequest[]
   statusRules      UserStatusRule[]
+  tasks            Task[]
 
   @@map("projects")
 }
@@ -1745,6 +1746,7 @@ model Task {
   runId            String?           @map("run_id") @db.Uuid
   agentId          String?           @map("agent_id") @db.Uuid
   organizationId   String            @map("organization_id") @db.Uuid
+  projectId        String?           @map("project_id") @db.Uuid
   parentTaskId     String?           @map("parent_task_id") @db.Uuid
   status           TaskStatus        @default(inbox)
   title            String?
@@ -1757,6 +1759,7 @@ model Task {
   run              Run?              @relation(fields: [runId], references: [id], onDelete: SetNull)
   agent            Agent?            @relation(fields: [agentId], references: [id], onDelete: Cascade)
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
   assignee         User?             @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   owner            User?             @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   createdBy        User?             @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -1768,6 +1771,7 @@ model Task {
 
   @@index([agentId, status])
   @@index([organizationId, status])
+  @@index([organizationId, projectId, status])
   @@index([assigneeUserId, status])
   @@index([ownerUserId, status])
   @@index([runId])

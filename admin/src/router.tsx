@@ -13,7 +13,7 @@ import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
-import { ProjectsPage } from './pages/ProjectsPage'
+import { ProjectKanbanPage } from './pages/ProjectKanbanPage'
 import { AppearancePage } from './pages/settings/AppearancePage'
 import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
@@ -26,7 +26,6 @@ import { SettingsToolsPage } from './pages/settings/SettingsToolsPage'
 import { ToolsPage } from './pages/ToolsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
 import { TriggersPage } from './pages/TriggersPage'
-import { WorkPage } from './pages/WorkPage'
 import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 import { WorkflowToolsPage } from './pages/WorkflowToolsPage'
@@ -65,15 +64,21 @@ export const router = createBrowserRouter([
       },
       {
         path: '/projects',
-        element: <ProjectsPage />,
+        element: <ProjectKanbanPage />,
+      },
+      {
+        path: '/projects/:projectId',
+        element: <ProjectKanbanPage />,
       },
       {
         path: '/agents',
         element: <AgentsPage />,
       },
       {
+        // /work folded into the project Kanban menu; redirect kept for the
+        // shipped mobile WebView shell, which may deep-link the old path.
         path: '/work',
-        element: <WorkPage />,
+        element: <Navigate to="/projects" replace />,
       },
       {
         path: '/knowledge-base',
