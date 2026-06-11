@@ -55,7 +55,6 @@ export const AdminShellLayout = () => {
     <NotificationsProvider>
       <div className={`admin-shell${isDesktopApp() ? ' pt-[28px]' : ''}`}>
         <SidebarRail
-          displayName={me.user.displayName}
           isAdminRoute={shell.isAdminRoute}
           isAgentsRoute={shell.isAgentsRoute}
           onLogout={shell.logoutAndRedirect}

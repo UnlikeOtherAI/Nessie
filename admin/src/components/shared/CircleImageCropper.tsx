@@ -7,7 +7,7 @@ import {
 } from 'react'
 
 // On-screen editing stage (square). The circular crop is inscribed in it, so the
-// masked corners sit outside the circle. The exported logo is rendered at a fixed
+// masked corners sit outside the circle. The exported image is rendered at a fixed
 // higher resolution regardless of the stage size.
 const STAGE = 320
 const OUTPUT = 512
@@ -19,17 +19,29 @@ const clamp = (value: number, min: number, max: number): number =>
 
 type Offset = { x: number; y: number }
 
-type CircleLogoCropperProps = {
+type CircleImageCropperProps = {
   file: File
   busy?: boolean
   onCancel: () => void
   onSave: (blob: Blob) => void
+  // Wording is caller-supplied so the same cropper serves logos, avatars, etc.
+  title?: string
+  description?: string
+  saveLabel?: string
 }
 
-// Modal editor: a square stage with a semi-transparent mask and a centred
+// Reusable modal editor: a square stage with a semi-transparent mask and a centred
 // circular cut-out. The user pans (drag) and zooms (slider / wheel) the image to
 // frame what shows inside the circle, then we rasterise the circle to a PNG.
-export const CircleLogoCropper = ({ file, busy = false, onCancel, onSave }: CircleLogoCropperProps) => {
+export const CircleImageCropper = ({
+  file,
+  busy = false,
+  onCancel,
+  onSave,
+  title = 'Edit image',
+  description = 'Drag to reposition, scroll or use the slider to zoom. The circle is what gets saved.',
+  saveLabel = 'Save',
+}: CircleImageCropperProps) => {
   const imgRef = useRef<HTMLImageElement | null>(null)
   const [url, setUrl] = useState<string | null>(null)
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
@@ -131,10 +143,8 @@ export const CircleLogoCropper = ({ file, busy = false, onCancel, onSave }: Circ
       style={{ background: 'var(--scrim-strong)' }}
     >
       <div className="admin-card w-full max-w-md p-5" style={{ background: 'var(--panel)' }}>
-        <div className="text-base font-semibold text-[color:var(--tx)]">Edit logo</div>
-        <div className="mt-1 text-sm text-[color:var(--tx2)]">
-          Drag to reposition, scroll or use the slider to zoom. The circle is what becomes your logo.
-        </div>
+        <div className="text-base font-semibold text-[color:var(--tx)]">{title}</div>
+        <div className="mt-1 text-sm text-[color:var(--tx2)]">{description}</div>
 
         <div className="mt-4 flex justify-center">
           <div
@@ -207,7 +217,7 @@ export const CircleLogoCropper = ({ file, busy = false, onCancel, onSave }: Circ
             onClick={handleSave}
             type="button"
           >
-            {busy ? 'Saving…' : 'Save logo'}
+            {busy ? 'Saving…' : saveLabel}
           </button>
         </div>
       </div>

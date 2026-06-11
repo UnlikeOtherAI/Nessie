@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useStatuses } from '../../facades/statuses/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { AvatarPanel } from './profile/AvatarPanel'
 import { sectionTitleClass, SettingsPanel } from './settings-shared'
 
 export const SettingsProfilePage = () => {
@@ -27,6 +28,10 @@ export const SettingsProfilePage = () => {
         </button>
       }
     >
+      <div className="mb-4">
+        <AvatarPanel />
+      </div>
+
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="admin-card p-4">
           <div className={sectionTitleClass}>Profile</div>

@@ -660,11 +660,18 @@ export const UserPreferencesSchema = z.object({
 })
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>
 
+// Avatar precedence (resolved by the client): `avatarAttachmentId` (a
+// user-uploaded custom avatar, served via GET /api/attachments/:id) overrides
+// `avatarUrl` (the provider/Google picture), which overrides `gravatarUrl`
+// (derived from the email, served with d=404 so a missing Gravatar falls through
+// to initials).
 export const MeUserSchema = z.object({
   id: UserIdSchema,
   email: z.string().email(),
   displayName: NonEmptyStringSchema,
   avatarUrl: z.string().url().optional(),
+  avatarAttachmentId: z.string().uuid().optional(),
+  gravatarUrl: z.string().url().optional(),
   pronouns: z.string().optional(),
   roleIds: z.array(NonEmptyStringSchema),
   superAdmin: z.boolean().default(false),
@@ -673,6 +680,13 @@ export const MeUserSchema = z.object({
 export type MeUser = z.infer<typeof MeUserSchema>
 
 export const UpdatePreferencesSchema = UserPreferencesSchema
+
+// Set or clear the signed-in user's custom avatar. `null` clears it, reverting
+// to the provider picture / Gravatar. Mirrors UpdateOrganizationLogoRequest.
+export const UpdateMyAvatarRequestSchema = z.object({
+  avatarAttachmentId: z.string().uuid().nullable(),
+})
+export type UpdateMyAvatarRequest = z.infer<typeof UpdateMyAvatarRequestSchema>
 
 export const MeSessionSchema = z.object({
   sessionId: NonEmptyStringSchema,

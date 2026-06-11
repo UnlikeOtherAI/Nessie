@@ -26,3 +26,17 @@ export const useUpdatePreferences = () => {
     },
   })
 }
+
+// Set (attachment id) or clear (null) the signed-in user's custom avatar.
+export const useUpdateMyAvatar = () => {
+  const apiClient = useApiClient()
+  const { applyMeResponse } = useAuthSession()
+
+  return useMutation<MeResponse, Error, string | null>({
+    mutationFn: (avatarAttachmentId) =>
+      apiClient.patch<MeResponse>('/api/auth/me/avatar', { avatarAttachmentId }),
+    onSuccess: (me) => {
+      applyMeResponse(me)
+    },
+  })
+}
