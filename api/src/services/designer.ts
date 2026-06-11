@@ -1,9 +1,30 @@
-import type { ModelClient } from '@nessie/runtime'
+import { randomUUID } from 'node:crypto'
+
+import type { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  attributionFromActorContext,
+  recordInferenceUsage,
+  type LedgerInvocation,
+  type ModelClient,
+} from '@nessie/runtime'
 import type { FastifyReply } from 'fastify'
 import type { z } from 'zod'
 import type { DesignerChatBodySchema } from '../contracts.js'
 
 type DesignerChatInput = z.infer<typeof DesignerChatBodySchema>
+
+type DesignerUsageContext = {
+  actorContext: AuthorizedActionContext
+  modelProvider: string
+  prisma: PrismaClient
+}
+
+type DesignerUsageChunk = {
+  completion_tokens: number
+  prompt_tokens: number
+  total_tokens?: number
+}
 
 const DESIGNER_TOOLS = [
   {
@@ -266,6 +287,41 @@ const executeWebSearch = async (query: string): Promise<string> => {
     .join('\n\n')
 }
 
+const recordDesignerLedgerUsage = async (
+  usageContext: DesignerUsageContext,
+  usage: DesignerUsageChunk,
+  latencyMs: number,
+): Promise<void> => {
+  const ledgerUsage: LedgerInvocation['usage'] = {
+    inputTokens: usage.prompt_tokens,
+    outputTokens: usage.completion_tokens,
+  }
+  if (usage.total_tokens !== undefined) {
+    ledgerUsage.totalTokens = usage.total_tokens
+  }
+
+  try {
+    await recordInferenceUsage(usageContext.prisma, {
+      attribution: attributionFromActorContext(usageContext.actorContext),
+      invocations: [
+        {
+          invocationId: randomUUID(),
+          requestId: usageContext.actorContext.actionContext.requestId,
+          correlationId:
+            usageContext.actorContext.actionContext.correlationId,
+          provider: usageContext.modelProvider,
+          model: DESIGNER_MODEL,
+          operationType: 'chat',
+          usage: ledgerUsage,
+          latencyMs,
+        },
+      ],
+    })
+  } catch {
+    // Ledger capture is best-effort; keep the SSE response alive.
+  }
+}
+
 /**
  * Stream a single model turn. Returns collected tool calls (if any)
  * so the caller can execute them and continue the loop.
@@ -274,7 +330,9 @@ const streamModelTurn = async (
   reply: FastifyReply,
   messages: OpenAIMessage[],
   modelClient: ModelClient,
+  usageContext: DesignerUsageContext,
 ): Promise<Array<{ argsBuffer: string; id: string; name: string }>> => {
+  const startedAt = Date.now()
   const response = await modelClient.fetchCompletion({
     model: DESIGNER_MODEL,
     messages,
@@ -343,10 +401,7 @@ const streamModelTurn = async (
                 }>
               }
             }>
-            usage?: {
-              prompt_tokens: number
-              completion_tokens: number
-            }
+            usage?: DesignerUsageChunk
           }
 
           if (chunk.usage) {
@@ -354,6 +409,11 @@ const streamModelTurn = async (
               DESIGNER_MODEL,
               chunk.usage.prompt_tokens,
               chunk.usage.completion_tokens,
+            )
+            await recordDesignerLedgerUsage(
+              usageContext,
+              chunk.usage,
+              Date.now() - startedAt,
             )
           }
 
@@ -413,6 +473,7 @@ export const streamDesignerChat = async (
   reply: FastifyReply,
   input: DesignerChatInput,
   modelClient: ModelClient,
+  usageContext: DesignerUsageContext,
 ): Promise<void> => {
   reply.raw.writeHead(200, {
     'Cache-Control': 'no-cache',
@@ -435,7 +496,12 @@ export const streamDesignerChat = async (
     // Multi-turn loop: if the model calls web_search, execute it
     // and feed results back for another turn.
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const toolCalls = await streamModelTurn(reply, messages, modelClient)
+      const toolCalls = await streamModelTurn(
+        reply,
+        messages,
+        modelClient,
+        usageContext,
+      )
 
       // No tool calls — model is done
       if (toolCalls.length === 0) break
