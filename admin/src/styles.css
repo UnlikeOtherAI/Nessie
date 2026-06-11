@@ -16,7 +16,9 @@
   --overlay-strong: rgba(255, 255, 255, 0.2); --scrim-weak: rgba(0, 0, 0, 0.1); --scrim: rgba(0, 0, 0, 0.2); --scrim-strong: rgba(0, 0, 0, 0.5);
   --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-size-base: 15px;
+  /* rem-relative so FontScaleProvider's root html font-size scales all type.
+     0.9375rem === 15px at the default 16px root. */
+  --font-size-base: 0.9375rem;
   --line-height-base: 1.46668;
   --font-weight-normal: 400;
   --font-weight-medium: 500;

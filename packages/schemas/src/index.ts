@@ -656,6 +656,7 @@ export const UserPreferencesSchema = z.object({
     'contrast',
     'system',
   ]).optional(),
+  fontScale: z.enum(['small', 'medium', 'large']).optional(),
 })
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>
 
