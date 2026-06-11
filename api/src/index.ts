@@ -19,7 +19,7 @@ import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import websocket from '@fastify/websocket'
 import Fastify from 'fastify'
-import { createModelClient, createPgPool, ModelUsageTracker } from '@nessie/runtime'
+import { createModelClient, createPgPool, ModelUsageTracker, recordInferenceUsage } from '@nessie/runtime'
 import { sendApiError } from './lib/api.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
@@ -141,7 +141,13 @@ export const buildApp = async () => {
         apiKey: modelApiKey,
         provider: (config.model.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi',
       },
-      apiUsageTracker,
+      {
+        tracker: apiUsageTracker,
+        // Persist every billable call (designer, orchestrator, memory, thoughts)
+        // that supplies attribution to the shared token ledger.
+        recordUsage: (invocations, attribution) =>
+          recordInferenceUsage(prisma, { attribution, invocations }),
+      },
     )
   } else {
     app.log.warn('No model API key configured — orchestrator, designer, and memory will fail')

@@ -5,6 +5,7 @@ import {
   createPgPool,
   PgQueueProvider,
   PgRealtimeTransport,
+  recordInferenceUsage,
 } from '@nessie/runtime'
 import {
   ExecutionEnvironmentAllocateJobPayloadSchema,
@@ -74,7 +75,13 @@ export const startWorker = async (
   }
   queueProvider = new PgQueueProvider(pool)
   const realtimeTransport = new PgRealtimeTransport(pool, databaseUrl)
-  const modelClient = createModelClient(config.model)
+  // The shared model client (orchestrator engagement, memory capture/search/
+  // consolidation) bills through the same token ledger as the agentic loop when
+  // a call supplies attribution.
+  const modelClient = createModelClient(config.model, {
+    recordUsage: (invocations, attribution) =>
+      recordInferenceUsage(prisma, { attribution, invocations }),
+  })
   const abortController = new AbortController()
   const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`
 

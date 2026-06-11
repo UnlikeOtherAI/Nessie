@@ -1520,6 +1520,7 @@ export const executeRunJob = async (
     await persistInvocationLedgerEvents(deps.prisma, {
       actorContext: payload.actorContext,
       agentId: context.agent.id,
+      runId: context.run.id,
       invocations: loopResult.invocations,
     })
 

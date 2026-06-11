@@ -3,7 +3,9 @@ import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import type { ModelConfig, ModelProvider } from '@nessie/config'
 import {
+  attributionFromActorContext,
   createInferenceService,
+  recordInferenceUsage,
   type ModelProviderConfig,
   type ProviderMessage,
   type ProviderToolCall,
@@ -49,6 +51,7 @@ type RunInferenceGraphInput = {
 type PersistInvocationLedgerInput = {
   actorContext: AuthorizedActionContext
   agentId: string
+  runId?: string | null
   invocations: InvocationRecord[]
 }
 
@@ -71,18 +74,6 @@ type ResolvedProviderConfig = {
   connectorKind?: 'compiled' | 'openai-compatible'
   model: string
   providerKey: string
-}
-
-type InvocationPricingProfile = {
-  id: string
-  source: 'provider_default' | 'org_override' | 'team_override' | 'manual'
-  currency: string
-  inputPerMillion: number | null
-  outputPerMillion: number | null
-  cachedInputPerMillion: number | null
-  cachedOutputPerMillion: number | null
-  cacheReadPerMillion: number | null
-  cacheWritePerMillion: number | null
 }
 
 type StageExecutionFailure = Error & {
@@ -626,83 +617,6 @@ const executeSingleMode = async (
   }
 }
 
-const calculateEstimatedCost = (
-  usage: InvocationRecord['usage'],
-  pricingProfile: InvocationPricingProfile | null,
-): number | null => {
-  if (!pricingProfile) {
-    return null
-  }
-
-  let amount = 0
-  if (usage.inputTokens && pricingProfile.inputPerMillion) {
-    amount += (usage.inputTokens / 1_000_000) * pricingProfile.inputPerMillion
-  }
-  if (usage.outputTokens && pricingProfile.outputPerMillion) {
-    amount += (usage.outputTokens / 1_000_000) * pricingProfile.outputPerMillion
-  }
-  if (usage.cachedInputTokens && pricingProfile.cachedInputPerMillion) {
-    amount += (usage.cachedInputTokens / 1_000_000) * pricingProfile.cachedInputPerMillion
-  }
-  if (usage.cachedOutputTokens && pricingProfile.cachedOutputPerMillion) {
-    amount += (usage.cachedOutputTokens / 1_000_000) * pricingProfile.cachedOutputPerMillion
-  }
-  if (usage.cacheReadTokens && pricingProfile.cacheReadPerMillion) {
-    amount += (usage.cacheReadTokens / 1_000_000) * pricingProfile.cacheReadPerMillion
-  }
-  if (usage.cacheWriteTokens && pricingProfile.cacheWritePerMillion) {
-    amount += (usage.cacheWriteTokens / 1_000_000) * pricingProfile.cacheWritePerMillion
-  }
-
-  return amount
-}
-
-const findPricingProfile = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  provider: string,
-  model: string,
-): Promise<InvocationPricingProfile | null> => {
-  const row = await prisma.modelPricingProfile.findFirst({
-    where: {
-      AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }],
-      organizationId,
-      OR: [{ modelPattern: model }, { modelPattern: '*' }],
-      provider,
-    },
-    orderBy: { modelPattern: 'desc' },
-    select: {
-      cacheReadPerMillion: true,
-      cacheWritePerMillion: true,
-      cachedInputPerMillion: true,
-      cachedOutputPerMillion: true,
-      currency: true,
-      id: true,
-      inputPerMillion: true,
-      outputPerMillion: true,
-      source: true,
-    },
-  })
-  if (!row) {
-    return null
-  }
-  // ModelPricingProfile per-million columns are Prisma Decimal; the cost math
-  // works in plain numbers, so normalize here.
-  const toNumber = (value: { toNumber: () => number } | null): number | null =>
-    value === null ? null : value.toNumber()
-  return {
-    id: row.id,
-    source: row.source,
-    currency: row.currency,
-    inputPerMillion: toNumber(row.inputPerMillion),
-    outputPerMillion: toNumber(row.outputPerMillion),
-    cachedInputPerMillion: toNumber(row.cachedInputPerMillion),
-    cachedOutputPerMillion: toNumber(row.cachedOutputPerMillion),
-    cacheReadPerMillion: toNumber(row.cacheReadPerMillion),
-    cacheWritePerMillion: toNumber(row.cacheWritePerMillion),
-  }
-}
-
 export const runInferenceGraph = async (
   prisma: PrismaClient,
   input: RunInferenceGraphInput,
@@ -733,116 +647,20 @@ export const runInferenceGraph = async (
   })
 }
 
-const toPrismaOperationType = (
-  operationType: InvocationRecord['operationType'],
-): 'chat' | 'completion' | 'embedding' | 'translation' | 'reasoning' | 'tool_translation' | 'other' => {
-  if (operationType === 'tool-translation') {
-    return 'tool_translation'
-  }
-
-  return operationType
-}
-
-// Resolve the canonical inference-catalog ids for the denormalized provider/model
-// strings the ledger records. The stored `provider` is the provider_key and
-// `model` is the resolved model name (see executeStage), so this join is exact.
-// Returns nulls for runs that used a provider/model not in the catalog (e.g. the
-// legacy env-key fallback path) — the strings remain the durable record.
-const resolveProviderModelIds = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  provider: string,
-  model: string,
-): Promise<{ modelId: string | null; providerId: string | null }> => {
-  const rows = await prisma.$queryRaw<Array<{ modelId: string | null; providerId: string | null }>>(
-    Prisma.sql`
-      SELECT p.id AS "providerId", m.id AS "modelId"
-      FROM inference_providers p
-      LEFT JOIN inference_models m
-        ON m.provider_id = p.id
-        AND m.organization_id = p.organization_id
-        AND m.model = ${model}
-      WHERE p.organization_id = ${organizationId}::uuid
-        AND p.provider_key = ${provider}
-      LIMIT 1
-    `,
-  )
-
-  return { modelId: rows[0]?.modelId ?? null, providerId: rows[0]?.providerId ?? null }
-}
-
+// The agentic loop's invocations are billed through the shared ledger writer
+// (@nessie/runtime), the same path the API shared model client uses — one writer,
+// one attribution shape. Attribution is derived from the run's actorContext plus
+// the agent and run ids, so token spend ties back to org/project/team/channel/
+// thread/task/agent/actor/run.
 export const persistInvocationLedgerEvents = async (
   prisma: PrismaClient,
   input: PersistInvocationLedgerInput,
 ): Promise<void> => {
-  const organizationId = input.actorContext.tenant.organizationId
-  const projectId = input.actorContext.tenant.projectId ?? null
-  const teamId = input.actorContext.tenant.teamId ?? null
-  const channelId = input.actorContext.actionContext.channelId ?? null
-  const threadId = input.actorContext.actionContext.threadId ?? null
-  const sessionId = input.actorContext.actionContext.sessionId ?? null
-  const taskId = input.actorContext.actionContext.taskId ?? null
-  const requestId = input.actorContext.actionContext.requestId
-  const correlationId = input.actorContext.actionContext.correlationId ?? null
-  const actorId = input.actorContext.actor.actorId
-
-  for (const invocation of input.invocations) {
-    const pricingProfile = await findPricingProfile(
-      prisma,
-      organizationId,
-      invocation.provider,
-      invocation.model,
-    )
-
-    const estimatedCostAmount = calculateEstimatedCost(invocation.usage, pricingProfile)
-    const { modelId, providerId } = await resolveProviderModelIds(
-      prisma,
-      organizationId,
-      invocation.provider,
-      invocation.model,
-    )
-
-    await prisma.tokenLedgerEvent.create({
-      data: {
-        actorId,
-        agentId: input.agentId,
-        cacheReadTokens: invocation.usage.cacheReadTokens ?? null,
-        cacheWriteTokens: invocation.usage.cacheWriteTokens ?? null,
-        cachedInputTokens: invocation.usage.cachedInputTokens ?? null,
-        cachedOutputTokens: invocation.usage.cachedOutputTokens ?? null,
-        channelId,
-        correlationId,
-        estimatedCostAmount,
-        estimatedCostCurrency: pricingProfile?.currency ?? null,
-        inputTokens: invocation.usage.inputTokens ?? null,
-        metadata: {
-          invocationId: invocation.invocationId,
-          latencyMs: invocation.latencyMs,
-          ...(invocation.metadata ?? {}),
-        },
-        model: invocation.model,
-        occurredAt: new Date(),
-        operationType: toPrismaOperationType(invocation.operationType),
-        organizationId,
-        outputTokens: invocation.usage.outputTokens ?? null,
-        pricingCurrency: pricingProfile?.currency ?? null,
-        pricingInputPerM: pricingProfile?.inputPerMillion ?? null,
-        pricingOutputPerM: pricingProfile?.outputPerMillion ?? null,
-        pricingProfileId: pricingProfile?.id ?? null,
-        pricingSource: pricingProfile?.source ?? null,
-        projectId,
-        provider: invocation.provider,
-        providerId,
-        modelId,
-        providerCostAmount: invocation.providerReportedCost?.amount ?? null,
-        providerCostCurrency: invocation.providerReportedCost?.currency ?? null,
-        requestId,
-        sessionId,
-        taskId,
-        teamId,
-        threadId,
-        totalTokens: invocation.usage.totalTokens ?? null,
-      },
-    })
-  }
+  await recordInferenceUsage(prisma, {
+    attribution: attributionFromActorContext(input.actorContext, {
+      agentId: input.agentId,
+      runId: input.runId ?? null,
+    }),
+    invocations: input.invocations,
+  })
 }
