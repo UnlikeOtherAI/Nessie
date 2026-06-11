@@ -7,7 +7,7 @@ import { streamDesignerChat } from '../services/designer.js'
 import type { RouteDeps } from './types.js'
 
 export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, sharedModelClient } = deps
+  const { config, prisma, requireActorContext, sharedModelClient } = deps
 
   app.post('/api/designer/chat', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -41,7 +41,11 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
     // on a fixed cheap model (DESIGNER_MODEL = gpt-5-mini), so there is no more
     // economical model to fall back to. Only a hard block stops this endpoint.
 
-    await streamDesignerChat(reply, body, sharedModelClient)
+    await streamDesignerChat(reply, body, sharedModelClient, {
+      actorContext,
+      modelProvider: config.model.provider,
+      prisma,
+    })
     return reply
   })
 }

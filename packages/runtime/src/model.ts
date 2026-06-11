@@ -3,6 +3,7 @@ import type {
   ModelProviderConfig,
   ProviderMessage,
 } from './inference/types.js'
+import type { LedgerAttribution, LedgerInvocation } from './ledger.js'
 import { ModelUsageTracker } from './usage.js'
 
 export type { ModelProviderConfig, ModelProviderName } from './inference/types.js'
@@ -12,15 +13,34 @@ export type ModelMessage = {
   content: string
 }
 
+// When `usage` is set on a call, the client records the invocation(s) to the
+// persistent token ledger (via the recordUsage sink wired at construction) with
+// this attribution — in addition to the in-memory tracker. Omit it for calls
+// that should not be billed (e.g. health checks).
 export type ModelOptions = {
   maxTokens?: number
   model?: string
   temperature?: number
   responseFormat?: { type: 'json_object' }
+  usage?: LedgerAttribution
 }
 
 export type EmbedOptions = {
   model?: string
+  usage?: LedgerAttribution
+}
+
+// Persists billable invocations to the token ledger. Wired by api/worker at
+// construction so the shared model client attributes usage exactly like the
+// worker agentic loop does.
+export type ModelUsageSink = (
+  invocations: LedgerInvocation[],
+  attribution: LedgerAttribution,
+) => Promise<void>
+
+export type CreateModelClientOptions = {
+  tracker?: ModelUsageTracker
+  recordUsage?: ModelUsageSink
 }
 
 export interface ModelClient {
@@ -66,10 +86,28 @@ const recordUsageFromModel = (
 
 export const createModelClient = (
   config: ModelProviderConfig,
-  tracker?: ModelUsageTracker,
+  options: CreateModelClientOptions = {},
 ): ModelClient => {
-  const usageTracker = tracker ?? new ModelUsageTracker()
+  const usageTracker = options.tracker ?? new ModelUsageTracker()
+  const recordUsage = options.recordUsage
   const inferenceService = createInferenceService(config)
+
+  // Persist invocations to the durable ledger when the caller supplied
+  // attribution and a sink is wired. A ledger failure must never break the model
+  // call, so swallow-and-continue (the in-memory tracker still has the totals).
+  const ledger = async (
+    invocations: LedgerInvocation[],
+    attribution: LedgerAttribution | undefined,
+  ): Promise<void> => {
+    if (!recordUsage || !attribution || invocations.length === 0) {
+      return
+    }
+    try {
+      await recordUsage(invocations, attribution)
+    } catch {
+      // best-effort billing capture; do not fail the originating call
+    }
+  }
 
   const chat: ModelClient['chat'] = async (messages, options) => {
     const result = await inferenceService.run({
@@ -83,6 +121,7 @@ export const createModelClient = (
     for (const invocation of result.invocations) {
       recordUsageFromModel(usageTracker, invocation.model, invocation.usage)
     }
+    await ledger(result.invocations, options?.usage)
 
     return result.outputText
   }
@@ -108,6 +147,7 @@ export const createModelClient = (
       result.invocation.model,
       result.invocation.usage,
     )
+    await ledger([result.invocation], options?.usage)
 
     return result.embedding
   }
@@ -140,6 +180,7 @@ export const createModelClient = (
     for (const invocation of next.value.invocations) {
       recordUsageFromModel(usageTracker, invocation.model, invocation.usage)
     }
+    await ledger(next.value.invocations, options?.usage)
   }
 
   return {

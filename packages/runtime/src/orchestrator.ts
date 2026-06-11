@@ -1,3 +1,4 @@
+import type { LedgerAttribution } from './ledger.js'
 import type { ModelClient, ModelMessage } from './model.js'
 
 export type OrchestratorAgent = {
@@ -31,6 +32,9 @@ export const decideAgentEngagement = async (
     agents: OrchestratorAgent[]
     content: string
     recentMessages: Array<{ role: string; content: string; agentName?: string }>
+    // Attribution for the engagement-decision LLM call so its tokens are billed
+    // to the originating org/channel/thread/actor.
+    usage?: LedgerAttribution
   },
 ): Promise<OrchestratorDecision[]> => {
   if (input.agents.length === 0) {
@@ -124,7 +128,11 @@ export const decideAgentEngagement = async (
   // headroom; the visible output is still only ~40 tokens.
   let raw: string
   try {
-    raw = await modelClient.chat([systemMsg, userMsg], { maxTokens: 2048, temperature: 0.1 })
+    raw = await modelClient.chat([systemMsg, userMsg], {
+      maxTokens: 2048,
+      temperature: 0.1,
+      usage: input.usage,
+    })
   } catch {
     // A router failure must never block a user message from being stored.
     // Fall back to "no action" and let the user re-prompt or @mention.
