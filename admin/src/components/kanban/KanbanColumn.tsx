@@ -1,25 +1,23 @@
 import { useDroppable } from '@dnd-kit/core'
 import type { ReactNode } from 'react'
-import type { KanbanColumnDef } from './kanban-config'
 
 type KanbanColumnProps = {
-  column: KanbanColumnDef
+  columnId: string
+  label: string
+  dot: string
   count: number
   children: ReactNode
 }
 
-export const KanbanColumn = ({ column, count, children }: KanbanColumnProps) => {
-  const { setNodeRef, isOver } = useDroppable({ id: column.id })
+export const KanbanColumn = ({ columnId, label, dot, count, children }: KanbanColumnProps) => {
+  const { setNodeRef, isOver } = useDroppable({ id: columnId })
 
   return (
     <div className="flex w-[280px] min-w-[280px] flex-col">
       <div className="mb-2 flex items-center gap-2 px-1">
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ background: column.dot }}
-        />
-        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx2)]">
-          {column.label}
+        <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
+        <span className="truncate text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx2)]">
+          {label}
         </span>
         <span className="text-xs text-[color:var(--tx3)]">{count}</span>
       </div>

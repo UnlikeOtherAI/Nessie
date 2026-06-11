@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
 import { ProjectMembersDialog } from '../../components/shared/ProjectMembersDialog'
 import { RenameProjectDialog } from '../../components/shared/RenameProjectDialog'
@@ -30,6 +30,7 @@ const FolderIcon = () => (
 )
 
 export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProps) => {
+  const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const deleteProject = useDeleteProject()
 
@@ -141,6 +142,16 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
                       type="button"
                     >
                       Members
+                    </button>
+                    <button
+                      className="block w-full rounded px-2 py-1.5 text-left hover:bg-[color:var(--overlay)]"
+                      onClick={() => {
+                        setMenuProjectId(null)
+                        void navigate(`/projects/${project.id}/settings`)
+                      }}
+                      type="button"
+                    >
+                      Settings
                     </button>
                     <button
                       className="block w-full rounded px-2 py-1.5 text-left text-[color:var(--danger-text)] hover:bg-[color:var(--overlay)]"

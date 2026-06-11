@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { PrismaClient, User } from '@prisma/client'
 import { parseUserId } from '@nessie/schemas'
+import { defaultColumnCreateData } from '../services/board.js'
 import { createBootstrapSeedPlan, type BootstrapUserSeedInput } from './bootstrap.js'
 
 export type BootstrapSeedResult = {
@@ -57,6 +58,17 @@ export const seedBootstrapRecords = async (
         organizationId: plan.project.organizationId,
       },
     })
+
+    // Seed the default board columns for the bootstrap project (idempotent:
+    // only when the project has none yet).
+    if ((await transaction.boardColumn.count({ where: { projectId: plan.project.id } })) === 0) {
+      await transaction.boardColumn.createMany({
+        data: defaultColumnCreateData(plan.project.organizationId).map((column) => ({
+          ...column,
+          projectId: plan.project.id,
+        })),
+      })
+    }
 
     await transaction.team.upsert({
       where: { id: plan.team.id },

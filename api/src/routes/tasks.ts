@@ -5,6 +5,7 @@ import {
   AssignableUserSchema,
   AssignTaskBodySchema,
   CreateTaskBodySchema,
+  MoveTaskBodySchema,
   TaskRecordSchema,
   TransitionTaskBodySchema,
 } from '../contracts.js'
@@ -15,6 +16,7 @@ import {
   getTask,
   listAssignableUsers,
   listTasks,
+  moveTaskToColumn,
   transitionTask,
 } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
@@ -120,6 +122,43 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         return reply
       }
       sendApiError(reply, 400, result.error, 'Assignee is not a member of this organization')
+      return reply
+    }
+
+    return createApiResponse(TaskRecordSchema.parse(result))
+  })
+
+  app.post('/api/tasks/:taskId/move', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const { taskId } = request.params as { taskId: string }
+    const body = parseInput(MoveTaskBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const result = await moveTaskToColumn(prisma, {
+      taskId,
+      organizationId: actorContext.tenant.organizationId,
+      columnId: body.columnId,
+      actorId: actorContext.actor.actorId,
+    })
+
+    if ('error' in result) {
+      if (result.error === 'NOT_FOUND') {
+        sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
+        return reply
+      }
+      if (result.error === 'COLUMN_NOT_FOUND') {
+        sendApiError(reply, 404, 'COLUMN_NOT_FOUND', 'Column not found in this task\'s project')
+        return reply
+      }
+      sendApiError(
+        reply,
+        409,
+        result.error,
+        `Cannot move task from ${result.from ?? 'unknown'} into that column`,
+      )
       return reply
     }
 

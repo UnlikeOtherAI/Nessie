@@ -163,6 +163,21 @@ enum TaskStatus {
   awaiting_approval
 }
 
+enum BoardStyle {
+  kanban
+  scrum
+}
+
+// The lifecycle categories a board column maps onto. These are the only
+// buckets the agent/worker lifecycle drives (inbox→todo, in_progress, review,
+// done); failed/cancelled stay Archive-only and never get a column.
+enum ColumnCategory {
+  todo
+  in_progress
+  review
+  done
+}
+
 enum ChannelType {
   standard
   dm
@@ -606,6 +621,7 @@ model Project {
   id               String            @id @default(uuid()) @db.Uuid
   name             String
   organizationId   String            @map("organization_id") @db.Uuid
+  boardStyle       BoardStyle        @default(kanban) @map("board_style")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -615,8 +631,25 @@ model Project {
   approvalRequests ApprovalRequest[]
   statusRules      UserStatusRule[]
   tasks            Task[]
+  boardColumns     BoardColumn[]
 
   @@map("projects")
+}
+
+model BoardColumn {
+  id             String         @id @default(uuid()) @db.Uuid
+  projectId      String         @map("project_id") @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  name           String
+  category       ColumnCategory
+  position       Int
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+
+  @@index([projectId, position])
+  @@map("board_columns")
 }
 
 model ProjectMember {
@@ -1747,6 +1780,7 @@ model Task {
   agentId          String?           @map("agent_id") @db.Uuid
   organizationId   String            @map("organization_id") @db.Uuid
   projectId        String?           @map("project_id") @db.Uuid
+  columnId         String?           @map("column_id") @db.Uuid
   parentTaskId     String?           @map("parent_task_id") @db.Uuid
   status           TaskStatus        @default(inbox)
   title            String?
@@ -1760,6 +1794,7 @@ model Task {
   agent            Agent?            @relation(fields: [agentId], references: [id], onDelete: Cascade)
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  column           BoardColumn?      @relation(fields: [columnId], references: [id], onDelete: SetNull)
   assignee         User?             @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   owner            User?             @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   createdBy        User?             @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -1772,6 +1807,7 @@ model Task {
   @@index([agentId, status])
   @@index([organizationId, status])
   @@index([organizationId, projectId, status])
+  @@index([columnId])
   @@index([assigneeUserId, status])
   @@index([ownerUserId, status])
   @@index([runId])

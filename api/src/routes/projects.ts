@@ -7,6 +7,7 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { defaultColumnCreateData } from '../services/board.js'
 import type { RouteDeps } from './types.js'
 
 const projectCountsInclude = {
@@ -112,6 +113,9 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         organizationId: actorContext.tenant.organizationId,
         members: {
           create: { userId: actorContext.actor.actorId, role: 'owner' },
+        },
+        boardColumns: {
+          create: defaultColumnCreateData(actorContext.tenant.organizationId),
         },
       },
     })

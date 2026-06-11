@@ -14,6 +14,7 @@ export type TaskStatus =
 export type TaskRecord = {
   id: string
   projectId: string | null
+  columnId: string | null
   status: TaskStatus
   title: string | null
   purpose: string | null
@@ -79,7 +80,46 @@ export const useAssignTask = () => {
   })
 }
 
-type TransitionContext = { snapshots: [readonly unknown[], TaskRecord[] | undefined][] }
+type OptimisticContext = { snapshots: [readonly unknown[], TaskRecord[] | undefined][] }
+
+// Optimistically patch the matching task across every ['tasks', …] cache so the
+// board reacts instantly; returns the snapshots for rollback on error.
+const optimisticPatch = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  id: string,
+  patch: Partial<TaskRecord>,
+): OptimisticContext => {
+  const snapshots = queryClient.getQueriesData<TaskRecord[]>({ queryKey: ['tasks'] })
+  for (const [key, data] of snapshots) {
+    if (!data) continue
+    queryClient.setQueryData(
+      key,
+      data.map((task) => (task.id === id ? { ...task, ...patch } : task)),
+    )
+  }
+  return { snapshots }
+}
+
+export const useMoveTask = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation<TaskRecord, Error, { id: string; columnId: string }, OptimisticContext>({
+    mutationFn: (input) =>
+      apiClient.post<TaskRecord>(`/api/tasks/${input.id}/move`, { columnId: input.columnId }),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] })
+      return optimisticPatch(queryClient, input.id, { columnId: input.columnId })
+    },
+    onError: (_error, _input, context) => {
+      context?.snapshots.forEach(([key, data]) => queryClient.setQueryData(key, data))
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
+type TransitionContext = OptimisticContext
 
 export const useTransitionTask = () => {
   const apiClient = useApiClient()
@@ -91,15 +131,7 @@ export const useTransitionTask = () => {
     // instant; roll back on failure (e.g. a transition the API rejects).
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: ['tasks'] })
-      const snapshots = queryClient.getQueriesData<TaskRecord[]>({ queryKey: ['tasks'] })
-      for (const [key, data] of snapshots) {
-        if (!data) continue
-        queryClient.setQueryData(
-          key,
-          data.map((task) => (task.id === input.id ? { ...task, status: input.status } : task)),
-        )
-      }
-      return { snapshots }
+      return optimisticPatch(queryClient, input.id, { status: input.status })
     },
     onError: (_error, _input, context) => {
       context?.snapshots.forEach(([key, data]) => queryClient.setQueryData(key, data))

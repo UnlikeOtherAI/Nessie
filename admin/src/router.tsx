@@ -13,7 +13,8 @@ import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
-import { ProjectKanbanPage } from './pages/ProjectKanbanPage'
+import { AggregateBoardPage } from './pages/AggregateBoardPage'
+import { ProjectView } from './pages/project/ProjectView'
 import { AppearancePage } from './pages/settings/AppearancePage'
 import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
@@ -64,11 +65,15 @@ export const router = createBrowserRouter([
       },
       {
         path: '/projects',
-        element: <ProjectKanbanPage />,
+        element: <AggregateBoardPage />,
       },
       {
         path: '/projects/:projectId',
-        element: <ProjectKanbanPage />,
+        element: <ProjectView />,
+      },
+      {
+        path: '/projects/:projectId/settings',
+        element: <ProjectView />,
       },
       {
         path: '/agents',

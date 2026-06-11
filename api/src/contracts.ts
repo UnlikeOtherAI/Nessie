@@ -1899,6 +1899,7 @@ export const TaskRecordSchema = z.object({
   id: TaskIdSchema,
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema.nullable(),
+  columnId: z.string().uuid().nullable(),
   agentId: AgentIdSchema.nullable(),
   parentTaskId: TaskIdSchema.nullable(),
   runId: RunIdSchema.nullable(),
@@ -1936,6 +1937,49 @@ export const AssignableUserSchema = z.object({
   displayName: NonEmptyStringSchema,
 })
 export type AssignableUser = z.infer<typeof AssignableUserSchema>
+
+export const MoveTaskBodySchema = z.object({
+  columnId: z.string().uuid(),
+})
+
+// ─── Boards (per-project columns + style) ─────────────────────────────────
+
+export const BoardStyleSchema = z.enum(['kanban', 'scrum'])
+export type BoardStyle = z.infer<typeof BoardStyleSchema>
+
+export const ColumnCategorySchema = z.enum(['todo', 'in_progress', 'review', 'done'])
+export type ColumnCategory = z.infer<typeof ColumnCategorySchema>
+
+export const BoardColumnRecordSchema = z.object({
+  id: z.string().uuid(),
+  projectId: ProjectIdSchema,
+  name: NonEmptyStringSchema,
+  category: ColumnCategorySchema,
+  position: z.number().int(),
+})
+export type BoardColumnRecord = z.infer<typeof BoardColumnRecordSchema>
+
+export const ProjectBoardRecordSchema = z.object({
+  style: BoardStyleSchema,
+  columns: BoardColumnRecordSchema.array(),
+})
+export type ProjectBoardRecord = z.infer<typeof ProjectBoardRecordSchema>
+
+export const UpdateBoardBodySchema = z.object({
+  style: BoardStyleSchema,
+})
+
+export const CreateColumnBodySchema = z.object({
+  name: NonEmptyStringSchema,
+  category: ColumnCategorySchema,
+  position: z.number().int().optional(),
+})
+
+export const UpdateColumnBodySchema = z.object({
+  name: NonEmptyStringSchema.optional(),
+  category: ColumnCategorySchema.optional(),
+  position: z.number().int().optional(),
+})
 
 // ─── Ops health (observability) ───────────────────────────────────────────
 

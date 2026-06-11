@@ -39,6 +39,7 @@ const mapTask = (task: TaskWithUsers): TaskRecord => ({
   id: parseTaskId(task.id),
   organizationId: parseOrganizationId(task.organizationId),
   projectId: task.projectId ? parseProjectId(task.projectId) : null,
+  columnId: task.columnId ?? null,
   agentId: task.agentId ? parseAgentId(task.agentId) : null,
   parentTaskId: task.parentTaskId ? parseTaskId(task.parentTaskId) : null,
   runId: task.runId ? (task.runId as TaskRecord['runId']) : null,
@@ -287,6 +288,75 @@ export const transitionTask = async (
       },
     })
     return tx.task.findFirst({ where: { id: input.taskId }, include: taskInclude })
+  })
+
+  if (!task) return { error: 'INVALID_TRANSITION', from: existing.status }
+  return mapTask(task)
+}
+
+// Each board column maps onto one canonical lifecycle status. Dragging a card
+// to a column pins it (columnId) and, when the column's category differs from
+// the card's current status, applies the matching validated transition — so
+// Task.status stays the single source of truth the worker/approvals rely on.
+const CATEGORY_TO_STATUS: Record<'todo' | 'in_progress' | 'review' | 'done', TaskStatus> = {
+  todo: 'inbox',
+  in_progress: 'in_progress',
+  review: 'review',
+  done: 'done',
+}
+
+type MoveError = {
+  error: 'NOT_FOUND' | 'COLUMN_NOT_FOUND' | 'INVALID_TRANSITION'
+  from?: TaskStatus
+}
+
+export const moveTaskToColumn = async (
+  prisma: PrismaClient,
+  input: { taskId: string; organizationId: string; columnId: string; actorId: string },
+): Promise<TaskRecord | MoveError> => {
+  const existing = await prisma.task.findFirst({
+    where: { id: input.taskId, organizationId: input.organizationId },
+    select: { id: true, status: true, projectId: true },
+  })
+  if (!existing) return { error: 'NOT_FOUND' }
+  if (!existing.projectId) return { error: 'COLUMN_NOT_FOUND' }
+
+  const column = await prisma.boardColumn.findFirst({
+    where: { id: input.columnId, projectId: existing.projectId },
+    select: { id: true, category: true },
+  })
+  if (!column) return { error: 'COLUMN_NOT_FOUND' }
+
+  const target = CATEGORY_TO_STATUS[column.category]
+
+  // Same lifecycle category → only re-pin the column, no status change.
+  if (existing.status === target) {
+    const task = await prisma.task.update({
+      where: { id: existing.id },
+      data: { columnId: column.id },
+      include: taskInclude,
+    })
+    return mapTask(task)
+  }
+
+  if (!isValidTransition(existing.status, target)) {
+    return { error: 'INVALID_TRANSITION', from: existing.status }
+  }
+
+  const task = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.task.updateMany({
+      where: { id: existing.id, organizationId: input.organizationId, status: existing.status },
+      data: { columnId: column.id, status: target },
+    })
+    if (count === 0) return null
+    await tx.taskEvent.create({
+      data: {
+        taskId: existing.id,
+        eventType: 'status_changed',
+        payload: { by: input.actorId, from: existing.status, to: target, columnId: column.id },
+      },
+    })
+    return tx.task.findFirst({ where: { id: existing.id }, include: taskInclude })
   })
 
   if (!task) return { error: 'INVALID_TRANSITION', from: existing.status }
