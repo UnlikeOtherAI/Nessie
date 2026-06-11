@@ -306,7 +306,7 @@ a {
 
 .admin-sidebar-plus:hover {
   background: var(--overlay-weak);
-  color: var(--on-accent);
+  color: var(--tx);
 }
 
 .admin-sidebar-more {
@@ -324,7 +324,7 @@ a {
 
 .admin-sidebar-more:hover {
   background: var(--overlay-weak);
-  color: var(--on-accent);
+  color: var(--tx);
 }
 
 .admin-sidebar-menu {
@@ -429,7 +429,7 @@ a {
 }
 
 .admin-rail-btn.active {
-  color: var(--on-accent);
+  color: var(--accent);
 }
 
 .admin-rail-btn-label {
