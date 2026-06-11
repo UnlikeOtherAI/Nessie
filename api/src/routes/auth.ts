@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 
 import type { FastifyInstance } from 'fastify'
 
-import { MeResponseSchema, UpdatePreferencesSchema } from '@nessie/schemas'
+import { MeResponseSchema, UpdateMyAvatarRequestSchema, UpdatePreferencesSchema } from '@nessie/schemas'
 import { isBootstrapTokenExpired } from '../auth/bootstrap.js'
 import { hashPassword, verifyPassword } from '../auth/password.js'
 import { verifySessionToken, type SessionTokenClaims } from '../auth/session.js'
@@ -158,6 +158,44 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const updatedUser = await prisma.user.update({
       where: { id: authenticatedState.claims.sub },
       data: { preferences: nextPreferences },
+    })
+
+    const me = await buildMeResponse(prisma, updatedUser, authenticatedState.claims, config)
+    return createApiResponse(MeResponseSchema.parse(me))
+  })
+
+  // Set or clear the signed-in user's custom avatar. The id must reference an
+  // image Attachment in the actor's organization (uploaded via POST /api/uploads);
+  // `null` clears it, reverting to the provider picture / Gravatar.
+  app.patch('/api/auth/me/avatar', async (request, reply) => {
+    const authenticatedState = await authenticateRequest(request, reply)
+    if (!authenticatedState) {
+      return reply
+    }
+
+    const body = parseInput(UpdateMyAvatarRequestSchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    if (body.avatarAttachmentId) {
+      const attachment = await prisma.attachment.findUnique({
+        where: { id: body.avatarAttachmentId },
+      })
+      const organizationId = authenticatedState.actorContext.tenant.organizationId
+      if (!attachment || attachment.organizationId !== organizationId) {
+        sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
+        return reply
+      }
+      if (attachment.kind !== 'image') {
+        sendApiError(reply, 400, 'INVALID_AVATAR', 'Avatar must be an image')
+        return reply
+      }
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: authenticatedState.claims.sub },
+      data: { avatarAttachmentId: body.avatarAttachmentId },
     })
 
     const me = await buildMeResponse(prisma, updatedUser, authenticatedState.claims, config)

@@ -159,11 +159,7 @@ export const AdminShellLayout = () => {
         <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
           <div className={shellClassName}>
             {!mobileLayout && (
-              <SidebarRail
-                displayName={me.user.displayName}
-                onLogout={shell.logoutAndRedirect}
-                pathname={shell.pathname}
-              />
+              <SidebarRail onLogout={shell.logoutAndRedirect} pathname={shell.pathname} />
             )}
 
             {shell.isKnowledgeRoute ? (

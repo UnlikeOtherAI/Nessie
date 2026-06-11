@@ -5,9 +5,9 @@ import {
 } from '../../../facades/organization/hooks'
 import { getInitials } from '../../../lib/avatar'
 import { uploadAttachment, useAuthedObjectUrl } from '../../../lib/uploads'
+import { CircleImageCropper } from '../../../components/shared/CircleImageCropper'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { sectionTitleClass } from '../settings-shared'
-import { CircleLogoCropper } from './CircleLogoCropper'
 
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 
@@ -127,11 +127,14 @@ export const LogoPanel = () => {
       {error && <div className="mt-3 text-sm text-[color:var(--danger-text)]">{error}</div>}
 
       {selectedFile && (
-        <CircleLogoCropper
+        <CircleImageCropper
           busy={busy}
+          description="Drag to reposition, scroll or use the slider to zoom. The circle is what becomes your logo."
           file={selectedFile}
           onCancel={() => setSelectedFile(null)}
           onSave={handleSave}
+          saveLabel="Save logo"
+          title="Edit logo"
         />
       )}
     </section>

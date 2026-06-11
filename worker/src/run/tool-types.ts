@@ -11,6 +11,7 @@ export type ToolExecutionResult = {
 
 export type BuiltinToolRuntimeContext = {
   agentId: string
+  agentKind: 'personal_assistant' | 'shared'
   actorContext: RunExecuteJobPayload['actorContext']
   channel: {
     id: string

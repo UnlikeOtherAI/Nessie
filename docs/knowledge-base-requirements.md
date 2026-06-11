@@ -316,18 +316,21 @@ that column):
 - The second column is **only the Spaces list** — styled like the channels list
   (a collapsible "Spaces" header with a `+` that opens a centered
   `CreateSpaceDialog` modal). No pages live here.
-- Selecting a space reveals its **top-level pages** in the next column (the first
-  main-area column, titled "Pages"). Selecting a top-level page opens a
-  Miller-style **drill-down** to the right: each page column shows the page body
-  plus its direct sub-pages; clicking a sub-page opens the next column, one
-  column per hierarchy level. Edit and version History append as further columns.
+- The main area is a **single full-width view** (no skinny Miller columns), driven
+  by a navigation stack (`pagePath`) and a shared `KnowledgePane` chrome (a 50px
+  header with a **Back** button + title + actions):
+  - **Pages list** — the selected space's top-level pages, with **New page**.
+  - **Page preview** (`PagePreview`) — full-width read-only page (status, title,
+    summary, labels, rendered body, and a Sub-pages section). Selecting a
+    sub-page pushes it onto the stack (still full-width); **Back** pops.
+  - **Editor** (`PageEditor`) and **version History** — also full-width, each with
+    a Back button.
 
-Shared state for both the sidebar and the drill-down lives in
-`KnowledgeProvider` (`admin/src/components/features/knowledge/`), which wraps the
-sidebar and the route outlet on the Knowledge route. The page hierarchy is
-derived client-side from the flat `GET /spaces/:id/pages` list via `parentPageId`
-(the list already includes each page's latest version body), so drill-down needs
-no extra requests.
+Shared state lives in `KnowledgeProvider`
+(`admin/src/components/features/knowledge/`), which wraps the sidebar and the
+route outlet on the Knowledge route. The page hierarchy is derived client-side
+from the flat `GET /spaces/:id/pages` list via `parentPageId` (the list already
+includes each page's latest version body), so navigation needs no extra requests.
 
 ### First-visit seeding
 

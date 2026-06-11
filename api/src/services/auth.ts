@@ -12,6 +12,7 @@ import {
 } from '@nessie/schemas'
 import type { SessionTokenClaims } from '../auth/session.js'
 import type { AuthProviderDescriptor } from '../contracts.js'
+import { buildGravatarUrl } from '../lib/gravatar.js'
 
 export const LOCAL_AUTH_PROVIDER_ID = 'local'
 
@@ -128,6 +129,8 @@ export const buildMeResponse = async (
       email: user.email,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl ?? undefined,
+      avatarAttachmentId: user.avatarAttachmentId ?? undefined,
+      gravatarUrl: buildGravatarUrl(user.email),
       pronouns: user.pronouns ?? undefined,
       roleIds: claims.roles,
       superAdmin: user.superAdmin,

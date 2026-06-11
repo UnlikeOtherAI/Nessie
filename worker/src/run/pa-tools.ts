@@ -10,7 +10,6 @@ import {
   parseOrganizationId,
   parseThreadId,
   parseUserId,
-  type AuthorizedActionContext,
 } from '@nessie/schemas'
 import { randomUUID } from 'node:crypto'
 import { loadConfig } from '@nessie/config'
@@ -39,18 +38,52 @@ const clampLimit = (value: unknown, fallback: number): number => {
   return Math.min(Math.max(Math.trunc(parsed), 1), 20)
 }
 
-const requireUserActor = (actorContext: AuthorizedActionContext): string => {
-  if (actorContext.actor.actorType !== 'user') {
+// The user this run acts on behalf of: the actor itself for an interactive
+// (user-actor) run, or the delegated effectiveUserId when an agent acts for a
+// user (the personal assistant acting for its owner). Null when there is no
+// user to act as.
+const resolveEffectiveUserId = (
+  context: BuiltinToolRuntimeContext,
+): string | null =>
+  context.actorContext.actionContext.effectiveUserId
+  ?? (context.actorContext.actor.actorType === 'user'
+    ? context.actorContext.actor.actorId
+    : null)
+
+// The personal assistant is a privileged delegate of its owner: it acts as that
+// user across every channel in the organization. True only when this run is the
+// PA and it has an owner to act as.
+export const isDelegatingPersonalAssistant = (
+  context: BuiltinToolRuntimeContext,
+): boolean =>
+  context.agentKind === 'personal_assistant'
+  && resolveEffectiveUserId(context) !== null
+
+// The user id a tool acts as: the user actor for an interactive run, or the
+// delegated owner for the personal assistant's runs. Throws when neither exists
+// (a non-delegating agent has no user to act as).
+const requireActingUserId = (context: BuiltinToolRuntimeContext): string => {
+  const userId = resolveEffectiveUserId(context)
+  if (!userId) {
     throw new Error('This tool requires a user actor context.')
   }
-
-  return actorContext.actor.actorId
+  return userId
 }
 
-const buildVisibleChannelWhere = (organizationId: string, userId: string) => ({
-  organizationId,
-  OR: [{ visibility: 'public' as const }, { members: { some: { userId } } }],
-})
+// Channels a delegated run may target. The personal assistant reaches every
+// channel in the organization (it is its owner's delegate); everyone else is
+// scoped to public channels plus the ones the acting user belongs to.
+const buildVisibleChannelWhere = (
+  organizationId: string,
+  userId: string,
+  orgWide = false,
+): Prisma.ChannelWhereInput =>
+  orgWide
+    ? { organizationId }
+    : {
+        organizationId,
+        OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
+      }
 
 // The set of channels an agent run may search past conversations in. Shares
 // the exact access model used for curated-memory recall, so search can never
@@ -65,14 +98,9 @@ const resolveAccessibleChannelIds = async (
     )
   }
 
-  const effectiveUserId =
-    context.actorContext.actionContext.effectiveUserId
-    ?? (context.actorContext.actor.actorType === 'user'
-      ? context.actorContext.actor.actorId
-      : undefined)
+  const effectiveUserId = resolveEffectiveUserId(context)
 
-  const isPersonalAssistant =
-    context.channel.systemChannelType === 'personal_assistant'
+  const isPersonalAssistant = context.agentKind === 'personal_assistant'
 
   // The personal assistant acts as its owner; without one there is nothing to
   // act as, so it sees nothing.
@@ -310,8 +338,9 @@ const resolveMessageDestination = async (
   threadId: string
   threadLabel: string | null
 }> => {
-  const userId = requireUserActor(context.actorContext)
+  const userId = requireActingUserId(context)
   const organizationId = context.channel.organizationId
+  const orgWide = isDelegatingPersonalAssistant(context)
   const explicitDestinationCount = [
     input.threadId ? 1 : 0,
     input.channelId ? 1 : 0,
@@ -360,7 +389,7 @@ const resolveMessageDestination = async (
     const channel = await context.prisma.channel.findFirst({
       where: {
         id: input.channelId,
-        ...buildVisibleChannelWhere(organizationId, userId),
+        ...buildVisibleChannelWhere(organizationId, userId, orgWide),
       },
       select: {
         id: true,
@@ -400,7 +429,7 @@ const resolveMessageDestination = async (
     const thread = await context.prisma.thread.findFirst({
       where: {
         id: input.threadId,
-        channel: buildVisibleChannelWhere(organizationId, userId),
+        channel: buildVisibleChannelWhere(organizationId, userId, orgWide),
       },
       select: {
         id: true,
@@ -441,7 +470,7 @@ const resolveMessageDestination = async (
   const thread = await context.prisma.thread.findFirst({
     where: {
       id: fallbackThreadId,
-      channel: buildVisibleChannelWhere(organizationId, userId),
+      channel: buildVisibleChannelWhere(organizationId, userId, orgWide),
     },
     select: {
       id: true,
@@ -684,7 +713,11 @@ export const runAuthoredMessageSearchTool = async (
   }
 
   const take = clampLimit(limit, MAX_SEARCH_RESULTS)
-  const visibleChannelWhere = buildVisibleChannelWhere(context.channel.organizationId, userId)
+  const visibleChannelWhere = buildVisibleChannelWhere(
+    context.channel.organizationId,
+    userId,
+    isDelegatingPersonalAssistant(context),
+  )
   const textFilter = { contains: searchQuery, mode: 'insensitive' as const }
 
   const messages = await context.prisma.message.findMany({
@@ -770,7 +803,7 @@ export const runPeopleSearchTool = async (
 
   const lines = people.map((person, index) => {
     const role = person.organizationMembers[0]?.role ?? 'member'
-    const youLabel = person.id === requireUserActor(context.actorContext) ? ' (you)' : ''
+    const youLabel = person.id === requireActingUserId(context) ? ' (you)' : ''
     return `${index + 1}. ${person.displayName}${youLabel} <${person.email}> | userId=${person.id} | role=${role}`
   })
 
@@ -791,7 +824,7 @@ export const runUpdatePreferencesTool = async (
     throw new Error('preferences must be a non-empty object.')
   }
 
-  const userId = requireUserActor(context.actorContext)
+  const userId = requireActingUserId(context)
   const updatedUser = await context.prisma.user.update({
     where: { id: parseUserId(userId) },
     data: { preferences: preferences as Prisma.InputJsonValue },
@@ -819,7 +852,7 @@ export const runSendMessageTool = async (
     threadId?: string
   },
 ): Promise<ToolExecutionResult> => {
-  const userId = requireUserActor(context.actorContext)
+  const userId = requireActingUserId(context)
   const content = input.content.trim()
   if (!content) {
     throw new Error('content is required.')
@@ -1175,7 +1208,7 @@ export const runAttachmentListTool = async (
   // back to the run's own thread.
   const threadId = input.threadId ?? (input.channelId ? undefined : context.run.threadId)
   const visibleChannel = userId
-    ? buildVisibleChannelWhere(organizationId, userId)
+    ? buildVisibleChannelWhere(organizationId, userId, isDelegatingPersonalAssistant(context))
     : { organizationId }
 
   const messageWhere = input.channelId
@@ -1326,13 +1359,13 @@ export const runChannelListTool = async (
   context: BuiltinToolRuntimeContext,
   input: { includeArchived?: boolean; limit?: unknown },
 ): Promise<ToolExecutionResult> => {
-  const userId = requireUserActor(context.actorContext)
+  const userId = requireActingUserId(context)
   const organizationId = context.channel.organizationId
   const take = clampLimit(input.limit, 20)
 
   const channels = await context.prisma.channel.findMany({
     where: {
-      ...buildVisibleChannelWhere(organizationId, userId),
+      ...buildVisibleChannelWhere(organizationId, userId, isDelegatingPersonalAssistant(context)),
       ...(input.includeArchived ? {} : { archivedAt: null }),
     },
     orderBy: { createdAt: 'asc' },
@@ -1369,7 +1402,7 @@ export const runChannelUpdateTool = async (
     description?: string
   },
 ): Promise<ToolExecutionResult> => {
-  const userId = requireUserActor(context.actorContext)
+  const userId = requireActingUserId(context)
   const organizationId = context.channel.organizationId
   if (!input.channelId) {
     throw new Error('channelId is required.')
@@ -1428,7 +1461,7 @@ export const runChannelArchiveTool = async (
   context: BuiltinToolRuntimeContext,
   input: { channelId: string; archived?: boolean },
 ): Promise<ToolExecutionResult> => {
-  const userId = requireUserActor(context.actorContext)
+  const userId = requireActingUserId(context)
   const organizationId = context.channel.organizationId
   if (!input.channelId) {
     throw new Error('channelId is required.')
@@ -1462,7 +1495,7 @@ export const runChannelJoinTool = async (
   context: BuiltinToolRuntimeContext,
   input: { channelId: string },
 ): Promise<ToolExecutionResult> => {
-  const userId = requireUserActor(context.actorContext)
+  const userId = requireActingUserId(context)
   const organizationId = context.channel.organizationId
   if (!input.channelId) {
     throw new Error('channelId is required.')

@@ -549,7 +549,11 @@ model User {
   email               String               @unique
   displayName         String               @map("display_name")
   passwordHash        String?              @map("password_hash")
+  // Provider-supplied avatar (e.g. the Google OIDC `picture` claim), captured at
+  // provisioning. `avatarAttachmentId` is a user-uploaded custom avatar that, when
+  // present, overrides this. Gravatar (derived from `email`) is the next fallback.
   avatarUrl           String?              @map("avatar_url")
+  avatarAttachmentId  String?              @map("avatar_attachment_id") @db.Uuid
   pronouns            String?
   // Platform-level super-admin flag. Sits ABOVE the per-organization `owner`
   // role: org owners administer their own tenant, but only a super-admin may
@@ -576,6 +580,7 @@ model User {
   mcpCatalogReviewed  McpCatalogEntry[]    @relation("McpCatalogReviewer")
   statuses            UserStatus[]
   feedback            Feedback[]
+  avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
 }
@@ -2555,6 +2560,7 @@ model Attachment {
   createdAt      DateTime @default(now()) @map("created_at")
 
   logoForOrganizations Organization[] @relation("OrganizationLogo")
+  avatarForUsers       User[]         @relation("UserAvatar")
   feedbackItems        Feedback[]     @relation("FeedbackAttachment")
 
   @@index([messageId])

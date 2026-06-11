@@ -1,35 +1,23 @@
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { faArrowRightFromBracket } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { UserAvatar } from '../../components/primitives/UserAvatar';
 import { useCurrentOrganization } from '../../facades/organization/hooks';
 import { useAuthedObjectUrl } from '../../lib/uploads';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { NAV_ITEMS } from './nav-items';
-
-const railUserAvatarClassName = [
-  'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
-  'text-[11px] font-bold text-[color:var(--on-accent)]',
-].join(' ');
-
-const railLogoutRowClassName = 'mt-2 flex w-full items-center gap-1.5';
-
-const railLogoutLineClassName = 'h-px flex-1 rounded-full bg-[color:var(--sep)]';
-
-const railLogoutButtonClassName = [
-  'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded',
-  'text-[color:var(--tx3)] transition-colors hover:text-[color:var(--tx)]',
-].join(' ');
+import { UserMenuPopover } from './UserMenuPopover';
 
 type SidebarRailProps = {
-  displayName: string;
   onLogout: () => void;
   pathname: string;
 };
 
-export const SidebarRail = ({ displayName, onLogout, pathname }: SidebarRailProps) => {
-  const { token } = useAuthSession();
+export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
+  const { token, me } = useAuthSession();
   const { data: organization } = useCurrentOrganization();
   const logoUrl = useAuthedObjectUrl(organization?.logoAttachmentId ?? null, token);
+  const avatarButtonRef = useRef<HTMLButtonElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <aside
@@ -118,21 +106,43 @@ export const SidebarRail = ({ displayName, onLogout, pathname }: SidebarRailProp
 
       <div className="flex-1" />
 
-      <div className={railUserAvatarClassName} style={{ background: 'var(--accent)' }}>
-        <span>{displayName.slice(0, 2).toUpperCase()}</span>
-      </div>
-      <div className={railLogoutRowClassName}>
-        <span className={railLogoutLineClassName} />
-        <button
-          aria-label="Log out"
-          className={railLogoutButtonClassName}
-          onClick={onLogout}
-          title="Log out"
-          type="button"
-        >
-          <FontAwesomeIcon className="h-3.5 w-3.5" icon={faArrowRightFromBracket} />
-        </button>
-      </div>
+      {me && (
+        <>
+          <button
+            aria-haspopup="menu"
+            aria-label="Account menu"
+            className={[
+              'rounded-full transition-shadow',
+              menuOpen
+                ? 'ring-2 ring-[color:var(--accent)]'
+                : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
+            ].join(' ')}
+            onClick={() => setMenuOpen((open) => !open)}
+            ref={avatarButtonRef}
+            title={me.user.displayName}
+            type="button"
+          >
+            <UserAvatar
+              avatarAttachmentId={me.user.avatarAttachmentId}
+              avatarUrl={me.user.avatarUrl}
+              displayName={me.user.displayName}
+              gravatarUrl={me.user.gravatarUrl}
+              size={32}
+              token={token}
+            />
+          </button>
+          {menuOpen && (
+            <UserMenuPopover
+              anchorRef={avatarButtonRef}
+              auth={me.auth}
+              onClose={() => setMenuOpen(false)}
+              onLogout={onLogout}
+              token={token}
+              user={me.user}
+            />
+          )}
+        </>
+      )}
     </aside>
   );
 };
