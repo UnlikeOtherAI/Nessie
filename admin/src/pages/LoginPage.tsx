@@ -38,8 +38,21 @@ type ExternalSignInCallback = {
 
 const webRedirectUri = (): string => `${window.location.origin}/login`
 
+type RnWebViewWindow = Window & {
+  ReactNativeWebView?: { postMessage: (data: string) => void }
+}
+
+const reactNativeWebView = (): RnWebViewWindow['ReactNativeWebView'] =>
+  (window as RnWebViewWindow).ReactNativeWebView
+
+const isMobileWebView = (): boolean => reactNativeWebView() !== undefined
+
+// Embedded webviews (Tauri desktop + React Native mobile) cannot run Google
+// OAuth inline — Google blocks embedded user-agents (error 403
+// disallowed_useragent). They round-trip through the OS browser and return via
+// the nessie:// deep link instead.
 const externalAuthRedirectUri = (): string =>
-  isDesktopApp() ? DESKTOP_REDIRECT_URI : webRedirectUri()
+  isDesktopApp() || isMobileWebView() ? DESKTOP_REDIRECT_URI : webRedirectUri()
 
 const parseDesktopAuthCallback = (value: string): Omit<ExternalSignInCallback, 'redirectUri'> | null => {
   let url: URL
@@ -133,6 +146,15 @@ export const LoginPage = () => {
       return
     }
 
+    const mobileWebView = reactNativeWebView()
+    if (mobileWebView) {
+      // Hand the authorize URL to the native shell; it opens the OS browser
+      // (ASWebAuthenticationSession) and posts the callback URL back to
+      // window.__nessieExternalAuthCallback below.
+      mobileWebView.postMessage(JSON.stringify({ type: 'nessie:external-auth', url: authorizeUrl }))
+      return
+    }
+
     window.location.assign(authorizeUrl)
   }, [])
 
@@ -155,6 +177,37 @@ export const LoginPage = () => {
     }
 
     void completeExternalSignIn({ code, redirectUri: webRedirectUri(), state })
+  }, [completeExternalSignIn, sessionState])
+
+  // Mobile shell delivers the OS-browser OAuth callback URL here — the analogue
+  // of the desktop deep-link listener below.
+  useEffect(() => {
+    if (sessionState !== 'unauthenticated' || !isMobileWebView()) {
+      return undefined
+    }
+
+    const target = window as Window & { __nessieExternalAuthCallback?: (url: string) => void }
+    target.__nessieExternalAuthCallback = (url: string) => {
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        return
+      }
+      const code = parsed.searchParams.get('code')
+      if (!code) {
+        return
+      }
+      void completeExternalSignIn({
+        code,
+        redirectUri: DESKTOP_REDIRECT_URI,
+        state: parsed.searchParams.get('state'),
+      })
+    }
+
+    return () => {
+      delete target.__nessieExternalAuthCallback
+    }
   }, [completeExternalSignIn, sessionState])
 
   useEffect(() => {

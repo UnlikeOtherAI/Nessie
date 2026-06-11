@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
+import * as WebBrowser from 'expo-web-browser'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 
 import { ADMIN_URL } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
+
+// Deep-link callback the OS browser redirects to after external sign-in. Must
+// match the admin's externalAuthRedirectUri and the API's allow-listed URL.
+const AUTH_CALLBACK_URL = 'nessie://auth/callback'
 
 // Injected into the admin page. The WebView fills the whole screen, so the
 // admin's full-height columns (rail/nav/page) already run edge to edge with no
@@ -82,6 +87,7 @@ const isDark = (c: string): boolean => {
 }
 
 export default function App(): React.JSX.Element {
+  const webRef = useRef<WebView>(null)
   const [bg, setBg] = useState(DEFAULT_BG)
 
   useEffect(() => {
@@ -89,15 +95,33 @@ export default function App(): React.JSX.Element {
     startDevInspector()
   }, [])
 
+  // Google blocks OAuth inside embedded webviews, so the admin hands SSO off to
+  // us: open the authorize URL in the OS browser (ASWebAuthenticationSession),
+  // then deliver the deep-link callback back into the webview to finish.
+  const runExternalAuth = async (authorizeUrl: string): Promise<void> => {
+    const result = await WebBrowser.openAuthSessionAsync(authorizeUrl, AUTH_CALLBACK_URL)
+    if (result.type === 'success' && result.url) {
+      const payload = JSON.stringify(result.url)
+      webRef.current?.injectJavaScript(
+        `window.__nessieExternalAuthCallback && window.__nessieExternalAuthCallback(${payload}); true;`,
+      )
+    }
+  }
+
   const onMessage = (event: WebViewMessageEvent): void => {
+    let msg: { type?: string; color?: string; url?: string }
     try {
-      const msg = JSON.parse(event.nativeEvent.data)
-      if (msg?.type === 'bg' && typeof msg.color === 'string') {
-        const rgb = parseRgb(msg.color)
-        if (rgb && rgb[3] !== 0) setBg(msg.color)
-      }
+      msg = JSON.parse(event.nativeEvent.data)
     } catch {
-      // ignore non-JSON messages
+      return
+    }
+    if (msg.type === 'bg' && typeof msg.color === 'string') {
+      const rgb = parseRgb(msg.color)
+      if (rgb && rgb[3] !== 0) setBg(msg.color)
+      return
+    }
+    if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
+      void runExternalAuth(msg.url)
     }
   }
 
@@ -105,6 +129,7 @@ export default function App(): React.JSX.Element {
     <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={isDark(bg) ? 'light' : 'dark'} />
       <WebView
+        ref={webRef}
         source={{ uri: ADMIN_URL }}
         style={[styles.fill, { backgroundColor: bg }]}
         originWhitelist={['*']}
