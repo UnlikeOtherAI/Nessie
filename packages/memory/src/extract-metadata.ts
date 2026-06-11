@@ -1,4 +1,4 @@
-import type { ModelClient } from '@nessie/runtime'
+import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
 
 export type ThoughtMetadata = {
   people: string[]
@@ -22,6 +22,7 @@ Text: `
 export const extractMetadata = async (
   content: string,
   client: ModelClient,
+  usage?: LedgerAttribution,
 ): Promise<ThoughtMetadata> => {
   try {
     const parsed = await client.chatJson<Partial<ThoughtMetadata>>(
@@ -29,7 +30,7 @@ export const extractMetadata = async (
         { role: 'system', content: 'You extract structured metadata from text. Return valid JSON only.' },
         { role: 'user', content: `${EXTRACTION_PROMPT}${content.slice(0, 4000)}` },
       ],
-      { maxTokens: 512, temperature: 0 },
+      { maxTokens: 512, temperature: 0, usage },
     )
 
     return {
