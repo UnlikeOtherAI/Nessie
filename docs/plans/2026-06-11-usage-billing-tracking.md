@@ -54,6 +54,24 @@ call sites simply pass no `usage` and behave as today (safe incremental rollout)
   `unitType?`, `costAmount?`, `costCurrency?`, `success?`, `latencyMs?`,
   `metadata?`; per-dimension indexes.
 
+## Status (2026-06-11)
+
+- **Phase 0 — DONE.** Schema + migration applied; `recordInferenceUsage` /
+  `recordConnectorUsage` / `attributionFromActorContext` in `@nessie/runtime`;
+  `createModelClient` sink; worker delegates to the shared writer (now idempotent
+  via `createMany` skipDuplicates) and threads `runId`.
+- **Phase 1 — DONE.** Orchestrator engagement decision, memory
+  capture/search/consolidation, thoughts, and the agent designer all bill to the
+  token ledger. Every AI/LLM call path is now ledgered.
+- **Phase 2 — PARTIAL.** Builtin external connectors (`web_search`, `web_fetch`,
+  `http_fetch`) write `connector_usage_events` via the single `recordToolEnd`
+  choke point. **Remaining:** MCP runtime tool calls (the delegate/`mcp-toolset`
+  path drops attribution before dispatch — see `mcp-toolset.ts:146`), push, and
+  storage. Verified by build/lint/unit tests; **live end-to-end ledger write not
+  yet confirmed** (start API+worker, exercise a path, check the tables).
+- **Phase 3 — TODO.** Reporting group-by `runId` + connector-usage summary
+  endpoint + admin surface; optional agent/channel budgets; functionality docs.
+
 ## Phases
 
 ### Phase 0 — Foundation (sequential)
