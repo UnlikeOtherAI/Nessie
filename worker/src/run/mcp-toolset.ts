@@ -1,4 +1,4 @@
-import type { ToolSchemaDescriptor } from '@nessie/runtime'
+import { recordConnectorUsage, type LedgerAttribution, type ToolSchemaDescriptor } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
 import { dispatchTool, parseMcpTransportConfig } from './tool-dispatch.js'
 import type { AgenticToolResult } from './tools.js'
@@ -65,6 +65,9 @@ export const buildMcpToolset = async (
   prisma: PrismaClient,
   organizationId: string,
   toolPolicy: McpToolPolicy,
+  // Attribution for connector usage billing — every dispatched MCP tool call
+  // writes a connector_usage_events row keyed to the run's org/agent/channel/run.
+  attribution: LedgerAttribution,
 ): Promise<McpToolset> => {
   const rows = (await prisma.toolRegistryEntry.findMany({
     where: {
@@ -89,6 +92,7 @@ export const buildMcpToolset = async (
   type TransportTarget = {
     transport: ReturnType<typeof parseMcpTransportConfig>
     originalToolName: string
+    instanceId: string
   }
   const transportByExposedName = new Map<string, TransportTarget>()
   const usedNames = new Set<string>()
@@ -124,7 +128,11 @@ export const buildMcpToolset = async (
       inputSchema: stringRecord(row.inputSchema),
       instanceId: row.mcpInstanceId,
     })
-    transportByExposedName.set(exposedName, { transport, originalToolName })
+    transportByExposedName.set(exposedName, {
+      transport,
+      originalToolName,
+      instanceId: row.mcpInstanceId,
+    })
   }
 
   const descriptors: ToolSchemaDescriptor[] = entries.map((entry) => ({
@@ -132,6 +140,28 @@ export const buildMcpToolset = async (
     description: entry.description || `MCP tool ${entry.originalToolName}`,
     inputSchema: entry.inputSchema,
   }))
+
+  // Record one connector_usage_events row per MCP tool call. Best-effort: a
+  // ledger failure must never break the tool dispatch.
+  const recordMcpUsage = async (
+    target: TransportTarget,
+    success: boolean,
+    latencyMs: number,
+  ): Promise<void> => {
+    await recordConnectorUsage(prisma, {
+      attribution,
+      event: {
+        connectorType: 'mcp',
+        connectorId: target.instanceId,
+        target: target.originalToolName,
+        operation: target.originalToolName,
+        success,
+        latencyMs,
+      },
+    }).catch(() => {
+      // best-effort billing capture
+    })
+  }
 
   const dispatch = async (
     exposedName: string,
@@ -142,17 +172,20 @@ export const buildMcpToolset = async (
     if (!target) {
       return { inputSummary, output: `Unknown MCP tool: ${exposedName}`, success: false }
     }
+    const startedAt = Date.now()
     try {
       const result = await dispatchTool({
         spec: { transport: 'mcp', connection: target.transport, toolName: target.originalToolName },
         args,
       })
+      await recordMcpUsage(target, result.success, Date.now() - startedAt)
       return {
         inputSummary,
         output: result.output,
         success: result.success,
       }
     } catch (error) {
+      await recordMcpUsage(target, false, Date.now() - startedAt)
       const message = error instanceof Error ? error.message : String(error)
       return { inputSummary, output: `MCP dispatch error: ${message}`, success: false }
     }
