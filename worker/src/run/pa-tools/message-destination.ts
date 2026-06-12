@@ -1,0 +1,384 @@
+import type { PrismaClient } from '@prisma/client'
+import {
+  parseChannelId,
+  parseOrganizationId,
+} from '@nessie/schemas'
+import type { BuiltinToolRuntimeContext } from '../tool-types.js'
+import {
+  buildVisibleChannelWhere,
+  isDelegatingPersonalAssistant,
+  requireActingUserId,
+  type ChannelAgent,
+} from './access.js'
+
+const ensureThreadForChannel = async (
+  prisma: PrismaClient,
+  channelId: string,
+): Promise<string> => {
+  const existingThread = await prisma.thread.findFirst({
+    where: { channelId },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  })
+
+  if (existingThread) {
+    return existingThread.id
+  }
+
+  try {
+    const thread = await prisma.thread.create({
+      data: {
+        channelId,
+        title: 'General',
+      },
+      select: { id: true },
+    })
+    return thread.id
+  } catch {
+    const fallback = await prisma.thread.findFirst({
+      where: { channelId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    })
+    if (!fallback) {
+      throw new Error(`Failed to resolve a thread for channel ${channelId}`)
+    }
+    return fallback.id
+  }
+}
+
+const resolveChannelAgents = async (
+  prisma: PrismaClient,
+  channelId: string,
+  organizationId: string,
+  content: string,
+): Promise<ChannelAgent[]> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: {
+      agentBindings: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          agent: {
+            select: { id: true, name: true, role: true, systemPrompt: true },
+          },
+        },
+      },
+      organizationId: true,
+    },
+  })
+
+  if (!channel || channel.organizationId !== organizationId) {
+    throw new Error('Channel not found')
+  }
+
+  const channelAgents: ChannelAgent[] = channel.agentBindings.map((binding) => ({
+    id: binding.agent.id,
+    name: binding.agent.name,
+    role: binding.agent.role,
+    systemPrompt: binding.agent.systemPrompt,
+  }))
+
+  if (!content.includes('@')) {
+    return channelAgents
+  }
+
+  const boundIds = new Set(channelAgents.map((agent) => agent.id))
+  const candidates = await prisma.agent.findMany({
+    where: {
+      agentKind: 'shared',
+      id: { notIn: [...boundIds] },
+      organizationId,
+      systemManaged: false,
+    },
+    select: { id: true, name: true, role: true, systemPrompt: true },
+  })
+
+  for (const agent of candidates) {
+    const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const mentionRe = new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i')
+    if (mentionRe.test(content)) {
+      channelAgents.push({
+        id: agent.id,
+        name: agent.name,
+        role: agent.role,
+        systemPrompt: agent.systemPrompt,
+      })
+    }
+  }
+
+  return channelAgents
+}
+
+const resolveDmChannel = async (
+  prisma: PrismaClient,
+  input: {
+    currentUserId: string
+    organizationId: string
+    teamId: string
+    targetUserId: string
+  },
+): Promise<{ channelId: string; channelLabel: string }> => {
+  if (input.currentUserId === input.targetUserId) {
+    throw new Error('targetUserId must refer to another user.')
+  }
+
+  const memberCount = await prisma.organizationMember.count({
+    where: {
+      organizationId: input.organizationId,
+      userId: { in: [input.currentUserId, input.targetUserId] },
+    },
+  })
+  if (memberCount < 2) {
+    throw new Error('Both users must belong to the organization.')
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: input.targetUserId },
+    select: { displayName: true },
+  })
+
+  const dmKey = [
+    input.organizationId,
+    input.teamId,
+    ...[input.currentUserId, input.targetUserId].sort(),
+  ].join(':')
+
+  try {
+    const channel = await prisma.channel.upsert({
+      where: { dmKey },
+      create: {
+        label: targetUser?.displayName ?? 'Direct Message',
+        type: 'dm',
+        organizationId: input.organizationId,
+        teamId: input.teamId,
+        visibility: 'private',
+        dmKey,
+        members: {
+          create: [
+            { userId: input.currentUserId },
+            { userId: input.targetUserId },
+          ],
+        },
+      },
+      update: {},
+      select: { id: true, label: true },
+    })
+
+    return { channelId: channel.id, channelLabel: channel.label }
+  } catch (error) {
+    if (
+      error instanceof Error
+      && 'code' in error
+      && (error as { code?: string }).code === 'P2002'
+    ) {
+      const channel = await prisma.channel.findUniqueOrThrow({
+        where: { dmKey },
+        select: { id: true, label: true },
+      })
+      return { channelId: channel.id, channelLabel: channel.label }
+    }
+
+    throw error
+  }
+}
+
+export const resolveMessageDestination = async (
+  context: BuiltinToolRuntimeContext,
+  input: {
+    channelId?: string
+    content: string
+    targetUserId?: string
+    threadId?: string
+  },
+): Promise<{
+  channelId: string
+  channelLabel: string
+  channelAgents: ChannelAgent[]
+  channelType: 'dm' | 'standard'
+  systemChannelType: 'personal_assistant' | null
+  threadId: string
+  threadLabel: string | null
+}> => {
+  const userId = requireActingUserId(context)
+  const organizationId = context.channel.organizationId
+  const orgWide = isDelegatingPersonalAssistant(context)
+  const explicitDestinationCount = [
+    input.threadId ? 1 : 0,
+    input.channelId ? 1 : 0,
+    input.targetUserId ? 1 : 0,
+  ].reduce((sum, value) => sum + value, 0)
+
+  if (explicitDestinationCount > 1) {
+    throw new Error('Provide only one of threadId, channelId, or targetUserId.')
+  }
+
+  if (input.targetUserId) {
+    const teamId = context.actorContext.tenant.teamId
+    if (!teamId) {
+      throw new Error('Unable to resolve a team context for DM creation.')
+    }
+
+    const dm = await resolveDmChannel(context.prisma, {
+      currentUserId: userId,
+      organizationId,
+      targetUserId: input.targetUserId,
+      teamId,
+    })
+    const threadId = await ensureThreadForChannel(context.prisma, dm.channelId)
+    const thread = await context.prisma.thread.findUnique({
+      where: { id: threadId },
+      select: { id: true, title: true },
+    })
+
+    return {
+      channelAgents: await resolveChannelAgents(
+        context.prisma,
+        dm.channelId,
+        organizationId,
+        input.content,
+      ),
+      channelId: dm.channelId,
+      channelLabel: dm.channelLabel,
+      channelType: 'dm',
+      systemChannelType: null,
+      threadId,
+      threadLabel: thread?.title ?? null,
+    }
+  }
+
+  if (input.channelId) {
+    const channel = await context.prisma.channel.findFirst({
+      where: {
+        id: input.channelId,
+        ...buildVisibleChannelWhere(organizationId, userId, orgWide),
+      },
+      select: {
+        id: true,
+        label: true,
+        type: true,
+        systemChannelType: true,
+      },
+    })
+
+    if (!channel) {
+      throw new Error('Channel not found or not visible.')
+    }
+
+    const threadId = await ensureThreadForChannel(context.prisma, channel.id)
+    const thread = await context.prisma.thread.findUnique({
+      where: { id: threadId },
+      select: { id: true, title: true },
+    })
+
+    return {
+      channelAgents: await resolveChannelAgents(
+        context.prisma,
+        channel.id,
+        organizationId,
+        input.content,
+      ),
+      channelId: channel.id,
+      channelLabel: channel.label,
+      channelType: channel.type,
+      systemChannelType: channel.systemChannelType,
+      threadId,
+      threadLabel: thread?.title ?? null,
+    }
+  }
+
+  if (input.threadId) {
+    const thread = await context.prisma.thread.findFirst({
+      where: {
+        id: input.threadId,
+        channel: buildVisibleChannelWhere(organizationId, userId, orgWide),
+      },
+      select: {
+        id: true,
+        title: true,
+        channel: {
+          select: {
+            id: true,
+            label: true,
+            type: true,
+            systemChannelType: true,
+          },
+        },
+      },
+    })
+
+    if (!thread) {
+      throw new Error('Thread not found or not visible.')
+    }
+
+    return {
+      channelAgents: await resolveChannelAgents(
+        context.prisma,
+        thread.channel.id,
+        organizationId,
+        input.content,
+      ),
+      channelId: thread.channel.id,
+      channelLabel: thread.channel.label,
+      channelType: thread.channel.type,
+      systemChannelType: thread.channel.systemChannelType,
+      threadId: thread.id,
+      threadLabel: thread.title ?? null,
+    }
+  }
+
+  const fallbackThreadId =
+    context.actorContext.actionContext.threadId ?? context.run.threadId
+  const thread = await context.prisma.thread.findFirst({
+    where: {
+      id: fallbackThreadId,
+      channel: buildVisibleChannelWhere(organizationId, userId, orgWide),
+    },
+    select: {
+      id: true,
+      title: true,
+      channel: {
+        select: {
+          id: true,
+          label: true,
+          type: true,
+          systemChannelType: true,
+        },
+      },
+    },
+  })
+
+  if (!thread) {
+    throw new Error('Unable to resolve a destination thread.')
+  }
+
+  return {
+    channelAgents: await resolveChannelAgents(
+      context.prisma,
+      thread.channel.id,
+      organizationId,
+      input.content,
+    ),
+    channelId: thread.channel.id,
+    channelLabel: thread.channel.label,
+    channelType: thread.channel.type,
+    systemChannelType: thread.channel.systemChannelType,
+    threadId: thread.id,
+    threadLabel: thread.title ?? null,
+  }
+}
+
+export const buildRealtimeScopesForChannel = (input: {
+  channelId: string
+  organizationId: string
+  systemChannelType: 'personal_assistant' | null
+}) =>
+  input.systemChannelType === 'personal_assistant'
+    ? [{ kind: 'channel' as const, channelId: parseChannelId(input.channelId) }]
+    : [
+        {
+          kind: 'organization' as const,
+          organizationId: parseOrganizationId(input.organizationId),
+        },
+        { kind: 'channel' as const, channelId: parseChannelId(input.channelId) },
+      ]
