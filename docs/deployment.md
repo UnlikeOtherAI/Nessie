@@ -301,7 +301,8 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
   `client_hash = SHA256(domain + client_secret)`, then reads `email`/`sub` from
   the returned access-token claims. If UOA omits a usable `name` claim, or sends
   the email address as the name, Nessie stores a humanized email local part
-  instead so chat messages do not render raw email addresses as sender names.
+  instead. Session hydration also repairs legacy email-shaped display names so
+  chat messages do not render raw email addresses as sender names.
 - The **first** SSO user on a fresh instance bootstraps the default
   workspace and becomes its owner — there is no separate owner-account step.
   Bootstrap mode is automatically suppressed whenever an SSO provider is

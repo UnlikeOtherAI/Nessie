@@ -13,6 +13,7 @@ import {
 import type { SessionTokenClaims } from '../auth/session.js'
 import type { AuthProviderDescriptor } from '../contracts.js'
 import { buildGravatarUrl } from '../lib/gravatar.js'
+import { resolveStoredDisplayName } from './identity-display.js'
 
 export const LOCAL_AUTH_PROVIDER_ID = 'local'
 
@@ -121,13 +122,21 @@ export const buildMeResponse = async (
   claims: SessionTokenClaims,
   config: NessieConfig,
 ): Promise<MeResponse> => {
+  const displayName = resolveStoredDisplayName(user.email, user.displayName)
+  if (displayName !== user.displayName) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { displayName },
+    })
+  }
+
   const memberships = await loadUserMemberships(prisma, user.id)
 
   return {
     user: {
       id: parseUserId(user.id),
       email: user.email,
-      displayName: user.displayName,
+      displayName,
       avatarUrl: user.avatarUrl ?? undefined,
       avatarAttachmentId: user.avatarAttachmentId ?? undefined,
       gravatarUrl: buildGravatarUrl(user.email),
