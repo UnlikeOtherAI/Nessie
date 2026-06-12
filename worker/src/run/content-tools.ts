@@ -1,8 +1,8 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { runWebSearch } from './builtin-handlers/index.js'
-import { assertSafeUrl } from './builtin-handlers/url-safety.js'
+import { HttpFetchError, runWebSearch } from './builtin-handlers/index.js'
+import { assertSafeUrl, UrlSafetyError } from './builtin-handlers/url-safety.js'
 import { hashJsonValue, MAX_TOOL_RESULT_CHARS, truncate } from './tool-util.js'
 import type { ToolExecutionResult } from './tool-types.js'
 
@@ -144,7 +144,15 @@ export const collectWebFetchResult = async (
   truncated: boolean
   url: string
 }> => {
-  const safeUrl = await assertSafeUrl(rawUrl)
+  let safeUrl: URL
+  try {
+    safeUrl = await assertSafeUrl(rawUrl)
+  } catch (error) {
+    if (error instanceof UrlSafetyError) {
+      throw new HttpFetchError(error.message)
+    }
+    throw error
+  }
   const response = await fetch(safeUrl, {
     headers: {
       'user-agent': 'NessieWorker/0.0.0',
