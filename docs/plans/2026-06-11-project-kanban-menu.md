@@ -185,7 +185,8 @@ Tightened the card header and added a long-form ticket body.
 - `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
 - kelpie cannot render this admin (it spuriously throws the "Rendered more hooks"
   crash in `useMediaQuery`/`AdminShellLayout`, unrelated to this code — filed
-  against kelpie); verified instead with headless Playwright + a dev-login token.
+  against kelpie). Confirmed live on the running dev board (merged to `main`,
+  user-reviewed); no automated screenshot captured.
 
 ## Update 2026-06-12 (2) — card v2, compact priority row, searchable assignee (people + agents)
 
