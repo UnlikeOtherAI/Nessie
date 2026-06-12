@@ -4,6 +4,8 @@ export type ExternalAuthIdentity = {
   email: string
 }
 
+const EMAIL_LIKE_DISPLAY_NAME = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 // Derive a human-friendly display name from an email's local part, e.g.
 // "ondrej.rafaj@gmail.com" -> "Ondrej Rafaj".
 export const humanizeEmailLocalPart = (email: string): string => {
@@ -16,19 +18,29 @@ export const humanizeEmailLocalPart = (email: string): string => {
   return words.join(' ') || email
 }
 
+export const isEmailLikeDisplayName = (displayName: string): boolean =>
+  EMAIL_LIKE_DISPLAY_NAME.test(displayName.trim())
+
+export const resolveStoredDisplayName = (
+  email: string,
+  displayName: string,
+): string =>
+  isEmailLikeDisplayName(displayName)
+    ? humanizeEmailLocalPart(email.trim().toLowerCase())
+    : displayName
+
 export const resolveIdentityDisplayName = (
   email: string,
   candidates: Array<string | undefined>,
 ): string => {
   const normalizedEmail = email.trim().toLowerCase()
-  const emailLike = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   const providerName = candidates
     .map((candidate) => candidate?.trim() ?? '')
     .find(
       (candidate) =>
         candidate.length > 0 &&
         candidate.toLowerCase() !== normalizedEmail &&
-        !emailLike.test(candidate),
+        !isEmailLikeDisplayName(candidate),
     )
 
   return providerName ?? humanizeEmailLocalPart(normalizedEmail)
