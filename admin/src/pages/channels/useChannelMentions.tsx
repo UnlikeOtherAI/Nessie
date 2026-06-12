@@ -12,7 +12,6 @@ interface UseChannelMentionsParams {
   agents: AgentRecord[]
   channels: ChannelRecord[]
   channelUsers: UserRecord[]
-  isConversationSurface: boolean
 }
 
 interface UseChannelMentionsResult {
@@ -83,7 +82,6 @@ export const useChannelMentions = ({
   agents,
   channels,
   channelUsers,
-  isConversationSurface,
 }: UseChannelMentionsParams): UseChannelMentionsResult => {
   const channelMentionTargets = useMemo(
     () => buildChannelMentionTargets(channels),
@@ -92,15 +90,13 @@ export const useChannelMentions = ({
 
   const mentionEntities: MentionEntity[] = useMemo(
     () => [
-      ...(isConversationSurface
-        ? []
-        : agents.map((a) => ({
-            id: a.id,
-            name: a.name,
-            type: 'agent' as const,
-            trigger: '@' as const,
-            glyph: getAgentGlyph(a),
-          }))),
+      ...agents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        type: 'agent' as const,
+        trigger: '@' as const,
+        glyph: getAgentGlyph(a),
+      })),
       ...channelUsers.map((u) => ({
         id: u.id,
         name: u.displayName,
@@ -115,7 +111,7 @@ export const useChannelMentions = ({
         trigger: '#' as const,
       })),
     ],
-    [agents, channelMentionTargets, channelUsers, isConversationSurface],
+    [agents, channelMentionTargets, channelUsers],
   )
 
   const mentionEntityMap = useMemo(

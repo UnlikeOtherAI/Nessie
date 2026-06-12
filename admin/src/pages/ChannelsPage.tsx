@@ -106,7 +106,6 @@ export const ChannelsPage = () => {
     agents,
     channels,
     channelUsers,
-    isConversationSurface,
   })
 
   const {
