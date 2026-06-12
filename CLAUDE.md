@@ -30,7 +30,8 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - The main project checkout must always stay on `main`. Never switch branches in it.
 - Every task — and every parallel agent/CLI — does its work in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never edit the main checkout directly.
 - Never reset, clean, or discard another worktree's or agent's work.
-- Merge finished work into `main` only after review, linting, and tests pass. Then in the main checkout run `git switch main && git pull --ff-only`, remove the worktree (`git worktree remove …`), and delete the merged branch.
+- When any task is done, merge the completed task branch into `main` in the same turn after review, linting, and tests pass; do not leave completed work parked in a worktree unless the user explicitly says not to or verification is blocked.
+- Then in the main checkout run `git switch main && git pull --ff-only`, remove the worktree (`git worktree remove …`), and delete the merged branch.
 
 ## Dev mode (hot reload)
 
