@@ -36,4 +36,13 @@ export const useTabletShell = (): boolean => {
 
 // Phone layout: the narrow hamburger-drawer experience. Tablets keep the sidebar
 // pinned, so they are explicitly excluded even though they are "mobile".
-export const usePhoneLayout = (): boolean => useMobileLayout() && !useTabletShell()
+//
+// Both hooks must be called unconditionally: a `useMobileLayout() && !useTabletShell()`
+// one-liner short-circuits the `useTabletShell()` hook whenever the viewport is wide,
+// so crossing the (max-width: 767px) breakpoint between renders changes the hook count
+// and throws React error #310 ("Rendered more hooks than during the previous render").
+export const usePhoneLayout = (): boolean => {
+  const mobile = useMobileLayout()
+  const tablet = useTabletShell()
+  return mobile && !tablet
+}
