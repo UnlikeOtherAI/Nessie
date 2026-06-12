@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
+import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { getCookie, setCookie } from '../../lib/storage';
 
 type AdminSidebarNavProps = {
   pathname: string;
@@ -15,7 +17,10 @@ type AdminNavItem = {
   exact?: boolean;
 };
 
+type AdminNavGroupId = 'agents' | 'general' | 'workspace' | 'governance' | 'platform';
+
 type AdminNavGroup = {
+  id: AdminNavGroupId;
   heading: string;
   ownerOnly?: boolean;
   superAdminOnly?: boolean;
@@ -30,6 +35,7 @@ const icon = (path: ReactNode) => (
 
 const ADMIN_NAV: AdminNavGroup[] = [
   {
+    id: 'agents',
     heading: 'Agents',
     items: [
       {
@@ -105,6 +111,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
+    id: 'general',
     heading: 'General',
     items: [
       {
@@ -176,6 +183,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
+    id: 'workspace',
     heading: 'Workspace',
     items: [
       {
@@ -211,6 +219,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
+    id: 'governance',
     heading: 'Governance',
     ownerOnly: true,
     items: [
@@ -260,6 +269,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
+    id: 'platform',
     heading: 'Platform',
     superAdminOnly: true,
     items: [
@@ -277,7 +287,99 @@ const ADMIN_NAV: AdminNavGroup[] = [
   },
 ];
 
+const adminNavCookieName = (id: AdminNavGroupId) => `adminNavCollapsed-${id}`;
+
+type AdminNavSectionProps = {
+  group: AdminNavGroup;
+  isCollapsed: boolean;
+  isOwner: boolean;
+  onToggle: (id: AdminNavGroupId) => void;
+  pathname: string;
+};
+
+const AdminNavSection = ({
+  group,
+  isCollapsed,
+  isOwner,
+  onToggle,
+  pathname,
+}: AdminNavSectionProps) => {
+  const sectionId = `admin-nav-${group.id}`;
+
+  return (
+    <div>
+      <div className="admin-sec-row">
+        <button
+          aria-controls={sectionId}
+          aria-expanded={!isCollapsed}
+          className="admin-sec-hdr"
+          onClick={() => onToggle(group.id)}
+          type="button"
+        >
+          <svg
+            className={[
+              'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+              isCollapsed ? '-rotate-90' : '',
+            ].join(' ')}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            viewBox="0 0 24 24"
+          >
+            <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {group.heading}
+        </button>
+      </div>
+      {!isCollapsed ? (
+        <div id={sectionId}>
+          {group.items
+            .filter((item) => !item.ownerOnly || isOwner)
+            .map((item) => {
+              const isActive = item.exact
+                ? pathname === item.path
+                : pathname === item.path || pathname.startsWith(`${item.path}/`);
+              return (
+                <Link
+                  key={item.path}
+                  className={['admin-sb-item', isActive ? 'active' : ''].join(' ')}
+                  to={item.path}
+                >
+                  {item.icon}
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                </Link>
+              );
+            })}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 export const AdminSidebarNav = ({ pathname, isOwner, isSuperAdmin }: AdminSidebarNavProps) => {
+  const visibleGroups = useMemo(
+    () =>
+      ADMIN_NAV.filter(
+        (group) => (!group.ownerOnly || isOwner) && (!group.superAdminOnly || isSuperAdmin),
+      ),
+    [isOwner, isSuperAdmin],
+  );
+  const [collapsedSections, setCollapsedSections] = useState<Record<AdminNavGroupId, boolean>>(
+    () =>
+      ADMIN_NAV.reduce<Record<AdminNavGroupId, boolean>>((state, group) => {
+        state[group.id] = getCookie(adminNavCookieName(group.id)) === '1';
+        return state;
+      }, {} as Record<AdminNavGroupId, boolean>),
+  );
+
+  const toggleSection = useCallback((id: AdminNavGroupId) => {
+    setCollapsedSections((prev) => {
+      const nextCollapsed = !prev[id];
+      setCookie(adminNavCookieName(id), nextCollapsed ? '1' : '0');
+      return { ...prev, [id]: nextCollapsed };
+    });
+  }, []);
+
   return (
     <aside
       className={[
@@ -288,36 +390,16 @@ export const AdminSidebarNav = ({ pathname, isOwner, isSuperAdmin }: AdminSideba
       <div className="flex h-[50px] items-center px-4">
         <span className="text-[15px] font-bold text-[color:var(--tx)]">Admin</span>
       </div>
-      <nav className="flex flex-1 flex-col gap-3 px-2 py-1">
-        {ADMIN_NAV.filter(
-          (group) =>
-            (!group.ownerOnly || isOwner) && (!group.superAdminOnly || isSuperAdmin),
-        ).map((group) => (
-          <div key={group.heading} className="flex flex-col gap-0.5">
-            <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-              {group.heading}
-            </div>
-            {group.items
-              .filter((item) => !item.ownerOnly || isOwner)
-              .map((item) => {
-                const isActive = item.exact
-                  ? pathname === item.path
-                  : pathname === item.path || pathname.startsWith(`${item.path}/`);
-                return (
-                  <Link
-                    key={item.path}
-                    className={[
-                      'admin-sb-item flex items-center gap-2.5 px-3 py-2 text-[13px]',
-                      isActive ? 'active' : '',
-                    ].join(' ')}
-                    to={item.path}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </Link>
-                );
-              })}
-          </div>
+      <nav className="min-h-0 flex-1 overflow-y-auto py-1">
+        {visibleGroups.map((group) => (
+          <AdminNavSection
+            group={group}
+            isCollapsed={collapsedSections[group.id] ?? false}
+            isOwner={isOwner}
+            key={group.id}
+            onToggle={toggleSection}
+            pathname={pathname}
+          />
         ))}
       </nav>
     </aside>
