@@ -92,6 +92,7 @@ export const exchangeExternalAuthCode = async (
     code: string
     codeVerifier: string
     redirectUri: string
+    theme?: SsoTheme
   },
 ): Promise<ExternalAuthIdentity> => {
   if (provider.type === 'uoa') {

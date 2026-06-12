@@ -20,6 +20,7 @@ export type LoginInput =
       codeVerifier: string
       providerId: string
       redirectUri: string
+      theme?: string
     }
 
 // Persists the bearer token across reloads. On web this is backed by

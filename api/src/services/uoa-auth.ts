@@ -342,6 +342,7 @@ export const exchangeUoaCode = async (input: {
   code: string
   codeVerifier: string
   redirectUri: string
+  theme?: SsoTheme
 }): Promise<ExternalAuthIdentity> => {
   const settings = loadUoaSettings()
   ensureAllowedRedirectUrl(settings, input.redirectUri)
@@ -351,7 +352,7 @@ export const exchangeUoaCode = async (input: {
   }
 
   const tokenUrl = new URL(`${settings.baseUrl}/auth/token`)
-  tokenUrl.searchParams.set('config_url', settings.configUrl)
+  tokenUrl.searchParams.set('config_url', themedConfigUrl(settings, input.theme))
 
   const response = await fetch(tokenUrl.toString(), {
     method: 'POST',

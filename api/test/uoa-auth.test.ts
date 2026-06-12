@@ -62,13 +62,11 @@ const withUoaEnv = async <T>(fn: () => Promise<T>): Promise<T> => {
 const withTokenResponse = async <T>(
   claims: Record<string, unknown>,
   fn: () => Promise<T>,
+  expectedUrl = 'https://uoa.example.com/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig',
 ): Promise<T> => {
   const previousFetch = globalThis.fetch
   globalThis.fetch = async (input) => {
-    assert.equal(
-      String(input),
-      'https://uoa.example.com/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig',
-    )
+    assert.equal(String(input), expectedUrl)
     return new Response(
       JSON.stringify({ access_token: jwtForClaims(claims) }),
       { status: 200, headers: { 'content-type': 'application/json' } },
@@ -118,6 +116,25 @@ test('buildUoaAuthorizeUrl passes the selected theme through config_url', async 
 
     const configUrl = authorizeUrl.searchParams.get('config_url')
     assert.equal(configUrl, 'https://api.example.com/api/auth/sso/config?theme=rose')
+  })
+})
+
+test('exchangeUoaCode reuses the selected theme for the token config_url', async () => {
+  await withUoaEnv(async () => {
+    await withTokenResponse(
+      { email: 'ada.lovelace@example.com' },
+      async () => {
+        const identity = await exchangeUoaCode({
+          code: 'code',
+          codeVerifier: 'verifier',
+          redirectUri: uoaEnv.UOA_REDIRECT_URL,
+          theme: 'rose',
+        })
+
+        assert.equal(identity.email, 'ada.lovelace@example.com')
+      },
+      'https://uoa.example.com/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig%3Ftheme%3Drose',
+    )
   })
 })
 
