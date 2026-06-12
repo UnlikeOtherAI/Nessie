@@ -622,6 +622,10 @@ a {
   background: var(--overlay-weak);
 }
 
+.admin-sidebar-menu button.admin-sidebar-menu-danger {
+  color: var(--danger-text);
+}
+
 .admin-sidebar-menu [role="button"]:hover {
   background: var(--overlay-weak);
 }

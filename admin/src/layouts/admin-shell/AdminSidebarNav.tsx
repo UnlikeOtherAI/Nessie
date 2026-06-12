@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { getCookie, setCookie } from '../../lib/storage';
+import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
 
 type AdminSidebarNavProps = {
   pathname: string;
@@ -307,52 +307,30 @@ const AdminNavSection = ({
   const sectionId = `admin-nav-${group.id}`;
 
   return (
-    <div>
-      <div className="admin-sec-row">
-        <button
-          aria-controls={sectionId}
-          aria-expanded={!isCollapsed}
-          className="admin-sec-hdr"
-          onClick={() => onToggle(group.id)}
-          type="button"
-        >
-          <svg
-            className={[
-              'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-              isCollapsed ? '-rotate-90' : '',
-            ].join(' ')}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            viewBox="0 0 24 24"
-          >
-            <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          {group.heading}
-        </button>
-      </div>
-      {!isCollapsed ? (
-        <div id={sectionId}>
-          {group.items
-            .filter((item) => !item.ownerOnly || isOwner)
-            .map((item) => {
-              const isActive = item.exact
-                ? pathname === item.path
-                : pathname === item.path || pathname.startsWith(`${item.path}/`);
-              return (
-                <Link
-                  key={item.path}
-                  className={['admin-sb-item', isActive ? 'active' : ''].join(' ')}
-                  to={item.path}
-                >
-                  {item.icon}
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                </Link>
-              );
-            })}
-        </div>
-      ) : null}
-    </div>
+    <SidebarMenuSection
+      id={sectionId}
+      isCollapsed={isCollapsed}
+      onToggle={() => onToggle(group.id)}
+      title={group.heading}
+    >
+      {group.items
+        .filter((item) => !item.ownerOnly || isOwner)
+        .map((item) => {
+          const isActive = item.exact
+            ? pathname === item.path
+            : pathname === item.path || pathname.startsWith(`${item.path}/`);
+          return (
+            <Link
+              key={item.path}
+              className={['admin-sb-item', isActive ? 'active' : ''].join(' ')}
+              to={item.path}
+            >
+              {item.icon}
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            </Link>
+          );
+        })}
+    </SidebarMenuSection>
   );
 };
 
@@ -364,21 +342,10 @@ export const AdminSidebarNav = ({ pathname, isOwner, isSuperAdmin }: AdminSideba
       ),
     [isOwner, isSuperAdmin],
   );
-  const [collapsedSections, setCollapsedSections] = useState<Record<AdminNavGroupId, boolean>>(
-    () =>
-      ADMIN_NAV.reduce<Record<AdminNavGroupId, boolean>>((state, group) => {
-        state[group.id] = getCookie(adminNavCookieName(group.id)) === '1';
-        return state;
-      }, {} as Record<AdminNavGroupId, boolean>),
+  const { collapsedSections, toggleSection } = useCookieBackedSidebarSections(
+    ADMIN_NAV.map((group) => group.id),
+    adminNavCookieName,
   );
-
-  const toggleSection = useCallback((id: AdminNavGroupId) => {
-    setCollapsedSections((prev) => {
-      const nextCollapsed = !prev[id];
-      setCookie(adminNavCookieName(id), nextCollapsed ? '1' : '0');
-      return { ...prev, [id]: nextCollapsed };
-    });
-  }, []);
 
   return (
     <aside

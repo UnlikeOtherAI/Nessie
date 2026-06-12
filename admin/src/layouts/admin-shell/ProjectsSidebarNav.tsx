@@ -5,11 +5,18 @@ import { ProjectMembersDialog } from '../../components/shared/ProjectMembersDial
 import { RenameProjectDialog } from '../../components/shared/RenameProjectDialog'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
+import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
 
 type ProjectsSidebarNavProps = {
   pathname: string
   isOwner: boolean
 }
+
+type ProjectNavSectionId = 'boards' | 'projects'
+
+const PROJECT_NAV_SECTION_IDS: ProjectNavSectionId[] = ['boards', 'projects']
+
+const projectNavCookieName = (id: ProjectNavSectionId) => `projectsNavCollapsed-${id}`
 
 const KanbanIcon = () => (
   <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -38,6 +45,10 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
   const [renameTarget, setRenameTarget] = useState<ProjectRecord | null>(null)
   const [membersTarget, setMembersTarget] = useState<ProjectRecord | null>(null)
   const [menuProjectId, setMenuProjectId] = useState<string | null>(null)
+  const { collapsedSections, toggleSection } = useCookieBackedSidebarSections(
+    PROJECT_NAV_SECTION_IDS,
+    projectNavCookieName,
+  )
 
   const handleDelete = (project: ProjectRecord) => {
     setMenuProjectId(null)
@@ -59,113 +70,121 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
         <span className="text-[15px] font-bold text-[color:var(--tx)]">Projects</span>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-1">
-        <Link
-          className={[
-            'admin-sb-item flex items-center gap-2.5 px-3 py-2 text-[13px]',
-            pathname === '/projects' ? 'active' : '',
-          ].join(' ')}
-          to="/projects"
+      <nav className="min-h-0 flex-1 overflow-y-auto py-1">
+        <SidebarMenuSection
+          id="projects-nav-boards"
+          isCollapsed={collapsedSections.boards ?? false}
+          onToggle={() => toggleSection('boards')}
+          title="Boards"
         >
-          <KanbanIcon />
-          Kanban
-        </Link>
+          <Link
+            className={['admin-sb-item', pathname === '/projects' ? 'active' : ''].join(' ')}
+            to="/projects"
+          >
+            <KanbanIcon />
+            <span className="min-w-0 flex-1 truncate">Kanban</span>
+          </Link>
+        </SidebarMenuSection>
 
-        <div className="mt-3 flex items-center justify-between px-3 py-1">
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-            Projects
-          </span>
-          {isOwner ? (
-            <button
-              aria-label="New project"
-              className="text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
-              onClick={() => setCreateOpen(true)}
-              type="button"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          ) : null}
-        </div>
-
-        {projects.length === 0 ? (
-          <div className="px-3 py-2 text-xs text-[color:var(--tx3)]">No projects yet.</div>
-        ) : (
-          projects.map((project) => (
-            <div key={project.id} className="group relative flex items-center">
-              <Link
-                className={[
-                  'admin-sb-item flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-[13px]',
-                  pathname === `/projects/${project.id}` ? 'active' : '',
-                ].join(' ')}
-                to={`/projects/${project.id}`}
+        <SidebarMenuSection
+          action={
+            isOwner ? (
+              <button
+                aria-label="New project"
+                className="admin-sidebar-plus"
+                onClick={() => setCreateOpen(true)}
+                type="button"
               >
-                <FolderIcon />
-                <span className="truncate">{project.name}</span>
-              </Link>
-              {isOwner ? (
-                <button
-                  aria-label="Project actions"
-                  className="absolute right-1 px-1.5 text-[color:var(--tx3)] opacity-0 hover:text-[color:var(--tx)] group-hover:opacity-100"
-                  onClick={() => setMenuProjectId((id) => (id === project.id ? null : project.id))}
-                  type="button"
-                >
-                  ⋯
-                </button>
-              ) : null}
+                +
+              </button>
+            ) : null
+          }
+          id="projects-nav-projects"
+          isCollapsed={collapsedSections.projects ?? false}
+          onToggle={() => toggleSection('projects')}
+          title="Projects"
+        >
+          {projects.length === 0 ? (
+            <div className="px-5 py-2 text-[13px] text-[color:var(--tx3)]">No projects yet.</div>
+          ) : (
+            projects.map((project) => {
+              const isActive =
+                pathname === `/projects/${project.id}`
+                || pathname.startsWith(`/projects/${project.id}/`)
 
-              {menuProjectId === project.id ? (
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setMenuProjectId(null)}
-                    role="presentation"
-                  />
-                  <div className="admin-card absolute right-1 top-9 z-20 w-36 p-1 text-[13px]">
+              return (
+                <div key={project.id} className="group relative">
+                  <Link
+                    className={['admin-sb-item', isActive ? 'active' : ''].join(' ')}
+                    to={`/projects/${project.id}`}
+                  >
+                    <FolderIcon />
+                    <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                  </Link>
+                  {isOwner ? (
                     <button
-                      className="block w-full rounded px-2 py-1.5 text-left hover:bg-[color:var(--overlay)]"
-                      onClick={() => {
-                        setMenuProjectId(null)
-                        setRenameTarget(project)
-                      }}
+                      aria-label={`Project actions for ${project.name}`}
+                      className={[
+                        'admin-sidebar-more absolute right-3 top-1/2 -translate-y-1/2',
+                        'opacity-0 group-hover:opacity-100',
+                      ].join(' ')}
+                      onClick={() => setMenuProjectId((id) => (id === project.id ? null : project.id))}
                       type="button"
                     >
-                      Rename
+                      ⋯
                     </button>
-                    <button
-                      className="block w-full rounded px-2 py-1.5 text-left hover:bg-[color:var(--overlay)]"
-                      onClick={() => {
-                        setMenuProjectId(null)
-                        setMembersTarget(project)
-                      }}
-                      type="button"
-                    >
-                      Members
-                    </button>
-                    <button
-                      className="block w-full rounded px-2 py-1.5 text-left hover:bg-[color:var(--overlay)]"
-                      onClick={() => {
-                        setMenuProjectId(null)
-                        void navigate(`/projects/${project.id}/settings`)
-                      }}
-                      type="button"
-                    >
-                      Settings
-                    </button>
-                    <button
-                      className="block w-full rounded px-2 py-1.5 text-left text-[color:var(--danger-text)] hover:bg-[color:var(--overlay)]"
-                      onClick={() => handleDelete(project)}
-                      type="button"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </>
-              ) : null}
-            </div>
-          ))
-        )}
+                  ) : null}
+
+                  {menuProjectId === project.id ? (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setMenuProjectId(null)}
+                        role="presentation"
+                      />
+                      <div className="admin-sidebar-menu admin-sidebar-menu-project">
+                        <button
+                          onClick={() => {
+                            setMenuProjectId(null)
+                            setRenameTarget(project)
+                          }}
+                          type="button"
+                        >
+                          Rename
+                        </button>
+                        <button
+                          onClick={() => {
+                            setMenuProjectId(null)
+                            setMembersTarget(project)
+                          }}
+                          type="button"
+                        >
+                          Members
+                        </button>
+                        <button
+                          onClick={() => {
+                            setMenuProjectId(null)
+                            void navigate(`/projects/${project.id}/settings`)
+                          }}
+                          type="button"
+                        >
+                          Settings
+                        </button>
+                        <button
+                          className="admin-sidebar-menu-danger"
+                          onClick={() => handleDelete(project)}
+                          type="button"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              )
+            })
+          )}
+        </SidebarMenuSection>
       </nav>
 
       <CreateProjectDialog onClose={() => setCreateOpen(false)} open={createOpen} />
