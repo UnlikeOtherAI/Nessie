@@ -63,4 +63,3 @@ creating files, moving code, reusing logic, or widening an existing service.
 - Keep docs next to architecture changes. If behavior, topology, ports,
   deployment, MCP surface, or workflow changes, update the corresponding
   document before committing.
-
