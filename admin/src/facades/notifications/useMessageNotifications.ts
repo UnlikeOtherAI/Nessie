@@ -8,11 +8,11 @@ import { parseChannelIdFromPath } from '../../lib/channel-route'
 import { readSseStream } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { getNotificationApi } from './permission'
 
 const RECONNECT_DELAY_MS = 2_000
 const MAX_NOTIFIED_MESSAGE_IDS = 500
 
-const requestedPermissionUserIds = new Set<string>()
 const baseUrl = getBaseUrl()
 
 export type NotificationToastInput = {
@@ -210,23 +210,6 @@ const trimNotifiedMessageIds = (ids: Set<string>): void => {
   }
 }
 
-const getNotificationApi = (): typeof Notification | null =>
-  typeof window.Notification === 'undefined' ? null : window.Notification
-
-const requestNativeNotificationPermission = (currentUserId: string): void => {
-  const notificationApi = getNotificationApi()
-  if (!notificationApi || notificationApi.permission !== 'default') {
-    return
-  }
-
-  if (requestedPermissionUserIds.has(currentUserId)) {
-    return
-  }
-
-  requestedPermissionUserIds.add(currentUserId)
-  void notificationApi.requestPermission().catch(() => undefined)
-}
-
 const showNativeNotification = (
   input: NotificationToastInput & { openChannel: (channelId: string) => void },
 ): void => {
@@ -282,12 +265,6 @@ export const useMessageNotifications = (input: {
       openChannel: input.openChannel,
     }
   }, [activeChannelId, channelLookup, currentUserId, input.onToast, input.openChannel])
-
-  useEffect(() => {
-    if (currentUserId && notificationsEnabled) {
-      requestNativeNotificationPermission(currentUserId)
-    }
-  }, [currentUserId, notificationsEnabled])
 
   useEffect(() => {
     if (!currentUserId || !notificationsEnabled || !token) {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { PushQuietHours, UserPreferences } from '@nessie/schemas'
 import { useUpdatePreferences } from '../../facades/auth/hooks'
 import { useChannels, useSetChannelMute } from '../../facades/channels/hooks'
+import { requestNotificationPermission } from '../../facades/notifications/permission'
 import type { ChannelRecord } from '../../lib/api-client'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { sectionTitleClass, SettingsPanel } from './settings-shared'
@@ -156,6 +157,12 @@ export const NotificationsPage = () => {
 
   const savePreferences = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    // Submitting the form is a user gesture, so this is a safe point to ask for
+    // native notification permission when push is on (Safari rejects off-gesture
+    // requests). No-op once permission is already granted or denied.
+    if (pushEnabled) {
+      requestNotificationPermission()
+    }
     setPreferenceFeedback(null)
 
     const quietHours = quietHoursEnabled
@@ -234,7 +241,14 @@ export const NotificationsPage = () => {
                 checked={pushEnabled}
                 disabled={updatePreferences.isPending}
                 label="Toggle push notifications"
-                onChange={setPushEnabled}
+                onChange={(next) => {
+                  setPushEnabled(next)
+                  // Enabling is a user gesture — the only context Safari allows a
+                  // native notification permission prompt.
+                  if (next) {
+                    requestNotificationPermission()
+                  }
+                }}
               />
             </div>
           </section>

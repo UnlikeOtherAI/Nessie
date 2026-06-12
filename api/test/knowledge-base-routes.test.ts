@@ -134,8 +134,8 @@ const makeProvider = (
       calls.push('createSpace')
       return makeSpace()
     },
-    getPage: async () => null,
-    getSpace: async () => null,
+    getPage: async () => makePage(),
+    getSpace: async () => makeSpace(),
     listPages: async () => [],
     listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
     listVersions: async () => [],
@@ -161,6 +161,11 @@ const makeApp = (
       create: async ({ data }: { data: Record<string, unknown> }) => {
         auditLogs.push(data)
       },
+    },
+    // The per-space access layer (loadSpaceViewer) resolves the caller's project
+    // memberships; the actor is a member of the space's project.
+    projectMember: {
+      findMany: async () => [{ projectId }],
     },
   } as unknown as PrismaClient
   const app = Fastify({ logger: false })
