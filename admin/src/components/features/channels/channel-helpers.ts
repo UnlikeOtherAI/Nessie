@@ -10,7 +10,7 @@ export type OptimisticMessage = {
 export type ChannelTab = 'agents' | 'files' | 'info' | 'messages' | 'runs'
 
 export type FeedItem =
-  | { kind: 'date'; label: string }
+  | { kind: 'date'; key: string; label: string }
   | { kind: 'message'; message: ThreadMessageRecord }
 
 export const toolbarButtonClass = [
@@ -52,6 +52,15 @@ const formatDayLabel = (value: string): string => {
   })
 }
 
+const formatDayKey = (value: string): string => {
+  const date = new Date(value)
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
 export const formatClock = (value: string): string =>
   new Date(value).toLocaleTimeString([], {
     hour: '2-digit',
@@ -60,13 +69,14 @@ export const formatClock = (value: string): string =>
 
 export const buildFeedItems = (messages: ThreadMessageRecord[]): FeedItem[] => {
   const items: FeedItem[] = []
-  let previousDateLabel: string | null = null
+  let previousDateKey: string | null = null
 
   for (const message of messages) {
+    const dateKey = formatDayKey(message.createdAt)
     const dateLabel = formatDayLabel(message.createdAt)
-    if (dateLabel !== previousDateLabel) {
-      items.push({ kind: 'date', label: dateLabel })
-      previousDateLabel = dateLabel
+    if (dateKey !== previousDateKey) {
+      items.push({ kind: 'date', key: dateKey, label: dateLabel })
+      previousDateKey = dateKey
     }
     items.push({ kind: 'message', message })
   }

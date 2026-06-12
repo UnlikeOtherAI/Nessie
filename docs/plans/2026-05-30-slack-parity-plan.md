@@ -224,6 +224,11 @@ larger phases.
   tooltip and speech-bubble fallback, icon-only edit/delete controls, a dashed
   "Message has been deleted" tombstone when replies follow, and a "Loading
   response" placeholder while an agent response is pending.
+- **Chat mention links and composer autocomplete (implemented 2026-06-12)**:
+  messages link unambiguous `#channel` and `@user`/`@agent` references, the
+  composer autocompletes both `#` channels and `@` users/agents, duplicate
+  channel labels insert project/team-scoped tokens, and day dividers collapse
+  their message groups.
 
 ---
 
@@ -239,7 +244,8 @@ larger phases.
   triggers so an agent watches a channel and routes/summarizes/escalates.
 - **Agent channel lookup (implemented 2026-06-12)**: `channel_find` resolves a
   channel name to its id across the runtime, worker personal-assistant tools, and
-  worker tool registry so agents can address channels without brittle manual ids.
+  worker tool registry, returning project/team scope beside each id so agents can
+  distinguish duplicate channel labels without brittle manual ids.
 
 ---
 

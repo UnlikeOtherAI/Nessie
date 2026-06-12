@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import { usePresenceLookup, type PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
@@ -137,9 +137,41 @@ export const ChannelMessageFeed = ({
   onConfirmDelete,
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
+  const [collapsedDateKeys, setCollapsedDateKeys] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const visibleFeedItems = useMemo(() => {
+    const visible: FeedItem[] = []
+    let activeDateKey: string | null = null
+
+    for (const item of feedItems) {
+      if (item.kind === 'date') {
+        activeDateKey = item.key
+        visible.push(item)
+        continue
+      }
+
+      if (!activeDateKey || !collapsedDateKeys.has(activeDateKey)) {
+        visible.push(item)
+      }
+    }
+
+    return visible
+  }, [collapsedDateKeys, feedItems])
+  const toggleDateKey = (dateKey: string) => {
+    setCollapsedDateKeys((current) => {
+      const next = new Set(current)
+      if (next.has(dateKey)) {
+        next.delete(dateKey)
+      } else {
+        next.add(dateKey)
+      }
+      return next
+    })
+  }
   // Index of the last actual message; a deleted message only leaves a tombstone
   // bubble when something follows it (otherwise it just disappears).
-  const lastMessageIndex = feedItems.reduce(
+  const lastMessageIndex = visibleFeedItems.reduce(
     (acc, entry, index) => (entry.kind === 'message' ? index : acc),
     -1,
   )
@@ -156,14 +188,23 @@ export const ChannelMessageFeed = ({
         </div>
       ) : null}
 
-      {feedItems.map((item, index) => {
+      {visibleFeedItems.map((item, index) => {
         if (item.kind === 'date') {
+          const collapsed = collapsedDateKeys.has(item.key)
           return (
-            <div key={`${item.label}:${index}`} className="admin-date-sep">
-              <span className="admin-date-pill">
+            <div key={`date:${item.key}`} className="admin-date-sep">
+              <button
+                aria-expanded={!collapsed}
+                className="admin-date-pill admin-date-pill-button"
+                onClick={() => toggleDateKey(item.key)}
+                type="button"
+              >
                 {item.label}
                 <svg
-                  className="h-3 w-3 flex-shrink-0"
+                  className={[
+                    'h-3 w-3 flex-shrink-0 transition-transform',
+                    collapsed ? '-rotate-90' : '',
+                  ].join(' ')}
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2.5"
@@ -171,7 +212,7 @@ export const ChannelMessageFeed = ({
                 >
                   <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </span>
+              </button>
             </div>
           )
         }
