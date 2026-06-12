@@ -228,4 +228,7 @@ Follow-up polish from live review.
 ### Verification
 
 - `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
-- Live UI verified with headless Playwright + dev-login token (kelpie unusable).
+- API verified end-to-end: `GET /api/tasks` returns 200 with the new `detail` and
+  `assigneeAgentId` fields; dev-login token issues correctly.
+- Visual layer confirmed live on the running dev board by the user; kelpie is
+  unusable for this admin and the Playwright MCP browser was busy this session.
