@@ -17,6 +17,7 @@ import {
   estimateToolSchemaTokens,
   trimConversationToFit,
 } from './context-management.js'
+import { ToolCircuitBreaker } from './circuit-breaker.js'
 import { summarizeToolInput } from './tool-util.js'
 
 export type BudgetLimits = {
@@ -192,6 +193,7 @@ export const runAgenticLoop = async (input: {
   const signatureCounts = new Map<string, number>()
   const retryBudget = createRetryBudget(6)
   const toolSchemaTokens = estimateToolSchemaTokens(input.tools)
+  const circuitBreaker = new ToolCircuitBreaker()
 
   let iterations = 0
   let toolCallsUsed = 0
@@ -304,6 +306,16 @@ export const runAgenticLoop = async (input: {
           }
         }
 
+        if (circuitBreaker.isTripped(tc.toolName)) {
+          return {
+            output: circuitBreaker.trippedErrorMessage(tc.toolName),
+            success: false,
+            inputSummary: summarizeToolInput(tc.arguments),
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+          }
+        }
+
         await callbacks.onToolCallStart(tc.toolName, tc.arguments)
         const startedAt = new Date()
 
@@ -314,6 +326,11 @@ export const runAgenticLoop = async (input: {
             tc.toolName,
           )
           const durationMs = Date.now() - startedAt.getTime()
+          if (toolResult.success) {
+            circuitBreaker.recordSuccess(tc.toolName)
+          } else {
+            circuitBreaker.recordError(tc.toolName)
+          }
           await callbacks.onToolCallEnd(
             tc.toolName,
             toolResult.output,
@@ -326,6 +343,7 @@ export const runAgenticLoop = async (input: {
           return { ...toolResult, toolCallId: tc.toolCallId, toolName: tc.toolName }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Tool execution failed'
+          circuitBreaker.recordError(tc.toolName)
           const durationMs = Date.now() - startedAt.getTime()
           await callbacks.onToolCallEnd(
             tc.toolName,

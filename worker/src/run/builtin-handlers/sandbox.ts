@@ -1,4 +1,4 @@
-import { realpath } from 'node:fs/promises'
+import { realpath, lstat } from 'node:fs/promises'
 import { basename, dirname, resolve, sep } from 'node:path'
 
 /**
@@ -13,8 +13,42 @@ export class SandboxViolationError extends Error {
   }
 }
 
+export type SandboxRootKind = 'dir' | 'file'
+export type SandboxRootAccess = 'ro' | 'rw'
+export type OperationType = 'read' | 'write' | 'glob'
+
+export type SandboxRoot = {
+  path: string
+  kind: SandboxRootKind
+  access: SandboxRootAccess
+}
+
 export type SandboxConfig = {
-  allowedRoots: string[]
+  allowedRoots: SandboxRoot[]
+}
+
+const parseRootKind = (
+  value: unknown,
+  toolId: string,
+  rootPath: string,
+): SandboxRootKind => {
+  if (value === undefined) return 'dir'
+  if (value === 'dir' || value === 'file') return value
+  throw new SandboxViolationError(
+    `Tool ${toolId} allowedRoot "${rootPath}" kind must be 'dir' or 'file'.`,
+  )
+}
+
+const parseRootAccess = (
+  value: unknown,
+  toolId: string,
+  rootPath: string,
+): SandboxRootAccess => {
+  if (value === undefined) return 'rw'
+  if (value === 'ro' || value === 'rw') return value
+  throw new SandboxViolationError(
+    `Tool ${toolId} allowedRoot "${rootPath}" access must be 'ro' or 'rw'.`,
+  )
 }
 
 /**
@@ -22,6 +56,9 @@ export type SandboxConfig = {
  * missing or empty — there is no implicit fallback root. Filesystem builtins
  * must opt in to a sandbox. Each allowed root is realpath'd so a symlinked
  * root cannot bypass the prefix check downstream.
+ *
+ * Backward-compatible: accepts legacy `string[]` entries and normalizes them
+ * to `SandboxRoot` objects with default `kind='dir'` and `access='rw'`.
  */
 export const extractSandboxConfig = async (
   transportConfig: unknown,
@@ -40,23 +77,72 @@ export const extractSandboxConfig = async (
     )
   }
 
-  const allowedRoots: string[] = []
+  const allowedRoots: SandboxRoot[] = []
   for (const entry of raw) {
-    if (typeof entry !== 'string' || entry.length === 0) {
+    if (typeof entry === 'string') {
+      // Legacy format: normalize to SandboxRoot with defaults
+      if (entry.length === 0) {
+        throw new SandboxViolationError(
+          `Tool ${toolId} allowedRoots must be non-empty strings.`,
+        )
+      }
+      try {
+        const real = await realpath(resolve(entry))
+        allowedRoots.push({ path: real, kind: 'dir', access: 'rw' })
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw new SandboxViolationError(
+            `Tool ${toolId} allowedRoot "${entry}" does not exist.`,
+          )
+        }
+        throw err
+      }
+      continue
+    }
+
+    if (!entry || typeof entry !== 'object') {
       throw new SandboxViolationError(
-        `Tool ${toolId} allowedRoots must be non-empty strings.`,
+        `Tool ${toolId} allowedRoots entries must be strings or objects.`,
       )
     }
+
+    const obj = entry as Record<string, unknown>
+    if (typeof obj.path !== 'string' || obj.path.length === 0) {
+      throw new SandboxViolationError(
+        `Tool ${toolId} allowedRoots object entries must have a non-empty 'path' string.`,
+      )
+    }
+
+    const kind = parseRootKind(obj.kind, toolId, obj.path)
+    const access = parseRootAccess(obj.access, toolId, obj.path)
+
+    let realPath: string
     try {
-      allowedRoots.push(await realpath(resolve(entry)))
+      realPath = await realpath(resolve(obj.path))
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new SandboxViolationError(
-          `Tool ${toolId} allowedRoot "${entry}" does not exist.`,
+          `Tool ${toolId} allowedRoot "${obj.path}" does not exist.`,
         )
       }
       throw err
     }
+
+    if (kind === 'file') {
+      try {
+        const s = await lstat(realPath)
+        if (!s.isFile()) {
+          throw new SandboxViolationError(
+            `Tool ${toolId} allowedRoot "${obj.path}" kind is 'file' but path is not a file.`,
+          )
+        }
+      } catch (err) {
+        if (err instanceof SandboxViolationError) throw err
+        throw err
+      }
+    }
+
+    allowedRoots.push({ path: realPath, kind, access })
   }
 
   return { allowedRoots }
@@ -97,18 +183,40 @@ const realpathCandidate = async (candidate: string): Promise<string> => {
  * Resolve a candidate path (following symlinks) and ensure it sits inside one
  * of the allowed roots. Blocks `..` traversal AND symlink escape — both are
  * eliminated before the prefix check.
+ *
+ * Also enforces per-root `kind` (dir/file) and `access` (ro/rw) constraints
+ * based on the operation type.
  */
 export const assertInsideSandbox = async (
   candidate: string,
   sandbox: SandboxConfig,
   toolId: string,
+  operation?: OperationType,
 ): Promise<string> => {
   const resolved = await realpathCandidate(candidate)
+
   for (const root of sandbox.allowedRoots) {
-    const rootWithSep = root.endsWith(sep) ? root : `${root}${sep}`
-    if (resolved === root || resolved.startsWith(rootWithSep)) {
-      return resolved
+    const rootWithSep = root.path.endsWith(sep) ? root.path : `${root.path}${sep}`
+    const inside = resolved === root.path || resolved.startsWith(rootWithSep)
+    if (!inside) continue
+
+    // Enforce kind constraint
+    if (root.kind === 'file') {
+      if (resolved !== root.path) {
+        throw new SandboxViolationError(
+          `Tool ${toolId} rejected path "${candidate}" — root is a file, cannot access sub-paths.`,
+        )
+      }
     }
+
+    // Enforce access constraint
+    if (operation && root.access === 'ro' && operation === 'write') {
+      throw new SandboxViolationError(
+        `Tool ${toolId} rejected write to "${candidate}" — root is read-only.`,
+      )
+    }
+
+    return resolved
   }
 
   throw new SandboxViolationError(
