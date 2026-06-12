@@ -11,6 +11,14 @@ This guide gives copy-paste paths for running Nessie's desktop and mobile apps. 
 
 ## Mac Desktop - Works Now
 
+There are two desktop modes:
+
+- **Dev:** Tauri loads the local Vite admin at `http://localhost:5455`. The Vite
+  dev server proxies `/api` to the local API on `5454`.
+- **Installable production bundle:** Tauri embeds a built `admin/dist`. That
+  bundle must call the production API directly at
+  `https://api.nessie.unlikeotherai.com`.
+
 Terminal 1:
 
 ```sh
@@ -33,13 +41,51 @@ desktop bundle declares the `nessie` URL scheme; after UOA redirects to
 `nessie://auth/callback`, macOS focuses the running app and the admin login page
 finishes the PKCE exchange from the deep link.
 
-To create a local distributable:
+To create a local distributable that contains the current local admin code:
 
 ```sh
-pnpm --filter @nessie/desktop exec tauri build
+VITE_API_BASE_URL=https://api.nessie.unlikeotherai.com pnpm --filter @nessie/admin build
+pnpm --dir desktop exec tauri build --bundles app \
+  --config '{"build":{"frontendDist":"../../admin/dist"}}'
 ```
 
-This produces an unsigned `.app` and `.dmg`. On first open, right-click the app and choose **Open**. A signed and notarized macOS release needs the operator's Apple Developer ID certificate; `desktop/src-tauri/tauri.conf.json` keeps `signingIdentity` set to `null` until that certificate is available.
+This produces `desktop/src-tauri/target/release/bundle/macos/Nessie.app`.
+The API origin in the first command is intentional:
+
+- `https://api.nessie.unlikeotherai.com` is the API and returns JSON for
+  `/api/auth/providers`.
+- `https://nessie.unlikeotherai.com` is the hosted admin web app. Do **not**
+  use it as `VITE_API_BASE_URL`; `/api/auth/providers` will return the admin
+  HTML shell and the desktop login page will sit at "Loading providers...".
+
+The plain `pnpm --filter @nessie/desktop exec tauri build` command uses
+`desktop/src-tauri/tauri.conf.json` as-is. That config points `frontendDist` at
+the hosted admin (`https://nessie.unlikeotherai.com`), so it is useful for a
+thin remote shell but does not embed un-deployed local admin changes.
+
+To replace the locally installed app:
+
+```sh
+osascript -e 'tell application id "com.unlikeotherai.nessie.desktop" to quit' 2>/dev/null || true
+ditto desktop/src-tauri/target/release/bundle/macos/Nessie.app /Applications/Nessie.app
+codesign --force --deep --sign - /Applications/Nessie.app
+open -na /Applications/Nessie.app
+```
+
+On first open, right-click the app and choose **Open** if macOS Gatekeeper asks.
+A signed and notarized macOS release needs the operator's Apple Developer ID
+certificate; `desktop/src-tauri/tauri.conf.json` keeps `signingIdentity` set to
+`null` until that certificate is available.
+
+If the installed app gets stuck at **Loading providers...**, check the API
+origin first:
+
+```sh
+curl https://api.nessie.unlikeotherai.com/api/auth/providers
+```
+
+Expected result is JSON containing the SSO provider. If the response is HTML,
+the app was built against the admin web origin instead of the API origin.
 
 ## Mobile app — WebView shell
 
