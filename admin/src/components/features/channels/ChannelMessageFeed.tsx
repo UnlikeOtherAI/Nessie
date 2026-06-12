@@ -3,11 +3,11 @@ import type { AgentRecord } from '../../../lib/api-client'
 import { usePresenceLookup, type PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { MessageAttachments } from '../../shared/MessageAttachments'
+import { ChannelMessageActions } from './ChannelMessageActions'
 import {
   formatClock,
   getAgentGlyph,
   getDisplayName,
-  toolbarButtonClass,
   type FeedItem,
   type OptimisticMessage,
 } from './channel-helpers'
@@ -18,38 +18,6 @@ interface PendingStreamMessage {
   reasoningContent: string
   runId: string
 }
-
-const PencilIcon = () => (
-  <svg
-    fill="none"
-    height="15"
-    stroke="currentColor"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth="2"
-    viewBox="0 0 24 24"
-    width="15"
-  >
-    <path d="M12 20h9" />
-    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-  </svg>
-)
-
-const TrashIcon = () => (
-  <svg
-    fill="none"
-    height="15"
-    stroke="currentColor"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth="2"
-    viewBox="0 0 24 24"
-    width="15"
-  >
-    <path d="M3 6h18" />
-    <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0-1 14H6L5 6" />
-  </svg>
-)
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -112,6 +80,7 @@ interface ChannelMessageFeedProps {
   onChangeEditingContent: (value: string) => void
   onSubmitEdit: (messageId: string) => void
   onCancelEdit: () => void
+  onAddReaction: (messageId: string, emoji: string) => void
   onConfirmDelete: (messageId: string) => void
 }
 
@@ -134,9 +103,11 @@ export const ChannelMessageFeed = ({
   onChangeEditingContent,
   onSubmitEdit,
   onCancelEdit,
+  onAddReaction,
   onConfirmDelete,
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
+  const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null)
   const [collapsedDateKeys, setCollapsedDateKeys] = useState<Set<string>>(
     () => new Set(),
   )
@@ -221,11 +192,30 @@ export const ChannelMessageFeed = ({
           return index < lastMessageIndex ? <DeletedBubble key={item.message.id} /> : null
         }
 
+        const displayName = getDisplayName(
+          item.message,
+          meDisplayName,
+          agentMap,
+          isPersonalAssistantConversation ? 'Personal Assistant' : 'Agent',
+        )
+        const canManageOwnMessage =
+          item.message.role === 'user' && item.message.userId === meUserId
+        const isEditingMessage = editingMessageId === item.message.id
+
         return (
           <article
             key={item.message.id}
             id={`msg-${item.message.id}`}
-            className="admin-msg-row group relative py-1"
+            aria-label={`Message from ${displayName}`}
+            className="admin-msg-row relative py-1"
+            data-actions-open={activeActionMessageId === item.message.id}
+            onClick={() =>
+              setActiveActionMessageId((current) =>
+                current === item.message.id ? null : item.message.id,
+              )
+            }
+            onFocus={() => setActiveActionMessageId(item.message.id)}
+            tabIndex={0}
           >
             {item.message.role === 'assistant' ? (
               <div
@@ -241,12 +231,7 @@ export const ChannelMessageFeed = ({
               <UserAvatar
                 avatarAttachmentId={item.message.author?.avatarAttachmentId ?? undefined}
                 avatarUrl={item.message.author?.avatarUrl ?? undefined}
-                displayName={getDisplayName(
-                  item.message,
-                  meDisplayName,
-                  agentMap,
-                  isPersonalAssistantConversation ? 'Personal Assistant' : 'Agent',
-                )}
+                displayName={displayName}
                 gravatarUrl={item.message.author?.gravatarUrl ?? undefined}
                 size={36}
                 token={token}
@@ -255,12 +240,7 @@ export const ChannelMessageFeed = ({
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="text-sm font-bold text-[var(--tx)]">
-                  {getDisplayName(
-                    item.message,
-                    meDisplayName,
-                    agentMap,
-                    isPersonalAssistantConversation ? 'Personal Assistant' : 'Agent',
-                  )}
+                  {displayName}
                 </span>
                 {item.message.role === 'user' ? (
                   <StatusBadge presence={getPresence(item.message.userId)} />
@@ -291,7 +271,7 @@ export const ChannelMessageFeed = ({
                     : 'mt-0.5'
                 }
               >
-                {editingMessageId === item.message.id ? (
+                {isEditingMessage ? (
                   <div className="flex flex-col gap-2">
                     <textarea
                       autoFocus
@@ -333,45 +313,20 @@ export const ChannelMessageFeed = ({
                   </p>
                 )}
                 <MessageAttachments messageId={item.message.id} />
-                {item.message.reactions?.length ? (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {Object.entries(
-                      item.message.reactions.reduce<Record<string, number>>((acc, r) => {
-                        acc[r.emoji] = (acc[r.emoji] ?? 0) + 1
-                        return acc
-                      }, {}),
-                    ).map(([emoji, count]) => (
-                      <span key={emoji} className="reaction-pill">
-                        {emoji}
-                        {count > 1 ? ` ${count}` : ''}
-                      </span>
-                    ))}
-                  </div>
+                {!isEditingMessage ? (
+                  <ChannelMessageActions
+                    canDelete={canManageOwnMessage}
+                    canEdit={canManageOwnMessage}
+                    content={item.message.content}
+                    messageId={item.message.id}
+                    reactions={item.message.reactions ?? []}
+                    onAddReaction={onAddReaction}
+                    onConfirmDelete={onConfirmDelete}
+                    onStartEdit={onStartEdit}
+                  />
                 ) : null}
               </div>
             </div>
-            {item.message.role === 'user' &&
-            item.message.userId === meUserId &&
-            editingMessageId !== item.message.id ? (
-              <div className="absolute right-3 top-1 hidden items-center gap-1 group-hover:flex">
-                <button
-                  className={toolbarButtonClass}
-                  onClick={() => onStartEdit(item.message.id, item.message.content)}
-                  title="Edit message"
-                  type="button"
-                >
-                  <PencilIcon />
-                </button>
-                <button
-                  className={toolbarButtonClass}
-                  onClick={() => onConfirmDelete(item.message.id)}
-                  title="Delete message"
-                  type="button"
-                >
-                  <TrashIcon />
-                </button>
-              </div>
-            ) : null}
           </article>
         )
       })}

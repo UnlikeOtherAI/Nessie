@@ -5,6 +5,7 @@ import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
 import {
+  useAddMessageReaction,
   useDeleteMessage,
   useMessageSearch,
   useUpdateMessage,
@@ -126,6 +127,7 @@ export const ChannelsPage = () => {
   })
 
   // sp-messaging: inline edit + channel message search.
+  const addMessageReaction = useAddMessageReaction(activeChannel?.defaultThreadId)
   const updateMessage = useUpdateMessage(activeChannel?.defaultThreadId)
   const deleteMessage = useDeleteMessage(activeChannel?.defaultThreadId)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -161,6 +163,13 @@ export const ChannelsPage = () => {
       deleteMessage.mutate(messageId)
     },
     [deleteMessage],
+  )
+
+  const addReaction = useCallback(
+    (messageId: string, emoji: string) => {
+      addMessageReaction.mutate({ emoji, messageId })
+    },
+    [addMessageReaction],
   )
 
   const jumpToMessage = useCallback((messageId: string) => {
@@ -372,6 +381,7 @@ export const ChannelsPage = () => {
               setEditingMessageId(null)
               setEditingContent('')
             }}
+            onAddReaction={addReaction}
             onConfirmDelete={confirmDelete}
           />
         ) : null}
