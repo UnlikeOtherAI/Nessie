@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { AppProvider } from './providers/AppProvider'
+import { installBuildFreshnessCheck } from './lib/build-freshness'
 import { disableWebviewZoom } from './lib/disable-zoom'
 import { installReloadShortcut } from './lib/reload-shortcut'
 import './styles.css'
@@ -9,6 +10,7 @@ import './styles.css'
 // locking out pinch/keyboard zoom.
 installReloadShortcut()
 disableWebviewZoom()
+installBuildFreshnessCheck()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -3,7 +3,11 @@ use std::io::{Error, ErrorKind};
 use tauri::Manager;
 use tauri::WebviewWindowBuilder;
 
-const DESKTOP_NOTIFICATIONS_INIT_SCRIPT: &str = include_str!("desktop_notifications_init.js");
+const DESKTOP_INIT_SCRIPT: &str = concat!(
+    include_str!("desktop_notifications_init.js"),
+    "\n",
+    include_str!("desktop_build_freshness_init.js")
+);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -32,7 +36,7 @@ pub fn run() {
                 .ok_or_else(|| Error::new(ErrorKind::NotFound, "missing main window config"))?;
 
             WebviewWindowBuilder::from_config(app.handle(), main_window)?
-                .initialization_script(DESKTOP_NOTIFICATIONS_INIT_SCRIPT)
+                .initialization_script(DESKTOP_INIT_SCRIPT)
                 .build()?;
 
             Ok(())

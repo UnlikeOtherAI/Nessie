@@ -57,6 +57,75 @@ export const INJECTED = `
   }
   function sync() { post(); postTheme(); }
   sync();
+
+  function installBuildFreshnessCheck() {
+    if (window.__nessieBuildFreshnessInstalled) return;
+    if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') return;
+
+    var intervalMs = 5 * 60 * 1000;
+    var reloadMarker = 'nessie.buildFreshnessReloaded';
+    var selector = 'script[src], link[rel="stylesheet"][href]';
+    var currentSignature = assetSignature(document, window.location.href);
+    var checking = false;
+    if (!currentSignature) return;
+    window.__nessieBuildFreshnessInstalled = true;
+
+    function absolutePath(url, baseUrl) {
+      try {
+        var parsed = new URL(url, baseUrl);
+        return parsed.origin === window.location.origin ? parsed.pathname + parsed.search : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    function assetSignature(documentRoot, baseUrl) {
+      var nodes = Array.prototype.slice.call(documentRoot.querySelectorAll(selector));
+      var seen = {};
+      return nodes
+        .map(function (element) {
+          return element.tagName === 'SCRIPT'
+            ? absolutePath(element.src, baseUrl)
+            : absolutePath(element.href, baseUrl);
+        })
+        .filter(function (asset) {
+          if (!asset || seen[asset]) return false;
+          seen[asset] = true;
+          return true;
+        })
+        .sort()
+        .join('|');
+    }
+    function checkForFreshBuild() {
+      if (checking) return;
+      checking = true;
+      fetch('/', { cache: 'no-store', headers: { Accept: 'text/html' } })
+        .then(function (response) { return response.ok ? response.text() : ''; })
+        .then(function (html) {
+          if (!html) return;
+          var parsed = new DOMParser().parseFromString(html, 'text/html');
+          var latestSignature = assetSignature(parsed, window.location.origin);
+          if (!latestSignature || latestSignature === currentSignature) {
+            sessionStorage.removeItem(reloadMarker);
+            return;
+          }
+          if (sessionStorage.getItem(reloadMarker) === latestSignature) return;
+          sessionStorage.setItem(reloadMarker, latestSignature);
+          window.location.reload();
+        })
+        .catch(function () {})
+        .then(function () { checking = false; });
+    }
+    function checkWhenVisible() {
+      if (document.visibilityState === 'visible') checkForFreshBuild();
+    }
+
+    window.addEventListener('focus', checkWhenVisible);
+    window.addEventListener('pageshow', checkWhenVisible);
+    document.addEventListener('visibilitychange', checkWhenVisible);
+    window.setInterval(checkWhenVisible, intervalMs);
+  }
+
+  installBuildFreshnessCheck();
   new MutationObserver(sync).observe(document.documentElement, {
     attributes: true, attributeFilter: ['data-theme', 'class', 'style'],
   });

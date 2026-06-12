@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState, type AppStateStatus, type ImageSourcePropType, Platform, StyleSheet, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { StatusBar } from 'expo-status-bar'
@@ -77,20 +77,24 @@ const Shell = (): React.JSX.Element => {
       ? ADMIN_URL
       : `${ADMIN_URL}${ADMIN_URL.includes('?') ? '&' : '?'}__boot=${reloadNonce}`
 
-  const clearBootTimer = (): void => {
+  const clearBootTimer = useCallback((): void => {
     if (bootTimer.current) {
       clearTimeout(bootTimer.current)
       bootTimer.current = null
     }
-  }
+  }, [])
+
+  const loadFreshWebView = useCallback((): void => {
+    clearBootTimer()
+    setReloadNonce((nonce) => nonce + 1)
+  }, [clearBootTimer])
 
   // Reload the WebView fresh after a blank/failed load, capped so a persistently
   // broken page doesn't loop forever.
   const recoverBlankWebView = (): void => {
     if (adminBooted.current || bootRetries.current >= MAX_BOOT_RETRIES) return
     bootRetries.current += 1
-    clearBootTimer()
-    setReloadNonce((nonce) => nonce + 1)
+    loadFreshWebView()
     setWebviewKey((key) => key + 1)
   }
 
@@ -112,14 +116,14 @@ const Shell = (): React.JSX.Element => {
         const since = backgroundedAt.current
         backgroundedAt.current = null
         if (since != null && Date.now() - since >= RELOAD_AFTER_BACKGROUND_MS) {
-          webRef.current?.reload()
+          loadFreshWebView()
         }
       } else if (next === 'background') {
         backgroundedAt.current = backgroundedAt.current ?? Date.now()
       }
     })
     return () => subscription.remove()
-  }, [])
+  }, [loadFreshWebView])
 
   // Android tab icons are Material glyphs rendered to image sources (SF Symbols
   // are iOS-only); re-render them whenever the theme tints change.

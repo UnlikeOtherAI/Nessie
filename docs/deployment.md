@@ -148,6 +148,15 @@ host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
 migrations, recreates the API/worker/admin containers). Postgres and its volume
 are untouched.
 
+The admin SPA also runs a production-only freshness check. Open browser, Tauri
+desktop, and mobile WebView sessions fetch `/` with `cache: no-store` when the
+app regains focus/visibility and every five minutes; if the freshly served
+`index.html` references different hashed JS/CSS assets than the currently
+loaded document, the session reloads itself. The desktop Tauri shell and mobile
+WebView inject the same check as a second layer, so future native shells can
+refresh stale hosted admin bundles even if the page bundle is wedged. Existing
+already-open sessions still need one reload to receive this mechanism.
+
 To rotate the deploy key: generate a new keypair, append the public key to the
 host's `~/.ssh/authorized_keys`, and `gh secret set DEPLOY_SSH_KEY` with the
 private key.
