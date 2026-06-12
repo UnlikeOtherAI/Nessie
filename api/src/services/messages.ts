@@ -571,12 +571,26 @@ export const searchMessages = async (
     return []
   }
 
+  // Predictive full-text query: each term gets a `:*` prefix match so a partial
+  // word like "tick" finds "ticket". Sanitized down to bare word tokens so the
+  // raw input can never inject tsquery operators.
+  const prefixQuery = input.query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((term) => `${term}:*`)
+    .join(' & ')
+  if (!prefixQuery) {
+    return []
+  }
+
   const conditions: Prisma.Sql[] = [
     Prisma.sql`m."deleted_at" IS NULL`,
     Prisma.sql`t."channel_id" IN (${Prisma.join(
       channelIds.map((id) => Prisma.sql`${id}::uuid`),
     )})`,
-    Prisma.sql`to_tsvector('english', m."content") @@ plainto_tsquery('english', ${input.query})`,
+    Prisma.sql`to_tsvector('english', m."content") @@ to_tsquery('english', ${prefixQuery})`,
   ]
   if (input.senderId) {
     conditions.push(

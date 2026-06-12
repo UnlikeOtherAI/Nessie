@@ -2,9 +2,12 @@ import { randomUUID } from 'node:crypto'
 import type { MemberRole, Prisma, PrismaClient, User } from '@prisma/client'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
 import type { UserRecord } from '../contracts.js'
+import { buildGravatarUrl } from '../lib/gravatar.js'
 import { resolveActiveStatus, type StatusWithRelations } from './user-statuses.js'
 
 const mapUserRecord = (record: {
+  avatarUrl: string | null
+  avatarAttachmentId: string | null
   channelMembers: Array<{ channelId: string }>
   createdAt: Date
   displayName: string
@@ -20,6 +23,9 @@ const mapUserRecord = (record: {
   role: record.organizationMembers[0]?.role ?? 'member',
   channelIds: record.channelMembers.map((member) => parseChannelId(member.channelId)),
   activeStatus: resolveActiveStatus(record.statuses),
+  avatarUrl: record.avatarUrl ?? undefined,
+  avatarAttachmentId: record.avatarAttachmentId ?? undefined,
+  gravatarUrl: buildGravatarUrl(record.email),
   createdAt: record.createdAt.toISOString(),
   updatedAt: record.updatedAt.toISOString(),
 })

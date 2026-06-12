@@ -116,6 +116,9 @@ export type UserRecord = {
   id: string
   role: string
   activeStatus?: UserActiveStatus | null
+  avatarUrl?: string | null
+  avatarAttachmentId?: string | null
+  gravatarUrl?: string | null
   updatedAt: string
 }
 

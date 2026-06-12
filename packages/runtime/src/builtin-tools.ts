@@ -462,6 +462,30 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ATTACHMENT_READ_TOOL_DEFINITION,
   // ─── sp-channels: channel lifecycle tools ─────────────────────────────────
   {
+    id: 'channel_find',
+    label: 'Find Channel',
+    description:
+      'Resolve a channel by name (e.g. "general" or "#product") to its id. ' +
+      'Use this to get a channelId before posting or acting on a channel — ' +
+      'do not ask the user for an id. Returns matching channels with id, ' +
+      'label, and visibility.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The channel name (or part of it) to look up.',
+        },
+        limit: {
+          type: 'integer',
+          description: 'Maximum number of matches to return (default 10).',
+        },
+      },
+      required: ['query'],
+    },
+    safe: true,
+  },
+  {
     id: 'channel_list',
     label: 'List Channels',
     description:
