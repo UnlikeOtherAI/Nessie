@@ -356,7 +356,7 @@ export const ChannelMessageFeed = ({
             </div>
             <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
               <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
-                {entry.content ? renderContent(entry.content) : 'Streaming response'}
+                {entry.content ? renderContent(entry.content) : 'Loading response'}
                 <span className="streaming-dot" />
               </p>
             </div>

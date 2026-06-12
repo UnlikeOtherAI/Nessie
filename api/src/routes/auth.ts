@@ -339,6 +339,21 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
           return reply
         }
 
+        // Self-heal accounts whose display name is just their email — the old
+        // SSO fallback before names were humanized. Only touches the broken case
+        // (displayName === email), so a user-chosen name is never clobbered.
+        if (sessionUser.displayName === sessionUser.email && identity.displayName !== sessionUser.displayName) {
+          await prisma.user.update({
+            where: { id: sessionUser.id },
+            data: { displayName: identity.displayName },
+          })
+          sessionUser = await loadSessionUserByEmail(prisma, identity.email)
+          if (!sessionUser) {
+            sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
+            return reply
+          }
+        }
+
         const organizationMember = sessionUser.organizationMembers[0]
         const projectMember = sessionUser.projectMembers[0]
         const teamMember = sessionUser.teamMembers[0]
