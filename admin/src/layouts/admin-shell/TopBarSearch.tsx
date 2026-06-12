@@ -6,8 +6,14 @@ import type {
   ProjectRecord,
   UserRecord,
 } from '../../lib/api-client'
+import { SearchModeToggle } from '../../components/features/search/SearchModeToggle'
 import { useCurrentOrganization } from '../../facades/organization/hooks'
-import { useGlobalSearch, type KnowledgeSearchHit } from '../../facades/search/hooks'
+import {
+  useGlobalSearch,
+  usePersistedGlobalSearchMode,
+  type KnowledgeSearchHit,
+  type ThoughtSearchHit,
+} from '../../facades/search/hooks'
 
 // A single selectable entry in the flattened results list. Flattening lets the
 // keyboard handler move a single cursor across every group in display order.
@@ -17,6 +23,7 @@ type ResultItem =
   | { kind: 'project'; id: string; primary: string; secondary?: string; data: ProjectRecord }
   | { kind: 'message'; id: string; primary: string; secondary: string; data: MessageSearchResult }
   | { kind: 'knowledge'; id: string; primary: string; secondary: string; data: KnowledgeSearchHit }
+  | { kind: 'thought'; id: string; primary: string; secondary: string; data: ThoughtSearchHit }
 
 const SearchGlyph = () => (
   <svg fill="none" height="16" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="16">
@@ -42,10 +49,11 @@ export const TopBarSearch = () => {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [mode, setMode] = usePersistedGlobalSearchMode()
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const results = useGlobalSearch(query)
+  const results = useGlobalSearch(query, mode)
   const active = query.trim().length >= 2
 
   const items = useMemo<ResultItem[]>(() => {
@@ -84,6 +92,13 @@ export const TopBarSearch = () => {
         primary: k.page.title,
         secondary: k.snippet,
         data: k,
+      })),
+      ...results.thoughts.map((thought): ResultItem => ({
+        kind: 'thought',
+        id: `thought:${thought.id}`,
+        primary: thought.content,
+        secondary: `Memory - ${Math.round(thought.similarity * 100)}% semantic match`,
+        data: thought,
       })),
     ]
   }, [active, results])
@@ -142,6 +157,9 @@ export const TopBarSearch = () => {
       case 'knowledge':
         navigate('/knowledge-base')
         break
+      case 'thought':
+        navigate(`/search?query=${encodeURIComponent(query.trim())}&mode=semantic`)
+        break
     }
     close()
   }
@@ -171,26 +189,38 @@ export const TopBarSearch = () => {
 
   return (
     <div className="admin-topbar-search" ref={containerRef}>
-      <span className="admin-topbar-search-icon">
-        <SearchGlyph />
-      </span>
-      <input
-        className="admin-topbar-search-input"
-        onChange={(event) => {
-          setQuery(event.target.value)
-          setOpen(true)
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={onKeyDown}
-        placeholder={organization?.name ? `Search ${organization.name}` : 'Search'}
-        ref={inputRef}
-        type="text"
-        value={query}
-      />
+      <div className="admin-topbar-search-field">
+        <span className="admin-topbar-search-icon">
+          <SearchGlyph />
+        </span>
+        <input
+          className="admin-topbar-search-input"
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          placeholder={organization?.name ? `Search ${organization.name}` : 'Search'}
+          ref={inputRef}
+          type="text"
+          value={query}
+        />
+      </div>
+      <SearchModeToggle compact mode={mode} onChange={setMode} />
 
       {showDropdown ? (
         <div className="admin-topbar-results" role="listbox">
-          {items.length === 0 ? (
+          {mode === 'semantic' ? (
+            <p className="px-3 pb-2 pt-1 text-xs text-[color:var(--tx3)]">
+              Semantic searches memory. Messages and knowledge stay in Text mode.
+            </p>
+          ) : null}
+          {results.errorMessage ? (
+            <p className="px-3 py-4 text-sm text-[color:var(--danger)]">
+              {results.errorMessage}
+            </p>
+          ) : items.length === 0 ? (
             <p className="px-3 py-4 text-sm text-[color:var(--tx3)]">
               {results.isLoading ? 'Searching…' : 'No results'}
             </p>
@@ -215,7 +245,9 @@ export const TopBarSearch = () => {
                       ? '💬'
                       : item.kind === 'knowledge'
                         ? '📄'
-                        : initial(item.primary)}
+                        : item.kind === 'thought'
+                          ? 'M'
+                          : initial(item.primary)}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-[color:var(--tx)]">

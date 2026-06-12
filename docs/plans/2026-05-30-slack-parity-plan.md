@@ -64,6 +64,13 @@ Highest daily-use value; sits on existing infra.
 - Add `senderId` + date-range filters to `listThreadMessages` first (the quick-win
   half — unblocks `from:`/jump-to-date even before FTS lands).
 - Admin: search bar in channel header → results list with jump-to-message.
+- **Implemented 2026-06-12:** message search is predictive full-text search:
+  every sanitized token is sent to Postgres `to_tsquery` with a `:*` suffix, so
+  partial terms such as `tick` match `ticket`. Global search now has a persisted
+  Text/Semantic mode. Text mode searches channels, people, projects, messages,
+  and knowledge pages; Semantic mode is scoped to `/api/thoughts/search`
+  memory results because chat messages and knowledge pages do not yet have
+  embeddings.
 
 ### 1d. Message permalinks  *(S, low priority)*
 - Deterministic route `/c/:channelId/t/:threadId/m/:messageId`; "Copy link" action.
@@ -197,27 +204,42 @@ larger phases.
   and content (`admin/src/layouts/admin-shell/TopBar.tsx`) — back/forward history,
   a recent-channels menu, a centered **command-palette search** (inline grouped
   results across channels/people/projects/messages/knowledge, reusing
-  `useGlobalSearch`; `⌘K`/`Ctrl-K` to focus), a workspace badge, and a help
-  shortcut. Shared across web, the iPad WebView shell (clears the status bar via
-  `env(safe-area-inset-top)`), and the Tauri desktop app, where it doubles as the
-  window title bar (traffic-light gap + drag region).
+  `useGlobalSearch`; `⌘K`/`Ctrl-K` to focus), a persisted Text/Semantic mode
+  toggle for memory search, a workspace badge, and a help shortcut. Shared across
+  web, the iPad WebView shell (clears the status bar via
+  `env(safe-area-inset-top)`), and the Tauri desktop app, where it doubles as
+  the window title bar (traffic-light gap + drag region).
 - **Chat author identity (implemented 2026-06-12)**: thread messages now embed the
   real `author` (`displayName` + avatar sources), so every message renders the
   actual sender's name and avatar via `UserAvatar` (profile picture when one
   resolves — uploaded attachment > provider > Gravatar — else initials) instead of
   always showing the viewer's name on a generic gradient. `ThreadMessageRecord`
   gained an optional `author` field.
+- **People/member avatars (implemented 2026-06-12)**: `/api/users` now returns
+  `avatarUrl`, `avatarAttachmentId`, and `gravatarUrl`, and the admin sidebar DM
+  rows, people rows, channel header, and members popup render real `UserAvatar`
+  pictures with initials fallback.
+- **Chat status and lifecycle polish (implemented 2026-06-12)**: messages render
+  the sender's active custom status emoji beside the author name with a hover
+  tooltip and speech-bubble fallback, icon-only edit/delete controls, a dashed
+  "Message has been deleted" tombstone when replies follow, and a "Loading
+  response" placeholder while an agent response is pending.
 
 ---
 
 ## Phase 9 — Agent-native differentiators (beat Slack, not just match)
 - Agent-generated **link unfurls**: agent fetches URL → posts live context summary
   (richer than static OpenGraph).
-- Surface **semantic/hybrid memory search** as first-class message search (highest
-  leverage — turns the Phase 1c parity gap into a differentiator).
+- Surface **semantic/hybrid memory search** as first-class search (partially
+  implemented in the global search Semantic mode via `/api/thoughts/search`).
+  Message semantic search remains deferred until a message embedding pipeline
+  exists.
 - **Auto meeting notes**: agent transcribes Jitsi call → posts action items to thread.
 - **Agents-as-routers**: wire `MessageReaction` / `message.created` into event
   triggers so an agent watches a channel and routes/summarizes/escalates.
+- **Agent channel lookup (implemented 2026-06-12)**: `channel_find` resolves a
+  channel name to its id across the runtime, worker personal-assistant tools, and
+  worker tool registry so agents can address channels without brittle manual ids.
 
 ---
 
