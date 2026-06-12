@@ -23,6 +23,7 @@ export const ChannelSettingsDialog = (
   const [topic, setTopic] = useState(channel.topic ?? '')
   const [description, setDescription] = useState(channel.description ?? '')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmArchive, setConfirmArchive] = useState(false)
 
   const isArchived = Boolean(channel.archivedAt)
 
@@ -32,6 +33,7 @@ export const ChannelSettingsDialog = (
       setTopic(channel.topic ?? '')
       setDescription(channel.description ?? '')
       setConfirmDelete(false)
+      setConfirmArchive(false)
     }
   }, [open, channel])
 
@@ -185,7 +187,13 @@ export const ChannelSettingsDialog = (
               <button
                 className="admin-button admin-button-secondary"
                 disabled={archiveChannel.isPending}
-                onClick={handleArchiveToggle}
+                onClick={() => {
+                  if (isArchived) {
+                    void handleArchiveToggle()
+                  } else {
+                    setConfirmArchive(true)
+                  }
+                }}
                 type="button"
               >
                 {isArchived ? 'Unarchive' : 'Archive'}
@@ -218,6 +226,50 @@ export const ChannelSettingsDialog = (
           </div>
         </form>
       </div>
+
+      {confirmArchive ? (
+        <div
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setConfirmArchive(false)
+          }}
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--scrim-strong)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div className="create-channel-panel" style={{ maxWidth: '24rem' }}>
+            <h2 className="text-lg font-bold text-[color:var(--tx)]">Archive channel?</h2>
+            <p className="mt-2 text-sm text-[color:var(--tx2)]">
+              Are you sure you want to archive #{channel.label}? It will be hidden from the
+              channel list. You can unarchive it later.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="admin-button admin-button-secondary"
+                onClick={() => setConfirmArchive(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="admin-button admin-button-primary"
+                disabled={archiveChannel.isPending}
+                onClick={handleArchiveToggle}
+                type="button"
+              >
+                Archive
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

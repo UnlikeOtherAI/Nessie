@@ -13,6 +13,19 @@ export const useChannels = () => {
   })
 }
 
+// Admin Channels page needs archived channels too; kept under a distinct
+// query key so the active-only ['channels'] list stays untouched. Mutations
+// invalidate ['channels'], which partial-matches and refreshes this too.
+export const useAllChannels = () => {
+  const apiClient = useApiClient()
+
+  return useQuery<ChannelRecord[]>({
+    queryKey: ['channels', 'all'],
+    queryFn: () => apiClient.get('/api/channels?includeArchived=true'),
+    staleTime: Infinity,
+  })
+}
+
 export const useOpenDm = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
