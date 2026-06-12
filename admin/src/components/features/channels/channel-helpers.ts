@@ -103,5 +103,8 @@ export const getDisplayName = (
     return 'System'
   }
 
-  return meDisplayName
+  // Prefer the message's embedded author so every sender shows their own name
+  // (not the viewer's). Fall back to the viewer's name for optimistic messages
+  // and any legacy row that predates author hydration.
+  return entry.author?.displayName ?? meDisplayName
 }

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import type { Message, PrismaClient, Thread } from '@prisma/client'
+import type { PrismaClient, Thread } from '@prisma/client'
 import {
   parseAgentId,
   parseChannelId,
@@ -7,23 +7,40 @@ import {
   parseUserId,
 } from '@nessie/schemas'
 import type { MessageSearchResult, ThreadMessageRecord } from '../contracts.js'
+import { buildGravatarUrl } from '../lib/gravatar.js'
 
-type MessageWithReactions = Message & {
-  reactions: Array<{
-    id: string
-    messageId: string
-    agentId: string | null
-    userId: string | null
-    emoji: string
-    createdAt: Date
-  }>
-}
+// Hydrate every message with its reactions and the authoring user's identity so
+// the client can render the real sender name + avatar without a second lookup.
+// `select` keeps the user payload to just the avatar-source fields.
+export const messageInclude = {
+  reactions: true,
+  user: {
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      avatarUrl: true,
+      avatarAttachmentId: true,
+    },
+  },
+} satisfies Prisma.MessageInclude
+
+type MessageWithReactions = Prisma.MessageGetPayload<{ include: typeof messageInclude }>
 
 const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRecord => ({
   id: message.id,
   threadId: parseThreadId(message.threadId),
   agentId: message.agentId ? parseAgentId(message.agentId) : undefined,
   userId: message.userId ? parseUserId(message.userId) : undefined,
+  author: message.user
+    ? {
+        id: message.user.id,
+        displayName: message.user.displayName,
+        avatarUrl: message.user.avatarUrl ?? undefined,
+        avatarAttachmentId: message.user.avatarAttachmentId ?? undefined,
+        gravatarUrl: buildGravatarUrl(message.user.email),
+      }
+    : undefined,
   role: message.role,
   // Soft-deleted rows are returned as tombstones — content is already blanked
   // at delete time, but never surface stale content even if that changes.
@@ -215,7 +232,7 @@ export const listThreadMessages = async (
     where,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
-    include: { reactions: true },
+    include: messageInclude,
   })
 
   const hasMore = rows.length > limit
@@ -272,7 +289,7 @@ export type ChannelAgent = {
 export type CreateThreadMessageResult =
   | {
       kind: 'created'
-      message: Message
+      message: MessageWithReactions
       channelAgents: ChannelAgent[]
     }
   | {
@@ -334,6 +351,7 @@ export const createThreadMessage = async (
       content: input.content,
       metadata: { mentions } as Prisma.InputJsonValue,
     },
+    include: messageInclude,
   })
 
   const channelAgents: ChannelAgent[] = thread.channel.agentBindings.map((b) => ({
@@ -391,6 +409,7 @@ export const createThreadMessage = async (
     persistedMessage = await prisma.message.update({
       where: { id: message.id },
       data: { metadata: { mentions: merged } as Prisma.InputJsonValue },
+      include: messageInclude,
     })
   }
 
@@ -450,7 +469,7 @@ export const updateMessage = async (
   const message = await prisma.message.update({
     where: { id: input.messageId },
     data: { content: input.content, editedAt: new Date() },
-    include: { reactions: true },
+    include: messageInclude,
   })
   return { kind: 'updated', message }
 }
@@ -486,7 +505,7 @@ export const softDeleteMessage = async (
     // Blank the content for privacy; the row remains so the UI can render a
     // tombstone and pagination keysets stay stable.
     data: { deletedAt: new Date(), content: '' },
-    include: { reactions: true },
+    include: messageInclude,
   })
   return { kind: 'deleted', message }
 }

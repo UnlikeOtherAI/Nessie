@@ -1,9 +1,9 @@
 // Injected into the admin page. The WebView fills the area above the native tab
 // bar; the admin's full-height columns run edge to edge. This (1) enables CSS
-// safe-area insets via viewport-fit=cover, (2) pads the column *content* down
-// past the status bar while column backgrounds still reach the screen edges, and
-// (3) reports the document background so the native view behind the WebView
-// matches during load/overscroll.
+// safe-area insets via viewport-fit=cover, (2) pads the column *content* up from
+// the home indicator (the global top bar already clears the status bar/notch via
+// its own safe-area-inset-top), and (3) reports the document background so the
+// native view behind the WebView matches during load/overscroll.
 export const INJECTED = `
 (function () {
   var vp = document.querySelector('meta[name=viewport]');
@@ -21,7 +21,6 @@ export const INJECTED = `
     st.id = styleId;
     st.textContent =
       '.admin-shell > aside, .admin-shell > main {' +
-      '  padding-top: env(safe-area-inset-top);' +
       '  padding-bottom: env(safe-area-inset-bottom);' +
       '}';
     (document.head || document.documentElement).appendChild(st);

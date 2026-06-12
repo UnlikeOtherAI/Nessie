@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
-import { memberGradients } from '../../../lib/avatar'
+import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { MessageAttachments } from '../../shared/MessageAttachments'
 import {
   formatClock,
@@ -26,6 +26,10 @@ interface ChannelMessageFeedProps {
   agentById: Map<string, AgentRecord>
   meDisplayName: string
   meUserId: string
+  // Avatar sources for the signed-in user — used for optimistic (not-yet-saved)
+  // messages, which have no server-side author payload yet.
+  meAvatar: AvatarSources
+  token: string | null
   isPersonalAssistantConversation: boolean
   renderContent: (text: string) => ReactNode
   editingMessageId: string | null
@@ -46,6 +50,8 @@ export const ChannelMessageFeed = ({
   agentById,
   meDisplayName,
   meUserId,
+  meAvatar,
+  token,
   isPersonalAssistantConversation,
   renderContent,
   editingMessageId,
@@ -105,9 +111,18 @@ export const ChannelMessageFeed = ({
               {getAgentGlyph(agentMap.get(item.message.agentId ?? ''))}
             </div>
           ) : (
-            <div
-              className="h-9 w-9 flex-shrink-0 rounded-md"
-              style={{ background: memberGradients[0] }}
+            <UserAvatar
+              avatarAttachmentId={item.message.author?.avatarAttachmentId ?? undefined}
+              avatarUrl={item.message.author?.avatarUrl ?? undefined}
+              displayName={getDisplayName(
+                item.message,
+                meDisplayName,
+                agentMap,
+                isPersonalAssistantConversation ? 'Personal Assistant' : 'Agent',
+              )}
+              gravatarUrl={item.message.author?.gravatarUrl ?? undefined}
+              size={36}
+              token={token}
             />
           )}
           <div className="min-w-0 flex-1">
@@ -245,9 +260,13 @@ export const ChannelMessageFeed = ({
         className="admin-msg-row py-1"
         data-testid="optimistic-message"
       >
-        <div
-          className="h-9 w-9 flex-shrink-0 rounded-md"
-          style={{ background: memberGradients[0] }}
+        <UserAvatar
+          avatarAttachmentId={meAvatar.avatarAttachmentId}
+          avatarUrl={meAvatar.avatarUrl}
+          displayName={meDisplayName}
+          gravatarUrl={meAvatar.gravatarUrl}
+          size={36}
+          token={token}
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">

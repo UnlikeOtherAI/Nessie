@@ -1,7 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
-import { isDesktopApp } from '../lib/desktop';
 import { isReactNativeWebView, useMobileLayout, usePhoneLayout } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
@@ -13,6 +12,7 @@ import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
+import { TopBar } from './admin-shell/TopBar';
 import { useAdminShell } from './admin-shell/useAdminShell';
 
 export type { AdminShellOutletContext } from './admin-shell/types';
@@ -143,27 +143,27 @@ export const AdminShellLayout = () => {
     </>
   );
 
-  const shellClassName = [
-    'admin-shell',
-    isDesktopApp() ? 'pt-[28px]' : '',
-    showWebTabBar ? 'has-mobile-tabbar' : '',
-  ]
+  const frameClassName = ['admin-frame', showWebTabBar ? 'has-mobile-tabbar' : '']
     .filter(Boolean)
     .join(' ');
 
   return (
     <NotificationsProvider>
       <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
-        <div className={shellClassName}>
-          {!mobileLayout && (
-            <SidebarRail onLogout={shell.logoutAndRedirect} pathname={shell.pathname} />
-          )}
+        <div className={frameClassName}>
+          <TopBar />
 
-          {shell.isKnowledgeRoute ? (
-            <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
-          ) : (
-            contentRegion
-          )}
+          <div className="admin-shell">
+            {!mobileLayout && (
+              <SidebarRail onLogout={shell.logoutAndRedirect} pathname={shell.pathname} />
+            )}
+
+            {shell.isKnowledgeRoute ? (
+              <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
+            ) : (
+              contentRegion
+            )}
+          </div>
         </div>
 
         {showWebTabBar && <MobileTabBar />}

@@ -193,6 +193,20 @@ larger phases.
 - **Remaining status automation**: inbound message dispatch still needs to
   evaluate active contact rules and start the configured response agent with the
   stored instructions.
+- **Global top bar (implemented 2026-06-12)**: Slack-style chrome above the rail
+  and content (`admin/src/layouts/admin-shell/TopBar.tsx`) — back/forward history,
+  a recent-channels menu, a centered **command-palette search** (inline grouped
+  results across channels/people/projects/messages/knowledge, reusing
+  `useGlobalSearch`; `⌘K`/`Ctrl-K` to focus), a workspace badge, and a help
+  shortcut. Shared across web, the iPad WebView shell (clears the status bar via
+  `env(safe-area-inset-top)`), and the Tauri desktop app, where it doubles as the
+  window title bar (traffic-light gap + drag region).
+- **Chat author identity (implemented 2026-06-12)**: thread messages now embed the
+  real `author` (`displayName` + avatar sources), so every message renders the
+  actual sender's name and avatar via `UserAvatar` (profile picture when one
+  resolves — uploaded attachment > provider > Gravatar — else initials) instead of
+  always showing the viewer's name on a generic gradient. `ThreadMessageRecord`
+  gained an optional `author` field.
 
 ---
 
