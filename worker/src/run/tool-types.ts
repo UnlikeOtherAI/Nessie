@@ -1,9 +1,12 @@
 import type { PrismaClient } from '@prisma/client'
 import type { CaptureConfig } from '@nessie/memory'
-import type { PgRealtimeTransport } from '@nessie/runtime'
+import type { ConnectorUsage, PgRealtimeTransport } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 
+export type ToolExecutionUsage = Omit<ConnectorUsage, 'latencyMs' | 'success'>
+
 export type ToolExecutionResult = {
+  connectorUsage?: ToolExecutionUsage
   inputSummary: string
   outputPreview: string
   toolName: string

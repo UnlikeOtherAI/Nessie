@@ -24,6 +24,7 @@ import {
   checkBudget,
   recordConnectorUsage,
   type ConnectorType,
+  type ConnectorUsage,
 } from '@nessie/runtime'
 import {
   parseAgentId,
@@ -927,6 +928,7 @@ const recordToolEnd = async (
     startedAt: Date
     success: boolean
     toolName: string
+    connectorUsage?: ConnectorUsage
   },
 ): Promise<void> => {
   const endedAt = new Date()
@@ -945,7 +947,8 @@ const recordToolEnd = async (
     },
   })
 
-  const connectorType = CONNECTOR_TYPE_BY_TOOL[input.toolName]
+  const connectorType =
+    input.connectorUsage?.connectorType ?? CONNECTOR_TYPE_BY_TOOL[input.toolName]
   if (connectorType) {
     await recordConnectorUsage(deps.prisma, {
       attribution: attributionFromActorContext(actorContext, {
@@ -953,8 +956,9 @@ const recordToolEnd = async (
         runId: context.run.id,
       }),
       event: {
+        ...(input.connectorUsage ?? {}),
         connectorType,
-        operation: input.toolName,
+        operation: input.connectorUsage?.operation ?? input.toolName,
         success: input.success,
         latencyMs: input.durationMs,
       },
@@ -1443,7 +1447,15 @@ export const executeRunJob = async (
             event: 'agent.tool.start',
           })
         },
-        onToolCallEnd: async (toolName, result, durationMs, success, inputSummary, startedAt) => {
+        onToolCallEnd: async (
+          toolName,
+          result,
+          durationMs,
+          success,
+          inputSummary,
+          startedAt,
+          connectorUsage,
+        ) => {
           await recordToolEnd(deps, context, payload.actorContext, {
             durationMs,
             inputSummary,
@@ -1451,6 +1463,7 @@ export const executeRunJob = async (
             startedAt,
             success,
             toolName,
+            connectorUsage,
           })
           await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
           await publishAgentStatus(deps.realtimeTransport, context, {

@@ -386,6 +386,7 @@ const createGeneratedConfig = (mode: LaunchMode, env: NodeJS.ProcessEnv): Nessie
     api: {
       host: LAN_BIND_HOST,
       port: API_PORT,
+      trustedProxyHops: baseConfig.api.trustedProxyHops,
     },
     auth: {
       ...baseConfig.auth,

@@ -81,6 +81,8 @@ export type ConnectorUsage = {
   metadata?: Record<string, unknown> | null
 }
 
+export type StorageTransferOperation = 'download' | 'upload'
+
 type PrismaOperationType =
   | 'chat'
   | 'completion'
@@ -351,6 +353,34 @@ export const recordConnectorUsage = async (
       latencyMs: event.latencyMs ?? null,
       occurredAt: new Date(),
       metadata: (event.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+    },
+  })
+}
+
+export const recordStorageTransferUsage = async (
+  prisma: PrismaClient,
+  input: {
+    attribution: LedgerAttribution
+    bytes: number
+    metadata?: Record<string, unknown>
+    operation: StorageTransferOperation
+    success?: boolean
+    target?: string
+    latencyMs?: number
+  },
+): Promise<void> => {
+  await recordConnectorUsage(prisma, {
+    attribution: input.attribution,
+    event: {
+      connectorType: 'storage',
+      target: input.target ?? 'attachment',
+      operation: input.operation,
+      calls: 1,
+      units: input.bytes,
+      unitType: 'bytes',
+      success: input.success ?? true,
+      latencyMs: input.latencyMs ?? null,
+      metadata: input.metadata ?? null,
     },
   })
 }

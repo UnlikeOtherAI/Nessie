@@ -1,4 +1,5 @@
 import type {
+  ConnectorUsage,
   InferenceResult,
   InvocationRecord,
   ProviderMessage,
@@ -54,6 +55,7 @@ export type LoopCallbacks = {
     success: boolean,
     inputSummary: string,
     startedAt: Date,
+    connectorUsage?: ConnectorUsage,
   ) => Promise<void>
   onTextDelta: (delta: string) => Promise<void>
   onBudgetExhausted: (reason: BudgetExhaustionReason) => Promise<void>
@@ -73,7 +75,12 @@ export type LoopResult = {
 type ExecuteToolFn = (
   toolName: string,
   args: Record<string, unknown>,
-) => Promise<{ output: string; success: boolean; inputSummary: string }>
+) => Promise<{
+  connectorUsage?: ConnectorUsage
+  output: string
+  success: boolean
+  inputSummary: string
+}>
 
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000
 const LOOP_DETECTION_THRESHOLD = 3
@@ -314,6 +321,7 @@ export const runAgenticLoop = async (input: {
             toolResult.success,
             toolResult.inputSummary,
             startedAt,
+            toolResult.connectorUsage,
           )
           return { ...toolResult, toolCallId: tc.toolCallId, toolName: tc.toolName }
         } catch (error) {

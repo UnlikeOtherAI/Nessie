@@ -1,5 +1,9 @@
 import type { FastifyInstance } from 'fastify'
-import { getStorage, type StorageConfig } from '@nessie/runtime'
+import {
+  getStorage,
+  recordStorageTransferUsage,
+  type StorageConfig,
+} from '@nessie/runtime'
 
 import {
   OrganizationSummarySchema,
@@ -126,6 +130,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
   // Multi-org instances and unset logos return 404 so the client falls back to
   // the static Nessie brand icon (an `<img onError>`), mirroring GET /icon.png.
   app.get('/api/brand/logo', { config: { public: true } }, async (_request, reply) => {
+    const startedAt = Date.now()
     const orgCount = await prisma.organization.count()
     if (orgCount !== 1) {
       sendApiError(reply, 404, 'BRAND_LOGO_NOT_FOUND', 'No brand logo configured')
@@ -161,6 +166,17 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
     reply.header('content-type', mime)
     reply.header('x-content-type-options', 'nosniff')
     reply.header('cache-control', 'public, max-age=60')
+    void recordStorageTransferUsage(prisma, {
+      attribution: {
+        organizationId: organization.id,
+        actorId: 'public',
+        actorType: 'system',
+      },
+      bytes: bytes.byteLength,
+      latencyMs: Date.now() - startedAt,
+      metadata: { attachmentId: attachment.id, source: 'api.brand.logo' },
+      operation: 'download',
+    }).catch(() => undefined)
     return reply.send(bytes)
   })
 }

@@ -3,6 +3,7 @@ import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
 import { parseOrganizationId } from '@nessie/schemas'
 import { collectWebFetchResult, collectWebSearchResults, coercePage } from './content-tools.js'
 import { HttpFetchError } from './builtin-handlers/index.js'
+import { UrlSafetyError } from './builtin-handlers/url-safety.js'
 import { hashJsonValue, summarizeToolInput } from './tool-util.js'
 
 type WorkflowToolExecutionResult = {
@@ -74,7 +75,7 @@ export const executeWorkflowBuiltinTool = async (
       try {
         result = await collectWebFetchResult(url)
       } catch (error) {
-        if (error instanceof HttpFetchError) {
+        if (error instanceof HttpFetchError || error instanceof UrlSafetyError) {
           return workflowToolFailure(inputSummary, error.message)
         }
         throw error
