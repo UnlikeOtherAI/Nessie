@@ -579,6 +579,7 @@ Parity matrix:
 | message submit (stream) | `POST /chat` | `message.submit` | `/message submit` | actorContext | conditional | yes | implemented-partial |
 | message submit sync | `POST /chat/sync` | `message.submit_sync` | `/message submit --sync` | actorContext | conditional | yes | blocked (route shadow) |
 | message reaction | `POST /api/threads/{threadId}/messages/{messageId}/reactions` + realtime `message.reaction` | N/A | N/A (message row action toolbar) | channel membership | no | no | implemented (REST admin surface; users can tap/click a message row to add thumbs-up or emoji reactions) |
+| message author profile + quick DM | `POST /api/dm/{userId}` then `GET/POST /api/threads/{threadId}/messages` | N/A | N/A (tap/click a non-DM message author's avatar or name) | organization membership + DM channel membership | no | no | implemented (admin chat opens a right-side user info drawer that reuses the channel feed/composer against the DM thread; disabled when already viewing that DM) |
 | mcp list | `GET /mcp` | `mcp.tools.list` | N/A | actorContext | no | yes | implemented |
 | mcp call | `POST /mcp` | MCP JSON-RPC router | N/A | actorContext | no | yes | implemented |
 | service checks | `GET /healthz`, `GET /readyz` | `system.healthz`, `system.readyz` | N/A | actorContext | no | yes | target-only |

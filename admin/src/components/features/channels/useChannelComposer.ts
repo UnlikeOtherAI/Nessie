@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
-import type { MentionInputHandle } from '../../components/shared/MentionInput'
-import { useSendMessage, useUploadAttachment } from '../../facades/messages/hooks'
-import type { OptimisticMessage } from '../../components/features/channels/channel-helpers'
-import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
+import type { MentionInputHandle } from '../../shared/MentionInput'
+import { useSendMessage, useUploadAttachment } from '../../../facades/messages/hooks'
+import type { ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
+import type { OptimisticMessage } from './channel-helpers'
 
 interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
