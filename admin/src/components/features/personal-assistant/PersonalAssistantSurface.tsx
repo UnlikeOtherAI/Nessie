@@ -92,7 +92,7 @@ export const PersonalAssistantSidebarEntry = ({
         <path d="M8 11a4 4 0 018 0v4a4 4 0 01-8 0z" />
       </svg>
     </div>
-    <span className="min-w-0 flex-1 truncate text-sm font-medium text-current">
+    <span className="min-w-0 flex-1 truncate text-current">
       Personal Assistant
     </span>
     <span className={badgeClassName}>PA</span>
