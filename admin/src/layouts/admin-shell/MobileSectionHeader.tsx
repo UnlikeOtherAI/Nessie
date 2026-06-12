@@ -1,12 +1,12 @@
-import { useMobileLayout } from '../../lib/mobile-shell';
+import { usePhoneLayout } from '../../lib/mobile-shell';
 import { MobileMenuButton } from './MobileMenuButton';
 
-// A mobile-only top bar (hamburger + section title) for pages that have no
-// header of their own (the Agents and Knowledge column browsers). Renders
-// nothing on desktop / large web, so the desktop layout is unchanged.
+// A phone-only top bar (hamburger + section title) for pages that have no header
+// of their own (the Agents and Knowledge column browsers). Renders nothing on
+// desktop / tablet (iPad) / large web, where the secondary sidebar is shown inline.
 export const MobileSectionHeader = ({ title }: { title: string }) => {
-  const mobileLayout = useMobileLayout();
-  if (!mobileLayout) {
+  const phoneLayout = usePhoneLayout();
+  if (!phoneLayout) {
     return null;
   }
   return (

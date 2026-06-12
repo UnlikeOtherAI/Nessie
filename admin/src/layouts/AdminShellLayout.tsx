@@ -2,7 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import { isDesktopApp } from '../lib/desktop';
-import { isReactNativeWebView, useMobileLayout } from '../lib/mobile-shell';
+import { isReactNativeWebView, useMobileLayout, usePhoneLayout } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
@@ -21,6 +21,9 @@ export const AdminShellLayout = () => {
   const shell = useAdminShell();
   const { me, sessionState } = shell;
   const mobileLayout = useMobileLayout();
+  // Phones get the hamburger drawer; tablets (iPad) keep the secondary sidebar
+  // pinned even though they are "mobile" (their native tab bar replaces the rail).
+  const phoneLayout = usePhoneLayout();
   const nativeShell = isReactNativeWebView();
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
@@ -126,7 +129,7 @@ export const AdminShellLayout = () => {
   // hamburger is never a dead button.
   const drawerNavElement = secNavElement ?? sidebarNavElement;
 
-  const contentRegion = mobileLayout ? (
+  const contentRegion = phoneLayout ? (
     <>
       <MobileNavDrawer onClose={shell.closeMobileDrawer} open={shell.mobileDrawerOpen}>
         {drawerNavElement}

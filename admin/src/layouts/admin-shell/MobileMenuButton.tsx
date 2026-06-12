@@ -1,14 +1,14 @@
-import { useMobileLayout } from '../../lib/mobile-shell';
+import { usePhoneLayout } from '../../lib/mobile-shell';
 import { useMobileNav } from './MobileNavContext';
 
-// Top-left hamburger shown on every page header in the mobile layout. Opens the
-// contextual secondary-nav drawer. Renders nothing on desktop / large web (where
-// the secondary sidebar is shown inline) or outside the admin shell.
+// Top-left hamburger shown on every page header in the phone layout. Opens the
+// contextual secondary-nav drawer. Renders nothing on desktop / tablet (iPad) /
+// large web (where the secondary sidebar is shown inline) or outside the admin shell.
 export const MobileMenuButton = () => {
-  const mobileLayout = useMobileLayout();
+  const phoneLayout = usePhoneLayout();
   const nav = useMobileNav();
 
-  if (!mobileLayout || !nav) {
+  if (!phoneLayout || !nav) {
     return null;
   }
 
