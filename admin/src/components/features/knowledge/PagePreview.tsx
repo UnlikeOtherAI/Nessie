@@ -1,3 +1,5 @@
+import { faFileLines, faFolder } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { KnowledgePane } from './KnowledgePane'
 import { pageStatusTone } from './page-status'
@@ -14,6 +16,14 @@ type PagePreviewProps = {
   publishPending?: boolean
   subPages: KnowledgePageRecord[]
 }
+
+const sortedSubPages = (pages: KnowledgePageRecord[]): KnowledgePageRecord[] =>
+  [...pages].sort((left, right) => {
+    const leftFolder = (left.childPageIds?.length ?? 0) > 0
+    const rightFolder = (right.childPageIds?.length ?? 0) > 0
+    if (leftFolder !== rightFolder) return leftFolder ? -1 : 1
+    return left.position - right.position || left.title.localeCompare(right.title)
+  })
 
 export const PagePreview = ({
   onBack,
@@ -100,25 +110,36 @@ export const PagePreview = ({
           {subPages.length === 0 ? (
             <div className="py-4 text-sm text-[color:var(--tx3)]">No sub-pages yet.</div>
           ) : (
-            subPages.map((child) => (
-              <button
-                className={[
-                  'flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm',
-                  'text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)] hover:text-[var(--tx)]',
-                ].join(' ')}
-                key={child.id}
-                onClick={() => onDrill(child.id)}
-                type="button"
-              >
-                <span className="min-w-0 flex-1 truncate">{child.title}</span>
-                <span className={`text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[child.status]}`}>
-                  {child.status}
-                </span>
-                <span aria-hidden className="opacity-60">
-                  →
-                </span>
-              </button>
-            ))
+            sortedSubPages(subPages).map((child) => {
+              const isFolder = (child.childPageIds?.length ?? 0) > 0
+              return (
+                <button
+                  className={[
+                    'flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm',
+                    'text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)] hover:text-[var(--tx)]',
+                  ].join(' ')}
+                  key={child.id}
+                  onClick={() => onDrill(child.id)}
+                  type="button"
+                >
+                  <FontAwesomeIcon
+                    className={[
+                      'h-4 w-4 flex-shrink-0',
+                      isFolder ? 'text-[color:var(--accent)]' : 'text-[color:var(--tx3)]',
+                    ].join(' ')}
+                    fixedWidth
+                    icon={isFolder ? faFolder : faFileLines}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{child.title}</span>
+                  <span className={`text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[child.status]}`}>
+                    {child.status}
+                  </span>
+                  <span aria-hidden className="opacity-60">
+                    →
+                  </span>
+                </button>
+              )
+            })
           )}
         </div>
       </div>

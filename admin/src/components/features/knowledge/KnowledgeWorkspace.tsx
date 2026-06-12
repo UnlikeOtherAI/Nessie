@@ -1,23 +1,35 @@
+import { useState } from 'react'
 import { useKnowledgeVersions } from '../../../facades/knowledge/hooks'
+import { getCookie, setCookie } from '../../../lib/storage'
+import { KnowledgeFilesystemBrowser } from './KnowledgeFilesystemBrowser'
 import { useKnowledge } from './KnowledgeProvider'
 import { KnowledgePane } from './KnowledgePane'
+import {
+  isKnowledgeViewMode,
+  KnowledgeViewToggle,
+  type KnowledgeViewMode,
+} from './KnowledgeViewToggle'
 import { PageEditor } from './PageEditor'
 import { PagePreview } from './PagePreview'
-import { pageStatusTone } from './page-status'
 import { VersionHistory } from './VersionHistory'
+
+const VIEW_MODE_COOKIE = 'knowledgeViewMode'
 
 export const KnowledgeWorkspace = () => {
   const {
     selectedSpace,
     selectedSpaceId,
+    pages,
     rootPages,
     pagePath,
+    openPageId,
     pageById,
     childrenOf,
+    browseTo,
+    openPagePath,
     editor,
     openCreate,
     openEdit,
-    openRootPage,
     closeEditor,
     savePage,
     savePending,
@@ -31,13 +43,23 @@ export const KnowledgeWorkspace = () => {
     restoreVersion,
     restorePending,
   } = useKnowledge()
+  const [viewMode, setViewMode] = useState<KnowledgeViewMode>(() => {
+    const stored = getCookie(VIEW_MODE_COOKIE)
+    return isKnowledgeViewMode(stored) ? stored : 'column'
+  })
 
   const versionsQuery = useKnowledgeVersions(historyPageId)
   const pathPages = pagePath
     .map((pageId) => pageById(pageId))
     .filter((page): page is NonNullable<typeof page> => Boolean(page))
-  const current = pathPages[pathPages.length - 1]
-  const depth = pathPages.length - 1
+  const current = openPageId ? pageById(openPageId) : undefined
+  const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
+  const currentFolder = openPageId ? null : pathPages.at(-1)
+
+  const updateViewMode = (nextMode: KnowledgeViewMode) => {
+    setViewMode(nextMode)
+    setCookie(VIEW_MODE_COOKIE, nextMode)
+  }
 
   // Full-width editor (create or edit) — takes the whole main area.
   if (editor) {
@@ -92,23 +114,24 @@ export const KnowledgeWorkspace = () => {
     )
   }
 
-  // No page open → the selected space's pages list.
+  // No document open → the selected space's filesystem browser.
   return (
     <KnowledgePane
       actions={
         selectedSpaceId ? (
           <button
             className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
-            onClick={() => openCreate(null)}
+            onClick={() => openCreate(currentFolder?.id ?? null)}
             type="button"
           >
             New page
           </button>
         ) : undefined
       }
+      center={<KnowledgeViewToggle mode={viewMode} onChange={updateViewMode} />}
       title={selectedSpace?.name ?? 'Pages'}
     >
-      <div className="mx-auto w-full max-w-3xl px-6 py-6">
+      <div className="h-full w-full">
         {!selectedSpaceId ? (
           <div className="py-16 text-center text-sm text-[color:var(--tx3)]">Select a space</div>
         ) : rootPages.length === 0 ? (
@@ -116,27 +139,18 @@ export const KnowledgeWorkspace = () => {
             No pages yet — create one with “New page”.
           </div>
         ) : (
-          <div className="grid gap-1">
-            {rootPages.map((page) => (
-              <button
-                className={[
-                  'flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm',
-                  'text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)] hover:text-[var(--tx)]',
-                ].join(' ')}
-                key={page.id}
-                onClick={() => openRootPage(page.id)}
-                type="button"
-              >
-                <span className="min-w-0 flex-1 truncate">{page.title}</span>
-                <span className={`text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[page.status]}`}>
-                  {page.status}
-                </span>
-                <span aria-hidden className="opacity-60">
-                  →
-                </span>
-              </button>
-            ))}
-          </div>
+          <KnowledgeFilesystemBrowser
+            childrenOf={childrenOf}
+            mode={viewMode}
+            onBrowsePath={browseTo}
+            onOpenDocumentPath={openPagePath}
+            pageById={pageById}
+            pagePath={pagePath}
+            pages={pages}
+            rootPages={rootPages}
+            selectedSpaceId={selectedSpaceId}
+            selectedSpaceName={selectedSpace?.name ?? 'Pages'}
+          />
         )}
       </div>
     </KnowledgePane>
