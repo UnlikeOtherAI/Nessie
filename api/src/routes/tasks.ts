@@ -21,7 +21,7 @@ import {
   moveTaskToColumn,
   setTaskIteration,
   transitionTask,
-  updateTaskStoryPoints,
+  updateTask,
 } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
 
@@ -76,6 +76,8 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       projectId: body.projectId,
       iterationId: body.iterationId,
       storyPoints: body.storyPoints,
+      priority: body.priority,
+      dueDate: body.dueDate,
       assigneeUserId: body.assigneeUserId,
       ownerUserId: body.ownerUserId,
     })
@@ -204,15 +206,22 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const { taskId } = request.params as { taskId: string }
     const body = parseInput(UpdateTaskBodySchema, request.body, reply)
     if (!body) return reply
-    if (body.storyPoints === undefined) {
+    const fields = {
+      ...(body.title !== undefined ? { title: body.title } : {}),
+      ...(body.purpose !== undefined ? { purpose: body.purpose } : {}),
+      ...(body.priority !== undefined ? { priority: body.priority } : {}),
+      ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
+      ...(body.storyPoints !== undefined ? { storyPoints: body.storyPoints } : {}),
+    }
+    if (Object.keys(fields).length === 0) {
       sendApiError(reply, 400, 'NO_FIELDS', 'No updatable fields provided')
       return reply
     }
 
-    const result = await updateTaskStoryPoints(prisma, {
+    const result = await updateTask(prisma, {
       taskId,
       organizationId: actorContext.tenant.organizationId,
-      storyPoints: body.storyPoints,
+      fields,
     })
     if ('error' in result) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')

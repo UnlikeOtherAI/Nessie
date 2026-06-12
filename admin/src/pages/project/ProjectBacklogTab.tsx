@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ARCHIVED_STATUSES, statusLabel } from '../../components/kanban/kanban-config'
-import { NewTaskBar } from '../../components/kanban/NewTaskBar'
+import { NewTaskButton } from '../../components/kanban/NewTaskButton'
 import {
   type Iteration,
   useCreateIteration,
@@ -230,7 +230,7 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
 
         <section className="grid gap-2">
           <div className={label}>Backlog ({backlogTasks.length})</div>
-          <NewTaskBar projectId={projectId} />
+          <NewTaskButton projectId={projectId} />
           <div className="grid gap-1">
             {backlogTasks.map((task) => (
               <TaskRow key={task.id} moveTargets={moveTargets} task={task} />

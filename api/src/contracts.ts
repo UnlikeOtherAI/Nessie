@@ -1895,6 +1895,9 @@ export const CreateUserBodySchema = z.object({
 
 // ─── Tasks (human work distribution) ──────────────────────────────────────
 
+export const TaskPrioritySchema = z.enum(['low', 'medium', 'high', 'urgent'])
+export type TaskPriority = z.infer<typeof TaskPrioritySchema>
+
 export const TaskRecordSchema = z.object({
   id: TaskIdSchema,
   organizationId: OrganizationIdSchema,
@@ -1906,6 +1909,8 @@ export const TaskRecordSchema = z.object({
   parentTaskId: TaskIdSchema.nullable(),
   runId: RunIdSchema.nullable(),
   status: TaskStatusSchema,
+  priority: TaskPrioritySchema,
+  dueDate: TimestampSchema.nullable(),
   title: z.string().nullable(),
   purpose: z.string().nullable(),
   assigneeUserId: UserIdSchema.nullable(),
@@ -1924,11 +1929,17 @@ export const CreateTaskBodySchema = z.object({
   projectId: ProjectIdSchema.optional(),
   iterationId: z.string().uuid().optional(),
   storyPoints: z.number().int().min(0).optional(),
+  priority: TaskPrioritySchema.optional(),
+  dueDate: z.coerce.date().nullable().optional(),
   assigneeUserId: UserIdSchema.optional(),
   ownerUserId: UserIdSchema.optional(),
 })
 
 export const UpdateTaskBodySchema = z.object({
+  title: NonEmptyStringSchema.optional(),
+  purpose: z.string().nullable().optional(),
+  priority: TaskPrioritySchema.optional(),
+  dueDate: z.coerce.date().nullable().optional(),
   storyPoints: z.number().int().min(0).nullable().optional(),
 })
 

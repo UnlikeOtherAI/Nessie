@@ -11,6 +11,8 @@ export type TaskStatus =
   | 'cancelled'
   | 'awaiting_approval'
 
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+
 export type TaskRecord = {
   id: string
   projectId: string | null
@@ -18,6 +20,8 @@ export type TaskRecord = {
   iterationId: string | null
   storyPoints: number | null
   status: TaskStatus
+  priority: TaskPriority
+  dueDate: string | null
   title: string | null
   purpose: string | null
   assigneeUserId: string | null
@@ -62,10 +66,36 @@ export const useCreateTask = () => {
       projectId?: string
       iterationId?: string
       storyPoints?: number
+      priority?: TaskPriority
+      dueDate?: string | null
       assigneeUserId?: string
     }) => apiClient.post<TaskRecord>('/api/tasks', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
+// Partial edit of a task's human-editable fields (title, excerpt, priority,
+// deadline). Assignment and status keep their own endpoints — the dialog calls
+// those separately.
+export const useUpdateTask = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      id: string
+      title?: string
+      purpose?: string | null
+      priority?: TaskPriority
+      dueDate?: string | null
+    }) => {
+      const { id, ...fields } = input
+      return apiClient.patch<TaskRecord>(`/api/tasks/${id}`, fields)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['iterations'] })
     },
   })
 }

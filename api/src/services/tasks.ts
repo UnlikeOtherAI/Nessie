@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient, TaskStatus } from '@prisma/client'
+import type { Prisma, PrismaClient, TaskPriority, TaskStatus } from '@prisma/client'
 import {
   parseAgentId,
   parseOrganizationId,
@@ -46,6 +46,8 @@ const mapTask = (task: TaskWithUsers): TaskRecord => ({
   parentTaskId: task.parentTaskId ? parseTaskId(task.parentTaskId) : null,
   runId: task.runId ? (task.runId as TaskRecord['runId']) : null,
   status: task.status,
+  priority: task.priority,
+  dueDate: task.dueDate ? task.dueDate.toISOString() : null,
   title: task.title,
   purpose: task.purpose,
   assigneeUserId: task.assigneeUserId ? parseUserId(task.assigneeUserId) : null,
@@ -144,6 +146,8 @@ type CreateTaskInput = {
   projectId?: string
   iterationId?: string
   storyPoints?: number
+  priority?: TaskPriority
+  dueDate?: Date | null
   assigneeUserId?: string
   ownerUserId?: string
 }
@@ -180,6 +184,8 @@ export const createHumanTask = async (
       projectId: input.projectId ?? null,
       iterationId: input.iterationId ?? null,
       storyPoints: input.storyPoints ?? null,
+      priority: input.priority ?? 'medium',
+      dueDate: input.dueDate ?? null,
       createdByUserId: input.createdByUserId,
       title: input.title,
       purpose: input.purpose ?? null,
@@ -341,9 +347,20 @@ export const setTaskIteration = async (
   return mapTask(task)
 }
 
-export const updateTaskStoryPoints = async (
+export type TaskUpdateFields = {
+  title?: string
+  purpose?: string | null
+  priority?: TaskPriority
+  dueDate?: Date | null
+  storyPoints?: number | null
+}
+
+// Partial update of the human-editable task fields. Only keys present in
+// `fields` are written; assignment and status live behind their own endpoints
+// because they carry lifecycle side effects.
+export const updateTask = async (
   prisma: PrismaClient,
-  input: { taskId: string; organizationId: string; storyPoints: number | null },
+  input: { taskId: string; organizationId: string; fields: TaskUpdateFields },
 ): Promise<TaskRecord | { error: 'NOT_FOUND' }> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
@@ -351,9 +368,16 @@ export const updateTaskStoryPoints = async (
   })
   if (!existing) return { error: 'NOT_FOUND' }
 
+  const data: Prisma.TaskUpdateInput = {}
+  if (input.fields.title !== undefined) data.title = input.fields.title
+  if (input.fields.purpose !== undefined) data.purpose = input.fields.purpose
+  if (input.fields.priority !== undefined) data.priority = input.fields.priority
+  if (input.fields.dueDate !== undefined) data.dueDate = input.fields.dueDate
+  if (input.fields.storyPoints !== undefined) data.storyPoints = input.fields.storyPoints
+
   const task = await prisma.task.update({
     where: { id: existing.id },
-    data: { storyPoints: input.storyPoints },
+    data,
     include: taskInclude,
   })
   return mapTask(task)

@@ -6,14 +6,10 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import {
-  type AssignableUser,
-  type TaskRecord,
-  useAssignTask,
-  useTransitionTask,
-} from '../../facades/tasks/hooks'
+import { type TaskRecord } from '../../facades/tasks/hooks'
 import { KanbanCard } from './KanbanCard'
 import { KanbanColumn } from './KanbanColumn'
+import { TaskDialog } from './TaskDialog'
 import {
   ARCHIVED_STATUSES,
   type BoardColumnView,
@@ -24,7 +20,6 @@ import {
 type KanbanBoardProps = {
   columns: BoardColumnView[]
   tasks: TaskRecord[]
-  assignees: AssignableUser[]
   showProject: boolean
   projectNameById: Record<string, string>
   // Drag handler: the parent decides whether this is a /move (project board) or
@@ -35,15 +30,12 @@ type KanbanBoardProps = {
 export const KanbanBoard = ({
   columns,
   tasks,
-  assignees,
   showProject,
   projectNameById,
   onMoveTask,
 }: KanbanBoardProps) => {
-  const transition = useTransitionTask()
-  const assign = useAssignTask()
-  const [error, setError] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
+  const [activeTask, setActiveTask] = useState<TaskRecord | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -58,30 +50,17 @@ export const KanbanBoard = ({
     return { byColumn: grouped, archived: archivedTasks }
   }, [tasks, columns])
 
-  const handleReassign = (id: string, assigneeUserId: string | null) => {
-    setError(null)
-    assign.mutate({ id, assigneeUserId }, { onError: (e) => setError(e.message) })
-  }
-
-  const handleSetStatus = (id: string, status: TaskRecord['status']) => {
-    setError(null)
-    transition.mutate({ id, status }, { onError: (e) => setError(e.message) })
-  }
-
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (!over) return
     const columnId = String(over.id)
     const task = tasks.find((t) => t.id === String(active.id))
     if (!task || placeTask(task, columns) === columnId) return
-    setError(null)
     onMoveTask(task.id, columnId)
   }
 
   const cardProps = (task: TaskRecord) => ({
-    assignees,
-    onReassign: handleReassign,
-    onSetStatus: handleSetStatus,
+    onOpen: setActiveTask,
     projectName: task.projectId ? projectNameById[task.projectId] ?? null : null,
     showProject,
     task,
@@ -89,12 +68,6 @@ export const KanbanBoard = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {error ? (
-        <div className="admin-card mb-3 border-[color:var(--danger-border)] p-2 text-xs text-[color:var(--danger-text)]">
-          {error}
-        </div>
-      ) : null}
-
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2">
           {columns.map((column) => (
@@ -132,6 +105,8 @@ export const KanbanBoard = ({
           </div>
         ) : null}
       </div>
+
+      <TaskDialog open={activeTask !== null} task={activeTask} onClose={() => setActiveTask(null)} />
     </div>
   )
 }

@@ -163,6 +163,13 @@ enum TaskStatus {
   awaiting_approval
 }
 
+enum TaskPriority {
+  low
+  medium
+  high
+  urgent
+}
+
 enum BoardStyle {
   kanban
   scrum
@@ -1822,6 +1829,8 @@ model Task {
   storyPoints      Int?              @map("story_points")
   parentTaskId     String?           @map("parent_task_id") @db.Uuid
   status           TaskStatus        @default(inbox)
+  priority         TaskPriority      @default(medium)
+  dueDate          DateTime?         @map("due_date")
   title            String?
   purpose          String?
   assigneeUserId   String?           @map("assignee_user_id") @db.Uuid

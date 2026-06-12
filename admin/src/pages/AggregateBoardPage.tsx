@@ -1,13 +1,13 @@
 import { useMemo } from 'react'
 import { KanbanBoard } from '../components/kanban/KanbanBoard'
-import { NewTaskBar } from '../components/kanban/NewTaskBar'
+import { NewTaskButton } from '../components/kanban/NewTaskButton'
 import {
   AGGREGATE_COLUMNS,
   CATEGORY_TO_STATUS,
   type BoardColumnView,
 } from '../components/kanban/kanban-config'
 import { useProjects } from '../facades/projects/hooks'
-import { useTaskAssignees, useTasks, useTransitionTask } from '../facades/tasks/hooks'
+import { useTasks, useTransitionTask } from '../facades/tasks/hooks'
 import type { ColumnCategory } from '../facades/board/hooks'
 import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 
@@ -19,7 +19,6 @@ const sectionTitle =
 export const AggregateBoardPage = () => {
   const { data: projects = [] } = useProjects()
   const tasksQuery = useTasks()
-  const { data: assignees = [] } = useTaskAssignees()
   const transition = useTransitionTask()
 
   const projectNameById = useMemo(
@@ -40,7 +39,7 @@ export const AggregateBoardPage = () => {
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-        <NewTaskBar />
+        <NewTaskButton />
         <div className="min-h-0 flex-1">
           {tasksQuery.isError ? (
             <div className="py-10 text-center text-sm text-[color:var(--danger-text)]">
@@ -48,7 +47,6 @@ export const AggregateBoardPage = () => {
             </div>
           ) : (
             <KanbanBoard
-              assignees={assignees}
               columns={AGGREGATE_COLUMNS as BoardColumnView[]}
               onMoveTask={handleMove}
               projectNameById={projectNameById}

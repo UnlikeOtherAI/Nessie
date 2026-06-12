@@ -1,12 +1,12 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { KanbanBoard } from '../../components/kanban/KanbanBoard'
-import { NewTaskBar } from '../../components/kanban/NewTaskBar'
+import { NewTaskButton } from '../../components/kanban/NewTaskButton'
 import type { BoardColumnView } from '../../components/kanban/kanban-config'
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
-import { useMoveTask, useTaskAssignees, useTasks } from '../../facades/tasks/hooks'
+import { useMoveTask, useTasks } from '../../facades/tasks/hooks'
 
 type ProjectBoardTabProps = {
   projectId: string
@@ -15,7 +15,6 @@ type ProjectBoardTabProps = {
 export const ProjectBoardTab = ({ projectId }: ProjectBoardTabProps) => {
   const boardQuery = useProjectBoard(projectId)
   const tasksQuery = useTasks(projectId)
-  const { data: assignees = [] } = useTaskAssignees()
   const { data: projects = [] } = useProjects()
   const moveTask = useMoveTask()
 
@@ -66,7 +65,7 @@ export const ProjectBoardTab = ({ projectId }: ProjectBoardTabProps) => {
           </span>
         </div>
       ) : null}
-      <NewTaskBar iterationId={isScrum ? activeIteration?.id : undefined} projectId={projectId} />
+      <NewTaskButton iterationId={isScrum ? activeIteration?.id : undefined} projectId={projectId} />
       <div className="min-h-0 flex-1">
         {tasksQuery.isError ? (
           <div className="py-10 text-center text-sm text-[color:var(--danger-text)]">
@@ -74,7 +73,6 @@ export const ProjectBoardTab = ({ projectId }: ProjectBoardTabProps) => {
           </div>
         ) : (
           <KanbanBoard
-            assignees={assignees}
             columns={columns}
             onMoveTask={handleMove}
             projectNameById={projectNameById}
