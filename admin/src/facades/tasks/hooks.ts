@@ -26,6 +26,7 @@ export type TaskRecord = {
   purpose: string | null
   detail: string | null
   assigneeUserId: string | null
+  assigneeAgentId: string | null
   assigneeName: string | null
   ownerName: string | null
   createdAt: string
@@ -71,6 +72,7 @@ export const useCreateTask = () => {
       priority?: TaskPriority
       dueDate?: string | null
       assigneeUserId?: string
+      assigneeAgentId?: string
     }) => apiClient.post<TaskRecord>('/api/tasks', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
@@ -135,9 +137,14 @@ export const useAssignTask = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { id: string; assigneeUserId: string | null }) =>
+    mutationFn: (input: {
+      id: string
+      assigneeUserId?: string | null
+      assigneeAgentId?: string | null
+    }) =>
       apiClient.post<TaskRecord>(`/api/tasks/${input.id}/assign`, {
-        assigneeUserId: input.assigneeUserId,
+        assigneeUserId: input.assigneeUserId ?? null,
+        assigneeAgentId: input.assigneeAgentId ?? null,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })

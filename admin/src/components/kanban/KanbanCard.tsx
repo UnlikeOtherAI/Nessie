@@ -51,10 +51,19 @@ export const KanbanCard = ({ task, showProject, projectName, archived = false, o
       onPointerDown={handlePointerDown}
       style={{ ...style, touchAction: 'none' }}
     >
-      {showProject ? (
+      {showProject && projectName ? (
         <span className={`${chip} justify-self-start bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
-          {projectName ?? 'Unassigned'}
+          {projectName}
         </span>
+      ) : null}
+
+      <div className="break-words text-sm font-semibold leading-snug text-[color:var(--tx)] line-clamp-3">
+        {task.title ?? task.purpose ?? 'Untitled task'}
+      </div>
+      {task.purpose && task.title ? (
+        <div className="break-words text-xs leading-snug text-[color:var(--tx2)] line-clamp-3">
+          {task.purpose}
+        </div>
       ) : null}
 
       <div className="flex items-center gap-1.5">
@@ -88,15 +97,6 @@ export const KanbanCard = ({ task, showProject, projectName, archived = false, o
           </span>
         ) : null}
       </div>
-
-      <div className="break-words text-sm font-semibold leading-snug text-[color:var(--tx)] line-clamp-3">
-        {task.title ?? task.purpose ?? 'Untitled task'}
-      </div>
-      {task.purpose && task.title ? (
-        <div className="break-words text-xs leading-snug text-[color:var(--tx2)] line-clamp-3">
-          {task.purpose}
-        </div>
-      ) : null}
     </div>
   )
 }

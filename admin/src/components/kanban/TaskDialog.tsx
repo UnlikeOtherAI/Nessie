@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { AssigneePicker, type AssigneeValue, type AssigneeOption } from '../shared/AssigneePicker'
+import { useAgents } from '../../facades/agents/queries'
 import { useProjects } from '../../facades/projects/hooks'
 import {
   type TaskPriority,
@@ -36,6 +38,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   const isEdit = Boolean(task)
   const { data: projects = [] } = useProjects()
   const { data: assignees = [] } = useTaskAssignees()
+  const { data: agents = [] } = useAgents()
   const createTask = useCreateTask()
   const updateTask = useUpdateTask()
   const assignTask = useAssignTask()
@@ -47,9 +50,17 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   const [detail, setDetail] = useState('')
   const [priority, setPriority] = useState<TaskPriority>('medium')
   const [due, setDue] = useState('')
-  const [assigneeUserId, setAssigneeUserId] = useState('')
+  const [assignee, setAssignee] = useState<AssigneeValue>(null)
   const [formProjectId, setFormProjectId] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  const assigneeOptions = useMemo<AssigneeOption[]>(
+    () => [
+      ...assignees.map((user) => ({ id: user.id, name: user.displayName, kind: 'user' as const })),
+      ...agents.map((agent) => ({ id: agent.id, name: agent.name, kind: 'agent' as const })),
+    ],
+    [assignees, agents],
+  )
 
   // Seed the form whenever the dialog opens (or switches to a different task).
   useEffect(() => {
@@ -60,7 +71,13 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
     setDetail(task?.detail ?? '')
     setPriority(task?.priority ?? 'medium')
     setDue(toDateInputValue(task?.dueDate ?? null))
-    setAssigneeUserId(task?.assigneeUserId ?? '')
+    setAssignee(
+      task?.assigneeAgentId
+        ? { id: task.assigneeAgentId, kind: 'agent' }
+        : task?.assigneeUserId
+          ? { id: task.assigneeUserId, kind: 'user' }
+          : null,
+    )
     setFormProjectId('')
     const id = window.setTimeout(() => titleRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
@@ -85,6 +102,8 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
     const trimmedPurpose = purpose.trim()
     const trimmedDetail = detail.trim()
     try {
+      const assigneeUserId = assignee?.kind === 'user' ? assignee.id : null
+      const assigneeAgentId = assignee?.kind === 'agent' ? assignee.id : null
       if (isEdit && task) {
         await updateTask.mutateAsync({
           id: task.id,
@@ -94,8 +113,11 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           priority,
           dueDate: fromDateInputValue(due),
         })
-        if ((task.assigneeUserId ?? '') !== assigneeUserId) {
-          await assignTask.mutateAsync({ id: task.id, assigneeUserId: assigneeUserId || null })
+        const changed =
+          (task.assigneeUserId ?? null) !== assigneeUserId ||
+          (task.assigneeAgentId ?? null) !== assigneeAgentId
+        if (changed) {
+          await assignTask.mutateAsync({ id: task.id, assigneeUserId, assigneeAgentId })
         }
       } else {
         await createTask.mutateAsync({
@@ -106,7 +128,8 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           iterationId: iterationId || undefined,
           priority,
           dueDate: fromDateInputValue(due),
-          assigneeUserId: assigneeUserId || undefined,
+          assigneeUserId: assigneeUserId ?? undefined,
+          assigneeAgentId: assigneeAgentId ?? undefined,
         })
       }
       onClose()
@@ -224,14 +247,14 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           <div className="grid content-start gap-4">
             <div className="grid gap-1.5">
               <span className={fieldLabel}>Priority</span>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="flex gap-1.5">
                 {PRIORITY_ORDER.map((value) => {
                   const active = priority === value
                   return (
                     <button
                       key={value}
                       className={[
-                        'flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-semibold transition-colors',
+                        'flex flex-1 items-center justify-center gap-1.5 rounded-md px-1.5 py-1.5 text-[11px] font-semibold transition-colors',
                         active
                           ? 'bg-[color:var(--overlay)] text-[color:var(--tx)] ring-1 ring-inset ring-[color:var(--sep)]'
                           : 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)] hover:text-[color:var(--tx)]',
@@ -240,7 +263,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
                       type="button"
                     >
                       <FontAwesomeIcon
-                        className={`text-xs ${PRIORITY_SIGNAL[value]} ${active ? '' : 'opacity-50'}`}
+                        className={`text-[11px] ${PRIORITY_SIGNAL[value]} ${active ? '' : 'opacity-50'}`}
                         icon={faSignal}
                       />
                       {PRIORITY_LABEL[value]}
@@ -254,19 +277,12 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
               <label className={fieldLabel} htmlFor="task-assignee">
                 Assignee
               </label>
-              <select
-                className="admin-input"
+              <AssigneePicker
                 id="task-assignee"
-                onChange={(event) => setAssigneeUserId(event.target.value)}
-                value={assigneeUserId}
-              >
-                <option value="">Unassigned</option>
-                {assignees.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.displayName}
-                  </option>
-                ))}
-              </select>
+                onChange={setAssignee}
+                options={assigneeOptions}
+                value={assignee}
+              />
             </div>
 
             <div className="grid gap-1.5">

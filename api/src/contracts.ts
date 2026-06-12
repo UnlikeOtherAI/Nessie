@@ -1915,6 +1915,7 @@ export const TaskRecordSchema = z.object({
   purpose: z.string().nullable(),
   detail: z.string().nullable(),
   assigneeUserId: UserIdSchema.nullable(),
+  assigneeAgentId: AgentIdSchema.nullable(),
   assigneeName: z.string().nullable(),
   ownerUserId: UserIdSchema.nullable(),
   ownerName: z.string().nullable(),
@@ -1934,6 +1935,7 @@ export const CreateTaskBodySchema = z.object({
   priority: TaskPrioritySchema.optional(),
   dueDate: z.coerce.date().nullable().optional(),
   assigneeUserId: UserIdSchema.optional(),
+  assigneeAgentId: AgentIdSchema.optional(),
   ownerUserId: UserIdSchema.optional(),
 })
 
@@ -1950,8 +1952,11 @@ export const SetTaskIterationBodySchema = z.object({
   iterationId: z.string().uuid().nullable(),
 })
 
+// Assignment is to a person (assigneeUserId) or an agent (assigneeAgentId);
+// the two are mutually exclusive. Both null/absent clears the assignment.
 export const AssignTaskBodySchema = z.object({
-  assigneeUserId: UserIdSchema.nullable(),
+  assigneeUserId: UserIdSchema.nullable().optional(),
+  assigneeAgentId: AgentIdSchema.nullable().optional(),
 })
 
 export const TransitionTaskBodySchema = z.object({

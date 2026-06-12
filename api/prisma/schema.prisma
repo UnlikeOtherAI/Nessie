@@ -991,7 +991,8 @@ model Agent {
   reactions                     MessageReaction[]
   runs                          Run[]
   triggers                      AgentTrigger[]
-  tasks                         Task[]
+  tasks                         Task[]              @relation("AgentRunTasks")
+  assignedTasks                 Task[]              @relation("AgentAssignedTasks")
   approvalRequests              ApprovalRequest[]
   plans                         Plan[]
   resourceLocks                 ResourceLock[]
@@ -1835,17 +1836,19 @@ model Task {
   purpose          String?
   detail           String?
   assigneeUserId   String?           @map("assignee_user_id") @db.Uuid
+  assigneeAgentId  String?           @map("assignee_agent_id") @db.Uuid
   ownerUserId      String?           @map("owner_user_id") @db.Uuid
   createdByUserId  String?           @map("created_by_user_id") @db.Uuid
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   run              Run?              @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent            Agent?            @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent            Agent?            @relation("AgentRunTasks", fields: [agentId], references: [id], onDelete: Cascade)
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
   column           BoardColumn?      @relation(fields: [columnId], references: [id], onDelete: SetNull)
   iteration        Iteration?        @relation(fields: [iterationId], references: [id], onDelete: SetNull)
   assignee         User?             @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  assigneeAgent    Agent?            @relation("AgentAssignedTasks", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
   owner            User?             @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   createdBy        User?             @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   parentTask       Task?             @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
@@ -1860,6 +1863,7 @@ model Task {
   @@index([columnId])
   @@index([iterationId])
   @@index([assigneeUserId, status])
+  @@index([assigneeAgentId, status])
   @@index([ownerUserId, status])
   @@index([runId])
   @@map("tasks")

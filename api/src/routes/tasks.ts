@@ -80,6 +80,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       priority: body.priority,
       dueDate: body.dueDate,
       assigneeUserId: body.assigneeUserId,
+      assigneeAgentId: body.assigneeAgentId,
       ownerUserId: body.ownerUserId,
     })
 
@@ -122,6 +123,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       taskId,
       organizationId: actorContext.tenant.organizationId,
       assigneeUserId: body.assigneeUserId,
+      assigneeAgentId: body.assigneeAgentId,
       actorId: actorContext.actor.actorId,
     })
 
@@ -130,7 +132,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
         return reply
       }
-      sendApiError(reply, 400, result.error, 'Assignee is not a member of this organization')
+      sendApiError(reply, 400, result.error, 'Assignee is not a member or agent of this organization')
       return reply
     }
 

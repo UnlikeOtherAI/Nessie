@@ -183,4 +183,49 @@ Tightened the card header and added a long-form ticket body.
 ### Verification
 
 - `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
-- Live UI verified with kelpie at `http://localhost:5455/projects` (see below).
+- kelpie cannot render this admin (it spuriously throws the "Rendered more hooks"
+  crash in `useMediaQuery`/`AdminShellLayout`, unrelated to this code — filed
+  against kelpie); verified instead with headless Playwright + a dev-login token.
+
+## Update 2026-06-12 (2) — card v2, compact priority row, searchable assignee (people + agents)
+
+Follow-up polish from live review.
+
+### Card (`KanbanCard.tsx`)
+
+- The top **"Unassigned" project pill is gone**: the project pill now renders only
+  when the task actually has a project (`showProject && projectName`). Title leads
+  the card on the aggregate board for project-less tasks.
+- Order is now **title → excerpt → meta row**; the urgency glyph + assignee pill
+  sit **below** the title (with deadline/archived chips on the row's right).
+
+### Dialog (`TaskDialog.tsx`)
+
+- **Priority** is a single compact row of four buttons (`flex` + `flex-1`),
+  not a 2×2 block.
+- **Assignee** is now a **custom searchable combobox** (`components/shared/
+  AssigneePicker.tsx`) — type to filter, arrow keys + Enter to pick, Escape to
+  close, click-away to dismiss. It lists **people and agents** together (person /
+  robot icon per row) and a leading "Unassigned" clear option.
+
+### Backend — assign to a person *or* an agent
+
+- **Schema**: new `Task.assigneeAgentId` (`String?` → `Agent`, `onDelete:
+  SetNull`) plus `@@index([assigneeAgentId, status])`. It is a **distinct column
+  from the worker's `agentId`** so assigning a task to an agent never enqueues
+  agent execution. The existing `Task.agent`/`Agent.tasks` relation gained the
+  name `AgentRunTasks`; the new relation is `AgentAssignedTasks`. Migration
+  `20260612140000_add_task_assignee_agent` (additive).
+- **Contracts**: `TaskRecord.assigneeAgentId`; `AssignTaskBody` and
+  `CreateTaskBody` accept `assigneeAgentId`. Assignment to a user and to an agent
+  are **mutually exclusive** (agent wins if both supplied; both null = unassign).
+- **Service/Routes**: `mapTask` resolves `assigneeName` from the user *or* the
+  agent; `assignTask`/`createHumanTask` validate the agent belongs to the org
+  (`ASSIGNEE_AGENT_NOT_FOUND`) and write the two columns mutually exclusively.
+- **Client** (`facades/tasks/hooks.ts`): `TaskRecord.assigneeAgentId`, plus the
+  `useCreateTask` / `useAssignTask` inputs.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
+- Live UI verified with headless Playwright + dev-login token (kelpie unusable).
