@@ -12,6 +12,7 @@ export type PendingExternalAuth = {
   codeVerifier: string
   providerId: string
   state: string
+  theme?: string
 }
 
 export type BeginExternalAuthInput = {
@@ -64,6 +65,7 @@ export const beginExternalAuth = async ({
       codeVerifier,
       providerId,
       state,
+      theme,
     } satisfies PendingExternalAuth),
   )
 

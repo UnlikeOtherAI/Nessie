@@ -310,6 +310,7 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
           code: body.code,
           codeVerifier: body.codeVerifier,
           redirectUri: body.redirectUri,
+          theme: body.theme,
         })
 
         let sessionUser = await loadSessionUserByEmail(prisma, identity.email)

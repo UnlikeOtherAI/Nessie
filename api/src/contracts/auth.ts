@@ -57,4 +57,5 @@ export const LoginRequestSchema = z.object({
   password: z.string().min(1).optional(),
   providerId: NonEmptyStringSchema.optional(),
   redirectUri: z.string().url().optional(),
+  theme: SsoThemeSchema.optional(),
 })

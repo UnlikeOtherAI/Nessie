@@ -122,6 +122,7 @@ export const LoginPage = () => {
           codeVerifier: pendingExternalAuth.codeVerifier,
           providerId: pendingExternalAuth.providerId,
           redirectUri,
+          theme: pendingExternalAuth.theme,
         })
         clearPendingExternalAuth()
         void navigate('/channels', { replace: true })
