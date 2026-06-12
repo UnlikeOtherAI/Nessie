@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { Suspense, lazy, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { faChevronDown, faCircleXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react'
 
 type StatusEmojiPickerProps = {
   label: string
@@ -8,82 +9,11 @@ type StatusEmojiPickerProps = {
   value: string
 }
 
-const statusEmojiOptions = [
-  '💬',
-  '🧠',
-  '💡',
-  '✍️',
-  '📚',
-  '💻',
-  '🛠️',
-  '🎧',
-  '📞',
-  '📹',
-  '🗓️',
-  '⏳',
-  '✅',
-  '🚧',
-  '🔥',
-  '⚡',
-  '☕',
-  '🍵',
-  '🍽️',
-  '🥪',
-  '🏠',
-  '🏢',
-  '🚗',
-  '✈️',
-  '🚆',
-  '🏝️',
-  '🌴',
-  '🌙',
-  '😴',
-  '🤒',
-  '🧘',
-  '🎯',
-  '🔕',
-  '🔒',
-  '🙌',
-  '👋',
-  '🙂',
-  '😄',
-  '🤔',
-  '😭',
-  '❤️',
-  '⭐',
-  '🌟',
-  '🎉',
-  '🎁',
-  '📦',
-  '📌',
-  '📍',
-  '🧭',
-  '📣',
-  '🔔',
-  '💤',
-  '🚀',
-  '🌈',
-  '☀️',
-  '🌧️',
-  '❄️',
-  '🏃',
-  '🚶',
-  '🧑‍💻',
-  '👀',
-  '📝',
-  '🔍',
-  '🧪',
-  '📈',
-  '📉',
-  '🧯',
-  '🍕',
-  '🎮',
-  '🎵',
-]
+const FullEmojiPicker = lazy(() => import('emoji-picker-react'))
 
 export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerProps) => {
   const [open, setOpen] = useState(false)
-  const listboxId = useId()
+  const pickerId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -100,7 +30,11 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
     setOpen(false)
   }
 
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+  const pickEmoji = (emojiData: EmojiClickData) => {
+    pick(emojiData.emoji)
+  }
+
+  const closeOnEscape = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape') {
       event.stopPropagation()
       setOpen(false)
@@ -110,13 +44,13 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
   return (
     <div className="relative" ref={rootRef}>
       <button
-        aria-controls={open ? listboxId : undefined}
+        aria-controls={open ? pickerId : undefined}
         aria-expanded={open}
-        aria-haspopup="listbox"
+        aria-haspopup="dialog"
         aria-label={label}
         className="admin-input flex w-full items-center justify-between gap-2 text-left"
         onClick={() => setOpen((current) => !current)}
-        onKeyDown={onKeyDown}
+        onKeyDown={closeOnEscape}
         type="button"
       >
         <span
@@ -135,44 +69,45 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
       </button>
       {open ? (
         <div
-          className="absolute left-0 z-50 mt-1 w-72 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-2 shadow-lg"
-          id={listboxId}
-          role="listbox"
+          className="absolute left-0 z-50 mt-1 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-2 shadow-lg"
+          id={pickerId}
+          onKeyDown={closeOnEscape}
+          role="dialog"
         >
-          <div className="grid max-h-64 grid-cols-8 gap-1 overflow-y-auto">
+          <div className="mb-2 flex justify-end">
             <button
               aria-label="Clear icon"
-              aria-selected={!value}
               className={[
-                'flex aspect-square items-center justify-center rounded text-sm',
+                'flex h-8 w-8 items-center justify-center rounded text-sm',
                 'text-[color:var(--tx3)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
                 value ? '' : 'bg-[color:var(--accent-soft)] text-[color:var(--tx)]',
               ].join(' ')}
               onClick={() => pick('')}
-              role="option"
               title="Clear icon"
               type="button"
             >
               <FontAwesomeIcon icon={faCircleXmark} />
             </button>
-            {statusEmojiOptions.map((emoji) => (
-              <button
-                aria-label={`Use ${emoji}`}
-                aria-selected={value === emoji}
-                className={[
-                  'flex aspect-square items-center justify-center rounded text-lg',
-                  'hover:bg-[color:var(--overlay)]',
-                  value === emoji ? 'bg-[color:var(--accent-soft)]' : '',
-                ].join(' ')}
-                key={emoji}
-                onClick={() => pick(emoji)}
-                role="option"
-                type="button"
-              >
-                {emoji}
-              </button>
-            ))}
           </div>
+          <Suspense
+            fallback={
+              <div className="flex h-64 items-center justify-center text-sm text-[color:var(--tx3)]">
+                Loading emojis...
+              </div>
+            }
+          >
+            <FullEmojiPicker
+              autoFocusSearch
+              emojiStyle={'native' as EmojiStyle}
+              height={360}
+              lazyLoadEmojis
+              onEmojiClick={pickEmoji}
+              previewConfig={{ showPreview: false }}
+              searchPlaceholder="Search emojis"
+              theme={'auto' as Theme}
+              width="100%"
+            />
+          </Suspense>
         </div>
       ) : null}
     </div>
