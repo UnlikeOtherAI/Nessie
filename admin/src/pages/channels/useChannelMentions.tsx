@@ -13,7 +13,6 @@ interface UseChannelMentionsParams {
   channels: ChannelRecord[]
   channelUsers: UserRecord[]
   isConversationSurface: boolean
-  onSelectAgent: (agentId: string) => void
 }
 
 interface UseChannelMentionsResult {
@@ -85,7 +84,6 @@ export const useChannelMentions = ({
   channels,
   channelUsers,
   isConversationSurface,
-  onSelectAgent,
 }: UseChannelMentionsParams): UseChannelMentionsResult => {
   const channelMentionTargets = useMemo(
     () => buildChannelMentionTargets(channels),
@@ -235,17 +233,14 @@ export const useChannelMentions = ({
             ? dmChannelByUserId.get(entity.id)
             : undefined
           parts.push(entity.type === 'agent' ? (
-            <button
+            <Link
               className="mention-tag mention-tag-link"
               key={`${entity.id}:${trigger.index}`}
-              onClick={() => {
-                onSelectAgent(entity.id)
-              }}
               title={`Open ${entity.name}`}
-              type="button"
+              to={`/agents/designer/${entity.id}`}
             >
               @{entityName}
-            </button>
+            </Link>
           ) : (
             <Link
               className="mention-tag mention-tag-link"
@@ -275,7 +270,6 @@ export const useChannelMentions = ({
       channelCandidates,
       dmChannelByUserId,
       mentionEntityMap,
-      onSelectAgent,
       sortedMentionNames,
     ],
   )
