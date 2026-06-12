@@ -32,7 +32,7 @@ import { useChannelMentions } from './channels/useChannelMentions'
 export const ChannelsPage = () => {
   const navigate = useNavigate()
   const { channelId } = useParams()
-  const { me } = useAuthSession()
+  const { me, token } = useAuthSession()
   const { onSelectAgent, scopedAgents } = useOutletContext<AdminShellOutletContext>()
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
@@ -352,6 +352,12 @@ export const ChannelsPage = () => {
             agentById={agentMap}
             meDisplayName={me.user.displayName}
             meUserId={me.user.id}
+            meAvatar={{
+              avatarUrl: me.user.avatarUrl,
+              avatarAttachmentId: me.user.avatarAttachmentId,
+              gravatarUrl: me.user.gravatarUrl,
+            }}
+            token={token}
             isPersonalAssistantConversation={isPersonalAssistantConversation}
             renderContent={renderContent}
             editingMessageId={editingMessageId}

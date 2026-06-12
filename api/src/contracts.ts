@@ -294,11 +294,24 @@ export const MessageReactionRecordSchema = z.object({
 })
 export type MessageReactionRecord = z.infer<typeof MessageReactionRecordSchema>
 
+// Embedded author identity for a user-authored message, so the feed can render
+// the real sender's name + avatar without a separate lookup. Absent for
+// assistant/system messages (resolved via agentMap / a literal label instead).
+export const MessageAuthorSchema = z.object({
+  id: z.string().uuid(),
+  displayName: z.string(),
+  avatarUrl: z.string().nullish(),
+  avatarAttachmentId: z.string().uuid().nullish(),
+  gravatarUrl: z.string().nullish(),
+})
+export type MessageAuthor = z.infer<typeof MessageAuthorSchema>
+
 export const ThreadMessageRecordSchema = z.object({
   id: z.string().uuid(),
   threadId: ThreadIdSchema,
   agentId: AgentIdSchema.nullish(),
   userId: z.string().uuid().nullish(),
+  author: MessageAuthorSchema.nullish(),
   role: MessageRoleSchema,
   content: z.string(),
   createdAt: TimestampSchema,

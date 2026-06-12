@@ -263,21 +263,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     return reply.code(201).send(
       createApiResponse(
-        ThreadMessageRecordSchema.parse({
-          id: result.message.id,
-          threadId: result.message.threadId,
-          agentId: result.message.agentId ?? undefined,
-          userId: result.message.userId ?? undefined,
-          role: result.message.role,
-          content: result.message.content,
-          createdAt: result.message.createdAt.toISOString(),
-          metadata:
-            result.message.metadata
-            && typeof result.message.metadata === 'object'
-            && !Array.isArray(result.message.metadata)
-              ? (result.message.metadata as Record<string, unknown>)
-              : undefined,
-        }),
+        ThreadMessageRecordSchema.parse(mapMessageRecord(result.message)),
       ),
     )
   })

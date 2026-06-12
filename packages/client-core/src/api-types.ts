@@ -185,8 +185,19 @@ export type MessageReaction = {
   createdAt: string
 }
 
+// Embedded author identity for a user-authored message, so the feed can render
+// the real sender's name + avatar. Absent for assistant/system messages.
+export type MessageAuthor = {
+  id: string
+  displayName: string
+  avatarUrl?: string | null
+  avatarAttachmentId?: string | null
+  gravatarUrl?: string | null
+}
+
 export type ThreadMessageRecord = {
   agentId?: string | null
+  author?: MessageAuthor | null
   content: string
   createdAt: string
   editedAt?: string | null

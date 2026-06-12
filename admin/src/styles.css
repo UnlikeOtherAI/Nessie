@@ -263,21 +263,178 @@ a {
   animation: nessie-blink 1.2s ease-in-out infinite;
 }
 
-.admin-shell {
+/* Outer frame: a vertical column with the global top bar on top and the
+   rail + content row (`.admin-shell`) filling the rest. */
+.admin-frame {
   display: flex;
+  flex-direction: column;
   height: 100dvh;
   background: var(--rail);
   color: var(--tx);
 }
 
-/* Mobile web bottom tab bar. When shown, the shell is shortened by the bar's
+.admin-shell {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  background: var(--rail);
+  color: var(--tx);
+}
+
+/* Mobile web bottom tab bar. When shown, the frame is shortened by the bar's
    height so the fixed bar occupies the freed space (no per-page padding). */
 :root {
   --mobile-tabbar-h: 56px;
+  --topbar-h: 44px;
 }
 
-.admin-shell.has-mobile-tabbar {
+.admin-frame.has-mobile-tabbar {
   height: calc(100dvh - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
+}
+
+/* ── Global top bar (Slack-style) ──────────────────────────────────────────
+   Full-width chrome above the rail + content. On the desktop (Tauri) app it
+   doubles as the window title bar: it carries the drag region and leaves a gap
+   for the macOS traffic lights. `padding-top: env(safe-area-inset-top)` clears
+   the status bar/notch inside the iPad WebView (0 in a normal browser). */
+.admin-topbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  height: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 12px 0;
+  background: var(--rail);
+  border-bottom: 1px solid var(--sep);
+}
+
+/* Desktop title-bar mode: leave room for the traffic lights at top-left. The
+   drag region is provided by the `data-tauri-drag-region` attribute. */
+.admin-topbar--desktop {
+  padding-left: 80px;
+}
+
+.admin-topbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--tx2);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.admin-topbar-btn:hover {
+  background: var(--overlay-weak);
+  color: var(--tx);
+}
+
+.admin-topbar-btn:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.admin-topbar-btn:disabled:hover {
+  background: transparent;
+  color: var(--tx2);
+}
+
+.admin-topbar-search {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.admin-topbar-search-icon {
+  position: absolute;
+  left: 10px;
+  display: flex;
+  color: var(--tx3);
+  pointer-events: none;
+}
+
+.admin-topbar-search-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 12px 0 32px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--overlay-weak);
+  color: var(--tx);
+  font-size: 13px;
+}
+
+.admin-topbar-search-input::placeholder {
+  color: var(--tx3);
+}
+
+.admin-topbar-search-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: var(--main);
+}
+
+.admin-topbar-results,
+.admin-topbar-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 50;
+  padding: 6px;
+  border: 1px solid var(--sep);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.admin-topbar-results {
+  right: 0;
+  left: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.admin-topbar-menu {
+  left: 0;
+  min-width: 220px;
+}
+
+.admin-topbar-result,
+.admin-topbar-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--radius-md);
+  color: var(--tx);
+  text-align: left;
+}
+
+.admin-topbar-result.is-active,
+.admin-topbar-menu-item:hover {
+  background: var(--overlay-weak);
+}
+
+.admin-topbar-menu-item {
+  font-size: 13px;
+}
+
+.admin-topbar-workspace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
 }
 
 .mobile-tabbar {
