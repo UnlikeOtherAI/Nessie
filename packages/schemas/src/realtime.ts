@@ -101,6 +101,7 @@ export type WsEventMap = {
     threadId: ThreadId
     deletedAt: string
   }
+  'message.reaction': { messageId: string; agentId?: AgentId; userId?: string; emoji: string }
   'agent.iteration': {
     agentId: string
     iteration: number
@@ -264,6 +265,7 @@ export const WsEventNameSchema = z.enum([
   'message.new',
   'message.updated',
   'message.deleted',
+  'message.reaction',
   'agent.iteration',
 ])
 
@@ -404,6 +406,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('message.deleted'),
     data: MessageDeletedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('message.reaction'),
+    data: MessageReactionEventSchema,
     ts: TimestampSchema,
   }),
   z.object({

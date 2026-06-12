@@ -49,6 +49,22 @@ export const useDeleteMessage = (threadId?: string) => {
   })
 }
 
+export const useAddMessageReaction = (threadId?: string) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { emoji: string; messageId: string }) =>
+      apiClient.post<{ ok: boolean }>(
+        `/api/threads/${threadId}/messages/${input.messageId}/reactions`,
+        { emoji: input.emoji },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+    },
+  })
+}
+
 export const useMessageSearch = (channelId: string | undefined, query: string) => {
   const apiClient = useApiClient()
   const trimmed = query.trim()
