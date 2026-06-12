@@ -1059,6 +1059,9 @@ const buildModelPrompt = (
       + 'as UTC unless the user states a timezone.',
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
+    'When you need an id for a channel, person, or thread you only know by name, '
+      + 'resolve it yourself with the lookup tools (channel_find, people_search) — '
+      + 'never ask the user to paste an id.',
     'When you have enough information, respond directly without calling more tools.',
     'Use relevant memory context when it helps, but prefer the latest explicit user instructions on conflict.',
     'Keep the answer concise and concrete.',

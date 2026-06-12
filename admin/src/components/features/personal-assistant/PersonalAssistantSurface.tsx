@@ -72,7 +72,7 @@ export const PersonalAssistantSidebarEntry = ({
   unreadCount = 0,
 }: PersonalAssistantSidebarEntryProps) => (
   <button
-    className={`admin-sb-item group ${active ? 'active' : ''}`}
+    className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${active ? 'active' : ''}`}
     onClick={onClick}
     type="button"
   >

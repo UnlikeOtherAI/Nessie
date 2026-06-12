@@ -1393,6 +1393,41 @@ export const runChannelListTool = async (
   }
 }
 
+export const runChannelFindTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { query: string; limit?: unknown },
+): Promise<ToolExecutionResult> => {
+  const userId = requireActingUserId(context)
+  const organizationId = context.channel.organizationId
+  const query = input.query.trim().replace(/^#/, '')
+  if (!query) {
+    throw new Error('query is required.')
+  }
+  const take = clampLimit(input.limit, 10)
+
+  const channels = await context.prisma.channel.findMany({
+    where: {
+      ...buildVisibleChannelWhere(organizationId, userId, isDelegatingPersonalAssistant(context)),
+      archivedAt: null,
+      label: { contains: query, mode: 'insensitive' },
+    },
+    orderBy: { label: 'asc' },
+    select: { id: true, label: true, visibility: true },
+    take,
+  })
+
+  const lines = channels.map(
+    (channel) => `#${channel.label} | channelId=${channel.id} | visibility=${channel.visibility}`,
+  )
+
+  return {
+    inputSummary: `query="${query}"`,
+    outputPreview:
+      formatSection(`Matches (${lines.length})`, lines) || `No channels matched "${query}".`,
+    toolName: 'channel_find',
+  }
+}
+
 export const runChannelUpdateTool = async (
   context: BuiltinToolRuntimeContext,
   input: {

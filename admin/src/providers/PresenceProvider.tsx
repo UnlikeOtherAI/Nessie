@@ -184,6 +184,14 @@ export const useUserPresence = (userId: string | null | undefined): PresenceView
   return ctx.getPresence(userId)
 }
 
+// A lookup function for any user's presence/status view. Lets a list (e.g. the
+// message feed) resolve many users' badges from a single hook call, instead of
+// calling useUserPresence per row (which would violate the rules of hooks).
+export const usePresenceLookup = (): ((userId: string | null | undefined) => PresenceView | null) => {
+  const ctx = useContext(PresenceContext)
+  return (userId) => (ctx && userId ? ctx.getPresence(userId) : null)
+}
+
 export const useSelfPresence = (): SelfPresence | null => {
   const ctx = useContext(PresenceContext)
   return ctx?.self ?? null

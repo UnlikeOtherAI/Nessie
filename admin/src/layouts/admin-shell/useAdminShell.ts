@@ -199,6 +199,9 @@ export const useAdminShell = () => {
         id: user.id,
         label: user.displayName,
         style: getDmStyle(index),
+        avatarUrl: user.avatarUrl,
+        avatarAttachmentId: user.avatarAttachmentId,
+        gravatarUrl: user.gravatarUrl,
         dmChannelId: channels.find((c) => c.type === 'dm' && user.channelIds.includes(c.id))?.id,
       }));
     }
@@ -208,6 +211,9 @@ export const useAdminShell = () => {
         id: me.user.id,
         label: me.user.displayName,
         style: getDmStyle(0),
+        avatarUrl: me.user.avatarUrl,
+        avatarAttachmentId: me.user.avatarAttachmentId,
+        gravatarUrl: me.user.gravatarUrl,
         dmChannelId: undefined,
       },
     ];
