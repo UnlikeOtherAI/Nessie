@@ -1,0 +1,307 @@
+import type {
+  ModelCapabilitySnapshot,
+  ModelProviderConfig,
+  ModelProviderName,
+  ProviderConnector,
+  ProviderEmbeddingRequest,
+  ProviderEmbeddingResult,
+  ProviderHealthReport,
+  ProviderInvocationRequest,
+  ProviderInvocationResult,
+  ProviderStreamEvent,
+} from '../types.js'
+import {
+  createInvocationRecord,
+  nowIso,
+  providerError,
+} from './connector-invocations.js'
+import { createBaseSnapshot } from './model-capabilities.js'
+import {
+  collectChatStream,
+  DEFAULT_EMBEDDING_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  embeddingUsageFromOpenAi,
+  mapMessagesToOpenAi,
+  mapToolCallsFromOpenAi,
+  mapToolsToOpenAi,
+  normalizeFinishReason,
+  resolveOpenAiTemperature,
+  type OpenAiChatResponse,
+  type OpenAiEmbeddingResponse,
+  usageFromOpenAi,
+} from './openai-chat-protocol.js'
+
+export const createOpenAiLikeConnector = (
+  provider: ModelProviderName,
+  config: ModelProviderConfig,
+): ProviderConnector => {
+  if (!config.apiKey) {
+    throw new Error('OPENAI_API_KEY / OPENAI_CHAT_API_KEY is not set')
+  }
+
+  const baseUrl = config.baseUrl ?? 'https://api.openai.com/v1'
+  const headers = {
+    Authorization: `Bearer ${config.apiKey}`,
+    'Content-Type': 'application/json',
+  }
+
+  const resolveChatModel = (model?: string): string =>
+    model ?? config.modelName ?? DEFAULT_OPENAI_MODEL
+
+  const invokeRequest = async (
+    body: Record<string, unknown>,
+  ): Promise<Response> => {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      body: JSON.stringify(body),
+      headers,
+      method: 'POST',
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`${provider} model error ${response.status}: ${errorText}`)
+    }
+
+    return response
+  }
+
+  return {
+    provider,
+
+    async checkHealth(): Promise<ProviderHealthReport> {
+      const startedAt = Date.now()
+
+      try {
+        const response = await fetch(`${baseUrl}/models`, {
+          headers: {
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          method: 'GET',
+        })
+
+        const latencyMs = Date.now() - startedAt
+        if (response.ok) {
+          return {
+            checkedAt: nowIso(),
+            latencyMs,
+            status: 'healthy',
+          }
+        }
+
+        return {
+          checkedAt: nowIso(),
+          latencyMs,
+          message: `${provider} health check failed with status ${response.status}`,
+          status: response.status >= 500 ? 'degraded' : 'unreachable',
+        }
+      } catch (error) {
+        return {
+          checkedAt: nowIso(),
+          latencyMs: Date.now() - startedAt,
+          message: error instanceof Error ? error.message : `${provider} health check failed`,
+          status: 'unreachable',
+        }
+      }
+    },
+
+    close(): void {
+      // Stateless HTTP connector.
+    },
+
+    async embed(
+      request: ProviderEmbeddingRequest,
+    ): Promise<ProviderEmbeddingResult> {
+      const startedAt = Date.now()
+      const model = request.model ?? DEFAULT_EMBEDDING_MODEL
+
+      try {
+        const response = await fetch(`${baseUrl}/embeddings`, {
+          body: JSON.stringify({
+            input: request.input.slice(0, 8000),
+            model,
+          }),
+          headers,
+          method: 'POST',
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`${provider} embedding error ${response.status}: ${errorText}`)
+        }
+
+        const json = (await response.json()) as OpenAiEmbeddingResponse
+        const embedding = json.data?.[0]?.embedding
+        if (!embedding) {
+          throw new Error('No embedding returned from provider')
+        }
+
+        return {
+          embedding,
+          invocation: createInvocationRecord({
+            correlationId: request.correlationId,
+            latencyMs: Date.now() - startedAt,
+            metadata: request.metadata,
+            model: json.model ?? model,
+            operationType: 'embedding',
+            provider,
+            requestId: request.requestId,
+            usage: embeddingUsageFromOpenAi(json.usage),
+          }),
+        }
+      } catch (error) {
+        throw providerError({
+          cause: error,
+          correlationId: request.correlationId,
+          latencyMs: Date.now() - startedAt,
+          metadata: request.metadata,
+          model,
+          operationType: 'embedding',
+          provider,
+          requestId: request.requestId,
+        })
+      }
+    },
+
+    async fetchCompletion(body: Record<string, unknown>): Promise<Response> {
+      return invokeRequest(body)
+    },
+
+    async getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot> {
+      return createBaseSnapshot({
+        model,
+        provider,
+        structuredOutputMode: 'native-json',
+        supportsEmbeddings: true,
+        systemPromptMode: 'native',
+        toolCallingMode: 'native',
+        toolResultMode: 'native-tool-message',
+      })
+    },
+
+    async getProviderMeta() {
+      return {
+        displayName: provider === 'openai' ? 'OpenAI' : 'OpenAI-compatible',
+        provider,
+        supportsModelDiscovery: false,
+      }
+    },
+
+    async invoke(
+      request: ProviderInvocationRequest,
+    ): Promise<ProviderInvocationResult> {
+      const startedAt = Date.now()
+      const model = resolveChatModel(request.model)
+
+      try {
+        const tools = mapToolsToOpenAi(request.tools)
+        const response = await invokeRequest({
+          max_completion_tokens: request.maxOutputTokens ?? 1024,
+          messages: mapMessagesToOpenAi(request.messages),
+          model,
+          response_format: request.responseFormat,
+          temperature: resolveOpenAiTemperature(model, request.temperature),
+          tool_choice: request.toolChoice,
+          tools,
+        })
+
+        const json = (await response.json()) as OpenAiChatResponse
+        const outputText = json.choices?.[0]?.message?.content ?? ''
+        const toolCalls = mapToolCallsFromOpenAi(
+          json.choices?.[0]?.message?.tool_calls,
+        )
+        const finishReason = normalizeFinishReason(
+          json.choices?.[0]?.finish_reason,
+        )
+
+        return {
+          finishReason,
+          invocation: createInvocationRecord({
+            correlationId: request.correlationId,
+            finishReason,
+            latencyMs: Date.now() - startedAt,
+            metadata: request.metadata,
+            model: json.model ?? model,
+            operationType: 'chat',
+            provider,
+            requestId: request.requestId,
+            usage: usageFromOpenAi(json.usage),
+          }),
+          outputText,
+          toolCalls,
+        }
+      } catch (error) {
+        throw providerError({
+          cause: error,
+          correlationId: request.correlationId,
+          latencyMs: Date.now() - startedAt,
+          metadata: request.metadata,
+          model,
+          operationType: 'chat',
+          provider,
+          requestId: request.requestId,
+        })
+      }
+    },
+
+    async listModels(): Promise<ModelCapabilitySnapshot[]> {
+      return []
+    },
+
+    async *stream(
+      request: ProviderInvocationRequest,
+    ): AsyncGenerator<ProviderStreamEvent, ProviderInvocationResult, undefined> {
+      const startedAt = Date.now()
+      const model = resolveChatModel(request.model)
+
+      try {
+        const tools = mapToolsToOpenAi(request.tools)
+        const response = await invokeRequest({
+          max_completion_tokens: request.maxOutputTokens ?? 1024,
+          messages: mapMessagesToOpenAi(request.messages),
+          model,
+          response_format: request.responseFormat,
+          stream: true,
+          stream_options: { include_usage: true },
+          temperature: resolveOpenAiTemperature(model, request.temperature),
+          tool_choice: request.toolChoice,
+          tools,
+        })
+
+        const stream = collectChatStream(response)
+        let next = await stream.next()
+        while (!next.done) {
+          yield next.value
+          next = await stream.next()
+        }
+
+        return {
+          finishReason: next.value.finishReason,
+          invocation: createInvocationRecord({
+            correlationId: request.correlationId,
+            finishReason: next.value.finishReason,
+            latencyMs: Date.now() - startedAt,
+            metadata: request.metadata,
+            model,
+            operationType: 'chat',
+            provider,
+            requestId: request.requestId,
+            usage: next.value.usage,
+          }),
+          outputText: next.value.outputText,
+          toolCalls: next.value.toolCalls,
+        }
+      } catch (error) {
+        throw providerError({
+          cause: error,
+          correlationId: request.correlationId,
+          latencyMs: Date.now() - startedAt,
+          metadata: request.metadata,
+          model,
+          operationType: 'chat',
+          provider,
+          requestId: request.requestId,
+        })
+      }
+    },
+  }
+}
