@@ -356,6 +356,7 @@ a {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
+  gap: 8px;
   max-width: 720px;
   margin: 0 auto;
 }
@@ -374,8 +375,16 @@ a {
   pointer-events: none;
 }
 
+.admin-topbar-search-field {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .admin-topbar-search-input {
   width: 100%;
+  min-width: 0;
   height: 30px;
   padding: 0 12px 0 32px;
   border: 1px solid transparent;

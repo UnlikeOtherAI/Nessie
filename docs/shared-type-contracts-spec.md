@@ -296,6 +296,8 @@ type MeResponse = {
     email: string;
     displayName: string;
     avatarUrl?: string;
+    avatarAttachmentId?: string;
+    gravatarUrl?: string;
     pronouns?: string[];  // e.g. ["she", "her"] or locale-specific forms
     roleIds: string[];
   };
@@ -324,6 +326,8 @@ Rules:
 - `/admin` must not reconstruct current identity from any second endpoint
 - the same payload seeds `AuthSessionProvider` and the initial actor context used by `/api`
 - follow-up endpoints may enrich data, but they must not contradict `MeResponse`
+- avatar precedence is client-resolved as custom attachment, provider picture,
+  Gravatar, then initials fallback
 
 Phase 1 `channelId` rule:
 
@@ -331,6 +335,34 @@ Phase 1 `channelId` rule:
 - channel selection is a frontend routing concern, not a session concern
 - the user picks a channel by navigating the channel list in `/admin`
 - the active channel lives in React Router URL state (e.g. `/admin/channels/:channelId`), not in the session
+
+## 5.2) User record contract
+
+`GET /api/users` and `POST /api/users` return `ApiResponse<UserRecord[]>` and
+`ApiResponse<UserRecord>` respectively.
+
+```ts
+type UserRecord = {
+  id: UserId;
+  email: string;
+  displayName: string;
+  role: string;
+  channelIds: ChannelId[];
+  activeStatus?: UserActiveStatus | null;
+  avatarUrl?: string | null;
+  avatarAttachmentId?: string | null;
+  gravatarUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+```
+
+Rules:
+
+- `avatarAttachmentId` is a custom uploaded avatar served through attachments
+- `avatarUrl` is the provider-supplied profile image
+- `gravatarUrl` is derived from email and may 404 locally; clients must fall
+  back to initials when no avatar image resolves
 - when the user navigates to a channel, route handlers derive `channelId` from the URL path param and pass it into `actionContext`
 - if "last active channel" persistence is added later (Phase 2+), it can populate `channelId` as a convenience hint — but the frontend must never treat it as mandatory
 
