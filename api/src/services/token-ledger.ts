@@ -276,6 +276,72 @@ export const getConnectorUsageSummary = async (
   }
 }
 
+export const getFileUsageSummary = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  filters?: {
+    from?: string
+    to?: string
+  },
+) => {
+  const transferWhere: Prisma.ConnectorUsageEventWhereInput = {
+    organizationId,
+    connectorType: 'storage',
+    unitType: 'bytes',
+  }
+  const occurredAt: Prisma.DateTimeFilter = {}
+  if (filters?.from) {
+    occurredAt.gte = new Date(filters.from)
+  }
+  if (filters?.to) {
+    occurredAt.lte = new Date(filters.to)
+  }
+  if (Object.keys(occurredAt).length > 0) {
+    transferWhere.occurredAt = occurredAt
+  }
+
+  const [stored, transferTotals, transferBreakdowns] = await Promise.all([
+    prisma.attachment.aggregate({
+      where: { organizationId },
+      _count: { id: true },
+      _sum: { sizeBytes: true },
+    }),
+    prisma.connectorUsageEvent.aggregate({
+      where: transferWhere,
+      _count: { id: true },
+      _sum: { units: true },
+    }),
+    prisma.connectorUsageEvent.groupBy({
+      by: ['operation'],
+      where: transferWhere,
+      _count: { id: true },
+      _sum: { units: true },
+    }),
+  ])
+
+  const breakdowns = transferBreakdowns
+    .map((row) => ({
+      key: row.operation ?? 'unknown',
+      bytes: Number(row._sum.units ?? 0),
+      events: row._count.id,
+    }))
+    .sort((left, right) => right.bytes - left.bytes)
+
+  return {
+    currentStoredBytes: Number(stored._sum.sizeBytes ?? 0),
+    currentAttachmentCount: stored._count.id,
+    totalTransferBytes: Number(transferTotals._sum.units ?? 0),
+    totalTransferEvents: transferTotals._count.id,
+    uploadBytes: breakdowns
+      .filter((row) => row.key === 'upload')
+      .reduce((sum, row) => sum + row.bytes, 0),
+    downloadBytes: breakdowns
+      .filter((row) => row.key === 'download')
+      .reduce((sum, row) => sum + row.bytes, 0),
+    breakdowns,
+  }
+}
+
 export const getMonthlyEstimate = async (
   prisma: PrismaClient,
   organizationId: string,

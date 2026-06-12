@@ -185,7 +185,15 @@ export const runExecutionAgentLoop = async (
           event: 'agent.tool.start',
         })
       },
-      onToolCallEnd: async (toolName, result, durationMs, success, inputSummary, startedAt) => {
+      onToolCallEnd: async (
+        toolName,
+        result,
+        durationMs,
+        success,
+        inputSummary,
+        startedAt,
+        connectorUsage,
+      ) => {
         await recordToolEnd(deps, context, payload.actorContext, {
           durationMs,
           inputSummary,
@@ -193,6 +201,7 @@ export const runExecutionAgentLoop = async (
           startedAt,
           success,
           toolName,
+          connectorUsage,
         })
         await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
         await publishAgentStatus(deps.realtimeTransport, context, {

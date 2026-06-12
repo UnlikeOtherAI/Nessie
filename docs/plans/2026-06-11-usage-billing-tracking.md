@@ -67,17 +67,21 @@ call sites simply pass no `usage` and behave as today (safe incremental rollout)
   `http_fetch`) write `connector_usage_events` via the single `recordToolEnd`
   choke point, and MCP runtime tool calls write them from `buildMcpToolset`'s
   dispatch (connectorId = MCP instance id, attribution from the run's
-  actorContext). **Remaining:** push and storage connectors. A live DB write of
-  both ledgers was confirmed via a smoke test.
+  actorContext). Storage uploads/downloads now write byte-counted
+  `connector_usage_events` from API attachment routes, public brand-logo
+  delivery, and worker attachment tools. **Remaining:** push connectors. A live
+  DB write of both ledgers was confirmed via a smoke test.
 - **Phase 3 — PARTIAL.** Reporting: token summary now supports `runId`/`channel`
   grouping; `GET /api/ledger/connectors/summary` (owner-only) added. Admin Token
-  Usage page (`/tokens`) shows a Connector Usage section + By Run / By Channel
-  grouping. **Verification note:** the admin change is build- and lint-verified
+  Usage page (`/tokens`) shows Connector Usage and File Usage sections. File
+  Usage combines current stored attachment bytes with upload/download byte
+  transfer totals from `GET /api/ledger/files/summary`. **Verification note:**
+  the admin change is build- and lint-verified
   and the new endpoint is live (returns 401, not 404), but an authenticated
   visual screenshot is still pending — kelpie renders the local dev SPA blank in
   this environment (see kelpie issue #79) and the Playwright MCP browser was
   locked by a concurrent session. **Remaining:** optional agent/channel budget
-  scopes; `docs/functionality.md` update.
+  scopes.
 
 ## Phases
 
@@ -108,7 +112,8 @@ call sites simply pass no `usage` and behave as today (safe incremental rollout)
   (`worker/src/run/tool-mcp.ts` via `mcp-toolset.ts`), HTTP tool
   (`tool-http.ts`), `web_search`, `web_fetch`. Thread attribution from the run
   context (currently dropped at `mcp-toolset.ts:146`).
-- Stretch: push (`worker/src/control/push-dispatch.ts`) and storage.
+- Stretch: push (`worker/src/control/push-dispatch.ts`). Storage is implemented
+  for attachment uploads/downloads and public logo delivery.
 
 ### Phase 3 — Reporting, budgets, docs (follow-up)
 - Extend `getTokenUsageSummary` group-by to `runId`; add a connector-usage

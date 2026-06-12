@@ -12,6 +12,7 @@ import {
   createPricingProfile,
   deletePricingProfile,
   getConnectorUsageSummary,
+  getFileUsageSummary,
   getMonthlyEstimate,
   getTokenUsageSummary,
   listPricingProfiles,
@@ -58,6 +59,20 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       from: query['from'],
       to: query['to'],
       groupBy: query['groupBy'],
+    })
+
+    return createApiResponse(summary)
+  })
+
+  app.get('/api/ledger/files/summary', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const summary = await getFileUsageSummary(prisma, actorContext.tenant.organizationId, {
+      from: query['from'],
+      to: query['to'],
     })
 
     return createApiResponse(summary)

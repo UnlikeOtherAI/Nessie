@@ -77,6 +77,15 @@ export const runAttachmentUploadTool = async (
   })
 
   return {
+    connectorUsage: {
+      connectorType: 'storage',
+      target: 'attachment',
+      operation: 'upload',
+      calls: 1,
+      units: attachment.sizeBytes,
+      unitType: 'bytes',
+      metadata: { attachmentId: attachment.id, source: 'worker.attachment_upload' },
+    },
     inputSummary: `filename=${filename}`,
     outputPreview: [
       `Uploaded attachment id=${attachment.id}`,
@@ -201,6 +210,15 @@ export const runAttachmentReadTool = async (
   }
 
   return {
+    connectorUsage: {
+      connectorType: 'storage',
+      target: 'attachment',
+      operation: 'download',
+      calls: 1,
+      units: bytes.byteLength,
+      unitType: 'bytes',
+      metadata: { attachmentId: attachment.id, source: 'worker.attachment_read' },
+    },
     inputSummary: `id=${id}`,
     outputPreview: [
       ...metadataLines,

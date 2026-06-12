@@ -82,6 +82,7 @@ const makeApp = (
   userId: string,
   storagePath: string,
 ) => {
+  const usageEvents: unknown[] = []
   const attachments: AttachmentRow[] = [
     {
       id: '00000000-0000-4000-8000-0000000000a1',
@@ -125,6 +126,12 @@ const makeApp = (
           messageMatchesAccessWhere(message, where, threads, channels),
         ) ?? null,
     },
+    connectorUsageEvent: {
+      create: async ({ data }: { data: unknown }) => {
+        usageEvents.push(data)
+        return data
+      },
+    },
   } as unknown as PrismaClient
 
   const app = Fastify({ logger: false })
@@ -138,12 +145,12 @@ const makeApp = (
     prisma,
     requireActorContext: () => actorContextFor(userId),
   } as unknown as Parameters<typeof registerUploadRoutes>[1])
-  return app
+  return { app, usageEvents }
 }
 
 test('message attachment listing requires access to the linked thread channel', async () => {
   const storagePath = `.tmp/uploads-auth-list-${Date.now()}`
-  const app = makeApp(userB, storagePath)
+  const { app } = makeApp(userB, storagePath)
   try {
     const response = await app.inject({
       method: 'GET',
@@ -159,7 +166,7 @@ test('message attachment listing requires access to the linked thread channel', 
 
 test('attachment download requires access to the linked thread channel', async () => {
   const storagePath = `.tmp/uploads-auth-download-${Date.now()}`
-  const app = makeApp(userB, storagePath)
+  const { app, usageEvents } = makeApp(userB, storagePath)
   try {
     const response = await app.inject({
       method: 'GET',
@@ -167,6 +174,7 @@ test('attachment download requires access to the linked thread channel', async (
     })
 
     assert.equal(response.statusCode, 404)
+    assert.equal(usageEvents.length, 0)
   } finally {
     await app.close()
     await rm(storagePath, { force: true, recursive: true })
@@ -178,7 +186,7 @@ test('channel members can download attachments from accessible messages', async 
   await mkdir(`${storagePath}/${organizationId}`, { recursive: true })
   await writeFile(`${storagePath}/${organizationId}/private-file`, 'hello world')
 
-  const app = makeApp(userA, storagePath)
+  const { app, usageEvents } = makeApp(userA, storagePath)
   try {
     const response = await app.inject({
       method: 'GET',
@@ -188,6 +196,26 @@ test('channel members can download attachments from accessible messages', async 
     assert.equal(response.statusCode, 200)
     assert.equal(response.headers['content-type'], 'text/plain')
     assert.equal(response.body, 'hello world')
+    assert.equal(usageEvents.length, 1)
+    const usageEvent = usageEvents[0] as Record<string, unknown>
+    assert.equal(usageEvent.organizationId, organizationId)
+    assert.equal(usageEvent.projectId, projectId)
+    assert.equal(usageEvent.actorId, userA)
+    assert.equal(usageEvent.actorType, 'user')
+    assert.equal(usageEvent.requestId, `req-uploads-${userA}`)
+    assert.equal(usageEvent.connectorType, 'storage')
+    assert.equal(usageEvent.target, 'attachment')
+    assert.equal(usageEvent.operation, 'download')
+    assert.equal(usageEvent.calls, 1)
+    assert.equal(usageEvent.units, 11)
+    assert.equal(usageEvent.unitType, 'bytes')
+    assert.equal(usageEvent.success, true)
+    assert.equal(typeof usageEvent.latencyMs, 'number')
+    assert.ok(usageEvent.occurredAt instanceof Date)
+    assert.deepEqual(usageEvent.metadata, {
+      attachmentId: '00000000-0000-4000-8000-0000000000a1',
+      source: 'api.attachments',
+    })
   } finally {
     await app.close()
     await rm(storagePath, { force: true, recursive: true })

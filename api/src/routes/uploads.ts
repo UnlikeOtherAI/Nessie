@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto'
 
 import type { FastifyInstance } from 'fastify'
-import { getStorage, type StorageConfig } from '@nessie/runtime'
+import {
+  attributionFromActorContext,
+  getStorage,
+  recordStorageTransferUsage,
+  type StorageConfig,
+} from '@nessie/runtime'
 
 import { AttachmentRecordSchema } from '../contracts.js'
 import { createApiResponse, sendApiError } from '../lib/api.js'
@@ -38,6 +43,7 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   const { prisma, requireActorContext } = deps
 
   app.post('/api/uploads', async (request, reply) => {
+    const startedAt = Date.now()
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
       return reply
@@ -79,6 +85,14 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         storageKey,
       },
     })
+
+    void recordStorageTransferUsage(prisma, {
+      attribution: attributionFromActorContext(actorContext),
+      bytes: bytes.byteLength,
+      latencyMs: Date.now() - startedAt,
+      metadata: { attachmentId: attachment.id, source: 'api.uploads' },
+      operation: 'upload',
+    }).catch(() => undefined)
 
     return reply.code(201).send(
       createApiResponse(
@@ -141,6 +155,7 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   })
 
   app.get('/api/attachments/:id', async (request, reply) => {
+    const startedAt = Date.now()
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
       return reply
@@ -172,6 +187,13 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       'content-disposition',
       `${disposition}; filename="${attachment.filename.replace(/"/g, '')}"`,
     )
+    void recordStorageTransferUsage(prisma, {
+      attribution: attributionFromActorContext(actorContext),
+      bytes: bytes.byteLength,
+      latencyMs: Date.now() - startedAt,
+      metadata: { attachmentId: attachment.id, source: 'api.attachments' },
+      operation: 'download',
+    }).catch(() => undefined)
     return reply.send(bytes)
   })
 }

@@ -39,7 +39,7 @@ import {
 } from './content-tools.js'
 import { runSpawnSubtaskTool } from './subtask-tools.js'
 import { summarizeToolInput, truncateToolResult } from './tool-util.js'
-import type { BuiltinToolRuntimeContext } from './tool-types.js'
+import type { BuiltinToolRuntimeContext, ToolExecutionUsage } from './tool-types.js'
 
 // Re-exported so existing importers keep using the './tools.js' entry point.
 export {
@@ -56,6 +56,7 @@ export {
 } from './workflow-builtin-tools.js'
 
 export type AgenticToolResult = {
+  connectorUsage?: ToolExecutionUsage
   inputSummary: string
   output: string
   success: boolean
@@ -63,11 +64,12 @@ export type AgenticToolResult = {
 
 const wrapTool = async (
   inputSummary: string,
-  fn: () => Promise<{ outputPreview: string }>,
+  fn: () => Promise<{ connectorUsage?: ToolExecutionUsage; outputPreview: string }>,
 ): Promise<AgenticToolResult> => {
   try {
     const result = await fn()
     return {
+      connectorUsage: result.connectorUsage,
       inputSummary,
       output: truncateToolResult(result.outputPreview),
       success: true,

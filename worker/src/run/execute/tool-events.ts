@@ -2,6 +2,7 @@ import {
   attributionFromActorContext,
   recordConnectorUsage,
   type ConnectorType,
+  type ConnectorUsage,
 } from '@nessie/runtime'
 import { parseAgentId, parseRunId, type AuthorizedActionContext } from '@nessie/schemas'
 import { buildScopes } from './scopes.js'
@@ -28,6 +29,7 @@ export const recordToolEnd = async (
     startedAt: Date
     success: boolean
     toolName: string
+    connectorUsage?: ConnectorUsage
   },
 ): Promise<void> => {
   const endedAt = new Date()
@@ -46,7 +48,8 @@ export const recordToolEnd = async (
     },
   })
 
-  const connectorType = CONNECTOR_TYPE_BY_TOOL[input.toolName]
+  const connectorType =
+    input.connectorUsage?.connectorType ?? CONNECTOR_TYPE_BY_TOOL[input.toolName]
   if (connectorType) {
     await recordConnectorUsage(deps.prisma, {
       attribution: attributionFromActorContext(actorContext, {
@@ -54,8 +57,9 @@ export const recordToolEnd = async (
         runId: context.run.id,
       }),
       event: {
+        ...(input.connectorUsage ?? {}),
         connectorType,
-        operation: input.toolName,
+        operation: input.connectorUsage?.operation ?? input.toolName,
         success: input.success,
         latencyMs: input.durationMs,
       },
