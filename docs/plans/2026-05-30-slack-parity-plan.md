@@ -228,7 +228,8 @@ larger phases.
   messages link unambiguous `#channel` and `@user`/`@agent` references, the
   composer autocompletes both `#` channels and `@` users/agents, duplicate
   channel labels insert project/team-scoped tokens, and day dividers collapse
-  their message groups.
+  their message groups. Agent mentions remain available on channel, DM, and
+  personal-assistant conversation surfaces.
 
 ---
 
