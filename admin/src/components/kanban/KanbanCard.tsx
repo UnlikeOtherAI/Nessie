@@ -16,6 +16,72 @@ type KanbanCardProps = {
 
 const chip = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold'
 
+const KanbanCardContent = ({
+  task,
+  showProject,
+  projectName,
+  archived,
+}: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName' | 'archived'>) => (
+  <>
+    {showProject && projectName ? (
+      <span className={`${chip} justify-self-start bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
+        {projectName}
+      </span>
+    ) : null}
+
+    <div className="break-words text-sm font-semibold leading-snug text-[color:var(--tx)] line-clamp-3">
+      {task.title ?? task.purpose ?? 'Untitled task'}
+    </div>
+    {task.purpose && task.title ? (
+      <div className="break-words text-xs leading-snug text-[color:var(--tx2)] line-clamp-3">
+        {task.purpose}
+      </div>
+    ) : null}
+
+    <div className="flex items-center gap-1.5">
+      <FontAwesomeIcon
+        className={`shrink-0 text-xs ${PRIORITY_SIGNAL[task.priority]}`}
+        icon={faSignal}
+        title={`${PRIORITY_LABEL[task.priority]} priority`}
+      />
+      <span className={`${chip} max-w-[11rem] truncate bg-[color:var(--overlay)] text-[color:var(--tx2)]`}>
+        {task.assigneeName ?? 'Unassigned'}
+      </span>
+      {task.dueDate || archived ? (
+        <span className="ml-auto flex items-center gap-1.5">
+          {task.dueDate ? (
+            <span
+              className={[
+                chip,
+                isOverdue(task.dueDate)
+                  ? 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]'
+                  : 'bg-[color:var(--overlay)] text-[color:var(--tx2)]',
+              ].join(' ')}
+            >
+              {formatDueDate(task.dueDate)}
+            </span>
+          ) : null}
+          {archived ? (
+            <span className={`${chip} bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
+              {statusLabel(task.status)}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+    </div>
+  </>
+)
+
+export const KanbanCardPreview = ({ task, showProject, projectName }: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName'>) => (
+  <div
+    className="admin-card grid select-none gap-2 p-3 shadow-xl"
+    data-kanban-card-preview
+    style={{ touchAction: 'none', width: 'min(337px, calc(100vw - 48px))' }}
+  >
+    <KanbanCardContent archived={false} projectName={projectName} showProject={showProject} task={task} />
+  </div>
+)
+
 export const KanbanCard = ({ task, showProject, projectName, archived = false, onOpen }: KanbanCardProps) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
@@ -43,60 +109,16 @@ export const KanbanCard = ({ task, showProject, projectName, archived = false, o
     <div
       ref={setNodeRef}
       {...attributes}
+      data-kanban-card
       className={[
-        'admin-card grid gap-2 p-3',
+        'admin-card grid select-none gap-2 p-3',
         archived ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
       ].join(' ')}
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       style={{ ...style, touchAction: 'none' }}
     >
-      {showProject && projectName ? (
-        <span className={`${chip} justify-self-start bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
-          {projectName}
-        </span>
-      ) : null}
-
-      <div className="break-words text-sm font-semibold leading-snug text-[color:var(--tx)] line-clamp-3">
-        {task.title ?? task.purpose ?? 'Untitled task'}
-      </div>
-      {task.purpose && task.title ? (
-        <div className="break-words text-xs leading-snug text-[color:var(--tx2)] line-clamp-3">
-          {task.purpose}
-        </div>
-      ) : null}
-
-      <div className="flex items-center gap-1.5">
-        <FontAwesomeIcon
-          className={`shrink-0 text-xs ${PRIORITY_SIGNAL[task.priority]}`}
-          icon={faSignal}
-          title={`${PRIORITY_LABEL[task.priority]} priority`}
-        />
-        <span className={`${chip} max-w-[11rem] truncate bg-[color:var(--overlay)] text-[color:var(--tx2)]`}>
-          {task.assigneeName ?? 'Unassigned'}
-        </span>
-        {task.dueDate || archived ? (
-          <span className="ml-auto flex items-center gap-1.5">
-            {task.dueDate ? (
-              <span
-                className={[
-                  chip,
-                  isOverdue(task.dueDate)
-                    ? 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]'
-                    : 'bg-[color:var(--overlay)] text-[color:var(--tx2)]',
-                ].join(' ')}
-              >
-                {formatDueDate(task.dueDate)}
-              </span>
-            ) : null}
-            {archived ? (
-              <span className={`${chip} bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
-                {statusLabel(task.status)}
-              </span>
-            ) : null}
-          </span>
-        ) : null}
-      </div>
+      <KanbanCardContent archived={archived} projectName={projectName} showProject={showProject} task={task} />
     </div>
   )
 }
