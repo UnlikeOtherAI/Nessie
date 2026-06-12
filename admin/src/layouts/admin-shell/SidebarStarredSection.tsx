@@ -1,4 +1,6 @@
 import type { ChannelRecord } from '../../lib/api-client';
+import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { channelHashClassName, renderUnreadCount } from './SidebarRow';
 import type { StarredItem, VisibleStarredEntry } from './types';
 
@@ -29,6 +31,7 @@ export const SidebarStarredSection = ({
   toggleStarredCollapsed,
   unreadCountByChannelId,
 }: SidebarStarredSectionProps) => {
+  const { token } = useAuthSession();
   if (entries.length === 0) {
     return null;
   }
@@ -70,7 +73,7 @@ export const SidebarStarredSection = ({
             return (
               <button
                 key={`starred-ch-${channel.id}`}
-                className={`admin-sb-item group ${channel.id === currentChannelId ? 'active' : ''}`}
+                className={`admin-sb-item group ${channel.unreadCount > 0 ? 'unread' : ''} ${channel.id === currentChannelId ? 'active' : ''}`}
                 onClick={() => onNavigateChannel(channel.id)}
                 type="button"
               >
@@ -99,7 +102,8 @@ export const SidebarStarredSection = ({
               <div key={`starred-prj-${project.id}`} className="mt-1">
                 <button
                   className={[
-                    'admin-sb-item group font-semibold',
+                    'admin-sb-item group',
+                    unreadCount > 0 ? 'unread' : '',
                     project.id === currentProjectId ? 'active-parent' : '',
                   ].join(' ')}
                   onClick={() => onNavigateProject(project.id)}
@@ -138,6 +142,7 @@ export const SidebarStarredSection = ({
                     key={`starred-prj-${project.id}-ch-${channel.id}`}
                     className={[
                       'admin-sb-item sidebar-child group',
+                      channel.unreadCount > 0 ? 'unread' : '',
                       channel.id === currentChannelId ? 'active' : '',
                     ].join(' ')}
                     onClick={() => onNavigateChannel(channel.id)}
@@ -161,20 +166,26 @@ export const SidebarStarredSection = ({
             );
           }
           const { person } = item;
+          const personUnreadCount = person.dmChannelId
+            ? unreadCountByChannelId.get(person.dmChannelId) ?? 0
+            : 0;
           return (
             <button
               key={`starred-usr-${person.id}`}
-              className={`admin-sb-item group ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
+              className={`admin-sb-item group ${personUnreadCount > 0 ? 'unread' : ''} ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
               onClick={() => onNavigateDm(person.id)}
               type="button"
             >
-              <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
-              <span className="min-w-0 flex-1 truncate text-sm">{person.label}</span>
-              {renderUnreadCount(
-                person.dmChannelId
-                  ? unreadCountByChannelId.get(person.dmChannelId) ?? 0
-                  : 0,
-              )}
+              <UserAvatar
+                avatarAttachmentId={person.avatarAttachmentId ?? undefined}
+                avatarUrl={person.avatarUrl ?? undefined}
+                displayName={person.label}
+                gravatarUrl={person.gravatarUrl ?? undefined}
+                size={18}
+                token={token}
+              />
+              <span className="min-w-0 flex-1 truncate">{person.label}</span>
+              {renderUnreadCount(personUnreadCount)}
               <span
                 className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
                 onClick={(e) => {

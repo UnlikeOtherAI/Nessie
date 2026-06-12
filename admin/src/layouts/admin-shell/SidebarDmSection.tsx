@@ -1,6 +1,8 @@
 import {
   PersonalAssistantSidebarEntry,
 } from '../../components/features/personal-assistant/PersonalAssistantSurface';
+import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { renderUnreadCount } from './SidebarRow';
 import type { SidebarPerson } from './types';
 
@@ -39,6 +41,7 @@ export const SidebarDmSection = ({
   toggleDmCollapsed,
   unreadCountByChannelId,
 }: SidebarDmSectionProps) => {
+  const { token } = useAuthSession();
   return (
     <>
       <div className="admin-sec-row mt-2">
@@ -89,11 +92,18 @@ export const SidebarDmSection = ({
             return (
               <button
                 key={person.id}
-                className={`admin-sb-item group ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
+                className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${person.dmChannelId && activeDmChannelId === person.dmChannelId ? 'active' : ''}`}
                 onClick={() => onNavigateDm(person.id)}
                 type="button"
               >
-                <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
+                <UserAvatar
+                  avatarAttachmentId={person.avatarAttachmentId ?? undefined}
+                  avatarUrl={person.avatarUrl ?? undefined}
+                  displayName={person.label}
+                  gravatarUrl={person.gravatarUrl ?? undefined}
+                  size={18}
+                  token={token}
+                />
                 <span className="min-w-0 flex-1 truncate">{person.label}</span>
                 {renderUnreadCount(unreadCount)}
                 <span
