@@ -5,7 +5,6 @@ import {
   rm,
   symlink,
   writeFile,
-  mkdir,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,6 +15,14 @@ import {
   extractSandboxConfig,
   SandboxViolationError,
 } from './sandbox.js'
+
+const firstAllowedRoot = (
+  config: Awaited<ReturnType<typeof extractSandboxConfig>>,
+) => {
+  const [root] = config.allowedRoots
+  assert.ok(root)
+  return root
+}
 
 const setupDir = async (): Promise<{
   root: string
@@ -36,9 +43,10 @@ test('extractSandboxConfig accepts legacy string[] and normalizes defaults', asy
   try {
     const config = await extractSandboxConfig({ allowedRoots: [root] }, 'test')
     assert.equal(config.allowedRoots.length, 1)
-    assert.equal(config.allowedRoots[0].path, root)
-    assert.equal(config.allowedRoots[0].kind, 'dir')
-    assert.equal(config.allowedRoots[0].access, 'rw')
+    const allowedRoot = firstAllowedRoot(config)
+    assert.equal(allowedRoot.path, root)
+    assert.equal(allowedRoot.kind, 'dir')
+    assert.equal(allowedRoot.access, 'rw')
   } finally {
     await cleanup()
   }
@@ -53,8 +61,9 @@ test('extractSandboxConfig parses object entries with explicit kind and access',
       { allowedRoots: [{ path: root, kind: 'dir', access: 'ro' }] },
       'test',
     )
-    assert.equal(config.allowedRoots[0].kind, 'dir')
-    assert.equal(config.allowedRoots[0].access, 'ro')
+    const allowedRoot = firstAllowedRoot(config)
+    assert.equal(allowedRoot.kind, 'dir')
+    assert.equal(allowedRoot.access, 'ro')
   } finally {
     await cleanup()
   }
@@ -67,8 +76,9 @@ test('extractSandboxConfig defaults missing kind to dir and access to rw', async
       { allowedRoots: [{ path: root }] },
       'test',
     )
-    assert.equal(config.allowedRoots[0].kind, 'dir')
-    assert.equal(config.allowedRoots[0].access, 'rw')
+    const allowedRoot = firstAllowedRoot(config)
+    assert.equal(allowedRoot.kind, 'dir')
+    assert.equal(allowedRoot.access, 'rw')
   } finally {
     await cleanup()
   }
@@ -110,8 +120,9 @@ test('extractSandboxConfig validates file kind against actual filesystem type', 
       { allowedRoots: [{ path: filePath, kind: 'file', access: 'ro' }] },
       'test',
     )
-    assert.equal(config.allowedRoots[0].kind, 'file')
-    assert.equal(config.allowedRoots[0].access, 'ro')
+    const allowedRoot = firstAllowedRoot(config)
+    assert.equal(allowedRoot.kind, 'file')
+    assert.equal(allowedRoot.access, 'ro')
   } finally {
     await cleanup()
   }
