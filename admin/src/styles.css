@@ -308,10 +308,21 @@ a {
   border-bottom: 1px solid var(--sep);
 }
 
-/* Desktop title-bar mode: leave room for the traffic lights at top-left. The
-   drag region is provided by the `data-tauri-drag-region` attribute. */
+/* Desktop title-bar mode: dedicated drag zones fill the non-interactive parts
+   of the full top bar while leaving the search field and buttons clickable. */
 .admin-topbar--desktop {
-  padding-left: 80px;
+  padding-left: 12px;
+}
+
+.admin-topbar-drag-zone {
+  align-self: stretch;
+  flex: 1 1 0;
+  min-width: 8px;
+}
+
+.admin-topbar-drag-zone--traffic {
+  flex: 0 0 68px;
+  min-width: 68px;
 }
 
 .admin-topbar-btn {
@@ -347,6 +358,12 @@ a {
   align-items: center;
   max-width: 720px;
   margin: 0 auto;
+}
+
+.admin-topbar--desktop .admin-topbar-search {
+  flex: 0 1 720px;
+  min-width: 180px;
+  margin: 0;
 }
 
 .admin-topbar-search-icon {
