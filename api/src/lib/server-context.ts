@@ -67,28 +67,63 @@ const desktopAppCorsOrigins = new Set([
   'http://tauri.localhost',
 ])
 
+type OriginPolicy = {
+  origin: string | undefined
+  allowedOrigins: Set<string>
+  mode: AppConfig['mode']
+}
+
+/**
+ * Single source of truth for "may this Origin make a credentialed request?".
+ * A missing Origin (same-origin / non-browser caller) is always allowed.
+ * Used by both the `@fastify/cors` origin checker and the SSE header builder so
+ * the streaming endpoints can never drift from the normal CORS policy.
+ */
+export const isOriginAllowed = (input: OriginPolicy): boolean => {
+  if (!input.origin) {
+    return true
+  }
+  const normalizedOrigin = input.origin.replace(/\/$/, '')
+  return (
+    input.allowedOrigins.has(normalizedOrigin)
+    || desktopAppCorsOrigins.has(normalizedOrigin)
+    || (input.mode === 'local' && localCorsOrigins.has(normalizedOrigin))
+  )
+}
+
 export const createCorsOriginChecker = (input: {
   allowedOrigins: Set<string>
   mode: AppConfig['mode']
 }): NonNullable<FastifyCorsOptions['origin']> =>
   (origin, callback) => {
-    if (!origin) {
-      callback(null, true)
-      return
-    }
-
-    const normalizedOrigin = origin.replace(/\/$/, '')
-    if (
-      input.allowedOrigins.has(normalizedOrigin)
-      || desktopAppCorsOrigins.has(normalizedOrigin)
-      || (input.mode === 'local' && localCorsOrigins.has(normalizedOrigin))
-    ) {
-      callback(null, true)
-      return
-    }
-
-    callback(null, false)
+    callback(
+      null,
+      isOriginAllowed({
+        origin: origin ?? undefined,
+        allowedOrigins: input.allowedOrigins,
+        mode: input.mode,
+      }),
+    )
   }
+
+/**
+ * CORS headers for hijacked SSE responses. `reply.hijack()` takes the response
+ * out of Fastify's lifecycle, so `@fastify/cors` never runs and the manual
+ * `reply.raw.writeHead` would otherwise ship no `Access-Control-Allow-Origin` —
+ * silently breaking every cross-origin EventSource. Spread the result into the
+ * handler's `writeHead`. Returns `{}` when the origin is absent or not allowed,
+ * matching `@fastify/cors`, which then emits no allow-origin header.
+ */
+export const buildStreamCorsHeaders = (input: OriginPolicy): Record<string, string> => {
+  if (!input.origin || !isOriginAllowed(input)) {
+    return {}
+  }
+  return {
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Origin': input.origin,
+    Vary: 'Origin',
+  }
+}
 
 const MEMBERSHIP_ROLES = ['owner', 'admin', 'member', 'viewer'] as const
 type MembershipRole = (typeof MEMBERSHIP_ROLES)[number]

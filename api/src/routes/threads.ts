@@ -15,6 +15,7 @@ import {
   UpdateThreadMessageBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { buildStreamCorsHeaders } from '../lib/server-context.js'
 import { enqueueOrchestrateDecide, enqueuePushDispatch } from '../queue/pgqueue.js'
 import { canManageChannel } from '../services/channels.js'
 import {
@@ -31,6 +32,8 @@ import type { RouteDeps } from './types.js'
 
 export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
+    config,
+    allowedCorsOrigins,
     prisma,
     realtimeHub,
     requireActorContext,
@@ -491,6 +494,11 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     reply.hijack()
     reply.raw.writeHead(200, {
+      ...buildStreamCorsHeaders({
+        origin: request.headers.origin,
+        allowedOrigins: allowedCorsOrigins,
+        mode: config.mode,
+      }),
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'Content-Type': 'text/event-stream',

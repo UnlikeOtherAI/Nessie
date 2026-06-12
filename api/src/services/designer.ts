@@ -474,8 +474,12 @@ export const streamDesignerChat = async (
   input: DesignerChatInput,
   modelClient: ModelClient,
   usageContext: DesignerUsageContext,
+  corsHeaders: Record<string, string>,
 ): Promise<void> => {
+  // Writing to reply.raw directly bypasses @fastify/cors, so the cross-origin
+  // allow-origin header must be merged in here (computed by the route).
   reply.raw.writeHead(200, {
+    ...corsHeaders,
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
     'Content-Type': 'text/event-stream',

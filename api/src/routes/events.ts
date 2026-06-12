@@ -1,12 +1,15 @@
 import type { FastifyInstance } from 'fastify'
 import type { WsScope } from '@nessie/schemas'
 
+import { buildStreamCorsHeaders } from '../lib/server-context.js'
 import { markConnected, markDisconnected, touch } from '../services/presence.js'
 import { resolveUserChannelRealtimeScopes } from '../services/realtime-events.js'
 import type { RouteDeps } from './types.js'
 
 export const registerEventRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
+    config,
+    allowedCorsOrigins,
     prisma,
     realtimeHub,
     requireActorContext,
@@ -54,6 +57,11 @@ export const registerEventRoutes = (app: FastifyInstance, deps: RouteDeps): void
 
     reply.hijack()
     reply.raw.writeHead(200, {
+      ...buildStreamCorsHeaders({
+        origin: request.headers.origin,
+        allowedOrigins: allowedCorsOrigins,
+        mode: config.mode,
+      }),
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'Content-Type': 'text/event-stream',

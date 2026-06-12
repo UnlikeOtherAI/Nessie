@@ -185,6 +185,10 @@ export const buildApp = async () => {
 
   await app.register(cors, {
     credentials: true,
+    // @fastify/cors v11 defaults `methods` to the CORS-safelist (GET,HEAD,POST),
+    // which silently 405s every cross-origin PATCH/PUT/DELETE preflight. Pin the
+    // full verb set the API actually serves.
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     origin: createCorsOriginChecker({
       allowedOrigins: allowedCorsOrigins,
       mode: config.mode,
