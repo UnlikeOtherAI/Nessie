@@ -7,7 +7,7 @@
 
 ## Setup assumptions
 
-- API on `5554`, worker running, postgres reachable.
+- API on `5454`, worker running, postgres reachable.
 - Personas exist and have password `nessie-test-pw`.
 - `sprint-planning` channel exists with Sprint Scribe bound.
 - Alex is a member of `sprint-planning`.
@@ -17,7 +17,7 @@
 ### 1. Log in as Alex
 
 ```bash
-ALEX_TOKEN=$(curl -s -X POST http://localhost:5554/api/auth/login \
+ALEX_TOKEN=$(curl -s -X POST http://localhost:5454/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"alex.rivera@orbitalfoundry.test","password":"nessie-test-pw"}' \
   | jq -r '.token')
@@ -28,11 +28,11 @@ Expect `ALEX_TOKEN` to be a non-empty JWT.
 ### 2. Resolve the sprint-planning channel + its default thread
 
 ```bash
-CHANNEL_ID=$(curl -s http://localhost:5554/api/channels \
+CHANNEL_ID=$(curl -s http://localhost:5454/api/channels \
   -H "Authorization: Bearer $ALEX_TOKEN" \
   | jq -r '.channels[] | select(.label=="sprint-planning") | .id')
 
-THREAD_ID=$(curl -s "http://localhost:5554/api/channels/$CHANNEL_ID/threads" \
+THREAD_ID=$(curl -s "http://localhost:5454/api/channels/$CHANNEL_ID/threads" \
   -H "Authorization: Bearer $ALEX_TOKEN" \
   | jq -r '.threads[0].id')
 ```
@@ -40,7 +40,7 @@ THREAD_ID=$(curl -s "http://localhost:5554/api/channels/$CHANNEL_ID/threads" \
 ### 3. Post the standup prompt
 
 ```bash
-curl -s -X POST "http://localhost:5554/api/threads/$THREAD_ID/messages" \
+curl -s -X POST "http://localhost:5454/api/threads/$THREAD_ID/messages" \
   -H "Authorization: Bearer $ALEX_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"@Sprint Scribe can you draft the sprint 34 standup notes for the Stripe team — we shipped the retry fix yesterday and are now on the webhook replay work."}'

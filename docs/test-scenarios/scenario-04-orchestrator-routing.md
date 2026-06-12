@@ -21,7 +21,7 @@ This scenario only exercises branch 3.
 ### 1. Sam posts a user-to-user message (no mention at all)
 
 ```bash
-curl -s -X POST "http://localhost:5554/api/threads/$DEV_TH/messages" \
+curl -s -X POST "http://localhost:5454/api/threads/$DEV_TH/messages" \
   -H "Authorization: Bearer $SAM_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"Alex, I just pushed the retry fix — could you let the support team know the dashboard should stabilise within the hour?"}'
@@ -45,7 +45,7 @@ Expect `0`.
 ### 2. Sam posts an engineering question with no mention
 
 ```bash
-curl -s -X POST "http://localhost:5554/api/threads/$DEV_TH/messages" \
+curl -s -X POST "http://localhost:5454/api/threads/$DEV_TH/messages" \
   -H "Authorization: Bearer $SAM_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"Quick sanity check — is Redis SETNX idempotent against a partitioned master, or do we need RedLock for the Stripe replay job?"}'
@@ -69,7 +69,7 @@ or `action=reply`. Do NOT accept any `ProviderInvocationError`,
 Post a short social message:
 
 ```bash
-curl -s -X POST "http://localhost:5554/api/threads/$DEV_TH/messages" \
+curl -s -X POST "http://localhost:5454/api/threads/$DEV_TH/messages" \
   -H "Authorization: Bearer $SAM_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"thanks everyone — ending my day now, see you tomorrow"}'

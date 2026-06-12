@@ -11,12 +11,12 @@ across unrelated channels must not cross-talk.
 ### 1. Log in as both personas
 
 ```bash
-JORDAN_TOKEN=$(curl -s -X POST http://localhost:5554/api/auth/login \
+JORDAN_TOKEN=$(curl -s -X POST http://localhost:5454/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"jordan.park@orbitalfoundry.test","password":"nessie-test-pw"}' \
   | jq -r '.token')
 
-MORGAN_TOKEN=$(curl -s -X POST http://localhost:5554/api/auth/login \
+MORGAN_TOKEN=$(curl -s -X POST http://localhost:5454/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"morgan.bale@orbitalfoundry.test","password":"nessie-test-pw"}' \
   | jq -r '.token')
@@ -25,14 +25,14 @@ MORGAN_TOKEN=$(curl -s -X POST http://localhost:5554/api/auth/login \
 ### 2. Jordan drives Executive Brief
 
 ```bash
-EXEC_CH=$(curl -s http://localhost:5554/api/channels \
+EXEC_CH=$(curl -s http://localhost:5454/api/channels \
   -H "Authorization: Bearer $JORDAN_TOKEN" \
   | jq -r '.channels[] | select(.label=="exec-briefings") | .id')
-EXEC_TH=$(curl -s "http://localhost:5554/api/channels/$EXEC_CH/threads" \
+EXEC_TH=$(curl -s "http://localhost:5454/api/channels/$EXEC_CH/threads" \
   -H "Authorization: Bearer $JORDAN_TOKEN" \
   | jq -r '.threads[0].id')
 
-curl -s -X POST "http://localhost:5554/api/threads/$EXEC_TH/messages" \
+curl -s -X POST "http://localhost:5454/api/threads/$EXEC_TH/messages" \
   -H "Authorization: Bearer $JORDAN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"@Executive Brief give me a 4-bullet monday brief on the Stripe webhook retries incident and the sprint 34 plan — I am about to walk into the investor sync."}'
@@ -41,14 +41,14 @@ curl -s -X POST "http://localhost:5554/api/threads/$EXEC_TH/messages" \
 ### 3. Morgan drives Calendar Keeper (in parallel)
 
 ```bash
-EA_CH=$(curl -s http://localhost:5554/api/channels \
+EA_CH=$(curl -s http://localhost:5454/api/channels \
   -H "Authorization: Bearer $MORGAN_TOKEN" \
   | jq -r '.channels[] | select(.label=="ea-workroom") | .id')
-EA_TH=$(curl -s "http://localhost:5554/api/channels/$EA_CH/threads" \
+EA_TH=$(curl -s "http://localhost:5454/api/channels/$EA_CH/threads" \
   -H "Authorization: Bearer $MORGAN_TOKEN" \
   | jq -r '.threads[0].id')
 
-curl -s -X POST "http://localhost:5554/api/threads/$EA_TH/messages" \
+curl -s -X POST "http://localhost:5454/api/threads/$EA_TH/messages" \
   -H "Authorization: Bearer $MORGAN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"@Calendar Keeper Jordan needs a 30m sync with the Stripe engineering team before Wednesday EOD — check Jordan'"'"'s afternoon availability and propose two slots."}'

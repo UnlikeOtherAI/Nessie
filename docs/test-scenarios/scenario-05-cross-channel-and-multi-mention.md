@@ -55,7 +55,7 @@ Sprint Scribe is bound only to `sprint-planning`, but Sam `@mentions`
 it from `dev-chatter`:
 
 ```bash
-curl -s -X POST "http://localhost:5554/api/threads/$DEV_TH/messages" \
+curl -s -X POST "http://localhost:5454/api/threads/$DEV_TH/messages" \
   -H "Authorization: Bearer $SAM_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"@Sprint Scribe please record: the Stripe webhook retry fix shipped to production today at 14:30 UTC."}'
@@ -76,7 +76,7 @@ psql -h localhost -U dictator -d nessie -c "
 ### 2. Multi-agent @mention
 
 ```bash
-curl -s -X POST "http://localhost:5554/api/threads/$DEV_TH/messages" \
+curl -s -X POST "http://localhost:5454/api/threads/$DEV_TH/messages" \
   -H "Authorization: Bearer $SAM_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"Multi-agent test — @Code Buddy please sanity check the idempotency approach one more time, and @Sprint Scribe please record this as the shipping milestone for the Stripe fix."}'

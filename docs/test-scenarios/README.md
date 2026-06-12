@@ -27,8 +27,8 @@ Password for every persona in local: `nessie-test-pw`.
 
 ## Ports (non-negotiable)
 
-- API: `http://localhost:5554`
-- Admin: `http://localhost:5555`
+- API: `http://localhost:5454`
+- Admin: `http://localhost:5455`
 
 ## Running a scenario
 
