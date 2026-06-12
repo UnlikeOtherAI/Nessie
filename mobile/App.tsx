@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { type ImageSourcePropType, Platform, StyleSheet, View } from 'react-native'
+import { AppState, type AppStateStatus, type ImageSourcePropType, Platform, StyleSheet, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
@@ -30,6 +30,12 @@ const DEFAULT_ACTIVE_TINT = '#7c3aed'
 const DEFAULT_INACTIVE_TINT = '#8a8f98'
 const ANDROID_ICON_SIZE = 26
 
+// iOS reclaims the WKWebView content process while the app is backgrounded, so a
+// long background (e.g. overnight) foregrounds to a blank white screen. After this
+// much time in the background, reload on foreground so the workspace is always
+// present and up to date when brought back. Shorter backgrounds keep their state.
+const RELOAD_AFTER_BACKGROUND_MS = 30_000
+
 // The tab bar only makes sense once the user is inside the workspace; hide it on
 // the login / bootstrap screens (reported via nessie:route).
 const isAuthGateRoute = (path: string): boolean =>
@@ -46,11 +52,34 @@ const Shell = (): React.JSX.Element => {
   const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
   const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
   const [androidIcons, setAndroidIcons] = useState<AndroidIconSet | null>(null)
+  // Bumping this remounts the WebView — used to recover Android after its render
+  // process is killed (the instance is unusable until recreated).
+  const [webviewKey, setWebviewKey] = useState(0)
   const capturing = useRef(false)
+  const backgroundedAt = useRef<number | null>(null)
 
   useEffect(() => {
     // Dev-only: expose the AppReveal debug server for on-device inspection.
     startDevInspector()
+  }, [])
+
+  // Keep the WebView populated and fresh across app backgrounding. iOS can reclaim
+  // the WKWebView content process while backgrounded (blank screen on return), so
+  // reload once enough time has passed in the background. onContentProcessDid
+  // Terminate / onRenderProcessGone below handle an outright process loss.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active') {
+        const since = backgroundedAt.current
+        backgroundedAt.current = null
+        if (since != null && Date.now() - since >= RELOAD_AFTER_BACKGROUND_MS) {
+          webRef.current?.reload()
+        }
+      } else if (next === 'background') {
+        backgroundedAt.current = backgroundedAt.current ?? Date.now()
+      }
+    })
+    return () => subscription.remove()
   }, [])
 
   // Android tab icons are Material glyphs rendered to image sources (SF Symbols
@@ -200,8 +229,11 @@ const Shell = (): React.JSX.Element => {
           allowsBackForwardNavigationGestures
           domStorageEnabled
           injectedJavaScript={INJECTED}
+          key={webviewKey}
           mediaPlaybackRequiresUserAction={false}
+          onContentProcessDidTerminate={() => webRef.current?.reload()}
           onMessage={onMessage}
+          onRenderProcessGone={() => setWebviewKey((value) => value + 1)}
           originWhitelist={['*']}
           pullToRefreshEnabled
           ref={webRef}
