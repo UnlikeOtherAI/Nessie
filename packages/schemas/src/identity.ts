@@ -1,0 +1,178 @@
+import { z } from 'zod'
+
+import {
+  ChannelIdSchema,
+  OrganizationIdSchema,
+  ProjectIdSchema,
+  TeamIdSchema,
+  UserIdSchema,
+} from './ids.js'
+import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
+
+export const AuthProviderResponseTypeSchema = z.enum([
+  'oidc',
+  'saml',
+  'uoa',
+  'local-bootstrap',
+  'custom',
+])
+export type AuthProviderResponseType = z.infer<typeof AuthProviderResponseTypeSchema>
+
+const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+
+const isIanaTimeZone = (value: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format()
+    return true
+  } catch {
+    return false
+  }
+}
+
+export const PushQuietHoursSchema = z.object({
+  start: TimeOfDaySchema,
+  end: TimeOfDaySchema,
+  timezone: z.string().min(1).refine(isIanaTimeZone, {
+    message: 'Timezone must be a valid IANA time zone',
+  }),
+})
+export type PushQuietHours = z.infer<typeof PushQuietHoursSchema>
+
+export const UserPreferencesSchema = z.object({
+  starred: z.array(z.object({
+    type: z.enum(['channel', 'project', 'user']),
+    id: z.string(),
+  })).optional(),
+  pushEnabled: z.boolean().optional(),
+  // `null` clears quiet hours via the partial-merge PATCH; absent leaves them unchanged.
+  pushQuietHours: PushQuietHoursSchema.nullish(),
+  theme: z.enum([
+    'nebula',
+    'midnight',
+    'daylight',
+    'forest',
+    'ocean',
+    'sunset',
+    'rose',
+    'graphite',
+    'sandstone',
+    'contrast',
+    'system',
+  ]).optional(),
+  fontScale: z.enum(['small', 'medium', 'large']).optional(),
+})
+export type UserPreferences = z.infer<typeof UserPreferencesSchema>
+
+// Avatar precedence (resolved by the client): `avatarAttachmentId` (a
+// user-uploaded custom avatar, served via GET /api/attachments/:id) overrides
+// `avatarUrl` (the provider/Google picture), which overrides `gravatarUrl`
+// (derived from the email, served with d=404 so a missing Gravatar falls through
+// to initials).
+export const MeUserSchema = z.object({
+  id: UserIdSchema,
+  email: z.string().email(),
+  displayName: NonEmptyStringSchema,
+  avatarUrl: z.string().url().optional(),
+  avatarAttachmentId: z.string().uuid().optional(),
+  gravatarUrl: z.string().url().optional(),
+  pronouns: z.string().optional(),
+  roleIds: z.array(NonEmptyStringSchema),
+  superAdmin: z.boolean().default(false),
+  preferences: UserPreferencesSchema.optional(),
+})
+export type MeUser = z.infer<typeof MeUserSchema>
+
+export const UpdatePreferencesSchema = UserPreferencesSchema
+
+// Set or clear the signed-in user's custom avatar. `null` clears it, reverting
+// to the provider picture / Gravatar. Mirrors UpdateOrganizationLogoRequest.
+export const UpdateMyAvatarRequestSchema = z.object({
+  avatarAttachmentId: z.string().uuid().nullable(),
+})
+export type UpdateMyAvatarRequest = z.infer<typeof UpdateMyAvatarRequestSchema>
+
+export const MeSessionSchema = z.object({
+  sessionId: NonEmptyStringSchema,
+  issuedAt: TimestampSchema,
+  expiresAt: TimestampSchema.optional(),
+})
+export type MeSession = z.infer<typeof MeSessionSchema>
+
+export const MeContextSchema = z.object({
+  organizationId: OrganizationIdSchema,
+  projectId: ProjectIdSchema,
+  teamId: TeamIdSchema,
+  channelId: ChannelIdSchema.nullish(),
+  bootstrapMode: z.boolean(),
+})
+export type MeContext = z.infer<typeof MeContextSchema>
+
+export const MeAuthSchema = z.object({
+  providerId: NonEmptyStringSchema,
+  providerType: AuthProviderResponseTypeSchema,
+  autoRedirectToSso: z.boolean(),
+})
+export type MeAuth = z.infer<typeof MeAuthSchema>
+
+export const MeMembershipSchema = z.object({
+  organizationId: OrganizationIdSchema,
+  organizationName: z.string().optional(),
+  role: z.string(),
+  projects: z.array(z.object({
+    projectId: ProjectIdSchema,
+    projectName: z.string().optional(),
+    teams: z.array(z.object({
+      teamId: TeamIdSchema,
+      teamName: z.string().optional(),
+    })),
+  })),
+})
+export type MeMembership = z.infer<typeof MeMembershipSchema>
+
+export const SetChannelMuteRequestSchema = z.object({
+  muted: z.boolean(),
+})
+export type SetChannelMuteRequest = z.infer<typeof SetChannelMuteRequestSchema>
+
+export const MeResponseSchema = z.object({
+  user: MeUserSchema,
+  session: MeSessionSchema,
+  context: MeContextSchema,
+  auth: MeAuthSchema,
+  memberships: z.array(MeMembershipSchema).optional(),
+})
+export type MeResponse = z.infer<typeof MeResponseSchema>
+
+export const OrganizationSummarySchema = z.object({
+  id: OrganizationIdSchema,
+  name: z.string(),
+  role: z.string(),
+  logoAttachmentId: z.string().uuid().nullable(),
+})
+export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
+
+// Owners/admins set or clear the org's round logo. `null` clears it.
+export const UpdateOrganizationLogoRequestSchema = z.object({
+  logoAttachmentId: z.string().uuid().nullable(),
+})
+export type UpdateOrganizationLogoRequest = z.infer<typeof UpdateOrganizationLogoRequestSchema>
+
+export const FeedbackRecordSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  body: z.string(),
+  attachmentId: z.string().uuid().nullable(),
+  attachmentFilename: z.string().nullable(),
+  githubIssueNumber: z.number().int().nullable(),
+  githubIssueUrl: z.string().nullable(),
+  status: z.string(),
+  createdAt: z.string(),
+})
+export type FeedbackRecord = z.infer<typeof FeedbackRecordSchema>
+
+export const CreateFeedbackRequestSchema = z.object({
+  title: z.string().min(1).max(200),
+  body: z.string().min(1).max(20000),
+  attachmentId: z.string().uuid().nullable().optional(),
+})
+export type CreateFeedbackRequest = z.infer<typeof CreateFeedbackRequestSchema>
