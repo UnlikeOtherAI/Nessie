@@ -7,6 +7,7 @@ import {
   isUserActive,
   markConnected,
   markDisconnected,
+  resolvePresenceState,
   touch,
 } from '../src/services/presence.js'
 
@@ -173,4 +174,46 @@ test('isUserActive requires a positive connection count and recent heartbeat', a
   assert.equal(await isUserActive(prisma, userId, 30_000), true)
   assert.equal(await isUserActive(prisma, staleUserId, 30_000), false)
   assert.equal(await isUserActive(prisma, zeroConnectionUserId, 30_000), false)
+})
+
+test('resolvePresenceState: stale heartbeat is offline regardless of overrides', () => {
+  const now = Date.now()
+  const stale = new Date(now - 120_000)
+  assert.equal(
+    resolvePresenceState({ lastSeenAt: stale, lastActiveAt: stale, manualState: 'active' }, now),
+    'offline',
+  )
+})
+
+test('resolvePresenceState: manual override wins while connected', () => {
+  const now = Date.now()
+  const fresh = new Date(now - 1_000)
+  assert.equal(
+    resolvePresenceState({ lastSeenAt: fresh, lastActiveAt: fresh, manualState: 'away' }, now),
+    'away',
+  )
+  assert.equal(
+    resolvePresenceState({ lastSeenAt: fresh, lastActiveAt: null, manualState: 'active' }, now),
+    'online',
+  )
+})
+
+test('resolvePresenceState: auto online/away from recent activity', () => {
+  const now = Date.now()
+  const fresh = new Date(now - 1_000)
+  assert.equal(
+    resolvePresenceState({ lastSeenAt: fresh, lastActiveAt: fresh, manualState: null }, now),
+    'online',
+  )
+  assert.equal(
+    resolvePresenceState(
+      { lastSeenAt: fresh, lastActiveAt: new Date(now - 6 * 60_000), manualState: null },
+      now,
+    ),
+    'away',
+  )
+  assert.equal(
+    resolvePresenceState({ lastSeenAt: fresh, lastActiveAt: null, manualState: null }, now),
+    'away',
+  )
 })

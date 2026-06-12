@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getInitials } from '../../lib/avatar'
 import { useAuthedObjectUrl } from '../../lib/uploads'
+import { AvatarBadges } from './AvatarBadges'
 
 // Avatar source fields as carried on MeUser. Precedence: a custom uploaded
 // attachment overrides the provider (Google) picture, which overrides Gravatar.
@@ -31,15 +32,26 @@ type UserAvatarProps = AvatarSources & {
   // Rendered diameter in pixels.
   size?: number
   className?: string
+  // When set, overlays the user's active-status emoji + presence dot.
+  userId?: string
+  showPresence?: boolean
+  showStatus?: boolean
+  // Background the avatar sits on (for the badges' separating ring).
+  ringColor?: string
 }
 
 // Round user avatar: renders the resolved image (custom > Google > Gravatar) and
-// falls back to initials on an empty source or a failed/404 image load.
+// falls back to initials on an empty source or a failed/404 image load. When a
+// `userId` is supplied it is wrapped with presence + active-status badges.
 export const UserAvatar = ({
   displayName,
   token,
   size = 32,
   className,
+  userId,
+  showPresence,
+  showStatus,
+  ringColor,
   ...sources
 }: UserAvatarProps) => {
   const url = useResolvedAvatarUrl(sources, token)
@@ -51,7 +63,7 @@ export const UserAvatar = ({
 
   const showImage = Boolean(url) && !broken
 
-  return (
+  const circle = (
     <div
       aria-hidden="true"
       className={[
@@ -72,5 +84,21 @@ export const UserAvatar = ({
         <span>{getInitials(displayName)}</span>
       )}
     </div>
+  )
+
+  if (!userId) {
+    return circle
+  }
+
+  return (
+    <AvatarBadges
+      ringColor={ringColor}
+      showPresence={showPresence}
+      showStatus={showStatus}
+      size={size}
+      userId={userId}
+    >
+      {circle}
+    </AvatarBadges>
   )
 }

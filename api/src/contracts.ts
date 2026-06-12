@@ -1709,6 +1709,39 @@ export const UserActiveStatusSchema = z.object({
 })
 export type UserActiveStatus = z.infer<typeof UserActiveStatusSchema>
 
+// ─── Presence ───────────────────────────────────────────────────────────────
+
+export const PresenceStateSchema = z.enum(['online', 'away', 'offline'])
+export type PresenceState = z.infer<typeof PresenceStateSchema>
+
+export const PresenceManualStateSchema = z.enum(['active', 'away'])
+export type PresenceManualState = z.infer<typeof PresenceManualStateSchema>
+
+export const PresenceEntrySchema = z.object({
+  userId: UserIdSchema,
+  state: PresenceStateSchema,
+  manualState: PresenceManualStateSchema.nullable(),
+  statusId: z.string().uuid().nullable(),
+  statusEmoji: z.string().nullable(),
+  statusLabel: z.string().nullable(),
+})
+export type PresenceEntry = z.infer<typeof PresenceEntrySchema>
+
+export const PresenceListResponseSchema = z.object({
+  users: z.array(PresenceEntrySchema),
+})
+export type PresenceListResponse = z.infer<typeof PresenceListResponseSchema>
+
+export const SetManualPresenceBodySchema = z.object({
+  state: PresenceManualStateSchema.nullable(),
+})
+export type SetManualPresenceBody = z.infer<typeof SetManualPresenceBodySchema>
+
+export const PresenceHeartbeatBodySchema = z.object({
+  active: z.boolean(),
+})
+export type PresenceHeartbeatBody = z.infer<typeof PresenceHeartbeatBodySchema>
+
 export const UserStatusScheduleKindSchema = z.enum(['date_range', 'weekly'])
 export type UserStatusScheduleKind = z.infer<typeof UserStatusScheduleKindSchema>
 

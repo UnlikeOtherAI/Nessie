@@ -1,14 +1,8 @@
 import type { UserRecord } from '../../../lib/api-client'
+import { AvatarBadges } from '../../primitives/AvatarBadges'
 import { getInitials, pickGradient } from '../../../lib/avatar'
 import { CloseIcon } from './icons'
 import { actionBtnClass, rowClass } from './styles'
-
-const StatusEmoji = ({ user }: { user: UserRecord }) =>
-  user.activeStatus?.emoji ? (
-    <span className="ml-1.5" title={user.activeStatus.label}>
-      {user.activeStatus.emoji}
-    </span>
-  ) : null
 
 type CurrentUserRowProps = {
   user: UserRecord
@@ -25,19 +19,20 @@ export const CurrentUserRow = ({
   onRemove,
 }: CurrentUserRowProps) => (
   <div className={rowClass}>
-    <div
-      className={[
-        'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
-        'text-xs font-semibold text-[color:var(--on-accent)]',
-      ].join(' ')}
-      style={{ background: pickGradient(user.id) }}
-    >
-      {getInitials(user.displayName, '?')}
-    </div>
+    <AvatarBadges ringColor="var(--panel)" size={32} userId={user.id}>
+      <div
+        className={[
+          'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
+          'text-xs font-semibold text-[color:var(--on-accent)]',
+        ].join(' ')}
+        style={{ background: pickGradient(user.id) }}
+      >
+        {getInitials(user.displayName, '?')}
+      </div>
+    </AvatarBadges>
     <div className="min-w-0 flex-1">
       <div className="truncate text-sm font-medium text-[color:var(--tx)]">
         {user.displayName}
-        <StatusEmoji user={user} />
         {user.id === currentUserId && (
           <span className="ml-1.5 text-xs text-[color:var(--tx3)]">(you)</span>
         )}
@@ -81,19 +76,20 @@ export const AvailableUserRow = ({
   onAdd,
 }: AvailableUserRowProps) => (
   <div className={rowClass}>
-    <div
-      className={[
-        'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
-        'text-xs font-semibold text-[color:var(--on-accent)]/60',
-      ].join(' ')}
-      style={{ background: pickGradient(user.id), opacity: 0.6 }}
-    >
-      {getInitials(user.displayName, '?')}
-    </div>
+    <AvatarBadges ringColor="var(--panel)" size={32} userId={user.id}>
+      <div
+        className={[
+          'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
+          'text-xs font-semibold text-[color:var(--on-accent)]/60',
+        ].join(' ')}
+        style={{ background: pickGradient(user.id), opacity: 0.6 }}
+      >
+        {getInitials(user.displayName, '?')}
+      </div>
+    </AvatarBadges>
     <div className="min-w-0 flex-1">
       <div className="truncate text-sm text-[color:var(--tx2)]">
         {user.displayName}
-        <StatusEmoji user={user} />
       </div>
       <div className="truncate text-xs text-[color:var(--tx3)]">
         {user.email}
