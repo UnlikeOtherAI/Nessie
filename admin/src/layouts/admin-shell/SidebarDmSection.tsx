@@ -94,7 +94,7 @@ export const SidebarDmSection = ({
                 type="button"
               >
                 <div className="h-4 w-4 flex-shrink-0 rounded" style={person.style} />
-                <span className="min-w-0 flex-1 truncate text-sm">{person.label}</span>
+                <span className="min-w-0 flex-1 truncate">{person.label}</span>
                 {renderUnreadCount(unreadCount)}
                 <span
                   className={[
