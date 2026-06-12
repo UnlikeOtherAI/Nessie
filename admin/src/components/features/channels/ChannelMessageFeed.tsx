@@ -425,12 +425,12 @@ export const ChannelMessageFeed = ({
                     'text-[11px] font-semibold text-[var(--thinking)]',
                   ].join(' ')}
                 >
-                  {isPersonalAssistantConversation ? 'responding' : 'running'}
+                  {isPersonalAssistantConversation ? 'thinking' : 'running'}
                 </span>
               </div>
               <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
                 <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
-                  {entry.content ? renderContent(entry.content) : 'Loading response'}
+                  {entry.content ? renderContent(entry.content) : '... thinking ...'}
                   <span className="streaming-dot" />
                 </p>
               </div>
