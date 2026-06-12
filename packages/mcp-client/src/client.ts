@@ -24,6 +24,7 @@ const CLIENT_NAME = '@nessie/mcp-client'
 const CLIENT_VERSION = '0.0.0'
 
 const DEFAULT_CALL_TIMEOUT_MS = 30_000
+const DEFAULT_LIST_TOOLS_TIMEOUT_MS = 30_000
 
 export type ConnectionListener = {
   onState: (state: McpConnectionState) => void
@@ -85,14 +86,27 @@ export class McpConnection {
     this.setState('closed')
   }
 
-  async listTools(refresh = false): Promise<McpToolDescriptor[]> {
+  async listTools(
+    refresh = false,
+    opts: { timeoutMs?: number; abort?: AbortSignal } = {},
+  ): Promise<McpToolDescriptor[]> {
     const client = this.requireClient()
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_LIST_TOOLS_TIMEOUT_MS
+    const abort = opts.abort
+
+    if (abort?.aborted) throw classifyError(abort.reason ?? new Error('aborted'))
+
     if (!refresh) {
       const cached = this.cache.get(this.id)
       if (cached) return cached
     }
     try {
-      const raw = await client.listTools()
+      const raw = await this.withTimeoutAndAbort(
+        (signal) => client.listTools(undefined, { signal, timeout: timeoutMs }),
+        timeoutMs,
+        abort,
+        'tools/list',
+      )
       const tools = normaliseTools(raw)
       this.cache.set(this.id, tools)
       return tools
@@ -129,6 +143,7 @@ export class McpConnection {
         (signal) => client.callTool(params, undefined, { signal, timeout: timeoutMs }),
         timeoutMs,
         abort,
+        'tool call',
       )
       return normaliseCallResult(result)
     } catch (err) {
@@ -260,10 +275,11 @@ export class McpConnection {
     body: (signal: AbortSignal) => Promise<T>,
     timeoutMs: number,
     abort?: AbortSignal,
+    operation = 'mcp operation',
   ): Promise<T> {
     const controller = new AbortController()
     const timer = setTimeout(
-      () => controller.abort(new McpTimeoutError(`tool call timed out after ${timeoutMs}ms`, timeoutMs)),
+      () => controller.abort(new McpTimeoutError(`${operation} timed out after ${timeoutMs}ms`, timeoutMs)),
       timeoutMs,
     )
     const onUserAbort = (): void => {
