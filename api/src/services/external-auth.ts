@@ -1,5 +1,9 @@
 import type { AuthProviderConfig } from '@nessie/config'
 
+import {
+  resolveIdentityDisplayName,
+  type ExternalAuthIdentity,
+} from './identity-display.js'
 import { buildUoaAuthorizeUrl, exchangeUoaCode } from './uoa-auth.js'
 
 type OidcDiscoveryDocument = {
@@ -19,26 +23,6 @@ type UserInfoResponse = {
   picture?: string
   preferred_username?: string
   sub?: string
-}
-
-export type ExternalAuthIdentity = {
-  avatarUrl?: string
-  displayName: string
-  email: string
-}
-
-// Derive a human-friendly display name from an email's local part, e.g.
-// "ondrej.rafaj@gmail.com" -> "Ondrej Rafaj". Used only when the identity
-// provider returns no name/username, so we never surface a raw email address as
-// someone's display name. Falls back to the email if nothing usable remains.
-export const humanizeEmailLocalPart = (email: string): string => {
-  const localPart = email.split('@')[0] ?? email
-  const words = localPart
-    .split(/[._+-]+/)
-    .map((part) => part.replace(/\d+/g, '').trim())
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-  return words.join(' ') || email
 }
 
 const normalizeIssuerUrl = (issuerUrl: string): string => issuerUrl.replace(/\/$/, '')
@@ -158,8 +142,10 @@ export const exchangeExternalAuthCode = async (
 
   return {
     avatarUrl: userInfo.picture,
-    displayName:
-      userInfo.name?.trim() || userInfo.preferred_username?.trim() || humanizeEmailLocalPart(email),
+    displayName: resolveIdentityDisplayName(email, [
+      userInfo.name,
+      userInfo.preferred_username,
+    ]),
     email,
   }
 }
