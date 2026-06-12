@@ -7,6 +7,8 @@ import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { NAV_ITEMS } from './nav-items';
 import { UserMenuPopover } from './UserMenuPopover';
 
+const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
+
 type SidebarRailProps = {
   onLogout: () => void;
   pathname: string;
@@ -67,7 +69,7 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
         )}
       </Link>
 
-      {NAV_ITEMS.map((item) => {
+      {SIDEBAR_RAIL_ITEMS.map((item) => {
         const Icon = item.icon;
         return (
           <Link
