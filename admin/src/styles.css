@@ -497,7 +497,7 @@ a {
   align-items: center;
   justify-content: center;
   width: 40px;
-  height: 30px;
+  height: 40px;
   border-radius: var(--radius-md);
   color: var(--tx);
   transition: background 120ms ease, color 120ms ease;
