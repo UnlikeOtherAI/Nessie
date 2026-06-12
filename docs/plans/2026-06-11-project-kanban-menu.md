@@ -267,3 +267,20 @@ Completed work can now be tucked away without being cancelled.
 - `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
 - `POST /api/tasks/archive-done` exercised against the dev API (see commit).
 - Visual layer to be confirmed live (kelpie broken; Playwright MCP busy).
+
+## Update 2026-06-12 (4) — phone board paging and drag-edge page switching
+
+The projects board now has a phone-specific one-column paging mode for both the
+web admin and native WebView shell.
+
+### Board (`admin/`)
+
+- On phone widths (`<768px`), `KanbanColumn` renders as a full-width page;
+  desktop/tablet keeps the existing fixed-width horizontal board.
+- `KanbanBoard` shows pagination dots above the columns on phone widths and keeps
+  them in sync with dot taps and horizontal swipe gestures.
+- While dragging a ticket on phone widths, moving the pointer into the left or
+  right edge zone switches to the adjacent column page so the card can be dropped
+  there, with a drag overlay keeping the ticket visible while the page changes.
+- `KanbanCard` text is non-selectable, so drag gestures do not highlight card
+  titles or excerpts.
