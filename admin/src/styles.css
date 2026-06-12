@@ -325,6 +325,11 @@ a {
   min-width: 68px;
 }
 
+.admin-topbar-spacer {
+  flex: 1 1 auto;
+  min-width: 12px;
+}
+
 .admin-topbar-btn {
   display: flex;
   align-items: center;
@@ -364,6 +369,12 @@ a {
 .admin-topbar--desktop .admin-topbar-search {
   flex: 0 1 720px;
   min-width: 180px;
+  margin: 0;
+}
+
+.admin-topbar-search--overlay {
+  width: 100%;
+  max-width: none;
   margin: 0;
 }
 
@@ -423,6 +434,11 @@ a {
   overflow-y: auto;
 }
 
+.admin-topbar-search--overlay .admin-topbar-results {
+  top: calc(100% + 10px);
+  max-height: min(56vh, 520px);
+}
+
 .admin-topbar-menu {
   left: 0;
   min-width: 220px;
@@ -461,6 +477,37 @@ a {
   color: var(--on-accent);
   font-size: 13px;
   font-weight: var(--font-weight-semibold);
+}
+
+.native-search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.native-search-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: color-mix(in srgb, var(--scrim) 24%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  pointer-events: auto;
+}
+
+.native-search-overlay-panel {
+  position: relative;
+  z-index: 1;
+  width: min(780px, calc(100vw - 64px));
+  margin: calc(var(--topbar-h) + env(safe-area-inset-top, 0px) + 12px) auto 0;
+  padding: 10px;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.42);
+  pointer-events: auto;
 }
 
 .mobile-tabbar {

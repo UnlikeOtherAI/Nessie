@@ -39,11 +39,21 @@ const markerClass = [
 
 const initial = (value: string): string => value.trim().charAt(0).toUpperCase() || '?'
 
+type TopBarSearchProps = {
+  autoFocus?: boolean
+  onDismiss?: () => void
+  variant?: 'topbar' | 'overlay'
+}
+
 // Centered search field with an inline, grouped results dropdown (command-palette
 // style). Reuses the shared `useGlobalSearch` facade so results match the full
 // Search page; adds keyboard navigation (↑/↓/Enter/Esc) and a ⌘K / Ctrl-K focus
 // shortcut.
-export const TopBarSearch = () => {
+export const TopBarSearch = ({
+  autoFocus = false,
+  onDismiss,
+  variant = 'topbar',
+}: TopBarSearchProps) => {
   const navigate = useNavigate()
   const { data: organization } = useCurrentOrganization()
   const [query, setQuery] = useState('')
@@ -108,6 +118,12 @@ export const TopBarSearch = () => {
     setActiveIndex((current) => (current >= items.length ? 0 : current))
   }, [items.length])
 
+  useEffect(() => {
+    if (!autoFocus) return undefined
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0)
+    return () => window.clearTimeout(focusTimer)
+  }, [autoFocus])
+
   // ⌘K / Ctrl-K focuses the search from anywhere.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -136,6 +152,7 @@ export const TopBarSearch = () => {
     setOpen(false)
     setQuery('')
     inputRef.current?.blur()
+    onDismiss?.()
   }
 
   const openItem = (item: ResultItem) => {
@@ -188,7 +205,13 @@ export const TopBarSearch = () => {
   const showDropdown = open && active
 
   return (
-    <div className="admin-topbar-search" ref={containerRef}>
+    <div
+      className={[
+        'admin-topbar-search',
+        variant === 'overlay' ? 'admin-topbar-search--overlay' : '',
+      ].filter(Boolean).join(' ')}
+      ref={containerRef}
+    >
       <div className="admin-topbar-search-field">
         <span className="admin-topbar-search-icon">
           <SearchGlyph />

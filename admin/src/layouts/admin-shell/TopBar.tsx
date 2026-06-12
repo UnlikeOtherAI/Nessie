@@ -164,10 +164,14 @@ const WorkspaceBadge = () => {
   )
 }
 
+type TopBarProps = {
+  hideSearch?: boolean
+}
+
 // Slack-style global top bar. Rendered full-width above the rail and content. On
 // the desktop (Tauri) app it doubles as the window title bar, with dedicated
 // drag regions around the interactive search field and buttons.
-export const TopBar = () => {
+export const TopBar = ({ hideSearch = false }: TopBarProps) => {
   const desktop = isDesktopApp()
   const location = useLocation()
   const { data: channels = [] } = useChannels()
@@ -221,7 +225,7 @@ export const TopBar = () => {
         <div aria-hidden="true" className="admin-topbar-drag-zone" data-tauri-drag-region />
       ) : null}
 
-      <TopBarSearch />
+      {hideSearch ? <div className="admin-topbar-spacer" /> : <TopBarSearch />}
 
       {desktop ? (
         <div aria-hidden="true" className="admin-topbar-drag-zone" data-tauri-drag-region />

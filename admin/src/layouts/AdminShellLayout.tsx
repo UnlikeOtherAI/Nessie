@@ -1,7 +1,12 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
-import { isReactNativeWebView, useMobileLayout, usePhoneLayout } from '../lib/mobile-shell';
+import {
+  isReactNativeWebView,
+  useMobileLayout,
+  useNativeIPadApp,
+  usePhoneLayout,
+} from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
@@ -9,6 +14,7 @@ import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
+import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
 import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
@@ -26,9 +32,11 @@ export const AdminShellLayout = () => {
   // pinned even though they are "mobile" (their native tab bar replaces the rail).
   const phoneLayout = usePhoneLayout();
   const nativeShell = isReactNativeWebView();
+  const nativeIPadApp = useNativeIPadApp();
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
   const showWebTabBar = mobileLayout && !nativeShell;
+  const hideTopBar = nativeShell && phoneLayout;
 
   if (sessionState === 'bootstrap') {
     return <Navigate to="/bootstrap" replace />;
@@ -153,7 +161,7 @@ export const AdminShellLayout = () => {
       <NotificationsProvider>
       <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
         <div className={frameClassName}>
-          <TopBar />
+          {hideTopBar ? null : <TopBar hideSearch={nativeIPadApp} />}
 
           <div className="admin-shell">
             {!mobileLayout && (
@@ -169,6 +177,7 @@ export const AdminShellLayout = () => {
         </div>
 
         {showWebTabBar && <MobileTabBar />}
+        {nativeIPadApp && <NativeSearchOverlay />}
 
         <SidebarDialogs
           createChannelTarget={shell.createChannelTarget}

@@ -99,7 +99,11 @@ Designer/Workflows/Triggers/Tools), and **Search** is the trailing tab (iOS 26
 separated search role) backed by a global `/search` page. The bar is hidden on
 the login / bootstrap screens. On iPhone and Android the bar sits at the bottom;
 on iPad (iPadOS 26) the native tab bar renders at the **top**, so `App.tsx`
-insets the WebView accordingly (`IS_IPAD`). The URL split lives in
+insets the WebView accordingly (`IS_IPAD`). The iPad native tab bar shows icons
+in portrait and label-only tabs in landscape. On iPad, tapping **Search** opens a
+wide in-page search overlay above a lightly blurred workspace instead of pushing
+the WebView to `/search`; on phones, **Search** still opens the full `/search`
+page. The URL split lives in
 `mobile/src/config.ts`:
 
 - **dev** → `http://<YOUR-MAC-LAN-IP>:5455` (the admin Vite dev server; edits
@@ -115,10 +119,12 @@ the single WebView via the postMessage bridge. Tapping a tab calls
 `{ type: 'nessie:route', path }` so the selected tab resyncs. On the web side
 this lives in `admin/src/providers/NativeShellBridge.tsx`, gated on
 `isReactNativeWebView()` (`admin/src/lib/mobile-shell.ts`). In the native shell
-the admin hides its own left rail and bottom tab bar; the per-section secondary
-sidebar (channel list, admin sub-pages, …) opens from a **top-left hamburger** as
-a slide-in drawer. Mobile *web* (a phone browser, no native shell) gets an
-equivalent web-rendered bottom tab bar instead.
+the admin hides its own left rail and bottom tab bar. Phone-sized native layouts
+also hide the admin top bar entirely; the iPad native layout keeps the remaining
+top-bar controls but moves global search into the native Search-tab overlay. The
+per-section secondary sidebar (channel list, admin sub-pages, …) opens from a
+**top-left hamburger** as a slide-in drawer. Mobile *web* (a phone browser, no
+native shell) gets an equivalent web-rendered bottom tab bar instead.
 
 **Shake to feedback.** Shaking the device (iOS/iPad/Android, via `expo-sensors`)
 captures a screenshot (`react-native-view-shot`), navigates the WebView to

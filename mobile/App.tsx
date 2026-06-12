@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AppState, type AppStateStatus, type ImageSourcePropType, Platform, StyleSheet, View } from 'react-native'
+import {
+  AppState,
+  type AppStateStatus,
+  type ImageSourcePropType,
+  Platform,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
@@ -25,6 +33,13 @@ const TAB_BAR_BASE_HEIGHT = Platform.OS === 'ios' ? 49 : 64
 const IPAD_TAB_BAR_HEIGHT = 50
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
+const NATIVE_SHELL_INFO_SCRIPT = `
+window.__nessieNativeShell = { platform: ${JSON.stringify(Platform.OS)}, formFactor: ${
+  IS_IPAD ? "'ipad'" : "'phone'"
+} };
+try { window.dispatchEvent(new Event('nessie:native-shell-info')); } catch (e) {}
+true;
+`
 
 const DEFAULT_ACTIVE_TINT = '#7c3aed'
 const DEFAULT_INACTIVE_TINT = '#8a8f98'
@@ -54,6 +69,7 @@ type AndroidIconSet = { active: Record<string, ImageSourcePropType>; inactive: R
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
+  const { height, width } = useWindowDimensions()
   const [bg, setBg] = useState(DEFAULT_BG)
   const [index, setIndex] = useState(0)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
@@ -159,6 +175,14 @@ const Shell = (): React.JSX.Element => {
     runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
   }
 
+  const openSearchOverlay = (): void => {
+    runScript('window.__nessieOpenSearchOverlay && window.__nessieOpenSearchOverlay();')
+  }
+
+  const closeSearchOverlay = (): void => {
+    runScript('window.__nessieCloseSearchOverlay && window.__nessieCloseSearchOverlay();')
+  }
+
   // Google blocks OAuth inside embedded webviews, so the admin hands SSO off to
   // us: open the authorize URL in the OS browser (ASWebAuthenticationSession),
   // then deliver the deep-link callback back into the webview to finish.
@@ -194,7 +218,15 @@ const Shell = (): React.JSX.Element => {
   })
 
   const onMessage = (event: WebViewMessageEvent): void => {
-    let msg: { type?: string; color?: string; url?: string; path?: string; accent?: string; inactive?: string }
+    let msg: {
+      type?: string
+      color?: string
+      url?: string
+      path?: string
+      accent?: string
+      inactive?: string
+      active?: boolean
+    }
     try {
       msg = JSON.parse(event.nativeEvent.data)
     } catch {
@@ -214,6 +246,15 @@ const Shell = (): React.JSX.Element => {
       void runExternalAuth(msg.url)
       return
     }
+    if (msg.type === 'nessie:search-overlay') {
+      if (msg.active) {
+        const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
+        if (searchIndex !== -1) setIndex(searchIndex)
+      } else {
+        setIndex(tabIndexForPath(currentPath ?? '/channels'))
+      }
+      return
+    }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
       // The admin only emits this once React has mounted, so it doubles as the
       // "booted" signal that defuses the blank-screen watchdog.
@@ -228,6 +269,11 @@ const Shell = (): React.JSX.Element => {
 
   const onIndexChange = (next: number): void => {
     setIndex(next)
+    if (IS_IPAD && TABS[next]?.key === 'search') {
+      openSearchOverlay()
+      return
+    }
+    closeSearchOverlay()
     navigateTo(TABS[next].path)
   }
 
@@ -245,6 +291,7 @@ const Shell = (): React.JSX.Element => {
     index,
     routes: TABS.map((tab) => ({ key: tab.key, title: tab.title, role: tab.role })),
   }
+  const hideIpadLandscapeIcons = IS_IPAD && width > height
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
@@ -256,6 +303,7 @@ const Shell = (): React.JSX.Element => {
             getIcon={({ route, focused }) => {
               const tab = TABS.find((item) => item.key === route.key)
               if (!tab) return undefined
+              if (hideIpadLandscapeIcons) return undefined
               if (IS_ANDROID) {
                 if (!androidIcons) return undefined
                 return focused ? androidIcons.active[tab.key] : androidIcons.inactive[tab.key]
@@ -276,7 +324,8 @@ const Shell = (): React.JSX.Element => {
         <WebView
           allowsBackForwardNavigationGestures
           domStorageEnabled
-          injectedJavaScript={INJECTED}
+          injectedJavaScriptBeforeContentLoaded={NATIVE_SHELL_INFO_SCRIPT}
+          injectedJavaScript={`${NATIVE_SHELL_INFO_SCRIPT}\n${INJECTED}`}
           key={webviewKey}
           mediaPlaybackRequiresUserAction={false}
           onContentProcessDidTerminate={() => webRef.current?.reload()}

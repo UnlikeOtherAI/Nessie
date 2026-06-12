@@ -1,10 +1,45 @@
+import { useEffect, useState } from 'react'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+
+type NativeShellInfo = {
+  platform?: string
+  formFactor?: 'ipad' | 'phone' | string
+}
+
+type NativeShellWindow = Window & {
+  __nessieNativeShell?: NativeShellInfo
+}
+
+const NATIVE_SHELL_INFO_EVENT = 'nessie:native-shell-info'
 
 // True inside the React Native WebView shell (the mobile app). The shell injects
 // a `ReactNativeWebView` global that backs the postMessage bridge. Mirrors the
 // desktop `isDesktopApp()` check in ./desktop.ts.
 export const isReactNativeWebView = (): boolean =>
   typeof window !== 'undefined' && 'ReactNativeWebView' in window
+
+const readNativeShellInfo = (): NativeShellInfo | null => {
+  if (typeof window === 'undefined') return null
+  return (window as NativeShellWindow).__nessieNativeShell ?? null
+}
+
+export const useNativeShellInfo = (): NativeShellInfo | null => {
+  const [info, setInfo] = useState<NativeShellInfo | null>(() => readNativeShellInfo())
+
+  useEffect(() => {
+    const sync = () => setInfo(readNativeShellInfo())
+    window.addEventListener(NATIVE_SHELL_INFO_EVENT, sync)
+    sync()
+    return () => window.removeEventListener(NATIVE_SHELL_INFO_EVENT, sync)
+  }, [])
+
+  return info
+}
+
+export const useNativeIPadApp = (): boolean => {
+  const info = useNativeShellInfo()
+  return isReactNativeWebView() && info?.platform === 'ios' && info.formFactor === 'ipad'
+}
 
 // Below Tailwind's `md` breakpoint (768px) we treat the layout as mobile and drive
 // navigation from a tab bar + hamburger drawer instead of the rail + secondary
