@@ -210,9 +210,13 @@ Shipped across 5 parallel worktrees, reviewed + verified, merged to `main`.
   enum (stored in the existing `preferences` JSON — no migration);
   `ThemeProvider` hydrates from `me.user.preferences.theme` and `setTheme`
   writes through `PATCH /api/auth/me/preferences` (localStorage stays the
-  pre-login fallback). The PATCH now *merges* a theme-only body so it can't wipe
-  `starred`/`pushEnabled`. Verified live: theme-only PATCH persists + preserves
-  other prefs; a `contrast` server pref hydrates on reload.
+  pre-login fallback). The PATCH is a per-key *partial merge*: each settings
+  surface (appearance, notifications, starred) sends only its own slice,
+  provided keys overwrite, absent keys are preserved, and an explicit `null`
+  clears a key. This replaced the earlier theme-only-merge special case, which
+  still let a non-theme single-key write (e.g. `fontScale`) wipe `pushEnabled`/
+  `pushQuietHours`. Verified live: theme-only PATCH persists + preserves other
+  prefs; a `contrast` server pref hydrates on reload.
 - **Swatches** on each Appearance card (rail/accent/tx preview).
 
 **P2 — design-system tokens (admin `styles.css`, `:root` only):** typography

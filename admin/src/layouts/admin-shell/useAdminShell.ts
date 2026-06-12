@@ -73,10 +73,6 @@ export const useAdminShell = () => {
     () => me?.user.preferences?.starred ?? [],
     [me?.user.preferences?.starred],
   );
-  const initialPreferences = useMemo(
-    () => me?.user.preferences ?? {},
-    [me?.user.preferences],
-  );
   const {
     channelsCollapsed,
     dmCollapsed,
@@ -91,7 +87,7 @@ export const useAdminShell = () => {
     toggleProjectsCollapsed,
     toggleStar,
     toggleStarredCollapsed,
-  } = useStarredItems({ initialPreferences, initialStarred });
+  } = useStarredItems({ initialStarred });
 
   const unreadCountByChannelId = useMemo(
     () => new Map(channels.map((channel) => [channel.id, channel.unreadCount])),

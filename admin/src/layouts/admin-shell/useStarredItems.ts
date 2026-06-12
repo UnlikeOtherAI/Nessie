@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { UserPreferences } from '@nessie/schemas'
 import { useUpdatePreferences } from '../../facades/auth/hooks'
 import { getCookie, setCookie } from '../../lib/storage'
 import type { StarredItem } from './types'
 
 type UseStarredItemsArgs = {
-  initialPreferences: UserPreferences
   initialStarred: StarredItem[]
 }
 
@@ -13,7 +11,7 @@ type UseStarredItemsArgs = {
  * Owns the cookie-backed sidebar collapse state plus the starred-item list,
  * including persistence to the user preferences endpoint.
  */
-export const useStarredItems = ({ initialPreferences, initialStarred }: UseStarredItemsArgs) => {
+export const useStarredItems = ({ initialStarred }: UseStarredItemsArgs) => {
   const updatePreferences = useUpdatePreferences()
   const [channelsCollapsed, setChannelsCollapsed] = useState(
     () => getCookie('channelsCollapsed') === '1',
@@ -82,10 +80,10 @@ export const useStarredItems = ({ initialPreferences, initialStarred }: UseStarr
       const next = exists
         ? prev.filter((s) => !(s.type === type && s.id === id))
         : [...prev, { type, id }]
-      updatePreferences.mutate({ ...initialPreferences, starred: next })
+      updatePreferences.mutate({ starred: next })
       return next
     })
-  }, [initialPreferences, updatePreferences])
+  }, [updatePreferences])
 
   return {
     channelsCollapsed,

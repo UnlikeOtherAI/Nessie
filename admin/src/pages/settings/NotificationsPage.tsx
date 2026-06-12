@@ -59,24 +59,16 @@ const getChannelMuted = (channel: ChannelRecord): boolean | undefined => {
   return typeof maybeMuted === 'boolean' ? maybeMuted : undefined
 }
 
+// The preferences PATCH merges per-key, so this owns only the push slice:
+// `pushQuietHours: null` clears quiet hours; sibling keys (theme, fontScale,
+// starred) are preserved server-side.
 const buildPreferencesPayload = (
-  current: UserPreferences | undefined,
   pushEnabled: boolean,
   quietHours: PushQuietHours | null,
-): UserPreferences => {
-  const next: UserPreferences = {
-    ...(current ?? {}),
-    pushEnabled,
-  }
-
-  if (quietHours) {
-    next.pushQuietHours = quietHours
-  } else {
-    delete next.pushQuietHours
-  }
-
-  return next
-}
+): UserPreferences => ({
+  pushEnabled,
+  pushQuietHours: quietHours,
+})
 
 const feedbackClass = (kind: Feedback['kind']): string =>
   [
@@ -175,7 +167,7 @@ export const NotificationsPage = () => {
 
     try {
       await updatePreferences.mutateAsync(
-        buildPreferencesPayload(me.user.preferences, pushEnabled, quietHours),
+        buildPreferencesPayload(pushEnabled, quietHours),
       )
       setPreferenceFeedback({ kind: 'success', message: 'Notification preferences saved.' })
     } catch (error) {
