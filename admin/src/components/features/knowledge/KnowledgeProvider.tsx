@@ -44,6 +44,9 @@ type KnowledgeContextValue = {
   childrenOf: (parentPageId: string) => KnowledgePageRecord[]
   pageById: (pageId: string) => KnowledgePageRecord | undefined
   pagePath: string[]
+  openPageId?: string
+  browseTo: (path: string[]) => void
+  openPagePath: (path: string[]) => void
   openRootPage: (pageId: string) => void
   drillTo: (depth: number, childPageId: string) => void
   popTo: (depth: number) => void
@@ -82,6 +85,7 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
 
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>()
   const [pagePath, setPagePath] = useState<string[]>([])
+  const [openPageId, setOpenPageId] = useState<string | undefined>()
   const [editor, setEditor] = useState<KnowledgeEditorState>(null)
   const [historyPageId, setHistoryPageId] = useState<string | undefined>()
 
@@ -155,10 +159,12 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
 
   const selectedSpace = spaces.find((space) => space.id === selectedSpaceId) ?? null
   const rootPages = pagesByParent.get(null) ?? []
+  const validOpenPageId = openPageId && validPath.at(-1) === openPageId ? openPageId : undefined
 
   const selectSpace = (spaceId: string) => {
     setSelectedSpaceId(spaceId)
     setPagePath([])
+    setOpenPageId(undefined)
     setEditor(null)
     setHistoryPageId(undefined)
   }
@@ -170,25 +176,41 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     })
     setSelectedSpaceId(created.id)
     setPagePath([])
+    setOpenPageId(undefined)
     setEditor(null)
     setHistoryPageId(undefined)
     return created
   }
 
-  const openRootPage = (pageId: string) => {
-    setPagePath([pageId])
+  const browseTo = (path: string[]) => {
+    setPagePath(path)
+    setOpenPageId(undefined)
     setEditor(null)
     setHistoryPageId(undefined)
   }
 
+  const openPagePath = (path: string[]) => {
+    const pageId = path.at(-1)
+    if (!pageId) return
+    setPagePath(path)
+    setOpenPageId(pageId)
+    setEditor(null)
+    setHistoryPageId(undefined)
+  }
+
+  const openRootPage = (pageId: string) => openPagePath([pageId])
+
   const drillTo = (depth: number, childPageId: string) => {
     setPagePath((current) => [...current.slice(0, depth + 1), childPageId])
+    setOpenPageId(childPageId)
     setEditor(null)
     setHistoryPageId(undefined)
   }
 
   const popTo = (depth: number) => {
-    setPagePath((current) => current.slice(0, depth))
+    const nextPath = pagePath.slice(0, depth)
+    setPagePath(nextPath)
+    setOpenPageId(nextPath.at(-1))
     setEditor(null)
     setHistoryPageId(undefined)
   }
@@ -208,10 +230,12 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     const created = await createPageMutation.mutateAsync(input)
     if (parentPageId) {
       const depth = pagePath.indexOf(parentPageId)
-      setPagePath(depth >= 0 ? [...pagePath.slice(0, depth + 1), created.id] : [created.id])
+      const nextPath = depth >= 0 ? [...pagePath.slice(0, depth + 1), created.id] : [created.id]
+      setPagePath(nextPath)
     } else {
       setPagePath([created.id])
     }
+    setOpenPageId(created.id)
     setEditor(null)
   }
 
@@ -241,6 +265,9 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     childrenOf: (parentPageId) => pagesByParent.get(parentPageId) ?? [],
     pageById: (pageId) => pagesById.get(pageId),
     pagePath: validPath,
+    openPageId: validOpenPageId,
+    browseTo,
+    openPagePath,
     openRootPage,
     drillTo,
     popTo,

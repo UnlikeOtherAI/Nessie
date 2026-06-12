@@ -316,21 +316,29 @@ that column):
 - The second column is **only the Spaces list** — styled like the channels list
   (a collapsible "Spaces" header with a `+` that opens a centered
   `CreateSpaceDialog` modal). No pages live here.
-- The main area is a **single full-width view** (no skinny Miller columns), driven
-  by a navigation stack (`pagePath`) and a shared `KnowledgePane` chrome (a 50px
-  header with a **Back** button + title + actions):
-  - **Pages list** — the selected space's top-level pages, with **New page**.
-  - **Page preview** (`PagePreview`) — full-width read-only page (status, title,
-    summary, labels, rendered body, and a Sub-pages section). Selecting a
-    sub-page pushes it onto the stack (still full-width); **Back** pops.
-  - **Editor** (`PageEditor`) and **version History** — also full-width, each with
-    a Back button.
+- The main area uses shared `KnowledgePane` chrome (a 50px header with optional
+  **Back** + title + centered view switcher + actions). The root browsing state
+  is a filesystem-style view with folders first, then files, and every row starts
+  with a folder/file icon:
+  - The centered segmented switcher offers **Full page**, **Column**, and
+    **Tree** views. **Column** is the default and the selected view persists in a
+    cookie.
+  - **Full page** shows one full-width folder at a time with breadcrumbs.
+  - **Column** uses sliding columns for folder traversal.
+  - **Tree** shows an expandable/collapsible hierarchy with animated branches.
+  - **Page preview** (`PagePreview`) is always a full-width read-only document
+    view (status, title, summary, labels, rendered body, and a Sub-pages
+    section). Selecting a document from any browsing view opens this fullscreen
+    document state; **Back** pops to the parent document or browser root.
+  - **Editor** (`PageEditor`) and **version History** are also full-width, each
+    with a Back button.
 
 Shared state lives in `KnowledgeProvider`
 (`admin/src/components/features/knowledge/`), which wraps the sidebar and the
 route outlet on the Knowledge route. The page hierarchy is derived client-side
-from the flat `GET /spaces/:id/pages` list via `parentPageId` (the list already
-includes each page's latest version body), so navigation needs no extra requests.
+from the flat `GET /spaces/:id/pages` list via `parentPageId` and `childPageIds`
+(the list already includes each page's latest version body), so navigation needs
+no extra requests.
 
 ### First-visit seeding
 
