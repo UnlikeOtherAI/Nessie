@@ -233,3 +233,37 @@ Follow-up polish from live review.
   `assigneeAgentId` fields; dev-login token issues correctly.
 - Visual layer confirmed live on the running dev board by the user; kelpie is
   unusable for this admin and the Playwright MCP browser was busy this session.
+
+## Update 2026-06-12 (3) — archive done work (Done-column action)
+
+Completed work can now be tucked away without being cancelled.
+
+### Model — `archivedAt`
+
+- **Schema**: `Task.archivedAt DateTime?`. Archiving sets the timestamp; **status
+  stays `done`** so it is reversible (unarchive clears it). Migration
+  `20260612150000_add_task_archived_at` (additive). Chosen over reusing
+  `cancelled` so "done" and "cancelled" stay distinct.
+- **Contracts**: `TaskRecord.archivedAt`; `UpdateTaskBody.archivedAt` (so a single
+  task can be un/archived via `PATCH`); new `ArchiveDoneTasksBody { olderThanDays?
+  }`.
+- **Service/Routes**: `archiveDoneTasks` stamps every still-unarchived `done` task
+  in the org (or only those whose `updatedAt` precedes the `olderThanDays`
+  cutoff). `POST /api/tasks/archive-done` exposes it; `updateTask` writes
+  `archivedAt`. **Org-wide** by design — both boards archive all org done-work.
+
+### Board (`admin/`)
+
+- The **Done column** gains a top-right **Archive ▾** button (`ArchiveDoneMenu.tsx`)
+  whose popup offers **Archive all done** and **Archive older than a week**.
+  `KanbanColumn` gained an optional `headerAction` slot.
+- `KanbanBoard` routes any task with `archivedAt` into the **Archived** section
+  (alongside failed/cancelled), so archived done-cards leave the Done column.
+- The task dialog shows an **Unarchive** action for archived tasks
+  (`PATCH archivedAt: null`), beside the existing Restore / Cancel actions.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
+- `POST /api/tasks/archive-done` exercised against the dev API (see commit).
+- Visual layer to be confirmed live (kelpie broken; Playwright MCP busy).

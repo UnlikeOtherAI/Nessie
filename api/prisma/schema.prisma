@@ -1840,6 +1840,7 @@ model Task {
   status           TaskStatus        @default(inbox)
   priority         TaskPriority      @default(medium)
   dueDate          DateTime?         @map("due_date")
+  archivedAt       DateTime?         @map("archived_at")
   title            String?
   purpose          String?
   detail           String?

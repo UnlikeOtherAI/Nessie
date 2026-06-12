@@ -7,9 +7,17 @@ type KanbanColumnProps = {
   dot: string
   count: number
   children: ReactNode
+  headerAction?: ReactNode
 }
 
-export const KanbanColumn = ({ columnId, label, dot, count, children }: KanbanColumnProps) => {
+export const KanbanColumn = ({
+  columnId,
+  label,
+  dot,
+  count,
+  children,
+  headerAction,
+}: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: columnId })
 
   return (
@@ -20,6 +28,7 @@ export const KanbanColumn = ({ columnId, label, dot, count, children }: KanbanCo
           {label}
         </span>
         <span className="text-xs text-[color:var(--tx3)]">{count}</span>
+        {headerAction ? <div className="ml-auto">{headerAction}</div> : null}
       </div>
       <div
         ref={setNodeRef}

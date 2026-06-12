@@ -22,6 +22,7 @@ export type TaskRecord = {
   status: TaskStatus
   priority: TaskPriority
   dueDate: string | null
+  archivedAt: string | null
   title: string | null
   purpose: string | null
   detail: string | null
@@ -94,10 +95,24 @@ export const useUpdateTask = () => {
       detail?: string | null
       priority?: TaskPriority
       dueDate?: string | null
+      archivedAt?: string | null
     }) => {
       const { id, ...fields } = input
       return apiClient.patch<TaskRecord>(`/api/tasks/${id}`, fields)
     },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['iterations'] })
+    },
+  })
+}
+
+export const useArchiveDoneTasks = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { olderThanDays?: number | null }) =>
+      apiClient.post<{ count: number }>('/api/tasks/archive-done', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
       void queryClient.invalidateQueries({ queryKey: ['iterations'] })

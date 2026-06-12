@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { type AuthorizedActionContext, ProjectIdSchema, TaskStatusSchema } from '@nessie/schemas'
 import {
+  ArchiveDoneTasksBodySchema,
   AssignableUserSchema,
   AssignTaskBodySchema,
   CreateTaskBodySchema,
@@ -13,6 +14,7 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
+  archiveDoneTasks,
   assignTask,
   createHumanTask,
   getTask,
@@ -58,6 +60,22 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
     const users = await listAssignableUsers(prisma, actorContext.tenant.organizationId)
     return createApiResponse(AssignableUserSchema.array().parse(users))
+  })
+
+  // Bulk-archive the org's done tasks (optionally only those older than N days).
+  app.post('/api/tasks/archive-done', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const body = parseInput(ArchiveDoneTasksBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const result = await archiveDoneTasks(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      olderThanDays: body.olderThanDays,
+    })
+    return createApiResponse(result)
   })
 
   app.post('/api/tasks', async (request, reply) => {
@@ -215,6 +233,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       ...(body.detail !== undefined ? { detail: body.detail } : {}),
       ...(body.priority !== undefined ? { priority: body.priority } : {}),
       ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
+      ...(body.archivedAt !== undefined ? { archivedAt: body.archivedAt } : {}),
       ...(body.storyPoints !== undefined ? { storyPoints: body.storyPoints } : {}),
     }
     if (Object.keys(fields).length === 0) {

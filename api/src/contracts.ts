@@ -1957,6 +1957,7 @@ export const TaskRecordSchema = z.object({
   status: TaskStatusSchema,
   priority: TaskPrioritySchema,
   dueDate: TimestampSchema.nullable(),
+  archivedAt: TimestampSchema.nullable(),
   title: z.string().nullable(),
   purpose: z.string().nullable(),
   detail: z.string().nullable(),
@@ -1991,7 +1992,14 @@ export const UpdateTaskBodySchema = z.object({
   detail: z.string().nullable().optional(),
   priority: TaskPrioritySchema.optional(),
   dueDate: z.coerce.date().nullable().optional(),
+  archivedAt: z.coerce.date().nullable().optional(),
   storyPoints: z.number().int().min(0).nullable().optional(),
+})
+
+// Bulk-archive the org's done tasks; an absent / null olderThanDays archives
+// every done task, otherwise only those last touched before the cutoff.
+export const ArchiveDoneTasksBodySchema = z.object({
+  olderThanDays: z.number().int().positive().nullable().optional(),
 })
 
 export const SetTaskIterationBodySchema = z.object({

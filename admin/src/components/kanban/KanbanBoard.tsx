@@ -7,6 +7,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { type TaskRecord } from '../../facades/tasks/hooks'
+import { ArchiveDoneMenu } from './ArchiveDoneMenu'
 import { KanbanCard } from './KanbanCard'
 import { KanbanColumn } from './KanbanColumn'
 import { TaskDialog } from './TaskDialog'
@@ -43,6 +44,12 @@ export const KanbanBoard = ({
     const grouped: Record<string, TaskRecord[]> = Object.fromEntries(columns.map((c) => [c.id, []]))
     const archivedTasks: TaskRecord[] = []
     for (const task of tasks) {
+      // Explicitly archived done-work (archivedAt) leaves its column for the
+      // Archived section, same as failed/cancelled.
+      if (task.archivedAt) {
+        archivedTasks.push(task)
+        continue
+      }
       const columnId = placeTask(task, columns)
       if (columnId && grouped[columnId]) grouped[columnId].push(task)
       else if (ARCHIVED_STATUSES.includes(task.status)) archivedTasks.push(task)
@@ -76,6 +83,7 @@ export const KanbanBoard = ({
               columnId={column.id}
               count={byColumn[column.id]?.length ?? 0}
               dot={CATEGORY_DOT[column.category]}
+              headerAction={column.category === 'done' ? <ArchiveDoneMenu /> : undefined}
               label={column.name}
             >
               {(byColumn[column.id] ?? []).map((task) => (

@@ -149,6 +149,17 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
     }
   }
 
+  const handleUnarchive = async () => {
+    if (!task) return
+    setError(null)
+    try {
+      await updateTask.mutateAsync({ id: task.id, archivedAt: null })
+      onClose()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not unarchive task')
+    }
+  }
+
   return (
     <div
       onClick={(event) => {
@@ -329,7 +340,15 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           <div className="flex items-center justify-between pt-1 md:col-span-2">
             <div className="text-xs">
               {isEdit && task ? (
-                archived ? (
+                task.archivedAt ? (
+                  <button
+                    className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+                    onClick={() => void handleUnarchive()}
+                    type="button"
+                  >
+                    Unarchive
+                  </button>
+                ) : archived ? (
                   <button
                     className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
                     onClick={() => void handleStatus('inbox')}

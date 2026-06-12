@@ -49,6 +49,7 @@ const mapTask = (task: TaskWithUsers): TaskRecord => ({
   status: task.status,
   priority: task.priority,
   dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+  archivedAt: task.archivedAt ? task.archivedAt.toISOString() : null,
   title: task.title,
   purpose: task.purpose,
   detail: task.detail,
@@ -389,6 +390,7 @@ export type TaskUpdateFields = {
   detail?: string | null
   priority?: TaskPriority
   dueDate?: Date | null
+  archivedAt?: Date | null
   storyPoints?: number | null
 }
 
@@ -411,6 +413,7 @@ export const updateTask = async (
   if (input.fields.detail !== undefined) data.detail = input.fields.detail
   if (input.fields.priority !== undefined) data.priority = input.fields.priority
   if (input.fields.dueDate !== undefined) data.dueDate = input.fields.dueDate
+  if (input.fields.archivedAt !== undefined) data.archivedAt = input.fields.archivedAt
   if (input.fields.storyPoints !== undefined) data.storyPoints = input.fields.storyPoints
 
   const task = await prisma.task.update({
@@ -419,6 +422,31 @@ export const updateTask = async (
     include: taskInclude,
   })
   return mapTask(task)
+}
+
+// Bulk-archive the org's done work. olderThanDays (when set) limits it to tasks
+// last touched before the cutoff; otherwise every still-unarchived done task is
+// stamped. Archiving only sets archivedAt — status stays `done` so it can be
+// unarchived — and the board moves stamped cards into its Archived section.
+export const archiveDoneTasks = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; olderThanDays?: number | null },
+): Promise<{ count: number }> => {
+  const now = new Date()
+  const cutoff =
+    input.olderThanDays && input.olderThanDays > 0
+      ? new Date(now.getTime() - input.olderThanDays * 24 * 60 * 60 * 1000)
+      : null
+  const { count } = await prisma.task.updateMany({
+    where: {
+      organizationId: input.organizationId,
+      status: 'done',
+      archivedAt: null,
+      ...(cutoff ? { updatedAt: { lt: cutoff } } : {}),
+    },
+    data: { archivedAt: now },
+  })
+  return { count }
 }
 
 // Each board column maps onto one canonical lifecycle status. Dragging a card
