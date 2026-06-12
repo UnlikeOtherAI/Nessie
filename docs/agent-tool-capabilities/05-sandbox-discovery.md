@@ -5,10 +5,18 @@
 Tool and sub-agent execution policy must include explicit filesystem constraints:
 
 ```ts
+type SandboxRoot =
+  | string
+  | {
+      path: string
+      kind?: 'dir' | 'file'
+      access?: 'ro' | 'rw'
+    }
+
 type SandboxPolicy = {
   type: 'allow-deny'
   allowOutsideReadOnly: boolean
-  allowedRoots: string[]             // e.g. ["/System/Volumes/Data/Projects"]
+  allowedRoots: SandboxRoot[]        // string roots are legacy dir/rw entries
   allowedCwd?: string[]             // command default and runtime cwd override allowlist
   deniedPaths?: string[]            // deny takes precedence
   env: {
@@ -31,8 +39,13 @@ type SandboxPolicy = {
 
 - Defaults should be strict:
   - deny by default outside configured execution roots unless explicitly listed.
-  - treat `write` as denied unless explicitly allowed in `allowedRoots`.
+  - treat `write` as denied unless the matching `allowedRoots` entry has `access: 'rw'`.
   - all external path reads must be denied or mapped read-only when `allowOutsideReadOnly = true`.
+- `allowedRoots` entries:
+  - legacy string entries normalize to `{ path, kind: 'dir', access: 'rw' }`.
+  - object entries may set `kind: 'dir' | 'file'`; missing `kind` defaults to `dir`.
+  - object entries may set `access: 'ro' | 'rw'`; missing `access` defaults to `rw`.
+  - invalid `kind` or `access` values must fail validation instead of widening permissions.
 - Sandbox policy can be inherited from role, then overridden by agent, then overridden by tool call config.
 - Enforcement points:
   - command/session spawn normalization

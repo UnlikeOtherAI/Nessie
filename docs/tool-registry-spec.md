@@ -294,6 +294,14 @@ Supported file forms:
 Manifest schema:
 
 ```ts
+type SandboxRoot =
+  | string
+  | {
+      path: string;
+      kind?: 'dir' | 'file';
+      access?: 'ro' | 'rw';
+    };
+
 type NessieToolBundle = {
   apiVersion: 'toolset.nessie.io/v1';
   kind: 'NessieToolBundle';
@@ -313,7 +321,7 @@ type NessieToolBundle = {
     defaultToolMode: ToolGrantState;
     defaultSandbox?: {
       allowOutsideReadOnly?: boolean;
-      allowedRoots?: string[];
+      allowedRoots?: SandboxRoot[];
       deniedPaths?: string[];
       env?: {
         allowVars?: string[];

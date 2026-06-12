@@ -17,7 +17,18 @@
     "defaultToolMode": "inherit",
     "defaultSandbox": {
       "allowOutsideReadOnly": true,
-      "allowedRoots": ["/System/Volumes/Data/.internal/projects/Projects"],
+      "allowedRoots": [
+        {
+          "path": "/System/Volumes/Data/.internal/projects/Projects",
+          "kind": "dir",
+          "access": "rw"
+        },
+        {
+          "path": "/System/Volumes/Data/.internal/projects/Projects/shared-readme.md",
+          "kind": "file",
+          "access": "ro"
+        }
+      ],
       "deniedPaths": ["/etc", "/System/Volumes/Data/.internal/secrets"],
       "env": {
         "allowVars": ["PATH", "HOME", "OLLAMA_HOST"],

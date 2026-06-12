@@ -33,6 +33,60 @@ test('validateManifest accepts a well-formed bundle and reports absent signature
   }
 })
 
+test('validateManifest accepts sandbox roots with explicit kind and access', async () => {
+  const value = parseManifest(await readFixture('valid.json'), 'json') as Record<
+    string,
+    unknown
+  >
+  value.policy = {
+    defaultToolMode: 'inherit',
+    defaultSandbox: {
+      allowedRoots: [
+        '/tmp/legacy-root',
+        { path: '/tmp/read-only-config.json', kind: 'file', access: 'ro' },
+        { path: '/tmp/workspace', kind: 'dir', access: 'rw' },
+      ],
+    },
+  }
+
+  const result = validateManifest(value)
+
+  assert.equal(result.ok, true)
+  if (result.ok) {
+    assert.deepEqual(result.bundle.policy?.defaultSandbox?.allowedRoots, [
+      '/tmp/legacy-root',
+      { path: '/tmp/read-only-config.json', kind: 'file', access: 'ro' },
+      { path: '/tmp/workspace', kind: 'dir', access: 'rw' },
+    ])
+  }
+})
+
+test('validateManifest rejects sandbox roots with invalid kind or access', async () => {
+  const value = parseManifest(await readFixture('valid.json'), 'json') as Record<
+    string,
+    unknown
+  >
+  value.policy = {
+    defaultToolMode: 'inherit',
+    defaultSandbox: {
+      allowedRoots: [
+        { path: '/tmp/workspace', kind: 'directory', access: 'read' },
+      ],
+    },
+  }
+
+  const result = validateManifest(value)
+
+  assert.equal(result.ok, false)
+  if (!result.ok) {
+    const paths = result.errors.map((e) => e.path)
+    assert.ok(
+      paths.some((p) => p.includes('policy.defaultSandbox.allowedRoots')),
+      `expected allowedRoots errors, got ${JSON.stringify(paths)}`,
+    )
+  }
+})
+
 test('validateManifest rejects manifests missing a required field with field path', async () => {
   const value = parseManifest(await readFixture('missing-required.json'), 'json')
 

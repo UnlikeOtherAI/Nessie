@@ -72,10 +72,21 @@ const SandboxEnvSchema = z
   })
   .strict()
 
+const SandboxRootSchema = z.union([
+  z.string().min(1, 'allowedRoots entries must not be empty'),
+  z
+    .object({
+      path: z.string().min(1, 'allowedRoots.path must not be empty'),
+      kind: z.enum(['dir', 'file']).optional(),
+      access: z.enum(['ro', 'rw']).optional(),
+    })
+    .strict(),
+])
+
 const SandboxSchema = z
   .object({
     allowOutsideReadOnly: z.boolean().optional(),
-    allowedRoots: z.array(z.string()).optional(),
+    allowedRoots: z.array(SandboxRootSchema).optional(),
     deniedPaths: z.array(z.string()).optional(),
     env: SandboxEnvSchema.optional(),
   })
@@ -146,6 +157,7 @@ export const NessieToolBundleSchema = z
 
 export type NessieToolBundleSignature = z.infer<typeof SignatureSchema>
 export type NessieToolBundleMetadata = z.infer<typeof MetadataSchema>
+export type NessieToolBundleSandboxRoot = z.infer<typeof SandboxRootSchema>
 export type NessieToolBundleTool = z.infer<typeof ToolEntrySchema>
 export type NessieToolBundlePolicy = z.infer<typeof PolicySchema>
 export type NessieToolBundle = z.infer<typeof NessieToolBundleSchema>
