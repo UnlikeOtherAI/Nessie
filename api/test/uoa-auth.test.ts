@@ -1,13 +1,26 @@
 import assert from 'node:assert/strict'
+import { generateKeyPairSync } from 'node:crypto'
 import test from 'node:test'
 
-import { exchangeUoaCode } from '../src/services/uoa-auth.js'
+import {
+  buildConfigJwt,
+  buildUoaAuthorizeUrl,
+  exchangeUoaCode,
+  loadUoaSettings,
+} from '../src/services/uoa-auth.js'
+
+const testPrivateKeyPem = String(
+  generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
+    format: 'pem',
+    type: 'pkcs8',
+  }),
+)
 
 const uoaEnv = {
   UOA_BASE_URL: 'https://uoa.example.com',
   UOA_CLIENT_SECRET: 'client-secret',
   UOA_CONFIG_JWT_KID: 'test-kid',
-  UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from('unused-private-key').toString('base64'),
+  UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from(testPrivateKeyPem).toString('base64'),
   UOA_CONFIG_URL: 'https://api.example.com/api/auth/sso/config',
   UOA_DOMAIN: 'api.example.com',
   UOA_JWKS_URL: 'https://api.example.com/.well-known/jwks.json',
@@ -20,6 +33,12 @@ const jwtForClaims = (claims: Record<string, unknown>): string =>
     Buffer.from(JSON.stringify(claims)).toString('base64url'),
     'signature',
   ].join('.')
+
+const decodeJwtPayload = (token: string): Record<string, unknown> => {
+  const payload = token.split('.')[1]
+  assert.ok(payload)
+  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<string, unknown>
+}
 
 const withUoaEnv = async <T>(fn: () => Promise<T>): Promise<T> => {
   const previous = Object.fromEntries(
@@ -75,6 +94,30 @@ test('exchangeUoaCode humanizes email-only identities', async () => {
       assert.equal(identity.displayName, 'Ada Lovelace')
       assert.equal(identity.email, 'ada.lovelace@example.com')
     })
+  })
+})
+
+test('buildConfigJwt uses the selected hosted-login theme palette', async () => {
+  await withUoaEnv(async () => {
+    const payload = decodeJwtPayload(buildConfigJwt(loadUoaSettings(), 'ocean'))
+    const uiTheme = payload.ui_theme as { colors: Record<string, string> }
+
+    assert.equal(uiTheme.colors.primary, '#0e7490')
+    assert.equal(uiTheme.colors.bg, '#0b1a22')
+    assert.equal(uiTheme.colors.surface, '#102733')
+  })
+})
+
+test('buildUoaAuthorizeUrl passes the selected theme through config_url', async () => {
+  await withUoaEnv(async () => {
+    const authorizeUrl = new URL(buildUoaAuthorizeUrl({
+      codeChallenge: 'challenge',
+      redirectUri: uoaEnv.UOA_REDIRECT_URL,
+      theme: 'rose',
+    }))
+
+    const configUrl = authorizeUrl.searchParams.get('config_url')
+    assert.equal(configUrl, 'https://api.example.com/api/auth/sso/config?theme=rose')
   })
 })
 

@@ -14,6 +14,7 @@ import {
   BootstrapModeResponseSchema,
   BootstrapRequestSchema,
   LoginRequestSchema,
+  SsoConfigQuerySchema,
 } from '../contracts.js'
 import { seedBootstrapRecords } from '../db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -56,14 +57,18 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
   // UOA (UnlikeOtherAuthenticator) integration endpoints. The signed config JWT
   // describes this deployment to UOA; the JWKS lets UOA verify it. Both are only
   // served when UOA is configured via env.
-  app.get('/api/auth/sso/config', { config: { public: true } }, async (_request, reply) => {
+  app.get('/api/auth/sso/config', { config: { public: true } }, async (request, reply) => {
+    const query = parseInput(SsoConfigQuerySchema, request.query, reply)
+    if (!query) {
+      return reply
+    }
     if (!isUoaConfigured()) {
       sendApiError(reply, 404, 'SSO_NOT_CONFIGURED', 'UOA SSO is not configured')
       return reply
     }
     return reply
       .header('content-type', 'application/jwt')
-      .send(buildConfigJwt(loadUoaSettings()))
+      .send(buildConfigJwt(loadUoaSettings(), query.theme))
   })
 
   app.get('/.well-known/jwks.json', { config: { public: true } }, async (_request, reply) => {
