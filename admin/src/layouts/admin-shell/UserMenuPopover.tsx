@@ -4,6 +4,8 @@ import { faArrowRightFromBracket, faGear } from '@fortawesome/free-solid-svg-ico
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MeAuth, MeUser } from '@nessie/schemas'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { PresenceControl } from './user-menu/PresenceControl'
+import { StatusSection } from './user-menu/StatusSection'
 
 // Friendly one-line description of how the user signs in.
 const providerLabel = (auth: MeAuth): string => {
@@ -77,8 +79,10 @@ export const UserMenuPopover = ({
             avatarUrl={user.avatarUrl}
             displayName={user.displayName}
             gravatarUrl={user.gravatarUrl}
+            ringColor="var(--panel)"
             size={40}
             token={token}
+            userId={user.id}
           />
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-[color:var(--tx)]">
@@ -87,6 +91,14 @@ export const UserMenuPopover = ({
             <div className="truncate text-xs text-[color:var(--tx3)]">{user.email}</div>
           </div>
         </div>
+
+        <div className="my-1 h-px bg-[color:var(--sep)]" />
+
+        <PresenceControl />
+
+        <div className="my-1 h-px bg-[color:var(--sep)]" />
+
+        <StatusSection onClose={onClose} />
 
         <div className="my-1 h-px bg-[color:var(--sep)]" />
 

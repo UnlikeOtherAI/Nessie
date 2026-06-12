@@ -846,14 +846,22 @@ model RealtimeEvent {
 // One row per user, shared through Postgres so out-of-process workers can
 // decide whether a user currently has a live foreground connection. Relation-
 // free like device tokens: the SSE route owns lifecycle updates.
+enum UserPresenceManualState {
+  active
+  away
+}
+
 model UserPresence {
-  userId         String   @id @map("user_id") @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  connections    Int      @default(0)
-  lastSeenAt     DateTime @map("last_seen_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  userId         String                   @id @map("user_id") @db.Uuid
+  organizationId String                   @map("organization_id") @db.Uuid
+  connections    Int                      @default(0)
+  lastSeenAt     DateTime                 @map("last_seen_at")
+  lastActiveAt   DateTime?                @map("last_active_at")
+  manualState    UserPresenceManualState? @map("manual_state")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
 
   @@index([lastSeenAt])
+  @@index([organizationId])
   @@map("user_presence")
 }
 

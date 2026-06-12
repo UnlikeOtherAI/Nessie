@@ -131,8 +131,10 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
               avatarUrl={me.user.avatarUrl}
               displayName={me.user.displayName}
               gravatarUrl={me.user.gravatarUrl}
+              ringColor="var(--rail)"
               size={32}
               token={token}
+              userId={me.user.id}
             />
           </button>
           {menuOpen && (

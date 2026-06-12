@@ -126,6 +126,23 @@ export type UserActiveStatus = {
   label: string
 }
 
+export type PresenceState = 'online' | 'away' | 'offline'
+
+export type PresenceManualState = 'active' | 'away'
+
+export type PresenceEntry = {
+  userId: string
+  state: PresenceState
+  manualState: PresenceManualState | null
+  statusId: string | null
+  statusEmoji: string | null
+  statusLabel: string | null
+}
+
+export type PresenceListResponse = {
+  users: PresenceEntry[]
+}
+
 export type UserStatusScheduleKind = 'date_range' | 'weekly'
 
 export type UserStatusRuleScope = 'fallback' | 'channel' | 'project'

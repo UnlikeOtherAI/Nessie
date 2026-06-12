@@ -15,6 +15,8 @@ const useStatusInvalidation = () => {
   return () => {
     void queryClient.invalidateQueries({ queryKey: statusKeys.all })
     void queryClient.invalidateQueries({ queryKey: ['users'] })
+    // Presence carries each user's active-status emoji, so refresh it too.
+    void queryClient.invalidateQueries({ queryKey: ['presence'] })
   }
 }
 

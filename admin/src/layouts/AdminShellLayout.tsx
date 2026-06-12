@@ -3,6 +3,7 @@ import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDraw
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import { isReactNativeWebView, useMobileLayout, usePhoneLayout } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
+import { PresenceProvider } from '../providers/PresenceProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
@@ -148,7 +149,8 @@ export const AdminShellLayout = () => {
     .join(' ');
 
   return (
-    <NotificationsProvider>
+    <PresenceProvider>
+      <NotificationsProvider>
       <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
         <div className={frameClassName}>
           <TopBar />
@@ -183,6 +185,7 @@ export const AdminShellLayout = () => {
           onSelectAgent={shell.selectAgent}
         />
       </MobileNavProvider>
-    </NotificationsProvider>
+      </NotificationsProvider>
+    </PresenceProvider>
   );
 };
