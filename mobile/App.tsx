@@ -36,6 +36,14 @@ const ANDROID_ICON_SIZE = 26
 // present and up to date when brought back. Shorter backgrounds keep their state.
 const RELOAD_AFTER_BACKGROUND_MS = 30_000
 
+// If the admin never reports itself mounted (it posts a `nessie:route` message on
+// boot) within this window after a load finishes, the WebView is blank/white —
+// reload it with a cache-bust. WKWebView can serve a stale cached index.html (e.g.
+// one referencing a JS bundle that 404s after a deploy), which boots to white; a
+// changed URL forces a fresh fetch. Capped so a genuinely broken page can't loop.
+const BOOT_TIMEOUT_MS = 9000
+const MAX_BOOT_RETRIES = 4
+
 // The tab bar only makes sense once the user is inside the workspace; hide it on
 // the login / bootstrap screens (reported via nessie:route).
 const isAuthGateRoute = (path: string): boolean =>
@@ -55,12 +63,43 @@ const Shell = (): React.JSX.Element => {
   // Bumping this remounts the WebView — used to recover Android after its render
   // process is killed (the instance is unusable until recreated).
   const [webviewKey, setWebviewKey] = useState(0)
+  // Changing the loaded URL forces WKWebView to fetch a fresh index.html instead of
+  // a cached (possibly stale, asset-404ing) one that boots to a blank white screen.
+  const [reloadNonce, setReloadNonce] = useState(0)
   const capturing = useRef(false)
   const backgroundedAt = useRef<number | null>(null)
+  const adminBooted = useRef(false)
+  const bootRetries = useRef(0)
+  const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const sourceUri =
+    reloadNonce === 0
+      ? ADMIN_URL
+      : `${ADMIN_URL}${ADMIN_URL.includes('?') ? '&' : '?'}__boot=${reloadNonce}`
+
+  const clearBootTimer = (): void => {
+    if (bootTimer.current) {
+      clearTimeout(bootTimer.current)
+      bootTimer.current = null
+    }
+  }
+
+  // Reload the WebView fresh after a blank/failed load, capped so a persistently
+  // broken page doesn't loop forever.
+  const recoverBlankWebView = (): void => {
+    if (adminBooted.current || bootRetries.current >= MAX_BOOT_RETRIES) return
+    bootRetries.current += 1
+    clearBootTimer()
+    setReloadNonce((nonce) => nonce + 1)
+    setWebviewKey((key) => key + 1)
+  }
 
   useEffect(() => {
     // Dev-only: expose the AppReveal debug server for on-device inspection.
     startDevInspector()
+    return () => {
+      if (bootTimer.current) clearTimeout(bootTimer.current)
+    }
   }, [])
 
   // Keep the WebView populated and fresh across app backgrounding. iOS can reclaim
@@ -172,6 +211,11 @@ const Shell = (): React.JSX.Element => {
       return
     }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
+      // The admin only emits this once React has mounted, so it doubles as the
+      // "booted" signal that defuses the blank-screen watchdog.
+      adminBooted.current = true
+      bootRetries.current = 0
+      clearBootTimer()
       setCurrentPath(msg.path)
       const next = tabIndexForPath(msg.path)
       setIndex((current) => (current === next ? current : next))
@@ -232,13 +276,26 @@ const Shell = (): React.JSX.Element => {
           key={webviewKey}
           mediaPlaybackRequiresUserAction={false}
           onContentProcessDidTerminate={() => webRef.current?.reload()}
+          onError={recoverBlankWebView}
+          onHttpError={recoverBlankWebView}
+          onLoadEnd={() => {
+            // Page finished loading; give the admin a window to report itself
+            // mounted before assuming the WebView is blank/white.
+            clearBootTimer()
+            if (!adminBooted.current) {
+              bootTimer.current = setTimeout(recoverBlankWebView, BOOT_TIMEOUT_MS)
+            }
+          }}
+          onLoadStart={() => {
+            adminBooted.current = false
+          }}
           onMessage={onMessage}
           onRenderProcessGone={() => setWebviewKey((value) => value + 1)}
           originWhitelist={['*']}
           pullToRefreshEnabled
           ref={webRef}
           sharedCookiesEnabled
-          source={{ uri: ADMIN_URL }}
+          source={{ uri: sourceUri }}
           style={[styles.fill, { backgroundColor: bg }]}
         />
       </View>
