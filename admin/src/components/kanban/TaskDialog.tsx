@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { faSignal } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useProjects } from '../../facades/projects/hooks'
 import {
   type TaskPriority,
@@ -11,9 +13,9 @@ import {
 } from '../../facades/tasks/hooks'
 import { ARCHIVED_STATUSES, statusLabel } from './kanban-config'
 import {
-  PRIORITY_CHIP,
   PRIORITY_LABEL,
   PRIORITY_ORDER,
+  PRIORITY_SIGNAL,
   fromDateInputValue,
   toDateInputValue,
 } from './task-meta'
@@ -42,6 +44,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   const titleRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState('')
   const [purpose, setPurpose] = useState('')
+  const [detail, setDetail] = useState('')
   const [priority, setPriority] = useState<TaskPriority>('medium')
   const [due, setDue] = useState('')
   const [assigneeUserId, setAssigneeUserId] = useState('')
@@ -54,6 +57,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
     setError(null)
     setTitle(task?.title ?? '')
     setPurpose(task?.purpose ?? '')
+    setDetail(task?.detail ?? '')
     setPriority(task?.priority ?? 'medium')
     setDue(toDateInputValue(task?.dueDate ?? null))
     setAssigneeUserId(task?.assigneeUserId ?? '')
@@ -79,12 +83,14 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
     const trimmedTitle = title.trim()
     if (!trimmedTitle) return
     const trimmedPurpose = purpose.trim()
+    const trimmedDetail = detail.trim()
     try {
       if (isEdit && task) {
         await updateTask.mutateAsync({
           id: task.id,
           title: trimmedTitle,
           purpose: trimmedPurpose || null,
+          detail: trimmedDetail || null,
           priority,
           dueDate: fromDateInputValue(due),
         })
@@ -95,6 +101,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
         await createTask.mutateAsync({
           title: trimmedTitle,
           purpose: trimmedPurpose || undefined,
+          detail: trimmedDetail || undefined,
           projectId: projectId ?? (formProjectId || undefined),
           iterationId: iterationId || undefined,
           priority,
@@ -139,7 +146,10 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
         zIndex: 9999,
       }}
     >
-      <div className="create-channel-panel">
+      <div
+        className="create-channel-panel"
+        style={{ width: 'min(80vw, 1100px)', maxWidth: 'none', maxHeight: '88vh', overflowY: 'auto' }}
+      >
         <div className="create-channel-header">
           <h2 className="text-lg font-bold text-[color:var(--tx)]">
             {isEdit ? 'Task details' : 'New task'}
@@ -160,66 +170,86 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
         </div>
 
         <form
-          className="grid gap-4"
+          className="grid gap-5 md:grid-cols-[1.7fr_1fr]"
           onSubmit={(event) => {
             event.preventDefault()
             if (canSubmit) void handleSubmit()
           }}
         >
-          <div className="grid gap-1.5">
-            <label className={fieldLabel} htmlFor="task-title">
-              Title
-            </label>
-            <input
-              ref={titleRef}
-              autoComplete="off"
-              className="admin-input"
-              id="task-title"
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="What needs doing?"
-              value={title}
-            />
-          </div>
+          <div className="grid content-start gap-4">
+            <div className="grid gap-1.5">
+              <label className={fieldLabel} htmlFor="task-title">
+                Title
+              </label>
+              <input
+                ref={titleRef}
+                autoComplete="off"
+                className="admin-input"
+                id="task-title"
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="What needs doing?"
+                value={title}
+              />
+            </div>
 
-          <div className="grid gap-1.5">
-            <label className={fieldLabel} htmlFor="task-purpose">
-              Excerpt
-            </label>
-            <textarea
-              className="admin-input"
-              id="task-purpose"
-              onChange={(event) => setPurpose(event.target.value)}
-              placeholder="A short summary…"
-              rows={3}
-              value={purpose}
-            />
-          </div>
+            <div className="grid gap-1.5">
+              <label className={fieldLabel} htmlFor="task-purpose">
+                Excerpt
+              </label>
+              <textarea
+                className="admin-input"
+                id="task-purpose"
+                onChange={(event) => setPurpose(event.target.value)}
+                placeholder="A short summary…"
+                rows={2}
+                value={purpose}
+              />
+            </div>
 
-          <div className="grid gap-1.5">
-            <span className={fieldLabel}>Priority</span>
-            <div className="flex gap-1.5">
-              {PRIORITY_ORDER.map((value) => {
-                const active = priority === value
-                return (
-                  <button
-                    key={value}
-                    className={[
-                      'flex-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors',
-                      active
-                        ? PRIORITY_CHIP[value]
-                        : 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)] hover:text-[color:var(--tx)]',
-                    ].join(' ')}
-                    onClick={() => setPriority(value)}
-                    type="button"
-                  >
-                    {PRIORITY_LABEL[value]}
-                  </button>
-                )
-              })}
+            <div className="grid gap-1.5">
+              <label className={fieldLabel} htmlFor="task-detail">
+                Detail
+              </label>
+              <textarea
+                className="admin-input"
+                id="task-detail"
+                onChange={(event) => setDetail(event.target.value)}
+                placeholder="The full description, context, acceptance criteria…"
+                rows={10}
+                value={detail}
+              />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid content-start gap-4">
+            <div className="grid gap-1.5">
+              <span className={fieldLabel}>Priority</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {PRIORITY_ORDER.map((value) => {
+                  const active = priority === value
+                  return (
+                    <button
+                      key={value}
+                      className={[
+                        'flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-semibold transition-colors',
+                        active
+                          ? 'bg-[color:var(--overlay)] text-[color:var(--tx)] ring-1 ring-inset ring-[color:var(--sep)]'
+                          : 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)] hover:text-[color:var(--tx)]',
+                      ].join(' ')}
+                      onClick={() => setPriority(value)}
+                      type="button"
+                    >
+                      <FontAwesomeIcon
+                        className={`text-xs ${PRIORITY_SIGNAL[value]} ${active ? '' : 'opacity-50'}`}
+                        icon={faSignal}
+                      />
+                      {PRIORITY_LABEL[value]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             <div className="grid gap-1.5">
               <label className={fieldLabel} htmlFor="task-assignee">
                 Assignee
@@ -238,6 +268,7 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
                 ))}
               </select>
             </div>
+
             <div className="grid gap-1.5">
               <label className={fieldLabel} htmlFor="task-due">
                 Deadline
@@ -250,36 +281,36 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
                 value={due}
               />
             </div>
+
+            {!isEdit && !projectId ? (
+              <div className="grid gap-1.5">
+                <label className={fieldLabel} htmlFor="task-project">
+                  Project
+                </label>
+                <select
+                  className="admin-input"
+                  id="task-project"
+                  onChange={(event) => setFormProjectId(event.target.value)}
+                  value={formProjectId}
+                >
+                  <option value="">No project</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </div>
 
-          {!isEdit && !projectId ? (
-            <div className="grid gap-1.5">
-              <label className={fieldLabel} htmlFor="task-project">
-                Project
-              </label>
-              <select
-                className="admin-input"
-                id="task-project"
-                onChange={(event) => setFormProjectId(event.target.value)}
-                value={formProjectId}
-              >
-                <option value="">No project</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-
           {error ? (
-            <div className="rounded-md border border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] px-3 py-2 text-xs text-[color:var(--danger-text)]">
+            <div className="rounded-md border border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] px-3 py-2 text-xs text-[color:var(--danger-text)] md:col-span-2">
               {error}
             </div>
           ) : null}
 
-          <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center justify-between pt-1 md:col-span-2">
             <div className="text-xs">
               {isEdit && task ? (
                 archived ? (

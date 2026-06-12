@@ -1913,6 +1913,7 @@ export const TaskRecordSchema = z.object({
   dueDate: TimestampSchema.nullable(),
   title: z.string().nullable(),
   purpose: z.string().nullable(),
+  detail: z.string().nullable(),
   assigneeUserId: UserIdSchema.nullable(),
   assigneeName: z.string().nullable(),
   ownerUserId: UserIdSchema.nullable(),
@@ -1926,6 +1927,7 @@ export type TaskRecord = z.infer<typeof TaskRecordSchema>
 export const CreateTaskBodySchema = z.object({
   title: NonEmptyStringSchema,
   purpose: z.string().optional(),
+  detail: z.string().optional(),
   projectId: ProjectIdSchema.optional(),
   iterationId: z.string().uuid().optional(),
   storyPoints: z.number().int().min(0).optional(),
@@ -1938,6 +1940,7 @@ export const CreateTaskBodySchema = z.object({
 export const UpdateTaskBodySchema = z.object({
   title: NonEmptyStringSchema.optional(),
   purpose: z.string().nullable().optional(),
+  detail: z.string().nullable().optional(),
   priority: TaskPrioritySchema.optional(),
   dueDate: z.coerce.date().nullable().optional(),
   storyPoints: z.number().int().min(0).nullable().optional(),

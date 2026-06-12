@@ -136,3 +136,51 @@ crashes on every page. Unified to a **single React 19.2.4** via root
   render fine — filed against kelpie): create dialog, edit dialog (pre-filled),
   and an **end-to-end create** with priority *High* + deadline *2026-06-25*
   renders a card with `High` and `Jun 25` chips, persisted through the API/DB.
+
+## Update 2026-06-12 — urgency signal bars, assignee pill, Detail field, wider dialog
+
+Tightened the card header and added a long-form ticket body.
+
+### Card (`KanbanCard.tsx`, `task-meta.ts`)
+
+- The wordy **priority chip** ("Medium" …) is replaced by a Font Awesome
+  **`faSignal`** glyph (four ascending bars) tinted by level on a blue → green →
+  orange → red ramp: `low → --info`, `medium → --success`, `high → --warning`,
+  `urgent → --danger`. The tint map is `PRIORITY_SIGNAL` in `task-meta.ts`
+  (replaces the old `PRIORITY_CHIP`); colours stay theme-token only.
+- Next to the glyph sits a neutral **assignee pill** — the assignee's name, or
+  **"Unassigned"** when none — same size as the old priority chip.
+- The glyph + assignee pill now form one **compact row above the title**
+  (deadline / archived-status chips pushed to its right), so the meta no longer
+  eats vertical space above the heading.
+
+### Dialog (`TaskDialog.tsx`)
+
+- Same signal-bar language on the **priority** control: each option is the
+  tinted `faSignal` glyph + label in a 2×2 grid; the active one gets an overlay
+  highlight (inactive glyphs dimmed).
+- The panel now **fills ~80% of the viewport** (`min(80vw, 1100px)`, scrollable)
+  with a **two-column** form — content (Title · Excerpt · Detail) on the left,
+  meta (Priority · Assignee · Deadline · Project) on the right.
+- New **Detail** field: a long free-text body (10-row textarea) distinct from the
+  short **Excerpt** (`purpose`). Persisted on create and edit.
+
+### Backend — task `detail`
+
+- **Schema** (`api/prisma/schema.prisma`): `Task.detail String?`. Migration
+  `20260612130000_add_task_detail` (additive). The local dev DB carries
+  pre-existing drift that `migrate dev` would reset, so the column was applied
+  directly (`ALTER TABLE "tasks" ADD COLUMN "detail" TEXT`) and recorded with
+  `prisma migrate resolve --applied`; fresh DBs/CI apply it via `migrate deploy`.
+- **Contracts** (`api/src/contracts.ts`): `TaskRecord.detail` (`string | null`);
+  `CreateTaskBody.detail` + `UpdateTaskBody.detail` (optional).
+- **Service/Routes** (`api/src/services/tasks.ts`, `routes/tasks.ts`): `mapTask`,
+  `createHumanTask`, and `updateTask` thread `detail`; `PATCH /api/tasks/:id`
+  writes it when present.
+- **Client** (`facades/tasks/hooks.ts`): `TaskRecord.detail` plus the
+  `useCreateTask` / `useUpdateTask` inputs.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
+- Live UI verified with kelpie at `http://localhost:5455/projects` (see below).

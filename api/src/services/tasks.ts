@@ -50,6 +50,7 @@ const mapTask = (task: TaskWithUsers): TaskRecord => ({
   dueDate: task.dueDate ? task.dueDate.toISOString() : null,
   title: task.title,
   purpose: task.purpose,
+  detail: task.detail,
   assigneeUserId: task.assigneeUserId ? parseUserId(task.assigneeUserId) : null,
   assigneeName: task.assignee?.displayName ?? null,
   ownerUserId: task.ownerUserId ? parseUserId(task.ownerUserId) : null,
@@ -143,6 +144,7 @@ type CreateTaskInput = {
   createdByUserId: string
   title: string
   purpose?: string
+  detail?: string
   projectId?: string
   iterationId?: string
   storyPoints?: number
@@ -189,6 +191,7 @@ export const createHumanTask = async (
       createdByUserId: input.createdByUserId,
       title: input.title,
       purpose: input.purpose ?? null,
+      detail: input.detail ?? null,
       assigneeUserId: input.assigneeUserId ?? null,
       ownerUserId: input.ownerUserId ?? null,
       status,
@@ -350,6 +353,7 @@ export const setTaskIteration = async (
 export type TaskUpdateFields = {
   title?: string
   purpose?: string | null
+  detail?: string | null
   priority?: TaskPriority
   dueDate?: Date | null
   storyPoints?: number | null
@@ -371,6 +375,7 @@ export const updateTask = async (
   const data: Prisma.TaskUpdateInput = {}
   if (input.fields.title !== undefined) data.title = input.fields.title
   if (input.fields.purpose !== undefined) data.purpose = input.fields.purpose
+  if (input.fields.detail !== undefined) data.detail = input.fields.detail
   if (input.fields.priority !== undefined) data.priority = input.fields.priority
   if (input.fields.dueDate !== undefined) data.dueDate = input.fields.dueDate
   if (input.fields.storyPoints !== undefined) data.storyPoints = input.fields.storyPoints

@@ -1833,6 +1833,7 @@ model Task {
   dueDate          DateTime?         @map("due_date")
   title            String?
   purpose          String?
+  detail           String?
   assigneeUserId   String?           @map("assignee_user_id") @db.Uuid
   ownerUserId      String?           @map("owner_user_id") @db.Uuid
   createdByUserId  String?           @map("created_by_user_id") @db.Uuid

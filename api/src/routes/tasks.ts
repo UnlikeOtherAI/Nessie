@@ -73,6 +73,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       createdByUserId: actorContext.actor.actorId,
       title: body.title,
       purpose: body.purpose,
+      detail: body.detail,
       projectId: body.projectId,
       iterationId: body.iterationId,
       storyPoints: body.storyPoints,
@@ -209,6 +210,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const fields = {
       ...(body.title !== undefined ? { title: body.title } : {}),
       ...(body.purpose !== undefined ? { purpose: body.purpose } : {}),
+      ...(body.detail !== undefined ? { detail: body.detail } : {}),
       ...(body.priority !== undefined ? { priority: body.priority } : {}),
       ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
       ...(body.storyPoints !== undefined ? { storyPoints: body.storyPoints } : {}),

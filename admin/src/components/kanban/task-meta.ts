@@ -10,12 +10,13 @@ export const PRIORITY_LABEL: Record<TaskPriority, string> = {
   urgent: 'Urgent',
 }
 
-// Chip background + text, all via theme tokens (no raw colours).
-export const PRIORITY_CHIP: Record<TaskPriority, string> = {
-  low: 'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
-  medium: 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
-  high: 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
-  urgent: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+// Signal-bar icon tint per level — a blue → green → orange → red ramp, all via
+// theme tokens (no raw colours). Used by the card glyph and the dialog control.
+export const PRIORITY_SIGNAL: Record<TaskPriority, string> = {
+  low: 'text-[color:var(--info)]',
+  medium: 'text-[color:var(--success)]',
+  high: 'text-[color:var(--warning)]',
+  urgent: 'text-[color:var(--danger)]',
 }
 
 // Deadlines are date-only, stored as UTC midnight; format and compare in UTC so

@@ -24,6 +24,7 @@ export type TaskRecord = {
   dueDate: string | null
   title: string | null
   purpose: string | null
+  detail: string | null
   assigneeUserId: string | null
   assigneeName: string | null
   ownerName: string | null
@@ -63,6 +64,7 @@ export const useCreateTask = () => {
     mutationFn: (input: {
       title: string
       purpose?: string
+      detail?: string
       projectId?: string
       iterationId?: string
       storyPoints?: number
@@ -87,6 +89,7 @@ export const useUpdateTask = () => {
       id: string
       title?: string
       purpose?: string | null
+      detail?: string | null
       priority?: TaskPriority
       dueDate?: string | null
     }) => {
