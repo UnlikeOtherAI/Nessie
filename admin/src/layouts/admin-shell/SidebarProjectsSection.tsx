@@ -91,7 +91,8 @@ export const SidebarProjectsSection = ({
             <div key={project.id} className="mt-1">
               <button
                 className={[
-                  'admin-sb-item group font-semibold',
+                  'admin-sb-item group',
+                  projectUnreadCount > 0 ? 'unread' : '',
                   project.id === currentProjectId ? 'active-parent' : '',
                 ].join(' ')}
                 onClick={() => onNavigateProject(project.id)}
@@ -180,6 +181,7 @@ export const SidebarProjectsSection = ({
                     key={channel.id}
                     className={[
                       'admin-sb-item sidebar-child group',
+                      channel.unreadCount > 0 ? 'unread' : '',
                       channel.id === currentChannelId ? 'active' : '',
                     ].join(' ')}
                     onClick={() => onNavigateChannel(channel.id)}

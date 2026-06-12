@@ -14,6 +14,9 @@ export type SidebarPerson = {
   id: string
   label: string
   style: CSSProperties
+  avatarUrl?: string | null
+  avatarAttachmentId?: string | null
+  gravatarUrl?: string | null
 }
 export type VisibleStarredEntry =
   | { type: 'channel'; channel: ChannelRecord }

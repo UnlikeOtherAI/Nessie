@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import type { FastifyInstance } from 'fastify'
+import { Prisma } from '@prisma/client'
 
 import { MeResponseSchema, UpdateMyAvatarRequestSchema, UpdatePreferencesSchema } from '@nessie/schemas'
 import { isBootstrapTokenExpired } from '../auth/bootstrap.js'
@@ -151,13 +152,25 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    const nextPreferences = Object.keys(body).length === 1 && body.theme
-      ? { ...(authenticatedState.me.user.preferences ?? {}), theme: body.theme }
-      : body
+    // PATCH = partial merge: each settings surface (appearance, notifications,
+    // starred) owns a disjoint slice and sends only its own keys. Provided keys
+    // overwrite, absent keys are preserved, and an explicit `null` clears a key.
+    const existing = (authenticatedState.me.user.preferences ?? {}) as Record<string, unknown>
+    const nextPreferences: Record<string, unknown> = { ...existing }
+    for (const [key, value] of Object.entries(body)) {
+      if (value === undefined) {
+        continue
+      }
+      if (value === null) {
+        delete nextPreferences[key]
+      } else {
+        nextPreferences[key] = value
+      }
+    }
 
     const updatedUser = await prisma.user.update({
       where: { id: authenticatedState.claims.sub },
-      data: { preferences: nextPreferences },
+      data: { preferences: nextPreferences as Prisma.InputJsonValue },
     })
 
     const me = await buildMeResponse(prisma, updatedUser, authenticatedState.claims, config)
@@ -337,6 +350,21 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         if (!sessionUser) {
           sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
           return reply
+        }
+
+        // Self-heal accounts whose display name is just their email — the old
+        // SSO fallback before names were humanized. Only touches the broken case
+        // (displayName === email), so a user-chosen name is never clobbered.
+        if (sessionUser.displayName === sessionUser.email && identity.displayName !== sessionUser.displayName) {
+          await prisma.user.update({
+            where: { id: sessionUser.id },
+            data: { displayName: identity.displayName },
+          })
+          sessionUser = await loadSessionUserByEmail(prisma, identity.email)
+          if (!sessionUser) {
+            sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
+            return reply
+          }
         }
 
         const organizationMember = sessionUser.organizationMembers[0]

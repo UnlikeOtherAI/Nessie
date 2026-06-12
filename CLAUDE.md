@@ -30,7 +30,8 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - The main project checkout must always stay on `main`. Never switch branches in it.
 - Every task — and every parallel agent/CLI — does its work in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never edit the main checkout directly.
 - Never reset, clean, or discard another worktree's or agent's work.
-- Merge finished work into `main` only after review, linting, and tests pass. Then in the main checkout run `git switch main && git pull --ff-only`, remove the worktree (`git worktree remove …`), and delete the merged branch.
+- When any task is done, merge the completed task branch into `main` in the same turn after review, linting, and tests pass; do not leave completed work parked in a worktree unless the user explicitly says not to or verification is blocked.
+- Then in the main checkout run `git switch main && git pull --ff-only`, remove the worktree (`git worktree remove …`), and delete the merged branch.
 
 ## Dev mode (hot reload)
 
@@ -41,6 +42,12 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 ## Build (production / CI)
 
 - `pnpm --filter @nessie/admin build` produces the static admin bundle (`dist/`); `pnpm --filter @nessie/admin preview` serves it. This is for prod/CI, **not** the local dev loop — use `pnpm dev` instead.
+- Desktop installable builds that embed local admin changes must build admin
+  with `VITE_API_BASE_URL=https://api.nessie.unlikeotherai.com`, then run Tauri
+  with `--config '{"build":{"frontendDist":"../../admin/dist"}}'`. Do not use
+  the admin web origin (`https://nessie.unlikeotherai.com`) as the API base URL;
+  login will stall at "Loading providers...". See
+  [docs/running-the-apps.md](docs/running-the-apps.md).
 - Rebuild the worker after every turn where worker code changed: `pnpm --filter @nessie/worker build`. In local mode the API runs the worker **embedded from its built `dist`** (`import('@nessie/worker')`), so worker source edits do not take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 
 ## Production deployment
@@ -75,7 +82,10 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   **no** raw hex or Tailwind named-color utilities; they reference tokens via
   `var(--x)` / `bg-[var(--x)]`.
 - Switcher: `ThemeProvider` (`admin/src/providers/`) + Appearance page
-  (`/settings/appearance`); choice persists to `localStorage["nessie.theme"]`.
+  (`/settings/appearance`); choice persists locally in
+  `localStorage["nessie.theme"]` for logged-out screens and is also saved to
+  `User.preferences.theme` for signed-in users so web, desktop, and mobile use
+  the same account theme.
 - Adding a theme = add a `[data-theme]` block (redeclare every token) + register
   the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](docs/plans/2026-06-10-design-system-theming.md).
 

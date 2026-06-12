@@ -25,6 +25,7 @@ import {
   StatusList,
   toIsoFromLocal,
 } from './statuses/status-components'
+import { StatusEmojiPicker } from './statuses/StatusEmojiPicker'
 
 export const StatusesPage = () => {
   const { statusId } = useParams()
@@ -182,13 +183,8 @@ export const StatusesPage = () => {
         <section className="admin-card p-4">
           <div className={sectionTitleClass}>Statuses</div>
           <form className="mt-4 grid gap-2" onSubmit={createStatusSubmit}>
-            <div className="grid grid-cols-[70px_minmax(0,1fr)] gap-2">
-              <input
-                className="admin-input"
-                onChange={(event) => setNewEmoji(event.target.value)}
-                placeholder="Icon"
-                value={newEmoji}
-              />
+            <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
+              <StatusEmojiPicker label="New status icon" onChange={setNewEmoji} value={newEmoji} />
               <input
                 className="admin-input"
                 onChange={(event) => setNewLabel(event.target.value)}
@@ -239,12 +235,7 @@ export const StatusesPage = () => {
                 </div>
               </div>
               <div className="grid gap-3 md:grid-cols-[90px_minmax(0,1fr)]">
-                <input
-                  className="admin-input"
-                  onChange={(event) => setEmoji(event.target.value)}
-                  placeholder="Icon"
-                  value={emoji}
-                />
+                <StatusEmojiPicker label="Status icon" onChange={setEmoji} value={emoji} />
                 <input
                   className="admin-input"
                   onChange={(event) => setLabel(event.target.value)}

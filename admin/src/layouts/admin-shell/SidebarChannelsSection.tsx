@@ -93,6 +93,7 @@ export const SidebarChannelsSection = ({
                 key={channel.id}
                 className={[
                   'admin-sb-item group',
+                  channel.unreadCount > 0 ? 'unread' : '',
                   channel.id === currentChannelId ? 'active' : '',
                 ].join(' ')}
                 onClick={() => onNavigateChannel(channel.id)}

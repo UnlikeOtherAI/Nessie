@@ -44,6 +44,17 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   `VITE_API_BASE_URL=https://api.nessie.unlikeotherai.com` into the Vite bundle
   and serves it with nginx. The admin therefore calls the API cross-origin; the
   API's `NESSIE_CORS_ORIGINS` allowlists `https://nessie.unlikeotherai.com`.
+- **Admin origin and API origin are not interchangeable.** The web app lives at
+  `https://nessie.unlikeotherai.com`; the API lives at
+  `https://api.nessie.unlikeotherai.com`. Any built admin artifact, including
+  the Tauri desktop app when it embeds `admin/dist`, must use
+  `VITE_API_BASE_URL=https://api.nessie.unlikeotherai.com`. Building with
+  `https://nessie.unlikeotherai.com` makes `/api/auth/providers` resolve to the
+  admin HTML shell, which leaves login stuck at "Loading providers...".
+- **Desktop CORS is deliberate.** The Fastify CORS policy always allows the
+  fixed Tauri app origins (`tauri://localhost` and `http://tauri.localhost`) in
+  addition to the configured web admin origin, so embedded desktop builds can
+  call `https://api.nessie.unlikeotherai.com` directly.
 
 ## Shared infra (already on the host, do not disrupt)
 
@@ -204,6 +215,7 @@ make the Nessie API or worker call it yet.
 
 ```sh
 curl https://api.nessie.unlikeotherai.com/api/health     # {"data":{"service":"api","status":"ok"}}
+curl https://api.nessie.unlikeotherai.com/api/auth/providers
 curl https://nessie.unlikeotherai.com/healthz            # ok
 docker ps --filter name=nessie                           # all four healthy
 docker logs nessie-worker 2>&1 | tail                    # "status":"ready"
@@ -219,7 +231,7 @@ production settings:
 |---------|-------|-------|
 | Mode | `NESSIE_MODE` | `selfHosted` (disables dev login, requires CORS allowlist) |
 | DB URL | `DATABASE_URL` / `NESSIE_DB_URL` | `postgresql://nessie:***@nessie-postgres:5432/nessie` |
-| CORS | `NESSIE_CORS_ORIGINS` | `https://nessie.unlikeotherai.com` |
+| CORS | `NESSIE_CORS_ORIGINS` | `https://nessie.unlikeotherai.com` (Tauri origins are allowed in code: `tauri://localhost`, `http://tauri.localhost`) |
 | Auth secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions, bootstrap tokens, and encrypts MCP OAuth secrets |
 | Model | `NESSIE_MODEL_PROVIDER` + key | `openai` → `gpt-5-mini` chat, `text-embedding-3-small` (1536-dim) embeddings |
 | Auth providers (SSO) | `nessie.config.json` `auth.providers` | see SSO below |

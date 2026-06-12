@@ -165,8 +165,8 @@ const WorkspaceBadge = () => {
 }
 
 // Slack-style global top bar. Rendered full-width above the rail and content. On
-// the desktop (Tauri) app it doubles as the window title bar — see the
-// `.admin-topbar--desktop` rules in styles.css (drag region + traffic-light gap).
+// the desktop (Tauri) app it doubles as the window title bar, with dedicated
+// drag regions around the interactive search field and buttons.
 export const TopBar = () => {
   const desktop = isDesktopApp()
   const location = useLocation()
@@ -184,8 +184,15 @@ export const TopBar = () => {
   return (
     <header
       className={['admin-topbar', desktop ? 'admin-topbar--desktop' : ''].filter(Boolean).join(' ')}
-      {...(desktop ? { 'data-tauri-drag-region': '' } : {})}
     >
+      {desktop ? (
+        <div
+          aria-hidden="true"
+          className="admin-topbar-drag-zone admin-topbar-drag-zone--traffic"
+          data-tauri-drag-region
+        />
+      ) : null}
+
       <div className="hidden items-center gap-1 md:flex">
         <button
           aria-label="Back"
@@ -210,7 +217,15 @@ export const TopBar = () => {
         <RecentMenu />
       </div>
 
+      {desktop ? (
+        <div aria-hidden="true" className="admin-topbar-drag-zone" data-tauri-drag-region />
+      ) : null}
+
       <TopBarSearch />
+
+      {desktop ? (
+        <div aria-hidden="true" className="admin-topbar-drag-zone" data-tauri-drag-region />
+      ) : null}
 
       <div className="flex items-center gap-1">
         <WorkspaceBadge />

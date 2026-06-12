@@ -73,10 +73,6 @@ export const useAdminShell = () => {
     () => me?.user.preferences?.starred ?? [],
     [me?.user.preferences?.starred],
   );
-  const initialPreferences = useMemo(
-    () => me?.user.preferences ?? {},
-    [me?.user.preferences],
-  );
   const {
     channelsCollapsed,
     dmCollapsed,
@@ -91,7 +87,7 @@ export const useAdminShell = () => {
     toggleProjectsCollapsed,
     toggleStar,
     toggleStarredCollapsed,
-  } = useStarredItems({ initialPreferences, initialStarred });
+  } = useStarredItems({ initialStarred });
 
   const unreadCountByChannelId = useMemo(
     () => new Map(channels.map((channel) => [channel.id, channel.unreadCount])),
@@ -203,6 +199,9 @@ export const useAdminShell = () => {
         id: user.id,
         label: user.displayName,
         style: getDmStyle(index),
+        avatarUrl: user.avatarUrl,
+        avatarAttachmentId: user.avatarAttachmentId,
+        gravatarUrl: user.gravatarUrl,
         dmChannelId: channels.find((c) => c.type === 'dm' && user.channelIds.includes(c.id))?.id,
       }));
     }
@@ -212,6 +211,9 @@ export const useAdminShell = () => {
         id: me.user.id,
         label: me.user.displayName,
         style: getDmStyle(0),
+        avatarUrl: me.user.avatarUrl,
+        avatarAttachmentId: me.user.avatarAttachmentId,
+        gravatarUrl: me.user.gravatarUrl,
         dmChannelId: undefined,
       },
     ];

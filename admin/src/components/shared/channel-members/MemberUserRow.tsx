@@ -1,6 +1,7 @@
 import type { UserRecord } from '../../../lib/api-client'
 import { AvatarBadges } from '../../primitives/AvatarBadges'
-import { getInitials, pickGradient } from '../../../lib/avatar'
+import { UserAvatar } from '../../primitives/UserAvatar'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { CloseIcon } from './icons'
 import { actionBtnClass, rowClass } from './styles'
 
@@ -17,18 +18,19 @@ export const CurrentUserRow = ({
   currentUserId,
   removePending,
   onRemove,
-}: CurrentUserRowProps) => (
+}: CurrentUserRowProps) => {
+  const { token } = useAuthSession()
+  return (
   <div className={rowClass}>
     <AvatarBadges ringColor="var(--panel)" size={32} userId={user.id}>
-      <div
-        className={[
-          'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
-          'text-xs font-semibold text-[color:var(--on-accent)]',
-        ].join(' ')}
-        style={{ background: pickGradient(user.id) }}
-      >
-        {getInitials(user.displayName, '?')}
-      </div>
+      <UserAvatar
+        avatarAttachmentId={user.avatarAttachmentId ?? undefined}
+        avatarUrl={user.avatarUrl ?? undefined}
+        displayName={user.displayName}
+        gravatarUrl={user.gravatarUrl ?? undefined}
+        size={32}
+        token={token}
+      />
     </AvatarBadges>
     <div className="min-w-0 flex-1">
       <div className="truncate text-sm font-medium text-[color:var(--tx)]">
@@ -61,7 +63,8 @@ export const CurrentUserRow = ({
       </button>
     )}
   </div>
-)
+  )
+}
 
 type AvailableUserRowProps = {
   user: UserRecord
@@ -74,18 +77,20 @@ export const AvailableUserRow = ({
   user,
   addPending,
   onAdd,
-}: AvailableUserRowProps) => (
+}: AvailableUserRowProps) => {
+  const { token } = useAuthSession()
+  return (
   <div className={rowClass}>
     <AvatarBadges ringColor="var(--panel)" size={32} userId={user.id}>
-      <div
-        className={[
-          'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full',
-          'text-xs font-semibold text-[color:var(--on-accent)]/60',
-        ].join(' ')}
-        style={{ background: pickGradient(user.id), opacity: 0.6 }}
-      >
-        {getInitials(user.displayName, '?')}
-      </div>
+      <UserAvatar
+        avatarAttachmentId={user.avatarAttachmentId ?? undefined}
+        avatarUrl={user.avatarUrl ?? undefined}
+        className="opacity-60"
+        displayName={user.displayName}
+        gravatarUrl={user.gravatarUrl ?? undefined}
+        size={32}
+        token={token}
+      />
     </AvatarBadges>
     <div className="min-w-0 flex-1">
       <div className="truncate text-sm text-[color:var(--tx2)]">
@@ -108,4 +113,5 @@ export const AvailableUserRow = ({
       Add
     </button>
   </div>
-)
+  )
+}

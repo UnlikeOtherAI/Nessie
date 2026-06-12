@@ -5,6 +5,7 @@ import {
   runAttachmentUploadTool,
   runAuthoredMessageSearchTool,
   runChannelArchiveTool,
+  runChannelFindTool,
   runChannelJoinTool,
   runChannelListTool,
   runChannelUpdateTool,
@@ -172,6 +173,13 @@ export const executeBuiltinTool = async (
         ),
       )
     // sp-channels: channel lifecycle tools
+    case 'channel_find':
+      return wrapTool(inputSummary, () =>
+        runChannelFindTool(context, {
+          query: String(args.query ?? ''),
+          limit: args.limit,
+        }),
+      )
     case 'channel_list':
       return wrapTool(inputSummary, () =>
         runChannelListTool(context, {
