@@ -7,6 +7,14 @@ export type OptimisticMessage = {
   status: 'sending' | 'failed'
 }
 
+export type MessageUserIdentity = {
+  avatarAttachmentId?: string | null
+  avatarUrl?: string | null
+  displayName: string
+  gravatarUrl?: string | null
+  id: string
+}
+
 export type ChannelTab = 'agents' | 'files' | 'info' | 'messages' | 'runs'
 
 export type FeedItem =

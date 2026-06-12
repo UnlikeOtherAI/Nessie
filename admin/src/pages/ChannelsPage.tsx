@@ -4,12 +4,7 @@ import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
-import {
-  useAddMessageReaction,
-  useDeleteMessage,
-  useMessageSearch,
-  useUpdateMessage,
-} from '../facades/messages/hooks'
+import { useMessageSearch } from '../facades/messages/hooks'
 import { isPersonalAssistantChannel, usePersonalAssistant } from '../facades/personal-assistant/hooks'
 import { useMarkThreadRead, useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { useTools } from '../facades/tools/hooks'
@@ -25,9 +20,11 @@ import { ChannelHeader } from '../components/features/channels/ChannelHeader'
 import { ChannelMessageFeed } from '../components/features/channels/ChannelMessageFeed'
 import { ChannelTabBar } from '../components/features/channels/ChannelTabBar'
 import { ChannelTabPanels } from '../components/features/channels/ChannelTabPanels'
-import { buildFeedItems, formatClock, isOperationsTab, type ChannelTab } from '../components/features/channels/channel-helpers'
+import { ChannelUserInfoDrawer } from '../components/features/channels/ChannelUserInfoDrawer'
+import { buildFeedItems, formatClock, isOperationsTab, type ChannelTab, type MessageUserIdentity } from '../components/features/channels/channel-helpers'
+import { useChannelComposer } from '../components/features/channels/useChannelComposer'
+import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { useChannelCall } from './channels/useChannelCall'
-import { useChannelComposer } from './channels/useChannelComposer'
 import { useChannelMentions } from './channels/useChannelMentions'
 
 export const ChannelsPage = () => {
@@ -70,6 +67,8 @@ export const ChannelsPage = () => {
 
   const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
+  const [selectedMessageUser, setSelectedMessageUser] =
+    useState<MessageUserIdentity | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
 
   const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
@@ -127,50 +126,23 @@ export const ChannelsPage = () => {
   })
 
   // sp-messaging: inline edit + channel message search.
-  const addMessageReaction = useAddMessageReaction(activeChannel?.defaultThreadId)
-  const updateMessage = useUpdateMessage(activeChannel?.defaultThreadId)
-  const deleteMessage = useDeleteMessage(activeChannel?.defaultThreadId)
-  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
-  const [editingContent, setEditingContent] = useState('')
+  const {
+    addReaction,
+    cancelEdit,
+    changeEditingContent,
+    confirmDelete,
+    editingContent,
+    editingMessageId,
+    startEdit,
+    submitEdit,
+    updatePending,
+  } = useChannelMessageActions(activeChannel?.defaultThreadId)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const { data: searchResults = [] } = useMessageSearch(activeChannel?.id, searchQuery)
   // sp-channels: channel settings dialog + join.
   const [showChannelSettings, setShowChannelSettings] = useState(false)
   const joinChannel = useJoinChannel()
-
-  const submitEdit = useCallback(
-    async (messageId: string) => {
-      const next = editingContent.trim()
-      if (!next) {
-        return
-      }
-      try {
-        await updateMessage.mutateAsync({ content: next, messageId })
-      } finally {
-        setEditingMessageId(null)
-        setEditingContent('')
-      }
-    },
-    [editingContent, updateMessage],
-  )
-
-  const confirmDelete = useCallback(
-    (messageId: string) => {
-      if (!window.confirm('Delete this message? This cannot be undone.')) {
-        return
-      }
-      deleteMessage.mutate(messageId)
-    },
-    [deleteMessage],
-  )
-
-  const addReaction = useCallback(
-    (messageId: string, emoji: string) => {
-      addMessageReaction.mutate({ emoji, messageId })
-    },
-    [addMessageReaction],
-  )
 
   const jumpToMessage = useCallback((messageId: string) => {
     const element = document.getElementById(`msg-${messageId}`)
@@ -189,12 +161,12 @@ export const ChannelsPage = () => {
   }, [activeTab, isConversationSurface])
 
   useEffect(() => {
-    setEditingMessageId(null)
-    setEditingContent('')
+    cancelEdit()
     setSearchOpen(false)
     setSearchQuery('')
     setShowChannelSettings(false)
-  }, [activeChannel?.id])
+    setSelectedMessageUser(null)
+  }, [activeChannel?.id, cancelEdit])
 
   const lastReadMarkerRef = useRef<string | null>(null)
   const pendingReadMarkerRef = useRef<string | null>(null)
@@ -370,19 +342,16 @@ export const ChannelsPage = () => {
             renderContent={renderContent}
             editingMessageId={editingMessageId}
             editingContent={editingContent}
-            updatePending={updateMessage.isPending}
-            onStartEdit={(messageId, content) => {
-              setEditingMessageId(messageId)
-              setEditingContent(content)
-            }}
-            onChangeEditingContent={setEditingContent}
+            updatePending={updatePending}
+            onStartEdit={startEdit}
+            onChangeEditingContent={changeEditingContent}
             onSubmitEdit={(messageId) => void submitEdit(messageId)}
-            onCancelEdit={() => {
-              setEditingMessageId(null)
-              setEditingContent('')
-            }}
+            onCancelEdit={cancelEdit}
             onAddReaction={addReaction}
             onConfirmDelete={confirmDelete}
+            onSelectUser={
+              activeChannel?.type === 'dm' ? undefined : setSelectedMessageUser
+            }
           />
         ) : null}
 
@@ -463,6 +432,21 @@ export const ChannelsPage = () => {
           roomId={activeCall.roomId}
         />
       )}
+
+      <ChannelUserInfoDrawer
+        agents={agents}
+        meAvatar={{
+          avatarUrl: me.user.avatarUrl,
+          avatarAttachmentId: me.user.avatarAttachmentId,
+          gravatarUrl: me.user.gravatarUrl,
+        }}
+        meDisplayName={me.user.displayName}
+        meUserId={me.user.id}
+        target={selectedMessageUser}
+        token={token}
+        users={allUsers}
+        onClose={() => setSelectedMessageUser(null)}
+      />
     </section>
   )
 }

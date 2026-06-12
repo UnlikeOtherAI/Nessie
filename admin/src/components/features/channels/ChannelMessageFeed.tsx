@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import { usePresenceLookup, type PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
@@ -9,6 +9,7 @@ import {
   getAgentGlyph,
   getDisplayName,
   type FeedItem,
+  type MessageUserIdentity,
   type OptimisticMessage,
 } from './channel-helpers'
 
@@ -82,6 +83,7 @@ interface ChannelMessageFeedProps {
   onCancelEdit: () => void
   onAddReaction: (messageId: string, emoji: string) => void
   onConfirmDelete: (messageId: string) => void
+  onSelectUser?: (user: MessageUserIdentity) => void
 }
 
 export const ChannelMessageFeed = ({
@@ -105,6 +107,7 @@ export const ChannelMessageFeed = ({
   onCancelEdit,
   onAddReaction,
   onConfirmDelete,
+  onSelectUser,
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null)
@@ -201,6 +204,25 @@ export const ChannelMessageFeed = ({
         const canManageOwnMessage =
           item.message.role === 'user' && item.message.userId === meUserId
         const isEditingMessage = editingMessageId === item.message.id
+        const authorIdentity =
+          item.message.role === 'user' &&
+          item.message.userId &&
+          item.message.userId !== meUserId &&
+          onSelectUser
+            ? {
+                avatarAttachmentId: item.message.author?.avatarAttachmentId,
+                avatarUrl: item.message.author?.avatarUrl,
+                displayName,
+                gravatarUrl: item.message.author?.gravatarUrl,
+                id: item.message.userId,
+              }
+            : null
+        const selectAuthor = (event: MouseEvent<HTMLButtonElement>) => {
+          event.stopPropagation()
+          if (authorIdentity) {
+            onSelectUser?.(authorIdentity)
+          }
+        }
 
         return (
           <article
@@ -227,6 +249,22 @@ export const ChannelMessageFeed = ({
               >
                 {getAgentGlyph(agentMap.get(item.message.agentId ?? ''))}
               </div>
+            ) : authorIdentity ? (
+              <button
+                aria-label={`Open ${displayName}`}
+                className="rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                onClick={selectAuthor}
+                type="button"
+              >
+                <UserAvatar
+                  avatarAttachmentId={item.message.author?.avatarAttachmentId ?? undefined}
+                  avatarUrl={item.message.author?.avatarUrl ?? undefined}
+                  displayName={displayName}
+                  gravatarUrl={item.message.author?.gravatarUrl ?? undefined}
+                  size={36}
+                  token={token}
+                />
+              </button>
             ) : (
               <UserAvatar
                 avatarAttachmentId={item.message.author?.avatarAttachmentId ?? undefined}
@@ -239,9 +277,19 @@ export const ChannelMessageFeed = ({
             )}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
-                <span className="text-sm font-bold text-[var(--tx)]">
-                  {displayName}
-                </span>
+                {authorIdentity ? (
+                  <button
+                    className="min-w-0 text-left text-sm font-bold text-[var(--tx)] hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    onClick={selectAuthor}
+                    type="button"
+                  >
+                    {displayName}
+                  </button>
+                ) : (
+                  <span className="text-sm font-bold text-[var(--tx)]">
+                    {displayName}
+                  </span>
+                )}
                 {item.message.role === 'user' ? (
                   <StatusBadge presence={getPresence(item.message.userId)} />
                 ) : null}
