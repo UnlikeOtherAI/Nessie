@@ -1,6 +1,9 @@
 import crypto from 'node:crypto'
 
-import type { ExternalAuthIdentity } from './external-auth.js'
+import {
+  resolveIdentityDisplayName,
+  type ExternalAuthIdentity,
+} from './identity-display.js'
 
 /**
  * UnlikeOtherAuthenticator (UOA) integration — the config-JWT auto-onboarding
@@ -231,9 +234,13 @@ export const exchangeUoaCode = async (input: {
   if (!email) {
     throw new Error('[uoa] access token did not carry an email claim')
   }
-  const name = typeof claims.name === 'string' && claims.name.trim().length > 0
-    ? claims.name.trim()
-    : email
+  const name = typeof claims.name === 'string' ? claims.name : undefined
+  const preferredUsername = typeof claims.preferred_username === 'string'
+    ? claims.preferred_username
+    : undefined
 
-  return { displayName: name, email }
+  return {
+    displayName: resolveIdentityDisplayName(email, [name, preferredUsername]),
+    email,
+  }
 }
