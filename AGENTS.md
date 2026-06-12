@@ -43,6 +43,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - When a document is finished, move it to `docs/done/`.
 - Legacy code lives in `src/`. New code goes into `api/`, `admin/`, `web/`, `worker/`, `packages/`.
 - Do not import from `src/` in new code. All reusable concepts must be re-implemented in `packages/`.
+- Follow the architecture guardrails and anti-pattern list in `docs/architecture.md` before creating files, reorganizing code, or reusing logic.
 - Follow the provider system and frontend architecture in `docs/provider-system-and-frontend-architecture.md`.
 - Follow the implementation phases in `docs/implementation-phases.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.

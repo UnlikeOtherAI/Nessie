@@ -13,6 +13,7 @@ Multi-tenant, self-hosted agentic work platform. Organisations host their own Ne
 - **Admin** (`admin/`, port 5455) — full product interface for operators and knowledge workers
 - **Web** (`web/`) — public landing page only
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
+- **Guardrails** ([docs/architecture.md](docs/architecture.md)) — things to avoid when creating files, organizing code, sharing logic, and preserving security/testability boundaries
 
 Legacy single-user server lives in `src/` and is being removed — do not rely on it for new work.
 
