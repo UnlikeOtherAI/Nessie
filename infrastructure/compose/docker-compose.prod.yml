@@ -48,6 +48,7 @@ services:
       NESSIE_MODE: selfHosted
       NESSIE_API_HOST: 0.0.0.0
       NESSIE_API_PORT: "5554"
+      NESSIE_API_TRUSTED_PROXY_HOPS: "1"
       DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_CONFIG_PATH: /app/nessie.config.json

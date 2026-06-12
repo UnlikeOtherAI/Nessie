@@ -8,6 +8,7 @@
 - Desktop installable builds that embed local admin changes must build admin with `VITE_API_BASE_URL=https://api.nessie.unlikeotherai.com` and Tauri with `--config '{"build":{"frontendDist":"../../admin/dist"}}'`. `https://nessie.unlikeotherai.com` is the admin web origin, not the API origin; using it as `VITE_API_BASE_URL` leaves login stuck at "Loading providers...". See `docs/running-the-apps.md`.
 - Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 - `pnpm --filter @nessie/admin build` is for production/CI bundles only, not the dev loop.
+- Root `pnpm build`, `make build`, and production Dockerfiles are lint-gated. Do not replace them with raw build commands unless the replacement keeps an equivalent lint gate.
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 
@@ -44,3 +45,4 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Do not import from `src/` in new code. All reusable concepts must be re-implemented in `packages/`.
 - Follow the provider system and frontend architecture in `docs/provider-system-and-frontend-architecture.md`.
 - Follow the implementation phases in `docs/implementation-phases.md`.
+- User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.

@@ -40,6 +40,7 @@ import {
   type WsScope,
 } from '@nessie/schemas'
 import { executeBuiltinTool } from './tools.js'
+import { summarizeToolInput } from './tool-util.js'
 import { authorizeToolCall, resolveAgentTools, type ToolDenialReason } from './tool-policy.js'
 import { runAgenticLoop, DEFAULT_BUDGET } from './agentic-loop.js'
 import { buildMcpToolset } from './mcp-toolset.js'
@@ -434,7 +435,7 @@ const toolDeniedResult = (
     reason: ToolDeniedOutputReason
   },
 ): { inputSummary: string; output: string; success: false } => ({
-  inputSummary: JSON.stringify(args).slice(0, 200),
+  inputSummary: summarizeToolInput(args),
   output: JSON.stringify({
     approvalActionType: input.approvalActionType,
     message: input.message,
@@ -1435,7 +1436,7 @@ export const executeRunJob = async (
           await deps.realtimeTransport.publishWs(buildScopes(context), {
             data: {
               agentId: parseAgentId(context.agent.id),
-              inputSummary: JSON.stringify(_args).slice(0, 200),
+              inputSummary: summarizeToolInput(_args),
               runId: parseRunId(context.run.id),
               toolName,
             },

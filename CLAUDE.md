@@ -49,6 +49,7 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   login will stall at "Loading providers...". See
   [docs/running-the-apps.md](docs/running-the-apps.md).
 - Rebuild the worker after every turn where worker code changed: `pnpm --filter @nessie/worker build`. In local mode the API runs the worker **embedded from its built `dist`** (`import('@nessie/worker')`), so worker source edits do not take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
+- Root `pnpm build`, `make build`, and the production Dockerfiles are lint-gated. Keep lint in those build paths instead of replacing them with raw `turbo build` or package build calls.
 
 ## Production deployment
 
@@ -66,6 +67,9 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   one-time bootstrap owner URL.
 - Compose: `infrastructure/compose/docker-compose.prod.yml`. Redeploy with
   `infrastructure/compose/redeploy.sh` after rsync'ing to `/srv/nessie`.
+- The API trusts `X-Forwarded-For` only when `NESSIE_API_TRUSTED_PROXY_HOPS`
+  is set. Production behind Caddy sets it to `1`; local/dev defaults to `0`
+  and ignores forwarded client IP headers.
 - **Authoritative guide: [docs/deployment.md](docs/deployment.md)** — first
   deploy, redeploy, config reference, MCP secret store, and SSO status.
 
@@ -106,6 +110,12 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 ## MCP Integration
 
 The live API server (`api/`) exposes a **REST MCP connector-management surface** under `/api/mcp/*`. This is for managing third-party MCP connectors (register, list, approve, activate, delete) — it is not a JSON-RPC tool server.
+
+User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The
+cloud API and worker reject stdio process execution for catalog/instance data,
+and HTTP/SSE/OAuth URLs are checked by the shared SSRF guard before save or use.
+Use remote MCP runners for private networks, local machines, or subprocess-based
+servers.
 
 > **Legacy JSON-RPC MCP server removed.** The old `GET /mcp` / `POST /mcp` JSON-RPC server (`src/mcp/server.ts`) that exposed `send_message`, `invoke_tool`, `tools/list`, and 37 tools existed only in the legacy `src/` tree, which is being deleted. There is no JSON-RPC `/mcp` endpoint on the live `api/` server.
 

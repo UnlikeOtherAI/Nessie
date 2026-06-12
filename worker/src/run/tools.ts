@@ -38,7 +38,7 @@ import {
   runWebSearchTool,
 } from './content-tools.js'
 import { runSpawnSubtaskTool } from './subtask-tools.js'
-import { truncateToolResult } from './tool-util.js'
+import { summarizeToolInput, truncateToolResult } from './tool-util.js'
 import type { BuiltinToolRuntimeContext } from './tool-types.js'
 
 // Re-exported so existing importers keep using the './tools.js' entry point.
@@ -137,7 +137,7 @@ export const executeBuiltinTool = async (
   args: Record<string, unknown>,
   context: BuiltinToolRuntimeContext,
 ): Promise<AgenticToolResult> => {
-  const inputSummary = JSON.stringify(args).slice(0, 200)
+  const inputSummary = summarizeToolInput(args)
   switch (toolName) {
     case 'workspace_search':
       return wrapTool(inputSummary, () =>

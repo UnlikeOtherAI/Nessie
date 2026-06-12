@@ -30,9 +30,10 @@ RUN pnpm install --frozen-lockfile --filter='!@nessie/mobile' --filter='!@nessie
 # imports it (@nessie/db → @prisma/client).
 RUN pnpm --filter @nessie/api exec prisma generate --schema prisma/schema.prisma
 
-# turbo build resolves the ^build dependency graph, so this builds the shared
-# packages, the worker, and the API in the correct order.
-RUN pnpm exec turbo run build --filter=@nessie/api --filter=@nessie/worker
+# Keep container builds lint-gated for the package graph this image ships, then
+# build the shared packages, worker, and API in dependency order.
+RUN pnpm exec turbo run lint --filter=@nessie/api --filter=@nessie/worker \
+  && pnpm exec turbo run build --filter=@nessie/api --filter=@nessie/worker
 
 ENV NODE_ENV=production
 

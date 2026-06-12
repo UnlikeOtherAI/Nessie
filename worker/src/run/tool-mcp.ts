@@ -2,6 +2,10 @@ import {
   McpClientManager,
   type McpToolResult,
 } from '@nessie/mcp-client'
+import {
+  assertSafeUrl,
+  type ResolveHost,
+} from '@nessie/runtime'
 import type { McpTransportConfig } from '@nessie/schemas'
 
 /**
@@ -25,6 +29,8 @@ export type McpDispatchInput = {
   timeoutMs?: number
   /** Caller-controlled abort signal (e.g. job cancellation). */
   abort?: AbortSignal
+  /** Test seam for SSRF DNS resolution. Production uses system DNS. */
+  resolveHost?: ResolveHost
   /** Injection seam for tests so the manager can be stubbed wholesale. */
   managerFactory?: () => McpClientManager
 }
@@ -32,6 +38,25 @@ export type McpDispatchInput = {
 export type McpDispatchOutput = McpToolResult
 
 const defaultManagerFactory = (): McpClientManager => new McpClientManager()
+
+const assertTransportSafe = async (
+  config: McpTransportConfig,
+  resolveHost?: ResolveHost,
+): Promise<void> => {
+  switch (config.transport) {
+    case 'stdio':
+      throw new Error('MCP stdio transport is disabled for user-authored connectors')
+    case 'http':
+    case 'sse':
+    case 'ws':
+      await assertSafeUrl(config.url, { resolveHost })
+      return
+    default: {
+      const _never: never = config
+      void _never
+    }
+  }
+}
 
 const toConnectionSpec = (config: McpTransportConfig): Parameters<McpClientManager['open']>[0] => {
   switch (config.transport) {
@@ -59,6 +84,7 @@ const toConnectionSpec = (config: McpTransportConfig): Parameters<McpClientManag
 export const runMcpTool = async (
   input: McpDispatchInput,
 ): Promise<McpDispatchOutput> => {
+  await assertTransportSafe(input.transport, input.resolveHost)
   const manager = (input.managerFactory ?? defaultManagerFactory)()
   let connectionId: Awaited<ReturnType<McpClientManager['open']>> | null = null
   try {

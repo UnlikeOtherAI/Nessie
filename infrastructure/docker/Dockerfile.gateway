@@ -16,7 +16,8 @@ COPY gateway/ gateway/
 RUN pnpm install --frozen-lockfile --filter @nessie/gateway...
 
 # The gateway build task depends on ^build, so turbo builds @nessie/push first.
-RUN pnpm exec turbo run build --filter=@nessie/gateway
+RUN pnpm exec turbo run lint --filter=@nessie/gateway \
+  && pnpm exec turbo run build --filter=@nessie/gateway
 
 ENV NODE_ENV=production
 

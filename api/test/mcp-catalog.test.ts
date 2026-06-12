@@ -65,6 +65,43 @@ test('ensureAuthConfigMatchesMethod rejects method mismatch', () => {
   )
 })
 
+test('createCatalogEntry rejects user-authored stdio connectors', async () => {
+  const { prisma } = makeStub([])
+  await assert.rejects(
+    () => createCatalogEntry(prisma, actorCtx(USER_A), {
+      name: 'stdio-tool',
+      label: 'Stdio Tool',
+      protocol: 'stdio',
+      authMethod: 'none',
+      authConfig: { method: 'none' },
+      defaultTransportConfig: { transport: 'stdio', command: 'node' },
+    }),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.TRANSPORT_CONFIG_INVALID,
+  )
+})
+
+test('createCatalogEntry rejects MCP HTTP URLs that target local networks', async () => {
+  const { prisma } = makeStub([])
+  await assert.rejects(
+    () => createCatalogEntry(prisma, actorCtx(USER_A), {
+      name: 'local-tool',
+      label: 'Local Tool',
+      protocol: 'http',
+      authMethod: 'none',
+      authConfig: { method: 'none' },
+      defaultTransportConfig: {
+        transport: 'http',
+        url: 'http://127.0.0.1:5454/mcp',
+      },
+    }),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.TRANSPORT_CONFIG_INVALID,
+  )
+})
+
 // ─── In-memory catalog stub ─────────────────────────────────────────────────
 //
 // A small generic stub that matches Prisma `where` clauses field-by-field

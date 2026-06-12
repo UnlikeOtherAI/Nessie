@@ -8,6 +8,10 @@ import { resolveCredentialRef } from './mcp-credentials.js'
 import type { CredentialResolutionContext } from './mcp-credentials.js'
 import { hasAllowedGrantForPrincipals } from './tool-grants.js'
 import { NullSecretResolver, type SecretResolver } from './secret-resolver.js'
+import {
+  McpSecurityError,
+  assertUserAuthoredMcpTransportSafe,
+} from './mcp-security.js'
 
 /**
  * API-side tool dispatch orchestration (plan §5/§6).
@@ -103,6 +107,21 @@ const decodeTransportConfig = (value: unknown): ToolTransportConfig => {
   return parsed.data
 }
 
+const toRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+
+const mapSecurityError = (error: unknown): never => {
+  if (error instanceof McpSecurityError) {
+    throw new ToolDispatchError(
+      TOOL_DISPATCH_ERROR_CODES.TRANSPORT_CONFIG_INVALID,
+      error.message,
+    )
+  }
+  throw error
+}
+
 /**
  * Build a `DispatchPlan` for the given tool registry id. The caller is the API
  * tier (HTTP handler) or a worker dispatch boundary that has just received a
@@ -196,6 +215,14 @@ export const planToolDispatch = async (
           TOOL_DISPATCH_ERROR_CODES.MCP_INSTANCE_INACTIVE,
           `MCP instance ${instanceId} is not active (state=${instance.lifecycleState})`,
         )
+      }
+      try {
+        await assertUserAuthoredMcpTransportSafe({
+          ...toRecord(instance.catalogEntry.defaultTransportConfig),
+          ...toRecord(instance.transportConfig),
+        })
+      } catch (error) {
+        mapSecurityError(error)
       }
       const ref = await resolveCredentialRef(prisma, instance.id, context.credentialContext)
       const secret = ref ? await secretResolver.resolve(ref) : null

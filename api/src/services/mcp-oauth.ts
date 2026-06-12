@@ -8,6 +8,12 @@ import type {
 
 import { getCatalogEntry, ensureAuthConfigMatchesMethod } from './mcp-catalog.js'
 import { getInstance } from './mcp-instances.js'
+import {
+  McpSecurityError,
+  assertMcpAuthUrlsSafe,
+  assertMcpUrlSafe,
+  type McpUrlSafetyOptions,
+} from './mcp-security.js'
 import { upsertOverride } from './mcp-credentials.js'
 
 /**
@@ -44,6 +50,7 @@ export const MCP_OAUTH_ERROR_CODES = {
   NOT_OAUTH2: 'MCP_OAUTH_NOT_OAUTH2',
   STATE_INVALID: 'MCP_OAUTH_STATE_INVALID',
   STATE_EXPIRED: 'MCP_OAUTH_STATE_EXPIRED',
+  URL_UNSAFE: 'MCP_OAUTH_URL_UNSAFE',
   TOKEN_EXCHANGE_FAILED: 'MCP_OAUTH_TOKEN_EXCHANGE_FAILED',
   TOKEN_RESPONSE_INVALID: 'MCP_OAUTH_TOKEN_RESPONSE_INVALID',
 } as const
@@ -113,6 +120,13 @@ export const defaultOAuthStateStore = createInMemoryStateStore()
 
 const STATE_TTL_MS = 10 * 60 * 1000 // 10 minutes per task #20 spec.
 
+const mapSecurityError = (error: unknown): never => {
+  if (error instanceof McpSecurityError) {
+    throw new McpOAuthError(MCP_OAUTH_ERROR_CODES.URL_UNSAFE, error.message)
+  }
+  throw error
+}
+
 /**
  * Mint a cryptographically random `state` parameter. `base64url` keeps the
  * token URL-safe so providers don't mangle it in redirects.
@@ -131,6 +145,7 @@ export type StartOAuthInput = {
    * coupling the service to the HTTP layer.
    */
   callbackUrl: string
+  resolveHost?: McpUrlSafetyOptions['resolveHost']
 }
 
 export type StartOAuthResult = {
@@ -180,6 +195,11 @@ export const startOAuth = async (
     catalogEntry.authMethod,
     catalogEntry.authConfig,
   ) as McpOAuth2AuthConfig
+  try {
+    await assertMcpAuthUrlsSafe(parsed, { resolveHost: input.resolveHost })
+  } catch (error) {
+    mapSecurityError(error)
+  }
 
   const token = generateState()
   store.put(token, {
@@ -218,6 +238,7 @@ export type TokenExchangeFn = (input: {
   redirectUri: string
   clientId: string
   clientSecret: string
+  resolveHost?: McpUrlSafetyOptions['resolveHost']
 }) => Promise<{
   accessToken: string
   refreshToken?: string
@@ -240,7 +261,13 @@ export const defaultTokenExchange: TokenExchangeFn = async ({
   redirectUri,
   clientId,
   clientSecret,
+  resolveHost,
 }) => {
+  try {
+    await assertMcpUrlSafe(tokenUrl, { resolveHost })
+  } catch (error) {
+    mapSecurityError(error)
+  }
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -317,6 +344,7 @@ export type CompleteOAuthInput = {
   state: string
   code: string
   callbackUrl: string
+  resolveHost?: McpUrlSafetyOptions['resolveHost']
 }
 
 /**
@@ -390,6 +418,11 @@ export const completeOAuth = async (
     catalogEntry.authMethod,
     catalogEntry.authConfig,
   ) as McpOAuth2AuthConfig
+  try {
+    await assertMcpAuthUrlsSafe(parsed, { resolveHost: input.resolveHost })
+  } catch (error) {
+    mapSecurityError(error)
+  }
 
   const tokens = await tokenExchange({
     tokenUrl: parsed.tokenUrl,
@@ -397,6 +430,7 @@ export const completeOAuth = async (
     redirectUri: input.callbackUrl,
     clientId: parsed.clientId,
     clientSecret: parsed.clientSecret,
+    resolveHost: input.resolveHost,
   })
   const credentialRef = await input.secretStore.put({
     accessToken: tokens.accessToken,

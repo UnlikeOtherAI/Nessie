@@ -35,7 +35,7 @@ export type AuthenticatedRequestState = {
   me: MeResponse
 }
 
-type RequestWithRawBody = FastifyRequest & {
+export type RequestWithRawBody = FastifyRequest & {
   rawBody?: Buffer
 }
 
@@ -138,6 +138,14 @@ type RateLimitBucket = {
   count: number
   resetAt: number
 }
+
+export const createFastifyTrustProxyConfig = (
+  trustedProxyHops: number,
+): false | number => trustedProxyHops > 0 ? trustedProxyHops : false
+
+export const getRateLimitClientId = (
+  request: Pick<FastifyRequest, 'ip'>,
+): string => request.ip
 
 /**
  * Server context: owns config, the shared Prisma client, auth secret + bootstrap
@@ -508,11 +516,6 @@ export const createServerContext = () => {
     return null
   }
 
-  const getRateLimitClientId = (request: FastifyRequest): string => {
-    const forwardedFor = parseHeaderValue(request.headers['x-forwarded-for'])
-    return forwardedFor?.split(',')[0]?.trim() || request.ip
-  }
-
   const checkRateLimit = (request: FastifyRequest): { retryAfterSeconds: number } | null => {
     const rule = resolveRateLimitRule(request)
     if (!rule) {
@@ -573,4 +576,3 @@ export const createServerContext = () => {
 }
 
 export type ServerContext = ReturnType<typeof createServerContext>
-export type { RequestWithRawBody }

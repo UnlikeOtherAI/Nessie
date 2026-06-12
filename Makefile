@@ -53,11 +53,11 @@ android: ## Build the Android development client with EAS.
 ##@ Relay
 # Requires GATEWAY_API_KEY plus PUSH_APNS_* and/or PUSH_FCM_SERVICE_ACCOUNT env.
 gateway: ## Build and run the local push relay.
-	pnpm --filter @nessie/gateway build && node gateway/dist/index.js
+	pnpm --filter @nessie/gateway lint && pnpm --filter @nessie/gateway build && node gateway/dist/index.js
 
 ##@ Build
 build: ## Build every workspace package with Turbo.
-	pnpm exec turbo run build
+	pnpm build
 
 typecheck: ## Typecheck the workspace.
 	pnpm typecheck

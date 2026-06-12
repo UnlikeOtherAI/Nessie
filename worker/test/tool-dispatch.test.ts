@@ -45,11 +45,11 @@ const stubManager = (
 test('parseMcpTransportConfig accepts a valid http config', () => {
   const config = parseMcpTransportConfig({
     transport: 'http',
-    url: 'https://example.com/mcp',
+    url: 'https://93.184.216.34/mcp',
   })
   assert.equal(config.transport, 'http')
   if (config.transport === 'http') {
-    assert.equal(config.url, 'https://example.com/mcp')
+    assert.equal(config.url, 'https://93.184.216.34/mcp')
   }
 })
 
@@ -70,7 +70,7 @@ test('parseMcpTransportConfig throws typed error on garbage', () => {
 test('dispatchTool routes mcp transport through runMcpTool and stringifies structured output', async () => {
   const log: StubLog[] = []
   const result = await runMcpTool({
-    transport: { transport: 'http', url: 'https://example.com/mcp' },
+    transport: { transport: 'http', url: 'https://93.184.216.34/mcp' },
     toolName: 'echo',
     args: { hello: 'world' },
     managerFactory: () => stubManager(
@@ -91,7 +91,7 @@ test('dispatchTool routes mcp transport through runMcpTool and stringifies struc
 test('runMcpTool surfaces isError=true responses unchanged', async () => {
   const log: StubLog[] = []
   const result = await runMcpTool({
-    transport: { transport: 'http', url: 'https://example.com/mcp' },
+    transport: { transport: 'http', url: 'https://93.184.216.34/mcp' },
     toolName: 'broken',
     args: {},
     managerFactory: () => stubManager(
@@ -101,6 +101,34 @@ test('runMcpTool surfaces isError=true responses unchanged', async () => {
   })
   assert.equal(result.isError, true)
   assert.equal(log.find((l) => l.method === 'callTool')?.args[1], 'broken')
+})
+
+test('runMcpTool rejects stdio transport before opening a process', async () => {
+  const log: StubLog[] = []
+  await assert.rejects(
+    () => runMcpTool({
+      transport: { transport: 'stdio', command: 'node', args: ['server.js'] },
+      toolName: 'echo',
+      args: {},
+      managerFactory: () => stubManager({ isError: false, content: [] }, log),
+    }),
+    /stdio transport is disabled/,
+  )
+  assert.equal(log.length, 0)
+})
+
+test('runMcpTool rejects private-network HTTP targets before opening', async () => {
+  const log: StubLog[] = []
+  await assert.rejects(
+    () => runMcpTool({
+      transport: { transport: 'http', url: 'http://127.0.0.1:5454/mcp' },
+      toolName: 'echo',
+      args: {},
+      managerFactory: () => stubManager({ isError: false, content: [] }, log),
+    }),
+    /Private or local network/,
+  )
+  assert.equal(log.length, 0)
 })
 
 test('dispatchTool rejects unknown transport at the type level', async () => {

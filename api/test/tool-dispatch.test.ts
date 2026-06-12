@@ -246,6 +246,43 @@ test(
   },
 )
 
+test('planToolDispatch rejects MCP instances configured for stdio execution', async () => {
+  const prisma = buildMcpPrisma({
+    registry: [
+      {
+        id: 'tool-mcp',
+        organizationId: ORG_A,
+        enabled: true,
+        status: 'active',
+        transport: 'mcp',
+        transportConfig: MCP_TRANSPORT_CONFIG,
+        mcpInstanceId: INSTANCE_ID,
+      },
+    ],
+    instances: [
+      {
+        id: INSTANCE_ID,
+        credentialRef: null,
+        lifecycleState: 'active',
+        transportConfig: { transport: 'stdio', command: 'node' },
+        catalogEntry: { defaultTransportConfig: {} },
+      },
+    ],
+    grantAllowed: true,
+  })
+
+  await assert.rejects(
+    () => planToolDispatch(prisma, 'tool-mcp', {
+      organizationId: ORG_A,
+      principals: { roleIds: ['role-1'] },
+      credentialContext: { organizationId: ORG_A },
+    }),
+    (error: unknown) =>
+      error instanceof ToolDispatchError
+      && error.code === TOOL_DISPATCH_ERROR_CODES.TRANSPORT_CONFIG_INVALID,
+  )
+})
+
 test(
   'planToolDispatch uses the injected SecretResolver when options.secretResolver is provided',
   async () => {

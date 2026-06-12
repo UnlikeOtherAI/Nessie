@@ -28,6 +28,7 @@ import { createPgSecretStore } from './services/mcp-oauth-secret-store.js'
 import { createThoughtService } from './services/thoughts.js'
 import {
   createCorsOriginChecker,
+  createFastifyTrustProxyConfig,
   createServerContext,
   type RequestWithRawBody,
 } from './lib/server-context.js'
@@ -98,6 +99,7 @@ let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
 
 export const buildApp = async () => {
   const app = Fastify({
+    trustProxy: createFastifyTrustProxyConfig(config.api.trustedProxyHops),
     logger: {
       // Redact the `token` query param (used by the WebSocket upgrade path
       // because the browser WS API cannot set headers) from access logs.

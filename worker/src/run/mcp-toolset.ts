@@ -1,6 +1,7 @@
 import { recordConnectorUsage, type LedgerAttribution, type ToolSchemaDescriptor } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
 import { dispatchTool, parseMcpTransportConfig } from './tool-dispatch.js'
+import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
 export type McpToolPolicy = Record<string, boolean> | null
@@ -167,7 +168,7 @@ export const buildMcpToolset = async (
     exposedName: string,
     args: Record<string, unknown>,
   ): Promise<AgenticToolResult> => {
-    const inputSummary = JSON.stringify(args).slice(0, 200)
+    const inputSummary = summarizeToolInput(args)
     const target = transportByExposedName.get(exposedName)
     if (!target) {
       return { inputSummary, output: `Unknown MCP tool: ${exposedName}`, success: false }

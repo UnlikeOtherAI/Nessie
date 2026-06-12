@@ -6,6 +6,7 @@ import {
   UpdateOrganizationLogoRequestSchema,
 } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { canAccessAttachment } from '../services/attachments.js'
 import type { RouteDeps } from './types.js'
 
 const buildStorageConfig = (deps: RouteDeps): StorageConfig => ({
@@ -82,7 +83,10 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
       const attachment = await prisma.attachment.findUnique({
         where: { id: body.logoAttachmentId },
       })
-      if (!attachment || attachment.organizationId !== organizationId) {
+      if (
+        !attachment ||
+        !(await canAccessAttachment(prisma, attachment, { organizationId, userId }))
+      ) {
         sendApiError(
           reply,
           400,
