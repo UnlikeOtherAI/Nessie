@@ -101,6 +101,36 @@ test('extractSandboxConfig rejects object without path string', async () => {
   )
 })
 
+test('extractSandboxConfig rejects invalid object kind', async () => {
+  const { root, cleanup } = await setupDir()
+  try {
+    await assert.rejects(
+      extractSandboxConfig(
+        { allowedRoots: [{ path: root, kind: 'directory' }] },
+        'test',
+      ),
+      SandboxViolationError,
+    )
+  } finally {
+    await cleanup()
+  }
+})
+
+test('extractSandboxConfig rejects invalid object access', async () => {
+  const { root, cleanup } = await setupDir()
+  try {
+    await assert.rejects(
+      extractSandboxConfig(
+        { allowedRoots: [{ path: root, access: 'read' }] },
+        'test',
+      ),
+      SandboxViolationError,
+    )
+  } finally {
+    await cleanup()
+  }
+})
+
 test('extractSandboxConfig rejects mixed invalid entry', async () => {
   await assert.rejects(
     extractSandboxConfig({ allowedRoots: [42] }, 'test'),

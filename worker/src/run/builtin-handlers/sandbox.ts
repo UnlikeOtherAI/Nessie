@@ -19,12 +19,36 @@ export type OperationType = 'read' | 'write' | 'glob'
 
 export type SandboxRoot = {
   path: string
-  kind?: SandboxRootKind
-  access?: SandboxRootAccess
+  kind: SandboxRootKind
+  access: SandboxRootAccess
 }
 
 export type SandboxConfig = {
   allowedRoots: SandboxRoot[]
+}
+
+const parseRootKind = (
+  value: unknown,
+  toolId: string,
+  rootPath: string,
+): SandboxRootKind => {
+  if (value === undefined) return 'dir'
+  if (value === 'dir' || value === 'file') return value
+  throw new SandboxViolationError(
+    `Tool ${toolId} allowedRoot "${rootPath}" kind must be 'dir' or 'file'.`,
+  )
+}
+
+const parseRootAccess = (
+  value: unknown,
+  toolId: string,
+  rootPath: string,
+): SandboxRootAccess => {
+  if (value === undefined) return 'rw'
+  if (value === 'ro' || value === 'rw') return value
+  throw new SandboxViolationError(
+    `Tool ${toolId} allowedRoot "${rootPath}" access must be 'ro' or 'rw'.`,
+  )
 }
 
 /**
@@ -89,10 +113,8 @@ export const extractSandboxConfig = async (
       )
     }
 
-    const kind: SandboxRootKind =
-      obj.kind === 'file' ? 'file' : 'dir'
-    const access: SandboxRootAccess =
-      obj.access === 'ro' ? 'ro' : 'rw'
+    const kind = parseRootKind(obj.kind, toolId, obj.path)
+    const access = parseRootAccess(obj.access, toolId, obj.path)
 
     let realPath: string
     try {
