@@ -19,6 +19,7 @@ export const buildModelPrompt = (
     'When you need an id for a channel, person, or thread you only know by name, '
       + 'resolve it yourself with the lookup tools (channel_find, people_search) — '
       + 'never ask the user to paste an id.',
+    'Channel names are not globally unique. Use channel_find to confirm the project/team scope and channelId before targeting a named channel.',
     'When you have enough information, respond directly without calling more tools.',
     'Use relevant memory context when it helps, but prefer the latest explicit user instructions on conflict.',
     'Keep the answer concise and concrete.',

@@ -17,6 +17,7 @@ interface ChannelComposerProps {
   onOversizePaste: (paste: string) => void
   onSubmitText: (text: string) => void
   onSubmitForm: (event?: FormEvent<HTMLFormElement>) => void
+  onInsertHashSign: () => void
   onInsertAtSign: () => void
 }
 
@@ -30,6 +31,7 @@ export const ChannelComposer = ({
   onOversizePaste,
   onSubmitText,
   onSubmitForm,
+  onInsertHashSign,
   onInsertAtSign,
 }: ChannelComposerProps) => (
   <div className="flex-shrink-0 px-5 pb-[14px]">
@@ -48,9 +50,18 @@ export const ChannelComposer = ({
           <button
             className={toolbarButtonClass}
             onClick={onInsertAtSign}
+            title="Mention person or agent"
             type="button"
           >
             @
+          </button>
+          <button
+            className={toolbarButtonClass}
+            onClick={onInsertHashSign}
+            title="Mention channel"
+            type="button"
+          >
+            #
           </button>
           <button className={toolbarButtonClass} type="button">
             <svg

@@ -104,6 +104,7 @@ export const ChannelsPage = () => {
 
   const { mentionEntities, renderContent } = useChannelMentions({
     agents,
+    channels,
     channelUsers,
     isConversationSurface,
     onSelectAgent,
@@ -404,6 +405,7 @@ export const ChannelsPage = () => {
         onOversizePaste={(paste) => setOversizePaste(paste)}
         onSubmitText={(text) => void sendText(text)}
         onSubmitForm={(event) => void sendMessageSubmit(event)}
+        onInsertHashSign={() => mentionRef.current?.insertHashSign()}
         onInsertAtSign={() => mentionRef.current?.insertAtSign()}
       />
 

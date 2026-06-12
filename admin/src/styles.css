@@ -952,6 +952,17 @@ a {
   white-space: nowrap;
 }
 
+.admin-date-pill-button {
+  color: inherit;
+  cursor: pointer;
+}
+
+.admin-date-pill-button:hover,
+.admin-date-pill-button:focus-visible {
+  background: var(--main-hover);
+  outline: none;
+}
+
 .admin-msg-row {
   display: flex;
   align-items: flex-start;

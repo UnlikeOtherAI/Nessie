@@ -133,7 +133,7 @@ export const runSendMessageTool = async (
     inputSummary: truncate(content, 200),
     outputPreview: [
       destinationSummary,
-      `channelId=${destination.channelId} | channel="${destination.channelLabel}"`,
+      `channelId=${destination.channelId} | channel="${destination.channelLabel}" | scope="${destination.channelScope}"`,
       `threadId=${destination.threadId}${destination.threadLabel ? ` | thread="${destination.threadLabel}"` : ''}`,
       `messageId=${message.id}`,
       `agentsNotified=${queuedReplyCount}`,

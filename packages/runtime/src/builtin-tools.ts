@@ -468,7 +468,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       'Resolve a channel by name (e.g. "general" or "#product") to its id. ' +
       'Use this to get a channelId before posting or acting on a channel — ' +
       'do not ask the user for an id. Returns matching channels with id, ' +
-      'label, and visibility.',
+      'label, project/team scope, and visibility; use scope to distinguish duplicate labels.',
     parameters: {
       type: 'object',
       properties: {
@@ -490,7 +490,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'List Channels',
     description:
       'List channels visible in the current organization. Returns each ' +
-      'channel id, label, visibility, topic, and whether it is archived.',
+      'channel id, label, project/team scope, visibility, topic, and whether it is archived.',
     parameters: {
       type: 'object',
       properties: {

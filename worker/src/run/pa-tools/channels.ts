@@ -5,7 +5,7 @@ import {
   isDelegatingPersonalAssistant,
   requireActingUserId,
 } from './access.js'
-import { clampLimit, formatSection, truncate } from './tool-output.js'
+import { clampLimit, formatChannelRef, formatSection, truncate } from './tool-output.js'
 
 // Mirror of api/src/services/channels.ts toChannelSlug; the worker cannot
 // import from api/, so the rule is re-implemented here to keep validation
@@ -82,12 +82,18 @@ export const runChannelListTool = async (
       visibility: true,
       topic: true,
       archivedAt: true,
+      team: {
+        select: {
+          name: true,
+          project: { select: { name: true } },
+        },
+      },
     },
     take,
   })
 
   const lines = channels.map((channel, index) =>
-    `${index + 1}. #${channel.label} | channelId=${channel.id} | visibility=${channel.visibility}`
+    `${index + 1}. ${formatChannelRef(channel)} | channelId=${channel.id} | visibility=${channel.visibility}`
     + ` | archived=${channel.archivedAt ? 'yes' : 'no'}`
     + (channel.topic ? ` | topic="${channel.topic}"` : ''),
   )
@@ -123,12 +129,22 @@ export const runChannelFindTool = async (
       label: { contains: query, mode: 'insensitive' },
     },
     orderBy: { label: 'asc' },
-    select: { id: true, label: true, visibility: true },
+    select: {
+      id: true,
+      label: true,
+      visibility: true,
+      team: {
+        select: {
+          name: true,
+          project: { select: { name: true } },
+        },
+      },
+    },
     take,
   })
 
   const lines = channels.map(
-    (channel) => `#${channel.label} | channelId=${channel.id} | visibility=${channel.visibility}`,
+    (channel) => `${formatChannelRef(channel)} | channelId=${channel.id} | visibility=${channel.visibility}`,
   )
 
   return {
@@ -189,14 +205,25 @@ export const runChannelUpdateTool = async (
   const channel = await context.prisma.channel.update({
     where: { id: input.channelId },
     data,
-    select: { id: true, label: true, topic: true, description: true },
+    select: {
+      id: true,
+      label: true,
+      topic: true,
+      description: true,
+      team: {
+        select: {
+          name: true,
+          project: { select: { name: true } },
+        },
+      },
+    },
   })
 
   return {
     inputSummary: `channelId=${input.channelId}`,
     outputPreview: [
       `Updated channelId=${channel.id}`,
-      `label="${channel.label}"`,
+      `channel=${formatChannelRef(channel)}`,
       `topic=${channel.topic ? `"${channel.topic}"` : '(none)'}`,
       `description=${channel.description ? `"${truncate(channel.description, 120)}"` : '(none)'}`,
     ].join('\n'),
@@ -227,13 +254,23 @@ export const runChannelArchiveTool = async (
   const channel = await context.prisma.channel.update({
     where: { id: input.channelId },
     data: { archivedAt: archived ? new Date() : null },
-    select: { id: true, label: true, archivedAt: true },
+    select: {
+      id: true,
+      label: true,
+      archivedAt: true,
+      team: {
+        select: {
+          name: true,
+          project: { select: { name: true } },
+        },
+      },
+    },
   })
 
   return {
     inputSummary: `channelId=${input.channelId} archived=${archived}`,
     outputPreview:
-      `${channel.archivedAt ? 'Archived' : 'Unarchived'} channelId=${channel.id} | #${channel.label}`,
+      `${channel.archivedAt ? 'Archived' : 'Unarchived'} channelId=${channel.id} | ${formatChannelRef(channel)}`,
     toolName: 'channel_archive',
   }
 }
@@ -250,7 +287,18 @@ export const runChannelJoinTool = async (
 
   const channel = await context.prisma.channel.findUnique({
     where: { id: input.channelId },
-    select: { organizationId: true, label: true, visibility: true, archivedAt: true },
+    select: {
+      organizationId: true,
+      label: true,
+      visibility: true,
+      archivedAt: true,
+      team: {
+        select: {
+          name: true,
+          project: { select: { name: true } },
+        },
+      },
+    },
   })
   if (!channel || channel.organizationId !== organizationId) {
     throw new Error('Channel not found.')
@@ -274,7 +322,7 @@ export const runChannelJoinTool = async (
 
   return {
     inputSummary: `channelId=${input.channelId}`,
-    outputPreview: `Joined channelId=${input.channelId} | #${channel.label}`,
+    outputPreview: `Joined channelId=${input.channelId} | ${formatChannelRef(channel)}`,
     toolName: 'channel_join',
   }
 }

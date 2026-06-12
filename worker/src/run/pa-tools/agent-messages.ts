@@ -17,6 +17,8 @@ type MessageSearchRow = {
   content: string
   created_at: Date
   author_name: string | null
+  project_name: string
+  team_name: string
 }
 
 export const runMessageSearchTool = async (
@@ -49,12 +51,16 @@ export const runMessageSearchTool = async (
       m."thread_id",
       c."id" AS channel_id,
       c."label" AS channel_label,
+      p."name" AS project_name,
+      tm."name" AS team_name,
       m."content",
       m."created_at",
       COALESCE(u."display_name", a."name") AS author_name
     FROM "messages" m
     JOIN "threads" t ON t."id" = m."thread_id"
     JOIN "channels" c ON c."id" = t."channel_id"
+    JOIN "teams" tm ON tm."id" = c."team_id"
+    JOIN "projects" p ON p."id" = tm."project_id"
     LEFT JOIN "users" u ON u."id" = m."user_id"
     LEFT JOIN "agents" a ON a."id" = m."agent_id"
     WHERE m."deleted_at" IS NULL
@@ -66,7 +72,7 @@ export const runMessageSearchTool = async (
 
   const lines = rows.map((row, index) =>
     [
-      `${index + 1}. ${row.author_name ?? 'Unknown'} | #${row.channel_label}`,
+      `${index + 1}. ${row.author_name ?? 'Unknown'} | #${row.channel_label} (${row.project_name} / ${row.team_name})`,
       `   ${row.created_at.toISOString()} | messageId=${row.id} | threadId=${row.thread_id}`,
       `   ${buildSnippet(row.content, searchQuery)}`,
     ].join('\n'),

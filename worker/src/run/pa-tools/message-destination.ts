@@ -10,6 +10,7 @@ import {
   requireActingUserId,
   type ChannelAgent,
 } from './access.js'
+import { formatChannelScope } from './tool-output.js'
 
 const ensureThreadForChannel = async (
   prisma: PrismaClient,
@@ -118,7 +119,7 @@ const resolveDmChannel = async (
     teamId: string
     targetUserId: string
   },
-): Promise<{ channelId: string; channelLabel: string }> => {
+): Promise<{ channelId: string; channelLabel: string; channelScope: string }> => {
   if (input.currentUserId === input.targetUserId) {
     throw new Error('targetUserId must refer to another user.')
   }
@@ -162,10 +163,23 @@ const resolveDmChannel = async (
         },
       },
       update: {},
-      select: { id: true, label: true },
+      select: {
+        id: true,
+        label: true,
+        team: {
+          select: {
+            name: true,
+            project: { select: { name: true } },
+          },
+        },
+      },
     })
 
-    return { channelId: channel.id, channelLabel: channel.label }
+    return {
+      channelId: channel.id,
+      channelLabel: channel.label,
+      channelScope: formatChannelScope(channel),
+    }
   } catch (error) {
     if (
       error instanceof Error
@@ -174,9 +188,22 @@ const resolveDmChannel = async (
     ) {
       const channel = await prisma.channel.findUniqueOrThrow({
         where: { dmKey },
-        select: { id: true, label: true },
+        select: {
+          id: true,
+          label: true,
+          team: {
+            select: {
+              name: true,
+              project: { select: { name: true } },
+            },
+          },
+        },
       })
-      return { channelId: channel.id, channelLabel: channel.label }
+      return {
+        channelId: channel.id,
+        channelLabel: channel.label,
+        channelScope: formatChannelScope(channel),
+      }
     }
 
     throw error
@@ -194,6 +221,7 @@ export const resolveMessageDestination = async (
 ): Promise<{
   channelId: string
   channelLabel: string
+  channelScope: string
   channelAgents: ChannelAgent[]
   channelType: 'dm' | 'standard'
   systemChannelType: 'personal_assistant' | null
@@ -240,6 +268,7 @@ export const resolveMessageDestination = async (
       ),
       channelId: dm.channelId,
       channelLabel: dm.channelLabel,
+      channelScope: dm.channelScope,
       channelType: 'dm',
       systemChannelType: null,
       threadId,
@@ -258,6 +287,12 @@ export const resolveMessageDestination = async (
         label: true,
         type: true,
         systemChannelType: true,
+        team: {
+          select: {
+            name: true,
+            project: { select: { name: true } },
+          },
+        },
       },
     })
 
@@ -280,6 +315,7 @@ export const resolveMessageDestination = async (
       ),
       channelId: channel.id,
       channelLabel: channel.label,
+      channelScope: formatChannelScope(channel),
       channelType: channel.type,
       systemChannelType: channel.systemChannelType,
       threadId,
@@ -302,6 +338,12 @@ export const resolveMessageDestination = async (
             label: true,
             type: true,
             systemChannelType: true,
+            team: {
+              select: {
+                name: true,
+                project: { select: { name: true } },
+              },
+            },
           },
         },
       },
@@ -320,6 +362,7 @@ export const resolveMessageDestination = async (
       ),
       channelId: thread.channel.id,
       channelLabel: thread.channel.label,
+      channelScope: formatChannelScope(thread.channel),
       channelType: thread.channel.type,
       systemChannelType: thread.channel.systemChannelType,
       threadId: thread.id,
@@ -343,6 +386,12 @@ export const resolveMessageDestination = async (
           label: true,
           type: true,
           systemChannelType: true,
+          team: {
+            select: {
+              name: true,
+              project: { select: { name: true } },
+            },
+          },
         },
       },
     },
@@ -361,6 +410,7 @@ export const resolveMessageDestination = async (
     ),
     channelId: thread.channel.id,
     channelLabel: thread.channel.label,
+    channelScope: formatChannelScope(thread.channel),
     channelType: thread.channel.type,
     systemChannelType: thread.channel.systemChannelType,
     threadId: thread.id,

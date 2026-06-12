@@ -12,6 +12,25 @@ export const clampLimit = (value: unknown, fallback: number): number => {
   return Math.min(Math.max(Math.trunc(parsed), 1), 20)
 }
 
+export type ChannelScopeSource = {
+  label: string
+  team: {
+    name: string
+    project: {
+      name: string
+    }
+  } | null
+}
+
+export const formatChannelScope = (channel: ChannelScopeSource): string => {
+  const projectName = channel.team?.project.name ?? 'Unknown project'
+  const teamName = channel.team?.name ?? 'Unknown team'
+  return `${projectName} / ${teamName}`
+}
+
+export const formatChannelRef = (channel: ChannelScopeSource): string =>
+  `#${channel.label} (${formatChannelScope(channel)})`
+
 export const buildSnippet = (
   content: string,
   query: string,

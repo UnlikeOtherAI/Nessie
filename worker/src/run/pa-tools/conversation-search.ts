@@ -7,6 +7,7 @@ import {
 import {
   buildSnippet,
   clampLimit,
+  formatChannelRef,
   formatMessageLine,
   formatSection,
   MAX_SEARCH_RESULTS,
@@ -48,7 +49,12 @@ export const runWorkspaceSearchTool = async (
         label: true,
         type: true,
         visibility: true,
-        teamId: true,
+        team: {
+          select: {
+            name: true,
+            project: { select: { name: true } },
+          },
+        },
         threads: {
           orderBy: { createdAt: 'asc' },
           take: 1,
@@ -71,6 +77,12 @@ export const runWorkspaceSearchTool = async (
             id: true,
             label: true,
             visibility: true,
+            team: {
+              select: {
+                name: true,
+                project: { select: { name: true } },
+              },
+            },
           },
         },
       },
@@ -96,6 +108,12 @@ export const runWorkspaceSearchTool = async (
               select: {
                 id: true,
                 label: true,
+                team: {
+                  select: {
+                    name: true,
+                    project: { select: { name: true } },
+                  },
+                },
               },
             },
           },
@@ -122,7 +140,7 @@ export const runWorkspaceSearchTool = async (
   const channelLines = channels.map((channel, index) => {
     const thread = channel.threads[0]
     return [
-      `${index + 1}. #${channel.label} | channelId=${channel.id} | visibility=${channel.visibility} | type=${channel.type}`,
+      `${index + 1}. ${formatChannelRef(channel)} | channelId=${channel.id} | visibility=${channel.visibility} | type=${channel.type}`,
       thread
         ? `   threadId=${thread.id}${thread.title ? ` | thread="${thread.title}"` : ''}`
         : '   threadId=none',
@@ -130,7 +148,7 @@ export const runWorkspaceSearchTool = async (
   })
   const threadLines = threads.map((thread, index) =>
     [
-      `${index + 1}. #${thread.channel.label} / ${thread.title ?? '(untitled)'} | threadId=${thread.id}`,
+      `${index + 1}. ${formatChannelRef(thread.channel)} / ${thread.title ?? '(untitled)'} | threadId=${thread.id}`,
       `   channelId=${thread.channel.id} | visibility=${thread.channel.visibility}`,
     ].join('\n'),
   )
@@ -140,7 +158,7 @@ export const runWorkspaceSearchTool = async (
         message.user?.displayName ??
         message.agent?.name ??
         'Unknown',
-      channelLabel: `#${message.thread.channel.label}`,
+      channelLabel: formatChannelRef(message.thread.channel),
       createdAt: message.createdAt.toISOString(),
       messageId: message.id,
       snippet: buildSnippet(message.content, searchQuery),
@@ -218,10 +236,16 @@ export const runAuthoredMessageSearchTool = async (
           title: true,
           channel: {
             select: {
-              id: true,
-              label: true,
+            id: true,
+            label: true,
+            team: {
+              select: {
+                name: true,
+                project: { select: { name: true } },
+              },
             },
           },
+        },
         },
       },
     },
@@ -230,7 +254,7 @@ export const runAuthoredMessageSearchTool = async (
 
   const messageLines = messages.map((message, index) =>
     [
-      `${index + 1}. #${message.thread.channel.label} / ${message.thread.title ?? '(untitled)'}`,
+      `${index + 1}. ${formatChannelRef(message.thread.channel)} / ${message.thread.title ?? '(untitled)'}`,
       `   ${message.createdAt.toISOString()} | messageId=${message.id} | threadId=${message.thread.id}`,
       `   ${buildSnippet(message.content, searchQuery)}`,
     ].join('\n'),

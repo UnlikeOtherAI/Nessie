@@ -13,10 +13,12 @@ import {
 /* ------------------------------------------------------------------ */
 
 export type MentionEntity = {
+  detail?: string
+  glyph?: string
   id: string
   name: string
-  type: 'user' | 'agent'
-  glyph?: string
+  trigger: '@' | '#'
+  type: 'user' | 'agent' | 'channel'
 }
 
 export type MentionInputHandle = {
@@ -24,6 +26,7 @@ export type MentionInputHandle = {
   focus: () => void
   getText: () => string
   insertAtSign: () => void
+  insertHashSign: () => void
   insertText: (text: string) => void
 }
 
@@ -65,24 +68,85 @@ function clearChildren(el: HTMLElement): void {
   }
 }
 
-function getMentionContext(): { query: string; range: Range } | null {
+function getLastTextNode(node: Node): Text | null {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node as Text
+  }
+
+  for (let i = node.childNodes.length - 1; i >= 0; i -= 1) {
+    const child = node.childNodes[i]
+    if (!child) continue
+    const textNode = getLastTextNode(child)
+    if (textNode) return textNode
+  }
+
+  return null
+}
+
+function getSelectionTextNode(
+  editor: HTMLElement,
+  node: Node,
+  offset: number,
+): { node: Text; offset: number } | null {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return { node: node as Text, offset }
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) return null
+  if (!editor.contains(node)) return null
+
+  const element = node as HTMLElement
+  const before = element.childNodes[offset - 1]
+  const beforeText = before ? getLastTextNode(before) : null
+  if (beforeText) {
+    return { node: beforeText, offset: beforeText.textContent?.length ?? 0 }
+  }
+
+  const onlyChild = offset === 0 && element === editor && element.childNodes.length === 1
+    ? element.childNodes[0]
+    : null
+  const onlyText = onlyChild ? getLastTextNode(onlyChild) : null
+  if (onlyText) {
+    return { node: onlyText, offset: onlyText.textContent?.length ?? 0 }
+  }
+
+  return null
+}
+
+function getMentionContext(
+  editor: HTMLElement,
+): { query: string; range: Range; trigger: '@' | '#' } | null {
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null
 
   const { startContainer: node, startOffset: offset } = sel.getRangeAt(0)
-  if (node.nodeType !== Node.TEXT_NODE) return null
+  const textSelection = getSelectionTextNode(editor, node, offset)
+  if (!textSelection) return null
 
-  const text = (node.textContent ?? '').slice(0, offset)
-  const match = text.match(/(^|[\s\u00A0])@([^\s\u00A0]*)$/)
+  const text = (textSelection.node.textContent ?? '').slice(0, textSelection.offset)
+  const match = text.match(/(^|[\s\u00A0([{])([@#])([^\s\u00A0]*)$/)
   if (!match) return null
 
-  const query = match[2] ?? ''
-  const atPos = offset - query.length - 1
+  const trigger = match[2] === '#' ? '#' : '@'
+  const query = match[3] ?? ''
+  const atPos = textSelection.offset - query.length - 1
 
   const range = document.createRange()
-  range.setStart(node, atPos)
-  range.setEnd(node, offset)
-  return { query, range }
+  range.setStart(textSelection.node, atPos)
+  range.setEnd(textSelection.node, textSelection.offset)
+  return { query, range, trigger }
+}
+
+function getEntityIcon(entity: MentionEntity): string {
+  if (entity.type === 'channel') return '#'
+  if (entity.type === 'agent') return entity.glyph ?? '⚡'
+  return entity.name[0]?.toUpperCase() ?? '?'
+}
+
+function matchesEntityQuery(entity: MentionEntity, query: string): boolean {
+  return `${entity.name} ${entity.detail ?? ''}`
+    .toLowerCase()
+    .includes(query.toLowerCase())
 }
 
 /* ------------------------------------------------------------------ */
@@ -96,18 +160,22 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
   ) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const popupRef = useRef<HTMLDivElement>(null)
-    const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+    const [mentionContext, setMentionContext] = useState<{
+      query: string
+      trigger: '@' | '#'
+    } | null>(null)
     const [selectedIdx, setSelectedIdx] = useState(0)
     const [hasContent, setHasContent] = useState(false)
 
     const filtered = useMemo(
       () =>
-        mentionQuery !== null
+        mentionContext !== null
           ? entities.filter((e) =>
-              e.name.toLowerCase().includes(mentionQuery.toLowerCase()),
+              e.trigger === mentionContext.trigger &&
+              matchesEntityQuery(e, mentionContext.query),
             )
           : [],
-      [entities, mentionQuery],
+      [entities, mentionContext],
     )
 
     const filteredRef = useRef(filtered)
@@ -131,7 +199,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
       item?.scrollIntoView({ block: 'nearest' })
     }, [selectedIdx])
 
-    const showPopup = mentionQuery !== null && filtered.length > 0
+    const showPopup = mentionContext !== null && filtered.length > 0
 
     const sync = useCallback(() => {
       const el = editorRef.current
@@ -142,20 +210,24 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
     }, [onChange])
 
     const checkMention = useCallback(() => {
-      const ctx = getMentionContext()
+      const el = editorRef.current
+      if (!el) return
+      const ctx = getMentionContext(el)
       if (ctx) {
-        setMentionQuery(ctx.query)
+        setMentionContext({ query: ctx.query, trigger: ctx.trigger })
         setSelectedIdx(0)
       } else {
-        setMentionQuery(null)
+        setMentionContext(null)
       }
     }, [])
 
     const insertMention = useCallback(
       (entity: MentionEntity) => {
-        const ctx = getMentionContext()
+        const editor = editorRef.current
+        if (!editor) return
+        const ctx = getMentionContext(editor)
         if (!ctx) {
-          setMentionQuery(null)
+          setMentionContext(null)
           return
         }
 
@@ -171,7 +243,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         span.dataset.mentionId = entity.id
         span.dataset.mentionType = entity.type
         span.className = 'mention-tag'
-        span.textContent = `@${entity.name}`
+        span.textContent = `${entity.trigger}${entity.name}`
 
         const range = sel.getRangeAt(0)
         range.insertNode(span)
@@ -185,7 +257,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         sel.removeAllRanges()
         sel.addRange(cursor)
 
-        setMentionQuery(null)
+        setMentionContext(null)
         sync()
       },
       [sync],
@@ -200,7 +272,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         if (!el) return
         clearChildren(el)
         setHasContent(false)
-        setMentionQuery(null)
+        setMentionContext(null)
         onChange?.('')
       },
       focus() {
@@ -214,6 +286,16 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         if (!el) return
         el.focus()
         document.execCommand('insertText', false, '@')
+        sync()
+        checkMention()
+      },
+      insertHashSign() {
+        const el = editorRef.current
+        if (!el) return
+        el.focus()
+        document.execCommand('insertText', false, '#')
+        sync()
+        checkMention()
       },
       insertText(text: string) {
         const el = editorRef.current
@@ -238,7 +320,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           <div
             ref={popupRef}
             className={[
-              'absolute bottom-full left-0 z-50 mb-1 max-h-[200px] w-[260px]',
+              'absolute bottom-full left-0 z-50 mb-1 max-h-[220px] w-[320px] max-w-[calc(100vw-40px)]',
               'overflow-y-auto rounded-lg border border-[color:var(--sep)]',
               'bg-[color:var(--main)] shadow-xl',
             ].join(' ')}
@@ -265,11 +347,14 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
                     'bg-[color:var(--overlay)] text-xs',
                   ].join(' ')}
                 >
-                  {entity.type === 'agent'
-                    ? (entity.glyph ?? '⚡')
-                    : (entity.name[0]?.toUpperCase() ?? '?')}
+                  {getEntityIcon(entity)}
                 </span>
-                <span className="truncate">{entity.name}</span>
+                <span className="min-w-0 flex flex-col">
+                  <span className="truncate">{entity.name}</span>
+                  {entity.detail ? (
+                    <span className="truncate text-xs opacity-60">{entity.detail}</span>
+                  ) : null}
+                </span>
                 <span className="ml-auto flex-shrink-0 text-xs opacity-50">
                   {entity.type}
                 </span>
@@ -289,7 +374,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           data-placeholder={placeholder}
           onBlur={() => {
             // Delay so mouseDown on popup fires first
-            setTimeout(() => setMentionQuery(null), 150)
+            setTimeout(() => setMentionContext(null), 150)
           }}
           onInput={() => {
             sync()
@@ -299,7 +384,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
             const f = filteredRef.current
             const idx = selectedIdxRef.current
 
-            if (mentionQuery !== null && f.length > 0) {
+            if (mentionContext !== null && f.length > 0) {
               if (e.key === 'ArrowDown') {
                 e.preventDefault()
                 setSelectedIdx((idx + 1) % f.length)
@@ -321,7 +406,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
               }
               if (e.key === 'Escape') {
                 e.preventDefault()
-                setMentionQuery(null)
+                setMentionContext(null)
                 return
               }
             }
@@ -336,7 +421,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
               // Enter keystroke can't re-read the same text.
               clearChildren(editor)
               setHasContent(false)
-              setMentionQuery(null)
+              setMentionContext(null)
               onChange?.('')
               onSubmit(text)
             }
