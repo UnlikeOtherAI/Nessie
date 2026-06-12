@@ -8,6 +8,11 @@ import {
   type McpCatalogVisibility,
   type McpServerAuthConfig,
 } from '@nessie/schemas'
+import {
+  McpSecurityError,
+  assertMcpAuthUrlsSafe,
+  assertUserAuthoredMcpTransportSafe,
+} from './mcp-security.js'
 
 /**
  * MCP App Store catalog service.
@@ -33,6 +38,7 @@ export const MCP_CATALOG_ERROR_CODES = {
   NOT_FOUND: 'MCP_CATALOG_ENTRY_NOT_FOUND',
   AUTH_CONFIG_INVALID: 'MCP_CATALOG_AUTH_CONFIG_INVALID',
   AUTH_METHOD_MISMATCH: 'MCP_CATALOG_AUTH_METHOD_MISMATCH',
+  TRANSPORT_CONFIG_INVALID: 'MCP_CATALOG_TRANSPORT_CONFIG_INVALID',
   DUPLICATE_NAME: 'MCP_CATALOG_ENTRY_DUPLICATE_NAME',
   INVALID_TRANSITION: 'MCP_CATALOG_ENTRY_INVALID_TRANSITION',
   FORBIDDEN: 'MCP_CATALOG_ENTRY_FORBIDDEN',
@@ -146,6 +152,42 @@ const duplicateNameError = (name: string): McpCatalogError =>
     MCP_CATALOG_ERROR_CODES.DUPLICATE_NAME,
     `An MCP catalog entry named "${name}" already exists in this scope`,
   )
+
+const transportConfigError = (message: string): McpCatalogError =>
+  new McpCatalogError(MCP_CATALOG_ERROR_CODES.TRANSPORT_CONFIG_INVALID, message)
+
+const mapSecurityError = (error: unknown): never => {
+  if (error instanceof McpSecurityError) {
+    throw transportConfigError(error.message)
+  }
+  throw error
+}
+
+const assertCatalogProtocolSafe = (protocol: McpCatalogProtocol): void => {
+  if (protocol === 'stdio') {
+    throw transportConfigError(
+      'MCP stdio transport is disabled for user-authored connectors',
+    )
+  }
+}
+
+const assertCatalogSecurity = async (
+  input: {
+    authConfig?: McpServerAuthConfig
+    defaultTransportConfig?: unknown
+    protocol?: McpCatalogProtocol
+  },
+): Promise<void> => {
+  if (input.protocol) assertCatalogProtocolSafe(input.protocol)
+  try {
+    if (input.authConfig) {
+      await assertMcpAuthUrlsSafe(input.authConfig)
+    }
+    await assertUserAuthoredMcpTransportSafe(input.defaultTransportConfig)
+  } catch (error) {
+    mapSecurityError(error)
+  }
+}
 
 /**
  * Build the `where` clause that scopes a listing to what `actorContext` may
@@ -261,6 +303,11 @@ export const createCatalogEntry = async (
   input: CreateCatalogEntryInput,
 ): Promise<McpCatalogEntryRow> => {
   const authConfig = ensureAuthConfigMatchesMethod(input.authMethod, input.authConfig)
+  await assertCatalogSecurity({
+    authConfig,
+    defaultTransportConfig: input.defaultTransportConfig,
+    protocol: input.protocol,
+  })
 
   try {
     return await prisma.mcpCatalogEntry.create({
@@ -309,8 +356,13 @@ export const updateCatalogEntry = async (
   if (input.authConfig !== undefined || input.authMethod !== undefined) {
     const nextMethod = input.authMethod ?? existing.authMethod
     const nextConfig = input.authConfig ?? existing.authConfig
-    ensureAuthConfigMatchesMethod(nextMethod, nextConfig)
+    const authConfig = ensureAuthConfigMatchesMethod(nextMethod, nextConfig)
+    await assertCatalogSecurity({ authConfig })
   }
+  await assertCatalogSecurity({
+    defaultTransportConfig: input.defaultTransportConfig,
+    protocol: input.protocol,
+  })
 
   return prisma.mcpCatalogEntry.update({
     where: { id },

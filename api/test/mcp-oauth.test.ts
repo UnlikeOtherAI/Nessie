@@ -32,6 +32,7 @@ import {
 
 const ORG_A = '00000000-0000-4000-8000-00000000000a'
 const USER_A = '00000000-0000-4000-8000-00000000000c'
+const publicResolver = async (): Promise<string[]> => ['93.184.216.34']
 
 const actorContext: AuthorizedActionContext = {
   tenant: {
@@ -158,6 +159,7 @@ test('startOAuth returns an authorization URL with state, scope, redirect_uri, c
     instanceId: 'instance-1',
     actorContext,
     callbackUrl: 'https://app.example/api/mcp/oauth/callback',
+    resolveHost: publicResolver,
   })
   const url = new URL(result.authorizationUrl)
   assert.equal(url.origin + url.pathname, 'https://provider.example/auth')
@@ -182,6 +184,7 @@ test('startOAuth stores the state with a 10-minute TTL for callback verification
     instanceId: 'instance-1',
     actorContext,
     callbackUrl: 'https://app.example/api/mcp/oauth/callback',
+    resolveHost: publicResolver,
   })
   const record = store.take(result.state)
   assert.ok(record)
@@ -204,6 +207,7 @@ test('startOAuth throws INSTANCE_NOT_FOUND when the instance is missing', async 
       instanceId: 'missing',
       actorContext,
       callbackUrl: 'https://app.example/cb',
+      resolveHost: publicResolver,
     })
   } catch (error) {
     thrown = error
@@ -225,12 +229,38 @@ test('startOAuth throws NOT_OAUTH2 when the catalog entry uses a different auth 
       instanceId: 'instance-1',
       actorContext,
       callbackUrl: 'https://app.example/cb',
+      resolveHost: publicResolver,
     })
   } catch (error) {
     thrown = error
   }
   assert.ok(thrown instanceof McpOAuthError)
   assert.equal((thrown as McpOAuthError).code, MCP_OAUTH_ERROR_CODES.NOT_OAUTH2)
+})
+
+test('startOAuth rejects unsafe OAuth authorization URLs', async () => {
+  const { prisma } = makePrismaStub({
+    catalogEntry: {
+      ...oauthCatalogEntry,
+      authConfig: {
+        ...(oauthCatalogEntry.authConfig as Record<string, unknown>),
+        authorizationUrl: 'http://127.0.0.1/auth',
+      },
+    },
+  })
+  await assert.rejects(
+    () => startOAuth({
+      prisma,
+      store: createInMemoryStateStore(),
+      instanceId: 'instance-1',
+      actorContext,
+      callbackUrl: 'https://app.example/cb',
+      resolveHost: publicResolver,
+    }),
+    (error: unknown) =>
+      error instanceof McpOAuthError
+      && error.code === MCP_OAUTH_ERROR_CODES.URL_UNSAFE,
+  )
 })
 
 // ─── completeOAuth ──────────────────────────────────────────────────────────
@@ -274,6 +304,7 @@ test('completeOAuth exchanges code, persists secret, links per-user override', a
     instanceId: 'instance-1',
     actorContext,
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
   const secret = makeSecretStore()
 
@@ -285,6 +316,7 @@ test('completeOAuth exchanges code, persists secret, links per-user override', a
     state: start.state,
     code: 'auth-code-123',
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
 
   assert.equal(result.instanceId, 'instance-1')
@@ -313,6 +345,7 @@ test('completeOAuth response never leaks the internal credentialRef', async () =
     instanceId: 'instance-1',
     actorContext,
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
   const secret = makeSecretStore()
 
@@ -324,6 +357,7 @@ test('completeOAuth response never leaks the internal credentialRef', async () =
     state: start.state,
     code: 'auth-code-123',
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
 
   assert.deepEqual(Object.keys(result).sort(), ['instanceId'])
@@ -344,6 +378,7 @@ test('completeOAuth rejects an unknown state token', async () => {
       state: 'totally-fake-token',
       code: 'auth-code-123',
       callbackUrl: 'https://app.example/cb',
+      resolveHost: publicResolver,
     })
   } catch (error) {
     thrown = error
@@ -355,6 +390,48 @@ test('completeOAuth rejects an unknown state token', async () => {
   )
 })
 
+test('completeOAuth rejects unsafe OAuth token URLs before exchange', async () => {
+  const store = createInMemoryStateStore()
+  const state = generateState()
+  store.put(state, {
+    instanceId: 'instance-1',
+    organizationId: ORG_A,
+    actorId: USER_A,
+    expiresAt: Date.now() + 60_000,
+  })
+  const { prisma } = makePrismaStub({
+    catalogEntry: {
+      ...oauthCatalogEntry,
+      authConfig: {
+        ...(oauthCatalogEntry.authConfig as Record<string, unknown>),
+        tokenUrl: 'http://169.254.169.254/token',
+      },
+    },
+  })
+  const secret = makeSecretStore()
+  let exchangeCalled = false
+
+  await assert.rejects(
+    () => completeOAuth({
+      prisma,
+      store,
+      secretStore: secret.store,
+      tokenExchange: async () => {
+        exchangeCalled = true
+        return { accessToken: 'should-not-run' }
+      },
+      state,
+      code: 'auth-code-123',
+      callbackUrl: 'https://app.example/cb',
+      resolveHost: publicResolver,
+    }),
+    (error: unknown) =>
+      error instanceof McpOAuthError
+      && error.code === MCP_OAUTH_ERROR_CODES.URL_UNSAFE,
+  )
+  assert.equal(exchangeCalled, false)
+})
+
 test('completeOAuth treats state as single-use (replay rejected)', async () => {
   const { prisma } = makePrismaStub()
   const store = createInMemoryStateStore()
@@ -364,6 +441,7 @@ test('completeOAuth treats state as single-use (replay rejected)', async () => {
     instanceId: 'instance-1',
     actorContext,
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
   const secret = makeSecretStore()
 
@@ -376,6 +454,7 @@ test('completeOAuth treats state as single-use (replay rejected)', async () => {
     state: start.state,
     code: 'auth-code-123',
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
 
   // Second exchange with the same state must be rejected.
@@ -389,6 +468,7 @@ test('completeOAuth treats state as single-use (replay rejected)', async () => {
       state: start.state,
       code: 'auth-code-123',
       callbackUrl: 'https://app.example/cb',
+      resolveHost: publicResolver,
     })
   } catch (error) {
     thrown = error
@@ -424,6 +504,7 @@ test('completeOAuth rejects an expired state token', async () => {
       state: token,
       code: 'auth-code-123',
       callbackUrl: 'https://app.example/cb',
+      resolveHost: publicResolver,
     })
   } catch (error) {
     thrown = error
@@ -444,6 +525,7 @@ test('completeOAuth surfaces token-response failure when access_token is missing
     instanceId: 'instance-1',
     actorContext,
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
   const secret = makeSecretStore()
   const badExchange: TokenExchangeFn = async () => {
@@ -463,6 +545,7 @@ test('completeOAuth surfaces token-response failure when access_token is missing
       state: start.state,
       code: 'auth-code-123',
       callbackUrl: 'https://app.example/cb',
+      resolveHost: publicResolver,
     })
   } catch (error) {
     thrown = error
@@ -483,6 +566,7 @@ test('completeOAuth rejects missing code parameter', async () => {
     instanceId: 'instance-1',
     actorContext,
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
   const secret = makeSecretStore()
 
@@ -496,6 +580,7 @@ test('completeOAuth rejects missing code parameter', async () => {
       state: start.state,
       code: '',
       callbackUrl: 'https://app.example/cb',
+      resolveHost: publicResolver,
     })
   } catch (error) {
     thrown = error
@@ -518,6 +603,7 @@ test('completeOAuth forwards client_id + client_secret to the token exchange', a
     instanceId: 'instance-1',
     actorContext,
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
   const secret = makeSecretStore()
   let captured: Parameters<TokenExchangeFn>[0] | undefined
@@ -539,6 +625,7 @@ test('completeOAuth forwards client_id + client_secret to the token exchange', a
     state: start.state,
     code: 'auth-code-123',
     callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
   })
 
   assert.ok(captured)
@@ -585,6 +672,7 @@ test('defaultTokenExchange POSTs client_id + client_secret in the form body', as
       redirectUri: 'https://app.example/cb',
       clientId: 'client-abc',
       clientSecret: 'shh-secret',
+      resolveHost: publicResolver,
     })
   } finally {
     globalThis.fetch = originalFetch
@@ -670,4 +758,3 @@ test('McpServerAuthConfigSchema discriminated union enforces oauth2 client crede
   }
   assert.ok(thrown, 'discriminated union must reject oauth2 without client creds')
 })
-

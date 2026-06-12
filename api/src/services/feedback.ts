@@ -2,6 +2,7 @@ import type { Feedback, PrismaClient } from '@prisma/client'
 import type { NessieConfig } from '@nessie/config'
 import type { FeedbackRecord } from '@nessie/schemas'
 
+import { canAccessAttachment } from './attachments.js'
 import { createGithubIssue } from './github.js'
 
 export type FeedbackOwner = {
@@ -72,7 +73,13 @@ export const createFeedback = async (
       attachment !== null
       && attachment.organizationId === owner.organizationId
       && (attachment.uploaderId === null || attachment.uploaderId === owner.userId)
-    if (!ownedBySubmitter) {
+    const accessible =
+      attachment !== null
+      && await canAccessAttachment(prisma, attachment, {
+        organizationId: owner.organizationId,
+        userId: owner.userId,
+      })
+    if (!ownedBySubmitter || !accessible) {
       throw new FeedbackServiceError(400, 'INVALID_ATTACHMENT', 'Attachment not found for this user')
     }
     attachmentFilename = attachment.filename

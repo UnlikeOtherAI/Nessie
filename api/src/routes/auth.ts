@@ -20,6 +20,7 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   LOCAL_AUTH_PROVIDER_ID, buildMeResponse, listAuthProviders, resolveConfiguredAuthProvider,
 } from '../services/auth.js'
+import { canAccessAttachment } from '../services/attachments.js'
 import { buildExternalAuthAuthorizeUrl, exchangeExternalAuthCode } from '../services/external-auth.js'
 import { seedDefaultPolicies } from '../services/policy.js'
 import { buildConfigJwt, buildPublicJwks, isUoaConfigured, loadUoaSettings } from '../services/uoa-auth.js'
@@ -196,7 +197,13 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         where: { id: body.avatarAttachmentId },
       })
       const organizationId = authenticatedState.actorContext.tenant.organizationId
-      if (!attachment || attachment.organizationId !== organizationId) {
+      if (
+        !attachment ||
+        !(await canAccessAttachment(prisma, attachment, {
+          organizationId,
+          userId: authenticatedState.actorContext.actor.actorId,
+        }))
+      ) {
         sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
         return reply
       }

@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { assertSafeUrl, type ResolveHost } from './url-safety.js'
+import {
+  assertSafeUrl,
+  UrlSafetyError,
+  type ResolveHost,
+} from './url-safety.js'
+import { HttpFetchError } from './http-fetch-error.js'
 
 export { HttpFetchError } from './http-fetch-error.js'
 
@@ -110,6 +115,20 @@ const headersToObject = (headers: Headers): Record<string, string> => {
   return out
 }
 
+const assertHttpFetchSafeUrl = async (
+  rawUrl: string | URL,
+  options?: { resolveHost?: ResolveHost },
+): Promise<URL> => {
+  try {
+    return await assertSafeUrl(rawUrl, options)
+  } catch (error) {
+    if (error instanceof UrlSafetyError) {
+      throw new HttpFetchError(error.message)
+    }
+    throw error
+  }
+}
+
 export const runHttpFetch = async (
   rawArgs: unknown,
   options?: { fetchImpl?: typeof fetch; resolveHost?: ResolveHost },
@@ -121,7 +140,7 @@ export const runHttpFetch = async (
   const maxBytes = input.maxBytes ?? DEFAULT_MAX_BYTES
   const method = input.method
 
-  const safeUrl = await assertSafeUrl(input.url, { resolveHost })
+  const safeUrl = await assertHttpFetchSafeUrl(input.url, { resolveHost })
 
   let headers: Record<string, string> = { ...(input.headers ?? {}) }
   headers = applyAuth(headers, input.auth)
@@ -152,7 +171,7 @@ export const runHttpFetch = async (
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get('location')
     if (location) {
-      const redirectUrl = await assertSafeUrl(new URL(location, safeUrl), {
+      const redirectUrl = await assertHttpFetchSafeUrl(new URL(location, safeUrl), {
         resolveHost,
       })
       const followed = await fetchImpl(redirectUrl, {

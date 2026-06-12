@@ -16,6 +16,7 @@ import {
   estimateToolSchemaTokens,
   trimConversationToFit,
 } from './context-management.js'
+import { summarizeToolInput } from './tool-util.js'
 
 export type BudgetLimits = {
   maxIterations: number
@@ -290,7 +291,7 @@ export const runAgenticLoop = async (input: {
           return {
             output: 'Tool call loop detected — this exact call has been repeated too many times. Try a different approach.',
             success: false,
-            inputSummary: JSON.stringify(tc.arguments).slice(0, 200),
+            inputSummary: summarizeToolInput(tc.arguments),
             toolCallId: tc.toolCallId,
             toolName: tc.toolName,
           }
@@ -323,13 +324,13 @@ export const runAgenticLoop = async (input: {
             errorMsg,
             durationMs,
             false,
-            JSON.stringify(tc.arguments).slice(0, 200),
+            summarizeToolInput(tc.arguments),
             startedAt,
           )
           return {
             output: errorMsg,
             success: false,
-            inputSummary: JSON.stringify(tc.arguments).slice(0, 200),
+            inputSummary: summarizeToolInput(tc.arguments),
             toolCallId: tc.toolCallId,
             toolName: tc.toolName,
           }

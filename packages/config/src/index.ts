@@ -90,6 +90,7 @@ export const NessieConfigSchema = z.object({
   api: z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.number().int().positive().default(5454),
+    trustedProxyHops: z.number().int().nonnegative().default(0),
   }),
   // GitHub integration for the in-app Feedback section: submitted feedback
   // becomes an issue in this repo. The token is required to actually create
@@ -135,6 +136,7 @@ export const ConfigEnvMap = {
   NESSIE_MODEL_TEMPERATURE: 'model.temperature',
   NESSIE_API_HOST: 'api.host',
   NESSIE_API_PORT: 'api.port',
+  NESSIE_API_TRUSTED_PROXY_HOPS: 'api.trustedProxyHops',
   NESSIE_GITHUB_TOKEN: 'github.token',
   NESSIE_GITHUB_OWNER: 'github.owner',
   NESSIE_GITHUB_REPO: 'github.repo',
@@ -192,6 +194,7 @@ const DEFAULT_CONFIG: NessieConfig = {
   api: {
     host: '0.0.0.0',
     port: 5454,
+    trustedProxyHops: 0,
   },
   github: {
     owner: 'UnlikeOtherAI',

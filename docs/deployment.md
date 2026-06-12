@@ -55,6 +55,10 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   fixed Tauri app origins (`tauri://localhost` and `http://tauri.localhost`) in
   addition to the configured web admin origin, so embedded desktop builds can
   call `https://api.nessie.unlikeotherai.com` directly.
+- **Proxy trust is explicit.** The API uses Fastify's configured proxy trust
+  rather than parsing `X-Forwarded-For` itself. Production behind Caddy sets
+  `NESSIE_API_TRUSTED_PROXY_HOPS=1`; local and unproxied deployments default to
+  `0`, so forwarded client IP headers are ignored.
 
 ## Shared infra (already on the host, do not disrupt)
 
@@ -95,6 +99,8 @@ Requires SSH access to the host and the `CLOUDFLARE_API_TOKEN` env var.
      run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d
    ```
+   The production Dockerfiles run package lint before building. A lint failure
+   is a build failure.
 
 5. **Caddy** — append the Nessie site blocks to `/srv/infra/caddy/Caddyfile`
    (admin → `nessie-admin:80`, API → `nessie-api:5554`), then:
@@ -241,6 +247,7 @@ production settings:
 | Mode | `NESSIE_MODE` | `selfHosted` (disables dev login, requires CORS allowlist) |
 | DB URL | `DATABASE_URL` / `NESSIE_DB_URL` | `postgresql://nessie:***@nessie-postgres:5432/nessie` |
 | CORS | `NESSIE_CORS_ORIGINS` | `https://nessie.unlikeotherai.com` (Tauri origins are allowed in code: `tauri://localhost`, `http://tauri.localhost`) |
+| Trusted proxy hops | `NESSIE_API_TRUSTED_PROXY_HOPS` | `1` behind the production Caddy proxy; default `0` ignores `X-Forwarded-For` |
 | Auth secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions, bootstrap tokens, and encrypts MCP OAuth secrets |
 | Model | `NESSIE_MODEL_PROVIDER` + key | `openai` → `gpt-5-mini` chat, `text-embedding-3-small` (1536-dim) embeddings |
 | Auth providers (SSO) | `nessie.config.json` `auth.providers` | see SSO below |
@@ -257,6 +264,12 @@ route registrar refuses to boot with the in-memory stub under
 still default to `NullSecretResolver` (a pre-existing phase-3 deferral), so
 OAuth-authorized MCP connector tokens are stored securely but not yet consumed by
 the agent loop.
+
+User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The API
+and worker reject stdio process execution from catalog or instance data, and
+MCP endpoint plus OAuth authorization/token URLs must pass the shared SSRF guard
+before save or use. Private, local, link-local, and metadata-network targets
+should be exposed through remote MCP runners instead of direct cloud callbacks.
 
 ## SSO (UnlikeOtherAuthenticator)
 

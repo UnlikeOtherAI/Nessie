@@ -6,6 +6,7 @@ import type {
 } from '@nessie/runtime'
 import { runAgenticLoop, type BudgetLimits } from './agentic-loop.js'
 import type { McpToolset } from './mcp-toolset.js'
+import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
 const SUB_AGENT_BUDGET: BudgetLimits = {
@@ -69,7 +70,7 @@ export const runDelegate = async (
   const task = typeof args['task'] === 'string' ? (args['task'] as string).trim() : ''
   const hintRaw = args['hint']
   const hint = typeof hintRaw === 'string' ? hintRaw.trim() : undefined
-  const inputSummary = JSON.stringify({ task: task.slice(0, 160), hint }).slice(0, 200)
+  const inputSummary = summarizeToolInput({ task: task.slice(0, 160), hint })
 
   if (!task) {
     return {
@@ -114,7 +115,7 @@ export const runDelegate = async (
     executeTool: async (toolName, toolArgs) => {
       if (toolName === 'delegate') {
         return {
-          inputSummary: JSON.stringify(toolArgs).slice(0, 200),
+          inputSummary: summarizeToolInput(toolArgs),
           output: 'Nested delegation is not allowed inside a sub-agent.',
           success: false,
         }
@@ -126,7 +127,7 @@ export const runDelegate = async (
         return ctx.executeBuiltinTool(toolName, toolArgs)
       }
       return {
-        inputSummary: JSON.stringify(toolArgs).slice(0, 200),
+        inputSummary: summarizeToolInput(toolArgs),
         output: `Sub-agent attempted to call a tool not in its toolset: ${toolName}`,
         success: false,
       }

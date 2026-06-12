@@ -64,6 +64,14 @@ mcp_catalog
 
 Catalog entries are read-only global data. Organizations install from the catalog into their own environment.
 
+Current implementation security note: user-authored catalog entries and
+instances may use HTTP/SSE remote endpoints only. Nessie does not spawn
+catalog-provided stdio subprocesses in the cloud API or worker. HTTP/SSE
+endpoint URLs and OAuth authorization/token URLs are checked by a DNS-backed
+SSRF guard before save or use; private, local, link-local, and metadata-network
+targets are rejected. Use Remote MCP Servers for private networks, developer
+laptops, or local subprocess-based servers.
+
 ### MCP Server Installation
 
 When an org installs an MCP server:
@@ -175,7 +183,7 @@ POST /api/mcp-servers
 {
   "name": "Internal Analytics DB",
   "protocol": "http",
-  "endpoint": "https://mcp.internal.company.com/analytics",
+  "endpoint": "https://mcp.company.example/analytics",
   "auth_method": "bearer",
   "credential_ref": "secret_analytics_token_xyz",
   "scope_type": "project",
@@ -183,7 +191,10 @@ POST /api/mcp-servers
 }
 ```
 
-Same flow as marketplace install, but no catalog_id. The system still discovers tools, creates registry entries, and requires approval.
+Same flow as marketplace install, but no catalog_id. The endpoint must be
+public-routable and pass SSRF validation. For internal-only hosts, on-prem
+networks, or local subprocesses, register a Remote MCP Server instead. The
+system still discovers tools, creates registry entries, and requires approval.
 
 ### MCP Server Lifecycle
 
@@ -934,7 +945,7 @@ Agent decides to call "acme_create_contact" with { email: "john@acme.com", name:
 
 ### For MCP Servers
 
-Same principle. The MCP server instance has a `credential_ref`. When the execution engine connects to the MCP server, it resolves the credential and passes it to the server process via environment variable or config — never through the agent's message stream.
+Same principle. The MCP server instance has a `credential_ref`. When the execution engine connects to the MCP server, it resolves the credential and passes it to the remote endpoint or runner config — never through the agent's message stream.
 
 ```
 Agent calls MCP tool "stripe_create_customer"
@@ -943,10 +954,10 @@ Agent calls MCP tool "stripe_create_customer"
   │
   ├── 2. Resolve credential_ref → get Stripe API key
   │
-  ├── 3. Pass to MCP server process:
-  │     ├── stdio: inject as environment variable (STRIPE_API_KEY=sk_...)
+  ├── 3. Pass to MCP transport:
   │     ├── http: pass as auth header to the MCP server endpoint
-  │     └── sse: include in connection handshake, not in tool calls
+  │     ├── sse: include in connection handshake, not in tool calls
+  │     └── remote runner: runner injects local credentials under its own policy
   │
   ├── 4. MCP server executes the tool with the credential
   │
@@ -2198,7 +2209,7 @@ The pattern: an agent extracts intelligence from a conversation (internal memory
 
 ## What Needs Full Design
 
-1. **MCP server process management** — how stdio MCP servers are spawned, supervised, and terminated (container vs subprocess vs sidecar)
+1. **Trusted MCP server process management** — if platform-managed stdio servers are ever reintroduced, define how they are vetted, spawned, supervised, and terminated without enabling user-authored subprocess execution
 2. **OAuth2 token lifecycle** — refresh flow, token caching, multi-tenant token isolation
 3. **Tool schema versioning** — when an MCP server updates its tools, how to detect and handle schema changes
 4. **Rate limit coordination** — multiple agents sharing one API connector must respect shared rate limits

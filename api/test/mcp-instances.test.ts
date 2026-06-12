@@ -145,7 +145,7 @@ test('probeConnection returns ok=true with descriptors on a clean handshake', as
     listTools: () => descriptors,
   })
   const result = await probeConnection(
-    { transport: 'http', url: 'https://example.invalid/mcp' },
+    { transport: 'http', url: 'https://93.184.216.34/mcp' },
     factory,
   )
   assert.equal(result.ok, true)
@@ -160,7 +160,7 @@ test('probeConnection returns ok=true with descriptors on a clean handshake', as
 test('probeConnection treats an empty tools array as a successful handshake', async () => {
   const { factory } = makeFakeManagerFactory({ listTools: () => [] })
   const result = await probeConnection(
-    { transport: 'http', url: 'https://example.invalid/mcp' },
+    { transport: 'http', url: 'https://93.184.216.34/mcp' },
     factory,
   )
   assert.equal(result.ok, true)
@@ -173,7 +173,7 @@ test('probeConnection returns ok=false when open() throws (transport failure)', 
     open: () => Promise.reject(new Error('ECONNREFUSED')),
   })
   const result = await probeConnection(
-    { transport: 'http', url: 'https://example.invalid/mcp' },
+    { transport: 'http', url: 'https://93.184.216.34/mcp' },
     factory,
   )
   assert.equal(result.ok, false)
@@ -190,7 +190,7 @@ test('probeConnection returns ok=false when listTools throws (auth failure)', as
     listTools: () => Promise.reject(new Error('401 Unauthorized')),
   })
   const result = await probeConnection(
-    { transport: 'http', url: 'https://example.invalid/mcp' },
+    { transport: 'http', url: 'https://93.184.216.34/mcp' },
     factory,
   )
   assert.equal(result.ok, false)
@@ -202,11 +202,45 @@ test('probeConnection returns ok=false when listTools returns a non-array (malfo
     listTools: () => ({ tools: 'not-an-array' }) as unknown,
   })
   const result = await probeConnection(
-    { transport: 'http', url: 'https://example.invalid/mcp' },
+    { transport: 'http', url: 'https://93.184.216.34/mcp' },
     factory,
   )
   assert.equal(result.ok, false)
   assert.match(result.error ?? '', /not an array/)
+})
+
+test('probeConnection rejects stdio before opening a child process', async () => {
+  let opened = false
+  const { factory } = makeFakeManagerFactory({
+    open: () => {
+      opened = true
+      return 'fake-conn-id' as McpConnectionId
+    },
+  })
+  const result = await probeConnection(
+    { transport: 'stdio', command: 'node', args: ['server.js'] },
+    factory,
+  )
+  assert.equal(result.ok, false)
+  assert.match(result.error ?? '', /stdio transport is disabled/)
+  assert.equal(opened, false)
+})
+
+test('probeConnection rejects private-network HTTP targets before opening', async () => {
+  let opened = false
+  const { factory } = makeFakeManagerFactory({
+    open: () => {
+      opened = true
+      return 'fake-conn-id' as McpConnectionId
+    },
+  })
+  const result = await probeConnection(
+    { transport: 'http', url: 'http://169.254.169.254/latest/meta-data' },
+    factory,
+  )
+  assert.equal(result.ok, false)
+  assert.match(result.error ?? '', /Private or local network/)
+  assert.equal(opened, false)
 })
 
 // ─── testInstance lifecycle behaviour (regression for task #22) ─────────────
@@ -302,7 +336,7 @@ const makeStubPrisma = (
 const catalogEntryStub = {
   authMethod: 'none',
   authConfig: { method: 'none' },
-  defaultTransportConfig: { transport: 'http', url: 'https://example.invalid/mcp' },
+  defaultTransportConfig: { transport: 'http', url: 'https://93.184.216.34/mcp' },
 }
 
 test('testInstance keeps lifecycleState off "active" when probe fails', async () => {

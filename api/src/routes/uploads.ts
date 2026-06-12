@@ -5,6 +5,7 @@ import { getStorage, type StorageConfig } from '@nessie/runtime'
 
 import { AttachmentRecordSchema } from '../contracts.js'
 import { createApiResponse, sendApiError } from '../lib/api.js'
+import { canAccessAttachment, canAccessMessageAttachment } from '../services/attachments.js'
 import type { RouteDeps } from './types.js'
 
 // 25 MB upload ceiling. Mirrored in the multipart plugin registration in
@@ -105,6 +106,16 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
 
     const { messageId } = request.params as { messageId: string }
+    const canAccess = await canAccessMessageAttachment(prisma, {
+      messageId,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!canAccess) {
+      sendApiError(reply, 404, 'MESSAGE_NOT_FOUND', 'Message not found')
+      return reply
+    }
+
     const attachments = await prisma.attachment.findMany({
       where: { messageId, organizationId: actorContext.tenant.organizationId },
       orderBy: { createdAt: 'asc' },
@@ -137,7 +148,13 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     const { id } = request.params as { id: string }
     const attachment = await prisma.attachment.findUnique({ where: { id } })
-    if (!attachment || attachment.organizationId !== actorContext.tenant.organizationId) {
+    if (
+      !attachment ||
+      !(await canAccessAttachment(prisma, attachment, {
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      }))
+    ) {
       sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
       return reply
     }

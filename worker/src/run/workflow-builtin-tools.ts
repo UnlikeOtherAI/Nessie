@@ -3,7 +3,7 @@ import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
 import { parseOrganizationId } from '@nessie/schemas'
 import { collectWebFetchResult, collectWebSearchResults, coercePage } from './content-tools.js'
 import { HttpFetchError } from './builtin-handlers/index.js'
-import { hashJsonValue } from './tool-util.js'
+import { hashJsonValue, summarizeToolInput } from './tool-util.js'
 
 type WorkflowToolExecutionResult = {
   inputSummary: string
@@ -37,7 +37,7 @@ export const executeWorkflowBuiltinTool = async (
   args: Record<string, unknown>,
   context: WorkflowBuiltinToolRuntimeContext,
 ): Promise<WorkflowToolExecutionResult> => {
-  const inputSummary = JSON.stringify(args).slice(0, 200)
+  const inputSummary = summarizeToolInput(args)
 
   if (!WORKFLOW_TOOL_IDS.has(toolName)) {
     return workflowToolFailure(inputSummary, `Unsupported workflow tool: ${toolName}`)

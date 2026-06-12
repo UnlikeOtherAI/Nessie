@@ -13,6 +13,11 @@ import {
   getAccessibleCatalogEntry,
   getCatalogEntry,
 } from './mcp-catalog.js'
+import {
+  McpSecurityError,
+  assertMcpTransportSafe,
+  assertUserAuthoredMcpTransportSafe,
+} from './mcp-security.js'
 import { toPrismaToolRegistrySource } from './tool-enum-mapping.js'
 
 /**
@@ -78,6 +83,16 @@ const isUniqueViolation = (error: unknown): boolean =>
   && error !== null
   && 'code' in error
   && (error as { code?: unknown }).code === 'P2002'
+
+const mapSecurityError = (error: unknown): never => {
+  if (error instanceof McpSecurityError) {
+    throw new McpInstanceError(
+      MCP_INSTANCE_ERROR_CODES.TRANSPORT_CONFIG_INVALID,
+      error.message,
+    )
+  }
+  throw error
+}
 
 /**
  * Build a stable scope-key string for projecting discovered MCP tools into
@@ -183,6 +198,13 @@ export const createInstance = async (
       MCP_INSTANCE_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND,
       `Catalog entry ${input.catalogEntryId} not found in this scope`,
     )
+  }
+
+  try {
+    await assertUserAuthoredMcpTransportSafe(catalogEntry.defaultTransportConfig)
+    await assertUserAuthoredMcpTransportSafe(input.transportConfig)
+  } catch (error) {
+    mapSecurityError(error)
   }
 
   try {
@@ -322,6 +344,7 @@ export const probeConnection = async (
   const manager = managerFactory()
   const startedAt = Date.now()
   try {
+    await assertMcpTransportSafe(transport)
     const connectionId = await manager.open(transportToConnectionSpec(transport))
     try {
       const descriptors = await manager.listTools(connectionId)
