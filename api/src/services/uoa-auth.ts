@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 
+import type { SsoTheme } from '../contracts/auth.js'
 import {
   resolveIdentityDisplayName,
   type ExternalAuthIdentity,
@@ -41,22 +42,166 @@ export type UoaSettings = {
 
 export const DESKTOP_REDIRECT_URL = 'nessie://auth/callback'
 
-// Mirrors the admin nebula brand tokens for the fixed hosted-login brand.
-// This external-surface exception is intentional because the IdP page cannot
-// read Nessie's CSS variables.
-const UOA_SIGN_IN_THEME = {
-  colors: {
-    primary: '#7c3aed',
-    bg: '#1a1024',
-    surface: '#241634',
-    text: '#f5f3ff',
-    primary_text: '#f5f3ff',
-    muted: '#a78bfa',
-    border: '#3b2a52',
-    danger: '#ef4444',
-    danger_text: '#ffffff',
+type UoaSignInThemeColors = {
+  bg: string
+  border: string
+  danger: string
+  danger_text: string
+  muted: string
+  primary: string
+  primary_text: string
+  surface: string
+  text: string
+}
+
+const DEFAULT_SSO_THEME = 'sandstone' satisfies SsoTheme
+
+// Mirrors the admin theme tokens for the hosted-login surface. UOA cannot read
+// Nessie's CSS variables, so the selected palette is passed through the config
+// JWT as concrete color values.
+const UOA_SIGN_IN_THEMES = {
+  nebula: {
+    colors: {
+      primary: '#7c3aed',
+      bg: '#1a1d21',
+      surface: '#222629',
+      text: '#d1d2d3',
+      primary_text: '#ffffff',
+      muted: '#949597',
+      border: '#2d2a35',
+      danger: '#ef4444',
+      danger_text: '#fca5a5',
+    },
   },
-} as const
+  midnight: {
+    colors: {
+      primary: '#2563eb',
+      bg: '#0b1120',
+      surface: '#111827',
+      text: '#e5e7eb',
+      primary_text: '#ffffff',
+      muted: '#94a3b8',
+      border: '#1f2937',
+      danger: '#ef4444',
+      danger_text: '#fca5a5',
+    },
+  },
+  daylight: {
+    colors: {
+      primary: '#2563eb',
+      bg: '#f8fafc',
+      surface: '#ffffff',
+      text: '#111827',
+      primary_text: '#ffffff',
+      muted: '#64748b',
+      border: '#d8dee8',
+      danger: '#dc2626',
+      danger_text: '#b91c1c',
+    },
+  },
+  forest: {
+    colors: {
+      primary: '#047857',
+      bg: '#0c1a14',
+      surface: '#12241c',
+      text: '#e5eee8',
+      primary_text: '#ffffff',
+      muted: '#8aa894',
+      border: '#1d3529',
+      danger: '#ef4444',
+      danger_text: '#fca5a5',
+    },
+  },
+  ocean: {
+    colors: {
+      primary: '#0e7490',
+      bg: '#0b1a22',
+      surface: '#102733',
+      text: '#e4eef3',
+      primary_text: '#ffffff',
+      muted: '#8cafbd',
+      border: '#1b3644',
+      danger: '#ef4444',
+      danger_text: '#fca5a5',
+    },
+  },
+  sunset: {
+    colors: {
+      primary: '#c2410c',
+      bg: '#1c130f',
+      surface: '#271812',
+      text: '#f2e7df',
+      primary_text: '#ffffff',
+      muted: '#ad8b78',
+      border: '#3a2419',
+      danger: '#f43f5e',
+      danger_text: '#fda4af',
+    },
+  },
+  rose: {
+    colors: {
+      primary: '#e11d48',
+      bg: '#1a1016',
+      surface: '#241019',
+      text: '#f2e4ea',
+      primary_text: '#ffffff',
+      muted: '#b08396',
+      border: '#341827',
+      danger: '#ef4444',
+      danger_text: '#fca5a5',
+    },
+  },
+  graphite: {
+    colors: {
+      primary: '#64748b',
+      bg: '#17181a',
+      surface: '#1f2123',
+      text: '#e5e7eb',
+      primary_text: '#ffffff',
+      muted: '#9ca3af',
+      border: '#2a2c2f',
+      danger: '#ef4444',
+      danger_text: '#fca5a5',
+    },
+  },
+  sandstone: {
+    colors: {
+      primary: '#b45309',
+      bg: '#faf6ef',
+      surface: '#fffdf8',
+      text: '#2b2018',
+      primary_text: '#ffffff',
+      muted: '#806b58',
+      border: '#ded0bd',
+      danger: '#dc2626',
+      danger_text: '#b91c1c',
+    },
+  },
+  contrast: {
+    colors: {
+      primary: '#4da3ff',
+      bg: '#000000',
+      surface: '#050505',
+      text: '#ffffff',
+      primary_text: '#000000',
+      muted: '#d0d0d0',
+      border: '#f0f0f0',
+      danger: '#ff5c7a',
+      danger_text: '#ffc4cf',
+    },
+  },
+} satisfies Record<SsoTheme, { colors: UoaSignInThemeColors }>
+
+const resolveUoaSignInTheme = (theme?: SsoTheme): { colors: UoaSignInThemeColors } =>
+  UOA_SIGN_IN_THEMES[theme ?? DEFAULT_SSO_THEME]
+
+const themedConfigUrl = (settings: UoaSettings, theme?: SsoTheme): string => {
+  const configUrl = new URL(settings.configUrl)
+  if (theme) {
+    configUrl.searchParams.set('theme', theme)
+  }
+  return configUrl.toString()
+}
 
 const requireEnv = (name: string): string => {
   const value = process.env[name]
@@ -100,8 +245,8 @@ const base64UrlJson = (value: unknown): string =>
  * Minimal but schema-complete UI theme. UOA requires the `colors`, `radii`,
  * `density`, `typography`, `button`, `card`, and `logo` sections to be present.
  */
-const defaultUiTheme = (settings: UoaSettings): Record<string, unknown> => ({
-  colors: UOA_SIGN_IN_THEME.colors,
+const defaultUiTheme = (settings: UoaSettings, theme?: SsoTheme): Record<string, unknown> => ({
+  colors: resolveUoaSignInTheme(theme).colors,
   radii: { card: '16px', button: '10px', input: '8px' },
   density: 'comfortable',
   typography: { font_family: 'Inter, system-ui, sans-serif', base_text_size: 'md' },
@@ -126,14 +271,14 @@ const ensureAllowedRedirectUrl = (settings: UoaSettings, redirectUri: string): v
  * `contact_email` are always included so the first call against a new domain
  * triggers UOA auto-discovery / onboarding.
  */
-export const buildConfigJwt = (settings: UoaSettings): string => {
+export const buildConfigJwt = (settings: UoaSettings, theme?: SsoTheme): string => {
   const header = base64UrlJson({ alg: 'RS256', kid: settings.kid, typ: 'JWT' })
   const payload = base64UrlJson({
     domain: settings.domain,
     redirect_urls: [settings.redirectUrl, DESKTOP_REDIRECT_URL],
     enabled_auth_methods: ['email_password', 'google'],
     language_config: 'en',
-    ui_theme: defaultUiTheme(settings),
+    ui_theme: defaultUiTheme(settings, theme),
     jwks_url: settings.jwksUrl,
     contact_email: settings.contactEmail,
   })
@@ -166,12 +311,13 @@ const clientHash = (settings: UoaSettings): string =>
 export const buildUoaAuthorizeUrl = (input: {
   codeChallenge: string
   redirectUri: string
+  theme?: SsoTheme
 }): string => {
   const settings = loadUoaSettings()
   ensureAllowedRedirectUrl(settings, input.redirectUri)
 
   const url = new URL(`${settings.baseUrl}/auth`)
-  url.searchParams.set('config_url', settings.configUrl)
+  url.searchParams.set('config_url', themedConfigUrl(settings, input.theme))
   url.searchParams.set('redirect_url', input.redirectUri)
   url.searchParams.set('code_challenge', input.codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')

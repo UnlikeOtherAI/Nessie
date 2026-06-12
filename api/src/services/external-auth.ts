@@ -1,5 +1,6 @@
 import type { AuthProviderConfig } from '@nessie/config'
 
+import type { SsoTheme } from '../contracts/auth.js'
 import {
   resolveIdentityDisplayName,
   type ExternalAuthIdentity,
@@ -62,6 +63,7 @@ export const buildExternalAuthAuthorizeUrl = async (
     codeChallenge: string
     redirectUri: string
     state: string
+    theme?: SsoTheme
   },
 ): Promise<string> => {
   if (provider.type === 'uoa') {

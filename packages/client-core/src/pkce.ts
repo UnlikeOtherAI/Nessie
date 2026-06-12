@@ -23,6 +23,7 @@ export type BeginExternalAuthInput = {
   providerId: string
   redirectUri: string
   storage: PkceStorage
+  theme?: string
 }
 
 const randomString = (): string => {
@@ -51,6 +52,7 @@ export const beginExternalAuth = async ({
   providerId,
   redirectUri,
   storage,
+  theme,
 }: BeginExternalAuthInput): Promise<string> => {
   const codeVerifier = randomString()
   const state = randomString()
@@ -72,6 +74,9 @@ export const beginExternalAuth = async ({
   authorizeUrl.searchParams.set('codeChallenge', codeChallenge)
   authorizeUrl.searchParams.set('redirectUri', redirectUri)
   authorizeUrl.searchParams.set('state', state)
+  if (theme) {
+    authorizeUrl.searchParams.set('theme', theme)
+  }
 
   const response = await fetch(authorizeUrl.toString())
   if (!response.ok) {

@@ -285,9 +285,12 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
   `GET /api/auth/sso/config` (the `config_url`) and the matching **JWKS** at
   `GET /.well-known/jwks.json`, both on `api.nessie.unlikeotherai.com`. The
   config allowlists both the hosted web callback and the native desktop
-  callback: `nessie://auth/callback`.
+  callback: `nessie://auth/callback`. The config endpoint accepts
+  `?theme=<theme-id>` so UOA can render with the user's selected Nessie palette.
 - On the web, clicking the button sends the browser to
   `GET <uoa>/auth?config_url=…&redirect_url=https://nessie.unlikeotherai.com/login&code_challenge=…&code_challenge_method=S256`.
+  The admin includes the resolved selected theme when it asks the API for this
+  authorize URL; the API adds that theme to the UOA `config_url`.
 - In the Tauri desktop app, clicking the button keeps the admin webview on the
   login page, opens the UOA authorize URL in the user's system browser, and uses
   `redirect_url=nessie://auth/callback`.

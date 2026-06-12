@@ -6,7 +6,7 @@ import { isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { beginExternalAuth, clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { useTheme, type Theme } from '../providers/ThemeProvider'
+import { resolveAppliedTheme, useTheme, type Theme } from '../providers/ThemeProvider'
 
 const LOCAL_DEMO_EMAIL = 'owner@example.com'
 const LOCAL_DEMO_PASSWORD = 'Password123!'
@@ -137,7 +137,7 @@ export const LoginPage = () => {
 
   const startExternalSignIn = useCallback(async (providerId: string): Promise<void> => {
     const redirectUri = externalAuthRedirectUri()
-    const authorizeUrl = await beginExternalAuth(providerId, redirectUri)
+    const authorizeUrl = await beginExternalAuth(providerId, redirectUri, resolveAppliedTheme(theme))
 
     if (isDesktopApp()) {
       const { openUrl } = await import('@tauri-apps/plugin-opener')
@@ -155,7 +155,7 @@ export const LoginPage = () => {
     }
 
     window.location.assign(authorizeUrl)
-  }, [])
+  }, [theme])
 
   useEffect(() => {
     if (sessionState === 'authenticated') {

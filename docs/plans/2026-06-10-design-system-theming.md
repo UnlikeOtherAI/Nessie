@@ -187,7 +187,8 @@ unchanged), midnight (neutral slate/blue dark), daylight (light content).
 
 **To add a theme:** add a `[data-theme="<id>"]` block to `styles.css` that
 redeclares **every** token the base `:root` defines, add the id to the `Theme`
-union + `THEMES` list in `ThemeProvider.tsx`. No component edits — that's the
+union + `THEMES` list in `ThemeProvider.tsx`, and add the matching UOA palette
+id to `SsoThemeSchema` / `UOA_SIGN_IN_THEMES`. No component edits — that's the
 point.
 
 **Open items for review:** (a) the live in-app switch was not kelpie-verified
@@ -236,9 +237,10 @@ tokenized `::selection`.
   `prefers-color-scheme: dark` variant.
 - **Desktop** (`desktop/`): Tauri window chrome follows the theme (overlay
   titlebar / themed window background).
-- **UOA hosted sign-in** (`api/src/services/uoa-auth.ts`): brand colors
-  centralized into `UOA_SIGN_IN_THEME` (documented external-surface exception —
-  the IdP page can't read our CSS vars).
+- **UOA hosted sign-in** (`api/src/services/uoa-auth.ts`): the login click sends
+  the selected applied theme to the API, which carries it into UOA's
+  `config_url`; the signed config JWT then emits matching concrete color values
+  because the IdP page can't read our CSS vars.
 
 **Verified**: admin/api `tsc` + `eslint --max-warnings 0` + `vite build`, web +
 mobile `tsc`/build, desktop `cargo check` — all green. Kelpie: 11 cards +

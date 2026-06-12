@@ -3,6 +3,20 @@ import { z } from 'zod'
 
 import { NonEmptyStringSchema } from './shared.js'
 
+export const SsoThemeSchema = z.enum([
+  'nebula',
+  'midnight',
+  'daylight',
+  'forest',
+  'ocean',
+  'sunset',
+  'rose',
+  'graphite',
+  'sandstone',
+  'contrast',
+])
+export type SsoTheme = z.infer<typeof SsoThemeSchema>
+
 export const AuthProviderDescriptorSchema = z.object({
   providerId: NonEmptyStringSchema,
   type: AuthProviderResponseTypeSchema,
@@ -16,8 +30,13 @@ export const AuthProviderAuthorizeQuerySchema = z.object({
   codeChallenge: NonEmptyStringSchema,
   redirectUri: z.string().url(),
   state: NonEmptyStringSchema,
+  theme: SsoThemeSchema.optional(),
 })
 export type AuthProviderAuthorizeQuery = z.infer<typeof AuthProviderAuthorizeQuerySchema>
+
+export const SsoConfigQuerySchema = z.object({
+  theme: SsoThemeSchema.optional(),
+})
 
 export const BootstrapModeResponseSchema = z.object({
   bootstrapMode: z.literal(true),

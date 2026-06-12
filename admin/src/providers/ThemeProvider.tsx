@@ -27,7 +27,7 @@ export type Theme =
   | 'contrast'
   | 'system'
 
-type AppliedTheme = Exclude<Theme, 'system'>
+export type AppliedTheme = Exclude<Theme, 'system'>
 
 type ThemeOption = {
   description: string
@@ -146,7 +146,7 @@ const getSystemTheme = (mediaQuery?: MediaQueryList): AppliedTheme => {
   return window.matchMedia(SYSTEM_THEME_QUERY).matches ? 'nebula' : 'daylight'
 }
 
-const resolveTheme = (theme: Theme): AppliedTheme =>
+export const resolveAppliedTheme = (theme: Theme): AppliedTheme =>
   theme === 'system' ? getSystemTheme() : theme
 
 export const ThemeProvider = ({ children }: PropsWithChildren) => {
@@ -182,7 +182,7 @@ export const ThemeProvider = ({ children }: PropsWithChildren) => {
       return
     }
 
-    document.documentElement.dataset.theme = resolveTheme(theme)
+    document.documentElement.dataset.theme = resolveAppliedTheme(theme)
 
     if (theme !== 'system' || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return
