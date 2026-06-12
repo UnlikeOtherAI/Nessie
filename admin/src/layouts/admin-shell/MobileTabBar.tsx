@@ -19,7 +19,9 @@ export const MobileTabBar = () => {
             key={item.id}
             to={item.to}
           >
-            <Icon className="h-[22px] w-[22px]" />
+            <span className="mobile-tabbar-icon">
+              <Icon className="h-[22px] w-[22px]" />
+            </span>
             <span className="mobile-tabbar-label">{item.label}</span>
           </Link>
         );

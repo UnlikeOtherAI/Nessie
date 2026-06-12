@@ -75,7 +75,9 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
             key={item.id}
             to={item.to}
           >
-            <Icon />
+            <span className="admin-rail-btn-icon">
+              <Icon />
+            </span>
             <span className="admin-rail-btn-label">{item.label}</span>
           </Link>
         );
@@ -87,20 +89,22 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
         className={`admin-rail-btn ${pathname.startsWith('/feedback') ? 'active' : ''}`}
         to="/feedback"
       >
-        <svg
-          className="h-5 w-5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          viewBox="0 0 24 24"
-        >
-          <path d="m3 11 18-5v12L3 14v-3z" strokeLinecap="round" strokeLinejoin="round" />
-          <path
-            d="M11.6 16.8a3 3 0 1 1-5.8-1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        <span className="admin-rail-btn-icon">
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path d="m3 11 18-5v12L3 14v-3z" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M11.6 16.8a3 3 0 1 1-5.8-1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
         <span className="admin-rail-btn-label">Feedback</span>
       </Link>
 
