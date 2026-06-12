@@ -1,56 +1,18 @@
 import {
-  Suspense,
-  lazy,
   useEffect,
   useId,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent,
 } from 'react'
 import { faChevronDown, faCircleXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react'
+import { EmojiPickerPanel } from '../../../components/shared/EmojiPickerPanel'
 
 type StatusEmojiPickerProps = {
   label: string
   onChange: (value: string) => void
   value: string
-}
-
-const FullEmojiPicker = lazy(() => import('emoji-picker-react'))
-
-type EmojiPickerThemeStyle = CSSProperties & Record<`--${string}`, string>
-
-const emojiPickerThemeStyle: EmojiPickerThemeStyle = {
-  '--epr-active-skin-hover-color': 'var(--accent-soft)',
-  '--epr-category-icon-active-color': 'var(--accent)',
-  '--epr-category-label-bg-color': 'color-mix(in srgb, var(--panel) 94%, transparent)',
-  '--epr-category-label-text-color': 'var(--tx3)',
-  '--epr-emoji-hover-color': 'var(--overlay)',
-  '--epr-emoji-variation-indicator-color': 'var(--sep)',
-  '--epr-emoji-variation-indicator-color-hover': 'var(--tx2)',
-  '--epr-emoji-variation-picker-bg-color': 'var(--panel)',
-  '--epr-focus-bg-color': 'var(--accent-soft)',
-  '--epr-highlight-color': 'var(--accent)',
-  '--epr-hover-bg-color': 'var(--overlay)',
-  '--epr-hover-bg-color-reduced-opacity': 'var(--overlay-weak)',
-  '--epr-picker-border-color': 'var(--sep)',
-  '--epr-picker-border-radius': '8px',
-  '--epr-preview-border-color': 'var(--sep)',
-  '--epr-preview-text-color': 'var(--tx2)',
-  '--epr-reactions-bg-color': 'color-mix(in srgb, var(--panel) 92%, transparent)',
-  '--epr-search-border-color': 'var(--sep)',
-  '--epr-search-border-color-active': 'var(--accent)',
-  '--epr-search-input-bg-color': 'var(--main)',
-  '--epr-search-input-bg-color-active': 'var(--main-hover)',
-  '--epr-search-input-placeholder-color': 'var(--tx3)',
-  '--epr-search-input-text-color': 'var(--tx)',
-  '--epr-skin-tone-inner-border-color': 'var(--panel)',
-  '--epr-skin-tone-outer-border-color': 'var(--sep)',
-  '--epr-skin-tone-picker-menu-color': 'color-mix(in srgb, var(--panel) 96%, transparent)',
-  '--epr-text-color': 'var(--tx2)',
-  '--epr-bg-color': 'var(--panel)',
 }
 
 export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerProps) => {
@@ -70,10 +32,6 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
   const pick = (nextValue: string) => {
     onChange(nextValue)
     setOpen(false)
-  }
-
-  const pickEmoji = (emojiData: EmojiClickData) => {
-    pick(emojiData.emoji)
   }
 
   const closeOnEscape = (event: KeyboardEvent<HTMLElement>) => {
@@ -131,26 +89,7 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
               <FontAwesomeIcon icon={faCircleXmark} />
             </button>
           </div>
-          <Suspense
-            fallback={
-              <div className="flex h-64 items-center justify-center text-sm text-[color:var(--tx3)]">
-                Loading emojis...
-              </div>
-            }
-          >
-            <FullEmojiPicker
-              autoFocusSearch
-              emojiStyle={'native' as EmojiStyle}
-              height={360}
-              lazyLoadEmojis
-              onEmojiClick={pickEmoji}
-              previewConfig={{ showPreview: false }}
-              searchPlaceholder="Search emojis"
-              style={emojiPickerThemeStyle}
-              theme={'light' as Theme}
-              width="100%"
-            />
-          </Suspense>
+          <EmojiPickerPanel onSelect={pick} />
         </div>
       ) : null}
     </div>

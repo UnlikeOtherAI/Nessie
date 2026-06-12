@@ -1,6 +1,4 @@
 import {
-  Suspense,
-  lazy,
   useEffect,
   useId,
   useMemo,
@@ -17,11 +15,9 @@ import {
   faTrashCan,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react'
 import type { MessageReaction } from '../../../lib/api-client'
-import { toolbarButtonClass } from './channel-helpers'
+import { EmojiPickerPanel } from '../../shared/EmojiPickerPanel'
 
-const FullEmojiPicker = lazy(() => import('emoji-picker-react'))
 const THUMBS_UP = '\u{1F44D}'
 
 type ChannelMessageActionsProps = {
@@ -121,12 +117,12 @@ export const ChannelMessageActions = ({
       >
         <button
           aria-label="Add thumbs up reaction"
-          className={toolbarButtonClass}
+          className="admin-msg-action-button"
           onClick={() => addReaction(THUMBS_UP)}
           title="Add thumbs up reaction"
           type="button"
         >
-          <FontAwesomeIcon className="text-[13px]" icon={faThumbsUp} />
+          <FontAwesomeIcon icon={faThumbsUp} />
         </button>
         <div className="relative" ref={pickerRef}>
           <button
@@ -134,57 +130,39 @@ export const ChannelMessageActions = ({
             aria-expanded={pickerOpen}
             aria-haspopup="dialog"
             aria-label="Add emoji reaction"
-            className={toolbarButtonClass}
+            className="admin-msg-action-button"
             onClick={() => setPickerOpen((current) => !current)}
             title="Add emoji reaction"
             type="button"
           >
-            <FontAwesomeIcon className="text-[13px]" icon={faFaceSmile} />
+            <FontAwesomeIcon icon={faFaceSmile} />
           </button>
           {pickerOpen ? (
             <div className="admin-msg-emoji-menu" id={pickerId} role="dialog">
-              <Suspense
-                fallback={
-                  <div className="flex h-64 items-center justify-center text-sm text-[color:var(--tx3)]">
-                    Loading emojis...
-                  </div>
-                }
-              >
-                <FullEmojiPicker
-                  autoFocusSearch
-                  emojiStyle={'native' as EmojiStyle}
-                  height={360}
-                  lazyLoadEmojis
-                  onEmojiClick={(emojiData: EmojiClickData) => addReaction(emojiData.emoji)}
-                  previewConfig={{ showPreview: false }}
-                  searchPlaceholder="Search emojis"
-                  theme={'auto' as Theme}
-                  width="100%"
-                />
-              </Suspense>
+              <EmojiPickerPanel onSelect={addReaction} />
             </div>
           ) : null}
         </div>
         {canEdit ? (
           <button
             aria-label="Edit message"
-            className={toolbarButtonClass}
+            className="admin-msg-action-button"
             onClick={() => onStartEdit(messageId, content)}
             title="Edit message"
             type="button"
           >
-            <FontAwesomeIcon className="text-[13px]" icon={faPen} />
+            <FontAwesomeIcon icon={faPen} />
           </button>
         ) : null}
         {canDelete ? (
           <button
             aria-label="Delete message"
-            className={toolbarButtonClass}
+            className="admin-msg-action-button"
             onClick={() => onConfirmDelete(messageId)}
             title="Delete message"
             type="button"
           >
-            <FontAwesomeIcon className="text-[13px]" icon={faTrashCan} />
+            <FontAwesomeIcon icon={faTrashCan} />
           </button>
         ) : null}
       </div>

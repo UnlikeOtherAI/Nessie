@@ -578,7 +578,7 @@ Parity matrix:
 | history delete | `DELETE /history` | `history.delete` | `/history delete` | actorContext | no | yes | implemented-target-only |
 | message submit (stream) | `POST /chat` | `message.submit` | `/message submit` | actorContext | conditional | yes | implemented-partial |
 | message submit sync | `POST /chat/sync` | `message.submit_sync` | `/message submit --sync` | actorContext | conditional | yes | blocked (route shadow) |
-| message reaction | `POST /api/threads/{threadId}/messages/{messageId}/reactions` + realtime `message.reaction` | N/A | N/A (message row action toolbar) | channel membership | no | no | implemented (REST admin surface; users can tap/click a message row to add thumbs-up or emoji reactions) |
+| message reaction | `POST /api/threads/{threadId}/messages/{messageId}/reactions` + realtime `message.reaction` | N/A | N/A (message row action toolbar) | channel membership | no | no | implemented (REST admin surface; users can tap/click a message row to add thumbs-up or themed emoji reactions; skin tone preference is stored in an admin cookie) |
 | mcp list | `GET /mcp` | `mcp.tools.list` | N/A | actorContext | no | yes | implemented |
 | mcp call | `POST /mcp` | MCP JSON-RPC router | N/A | actorContext | no | yes | implemented |
 | service checks | `GET /healthz`, `GET /readyz` | `system.healthz`, `system.readyz` | N/A | actorContext | no | yes | target-only |
