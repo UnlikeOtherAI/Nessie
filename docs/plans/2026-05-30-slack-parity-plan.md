@@ -224,12 +224,13 @@ larger phases.
   tooltip and speech-bubble fallback, icon-only edit/delete controls, a dashed
   "Message has been deleted" tombstone when replies follow, and a "Loading
   response" placeholder while an agent response is pending.
-- **Chat mention links and composer autocomplete (implemented 2026-06-12)**:
-  messages link unambiguous `#channel` and `@user`/`@agent` references, the
-  composer autocompletes both `#` channels and `@` users/agents, duplicate
-  channel labels insert project/team-scoped tokens, and day dividers collapse
-  their message groups. Agent mentions remain available on channel, DM, and
-  personal-assistant conversation surfaces.
+- **Chat mention links and composer autocomplete (implemented 2026-06-12,
+  hardened 2026-06-13)**: messages link `#channel` and `@user`/`@agent`
+  references, the composer autocompletes both `#` channels and `@`
+  users/agents, duplicate channel labels insert project/team-scoped tokens, and
+  bare duplicate channel labels resolve against the active project or fall back
+  to channel search. Day dividers collapse their message groups. Agent mentions
+  remain available on channel, DM, and personal-assistant conversation surfaces.
 
 ---
 
@@ -243,10 +244,12 @@ larger phases.
 - **Auto meeting notes**: agent transcribes Jitsi call → posts action items to thread.
 - **Agents-as-routers**: wire `MessageReaction` / `message.created` into event
   triggers so an agent watches a channel and routes/summarizes/escalates.
-- **Agent channel lookup (implemented 2026-06-12)**: `channel_find` resolves a
-  channel name to its id across the runtime, worker personal-assistant tools, and
-  worker tool registry, returning project/team scope beside each id so agents can
-  distinguish duplicate channel labels without brittle manual ids.
+- **Agent channel lookup (implemented 2026-06-12, hardened 2026-06-13)**:
+  `channel_find` resolves a channel name or scoped `project/channel` slug to its
+  id across the runtime, worker personal-assistant tools, and worker tool
+  registry. Standard channel slugs are unique per project, including archived
+  channels, so agents can distinguish duplicate labels without brittle manual
+  ids.
 
 ---
 

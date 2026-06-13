@@ -44,6 +44,8 @@ export type BootstrapSeedPlan = {
     id: ChannelId
     label: string
     organizationId: OrganizationId
+    projectId: ProjectId
+    slug: string
     teamId: TeamId
     visibility: 'public'
   }
@@ -130,6 +132,8 @@ export const createBootstrapSeedPlan = (
       id: channelId,
       label: DEFAULT_BOOTSTRAP_RECORD_NAMES.channel,
       organizationId,
+      projectId,
+      slug: 'general',
       teamId,
       visibility: 'public',
     },

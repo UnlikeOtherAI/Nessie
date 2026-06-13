@@ -13,6 +13,7 @@ import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 export const ChannelRecordSchema = z.object({
   id: ChannelIdSchema,
   label: NonEmptyStringSchema,
+  slug: z.string().nullish(),
   type: z.enum(['standard', 'dm']),
   systemChannelType: z.enum(['personal_assistant']).optional(),
   visibility: z.enum(['public', 'protected', 'private']),

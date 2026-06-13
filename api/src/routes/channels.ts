@@ -13,13 +13,18 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
   addMemberToChannel,
-  ChannelValidationError,
-  createChannelForUser,
+  removeMemberFromChannel,
+} from '../services/channel-members.js'
+import {
   createGroupFromDm,
   findOrCreateDmChannel,
+} from '../services/channel-dms.js'
+import {
+  ChannelSlugConflictError,
+  ChannelValidationError,
+  createChannelForUser,
   joinPublicChannel,
   listChannelsForUser,
-  removeMemberFromChannel,
   setChannelArchived,
   updateChannel,
 } from '../services/channels.js'
@@ -145,6 +150,10 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         sendApiError(reply, 400, 'INVALID_CHANNEL_NAME', error.message)
         return reply
       }
+      if (error instanceof ChannelSlugConflictError) {
+        sendApiError(reply, 409, 'CHANNEL_SLUG_CONFLICT', error.message)
+        return reply
+      }
       throw error
     }
 
@@ -220,6 +229,10 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     } catch (error) {
       if (error instanceof ChannelValidationError) {
         sendApiError(reply, 400, 'INVALID_CHANNEL_NAME', error.message)
+        return reply
+      }
+      if (error instanceof ChannelSlugConflictError) {
+        sendApiError(reply, 409, 'CHANNEL_SLUG_CONFLICT', error.message)
         return reply
       }
       throw error
@@ -343,11 +356,20 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     // If the channel is a DM, create a new group channel instead of mutating the DM
     if (channel.type === 'dm') {
-      const group = await createGroupFromDm(prisma, {
-        dmChannelId: channelId,
-        newUserId: body.userId,
-        currentUserId: actorContext.actor.actorId,
-      })
+      let group
+      try {
+        group = await createGroupFromDm(prisma, {
+          dmChannelId: channelId,
+          newUserId: body.userId,
+          currentUserId: actorContext.actor.actorId,
+        })
+      } catch (error) {
+        if (error instanceof ChannelSlugConflictError) {
+          sendApiError(reply, 409, 'CHANNEL_SLUG_CONFLICT', error.message)
+          return reply
+        }
+        throw error
+      }
       if (!group) {
         sendApiError(reply, 403, 'USER_NOT_IN_ORGANIZATION', 'Target user is not a member of this organization')
         return reply

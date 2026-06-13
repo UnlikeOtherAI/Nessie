@@ -1,4 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import {
+  getScopedChannelSlug,
+  parseScopedChannelTarget,
+  toChannelSlug,
+} from '../channel-slugs.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
   buildVisibleChannelWhere,
@@ -6,18 +11,6 @@ import {
   requireActingUserId,
 } from './access.js'
 import { clampLimit, formatChannelRef, formatSection, truncate } from './tool-output.js'
-
-// Mirror of api/src/services/channels.ts toChannelSlug; the worker cannot
-// import from api/, so the rule is re-implemented here to keep validation
-// consistent across the REST surface and the agent tools.
-const toChannelSlug = (value: string): string =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/[\s]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
 
 // Channel-manage authz mirrored from api/src/services/channels.ts canManageChannel:
 // channel owner/admin, org owner/admin, or team owner/admin may manage.
@@ -58,6 +51,39 @@ const canManageChannel = async (
   )
 }
 
+const ensureChannelSlugAvailable = async (
+  prisma: PrismaClient,
+  input: { channelId: string; projectId: string; slug: string },
+): Promise<void> => {
+  const existing = await prisma.channel.findFirst({
+    where: {
+      id: { not: input.channelId },
+      projectId: input.projectId,
+      slug: input.slug,
+      type: 'standard',
+    },
+    select: { id: true },
+  })
+  if (existing) {
+    throw new Error(`A channel with slug "${input.slug}" already exists in this project.`)
+  }
+}
+
+const isChannelSlugConflict = (error: unknown): boolean => {
+  const target = error instanceof Prisma.PrismaClientKnownRequestError
+    ? error.meta?.['target']
+    : undefined
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError
+    && error.code === 'P2002'
+    && (
+      target === 'channels_project_slug_standard_key'
+      || (Array.isArray(target) && target.includes('channels_project_slug_standard_key'))
+      || (Array.isArray(target) && target.includes('project_id') && target.includes('slug'))
+    )
+  )
+}
+
 export const runChannelListTool = async (
   context: BuiltinToolRuntimeContext,
   input: { includeArchived?: boolean; limit?: unknown },
@@ -79,6 +105,7 @@ export const runChannelListTool = async (
     select: {
       id: true,
       label: true,
+      slug: true,
       visibility: true,
       topic: true,
       archivedAt: true,
@@ -94,6 +121,7 @@ export const runChannelListTool = async (
 
   const lines = channels.map((channel, index) =>
     `${index + 1}. ${formatChannelRef(channel)} | channelId=${channel.id} | visibility=${channel.visibility}`
+    + ` | slug=${getScopedChannelSlug(channel)}`
     + ` | archived=${channel.archivedAt ? 'yes' : 'no'}`
     + (channel.topic ? ` | topic="${channel.topic}"` : ''),
   )
@@ -117,8 +145,10 @@ export const runChannelFindTool = async (
     throw new Error('query is required.')
   }
   const take = clampLimit(input.limit, 10)
+  const scopedTarget = parseScopedChannelTarget(query)
+  const querySlug = scopedTarget?.channelSlug ?? toChannelSlug(query)
 
-  const channels = await context.prisma.channel.findMany({
+  const channels = (await context.prisma.channel.findMany({
     where: {
       ...buildVisibleChannelWhere(
         organizationId,
@@ -126,12 +156,16 @@ export const runChannelFindTool = async (
         isDelegatingPersonalAssistant(context),
       ),
       archivedAt: null,
-      label: { contains: query, mode: 'insensitive' },
+      OR: [
+        { label: { contains: query, mode: 'insensitive' } },
+        ...(querySlug ? [{ slug: { contains: querySlug, mode: 'insensitive' as const } }] : []),
+      ],
     },
     orderBy: { label: 'asc' },
     select: {
       id: true,
       label: true,
+      slug: true,
       visibility: true,
       team: {
         select: {
@@ -141,10 +175,15 @@ export const runChannelFindTool = async (
       },
     },
     take,
-  })
+  })).filter(
+    (channel) =>
+      !scopedTarget
+      || toChannelSlug(channel.team?.project.name ?? '') === scopedTarget.projectSlug,
+  )
 
   const lines = channels.map(
-    (channel) => `${formatChannelRef(channel)} | channelId=${channel.id} | visibility=${channel.visibility}`,
+    (channel) =>
+      `${formatChannelRef(channel)} | channelId=${channel.id} | slug=${getScopedChannelSlug(channel)} | visibility=${channel.visibility}`,
   )
 
   return {
@@ -190,10 +229,24 @@ export const runChannelUpdateTool = async (
   const data: Prisma.ChannelUpdateInput = {}
   if (input.label !== undefined) {
     const label = input.label.trim()
-    if (toChannelSlug(label).length === 0) {
+    const slug = toChannelSlug(label)
+    if (slug.length === 0) {
       throw new Error('Channel name must contain at least one letter or number.')
     }
+    const channel = await context.prisma.channel.findUnique({
+      where: { id: input.channelId },
+      select: { projectId: true },
+    })
+    if (!channel) {
+      throw new Error('Channel not found.')
+    }
+    await ensureChannelSlugAvailable(context.prisma, {
+      channelId: input.channelId,
+      projectId: channel.projectId,
+      slug,
+    })
     data.label = label
+    data.slug = slug
   }
   if (input.topic !== undefined) {
     data.topic = input.topic
@@ -202,28 +255,38 @@ export const runChannelUpdateTool = async (
     data.description = input.description
   }
 
-  const channel = await context.prisma.channel.update({
-    where: { id: input.channelId },
-    data,
-    select: {
-      id: true,
-      label: true,
-      topic: true,
-      description: true,
-      team: {
-        select: {
-          name: true,
-          project: { select: { name: true } },
+  let channel
+  try {
+    channel = await context.prisma.channel.update({
+      where: { id: input.channelId },
+      data,
+      select: {
+        id: true,
+        label: true,
+        slug: true,
+        topic: true,
+        description: true,
+        team: {
+          select: {
+            name: true,
+            project: { select: { name: true } },
+          },
         },
       },
-    },
-  })
+    })
+  } catch (error) {
+    if (isChannelSlugConflict(error) && input.label !== undefined) {
+      throw new Error(`A channel with slug "${toChannelSlug(input.label)}" already exists in this project.`)
+    }
+    throw error
+  }
 
   return {
     inputSummary: `channelId=${input.channelId}`,
     outputPreview: [
       `Updated channelId=${channel.id}`,
       `channel=${formatChannelRef(channel)}`,
+      `slug=${getScopedChannelSlug(channel)}`,
       `topic=${channel.topic ? `"${channel.topic}"` : '(none)'}`,
       `description=${channel.description ? `"${truncate(channel.description, 120)}"` : '(none)'}`,
     ].join('\n'),

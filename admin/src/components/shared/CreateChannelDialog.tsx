@@ -29,6 +29,7 @@ export const CreateChannelDialog = (
   const [visibility, setVisibility] = useState<
     'private' | 'protected' | 'public'
   >('public')
+  const [formError, setFormError] = useState<string | null>(null)
 
   const slug = toSlug(name)
 
@@ -41,6 +42,7 @@ export const CreateChannelDialog = (
   const handleClose = () => {
     setName('')
     setVisibility('public')
+    setFormError(null)
     onClose()
   }
 
@@ -58,13 +60,17 @@ export const CreateChannelDialog = (
     event.preventDefault()
     if (!name.trim()) return
 
-    const created = await createChannel.mutateAsync({
-      label: name.trim(),
-      teamId,
-      visibility,
-    })
-    handleClose()
-    void navigate(`/channels/${created.id}`)
+    try {
+      const created = await createChannel.mutateAsync({
+        label: name.trim(),
+        teamId,
+        visibility,
+      })
+      handleClose()
+      void navigate(`/channels/${created.id}`)
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Unable to create channel.')
+    }
   }
 
   if (!open) return null
@@ -133,7 +139,10 @@ export const CreateChannelDialog = (
               autoComplete="off"
               className="admin-input"
               id="channel-name"
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value)
+                setFormError(null)
+              }}
               placeholder="e.g. design-reviews"
               value={name}
             />
@@ -155,6 +164,9 @@ export const CreateChannelDialog = (
               id="channel-slug"
               value={slug}
             />
+            {formError ? (
+              <div className="text-xs text-[color:var(--danger-text)]">{formError}</div>
+            ) : null}
           </div>
 
           <div className="grid gap-1.5">

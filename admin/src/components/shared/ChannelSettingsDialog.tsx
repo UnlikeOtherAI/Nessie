@@ -24,6 +24,7 @@ export const ChannelSettingsDialog = (
   const [description, setDescription] = useState(channel.description ?? '')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmArchive, setConfirmArchive] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   const isArchived = Boolean(channel.archivedAt)
 
@@ -34,6 +35,7 @@ export const ChannelSettingsDialog = (
       setDescription(channel.description ?? '')
       setConfirmDelete(false)
       setConfirmArchive(false)
+      setFormError(null)
     }
   }, [open, channel])
 
@@ -47,13 +49,17 @@ export const ChannelSettingsDialog = (
     event.preventDefault()
     if (!label.trim()) return
 
-    await updateChannel.mutateAsync({
-      channelId: channel.id,
-      label: label.trim(),
-      topic: topic.trim() ? topic.trim() : null,
-      description: description.trim() ? description.trim() : null,
-    })
-    onClose()
+    try {
+      await updateChannel.mutateAsync({
+        channelId: channel.id,
+        label: label.trim(),
+        topic: topic.trim() ? topic.trim() : null,
+        description: description.trim() ? description.trim() : null,
+      })
+      onClose()
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Unable to save channel.')
+    }
   }
 
   const handleArchiveToggle = async () => {
@@ -137,9 +143,15 @@ export const ChannelSettingsDialog = (
               autoComplete="off"
               className="admin-input"
               id="channel-settings-name"
-              onChange={(e) => setLabel(e.target.value)}
+              onChange={(e) => {
+                setLabel(e.target.value)
+                setFormError(null)
+              }}
               value={label}
             />
+            {formError ? (
+              <div className="text-xs text-[color:var(--danger-text)]">{formError}</div>
+            ) : null}
           </div>
 
           <div className="grid gap-1.5">

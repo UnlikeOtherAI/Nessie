@@ -18,7 +18,10 @@ type FakePrisma = {
     findMany: (args: unknown) => Promise<unknown[]>
     update: (args: unknown) => Promise<unknown>
   }
-  channel: { findFirst: (args: unknown) => Promise<unknown> }
+  channel: {
+    findFirst: (args: unknown) => Promise<unknown>
+    findMany: (args: unknown) => Promise<unknown[]>
+  }
   thread: { findFirst: (args: unknown) => Promise<unknown> }
   agentBinding: { findFirst: (args: unknown) => Promise<unknown> }
 }
@@ -64,6 +67,14 @@ const makeFakePrisma = (overrides: {
       findFirst: async (args) => {
         record('channel.findFirst', args)
         return overrides.channel ?? null
+      },
+      findMany: async (args) => {
+        record('channel.findMany', args)
+        return overrides.channel
+          ? Array.isArray(overrides.channel)
+            ? overrides.channel
+            : [overrides.channel]
+          : []
       },
     },
     thread: {
@@ -161,6 +172,7 @@ test('schedule_task one-off into the current conversation creates a trigger', as
   assert.equal(config.createdByUserId, 'user-1')
   // No channel lookup or binding check for the current conversation.
   assert.equal(prisma.calls['channel.findFirst'], undefined)
+  assert.equal(prisma.calls['channel.findMany'], undefined)
   assert.equal(prisma.calls['agentBinding.findFirst'], undefined)
 })
 
@@ -252,9 +264,71 @@ test('schedule_task: personal assistant reaches any channel without a binding', 
   assert.equal(prisma.calls['agentBinding.findFirst'], undefined)
   // Channel resolution is org-wide (no public/membership access clause).
   const lookup = (
-    prisma.calls['channel.findFirst'] as Array<{ where: { AND: Array<Record<string, unknown>> } }>
+    prisma.calls['channel.findMany'] as Array<{ where: { AND: Array<Record<string, unknown>> } }>
   )[0]!
   assert.deepEqual(lookup.where.AND[0], { organizationId: 'org-1' })
+})
+
+test('schedule_task rejects ambiguous bare channel names', async () => {
+  const prisma = makeFakePrisma({
+    channel: [
+      {
+        id: 'channel-2',
+        label: 'general',
+        slug: 'general',
+        team: { name: 'Default Team', project: { name: 'Default Project' } },
+      },
+      {
+        id: 'channel-3',
+        label: 'General',
+        slug: 'general',
+        team: { name: 'Ops Team', project: { name: 'Ops Project' } },
+      },
+    ],
+    thread: { id: 'thread-2' },
+    binding: { id: 'binding-1' },
+  })
+
+  await assert.rejects(
+    () =>
+      runScheduleTaskTool(makeContext(prisma), {
+        instructions: 'post to general',
+        schedule: { kind: 'interval', every_minutes: 60 },
+        target: 'general',
+      }),
+    /ambiguous.*default-project\/general.*ops-project\/general/is,
+  )
+  assert.equal(prisma.calls['agentTrigger.create'], undefined)
+})
+
+test('schedule_task resolves scoped channel slugs', async () => {
+  const prisma = makeFakePrisma({
+    channel: [
+      {
+        id: 'channel-2',
+        label: 'general',
+        slug: 'general',
+        team: { name: 'Default Team', project: { name: 'Default Project' } },
+      },
+      {
+        id: 'channel-3',
+        label: 'General',
+        slug: 'general',
+        team: { name: 'Ops Team', project: { name: 'Ops Project' } },
+      },
+    ],
+    thread: { id: 'thread-3' },
+    binding: { id: 'binding-1' },
+  })
+
+  await runScheduleTaskTool(makeContext(prisma), {
+    instructions: 'post to scoped general',
+    schedule: { kind: 'interval', every_minutes: 60 },
+    target: 'ops-project/general',
+  })
+
+  const create = (prisma.calls['agentTrigger.create'] as Array<{ data: Record<string, unknown> }>)[0]!
+  assert.equal(create.data.targetChannelId, 'channel-3')
 })
 
 test('schedule_task into another channel succeeds when bound', async () => {

@@ -28,6 +28,7 @@ export type ChannelRecord = {
   organizationId: string
   projectId: string
   projectName: string
+  slug?: string | null
   systemChannelType?: 'personal_assistant' | string
   teamId: string
   teamName: string
