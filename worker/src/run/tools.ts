@@ -9,6 +9,11 @@ import {
   runChannelJoinTool,
   runChannelListTool,
   runChannelUpdateTool,
+  runKbCommentAddTool,
+  runKbCommentReplyTool,
+  runKbCommentResolveTool,
+  runKbCommentsListTool,
+  runKbNoteAddTool,
   runMessageDeleteTool,
   runMessageEditTool,
   runMessageSearchTool,
@@ -317,6 +322,43 @@ export const executeBuiltinTool = async (
         )
         return runFileGlob(args, transportConfig)
       })
+    case 'kb_comments_list':
+      return wrapTool(inputSummary, () =>
+        runKbCommentsListTool(context, {
+          pageId: String(args.pageId ?? ''),
+          kind:
+            args.kind === 'comment' || args.kind === 'note' ? args.kind : undefined,
+        }),
+      )
+    case 'kb_comment_add':
+      return wrapTool(inputSummary, () =>
+        runKbCommentAddTool(context, {
+          pageId: String(args.pageId ?? ''),
+          body: String(args.body ?? ''),
+        }),
+      )
+    case 'kb_comment_reply':
+      return wrapTool(inputSummary, () =>
+        runKbCommentReplyTool(context, {
+          annotationId: String(args.annotationId ?? ''),
+          body: String(args.body ?? ''),
+        }),
+      )
+    case 'kb_comment_resolve':
+      return wrapTool(inputSummary, () =>
+        runKbCommentResolveTool(context, {
+          annotationId: String(args.annotationId ?? ''),
+          state: args.state === 'open' ? 'open' : 'resolved',
+        }),
+      )
+    case 'kb_note_add':
+      return wrapTool(inputSummary, () =>
+        runKbNoteAddTool(context, {
+          pageId: String(args.pageId ?? ''),
+          quote: String(args.quote ?? ''),
+          body: String(args.body ?? ''),
+        }),
+      )
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }

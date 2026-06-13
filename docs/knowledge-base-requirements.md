@@ -361,6 +361,46 @@ reader additionally wraps `.kb-prose` in the `.kb-reader` white sheet, which
 redeclares the light token palette so prose stays legible on white regardless of
 theme. Older plain-text bodies still render (as a paragraph).
 
+### Annotations: comments + notes
+
+Every page carries two kinds of annotation, backed by one model
+(`KnowledgePageAnnotation`, table `knowledge_page_annotations`) discriminated by
+`kind` + an optional text anchor:
+
+- **Comments** (`kind: comment`, no anchor) — a page-level discussion rendered
+  **below the document body** in `PagePreview` (`CommentsSection`), newest first.
+- **Notes** (`kind: note`, with anchor) — anchored to a quoted passage of the
+  body. In the reader the passage is highlighted (a ProseMirror decoration via
+  `notes/note-highlight-extension.ts`); hovering it opens a floating card on the
+  right (`notes/PageNotesLayer.tsx`) with the note, its author, and replies.
+  Selecting text in the reader starts a new note for that passage.
+
+Both kinds support one level of **replies** and a **resolve/reopen** state;
+authors edit/delete their own. Author is a user or an **agent** (a delegating
+personal assistant authors as its owner with `delegatedByAgentId` recorded).
+
+**Anchoring** is a W3C/Hypothesis-style **text-quote selector**
+(`{ quote, prefix, suffix, startOffset }`) computed by the pure, shared
+`@nessie/knowledge` `anchor` module (`htmlToPlainText` / `computeAnchor` /
+`relocateAnchor`). Anchors are **re-located on every render** by matching the
+quote (plus context) against the current body, so notes survive edits above them;
+when the quoted text is gone the note is **orphaned** (still listed, no
+highlight). The admin imports the anchor logic through the browser-safe
+`@nessie/knowledge/anchor` subpath (no Prisma in the bundle).
+
+**Access** inherits the page's space: anyone who can read the page can read, post,
+and reply (`canReadSpace`); resolve/reopen needs write (`canWriteSpace`);
+edit/delete is author-only. The same access-checked **annotations service**
+(`packages/knowledge/src/annotations/`) backs both the REST routes
+(`api/src/routes/knowledge-comments.ts`) and the agent tools, so enforcement
+cannot drift. Mutations emit `kb.annotation.*` audit events. v1 has no realtime
+push; the admin refetches via react-query invalidation on each mutation.
+
+**Agent tools** (registered as builtins, so they appear in the tool grant matrix
+automatically): `kb_comments_list`, `kb_comment_add`, `kb_comment_reply`,
+`kb_comment_resolve`, `kb_note_add` (the agent supplies the exact quote; the
+worker computes the anchor from the page body).
+
 ## 10) Phase annotation
 
 This spec targets **Phase 3**.

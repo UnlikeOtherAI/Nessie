@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./anchor": {
+      "types": "./src/annotations/anchor.ts",
+      "default": "./dist/annotations/anchor.js"
     }
   },
   "scripts": {

@@ -1,9 +1,10 @@
 import { faFileLines, faFolder } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { CommentsSection } from './comments/CommentsSection'
 import { KnowledgePane } from './KnowledgePane'
+import { PageNotesLayer } from './notes/PageNotesLayer'
 import { pageStatusTone } from './page-status'
-import { RichTextContent } from './RichTextContent'
 
 type PagePreviewProps = {
   onBack: () => void
@@ -85,13 +86,19 @@ export const PagePreview = ({
         </div>
       ) : null}
 
-      <div className="mt-6">
-        {page.latestVersion?.body ? (
-          <RichTextContent html={page.latestVersion.body} />
-        ) : (
+      {page.latestVersion?.body ? (
+        <PageNotesLayer
+          body={page.latestVersion.body}
+          pageId={page.id}
+          versionId={page.latestVersion.id}
+        />
+      ) : (
+        <div className="mt-6">
           <p className="text-sm text-[color:var(--tx3)]">No content yet. Press Edit to start writing.</p>
-        )}
-      </div>
+        </div>
+      )}
+
+      <CommentsSection pageId={page.id} />
 
       <div className="mt-10 border-t border-[color:var(--sep)] pt-6">
         <div className="flex items-center justify-between">

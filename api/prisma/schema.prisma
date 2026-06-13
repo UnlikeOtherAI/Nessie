@@ -413,6 +413,16 @@ enum KnowledgeAuthorType {
   agent
 }
 
+enum KnowledgeAnnotationKind {
+  comment
+  note
+}
+
+enum KnowledgeAnnotationState {
+  open
+  resolved
+}
+
 enum ReasoningType {
   decision
   evaluation
@@ -2420,6 +2430,7 @@ model KnowledgePage {
   versions         KnowledgePageVersion[] @relation("KnowledgePageVersions")
   publishedVersion KnowledgePageVersion?  @relation("KnowledgePagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
   labels           PageLabel[]
+  annotations      KnowledgePageAnnotation[]
 
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
   @@index([organizationId, visibility, updatedAt], map: "knowledge_pages_org_visibility_updated_idx")
@@ -2462,6 +2473,52 @@ model PageLabel {
   @@unique([pageId, normalizedName], map: "page_labels_page_normalized_key")
   @@index([organizationId, normalizedName], map: "page_labels_org_normalized_idx")
   @@map("page_labels")
+}
+
+model KnowledgePageAnnotation {
+  id      String                   @id @default(uuid()) @db.Uuid
+  pageId  String                   @map("page_id") @db.Uuid
+  spaceId String                   @map("space_id") @db.Uuid
+  kind    KnowledgeAnnotationKind
+  state   KnowledgeAnnotationState @default(open)
+
+  // One level of replies: top-level rows have a null parent; replies point to a
+  // top-level annotation of the same page (single level enforced in the service).
+  parentId String? @map("parent_id") @db.Uuid
+
+  body String @db.Text
+
+  // Authorship mirrors KnowledgePageVersion (type + id). delegatedByAgentId is
+  // set when a user-delegating agent (PA) authors on behalf of its owner.
+  authorType         KnowledgeAuthorType @map("author_type")
+  authorId           String              @map("author_id")
+  delegatedByAgentId String?             @map("delegated_by_agent_id") @db.Uuid
+
+  // Text-quote anchor (notes only); null for page-level comments. Authoritative
+  // re-location happens per-render; `orphaned` is a best-effort cached hint.
+  anchor          Json?
+  anchorVersionId String?  @map("anchor_version_id") @db.Uuid
+  orphaned        Boolean  @default(false)
+
+  resolvedAt     DateTime?            @map("resolved_at")
+  resolvedByType KnowledgeAuthorType? @map("resolved_by_type")
+  resolvedById   String?              @map("resolved_by_id")
+
+  organizationId String @map("organization_id") @db.Uuid
+
+  editedAt  DateTime? @map("edited_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  page    KnowledgePage             @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  parent  KnowledgePageAnnotation?  @relation("AnnotationReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies KnowledgePageAnnotation[] @relation("AnnotationReplies")
+
+  @@index([pageId, kind, parentId, createdAt(sort: Desc)], map: "kb_annotations_page_kind_parent_created_idx")
+  @@index([organizationId, pageId], map: "kb_annotations_org_page_idx")
+  @@index([parentId], map: "kb_annotations_parent_idx")
+  @@map("knowledge_page_annotations")
 }
 
 model ThoughtReasoning {

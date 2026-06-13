@@ -5,7 +5,29 @@ export {
 } from './native-provider.js'
 export { canReadSpace, canWriteSpace, loadSpaceViewer } from './access.js'
 export type { SpaceViewer } from './access.js'
-export { KnowledgeConflictError, isKnowledgeConflictError } from './errors.js'
+export {
+  KnowledgeConflictError,
+  isKnowledgeConflictError,
+  KnowledgeAnnotationError,
+  isKnowledgeAnnotationError,
+} from './errors.js'
+export type { KnowledgeAnnotationErrorCode } from './errors.js'
+export { createAnnotationService, findAnnotationLocation } from './annotations/service.js'
+export type { AnnotationService } from './annotations/service.js'
+export {
+  htmlToPlainText,
+  computeAnchor,
+  relocateAnchor,
+  ANCHOR_CONTEXT_LENGTH,
+} from './annotations/anchor.js'
+export type {
+  AnnotationAccess,
+  AnnotationActor,
+  AnnotationKind,
+  AnnotationRecord,
+  AnnotationState,
+  TextQuoteAnchor,
+} from './annotations/types.js'
 export type {
   CreatePageInput,
   CreateSpaceInput,

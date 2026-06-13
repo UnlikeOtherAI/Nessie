@@ -1,22 +1,5 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import {
-  buildNativeSourceRef,
-  buildSpaceSourceRef,
-  canReadSpace,
-  canWriteSpace,
-  createNativeKnowledgeProvider,
-  loadSpaceViewer,
-  type KnowledgePageRecord,
-  type KnowledgeProvider,
-  type KnowledgeSpaceRecord,
-  type SpaceViewer,
-} from '@nessie/knowledge'
-import type {
-  AuthorizedActionContext,
-  PolicyAction,
-  PolicyDecision,
-  PolicyResourceType,
-} from '@nessie/schemas'
+import type { FastifyInstance } from 'fastify'
+import { buildNativeSourceRef, canReadSpace, type KnowledgePageRecord } from '@nessie/knowledge'
 import {
   CreateKnowledgePageBodySchema,
   CreateKnowledgeSpaceBodySchema,
@@ -29,133 +12,25 @@ import {
 } from '../contracts/knowledge-base.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { checkPolicy } from '../services/policy.js'
+import {
+  actorAuthorType,
+  attachPageEnvelope,
+  attachSpaceEnvelope,
+  createKnowledgeAccess,
+  policyTrace,
+  requireKnowledgePolicy,
+  requireProjectId,
+  requestIds,
+  type KnowledgeRouteDeps,
+} from './knowledge-base-access.js'
 import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
-import type { RouteDeps } from './types.js'
-
-type KnowledgeRouteDeps = RouteDeps & {
-  knowledgeProvider?: KnowledgeProvider
-}
-
-const policyTrace = (decision: PolicyDecision): string[] => [
-  `decision:${decision.reasonCode}`,
-  `source:${decision.policySource}`,
-  ...(decision.policyRuleId ? [`rule:${decision.policyRuleId}`] : []),
-]
-
-const visibilityReason = (
-  record: { sensitivityTier?: string; visibility?: string },
-  decision: PolicyDecision,
-): string =>
-  `${record.visibility ?? 'unknown'} visibility, ${record.sensitivityTier ?? 'normal'} sensitivity, ${decision.reasonCode}`
-
-const pageVersionRef = (page: KnowledgePageRecord): string | null =>
-  page.publishedVersion?.id ?? page.latestVersion?.id ?? page.publishedVersionId
-
-const attachSpaceEnvelope = (
-  space: KnowledgeSpaceRecord,
-  decision: PolicyDecision,
-  viewer: SpaceViewer,
-) => ({
-  ...space,
-  canWrite: canWriteSpace(space, viewer),
-  policyChainTrace: policyTrace(decision),
-  sourceRef: buildSpaceSourceRef(space.id),
-  visibilityReason: visibilityReason(space, decision),
-})
-
-const attachPageEnvelope = (
-  page: KnowledgePageRecord,
-  decision: PolicyDecision,
-) => ({
-  ...page,
-  policyChainTrace: policyTrace(decision),
-  sourceRef: buildNativeSourceRef(page.id, pageVersionRef(page)),
-  visibilityReason: visibilityReason(page, decision),
-})
-
-const requireKnowledgePolicy = async (
-  deps: RouteDeps,
-  actorContext: AuthorizedActionContext,
-  reply: FastifyReply,
-  resourceType: PolicyResourceType,
-  action: PolicyAction,
-): Promise<PolicyDecision | null> => {
-  const decision = await checkPolicy(deps.prisma, actorContext, resourceType, action)
-  if (!decision.allowed) {
-    sendApiError(reply, 403, 'POLICY_DENIED', `Knowledge base access denied: ${decision.reasonCode}`)
-    return null
-  }
-  return decision
-}
-
-const requireProjectId = (
-  actorContext: AuthorizedActionContext,
-  bodyProjectId: string | undefined,
-  reply: FastifyReply,
-): string | null => {
-  const projectId = bodyProjectId ?? actorContext.tenant.projectId
-  if (!projectId) {
-    sendApiError(reply, 400, 'PROJECT_REQUIRED', 'Knowledge base actions require a projectId')
-    return null
-  }
-  return projectId
-}
-
-const actorAuthorType = (actorContext: AuthorizedActionContext): 'user' | 'agent' =>
-  actorContext.actor.actorType === 'agent' ? 'agent' : 'user'
-
-const requestIds = (request: FastifyRequest) => ({
-  ipAddress: request.ip,
-  userAgent: request.headers['user-agent'],
-})
 
 export const registerKnowledgeBaseRoutes = (
   app: FastifyInstance,
   deps: KnowledgeRouteDeps,
 ): void => {
   const { prisma, requireActorContext } = deps
-  const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma)
-
-  // Per-space access layer (finer-grained than the coarse policy gate above).
-  const buildViewer = (actorContext: AuthorizedActionContext): Promise<SpaceViewer> => {
-    const isUser = actorContext.actor.actorType === 'user'
-    return loadSpaceViewer(prisma, isUser ? actorContext.actor.actorId : null, !isUser)
-  }
-
-  const denyAccess = (reply: FastifyReply, reason: string) =>
-    sendApiError(reply, 403, 'POLICY_DENIED', `Knowledge base access denied: ${reason}`)
-
-  // Loads a space and enforces read/write access; sends 404/403 and returns
-  // null when the caller may not proceed.
-  const accessSpace = async (
-    actorContext: AuthorizedActionContext,
-    spaceId: string,
-    viewer: SpaceViewer,
-    mode: 'read' | 'write',
-    reply: FastifyReply,
-  ): Promise<KnowledgeSpaceRecord | null> => {
-    const space = await provider.getSpace(actorContext.tenant.organizationId, spaceId)
-    if (!space) {
-      sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
-      return null
-    }
-    if (!(mode === 'read' ? canReadSpace(space, viewer) : canWriteSpace(space, viewer))) {
-      denyAccess(reply, mode === 'read' ? 'NOT_A_SPACE_MEMBER' : 'WRITE_NOT_PERMITTED')
-      return null
-    }
-    return space
-  }
-
-  // Enforces access on the space a page belongs to.
-  const accessPageSpace = async (
-    actorContext: AuthorizedActionContext,
-    page: KnowledgePageRecord,
-    viewer: SpaceViewer,
-    mode: 'read' | 'write',
-    reply: FastifyReply,
-  ): Promise<boolean> =>
-    (await accessSpace(actorContext, page.spaceId, viewer, mode, reply)) !== null
+  const { provider, buildViewer, accessSpace, accessPageSpace } = createKnowledgeAccess(deps)
 
   app.get('/api/knowledge-base/spaces', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
