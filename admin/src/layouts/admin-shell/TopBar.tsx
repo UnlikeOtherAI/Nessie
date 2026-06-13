@@ -1,12 +1,11 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
-import { useChannels } from '../../facades/channels/hooks'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useCurrentOrganization } from '../../facades/organization/hooks'
 import { isDesktopApp } from '../../lib/desktop'
 import { useAuthedObjectUrl } from '../../lib/uploads'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { TopBarSearch } from './TopBarSearch'
-import { recordRecentChannel, useRecentChannels } from './useRecentChannels'
+import { RecentChannelsMenu, useHistoryNav, useRecordRecentChannelVisits } from './topbar-navigation'
 
 const iconProps = {
   fill: 'none',
@@ -48,51 +47,8 @@ const Help = () => (
   </svg>
 )
 
-// Tracks position in the SPA history so the back/forward buttons can disable at
-// the ends. New navigations (PUSH) advance the cursor and clear the forward
-// stack; our own buttons move the cursor in step with React Router's history.
-const useHistoryNav = () => {
-  const navigate = useNavigate()
-  const navType = useNavigationType()
-  const location = useLocation()
-  const posRef = useRef(0)
-  const fwdRef = useRef(0)
-  const lastKey = useRef(location.key)
-  const [, force] = useReducer((n: number) => n + 1, 0)
-
-  useEffect(() => {
-    if (location.key === lastKey.current) return
-    lastKey.current = location.key
-    if (navType === 'PUSH') {
-      posRef.current += 1
-      fwdRef.current = 0
-      force()
-    }
-  }, [location.key, navType])
-
-  const goBack = () => {
-    if (posRef.current <= 0) return
-    posRef.current -= 1
-    fwdRef.current += 1
-    force()
-    navigate(-1)
-  }
-
-  const goForward = () => {
-    if (fwdRef.current <= 0) return
-    posRef.current += 1
-    fwdRef.current -= 1
-    force()
-    navigate(1)
-  }
-
-  return { goBack, goForward, canBack: posRef.current > 0, canForward: fwdRef.current > 0 }
-}
-
 // Clock button → quick-jump menu of recently opened channels.
 const RecentMenu = () => {
-  const navigate = useNavigate()
-  const recents = useRecentChannels()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -117,26 +73,7 @@ const RecentMenu = () => {
         <Clock />
       </button>
       {open ? (
-        <div className="admin-topbar-menu">
-          {recents.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">No recent channels</p>
-          ) : (
-            recents.map((channel) => (
-              <button
-                className="admin-topbar-menu-item"
-                key={channel.id}
-                onClick={() => {
-                  navigate(`/channels/${channel.id}`)
-                  setOpen(false)
-                }}
-                type="button"
-              >
-                <span className="text-[color:var(--tx3)]">#</span>
-                <span className="truncate">{channel.label}</span>
-              </button>
-            ))
-          )}
-        </div>
+        <RecentChannelsMenu onSelect={() => setOpen(false)} />
       ) : null}
     </div>
   )
@@ -173,17 +110,9 @@ type TopBarProps = {
 // drag regions around the interactive search field and buttons.
 export const TopBar = ({ hideSearch = false }: TopBarProps) => {
   const desktop = isDesktopApp()
-  const location = useLocation()
-  const { data: channels = [] } = useChannels()
   const { goBack, goForward, canBack, canForward } = useHistoryNav()
 
-  // Remember channel visits so the recent menu has something to show.
-  useEffect(() => {
-    const match = location.pathname.match(/^\/channels\/([^/]+)/)
-    if (!match) return
-    const channel = channels.find((entry) => entry.id === match[1])
-    if (channel) recordRecentChannel({ id: channel.id, label: channel.label })
-  }, [location.pathname, channels])
+  useRecordRecentChannelVisits()
 
   return (
     <header
