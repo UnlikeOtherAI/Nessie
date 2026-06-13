@@ -6,6 +6,7 @@ export type AuthProviderDescriptor = {
   label: string
   providerId: string
   type: string
+  url?: string
 }
 
 export type BootstrapModeResponse = {

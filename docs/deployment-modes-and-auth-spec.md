@@ -103,6 +103,12 @@ Supported auth-provider concept shape:
 - `scopes`
 - `mappingRules`
 
+The public `GET /api/auth/providers` descriptor returns `providerId`, `type`,
+`label`, `enabled`, `autoRedirect`, and a derived `url` — the authenticator's
+public address (`issuerUrl` for OIDC/custom; the UOA base URL, `UOA_BASE_URL`,
+for `uoa`). The admin Profile page renders this as the provider's friendly name
+plus the URL as a subtitle.
+
 Target provider types:
 
 - OIDC

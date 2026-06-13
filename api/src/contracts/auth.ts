@@ -23,6 +23,7 @@ export const AuthProviderDescriptorSchema = z.object({
   label: NonEmptyStringSchema,
   enabled: z.boolean(),
   autoRedirect: z.boolean(),
+  url: z.string().url().optional(),
 })
 export type AuthProviderDescriptor = z.infer<typeof AuthProviderDescriptorSchema>
 

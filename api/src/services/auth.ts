@@ -19,6 +19,21 @@ export const LOCAL_AUTH_PROVIDER_ID = 'local'
 
 const LOCAL_AUTH_PROVIDER_LABEL = 'Email and password'
 
+const UOA_DEFAULT_BASE_URL = 'https://authentication.unlikeotherai.com'
+
+// The public-facing URL of the authenticator behind a provider, shown in the
+// profile. OIDC/custom carry it in config; UOA's lives in the UOA_BASE_URL env
+// (with the same default the worker uses), not the per-provider config block.
+const resolveProviderUrl = (provider: AuthProviderConfig): string | undefined => {
+  if (provider.issuerUrl) {
+    return provider.issuerUrl
+  }
+  if (provider.type === 'uoa') {
+    return (process.env.UOA_BASE_URL ?? UOA_DEFAULT_BASE_URL).replace(/\/$/, '')
+  }
+  return undefined
+}
+
 const createLocalProvider = (): AuthProviderDescriptor => ({
   providerId: LOCAL_AUTH_PROVIDER_ID,
   type: 'local-bootstrap',
@@ -34,6 +49,7 @@ export const listAuthProviders = (config: NessieConfig): AuthProviderDescriptor[
     label: provider.label,
     enabled: provider.enabled,
     autoRedirect: provider.autoRedirect,
+    url: resolveProviderUrl(provider),
   }))
 
   return config.mode === 'local' ? [createLocalProvider(), ...configuredProviders] : configuredProviders

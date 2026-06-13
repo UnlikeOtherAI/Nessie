@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
+import { DebugTokenButton } from '../components/shared/DebugTokenButton';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import {
   isReactNativeWebView,
@@ -204,6 +205,8 @@ export const AdminShellLayout = () => {
           onClose={shell.closeAgentDrawer}
           onSelectAgent={shell.selectAgent}
         />
+
+        <DebugTokenButton />
       </MobileNavProvider>
       </NotificationsProvider>
     </PresenceProvider>
