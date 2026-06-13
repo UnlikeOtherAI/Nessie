@@ -9,8 +9,10 @@ areas with a single **work-only menu** hosted by the **Projects** rail icon:
 
 - **First item: "Kanban"** (`/projects`) — one board aggregating work items across
   *all* projects.
-- **Below it: the projects list** — each project opens its overview at
+- **Below it: the projects list** — the Projects rail opens each project overview at
   `/projects/:projectId`, with its scoped Kanban board at `/projects/:projectId/board`.
+  The Channels sidebar links to the same placeholder overview in the channels
+  context at `/channels/projects/:projectId`.
 - The menu contains **only work** — no channels, DMs, or agents. The **Channels**
   menu (channels / DMs / agents) is unchanged.
 
@@ -58,9 +60,9 @@ Previously `Task` had only `organizationId`. Added:
 - Task queries/mutations centralized in `facades/tasks/hooks.ts`.
 - Members management extracted to `components/shared/ProjectMembersDialog.tsx`.
 - Routing: `/projects` → aggregate Kanban; `/projects/:projectId` → project overview;
-  `/projects/:projectId/board` → scoped Kanban. `/work` redirects to `/projects`
-  (kept for the shipped mobile WebView shell). `WorkPage.tsx` and `ProjectsPage.tsx`
-  deleted.
+  `/projects/:projectId/board` → scoped Kanban; `/channels/projects/:projectId` →
+  channels-context project overview. `/work` redirects to `/projects` (kept for the
+  shipped mobile WebView shell). `WorkPage.tsx` and `ProjectsPage.tsx` deleted.
 - New dependency: `@dnd-kit/core`.
 
 ## Verification

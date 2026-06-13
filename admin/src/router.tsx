@@ -8,6 +8,7 @@ import { AgentsPage } from './pages/AgentsPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 import { BootstrapPage } from './pages/BootstrapPage'
+import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverviewPage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { FeedbackPage } from './pages/FeedbackPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
@@ -65,6 +66,10 @@ export const router = createBrowserRouter([
   {
     element: <AdminShellLayout />,
     children: [
+      {
+        path: '/channels/projects/:projectId',
+        element: <ChannelProjectOverviewPage />,
+      },
       {
         path: '/channels/:channelId?',
         element: <ChannelsPage />,
