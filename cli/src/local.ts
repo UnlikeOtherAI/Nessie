@@ -405,6 +405,7 @@ const createGeneratedConfig = (mode: LaunchMode, env: NodeJS.ProcessEnv): Nessie
       provider: 'local',
     },
     storage: {
+      ...baseConfig.storage,
       bucket: undefined,
       localPath: paths.storageDir,
       provider: 'filesystem',
