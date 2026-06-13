@@ -9,8 +9,8 @@ areas with a single **work-only menu** hosted by the **Projects** rail icon:
 
 - **First item: "Kanban"** (`/projects`) — one board aggregating work items across
   *all* projects.
-- **Below it: the projects list** — each project (`/projects/:projectId`) *is* its
-  own Kanban board, scoped to that project's work items.
+- **Below it: the projects list** — each project opens its overview at
+  `/projects/:projectId`, with its scoped Kanban board at `/projects/:projectId/board`.
 - The menu contains **only work** — no channels, DMs, or agents. The **Channels**
   menu (channels / DMs / agents) is unchanged.
 
@@ -50,15 +50,17 @@ Previously `Task` had only `organizationId`. Added:
   toggle), `KanbanColumn`, `KanbanCard` (draggable via `@dnd-kit/core`; drag handle on
   the card body so the assignee select / actions stay clickable), and `kanban-config.ts`
   (column ↔ status mapping). Dragging a card fires an optimistic status transition.
-- New page `pages/ProjectKanbanPage.tsx` (replaces `WorkPage`/`ProjectsPage`): reads
-  `:projectId` (absent = aggregate board), creates tasks (project picker only on the
-  aggregate board), and shows a project badge on aggregate cards. Legacy tasks with
-  `projectId = null` appear on the aggregate board as "Unassigned".
+- New aggregate page `pages/AggregateBoardPage.tsx` plus the scoped
+  `ProjectBoardTab`: aggregate creates tasks with a project picker and shows a
+  project badge on cards; scoped boards create tasks within the active project.
+  Legacy tasks with `projectId = null` appear on the aggregate board as
+  "Unassigned".
 - Task queries/mutations centralized in `facades/tasks/hooks.ts`.
 - Members management extracted to `components/shared/ProjectMembersDialog.tsx`.
-- Routing: `/projects` + `/projects/:projectId` → `ProjectKanbanPage`; `/work` redirects
-  to `/projects` (kept for the shipped mobile WebView shell). `WorkPage.tsx` and
-  `ProjectsPage.tsx` deleted.
+- Routing: `/projects` → aggregate Kanban; `/projects/:projectId` → project overview;
+  `/projects/:projectId/board` → scoped Kanban. `/work` redirects to `/projects`
+  (kept for the shipped mobile WebView shell). `WorkPage.tsx` and `ProjectsPage.tsx`
+  deleted.
 - New dependency: `@dnd-kit/core`.
 
 ## Verification

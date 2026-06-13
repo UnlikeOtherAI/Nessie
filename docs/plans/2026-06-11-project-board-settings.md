@@ -55,8 +55,9 @@ layer* keyed off status; the worker is never modified. The worker only ever sets
 ## Frontend (`admin/`)
 
 - `/projects` = aggregate board (canonical category columns). `/projects/:id` =
-  tabbed `ProjectView`: **Board · Settings**, plus **Backlog · Insights** when the
-  style is scrum.
+  tabbed `ProjectView` with an **Overview** placeholder. The scoped board lives at
+  `/projects/:id/board`, with **Settings** plus **Backlog · Insights** when the style
+  is scrum.
 - Settings: style toggle + columns editor (add/rename/reorder/category/delete).
 - Backlog: sprint create/start/complete/delete, assign tasks to sprints, inline
   story points; Board scopes to the active sprint with an empty-state CTA.

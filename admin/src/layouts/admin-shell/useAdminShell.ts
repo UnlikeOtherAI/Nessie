@@ -135,9 +135,8 @@ export const useAdminShell = () => {
   const closeMobileDrawer = useCallback(() => setMobileDrawerOpen(false), []);
 
   const navigateToProject = useCallback((projectId: string) => {
-    const firstChannel = standardChannels.find((channel) => channel.projectId === projectId);
-    void navigate(firstChannel ? `/channels/${firstChannel.id}` : '/channels');
-  }, [navigate, standardChannels]);
+    void navigate(`/projects/${projectId}`);
+  }, [navigate]);
 
   const scopedAgents = agents;
 
