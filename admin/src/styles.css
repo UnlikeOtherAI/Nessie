@@ -361,9 +361,46 @@ a {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
-  gap: 8px;
   max-width: 720px;
   margin: 0 auto;
+}
+
+/* The Text/Semantic toggle only exists while the field is focused. It is always
+   in the DOM so it can animate: collapsed it has zero width + opacity (the field
+   takes the full width); on `.is-open` it expands to its content width and fades
+   in, shrinking the field in step. `grid-template-columns` 0fr→1fr animates to
+   the exact content size; `visibility` (delayed on hide) keeps it out of the tab
+   order while collapsed. */
+.admin-topbar-search-toggle {
+  display: grid;
+  grid-template-columns: 0fr;
+  margin-left: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    grid-template-columns var(--duration-base) var(--easing-standard),
+    margin-left var(--duration-base) var(--easing-standard),
+    opacity var(--duration-base) var(--easing-standard),
+    visibility 0s linear var(--duration-base);
+}
+
+.admin-topbar-search-toggle > * {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-topbar-search-toggle.is-open {
+  grid-template-columns: 1fr;
+  margin-left: 8px;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    grid-template-columns var(--duration-base) var(--easing-standard),
+    margin-left var(--duration-base) var(--easing-standard),
+    opacity var(--duration-base) var(--easing-standard),
+    visibility 0s;
 }
 
 .admin-topbar--desktop .admin-topbar-search {

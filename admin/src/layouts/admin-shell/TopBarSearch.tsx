@@ -230,7 +230,13 @@ export const TopBarSearch = ({
           value={query}
         />
       </div>
-      {open ? <SearchModeToggle compact mode={mode} onChange={setMode} /> : null}
+      <div
+        className={['admin-topbar-search-toggle', open ? 'is-open' : '']
+          .filter(Boolean)
+          .join(' ')}
+      >
+        <SearchModeToggle compact mode={mode} onChange={setMode} />
+      </div>
 
       {showDropdown ? (
         <div className="admin-topbar-results" role="listbox">
