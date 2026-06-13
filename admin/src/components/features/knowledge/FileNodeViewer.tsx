@@ -31,6 +31,11 @@ export const FileNodeViewer = ({
   const { token } = useAuthSession()
   const version = page.latestVersion
   const previewKind = previewKindForFilename(page.title)
+  // Pin the PDF preview blob's MIME to application/pdf so a file with an
+  // attacker-controlled content-type (e.g. text/html bytes named "x.pdf") can
+  // never render as executable HTML in the same-origin iframe. Image previews
+  // keep the server type (<img> can't execute scripts); text renders as a <pre>.
+  const previewMime = previewKind === 'pdf' ? 'application/pdf' : undefined
   const downloadPath = version ? versionDownloadPath(page.id, version.id) : null
   // Image/PDF preview via an object URL; text/config render as plain text (a
   // <pre>, never an iframe — so the file's bytes can't run scripts). Binaries
@@ -38,6 +43,7 @@ export const FileNodeViewer = ({
   const previewUrl = useAuthedObjectUrlFromPath(
     (previewKind === 'image' || previewKind === 'pdf') && downloadPath ? downloadPath : null,
     token,
+    previewMime,
   )
   const textPreview = useAuthedTextFromPath(
     previewKind === 'text' && downloadPath ? downloadPath : null,
@@ -111,6 +117,9 @@ export const FileNodeViewer = ({
           ) : previewKind === 'pdf' && previewUrl ? (
             <iframe
               className="h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-white"
+              // previewUrl's blob MIME is pinned to application/pdf (above), so a
+              // file with an attacker-controlled content-type (e.g. text/html
+              // named "x.pdf") renders as a failed PDF, never executable HTML.
               src={previewUrl}
               title={page.title}
             />

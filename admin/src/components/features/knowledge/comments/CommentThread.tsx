@@ -74,8 +74,8 @@ const CommentRow = ({
             <CommentComposer
               initialValue={annotation.body}
               onCancel={() => setEditing(false)}
-              onSubmit={(body) => {
-                actions.edit(annotation.id, body)
+              onSubmit={async (body) => {
+                await actions.edit(annotation.id, body)
                 setEditing(false)
               }}
               pending={actions.pending}
@@ -161,8 +161,8 @@ export const CommentThread = ({
           <CommentComposer
             autoFocus
             onCancel={() => setReplying(false)}
-            onSubmit={(body) => {
-              actions.reply(annotation.id, body)
+            onSubmit={async (body) => {
+              await actions.reply(annotation.id, body)
               setReplying(false)
             }}
             pending={actions.pending}

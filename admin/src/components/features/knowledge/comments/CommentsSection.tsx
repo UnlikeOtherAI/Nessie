@@ -25,7 +25,7 @@ export const CommentsSection = ({ pageId }: { pageId: string }) => {
       </h2>
       <div className="mt-3">
         <CommentComposer
-          onSubmit={(body) => createComment.mutate({ body })}
+          onSubmit={(body) => createComment.mutateAsync({ body })}
           pending={createComment.isPending}
           placeholder="Add a comment…"
           submitLabel="Comment"

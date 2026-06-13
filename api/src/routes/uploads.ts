@@ -20,8 +20,10 @@ const MESSAGE_UPLOAD_BYTES = 25 * 1024 * 1024
 
 const INLINE_DISPOSITION_MIMES = new Set(['application/pdf'])
 
+// image/svg+xml is an active-content type (it can carry <script>), so it must
+// never be served inline — only raster images and PDFs preview in-browser.
 const isInlineMime = (mime: string): boolean =>
-  mime.startsWith('image/') || INLINE_DISPOSITION_MIMES.has(mime)
+  (mime.startsWith('image/') && mime !== 'image/svg+xml') || INLINE_DISPOSITION_MIMES.has(mime)
 
 // Set download headers (inline preview for images/PDFs, attachment otherwise)
 // and pipe the object stream. Shared by every attachment download route so the

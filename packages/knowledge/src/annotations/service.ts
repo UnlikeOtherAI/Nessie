@@ -250,17 +250,26 @@ export const createAnnotationService = ({ prisma }: AnnotationServiceDeps) => {
             },
           }
       const existing = await prisma.knowledgePageAnnotationReaction.findUnique({ where })
-      if (existing) {
-        await prisma.knowledgePageAnnotationReaction.delete({ where })
-      } else {
-        await prisma.knowledgePageAnnotationReaction.create({
-          data: {
-            annotationId: row.id,
-            organizationId: access.organizationId,
-            emoji,
-            ...(isAgent ? { agentId: input.actor.authorId } : { userId: input.actor.authorId }),
-          },
-        })
+      try {
+        if (existing) {
+          await prisma.knowledgePageAnnotationReaction.delete({ where })
+        } else {
+          await prisma.knowledgePageAnnotationReaction.create({
+            data: {
+              annotationId: row.id,
+              organizationId: access.organizationId,
+              emoji,
+              ...(isAgent ? { agentId: input.actor.authorId } : { userId: input.actor.authorId }),
+            },
+          })
+        }
+      } catch (error) {
+        // find-then-write is not atomic: a concurrent toggle of the same
+        // reaction may have already created (P2002 unique violation) or removed
+        // (P2025 record-not-found) it. Converge on the current persisted state
+        // instead of surfacing a 500.
+        const code = (error as { code?: string } | null)?.code
+        if (code !== 'P2002' && code !== 'P2025') throw error
       }
       return reload(row.id)
     },

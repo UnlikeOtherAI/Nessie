@@ -56,6 +56,7 @@ export const attachmentUrl = (id: string): string => `${getBaseUrl()}/api/attach
 export const useAuthedObjectUrlFromPath = (
   path: string | null,
   token: string | null,
+  mimeOverride?: string,
 ): string | null => {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
@@ -71,7 +72,13 @@ export const useAuthedObjectUrlFromPath = (
       .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
       .then((blob) => {
         if (revoked) return
-        objectUrl = URL.createObjectURL(blob)
+        // A blob: URL inherits the admin origin, so the blob's MIME type drives
+        // how an <iframe> renders it. The server echoes the upload's (attacker-
+        // controllable) content-type, so trusting it here would let an uploaded
+        // text/html file named "x.pdf" execute scripts in this session. When the
+        // caller knows the safe type, pin it (zero-copy re-type via slice).
+        const typed = mimeOverride ? blob.slice(0, blob.size, mimeOverride) : blob
+        objectUrl = URL.createObjectURL(typed)
         setUrl(objectUrl)
       })
       .catch(() => setUrl(null))
@@ -79,7 +86,7 @@ export const useAuthedObjectUrlFromPath = (
       revoked = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [path, token])
+  }, [path, token, mimeOverride])
   return url
 }
 

@@ -8,9 +8,11 @@ import {
 } from '../../../../facades/knowledge/comment-hooks'
 
 export type AnnotationActions = {
-  reply: (annotationId: string, body: string) => void
+  // reply/edit are awaitable so the composer can keep typed text + surface an
+  // error when they fail, and only close/clear on success.
+  reply: (annotationId: string, body: string) => Promise<unknown>
   setState: (annotationId: string, state: AnnotationState) => void
-  edit: (annotationId: string, body: string) => void
+  edit: (annotationId: string, body: string) => Promise<unknown>
   remove: (annotationId: string) => void
   toggleReaction: (annotationId: string, emoji: string) => void
   pending: boolean
@@ -25,9 +27,9 @@ export const useAnnotationActions = (pageId: string): AnnotationActions => {
   const deleteMutation = useDeleteAnnotation(pageId)
   const reactionMutation = useToggleAnnotationReaction(pageId)
   return {
-    reply: (annotationId, body) => replyMutation.mutate({ annotationId, body }),
+    reply: (annotationId, body) => replyMutation.mutateAsync({ annotationId, body }),
     setState: (annotationId, state) => stateMutation.mutate({ annotationId, state }),
-    edit: (annotationId, body) => editMutation.mutate({ annotationId, body }),
+    edit: (annotationId, body) => editMutation.mutateAsync({ annotationId, body }),
     remove: (annotationId) => deleteMutation.mutate({ annotationId }),
     toggleReaction: (annotationId, emoji) =>
       reactionMutation.mutate({ annotationId, emoji }),

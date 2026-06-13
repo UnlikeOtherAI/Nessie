@@ -45,20 +45,48 @@ const readStoredWidth = (): number => {
   return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : DEFAULT_COLUMN_WIDTH
 }
 
-// A draggable divider. Dragging adjusts the single shared column width, so every
-// column stretches or shrinks together (never below MIN_COLUMN_WIDTH).
+const RESIZE_STEP = 24
+
+// A draggable + keyboard-operable divider. Dragging (pointer) or arrow keys
+// adjust the single shared column width, so every column stretches/shrinks
+// together (clamped to [MIN, MAX]). touch-none keeps the drag from being stolen
+// by the browser's scroll gesture on touch devices.
 const ResizeHandle = ({
+  onAdjust,
   onPointerDown,
+  width,
 }: {
+  onAdjust: (next: number) => void
   onPointerDown: (event: PointerEvent<HTMLDivElement>) => void
+  width: number
 }) => (
   <div
+    aria-label="Resize columns"
     aria-orientation="vertical"
-    className="group flex h-full w-4 flex-shrink-0 cursor-col-resize items-center justify-center"
+    aria-valuemax={MAX_COLUMN_WIDTH}
+    aria-valuemin={MIN_COLUMN_WIDTH}
+    aria-valuenow={width}
+    className="group flex h-full w-4 flex-shrink-0 cursor-col-resize touch-none items-center justify-center focus:outline-none"
+    onKeyDown={(event) => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        onAdjust(width - RESIZE_STEP)
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        onAdjust(width + RESIZE_STEP)
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        onAdjust(MIN_COLUMN_WIDTH)
+      } else if (event.key === 'End') {
+        event.preventDefault()
+        onAdjust(MAX_COLUMN_WIDTH)
+      }
+    }}
     onPointerDown={onPointerDown}
     role="separator"
+    tabIndex={0}
   >
-    <div className="h-full w-px bg-[color:var(--sep)] transition-colors group-hover:bg-[color:var(--accent)]" />
+    <div className="h-full w-px bg-[color:var(--sep)] transition-colors group-hover:bg-[color:var(--accent)] group-focus:w-0.5 group-focus:bg-[color:var(--accent)]" />
   </div>
 )
 
@@ -136,6 +164,16 @@ export const KnowledgeColumns = ({
 }: KnowledgeColumnsProps) => {
   const [columnWidth, setColumnWidth] = useState(readStoredWidth)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Tears down an in-progress drag's window listeners + body styles if the
+  // column view unmounts mid-drag (e.g. switching to tree/full while dragging).
+  const resizeCleanup = useRef<(() => void) | null>(null)
+  useEffect(() => () => resizeCleanup.current?.(), [])
+
+  const adjustWidth = (next: number) => {
+    const clamped = clampWidth(next)
+    setColumnWidth(clamped)
+    setCookie(COLUMN_WIDTH_COOKIE, String(clamped))
+  }
 
   const columns: ColumnModel[] = [
     {
@@ -177,10 +215,12 @@ export const KnowledgeColumns = ({
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       setCookie(COLUMN_WIDTH_COOKIE, String(lastWidth))
+      resizeCleanup.current = null
     }
 
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
+    resizeCleanup.current = stop
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }
@@ -204,7 +244,7 @@ export const KnowledgeColumns = ({
               showNewFolder={creatingFolder && index === activeIndex}
               width={index === 0 ? columnWidth + ROOT_COLUMN_EXTRA : columnWidth}
             />
-            <ResizeHandle onPointerDown={startResize} />
+            <ResizeHandle onAdjust={adjustWidth} onPointerDown={startResize} width={columnWidth} />
           </Fragment>
         ))}
       </div>

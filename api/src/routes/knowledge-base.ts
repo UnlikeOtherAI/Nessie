@@ -70,6 +70,19 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_space', 'create')
     if (!decision) return reply
     const viewer = await buildViewer(actorContext)
+    // The org-wide knowledge_space:create grant is evaluated against the caller's
+    // own session project, so without this check a user could pass any sibling
+    // project's id in the body and plant a writable space there. Human actors may
+    // only create in a project they belong to; agents/services keep bypass.
+    if (!viewer.bypass && !viewer.projectIds.has(projectId)) {
+      sendApiError(
+        reply,
+        403,
+        'POLICY_DENIED',
+        'Cannot create a knowledge space in a project you do not belong to',
+      )
+      return reply
+    }
     const space = await provider.createSpace({
       ...body,
       organizationId: actorContext.tenant.organizationId,
