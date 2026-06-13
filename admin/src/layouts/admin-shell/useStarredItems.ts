@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useUpdatePreferences } from '../../facades/auth/hooks'
 import { getCookie, setCookie } from '../../lib/storage'
-import type { StarredItem } from './types'
+import type { PreferenceStarredItem } from './types'
 
 type UseStarredItemsArgs = {
-  initialStarred: StarredItem[]
+  initialStarred: PreferenceStarredItem[]
 }
 
 /**
@@ -23,7 +23,7 @@ export const useStarredItems = ({ initialStarred }: UseStarredItemsArgs) => {
     () => getCookie('starredCollapsed') === '1',
   )
   const [dmCollapsed, setDmCollapsed] = useState(() => getCookie('dmCollapsed') === '1')
-  const [starred, setStarred] = useState<StarredItem[]>(() => initialStarred)
+  const [starred, setStarred] = useState<PreferenceStarredItem[]>(() => initialStarred)
 
   const toggleChannelsCollapsed = useCallback(() => {
     setChannelsCollapsed((prev) => {
@@ -74,7 +74,7 @@ export const useStarredItems = ({ initialStarred }: UseStarredItemsArgs) => {
     [starred],
   )
 
-  const toggleStar = useCallback((type: StarredItem['type'], id: string) => {
+  const toggleStar = useCallback((type: PreferenceStarredItem['type'], id: string) => {
     setStarred((prev) => {
       const exists = prev.some((s) => s.type === type && s.id === id)
       const next = exists

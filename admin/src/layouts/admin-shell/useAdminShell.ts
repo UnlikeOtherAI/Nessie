@@ -2,30 +2,31 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAgentRealtime, useAgents } from '../../facades/agents/hooks';
 import { useChannels, useOpenDm } from '../../facades/channels/hooks';
+import { useFavorites, useSetFavorite } from '../../facades/favorites/hooks';
 import {
   isPersonalAssistantChannel,
   isUserDmChannel,
+  usePersonalAssistant,
   usePersonalAssistantBootstrap,
 } from '../../facades/personal-assistant/hooks';
 import { useProjects, useTeams } from '../../facades/projects/hooks';
 import { useUsers } from '../../facades/users/hooks';
-import type { ChannelRecord } from '../../lib/api-client';
+import type { AgentRecord } from '../../lib/api-client';
 import { getDmStyle } from '../../lib/avatar';
 import { parseChannelIdFromPath, parseChannelProjectIdFromPath } from '../../lib/channel-route';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { matchesAdminRoute } from './nav-items';
 import { useSidebarTree } from './useSidebarTree';
 import { useStarredItems } from './useStarredItems';
+import { useVisibleStarredEntries } from './useVisibleStarredEntries';
 import {
-  DEFAULT_BOOTSTRAP_PROJECT_ID,
   type CreateChannelTarget,
+  type PreferenceStarredItem,
   type RenameProjectTarget,
   type SidebarAgentDm,
   type SidebarMenu,
   type SidebarPerson,
-  type SidebarProject,
   type StarredItem,
-  type VisibleStarredEntry,
 } from './types';
 
 /**
@@ -40,6 +41,8 @@ export const useAdminShell = () => {
   const { data: projects = [] } = useProjects();
   const { data: teams = [] } = useTeams();
   const { data: agents = [] } = useAgents();
+  const { data: favorites = [] } = useFavorites();
+  const setFavorite = useSetFavorite();
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const isSuperAdmin = me?.user.superAdmin ?? false;
   const { data: users = [] } = useUsers(isOwner);
@@ -53,6 +56,13 @@ export const useAdminShell = () => {
   const personalAssistantChannel = useMemo(
     () => channels.find(isPersonalAssistantChannel) ?? null,
     [channels],
+  );
+  const hasAgentFavorite = useMemo(
+    () => favorites.some((favorite) => favorite.targetType === 'agent'),
+    [favorites],
+  );
+  const { data: personalAssistantState } = usePersonalAssistant(
+    Boolean(personalAssistantChannel || hasAgentFavorite),
   );
   const realtime = useAgentRealtime({
     channelId: currentChannelId,
@@ -72,7 +82,7 @@ export const useAdminShell = () => {
   const [renameProjectTarget, setRenameProjectTarget] = useState<RenameProjectTarget | null>(null);
   const [sidebarMenu, setSidebarMenu] = useState<SidebarMenu>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const initialStarred = useMemo<StarredItem[]>(
+  const initialStarred = useMemo<PreferenceStarredItem[]>(
     () => me?.user.preferences?.starred ?? [],
     [me?.user.preferences?.starred],
   );
@@ -80,17 +90,82 @@ export const useAdminShell = () => {
     channelsCollapsed,
     dmCollapsed,
     projectsCollapsed,
-    starred,
-    starredChannelIds,
     starredCollapsed,
-    starredProjectIds,
-    starredUserIds,
+    starred: preferenceStarred,
     toggleChannelsCollapsed,
     toggleDmCollapsed,
     toggleProjectsCollapsed,
-    toggleStar,
+    toggleStar: togglePreferenceStar,
     toggleStarredCollapsed,
   } = useStarredItems({ initialStarred });
+
+  const favoriteStarred = useMemo<StarredItem[]>(
+    () =>
+      favorites.map((favorite) => ({
+        id: favorite.targetId,
+        type: favorite.targetType,
+      })),
+    [favorites],
+  );
+
+  const starred = useMemo<StarredItem[]>(() => {
+    const entries: StarredItem[] = [];
+    const seen = new Set<string>();
+    const append = (item: StarredItem): void => {
+      const key = `${item.type}:${item.id}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      entries.push(item);
+    };
+
+    preferenceStarred.forEach(append);
+    favoriteStarred.forEach(append);
+    return entries;
+  }, [favoriteStarred, preferenceStarred]);
+
+  const favoriteKeys = useMemo(
+    () => new Set(favorites.map((favorite) => `${favorite.targetType}:${favorite.targetId}`)),
+    [favorites],
+  );
+  const preferenceKeys = useMemo(
+    () => new Set(preferenceStarred.map((item) => `${item.type}:${item.id}`)),
+    [preferenceStarred],
+  );
+  const starredChannelIds = useMemo(
+    () => new Set(starred.filter((item) => item.type === 'channel').map((item) => item.id)),
+    [starred],
+  );
+  const starredProjectIds = useMemo(
+    () => new Set(starred.filter((item) => item.type === 'project').map((item) => item.id)),
+    [starred],
+  );
+  const starredUserIds = useMemo(
+    () => new Set(starred.filter((item) => item.type === 'user').map((item) => item.id)),
+    [starred],
+  );
+
+  const toggleStar = useCallback((type: StarredItem['type'], id: string) => {
+    if (type === 'project') {
+      togglePreferenceStar(type, id);
+      return;
+    }
+
+    const key = `${type}:${id}`;
+    const favoriteExists = favoriteKeys.has(key);
+    const preferenceExists = preferenceKeys.has(key);
+    if (type !== 'agent' && preferenceExists) {
+      togglePreferenceStar(type, id);
+    }
+    if (favoriteExists) {
+      setFavorite.mutate({ favorite: false, targetId: id, targetType: type });
+      return;
+    }
+    if (!preferenceExists) {
+      setFavorite.mutate({ favorite: true, targetId: id, targetType: type });
+    }
+  }, [favoriteKeys, preferenceKeys, setFavorite, togglePreferenceStar]);
 
   const unreadCountByChannelId = useMemo(
     () => new Map(channels.map((channel) => [channel.id, channel.unreadCount])),
@@ -148,6 +223,15 @@ export const useAdminShell = () => {
     () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
     [agents, selectedAgentId],
   );
+
+  const agentById = useMemo(() => {
+    const byId = new Map<string, AgentRecord>();
+    agents.forEach((agent) => byId.set(agent.id, agent));
+    if (personalAssistantState?.agent) {
+      byId.set(personalAssistantState.agent.id, personalAssistantState.agent);
+    }
+    return byId;
+  }, [agents, personalAssistantState?.agent]);
 
   const selectAgent = useCallback((agentId: string) => {
     setSelectedAgentId(agentId);
@@ -264,77 +348,14 @@ export const useAdminShell = () => {
     [agents, channels],
   );
 
-  const visibleStarredEntries = useMemo<VisibleStarredEntry[]>(() => {
-    const entries: VisibleStarredEntry[] = [];
-    const projectEntryById = new Map<string, Extract<VisibleStarredEntry, { type: 'project' }>>();
-
-    const addProjectEntry = (
-      project: SidebarProject,
-      channelsToShow: ChannelRecord[],
-      starredProject: boolean,
-    ) => {
-      const existing = projectEntryById.get(project.id);
-      if (existing) {
-        if (starredProject) {
-          existing.channels = channelsToShow;
-          existing.starred = true;
-          return;
-        }
-
-        const existingChannelIds = new Set(existing.channels.map((channel) => channel.id));
-        existing.channels = [
-          ...existing.channels,
-          ...channelsToShow.filter((channel) => !existingChannelIds.has(channel.id)),
-        ];
-        return;
-      }
-
-      const entry: Extract<VisibleStarredEntry, { type: 'project' }> = {
-        channels: channelsToShow,
-        project,
-        starred: starredProject,
-        type: 'project',
-      };
-      projectEntryById.set(project.id, entry);
-      entries.push(entry);
-    };
-
-    for (const item of starred) {
-      if (item.type === 'project') {
-        if (item.id === DEFAULT_BOOTSTRAP_PROJECT_ID) continue;
-        const project = projectById.get(item.id);
-        if (project) {
-          addProjectEntry(project, project.channels, true);
-        }
-        continue;
-      }
-
-      if (item.type === 'channel') {
-        const channel = channelById.get(item.id);
-        if (!channel) continue;
-
-        if (channel.projectId === DEFAULT_BOOTSTRAP_PROJECT_ID) {
-          entries.push({ channel, type: 'channel' });
-          continue;
-        }
-
-        if (starredProjectIds.has(channel.projectId)) continue;
-
-        const project = projectById.get(channel.projectId);
-        if (project) {
-          addProjectEntry(project, [channel], false);
-        }
-        continue;
-      }
-
-      const person = sidebarPeople.find((candidate) => candidate.id === item.id);
-      if (person) {
-        entries.push({ person, type: 'user' });
-      }
-    }
-
-    return entries;
-  }, [channelById, projectById, sidebarPeople, starred, starredProjectIds]);
+  const visibleStarredEntries = useVisibleStarredEntries({
+    agentById,
+    channelById,
+    projectById,
+    sidebarPeople,
+    starred,
+    starredProjectIds,
+  });
 
   const openPersonalAssistant = useCallback(async () => {
     if (personalAssistantChannel) {
@@ -349,6 +370,15 @@ export const useAdminShell = () => {
       // The backend can still be bootstrapped independently; keep the rail stable.
     }
   }, [navigate, personalAssistantBootstrap, personalAssistantChannel]);
+
+  const navigateToAgent = useCallback((agentId: string) => {
+    const agent = agentById.get(agentId);
+    if (agent?.agentKind === 'personal_assistant') {
+      void openPersonalAssistant();
+      return;
+    }
+    setSelectedAgentId(agentId);
+  }, [agentById, openPersonalAssistant]);
 
   useEffect(() => {
     setSelectedAgentId(null);
@@ -398,6 +428,7 @@ export const useAdminShell = () => {
     openMobileDrawer,
     closeMobileDrawer,
     navigateHome,
+    navigateToAgent,
     navigateToChannel,
     navigateToDm,
     navigateToNewConversation,

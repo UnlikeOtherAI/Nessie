@@ -82,6 +82,7 @@ export const AdminShellLayout = () => {
       defaultProjectTeamId={shell.defaultProjectTeamId}
       dmCollapsed={shell.dmCollapsed}
       isOwner={shell.isOwner}
+      onNavigateAgent={shell.navigateToAgent}
       onNavigateChannel={shell.navigateToChannel}
       onNavigateDm={shell.navigateToDm}
       onNavigateHome={shell.navigateHome}

@@ -1,5 +1,6 @@
 import type { ChannelRecord } from '../../lib/api-client';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { channelHashClassName, renderUnreadCount } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -10,6 +11,7 @@ type SidebarStarredSectionProps = {
   currentChannelId?: string;
   currentProjectId?: string;
   entries: VisibleStarredEntry[];
+  onNavigateAgent: (agentId: string) => void;
   onNavigateChannel: (channelId: string) => void;
   onNavigateDm: (userId: string) => void;
   onNavigateProject: (projectId: string) => void;
@@ -24,6 +26,7 @@ export const SidebarStarredSection = ({
   currentChannelId,
   currentProjectId,
   entries,
+  onNavigateAgent,
   onNavigateChannel,
   onNavigateDm,
   onNavigateProject,
@@ -56,6 +59,29 @@ export const SidebarStarredSection = ({
       }
     >
       {entries.map((item) => {
+        if (item.type === 'agent') {
+          const { agent } = item;
+          return (
+            <button
+              key={`starred-agent-${agent.id}`}
+              className="admin-sb-item group"
+              onClick={() => onNavigateAgent(agent.id)}
+              type="button"
+            >
+              <AgentAvatar agent={agent} shape="circle" size="xs" token={token} />
+              <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+              <span
+                className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleStar('agent', agent.id);
+                }}
+              >
+                ★
+              </span>
+            </button>
+          );
+        }
         if (item.type === 'channel') {
           const { channel } = item;
           return (
