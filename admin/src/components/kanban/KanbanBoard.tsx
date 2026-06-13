@@ -41,6 +41,11 @@ const EDGE_PAGE_INTERVAL_MS = 450
 const SWIPE_PAGE_MIN_PX = 48
 const SWIPE_PAGE_RATIO = 1.25
 const SWIPE_START_PX = 4
+// Horizontal wheel (Magic Mouse / trackpad two-finger swipe) paging: turn one
+// page once the accumulated horizontal delta clears the threshold, then wait for
+// the gesture to go idle before turning again so one flick = one page.
+const WHEEL_PAGE_PX = 40
+const WHEEL_IDLE_MS = 150
 const PAGE_TRANSITION = 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
 const DND_MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
 // Touch drag is long-press activated so a short touch swipe pages instead of
@@ -79,6 +84,10 @@ export const KanbanBoard = ({
   const lastEdgePageAtRef = useRef(0)
   // Set once a card drag activates so the page-swipe gesture yields to it.
   const cardDragRef = useRef(false)
+  // Horizontal-wheel paging accumulator / per-flick lock.
+  const wheelAccumRef = useRef(0)
+  const wheelLastRef = useRef(0)
+  const wheelLockRef = useRef(false)
 
   const sensors = useSensors(
     useSensor(MouseSensor, MOUSE_ACTIVATION),
@@ -265,6 +274,38 @@ export const KanbanBoard = ({
     }
   }, [isDraggingCard, paginated, pageByClientX])
 
+  // Horizontal wheel = Magic Mouse / trackpad two-finger swipe. Page on it and
+  // prevent the browser's back/forward swipe navigation. One flick = one page:
+  // the lock clears once the gesture (and its momentum) goes idle.
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || !paginated) return
+
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
+      event.preventDefault()
+
+      const now = performance.now()
+      if (now - wheelLastRef.current > WHEEL_IDLE_MS) {
+        wheelAccumRef.current = 0
+        wheelLockRef.current = false
+      }
+      wheelLastRef.current = now
+      if (wheelLockRef.current) return
+
+      wheelAccumRef.current += event.deltaX
+      if (Math.abs(wheelAccumRef.current) < WHEEL_PAGE_PX) return
+
+      const direction = wheelAccumRef.current > 0 ? 1 : -1
+      wheelAccumRef.current = 0
+      wheelLockRef.current = true
+      showPage(pageRef.current + direction)
+    }
+
+    viewport.addEventListener('wheel', onWheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', onWheel)
+  }, [paginated, showPage])
+
   const handleDragStart = (event: DragStartEvent) => {
     const task = tasks.find((t) => t.id === String(event.active.id))
     const columnId = task ? placeTask(task, columns) : null
@@ -307,6 +348,7 @@ export const KanbanBoard = ({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DndContext
+        autoScroll={false}
         measuring={DND_MEASURING}
         sensors={sensors}
         onDragCancel={clearDraggingTask}
@@ -350,7 +392,10 @@ export const KanbanBoard = ({
             data-kanban-track
             style={{
               transform: `translateX(calc(-${page * 100}% + ${dragOffset}px))`,
-              transition: swiping ? 'none' : PAGE_TRANSITION,
+              // No animation while swiping (track follows the pointer) or while a
+              // card is being dragged — an animating transform makes the drop
+              // target a moving target, which offsets the drop in Safari.
+              transition: swiping || isDraggingCard ? 'none' : PAGE_TRANSITION,
             }}
           >
             {pageGroups.map((group, groupIndex) => (

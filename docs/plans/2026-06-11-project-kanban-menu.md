@@ -378,3 +378,41 @@ is long-press activated so a short touch swipe pages instead of grabbing a card.
   synthetic **touch** swipe starting **on a card** pages (short swipe scrolls);
   and a mouse card-drag sets `data-kanban-dragging` without changing the page.
   Layout unchanged at 1680px (4 columns fill) and 1280px (3 + dots). No errors.
+
+## Update 2026-06-13 (3) — wheel/Magic-Mouse paging + cross-page drag fix
+
+### Wheel / trackpad / Magic Mouse swipe
+
+- A **horizontal wheel** gesture (Magic Mouse or trackpad two-finger swipe) now
+  pages the board. `KanbanBoard` attaches a non-passive `wheel` listener on the
+  viewport: when `|deltaX| > |deltaY|` it `preventDefault()`s (so the browser's
+  back/forward swipe-navigation doesn't fire) and accumulates `deltaX`; once it
+  clears `WHEEL_PAGE_PX` (40) it turns one page, then locks until the gesture
+  goes idle (`WHEEL_IDLE_MS` 150) so one flick = one page. Vertical wheel is left
+  alone (page scroll). This is separate from the pointer-drag swipe, which only
+  fires on a button-drag — a Magic Mouse swipe is a wheel event, not a drag.
+
+### Cross-page card drag (drag-to-edge paging)
+
+- Dragging a card to the viewport edge pages the board; previously the drop
+  target could end up offset by the page width (reported on macOS Safari: the
+  drag shadow stayed put and you had to move off the window to drop). Two causes
+  addressed:
+  - `DndContext` now sets **`autoScroll={false}`** — the board does its own
+    drag-to-edge paging, so dnd-kit's auto-scroll (whose overlay/scroll
+    compensation drifts in Safari) is redundant and is turned off.
+  - The page **transition is disabled while a card is being dragged**
+    (`transition: swiping || isDraggingCard ? 'none' : …`) so paging is instant.
+    An animating transform makes the drop target a moving target, which
+    `MeasuringStrategy.Always` then measures mid-flight. Dot taps and ordinary
+    swipes still animate.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (admin) pass.
+- Playwright in **both Chromium and WebKit** (Safari engine), 1280px / 2 pages:
+  a horizontal wheel pages right→left and a vertical wheel does not; a
+  drag-to-edge cross-page drag pages and, at the new page's centre, the target
+  column's dropzone registers as **over** (reachable on screen). No page errors.
+  The original Safari offset could not be reproduced headlessly (overlay drift
+  was already 0), so the fixes are best-effort for the reported symptom.
