@@ -2,16 +2,18 @@ import {
   PersonalAssistantSidebarEntry,
 } from '../../components/features/personal-assistant/PersonalAssistantSurface';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { agentGradient } from '../../lib/avatar';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { renderUnreadCount } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
-import type { SidebarPerson } from './types';
+import type { SidebarAgentDm, SidebarPerson } from './types';
 
 type SidebarDmSectionProps = {
   activeDmChannelId?: string;
   currentChannelId?: string;
   dmCollapsed: boolean;
   isOwner: boolean;
+  onNavigateAgentDm: (channelId: string) => void;
   onNavigateDm: (userId: string) => void;
   onNavigateSettings: (subPage?: string) => void;
   onOpenPersonalAssistant: () => void;
@@ -19,6 +21,7 @@ type SidebarDmSectionProps = {
   personalAssistantBootstrapping: boolean;
   personalAssistantChannelId?: string;
   personalAssistantUnreadCount: number;
+  sidebarAgentDms: SidebarAgentDm[];
   sidebarPeople: SidebarPerson[];
   starredUserIds: Set<string>;
   toggleDmCollapsed: () => void;
@@ -30,6 +33,7 @@ export const SidebarDmSection = ({
   currentChannelId,
   dmCollapsed,
   isOwner,
+  onNavigateAgentDm,
   onNavigateDm,
   onNavigateSettings,
   onOpenPersonalAssistant,
@@ -37,6 +41,7 @@ export const SidebarDmSection = ({
   personalAssistantBootstrapping,
   personalAssistantChannelId,
   personalAssistantUnreadCount,
+  sidebarAgentDms,
   sidebarPeople,
   starredUserIds,
   toggleDmCollapsed,
@@ -67,6 +72,26 @@ export const SidebarDmSection = ({
         onClick={onOpenPersonalAssistant}
         unreadCount={personalAssistantUnreadCount}
       />
+      {sidebarAgentDms.map((agent) => {
+        const unreadCount = unreadCountByChannelId.get(agent.dmChannelId) ?? 0;
+        return (
+          <button
+            key={agent.id}
+            className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === agent.dmChannelId ? 'active' : ''}`}
+            onClick={() => onNavigateAgentDm(agent.dmChannelId)}
+            type="button"
+          >
+            <span
+              className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px] text-[var(--on-accent)]"
+              style={{ background: agentGradient }}
+            >
+              {agent.label.slice(0, 1).toUpperCase()}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{agent.label}</span>
+            {renderUnreadCount(unreadCount)}
+          </button>
+        );
+      })}
       {sidebarPeople.map((person) => {
         if (starredUserIds.has(person.id)) return null;
 

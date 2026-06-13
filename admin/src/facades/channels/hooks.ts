@@ -40,6 +40,24 @@ export const useOpenDm = () => {
   })
 }
 
+export const useStartChannelConversation = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { agentIds?: string[]; userIds?: string[] }) =>
+      apiClient.post<ChannelRecord>('/api/channels/conversations', {
+        agentIds: input.agentIds ?? [],
+        userIds: input.userIds ?? [],
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+  })
+}
+
 export const useCreateChannel = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

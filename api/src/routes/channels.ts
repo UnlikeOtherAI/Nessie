@@ -6,6 +6,7 @@ import {
   ChannelRecordSchema,
   CreateChannelBodySchema,
   PersonalAssistantBootstrapResponseSchema,
+  StartChannelConversationBodySchema,
   UpdateChannelBodySchema,
 } from '../contracts.js'
 import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
@@ -17,6 +18,7 @@ import {
 } from '../services/channel-members.js'
 import {
   createGroupFromDm,
+  findOrCreatePrivateConversationChannel,
   findOrCreateDmChannel,
 } from '../services/channel-dms.js'
 import {
@@ -35,6 +37,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   const {
     prisma,
     requireActorContext,
+    requireOwner,
     requireUserActor,
     loadPersonalAssistantState,
     getChannelIfMember,
@@ -436,5 +439,42 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     return createApiResponse(ChannelRecordSchema.parse(channel))
+  })
+
+  app.post('/api/channels/conversations', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(StartChannelConversationBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const agentIds = body.agentIds ?? []
+    const userIds = body.userIds ?? []
+
+    if (agentIds.length > 0 && !requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const channel = await findOrCreatePrivateConversationChannel(prisma, {
+      agentIds,
+      currentUserId: actorContext.actor.actorId,
+      organizationId: actorContext.tenant.organizationId,
+      teamId:
+        actorContext.tenant.teamId
+        ?? actorContext.actionContext.teamId
+        ?? '00000000-0000-4000-8000-000000000003',
+      userIds,
+    })
+
+    if (!channel) {
+      sendApiError(reply, 403, 'INVALID_CONVERSATION_RECIPIENTS', 'One or more recipients are not available')
+      return reply
+    }
+
+    return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(channel)))
   })
 }

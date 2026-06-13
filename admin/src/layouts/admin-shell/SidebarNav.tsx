@@ -8,6 +8,7 @@ import { SidebarStarredSection } from './SidebarStarredSection';
 import type {
   CreateChannelTarget,
   RenameProjectTarget,
+  SidebarAgentDm,
   SidebarMenu,
   SidebarPerson,
   SidebarProject,
@@ -27,6 +28,7 @@ type SidebarNavProps = {
   onNavigateChannel: (channelId: string) => void;
   onNavigateDm: (userId: string) => void;
   onNavigateHome: () => void;
+  onNavigateNewConversation: () => void;
   onNavigateProject: (projectId: string) => void;
   onNavigateSettings: (hash?: string) => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
@@ -43,6 +45,7 @@ type SidebarNavProps = {
   scopedAgents: AgentRecord[];
   selectedAgentId: string | null;
   setSidebarMenu: (updater: (current: SidebarMenu) => SidebarMenu) => void;
+  sidebarAgentDms: SidebarAgentDm[];
   sidebarMenu: SidebarMenu;
   sidebarPeople: SidebarPerson[];
   starredChannelIds: Set<string>;
@@ -72,6 +75,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     onNavigateChannel,
     onNavigateDm,
     onNavigateHome,
+    onNavigateNewConversation,
     onNavigateProject,
     onNavigateSettings,
     onOpenCreateChannel,
@@ -88,6 +92,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     scopedAgents,
     selectedAgentId,
     setSidebarMenu,
+    sidebarAgentDms,
     sidebarMenu,
     sidebarPeople,
     starredChannelIds,
@@ -134,8 +139,10 @@ export const SidebarNav = (props: SidebarNavProps) => {
         </button>
 
         <button
+          aria-label="Start new chat"
           className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
-          onClick={() => onNavigateSettings()}
+          onClick={onNavigateNewConversation}
+          title="Start new chat"
           type="button"
         >
           <svg
@@ -212,12 +219,14 @@ export const SidebarNav = (props: SidebarNavProps) => {
           dmCollapsed={dmCollapsed}
           isOwner={isOwner}
           onNavigateDm={onNavigateDm}
+          onNavigateAgentDm={onNavigateChannel}
           onNavigateSettings={onNavigateSettings}
           onOpenPersonalAssistant={onOpenPersonalAssistant}
           onToggleStar={onToggleStar}
           personalAssistantBootstrapping={personalAssistantBootstrapping}
           personalAssistantChannelId={personalAssistantChannelId}
           personalAssistantUnreadCount={personalAssistantUnreadCount}
+          sidebarAgentDms={sidebarAgentDms}
           sidebarPeople={sidebarPeople}
           starredUserIds={starredUserIds}
           toggleDmCollapsed={toggleDmCollapsed}
