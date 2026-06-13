@@ -1121,8 +1121,11 @@ button.reaction-pill:focus-visible {
     padding-bottom: 58px;
   }
 
-  .admin-msg-row[data-actions-open="true"] .admin-msg-actions,
-  .admin-msg-row:focus-within .admin-msg-actions {
+  .admin-msg-row:not([data-actions-open="true"]):focus-within .admin-msg-actions {
+    display: none;
+  }
+
+  .admin-msg-row[data-actions-open="true"] .admin-msg-actions {
     position: absolute;
     right: 12px;
     bottom: 8px;

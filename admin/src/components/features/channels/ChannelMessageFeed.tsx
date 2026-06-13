@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import { usePresenceLookup, type PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
@@ -111,6 +111,7 @@ export const ChannelMessageFeed = ({
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null)
+  const lastPointerDownAt = useRef(0)
   const [collapsedDateKeys, setCollapsedDateKeys] = useState<Set<string>>(
     () => new Set(),
   )
@@ -236,7 +237,14 @@ export const ChannelMessageFeed = ({
                 current === item.message.id ? null : item.message.id,
               )
             }
-            onFocus={() => setActiveActionMessageId(item.message.id)}
+            onFocus={() => {
+              if (Date.now() - lastPointerDownAt.current > 500) {
+                setActiveActionMessageId(item.message.id)
+              }
+            }}
+            onPointerDown={() => {
+              lastPointerDownAt.current = Date.now()
+            }}
             tabIndex={0}
           >
             {item.message.role === 'assistant' ? (
