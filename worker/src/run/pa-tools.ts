@@ -20,6 +20,13 @@ export {
   runAuthoredMessageSearchTool,
   runWorkspaceSearchTool,
 } from './pa-tools/conversation-search.js'
+export {
+  runKbCommentAddTool,
+  runKbCommentReplyTool,
+  runKbCommentResolveTool,
+  runKbCommentsListTool,
+  runKbNoteAddTool,
+} from './pa-tools/kb-comments.js'
 export { runSendMessageTool } from './pa-tools/message-delivery.js'
 export {
   runPeopleSearchTool,

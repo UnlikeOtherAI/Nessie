@@ -444,6 +444,9 @@ importers:
       '@nessie/db':
         specifier: workspace:*
         version: link:../packages/db
+      '@nessie/knowledge':
+        specifier: workspace:*
+        version: link:../packages/knowledge
       '@nessie/mcp-client':
         specifier: workspace:*
         version: link:../packages/mcp-client

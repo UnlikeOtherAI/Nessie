@@ -49,6 +49,7 @@ import { registerFavoriteRoutes } from './routes/favorites.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
 import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
+import { registerKnowledgeCommentRoutes } from './routes/knowledge-comments.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerFeedbackRoutes } from './routes/feedback.js'
@@ -296,6 +297,7 @@ export const buildApp = async () => {
   registerPolicyRoutes(app, deps)
   registerApprovalRoutes(app, deps)
   registerKnowledgeBaseRoutes(app, deps)
+  registerKnowledgeCommentRoutes(app, deps)
   registerTaskRoutes(app, deps)
   registerLedgerRoutes(app, deps)
 

@@ -3,6 +3,7 @@ import {
   ATTACHMENT_READ_TOOL_DEFINITION,
   ATTACHMENT_UPLOAD_TOOL_DEFINITION,
 } from './builtin-attachment-tools.js'
+import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
 import {
   CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
   LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
@@ -416,6 +417,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     },
     safe: false,
   },
+  ...KB_COMMENT_TOOL_DEFINITIONS,
 ]
 
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = buildWorkflowToolDefinitions(
