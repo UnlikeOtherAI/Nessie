@@ -1,7 +1,7 @@
 import { useEffect, type MouseEvent as ReactMouseEvent } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { computeAnchor, type TextQuoteAnchor } from '@nessie/knowledge/anchor'
+import { computeAnchor, type TextQuoteAnchor } from '@nessie/schemas'
 import { buildDocText, posToOffset } from './notes/doc-text'
 import {
   NoteHighlight,

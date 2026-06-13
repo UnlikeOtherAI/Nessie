@@ -7,10 +7,6 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./dist/index.js"
-    },
-    "./anchor": {
-      "types": "./src/annotations/anchor.ts",
-      "default": "./dist/annotations/anchor.js"
     }
   },
   "scripts": {
@@ -22,6 +18,7 @@
   },
   "dependencies": {
     "@nessie/retrieval": "workspace:*",
+    "@nessie/schemas": "workspace:*",
     "@prisma/client": "^6.17.1"
   },
   "devDependencies": {

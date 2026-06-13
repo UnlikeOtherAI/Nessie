@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { relocateAnchor, type TextQuoteAnchor } from '@nessie/knowledge/anchor'
+import { relocateAnchor, type TextQuoteAnchor } from '@nessie/schemas'
 import { buildDocText, offsetToPos } from './doc-text'
 
 export type NoteAnchorInput = {
