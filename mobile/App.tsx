@@ -20,6 +20,12 @@ import { startDevInspector } from './src/lib/dev-inspector'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { useShake } from './src/lib/use-shake'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
+import {
+  DEFAULT_TOOLBAR_STATE,
+  IpadNativeToolbar,
+  type ToolbarAction,
+  type ToolbarState,
+} from './src/components/IpadNativeToolbar'
 
 // Deep-link callback the OS browser redirects to after external sign-in. Must
 // match the admin's externalAuthRedirectUri and the API's allow-listed URL.
@@ -74,6 +80,7 @@ const Shell = (): React.JSX.Element => {
   const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
   const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
   const [androidIcons, setAndroidIcons] = useState<AndroidIconSet | null>(null)
+  const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
   // Bumping this remounts the WebView — used to recover Android after its render
   // process is killed (the instance is unusable until recreated).
   const [webviewKey, setWebviewKey] = useState(0)
@@ -181,6 +188,12 @@ const Shell = (): React.JSX.Element => {
     runScript('window.__nessieCloseSearchOverlay && window.__nessieCloseSearchOverlay();')
   }
 
+  const runToolbarAction = (action: ToolbarAction): void => {
+    runScript(
+      `window.__nessieToolbarAction && window.__nessieToolbarAction(${JSON.stringify(action)});`,
+    )
+  }
+
   // Google blocks OAuth inside embedded webviews, so the admin hands SSO off to
   // us: open the authorize URL in the OS browser (ASWebAuthenticationSession),
   // then deliver the deep-link callback back into the webview to finish.
@@ -224,6 +237,9 @@ const Shell = (): React.JSX.Element => {
       accent?: string
       inactive?: string
       active?: boolean
+      canBack?: boolean
+      canForward?: boolean
+      recentOpen?: boolean
     }
     try {
       msg = JSON.parse(event.nativeEvent.data)
@@ -251,6 +267,14 @@ const Shell = (): React.JSX.Element => {
       } else {
         setIndex(tabIndexForPath(currentPath ?? '/channels'))
       }
+      return
+    }
+    if (msg.type === 'nessie:toolbar-state') {
+      setToolbarState({
+        canBack: Boolean(msg.canBack),
+        canForward: Boolean(msg.canForward),
+        recentOpen: Boolean(msg.recentOpen),
+      })
       return
     }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
@@ -348,6 +372,16 @@ const Shell = (): React.JSX.Element => {
           style={[styles.fill, { backgroundColor: bg }]}
         />
       </View>
+
+      {showBar && IS_IPAD ? (
+        <IpadNativeToolbar
+          canBack={toolbarState.canBack}
+          canForward={toolbarState.canForward}
+          onAction={runToolbarAction}
+          recentOpen={toolbarState.recentOpen}
+          top={insets.top + 6}
+        />
+      ) : null}
     </View>
   )
 }

@@ -14,6 +14,7 @@ import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
+import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
 import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
@@ -36,7 +37,7 @@ export const AdminShellLayout = () => {
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
   const showWebTabBar = mobileLayout && !nativeShell;
-  const hideTopBar = nativeShell && phoneLayout;
+  const hideTopBar = nativeShell && (phoneLayout || nativeIPadApp);
 
   if (sessionState === 'bootstrap') {
     return <Navigate to="/bootstrap" replace />;
@@ -177,6 +178,7 @@ export const AdminShellLayout = () => {
         </div>
 
         {showWebTabBar && <MobileTabBar />}
+        {nativeIPadApp && <NativeIPadToolbarBridge />}
         {nativeIPadApp && <NativeSearchOverlay />}
 
         <SidebarDialogs

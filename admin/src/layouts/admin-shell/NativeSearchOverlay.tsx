@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { isReactNativeWebView } from '../../lib/mobile-shell'
+import { isReactNativeWebView, useNativeIPadApp } from '../../lib/mobile-shell'
 import { TopBarSearch } from './TopBarSearch'
 
 type RnWindow = Window & {
@@ -20,6 +20,7 @@ const postOverlayState = (active: boolean) => {
 
 export const NativeSearchOverlay = () => {
   const location = useLocation()
+  const nativeIPadApp = useNativeIPadApp()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export const NativeSearchOverlay = () => {
         aria-modal="true"
         className="native-search-overlay-panel"
         role="dialog"
+        style={nativeIPadApp ? { marginTop: 12 } : undefined}
       >
         <TopBarSearch autoFocus onDismiss={() => setOpen(false)} variant="overlay" />
       </div>
