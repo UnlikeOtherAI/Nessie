@@ -54,6 +54,8 @@ type KnowledgeContextValue = {
   openCreate: (parentPageId: string | null) => void
   openEdit: (page: KnowledgePageRecord) => void
   closeEditor: () => void
+  createFolder: (parentPageId: string | null, title: string) => Promise<void>
+  createFolderPending: boolean
   savePage: (input: SavePageInput) => Promise<void>
   savePending: boolean
   historyPageId?: string
@@ -239,6 +241,13 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     setEditor(null)
   }
 
+  // A folder is a title-only page flagged `metadata.folder` so it renders as a
+  // container even while empty. Unlike savePage we never open it as a document —
+  // it just appears in the active column, ready to be drilled into.
+  const createFolder = async (parentPageId: string | null, title: string) => {
+    await createPageMutation.mutateAsync({ title, parentPageId, metadata: { folder: true } })
+  }
+
   const openHistory = (pageId: string) => setHistoryPageId(pageId)
   const closeHistory = () => setHistoryPageId(undefined)
 
@@ -275,6 +284,8 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     openCreate,
     openEdit,
     closeEditor,
+    createFolder,
+    createFolderPending: createPageMutation.isPending,
     savePage,
     savePending: createPageMutation.isPending || updatePageMutation.isPending,
     historyPageId,

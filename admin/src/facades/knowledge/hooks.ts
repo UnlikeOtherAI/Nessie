@@ -39,6 +39,7 @@ export type KnowledgePageRecord = {
   title: string
   summary: string | null
   kind: KnowledgePageKind
+  metadata: Record<string, unknown> | null
   parentPageId: string | null
   position: number
   status: 'draft' | 'published' | 'archived'
@@ -66,6 +67,7 @@ export type SavePageInput = {
   body?: string | null
   changeComment?: string | null
   labels?: string[]
+  metadata?: Record<string, unknown> | null
   parentPageId?: string | null
   summary?: string | null
   title: string

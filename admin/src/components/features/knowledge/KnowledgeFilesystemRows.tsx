@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   faChevronDown,
   faChevronRight,
@@ -11,6 +11,25 @@ import { iconForFilename } from './file-icons'
 import { pageStatusTone } from './page-status'
 
 export type KnowledgeFilesystemItemKind = 'file' | 'folder'
+
+// A page renders as a folder when it explicitly is one (an empty folder created
+// via "New folder", flagged `metadata.folder`) or when it already holds children.
+export const isFolderPage = (
+  page: KnowledgePageRecord,
+  childrenOf: (parentPageId: string) => KnowledgePageRecord[],
+): boolean => page.metadata?.folder === true || childrenOf(page.id).length > 0
+
+// Folders first, then by position / title — shared by every knowledge view.
+export const sortFilesystemPages = (
+  pages: KnowledgePageRecord[],
+  childrenOf: (parentPageId: string) => KnowledgePageRecord[],
+): KnowledgePageRecord[] =>
+  [...pages].sort((left, right) => {
+    const leftFolder = isFolderPage(left, childrenOf)
+    const rightFolder = isFolderPage(right, childrenOf)
+    if (leftFolder !== rightFolder) return leftFolder ? -1 : 1
+    return left.position - right.position || left.title.localeCompare(right.title)
+  })
 
 export const KnowledgeBreadcrumb = ({
   onBrowsePath,
@@ -132,3 +151,62 @@ export const KnowledgeItemRow = ({
 export const EmptyFolder = ({ label }: { label: string }) => (
   <div className="py-12 text-center text-sm text-[color:var(--tx3)]">{label}</div>
 )
+
+// Finder-style inline "new folder" row: a folder icon + an auto-focused name
+// field. Enter creates, Escape cancels, and blurring submits a typed name (or
+// cancels when empty). A guard makes submit/cancel fire at most once.
+export const NewFolderRow = ({
+  onCancel,
+  onSubmit,
+  pending,
+}: {
+  onCancel: () => void
+  onSubmit: (name: string) => void
+  pending: boolean
+}) => {
+  const [name, setName] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  const doneRef = useRef(false)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const finish = (action: () => void) => {
+    if (doneRef.current) return
+    doneRef.current = true
+    action()
+  }
+  const submit = () => {
+    const trimmed = name.trim()
+    finish(() => (trimmed ? onSubmit(trimmed) : onCancel()))
+  }
+
+  return (
+    <div className="flex min-h-10 items-center gap-2 rounded-md py-2 pl-3 pr-3">
+      <FontAwesomeIcon
+        className="h-4 w-4 flex-shrink-0 text-[color:var(--accent)]"
+        fixedWidth
+        icon={faFolder}
+      />
+      <input
+        className="min-w-0 flex-1 rounded border border-[color:var(--sep)] bg-[color:var(--main)] px-2 py-1 text-sm text-[color:var(--tx)] outline-none focus:border-[color:var(--accent)]"
+        disabled={pending}
+        onBlur={submit}
+        onChange={(event) => setName(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            submit()
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            finish(onCancel)
+          }
+        }}
+        placeholder="Folder name"
+        ref={inputRef}
+        value={name}
+      />
+    </div>
+  )
+}

@@ -1,22 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
-import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
-import { ColumnBrowserViewport } from '../../shared/column-browser/ColumnBrowserViewport'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { KnowledgeColumns } from './KnowledgeColumns'
 import {
   EmptyFolder,
+  isFolderPage,
   KnowledgeBreadcrumb,
   KnowledgeItemRow,
-  type KnowledgeFilesystemItemKind,
+  sortFilesystemPages,
 } from './KnowledgeFilesystemRows'
 import type { KnowledgeViewMode } from './KnowledgeViewToggle'
 
 type KnowledgeFilesystemBrowserProps = {
   childrenOf: (parentPageId: string) => KnowledgePageRecord[]
+  creatingFolder: boolean
+  createFolderPending: boolean
   mode: KnowledgeViewMode
   onBrowsePath: (path: string[]) => void
+  onCancelFolder: () => void
   onOpenDocumentPath: (path: string[]) => void
+  onSubmitFolder: (name: string) => void
   pageById: (pageId: string) => KnowledgePageRecord | undefined
   pagePath: string[]
   pages: KnowledgePageRecord[]
@@ -24,22 +26,6 @@ type KnowledgeFilesystemBrowserProps = {
   selectedSpaceId?: string
   selectedSpaceName: string
 }
-
-const pageKind = (
-  page: KnowledgePageRecord,
-  childrenOf: (parentPageId: string) => KnowledgePageRecord[],
-): KnowledgeFilesystemItemKind => (childrenOf(page.id).length > 0 ? 'folder' : 'file')
-
-const sortFilesystemPages = (
-  pages: KnowledgePageRecord[],
-  childrenOf: (parentPageId: string) => KnowledgePageRecord[],
-): KnowledgePageRecord[] =>
-  [...pages].sort((left, right) => {
-    const leftFolder = pageKind(left, childrenOf) === 'folder'
-    const rightFolder = pageKind(right, childrenOf) === 'folder'
-    if (leftFolder !== rightFolder) return leftFolder ? -1 : 1
-    return left.position - right.position || left.title.localeCompare(right.title)
-  })
 
 const FullPageView = ({
   childrenOf,
@@ -76,19 +62,18 @@ const FullPageView = ({
         {items.length === 0 ? (
           <EmptyFolder label="No files in this folder." />
         ) : (
-          <div className="grid gap-0.5">
+          <div className="grid grid-cols-1 gap-0.5">
             {items.map((page) => {
-              const children = childrenOf(page.id)
-              const kind = children.length > 0 ? 'folder' : 'file'
+              const folder = isFolderPage(page, childrenOf)
               const path = [...currentPath, page.id]
               return (
                 <KnowledgeItemRow
-                  childCount={children.length}
-                  isSelected={kind === 'folder' && currentPath.at(-1) === page.id}
+                  childCount={childrenOf(page.id).length}
+                  isSelected={folder && currentPath.at(-1) === page.id}
                   key={page.id}
-                  kind={kind}
+                  kind={folder ? 'folder' : 'file'}
                   onClick={() => {
-                    if (kind === 'folder') {
+                    if (folder) {
                       onBrowsePath(path)
                       return
                     }
@@ -101,116 +86,6 @@ const FullPageView = ({
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-const ColumnPageList = ({
-  childrenOf,
-  emptyLabel,
-  onBrowsePath,
-  onOpenDocumentPath,
-  pages,
-  pathPrefix,
-  selectedId,
-}: {
-  childrenOf: (parentPageId: string) => KnowledgePageRecord[]
-  emptyLabel: string
-  onBrowsePath: (path: string[]) => void
-  onOpenDocumentPath: (path: string[]) => void
-  pages: KnowledgePageRecord[]
-  pathPrefix: string[]
-  selectedId?: string
-}) => {
-  const items = sortFilesystemPages(pages, childrenOf)
-
-  if (items.length === 0) {
-    return <EmptyFolder label={emptyLabel} />
-  }
-
-  return (
-    <div className="grid gap-0.5">
-      {items.map((page) => {
-        const children = childrenOf(page.id)
-        const kind = children.length > 0 ? 'folder' : 'file'
-        const path = [...pathPrefix, page.id]
-        return (
-          <KnowledgeItemRow
-            childCount={children.length}
-            isSelected={selectedId === page.id}
-            key={page.id}
-            kind={kind}
-            onClick={() => {
-              if (kind === 'folder') {
-                onBrowsePath(path)
-                return
-              }
-              onOpenDocumentPath(path)
-            }}
-            page={page}
-            trailing={
-              kind === 'folder' ? (
-                <FontAwesomeIcon
-                  className="h-3 w-3 shrink-0 text-[color:var(--tx3)]"
-                  icon={faChevronRight}
-                />
-              ) : null
-            }
-          />
-        )
-      })}
-    </div>
-  )
-}
-
-const ColumnView = ({
-  childrenOf,
-  onBrowsePath,
-  onOpenDocumentPath,
-  pathPages,
-  rootPages,
-  selectedSpaceName,
-}: {
-  childrenOf: (parentPageId: string) => KnowledgePageRecord[]
-  onBrowsePath: (path: string[]) => void
-  onOpenDocumentPath: (path: string[]) => void
-  pathPages: KnowledgePageRecord[]
-  rootPages: KnowledgePageRecord[]
-  selectedSpaceName: string
-}) => {
-  const columns = [
-    <ColumnBrowserColumn key="root" title={selectedSpaceName}>
-      <ColumnPageList
-        childrenOf={childrenOf}
-        emptyLabel="No pages yet."
-        onBrowsePath={onBrowsePath}
-        onOpenDocumentPath={onOpenDocumentPath}
-        pages={rootPages}
-        pathPrefix={[]}
-        selectedId={pathPages[0]?.id}
-      />
-    </ColumnBrowserColumn>,
-  ]
-
-  pathPages.forEach((folder, index) => {
-    columns.push(
-      <ColumnBrowserColumn key={folder.id} title={folder.title}>
-        <ColumnPageList
-          childrenOf={childrenOf}
-          emptyLabel="No files in this folder."
-          onBrowsePath={onBrowsePath}
-          onOpenDocumentPath={onOpenDocumentPath}
-          pages={childrenOf(folder.id)}
-          pathPrefix={pathPages.slice(0, index + 1).map((page) => page.id)}
-          selectedId={pathPages[index + 1]?.id}
-        />
-      </ColumnBrowserColumn>,
-    )
-  })
-
-  return (
-    <div className="h-full w-full animate-kb-view-slide">
-      <ColumnBrowserViewport activeColumn={columns.length - 1} columns={columns} />
     </div>
   )
 }
@@ -237,7 +112,7 @@ const TreeNode = ({
   toggleExpanded: (pageId: string) => void
 }) => {
   const children = childrenOf(page.id)
-  const kind = children.length > 0 ? 'folder' : 'file'
+  const folder = isFolderPage(page, childrenOf)
   const isExpanded = expandedIds.has(page.id)
   const childItems = sortFilesystemPages(children, childrenOf)
 
@@ -247,10 +122,10 @@ const TreeNode = ({
         childCount={children.length}
         depth={depth}
         isExpanded={isExpanded}
-        isSelected={kind === 'folder' && selectedFolderId === page.id}
-        kind={kind}
+        isSelected={folder && selectedFolderId === page.id}
+        kind={folder ? 'folder' : 'file'}
         onClick={() => {
-          if (kind === 'folder') {
+          if (folder) {
             toggleExpanded(page.id)
             onBrowsePath(path)
             return
@@ -259,7 +134,7 @@ const TreeNode = ({
         }}
         page={page}
       />
-      {kind === 'folder' ? (
+      {folder ? (
         <div
           className={[
             'grid transition-[grid-template-rows] duration-200 ease-out',
@@ -313,7 +188,7 @@ const TreeView = ({
         {items.length === 0 ? (
           <EmptyFolder label="No pages yet." />
         ) : (
-          <div className="grid gap-0.5">
+          <div className="grid grid-cols-1 gap-0.5">
             {items.map((page) => (
               <TreeNode
                 childrenOf={childrenOf}
@@ -337,9 +212,13 @@ const TreeView = ({
 
 export const KnowledgeFilesystemBrowser = ({
   childrenOf,
+  creatingFolder,
+  createFolderPending,
   mode,
   onBrowsePath,
+  onCancelFolder,
   onOpenDocumentPath,
+  onSubmitFolder,
   pageById,
   pagePath,
   pages,
@@ -352,7 +231,7 @@ export const KnowledgeFilesystemBrowser = ({
     .filter((page): page is KnowledgePageRecord => Boolean(page))
   const selectedFolderId = pathPages.at(-1)?.id
   const folderIds = useMemo(
-    () => pages.filter((page) => childrenOf(page.id).length > 0).map((page) => page.id),
+    () => pages.filter((page) => isFolderPage(page, childrenOf)).map((page) => page.id),
     [childrenOf, pages],
   )
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -413,10 +292,14 @@ export const KnowledgeFilesystemBrowser = ({
   }
 
   return (
-    <ColumnView
+    <KnowledgeColumns
       childrenOf={childrenOf}
+      creatingFolder={creatingFolder}
+      createFolderPending={createFolderPending}
       onBrowsePath={onBrowsePath}
+      onCancelFolder={onCancelFolder}
       onOpenDocumentPath={onOpenDocumentPath}
+      onSubmitFolder={onSubmitFolder}
       pathPages={pathPages}
       rootPages={rootPages}
       selectedSpaceName={selectedSpaceName}
