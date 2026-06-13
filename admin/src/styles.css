@@ -1421,3 +1421,14 @@ button.reaction-pill-active:focus-visible {
   --warning-text: #92400e;
   --success-text: #166534;
 }
+
+/* Inline note highlights painted over anchored passages in the reader. */
+.kb-note-highlight {
+  background: var(--accent-soft);
+  border-bottom: 2px solid var(--accent);
+  cursor: pointer;
+}
+.kb-note-highlight-resolved {
+  background: var(--overlay-weak);
+  border-bottom: 2px solid var(--tx3);
+}

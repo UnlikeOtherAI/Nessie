@@ -1,5 +1,7 @@
 import type { TextQuoteAnchor } from './types.js'
 
+export type { TextQuoteAnchor } from './types.js'
+
 // Default amount of surrounding context captured on each side of a note's quote.
 export const ANCHOR_CONTEXT_LENGTH = 32
 

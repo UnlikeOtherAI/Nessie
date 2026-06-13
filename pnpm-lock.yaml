@@ -60,6 +60,9 @@ importers:
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config
+      '@nessie/knowledge':
+        specifier: workspace:*
+        version: link:../packages/knowledge
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
