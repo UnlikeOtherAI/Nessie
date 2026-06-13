@@ -1,10 +1,11 @@
-ALTER TABLE "channels" ADD COLUMN "project_id" UUID;
-ALTER TABLE "channels" ADD COLUMN "slug" TEXT;
+ALTER TABLE "channels" ADD COLUMN IF NOT EXISTS "project_id" UUID;
+ALTER TABLE "channels" ADD COLUMN IF NOT EXISTS "slug" TEXT;
 
 UPDATE "channels" AS c
 SET "project_id" = t."project_id"
 FROM "teams" AS t
-WHERE c."team_id" = t."id";
+WHERE c."team_id" = t."id"
+  AND c."project_id" IS NULL;
 
 UPDATE "channels"
 SET "slug" = NULLIF(
@@ -26,7 +27,42 @@ SET "slug" = NULLIF(
   ),
   ''
 )
-WHERE "type" = 'standard';
+WHERE "type" = 'standard'
+  AND ("slug" IS NULL OR "slug" = '');
+
+WITH duplicate_standard_channels AS (
+  SELECT "id", "duplicate_rank"::text || '-' || "short_id" AS "suffix"
+  FROM (
+    SELECT
+      "id",
+      substr(replace("id"::text, '-', ''), 1, 8) AS "short_id",
+      row_number() OVER (
+        PARTITION BY "project_id", "slug"
+        ORDER BY
+          CASE WHEN "archived_at" IS NULL THEN 0 ELSE 1 END,
+          "created_at",
+          "id"
+      ) AS "duplicate_rank"
+    FROM "channels"
+    WHERE "type" = 'standard'
+      AND "project_id" IS NOT NULL
+      AND "slug" IS NOT NULL
+  ) AS ranked_standard_channels
+  WHERE "duplicate_rank" > 1
+)
+UPDATE "channels" AS c
+SET
+  "label" = CASE
+    WHEN right(c."label", length(' ' || d."suffix")) = ' ' || d."suffix" THEN c."label"
+    ELSE c."label" || ' ' || d."suffix"
+  END,
+  "slug" = CASE
+    WHEN right(c."slug", length('-' || d."suffix")) = '-' || d."suffix" THEN c."slug"
+    ELSE c."slug" || '-' || d."suffix"
+  END,
+  "updated_at" = now()
+FROM duplicate_standard_channels AS d
+WHERE c."id" = d."id";
 
 DO $$
 BEGIN
@@ -50,15 +86,33 @@ BEGIN
 END $$;
 
 ALTER TABLE "channels" ALTER COLUMN "project_id" SET NOT NULL;
-ALTER TABLE "channels"
-  ADD CONSTRAINT "channels_project_id_fkey"
-  FOREIGN KEY ("project_id") REFERENCES "projects"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "channels"
-  ADD CONSTRAINT "channels_standard_slug_required"
-  CHECK ("type" <> 'standard' OR "slug" IS NOT NULL);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "pg_constraint"
+    WHERE "conrelid" = '"channels"'::regclass
+      AND "conname" = 'channels_project_id_fkey'
+  ) THEN
+    ALTER TABLE "channels"
+      ADD CONSTRAINT "channels_project_id_fkey"
+      FOREIGN KEY ("project_id") REFERENCES "projects"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
 
-CREATE INDEX "channels_project_id_idx" ON "channels"("project_id");
-CREATE UNIQUE INDEX "channels_project_slug_standard_key"
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "pg_constraint"
+    WHERE "conrelid" = '"channels"'::regclass
+      AND "conname" = 'channels_standard_slug_required'
+  ) THEN
+    ALTER TABLE "channels"
+      ADD CONSTRAINT "channels_standard_slug_required"
+      CHECK ("type" <> 'standard' OR "slug" IS NOT NULL);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "channels_project_id_idx" ON "channels"("project_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "channels_project_slug_standard_key"
   ON "channels"("project_id", "slug")
   WHERE "type" = 'standard';

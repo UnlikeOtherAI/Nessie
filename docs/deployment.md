@@ -154,6 +154,11 @@ host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
 migrations, recreates the API/worker/admin containers). Postgres and its volume
 are untouched.
 
+`redeploy.sh` also checks for an interrupted
+`20260613100000_channel_project_slugs` migration and marks that failed attempt as
+rolled back before retrying it. The migration is idempotent and repairs existing
+duplicate project-local channel slugs before adding the unique index.
+
 The admin SPA also runs a production-only freshness check. Open browser, Tauri
 desktop, and mobile WebView sessions fetch `/` with `cache: no-store` when the
 app regains focus/visibility and every five minutes; if the freshly served
