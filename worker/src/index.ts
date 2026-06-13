@@ -79,8 +79,13 @@ export const startWorker = async (
   // consolidation) bills through the same token ledger as the agentic loop when
   // a call supplies attribution.
   const modelClient = createModelClient(config.model, {
-    recordUsage: (invocations, attribution) =>
-      recordInferenceUsage(prisma, { attribution, invocations }),
+    recordUsage: async (invocations, attribution) => {
+      try {
+        await recordInferenceUsage(prisma, { attribution, invocations })
+      } catch (err) {
+        console.error('[worker.ledger] token usage write failed', err)
+      }
+    },
   })
   const abortController = new AbortController()
   const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`

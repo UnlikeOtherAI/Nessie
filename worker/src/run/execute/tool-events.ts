@@ -63,8 +63,10 @@ export const recordToolEnd = async (
         success: input.success,
         latencyMs: input.durationMs,
       },
-    }).catch(() => {
-      // best-effort billing capture; never break the run on a ledger failure
+    }).catch((err) => {
+      // Best-effort billing capture; never break the run on a ledger failure —
+      // but log it so a dropped connector cost event is visible, not silent.
+      console.error('[worker.ledger] connector usage write failed', err)
     })
   }
 

@@ -6,6 +6,7 @@ import {
   BudgetScopeTypeSchema,
   BudgetStatusResponseSchema,
   SetBudgetBodySchema,
+  SetPricingProfileBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
@@ -101,14 +102,8 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
-    const body = request.body as {
-      provider: string
-      modelPattern: string
-      currency?: string
-      source: string
-      inputPerMillion?: number
-      outputPerMillion?: number
-    }
+    const body = parseInput(SetPricingProfileBodySchema, request.body, reply)
+    if (!body) return reply
 
     const profile = await createPricingProfile(
       prisma,
@@ -116,10 +111,14 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       {
         provider: body.provider,
         modelPattern: body.modelPattern,
-        currency: body.currency,
-        source: body.source as Parameters<typeof createPricingProfile>[2]['source'],
-        inputPerMillion: body.inputPerMillion,
-        outputPerMillion: body.outputPerMillion,
+        currency: body.currency ?? undefined,
+        source: body.source ?? 'manual',
+        inputPerMillion: body.inputPerMillion ?? undefined,
+        outputPerMillion: body.outputPerMillion ?? undefined,
+        cachedInputPerMillion: body.cachedInputPerMillion ?? undefined,
+        cachedOutputPerMillion: body.cachedOutputPerMillion ?? undefined,
+        cacheReadPerMillion: body.cacheReadPerMillion ?? undefined,
+        cacheWritePerMillion: body.cacheWritePerMillion ?? undefined,
       },
       actorContext,
     )

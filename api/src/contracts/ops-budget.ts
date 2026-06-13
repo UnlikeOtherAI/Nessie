@@ -1,3 +1,4 @@
+import { PricingSourceSchema } from '@nessie/schemas'
 import { z } from 'zod'
 
 import { TimestampSchema } from './shared.js'
@@ -113,3 +114,22 @@ export const SetBudgetBodySchema = z
       })
     }
   })
+
+// ─── Model pricing (turns the usage ledger into dollars) ──────────────────────
+
+const PerMillionRate = z.number().nonnegative().nullable().default(null)
+
+// Per-million-token rates for a (provider, modelPattern). modelPattern matches an
+// exact model or '*' as the provider-wide fallback.
+export const SetPricingProfileBodySchema = z.object({
+  provider: z.string().min(1).max(120),
+  modelPattern: z.string().min(1).max(200),
+  currency: z.string().min(1).max(8).default('USD'),
+  source: PricingSourceSchema.default('manual'),
+  inputPerMillion: PerMillionRate,
+  outputPerMillion: PerMillionRate,
+  cachedInputPerMillion: PerMillionRate,
+  cachedOutputPerMillion: PerMillionRate,
+  cacheReadPerMillion: PerMillionRate,
+  cacheWritePerMillion: PerMillionRate,
+})

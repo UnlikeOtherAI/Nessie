@@ -405,21 +405,35 @@ export const createPricingProfile = async (
   },
   actorContext: AuthorizedActionContext,
 ) => {
-  const profile = await prisma.modelPricingProfile.create({
-    data: {
-      organizationId,
-      provider: input.provider,
-      modelPattern: input.modelPattern,
-      currency: input.currency ?? 'USD',
-      source: input.source as Parameters<typeof prisma.modelPricingProfile.create>[0]['data']['source'],
-      inputPerMillion: input.inputPerMillion ?? null,
-      outputPerMillion: input.outputPerMillion ?? null,
-      cachedInputPerMillion: input.cachedInputPerMillion ?? null,
-      cachedOutputPerMillion: input.cachedOutputPerMillion ?? null,
-      cacheReadPerMillion: input.cacheReadPerMillion ?? null,
-      cacheWritePerMillion: input.cacheWritePerMillion ?? null,
-      effectiveFrom: new Date(),
-    },
+  // At most one ACTIVE profile per (org, provider, modelPattern) — enforced by a
+  // partial unique index. Re-pricing a model supersedes the current active row
+  // instead of erroring, so the editor is a simple "set the price".
+  const profile = await prisma.$transaction(async (tx) => {
+    await tx.modelPricingProfile.updateMany({
+      where: {
+        organizationId,
+        provider: input.provider,
+        modelPattern: input.modelPattern,
+        effectiveTo: null,
+      },
+      data: { effectiveTo: new Date() },
+    })
+    return tx.modelPricingProfile.create({
+      data: {
+        organizationId,
+        provider: input.provider,
+        modelPattern: input.modelPattern,
+        currency: input.currency ?? 'USD',
+        source: input.source as Parameters<typeof tx.modelPricingProfile.create>[0]['data']['source'],
+        inputPerMillion: input.inputPerMillion ?? null,
+        outputPerMillion: input.outputPerMillion ?? null,
+        cachedInputPerMillion: input.cachedInputPerMillion ?? null,
+        cachedOutputPerMillion: input.cachedOutputPerMillion ?? null,
+        cacheReadPerMillion: input.cacheReadPerMillion ?? null,
+        cacheWritePerMillion: input.cacheWritePerMillion ?? null,
+        effectiveFrom: new Date(),
+      },
+    })
   })
 
   await emitAuditEvent(prisma, {

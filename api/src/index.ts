@@ -160,9 +160,15 @@ export const buildApp = async () => {
       {
         tracker: apiUsageTracker,
         // Persist every billable call (designer, orchestrator, memory, thoughts)
-        // that supplies attribution to the shared token ledger.
-        recordUsage: (invocations, attribution) =>
-          recordInferenceUsage(prisma, { attribution, invocations }),
+        // that supplies attribution to the shared token ledger. Log (never throw)
+        // on failure so a dropped cost event is visible rather than silent.
+        recordUsage: async (invocations, attribution) => {
+          try {
+            await recordInferenceUsage(prisma, { attribution, invocations })
+          } catch (err) {
+            app.log.warn({ err }, 'ledger: token usage write failed')
+          }
+        },
       },
     )
   } else {

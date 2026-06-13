@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { BudgetManager } from '../components/features/budgets/BudgetManager'
+import {
+  PricingManager,
+  PRICING_PROFILES_KEY,
+  type PricingProfile,
+} from '../components/features/budgets/PricingManager'
 import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -114,6 +119,16 @@ export const TokenUsagePage = () => {
     enabled: isOwner,
   })
 
+  const { data: pricingProfiles } = useQuery<PricingProfile[]>({
+    queryKey: PRICING_PROFILES_KEY,
+    queryFn: () => apiClient.get('/api/ledger/tokens/pricing'),
+    enabled: isOwner,
+  })
+
+  // Usage is captured, but cost stays $0 until model pricing exists.
+  const costTrackingInactive =
+    (pricingProfiles?.length ?? 0) === 0 && (summary?.totalTokens ?? 0) > 0
+
   if (!isOwner || !me) {
     return (
       <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
@@ -142,6 +157,13 @@ export const TokenUsagePage = () => {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {costTrackingInactive && (
+          <div className="admin-card mb-4 border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
+            Cost tracking is inactive — {formatTokens(summary?.totalTokens ?? 0)} tokens recorded but
+            no model pricing is configured, so every cost shows $0. Add rates under
+            <span className="font-semibold"> Model pricing</span> below to see spend.
+          </div>
+        )}
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="admin-card p-4">
             <div className={sectionTitle}>Total Tokens</div>
@@ -171,6 +193,8 @@ export const TokenUsagePage = () => {
         </div>
 
         <BudgetManager organizationId={me.context.organizationId} />
+
+        <PricingManager />
 
         {(summary?.breakdowns ?? []).length > 0 && (
           <div className="mt-4">
