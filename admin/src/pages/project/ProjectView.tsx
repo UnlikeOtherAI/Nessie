@@ -5,6 +5,7 @@ import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectInsightsTab } from './ProjectInsightsTab'
+import { ProjectOverviewTab } from './ProjectOverviewTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
 
 const sectionTitle =
@@ -26,10 +27,13 @@ export const ProjectView = () => {
       ? 'backlog'
       : location.pathname.endsWith('/insights')
         ? 'insights'
-        : 'board'
+        : location.pathname.endsWith('/board')
+          ? 'board'
+          : 'overview'
 
   const tabs = [
-    { id: 'board', label: 'Board', to: `/projects/${projectId}` },
+    { id: 'overview', label: 'Overview', to: `/projects/${projectId}` },
+    { id: 'board', label: 'Board', to: `/projects/${projectId}/board` },
     ...(isScrum
       ? [
           { id: 'backlog', label: 'Backlog', to: `/projects/${projectId}/backlog` },
@@ -74,6 +78,8 @@ export const ProjectView = () => {
           <ProjectBacklogTab projectId={projectId} />
         ) : tab === 'insights' ? (
           <ProjectInsightsTab projectId={projectId} />
+        ) : tab === 'overview' ? (
+          <ProjectOverviewTab projectName={project?.name ?? 'Project'} />
         ) : (
           <ProjectBoardTab projectId={projectId} />
         )}
