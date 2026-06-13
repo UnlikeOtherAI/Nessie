@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { buildNativeSourceRef, canReadSpace, type KnowledgePageRecord } from '@nessie/knowledge'
+import { attributionFromActorContext } from '@nessie/runtime'
 import {
   CreateKnowledgePageBodySchema,
   CreateKnowledgeSpaceBodySchema,
@@ -300,6 +301,13 @@ export const registerKnowledgeBaseRoutes = (
     if (!existingPage) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
+    // Free the page's stored files (file-node versions + drawer attachments) and
+    // decrement storage usage before archiving, so deletion always updates usage.
+    await deps.fileService.purgeKnowledgePageFiles(
+      pageId,
+      actorContext.tenant.organizationId,
+      attributionFromActorContext(actorContext),
+    )
     const page = await provider.archivePage(actorContext.tenant.organizationId, pageId)
     if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
     await emitAuditEvent(prisma, {

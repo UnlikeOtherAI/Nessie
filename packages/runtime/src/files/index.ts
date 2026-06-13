@@ -90,6 +90,14 @@ export type FileService = {
     attribution: LedgerAttribution,
     scope?: FileScope,
   ): Promise<boolean>
+  // Free every stored object a knowledge page owns (its file-node version
+  // attachments + drawer attachments) and decrement usage. Used when a page is
+  // archived/deleted so storage accounting stays correct.
+  purgeKnowledgePageFiles(
+    pageId: string,
+    organizationId: string,
+    attribution: LedgerAttribution,
+  ): Promise<void>
   checkQuota(scope: BudgetScope, addBytes: number | bigint): Promise<StorageQuotaDecision>
   currentUsage(scope: BudgetScope): Promise<{ usedBytes: bigint; limitBytes: bigint | null }>
   usageForScope(scope: StorageUsageScope): Promise<bigint>
@@ -251,10 +259,41 @@ export const createFileService = (deps: {
     return true
   }
 
+  const purgeKnowledgePageFiles: FileService['purgeKnowledgePageFiles'] = async (
+    pageId,
+    organizationId,
+    attribution,
+  ) => {
+    const page = await prisma.knowledgePage.findUnique({
+      where: { id: pageId },
+      select: { projectId: true, teamId: true, spaceId: true },
+    })
+    const scope: FileScope | undefined = page
+      ? { projectId: page.projectId, teamId: page.teamId, spaceId: page.spaceId }
+      : undefined
+    const pageAttachments = await prisma.attachment.findMany({
+      where: { knowledgePageId: pageId, organizationId },
+      select: { id: true },
+    })
+    for (const attachment of pageAttachments) {
+      await deleteFile(attachment.id, organizationId, attribution, scope)
+    }
+    const versions = await prisma.knowledgePageVersion.findMany({
+      where: { pageId, attachmentId: { not: null } },
+      select: { attachmentId: true },
+    })
+    for (const version of versions) {
+      if (version.attachmentId) {
+        await deleteFile(version.attachmentId, organizationId, attribution, scope)
+      }
+    }
+  }
+
   return {
     store,
     openStream,
     delete: deleteFile,
+    purgeKnowledgePageFiles,
     checkQuota: (scope, addBytes) => checkStorageQuota(prisma, scope, addBytes),
     currentUsage: async (scope) => {
       const decision = await checkStorageQuota(prisma, scope, 0)
