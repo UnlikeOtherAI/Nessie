@@ -13,11 +13,13 @@ import type {
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
- * Domain facade for the post-Slice-C tool registry surface (`/api/mcp/tools`)
- * and its grant CRUD. This is what `/admin/workflows/tools` reads. The legacy
- * `useTools()` facade in `facades/tools/hooks.ts` continues to back the
- * builtin-only descriptor view used by the settings + designer pages so we
- * don't break those callers in this slice.
+ * Domain facade for the tool registry surface (`/api/mcp/tools`) and its grant
+ * CRUD. This backs the canonical `/agents/tools` page (filters + detail +
+ * per-agent grant matrix). The list response joins each tool's existing grants
+ * so the matrix can render and revoke them on first paint. The legacy
+ * `useTools()` facade in `facades/tools/hooks.ts` still backs the builtin-only
+ * descriptor view used by the agent designer, channel composer, and workflow
+ * designer.
  */
 
 export type McpToolRegistryRecord = {
@@ -42,6 +44,7 @@ export type McpToolRegistryRecord = {
   builtin: boolean
   createdAt: string
   updatedAt: string
+  grants: ToolGrantRecord[]
 }
 
 export type ToolGrantRecord = {

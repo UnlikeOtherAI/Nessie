@@ -170,7 +170,7 @@ export const McpAppStorePage = () => {
         </button>
       }
       key="catalog"
-      title="MCP App Store"
+      title="Connectors"
     >
       <div className="grid gap-3">
         {tabBar}

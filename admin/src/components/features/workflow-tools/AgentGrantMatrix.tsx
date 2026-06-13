@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import {
   useCreateToolGrant,
@@ -9,13 +9,13 @@ import {
 /**
  * Per-agent grant matrix. Each cell flips an `allowed` grant on/off for the
  * given (tool, agent) pair via POST `/api/mcp/tools/{toolId}/grants` and
- * DELETE `/api/mcp/tools/{toolId}/grants/{grantId}` (per
- * `api/src/routes/mcp.ts`). The current `/api/mcp/tools` list response does
- * not return existing grants alongside the tool list (tracked as task #25),
- * so on uncheck we can only delete grants whose ids we captured during this
- * session (returned by the create POST). For grants created in a previous
- * session we cannot DELETE without the id and surface an inline hint asking
- * the user to reload after #25 lands.
+ * DELETE `/api/mcp/tools/{toolId}/grants/{grantId}`.
+ *
+ * Existing grants arrive on the registry record (`tool.grants`, joined by the
+ * list endpoint) and seed each cell's baseline, so persisted grants render
+ * `allowed` with their id on first paint and can be revoked directly. Session
+ * edits override the baseline: a value in `recent` (a `CellState`, or `null`
+ * for a grant revoked this session) wins over `tool.grants`.
  */
 
 type AgentGrantMatrixProps = {
@@ -32,13 +32,31 @@ const TINY_LABEL = [
   'text-[10px] uppercase tracking-[0.18em] text-[color:var(--tx3)]',
 ].join(' ')
 
+const cellKey = (toolId: string, agentId: string) => `${toolId}:${agentId}`
+
 export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
   const createGrant = useCreateToolGrant()
   const deleteGrant = useDeleteToolGrant()
-  const [recent, setRecent] = useState<Record<string, CellState>>({})
+  // Absent key => use the persisted baseline; an explicit value (CellState or
+  // null) is a this-session override that wins over `tool.grants`.
+  const [recent, setRecent] = useState<Record<string, CellState | null>>({})
   const [cellError, setCellError] = useState<Record<string, string>>({})
 
-  const cellKey = (toolId: string, agentId: string) => `${toolId}:${agentId}`
+  // Baseline from persisted, agent-scoped `allowed` grants on the registry rows.
+  const persisted = useMemo(() => {
+    const map: Record<string, CellState> = {}
+    for (const tool of tools) {
+      for (const grant of tool.grants) {
+        if (grant.agentId && grant.state === 'allowed') {
+          map[cellKey(tool.id, grant.agentId)] = {
+            state: 'allowed',
+            grantId: grant.id,
+          }
+        }
+      }
+    }
+    return map
+  }, [tools])
 
   if (agents.length === 0 || tools.length === 0) {
     return (
@@ -79,14 +97,14 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
               </th>
               {agents.map((agent) => {
                 const key = cellKey(tool.id, agent.id)
-                const cell = recent[key]
-                const justGranted = cell?.state === 'allowed'
+                const cell = key in recent ? recent[key] : persisted[key]
+                const checked = cell?.state === 'allowed'
                 const error = cellError[key]
                 return (
                   <td className="px-3 py-2 align-top" key={key}>
                     <label className="inline-flex items-center gap-2 text-[color:var(--tx2)]">
                       <input
-                        checked={justGranted}
+                        checked={checked}
                         onChange={(event) => {
                           setCellError((current) => {
                             const next = { ...current }
@@ -96,14 +114,12 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
                           if (!event.target.checked) {
                             const grantId = cell?.grantId ?? null
                             if (!grantId) {
-                              console.warn(
-                                '[AgentGrantMatrix] cannot revoke grant: id unknown (see task #25)',
-                                { toolId: tool.id, agentId: agent.id },
-                              )
+                              // Persisted and session grants both carry ids, so
+                              // this only trips if a create returned no id.
                               setCellError((current) => ({
                                 ...current,
                                 [key]:
-                                  'Reload to see persisted grants before revoking.',
+                                  'Grant id unavailable — reload before revoking.',
                               }))
                               return
                             }
@@ -114,11 +130,10 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
                               },
                               {
                                 onSuccess: () =>
-                                  setRecent((current) => {
-                                    const next = { ...current }
-                                    delete next[key]
-                                    return next
-                                  }),
+                                  setRecent((current) => ({
+                                    ...current,
+                                    [key]: null,
+                                  })),
                                 onError: (caught) =>
                                   setCellError((current) => ({
                                     ...current,
@@ -141,20 +156,6 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
                               onSuccess: (grant) => {
                                 const newGrantId = grant?.id ?? null
                                 if (!newGrantId) {
-                                  // Server accepted the grant (2xx) but the
-                                  // response body lacked an id. Persisting a
-                                  // null grantId here would later surface the
-                                  // cross-session reload hint on uncheck,
-                                  // which is misleading because the grant
-                                  // was created in THIS session. Surface a
-                                  // distinct error and leave `recent`
-                                  // untouched so the checkbox falls back to
-                                  // the unchecked baseline on next render
-                                  // attempt while the user retries.
-                                  console.warn(
-                                    '[AgentGrantMatrix] create-grant succeeded without id',
-                                    { toolId: tool.id, agentId: agent.id },
-                                  )
                                   setCellError((current) => ({
                                     ...current,
                                     [key]:
@@ -184,7 +185,7 @@ export const AgentGrantMatrix = ({ agents, tools }: AgentGrantMatrixProps) => {
                         type="checkbox"
                       />
                       <span className="text-[11px]">
-                        {justGranted ? 'allowed' : 'grant'}
+                        {checked ? 'allowed' : 'grant'}
                       </span>
                     </label>
                     {error ? (
