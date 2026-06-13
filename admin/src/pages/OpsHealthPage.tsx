@@ -54,11 +54,12 @@ export const OpsHealthPage = () => {
   const { me } = useAuthSession()
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
+  const isOwner = me?.user.roleIds.includes('owner') ?? false
 
   const { data, isError, error } = useQuery<OpsHealth>({
     queryKey: ['ops-health'],
     queryFn: () => apiClient.get('/api/ops/health'),
-    enabled: Boolean(me),
+    enabled: isOwner,
     refetchInterval: 10_000,
   })
 
@@ -68,6 +69,14 @@ export const OpsHealthPage = () => {
 
   const worker = data?.worker
   const heartbeat = worker?.heartbeatAgeSeconds
+
+  if (!isOwner) {
+    return (
+      <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
+        Owner access required
+      </section>
+    )
+  }
 
   return (
     <section className="flex h-full min-h-0 flex-col">

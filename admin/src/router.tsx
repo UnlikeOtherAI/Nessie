@@ -23,18 +23,15 @@ import { ProjectView } from './pages/project/ProjectView'
 import { AppearancePage } from './pages/settings/AppearancePage'
 import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
-import { SettingsAgentsPage } from './pages/settings/SettingsAgentsPage'
 import { SettingsChannelsPage } from './pages/settings/SettingsChannelsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
 import { SettingsProfilePage } from './pages/settings/SettingsProfilePage'
 import { StatusesPage } from './pages/settings/StatusesPage'
-import { SettingsToolsPage } from './pages/settings/SettingsToolsPage'
 import { ToolsPage } from './pages/ToolsPage'
 import { TokenUsagePage } from './pages/TokenUsagePage'
 import { TriggersPage } from './pages/TriggersPage'
 import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
-import { WorkflowToolsPage } from './pages/WorkflowToolsPage'
 
 export const router = createBrowserRouter([
   {
@@ -63,6 +60,21 @@ export const router = createBrowserRouter([
   {
     path: '/chats',
     element: <Navigate to="/channels" replace />,
+  },
+  {
+    // Tool management consolidated onto the canonical /agents/tools registry;
+    // these redirects keep old bookmarks and the mobile WebView shell working.
+    path: '/workflows/tools',
+    element: <Navigate to="/agents/tools" replace />,
+  },
+  {
+    path: '/settings/tools',
+    element: <Navigate to="/agents/tools" replace />,
+  },
+  {
+    // /settings/agents folded into the Agents browser (/agents) + designer.
+    path: '/settings/agents',
+    element: <Navigate to="/agents" replace />,
   },
   {
     element: <AdminShellLayout />,
@@ -150,10 +162,6 @@ export const router = createBrowserRouter([
         element: <ToolsPage />,
       },
       {
-        path: '/workflows/tools',
-        element: <WorkflowToolsPage />,
-      },
-      {
         path: '/mcp-app-store',
         element: <McpAppStorePage />,
       },
@@ -188,14 +196,6 @@ export const router = createBrowserRouter([
       {
         path: '/settings/channels',
         element: <SettingsChannelsPage />,
-      },
-      {
-        path: '/settings/agents',
-        element: <SettingsAgentsPage />,
-      },
-      {
-        path: '/settings/tools',
-        element: <SettingsToolsPage />,
       },
       {
         path: '/settings/push',

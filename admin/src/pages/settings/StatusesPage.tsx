@@ -167,7 +167,7 @@ export const StatusesPage = () => {
 
   return (
     <SettingsPanel
-      eyebrow="General"
+      eyebrow="Account"
       title="Statuses"
       actions={
         <button

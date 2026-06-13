@@ -14,6 +14,7 @@ import {
   markdownToHtml,
   readStreamCapped,
 } from '../lib/markdown.js'
+import { ZIP_LIST_MAX_BYTES, listZipEntries, readZipEntryText } from '../lib/zip.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
   actorAuthorType,
@@ -30,6 +31,8 @@ const CreateFileNodeQuerySchema = z.object({
   parentPageId: z.string().uuid().optional(),
   title: z.string().min(1).max(512).optional(),
 })
+
+const ZipEntryQuerySchema = z.object({ path: z.string().min(1).max(4096) })
 
 const StorageUsageQuerySchema = z.object({
   scopeType: z.enum(['organization', 'project', 'team', 'space', 'uploader']).default('organization'),
@@ -381,6 +384,71 @@ export const registerKnowledgeBaseFileRoutes = (
       operation: 'download',
     }).catch(() => undefined)
     return streamAttachmentDownload(reply, opened)
+  })
+
+  // ─── List the contents of a zip file node (no extraction to disk) ─────────
+  app.get('/api/knowledge-base/pages/:pageId/versions/:versionId/zip', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'read')
+    if (!decision) return reply
+    const { pageId, versionId } = request.params as { pageId: string; versionId: string }
+    const page = await provider.getPage(actorContext.tenant.organizationId, pageId)
+    if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
+
+    const version = await prisma.knowledgePageVersion.findFirst({
+      where: { id: versionId, pageId },
+      select: { attachmentId: true },
+    })
+    if (!version?.attachmentId) {
+      return sendApiError(reply, 404, 'VERSION_FILE_NOT_FOUND', 'Version has no file')
+    }
+    const opened = await fileService.openStream(version.attachmentId, actorContext.tenant.organizationId)
+    if (!opened) return sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'File bytes not found')
+    const buffer = await readStreamCapped(opened.stream, ZIP_LIST_MAX_BYTES)
+    if (!buffer) return createApiResponse({ entries: [], tooLarge: true })
+    try {
+      return createApiResponse({ entries: listZipEntries(buffer), tooLarge: false })
+    } catch {
+      return sendApiError(reply, 400, 'NOT_A_ZIP', 'File is not a readable zip archive')
+    }
+  })
+
+  // ─── Peek a single text entry inside a zip ────────────────────────────────
+  app.get('/api/knowledge-base/pages/:pageId/versions/:versionId/zip/entry', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'read')
+    if (!decision) return reply
+    const query = parseInput(ZipEntryQuerySchema, request.query, reply, 'query')
+    if (!query) return reply
+    const { pageId, versionId } = request.params as { pageId: string; versionId: string }
+    const page = await provider.getPage(actorContext.tenant.organizationId, pageId)
+    if (!page) return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
+    const viewer = await buildViewer(actorContext)
+    if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
+
+    const version = await prisma.knowledgePageVersion.findFirst({
+      where: { id: versionId, pageId },
+      select: { attachmentId: true },
+    })
+    if (!version?.attachmentId) {
+      return sendApiError(reply, 404, 'VERSION_FILE_NOT_FOUND', 'Version has no file')
+    }
+    const opened = await fileService.openStream(version.attachmentId, actorContext.tenant.organizationId)
+    if (!opened) return sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'File bytes not found')
+    const buffer = await readStreamCapped(opened.stream, ZIP_LIST_MAX_BYTES)
+    if (!buffer) return sendApiError(reply, 413, 'FILE_TOO_LARGE', 'Zip is too large to read inline')
+    let result: ReturnType<typeof readZipEntryText>
+    try {
+      result = readZipEntryText(buffer, query.path)
+    } catch {
+      return sendApiError(reply, 400, 'NOT_A_ZIP', 'File is not a readable zip archive')
+    }
+    if (!result) return sendApiError(reply, 404, 'ZIP_ENTRY_NOT_FOUND', 'Entry not found in archive')
+    return createApiResponse(result)
   })
 
   // ─── List a page's drawer attachments ─────────────────────────────────────

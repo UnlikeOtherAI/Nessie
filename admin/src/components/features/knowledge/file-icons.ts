@@ -79,6 +79,8 @@ export const isMarkdownFilename = (filename: string): boolean => {
   return ext ? MARKDOWN_EXT.has(ext) : false
 }
 
+export const isZipFilename = (filename: string): boolean => fileExtension(filename) === 'zip'
+
 export const iconForFilename = (filename: string): IconDefinition => {
   const ext = fileExtension(filename)
   return (ext && EXTENSION_ICONS[ext]) || faFile

@@ -1,12 +1,17 @@
 import { faDownload, faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { downloadAuthedPath, useAuthedObjectUrlFromPath } from '../../../lib/uploads'
+import {
+  downloadAuthedPath,
+  useAuthedObjectUrlFromPath,
+  useAuthedTextFromPath,
+} from '../../../lib/uploads'
 import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { CommentsSection } from './comments/CommentsSection'
-import { iconForFilename, previewKindForFilename } from './file-icons'
+import { iconForFilename, isZipFilename, previewKindForFilename } from './file-icons'
 import { KnowledgePane } from './KnowledgePane'
+import { ZipContents } from './ZipContents'
 
 type FileNodeViewerProps = {
   page: KnowledgePageRecord
@@ -27,9 +32,15 @@ export const FileNodeViewer = ({
   const version = page.latestVersion
   const previewKind = previewKindForFilename(page.title)
   const downloadPath = version ? versionDownloadPath(page.id, version.id) : null
-  // Only fetch bytes for previewable types; binaries stay download-only.
+  // Image/PDF preview via an object URL; text/config render as plain text (a
+  // <pre>, never an iframe — so the file's bytes can't run scripts). Binaries
+  // stay download-only.
   const previewUrl = useAuthedObjectUrlFromPath(
-    previewKind && downloadPath ? downloadPath : null,
+    (previewKind === 'image' || previewKind === 'pdf') && downloadPath ? downloadPath : null,
+    token,
+  )
+  const textPreview = useAuthedTextFromPath(
+    previewKind === 'text' && downloadPath ? downloadPath : null,
     token,
   )
 
@@ -97,17 +108,26 @@ export const FileNodeViewer = ({
               className="mx-auto max-h-[70vh] rounded-lg border border-[color:var(--sep)] object-contain"
               src={previewUrl}
             />
-          ) : (previewKind === 'pdf' || previewKind === 'text') && previewUrl ? (
+          ) : previewKind === 'pdf' && previewUrl ? (
             <iframe
               className="h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-white"
-              // The preview blob inherits the admin origin, so a text/HTML file
-              // could run scripts in this session. Sandbox text previews (no
-              // allow-scripts / allow-same-origin); PDFs keep the native viewer.
-              sandbox={previewKind === 'text' ? '' : undefined}
               src={previewUrl}
               title={page.title}
             />
-          ) : previewKind && !previewUrl ? (
+          ) : previewKind === 'text' ? (
+            textPreview.loading ? (
+              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
+            ) : textPreview.error || textPreview.text === null ? (
+              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Preview unavailable.</p>
+            ) : (
+              <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[color:var(--sep)] bg-[color:var(--sb)] p-4 font-mono text-xs leading-relaxed text-[color:var(--tx)]">
+                {textPreview.text}
+                {textPreview.truncated ? '\n\n…truncated — download to see the rest.' : ''}
+              </pre>
+            )
+          ) : isZipFilename(page.title) && version ? (
+            <ZipContents pageId={page.id} versionId={version.id} />
+          ) : (previewKind === 'image' || previewKind === 'pdf') && !previewUrl ? (
             <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
           ) : (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[color:var(--sep)] py-16 text-center">
