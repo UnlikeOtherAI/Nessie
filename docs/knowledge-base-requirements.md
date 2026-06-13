@@ -317,14 +317,27 @@ that column):
   (a collapsible "Spaces" header with a `+` that opens a centered
   `CreateSpaceDialog` modal). No pages live here.
 - The main area uses shared `KnowledgePane` chrome (a 50px header with optional
-  **Back** + title + centered view switcher + actions). The root browsing state
-  is a filesystem-style view with folders first, then files, and every row starts
-  with a folder/file icon:
+  **Back** + title + centered view switcher + actions: **Upload file**, **New
+  folder**, **New page**). The root browsing state is a filesystem-style view
+  with folders first, then files, and every row starts with a folder/file icon:
   - The centered segmented switcher offers **Full page**, **Column**, and
     **Tree** views. **Column** is the default and the selected view persists in a
     cookie.
+  - **Folders** sort first and carry a right chevron to signal they drill in. A
+    folder is any page flagged `metadata.folder` (an empty folder created via
+    **New folder**) **or** any page that already has children — so folders never
+    disappear when emptied. **New folder** (a folder-plus icon in the pane
+    actions) switches to **Column** view and drops a Finder-style inline name
+    field into the active column; Enter creates the folder under the current
+    parent, Escape cancels.
   - **Full page** shows one full-width folder at a time with breadcrumbs.
-  - **Column** uses sliding columns for folder traversal.
+  - **Column** (`KnowledgeColumns`) renders each level as its own `admin-card`
+    column laid left-to-right with horizontal scroll (not edge-to-edge sliding
+    panes). The leftmost (space root) column is rendered a little wider than the
+    rest. A draggable divider between columns sets a **single shared** column
+    width applied to **all** columns at once — drag widens/narrows every column
+    together (min 300px), persisted in the `nessie.admin.knowledgeColumnWidth`
+    cookie.
   - **Tree** shows an expandable/collapsible hierarchy with animated branches.
   - **Page preview** (`PagePreview`) is a read-only document view (status, title,
     summary, labels, rendered body, and a Sub-pages section) rendered on a
@@ -413,8 +426,10 @@ worker computes the anchor from the page body).
 Two file concepts live in the knowledge base alongside rich-text pages:
 
 - **File nodes** — a `KnowledgePage` with `kind = file`, shown in the filesystem
-  browser at the same level as documents and folders (folders stay virtual: a
-  `document` page with children). Each version is backed by an `Attachment`
+  browser at the same level as documents and folders. Folders are not a `kind`:
+  a folder is any page flagged `metadata.folder` (an empty folder from **New
+  folder**) or any page that already has children. Each version is backed by an
+  `Attachment`
   (`KnowledgePageVersion.attachmentId`); the admin shows a per-MIME FontAwesome
   icon, an inline viewer (image/PDF/text/CSV) or a typed download card, and an
   **Upload new version** action (a drag-drop / tap popup).

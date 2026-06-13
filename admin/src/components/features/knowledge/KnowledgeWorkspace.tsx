@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react'
+import { faFolderPlus } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   useUploadFileNode,
   useUploadFileVersion,
@@ -42,6 +44,8 @@ export const KnowledgeWorkspace = () => {
     openCreate,
     openEdit,
     closeEditor,
+    createFolder,
+    createFolderPending,
     savePage,
     savePending,
     drillTo,
@@ -58,6 +62,7 @@ export const KnowledgeWorkspace = () => {
     const stored = getCookie(VIEW_MODE_COOKIE)
     return isKnowledgeViewMode(stored) ? stored : 'column'
   })
+  const [creatingFolder, setCreatingFolder] = useState(false)
 
   const versionsQuery = useKnowledgeVersions(historyPageId)
   const pathPages = pagePath
@@ -227,6 +232,17 @@ export const KnowledgeWorkspace = () => {
                 Upload file
               </button>
               <button
+                className="admin-button admin-button-secondary flex items-center gap-1.5 rounded-md px-3 py-1 text-xs"
+                onClick={() => {
+                  updateViewMode('column')
+                  setCreatingFolder(true)
+                }}
+                type="button"
+              >
+                <FontAwesomeIcon className="h-3 w-3" icon={faFolderPlus} />
+                New folder
+              </button>
+              <button
                 className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
                 onClick={() => openCreate(currentFolder?.id ?? null)}
                 type="button"
@@ -242,16 +258,24 @@ export const KnowledgeWorkspace = () => {
         <div className="h-full w-full">
           {!selectedSpaceId ? (
             <div className="py-16 text-center text-sm text-[color:var(--tx3)]">Select a space</div>
-          ) : rootPages.length === 0 ? (
+          ) : rootPages.length === 0 && !creatingFolder ? (
             <div className="py-16 text-center text-sm text-[color:var(--tx3)]">
               No pages yet — create one with “New page”, or drop a file to upload.
             </div>
           ) : (
             <KnowledgeFilesystemBrowser
               childrenOf={childrenOf}
+              creatingFolder={creatingFolder}
+              createFolderPending={createFolderPending}
               mode={viewMode}
               onBrowsePath={browseTo}
+              onCancelFolder={() => setCreatingFolder(false)}
               onOpenDocumentPath={openPagePath}
+              onSubmitFolder={(name) => {
+                void createFolder(currentFolder?.id ?? null, name).finally(() =>
+                  setCreatingFolder(false),
+                )
+              }}
               pageById={pageById}
               pagePath={pagePath}
               pages={pages}
