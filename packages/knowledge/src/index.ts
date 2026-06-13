@@ -19,7 +19,7 @@ export {
   computeAnchor,
   relocateAnchor,
   ANCHOR_CONTEXT_LENGTH,
-} from './annotations/anchor.js'
+} from '@nessie/schemas'
 export type {
   AnnotationAccess,
   AnnotationActor,

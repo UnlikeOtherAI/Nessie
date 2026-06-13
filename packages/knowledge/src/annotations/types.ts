@@ -1,19 +1,14 @@
+import type { TextQuoteAnchor } from '@nessie/schemas'
 import type { KnowledgeAuthorType, KnowledgeSpaceRecord } from '../types.js'
 import type { SpaceViewer } from '../access.js'
 
+// The text-quote anchor type lives in @nessie/schemas (Prisma-free) so the admin
+// can share the anchoring logic without bundling Prisma; re-exported here for
+// the package's existing consumers.
+export type { TextQuoteAnchor } from '@nessie/schemas'
+
 export type AnnotationKind = 'comment' | 'note'
 export type AnnotationState = 'open' | 'resolved'
-
-// W3C / Hypothesis-style text-quote selector. Offsets are into the page body's
-// plain-text projection (htmlToPlainText); they are a best-effort tiebreaker —
-// relocation is driven by the quote + surrounding context, so notes survive
-// edits above them and only orphan when the quoted text itself disappears.
-export type TextQuoteAnchor = {
-  quote: string
-  prefix: string
-  suffix: string
-  startOffset: number
-}
 
 // Who is authoring/acting. A delegating personal assistant authors as its owning
 // user (authorType 'user') with delegatedByAgentId set; an autonomous agent

@@ -1,6 +1,18 @@
-import type { TextQuoteAnchor } from './types.js'
+// Pure text-quote anchoring for knowledge-base notes. Lives in @nessie/schemas
+// (a leaf, Prisma-free package) so both the server (@nessie/knowledge service +
+// agent tools) and the browser (admin reader) share one implementation without
+// the admin bundle pulling in Prisma.
 
-export type { TextQuoteAnchor } from './types.js'
+// W3C / Hypothesis-style text-quote selector. Offsets index the page body's
+// plain-text projection (htmlToPlainText); they are a best-effort tiebreaker —
+// relocation is driven by the quote + surrounding context, so notes survive
+// edits above them and only orphan when the quoted text itself disappears.
+export type TextQuoteAnchor = {
+  quote: string
+  prefix: string
+  suffix: string
+  startOffset: number
+}
 
 // Default amount of surrounding context captured on each side of a note's quote.
 export const ANCHOR_CONTEXT_LENGTH = 32

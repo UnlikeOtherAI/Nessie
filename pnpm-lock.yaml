@@ -60,9 +60,6 @@ importers:
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config
-      '@nessie/knowledge':
-        specifier: workspace:*
-        version: link:../packages/knowledge
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
@@ -327,6 +324,9 @@ importers:
       '@nessie/retrieval':
         specifier: workspace:*
         version: link:../retrieval
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
