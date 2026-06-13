@@ -173,6 +173,14 @@ const Shell = (): React.JSX.Element => {
     runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
   }
 
+  const openSearchOverlay = (): void => {
+    runScript('window.__nessieOpenSearchOverlay && window.__nessieOpenSearchOverlay();')
+  }
+
+  const closeSearchOverlay = (): void => {
+    runScript('window.__nessieCloseSearchOverlay && window.__nessieCloseSearchOverlay();')
+  }
+
   // Google blocks OAuth inside embedded webviews, so the admin hands SSO off to
   // us: open the authorize URL in the OS browser (ASWebAuthenticationSession),
   // then deliver the deep-link callback back into the webview to finish.
@@ -236,6 +244,15 @@ const Shell = (): React.JSX.Element => {
       void runExternalAuth(msg.url)
       return
     }
+    if (msg.type === 'nessie:search-overlay') {
+      if (msg.active) {
+        const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
+        if (searchIndex !== -1) setIndex(searchIndex)
+      } else {
+        setIndex(tabIndexForPath(currentPath ?? '/channels'))
+      }
+      return
+    }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
       // The admin only emits this once React has mounted, so it doubles as the
       // "booted" signal that defuses the blank-screen watchdog.
@@ -250,6 +267,11 @@ const Shell = (): React.JSX.Element => {
 
   const onIndexChange = (next: number): void => {
     setIndex(next)
+    if (IS_IPAD && TABS[next]?.key === 'search') {
+      openSearchOverlay()
+      return
+    }
+    closeSearchOverlay()
     navigateTo(TABS[next].path)
   }
 

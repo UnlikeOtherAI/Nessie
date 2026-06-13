@@ -100,8 +100,9 @@ separated search role) backed by a global `/search` page. The bar is hidden on
 the login / bootstrap screens. On iPhone and Android the bar sits at the bottom;
 on iPad (iPadOS 26) the native tab bar renders at the **top**, so `App.tsx`
 insets the WebView accordingly (`IS_IPAD`). The iPad native tab bar shows icons
-in both portrait and landscape. Tapping **Search** opens the same full `/search`
-page on iPhone, iPad, and Android. The URL split lives in
+in both portrait and landscape. Tapping **Search** opens the full `/search` page
+on iPhone and Android; on iPad it opens the native search overlay from the
+separated Search item. The URL split lives in
 `mobile/src/config.ts`:
 
 - **dev** → `http://<YOUR-MAC-LAN-IP>:5455` (the admin Vite dev server; edits
@@ -119,7 +120,7 @@ this lives in `admin/src/providers/NativeShellBridge.tsx`, gated on
 `isReactNativeWebView()` (`admin/src/lib/mobile-shell.ts`). In the native shell
 the admin hides its own left rail and bottom tab bar. Phone-sized native layouts
 also hide the admin top bar entirely; the iPad native layout keeps the remaining
-top-bar controls while global search lives in the native Search tab. The
+top-bar controls while global search opens from the native Search tab overlay. The
 per-section secondary sidebar (channel list, admin sub-pages, …) opens from a
 **top-left hamburger** as a slide-in drawer. Mobile *web* (a phone browser, no
 native shell) gets an equivalent web-rendered bottom tab bar instead.
