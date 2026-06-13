@@ -197,7 +197,9 @@ export const registerKnowledgeCommentRoutes = (
   ) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'resolve')
+    // Resolve/reopen is a write to shared state: gated by the 'edit' capability
+    // plus per-space write access (canWriteSpace) below.
+    const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'edit')
     if (!decision) return reply
     const { annotationId } = request.params as { annotationId: string }
     const viewer = await buildViewer(actorContext)
