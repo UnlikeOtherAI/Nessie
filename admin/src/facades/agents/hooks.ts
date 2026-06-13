@@ -14,5 +14,6 @@ export {
   useCreateAgent,
   useUnbindAgent,
   useUpdateAgent,
+  useUpdateAgentAvatar,
 } from './mutations'
 export { useAgentRealtime } from './realtime'

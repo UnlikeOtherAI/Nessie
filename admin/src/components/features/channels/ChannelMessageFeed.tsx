@@ -262,10 +262,10 @@ export const ChannelMessageFeed = ({
                 onClick={selectAgent}
                 type="button"
               >
-                <ChannelAgentGlyph agent={messageAgent} />
+                <ChannelAgentGlyph agent={messageAgent} token={token} />
               </button>
             ) : item.message.role === 'assistant' ? (
-              <ChannelAgentGlyph agent={agentMap.get(item.message.agentId ?? '')} />
+              <ChannelAgentGlyph agent={agentMap.get(item.message.agentId ?? '')} token={token} />
             ) : authorIdentity ? (
               <button
                 aria-label={`Open ${displayName}`}
@@ -468,7 +468,7 @@ export const ChannelMessageFeed = ({
 
         return (
           <article key={entry.runId} className="admin-msg-row py-1">
-            <ChannelAgentGlyph agent={pendingAgent} />
+            <ChannelAgentGlyph agent={pendingAgent} token={token} />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="text-sm font-bold text-[var(--tx)]">

@@ -1,9 +1,9 @@
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../lib/api-client'
-import { agentGradient } from '../../../lib/avatar'
 import { MobileMenuButton } from '../../../layouts/admin-shell/MobileMenuButton'
 import { UserAvatar } from '../../primitives/UserAvatar'
+import { AgentAvatar } from '../../shared/AgentAvatar'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { getAgentGlyph, toolbarButtonClass } from './channel-helpers'
+import { toolbarButtonClass } from './channel-helpers'
 
 // A channel-header member avatar (real picture, initials fallback) with the
 // overlapping-stack ring. Reads the token itself so the header stays prop-light.
@@ -17,6 +17,19 @@ const HeaderMemberAvatar = ({ user }: { user: UserRecord }) => {
       displayName={user.displayName}
       gravatarUrl={user.gravatarUrl ?? undefined}
       size={24}
+      token={token}
+    />
+  )
+}
+
+const HeaderAgentAvatar = ({ agent }: { agent: AgentRecord }) => {
+  const { token } = useAuthSession()
+  return (
+    <AgentAvatar
+      agent={agent}
+      className="border-2 border-[color:var(--main)]"
+      shape="circle"
+      size="xs"
       token={token}
     />
   )
@@ -111,16 +124,7 @@ export const ChannelHeader = ({
             <HeaderMemberAvatar key={user.id} user={user} />
           ))}
           {boundAgents.slice(0, Math.max(0, 4 - channelUsers.length)).map((agent) => (
-            <div
-              key={agent.id}
-              className={[
-                'flex h-6 w-6 items-center justify-center rounded-full border-2',
-                'border-[color:var(--main)] text-[10px]',
-              ].join(' ')}
-              style={{ background: agentGradient }}
-            >
-              {getAgentGlyph(agent)}
-            </div>
+            <HeaderAgentAvatar agent={agent} key={agent.id} />
           ))}
         </div>
         <span className="text-sm text-[color:var(--tx2)]">

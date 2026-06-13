@@ -1,5 +1,7 @@
 import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { AgentAvatar } from '../../shared/AgentAvatar'
 import { StatusPill } from '../../primitives/StatusPill'
 import { AgentStatusDot } from './AgentStatusDot'
 import { AgentDetailTabs } from './AgentDetailTabs'
@@ -31,6 +33,7 @@ export const AgentDetailDrawer = ({
   onClose,
   onSelectAgent,
 }: AgentDetailDrawerProps) => {
+  const { token } = useAuthSession()
   const { data: status } = useAgentStatus(agent?.id)
 
   if (!agent) {
@@ -56,6 +59,7 @@ export const AgentDetailDrawer = ({
         >
           <div>
             <div className="flex items-center gap-3">
+              <AgentAvatar agent={agent} token={token} />
               <h2 className="text-2xl font-semibold text-[var(--tx)]">{agent.name}</h2>
               <AgentStatusDot status={agent.status} />
               <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>

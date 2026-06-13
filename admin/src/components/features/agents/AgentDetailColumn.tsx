@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { AgentAvatar } from '../../shared/AgentAvatar'
 import { StatusPill } from '../../primitives/StatusPill'
 import { AgentCreateButton } from './AgentCreateButton'
 import { AgentStatusDot } from './AgentStatusDot'
@@ -25,6 +27,7 @@ export const AgentDetailColumn = ({
   showBack,
 }: AgentDetailColumnProps) => {
   const navigate = useNavigate()
+  const { token } = useAuthSession()
   const { data: status } = useAgentStatus(agent.id)
 
   return (
@@ -53,6 +56,7 @@ export const AgentDetailColumn = ({
                 </svg>
               </button>
             ) : null}
+            <AgentAvatar agent={agent} token={token} />
             <h2 className="min-w-0 flex-1 text-xl font-semibold text-[var(--tx)]">
               {agent.name}
             </h2>

@@ -3,12 +3,15 @@ import { useOutletContext } from 'react-router-dom'
 import { useAgents, useBindAgent, useCreateAgent } from '../../facades/agents/hooks'
 import { useChannels } from '../../facades/channels/hooks'
 import type { AdminShellOutletContext } from '../../layouts/AdminShellLayout'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { AgentAvatar } from '../../components/shared/AgentAvatar'
 import { hoverCardClass, sectionTitleClass, SettingsPanel } from './settings-shared'
 
 export const SettingsAgentsPage = () => {
   const { onSelectAgent } = useOutletContext<AdminShellOutletContext>()
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
+  const { token } = useAuthSession()
   const createAgent = useCreateAgent()
   const bindAgent = useBindAgent()
 
@@ -76,10 +79,13 @@ export const SettingsAgentsPage = () => {
                 type="button"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-[color:var(--tx)]">{agent.name}</div>
-                    <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                      {agent.role}
+                  <div className="flex min-w-0 items-center gap-3">
+                    <AgentAvatar agent={agent} token={token} />
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-[color:var(--tx)]">{agent.name}</div>
+                      <div className="truncate text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+                        {agent.role}
+                      </div>
                     </div>
                   </div>
                   <div className="text-xs text-[color:var(--tx3)]">{agent.status}</div>

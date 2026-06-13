@@ -988,6 +988,7 @@ model Agent {
   provider                      String?                        @map("provider")
   model                         String?                        @map("model")
   routingProfileId              String?                        @map("routing_profile_id") @db.Uuid
+  avatarAttachmentId            String?                        @map("avatar_attachment_id") @db.Uuid
   parentAgentId                 String?                        @map("parent_agent_id") @db.Uuid
   /// Intentionally nullable and without an Organization FK: system / personal-
   /// assistant agents may be global (no owning org). Do not "fix" to required.
@@ -998,6 +999,7 @@ model Agent {
   updatedAt                     DateTime                       @updatedAt @map("updated_at")
   parentAgent                   Agent?                         @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
   childAgents                   Agent[]                        @relation("AgentHierarchy")
+  avatarAttachment              Attachment?                    @relation("AgentAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
   bindings                      AgentBinding[]
   routingProfile                InferenceRoutingProfile?       @relation(fields: [routingProfileId], references: [id], onDelete: SetNull)
   messages                      Message[]
@@ -1016,6 +1018,7 @@ model Agent {
 
   @@index([organizationId])
   @@index([organizationId, projectId])
+  @@index([avatarAttachmentId])
   @@index([organizationId, agentKind, systemManaged])
   @@index([routingProfileId])
   @@map("agents")
@@ -2589,6 +2592,7 @@ model Attachment {
 
   logoForOrganizations Organization[] @relation("OrganizationLogo")
   avatarForUsers       User[]         @relation("UserAvatar")
+  avatarForAgents      Agent[]        @relation("AgentAvatar")
   feedbackItems        Feedback[]     @relation("FeedbackAttachment")
 
   @@index([messageId])

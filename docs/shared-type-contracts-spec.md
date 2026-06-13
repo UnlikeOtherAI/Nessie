@@ -366,6 +366,35 @@ Rules:
 - when the user navigates to a channel, route handlers derive `channelId` from the URL path param and pass it into `actionContext`
 - if "last active channel" persistence is added later (Phase 2+), it can populate `channelId` as a convenience hint — but the frontend must never treat it as mandatory
 
+## 5.3) Agent record contract
+
+`GET /api/agents`, `POST /api/agents`, `PUT /api/agents/{agentId}`, and
+`PATCH /api/agents/{agentId}/avatar` return `ApiResponse<AgentRecord>` or
+`ApiResponse<AgentRecord[]>` depending on the route.
+
+```ts
+type AgentRecord = {
+  id: AgentId;
+  name: string;
+  role: string;
+  status: AgentStatus;
+  agentKind: 'personal_assistant' | 'shared';
+  systemManaged: boolean;
+  surfacePolicy: 'dm_only' | 'shared';
+  delegationMode: 'act_as_requesting_user' | 'none';
+  avatarAttachmentId?: string | null;
+  channelIds: ChannelId[];
+  createdAt: string;
+  updatedAt: string;
+};
+```
+
+Rules:
+
+- `avatarAttachmentId` is a custom uploaded image served through attachments
+- clients resolve the attachment when present and fall back to the generated agent glyph when absent or not yet loaded
+- avatar uploads must use an attachment visible to the acting user in the same organization
+
 ## 6) Agent activity response contracts
 
 ### `GET /api/agents/{agentId}/status`

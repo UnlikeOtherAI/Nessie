@@ -509,7 +509,7 @@ export const createServerContext = () => {
       return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
     }
 
-    if (routePath.startsWith('/api/agents') && ['DELETE', 'POST', 'PUT'].includes(method)) {
+    if (routePath.startsWith('/api/agents') && ['DELETE', 'PATCH', 'POST', 'PUT'].includes(method)) {
       return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
     }
 

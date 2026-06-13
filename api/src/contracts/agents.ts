@@ -28,6 +28,7 @@ export const AgentRecordSchema = z.object({
   parentAgentId: AgentIdSchema.nullish(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  avatarAttachmentId: z.string().uuid().nullish(),
   routingProfileId: z.string().uuid().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
@@ -53,6 +54,10 @@ export const UpdateAgentBodySchema = z.object({
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+})
+
+export const UpdateAgentAvatarBodySchema = z.object({
+  avatarAttachmentId: z.string().uuid().nullable(),
 })
 
 export const CreateAgentBindingBodySchema = z.object({
