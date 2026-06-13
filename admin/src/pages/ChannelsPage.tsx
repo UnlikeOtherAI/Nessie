@@ -16,6 +16,7 @@ import { CallOverlay } from '../components/shared/CallOverlay'
 import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
 import { ChannelSettingsDialog } from '../components/shared/ChannelSettingsDialog'
 import { ChannelComposer } from '../components/features/channels/ChannelComposer'
+import { ChannelAgentInfoDrawer } from '../components/features/channels/ChannelAgentInfoDrawer'
 import { ChannelHeader } from '../components/features/channels/ChannelHeader'
 import { ChannelMessageFeed } from '../components/features/channels/ChannelMessageFeed'
 import { ChannelTabBar } from '../components/features/channels/ChannelTabBar'
@@ -69,6 +70,7 @@ export const ChannelsPage = () => {
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [selectedMessageUser, setSelectedMessageUser] =
     useState<MessageUserIdentity | null>(null)
+  const [selectedMessageAgentId, setSelectedMessageAgentId] = useState<string | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
 
   const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
@@ -78,6 +80,8 @@ export const ChannelsPage = () => {
     isConversationSurface && isOperationsTab(activeTab) ? 'messages' : activeTab
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
+  const selectedMessageAgent =
+    selectedMessageAgentId ? agentMap.get(selectedMessageAgentId) ?? null : null
   const personalAssistantChannel =
     personalAssistantState?.channel ?? activeChannel
   const callEligible =
@@ -167,6 +171,7 @@ export const ChannelsPage = () => {
     setSearchQuery('')
     setShowChannelSettings(false)
     setSelectedMessageUser(null)
+    setSelectedMessageAgentId(null)
   }, [activeChannel?.id, cancelEdit])
 
   const lastReadMarkerRef = useRef<string | null>(null)
@@ -350,6 +355,11 @@ export const ChannelsPage = () => {
             onCancelEdit={cancelEdit}
             onAddReaction={addReaction}
             onConfirmDelete={confirmDelete}
+            onSelectAgent={
+              isPersonalAssistantConversation
+                ? undefined
+                : (agent) => setSelectedMessageAgentId(agent.id)
+            }
             onSelectUser={
               activeChannel?.type === 'dm' ? undefined : setSelectedMessageUser
             }
@@ -433,6 +443,29 @@ export const ChannelsPage = () => {
           roomId={activeCall.roomId}
         />
       )}
+
+      <ChannelAgentInfoDrawer
+        activeChannel={activeChannel}
+        agent={selectedMessageAgent}
+        agents={agents}
+        meAvatar={{
+          avatarUrl: me.user.avatarUrl,
+          avatarAttachmentId: me.user.avatarAttachmentId,
+          gravatarUrl: me.user.gravatarUrl,
+        }}
+        meDisplayName={me.user.displayName}
+        meUserId={me.user.id}
+        mentionEntities={mentionEntities}
+        pendingMessages={pendingMessages}
+        renderContent={renderContent}
+        threadMessages={threadMessages}
+        token={token}
+        onClose={() => setSelectedMessageAgentId(null)}
+        onOpenActivity={(agentId) => {
+          setSelectedMessageAgentId(null)
+          onSelectAgent(agentId)
+        }}
+      />
 
       <ChannelUserInfoDrawer
         agents={agents}
