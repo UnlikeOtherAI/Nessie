@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { faFolderPlus } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
+  useConvertToDocument,
   useUploadFileNode,
   useUploadFileVersion,
   useUploadPageAttachment,
@@ -11,6 +12,7 @@ import { getCookie, setCookie } from '../../../lib/storage'
 import type { UploadProgress } from '../../../lib/upload-xhr'
 import { AttachmentsDrawer } from './AttachmentsDrawer'
 import { DropZoneOverlay } from './DropZoneOverlay'
+import { isMarkdownFilename } from './file-icons'
 import { FileNodeViewer } from './FileNodeViewer'
 import { FileVersionUploadDialog } from './FileVersionUploadDialog'
 import { KnowledgeFilesystemBrowser } from './KnowledgeFilesystemBrowser'
@@ -84,6 +86,20 @@ export const KnowledgeWorkspace = () => {
   const fileNodeUpload = useUploadFileNode(selectedSpaceId, currentFolder?.id ?? null)
   const pageAttachmentUpload = useUploadPageAttachment(current?.id)
   const fileVersionUpload = useUploadFileVersion(versionDialogFor?.id, selectedSpaceId)
+
+  // Markdown is the KB's native document format: when a markdown file node is
+  // opened, convert it to a real document once so it renders + edits like one.
+  const convertToDocument = useConvertToDocument(selectedSpaceId)
+  const convertAttempted = useRef<Set<string>>(new Set())
+  const isMarkdownFileNode = Boolean(
+    current && current.kind === 'file' && isMarkdownFilename(current.title),
+  )
+  useEffect(() => {
+    if (!current || !isMarkdownFileNode) return
+    if (convertAttempted.current.has(current.id)) return
+    convertAttempted.current.add(current.id)
+    convertToDocument.mutate(current.id)
+  }, [current, isMarkdownFileNode, convertToDocument])
 
   const uploadFileNode = (file: File) => {
     if (!selectedSpaceId) return
@@ -176,7 +192,13 @@ export const KnowledgeWorkspace = () => {
   if (current) {
     return (
       <div className="relative h-full w-full" {...attachmentDrop.dropHandlers}>
-        {current.kind === 'file' ? (
+        {isMarkdownFileNode && !convertToDocument.isError ? (
+          <KnowledgePane onBack={() => popTo(depth)} title={current.title}>
+            <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
+              Opening as document…
+            </div>
+          </KnowledgePane>
+        ) : current.kind === 'file' ? (
           <FileNodeViewer
             onBack={() => popTo(depth)}
             onOpenHistory={() => openHistory(current.id)}

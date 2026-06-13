@@ -454,6 +454,19 @@ store/delete keeps per-scope usage accurate. REST surface
 - `GET /api/knowledge-base/pages/:pageId/versions/:versionId/download`
 - `GET|POST /api/knowledge-base/pages/:pageId/attachments`
 - `GET /api/knowledge-base/attachments/:id/download`, `DELETE …/attachments/:id`
+- `POST /api/knowledge-base/pages/:pageId/convert-to-document` — turn a markdown
+  file node into a document (see below)
+
+**Markdown is the native document format.** An uploaded `.md`/`.markdown`
+(by extension or `text/markdown`) is **not** stored as a file blob: the upload
+route renders it to HTML (`markdown-it`, `api/src/lib/markdown.ts`) and creates a
+`kind = document` page with that body, so it gets the rich-text reader, the
+WYSIWYG editor, comments/notes and version history — identical to a document
+authored in-app. Import is capped at `MARKDOWN_IMPORT_MAX_BYTES` (5 MiB). Existing
+markdown file nodes are migrated on open: `KnowledgeWorkspace` calls
+`convert-to-document` (read the attachment text → HTML → new document version →
+flip `kind` → drop the now-unused blob) and then renders the document. Other file
+types keep the file-node path (inline image/PDF/text preview or a download card).
 - `GET /api/knowledge-base/storage-usage?scopeType=&scopeId=`
 
 Agent/MCP built-in tools for the new file surface are a follow-up (agent parity).

@@ -36,10 +36,12 @@
     "@prisma/client": "^6.17.1",
     "cron-parser": "^5.5.0",
     "fastify": "^5.8.4",
+    "markdown-it": "^14.2.0",
     "pg": "^8.16.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/pg": "^8.15.5",
     "nodemon": "^3.1.14",
     "prisma": "^6.17.1"

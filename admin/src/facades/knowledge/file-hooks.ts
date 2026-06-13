@@ -64,6 +64,24 @@ export const useUploadFileVersion = (pageId?: string, spaceId?: string) => {
   })
 }
 
+// Convert a markdown file node into a native document (rendered + editable).
+export const useConvertToDocument = (spaceId?: string) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (pageId: string) =>
+      apiClient.post<KnowledgePageRecord>(
+        `/api/knowledge-base/pages/${pageId}/convert-to-document`,
+        {},
+      ),
+    onSuccess: (_data, pageId) => {
+      void queryClient.invalidateQueries({ queryKey: pageKey(pageId) })
+      void queryClient.invalidateQueries({ queryKey: versionsKey(pageId) })
+      if (spaceId) void queryClient.invalidateQueries({ queryKey: pagesKey(spaceId) })
+    },
+  })
+}
+
 export const usePageAttachments = (pageId?: string) => {
   const apiClient = useApiClient()
   return useQuery<AttachmentRecord[]>({

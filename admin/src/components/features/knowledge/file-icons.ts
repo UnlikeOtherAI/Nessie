@@ -67,8 +67,20 @@ const EXTENSION_ICONS: Record<string, IconDefinition> = {
   css: faFileCode,
 }
 
+const fileExtension = (filename: string): string | undefined =>
+  filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
+
+const MARKDOWN_EXT = new Set(['md', 'markdown', 'mdown', 'mkd', 'mdx'])
+
+// Markdown is the KB's native document format — an uploaded `.md` is opened as a
+// real document (rendered + editable), not shown as a raw file blob.
+export const isMarkdownFilename = (filename: string): boolean => {
+  const ext = fileExtension(filename)
+  return ext ? MARKDOWN_EXT.has(ext) : false
+}
+
 export const iconForFilename = (filename: string): IconDefinition => {
-  const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
+  const ext = fileExtension(filename)
   return (ext && EXTENSION_ICONS[ext]) || faFile
 }
 
