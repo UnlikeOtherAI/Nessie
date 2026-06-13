@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 
+import { currentStorageUsageBytes } from './ledger.js'
+
 // Scoped, period-based LLM usage governance. A Budget row governs an organization,
 // project, or team and caps spend (token_ledger_events.estimated_cost_amount, USD)
 // and/or token volume (total_tokens) over a calendar period (week/month/year, UTC).
@@ -301,4 +303,82 @@ export const deleteBudget = async (
     where: { organizationId, scopeType, scopeId },
   })
   return count > 0
+}
+
+// ─── Storage quota ──────────────────────────────────────────────────────────
+// A per-scope hard cap on bytes AT REST (Budget.storageLimitBytes). Resolved
+// most-specific-first like the spend budget, but independent of BudgetMode: any
+// scope with a limit set governs, and exceeding it blocks new uploads. Unlike
+// the soft spend cap, storage usage is recorded synchronously by the
+// FileService, so this gate is effectively exact (modulo concurrent uploads).
+
+export type StorageQuotaDecision =
+  | { allowed: true; usedBytes: bigint; limitBytes: bigint | null }
+  | { allowed: false; usedBytes: bigint; limitBytes: bigint; reason: string }
+
+const resolveStorageLimit = async (
+  prisma: PrismaClient,
+  scope: BudgetScope,
+): Promise<{ scopeType: BudgetScopeType; scopeId: string; limitBytes: bigint } | null> => {
+  const candidates: Array<{ scopeType: BudgetScopeType; scopeId: string }> = []
+  if (scope.teamId) candidates.push({ scopeType: 'team', scopeId: scope.teamId })
+  if (scope.projectId) candidates.push({ scopeType: 'project', scopeId: scope.projectId })
+  candidates.push({ scopeType: 'organization', scopeId: scope.organizationId })
+
+  const rows = await prisma.budget.findMany({
+    where: { OR: candidates.map((c) => ({ scopeType: c.scopeType, scopeId: c.scopeId })) },
+    select: { scopeType: true, scopeId: true, storageLimitBytes: true },
+  })
+
+  for (const candidate of candidates) {
+    const row = rows.find(
+      (r) => r.scopeType === candidate.scopeType && r.scopeId === candidate.scopeId,
+    )
+    if (row && row.storageLimitBytes !== null) {
+      return { scopeType: candidate.scopeType, scopeId: candidate.scopeId, limitBytes: row.storageLimitBytes }
+    }
+  }
+  return null
+}
+
+// Measure usage at the SAME scope the governing limit applies to, so the
+// comparison is apples-to-apples.
+const usageScopeForLimit = (
+  limit: { scopeType: BudgetScopeType; scopeId: string },
+  organizationId: string,
+): { organizationId: string; projectId?: string; teamId?: string } => {
+  if (limit.scopeType === 'team') return { organizationId, teamId: limit.scopeId }
+  if (limit.scopeType === 'project') return { organizationId, projectId: limit.scopeId }
+  return { organizationId }
+}
+
+export const checkStorageQuota = async (
+  prisma: PrismaClient,
+  scope: BudgetScope,
+  addBytes: number | bigint,
+): Promise<StorageQuotaDecision> => {
+  const limit = await resolveStorageLimit(prisma, scope)
+  if (!limit) {
+    const usedBytes = await currentStorageUsageBytes(prisma, {
+      organizationId: scope.organizationId,
+    })
+    return { allowed: true, usedBytes, limitBytes: null }
+  }
+
+  const usedBytes = await currentStorageUsageBytes(
+    prisma,
+    usageScopeForLimit(limit, scope.organizationId),
+  )
+  const add = typeof addBytes === 'bigint' ? addBytes : BigInt(Math.max(0, Math.trunc(addBytes)))
+  if (usedBytes + add > limit.limitBytes) {
+    return {
+      allowed: false,
+      usedBytes,
+      limitBytes: limit.limitBytes,
+      reason:
+        `Storage quota exceeded: ${(usedBytes + add).toString()} bytes would exceed the `
+        + `${limit.limitBytes.toString()}-byte ${limit.scopeType} limit`,
+    }
+  }
+  return { allowed: true, usedBytes, limitBytes: limit.limitBytes }
 }

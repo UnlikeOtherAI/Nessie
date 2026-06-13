@@ -408,6 +408,14 @@ enum KnowledgePageStatus {
   archived
 }
 
+// A page is either an editable rich-text document (the default) or a stored
+// file node whose content lives in object storage (each version → one
+// Attachment). Folders stay virtual: a `document` page with child pages.
+enum KnowledgePageKind {
+  document
+  file
+}
+
 enum KnowledgeAuthorType {
   user
   agent
@@ -2198,6 +2206,9 @@ model Budget {
   scopeId              String          @map("scope_id") @db.Uuid
   costLimitUsd         Decimal?        @map("cost_limit_usd") @db.Decimal(14, 4)
   tokenLimit           Int?            @map("token_limit")
+  // Hard storage quota (bytes) for this scope. When set and exceeded, the
+  // FileService blocks new uploads. Null = unlimited.
+  storageLimitBytes    BigInt?         @map("storage_limit_bytes")
   mode                 BudgetMode      @default(off)
   period               BudgetPeriod    @default(monthly)
   warnThresholdPercent Int             @default(80) @map("warn_threshold_percent")
@@ -2292,6 +2303,36 @@ model ConnectorUsageEvent {
   @@index([organizationId, connectorId, occurredAt(sort: Desc)])
   @@index([organizationId, runId, occurredAt(sort: Desc)])
   @@map("connector_usage_events")
+}
+
+// Append-only signed-delta ledger of bytes STORED (not transferred — that is
+// ConnectorUsageEvent). Each stored file emits a positive delta; each deletion
+// emits a negative one. Current usage for any scope = SUM(delta_bytes) filtered
+// by that scope, which is race-free and self-healing. Written exclusively by
+// the FileService (@nessie/runtime).
+model StorageUsageEvent {
+  id             String          @id @default(uuid()) @db.Uuid
+  occurredAt     DateTime        @map("occurred_at") @db.Timestamptz(6)
+  organizationId String          @map("organization_id") @db.Uuid
+  projectId      String?         @map("project_id") @db.Uuid
+  teamId         String?         @map("team_id") @db.Uuid
+  spaceId        String?         @map("space_id") @db.Uuid
+  uploaderId     String?         @map("uploader_id") @db.Uuid
+  attachmentId   String?         @map("attachment_id") @db.Uuid
+  deltaBytes     BigInt          @map("delta_bytes")
+  operation      String
+  actorId        String          @map("actor_id")
+  actorType      AuditActorType? @map("actor_type")
+  requestId      String?         @map("request_id")
+  correlationId  String?         @map("correlation_id")
+  metadata       Json?
+
+  @@index([organizationId, occurredAt(sort: Desc)])
+  @@index([organizationId, projectId])
+  @@index([organizationId, teamId])
+  @@index([organizationId, spaceId])
+  @@index([organizationId, uploaderId])
+  @@map("storage_usage_events")
 }
 
 // ─── Memory Models ──────────────────────────────────────────────────────────
@@ -2427,6 +2468,7 @@ model KnowledgePage {
   summary  String?
   metadata Json?
 
+  kind               KnowledgePageKind   @default(document)
   parentPageId       String?             @map("parent_page_id") @db.Uuid
   position           Int                 @default(0)
   status             KnowledgePageStatus @default(draft)
@@ -2475,6 +2517,9 @@ model KnowledgePageVersion {
   versionNumber Int                 @map("version_number")
   body          String?             @db.Text
   bodyRef       String?             @map("body_ref")
+  // For file nodes (KnowledgePage.kind = file): the stored object backing this
+  // version. App-enforced (no FK relation), mirroring Attachment's other links.
+  attachmentId  String?             @map("attachment_id") @db.Uuid
   authorType    KnowledgeAuthorType @map("author_type")
   authorId      String              @map("author_id")
   changeComment String?             @map("change_comment")
@@ -2485,6 +2530,7 @@ model KnowledgePageVersion {
 
   @@unique([pageId, versionNumber], map: "knowledge_page_versions_page_version_key")
   @@index([pageId, createdAt(sort: Desc)], map: "knowledge_page_versions_page_created_idx")
+  @@index([attachmentId], map: "knowledge_page_versions_attachment_id_idx")
   @@map("knowledge_page_versions")
 }
 
@@ -2689,10 +2735,14 @@ model Attachment {
   organizationId String   @map("organization_id") @db.Uuid
   uploaderId     String?  @map("uploader_id") @db.Uuid
   messageId      String?  @map("message_id") @db.Uuid
+  // App-enforced link to a knowledge-base page when this attachment is one of a
+  // page's drawer attachments (no FK relation, mirroring messageId).
+  knowledgePageId String? @map("knowledge_page_id") @db.Uuid
   kind           String
   mime           String
   filename       String
-  sizeBytes      Int      @map("size_bytes")
+  // BigInt: uploads can be up to 5 GB, which overflows a 32-bit Int.
+  sizeBytes      BigInt   @map("size_bytes")
   storageKey     String   @map("storage_key")
   width          Int?
   height         Int?
@@ -2704,6 +2754,7 @@ model Attachment {
   feedbackItems        Feedback[]     @relation("FeedbackAttachment")
 
   @@index([messageId])
+  @@index([knowledgePageId])
   @@index([organizationId, createdAt])
   @@map("attachments")
 }

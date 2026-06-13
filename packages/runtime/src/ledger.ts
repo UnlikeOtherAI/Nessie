@@ -384,3 +384,78 @@ export const recordStorageTransferUsage = async (
     },
   })
 }
+
+// ─── Stored-bytes ledger ────────────────────────────────────────────────────
+// Distinct from the transfer ledger above (bytes moved) — this tracks bytes
+// AT REST. Each stored file emits a positive delta and each deletion a negative
+// one, so current usage for any scope is just SUM(delta_bytes) filtered by that
+// scope. Written exclusively by the FileService (@nessie/runtime).
+
+export type StorageUsageScope = {
+  organizationId: string
+  projectId?: string | null
+  teamId?: string | null
+  spaceId?: string | null
+  uploaderId?: string | null
+}
+
+export type StorageStoreOperation = 'store' | 'delete'
+
+export const recordStorageStored = async (
+  prisma: PrismaClient,
+  input: {
+    attribution: LedgerAttribution
+    scope: StorageUsageScope
+    deltaBytes: number
+    operation: StorageStoreOperation
+    attachmentId?: string | null
+    metadata?: Record<string, unknown> | null
+  },
+): Promise<void> => {
+  const { attribution, scope } = input
+  await prisma.storageUsageEvent.create({
+    data: {
+      organizationId: scope.organizationId,
+      projectId: scope.projectId ?? null,
+      teamId: scope.teamId ?? null,
+      spaceId: scope.spaceId ?? null,
+      uploaderId: scope.uploaderId ?? null,
+      attachmentId: input.attachmentId ?? null,
+      deltaBytes: BigInt(Math.trunc(input.deltaBytes)),
+      operation: input.operation,
+      actorId: attribution.actorId,
+      actorType: attribution.actorType ?? null,
+      requestId: attribution.requestId ?? null,
+      correlationId: attribution.correlationId ?? null,
+      occurredAt: new Date(),
+      metadata: (input.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+    },
+  })
+}
+
+/** Sum of stored bytes for a scope (organizationId required; other dims filter). */
+export const currentStorageUsageBytes = async (
+  prisma: PrismaClient,
+  scope: StorageUsageScope,
+): Promise<bigint> => {
+  const where: Prisma.StorageUsageEventWhereInput = {
+    organizationId: scope.organizationId,
+  }
+  if (scope.projectId) {
+    where.projectId = scope.projectId
+  }
+  if (scope.teamId) {
+    where.teamId = scope.teamId
+  }
+  if (scope.spaceId) {
+    where.spaceId = scope.spaceId
+  }
+  if (scope.uploaderId) {
+    where.uploaderId = scope.uploaderId
+  }
+  const result = await prisma.storageUsageEvent.aggregate({
+    _sum: { deltaBytes: true },
+    where,
+  })
+  return result._sum.deltaBytes ?? 0n
+}

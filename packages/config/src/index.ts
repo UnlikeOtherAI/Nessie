@@ -84,6 +84,15 @@ export const NessieConfigSchema = z.object({
     provider: StorageProviderSchema,
     bucket: z.string().min(1).optional(),
     localPath: z.string().min(1).optional(),
+    // S3-compatible (MinIO) settings — only consulted when provider is 's3'.
+    endpoint: z.string().min(1).optional(),
+    region: z.string().min(1).optional(),
+    forcePathStyle: z.boolean().optional(),
+    accessKeyId: z.string().min(1).optional(),
+    secretAccessKey: z.string().min(1).optional(),
+    // Upload ceiling shared by API multipart limits and the FileService quota
+    // pre-check. Defaults to 5 GiB.
+    maxUploadBytes: z.number().int().positive().default(5 * 1024 * 1024 * 1024),
   }),
   queue: z.object({
     provider: QueueProviderSchema,
@@ -130,6 +139,12 @@ export const ConfigEnvMap = {
   NESSIE_STORAGE_PROVIDER: 'storage.provider',
   NESSIE_STORAGE_BUCKET: 'storage.bucket',
   NESSIE_STORAGE_LOCAL_PATH: 'storage.localPath',
+  NESSIE_STORAGE_ENDPOINT: 'storage.endpoint',
+  NESSIE_STORAGE_REGION: 'storage.region',
+  NESSIE_STORAGE_FORCE_PATH_STYLE: 'storage.forcePathStyle',
+  NESSIE_STORAGE_ACCESS_KEY_ID: 'storage.accessKeyId',
+  NESSIE_STORAGE_SECRET_ACCESS_KEY: 'storage.secretAccessKey',
+  NESSIE_MAX_UPLOAD_BYTES: 'storage.maxUploadBytes',
   NESSIE_QUEUE_PROVIDER: 'queue.provider',
   NESSIE_QUEUE_PROJECT_ID: 'queue.projectId',
   NESSIE_MODEL_PROVIDER: 'model.provider',
@@ -186,6 +201,7 @@ const DEFAULT_CONFIG: NessieConfig = {
   storage: {
     provider: 'filesystem',
     localPath: '.nessie/storage',
+    maxUploadBytes: 5 * 1024 * 1024 * 1024,
   },
   queue: {
     provider: 'local',

@@ -1,6 +1,7 @@
 export * from './budget.js'
 export * from './builtin-tools.js'
 export * from './db.js'
+export * from './files/index.js'
 export * from './gcs-storage.js'
 export * from './inference/index.js'
 export * from './ledger.js'
