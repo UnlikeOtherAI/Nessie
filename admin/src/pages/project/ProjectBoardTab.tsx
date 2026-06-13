@@ -33,8 +33,8 @@ export const ProjectBoardTab = ({ projectId }: ProjectBoardTabProps) => {
     ? allTasks.filter((task) => task.iterationId === activeIteration?.id)
     : allTasks
 
-  const handleMove = (taskId: string, columnId: string) => {
-    moveTask.mutate({ id: taskId, columnId })
+  const handleMove = (taskId: string, columnId: string, position: number) => {
+    moveTask.mutate({ id: taskId, columnId, position })
   }
 
   if (isScrum && !activeIteration) {

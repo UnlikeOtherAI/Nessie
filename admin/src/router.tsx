@@ -18,7 +18,7 @@ import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
-import { AggregateBoardPage } from './pages/AggregateBoardPage'
+import { ProjectsIndexPage } from './pages/ProjectsIndexPage'
 import { ProjectView } from './pages/project/ProjectView'
 import { AppearancePage } from './pages/settings/AppearancePage'
 import { NotificationsPage } from './pages/settings/NotificationsPage'
@@ -81,7 +81,7 @@ export const router = createBrowserRouter([
       },
       {
         path: '/projects',
-        element: <AggregateBoardPage />,
+        element: <ProjectsIndexPage />,
       },
       {
         path: '/projects/:projectId',

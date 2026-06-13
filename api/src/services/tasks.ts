@@ -41,6 +41,7 @@ const mapTask = (task: TaskWithUsers): TaskRecord => ({
   organizationId: parseOrganizationId(task.organizationId),
   projectId: task.projectId ? parseProjectId(task.projectId) : null,
   columnId: task.columnId ?? null,
+  position: task.position,
   iterationId: task.iterationId ?? null,
   storyPoints: task.storyPoints ?? null,
   agentId: task.agentId ? parseAgentId(task.agentId) : null,
@@ -136,7 +137,9 @@ export const listTasks = async (
       ...(filters.projectId ? { projectId: filters.projectId } : {}),
     },
     include: taskInclude,
-    orderBy: [{ updatedAt: 'desc' }],
+    // Manual per-column order first (position asc), newest first within a tie so
+    // freshly created cards surface at the top until they are reordered.
+    orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }],
     take: 200,
   })
   return tasks.map(mapTask)
@@ -465,9 +468,37 @@ type MoveError = {
   from?: TaskStatus
 }
 
+// Place the moved task at `index` among its destination column's non-archived
+// cards and renumber that column's positions densely (0..n). Order is per-column
+// only — a card dropped into a new column takes a fresh position there.
+const reindexColumn = async (
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  columnId: string,
+  movedTaskId: string,
+  index: number,
+): Promise<void> => {
+  const siblings = await tx.task.findMany({
+    where: { organizationId, columnId, archivedAt: null },
+    select: { id: true },
+    orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }],
+  })
+  const ordered = siblings.map((s) => s.id).filter((id) => id !== movedTaskId)
+  ordered.splice(Math.min(Math.max(index, 0), ordered.length), 0, movedTaskId)
+  await Promise.all(
+    ordered.map((id, position) => tx.task.update({ where: { id }, data: { position } })),
+  )
+}
+
 export const moveTaskToColumn = async (
   prisma: PrismaClient,
-  input: { taskId: string; organizationId: string; columnId: string; actorId: string },
+  input: {
+    taskId: string
+    organizationId: string
+    columnId: string
+    actorId: string
+    position?: number
+  },
 ): Promise<TaskRecord | MoveError> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
@@ -483,34 +514,33 @@ export const moveTaskToColumn = async (
   if (!column) return { error: 'COLUMN_NOT_FOUND' }
 
   const target = CATEGORY_TO_STATUS[column.category]
-
-  // Same lifecycle category → only re-pin the column, no status change.
-  if (existing.status === target) {
-    const task = await prisma.task.update({
-      where: { id: existing.id },
-      data: { columnId: column.id },
-      include: taskInclude,
-    })
-    return mapTask(task)
-  }
-
-  if (!isValidTransition(existing.status, target)) {
+  const needsTransition = existing.status !== target
+  if (needsTransition && !isValidTransition(existing.status, target)) {
     return { error: 'INVALID_TRANSITION', from: existing.status }
   }
 
   const task = await prisma.$transaction(async (tx) => {
-    const { count } = await tx.task.updateMany({
-      where: { id: existing.id, organizationId: input.organizationId, status: existing.status },
-      data: { columnId: column.id, status: target },
-    })
-    if (count === 0) return null
-    await tx.taskEvent.create({
-      data: {
-        taskId: existing.id,
-        eventType: 'status_changed',
-        payload: { by: input.actorId, from: existing.status, to: target, columnId: column.id },
-      },
-    })
+    if (needsTransition) {
+      const { count } = await tx.task.updateMany({
+        where: { id: existing.id, organizationId: input.organizationId, status: existing.status },
+        data: { columnId: column.id, status: target },
+      })
+      if (count === 0) return null
+      await tx.taskEvent.create({
+        data: {
+          taskId: existing.id,
+          eventType: 'status_changed',
+          payload: { by: input.actorId, from: existing.status, to: target, columnId: column.id },
+        },
+      })
+    } else {
+      await tx.task.update({ where: { id: existing.id }, data: { columnId: column.id } })
+    }
+
+    if (input.position !== undefined) {
+      await reindexColumn(tx, input.organizationId, column.id, existing.id, input.position)
+    }
+
     return tx.task.findFirst({ where: { id: existing.id }, include: taskInclude })
   })
 

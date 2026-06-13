@@ -4,14 +4,16 @@ import {
   MeasuringStrategy,
   MouseSensor,
   TouchSensor,
+  closestCorners,
   type DragEndEvent,
-  type DragStartEvent,
+  type DragOverEvent,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
+import { arrayMove } from '@dnd-kit/sortable'
 import { type TaskRecord } from '../../facades/tasks/hooks'
 import { ArchiveDoneMenu } from './ArchiveDoneMenu'
-import { KanbanCard } from './KanbanCard'
+import { ArchivedTaskCard, KanbanCard } from './KanbanCard'
 import { KanbanColumn } from './KanbanColumn'
 import { TaskDialog } from './TaskDialog'
 import {
@@ -25,9 +27,8 @@ import {
 // columns as will sit at >= MIN_COLUMN_PX (plus the gap between them) into one
 // page; the rest move to additional pages. Paging is a native horizontal
 // scroll-snap, so the OS handles momentum / Magic-Mouse / trackpad / touch
-// swipes, and dnd-kit's auto-scroll handles dropping a card onto a column on
-// another page. (A CSS-transform carousel offset the drag overlay on Safari,
-// because dnd-kit mis-measures a draggable inside a transformed ancestor.)
+// swipes, and dnd-kit's auto-scroll handles dragging a card to a column on
+// another page.
 const MIN_COLUMN_PX = 300
 const COLUMN_GAP_PX = 12 // gap-3
 const DND_MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
@@ -36,14 +37,16 @@ const DND_MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
 const MOUSE_ACTIVATION = { activationConstraint: { distance: 8 } }
 const TOUCH_ACTIVATION = { activationConstraint: { delay: 250, tolerance: 8 } }
 
+type ItemMap = Record<string, string[]>
+
 type KanbanBoardProps = {
   columns: BoardColumnView[]
   tasks: TaskRecord[]
   showProject: boolean
   projectNameById: Record<string, string>
-  // Drag handler: the parent decides whether this is a /move (project board) or
-  // a status transition (aggregate board).
-  onMoveTask: (taskId: string, columnId: string) => void
+  // Persist a drag: move the task to `columnId` at `position` (index in that
+  // column). Reordering within a column uses the same call (same columnId).
+  onMoveTask: (taskId: string, columnId: string, position: number) => void
 }
 
 export const KanbanBoard = ({
@@ -61,6 +64,7 @@ export const KanbanBoard = ({
   const [viewportWidth, setViewportWidth] = useState(0)
   const [page, setPage] = useState(0)
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const draggingRef = useRef(false)
 
   const sensors = useSensors(
     useSensor(MouseSensor, MOUSE_ACTIVATION),
@@ -80,8 +84,6 @@ export const KanbanBoard = ({
     const grouped: Record<string, TaskRecord[]> = Object.fromEntries(columns.map((c) => [c.id, []]))
     const archivedTasks: TaskRecord[] = []
     for (const task of tasks) {
-      // Explicitly archived done-work (archivedAt) leaves its column for the
-      // Archived section, same as failed/cancelled.
       if (task.archivedAt) {
         archivedTasks.push(task)
         continue
@@ -92,6 +94,24 @@ export const KanbanBoard = ({
     }
     return { byColumn: grouped, archived: archivedTasks }
   }, [tasks, columns])
+
+  const taskById = useMemo(() => {
+    const map = new Map<string, TaskRecord>()
+    for (const task of tasks) map.set(task.id, task)
+    return map
+  }, [tasks])
+
+  // Server-derived order (tasks arrive position-sorted). `items` mirrors this
+  // when idle and is mutated live during a drag so columns animate room.
+  const baseItems = useMemo<ItemMap>(() => {
+    const map: ItemMap = {}
+    for (const column of columns) map[column.id] = (byColumn[column.id] ?? []).map((t) => t.id)
+    return map
+  }, [columns, byColumn])
+  const [items, setItems] = useState<ItemMap>(baseItems)
+  useEffect(() => {
+    if (!draggingRef.current) setItems(baseItems)
+  }, [baseItems])
 
   // Columns chunked into pages; each page is one viewport-wide scroll-snap panel.
   const pageGroups = useMemo(() => {
@@ -117,7 +137,6 @@ export const KanbanBoard = ({
     viewport.scrollTo({ left: clamped * viewport.clientWidth, behavior: 'smooth' })
   }, [pageCount])
 
-  // Reflect the native scroll position in the dots.
   const handleScroll = useCallback(() => {
     const viewport = viewportRef.current
     if (!viewport) return
@@ -125,44 +144,105 @@ export const KanbanBoard = ({
     if (width > 0) setPage(Math.round(viewport.scrollLeft / width))
   }, [])
 
-  // Keep the current page valid when the viewport (and therefore pageCount) shrinks.
   useEffect(() => {
     if (page > pageCount - 1) showPage(pageCount - 1)
   }, [page, pageCount, showPage])
 
-  // Whatever page the auto-scroll left us on, settle onto a whole page.
   const settleNearestPage = useCallback(() => {
     const viewport = viewportRef.current
     if (!viewport || !viewport.clientWidth) return
     showPage(Math.round(viewport.scrollLeft / viewport.clientWidth))
   }, [showPage])
 
-  const handleDragStart = (_event: DragStartEvent) => {
+  // Find which column (key of `items`) holds an id — or the id itself if it is a
+  // column (dropped on the column's empty area).
+  const findColumn = useCallback(
+    (id: string, map: ItemMap): string | undefined => {
+      if (map[id]) return id
+      return columns.find((column) => map[column.id]?.includes(id))?.id
+    },
+    [columns],
+  )
+
+  const handleDragStart = () => {
+    draggingRef.current = true
     setIsDraggingCard(true)
+    setItems(baseItems)
+  }
+
+  // Relocate the dragged card into the column it hovers so that column opens a
+  // gap (animated) before the drop is committed.
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event
+    if (!over) return
+    const activeId = String(active.id)
+    const overId = String(over.id)
+    setItems((prev) => {
+      const fromColumn = findColumn(activeId, prev)
+      const toColumn = findColumn(overId, prev)
+      if (!fromColumn || !toColumn || fromColumn === toColumn) return prev
+      const fromItems = prev[fromColumn]
+      const toItems = prev[toColumn]
+      if (!fromItems || !toItems) return prev
+      const overIndex = toItems.indexOf(overId)
+      const insertAt = overIndex >= 0 ? overIndex : toItems.length
+      return {
+        ...prev,
+        [fromColumn]: fromItems.filter((id) => id !== activeId),
+        [toColumn]: [...toItems.slice(0, insertAt), activeId, ...toItems.slice(insertAt)],
+      }
+    })
   }
 
   const handleDragCancel = () => {
+    draggingRef.current = false
     setIsDraggingCard(false)
+    setItems(baseItems)
     settleNearestPage()
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
+    draggingRef.current = false
     setIsDraggingCard(false)
     const { active, over } = event
+    const activeId = String(active.id)
+
     if (!over) {
+      setItems(baseItems)
       settleNearestPage()
       return
     }
-    const columnId = String(over.id)
-    // Finish on the page that holds the column the card was dropped into.
-    const columnIndex = columns.findIndex((column) => column.id === columnId)
-    showPage(columnIndex >= 0 ? Math.floor(columnIndex / perPage) : Math.round(
-      (viewportRef.current?.scrollLeft ?? 0) / (viewportRef.current?.clientWidth || 1),
-    ))
-    const task = tasks.find((t) => t.id === String(active.id))
-    if (!task || placeTask(task, columns) === columnId) return
-    onMoveTask(task.id, columnId)
-    setPulseId(task.id)
+
+    const overId = String(over.id)
+    const destColumn = findColumn(overId, items)
+    if (!destColumn) {
+      setItems(baseItems)
+      settleNearestPage()
+      return
+    }
+
+    // Commit the within-column order (cross-column moves already relocated in
+    // dragOver; this also lands the card at the hovered index).
+    let committed = items
+    const columnItems = items[destColumn] ?? []
+    const fromIndex = columnItems.indexOf(activeId)
+    const overIndex = overId === destColumn ? columnItems.length - 1 : columnItems.indexOf(overId)
+    if (fromIndex >= 0 && overIndex >= 0 && fromIndex !== overIndex) {
+      committed = { ...items, [destColumn]: arrayMove(columnItems, fromIndex, overIndex) }
+      setItems(committed)
+    }
+
+    const finalIndex = (committed[destColumn] ?? []).indexOf(activeId)
+    const columnIndex = columns.findIndex((column) => column.id === destColumn)
+    showPage(columnIndex >= 0 ? Math.floor(columnIndex / perPage) : page)
+
+    // Persist only when the column or index actually changed.
+    const task = taskById.get(activeId)
+    const originalColumn = task ? placeTask(task, columns) : null
+    const originalIndex = originalColumn ? baseItems[originalColumn]?.indexOf(activeId) ?? -1 : -1
+    if (finalIndex < 0 || (destColumn === originalColumn && finalIndex === originalIndex)) return
+    onMoveTask(activeId, destColumn, finalIndex)
+    setPulseId(activeId)
   }
 
   const cardProps = (task: TaskRecord) => ({
@@ -177,10 +257,12 @@ export const KanbanBoard = ({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DndContext
+        collisionDetection={closestCorners}
         measuring={DND_MEASURING}
         sensors={sensors}
         onDragCancel={handleDragCancel}
         onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
         onDragStart={handleDragStart}
       >
         {paginated ? (
@@ -212,25 +294,31 @@ export const KanbanBoard = ({
           data-kanban-board-viewport
           data-kanban-dragging={isDraggingCard ? 'true' : undefined}
           onScroll={handleScroll}
-          // Snap fights dnd-kit's auto-scroll while a card is dragged across pages.
           style={{ scrollSnapType: isDraggingCard ? 'none' : undefined }}
         >
           {pageGroups.map((group, groupIndex) => (
             <div className="flex h-full w-full shrink-0 snap-start gap-3" key={groupIndex}>
-              {group.map((column) => (
-                <KanbanColumn
-                  key={column.id}
-                  columnId={column.id}
-                  count={byColumn[column.id]?.length ?? 0}
-                  dot={CATEGORY_DOT[column.category]}
-                  headerAction={column.category === 'done' ? <ArchiveDoneMenu /> : undefined}
-                  label={column.name}
-                >
-                  {(byColumn[column.id] ?? []).map((task) => (
-                    <KanbanCard key={task.id} {...cardProps(task)} />
-                  ))}
-                </KanbanColumn>
-              ))}
+              {group.map((column) => {
+                const ids = items[column.id] ?? []
+                return (
+                  <KanbanColumn
+                    key={column.id}
+                    columnId={column.id}
+                    count={ids.length}
+                    dot={CATEGORY_DOT[column.category]}
+                    headerAction={column.category === 'done' ? <ArchiveDoneMenu /> : undefined}
+                    itemIds={ids}
+                    label={column.name}
+                  >
+                    {ids
+                      .map((id) => taskById.get(id))
+                      .filter((task): task is TaskRecord => Boolean(task))
+                      .map((task) => (
+                        <KanbanCard key={task.id} {...cardProps(task)} />
+                      ))}
+                  </KanbanColumn>
+                )
+              })}
             </div>
           ))}
         </div>
@@ -250,7 +338,15 @@ export const KanbanBoard = ({
             {archived.length === 0 ? (
               <div className="text-xs text-[color:var(--tx3)]">No cancelled or failed work.</div>
             ) : (
-              archived.map((task) => <KanbanCard key={task.id} {...cardProps(task)} archived />)
+              archived.map((task) => (
+                <ArchivedTaskCard
+                  key={task.id}
+                  onOpen={setActiveTask}
+                  projectName={task.projectId ? projectNameById[task.projectId] ?? null : null}
+                  showProject={showProject}
+                  task={task}
+                />
+              ))
             )}
           </div>
         ) : null}

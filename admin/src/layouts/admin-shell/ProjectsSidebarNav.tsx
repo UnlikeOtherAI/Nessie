@@ -12,19 +12,11 @@ type ProjectsSidebarNavProps = {
   isOwner: boolean
 }
 
-type ProjectNavSectionId = 'boards' | 'projects'
+type ProjectNavSectionId = 'projects'
 
-const PROJECT_NAV_SECTION_IDS: ProjectNavSectionId[] = ['boards', 'projects']
+const PROJECT_NAV_SECTION_IDS: ProjectNavSectionId[] = ['projects']
 
 const projectNavCookieName = (id: ProjectNavSectionId) => `projectsNavCollapsed-${id}`
-
-const KanbanIcon = () => (
-  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-    <rect height="16" rx="1" width="4" x="4" y="4" />
-    <rect height="10" rx="1" width="4" x="10" y="4" />
-    <rect height="13" rx="1" width="4" x="16" y="4" />
-  </svg>
-)
 
 const FolderIcon = () => (
   <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -71,21 +63,6 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto py-1">
-        <SidebarMenuSection
-          id="projects-nav-boards"
-          isCollapsed={collapsedSections.boards ?? false}
-          onToggle={() => toggleSection('boards')}
-          title="Boards"
-        >
-          <Link
-            className={['admin-sb-item', pathname === '/projects' ? 'active' : ''].join(' ')}
-            to="/projects"
-          >
-            <KanbanIcon />
-            <span className="min-w-0 flex-1 truncate">Kanban</span>
-          </Link>
-        </SidebarMenuSection>
-
         <SidebarMenuSection
           action={
             isOwner ? (

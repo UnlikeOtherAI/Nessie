@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { TextQuoteAnchor } from '@nessie/knowledge/anchor'
+import type { TextQuoteAnchor } from '@nessie/schemas'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import {
   useCreateNote,

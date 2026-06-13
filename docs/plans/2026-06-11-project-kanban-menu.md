@@ -500,3 +500,43 @@ WebKit/touch). dnd-kit *does* handle native scroll containers correctly.
   transform (follows the pointer in place); dropping it on another column moves
   it there, the landed card shows `kanban-card-pulse`, and the scroll stays
   page-aligned. (Test card moved + restored, no data left changed.)
+
+## Update 2026-06-13 (6) — per-column card ordering; all-projects board removed
+
+### Manual per-column priority order
+
+- `Task` gains a `position Int @default(0)` column (migration
+  `20260613130000_add_task_position`, plus `@@index([column_id, position])`).
+  `listTasks` orders by `position asc, updatedAt desc` so each column shows its
+  manual order (newest-first within the default-0 tie until reordered).
+- `POST /api/tasks/:id/move` now takes an optional `position` (target index in the
+  destination column). `moveTaskToColumn` pins the column (+ status transition when
+  the category changes, as before) and **reindexes that column densely (0..n)** in
+  a transaction, placing the moved card at `position`. Order is **per-column only**
+  — a card dropped into another column takes a fresh index there.
+- Cards are a `@dnd-kit/sortable` list: each column is a `SortableContext`
+  (`verticalListSortingStrategy`), so dragging a card up/down opens an **animated
+  gap** and reorders; cross-column drags relocate the card into the hovered column
+  on `onDragOver` (animated) and drop at the hovered index. `onDragEnd` persists
+  via `move({ columnId, position })`. The board keeps a local ordered copy
+  (`items`) for instant feedback and resyncs from the server when idle; `useMoveTask`
+  no longer optimistically patches (it would fight the dropped order) — it persists
+  and refetches.
+
+### All-projects (aggregate) board removed
+
+- The synthetic all-projects board was incompatible with per-column ordering
+  (its columns are status categories spanning every project, with no real column
+  to order within). `AggregateBoardPage`, the sidebar **Boards › Kanban** entry,
+  and `AGGREGATE_COLUMNS` / `CATEGORY_TO_STATUS` are gone. `/projects` now
+  redirects to the first project's board (`ProjectsIndexPage`); per-project boards
+  are unchanged.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) and the api `tsc` build
+  pass. Backend: a move with `position` reindexes the column densely and the moved
+  card lands at the requested index (verified against the dev API). UI (Playwright,
+  Chromium): `/projects` redirects to `/projects/:id/board`, no aggregate sidebar
+  link, dragging a card reorders within a column and **persists across reload**, and
+  a cross-column drag lands + persists in the target column. No page errors.

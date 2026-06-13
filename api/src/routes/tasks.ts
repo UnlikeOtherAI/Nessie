@@ -171,6 +171,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       organizationId: actorContext.tenant.organizationId,
       columnId: body.columnId,
       actorId: actorContext.actor.actorId,
+      position: body.position,
     })
 
     if ('error' in result) {
