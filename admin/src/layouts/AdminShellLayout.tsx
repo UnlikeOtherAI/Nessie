@@ -14,7 +14,6 @@ import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
-import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
 import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
@@ -177,7 +176,6 @@ export const AdminShellLayout = () => {
         </div>
 
         {showWebTabBar && <MobileTabBar />}
-        {nativeIPadApp && <NativeSearchOverlay />}
 
         <SidebarDialogs
           createChannelTarget={shell.createChannelTarget}

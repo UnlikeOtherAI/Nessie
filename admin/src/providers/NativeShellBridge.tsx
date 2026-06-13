@@ -6,8 +6,6 @@ import { useShakeFeedback } from './ShakeFeedbackContext';
 type RnWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void };
   __nessieNavigate?: (path: string) => void;
-  __nessieOpenSearchOverlay?: () => void;
-  __nessieCloseSearchOverlay?: () => void;
   __nessieShakeScreenshot?: (dataUri: string) => void;
 };
 
@@ -52,12 +50,6 @@ export const NativeShellBridge = () => {
         navigate(path);
       }
     };
-    target.__nessieOpenSearchOverlay = () => {
-      window.dispatchEvent(new Event('nessie:open-search-overlay'));
-    };
-    target.__nessieCloseSearchOverlay = () => {
-      window.dispatchEvent(new Event('nessie:close-search-overlay'));
-    };
     target.__nessieShakeScreenshot = (dataUri: string) => {
       const file = dataUriToFile(dataUri, `feedback-${Date.now()}.png`);
       if (file) {
@@ -66,8 +58,6 @@ export const NativeShellBridge = () => {
     };
     return () => {
       delete target.__nessieNavigate;
-      delete target.__nessieOpenSearchOverlay;
-      delete target.__nessieCloseSearchOverlay;
       delete target.__nessieShakeScreenshot;
     };
   }, [navigate, setScreenshot]);
