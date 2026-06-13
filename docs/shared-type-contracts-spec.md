@@ -395,6 +395,26 @@ Rules:
 - clients resolve the attachment when present and fall back to the generated agent glyph when absent or not yet loaded
 - avatar uploads must use an attachment visible to the acting user in the same organization
 
+## 5.4) Favourite record contract
+
+`GET /api/favorites` returns the signed-in user's favourites in the active
+organization. `PUT /api/favorites/{targetType}/{targetId}` sets a favourite and
+`DELETE /api/favorites/{targetType}/{targetId}` clears it.
+
+```ts
+type FavoriteRecord = {
+  targetType: 'agent' | 'channel' | 'user';
+  targetId: string;
+  createdAt: string;
+};
+```
+
+Rules:
+
+- favourites are scoped to the current user and organization
+- a target must be visible to the actor before it can be added
+- removing a favourite is idempotent so stale client state can be cleared safely
+
 ## 6) Agent activity response contracts
 
 ### `GET /api/agents/{agentId}/status`

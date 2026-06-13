@@ -30,6 +30,8 @@ export type {
   ChannelMetadataRecord,
   ChannelRecord,
   CreateFeedbackRequest,
+  FavoriteRecord,
+  FavoriteTargetType,
   FeedbackRecord,
   MeResponse,
   MessageReaction,

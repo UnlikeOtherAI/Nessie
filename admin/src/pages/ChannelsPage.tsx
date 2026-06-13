@@ -27,6 +27,7 @@ import { useChannelComposer } from '../components/features/channels/useChannelCo
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { useChannelCall } from './channels/useChannelCall'
 import { useChannelMentions } from './channels/useChannelMentions'
+import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
 
 export const ChannelsPage = () => {
   const navigate = useNavigate()
@@ -80,6 +81,7 @@ export const ChannelsPage = () => {
     isConversationSurface && isOperationsTab(activeTab) ? 'messages' : activeTab
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
+  const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
   const selectedMessageAgent =
     selectedMessageAgentId ? agentMap.get(selectedMessageAgentId) ?? null : null
   const personalAssistantChannel =
@@ -245,6 +247,7 @@ export const ChannelsPage = () => {
         isInCall={isInCall}
         searchOpen={searchOpen}
         joinPending={joinChannel.isPending}
+        titleFavorite={titleFavorite}
         onOpenMembers={() => setShowMembersPopup(true)}
         onCallButton={onCallButton}
         onOpenSettings={() => setShowChannelSettings(true)}

@@ -45,6 +45,7 @@ import { registerDesignerRoutes } from './routes/designer.js'
 import { registerDeviceRoutes } from './routes/devices.js'
 import { registerEventRoutes } from './routes/events.js'
 import { registerExecutionEnvironmentRoutes } from './routes/execution-environments.js'
+import { registerFavoriteRoutes } from './routes/favorites.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
 import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
@@ -278,6 +279,7 @@ export const buildApp = async () => {
   registerUserRoutes(app, deps)
   registerStatusRoutes(app, deps)
   registerPresenceRoutes(app, deps)
+  registerFavoriteRoutes(app, deps)
   registerOrganizationRoutes(app, deps)
   registerFeedbackRoutes(app, deps)
   registerProjectRoutes(app, deps)

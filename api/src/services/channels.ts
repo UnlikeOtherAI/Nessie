@@ -13,6 +13,7 @@ import {
   ensureDefaultThread,
   loadUnreadCountsByThread,
   mapChannelRecord,
+  resolveDmUserId,
 } from './channel-records.js'
 import {
   ChannelSlugConflictError,
@@ -109,6 +110,7 @@ export const listChannelsForUser = async (
     slug: channel.slug,
     type: channel.type,
     systemChannelType: channel.systemChannelType ?? undefined,
+    dmUserId: resolveDmUserId(channel, userId),
     visibility: channel.visibility,
     organizationId: parseOrganizationId(channel.organizationId),
     projectId: parseProjectId(channel.team.project.id),

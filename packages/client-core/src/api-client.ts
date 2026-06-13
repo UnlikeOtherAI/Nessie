@@ -98,6 +98,8 @@ export type {
   CallRecord,
   ChannelMetadataRecord,
   ChannelRecord,
+  FavoriteRecord,
+  FavoriteTargetType,
   MessageReaction,
   MessageSearchResult,
   PersonalAssistantBootstrapResponse,

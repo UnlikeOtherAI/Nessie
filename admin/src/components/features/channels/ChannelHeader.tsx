@@ -4,6 +4,7 @@ import { UserAvatar } from '../../primitives/UserAvatar'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { toolbarButtonClass } from './channel-helpers'
+import { ChannelFavoriteButton, type ChannelTitleFavorite } from './ChannelFavoriteButton'
 
 // A channel-header member avatar (real picture, initials fallback) with the
 // overlapping-stack ring. Reads the token itself so the header stays prop-light.
@@ -45,6 +46,7 @@ interface ChannelHeaderProps {
   isInCall: boolean
   searchOpen: boolean
   joinPending: boolean
+  titleFavorite: ChannelTitleFavorite | null
   onOpenMembers: () => void
   onCallButton: () => void
   onOpenSettings: () => void
@@ -62,6 +64,7 @@ export const ChannelHeader = ({
   isInCall,
   searchOpen,
   joinPending,
+  titleFavorite,
   onOpenMembers,
   onCallButton,
   onOpenSettings,
@@ -94,6 +97,7 @@ export const ChannelHeader = ({
           ? 'Personal Assistant'
           : activeChannel?.label ?? 'channels'}
       </h1>
+      <ChannelFavoriteButton favorite={titleFavorite} />
       {isPersonalAssistantConversation && (
         <span className="rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
           system managed

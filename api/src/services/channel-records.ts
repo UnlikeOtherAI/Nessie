@@ -6,6 +6,7 @@ import {
   parseProjectId,
   parseTeamId,
   parseThreadId,
+  parseUserId,
 } from '@nessie/schemas'
 import type { ChannelRecord } from '../contracts.js'
 
@@ -28,6 +29,19 @@ export type TeamProjectScope = {
   projectId: string
   projectName: string
   teamName: string
+}
+
+export const resolveDmUserId = (
+  channel: Pick<Channel, 'dmKey' | 'systemChannelType' | 'type'>,
+  userId?: string,
+): ReturnType<typeof parseUserId> | null => {
+  if (channel.type !== 'dm' || channel.systemChannelType || !channel.dmKey || !userId) {
+    return null
+  }
+
+  const participantIds = channel.dmKey.split(':').slice(2)
+  const targetId = participantIds.find((candidate) => candidate !== userId) ?? participantIds[0]
+  return targetId ? parseUserId(targetId) : null
 }
 
 // Shared include so create/upsert sites return the channel's team + project in
@@ -177,6 +191,7 @@ export const mapChannelRecord = async (
     slug: channel.slug,
     type: channel.type,
     systemChannelType: channel.systemChannelType ?? undefined,
+    dmUserId: resolveDmUserId(channel, userId),
     visibility: channel.visibility,
     organizationId: parseOrganizationId(channel.organizationId),
     projectId: parseProjectId(team.project.id),

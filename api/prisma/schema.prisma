@@ -35,6 +35,12 @@ enum AgentDelegationMode {
   act_as_requesting_user
 }
 
+enum FavoriteTargetType {
+  agent
+  channel
+  user
+}
+
 enum RunStatus {
   pending
   running
@@ -580,6 +586,7 @@ model User {
   messages            Message[]
   reactions           MessageReaction[]
   threadReadStates    ThreadReadState[]
+  favorites           Favorite[]
   assignedTasks       Task[]               @relation("TaskAssignee")
   ownedTasks          Task[]               @relation("TaskOwner")
   createdTasks        Task[]               @relation("TaskCreatedBy")
@@ -612,6 +619,7 @@ model Organization {
   resourceLocks    ResourceLock[]
   userStatuses     UserStatus[]
   feedback         Feedback[]
+  favorites        Favorite[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -972,6 +980,21 @@ model MessageReaction {
   @@unique([messageId, userId, emoji])
   @@index([messageId])
   @@map("message_reactions")
+}
+
+model Favorite {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  userId         String             @map("user_id") @db.Uuid
+  targetType     FavoriteTargetType @map("target_type")
+  targetId       String             @map("target_id") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at")
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId, targetType, targetId])
+  @@index([organizationId, targetType, targetId])
+  @@map("favorites")
 }
 
 model Agent {

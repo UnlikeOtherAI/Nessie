@@ -33,6 +33,7 @@ export type ChannelRecord = {
   teamId: string
   teamName: string
   type: 'dm' | 'standard'
+  dmUserId?: string | null
   unreadCount: number
   updatedAt: string
   visibility: 'private' | 'protected' | 'public'
@@ -129,6 +130,14 @@ export type UserActiveStatus = {
   emoji: string | null
   id: string
   label: string
+}
+
+export type FavoriteTargetType = 'agent' | 'channel' | 'user'
+
+export type FavoriteRecord = {
+  createdAt: string
+  targetId: string
+  targetType: FavoriteTargetType
 }
 
 export type PresenceState = 'online' | 'away' | 'offline'

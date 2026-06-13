@@ -16,6 +16,7 @@ export const ChannelRecordSchema = z.object({
   slug: z.string().nullish(),
   type: z.enum(['standard', 'dm']),
   systemChannelType: z.enum(['personal_assistant']).optional(),
+  dmUserId: UserIdSchema.nullish(),
   visibility: z.enum(['public', 'protected', 'private']),
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema,
