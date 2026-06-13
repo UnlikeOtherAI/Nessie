@@ -76,11 +76,11 @@ runIfDatabase('scoped recall denies channel and team memories in incompatible au
       [randomUUID(), ids.team, ids.userA, randomUUID(), ids.userB],
     )
     await pool.query(
-      `INSERT INTO channels (id, label, organization_id, team_id, created_at, updated_at)
+      `INSERT INTO channels (id, label, organization_id, project_id, team_id, slug, created_at, updated_at)
        VALUES
-         ($1, 'management-private', $2, $3, now(), now()),
-         ($4, 'client-shared', $2, $3, now(), now())`,
-      [ids.sourceChannel, ids.org, ids.team, ids.currentChannel],
+         ($1, 'management-private', $2, $3, $4, 'management-private', now(), now()),
+         ($5, 'client-shared', $2, $3, $4, 'client-shared', now(), now())`,
+      [ids.sourceChannel, ids.org, ids.project, ids.team, ids.currentChannel],
     )
     await pool.query(
       `INSERT INTO channel_members (id, channel_id, user_id, created_at)

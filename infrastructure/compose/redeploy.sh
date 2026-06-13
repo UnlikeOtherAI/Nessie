@@ -41,6 +41,16 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 
+FAILED_CHANNEL_SLUG_MIGRATION="$(
+  $COMPOSE exec -T nessie-postgres psql -U nessie -d nessie -tAc \
+    "SELECT 1 FROM _prisma_migrations WHERE migration_name = '20260613100000_channel_project_slugs' AND finished_at IS NULL AND rolled_back_at IS NULL LIMIT 1;" \
+    2>/dev/null | tr -d '[:space:]' || true
+)"
+if [ "$FAILED_CHANNEL_SLUG_MIGRATION" = "1" ]; then
+  echo "==> Marking interrupted channel slug migration for retry"
+  $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:resolve-rolled-back-channel-slugs
+fi
+
 echo "==> Applying database migrations"
 $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
 
