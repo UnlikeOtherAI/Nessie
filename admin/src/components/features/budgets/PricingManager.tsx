@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 
 export type PricingProfile = {
-  id: string
+  profileId: string
   provider: string
   modelPattern: string
   currency: string
@@ -173,7 +173,7 @@ export const PricingManager = () => {
       <div className={`${sectionTitle} mt-5`}>Configured pricing ({profiles.length})</div>
       <div className="mt-2 grid gap-2">
         {profiles.map((p) => (
-          <div key={p.id} className="admin-card flex items-center justify-between gap-2 p-3">
+          <div key={p.profileId} className="admin-card flex items-center justify-between gap-2 p-3">
             <div className="min-w-0">
               <span className="font-semibold text-[var(--tx)]">{p.provider}</span>
               <span className="ml-2 font-mono text-xs text-[color:var(--tx2)]">{p.modelPattern}</span>
@@ -185,7 +185,7 @@ export const PricingManager = () => {
               <button
                 className="admin-button admin-button-secondary"
                 disabled={remove.isPending}
-                onClick={() => remove.mutate(p.id)}
+                onClick={() => remove.mutate(p.profileId)}
                 type="button"
               >
                 Delete
