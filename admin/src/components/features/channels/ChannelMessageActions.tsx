@@ -24,6 +24,7 @@ type ChannelMessageActionsProps = {
   canDelete: boolean
   canEdit: boolean
   content: string
+  currentUserId: string
   messageId: string
   reactions: MessageReaction[]
   onAddReaction: (messageId: string, emoji: string) => void
@@ -44,6 +45,7 @@ export const ChannelMessageActions = ({
   canDelete,
   canEdit,
   content,
+  currentUserId,
   messageId,
   reactions,
   onAddReaction,
@@ -54,12 +56,22 @@ export const ChannelMessageActions = ({
   const pickerRef = useRef<HTMLDivElement>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const reactionSummary = useMemo(() => {
-    const counts = new Map<string, number>()
+    const counts = new Map<
+      string,
+      { count: number; emoji: string; reactedByMe: boolean }
+    >()
     for (const reaction of reactions) {
-      counts.set(reaction.emoji, (counts.get(reaction.emoji) ?? 0) + 1)
+      const summary = counts.get(reaction.emoji) ?? {
+        count: 0,
+        emoji: reaction.emoji,
+        reactedByMe: false,
+      }
+      summary.count += 1
+      summary.reactedByMe ||= reaction.userId === currentUserId
+      counts.set(reaction.emoji, summary)
     }
-    return Array.from(counts, ([emoji, count]) => ({ count, emoji }))
-  }, [reactions])
+    return Array.from(counts.values())
+  }, [currentUserId, reactions])
 
   useEffect(() => {
     if (!pickerOpen) {
@@ -92,19 +104,28 @@ export const ChannelMessageActions = ({
     <>
       {reactionSummary.length > 0 ? (
         <div className="mt-1 flex flex-wrap gap-1" onClick={stopRowToggle}>
-          {reactionSummary.map(({ count, emoji }) => (
-            <button
-              key={emoji}
-              aria-label={`Add ${emoji} reaction`}
-              className="reaction-pill"
-              onClick={() => addReaction(emoji)}
-              title={`Add ${emoji} reaction`}
-              type="button"
-            >
-              {emoji}
-              {count > 1 ? ` ${count}` : ''}
-            </button>
-          ))}
+          {reactionSummary.map(({ count, emoji, reactedByMe }) => {
+            const label = reactedByMe
+              ? `Remove ${emoji} reaction`
+              : `Add ${emoji} reaction`
+
+            return (
+              <button
+                key={emoji}
+                aria-label={label}
+                aria-pressed={reactedByMe}
+                className={
+                  reactedByMe ? 'reaction-pill reaction-pill-active' : 'reaction-pill'
+                }
+                onClick={() => addReaction(emoji)}
+                title={label}
+                type="button"
+              >
+                {emoji}
+                {count > 1 ? ` ${count}` : ''}
+              </button>
+            )
+          })}
         </div>
       ) : null}
 

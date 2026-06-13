@@ -383,6 +383,7 @@ export const ChannelMessageFeed = ({
                     canDelete={canManageOwnMessage}
                     canEdit={canManageOwnMessage}
                     content={item.message.content}
+                    currentUserId={meUserId}
                     messageId={item.message.id}
                     reactions={item.message.reactions ?? []}
                     onAddReaction={onAddReaction}

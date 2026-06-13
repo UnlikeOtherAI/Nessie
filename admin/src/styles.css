@@ -864,6 +864,17 @@ button.reaction-pill:focus-visible {
   outline: none;
 }
 
+button.reaction-pill-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+button.reaction-pill-active:hover,
+button.reaction-pill-active:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--accent-soft));
+}
+
 .mention-tag {
   display: inline;
   border-radius: 3px;

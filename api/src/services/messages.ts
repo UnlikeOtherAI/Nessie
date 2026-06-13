@@ -420,29 +420,6 @@ export const createThreadMessage = async (
   }
 }
 
-export const addReaction = async (
-  prisma: PrismaClient,
-  input: {
-    messageId: string
-    agentId?: string
-    userId?: string
-    emoji: string
-  },
-) => {
-  return prisma.messageReaction.upsert({
-    where: input.agentId
-      ? { messageId_agentId_emoji: { messageId: input.messageId, agentId: input.agentId, emoji: input.emoji } }
-      : { messageId_userId_emoji: { messageId: input.messageId, userId: input.userId!, emoji: input.emoji } },
-    update: {},
-    create: {
-      messageId: input.messageId,
-      agentId: input.agentId ?? null,
-      userId: input.userId ?? null,
-      emoji: input.emoji,
-    },
-  })
-}
-
 // ─── sp-messaging slice: edit, soft-delete, full-text search ───────────────
 
 export type UpdateMessageResult =

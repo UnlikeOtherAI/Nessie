@@ -19,7 +19,6 @@ import { buildStreamCorsHeaders } from '../lib/server-context.js'
 import { enqueueOrchestrateDecide, enqueuePushDispatch } from '../queue/pgqueue.js'
 import { canManageChannel } from '../services/channels.js'
 import {
-  addReaction,
   createThreadMessage,
   findThreadForUser,
   listThreadMessages,
@@ -28,6 +27,7 @@ import {
   softDeleteMessage,
   updateMessage,
 } from '../services/messages.js'
+import { toggleUserReaction } from '../services/message-reactions.js'
 import type { RouteDeps } from './types.js'
 
 export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -321,11 +321,16 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    await addReaction(prisma, {
+    const reaction = await toggleUserReaction(prisma, {
       messageId,
+      threadId: thread.id,
       userId: actorContext.actor.actorId,
       emoji: body.emoji,
     })
+    if (reaction.kind === 'not_found') {
+      sendApiError(reply, 404, 'MESSAGE_NOT_FOUND', 'Message not found')
+      return reply
+    }
 
     await realtimeHub.publishWs(
       buildChannelRealtimeScopes({
@@ -339,7 +344,9 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       },
     )
 
-    return reply.code(201).send(createApiResponse({ ok: true }))
+    return reply
+      .code(reaction.kind === 'created' ? 201 : 200)
+      .send(createApiResponse({ ok: true }))
   })
 
   // ─── sp-messaging slice: edit + soft-delete ──────────────────────────────
