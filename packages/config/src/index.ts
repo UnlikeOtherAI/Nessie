@@ -64,7 +64,10 @@ export const NessieConfigSchema = z.object({
     providers: z.array(AuthProviderConfigSchema),
     autoRedirectToSso: z.boolean().default(false),
     secret: z.string().min(1).optional(),
-    tokenTtlSeconds: z.number().int().positive().default(24 * 60 * 60),
+    // Access JWT is short-lived (30 min); the long-lived refresh token (30 days)
+    // in an httpOnly cookie silently renews it. See docs/deployment-modes-and-auth-spec.md.
+    tokenTtlSeconds: z.number().int().positive().default(30 * 60),
+    refreshTokenTtlSeconds: z.number().int().positive().default(30 * 24 * 60 * 60),
   }),
   database: z.object({
     url: z.string().min(1),
@@ -121,6 +124,7 @@ export const ConfigEnvMap = {
   NESSIE_AUTH_AUTO_REDIRECT: 'auth.autoRedirectToSso',
   NESSIE_AUTH_SECRET: 'auth.secret',
   NESSIE_AUTH_TOKEN_TTL: 'auth.tokenTtlSeconds',
+  NESSIE_AUTH_REFRESH_TOKEN_TTL: 'auth.refreshTokenTtlSeconds',
   NESSIE_DB_URL: 'database.url',
   NESSIE_REDIS_URL: 'redis.url',
   NESSIE_STORAGE_PROVIDER: 'storage.provider',
@@ -171,7 +175,8 @@ const DEFAULT_CONFIG: NessieConfig = {
   auth: {
     providers: [],
     autoRedirectToSso: false,
-    tokenTtlSeconds: 24 * 60 * 60,
+    tokenTtlSeconds: 30 * 60,
+    refreshTokenTtlSeconds: 30 * 24 * 60 * 60,
   },
   database: {
     url: DEFAULT_LOCAL_DATABASE_URL,

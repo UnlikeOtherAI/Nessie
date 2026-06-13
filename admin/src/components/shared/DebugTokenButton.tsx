@@ -87,6 +87,8 @@ export const DebugTokenButton = () => {
       tokens: {
         accessToken: token,
         accessTokenDecoded: decodeJwtPayload(token),
+        refreshToken:
+          '(httpOnly cookie "nessie_refresh" — not readable by JavaScript by design)',
       },
       session: me?.session ?? null,
       context: me?.context ?? null,

@@ -14,6 +14,10 @@ export type ApiClientConfig = {
   baseUrl: string
   // Bearer token to attach, or null when unauthenticated.
   token: string | null
+  // Optional 401 recovery: silently renew the access token (via the refresh
+  // cookie) and return the new one, or null if renewal failed. When provided, a
+  // 401 triggers a single renew-and-retry before the error surfaces.
+  onUnauthorized?: () => Promise<string | null>
 }
 
 const normaliseBaseUrl = (baseUrl: string): string => baseUrl.trim().replace(/\/$/, '')
@@ -36,22 +40,40 @@ const toApiError = async (response: Response): Promise<Error> => {
   return new Error(text)
 }
 
-export const createApiClient = ({ baseUrl, token }: ApiClientConfig): ApiClient => {
+export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientConfig): ApiClient => {
   const resolvedBaseUrl = normaliseBaseUrl(baseUrl)
+  // Mutable so a successful 401 recovery can swap in the renewed token for the
+  // retry and any subsequent calls made through this client instance.
+  let activeToken = token
 
-  const request = async <TData>(path: string, init?: RequestInit): Promise<TData> => {
+  const request = async <TData>(
+    path: string,
+    init?: RequestInit,
+    retried = false,
+  ): Promise<TData> => {
     const headers = new Headers(init?.headers)
     if (!headers.has('content-type') && init?.body) {
       headers.set('content-type', 'application/json')
     }
-    if (token) {
-      headers.set('authorization', `Bearer ${token}`)
+    if (activeToken) {
+      headers.set('authorization', `Bearer ${activeToken}`)
     }
 
     const response = await fetch(`${resolvedBaseUrl}${path}`, {
       ...init,
       headers,
+      // Send the httpOnly refresh cookie so cross-subdomain auth flows (and
+      // context switches that rotate it) work; CORS already allows credentials.
+      credentials: 'include',
     })
+
+    if (response.status === 401 && onUnauthorized && !retried) {
+      const renewedToken = await onUnauthorized()
+      if (renewedToken) {
+        activeToken = renewedToken
+        return request<TData>(path, init, true)
+      }
+    }
 
     if (!response.ok) {
       throw await toApiError(response)

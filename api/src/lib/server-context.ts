@@ -441,7 +441,11 @@ export const createServerContext = () => {
     return timingSafeEqual(leftBuffer, rightBuffer)
   }
 
-  const buildLocalSession = async (userId: string, roles: string[]) => {
+  const buildLocalSession = async (
+    userId: string,
+    roles: string[],
+    provider?: { providerId: string; providerType: SessionTokenClaims['providerType'] },
+  ) => {
     // Resolve user's actual memberships from DB instead of hardcoded bootstrap IDs
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -464,8 +468,8 @@ export const createServerContext = () => {
         proj: projId,
         team: teamId,
         roles: resolvedRoles,
-        providerId: LOCAL_AUTH_PROVIDER_ID,
-        providerType: DEFAULT_LOCAL_PROVIDER_TYPE,
+        providerId: provider?.providerId ?? LOCAL_AUTH_PROVIDER_ID,
+        providerType: provider?.providerType ?? DEFAULT_LOCAL_PROVIDER_TYPE,
       },
       authSecret,
       config.auth.tokenTtlSeconds,

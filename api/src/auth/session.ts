@@ -30,7 +30,7 @@ export const issueSessionToken = (
   input: SessionTokenInput,
   secret: string,
   ttlSeconds: number,
-): { expiresAt: string; token: string } => {
+): { expiresAt: string; sessionId: string; token: string } => {
   const issuedAt = Math.floor(Date.now() / 1000)
   const claims: SessionTokenClaims = {
     ...input,
@@ -46,6 +46,7 @@ export const issueSessionToken = (
   return {
     token: `${header}.${payload}.${signature}`,
     expiresAt: new Date(claims.exp * 1000).toISOString(),
+    sessionId: claims.sid,
   }
 }
 

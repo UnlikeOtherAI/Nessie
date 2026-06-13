@@ -15,6 +15,7 @@ if (existsSync(envFile)) {
     if (!(key in process.env)) process.env[key] = val
   }
 }
+import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import websocket from '@fastify/websocket'
@@ -198,6 +199,7 @@ export const buildApp = async () => {
       mode: config.mode,
     }),
   })
+  await app.register(cookie)
   await app.register(websocket)
   // File uploads / attachments slice: 25 MB ceiling, single file per request.
   await app.register(multipart, {

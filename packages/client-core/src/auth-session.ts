@@ -50,6 +50,9 @@ export type AuthSessionApi = {
   fetchSession: (token: string | null) => Promise<SessionSnapshot>
   login: (input: LoginInput) => Promise<SessionPayload>
   logout: (token: string | null) => Promise<void>
+  // Renew the access token from the httpOnly refresh cookie. Returns the new
+  // session, or null when there is no valid refresh cookie.
+  refresh: () => Promise<SessionPayload | null>
 }
 
 const normaliseBaseUrl = (baseUrl: string): string => baseUrl.trim().replace(/\/$/, '')
@@ -76,7 +79,9 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
   const resolvedBaseUrl = normaliseBaseUrl(baseUrl)
 
   const fetchProviders = async (): Promise<AuthProviderDescriptor[]> => {
-    const response = await fetch(`${resolvedBaseUrl}/api/auth/providers`)
+    const response = await fetch(`${resolvedBaseUrl}/api/auth/providers`, {
+      credentials: 'include',
+    })
     if (!response.ok) {
       return []
     }
@@ -85,7 +90,10 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
 
   const fetchSession = async (token: string | null): Promise<SessionSnapshot> => {
     const headers = token ? { authorization: `Bearer ${token}` } : undefined
-    const response = await fetch(`${resolvedBaseUrl}/api/auth/me`, { headers })
+    const response = await fetch(`${resolvedBaseUrl}/api/auth/me`, {
+      headers,
+      credentials: 'include',
+    })
 
     if (response.status === 401) {
       return { kind: 'unauthenticated' }
@@ -108,6 +116,9 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
+      // Required so the browser stores the httpOnly refresh cookie returned by
+      // a cross-origin login.
+      credentials: 'include',
     })
 
     if (!response.ok) {
@@ -120,7 +131,9 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
   return {
     bootstrap: (input) => postSession('/api/auth/bootstrap', input),
     devLogin: async () => {
-      const response = await fetch(`${resolvedBaseUrl}/api/auth/dev-login`)
+      const response = await fetch(`${resolvedBaseUrl}/api/auth/dev-login`, {
+        credentials: 'include',
+      })
       if (!response.ok) {
         throw new Error(await parseApiError(response))
       }
@@ -130,13 +143,22 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
     fetchSession,
     login: (input) => postSession('/api/auth/session', input),
     logout: async (token) => {
-      if (!token) {
-        return
-      }
       await fetch(`${resolvedBaseUrl}/api/auth/session`, {
         method: 'DELETE',
-        headers: { authorization: `Bearer ${token}` },
+        headers: token ? { authorization: `Bearer ${token}` } : undefined,
+        // Send the refresh cookie so the server can revoke the token family.
+        credentials: 'include',
       }).catch(() => undefined)
+    },
+    refresh: async () => {
+      const response = await fetch(`${resolvedBaseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(() => null)
+      if (!response || !response.ok) {
+        return null
+      }
+      return parseResponse<SessionPayload>(response)
     },
   }
 }

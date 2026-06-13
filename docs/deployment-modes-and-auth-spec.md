@@ -231,21 +231,25 @@ Claims:
 
 #### Token lifecycle
 
-- issued by `POST /api/auth/session` (login) or `POST /api/auth/bootstrap` (first user)
+- the access JWT is **short-lived**: default 30 minutes, configurable via `NESSIE_AUTH_TOKEN_TTL`
+- issued by `POST /api/auth/session` (login), `POST /api/auth/bootstrap` (first user), `GET /api/auth/dev-login`, `POST /api/auth/switch-context`, and `POST /api/auth/refresh`
 - sent by the client as `Authorization: Bearer <token>` header on every request
-- default expiry: 24 hours for local mode, configurable via `NESSIE_AUTH_TOKEN_TTL`
-- no refresh tokens in Phase 1 — user re-authenticates on expiry
-- `DELETE /api/auth/session` is a client-side token discard (the server does not track active sessions in Phase 1; JWT is stateless)
+- alongside the access token, every minting route sets a **rotating refresh token** in an httpOnly cookie (`nessie_refresh`, scoped to `/api/auth`); the client silently renews via `POST /api/auth/refresh` when the access token 401s or on app start
 
-#### Phase 2 JWT evolution
+#### Refresh tokens (rotating, server-tracked)
 
-Phase 1 hardcodes a single project/team in JWT claims. Phase 2 must evolve to support multi-project:
+- the refresh token is an opaque 256-bit value; only its SHA-256 hash is stored (table `refresh_tokens`), never the raw value
+- TTL default 30 days, configurable via `NESSIE_AUTH_REFRESH_TOKEN_TTL`
+- **rotation:** each `POST /api/auth/refresh` revokes the presented token and issues a successor in the same `family_id`, returning a fresh access token + a new refresh cookie. The original login provider is preserved across refresh; org/role membership is re-resolved each time
+- **reuse detection:** presenting an already-revoked token (token theft) revokes the entire family, forcing re-login
+- **revocation:** `DELETE /api/auth/session` (logout) is now **public** and cookie-driven — it revokes the token family server-side and clears the cookie, so a session can be killed even after the access token has expired. The access JWT itself remains stateless (verified by signature + `exp`)
+- cookie attributes: `HttpOnly`, `SameSite=None; Secure` in hosted/self-hosted (admin and API are different subdomains), `SameSite=Lax` over http in local (same origin via the Vite proxy)
 
-- `proj` and `team` claims become the user's **active** project and team, not their only one
-- `GET /api/auth/me` returns available projects and teams for the user
-- project/team switching: `POST /api/auth/context` with `{ projectId, teamId }` → issues a new JWT with updated claims
+#### Active project/team
+
+- `proj` and `team` claims are the user's **active** project and team, not their only one
+- project/team switching: `POST /api/auth/switch-context` with `{ organizationId, projectId, teamId }` → issues a new JWT with updated claims (and rotates the refresh cookie)
 - the active project/team determines the default scope for channel listing, agent discovery, and policy evaluation
-- refresh tokens may be introduced in Phase 2 to improve UX during context switching
 
 #### Server-side signing secret
 
@@ -312,6 +316,8 @@ On every request:
 - `GET /api/auth/me` (during bootstrap mode only — returns bootstrap detection response)
 - `POST /api/auth/bootstrap`
 - `POST /api/auth/session`
+- `POST /api/auth/refresh` (identity comes from the httpOnly refresh cookie, not a Bearer token)
+- `DELETE /api/auth/session` (logout; revokes the refresh-token family via the cookie)
 
 Mark public routes with a Fastify route option:
 

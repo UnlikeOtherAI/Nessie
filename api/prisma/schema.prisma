@@ -604,9 +604,35 @@ model User {
   mcpCatalogReviewed  McpCatalogEntry[]    @relation("McpCatalogReviewer")
   statuses            UserStatus[]
   feedback            Feedback[]
+  refreshTokens       RefreshToken[]
   avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
+}
+
+// Rotating refresh tokens for the short-lived access JWT. Only the SHA-256 hash
+// of the opaque token is stored (never the raw value). Each login starts a
+// `familyId` chain; on every refresh the presented token is revoked and a
+// successor is issued in the same family. Presenting an already-revoked token
+// (reuse) revokes the whole family — the standard theft-detection guard.
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  familyId     String    @map("family_id") @db.Uuid
+  sessionId    String    @map("session_id") @db.Uuid
+  providerId   String    @map("provider_id")
+  providerType String    @map("provider_type")
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
 }
 
 model Organization {

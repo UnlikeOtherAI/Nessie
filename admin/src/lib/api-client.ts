@@ -10,8 +10,11 @@ export const getBaseUrl = (): string => {
   return configuredBaseUrl ? configuredBaseUrl.replace(/\/$/, '') : ''
 }
 
-export const createApiClient = (token: string | null): ApiClient =>
-  createCoreApiClient({ baseUrl: getBaseUrl(), token })
+export const createApiClient = (
+  token: string | null,
+  onUnauthorized?: () => Promise<string | null>,
+): ApiClient =>
+  createCoreApiClient({ baseUrl: getBaseUrl(), token, onUnauthorized })
 
 // Re-export the shared API data-shape + schema types so existing
 // `import { ... } from '../lib/api-client'` call sites keep working.

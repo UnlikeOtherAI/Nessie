@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { Prisma } from '@prisma/client'
 
 import { MeResponseSchema, UpdateMyAvatarRequestSchema, UpdatePreferencesSchema } from '@nessie/schemas'
@@ -26,6 +26,13 @@ import { buildExternalAuthAuthorizeUrl, exchangeExternalAuthCode } from '../serv
 import { seedDefaultPolicies } from '../services/policy.js'
 import { buildConfigJwt, buildPublicJwks, isUoaConfigured, loadUoaSettings } from '../services/uoa-auth.js'
 import { createUserForOrganization, loadSessionUserByEmail } from '../services/users.js'
+import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../lib/refresh-cookie.js'
+import {
+  issueRefreshToken,
+  revokeRefreshTokenByRaw,
+  rotateRefreshToken,
+  validateRefreshToken,
+} from '../services/refresh-token.js'
 import type { RouteDeps } from './types.js'
 
 const CREATED_AT_ASC = { createdAt: 'asc' } as const
@@ -49,6 +56,25 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
   const { config, prisma, authSecret, DEFAULT_LOCAL_PROVIDER_TYPE } = deps
   const { requireActorContext, resolveBootstrapState, clearBootstrapState, getAuthorizationToken } = deps
   const { authenticateRequest, buildLocalSession, buildSessionForUser } = deps
+
+  // Mint a rotating refresh token for a freshly issued session and drop it in
+  // the httpOnly cookie. Called from every access-token-minting route so a
+  // login of any kind can be silently renewed for the refresh TTL window.
+  const issueRefreshCookie = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    params: { userId: string; sessionId: string; providerId: string; providerType: string },
+  ): Promise<void> => {
+    const { rawToken } = await issueRefreshToken(prisma, {
+      userId: params.userId,
+      sessionId: params.sessionId,
+      providerId: params.providerId,
+      providerType: params.providerType,
+      ttlSeconds: config.auth.refreshTokenTtlSeconds,
+      userAgent: request.headers['user-agent'] ?? null,
+    })
+    setRefreshCookie(reply, rawToken, config, config.auth.refreshTokenTtlSeconds)
+  }
 
   app.get('/api/auth/providers', { config: { public: true } }, async () =>
     createApiResponse(AuthProviderDescriptorSchema.array().parse(listAuthProviders(config))),
@@ -274,6 +300,13 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
+    await issueRefreshCookie(request, reply, {
+      userId: result.user.id,
+      sessionId: session.sessionId,
+      providerId: verification.claims.providerId,
+      providerType: verification.claims.providerType,
+    })
+
     return reply.code(201).send(
       createApiResponse({
         token: session.token,
@@ -403,6 +436,13 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
           return reply
         }
 
+        await issueRefreshCookie(request, reply, {
+          userId: sessionUser.id,
+          sessionId: session.sessionId,
+          providerId: verification.claims.providerId,
+          providerType: verification.claims.providerType,
+        })
+
         return createApiResponse({
           token: session.token,
           me: MeResponseSchema.parse(await buildMeResponse(prisma, sessionUser, verification.claims, config)),
@@ -443,6 +483,13 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')
       return reply
     }
+
+    await issueRefreshCookie(request, reply, {
+      userId: user.id,
+      sessionId: session.sessionId,
+      providerId: verification.claims.providerId,
+      providerType: verification.claims.providerType,
+    })
 
     return createApiResponse({
       token: session.token,
@@ -486,13 +533,81 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
+    await issueRefreshCookie(request, reply, {
+      userId: user.id,
+      sessionId: session.sessionId,
+      providerId: verification.claims.providerId,
+      providerType: verification.claims.providerType,
+    })
+
     return createApiResponse({
       token: session.token,
       me: MeResponseSchema.parse(await buildMeResponse(prisma, user, verification.claims, config)),
     })
   })
 
-  app.delete('/api/auth/session', async (_request, reply) => {
+  // Renew the short-lived access token from the rotating refresh cookie. Public
+  // because the expired access token is gone by definition — identity comes from
+  // the httpOnly cookie. Rotates the refresh token and re-resolves the user's
+  // current org/role membership on every call.
+  app.post('/api/auth/refresh', { config: { public: true } }, async (request, reply) => {
+    const rawToken = readRefreshCookie(request)
+    if (!rawToken) {
+      sendApiError(reply, 401, 'NO_REFRESH_TOKEN', 'No refresh token')
+      return reply
+    }
+
+    const validated = await validateRefreshToken(prisma, rawToken)
+    if (!validated.ok) {
+      clearRefreshCookie(reply, config)
+      sendApiError(reply, 401, 'REFRESH_INVALID', 'Refresh token is invalid or expired')
+      return reply
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: validated.userId } })
+    if (!user) {
+      clearRefreshCookie(reply, config)
+      sendApiError(reply, 401, 'USER_NOT_FOUND', 'User no longer exists')
+      return reply
+    }
+
+    const session = await buildLocalSession(validated.userId, [], {
+      providerId: validated.providerId,
+      providerType: validated.providerType as SessionTokenClaims['providerType'],
+    })
+    const verification = verifySessionToken(session.token, authSecret)
+    if (!verification.ok) {
+      sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')
+      return reply
+    }
+
+    const rotated = await rotateRefreshToken(prisma, {
+      previousId: validated.recordId,
+      familyId: validated.familyId,
+      userId: validated.userId,
+      sessionId: session.sessionId,
+      providerId: validated.providerId,
+      providerType: validated.providerType,
+      ttlSeconds: config.auth.refreshTokenTtlSeconds,
+      userAgent: request.headers['user-agent'] ?? null,
+    })
+    setRefreshCookie(reply, rotated.rawToken, config, config.auth.refreshTokenTtlSeconds)
+
+    return createApiResponse({
+      token: session.token,
+      me: MeResponseSchema.parse(await buildMeResponse(prisma, user, verification.claims, config)),
+    })
+  })
+
+  // Public so a session can be revoked even when the access token has already
+  // expired — identity for logout comes from the httpOnly refresh cookie, which
+  // is revoked server-side and cleared here so the session can't be resurrected.
+  app.delete('/api/auth/session', { config: { public: true } }, async (request, reply) => {
+    const rawToken = readRefreshCookie(request)
+    if (rawToken) {
+      await revokeRefreshTokenByRaw(prisma, rawToken)
+    }
+    clearRefreshCookie(reply, config)
     reply.code(204)
     return null
   })
@@ -569,6 +684,13 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       sendApiError(reply, 500, 'USER_NOT_FOUND', 'User not found')
       return reply
     }
+
+    await issueRefreshCookie(request, reply, {
+      userId,
+      sessionId: session.sessionId,
+      providerId: verification.claims.providerId,
+      providerType: verification.claims.providerType,
+    })
 
     return createApiResponse({
       token: session.token,
