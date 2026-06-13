@@ -326,12 +326,14 @@ that column):
   - **Full page** shows one full-width folder at a time with breadcrumbs.
   - **Column** uses sliding columns for folder traversal.
   - **Tree** shows an expandable/collapsible hierarchy with animated branches.
-  - **Page preview** (`PagePreview`) is always a full-width read-only document
-    view (status, title, summary, labels, rendered body, and a Sub-pages
-    section). Selecting a document from any browsing view opens this fullscreen
-    document state; **Back** pops to the parent document or browser root.
-  - **Editor** (`PageEditor`) and **version History** are also full-width, each
-    with a Back button.
+  - **Page preview** (`PagePreview`) is a read-only document view (status, title,
+    summary, labels, rendered body, and a Sub-pages section) rendered on a
+    centered white "sheet" (`.kb-reader`) so content reads like paper — the sheet
+    stays white with dark text under **any** theme. Selecting a document from any
+    browsing view opens this document state; **Back** pops to the parent document
+    or browser root.
+  - **Editor** (`PageEditor`) and **version History** are full-width (the editor
+    fills the whole main area), each with a Back button.
 
 Shared state lives in `KnowledgeProvider`
 (`admin/src/components/features/knowledge/`), which wraps the sidebar and the
@@ -354,8 +356,10 @@ lists/quote/code/link). Rendering uses `RichTextContent`, a **read-only** TipTap
 instance: parsing through the ProseMirror schema drops scripts, event handlers and
 unknown tags, so stored HTML cannot execute as markup — the content never reaches
 the DOM as a raw HTML string, so no separate sanitizer is needed. Editor and
-reader share the `.kb-prose` token-themed styles in `admin/src/styles.css`. Older
-plain-text bodies still render (as a paragraph).
+reader share the `.kb-prose` token-themed styles in `admin/src/styles.css`; the
+reader additionally wraps `.kb-prose` in the `.kb-reader` white sheet, which
+redeclares the light token palette so prose stays legible on white regardless of
+theme. Older plain-text bodies still render (as a paragraph).
 
 ## 10) Phase annotation
 
