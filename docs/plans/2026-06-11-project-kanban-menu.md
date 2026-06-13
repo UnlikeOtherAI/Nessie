@@ -464,3 +464,39 @@ WebKit/touch). dnd-kit *does* handle native scroll containers correctly.
   1280px), scrollbar hidden. No page errors. The original Safari/touch offset
   could not be reproduced headlessly (WebKit blocks synthetic `Touch`), so this
   is a root-cause structural fix to confirm on the iPad.
+
+## Update 2026-06-13 (5) — drop the drag overlay, settle on drop, pulse the card
+
+### No more drag overlay (the card drags in place)
+
+- Removed dnd-kit's `DragOverlay` + the `KanbanCardPreview` clone. The card now
+  drags **in place** via dnd-kit's `transform` on the card element itself
+  (raised with `z-50 shadow-xl`, full opacity — no more dimmed ghost + floating
+  semi-transparent copy). Because the card is positioned by its own transform
+  relative to its layout box, it tracks the pointer correctly regardless of page
+  scroll — this removes the last of the Safari/iPad "shadow offset by the scroll
+  amount" problem at the root (no fixed-positioned overlay to drift).
+
+### Settle onto a whole page on drop
+
+- On drop, the board scrolls (smooth) to the page that holds the column the card
+  was dropped into; if the card was released outside any column it settles to the
+  nearest page. So a drag-to-edge auto-scroll never leaves the board parked
+  mid-page.
+
+### Pulse the dropped card
+
+- A card that actually changes column on drop pulses **three times**
+  (`kanban-card-pulse` in `admin/src/styles.css`: scale 1→1.04 + an `--accent-soft`
+  ring, `0.34s × 3`). `KanbanBoard` tracks the moved task id (`pulseId`) and clears
+  it on `animationend`.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (admin) pass; pulse keyframe present
+  in the built CSS bundle.
+- Playwright (Chromium), 1680px: during a card drag there is **no**
+  `[data-kanban-card-preview]` and the dragged card carries a `translate3d`
+  transform (follows the pointer in place); dropping it on another column moves
+  it there, the landed card shows `kanban-card-pulse`, and the scroll stays
+  page-aligned. (Test card moved + restored, no data left changed.)

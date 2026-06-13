@@ -1179,6 +1179,23 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
+/* Kanban: pulse a card three times after it lands in a column from a drag. */
+.kanban-card-pulse {
+  animation: kanban-card-pulse 0.34s ease-in-out 3;
+}
+
+@keyframes kanban-card-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--accent-soft);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+}
+
 /* sp-messaging slice: transient highlight when jumping to a search result. */
 .admin-msg-highlight {
   animation: admin-msg-flash 1.6s ease-out;

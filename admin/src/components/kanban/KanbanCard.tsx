@@ -12,6 +12,9 @@ type KanbanCardProps = {
   projectName: string | null
   archived?: boolean
   onOpen: (task: TaskRecord) => void
+  // Pulse the card briefly after it lands in a column from a drag.
+  pulse?: boolean
+  onPulseEnd?: () => void
 }
 
 const chip = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold'
@@ -72,17 +75,15 @@ const KanbanCardContent = ({
   </>
 )
 
-export const KanbanCardPreview = ({ task, showProject, projectName }: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName'>) => (
-  <div
-    className="admin-card grid select-none gap-2 p-3 shadow-xl"
-    data-kanban-card-preview
-    style={{ touchAction: 'none', width: 'min(337px, calc(100vw - 48px))' }}
-  >
-    <KanbanCardContent archived={false} projectName={projectName} showProject={showProject} task={task} />
-  </div>
-)
-
-export const KanbanCard = ({ task, showProject, projectName, archived = false, onOpen }: KanbanCardProps) => {
+export const KanbanCard = ({
+  task,
+  showProject,
+  projectName,
+  archived = false,
+  onOpen,
+  pulse = false,
+  onPulseEnd,
+}: KanbanCardProps) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     disabled: archived,
@@ -102,8 +103,10 @@ export const KanbanCard = ({ task, showProject, projectName, archived = false, o
     onOpen(task)
   }
 
+  // The card itself follows the pointer (no separate drag overlay), so its
+  // position is always correct regardless of page scroll. Raise it while dragging.
   const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, opacity: isDragging ? 0.4 : 1 }
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined
 
   return (
@@ -113,9 +116,12 @@ export const KanbanCard = ({ task, showProject, projectName, archived = false, o
       {...listeners}
       data-kanban-card
       className={[
-        'admin-card grid select-none gap-2 p-3',
+        'admin-card grid select-none gap-2 p-3 transition-shadow',
         archived ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
+        isDragging ? 'relative z-50 shadow-xl' : '',
+        pulse ? 'kanban-card-pulse' : '',
       ].join(' ')}
+      onAnimationEnd={pulse ? onPulseEnd : undefined}
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       style={{ ...style, touchAction: 'none' }}

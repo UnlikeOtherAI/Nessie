@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
-  DragOverlay,
   MeasuringStrategy,
   MouseSensor,
   TouchSensor,
@@ -12,7 +11,7 @@ import {
 } from '@dnd-kit/core'
 import { type TaskRecord } from '../../facades/tasks/hooks'
 import { ArchiveDoneMenu } from './ArchiveDoneMenu'
-import { KanbanCard, KanbanCardPreview } from './KanbanCard'
+import { KanbanCard } from './KanbanCard'
 import { KanbanColumn } from './KanbanColumn'
 import { TaskDialog } from './TaskDialog'
 import {
@@ -56,7 +55,9 @@ export const KanbanBoard = ({
 }: KanbanBoardProps) => {
   const [showArchived, setShowArchived] = useState(false)
   const [activeTask, setActiveTask] = useState<TaskRecord | null>(null)
-  const [draggingTask, setDraggingTask] = useState<TaskRecord | null>(null)
+  const [isDraggingCard, setIsDraggingCard] = useState(false)
+  // Card to pulse after it lands in a column from a drag.
+  const [pulseId, setPulseId] = useState<string | null>(null)
   const [viewportWidth, setViewportWidth] = useState(0)
   const [page, setPage] = useState(0)
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -65,7 +66,6 @@ export const KanbanBoard = ({
     useSensor(MouseSensor, MOUSE_ACTIVATION),
     useSensor(TouchSensor, TOUCH_ACTIVATION),
   )
-  const isDraggingCard = draggingTask !== null
 
   // How many columns fit at >= MIN_COLUMN_PX, and how that splits into pages.
   const columnCount = Math.max(columns.length, 1)
@@ -130,25 +130,46 @@ export const KanbanBoard = ({
     if (page > pageCount - 1) showPage(pageCount - 1)
   }, [page, pageCount, showPage])
 
-  const handleDragStart = (event: DragStartEvent) => {
-    setDraggingTask(tasks.find((t) => t.id === String(event.active.id)) ?? null)
+  // Whatever page the auto-scroll left us on, settle onto a whole page.
+  const settleNearestPage = useCallback(() => {
+    const viewport = viewportRef.current
+    if (!viewport || !viewport.clientWidth) return
+    showPage(Math.round(viewport.scrollLeft / viewport.clientWidth))
+  }, [showPage])
+
+  const handleDragStart = (_event: DragStartEvent) => {
+    setIsDraggingCard(true)
   }
 
-  const clearDraggingTask = () => setDraggingTask(null)
+  const handleDragCancel = () => {
+    setIsDraggingCard(false)
+    settleNearestPage()
+  }
 
   const handleDragEnd = (event: DragEndEvent) => {
-    clearDraggingTask()
+    setIsDraggingCard(false)
     const { active, over } = event
-    if (!over) return
+    if (!over) {
+      settleNearestPage()
+      return
+    }
     const columnId = String(over.id)
+    // Finish on the page that holds the column the card was dropped into.
+    const columnIndex = columns.findIndex((column) => column.id === columnId)
+    showPage(columnIndex >= 0 ? Math.floor(columnIndex / perPage) : Math.round(
+      (viewportRef.current?.scrollLeft ?? 0) / (viewportRef.current?.clientWidth || 1),
+    ))
     const task = tasks.find((t) => t.id === String(active.id))
     if (!task || placeTask(task, columns) === columnId) return
     onMoveTask(task.id, columnId)
+    setPulseId(task.id)
   }
 
   const cardProps = (task: TaskRecord) => ({
     onOpen: setActiveTask,
+    onPulseEnd: () => setPulseId((current) => (current === task.id ? null : current)),
     projectName: task.projectId ? projectNameById[task.projectId] ?? null : null,
+    pulse: pulseId === task.id,
     showProject,
     task,
   })
@@ -158,7 +179,7 @@ export const KanbanBoard = ({
       <DndContext
         measuring={DND_MEASURING}
         sensors={sensors}
-        onDragCancel={clearDraggingTask}
+        onDragCancel={handleDragCancel}
         onDragEnd={handleDragEnd}
         onDragStart={handleDragStart}
       >
@@ -213,15 +234,6 @@ export const KanbanBoard = ({
             </div>
           ))}
         </div>
-        <DragOverlay dropAnimation={null}>
-          {draggingTask ? (
-            <KanbanCardPreview
-              projectName={draggingTask.projectId ? projectNameById[draggingTask.projectId] ?? null : null}
-              showProject={showProject}
-              task={draggingTask}
-            />
-          ) : null}
-        </DragOverlay>
       </DndContext>
 
       <div className="mt-3 border-t border-[color:var(--sep)] pt-3">
