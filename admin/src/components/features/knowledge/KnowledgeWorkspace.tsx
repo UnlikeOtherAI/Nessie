@@ -18,6 +18,7 @@ import { FileVersionUploadDialog } from './FileVersionUploadDialog'
 import { KnowledgeFilesystemBrowser } from './KnowledgeFilesystemBrowser'
 import { useKnowledge } from './KnowledgeProvider'
 import { KnowledgePane } from './KnowledgePane'
+import { StorageUsageMeter } from './StorageUsageMeter'
 import {
   isKnowledgeViewMode,
   KnowledgeViewToggle,
@@ -246,6 +247,7 @@ export const KnowledgeWorkspace = () => {
         actions={
           selectedSpaceId ? (
             <>
+              <StorageUsageMeter />
               <button
                 className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
                 onClick={() => fileInputRef.current?.click()}

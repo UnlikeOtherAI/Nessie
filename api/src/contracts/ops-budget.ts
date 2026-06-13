@@ -80,6 +80,10 @@ export const BudgetStatusResponseSchema = z.object({
   level: z.enum(['ok', 'warn', 'over']),
   percentUsed: z.number().int().nonnegative().nullable(),
   costTrackingActive: z.boolean(),
+  // Storage quota for this scope (BigInt bytes serialized as strings). limit is
+  // null when no cap is configured; used is the current stored-bytes total.
+  storageLimitBytes: z.string().nullable(),
+  storageUsedBytes: z.string(),
 })
 
 export const SetBudgetBodySchema = z
@@ -94,6 +98,9 @@ export const SetBudgetBodySchema = z
     blockHumansWhenOver: z.boolean(),
     degradeModel: z.string().min(1).nullable(),
     degradeProvider: z.string().min(1).nullable(),
+    // Storage quota in bytes for this scope (null = unlimited). Within JS safe
+    // integer range up to ~9 PB, so a plain number is sufficient from the client.
+    storageLimitBytes: z.number().int().nonnegative().nullable().default(null),
   })
   // Degrade mode is meaningless without a fallback model; reject the config rather
   // than letting checkBudget silently fall back to allowing over-budget runs.

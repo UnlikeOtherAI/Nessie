@@ -29,6 +29,10 @@ export type AnthropicMessagesResponse = {
     prompt_tokens?: number
     completion_tokens?: number
     total_tokens?: number
+    // Anthropic-style cache accounting (reported separately from input_tokens).
+    cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
+    // Kimi-style cache accounting (a subset of prompt_tokens).
     cached_tokens?: number
   }
 }
@@ -82,12 +86,21 @@ export const usageFromAnthropic = (
   if (!usage) {
     return {}
   }
-  const input = usage.input_tokens ?? usage.prompt_tokens ?? 0
   const output = usage.output_tokens ?? usage.completion_tokens ?? 0
+  const cacheRead = usage.cache_read_input_tokens ?? usage.cached_tokens ?? 0
+  const cacheWrite = usage.cache_creation_input_tokens ?? 0
+  const rawInput = usage.input_tokens ?? usage.prompt_tokens ?? 0
+  // Anthropic reports cache_read_input_tokens separately from input_tokens; Kimi
+  // reports cached_tokens as a subset of prompt_tokens. Only subtract in the
+  // subset case so non-cached input is counted exactly once.
+  const subsetCache = usage.cache_read_input_tokens === undefined && usage.cached_tokens !== undefined
+  const input = subsetCache ? Math.max(0, rawInput - cacheRead) : rawInput
   return {
     inputTokens: input,
     outputTokens: output,
-    totalTokens: usage.total_tokens ?? input + output,
+    ...(cacheRead > 0 ? { cacheReadTokens: cacheRead } : {}),
+    ...(cacheWrite > 0 ? { cacheWriteTokens: cacheWrite } : {}),
+    totalTokens: usage.total_tokens ?? input + cacheRead + cacheWrite + output,
   }
 }
 

@@ -276,9 +276,11 @@ Local dev keeps `filesystem` (zero setup); to exercise the S3 path locally, run 
 MinIO container and set the `NESSIE_STORAGE_*` vars.
 
 Every store/delete updates the `storage_usage_events` ledger, so per-org/team/
-space/uploader usage is always known; a per-scope cap is set via
-`Budget.storageLimitBytes` and blocks uploads (HTTP 507) when exceeded. `MinIO`
-data lives in the `nessie_miniodata` volume — back it up alongside `nessie_pgdata`.
+space/uploader usage is always known; a per-scope cap (`Budget.storageLimitBytes`)
+blocks uploads (HTTP 507) when exceeded. The cap is set in the admin **Budgets**
+screen ("Storage cap (GB)") alongside spend caps, and current usage shows in the
+knowledge-base header. `MinIO` data lives in the `nessie_miniodata` volume — back
+it up alongside `nessie_pgdata`.
 
 ### MCP OAuth secret store
 

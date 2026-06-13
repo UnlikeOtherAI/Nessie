@@ -23,6 +23,18 @@ type BudgetStatus = {
   level: 'ok' | 'warn' | 'over'
   percentUsed: number | null
   costTrackingActive: boolean
+  storageLimitBytes: string | null
+  storageUsedBytes: string
+}
+
+const BYTES_PER_GB = 1024 ** 3
+
+const formatBytes = (bytes: number): string => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / 1024 ** exponent
+  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
 }
 
 const sectionTitle =
@@ -67,6 +79,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
   const [blockHumans, setBlockHumans] = useState(false)
   const [degradeModel, setDegradeModel] = useState('')
   const [degradeProvider, setDegradeProvider] = useState('openai')
+  const [storageCapGb, setStorageCapGb] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
 
   const resetForm = () => {
@@ -80,6 +93,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
     setBlockHumans(false)
     setDegradeModel('')
     setDegradeProvider('openai')
+    setStorageCapGb('')
   }
 
   const invalidate = () => {
@@ -123,12 +137,18 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
       setFormError('Degrade mode needs a fallback model to route to.')
       return
     }
+    const storageGb = parseLimit(storageCapGb, false)
+    if (storageGb === 'invalid') {
+      setFormError('Storage cap must be a non-negative number of GB — leave blank for no cap.')
+      return
+    }
     setFormError(null)
     save.mutate({
       scopeType,
       scopeId: resolvedScopeId,
       costLimitUsd: cost,
       tokenLimit: tokens,
+      storageLimitBytes: storageGb === null ? null : Math.round(storageGb * BYTES_PER_GB),
       mode,
       period,
       warnThresholdPercent: threshold,
@@ -149,6 +169,9 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
     setBlockHumans(b.blockHumansWhenOver)
     setDegradeModel(b.degradeModel ?? '')
     setDegradeProvider(b.degradeProvider ?? 'openai')
+    setStorageCapGb(
+      b.storageLimitBytes ? String(Number(b.storageLimitBytes) / BYTES_PER_GB) : '',
+    )
   }
 
   const scopeLabel = (b: BudgetStatus): string => {
@@ -227,6 +250,22 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
             <option value="monthly">Monthly</option>
             <option value="yearly">Yearly</option>
           </select>
+        </label>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="text-xs text-[color:var(--tx2)]">
+          Storage cap (GB)
+          <input
+            className="admin-input mt-1"
+            inputMode="decimal"
+            onChange={(e) => setStorageCapGb(e.target.value)}
+            placeholder="No cap"
+            value={storageCapGb}
+          />
+          <span className="mt-1 block text-[11px] text-[color:var(--tx3)]">
+            Blocks uploads for this scope once exceeded (applies in any mode).
+          </span>
         </label>
       </div>
 
@@ -342,6 +381,12 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
               {formatTokens(b.spentTokens)} tokens · {formatUsd(b.spentUsd)} this {b.period.replace('ly', '')}
               {b.costLimitUsd != null && ` · cap ${formatUsd(b.costLimitUsd)}`}
               {b.tokenLimit != null && ` · cap ${formatTokens(b.tokenLimit)} tok`}
+            </div>
+            <div className="mt-1 text-xs text-[color:var(--tx2)]">
+              {formatBytes(Number(b.storageUsedBytes))} stored
+              {b.storageLimitBytes != null
+                ? ` of ${formatBytes(Number(b.storageLimitBytes))} cap`
+                : ' · no storage cap'}
             </div>
             <div className="mt-2 flex gap-2">
               <button

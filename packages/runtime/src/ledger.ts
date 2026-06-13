@@ -182,17 +182,24 @@ const calculateEstimatedCost = (
   if (usage.outputTokens && pricing.outputPerMillion) {
     amount += (usage.outputTokens / 1_000_000) * pricing.outputPerMillion
   }
-  if (usage.cachedInputTokens && pricing.cachedInputPerMillion) {
-    amount += (usage.cachedInputTokens / 1_000_000) * pricing.cachedInputPerMillion
+  // Cache rates fall back to the matching base rate so cached tokens are never
+  // billed at $0 when only input/output rates are configured. When a cheaper
+  // cache rate IS set, the discount is applied.
+  const cacheInputRate = pricing.cachedInputPerMillion ?? pricing.inputPerMillion
+  if (usage.cachedInputTokens && cacheInputRate) {
+    amount += (usage.cachedInputTokens / 1_000_000) * cacheInputRate
   }
-  if (usage.cachedOutputTokens && pricing.cachedOutputPerMillion) {
-    amount += (usage.cachedOutputTokens / 1_000_000) * pricing.cachedOutputPerMillion
+  const cacheOutputRate = pricing.cachedOutputPerMillion ?? pricing.outputPerMillion
+  if (usage.cachedOutputTokens && cacheOutputRate) {
+    amount += (usage.cachedOutputTokens / 1_000_000) * cacheOutputRate
   }
-  if (usage.cacheReadTokens && pricing.cacheReadPerMillion) {
-    amount += (usage.cacheReadTokens / 1_000_000) * pricing.cacheReadPerMillion
+  const cacheReadRate = pricing.cacheReadPerMillion ?? pricing.inputPerMillion
+  if (usage.cacheReadTokens && cacheReadRate) {
+    amount += (usage.cacheReadTokens / 1_000_000) * cacheReadRate
   }
-  if (usage.cacheWriteTokens && pricing.cacheWritePerMillion) {
-    amount += (usage.cacheWriteTokens / 1_000_000) * pricing.cacheWritePerMillion
+  const cacheWriteRate = pricing.cacheWritePerMillion ?? pricing.inputPerMillion
+  if (usage.cacheWriteTokens && cacheWriteRate) {
+    amount += (usage.cacheWriteTokens / 1_000_000) * cacheWriteRate
   }
   return amount
 }

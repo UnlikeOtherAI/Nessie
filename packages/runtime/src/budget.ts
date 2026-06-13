@@ -55,6 +55,9 @@ export type BudgetStatus = {
   level: BudgetLevel
   percentUsed: number | null
   costTrackingActive: boolean
+  // Storage quota for this scope (BigInt bytes as strings for JSON safety).
+  storageLimitBytes: string | null
+  storageUsedBytes: string
 }
 
 type BudgetRow = {
@@ -63,6 +66,7 @@ type BudgetRow = {
   scopeId: string
   costLimitUsd: number | null
   tokenLimit: number | null
+  storageLimitBytes: bigint | null
   mode: BudgetMode
   period: BudgetPeriod
   warnThresholdPercent: number
@@ -83,6 +87,7 @@ const toBudgetRow = (raw: RawBudgetRow): BudgetRow => ({
   scopeId: raw.scopeId,
   costLimitUsd: raw.costLimitUsd === null ? null : raw.costLimitUsd.toNumber(),
   tokenLimit: raw.tokenLimit,
+  storageLimitBytes: raw.storageLimitBytes,
   mode: raw.mode,
   period: raw.period,
   warnThresholdPercent: raw.warnThresholdPercent,
@@ -225,10 +230,22 @@ export const checkBudget = async (
   return { action: 'block', reason }
 }
 
+// Stored-bytes usage scope for a budget row (org scopeId is the organization id).
+const storageScopeForRow = (row: BudgetRow) => {
+  if (row.scopeType === 'project') {
+    return { organizationId: row.organizationId, projectId: row.scopeId }
+  }
+  if (row.scopeType === 'team') {
+    return { organizationId: row.organizationId, teamId: row.scopeId }
+  }
+  return { organizationId: row.scopeId }
+}
+
 const statusForRow = async (prisma: PrismaClient, row: BudgetRow): Promise<BudgetStatus> => {
-  const [{ spentUsd, spentTokens }, pricingProfiles] = await Promise.all([
+  const [{ spentUsd, spentTokens }, pricingProfiles, storageUsedBytes] = await Promise.all([
     getPeriodUsage(prisma, scopeUsageWhere(row), row.period),
     prisma.modelPricingProfile.count({ where: { organizationId: row.organizationId } }),
+    currentStorageUsageBytes(prisma, storageScopeForRow(row)),
   ])
   const over = overCapReason(row, spentUsd, spentTokens) !== null
   const percentUsed = maxPercent(row, spentUsd, spentTokens)
@@ -250,6 +267,8 @@ const statusForRow = async (prisma: PrismaClient, row: BudgetRow): Promise<Budge
     level,
     percentUsed,
     costTrackingActive: pricingProfiles > 0,
+    storageLimitBytes: row.storageLimitBytes === null ? null : row.storageLimitBytes.toString(),
+    storageUsedBytes: storageUsedBytes.toString(),
   }
 }
 
@@ -274,6 +293,7 @@ export const setBudgetConfig = async (
     scopeId: string
     costLimitUsd: number | null
     tokenLimit: number | null
+    storageLimitBytes?: number | null
     mode: BudgetMode
     period: BudgetPeriod
     warnThresholdPercent: number
@@ -282,12 +302,15 @@ export const setBudgetConfig = async (
     degradeProvider: string | null
   },
 ): Promise<BudgetStatus> => {
-  const { organizationId, scopeType, scopeId, ...rest } = input
+  const { organizationId, scopeType, scopeId, storageLimitBytes, ...rest } = input
+  const storageData = {
+    storageLimitBytes: storageLimitBytes == null ? null : BigInt(storageLimitBytes),
+  }
   const row = toBudgetRow(
     await prisma.budget.upsert({
       where: { scopeType_scopeId: { scopeType, scopeId } },
-      create: { organizationId, scopeType, scopeId, ...rest },
-      update: { organizationId, ...rest },
+      create: { organizationId, scopeType, scopeId, ...rest, ...storageData },
+      update: { organizationId, ...rest, ...storageData },
     }),
   )
   return statusForRow(prisma, row)

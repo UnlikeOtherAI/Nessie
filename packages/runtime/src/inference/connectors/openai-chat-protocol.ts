@@ -15,6 +15,9 @@ export type OpenAiUsage = {
   completion_tokens: number
   prompt_tokens: number
   total_tokens?: number
+  // OpenAI automatic prompt caching: the cached subset of prompt_tokens, billed
+  // at a discount. prompt_tokens INCLUDES this value.
+  prompt_tokens_details?: { cached_tokens?: number }
 }
 
 export type OpenAiChatResponse = {
@@ -113,9 +116,16 @@ export const usageFromOpenAi = (
     return {}
   }
 
+  // OpenAI's prompt_tokens INCLUDES cached tokens; split them so the cached
+  // portion is billed at the (cheaper) cache-read rate and the cache-hit rate
+  // is observable instead of silently billed at full input price.
+  const cachedTokens = usage.prompt_tokens_details?.cached_tokens ?? 0
+  const nonCachedInput = Math.max(0, usage.prompt_tokens - cachedTokens)
+
   return {
-    inputTokens: usage.prompt_tokens,
+    inputTokens: nonCachedInput,
     outputTokens: usage.completion_tokens,
+    ...(cachedTokens > 0 ? { cacheReadTokens: cachedTokens } : {}),
     totalTokens:
       usage.total_tokens
       ?? usage.prompt_tokens + usage.completion_tokens,
