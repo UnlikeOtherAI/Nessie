@@ -3,22 +3,16 @@ import type { AgentRecord } from '../../../lib/api-client'
 import { usePresenceLookup, type PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { MessageAttachments } from '../../shared/MessageAttachments'
+import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelMessageActions } from './ChannelMessageActions'
 import {
   formatClock,
-  getAgentGlyph,
   getDisplayName,
   type FeedItem,
   type MessageUserIdentity,
   type OptimisticMessage,
+  type PendingStreamMessage,
 } from './channel-helpers'
-
-interface PendingStreamMessage {
-  agentId: string
-  content: string
-  reasoningContent: string
-  runId: string
-}
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -83,6 +77,7 @@ interface ChannelMessageFeedProps {
   onCancelEdit: () => void
   onAddReaction: (messageId: string, emoji: string) => void
   onConfirmDelete: (messageId: string) => void
+  onSelectAgent?: (agent: AgentRecord) => void
   onSelectUser?: (user: MessageUserIdentity) => void
 }
 
@@ -107,6 +102,7 @@ export const ChannelMessageFeed = ({
   onCancelEdit,
   onAddReaction,
   onConfirmDelete,
+  onSelectAgent,
   onSelectUser,
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
@@ -205,6 +201,10 @@ export const ChannelMessageFeed = ({
         const canManageOwnMessage =
           item.message.role === 'user' && item.message.userId === meUserId
         const isEditingMessage = editingMessageId === item.message.id
+        const messageAgent =
+          item.message.role === 'assistant' && onSelectAgent
+            ? agentMap.get(item.message.agentId ?? '') ?? null
+            : null
         const authorIdentity =
           item.message.role === 'user' &&
           item.message.userId &&
@@ -222,6 +222,12 @@ export const ChannelMessageFeed = ({
           event.stopPropagation()
           if (authorIdentity) {
             onSelectUser?.(authorIdentity)
+          }
+        }
+        const selectAgent = (event: MouseEvent<HTMLButtonElement>) => {
+          event.stopPropagation()
+          if (messageAgent) {
+            onSelectAgent?.(messageAgent)
           }
         }
 
@@ -247,16 +253,17 @@ export const ChannelMessageFeed = ({
             }}
             tabIndex={0}
           >
-            {item.message.role === 'assistant' ? (
-              <div
-                className={[
-                  'flex h-9 w-9 flex-shrink-0 items-center justify-center',
-                  'rounded-lg border border-[var(--accent)]',
-                  'bg-[var(--accent-soft)] text-lg',
-                ].join(' ')}
+            {messageAgent ? (
+              <button
+                aria-label={`Open ${displayName}`}
+                className="rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                onClick={selectAgent}
+                type="button"
               >
-                {getAgentGlyph(agentMap.get(item.message.agentId ?? ''))}
-              </div>
+                <ChannelAgentGlyph agent={messageAgent} />
+              </button>
+            ) : item.message.role === 'assistant' ? (
+              <ChannelAgentGlyph agent={agentMap.get(item.message.agentId ?? '')} />
             ) : authorIdentity ? (
               <button
                 aria-label={`Open ${displayName}`}
@@ -285,10 +292,10 @@ export const ChannelMessageFeed = ({
             )}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
-                {authorIdentity ? (
+                {messageAgent || authorIdentity ? (
                   <button
                     className="min-w-0 text-left text-sm font-bold text-[var(--tx)] hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                    onClick={selectAuthor}
+                    onClick={messageAgent ? selectAgent : selectAuthor}
                     type="button"
                   >
                     {displayName}
@@ -458,18 +465,12 @@ export const ChannelMessageFeed = ({
 
         return (
           <article key={entry.runId} className="admin-msg-row py-1">
-            <div
-              className={[
-                'flex h-9 w-9 flex-shrink-0 items-center justify-center',
-                'rounded-lg border border-[var(--accent)]',
-                'bg-[var(--accent-soft)] text-lg',
-              ].join(' ')}
-            >
-              {getAgentGlyph(pendingAgent)}
-            </div>
+            <ChannelAgentGlyph agent={pendingAgent} />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
-                <span className="text-sm font-bold text-[var(--tx)]">{pendingDisplayName}</span>
+                <span className="text-sm font-bold text-[var(--tx)]">
+                  {pendingDisplayName}
+                </span>
                 <span
                   className={[
                     'inline-flex items-center rounded',

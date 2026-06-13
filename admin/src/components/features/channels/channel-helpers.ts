@@ -7,6 +7,13 @@ export type OptimisticMessage = {
   status: 'sending' | 'failed'
 }
 
+export type PendingStreamMessage = {
+  agentId: string
+  content: string
+  reasoningContent: string
+  runId: string
+}
+
 export type MessageUserIdentity = {
   avatarAttachmentId?: string | null
   avatarUrl?: string | null
