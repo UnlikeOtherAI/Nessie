@@ -34,6 +34,49 @@ services:
       timeout: 5s
       retries: 5
 
+  # S3-compatible object storage for file uploads / KB file nodes + attachments.
+  # The shared host has no S3, so Nessie runs its own MinIO on the `db` network.
+  nessie-minio:
+    image: minio/minio:latest
+    container_name: nessie-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${NESSIE_STORAGE_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${NESSIE_STORAGE_SECRET_ACCESS_KEY}
+    volumes:
+      - nessie_miniodata:/data
+    networks:
+      db:
+        aliases:
+          - nessie-minio
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # One-shot: create the bucket on (re)deploy, then exit.
+  nessie-minio-setup:
+    image: minio/mc:latest
+    container_name: nessie-minio-setup
+    depends_on:
+      - nessie-minio
+    environment:
+      MINIO_ROOT_USER: ${NESSIE_STORAGE_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${NESSIE_STORAGE_SECRET_ACCESS_KEY}
+      NESSIE_STORAGE_BUCKET: ${NESSIE_STORAGE_BUCKET:-nessie}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        until mc alias set local http://nessie-minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do sleep 2; done;
+        mc mb --ignore-existing "local/$$NESSIE_STORAGE_BUCKET";
+    networks:
+      - db
+    restart: "no"
+
   api:
     build:
       context: ../..
@@ -53,6 +96,15 @@ services:
       NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_CONFIG_PATH: /app/nessie.config.json
       NESSIE_CORS_ORIGINS: https://nessie.unlikeotherai.com
+      # Object storage (MinIO).
+      NESSIE_STORAGE_PROVIDER: s3
+      NESSIE_STORAGE_ENDPOINT: http://nessie-minio:9000
+      NESSIE_STORAGE_REGION: us-east-1
+      NESSIE_STORAGE_FORCE_PATH_STYLE: "true"
+      NESSIE_STORAGE_BUCKET: ${NESSIE_STORAGE_BUCKET:-nessie}
+      NESSIE_STORAGE_ACCESS_KEY_ID: ${NESSIE_STORAGE_ACCESS_KEY_ID}
+      NESSIE_STORAGE_SECRET_ACCESS_KEY: ${NESSIE_STORAGE_SECRET_ACCESS_KEY}
+      NESSIE_MAX_UPLOAD_BYTES: "5368709120"
     volumes:
       - ./nessie.config.json:/app/nessie.config.json:ro
     networks:
@@ -60,6 +112,8 @@ services:
       - db
     depends_on:
       nessie-postgres:
+        condition: service_healthy
+      nessie-minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5554/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -81,12 +135,23 @@ services:
       DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_CONFIG_PATH: /app/nessie.config.json
+      # Object storage (MinIO) — must match the api service.
+      NESSIE_STORAGE_PROVIDER: s3
+      NESSIE_STORAGE_ENDPOINT: http://nessie-minio:9000
+      NESSIE_STORAGE_REGION: us-east-1
+      NESSIE_STORAGE_FORCE_PATH_STYLE: "true"
+      NESSIE_STORAGE_BUCKET: ${NESSIE_STORAGE_BUCKET:-nessie}
+      NESSIE_STORAGE_ACCESS_KEY_ID: ${NESSIE_STORAGE_ACCESS_KEY_ID}
+      NESSIE_STORAGE_SECRET_ACCESS_KEY: ${NESSIE_STORAGE_SECRET_ACCESS_KEY}
+      NESSIE_MAX_UPLOAD_BYTES: "5368709120"
     volumes:
       - ./nessie.config.json:/app/nessie.config.json:ro
     networks:
       - db
     depends_on:
       nessie-postgres:
+        condition: service_healthy
+      nessie-minio:
         condition: service_healthy
       api:
         condition: service_started
@@ -135,6 +200,7 @@ services:
 
 volumes:
   nessie_pgdata:
+  nessie_miniodata:
 
 networks:
   edge:

@@ -258,6 +258,27 @@ production settings:
 | Model | `NESSIE_MODEL_PROVIDER` + key | `openai` → `gpt-5-mini` chat, `text-embedding-3-small` (1536-dim) embeddings |
 | Auth providers (SSO) | `nessie.config.json` `auth.providers` | see SSO below |
 | Feedback → GitHub | `NESSIE_GITHUB_TOKEN`, `NESSIE_GITHUB_OWNER`, `NESSIE_GITHUB_REPO` | token (repo-scoped PAT) required to file issues from the Feedback section; owner/repo default to `UnlikeOtherAI`/`Nessie`. Without a token, feedback is stored but no issue is created (`status: saved`) |
+| Storage backend | `NESSIE_STORAGE_PROVIDER` | `s3` in prod (MinIO); `filesystem` in local dev |
+| Storage endpoint | `NESSIE_STORAGE_ENDPOINT`, `NESSIE_STORAGE_REGION`, `NESSIE_STORAGE_FORCE_PATH_STYLE` | `http://nessie-minio:9000`, `us-east-1`, `true` (path-style is required for MinIO) |
+| Storage bucket/creds | `NESSIE_STORAGE_BUCKET`, `NESSIE_STORAGE_ACCESS_KEY_ID`, `NESSIE_STORAGE_SECRET_ACCESS_KEY` | bucket defaults to `nessie`; the key id/secret double as the MinIO root user/password (host `.env`) |
+| Max upload size | `NESSIE_MAX_UPLOAD_BYTES` | default `5368709120` (5 GiB); also pins the API multipart limit |
+
+### Object storage (MinIO)
+
+File uploads — chat attachments, avatars/logos, and knowledge-base **file nodes**
++ **page attachments** — are stored in object storage through the single
+`@nessie/runtime` `FileService`. Production runs a dedicated `nessie-minio`
+container on the `db` network (the shared host has no S3); `nessie-minio-setup`
+creates the bucket on each deploy. Set `NESSIE_STORAGE_ACCESS_KEY_ID` /
+`NESSIE_STORAGE_SECRET_ACCESS_KEY` (and optionally `NESSIE_STORAGE_BUCKET`) in the
+host `.env` — they are the MinIO root credentials and the app's S3 credentials.
+Local dev keeps `filesystem` (zero setup); to exercise the S3 path locally, run a
+MinIO container and set the `NESSIE_STORAGE_*` vars.
+
+Every store/delete updates the `storage_usage_events` ledger, so per-org/team/
+space/uploader usage is always known; a per-scope cap is set via
+`Budget.storageLimitBytes` and blocks uploads (HTTP 507) when exceeded. `MinIO`
+data lives in the `nessie_miniodata` volume — back it up alongside `nessie_pgdata`.
 
 ### MCP OAuth secret store
 

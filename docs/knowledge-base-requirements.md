@@ -401,6 +401,38 @@ automatically): `kb_comments_list`, `kb_comment_add`, `kb_comment_reply`,
 `kb_comment_resolve`, `kb_note_add` (the agent supplies the exact quote; the
 worker computes the anchor from the page body).
 
+## 9b) File nodes & attachments (implemented)
+
+Two file concepts live in the knowledge base alongside rich-text pages:
+
+- **File nodes** — a `KnowledgePage` with `kind = file`, shown in the filesystem
+  browser at the same level as documents and folders (folders stay virtual: a
+  `document` page with children). Each version is backed by an `Attachment`
+  (`KnowledgePageVersion.attachmentId`); the admin shows a per-MIME FontAwesome
+  icon, an inline viewer (image/PDF/text/CSV) or a typed download card, and an
+  **Upload new version** action (a drag-drop / tap popup).
+- **Attachments** — any node (document or file node) can carry extra files,
+  linked via `Attachment.knowledgePageId` and surfaced in a right-hand
+  **attachments drawer** (a docked rail on desktop, a full-screen sheet on
+  mobile). Drag-and-drop onto the page preview adds an attachment; drag-and-drop
+  onto the filesystem creates a file node; both show a dashed-square overlay with
+  live upload progress.
+
+All bytes flow through the single `@nessie/runtime` `FileService` (storage +
+`Attachment` row + the `storage_usage_events` ledger). Uploads stream (5 GiB
+cap), are gated by `Budget.storageLimitBytes` (per org/project/team), and every
+store/delete keeps per-scope usage accurate. REST surface
+(`api/src/routes/knowledge-base-files.ts`):
+
+- `POST /api/knowledge-base/spaces/:spaceId/files` — create a file node
+- `POST /api/knowledge-base/pages/:pageId/file-version` — upload a new version
+- `GET /api/knowledge-base/pages/:pageId/versions/:versionId/download`
+- `GET|POST /api/knowledge-base/pages/:pageId/attachments`
+- `GET /api/knowledge-base/attachments/:id/download`, `DELETE …/attachments/:id`
+- `GET /api/knowledge-base/storage-usage?scopeType=&scopeId=`
+
+Agent/MCP built-in tools for the new file surface are a follow-up (agent parity).
+
 ## 10) Phase annotation
 
 This spec targets **Phase 3**.
