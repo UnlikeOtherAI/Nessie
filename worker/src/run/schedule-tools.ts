@@ -1,6 +1,12 @@
 import { Prisma } from '@prisma/client'
 import { computeInitialScheduleRunAt } from '@nessie/runtime'
 import type { AgentTriggerType } from '@nessie/schemas'
+import {
+  getChannelSlug,
+  getScopedChannelSlug,
+  parseScopedChannelTarget,
+  toChannelSlug,
+} from './channel-slugs.js'
 import { isDelegatingPersonalAssistant } from './pa-tools.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
 
@@ -113,6 +119,81 @@ type ResolvedTarget = {
   threadId: string
 }
 
+type ChannelTargetRow = {
+  id: string
+  label: string
+  slug: string | null
+  team: {
+    name: string
+    project: { name: string }
+  } | null
+}
+
+const formatChannelTarget = (channel: ChannelTargetRow): string =>
+  `#${channel.label} (${channel.team?.project.name ?? 'Unknown project'} / ${channel.team?.name ?? 'Unknown team'})`
+  + ` channelId=${channel.id} slug=${getScopedChannelSlug(channel)}`
+
+const resolveNamedChannelTarget = async (
+  context: BuiltinToolRuntimeContext,
+  target: string,
+  userId: string | null,
+): Promise<ChannelTargetRow> => {
+  const scopedTarget = parseScopedChannelTarget(target)
+  const channelSlug = scopedTarget?.channelSlug ?? toChannelSlug(target.replace(/^#/, ''))
+  const candidates = await context.prisma.channel.findMany({
+    where: {
+      AND: [
+        visibleChannelWhere(
+          context.channel.organizationId,
+          userId,
+          isDelegatingPersonalAssistant(context),
+        ),
+        { archivedAt: null },
+        {
+          OR: [
+            { label: { equals: target.replace(/^#/, ''), mode: 'insensitive' } },
+            { slug: channelSlug },
+          ],
+        },
+      ],
+    },
+    select: {
+      id: true,
+      label: true,
+      slug: true,
+      team: {
+        select: {
+          name: true,
+          project: { select: { name: true } },
+        },
+      },
+    },
+  })
+
+  const matches = scopedTarget
+    ? candidates.filter(
+        (channel) =>
+          getChannelSlug(channel) === scopedTarget.channelSlug
+          && toChannelSlug(channel.team?.project.name ?? '') === scopedTarget.projectSlug,
+      )
+    : candidates
+
+  if (matches.length === 1) {
+    return matches[0]!
+  }
+
+  if (matches.length > 1) {
+    throw new Error(
+      `Channel "${target}" is ambiguous. Use channelId or a scoped slug:\n`
+      + matches.map(formatChannelTarget).join('\n'),
+    )
+  }
+
+  throw new Error(
+    `Could not find a channel "${target}" you have access to. Use channel_find, then pass channelId or a scoped slug like project/general.`,
+  )
+}
+
 /**
  * Resolve where the scheduled task should report. Defaults to the conversation
  * the tool was called in; otherwise looks up a channel by id or label that the
@@ -132,25 +213,25 @@ const resolveTarget = async (
   }
 
   const target = targetArg.trim()
-  const channel = await context.prisma.channel.findFirst({
-    where: {
-      AND: [
-        visibleChannelWhere(
-          context.channel.organizationId,
-          userId,
-          isDelegatingPersonalAssistant(context),
-        ),
-        UUID_PATTERN.test(target)
-          ? { id: target }
-          : { label: { equals: target, mode: 'insensitive' } },
-      ],
-    },
-    select: { id: true, label: true },
-  })
+  const channel = UUID_PATTERN.test(target)
+    ? await context.prisma.channel.findFirst({
+        where: {
+          AND: [
+            visibleChannelWhere(
+              context.channel.organizationId,
+              userId,
+              isDelegatingPersonalAssistant(context),
+            ),
+            { id: target },
+          ],
+        },
+        select: { id: true, label: true },
+      })
+    : await resolveNamedChannelTarget(context, target, userId)
 
   if (!channel) {
     throw new Error(
-      `Could not find a channel "${target}" you have access to. Use the exact channel name or id.`,
+      `Could not find a channel "${target}" you have access to. Use channel_find, then pass channelId or a scoped slug like project/general.`,
     )
   }
 

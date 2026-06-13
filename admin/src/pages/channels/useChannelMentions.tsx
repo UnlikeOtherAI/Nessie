@@ -5,10 +5,12 @@ import { getAgentGlyph } from '../../components/features/channels/channel-helper
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../lib/api-client'
 import {
   buildChannelMentionTargets,
+  normalizeChannelLabel,
   type ChannelMentionTarget,
 } from './channelMentionTargets'
 
 interface UseChannelMentionsParams {
+  activeChannel?: ChannelRecord | null
   agents: AgentRecord[]
   channels: ChannelRecord[]
   channelUsers: UserRecord[]
@@ -79,6 +81,7 @@ function findTokenMatch<T>(
 }
 
 export const useChannelMentions = ({
+  activeChannel,
   agents,
   channels,
   channelUsers,
@@ -126,13 +129,28 @@ export const useChannelMentions = ({
   const channelCandidates = useMemo(
     () =>
       channelMentionTargets
-        .map((target): { name: string; value: ChannelMentionTarget } => ({
-          name: target.name,
-          value: target,
-        }))
+        .flatMap((target): Array<{ name: string; value: ChannelMentionTarget }> => [
+          { name: target.name, value: target },
+          { name: target.scopedSlug, value: target },
+        ])
         .sort((left, right) => right.name.length - left.name.length),
     [channelMentionTargets],
   )
+  const channelLabelCandidates = useMemo(() => {
+    const byLabel = new Map<string, { name: string; value: ChannelMentionTarget[] }>()
+    for (const target of channelMentionTargets) {
+      const existing = byLabel.get(target.labelKey)
+      if (existing) {
+        existing.value.push(target)
+      } else {
+        byLabel.set(target.labelKey, {
+          name: target.channel.label,
+          value: [target],
+        })
+      }
+    }
+    return [...byLabel.values()].sort((left, right) => right.name.length - left.name.length)
+  }, [channelMentionTargets])
   const dmChannelByUserId = useMemo(
     () =>
       new Map(
@@ -203,6 +221,58 @@ export const useChannelMentions = ({
             continue
           }
 
+          const bareChannelMatch = findTokenMatch(
+            text,
+            trigger.index + 1,
+            channelLabelCandidates,
+          )
+
+          if (bareChannelMatch) {
+            const activeProjectMatches = activeChannel
+              ? bareChannelMatch.value.filter(
+                  (target) => target.channel.projectId === activeChannel.projectId,
+                )
+              : []
+            const resolvedTarget =
+              bareChannelMatch.value.length === 1
+                ? bareChannelMatch.value[0]
+                : activeProjectMatches.length === 1
+                  ? activeProjectMatches[0]
+                  : undefined
+
+            if (trigger.index > cursor) {
+              parts.push(text.slice(cursor, trigger.index))
+            }
+
+            if (resolvedTarget) {
+              parts.push(
+                <Link
+                  className="mention-tag mention-tag-link"
+                  key={`channel:${resolvedTarget.channel.id}:${trigger.index}`}
+                  title={`Open #${resolvedTarget.channel.label} in ${resolvedTarget.detail}`}
+                  to={`/channels/${resolvedTarget.channel.id}`}
+                >
+                  #{bareChannelMatch.text}
+                </Link>,
+              )
+            } else {
+              const query = encodeURIComponent(bareChannelMatch.text)
+              parts.push(
+                <Link
+                  className="mention-tag mention-tag-link"
+                  key={`channel-search:${normalizeChannelLabel(bareChannelMatch.text)}:${trigger.index}`}
+                  title={`Find #${bareChannelMatch.text} (${bareChannelMatch.value.length} matches)`}
+                  to={`/search?query=${query}`}
+                >
+                  #{bareChannelMatch.text}
+                </Link>,
+              )
+            }
+
+            cursor = trigger.index + 1 + bareChannelMatch.name.length
+            continue
+          }
+
           parts.push(text.slice(cursor, trigger.index + 1))
           cursor = trigger.index + 1
           continue
@@ -264,8 +334,10 @@ export const useChannelMentions = ({
     },
     [
       channelCandidates,
+      channelLabelCandidates,
       dmChannelByUserId,
       mentionEntityMap,
+      activeChannel,
       sortedMentionNames,
     ],
   )

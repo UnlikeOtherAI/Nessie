@@ -8,6 +8,16 @@ import {
   parseThreadId,
 } from '@nessie/schemas'
 import type { ChannelRecord } from '../contracts.js'
+import {
+  ChannelSlugConflictError,
+  ChannelValidationError,
+  ensureChannelSlugAvailable,
+  loadChannelTeamProject,
+  throwIfChannelSlugConflict,
+  validateChannelLabel,
+} from './channel-slugs.js'
+
+export { ChannelSlugConflictError, ChannelValidationError }
 
 type ChannelWithProject = Channel & {
   team?: {
@@ -26,7 +36,7 @@ type ThreadUnreadRow = {
 
 // Shared include so create/upsert sites return the channel's team + project in
 // one query — mapChannelRecord then never needs a follow-up team lookup.
-const channelTeamInclude = {
+export const channelTeamInclude = {
   team: {
     select: {
       name: true,
@@ -116,7 +126,7 @@ export const ensureDefaultThread = async (
   }
 }
 
-const mapChannelRecord = async (
+export const mapChannelRecord = async (
   prisma: PrismaClient,
   channel: ChannelWithProject,
   userId?: string,
@@ -139,6 +149,7 @@ const mapChannelRecord = async (
     defaultThreadId: parseThreadId(defaultThreadId),
     id: parseChannelId(channel.id),
     label: channel.label,
+    slug: channel.slug,
     type: channel.type,
     systemChannelType: channel.systemChannelType ?? undefined,
     visibility: channel.visibility,
@@ -247,6 +258,7 @@ export const listChannelsForUser = async (
   return channels.map((channel) => ({
     id: parseChannelId(channel.id),
     label: channel.label,
+    slug: channel.slug,
     type: channel.type,
     systemChannelType: channel.systemChannelType ?? undefined,
     visibility: channel.visibility,
@@ -267,208 +279,6 @@ export const listChannelsForUser = async (
   }))
 }
 
-export const addMemberToChannel = async (
-  prisma: PrismaClient,
-  channelId: string,
-  userId: string,
-): Promise<boolean> => {
-  // Load the channel's org and confirm the target user belongs to it before
-  // the upsert, so a cross-org user can never be added to a channel.
-  const channel = await prisma.channel.findUnique({
-    where: { id: channelId },
-    select: { organizationId: true },
-  })
-  if (!channel) {
-    return false
-  }
-
-  const isOrgMember = await prisma.organizationMember.count({
-    where: { organizationId: channel.organizationId, userId },
-  })
-  if (!isOrgMember) {
-    return false
-  }
-
-  await prisma.channelMember.upsert({
-    where: { channelId_userId: { channelId, userId } },
-    create: { channelId, userId },
-    update: {},
-  })
-  return true
-}
-
-export const removeMemberFromChannel = async (
-  prisma: PrismaClient,
-  channelId: string,
-  userId: string,
-): Promise<void> => {
-  await prisma.channelMember.deleteMany({
-    where: { channelId, userId },
-  })
-}
-
-export const validateTenantHierarchy = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  teamId: string,
-): Promise<boolean> => {
-  // Verify team belongs to a project that belongs to the organization
-  const team = await prisma.team.findUnique({
-    where: { id: teamId },
-    include: { project: { select: { organizationId: true } } },
-  })
-  return team?.project?.organizationId === organizationId
-}
-
-export const findOrCreateDmChannel = async (
-  prisma: PrismaClient,
-  input: {
-    organizationId: string
-    teamId: string
-    currentUserId: string
-    targetUserId: string
-  },
-): Promise<ChannelRecord | null> => {
-  // Validate both users belong to the organization
-  const memberCount = await prisma.organizationMember.count({
-    where: {
-      organizationId: input.organizationId,
-      userId: { in: [input.currentUserId, input.targetUserId] },
-    },
-  })
-  if (memberCount < 2) {
-    return null
-  }
-
-  // Deterministic key for race-safe DM dedup (scoped to org+team)
-  const dmKey = [input.organizationId, input.teamId, ...[input.currentUserId, input.targetUserId].sort()].join(':')
-
-  // Look up the target user's display name for the channel label
-  const targetUser = await prisma.user.findUnique({
-    where: { id: input.targetUserId },
-    select: { displayName: true },
-  })
-
-  // Upsert on dmKey — idempotent, race-safe
-  try {
-    const channel = await prisma.channel.upsert({
-      where: { dmKey },
-      create: {
-        label: targetUser?.displayName ?? 'Direct Message',
-        type: 'dm',
-        organizationId: input.organizationId,
-        teamId: input.teamId,
-        visibility: 'private',
-        dmKey,
-        members: {
-          create: [
-            { userId: input.currentUserId },
-            { userId: input.targetUserId },
-          ],
-        },
-      },
-      update: {},
-      include: channelTeamInclude,
-    })
-    return mapChannelRecord(prisma, channel, input.currentUserId)
-  } catch (err) {
-    // Race condition: another request created the channel between our read and write.
-    // The unique index on dmKey guarantees exactly one winner; losers re-fetch.
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      const existing = await prisma.channel.findUniqueOrThrow({
-        where: { dmKey },
-        include: channelTeamInclude,
-      })
-      return mapChannelRecord(prisma, existing, input.currentUserId)
-    }
-    throw err
-  }
-}
-
-export const createGroupFromDm = async (
-  prisma: PrismaClient,
-  input: {
-    dmChannelId: string
-    newUserId: string
-    currentUserId: string
-  },
-): Promise<ChannelRecord | null> => {
-  // Get the DM channel for org/team context first (needed for org membership check)
-  const dmChannel = await prisma.channel.findUniqueOrThrow({
-    where: { id: input.dmChannelId },
-  })
-
-  // Validate newUserId belongs to the same organization
-  const isMember = await prisma.organizationMember.count({
-    where: { organizationId: dmChannel.organizationId, userId: input.newUserId },
-  })
-  if (!isMember) {
-    return null
-  }
-
-  // Get all current members of the DM
-  const existingMembers = await prisma.channelMember.findMany({
-    where: { channelId: input.dmChannelId },
-    select: { userId: true },
-  })
-  const allUserIds = [
-    ...new Set([
-      ...existingMembers.map((m) => m.userId),
-      input.newUserId,
-    ]),
-  ]
-
-  // Build the label from display names of all members except current user
-  const users = await prisma.user.findMany({
-    where: { id: { in: allUserIds } },
-    select: { id: true, displayName: true },
-  })
-  const otherNames = users
-    .filter((u) => u.id !== input.currentUserId)
-    .map((u) => u.displayName ?? 'Unknown')
-    .sort()
-  const label = otherNames.join(', ')
-
-  const channel = await prisma.channel.create({
-    data: {
-      label: label || 'Group',
-      type: 'standard',
-      organizationId: dmChannel.organizationId,
-      teamId: dmChannel.teamId,
-      visibility: 'private',
-      members: {
-        create: allUserIds.map((userId) => ({ userId })),
-      },
-    },
-    include: channelTeamInclude,
-  })
-
-  return mapChannelRecord(prisma, channel, input.currentUserId)
-}
-
-// sp-channels: mirror of the admin `toSlug` rules. Channel labels are validated
-// server-side so the API never persists a name the admin UI would reject.
-export const toChannelSlug = (value: string): string =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/[\s]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-
-export class ChannelValidationError extends Error {}
-
-const validateChannelLabel = (label: string): string => {
-  const trimmed = label.trim()
-  if (toChannelSlug(trimmed).length === 0) {
-    throw new ChannelValidationError(
-      'Channel name must contain at least one letter or number',
-    )
-  }
-  return trimmed
-}
-
 export const createChannelForUser = async (
   prisma: PrismaClient,
   input: {
@@ -483,28 +293,43 @@ export const createChannelForUser = async (
   const label = validateChannelLabel(input.label)
 
   // Enforce tenant hierarchy: team's project must belong to the same org
-  if (!(await validateTenantHierarchy(prisma, input.organizationId, input.teamId))) {
+  const teamProject = await loadChannelTeamProject(prisma, {
+    organizationId: input.organizationId,
+    teamId: input.teamId,
+  })
+  if (!teamProject) {
     return null
   }
 
-  const channel = await prisma.channel.create({
-    data: {
-      label,
-      organizationId: input.organizationId,
-      teamId: input.teamId,
-      visibility: input.visibility,
-      members: {
-        // sp-channels: the creator becomes the channel owner so they can manage it
-        create: {
-          userId: input.userId,
-          role: 'owner',
-        },
-      },
-    },
-    include: channelTeamInclude,
+  await ensureChannelSlugAvailable(prisma, {
+    projectId: teamProject.projectId,
+    slug: label.slug,
   })
 
-  return mapChannelRecord(prisma, channel, input.userId)
+  try {
+    const channel = await prisma.channel.create({
+      data: {
+        label: label.label,
+        slug: label.slug,
+        organizationId: input.organizationId,
+        projectId: teamProject.projectId,
+        teamId: input.teamId,
+        visibility: input.visibility,
+        members: {
+          // sp-channels: the creator becomes the channel owner so they can manage it
+          create: {
+            userId: input.userId,
+            role: 'owner',
+          },
+        },
+      },
+      include: channelTeamInclude,
+    })
+    return mapChannelRecord(prisma, channel, input.userId)
+  } catch (error) {
+    throwIfChannelSlugConflict(error, label.slug)
+    throw error
+  }
 }
 
 // ─── sp-channels: channel lifecycle ──────────────────────────────────────────
@@ -567,7 +392,14 @@ export const updateChannel = async (
 
   const data: Prisma.ChannelUpdateInput = {}
   if (input.label !== undefined) {
-    data.label = validateChannelLabel(input.label)
+    const label = validateChannelLabel(input.label)
+    await ensureChannelSlugAvailable(prisma, {
+      excludeChannelId: input.channelId,
+      projectId: manage.channel.projectId,
+      slug: label.slug,
+    })
+    data.label = label.label
+    data.slug = label.slug
   }
   if (input.topic !== undefined) {
     data.topic = input.topic
@@ -576,11 +408,19 @@ export const updateChannel = async (
     data.description = input.description
   }
 
-  const channel = await prisma.channel.update({
-    where: { id: input.channelId },
-    data,
-    include: channelTeamInclude,
-  })
+  let channel: ChannelWithProject
+  try {
+    channel = await prisma.channel.update({
+      where: { id: input.channelId },
+      data,
+      include: channelTeamInclude,
+    })
+  } catch (error) {
+    if (input.label !== undefined) {
+      throwIfChannelSlugConflict(error, validateChannelLabel(input.label).slug)
+    }
+    throw error
+  }
   return mapChannelRecord(prisma, channel, input.userId)
 }
 

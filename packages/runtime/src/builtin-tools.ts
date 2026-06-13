@@ -1,10 +1,21 @@
 import {
+  ATTACHMENT_LIST_TOOL_DEFINITION,
+  ATTACHMENT_READ_TOOL_DEFINITION,
+  ATTACHMENT_UPLOAD_TOOL_DEFINITION,
+} from './builtin-attachment-tools.js'
+import {
+  CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
+  LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
+  SCHEDULE_TASK_TOOL_DEFINITION,
+} from './builtin-schedule-tools.js'
+import {
   FILE_GLOB_TOOL_DEFINITION,
   FILE_READ_TOOL_DEFINITION,
   FILE_WRITE_TOOL_DEFINITION,
   HTTP_FETCH_TOOL_DEFINITION,
 } from './builtin-tools-sandboxed.js'
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import { buildWorkflowToolDefinitions } from './workflow-tools.js'
 
 export type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export {
@@ -55,180 +66,6 @@ const WEB_FETCH_TOOL_DEFINITION: BuiltinToolDefinition = {
       },
     },
     required: ['url'],
-  },
-  safe: true,
-}
-
-const SCHEDULE_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'schedule_task',
-  label: 'Schedule Task',
-  description:
-    'Schedule yourself to run a task later — once, on a recurring cron schedule, ' +
-    'or on a fixed interval. The task can be ANYTHING you are able to do with your ' +
-    'tools (web search, fetching URLs, reading/writing files, sending messages, ' +
-    'MCP tools, delegating to sub-agents, etc.) — describe it in plain language in ' +
-    '`instructions`. When the schedule fires you run with those instructions as ' +
-    'your prompt and report back in the target conversation; findings are saved to ' +
-    'your long-term memory automatically. Defaults to the current conversation if ' +
-    'no target is given. Examples: every weekday 9am → cron "0 9 * * 1-5"; ' +
-    'hourly → cron "0 * * * *"; once at a specific time → kind "once" with an ISO ' +
-    '`at`; every 30 minutes → kind "interval" with every_minutes 30.',
-  parameters: {
-    type: 'object',
-    properties: {
-      instructions: {
-        type: 'string',
-        description:
-          'Plain-language description of the task to perform each time the ' +
-          'schedule fires, including how to report the result.',
-      },
-      schedule: {
-        type: 'object',
-        description: 'When to run the task.',
-        properties: {
-          kind: {
-            type: 'string',
-            enum: ['once', 'recurring', 'interval'],
-            description:
-              '"once" = a single run at `at`; "recurring" = repeat on `cron`; ' +
-              '"interval" = repeat every `every_minutes` minutes.',
-          },
-          at: {
-            type: 'string',
-            description:
-              'Absolute ISO 8601 date-time for a one-off run (kind "once"), e.g. '
-              + '"2026-06-01T09:00:00Z". Must include a UTC offset/Z and be in the '
-              + 'future. Resolve relative times ("tomorrow 9am") against the current '
-              + 'time given in your system context.',
-          },
-          cron: {
-            type: 'string',
-            description:
-              'Standard 5-field cron expression for recurring runs (kind "recurring").',
-          },
-          every_minutes: {
-            type: 'integer',
-            description: 'Interval length in minutes (kind "interval").',
-            minimum: 1,
-          },
-          timezone: {
-            type: 'string',
-            description:
-              'IANA timezone (e.g. "Europe/London") applied to cron schedules. '
-              + 'Defaults to UTC if omitted — set it when the user means a local '
-              + 'wall-clock time, asking them if their timezone is unknown.',
-          },
-        },
-        required: ['kind'],
-      },
-      target: {
-        type: 'string',
-        description:
-          'Optional channel name or ID to post results into. Omit to use the ' +
-          'current conversation.',
-      },
-      name: {
-        type: 'string',
-        description: 'Optional short label for the scheduled task.',
-      },
-    },
-    required: ['instructions', 'schedule'],
-  },
-  safe: false,
-}
-
-const LIST_SCHEDULED_TASKS_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'list_scheduled_tasks',
-  label: 'List Scheduled Tasks',
-  description:
-    'List the scheduled tasks you have created for the current user, including ' +
-    'their schedule, target, next run time, and whether they are active.',
-  parameters: {
-    type: 'object',
-    properties: {},
-  },
-  safe: true,
-}
-
-const CANCEL_SCHEDULED_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'cancel_scheduled_task',
-  label: 'Cancel Scheduled Task',
-  description:
-    'Cancel (disable) a previously scheduled task by its id or name so it stops ' +
-    'running.',
-  parameters: {
-    type: 'object',
-    properties: {
-      id: {
-        type: 'string',
-        description: 'The scheduled task id to cancel.',
-      },
-      name: {
-        type: 'string',
-        description: 'The scheduled task name to cancel (used when id is omitted).',
-      },
-    },
-  },
-  safe: false,
-}
-
-// ─── File uploads / attachments (Slack-parity files slice) ──────────────────
-// Named `attachment_*` rather than `file_*` because `file_read`/`file_write`/
-// `file_glob` are already sandbox-filesystem tools; these operate on uploaded
-// workspace attachments stored via the blob storage adapter.
-const ATTACHMENT_UPLOAD_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'attachment_upload',
-  label: 'Upload Attachment',
-  description:
-    'Store a file as a workspace attachment. Provide the raw bytes as base64 ' +
-    'in contentBase64 along with a filename and MIME type. Returns the new ' +
-    'attachment id, which can be linked to a message via send_message ' +
-    'attachmentIds.',
-  parameters: {
-    type: 'object',
-    properties: {
-      filename: { type: 'string', description: 'File name including extension' },
-      mime: { type: 'string', description: 'MIME type, e.g. "text/plain" or "image/png"' },
-      contentBase64: { type: 'string', description: 'Base64-encoded file bytes' },
-      channelId: {
-        type: 'string',
-        description: 'Optional channel context the attachment belongs to',
-      },
-    },
-    required: ['filename', 'mime', 'contentBase64'],
-  },
-  safe: false,
-}
-
-const ATTACHMENT_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'attachment_list',
-  label: 'List Attachments',
-  description:
-    'List attachments linked to messages in a thread or channel you can access. ' +
-    'Returns id, filename, mime, and sizeBytes for each.',
-  parameters: {
-    type: 'object',
-    properties: {
-      threadId: { type: 'string', description: 'Thread to list attachments from' },
-      channelId: { type: 'string', description: 'Channel to list attachments from' },
-      limit: { type: 'integer', description: 'Maximum results (default 20)', minimum: 1 },
-    },
-  },
-  safe: true,
-}
-
-const ATTACHMENT_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'attachment_read',
-  label: 'Read Attachment',
-  description:
-    'Return metadata for an attachment, plus the decoded text content for ' +
-    'small text-like files. Binary or oversized files return metadata only.',
-  parameters: {
-    type: 'object',
-    properties: {
-      id: { type: 'string', description: 'The attachment id to read' },
-    },
-    required: ['id'],
   },
   safe: true,
 }
@@ -301,7 +138,8 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: 'send_message',
     label: 'Send Message',
     description:
-      'Send a message as the current user to a thread, channel, or a DM by targetUserId.',
+      'Send a message as the current user to a thread, channelId, or a DM by targetUserId. ' +
+      'Resolve named channels with channel_find first; do not guess between duplicate channel names.',
     parameters: {
       type: 'object',
       properties: {
@@ -465,10 +303,10 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: 'channel_find',
     label: 'Find Channel',
     description:
-      'Resolve a channel by name (e.g. "general" or "#product") to its id. ' +
+      'Resolve a channel by name or scoped slug (e.g. "general", "#product", or "project/general") to its id. ' +
       'Use this to get a channelId before posting or acting on a channel — ' +
       'do not ask the user for an id. Returns matching channels with id, ' +
-      'label, project/team scope, and visibility; use scope to distinguish duplicate labels.',
+      'label, project/team scope, scoped slug, and visibility; use scope or channelId to distinguish duplicate labels.',
     parameters: {
       type: 'object',
       properties: {
@@ -490,7 +328,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'List Channels',
     description:
       'List channels visible in the current organization. Returns each ' +
-      'channel id, label, project/team scope, visibility, topic, and whether it is archived.',
+      'channel id, label, project/team scope, scoped slug, visibility, topic, and whether it is archived.',
     parameters: {
       type: 'object',
       properties: {
@@ -580,93 +418,10 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
 ]
 
-export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
+export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = buildWorkflowToolDefinitions(
   WEB_SEARCH_TOOL_DEFINITION,
   WEB_FETCH_TOOL_DEFINITION,
-  {
-    id: 'state_get',
-    label: 'State Get',
-    description:
-      'Load the current value for a workflow checkpoint key stored for the workflow installation.',
-    parameters: {
-      type: 'object',
-      properties: {
-        key: {
-          type: 'string',
-          description: 'The checkpoint key to load',
-        },
-        defaultValue: {
-          description: 'Optional fallback value when no state exists yet',
-        },
-      },
-      required: ['key'],
-    },
-    safe: true,
-  },
-  {
-    id: 'state_put',
-    label: 'State Put',
-    description:
-      'Persist a value for a workflow checkpoint key stored for the workflow installation.',
-    parameters: {
-      type: 'object',
-      properties: {
-        key: {
-          type: 'string',
-          description: 'The checkpoint key to store',
-        },
-        value: {
-          description: 'The value to store for the checkpoint',
-        },
-      },
-      required: ['key', 'value'],
-    },
-    safe: true,
-  },
-  {
-    id: 'change_detect',
-    label: 'Change Detect',
-    description:
-      'Compare a current value with the stored checkpoint and report whether it changed.',
-    parameters: {
-      type: 'object',
-      properties: {
-        key: {
-          type: 'string',
-          description: 'The checkpoint key to compare against',
-        },
-        value: {
-          description: 'The current value to compare',
-        },
-      },
-      required: ['key', 'value'],
-    },
-    safe: true,
-  },
-  {
-    id: 'delegate',
-    label: 'Delegate to External-Tools Sub-agent',
-    description:
-      'Hand a task to a sub-agent that has access to external (MCP) tools. The sub-agent runs a tight loop with those tools and returns a concise answer. Use this for any task that requires real outside lookups (web search, third-party APIs, file systems, etc.) — do not pretend to know things you cannot fetch yourself.',
-    parameters: {
-      type: 'object',
-      properties: {
-        task: {
-          type: 'string',
-          description:
-            'A self-contained task description for the sub-agent. Include any relevant context — the sub-agent only sees this string, not the rest of your conversation.',
-        },
-        hint: {
-          type: 'string',
-          description:
-            'Optional hint about which tool category to favor (e.g. "web search", "filesystem", "github").',
-        },
-      },
-      required: ['task'],
-    },
-    safe: true,
-  },
-]
+)
 
 export const BUILTIN_TOOL_IDS = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id))
 

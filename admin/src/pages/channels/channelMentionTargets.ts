@@ -3,13 +3,30 @@ import type { ChannelRecord } from '../../lib/api-client'
 export type ChannelMentionTarget = {
   channel: ChannelRecord
   detail: string
+  labelKey: string
   name: string
+  scopedSlug: string
 }
 
 export const getChannelScopeLabel = (channel: ChannelRecord): string =>
   `${channel.projectName} / ${channel.teamName}`
 
-const normalizeChannelLabel = (label: string): string => label.trim().toLowerCase()
+export const normalizeChannelLabel = (label: string): string => label.trim().toLowerCase()
+
+const toSlug = (value: string): string =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[\s]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+const getScopedChannelSlug = (channel: ChannelRecord): string => {
+  const projectSlug = toSlug(channel.projectName)
+  const channelSlug = channel.slug ?? toSlug(channel.label)
+  return projectSlug ? `${projectSlug}/${channelSlug}` : channelSlug
+}
 
 export const buildChannelMentionTargets = (
   channels: ChannelRecord[],
@@ -35,7 +52,9 @@ export const buildChannelMentionTargets = (
     return {
       channel,
       detail,
+      labelKey: normalizeChannelLabel(channel.label),
       name: duplicateLabel ? `${channel.label} (${detail})` : channel.label,
+      scopedSlug: getScopedChannelSlug(channel),
     }
   })
 }

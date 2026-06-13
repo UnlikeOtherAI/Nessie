@@ -83,6 +83,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         id: true,
         label: true,
         organizationId: true,
+        slug: true,
         systemChannelType: true,
         teamId: true,
         type: true,
@@ -226,6 +227,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
       channel: {
         id: parseChannelId(channel.id),
         label: channel.label,
+        slug: channel.slug,
         type: channel.type,
         systemChannelType: channel.systemChannelType,
         visibility: channel.visibility,

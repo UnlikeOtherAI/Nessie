@@ -103,6 +103,7 @@ export const ChannelsPage = () => {
   })
 
   const { mentionEntities, renderContent } = useChannelMentions({
+    activeChannel,
     agents,
     channels,
     channelUsers,
