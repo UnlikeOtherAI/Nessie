@@ -1,7 +1,9 @@
 import type { CSSProperties } from 'react'
 import type { AgentRecord, ChannelRecord, ProjectRecord } from '../../lib/api-client'
 
-export type StarredItem = { type: 'channel' | 'project' | 'user'; id: string }
+export type FavoriteStarredItem = { type: 'agent' | 'channel' | 'user'; id: string }
+export type PreferenceStarredItem = { type: 'channel' | 'project' | 'user'; id: string }
+export type StarredItem = FavoriteStarredItem | { type: 'project'; id: string }
 export type SidebarProject = ProjectRecord & { channels: ChannelRecord[] }
 export type CreateChannelTarget = { projectName?: string; teamId?: string }
 export type RenameProjectTarget = { id: string; name: string }
@@ -19,6 +21,7 @@ export type SidebarPerson = {
   gravatarUrl?: string | null
 }
 export type VisibleStarredEntry =
+  | { type: 'agent'; agent: AgentRecord }
   | { type: 'channel'; channel: ChannelRecord }
   | { type: 'project'; channels: ChannelRecord[]; project: SidebarProject; starred: boolean }
   | { type: 'user'; person: SidebarPerson }

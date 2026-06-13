@@ -24,6 +24,7 @@ type SidebarNavProps = {
   defaultProjectTeamId?: string;
   dmCollapsed: boolean;
   isOwner: boolean;
+  onNavigateAgent: (agentId: string) => void;
   onNavigateChannel: (channelId: string) => void;
   onNavigateDm: (userId: string) => void;
   onNavigateHome: () => void;
@@ -69,6 +70,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     defaultProjectTeamId,
     dmCollapsed,
     isOwner,
+    onNavigateAgent,
     onNavigateChannel,
     onNavigateDm,
     onNavigateHome,
@@ -163,6 +165,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           currentChannelId={currentChannelId}
           currentProjectId={currentProjectId}
           entries={visibleStarredEntries}
+          onNavigateAgent={onNavigateAgent}
           onNavigateChannel={onNavigateChannel}
           onNavigateDm={onNavigateDm}
           onNavigateProject={onNavigateProject}
