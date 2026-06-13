@@ -214,7 +214,7 @@ export const createFileService = (deps: {
         spaceId: input.scope?.spaceId ?? null,
         uploaderId: input.uploaderId,
       },
-      deltaBytes: bytesWritten,
+      deltaBytes: BigInt(bytesWritten),
       operation: 'store',
       attachmentId: attachment.id,
     })
@@ -252,7 +252,7 @@ export const createFileService = (deps: {
     await recordStorageStored(prisma, {
       attribution,
       scope: usageScope,
-      deltaBytes: -Number(attachment.sizeBytes),
+      deltaBytes: -attachment.sizeBytes,
       operation: 'delete',
       attachmentId: attachment.id,
     })

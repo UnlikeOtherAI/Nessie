@@ -170,6 +170,31 @@ export const runAttachmentReadTool = async (
     throw new Error('Attachment not found.')
   }
 
+  // Authorize like attachment_list: only message-linked blobs the caller can see
+  // via their visible channels are readable. KB / avatar / unlinked blobs are not
+  // served through this message-oriented tool (KB reads need space-access checks).
+  const readerId =
+    context.actorContext.actor.actorType === 'user'
+      ? context.actorContext.actor.actorId
+      : context.actorContext.actionContext.effectiveUserId ?? null
+  if (!attachment.messageId) {
+    throw new Error('Attachment not found.')
+  }
+  const visibleChannel = readerId
+    ? buildVisibleChannelWhere(
+        attachment.organizationId,
+        readerId,
+        isDelegatingPersonalAssistant(context),
+      )
+    : { organizationId: attachment.organizationId }
+  const visibleMessage = await context.prisma.message.findFirst({
+    where: { id: attachment.messageId, thread: { channel: visibleChannel } },
+    select: { id: true },
+  })
+  if (!visibleMessage) {
+    throw new Error('Attachment not found.')
+  }
+
   const metadataLines = [
     `id=${attachment.id}`,
     `filename=${attachment.filename}`,

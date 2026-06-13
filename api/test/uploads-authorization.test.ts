@@ -22,6 +22,7 @@ type AttachmentRow = {
   organizationId: string
   uploaderId: string | null
   messageId: string | null
+  knowledgePageId: string | null
   kind: string
   mime: string
   filename: string
@@ -90,6 +91,7 @@ const makeApp = (
       organizationId,
       uploaderId: userA,
       messageId: privateMessageId,
+      knowledgePageId: null,
       kind: 'text',
       mime: 'text/plain',
       filename: 'private.txt',

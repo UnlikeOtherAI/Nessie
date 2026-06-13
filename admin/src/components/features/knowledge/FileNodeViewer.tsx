@@ -99,6 +99,10 @@ export const FileNodeViewer = ({
           ) : (previewKind === 'pdf' || previewKind === 'text') && previewUrl ? (
             <iframe
               className="h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-white"
+              // The preview blob inherits the admin origin, so a text/HTML file
+              // could run scripts in this session. Sandbox text previews (no
+              // allow-scripts / allow-same-origin); PDFs keep the native viewer.
+              sandbox={previewKind === 'text' ? '' : undefined}
               src={previewUrl}
               title={page.title}
             />

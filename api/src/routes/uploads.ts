@@ -34,6 +34,8 @@ export const streamAttachmentDownload = (
   const disposition = isInlineMime(attachment.mime) ? 'inline' : 'attachment'
   reply.header('content-type', attachment.mime)
   reply.header('content-length', attachment.sizeBytes.toString())
+  // Never let the browser sniff a download into active content.
+  reply.header('x-content-type-options', 'nosniff')
   reply.header(
     'content-disposition',
     `${disposition}; filename="${attachment.filename.replace(/"/g, '')}"`,

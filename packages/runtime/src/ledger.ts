@@ -406,7 +406,9 @@ export const recordStorageStored = async (
   input: {
     attribution: LedgerAttribution
     scope: StorageUsageScope
-    deltaBytes: number
+    // Signed byte delta. BigInt end-to-end so the +store / -delete round-trip
+    // is exact for the full BigInt sizeBytes range (no Number precision loss).
+    deltaBytes: bigint
     operation: StorageStoreOperation
     attachmentId?: string | null
     metadata?: Record<string, unknown> | null
@@ -421,7 +423,7 @@ export const recordStorageStored = async (
       spaceId: scope.spaceId ?? null,
       uploaderId: scope.uploaderId ?? null,
       attachmentId: input.attachmentId ?? null,
-      deltaBytes: BigInt(Math.trunc(input.deltaBytes)),
+      deltaBytes: input.deltaBytes,
       operation: input.operation,
       actorId: attribution.actorId,
       actorType: attribution.actorType ?? null,
