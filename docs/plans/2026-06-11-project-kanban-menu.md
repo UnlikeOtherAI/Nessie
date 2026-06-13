@@ -416,3 +416,51 @@ is long-press activated so a short touch swipe pages instead of grabbing a card.
   column's dropzone registers as **over** (reachable on screen). No page errors.
   The original Safari offset could not be reproduced headlessly (overlay drift
   was already 0), so the fixes are best-effort for the reported symptom.
+
+## Update 2026-06-13 (4) — native scroll-snap carousel (fixes Safari/iPad drag offset)
+
+Replaces the CSS-`transform` carousel (updates `(2)`/`(3)`) with a **native
+horizontal scroll-snap** container.
+
+### Why
+
+Dragging a card from a column on a later page back to an earlier one offset the
+drag overlay by ~one page width on macOS/iPadOS Safari (the shadow lagged behind
+the finger by the scrolled distance, so you had to drag off-window to drop). Root
+cause: the draggable cards lived inside a `transform: translateX` track, and
+dnd-kit mis-measures a draggable whose ancestor is transformed (worse on
+WebKit/touch). dnd-kit *does* handle native scroll containers correctly.
+
+### Board (`admin/`)
+
+- The viewport is now `overflow-x: auto` + `scroll-snap-type: x mandatory`, with
+  one viewport-wide `snap-start` panel per page (no transform anywhere). Scrollbar
+  is hidden (`scrollbar-width: none` + `::-webkit-scrollbar`). Columns still
+  `flex-1 min-w-[300px]` within a panel, so each page fills the width.
+- Paging is the OS's native scroll: **Magic Mouse / trackpad / touch horizontal
+  swipes** scroll-snap between pages (this is what fixed the reported "Magic Mouse
+  swipe does nothing"), and the dots call `scrollTo({ behavior: 'smooth' })`. The
+  current page is read back from `scrollLeft` on `scroll`.
+- Cross-page card drags use **dnd-kit's built-in auto-scroll** (re-enabled): drag
+  to the viewport edge and the board scrolls to the next page, then drop. Snap is
+  set to `none` while a card is dragging so it doesn't fight auto-scroll.
+- Touch drag stays long-press activated (`TouchSensor` delay 250ms) and mouse
+  drag distance activated (`MouseSensor` 8px), so a short touch swipe scrolls and
+  a long-press then drag moves a card.
+- Removed the now-unneeded custom code: the pointer-drag swipe handler, the
+  `wheel` paging handler, the finger-follow offset/`swiping` state, the
+  drag-to-edge paging effect, and `autoScroll={false}`. Net simpler. Note: the
+  earlier "button-drag on blank board area to page (plain mouse)" gesture is gone
+  — plain-mouse users page via the wheel/trackpad or the dots; a button-drag on a
+  card still moves the card.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (admin) pass.
+- Playwright in **Chromium and WebKit**, 1280px / 2 pages: a horizontal wheel
+  pages and back; dots page; cross-page card drag triggers dnd auto-scroll, the
+  **overlay tracks the pointer (drift 0px)**, and the revealed column registers
+  as the drop target. Layout unchanged (4 columns fill at 1680px, 3 + dots at
+  1280px), scrollbar hidden. No page errors. The original Safari/touch offset
+  could not be reproduced headlessly (WebKit blocks synthetic `Touch`), so this
+  is a root-cause structural fix to confirm on the iPad.
