@@ -1,46 +1,61 @@
-import { randomUUID } from 'node:crypto'
+import type { Readable } from 'node:stream'
 
-import type { FastifyInstance } from 'fastify'
+import type { Attachment } from '@prisma/client'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 import {
   attributionFromActorContext,
-  getStorage,
+  FileTooLargeError,
+  QuotaExceededError,
   recordStorageTransferUsage,
-  type StorageConfig,
 } from '@nessie/runtime'
 
-import { AttachmentRecordSchema } from '../contracts.js'
 import { createApiResponse, sendApiError } from '../lib/api.js'
+import { toAttachmentRecord } from '../contracts.js'
 import { canAccessAttachment, canAccessMessageAttachment } from '../services/attachments.js'
 import type { RouteDeps } from './types.js'
 
-// 25 MB upload ceiling. Mirrored in the multipart plugin registration in
-// api/src/index.ts so oversize streams are rejected before buffering.
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
-
-// Derive a coarse attachment `kind` from the MIME type for cheap UI branching
-// (inline image preview vs. download chip) without re-parsing MIME everywhere.
-const kindFromMime = (mime: string): string => {
-  if (mime.startsWith('image/')) return 'image'
-  if (mime.startsWith('video/')) return 'video'
-  if (mime.startsWith('audio/')) return 'audio'
-  if (mime === 'application/pdf') return 'pdf'
-  if (mime.startsWith('text/')) return 'text'
-  return 'file'
-}
-
-const buildStorageConfig = (deps: RouteDeps): StorageConfig => ({
-  provider: deps.config.storage.provider,
-  bucket: deps.config.storage.bucket,
-  localPath: deps.config.storage.localPath,
-})
+// Chat/avatar uploads keep a 25 MB ceiling even though the global multipart
+// limit is the (much larger) configured max — large files belong in the KB.
+const MESSAGE_UPLOAD_BYTES = 25 * 1024 * 1024
 
 const INLINE_DISPOSITION_MIMES = new Set(['application/pdf'])
 
 const isInlineMime = (mime: string): boolean =>
   mime.startsWith('image/') || INLINE_DISPOSITION_MIMES.has(mime)
 
+// Set download headers (inline preview for images/PDFs, attachment otherwise)
+// and pipe the object stream. Shared by every attachment download route so the
+// disposition/length behaviour stays identical.
+export const streamAttachmentDownload = (
+  reply: FastifyReply,
+  opened: { stream: Readable; attachment: Attachment },
+): FastifyReply => {
+  const { attachment, stream } = opened
+  const disposition = isInlineMime(attachment.mime) ? 'inline' : 'attachment'
+  reply.header('content-type', attachment.mime)
+  reply.header('content-length', attachment.sizeBytes.toString())
+  reply.header(
+    'content-disposition',
+    `${disposition}; filename="${attachment.filename.replace(/"/g, '')}"`,
+  )
+  return reply.send(stream)
+}
+
+// Map FileService errors to HTTP. Returns true when it handled the error.
+export const sendFileServiceError = (reply: FastifyReply, error: unknown): boolean => {
+  if (error instanceof QuotaExceededError) {
+    sendApiError(reply, 507, 'STORAGE_QUOTA_EXCEEDED', error.message)
+    return true
+  }
+  if (error instanceof FileTooLargeError) {
+    sendApiError(reply, 413, 'FILE_TOO_LARGE', error.message)
+    return true
+  }
+  return false
+}
+
 export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext } = deps
+  const { prisma, requireActorContext, fileService } = deps
 
   app.post('/api/uploads', async (request, reply) => {
     const startedAt = Date.now()
@@ -49,68 +64,57 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const file = await request.file({ limits: { fileSize: MAX_UPLOAD_BYTES } })
+    const file = await request.file({ limits: { fileSize: MESSAGE_UPLOAD_BYTES } })
     if (!file) {
       sendApiError(reply, 400, 'NO_FILE', 'No file part found in the upload')
-      return reply
-    }
-
-    const bytes = await file.toBuffer()
-    if (file.file.truncated) {
-      sendApiError(
-        reply,
-        413,
-        'FILE_TOO_LARGE',
-        `File exceeds the ${MAX_UPLOAD_BYTES} byte upload limit`,
-      )
       return reply
     }
 
     const mime = file.mimetype || 'application/octet-stream'
     const filename = file.filename || 'upload.bin'
     const organizationId = actorContext.tenant.organizationId
-    const storageKey = `${organizationId}/${randomUUID()}`
 
-    const storage = getStorage(buildStorageConfig(deps))
-    await storage.put(storageKey, bytes, mime)
-
-    const attachment = await prisma.attachment.create({
-      data: {
+    try {
+      const { attachment, bytesWritten } = await fileService.store({
+        attribution: attributionFromActorContext(actorContext),
         organizationId,
         uploaderId: actorContext.actor.actorId,
-        kind: kindFromMime(mime),
-        mime,
         filename,
-        sizeBytes: bytes.byteLength,
-        storageKey,
-      },
-    })
+        mime,
+        body: file.file,
+      })
 
-    void recordStorageTransferUsage(prisma, {
-      attribution: attributionFromActorContext(actorContext),
-      bytes: bytes.byteLength,
-      latencyMs: Date.now() - startedAt,
-      metadata: { attachmentId: attachment.id, source: 'api.uploads' },
-      operation: 'upload',
-    }).catch(() => undefined)
+      if (file.file.truncated) {
+        // Past the per-route limit — undo the stored object + accounting.
+        await fileService.delete(
+          attachment.id,
+          organizationId,
+          attributionFromActorContext(actorContext),
+        )
+        sendApiError(
+          reply,
+          413,
+          'FILE_TOO_LARGE',
+          `File exceeds the ${MESSAGE_UPLOAD_BYTES} byte upload limit`,
+        )
+        return reply
+      }
 
-    return reply.code(201).send(
-      createApiResponse(
-        AttachmentRecordSchema.parse({
-          id: attachment.id,
-          organizationId: attachment.organizationId,
-          uploaderId: attachment.uploaderId ?? undefined,
-          messageId: attachment.messageId ?? undefined,
-          kind: attachment.kind,
-          mime: attachment.mime,
-          filename: attachment.filename,
-          sizeBytes: attachment.sizeBytes,
-          width: attachment.width ?? undefined,
-          height: attachment.height ?? undefined,
-          createdAt: attachment.createdAt.toISOString(),
-        }),
-      ),
-    )
+      void recordStorageTransferUsage(prisma, {
+        attribution: attributionFromActorContext(actorContext),
+        bytes: bytesWritten,
+        latencyMs: Date.now() - startedAt,
+        metadata: { attachmentId: attachment.id, source: 'api.uploads' },
+        operation: 'upload',
+      }).catch(() => undefined)
+
+      return reply.code(201).send(createApiResponse(toAttachmentRecord(attachment)))
+    } catch (error) {
+      if (sendFileServiceError(reply, error)) {
+        return reply
+      }
+      throw error
+    }
   })
 
   app.get('/api/messages/:messageId/attachments', async (request, reply) => {
@@ -135,23 +139,7 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       orderBy: { createdAt: 'asc' },
     })
 
-    return createApiResponse(
-      attachments.map((attachment) =>
-        AttachmentRecordSchema.parse({
-          id: attachment.id,
-          organizationId: attachment.organizationId,
-          uploaderId: attachment.uploaderId ?? undefined,
-          messageId: attachment.messageId ?? undefined,
-          kind: attachment.kind,
-          mime: attachment.mime,
-          filename: attachment.filename,
-          sizeBytes: attachment.sizeBytes,
-          width: attachment.width ?? undefined,
-          height: attachment.height ?? undefined,
-          createdAt: attachment.createdAt.toISOString(),
-        }),
-      ),
-    )
+    return createApiResponse(attachments.map(toAttachmentRecord))
   })
 
   app.get('/api/attachments/:id', async (request, reply) => {
@@ -174,26 +162,19 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const storage = getStorage(buildStorageConfig(deps))
-    const bytes = await storage.get(attachment.storageKey)
-    if (!bytes) {
+    const opened = await fileService.openStream(id, actorContext.tenant.organizationId)
+    if (!opened) {
       sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'Attachment bytes not found')
       return reply
     }
 
-    const disposition = isInlineMime(attachment.mime) ? 'inline' : 'attachment'
-    reply.header('content-type', attachment.mime)
-    reply.header(
-      'content-disposition',
-      `${disposition}; filename="${attachment.filename.replace(/"/g, '')}"`,
-    )
     void recordStorageTransferUsage(prisma, {
       attribution: attributionFromActorContext(actorContext),
-      bytes: bytes.byteLength,
+      bytes: Number(attachment.sizeBytes),
       latencyMs: Date.now() - startedAt,
       metadata: { attachmentId: attachment.id, source: 'api.attachments' },
       operation: 'download',
     }).catch(() => undefined)
-    return reply.send(bytes)
+    return streamAttachmentDownload(reply, opened)
   })
 }

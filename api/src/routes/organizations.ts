@@ -1,9 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import {
-  getStorage,
-  recordStorageTransferUsage,
-  type StorageConfig,
-} from '@nessie/runtime'
+import { recordStorageTransferUsage } from '@nessie/runtime'
 
 import {
   OrganizationSummarySchema,
@@ -12,12 +8,6 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import type { RouteDeps } from './types.js'
-
-const buildStorageConfig = (deps: RouteDeps): StorageConfig => ({
-  provider: deps.config.storage.provider,
-  bucket: deps.config.storage.bucket,
-  localPath: deps.config.storage.localPath,
-})
 
 // Only owners/admins may change the org-wide logo (members get a read-only view).
 const ADMIN_ROLES = new Set(['owner', 'admin'])
@@ -145,24 +135,18 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
       return reply
     }
 
-    const attachment = await prisma.attachment.findUnique({
-      where: { id: organization.logoAttachmentId },
-    })
-    if (!attachment) {
-      sendApiError(reply, 404, 'BRAND_LOGO_NOT_FOUND', 'No brand logo configured')
-      return reply
-    }
-
-    const storage = getStorage(buildStorageConfig(deps))
-    const bytes = await storage.get(attachment.storageKey)
-    if (!bytes) {
+    const opened = await deps.fileService.openStream(
+      organization.logoAttachmentId,
+      organization.id,
+    )
+    if (!opened) {
       sendApiError(reply, 404, 'BRAND_LOGO_NOT_FOUND', 'No brand logo bytes found')
       return reply
     }
 
     // PATCH guarantees a safe raster MIME, but pin + nosniff defensively since
     // this is public and unauthenticated.
-    const mime = SAFE_LOGO_MIMES.has(attachment.mime) ? attachment.mime : 'image/png'
+    const mime = SAFE_LOGO_MIMES.has(opened.attachment.mime) ? opened.attachment.mime : 'image/png'
     reply.header('content-type', mime)
     reply.header('x-content-type-options', 'nosniff')
     reply.header('cache-control', 'public, max-age=60')
@@ -172,11 +156,11 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         actorId: 'public',
         actorType: 'system',
       },
-      bytes: bytes.byteLength,
+      bytes: Number(opened.attachment.sizeBytes),
       latencyMs: Date.now() - startedAt,
-      metadata: { attachmentId: attachment.id, source: 'api.brand.logo' },
+      metadata: { attachmentId: opened.attachment.id, source: 'api.brand.logo' },
       operation: 'download',
     }).catch(() => undefined)
-    return reply.send(bytes)
+    return reply.send(opened.stream)
   })
 }

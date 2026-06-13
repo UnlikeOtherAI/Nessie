@@ -1,6 +1,14 @@
-import { randomUUID } from 'node:crypto'
+import { Readable } from 'node:stream'
+
 import { loadConfig } from '@nessie/config'
-import { getStorage, type StorageConfig } from '@nessie/runtime'
+import {
+  attributionFromActorContext,
+  collectStream,
+  createFileService,
+  getStorage,
+  type FileService,
+} from '@nessie/runtime'
+import type { PrismaClient } from '@prisma/client'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
   buildVisibleChannelWhere,
@@ -10,15 +18,6 @@ import { clampLimit, formatSection, truncate } from './tool-output.js'
 
 const ATTACHMENT_READ_MAX_TEXT_BYTES = 64 * 1024
 
-const attachmentKindFromMime = (mime: string): string => {
-  if (mime.startsWith('image/')) return 'image'
-  if (mime.startsWith('video/')) return 'video'
-  if (mime.startsWith('audio/')) return 'audio'
-  if (mime === 'application/pdf') return 'pdf'
-  if (mime.startsWith('text/')) return 'text'
-  return 'file'
-}
-
 const isTextLikeMime = (mime: string): boolean =>
   mime.startsWith('text/') ||
   mime === 'application/json' ||
@@ -26,13 +25,15 @@ const isTextLikeMime = (mime: string): boolean =>
   mime.endsWith('+json') ||
   mime.endsWith('+xml')
 
-const attachmentStorageConfig = (): StorageConfig => {
+// All blob work goes through the single FileService (storage + Attachment row +
+// stored-bytes accounting), same as the API. Built from config per call.
+const fileServiceFor = (prisma: PrismaClient): FileService => {
   const config = loadConfig()
-  return {
-    provider: config.storage.provider,
-    bucket: config.storage.bucket,
-    localPath: config.storage.localPath,
-  }
+  return createFileService({
+    prisma,
+    storage: getStorage(config.storage),
+    maxUploadBytes: config.storage.maxUploadBytes,
+  })
 }
 
 export const runAttachmentUploadTool = async (
@@ -59,21 +60,13 @@ export const runAttachmentUploadTool = async (
       ? context.actorContext.actor.actorId
       : context.actorContext.actionContext.effectiveUserId ?? null
 
-  const storageKey = `${organizationId}/${randomUUID()}`
-  const storage = getStorage(attachmentStorageConfig())
-  await storage.put(storageKey, bytes, mime)
-
-  const attachment = await context.prisma.attachment.create({
-    data: {
-      organizationId,
-      uploaderId,
-      kind: attachmentKindFromMime(mime),
-      mime,
-      filename,
-      sizeBytes: bytes.byteLength,
-      storageKey,
-    },
-    select: { id: true, filename: true, mime: true, sizeBytes: true },
+  const { attachment } = await fileServiceFor(context.prisma).store({
+    attribution: attributionFromActorContext(context.actorContext),
+    organizationId,
+    uploaderId,
+    filename,
+    mime,
+    body: Readable.from(bytes),
   })
 
   return {
@@ -82,7 +75,7 @@ export const runAttachmentUploadTool = async (
       target: 'attachment',
       operation: 'upload',
       calls: 1,
-      units: attachment.sizeBytes,
+      units: Number(attachment.sizeBytes),
       unitType: 'bytes',
       metadata: { attachmentId: attachment.id, source: 'worker.attachment_upload' },
     },
@@ -187,7 +180,7 @@ export const runAttachmentReadTool = async (
 
   if (
     !isTextLikeMime(attachment.mime) ||
-    attachment.sizeBytes > ATTACHMENT_READ_MAX_TEXT_BYTES
+    Number(attachment.sizeBytes) > ATTACHMENT_READ_MAX_TEXT_BYTES
   ) {
     return {
       inputSummary: `id=${id}`,
@@ -199,15 +192,18 @@ export const runAttachmentReadTool = async (
     }
   }
 
-  const storage = getStorage(attachmentStorageConfig())
-  const bytes = await storage.get(attachment.storageKey)
-  if (!bytes) {
+  const opened = await fileServiceFor(context.prisma).openStream(
+    attachment.id,
+    context.channel.organizationId,
+  )
+  if (!opened) {
     return {
       inputSummary: `id=${id}`,
       outputPreview: [...metadataLines, 'content=(stored bytes missing)'].join('\n'),
       toolName: 'attachment_read',
     }
   }
+  const bytes = await collectStream(opened.stream)
 
   return {
     connectorUsage: {

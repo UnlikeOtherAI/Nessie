@@ -20,7 +20,14 @@ import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import websocket from '@fastify/websocket'
 import Fastify from 'fastify'
-import { createModelClient, createPgPool, ModelUsageTracker, recordInferenceUsage } from '@nessie/runtime'
+import {
+  createFileService,
+  createModelClient,
+  createPgPool,
+  getStorage,
+  ModelUsageTracker,
+  recordInferenceUsage,
+} from '@nessie/runtime'
 import { sendApiError } from './lib/api.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
@@ -50,6 +57,7 @@ import { registerFavoriteRoutes } from './routes/favorites.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
 import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
+import { registerKnowledgeBaseFileRoutes } from './routes/knowledge-base-files.js'
 import { registerKnowledgeCommentRoutes } from './routes/knowledge-comments.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
@@ -201,9 +209,11 @@ export const buildApp = async () => {
   })
   await app.register(cookie)
   await app.register(websocket)
-  // File uploads / attachments slice: 25 MB ceiling, single file per request.
+  // File uploads / attachments slice. The ceiling is the configured max upload
+  // (default 5 GiB) so large file nodes can stream through; chat/avatar routes
+  // re-impose a smaller per-route limit via request.file({ limits }).
   await app.register(multipart, {
-    limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+    limits: { fileSize: config.storage.maxUploadBytes, files: 1 },
   })
 
   // Self-heal: ensure every pre-existing organization has the default policy
@@ -255,12 +265,19 @@ export const buildApp = async () => {
   // Per-domain route modules. Each `register<Domain>Routes(app, deps)` closes
   // over the shared `RouteDeps` (server context + buildApp-local resources),
   // replacing the implicit closures these handlers used while inlined here.
+  const fileService = createFileService({
+    prisma,
+    storage: getStorage(config.storage),
+    maxUploadBytes: config.storage.maxUploadBytes,
+  })
+
   const deps: RouteDeps = {
     ...serverContext,
     realtimeHub,
     sharedModelClient,
     messageMemoryCaptureConfig,
     thoughtService,
+    fileService,
   }
 
   registerHealthRoutes(app, deps)
@@ -299,6 +316,7 @@ export const buildApp = async () => {
   registerPolicyRoutes(app, deps)
   registerApprovalRoutes(app, deps)
   registerKnowledgeBaseRoutes(app, deps)
+  registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)
   registerTaskRoutes(app, deps)
   registerLedgerRoutes(app, deps)

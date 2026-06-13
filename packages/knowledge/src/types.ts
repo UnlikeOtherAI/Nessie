@@ -18,6 +18,9 @@ export type KnowledgeVisibility =
 
 export type KnowledgeSensitivityTier = 'normal' | 'sensitive' | 'restricted'
 export type KnowledgePageStatus = 'draft' | 'published' | 'archived'
+// A page is an editable rich-text document or a stored file node (each version
+// backed by an Attachment). Folders stay virtual (a document with children).
+export type KnowledgePageKind = 'document' | 'file'
 export type KnowledgeAuthorType = 'user' | 'agent'
 
 export type KnowledgeProviderCapabilities = {
@@ -48,6 +51,8 @@ export type KnowledgePageVersionRecord = {
   versionNumber: number
   body: string | null
   bodyRef: string | null
+  // For file nodes: the stored object backing this version.
+  attachmentId: string | null
   authorType: KnowledgeAuthorType
   authorId: string
   changeComment: string | null
@@ -73,6 +78,7 @@ export type KnowledgePageRecord = KnowledgeScopeInput & {
   title: string
   summary: string | null
   metadata: Record<string, unknown> | null
+  kind: KnowledgePageKind
   parentPageId: string | null
   position: number
   status: KnowledgePageStatus
@@ -153,6 +159,9 @@ export type CreatePageInput = KnowledgeScopeInput & {
   authorType: KnowledgeAuthorType
   body?: string | null
   bodyRef?: string | null
+  // For file nodes: kind = 'file' and the v1 version is backed by this attachment.
+  kind?: KnowledgePageKind
+  attachmentId?: string | null
   changeComment?: string | null
   createdBy: string
   labels?: string[]
@@ -162,6 +171,16 @@ export type CreatePageInput = KnowledgeScopeInput & {
   spaceId: string
   summary?: string | null
   title: string
+}
+
+// Add a new version to a file node, backed by a freshly stored attachment.
+export type AddFileVersionInput = {
+  organizationId: string
+  pageId: string
+  attachmentId: string
+  authorId: string
+  authorType: KnowledgeAuthorType
+  changeComment?: string | null
 }
 
 export type UpdatePageInput = Partial<{
@@ -205,6 +224,7 @@ export type KnowledgeProvider = {
   capabilities: KnowledgeProviderCapabilities
   id: string
   kind: KnowledgeProviderKind
+  addFileVersion: (input: AddFileVersionInput) => Promise<KnowledgePageVersionRecord | null>
   archivePage: (organizationId: string, pageId: string) => Promise<KnowledgePageRecord | null>
   archiveSpace: (organizationId: string, spaceId: string) => Promise<KnowledgeSpaceRecord | null>
   createPage: (input: CreatePageInput) => Promise<KnowledgePageRecord>

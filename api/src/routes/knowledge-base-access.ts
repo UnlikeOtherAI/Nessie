@@ -56,10 +56,16 @@ export const attachSpaceEnvelope = (
   visibilityReason: visibilityReason(space, decision),
 })
 
+export type PageEnvelope = KnowledgePageRecord & {
+  policyChainTrace: string[]
+  sourceRef: string
+  visibilityReason: string
+}
+
 export const attachPageEnvelope = (
   page: KnowledgePageRecord,
   decision: PolicyDecision,
-) => ({
+): PageEnvelope => ({
   ...page,
   policyChainTrace: policyTrace(decision),
   sourceRef: buildNativeSourceRef(page.id, pageVersionRef(page)),

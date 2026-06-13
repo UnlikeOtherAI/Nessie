@@ -58,20 +58,57 @@ export const ThreadRecordSchema = z.object({
 export type ThreadRecord = z.infer<typeof ThreadRecordSchema>
 
 // ─── File uploads / attachments (Slack-parity files slice) ──────────────────
+// sizeBytes is a BigInt column (uploads up to 5 GB), serialized as a decimal
+// string so it survives JSON without precision loss.
 export const AttachmentRecordSchema = z.object({
   id: z.string().uuid(),
   organizationId: OrganizationIdSchema,
   uploaderId: z.string().uuid().optional(),
   messageId: z.string().uuid().optional(),
+  knowledgePageId: z.string().uuid().optional(),
   kind: NonEmptyStringSchema,
   mime: NonEmptyStringSchema,
   filename: NonEmptyStringSchema,
-  sizeBytes: z.number().int().nonnegative(),
+  sizeBytes: z.union([z.bigint(), z.number(), z.string()]).transform((value) => value.toString()),
   width: z.number().int().nonnegative().optional(),
   height: z.number().int().nonnegative().optional(),
   createdAt: TimestampSchema,
 })
 export type AttachmentRecord = z.infer<typeof AttachmentRecordSchema>
+
+// Shape the FileService / Prisma attachment row carries when building a record.
+type AttachmentRowLike = {
+  id: string
+  organizationId: string
+  uploaderId: string | null
+  messageId: string | null
+  knowledgePageId: string | null
+  kind: string
+  mime: string
+  filename: string
+  sizeBytes: bigint
+  width: number | null
+  height: number | null
+  createdAt: Date
+}
+
+// Single mapper from a stored attachment row to the wire record, so every route
+// serializes attachments identically (and handles the BigInt → string cast).
+export const toAttachmentRecord = (row: AttachmentRowLike): AttachmentRecord =>
+  AttachmentRecordSchema.parse({
+    id: row.id,
+    organizationId: row.organizationId,
+    uploaderId: row.uploaderId ?? undefined,
+    messageId: row.messageId ?? undefined,
+    knowledgePageId: row.knowledgePageId ?? undefined,
+    kind: row.kind,
+    mime: row.mime,
+    filename: row.filename,
+    sizeBytes: row.sizeBytes,
+    width: row.width ?? undefined,
+    height: row.height ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+  })
 
 export const CreateThreadMessageBodySchema = z.object({
   content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),

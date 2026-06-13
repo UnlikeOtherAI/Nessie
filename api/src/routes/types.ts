@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import type { ModelClient } from '@nessie/runtime'
+import type { FileService, ModelClient } from '@nessie/runtime'
 import type { CaptureConfig } from '@nessie/memory'
 import type { createRealtimeHub } from '../realtime/hub.js'
 import type { createThoughtService } from '../services/thoughts.js'
@@ -23,4 +23,6 @@ export type RouteDeps = ServerContext & {
   sharedModelClient: ModelClient | null
   messageMemoryCaptureConfig: CaptureConfig | null
   thoughtService: ThoughtService | null
+  // Single chokepoint for all blob file work (store/stream/delete + accounting).
+  fileService: FileService
 }

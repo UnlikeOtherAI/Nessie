@@ -6,6 +6,7 @@ import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './nati
 import { searchNativePages } from './native-search.js'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import type {
+  AddFileVersionInput,
   KnowledgePageRecord,
   KnowledgePageTreeNode,
   KnowledgePageVersionRecord,
@@ -237,6 +238,7 @@ const restoreVersion = async (
         versionNumber: await nextVersionNumber(tx, input.pageId),
         body: version.body,
         bodyRef: version.bodyRef,
+        attachmentId: version.attachmentId,
         authorType: input.authorType,
         authorId: input.authorId,
         changeComment: input.changeComment ?? `Restored version ${version.versionNumber}`,
@@ -247,6 +249,31 @@ const restoreVersion = async (
       data: { status: 'draft' },
     })
     return fetchPage(tx, input.organizationId, input.pageId)
+  }))
+
+// Add a new version to a file node, backed by a freshly stored attachment.
+// Mirrors the version-creation path but carries an attachmentId instead of body.
+const addFileVersion = async (
+  prisma: PrismaClient,
+  input: AddFileVersionInput,
+): Promise<KnowledgePageVersionRecord | null> =>
+  withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
+    const page = await getMutablePage(tx, input.organizationId, input.pageId)
+    if (!page) return null
+    const version = await tx.knowledgePageVersion.create({
+      data: {
+        pageId: input.pageId,
+        versionNumber: await nextVersionNumber(tx, input.pageId),
+        body: null,
+        attachmentId: input.attachmentId,
+        authorType: input.authorType,
+        authorId: input.authorId,
+        changeComment: input.changeComment ?? null,
+      },
+    })
+    // Touch the page so updatedAt reflects the new version.
+    await tx.knowledgePage.update({ where: { id: input.pageId }, data: {} })
+    return mapVersion(version)
   }))
 
 const updatePage = async (
@@ -301,6 +328,8 @@ export const createNativeKnowledgeProvider = (
   id: 'native:first-party',
   kind: 'first_party',
 
+  addFileVersion: (input) => addFileVersion(prisma, input),
+
   archivePage: (organizationId, pageId) => archivePage(prisma, organizationId, pageId),
 
   archiveSpace: async (organizationId, spaceId) => {
@@ -341,6 +370,7 @@ export const createNativeKnowledgeProvider = (
           title: input.title,
           summary: input.summary ?? null,
           metadata: input.metadata as Prisma.InputJsonValue,
+          kind: input.kind ?? 'document',
           spaceId: input.spaceId,
           parentPageId: input.parentPageId ?? null,
           position,
@@ -362,6 +392,7 @@ export const createNativeKnowledgeProvider = (
           versionNumber: 1,
           body: input.body ?? null,
           bodyRef: input.bodyRef ?? null,
+          attachmentId: input.attachmentId ?? null,
           authorType: input.authorType,
           authorId: input.authorId,
           changeComment: input.changeComment ?? null,
