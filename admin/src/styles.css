@@ -1117,10 +1117,6 @@ button.reaction-pill:focus-visible {
 }
 
 @media (hover: none), (pointer: coarse) {
-  .admin-msg-row[data-actions-open="true"] {
-    padding-bottom: 58px;
-  }
-
   .admin-msg-row:not([data-actions-open="true"]):focus-within .admin-msg-actions {
     display: none;
   }
@@ -1128,7 +1124,7 @@ button.reaction-pill:focus-visible {
   .admin-msg-row[data-actions-open="true"] .admin-msg-actions {
     position: absolute;
     right: 12px;
-    bottom: 8px;
+    bottom: 2px;
     margin-top: 0;
   }
 }
