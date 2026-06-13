@@ -1,6 +1,16 @@
-import { useState } from 'react'
-import { useKnowledgeVersions } from '../../../facades/knowledge/hooks'
+import { useRef, useState } from 'react'
+import {
+  useUploadFileNode,
+  useUploadFileVersion,
+  useUploadPageAttachment,
+} from '../../../facades/knowledge/file-hooks'
+import { useKnowledgeVersions, type KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { getCookie, setCookie } from '../../../lib/storage'
+import type { UploadProgress } from '../../../lib/upload-xhr'
+import { AttachmentsDrawer } from './AttachmentsDrawer'
+import { DropZoneOverlay } from './DropZoneOverlay'
+import { FileNodeViewer } from './FileNodeViewer'
+import { FileVersionUploadDialog } from './FileVersionUploadDialog'
 import { KnowledgeFilesystemBrowser } from './KnowledgeFilesystemBrowser'
 import { useKnowledge } from './KnowledgeProvider'
 import { KnowledgePane } from './KnowledgePane'
@@ -11,6 +21,7 @@ import {
 } from './KnowledgeViewToggle'
 import { PageEditor } from './PageEditor'
 import { PagePreview } from './PagePreview'
+import { useFileDrop } from './useFileDrop'
 import { VersionHistory } from './VersionHistory'
 
 const VIEW_MODE_COOKIE = 'knowledgeViewMode'
@@ -56,10 +67,69 @@ export const KnowledgeWorkspace = () => {
   const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
   const currentFolder = openPageId ? null : pathPages.at(-1)
 
+  // ─── File upload wiring (file nodes, page attachments, new versions) ───────
+  const [attachmentsPageId, setAttachmentsPageId] = useState<string | null>(null)
+  const [versionDialogFor, setVersionDialogFor] = useState<KnowledgePageRecord | null>(null)
+  const [attachProgress, setAttachProgress] = useState<UploadProgress | null>(null)
+  const [fileNodeProgress, setFileNodeProgress] = useState<UploadProgress | null>(null)
+  const [versionProgress, setVersionProgress] = useState<UploadProgress | null>(null)
+  const [versionError, setVersionError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const fileNodeUpload = useUploadFileNode(selectedSpaceId, currentFolder?.id ?? null)
+  const pageAttachmentUpload = useUploadPageAttachment(current?.id)
+  const fileVersionUpload = useUploadFileVersion(versionDialogFor?.id, selectedSpaceId)
+
+  const uploadFileNode = (file: File) => {
+    if (!selectedSpaceId) return
+    setFileNodeProgress({ loaded: 0, total: file.size, pct: 0 })
+    fileNodeUpload.mutate(
+      { file, onProgress: setFileNodeProgress },
+      { onSettled: () => setFileNodeProgress(null) },
+    )
+  }
+  const uploadPageAttachment = (file: File) => {
+    if (!current) return
+    setAttachmentsPageId(current.id)
+    setAttachProgress({ loaded: 0, total: file.size, pct: 0 })
+    pageAttachmentUpload.mutate(
+      { file, onProgress: setAttachProgress },
+      { onSettled: () => setAttachProgress(null) },
+    )
+  }
+
+  const fileNodeDrop = useFileDrop(uploadFileNode, !selectedSpaceId)
+  const attachmentDrop = useFileDrop(uploadPageAttachment, !current)
+
   const updateViewMode = (nextMode: KnowledgeViewMode) => {
     setViewMode(nextMode)
     setCookie(VIEW_MODE_COOKIE, nextMode)
   }
+
+  const versionDialog = versionDialogFor ? (
+    <FileVersionUploadDialog
+      error={versionError}
+      onClose={() => {
+        setVersionDialogFor(null)
+        setVersionError(null)
+      }}
+      onPick={(file) => {
+        setVersionError(null)
+        setVersionProgress({ loaded: 0, total: file.size, pct: 0 })
+        fileVersionUpload.mutate(
+          { file, onProgress: setVersionProgress },
+          {
+            onError: (error) => setVersionError((error as Error).message),
+            onSuccess: () => setVersionDialogFor(null),
+            onSettled: () => setVersionProgress(null),
+          },
+        )
+      }}
+      progressPct={versionProgress?.pct ?? 0}
+      title={versionDialogFor.title}
+      uploading={fileVersionUpload.isPending}
+    />
+  ) : null
 
   // Full-width editor (create or edit) — takes the whole main area.
   if (editor) {
@@ -96,63 +166,119 @@ export const KnowledgeWorkspace = () => {
     )
   }
 
-  // Full-width page preview. Back pops the navigation stack (to the parent page,
-  // or to the pages list at the top level).
+  // Full-width page preview / file viewer. Dropping a file here adds an
+  // attachment to the open page (document or file node).
   if (current) {
     return (
-      <PagePreview
-        onBack={() => popTo(depth)}
-        onCreateChild={() => openCreate(current.id)}
-        onDrill={(childPageId) => drillTo(depth, childPageId)}
-        onEdit={() => openEdit(current)}
-        onOpenHistory={() => openHistory(current.id)}
-        onPublish={() => publishPage(current.id)}
-        page={current}
-        publishPending={publishPending}
-        subPages={childrenOf(current.id)}
-      />
+      <div className="relative h-full w-full" {...attachmentDrop.dropHandlers}>
+        {current.kind === 'file' ? (
+          <FileNodeViewer
+            onBack={() => popTo(depth)}
+            onOpenHistory={() => openHistory(current.id)}
+            onToggleAttachments={() => setAttachmentsPageId(current.id)}
+            onUploadVersion={() => setVersionDialogFor(current)}
+            page={current}
+          />
+        ) : (
+          <PagePreview
+            onBack={() => popTo(depth)}
+            onCreateChild={() => openCreate(current.id)}
+            onDrill={(childPageId) => drillTo(depth, childPageId)}
+            onEdit={() => openEdit(current)}
+            onOpenHistory={() => openHistory(current.id)}
+            onPublish={() => publishPage(current.id)}
+            onToggleAttachments={() => setAttachmentsPageId(current.id)}
+            page={current}
+            publishPending={publishPending}
+            subPages={childrenOf(current.id)}
+          />
+        )}
+        <DropZoneOverlay
+          active={attachmentDrop.isDragging}
+          label="Drop to attach to this page"
+          progressPct={attachProgress?.pct}
+          uploading={pageAttachmentUpload.isPending}
+        />
+        {attachmentsPageId ? (
+          <AttachmentsDrawer
+            onClose={() => setAttachmentsPageId(null)}
+            open={Boolean(attachmentsPageId)}
+            pageId={attachmentsPageId}
+          />
+        ) : null}
+        {versionDialog}
+      </div>
     )
   }
 
-  // No document open → the selected space's filesystem browser.
+  // No document open → the selected space's filesystem browser. Dropping a file
+  // here uploads it as a new file node in the current folder.
   return (
-    <KnowledgePane
-      actions={
-        selectedSpaceId ? (
-          <button
-            className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
-            onClick={() => openCreate(currentFolder?.id ?? null)}
-            type="button"
-          >
-            New page
-          </button>
-        ) : undefined
-      }
-      center={<KnowledgeViewToggle mode={viewMode} onChange={updateViewMode} />}
-      title={selectedSpace?.name ?? 'Pages'}
-    >
-      <div className="h-full w-full">
-        {!selectedSpaceId ? (
-          <div className="py-16 text-center text-sm text-[color:var(--tx3)]">Select a space</div>
-        ) : rootPages.length === 0 ? (
-          <div className="py-16 text-center text-sm text-[color:var(--tx3)]">
-            No pages yet — create one with “New page”.
-          </div>
-        ) : (
-          <KnowledgeFilesystemBrowser
-            childrenOf={childrenOf}
-            mode={viewMode}
-            onBrowsePath={browseTo}
-            onOpenDocumentPath={openPagePath}
-            pageById={pageById}
-            pagePath={pagePath}
-            pages={pages}
-            rootPages={rootPages}
-            selectedSpaceId={selectedSpaceId}
-            selectedSpaceName={selectedSpace?.name ?? 'Pages'}
-          />
-        )}
-      </div>
-    </KnowledgePane>
+    <div className="relative h-full w-full" {...fileNodeDrop.dropHandlers}>
+      <KnowledgePane
+        actions={
+          selectedSpaceId ? (
+            <>
+              <button
+                className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              >
+                Upload file
+              </button>
+              <button
+                className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
+                onClick={() => openCreate(currentFolder?.id ?? null)}
+                type="button"
+              >
+                New page
+              </button>
+            </>
+          ) : undefined
+        }
+        center={<KnowledgeViewToggle mode={viewMode} onChange={updateViewMode} />}
+        title={selectedSpace?.name ?? 'Pages'}
+      >
+        <div className="h-full w-full">
+          {!selectedSpaceId ? (
+            <div className="py-16 text-center text-sm text-[color:var(--tx3)]">Select a space</div>
+          ) : rootPages.length === 0 ? (
+            <div className="py-16 text-center text-sm text-[color:var(--tx3)]">
+              No pages yet — create one with “New page”, or drop a file to upload.
+            </div>
+          ) : (
+            <KnowledgeFilesystemBrowser
+              childrenOf={childrenOf}
+              mode={viewMode}
+              onBrowsePath={browseTo}
+              onOpenDocumentPath={openPagePath}
+              pageById={pageById}
+              pagePath={pagePath}
+              pages={pages}
+              rootPages={rootPages}
+              selectedSpaceId={selectedSpaceId}
+              selectedSpaceName={selectedSpace?.name ?? 'Pages'}
+            />
+          )}
+        </div>
+      </KnowledgePane>
+      <DropZoneOverlay
+        active={fileNodeDrop.isDragging}
+        label="Drop a file to upload"
+        progressPct={fileNodeProgress?.pct}
+        uploading={fileNodeUpload.isPending}
+      />
+      <input
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) uploadFileNode(file)
+          event.target.value = ''
+        }}
+        ref={fileInputRef}
+        type="file"
+      />
+      {versionDialog}
+    </div>
   )
 }

@@ -7,6 +7,7 @@ export type KnowledgeVersionRecord = {
   versionNumber: number
   body: string | null
   bodyRef: string | null
+  attachmentId: string | null
   authorType: 'user' | 'agent'
   authorId: string
   changeComment: string | null
@@ -15,6 +16,8 @@ export type KnowledgeVersionRecord = {
   visibilityReason: string
   policyChainTrace: string[]
 }
+
+export type KnowledgePageKind = 'document' | 'file'
 
 export type KnowledgeSpaceRecord = {
   id: string
@@ -35,6 +38,7 @@ export type KnowledgePageRecord = {
   spaceId: string
   title: string
   summary: string | null
+  kind: KnowledgePageKind
   parentPageId: string | null
   position: number
   status: 'draft' | 'published' | 'archived'

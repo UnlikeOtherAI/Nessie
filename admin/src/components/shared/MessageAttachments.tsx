@@ -66,7 +66,7 @@ const DownloadChip = ({
       type="button"
     >
       <span className="font-semibold text-[color:var(--tx)]">{attachment.filename}</span>
-      <span>{formatBytes(attachment.sizeBytes)}</span>
+      <span>{formatBytes(Number(attachment.sizeBytes))}</span>
       <span>{downloading ? '…' : '↓'}</span>
     </button>
   )

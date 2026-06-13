@@ -1,4 +1,4 @@
-import { faFileLines, faFolder } from '@fortawesome/free-solid-svg-icons'
+import { faFileLines, faFolder, faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { CommentsSection } from './comments/CommentsSection'
@@ -13,6 +13,7 @@ type PagePreviewProps = {
   onEdit: () => void
   onOpenHistory: () => void
   onPublish: () => void
+  onToggleAttachments: () => void
   page: KnowledgePageRecord
   publishPending?: boolean
   subPages: KnowledgePageRecord[]
@@ -33,6 +34,7 @@ export const PagePreview = ({
   onEdit,
   onOpenHistory,
   onPublish,
+  onToggleAttachments,
   page,
   publishPending,
   subPages,
@@ -40,6 +42,14 @@ export const PagePreview = ({
   <KnowledgePane
     actions={
       <>
+        <button
+          className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+          onClick={onToggleAttachments}
+          type="button"
+        >
+          <FontAwesomeIcon className="mr-1.5 h-3 w-3" icon={faPaperclip} />
+          Attachments
+        </button>
         <button
           className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
           onClick={onOpenHistory}

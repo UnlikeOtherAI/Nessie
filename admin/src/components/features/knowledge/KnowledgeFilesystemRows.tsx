@@ -7,6 +7,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { iconForFilename } from './file-icons'
 import { pageStatusTone } from './page-status'
 
 export type KnowledgeFilesystemItemKind = 'file' | 'folder'
@@ -43,16 +44,27 @@ export const KnowledgeBreadcrumb = ({
   </nav>
 )
 
-const KnowledgeItemIcon = ({ kind }: { kind: KnowledgeFilesystemItemKind }) => (
-  <FontAwesomeIcon
-    className={[
-      'h-4 w-4 flex-shrink-0',
-      kind === 'folder' ? 'text-[color:var(--accent)]' : 'text-[color:var(--tx3)]',
-    ].join(' ')}
-    fixedWidth
-    icon={kind === 'folder' ? faFolder : faFileLines}
-  />
-)
+const KnowledgeItemIcon = ({
+  kind,
+  page,
+}: {
+  kind: KnowledgeFilesystemItemKind
+  page: KnowledgePageRecord
+}) => {
+  // Folder → folder icon; file node → typed icon from its filename; document → text.
+  const icon =
+    kind === 'folder' ? faFolder : page.kind === 'file' ? iconForFilename(page.title) : faFileLines
+  return (
+    <FontAwesomeIcon
+      className={[
+        'h-4 w-4 flex-shrink-0',
+        kind === 'folder' ? 'text-[color:var(--accent)]' : 'text-[color:var(--tx3)]',
+      ].join(' ')}
+      fixedWidth
+      icon={icon}
+    />
+  )
+}
 
 export const KnowledgeItemRow = ({
   childCount,
@@ -86,7 +98,7 @@ export const KnowledgeItemRow = ({
     style={{ paddingLeft: `${12 + depth * 18}px` }}
     type="button"
   >
-    <KnowledgeItemIcon kind={kind} />
+    <KnowledgeItemIcon kind={kind} page={page} />
     <span className="min-w-0 flex-1">
       <span className="block truncate font-medium">{page.title}</span>
       {page.summary ? (
@@ -96,6 +108,10 @@ export const KnowledgeItemRow = ({
     {kind === 'folder' ? (
       <span className="shrink-0 text-[11px] text-[color:var(--tx3)]">
         {childCount} {childCount === 1 ? 'item' : 'items'}
+      </span>
+    ) : page.kind === 'file' ? (
+      <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-[color:var(--tx3)]">
+        file
       </span>
     ) : (
       <span className={`shrink-0 text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[page.status]}`}>

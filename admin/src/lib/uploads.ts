@@ -7,10 +7,12 @@ export type AttachmentRecord = {
   organizationId: string
   uploaderId?: string
   messageId?: string
+  knowledgePageId?: string
   kind: string
   mime: string
   filename: string
-  sizeBytes: number
+  // BigInt on the server, serialized as a decimal string.
+  sizeBytes: string
   width?: number
   height?: number
   createdAt: string
@@ -48,13 +50,16 @@ export const uploadAttachment = async (
 // URL the browser can use to fetch attachment bytes (image preview / download).
 export const attachmentUrl = (id: string): string => `${getBaseUrl()}/api/attachments/${id}`
 
-// Fetch attachment bytes with the bearer token and expose them as an object URL
-// so authenticated images work (a bare <img src> cannot send an auth header).
-// Returns null while loading, on error, or when `id` is null.
-export const useAuthedObjectUrl = (id: string | null, token: string | null): string | null => {
+// Fetch a download path with the bearer token and expose it as an object URL so
+// authenticated previews work (a bare <img>/<iframe> src cannot send an auth
+// header). Returns null while loading, on error, or when `path` is null.
+export const useAuthedObjectUrlFromPath = (
+  path: string | null,
+  token: string | null,
+): string | null => {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
-    if (!id) {
+    if (!path) {
       setUrl(null)
       return
     }
@@ -62,7 +67,7 @@ export const useAuthedObjectUrl = (id: string | null, token: string | null): str
     let objectUrl: string | null = null
     const headers = new Headers()
     if (token) headers.set('authorization', `Bearer ${token}`)
-    fetch(attachmentUrl(id), { headers })
+    fetch(`${getBaseUrl()}${path}`, { headers })
       .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
       .then((blob) => {
         if (revoked) return
@@ -74,6 +79,32 @@ export const useAuthedObjectUrl = (id: string | null, token: string | null): str
       revoked = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [id, token])
+  }, [path, token])
   return url
+}
+
+// Authenticated image/preview by attachment id (chat attachments).
+export const useAuthedObjectUrl = (id: string | null, token: string | null): string | null =>
+  useAuthedObjectUrlFromPath(id ? `/api/attachments/${id}` : null, token)
+
+// Trigger a browser download of an authed path (bytes fetched with the token,
+// then handed to a transient <a download> link).
+export const downloadAuthedPath = async (
+  path: string,
+  filename: string,
+  token: string | null,
+): Promise<void> => {
+  const headers = new Headers()
+  if (token) headers.set('authorization', `Bearer ${token}`)
+  const res = await fetch(`${getBaseUrl()}${path}`, { headers })
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  const blob = await res.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(objectUrl)
 }
