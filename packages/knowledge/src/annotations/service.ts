@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { canReadSpace, canWriteSpace } from '../access.js'
 import { KnowledgeAnnotationError } from '../errors.js'
-import { mapAnnotation, repliesInclude } from './mappers.js'
+import { annotationInclude, mapAnnotation } from './mappers.js'
 import type {
   AnnotationAccess,
   AnnotationActor,
@@ -76,7 +76,7 @@ export const createAnnotationService = ({ prisma }: AnnotationServiceDeps) => {
   const reload = async (annotationId: string): Promise<AnnotationRecord> => {
     const row = await prisma.knowledgePageAnnotation.findUniqueOrThrow({
       where: { id: annotationId },
-      include: repliesInclude,
+      include: annotationInclude,
     })
     return mapAnnotation(row)
   }
@@ -95,7 +95,7 @@ export const createAnnotationService = ({ prisma }: AnnotationServiceDeps) => {
           deletedAt: null,
           ...(opts?.kind ? { kind: opts.kind } : {}),
         },
-        include: repliesInclude,
+        include: annotationInclude,
         orderBy: { createdAt: 'desc' },
       })
       return rows.map(mapAnnotation)
@@ -115,7 +115,7 @@ export const createAnnotationService = ({ prisma }: AnnotationServiceDeps) => {
           body: cleanBody(input.body),
           ...authorFields(input.actor),
         },
-        include: repliesInclude,
+        include: annotationInclude,
       })
       return mapAnnotation(row)
     },
@@ -141,7 +141,7 @@ export const createAnnotationService = ({ prisma }: AnnotationServiceDeps) => {
           anchorVersionId: input.anchorVersionId ?? null,
           ...authorFields(input.actor),
         },
-        include: repliesInclude,
+        include: annotationInclude,
       })
       return mapAnnotation(row)
     },
@@ -221,6 +221,48 @@ export const createAnnotationService = ({ prisma }: AnnotationServiceDeps) => {
         },
         data: { deletedAt: now },
       })
+    },
+
+    // Toggle one emoji reaction by the actor on an annotation (add if absent,
+    // remove if present). Anyone who can read the page may react.
+    async toggleReaction(
+      access: AnnotationAccess,
+      input: { annotationId: string; emoji: string; actor: AnnotationActor },
+    ): Promise<AnnotationRecord> {
+      requireRead(access)
+      const emoji = input.emoji.trim()
+      if (!emoji) throw new KnowledgeAnnotationError('invalid', 'emoji is required')
+      const row = await loadOnPage(access, input.annotationId)
+      const isAgent = input.actor.authorType === 'agent'
+      const where = isAgent
+        ? {
+            annotationId_agentId_emoji: {
+              annotationId: row.id,
+              agentId: input.actor.authorId,
+              emoji,
+            },
+          }
+        : {
+            annotationId_userId_emoji: {
+              annotationId: row.id,
+              userId: input.actor.authorId,
+              emoji,
+            },
+          }
+      const existing = await prisma.knowledgePageAnnotationReaction.findUnique({ where })
+      if (existing) {
+        await prisma.knowledgePageAnnotationReaction.delete({ where })
+      } else {
+        await prisma.knowledgePageAnnotationReaction.create({
+          data: {
+            annotationId: row.id,
+            organizationId: access.organizationId,
+            emoji,
+            ...(isAgent ? { agentId: input.actor.authorId } : { userId: input.actor.authorId }),
+          },
+        })
+      }
+      return reload(row.id)
     },
   }
 }

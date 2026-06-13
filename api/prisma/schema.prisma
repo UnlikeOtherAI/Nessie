@@ -2539,14 +2539,32 @@ model KnowledgePageAnnotation {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  page    KnowledgePage             @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  parent  KnowledgePageAnnotation?  @relation("AnnotationReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies KnowledgePageAnnotation[] @relation("AnnotationReplies")
+  page      KnowledgePage                     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  parent    KnowledgePageAnnotation?          @relation("AnnotationReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   KnowledgePageAnnotation[]         @relation("AnnotationReplies")
+  reactions KnowledgePageAnnotationReaction[]
 
   @@index([pageId, kind, parentId, createdAt(sort: Desc)], map: "kb_annotations_page_kind_parent_created_idx")
   @@index([organizationId, pageId], map: "kb_annotations_org_page_idx")
   @@index([parentId], map: "kb_annotations_parent_idx")
   @@map("knowledge_page_annotations")
+}
+
+model KnowledgePageAnnotationReaction {
+  id             String   @id @default(uuid()) @db.Uuid
+  annotationId   String   @map("annotation_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  agentId        String?  @map("agent_id") @db.Uuid
+  emoji          String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  annotation KnowledgePageAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+
+  @@unique([annotationId, userId, emoji], map: "kb_annotation_reactions_user_emoji_key")
+  @@unique([annotationId, agentId, emoji], map: "kb_annotation_reactions_agent_emoji_key")
+  @@index([annotationId], map: "kb_annotation_reactions_annotation_idx")
+  @@map("knowledge_page_annotation_reactions")
 }
 
 model ThoughtReasoning {

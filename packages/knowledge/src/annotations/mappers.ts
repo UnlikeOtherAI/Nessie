@@ -1,16 +1,26 @@
-import type { KnowledgePageAnnotation } from '@prisma/client'
-import type { AnnotationRecord, TextQuoteAnchor } from './types.js'
+import type {
+  KnowledgePageAnnotation,
+  KnowledgePageAnnotationReaction,
+} from '@prisma/client'
+import type { AnnotationReaction, AnnotationRecord, TextQuoteAnchor } from './types.js'
 
-// What we always load alongside a top-level annotation: its non-deleted replies,
-// oldest first (a reading order under the parent).
-export const repliesInclude = {
+const reactionsInclude = {
+  reactions: { orderBy: { createdAt: 'asc' as const } },
+} as const
+
+// What we always load for an annotation: its reactions, plus (for a top-level
+// row) its non-deleted replies — oldest first — each with their own reactions.
+export const annotationInclude = {
+  ...reactionsInclude,
   replies: {
     where: { deletedAt: null },
     orderBy: { createdAt: 'asc' as const },
+    include: reactionsInclude,
   },
 } as const
 
-type AnnotationRow = KnowledgePageAnnotation
+type ReactionRow = KnowledgePageAnnotationReaction
+type AnnotationRow = KnowledgePageAnnotation & { reactions?: ReactionRow[] }
 type AnnotationRowWithReplies = AnnotationRow & { replies?: AnnotationRow[] }
 
 const toAnchor = (value: KnowledgePageAnnotation['anchor']): TextQuoteAnchor | null => {
@@ -24,6 +34,14 @@ const toAnchor = (value: KnowledgePageAnnotation['anchor']): TextQuoteAnchor | n
     startOffset: typeof record.startOffset === 'number' ? record.startOffset : 0,
   }
 }
+
+const mapReaction = (row: ReactionRow): AnnotationReaction => ({
+  id: row.id,
+  emoji: row.emoji,
+  userId: row.userId,
+  agentId: row.agentId,
+  createdAt: row.createdAt.toISOString(),
+})
 
 const mapRow = (row: AnnotationRow, replies: AnnotationRecord[]): AnnotationRecord => ({
   id: row.id,
@@ -43,6 +61,7 @@ const mapRow = (row: AnnotationRow, replies: AnnotationRecord[]): AnnotationReco
   editedAt: row.editedAt ? row.editedAt.toISOString() : null,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
+  reactions: (row.reactions ?? []).map(mapReaction),
   replies,
 })
 

@@ -371,13 +371,20 @@ Every page carries two kinds of annotation, backed by one model
   **below the document body** in `PagePreview` (`CommentsSection`), newest first.
 - **Notes** (`kind: note`, with anchor) — anchored to a quoted passage of the
   body. In the reader the passage is highlighted (a ProseMirror decoration via
-  `notes/note-highlight-extension.ts`); hovering it opens a floating card on the
-  right (`notes/PageNotesLayer.tsx`) with the note, its author, and replies.
-  Selecting text in the reader starts a new note for that passage.
+  `notes/note-highlight-extension.ts`); **selecting text** opens a small popover
+  right under the selection to add a note (`notes/PageNotesLayer.tsx`), and
+  **hovering** an existing highlight opens a floating card on the right with the
+  note, its author, and replies.
 
-Both kinds support one level of **replies** and a **resolve/reopen** state;
-authors edit/delete their own. Author is a user or an **agent** (a delegating
+Comments and notes are rendered in the **channel-chat style** (`CommentThread`
++ `CommentRow`): avatar, author, timestamp, body, and a hover action bar
+(`CommentActions`) that reuses the channel chrome (`admin-msg-row` /
+`admin-msg-actions` / `reaction-pill` / `EmojiPickerPanel`). Both kinds support
+one level of **replies**, a **resolve/reopen** state, **emoji reactions**, and
+edit/delete by the author. Author is a user or an **agent** (a delegating
 personal assistant authors as its owner with `delegatedByAgentId` recorded).
+Reactions live in `knowledge_page_annotation_reactions` (toggled via
+`POST /annotations/:id/reactions`), mirroring `MessageReaction`.
 
 **Anchoring** is a W3C/Hypothesis-style **text-quote selector**
 (`{ quote, prefix, suffix, startOffset }`) computed by the pure, shared

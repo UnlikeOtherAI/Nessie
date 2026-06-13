@@ -24,6 +24,7 @@ export type {
   AnnotationAccess,
   AnnotationActor,
   AnnotationKind,
+  AnnotationReaction,
   AnnotationRecord,
   AnnotationState,
   TextQuoteAnchor,
