@@ -380,9 +380,11 @@ a {
 
 .admin-topbar-search-icon {
   position: absolute;
+  top: 50%;
   left: 10px;
   display: flex;
   color: var(--tx3);
+  transform: translateY(-50%);
   pointer-events: none;
 }
 
