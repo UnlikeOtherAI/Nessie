@@ -456,6 +456,9 @@ store/delete keeps per-scope usage accurate. REST surface
 - `GET /api/knowledge-base/attachments/:id/download`, `DELETE …/attachments/:id`
 - `POST /api/knowledge-base/pages/:pageId/convert-to-document` — turn a markdown
   file node into a document (see below)
+- `GET /api/knowledge-base/pages/:pageId/versions/:versionId/zip` — list a zip's
+  entries from its central directory (no extraction to disk), and
+  `…/zip/entry?path=` to peek a single text entry (see below)
 
 **Markdown is the native document format.** An uploaded `.md`/`.markdown`
 (by extension or `text/markdown`) is **not** stored as a file blob: the upload
@@ -465,8 +468,18 @@ WYSIWYG editor, comments/notes and version history — identical to a document
 authored in-app. Import is capped at `MARKDOWN_IMPORT_MAX_BYTES` (5 MiB). Existing
 markdown file nodes are migrated on open: `KnowledgeWorkspace` calls
 `convert-to-document` (read the attachment text → HTML → new document version →
-flip `kind` → drop the now-unused blob) and then renders the document. Other file
-types keep the file-node path (inline image/PDF/text preview or a download card).
+flip `kind` → drop the now-unused blob) and then renders the document.
+
+**Type-aware file viewer.** Non-markdown file nodes keep the file-node path, with
+the viewer inferred from the filename: images and PDFs preview via an authed
+object URL; **text/config** (yaml, json, csv, code, logs, …) render as a themed
+`<pre>` of the fetched bytes (never an iframe, so a text/HTML file can't run
+scripts), capped at 512 KiB; **zip** archives show a browsable entry list
+(`ZipContents.tsx`) where text entries can be peeked inline; everything else
+(Office, binaries) shows a typed **Download to view** card. Zip listing reads the
+whole archive into memory (`adm-zip`, capped at `ZIP_LIST_MAX_BYTES` = 64 MiB —
+larger archives stay download-only); peeking decompresses only the requested
+entry (capped at `ZIP_ENTRY_PEEK_MAX_BYTES` = 256 KiB).
 - `GET /api/knowledge-base/storage-usage?scopeType=&scopeId=`
 
 Agent/MCP built-in tools for the new file surface are a follow-up (agent parity).

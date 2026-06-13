@@ -83,6 +83,52 @@ export const useAuthedObjectUrlFromPath = (
   return url
 }
 
+export type AuthedTextState = {
+  text: string | null
+  truncated: boolean
+  loading: boolean
+  error: boolean
+}
+
+// Fetch a text file's content with the bearer token for an inline plain-text
+// preview, capped so a huge "text" file can't lock the tab.
+export const useAuthedTextFromPath = (
+  path: string | null,
+  token: string | null,
+  maxBytes = 512 * 1024,
+): AuthedTextState => {
+  const [state, setState] = useState<AuthedTextState>({
+    text: null,
+    truncated: false,
+    loading: Boolean(path),
+    error: false,
+  })
+  useEffect(() => {
+    if (!path) {
+      setState({ text: null, truncated: false, loading: false, error: false })
+      return
+    }
+    let cancelled = false
+    setState({ text: null, truncated: false, loading: true, error: false })
+    const headers = new Headers()
+    if (token) headers.set('authorization', `Bearer ${token}`)
+    fetch(`${getBaseUrl()}${path}`, { headers })
+      .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
+      .then(async (blob) => {
+        const truncated = blob.size > maxBytes
+        const text = await (truncated ? blob.slice(0, maxBytes) : blob).text()
+        if (!cancelled) setState({ text, truncated, loading: false, error: false })
+      })
+      .catch(() => {
+        if (!cancelled) setState({ text: null, truncated: false, loading: false, error: true })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [path, token, maxBytes])
+  return state
+}
+
 // Authenticated image/preview by attachment id (chat attachments).
 export const useAuthedObjectUrl = (id: string | null, token: string | null): string | null =>
   useAuthedObjectUrlFromPath(id ? `/api/attachments/${id}` : null, token)

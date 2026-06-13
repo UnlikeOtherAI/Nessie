@@ -82,6 +82,39 @@ export const useConvertToDocument = (spaceId?: string) => {
   })
 }
 
+export type ZipEntry = {
+  name: string
+  size: number
+  compressedSize: number
+  isDirectory: boolean
+  isText: boolean
+}
+export type ZipListing = { entries: ZipEntry[]; tooLarge: boolean }
+
+// List a zip file node's contents (entries from its central directory).
+export const useZipEntries = (pageId?: string, versionId?: string) => {
+  const apiClient = useApiClient()
+  return useQuery<ZipListing>({
+    queryKey: ['knowledge-zip', pageId ?? 'none', versionId ?? 'none'],
+    queryFn: () =>
+      apiClient.get(`/api/knowledge-base/pages/${pageId}/versions/${versionId}/zip`),
+    enabled: Boolean(pageId && versionId),
+  })
+}
+
+// Peek a single text entry inside a zip (decompresses just that entry).
+export const useZipEntryText = (pageId?: string, versionId?: string, path?: string | null) => {
+  const apiClient = useApiClient()
+  return useQuery<{ text: string; truncated: boolean }>({
+    queryKey: ['knowledge-zip-entry', pageId ?? 'none', versionId ?? 'none', path ?? 'none'],
+    queryFn: () =>
+      apiClient.get(
+        `/api/knowledge-base/pages/${pageId}/versions/${versionId}/zip/entry?path=${encodeURIComponent(path ?? '')}`,
+      ),
+    enabled: Boolean(pageId && versionId && path),
+  })
+}
+
 export const usePageAttachments = (pageId?: string) => {
   const apiClient = useApiClient()
   return useQuery<AttachmentRecord[]>({
