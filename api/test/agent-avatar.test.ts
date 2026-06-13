@@ -71,6 +71,11 @@ const makeApp = (attachments: AttachmentRow[]) => {
       findUnique: async ({ where }: { where: { id: string } }) =>
         attachments.find((attachment) => attachment.id === where.id) ?? null,
     },
+    // canAccessAttachment() denies KB-backed blobs; these avatar fixtures are
+    // org-scoped attachments, so there is no knowledge-page version for them.
+    knowledgePageVersion: {
+      findFirst: async () => null,
+    },
   } as unknown as PrismaClient
 
   const app = Fastify({ logger: false })
