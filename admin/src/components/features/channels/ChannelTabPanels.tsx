@@ -1,7 +1,9 @@
 import type { AgentRecord, ChannelRecord, PersonalAssistantStateResponse } from '../../../lib/api-client'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { AgentAvatar } from '../../shared/AgentAvatar'
 import { AgentInfoCard } from '../agents/AgentInfoCard'
 import { PersonalAssistantConfigBanner } from '../personal-assistant/PersonalAssistantSurface'
-import { formatClock, getAgentGlyph, runsCardClass, type ChannelTab } from './channel-helpers'
+import { formatClock, runsCardClass, type ChannelTab } from './channel-helpers'
 
 interface ChannelTabPanelsProps {
   visibleActiveTab: ChannelTab
@@ -17,6 +19,17 @@ interface ChannelTabPanelsProps {
   personalAssistantState: PersonalAssistantStateResponse | null | undefined
   onSelectAgent: (agentId: string) => void
   onCreateAgent: () => void
+}
+
+const PanelAgentAvatar = ({
+  agent,
+  className = '',
+}: {
+  agent: AgentRecord
+  className?: string
+}) => {
+  const { token } = useAuthSession()
+  return <AgentAvatar agent={agent} className={className} token={token} />
 }
 
 export const ChannelTabPanels = ({
@@ -143,14 +156,7 @@ export const ChannelTabPanels = ({
                   onClick={() => onSelectAgent(agent.id)}
                   type="button"
                 >
-                  <div
-                    className={[
-                      'mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center',
-                      'rounded-md bg-[var(--accent-soft)]',
-                    ].join(' ')}
-                  >
-                    {getAgentGlyph(agent)}
-                  </div>
+                  <PanelAgentAvatar agent={agent} className="mt-0.5" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="truncate font-semibold text-[var(--tx)]">
@@ -217,14 +223,7 @@ export const ChannelTabPanels = ({
             <article key={agent.id} className="admin-card p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div
-                    className={[
-                      'flex h-9 w-9 items-center justify-center rounded-lg',
-                      'bg-[var(--accent-soft)] text-lg',
-                    ].join(' ')}
-                  >
-                    {getAgentGlyph(agent)}
-                  </div>
+                  <PanelAgentAvatar agent={agent} />
                   <div>
                     <div className="font-semibold text-[var(--tx)]">{agent.name}</div>
                     <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">

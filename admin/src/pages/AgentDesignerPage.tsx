@@ -5,6 +5,7 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom'
+import { AgentAvatarPanel } from '../components/features/agents/AgentAvatarPanel'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
@@ -166,14 +167,17 @@ export const AgentDesignerPage = () => {
       </div>
 
       {/* Two-column layout: 70% form, 30% chat */}
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Form panel */}
-        <div className="flex-[7] overflow-y-auto border-r border-[color:var(--sep)] p-5">
-          <AgentDesignerForm actions={actions} parentAgentName={parentAgent?.name} state={state} />
+        <div className="min-h-0 flex-1 overflow-y-auto border-b border-[color:var(--sep)] p-5 lg:flex-[7] lg:border-b-0 lg:border-r">
+          <div className="grid gap-5">
+            {editingAgent ? <AgentAvatarPanel agent={editingAgent} /> : null}
+            <AgentDesignerForm actions={actions} parentAgentName={parentAgent?.name} state={state} />
+          </div>
         </div>
 
         {/* Chat panel */}
-        <div className="flex-[3] min-w-[280px]">
+        <div className="h-[360px] min-h-[320px] lg:h-auto lg:flex-[3] lg:min-w-[280px]">
           <DesignerChat
             error={chat.error}
             messages={chat.messages}

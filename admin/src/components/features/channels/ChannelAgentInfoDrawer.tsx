@@ -203,7 +203,7 @@ export const ChannelAgentInfoDrawer = ({
         <header className="flex-shrink-0 border-b border-[color:var(--sep)] px-5 pb-4 pt-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <ChannelAgentGlyph agent={agent} size="lg" />
+              <ChannelAgentGlyph agent={agent} size="lg" token={token} />
               <div className="min-w-0">
                 <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
                   {agent.name}

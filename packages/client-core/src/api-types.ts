@@ -87,6 +87,7 @@ export type CallRecord = {
 }
 
 export type AgentRecord = {
+  avatarAttachmentId?: string | null
   channelIds: string[]
   createdAt: string
   currentRunId?: string

@@ -1,4 +1,5 @@
 import type { AgentRecord, ThreadMessageRecord } from '../../../lib/api-client'
+export { getAgentGlyph } from '../../shared/AgentAvatar'
 
 export type OptimisticMessage = {
   clientId: string
@@ -97,21 +98,6 @@ export const buildFeedItems = (messages: ThreadMessageRecord[]): FeedItem[] => {
   }
 
   return items
-}
-
-export const getAgentGlyph = (agent?: AgentRecord | null): string => {
-  if (!agent) {
-    return '⚡'
-  }
-
-  const role = agent.role.toLowerCase()
-  if (role.includes('research')) {
-    return '🔍'
-  }
-  if (role.includes('write')) {
-    return '📝'
-  }
-  return '⚡'
 }
 
 export const getDisplayName = (

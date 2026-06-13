@@ -5,8 +5,11 @@ import {
   CreateAgentBindingBodySchema,
   CreateAgentBodySchema,
   UpdateAgentBodySchema,
+  UpdateAgentAvatarBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { updateAgentAvatar } from '../services/agent-avatars.js'
+import { canAccessAttachment } from '../services/attachments.js'
 import {
   bindAgentToChannel,
   cloneAgentRecord,
@@ -101,6 +104,59 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     const agent = await updateAgentRecord(prisma, agentId, body)
+    if (!agent) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+
+    return createApiResponse(AgentRecordSchema.parse(agent))
+  })
+
+  app.patch('/api/agents/:agentId/avatar', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const body = parseInput(UpdateAgentAvatarBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { agentId } = request.params as { agentId: string }
+    const existingAgent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { systemManaged: true },
+    })
+    if (!existingAgent || !(await isAgentAccessibleToActor(actorContext, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    if (existingAgent.systemManaged && !requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    if (body.avatarAttachmentId) {
+      const attachment = await prisma.attachment.findUnique({
+        where: { id: body.avatarAttachmentId },
+      })
+      if (
+        !attachment ||
+        !(await canAccessAttachment(prisma, attachment, {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        }))
+      ) {
+        sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
+        return reply
+      }
+      if (attachment.kind !== 'image') {
+        sendApiError(reply, 400, 'INVALID_AVATAR', 'Avatar must be an image')
+        return reply
+      }
+    }
+
+    const agent = await updateAgentAvatar(prisma, agentId, body.avatarAttachmentId)
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply

@@ -46,6 +46,21 @@ export const useUpdateAgent = () => {
   })
 }
 
+export const useUpdateAgentAvatar = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { agentId: string; avatarAttachmentId: string | null }) =>
+      apiClient.patch<AgentRecord>(`/api/agents/${input.agentId}/avatar`, {
+        avatarAttachmentId: input.avatarAttachmentId,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
 export const useBindAgent = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

@@ -1,4 +1,6 @@
 import type { AgentRecord } from '../../../lib/api-client'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { AgentAvatar } from '../../shared/AgentAvatar'
 
 type AgentInfoCardProps = {
   agent: AgentRecord
@@ -12,14 +14,8 @@ const pillClassName =
   'rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] ' +
   'px-2 py-0.5 text-[10px] font-semibold text-[var(--thinking)]'
 
-const getGlyph = (agent: AgentRecord): string => {
-  const role = agent.role.toLowerCase()
-  if (role.includes('research')) return '🔍'
-  if (role.includes('write')) return '📝'
-  return '⚡'
-}
-
 export const AgentInfoCard = ({ agent }: AgentInfoCardProps) => {
+  const { token } = useAuthSession()
   const pills: string[] = []
 
   if (agent.systemManaged) pills.push('System managed')
@@ -35,9 +31,7 @@ export const AgentInfoCard = ({ agent }: AgentInfoCardProps) => {
   return (
     <section className="mx-5 mt-3 rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3">
       <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-lg">
-          {getGlyph(agent)}
-        </div>
+        <AgentAvatar agent={agent} token={token} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-[var(--tx)]">{agent.name}</span>

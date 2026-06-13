@@ -79,10 +79,11 @@ const mapToolCall = (toolCall: {
   outputPreview: toolCall.outputPreview?.slice(0, 200) ?? undefined,
 })
 
-const mapAgentRecord = (agent: {
+export const mapAgentRecord = (agent: {
   bindings: Array<{ channelId: string }>
   createdAt: Date
   id: string
+  avatarAttachmentId: string | null
   messages?: Array<{ createdAt: Date }>
   name: string
   parentAgentId: string | null
@@ -138,6 +139,7 @@ const mapAgentRecord = (agent: {
     parentAgentId: agent.parentAgentId ? parseAgentId(agent.parentAgentId) : undefined,
     provider: agent.provider ?? undefined,
     model: agent.model ?? undefined,
+    avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
     channelIds: agent.bindings.map((binding) => parseChannelId(binding.channelId)),
