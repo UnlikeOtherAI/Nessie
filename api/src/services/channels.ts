@@ -9,6 +9,12 @@ import {
 } from '@nessie/schemas'
 import type { ChannelRecord } from '../contracts.js'
 import {
+  channelTeamInclude,
+  ensureDefaultThread,
+  loadUnreadCountsByThread,
+  mapChannelRecord,
+} from './channel-records.js'
+import {
   ChannelSlugConflictError,
   ChannelValidationError,
   ensureChannelSlugAvailable,
@@ -18,155 +24,6 @@ import {
 } from './channel-slugs.js'
 
 export { ChannelSlugConflictError, ChannelValidationError }
-
-type ChannelWithProject = Channel & {
-  team?: {
-    name: string
-    project: {
-      id: string
-      name: string
-    }
-  }
-}
-
-type ThreadUnreadRow = {
-  thread_id: string
-  unread_count: bigint | number
-}
-
-// Shared include so create/upsert sites return the channel's team + project in
-// one query — mapChannelRecord then never needs a follow-up team lookup.
-export const channelTeamInclude = {
-  team: {
-    select: {
-      name: true,
-      project: {
-        select: { id: true, name: true },
-      },
-    },
-  },
-} satisfies Prisma.ChannelInclude
-
-const loadUnreadCountsByThread = async (
-  prisma: PrismaClient,
-  threadIds: string[],
-  userId: string,
-): Promise<Map<string, number>> => {
-  if (threadIds.length === 0) {
-    return new Map()
-  }
-
-  const rows = await prisma.$queryRaw<ThreadUnreadRow[]>(Prisma.sql`
-    SELECT
-      t.id AS thread_id,
-      COALESCE(
-        SUM(
-          CASE
-            WHEN m.id IS NOT NULL
-              AND (m.user_id IS NULL OR m.user_id <> ${userId}::uuid)
-              AND (trs.last_read_at IS NULL OR m.created_at > trs.last_read_at)
-            THEN 1
-            ELSE 0
-          END
-        ),
-        0
-      ) AS unread_count
-    FROM "threads" t
-    LEFT JOIN "thread_read_states" trs
-      ON trs.thread_id = t.id
-      AND trs.user_id = ${userId}::uuid
-    LEFT JOIN "messages" m
-      ON m.thread_id = t.id
-    WHERE t.id IN (${Prisma.join(threadIds.map((threadId) => Prisma.sql`${threadId}::uuid`))})
-    GROUP BY t.id
-  `)
-
-  return new Map(
-    rows.map((row) => [
-      row.thread_id,
-      typeof row.unread_count === 'bigint'
-        ? Number(row.unread_count)
-        : row.unread_count,
-    ]),
-  )
-}
-
-export const ensureDefaultThread = async (
-  prisma: PrismaClient,
-  channelId: string,
-): Promise<string> => {
-  // Use a single query to find the earliest thread, avoiding N+1 on channel listing
-  const existingThread = await prisma.thread.findFirst({
-    where: { channelId },
-    orderBy: { createdAt: 'asc' },
-    select: { id: true },
-  })
-
-  if (existingThread) {
-    return existingThread.id
-  }
-
-  // Race-safe: if two requests try to create simultaneously, one will succeed
-  try {
-    const thread = await prisma.thread.create({
-      data: { channelId, title: 'General' },
-    })
-    return thread.id
-  } catch {
-    // If creation failed (e.g., race), re-query
-    const fallback = await prisma.thread.findFirst({
-      where: { channelId },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    })
-    if (!fallback) {
-      throw new Error(`Failed to create or find default thread for channel ${channelId}`)
-    }
-    return fallback.id
-  }
-}
-
-export const mapChannelRecord = async (
-  prisma: PrismaClient,
-  channel: ChannelWithProject,
-  userId?: string,
-): Promise<ChannelRecord> => {
-  const defaultThreadId = await ensureDefaultThread(prisma, channel.id)
-  const unreadCount = userId
-    ? (await loadUnreadCountsByThread(prisma, [defaultThreadId], userId)).get(defaultThreadId) ?? 0
-    : 0
-  const team = channel.team ?? await prisma.team.findUniqueOrThrow({
-    where: { id: channel.teamId },
-    select: {
-      name: true,
-      project: {
-        select: { id: true, name: true },
-      },
-    },
-  })
-
-  return {
-    defaultThreadId: parseThreadId(defaultThreadId),
-    id: parseChannelId(channel.id),
-    label: channel.label,
-    slug: channel.slug,
-    type: channel.type,
-    systemChannelType: channel.systemChannelType ?? undefined,
-    visibility: channel.visibility,
-    organizationId: parseOrganizationId(channel.organizationId),
-    projectId: parseProjectId(team.project.id),
-    projectName: team.project.name,
-    teamId: parseTeamId(channel.teamId),
-    teamName: team.name,
-    unreadCount,
-    // sp-channels: lifecycle fields
-    topic: channel.topic ?? null,
-    description: channel.description ?? null,
-    archivedAt: channel.archivedAt?.toISOString() ?? null,
-    createdAt: channel.createdAt.toISOString(),
-    updatedAt: channel.updatedAt.toISOString(),
-  }
-}
 
 export const listChannelsForUser = async (
   prisma: PrismaClient,
@@ -185,7 +42,6 @@ export const listChannelsForUser = async (
   if (teamId) {
     where['teamId'] = teamId
   }
-  // sp-channels: exclude soft-archived channels from default listings
   if (!includeArchived) {
     where['archivedAt'] = null
   }
@@ -199,7 +55,6 @@ export const listChannelsForUser = async (
         take: 1,
         select: { id: true },
       },
-      // sp-channels: include the caller's membership row to surface memberRole
       members: {
         where: { userId },
         select: { role: true },
@@ -216,30 +71,23 @@ export const listChannelsForUser = async (
     },
   })
 
-  // Create default threads only for channels that don't have one (batch)
-  const needsThread = channels.filter((c) => c.threads.length === 0)
+  const needsThread = channels.filter((channel) => channel.threads.length === 0)
   if (needsThread.length > 0) {
     await prisma.thread.createMany({
-      data: needsThread.map((c) => ({ channelId: c.id, title: 'General' })),
+      data: needsThread.map((channel) => ({ channelId: channel.id, title: 'General' })),
       skipDuplicates: true,
     })
-    // Re-fetch threads for those channels
+
     const createdThreads = await prisma.thread.findMany({
-      where: { channelId: { in: needsThread.map((c) => c.id) } },
+      where: { channelId: { in: needsThread.map((channel) => channel.id) } },
       orderBy: { createdAt: 'asc' },
       distinct: ['channelId'],
       select: { id: true, channelId: true },
     })
-    const threadMap = new Map(createdThreads.map((t) => [t.channelId, t.id]))
+    const threadMap = new Map(createdThreads.map((thread) => [thread.channelId, thread.id]))
     for (const channel of needsThread) {
       const threadId = threadMap.get(channel.id)
-      if (threadId) {
-        channel.threads = [{ id: threadId }]
-      } else {
-        // Defensive fallback for partial batch failures
-        const fallback = await ensureDefaultThread(prisma, channel.id)
-        channel.threads = [{ id: fallback }]
-      }
+      channel.threads = [{ id: threadId ?? await ensureDefaultThread(prisma, channel.id) }]
     }
   }
 
@@ -269,7 +117,6 @@ export const listChannelsForUser = async (
     teamName: channel.team.name,
     defaultThreadId: parseThreadId(channel.threads[0]!.id),
     unreadCount: unreadCountsByThread.get(channel.threads[0]!.id) ?? 0,
-    // sp-channels: lifecycle fields
     topic: channel.topic ?? null,
     description: channel.description ?? null,
     archivedAt: channel.archivedAt?.toISOString() ?? null,
@@ -289,10 +136,7 @@ export const createChannelForUser = async (
     visibility: 'public' | 'protected' | 'private'
   },
 ): Promise<ChannelRecord | null> => {
-  // sp-channels: enforce the same name/slug rules the admin applies client-side.
   const label = validateChannelLabel(input.label)
-
-  // Enforce tenant hierarchy: team's project must belong to the same org
   const teamProject = await loadChannelTeamProject(prisma, {
     organizationId: input.organizationId,
     teamId: input.teamId,
@@ -316,7 +160,6 @@ export const createChannelForUser = async (
         teamId: input.teamId,
         visibility: input.visibility,
         members: {
-          // sp-channels: the creator becomes the channel owner so they can manage it
           create: {
             userId: input.userId,
             role: 'owner',
@@ -332,11 +175,6 @@ export const createChannelForUser = async (
   }
 }
 
-// ─── sp-channels: channel lifecycle ──────────────────────────────────────────
-
-// A principal may manage a channel if they are a channel member with role
-// owner/admin, OR an org owner/admin, OR a team owner/admin. This is the single
-// authz seam shared by the REST routes and the agent built-in tools.
 export const canManageChannel = async (
   prisma: PrismaClient,
   input: { userId: string; organizationId: string; channelId: string },
@@ -408,20 +246,19 @@ export const updateChannel = async (
     data.description = input.description
   }
 
-  let channel: ChannelWithProject
   try {
-    channel = await prisma.channel.update({
+    const channel = await prisma.channel.update({
       where: { id: input.channelId },
       data,
       include: channelTeamInclude,
     })
+    return mapChannelRecord(prisma, channel, input.userId)
   } catch (error) {
     if (input.label !== undefined) {
       throwIfChannelSlugConflict(error, validateChannelLabel(input.label).slug)
     }
     throw error
   }
-  return mapChannelRecord(prisma, channel, input.userId)
 }
 
 export const setChannelArchived = async (
@@ -446,8 +283,6 @@ export const setChannelArchived = async (
   return mapChannelRecord(prisma, channel, input.userId)
 }
 
-// Public channels are open to any org member; private/protected still require
-// an explicit invite (addMemberToChannel by an existing member).
 export const joinPublicChannel = async (
   prisma: PrismaClient,
   input: { userId: string; organizationId: string; channelId: string },

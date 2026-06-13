@@ -2,6 +2,7 @@ import { useCallback, useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { MentionEntity } from '../../components/shared/MentionInput'
 import { getAgentGlyph } from '../../components/features/channels/channel-helpers'
+import { isUserDmChannel } from '../../facades/personal-assistant/hooks'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../lib/api-client'
 import {
   buildChannelMentionTargets,
@@ -159,7 +160,7 @@ export const useChannelMentions = ({
             user.id,
             channels.find(
               (channel) =>
-                channel.type === 'dm' && user.channelIds.includes(channel.id),
+                isUserDmChannel(channel) && user.channelIds.includes(channel.id),
             ),
           ])
           .filter(

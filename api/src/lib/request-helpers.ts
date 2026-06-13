@@ -16,7 +16,7 @@ import {
   ThreadRecordSchema,
 } from '../contracts.js'
 import { buildAccessibleChannelWhere } from '../services/agents.js'
-import { ensureDefaultThread } from '../services/channels.js'
+import { ensureDefaultThread } from '../services/channel-records.js'
 
 /**
  * Request-scoped authorization + visibility helpers. These all close over the

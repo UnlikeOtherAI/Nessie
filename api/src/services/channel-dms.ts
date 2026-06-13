@@ -1,12 +1,18 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { ChannelRecord } from '../contracts.js'
-import { channelTeamInclude, mapChannelRecord } from './channels.js'
+import { channelTeamInclude, mapChannelRecord } from './channel-records.js'
 import {
   ensureChannelSlugAvailable,
   loadChannelTeamProject,
   throwIfChannelSlugConflict,
   validateChannelLabel,
 } from './channel-slugs.js'
+
+const uniqueParticipantIds = (currentUserId: string, targetUserId: string): string[] =>
+  Array.from(new Set([currentUserId, targetUserId]))
+
+const isUniqueConstraintError = (error: unknown): error is Prisma.PrismaClientKnownRequestError =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
 
 export const findOrCreateDmChannel = async (
   prisma: PrismaClient,
@@ -25,13 +31,14 @@ export const findOrCreateDmChannel = async (
     return null
   }
 
+  const participantUserIds = uniqueParticipantIds(input.currentUserId, input.targetUserId)
   const memberCount = await prisma.organizationMember.count({
     where: {
       organizationId: input.organizationId,
-      userId: { in: [input.currentUserId, input.targetUserId] },
+      userId: { in: participantUserIds },
     },
   })
-  if (memberCount < 2) {
+  if (memberCount !== participantUserIds.length) {
     return null
   }
 
@@ -40,17 +47,46 @@ export const findOrCreateDmChannel = async (
     input.teamId,
     ...[input.currentUserId, input.targetUserId].sort(),
   ].join(':')
+  const legacySelfDmKey = input.currentUserId === input.targetUserId
+    ? [input.organizationId, input.teamId, input.currentUserId].join(':')
+    : null
 
   const targetUser = await prisma.user.findUnique({
     where: { id: input.targetUserId },
     select: { displayName: true },
   })
+  const label = targetUser?.displayName ?? 'Direct Message'
+
+  if (legacySelfDmKey && legacySelfDmKey !== dmKey) {
+    const legacyChannel = await prisma.channel.findUnique({
+      where: { dmKey: legacySelfDmKey },
+      include: channelTeamInclude,
+    })
+    if (legacyChannel) {
+      try {
+        const migratedChannel = await prisma.channel.update({
+          where: { id: legacyChannel.id },
+          data: {
+            dmKey,
+            label,
+            projectId: teamProject.projectId,
+          },
+          include: channelTeamInclude,
+        })
+        return mapChannelRecord(prisma, migratedChannel, input.currentUserId)
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) {
+          throw error
+        }
+      }
+    }
+  }
 
   try {
     const channel = await prisma.channel.upsert({
       where: { dmKey },
       create: {
-        label: targetUser?.displayName ?? 'Direct Message',
+        label,
         type: 'dm',
         organizationId: input.organizationId,
         projectId: teamProject.projectId,
@@ -58,27 +94,22 @@ export const findOrCreateDmChannel = async (
         visibility: 'private',
         dmKey,
         members: {
-          create: [
-            { userId: input.currentUserId },
-            { userId: input.targetUserId },
-          ],
+          create: participantUserIds.map((userId) => ({ userId })),
         },
       },
       update: {},
       include: channelTeamInclude,
     })
     return mapChannelRecord(prisma, channel, input.currentUserId)
-  } catch (err) {
-    // Race condition: another request created the channel between our read and
-    // write. The unique index on dmKey guarantees exactly one winner.
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
       const existing = await prisma.channel.findUniqueOrThrow({
         where: { dmKey },
         include: channelTeamInclude,
       })
       return mapChannelRecord(prisma, existing, input.currentUserId)
     }
-    throw err
+    throw error
   }
 }
 
@@ -107,7 +138,7 @@ export const createGroupFromDm = async (
   })
   const allUserIds = [
     ...new Set([
-      ...existingMembers.map((m) => m.userId),
+      ...existingMembers.map((member) => member.userId),
       input.newUserId,
     ]),
   ]
@@ -117,8 +148,8 @@ export const createGroupFromDm = async (
     select: { id: true, displayName: true },
   })
   const otherNames = users
-    .filter((u) => u.id !== input.currentUserId)
-    .map((u) => u.displayName ?? 'Unknown')
+    .filter((user) => user.id !== input.currentUserId)
+    .map((user) => user.displayName ?? 'Unknown')
     .sort()
   const label = validateChannelLabel(otherNames.join(', ') || 'Group')
 
@@ -143,7 +174,6 @@ export const createGroupFromDm = async (
       },
       include: channelTeamInclude,
     })
-
     return mapChannelRecord(prisma, channel, input.currentUserId)
   } catch (error) {
     throwIfChannelSlugConflict(error, label.slug)

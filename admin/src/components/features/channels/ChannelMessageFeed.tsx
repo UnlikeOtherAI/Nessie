@@ -208,13 +208,15 @@ export const ChannelMessageFeed = ({
         const authorIdentity =
           item.message.role === 'user' &&
           item.message.userId &&
-          item.message.userId !== meUserId &&
           onSelectUser
             ? {
-                avatarAttachmentId: item.message.author?.avatarAttachmentId,
-                avatarUrl: item.message.author?.avatarUrl,
+                avatarAttachmentId: item.message.author?.avatarAttachmentId
+                  ?? (item.message.userId === meUserId ? meAvatar.avatarAttachmentId : undefined),
+                avatarUrl: item.message.author?.avatarUrl
+                  ?? (item.message.userId === meUserId ? meAvatar.avatarUrl : undefined),
                 displayName,
-                gravatarUrl: item.message.author?.gravatarUrl,
+                gravatarUrl: item.message.author?.gravatarUrl
+                  ?? (item.message.userId === meUserId ? meAvatar.gravatarUrl : undefined),
                 id: item.message.userId,
               }
             : null
