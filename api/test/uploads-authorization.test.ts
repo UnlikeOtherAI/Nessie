@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import Fastify from 'fastify'
 import type { PrismaClient } from '@prisma/client'
+import { createFileService, getStorage } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { registerUploadRoutes } from '../src/routes/uploads.js'
@@ -134,6 +135,12 @@ const makeApp = (
     },
   } as unknown as PrismaClient
 
+  const fileService = createFileService({
+    prisma,
+    storage: getStorage({ provider: 'filesystem', localPath: storagePath }),
+    maxUploadBytes: 5_000_000,
+  })
+
   const app = Fastify({ logger: false })
   registerUploadRoutes(app, {
     config: {
@@ -144,6 +151,7 @@ const makeApp = (
     },
     prisma,
     requireActorContext: () => actorContextFor(userId),
+    fileService,
   } as unknown as Parameters<typeof registerUploadRoutes>[1])
   return { app, usageEvents }
 }
