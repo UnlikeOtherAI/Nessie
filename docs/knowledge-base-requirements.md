@@ -380,8 +380,11 @@ Every page carries two kinds of annotation, backed by one model
 (`KnowledgePageAnnotation`, table `knowledge_page_annotations`) discriminated by
 `kind` + an optional text anchor:
 
-- **Comments** (`kind: comment`, no anchor) — a page-level discussion rendered
-  **below the document body** in `PagePreview` (`CommentsSection`), newest first.
+- **Comments** (`kind: comment`, no anchor) — a page-level discussion
+  (`CommentsSection`) rendered **below the body of every node**: under the
+  document in `PagePreview` and under the preview in `FileNodeViewer`, so
+  uploaded file nodes carry the same thread + reactions as documents (the
+  annotation API is page-kind-agnostic). Newest first.
 - **Notes** (`kind: note`, with anchor) — anchored to a quoted passage of the
   body. In the reader the passage is highlighted (a ProseMirror decoration via
   `notes/note-highlight-extension.ts`); **selecting text** opens a small popover

@@ -4,6 +4,7 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { downloadAuthedPath, useAuthedObjectUrlFromPath } from '../../../lib/uploads'
 import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { CommentsSection } from './comments/CommentsSection'
 import { iconForFilename, previewKindForFilename } from './file-icons'
 import { KnowledgePane } from './KnowledgePane'
 
@@ -127,6 +128,8 @@ export const FileNodeViewer = ({
             </div>
           )}
         </div>
+
+        <CommentsSection pageId={page.id} />
       </div>
     </KnowledgePane>
   )
