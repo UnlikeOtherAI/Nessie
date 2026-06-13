@@ -48,7 +48,7 @@ export const SettingsProfilePage = () => {
 
   return (
     <SettingsPanel
-      eyebrow="General"
+      eyebrow="Account"
       title="Profile & Session"
       actions={
         <button

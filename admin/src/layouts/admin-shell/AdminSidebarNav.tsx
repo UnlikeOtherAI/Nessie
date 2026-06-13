@@ -17,7 +17,7 @@ type AdminNavItem = {
   exact?: boolean;
 };
 
-type AdminNavGroupId = 'agents' | 'general' | 'workspace' | 'governance' | 'platform';
+type AdminNavGroupId = 'agents' | 'account' | 'organization' | 'governance' | 'platform';
 
 type AdminNavGroup = {
   id: AdminNavGroupId;
@@ -100,6 +100,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/agents/tools',
         label: 'Tools',
+        ownerOnly: true,
         icon: icon(
           <path
             d="M14.7 6.3a4 4 0 105 5l-6.9 6.9a2 2 0 11-2.8-2.8l6.9-6.9a4 4 0 00-2.2-2.2z"
@@ -108,11 +109,23 @@ const ADMIN_NAV: AdminNavGroup[] = [
           />,
         ),
       },
+      {
+        path: '/mcp-app-store',
+        label: 'Connectors',
+        icon: icon(
+          <>
+            <rect height="6" rx="1" width="6" x="4" y="4" />
+            <rect height="6" rx="1" width="6" x="14" y="4" />
+            <rect height="6" rx="1" width="6" x="4" y="14" />
+            <rect height="6" rx="1" width="6" x="14" y="14" />
+          </>,
+        ),
+      },
     ],
   },
   {
-    id: 'general',
-    heading: 'General',
+    id: 'account',
+    heading: 'Account',
     items: [
       {
         path: '/settings/profile',
@@ -168,23 +181,11 @@ const ADMIN_NAV: AdminNavGroup[] = [
           </>,
         ),
       },
-      {
-        path: '/settings/members',
-        label: 'Members',
-        ownerOnly: true,
-        icon: icon(
-          <>
-            <circle cx="9" cy="8" r="3.2" />
-            <path d="M3.5 19c0-3 2.46-5 5.5-5s5.5 2 5.5 5" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M16 5.2a3 3 0 010 5.6M18 19c0-2.2-.9-4-2.4-5" strokeLinecap="round" strokeLinejoin="round" />
-          </>,
-        ),
-      },
     ],
   },
   {
-    id: 'workspace',
-    heading: 'Workspace',
+    id: 'organization',
+    heading: 'Organization',
     items: [
       {
         path: '/settings/channels',
@@ -196,24 +197,15 @@ const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
-        path: '/settings/agents',
-        label: 'Agents',
+        path: '/settings/members',
+        label: 'Members',
+        ownerOnly: true,
         icon: icon(
           <>
-            <rect height="10" rx="2" width="14" x="5" y="8" />
-            <path d="M12 8V5M9 13h.01M15 13h.01" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="9" cy="8" r="3.2" />
+            <path d="M3.5 19c0-3 2.46-5 5.5-5s5.5 2 5.5 5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M16 5.2a3 3 0 010 5.6M18 19c0-2.2-.9-4-2.4-5" strokeLinecap="round" strokeLinejoin="round" />
           </>,
-        ),
-      },
-      {
-        path: '/settings/tools',
-        label: 'Tools',
-        icon: icon(
-          <path
-            d="M14.7 6.3a4 4 0 105 5l-6.9 6.9a2 2 0 11-2.8-2.8l6.9-6.9a4 4 0 00-2.2-2.2zM7 17l-1.5 1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />,
         ),
       },
     ],
@@ -275,11 +267,15 @@ const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       {
         path: '/settings/push',
-        label: 'Push notifications',
+        label: 'Push credentials',
         icon: icon(
           <>
-            <path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M13.7 21a2 2 0 01-3.4 0" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="8" cy="8" r="3.5" />
+            <path
+              d="M10.6 10.6L20 20M16.5 16.5l2-2M18.5 18.5l1.5-1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </>,
         ),
       },

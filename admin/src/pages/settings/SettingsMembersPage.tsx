@@ -39,7 +39,7 @@ export const SettingsMembersPage = () => {
   }
 
   return (
-    <SettingsPanel eyebrow="General" title="Members">
+    <SettingsPanel eyebrow="Organization" title="Members">
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="admin-card p-4">
           <div className={sectionTitleClass}>People</div>

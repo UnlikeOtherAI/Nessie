@@ -56,7 +56,7 @@ export const SettingsChannelsPage = () => {
 
   return (
     <SettingsPanel
-      eyebrow="Workspace"
+      eyebrow="Organization"
       title="Channels"
       actions={
         <button

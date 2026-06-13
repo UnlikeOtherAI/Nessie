@@ -23,7 +23,7 @@ export const AppearancePage = () => {
   const ActivePanel = PANELS[activeTab]
 
   return (
-    <SettingsPanel eyebrow="General" title="Appearance">
+    <SettingsPanel eyebrow="Account" title="Appearance">
       <div className="-mt-1 mb-4 flex items-center border-b border-[color:var(--sep)]">
         {TABS.map((tab) => (
           <button

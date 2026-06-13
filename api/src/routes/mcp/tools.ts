@@ -17,6 +17,7 @@ import {
   type ToolRegistryRow,
 } from '../../services/tool-grants.js'
 import { fromPrismaToolGrantSource } from '../../services/tool-enum-mapping.js'
+import { ensureBuiltinToolsRegistered } from '../../services/tools.js'
 
 import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
@@ -132,6 +133,11 @@ export const registerMcpToolsRoutes = (
       sendApiError(reply, 400, 'VALIDATION_ERROR', 'Invalid source filter', 'source')
       return reply
     }
+
+    // Builtin tools are upserted into the registry on demand; ensure they exist
+    // so the canonical /agents/tools surface always lists them (the legacy
+    // /api/tools path is no longer guaranteed to run first).
+    await ensureBuiltinToolsRegistered(prisma, actorContext.tenant.organizationId)
 
     const tools = await listToolRegistry(prisma, actorContext.tenant.organizationId, {
       status: statusParsed?.success ? statusParsed.data : undefined,

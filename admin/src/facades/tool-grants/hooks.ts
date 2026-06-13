@@ -73,7 +73,10 @@ const buildSearch = (filters: ToolRegistryFilters): string => {
   return serialised ? `?${serialised}` : ''
 }
 
-export const useMcpToolRegistry = (filters: ToolRegistryFilters = {}) => {
+export const useMcpToolRegistry = (
+  filters: ToolRegistryFilters = {},
+  enabled = true,
+) => {
   const apiClient = useApiClient()
   const search = buildSearch(filters)
 
@@ -85,6 +88,7 @@ export const useMcpToolRegistry = (filters: ToolRegistryFilters = {}) => {
       filters.scopeKey ?? null,
     ],
     queryFn: () => apiClient.get(`/api/mcp/tools${search}`),
+    enabled,
   })
 }
 
