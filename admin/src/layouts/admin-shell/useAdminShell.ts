@@ -4,6 +4,7 @@ import { useAgentRealtime, useAgents } from '../../facades/agents/hooks';
 import { useChannels, useOpenDm } from '../../facades/channels/hooks';
 import {
   isPersonalAssistantChannel,
+  isUserDmChannel,
   usePersonalAssistantBootstrap,
 } from '../../facades/personal-assistant/hooks';
 import { useProjects, useTeams } from '../../facades/projects/hooks';
@@ -154,10 +155,19 @@ export const useAdminShell = () => {
   }, []);
 
   const navigateToDm = useCallback((userId: string) => {
+    if (userId === me?.user.id) {
+      openDm.mutate(userId, {
+        onSuccess: (channel) => {
+          void navigate(`/channels/${channel.id}`);
+        },
+      });
+      return;
+    }
+
     const targetUser = users.find((u) => u.id === userId);
     if (targetUser) {
       const dmChannel = channels.find(
-        (c) => c.type === 'dm' && targetUser.channelIds.includes(c.id),
+        (c) => isUserDmChannel(c) && targetUser.channelIds.includes(c.id),
       );
       if (dmChannel) {
         void navigate(`/channels/${dmChannel.id}`);
@@ -169,7 +179,7 @@ export const useAdminShell = () => {
         void navigate(`/channels/${channel.id}`);
       },
     });
-  }, [channels, navigate, openDm, users]);
+  }, [channels, me?.user.id, navigate, openDm, users]);
 
   const navigateToChannel = useCallback((channelId: string) => {
     void navigate(`/channels/${channelId}`);
@@ -192,31 +202,41 @@ export const useAdminShell = () => {
       return [];
     }
 
-    const otherUsers = users.filter((u) => u.id !== me.user.id);
-
-    if (otherUsers.length > 0) {
-      return otherUsers.slice(0, 4).map((user, index) => ({
-        id: user.id,
-        label: user.displayName,
-        style: getDmStyle(index),
-        avatarUrl: user.avatarUrl,
-        avatarAttachmentId: user.avatarAttachmentId,
-        gravatarUrl: user.gravatarUrl,
-        dmChannelId: channels.find((c) => c.type === 'dm' && user.channelIds.includes(c.id))?.id,
-      }));
-    }
-
-    return [
+    const currentUser = users.find((u) => u.id === me.user.id);
+    const people = [
       {
         id: me.user.id,
         label: me.user.displayName,
-        style: getDmStyle(0),
-        avatarUrl: me.user.avatarUrl,
-        avatarAttachmentId: me.user.avatarAttachmentId,
-        gravatarUrl: me.user.gravatarUrl,
-        dmChannelId: undefined,
+        avatarUrl: currentUser?.avatarUrl ?? me.user.avatarUrl ?? null,
+        avatarAttachmentId: currentUser?.avatarAttachmentId ?? me.user.avatarAttachmentId ?? null,
+        gravatarUrl: currentUser?.gravatarUrl ?? me.user.gravatarUrl ?? null,
+        channelIds: currentUser?.channelIds ?? [],
       },
+      ...users
+        .filter((u) => u.id !== me.user.id)
+        .map((user) => ({
+          id: user.id,
+          label: user.displayName,
+          avatarUrl: user.avatarUrl,
+          avatarAttachmentId: user.avatarAttachmentId,
+          gravatarUrl: user.gravatarUrl,
+          channelIds: user.channelIds,
+        })),
     ];
+
+    return people.slice(0, 4).map((person, index) => ({
+      id: person.id,
+      label: person.label,
+      style: getDmStyle(index),
+      avatarUrl: person.avatarUrl,
+      avatarAttachmentId: person.avatarAttachmentId,
+      gravatarUrl: person.gravatarUrl,
+      dmChannelId: person.id === me.user.id
+        ? undefined
+        : channels.find(
+          (c) => isUserDmChannel(c) && person.channelIds.includes(c.id),
+        )?.id,
+    }));
   }, [me, users, channels]);
 
   const visibleStarredEntries = useMemo<VisibleStarredEntry[]>(() => {

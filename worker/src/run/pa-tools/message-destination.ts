@@ -138,6 +138,16 @@ const resolveDmChannel = async (
     where: { id: input.targetUserId },
     select: { displayName: true },
   })
+  const team = await prisma.team.findUnique({
+    where: { id: input.teamId },
+    select: {
+      projectId: true,
+      project: { select: { organizationId: true } },
+    },
+  })
+  if (!team || team.project.organizationId !== input.organizationId) {
+    throw new Error('Unable to resolve a team context for DM creation.')
+  }
 
   const dmKey = [
     input.organizationId,
@@ -152,6 +162,7 @@ const resolveDmChannel = async (
         label: targetUser?.displayName ?? 'Direct Message',
         type: 'dm',
         organizationId: input.organizationId,
+        projectId: team.projectId,
         teamId: input.teamId,
         visibility: 'private',
         dmKey,

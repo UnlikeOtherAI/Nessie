@@ -12,11 +12,13 @@ import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
+  createGroupFromDm,
+  findOrCreateDmChannel,
+} from '../services/channel-dms.js'
+import {
   addMemberToChannel,
   ChannelValidationError,
   createChannelForUser,
-  createGroupFromDm,
-  findOrCreateDmChannel,
   joinPublicChannel,
   listChannelsForUser,
   removeMemberFromChannel,

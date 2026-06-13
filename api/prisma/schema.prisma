@@ -653,6 +653,7 @@ model Project {
   statusRules      UserStatusRule[]
   tasks            Task[]
   boardColumns     BoardColumn[]
+  channels         Channel[]
   iterations       Iteration[]
 
   @@map("projects")
@@ -744,9 +745,11 @@ model Channel {
   type              ChannelType        @default(standard)
   systemChannelType ChannelSystemType? @map("system_channel_type")
   organizationId    String             @map("organization_id") @db.Uuid
+  projectId         String             @map("project_id") @db.Uuid
   teamId            String             @map("team_id") @db.Uuid
   visibility        ChannelVisibility  @default(public)
   dmKey             String?            @unique @map("dm_key")
+  slug              String?
   // sp-channels: channel lifecycle metadata + soft-archive
   topic             String?
   description       String?
@@ -754,6 +757,7 @@ model Channel {
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   team              Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
   members           ChannelMember[]
   calls             Call[]
@@ -765,6 +769,7 @@ model Channel {
   statusRules       UserStatusRule[]
 
   @@index([organizationId, type])
+  @@index([projectId])
   @@map("channels")
 }
 

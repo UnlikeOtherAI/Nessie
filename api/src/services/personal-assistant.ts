@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
-import { ensureDefaultThread } from './channels.js'
+import { ensureDefaultThread, loadTeamProjectScope } from './channel-records.js'
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_CHANNEL_TYPE = 'personal_assistant' as const
@@ -163,6 +163,10 @@ export const ensurePersonalAssistantChannel = async (
   },
 ): Promise<string> => {
   const dmKey = `pa:${input.organizationId}:${input.userId}`
+  const scope = await loadTeamProjectScope(prisma, input)
+  if (!scope) {
+    throw new Error(`Team ${input.teamId} does not belong to organization ${input.organizationId}`)
+  }
 
   try {
     const channel = await prisma.channel.upsert({
@@ -171,6 +175,7 @@ export const ensurePersonalAssistantChannel = async (
         label: PERSONAL_ASSISTANT_NAME,
         type: 'dm',
         organizationId: input.organizationId,
+        projectId: scope.projectId,
         teamId: input.teamId,
         visibility: 'private',
         dmKey,
@@ -185,6 +190,7 @@ export const ensurePersonalAssistantChannel = async (
         label: PERSONAL_ASSISTANT_NAME,
         type: 'dm',
         organizationId: input.organizationId,
+        projectId: scope.projectId,
         teamId: input.teamId,
         visibility: 'private',
         systemChannelType: PERSONAL_ASSISTANT_CHANNEL_TYPE,
@@ -232,6 +238,7 @@ export const ensurePersonalAssistantChannel = async (
           label: PERSONAL_ASSISTANT_NAME,
           type: 'dm',
           organizationId: input.organizationId,
+          projectId: scope.projectId,
           teamId: input.teamId,
           visibility: 'private',
           systemChannelType: PERSONAL_ASSISTANT_CHANNEL_TYPE,

@@ -28,6 +28,9 @@ export const isPersonalAssistantChannel = (channel?: ChannelRecord | null): bool
   channel?.systemChannelType === 'personal_assistant'
   || channel?.metadata?.systemChannelType === 'personal_assistant'
 
+export const isUserDmChannel = (channel?: ChannelRecord | null): boolean =>
+  channel?.type === 'dm' && !isPersonalAssistantChannel(channel)
+
 export const usePersonalAssistant = (enabled = true) => {
   const apiClient = useApiClient()
 

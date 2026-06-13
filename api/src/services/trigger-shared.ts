@@ -17,7 +17,7 @@ import type {
   AgentTriggerRecord,
   AgentTriggerType,
 } from '../contracts.js'
-import { ensureDefaultThread } from './channels.js'
+import { ensureDefaultThread } from './channel-records.js'
 
 // Shared internals for the trigger service: record mappers, config validators,
 // schedule/target resolution, and delivery-dedupe helpers used by both the CRUD

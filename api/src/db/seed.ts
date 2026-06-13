@@ -88,6 +88,8 @@ export const seedBootstrapRecords = async (
       update: {
         label: plan.channel.label,
         organizationId: plan.channel.organizationId,
+        projectId: plan.channel.projectId,
+        slug: plan.channel.slug,
         teamId: plan.channel.teamId,
         visibility: plan.channel.visibility,
       },
@@ -95,6 +97,8 @@ export const seedBootstrapRecords = async (
         id: plan.channel.id,
         label: plan.channel.label,
         organizationId: plan.channel.organizationId,
+        projectId: plan.channel.projectId,
+        slug: plan.channel.slug,
         teamId: plan.channel.teamId,
         visibility: plan.channel.visibility,
       },
