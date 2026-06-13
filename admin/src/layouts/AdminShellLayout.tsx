@@ -64,6 +64,7 @@ export const AdminShellLayout = () => {
     <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
       <Outlet
         context={{
+          onCreateAgent: shell.navigateToAgentDesigner,
           onCreateChannel: shell.openCreateChannel,
           onSelectAgent: shell.selectAgent,
           scopedAgents: shell.scopedAgents,
@@ -89,6 +90,7 @@ export const AdminShellLayout = () => {
       onNavigateNewConversation={shell.navigateToNewConversation}
       onNavigateProject={shell.navigateToProject}
       onNavigateSettings={shell.navigateToSettings}
+      onCreateAgent={shell.navigateToAgentDesigner}
       onOpenCreateChannel={shell.openCreateChannel}
       onOpenCreateProject={shell.openCreateProject}
       onOpenPersonalAssistant={() => void shell.openPersonalAssistant()}

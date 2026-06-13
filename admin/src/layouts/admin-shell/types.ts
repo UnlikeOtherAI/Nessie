@@ -32,6 +32,7 @@ export type VisibleStarredEntry =
   | { type: 'user'; person: SidebarPerson }
 
 export type AdminShellOutletContext = {
+  onCreateAgent: () => void
   onCreateChannel: (target?: CreateChannelTarget) => void
   onSelectAgent: (agentId: string) => void
   scopedAgents: AgentRecord[]

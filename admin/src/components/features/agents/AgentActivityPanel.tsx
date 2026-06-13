@@ -22,6 +22,7 @@ type AgentActivityPanelProps = {
   agents: AgentRecord[];
   collapsible?: boolean;
   currentChannelId?: string | null;
+  onCreateAgent?: () => void;
   onSelectAgent: (agentId: string) => void;
   realtime: AgentRealtimeState;
   selectedAgentId?: string | null;
@@ -66,6 +67,7 @@ export const AgentActivityPanel = ({
   agents,
   collapsible = true,
   currentChannelId,
+  onCreateAgent,
   onSelectAgent,
   realtime,
   selectedAgentId,
@@ -82,6 +84,14 @@ export const AgentActivityPanel = ({
       return next;
     });
   }, []);
+
+  const handleCreateAgent = useCallback(() => {
+    if (onCreateAgent) {
+      onCreateAgent();
+      return;
+    }
+    window.location.assign('/agents/designer');
+  }, [onCreateAgent]);
 
   const sortedAgents = [...agents].sort((left, right) => {
     // Channel-bound agents first when viewing a channel
@@ -119,33 +129,37 @@ export const AgentActivityPanel = ({
   return (
     <section id="activity">
       {collapsible ? (
-        <button
-          className="admin-sec-hdr mt-2"
-          onClick={toggleCollapsed}
-          type="button"
-        >
-          <svg
-            className={[
-              'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-              collapsed ? '-rotate-90' : '',
-            ].join(' ')}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            viewBox="0 0 24 24"
+        <div className="admin-sec-row mt-2">
+          <button
+            aria-controls="sidebar-nav-agents"
+            aria-expanded={!isCollapsed}
+            className="admin-sec-hdr"
+            onClick={toggleCollapsed}
+            type="button"
           >
-            <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span>{title}</span>
-          <span
-            className={[
-              'ml-auto rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px]',
-              'font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]',
-            ].join(' ')}
+            <svg
+              className={[
+                'h-3 w-3 text-[color:var(--tx3)] transition-transform',
+                collapsed ? '-rotate-90' : '',
+              ].join(' ')}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>{title}</span>
+          </button>
+          <button
+            aria-label="Create agent"
+            className="admin-sidebar-plus"
+            onClick={handleCreateAgent}
+            type="button"
           >
-            {connectionLabel[realtime.connectionState]}
-          </span>
-        </button>
+            +
+          </button>
+        </div>
       ) : (
         <div className="admin-sec-hdr mt-2">
           <span>{title}</span>
@@ -161,7 +175,7 @@ export const AgentActivityPanel = ({
       )}
 
       {!isCollapsed && (
-        <>
+        <div id="sidebar-nav-agents">
           {sortedAgents.length === 0 ? (
             <div
               className={[
@@ -266,23 +280,25 @@ export const AgentActivityPanel = ({
             })
           )}
 
-          <button
-            className="admin-sb-item text-[color:var(--tx3)]"
-            onClick={() => window.location.assign('/agents/designer')}
-            type="button"
-          >
-            <svg
-              className="h-4 w-4 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
+          {!collapsible ? (
+            <button
+              className="admin-sb-item text-[color:var(--tx3)]"
+              onClick={handleCreateAgent}
+              type="button"
             >
-              <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Create agent
-          </button>
-        </>
+              <svg
+                className="h-4 w-4 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Create agent
+            </button>
+          ) : null}
+        </div>
       )}
     </section>
   );

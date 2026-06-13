@@ -285,6 +285,10 @@ export const useAdminShell = () => {
     void navigate(subPage ? `/settings/${subPage}` : '/settings');
   }, [navigate]);
 
+  const navigateToAgentDesigner = useCallback(() => {
+    void navigate('/agents/designer');
+  }, [navigate]);
+
   const logoutAndRedirect = useCallback(() => {
     void logout().then(() => navigate('/login', { replace: true }));
   }, [logout, navigate]);
@@ -431,6 +435,7 @@ export const useAdminShell = () => {
     navigateToAgent,
     navigateToChannel,
     navigateToDm,
+    navigateToAgentDesigner,
     navigateToNewConversation,
     navigateToProject,
     navigateToSettings,

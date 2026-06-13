@@ -1,7 +1,7 @@
 import type { ChannelRecord } from '../../lib/api-client';
 import { channelHashClassName, renderUnreadCount } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
-import type { CreateChannelTarget, SidebarMenu } from './types';
+import type { CreateChannelTarget } from './types';
 
 type SidebarChannelsSectionProps = {
   channelsCollapsed: boolean;
@@ -10,10 +10,7 @@ type SidebarChannelsSectionProps = {
   defaultProjectTeamId?: string;
   onNavigateChannel: (channelId: string) => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
-  onOpenCreateProject: () => void;
   onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
-  setSidebarMenu: (updater: (current: SidebarMenu) => SidebarMenu) => void;
-  sidebarMenu: SidebarMenu;
   starredChannelIds: Set<string>;
   toggleChannelsCollapsed: () => void;
 };
@@ -25,45 +22,21 @@ export const SidebarChannelsSection = ({
   defaultProjectTeamId,
   onNavigateChannel,
   onOpenCreateChannel,
-  onOpenCreateProject,
   onToggleStar,
-  setSidebarMenu,
-  sidebarMenu,
   starredChannelIds,
   toggleChannelsCollapsed,
 }: SidebarChannelsSectionProps) => {
   return (
     <SidebarMenuSection
       action={
-        <div className="relative">
-          <button
-            aria-label="Add channel or project"
-            className="admin-sidebar-plus"
-            onClick={() =>
-              setSidebarMenu((current) => (current?.type === 'channels' ? null : { type: 'channels' }))
-            }
-            type="button"
-          >
-            +
-          </button>
-          {sidebarMenu?.type === 'channels' ? (
-            <div className="admin-sidebar-menu">
-              <button
-                onClick={() =>
-                  onOpenCreateChannel({
-                    teamId: defaultProjectTeamId,
-                  })
-                }
-                type="button"
-              >
-                Create new channel
-              </button>
-              <button onClick={onOpenCreateProject} type="button">
-                Create new project
-              </button>
-            </div>
-          ) : null}
-        </div>
+        <button
+          aria-label="Create channel"
+          className="admin-sidebar-plus"
+          onClick={() => onOpenCreateChannel({ teamId: defaultProjectTeamId })}
+          type="button"
+        >
+          +
+        </button>
       }
       id="sidebar-nav-channels"
       isCollapsed={channelsCollapsed}

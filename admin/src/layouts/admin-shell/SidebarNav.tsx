@@ -32,6 +32,7 @@ type SidebarNavProps = {
   onNavigateNewConversation: () => void;
   onNavigateProject: (projectId: string) => void;
   onNavigateSettings: (hash?: string) => void;
+  onCreateAgent: () => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onOpenCreateProject: () => void;
   onOpenPersonalAssistant: () => void;
@@ -80,6 +81,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     onNavigateNewConversation,
     onNavigateProject,
     onNavigateSettings,
+    onCreateAgent,
     onOpenCreateChannel,
     onOpenCreateProject,
     onOpenPersonalAssistant,
@@ -208,10 +210,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           defaultProjectTeamId={defaultProjectTeamId}
           onNavigateChannel={onNavigateChannel}
           onOpenCreateChannel={onOpenCreateChannel}
-          onOpenCreateProject={onOpenCreateProject}
           onToggleStar={onToggleStar}
-          setSidebarMenu={setSidebarMenu}
-          sidebarMenu={sidebarMenu}
           starredChannelIds={starredChannelIds}
           toggleChannelsCollapsed={toggleChannelsCollapsed}
         />
@@ -239,6 +238,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
         <AgentActivityPanel
           agents={scopedAgents}
           currentChannelId={currentChannelId}
+          onCreateAgent={onCreateAgent}
           onSelectAgent={onSelectAgent}
           realtime={realtime}
           selectedAgentId={selectedAgentId}

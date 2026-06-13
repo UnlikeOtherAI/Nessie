@@ -4,7 +4,7 @@ import { useAgentRealtime, useAgents } from '../facades/agents/hooks'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 
 export const AgentActivityPage = () => {
-  const { onSelectAgent } = useOutletContext<AdminShellOutletContext>()
+  const { onCreateAgent, onSelectAgent } = useOutletContext<AdminShellOutletContext>()
   const { data: agents = [] } = useAgents()
   const realtime = useAgentRealtime({})
 
@@ -26,6 +26,7 @@ export const AgentActivityPage = () => {
           <AgentActivityPanel
             agents={agents}
             collapsible={false}
+            onCreateAgent={onCreateAgent}
             onSelectAgent={onSelectAgent}
             realtime={realtime}
             title="Live agent activity"

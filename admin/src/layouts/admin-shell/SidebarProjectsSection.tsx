@@ -44,10 +44,6 @@ export const SidebarProjectsSection = ({
   toggleProjectsCollapsed,
   visibleSidebarProjects,
 }: SidebarProjectsSectionProps) => {
-  if (visibleSidebarProjects.length === 0) {
-    return null;
-  }
-
   return (
     <SidebarMenuSection
       action={
@@ -65,7 +61,19 @@ export const SidebarProjectsSection = ({
       onToggle={toggleProjectsCollapsed}
       title="Projects"
     >
-      {visibleSidebarProjects.map((project) => {
+      {visibleSidebarProjects.length === 0 ? (
+        <button
+          className={[
+            'mx-2 flex w-[calc(100%-1rem)] rounded-md border border-dashed',
+            'border-[color:var(--sep)] bg-[var(--overlay-weak)] px-3 py-3',
+            'text-left text-sm text-[color:var(--tx3)] hover:bg-[var(--overlay)]',
+          ].join(' ')}
+          onClick={onOpenCreateProject}
+          type="button"
+        >
+          Create your first project.
+        </button>
+      ) : visibleSidebarProjects.map((project) => {
         const isStarredProject = starredProjectIds.has(project.id);
         const projectUnreadCount = project.channels.reduce(
           (total, channel) => total + channel.unreadCount,
