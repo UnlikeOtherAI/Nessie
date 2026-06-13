@@ -11,7 +11,7 @@ import { useProjects, useTeams } from '../../facades/projects/hooks';
 import { useUsers } from '../../facades/users/hooks';
 import type { ChannelRecord } from '../../lib/api-client';
 import { getDmStyle } from '../../lib/avatar';
-import { parseChannelIdFromPath } from '../../lib/channel-route';
+import { parseChannelIdFromPath, parseChannelProjectIdFromPath } from '../../lib/channel-route';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { matchesAdminRoute } from './nav-items';
 import { useSidebarTree } from './useSidebarTree';
@@ -48,6 +48,7 @@ export const useAdminShell = () => {
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
   const isAdminRoute = matchesAdminRoute(location.pathname);
   const currentChannelId = parseChannelIdFromPath(location.pathname);
+  const currentChannelsProjectId = parseChannelProjectIdFromPath(location.pathname);
   const personalAssistantChannel = useMemo(
     () => channels.find(isPersonalAssistantChannel) ?? null,
     [channels],
@@ -112,8 +113,10 @@ export const useAdminShell = () => {
   });
 
   const currentProjectId = useMemo(
-    () => standardChannels.find((channel) => channel.id === currentChannelId)?.projectId,
-    [currentChannelId, standardChannels],
+    () =>
+      currentChannelsProjectId
+      ?? standardChannels.find((channel) => channel.id === currentChannelId)?.projectId,
+    [currentChannelId, currentChannelsProjectId, standardChannels],
   );
 
   const openCreateChannel = useCallback((target?: CreateChannelTarget) => {
@@ -135,7 +138,7 @@ export const useAdminShell = () => {
   const closeMobileDrawer = useCallback(() => setMobileDrawerOpen(false), []);
 
   const navigateToProject = useCallback((projectId: string) => {
-    void navigate(`/projects/${projectId}`);
+    void navigate(`/channels/projects/${projectId}`);
   }, [navigate]);
 
   const scopedAgents = agents;

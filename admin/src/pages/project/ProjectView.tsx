@@ -1,11 +1,11 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
+import { ProjectOverviewPlaceholder } from '../../components/features/projects/ProjectOverviewPlaceholder'
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useProjects } from '../../facades/projects/hooks'
 import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectInsightsTab } from './ProjectInsightsTab'
-import { ProjectOverviewTab } from './ProjectOverviewTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
 
 const sectionTitle =
@@ -79,7 +79,7 @@ export const ProjectView = () => {
         ) : tab === 'insights' ? (
           <ProjectInsightsTab projectId={projectId} />
         ) : tab === 'overview' ? (
-          <ProjectOverviewTab projectName={project?.name ?? 'Project'} />
+          <ProjectOverviewPlaceholder projectName={project?.name ?? 'Project'} />
         ) : (
           <ProjectBoardTab projectId={projectId} />
         )}
