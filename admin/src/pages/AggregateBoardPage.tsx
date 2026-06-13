@@ -36,10 +36,12 @@ export const AggregateBoardPage = () => {
         <MobileMenuButton />
         <div className={sectionTitle}>All projects</div>
         <span className="text-xs text-[color:var(--tx3)]">Kanban</span>
+        <div className="ml-auto">
+          <NewTaskButton />
+        </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-        <NewTaskButton />
+      <div className="flex min-h-0 flex-1 flex-col p-4">
         <div className="min-h-0 flex-1">
           {tasksQuery.isError ? (
             <div className="py-10 text-center text-sm text-[color:var(--danger-text)]">

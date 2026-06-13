@@ -1,6 +1,8 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { ProjectOverviewPlaceholder } from '../../components/features/projects/ProjectOverviewPlaceholder'
+import { NewTaskButton } from '../../components/kanban/NewTaskButton'
 import { useProjectBoard } from '../../facades/board/hooks'
+import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
 import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
@@ -21,6 +23,8 @@ export const ProjectView = () => {
 
   const project = projects.find((p) => p.id === projectId)
   const isScrum = board?.style === 'scrum'
+  const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
+  const activeIteration = iterations.find((iteration) => iteration.status === 'active')
   const tab = location.pathname.endsWith('/settings')
     ? 'settings'
     : location.pathname.endsWith('/backlog')
@@ -64,11 +68,21 @@ export const ProjectView = () => {
             </Link>
           ))}
         </nav>
-        {board ? (
-          <span className="ml-auto text-xs text-[color:var(--tx3)]">
-            {board.style === 'scrum' ? 'Scrum' : 'Kanban'}
-          </span>
-        ) : null}
+        <div className="ml-auto flex items-center gap-3">
+          {board ? (
+            <span className="text-xs text-[color:var(--tx3)]">
+              {board.style === 'scrum' ? 'Scrum' : 'Kanban'}
+            </span>
+          ) : null}
+          {tab === 'board' ? (
+            <div>
+              <NewTaskButton
+                iterationId={isScrum ? activeIteration?.id : undefined}
+                projectId={projectId}
+              />
+            </div>
+          ) : null}
+        </div>
       </header>
 
       <div className="min-h-0 flex-1">

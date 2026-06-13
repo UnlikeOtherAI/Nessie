@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { KanbanBoard } from '../../components/kanban/KanbanBoard'
-import { NewTaskButton } from '../../components/kanban/NewTaskButton'
 import type { BoardColumnView } from '../../components/kanban/kanban-config'
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
@@ -65,7 +64,6 @@ export const ProjectBoardTab = ({ projectId }: ProjectBoardTabProps) => {
           </span>
         </div>
       ) : null}
-      <NewTaskButton iterationId={isScrum ? activeIteration?.id : undefined} projectId={projectId} />
       <div className="min-h-0 flex-1">
         {tasksQuery.isError ? (
           <div className="py-10 text-center text-sm text-[color:var(--danger-text)]">

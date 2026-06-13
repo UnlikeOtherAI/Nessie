@@ -288,3 +288,42 @@ web admin and native WebView shell.
   there, with a drag overlay keeping the ticket visible while the page changes.
 - `KanbanCard` text is non-selectable, so drag gestures do not highlight card
   titles or excerpts.
+
+## Update 2026-06-13 — columns fill width, width-driven pagination, header New task
+
+Generalises the phone-only paging from `(4)` into a single width-driven model and
+moves the `+ New task` button into the page header (supersedes line 102's
+"top-of-board bar" placement and the fixed-width desktop board from `(4)`).
+
+### Board (`admin/`)
+
+- Columns **fill the available viewport width** with a hard floor of
+  `MIN_COLUMN_PX = 300` (`KanbanColumn` is `flex-1 min-w-[300px]`). The old fixed
+  `280px` columns + desktop `overflow-x-auto` horizontal scroll are gone.
+- `KanbanBoard` measures the viewport with a `ResizeObserver` and fits as many
+  `>= 300px` columns (plus the `12px` gap) per page as will fit:
+  `perPage = floor((width + gap) / (300 + gap))`. Remaining columns move to
+  additional pages; pagination dots (`pageCount`) show only when `pageCount > 1`.
+  This applies at **every** width, not just phones — a narrow desktop window
+  paginates too. When the viewport is narrower than one column, the single column
+  fills it.
+- Dot taps, horizontal swipe, and drag-to-edge page switching now step whole
+  pages (`perPage` columns) and are gated on `paginated` rather than a mobile
+  media query. The `useMediaQuery` mobile breakpoint is no longer used by the
+  board.
+- `handleDragEnd` only moves a card when dropped on an actual column droppable
+  (no implicit "current mobile page" fallback).
+
+### New task button
+
+- Moved from the board content area to the **top-right of the page header**:
+  `AggregateBoardPage` header for `/projects`, and `ProjectView` header (Board
+  tab only) for `/projects/:id/board`. `ProjectBoardTab` no longer renders it.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (admin) pass.
+- Playwright (isolated, dev-login token) at 1680/1280/1100/760/420px: columns
+  fill width (4×332 → 3×313 → 2×386 → 1×388), dots appear at 2/2/2/4 pages, and
+  the New task button sits in the header row (`top: 50px`, right-aligned). Project
+  board (5 columns) shows 4 + a second page. No console/page errors.

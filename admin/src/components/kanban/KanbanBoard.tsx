@@ -1,4 +1,12 @@
-import { type TouchEvent as ReactTouchEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type TouchEvent as ReactTouchEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -11,7 +19,6 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { type TaskRecord } from '../../facades/tasks/hooks'
-import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { ArchiveDoneMenu } from './ArchiveDoneMenu'
 import { KanbanCard, KanbanCardPreview } from './KanbanCard'
 import { KanbanColumn } from './KanbanColumn'
@@ -23,7 +30,11 @@ import {
   placeTask,
 } from './kanban-config'
 
-const MOBILE_BOARD_QUERY = '(max-width: 767px)'
+// Columns fill the viewport but never shrink below this. The board fits as many
+// columns as will sit at >= MIN_COLUMN_PX (plus the gap between them); the rest
+// move to additional pages reachable via the dots / swipe / drag-to-edge.
+const MIN_COLUMN_PX = 300
+const COLUMN_GAP_PX = 12 // gap-3
 const EDGE_PAGE_ZONE_PX = 56
 const EDGE_PAGE_INTERVAL_MS = 450
 const SWIPE_PAGE_MIN_PX = 48
@@ -47,18 +58,27 @@ export const KanbanBoard = ({
   projectNameById,
   onMoveTask,
 }: KanbanBoardProps) => {
-  const isMobile = useMediaQuery(MOBILE_BOARD_QUERY)
   const [showArchived, setShowArchived] = useState(false)
   const [activeTask, setActiveTask] = useState<TaskRecord | null>(null)
   const [draggingTask, setDraggingTask] = useState<TaskRecord | null>(null)
-  const [mobilePage, setMobilePage] = useState(0)
+  const [viewportWidth, setViewportWidth] = useState(0)
+  const [page, setPage] = useState(0)
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const mobilePageRef = useRef(0)
+  const pageRef = useRef(0)
   const lastEdgePageAtRef = useRef(0)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
   const isDraggingCard = draggingTask !== null
+
+  // How many columns fit at >= MIN_COLUMN_PX, and how that splits into pages.
+  const columnCount = Math.max(columns.length, 1)
+  const perPage = Math.min(
+    columnCount,
+    Math.max(1, Math.floor((viewportWidth + COLUMN_GAP_PX) / (MIN_COLUMN_PX + COLUMN_GAP_PX))),
+  )
+  const pageCount = Math.max(1, Math.ceil(columns.length / perPage))
+  const paginated = pageCount > 1
 
   const { byColumn, archived } = useMemo(() => {
     const grouped: Record<string, TaskRecord[]> = Object.fromEntries(columns.map((c) => [c.id, []]))
@@ -77,25 +97,31 @@ export const KanbanBoard = ({
     return { byColumn: grouped, archived: archivedTasks }
   }, [tasks, columns])
 
-  useEffect(() => {
-    mobilePageRef.current = mobilePage
-  }, [mobilePage])
-
-  const showPage = useCallback((page: number) => {
-    const maxPage = Math.max(columns.length - 1, 0)
-    const nextPage = Math.min(Math.max(page, 0), maxPage)
-    setMobilePage(nextPage)
-    mobilePageRef.current = nextPage
-  }, [columns.length])
-
-  useEffect(() => {
-    if (!isMobile) return
-    if (mobilePage >= columns.length) showPage(columns.length - 1)
-  }, [columns.length, isMobile, mobilePage, showPage])
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const measure = () => setViewportWidth(viewport.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
-    if (isMobile) showPage(mobilePageRef.current)
-  }, [isMobile, showPage])
+    pageRef.current = page
+  }, [page])
+
+  const showPage = useCallback((next: number) => {
+    const maxPage = Math.max(pageCount - 1, 0)
+    const clamped = Math.min(Math.max(next, 0), maxPage)
+    setPage(clamped)
+    pageRef.current = clamped
+  }, [pageCount])
+
+  // Keep the current page valid when the viewport (and therefore pageCount) shrinks.
+  useEffect(() => {
+    if (page > pageCount - 1) showPage(pageCount - 1)
+  }, [page, pageCount, showPage])
 
   const pageByClientX = useCallback((clientX: number) => {
     const viewport = viewportRef.current
@@ -106,17 +132,17 @@ export const KanbanBoard = ({
       clientX >= rect.right - EDGE_PAGE_ZONE_PX ? 1 : clientX <= rect.left + EDGE_PAGE_ZONE_PX ? -1 : 0
     if (direction === 0) return
 
-    const currentPage = mobilePageRef.current
+    const currentPage = pageRef.current
     const nextPage = currentPage + direction
 
-    if (nextPage === currentPage || nextPage < 0 || nextPage >= columns.length) return
+    if (nextPage === currentPage || nextPage < 0 || nextPage >= pageCount) return
 
     const now = performance.now()
     if (now - lastEdgePageAtRef.current < EDGE_PAGE_INTERVAL_MS) return
 
     lastEdgePageAtRef.current = now
     showPage(nextPage)
-  }, [columns.length, showPage])
+  }, [pageCount, showPage])
 
   const pageByDragDirection = useCallback((deltaX: number) => {
     const viewport = viewportRef.current
@@ -129,14 +155,14 @@ export const KanbanBoard = ({
   }, [pageByClientX])
 
   const handleViewportTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
-    if (!isMobile || isDraggingCard) return
+    if (!paginated || isDraggingCard) return
 
     const touch = event.touches.item(0)
     if (touch) touchStartRef.current = { x: touch.clientX, y: touch.clientY }
-  }, [isDraggingCard, isMobile])
+  }, [isDraggingCard, paginated])
 
   const handleViewportTouchEnd = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
-    if (!isMobile || isDraggingCard) {
+    if (!paginated || isDraggingCard) {
       touchStartRef.current = null
       return
     }
@@ -151,11 +177,11 @@ export const KanbanBoard = ({
     if (Math.abs(deltaX) < SWIPE_PAGE_MIN_PX) return
     if (Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_PAGE_RATIO) return
 
-    showPage(mobilePageRef.current + (deltaX < 0 ? 1 : -1))
-  }, [isDraggingCard, isMobile, showPage])
+    showPage(pageRef.current + (deltaX < 0 ? 1 : -1))
+  }, [isDraggingCard, paginated, showPage])
 
   useEffect(() => {
-    if (!isMobile || !isDraggingCard) return
+    if (!paginated || !isDraggingCard) return
 
     const handlePointerMove = (event: MouseEvent | PointerEvent) => {
       pageByClientX(event.clientX)
@@ -174,7 +200,7 @@ export const KanbanBoard = ({
       window.removeEventListener('mousemove', handlePointerMove)
       window.removeEventListener('touchmove', handleTouchMove)
     }
-  }, [isDraggingCard, isMobile, pageByClientX])
+  }, [isDraggingCard, paginated, pageByClientX])
 
   const handleDragStart = (event: DragStartEvent) => {
     const task = tasks.find((t) => t.id === String(event.active.id))
@@ -183,11 +209,11 @@ export const KanbanBoard = ({
 
     setDraggingTask(task ?? null)
     lastEdgePageAtRef.current = performance.now() - EDGE_PAGE_INTERVAL_MS
-    if (isMobile && columnIndex >= 0) showPage(columnIndex)
+    if (paginated && columnIndex >= 0) showPage(Math.floor(columnIndex / perPage))
   }
 
   const handleDragMove = (event: DragMoveEvent) => {
-    if (!isMobile) return
+    if (!paginated) return
     pageByDragDirection(event.delta.x)
   }
 
@@ -199,8 +225,8 @@ export const KanbanBoard = ({
   const handleDragEnd = (event: DragEndEvent) => {
     clearDraggingTask()
     const { active, over } = event
-    const columnId = over ? String(over.id) : isMobile ? columns[mobilePageRef.current]?.id : null
-    if (!columnId) return
+    if (!over) return
+    const columnId = String(over.id)
     const task = tasks.find((t) => t.id === String(active.id))
     if (!task || placeTask(task, columns) === columnId) return
     onMoveTask(task.id, columnId)
@@ -223,21 +249,21 @@ export const KanbanBoard = ({
         onDragMove={handleDragMove}
         onDragStart={handleDragStart}
       >
-        {isMobile && columns.length > 1 ? (
-          <div aria-label="Board columns" className="mb-2 flex items-center justify-center gap-2 md:hidden">
-            {columns.map((column, index) => (
+        {paginated ? (
+          <div aria-label="Board pages" className="mb-2 flex items-center justify-center gap-2">
+            {Array.from({ length: pageCount }, (_, index) => (
               <button
-                aria-current={index === mobilePage ? 'page' : undefined}
-                aria-label={`Show ${column.name}`}
+                aria-current={index === page ? 'page' : undefined}
+                aria-label={`Show page ${index + 1}`}
                 className="flex h-7 w-7 items-center justify-center rounded-full"
-                key={column.id}
+                key={index}
                 onClick={() => showPage(index)}
                 type="button"
               >
                 <span
                   className={[
                     'h-2.5 rounded-full transition-all',
-                    index === mobilePage
+                    index === page
                       ? 'w-6 bg-[color:var(--tx)]'
                       : 'w-2.5 bg-[color:var(--overlay-strong)]',
                   ].join(' ')}
@@ -248,7 +274,7 @@ export const KanbanBoard = ({
         ) : null}
         <div
           ref={viewportRef}
-          className="flex min-h-0 flex-1 gap-3 overflow-hidden overscroll-x-contain pb-2 md:overflow-x-auto"
+          className="flex min-h-0 flex-1 gap-3 overflow-hidden overscroll-x-contain pb-2"
           data-kanban-board-viewport
           data-kanban-dragging={isDraggingCard ? 'true' : undefined}
           onTouchCancel={() => {
@@ -265,7 +291,7 @@ export const KanbanBoard = ({
               dot={CATEGORY_DOT[column.category]}
               headerAction={column.category === 'done' ? <ArchiveDoneMenu /> : undefined}
               label={column.name}
-              mobileActive={index === mobilePage}
+              visible={index >= page * perPage && index < page * perPage + perPage}
             >
               {(byColumn[column.id] ?? []).map((task) => (
                 <KanbanCard key={task.id} {...cardProps(task)} />

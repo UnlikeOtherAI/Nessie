@@ -8,7 +8,9 @@ type KanbanColumnProps = {
   count: number
   children: ReactNode
   headerAction?: ReactNode
-  mobileActive?: boolean
+  // Columns outside the current page are hidden (display:none) so the visible
+  // ones flex to fill the viewport. Width policy lives in KanbanBoard.
+  visible: boolean
 }
 
 export const KanbanColumn = ({
@@ -18,15 +20,15 @@ export const KanbanColumn = ({
   count,
   children,
   headerAction,
-  mobileActive,
+  visible,
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: columnId })
 
   return (
     <div
       className={[
-        mobileActive === false ? 'hidden md:flex' : 'flex',
-        'w-full min-w-full flex-col md:w-[280px] md:min-w-[280px]',
+        visible ? 'flex' : 'hidden',
+        'min-w-[300px] flex-1 flex-col',
       ].join(' ')}
       data-kanban-column={columnId}
     >
