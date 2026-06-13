@@ -37,7 +37,11 @@ export const AdminShellLayout = () => {
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
   const showWebTabBar = mobileLayout && !nativeShell;
-  const hideTopBar = nativeShell && (phoneLayout || nativeIPadApp);
+  // Whenever a bottom tab bar is present — the web tab bar on mobile web, or the
+  // native app's own tab bar on phone/iPad — drop the entire top bar. Navigation
+  // lives in the bottom bar (which carries its own Search tab) and each page
+  // supplies its own mobile header (hamburger + title).
+  const hideTopBar = showWebTabBar || (nativeShell && (phoneLayout || nativeIPadApp));
 
   if (sessionState === 'bootstrap') {
     return <Navigate to="/bootstrap" replace />;
