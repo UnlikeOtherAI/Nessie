@@ -20,6 +20,7 @@ import {
   DEFAULT_BOOTSTRAP_PROJECT_ID,
   type CreateChannelTarget,
   type RenameProjectTarget,
+  type SidebarAgentDm,
   type SidebarMenu,
   type SidebarPerson,
   type SidebarProject,
@@ -191,6 +192,11 @@ export const useAdminShell = () => {
     void navigate('/channels');
   }, [navigate]);
 
+  const navigateToNewConversation = useCallback(() => {
+    setSidebarMenu(null);
+    void navigate('/channels/new');
+  }, [navigate]);
+
   const navigateToSettings = useCallback((subPage?: string) => {
     void navigate(subPage ? `/settings/${subPage}` : '/settings');
   }, [navigate]);
@@ -240,6 +246,23 @@ export const useAdminShell = () => {
         )?.id,
     }));
   }, [me, users, channels]);
+
+  const sidebarAgentDms = useMemo<SidebarAgentDm[]>(
+    () =>
+      channels
+        .filter((channel) => channel.type === 'dm' && !isPersonalAssistantChannel(channel))
+        .flatMap((channel) => {
+          const agent = agents.find((candidate) => candidate.channelIds.includes(channel.id));
+          return agent
+            ? [{
+                dmChannelId: channel.id,
+                id: agent.id,
+                label: agent.name,
+              }]
+            : [];
+        }),
+    [agents, channels],
+  );
 
   const visibleStarredEntries = useMemo<VisibleStarredEntry[]>(() => {
     const entries: VisibleStarredEntry[] = [];
@@ -377,6 +400,7 @@ export const useAdminShell = () => {
     navigateHome,
     navigateToChannel,
     navigateToDm,
+    navigateToNewConversation,
     navigateToProject,
     navigateToSettings,
     openCreateChannel,
@@ -397,6 +421,7 @@ export const useAdminShell = () => {
     sessionState,
     setSidebarMenu,
     sidebarMenu,
+    sidebarAgentDms,
     sidebarPeople,
     starredChannelIds,
     starredCollapsed,

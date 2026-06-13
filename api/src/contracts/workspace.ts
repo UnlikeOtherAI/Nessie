@@ -1,4 +1,5 @@
 import {
+  AgentIdSchema,
   ChannelIdSchema,
   OrganizationIdSchema,
   ProjectIdSchema,
@@ -104,3 +105,15 @@ export const UpdateProjectBodySchema = z.object({
 export const AddChannelMemberBodySchema = z.object({
   userId: UserIdSchema,
 })
+
+export const StartChannelConversationBodySchema = z
+  .object({
+    agentIds: z.array(AgentIdSchema).optional().default([]),
+    userIds: z.array(UserIdSchema).optional().default([]),
+  })
+  .refine((body) => body.agentIds.length + body.userIds.length > 0, {
+    message: 'Choose at least one recipient',
+  })
+export type StartChannelConversationBody = z.infer<
+  typeof StartChannelConversationBodySchema
+>

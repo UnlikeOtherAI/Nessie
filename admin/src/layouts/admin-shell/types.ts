@@ -18,6 +18,11 @@ export type SidebarPerson = {
   avatarAttachmentId?: string | null
   gravatarUrl?: string | null
 }
+export type SidebarAgentDm = {
+  dmChannelId: string
+  id: string
+  label: string
+}
 export type VisibleStarredEntry =
   | { type: 'channel'; channel: ChannelRecord }
   | { type: 'project'; channels: ChannelRecord[]; project: SidebarProject; starred: boolean }

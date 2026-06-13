@@ -9,6 +9,7 @@ import { ApprovalsPage } from './pages/ApprovalsPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverviewPage'
+import { ChannelConversationComposePage } from './pages/ChannelConversationComposePage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { FeedbackPage } from './pages/FeedbackPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
@@ -66,6 +67,10 @@ export const router = createBrowserRouter([
   {
     element: <AdminShellLayout />,
     children: [
+      {
+        path: '/channels/new',
+        element: <ChannelConversationComposePage />,
+      },
       {
         path: '/channels/projects/:projectId',
         element: <ChannelProjectOverviewPage />,

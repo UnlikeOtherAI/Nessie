@@ -17,6 +17,25 @@ export const useSendMessage = (threadId?: string) => {
   })
 }
 
+export const useSendMessageToThread = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { attachmentIds?: string[]; content: string; threadId: string }) =>
+      apiClient.post<ThreadMessageRecord>(`/api/threads/${input.threadId}/messages`, {
+        attachmentIds: input.attachmentIds,
+        content: input.content,
+      }),
+    onSuccess: (_message, input) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['threads', input.threadId, 'messages'],
+      })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}
+
 // sp-messaging slice: edit, delete, and full-text search.
 export const useUpdateMessage = (threadId?: string) => {
   const apiClient = useApiClient()

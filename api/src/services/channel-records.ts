@@ -40,6 +40,9 @@ export const resolveDmUserId = (
   }
 
   const participantIds = channel.dmKey.split(':').slice(2)
+  if (participantIds.includes('agent')) {
+    return null
+  }
   const targetId = participantIds.find((candidate) => candidate !== userId) ?? participantIds[0]
   return targetId ? parseUserId(targetId) : null
 }

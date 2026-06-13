@@ -84,6 +84,7 @@ export const AdminShellLayout = () => {
       onNavigateChannel={shell.navigateToChannel}
       onNavigateDm={shell.navigateToDm}
       onNavigateHome={shell.navigateHome}
+      onNavigateNewConversation={shell.navigateToNewConversation}
       onNavigateProject={shell.navigateToProject}
       onNavigateSettings={shell.navigateToSettings}
       onOpenCreateChannel={shell.openCreateChannel}
@@ -100,6 +101,7 @@ export const AdminShellLayout = () => {
       scopedAgents={shell.scopedAgents}
       selectedAgentId={shell.selectedAgentId}
       setSidebarMenu={shell.setSidebarMenu}
+      sidebarAgentDms={shell.sidebarAgentDms}
       sidebarMenu={shell.sidebarMenu}
       sidebarPeople={shell.sidebarPeople}
       starredChannelIds={shell.starredChannelIds}
