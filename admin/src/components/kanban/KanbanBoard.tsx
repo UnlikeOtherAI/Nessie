@@ -5,6 +5,8 @@ import {
   MouseSensor,
   TouchSensor,
   closestCorners,
+  pointerWithin,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   useSensor,
@@ -164,28 +166,43 @@ export const KanbanBoard = ({
     [columns],
   )
 
+  // Pointer-based detection: a column (or the card under the cursor) becomes the
+  // target the moment the cursor enters it — not when the dragged card's body
+  // overlaps it. Fall back to closest-corners when the pointer is between things.
+  const collisionDetection = useCallback<CollisionDetection>((args) => {
+    const pointerHits = pointerWithin(args)
+    return pointerHits.length > 0 ? pointerHits : closestCorners(args)
+  }, [])
+
   const handleDragStart = () => {
     draggingRef.current = true
     setIsDraggingCard(true)
     setItems(baseItems)
   }
 
-  // Relocate the dragged card into the column it hovers so that column opens a
-  // gap (animated) before the drop is committed.
+  // Live-relocate the dragged card's placeholder to wherever the cursor hovers —
+  // within the same column (reorder) or into another column — so the drop slot
+  // (dashed placeholder) tracks the cursor and the column animates room for it.
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event
     if (!over) return
     const activeId = String(active.id)
     const overId = String(over.id)
+    if (activeId === overId) return
     setItems((prev) => {
       const fromColumn = findColumn(activeId, prev)
       const toColumn = findColumn(overId, prev)
-      if (!fromColumn || !toColumn || fromColumn === toColumn) return prev
+      if (!fromColumn || !toColumn) return prev
       const fromItems = prev[fromColumn]
       const toItems = prev[toColumn]
       if (!fromItems || !toItems) return prev
-      const overIndex = toItems.indexOf(overId)
-      const insertAt = overIndex >= 0 ? overIndex : toItems.length
+      const activeIndex = fromItems.indexOf(activeId)
+      const overIndex = overId === toColumn ? toItems.length : toItems.indexOf(overId)
+      if (fromColumn === toColumn) {
+        if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) return prev
+        return { ...prev, [toColumn]: arrayMove(fromItems, activeIndex, overIndex) }
+      }
+      const insertAt = overIndex < 0 ? toItems.length : overIndex
       return {
         ...prev,
         [fromColumn]: fromItems.filter((id) => id !== activeId),
@@ -213,26 +230,15 @@ export const KanbanBoard = ({
       return
     }
 
-    const overId = String(over.id)
-    const destColumn = findColumn(overId, items)
+    // onDragOver already placed the card in its destination column at the hovered
+    // index, so read the final spot straight from `items`.
+    const destColumn = findColumn(activeId, items)
     if (!destColumn) {
       setItems(baseItems)
       settleNearestPage()
       return
     }
-
-    // Commit the within-column order (cross-column moves already relocated in
-    // dragOver; this also lands the card at the hovered index).
-    let committed = items
-    const columnItems = items[destColumn] ?? []
-    const fromIndex = columnItems.indexOf(activeId)
-    const overIndex = overId === destColumn ? columnItems.length - 1 : columnItems.indexOf(overId)
-    if (fromIndex >= 0 && overIndex >= 0 && fromIndex !== overIndex) {
-      committed = { ...items, [destColumn]: arrayMove(columnItems, fromIndex, overIndex) }
-      setItems(committed)
-    }
-
-    const finalIndex = (committed[destColumn] ?? []).indexOf(activeId)
+    const finalIndex = (items[destColumn] ?? []).indexOf(activeId)
     const columnIndex = columns.findIndex((column) => column.id === destColumn)
     showPage(columnIndex >= 0 ? Math.floor(columnIndex / perPage) : page)
 
@@ -257,7 +263,7 @@ export const KanbanBoard = ({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DndContext
-        collisionDetection={closestCorners}
+        collisionDetection={collisionDetection}
         measuring={DND_MEASURING}
         sensors={sensors}
         onDragCancel={handleDragCancel}

@@ -25,6 +25,7 @@ export const CreateNoteBodySchema = z.object({
 
 export const CreateReplyBodySchema = z.object({ body: BodySchema })
 export const EditAnnotationBodySchema = z.object({ body: BodySchema })
+export const ToggleReactionBodySchema = z.object({ emoji: z.string().trim().min(1).max(64) })
 
 export const AnnotationListQuerySchema = z.object({
   kind: AnnotationKindSchema.optional(),

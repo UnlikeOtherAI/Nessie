@@ -540,3 +540,24 @@ WebKit/touch). dnd-kit *does* handle native scroll containers correctly.
   Chromium): `/projects` redirects to `/projects/:id/board`, no aggregate sidebar
   link, dragging a card reorders within a column and **persists across reload**, and
   a cross-column drag lands + persists in the target column. No page errors.
+
+## Update 2026-06-13 (7) — cursor-based drop targeting + dashed placeholder
+
+- Collision detection switched from `closestCorners` to **`pointerWithin`** (with
+  a `closestCorners` fallback when the pointer is between targets). A column (or
+  the card under the cursor) becomes the drop target the moment the **cursor**
+  enters it — you no longer have to drag the card's body to the column's middle.
+- The dragged card now renders as a **drop placeholder**: a dashed, card-sized
+  rectangle (`--accent` border, `--overlay-weak` fill, contents hidden to keep the
+  size) that **stays in the slot it would land in** rather than following the
+  cursor. `onDragOver` relocates that slot live — within a column (reorder) or into
+  another column — so the dashed rectangle tracks the cursor's drop position and
+  the column animates room for it. `onDragEnd` reads the final slot from `items`.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (admin) pass.
+- Playwright (Chromium): dragging a card and moving the cursor just 8px past a
+  neighbouring column's left edge relocates the placeholder into that column
+  (`pointerWithin`); the placeholder is a dashed, card-sized box with hidden
+  contents. No page errors.

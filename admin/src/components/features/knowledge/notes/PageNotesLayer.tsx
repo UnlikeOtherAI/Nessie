@@ -9,19 +9,23 @@ import { CommentComposer } from '../comments/CommentComposer'
 import { CommentThread } from '../comments/CommentThread'
 import { useAnnotationActions } from '../comments/useAnnotationActions'
 import { useAnnotationAuthors } from '../comments/useAnnotationAuthors'
-import { RichTextContent } from '../RichTextContent'
+import { RichTextContent, type SelectionPoint } from '../RichTextContent'
 import type { NoteAnchorInput } from './note-highlight-extension'
 
-const CARD_CLASS = [
+const RIGHT_CARD_CLASS = [
   'fixed right-6 top-24 z-40 flex max-h-[70vh] w-[340px] flex-col gap-3 overflow-y-auto',
   'rounded-lg border border-[color:var(--sep)] bg-[color:var(--main)] p-4',
   'shadow-[0_24px_60px_var(--scrim-strong)]',
 ].join(' ')
 
+const POPOVER_WIDTH = 320
+
+type PendingNote = { anchor: TextQuoteAnchor; at: SelectionPoint }
+
 // Wraps the read-only reader with the inline-note experience: highlights anchored
-// passages, lets the reader select text to start a note, and shows a floating
-// card on the right for the hovered note (with its replies) or a new-note
-// composer for a fresh selection.
+// passages, opens a small popover right under a fresh text selection to add a
+// note, and shows a floating card on the right for the hovered note (with its
+// replies).
 export const PageNotesLayer = ({
   pageId,
   body,
@@ -37,7 +41,7 @@ export const PageNotesLayer = ({
   const actions = useAnnotationActions(pageId)
   const authorLabel = useAnnotationAuthors()
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
-  const [pendingAnchor, setPendingAnchor] = useState<TextQuoteAnchor | null>(null)
+  const [pending, setPending] = useState<PendingNote | null>(null)
 
   const noteInputs = useMemo<NoteAnchorInput[]>(
     () =>
@@ -52,10 +56,12 @@ export const PageNotesLayer = ({
   )
   const activeNote = notes.find((note) => note.id === activeNoteId) ?? null
 
-  const closeCard = () => {
-    setActiveNoteId(null)
-    setPendingAnchor(null)
-  }
+  const popoverLeft = pending
+    ? Math.min(
+        Math.max(pending.at.left, POPOVER_WIDTH / 2 + 8),
+        window.innerWidth - POPOVER_WIDTH / 2 - 8,
+      )
+    : 0
 
   return (
     <div className="mt-6">
@@ -64,52 +70,56 @@ export const PageNotesLayer = ({
         notes={noteInputs}
         onNoteHover={(id) => {
           setActiveNoteId(id)
-          setPendingAnchor(null)
+          setPending(null)
         }}
-        onSelectNote={(anchor) => {
-          setPendingAnchor(anchor)
+        onSelectNote={(anchor, at) => {
+          setPending({ anchor, at })
           setActiveNoteId(null)
         }}
       />
 
-      {pendingAnchor ? (
-        <aside className={CARD_CLASS}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-              New note
-            </span>
-            <button
-              className="text-xs text-[color:var(--tx3)] hover:text-[var(--tx)]"
-              onClick={closeCard}
-              type="button"
-            >
-              Close
-            </button>
-          </div>
-          <blockquote className="border-l-2 border-[color:var(--accent)] pl-2 text-xs italic text-[color:var(--tx2)]">
-            “{pendingAnchor.quote}”
-          </blockquote>
-          <CommentComposer
-            autoFocus
-            onCancel={closeCard}
-            onSubmit={(noteBody) => {
-              createNote.mutate({ anchor: pendingAnchor, anchorVersionId: versionId, body: noteBody })
-              closeCard()
-            }}
-            pending={createNote.isPending}
-            placeholder="Write a note…"
-            submitLabel="Add note"
+      {pending ? (
+        <>
+          <button
+            aria-label="Dismiss note composer"
+            className="fixed inset-0 z-40 cursor-default"
+            onClick={() => setPending(null)}
+            type="button"
           />
-        </aside>
+          <aside
+            className="fixed z-50 flex flex-col gap-2 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3 shadow-[0_16px_40px_var(--scrim-strong)]"
+            style={{
+              top: `${pending.at.top + 8}px`,
+              left: `${popoverLeft}px`,
+              width: `${POPOVER_WIDTH}px`,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            <blockquote className="border-l-2 border-[color:var(--accent)] pl-2 text-xs italic text-[color:var(--tx2)]">
+              “{pending.anchor.quote}”
+            </blockquote>
+            <CommentComposer
+              autoFocus
+              onCancel={() => setPending(null)}
+              onSubmit={(noteBody) => {
+                createNote.mutate({ anchor: pending.anchor, anchorVersionId: versionId, body: noteBody })
+                setPending(null)
+              }}
+              pending={createNote.isPending}
+              placeholder="Write a note…"
+              submitLabel="Add note"
+            />
+          </aside>
+        </>
       ) : activeNote ? (
-        <aside className={CARD_CLASS}>
+        <aside className={RIGHT_CARD_CLASS}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
               Note
             </span>
             <button
               className="text-xs text-[color:var(--tx3)] hover:text-[var(--tx)]"
-              onClick={closeCard}
+              onClick={() => setActiveNoteId(null)}
               type="button"
             >
               Close

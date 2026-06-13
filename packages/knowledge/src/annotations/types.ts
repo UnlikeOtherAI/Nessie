@@ -10,6 +10,14 @@ export type { TextQuoteAnchor } from '@nessie/schemas'
 export type AnnotationKind = 'comment' | 'note'
 export type AnnotationState = 'open' | 'resolved'
 
+export type AnnotationReaction = {
+  id: string
+  emoji: string
+  userId: string | null
+  agentId: string | null
+  createdAt: string
+}
+
 // Who is authoring/acting. A delegating personal assistant authors as its owning
 // user (authorType 'user') with delegatedByAgentId set; an autonomous agent
 // authors as 'agent'. This mirrors message authorship in the worker.
@@ -37,6 +45,7 @@ export type AnnotationRecord = {
   editedAt: string | null
   createdAt: string
   updatedAt: string
+  reactions: AnnotationReaction[]
   replies: AnnotationRecord[]
 }
 

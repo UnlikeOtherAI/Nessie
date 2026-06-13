@@ -14,6 +14,7 @@ import {
   CreateNoteBodySchema,
   CreateReplyBodySchema,
   EditAnnotationBodySchema,
+  ToggleReactionBodySchema,
 } from '../contracts/knowledge-comments.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
@@ -185,6 +186,29 @@ export const registerKnowledgeCommentRoutes = (
       })
       await auditAnnotation(actorContext, request, 'kb.annotation.replied', replyRecord)
       return reply.code(201).send(createApiResponse(replyRecord))
+    } catch (error) {
+      return sendAnnotationError(reply, error)
+    }
+  })
+
+  app.post('/api/knowledge-base/annotations/:annotationId/reactions', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(ToggleReactionBodySchema, request.body, reply)
+    if (!body) return reply
+    const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'create')
+    if (!decision) return reply
+    const { annotationId } = request.params as { annotationId: string }
+    const viewer = await buildViewer(actorContext)
+    const access = await accessForAnnotation(actorContext, annotationId, viewer, 'read', reply)
+    if (!access) return reply
+    try {
+      const updated = await service.toggleReaction(access, {
+        annotationId,
+        emoji: body.emoji,
+        actor: buildActor(actorContext),
+      })
+      return createApiResponse(updated)
     } catch (error) {
       return sendAnnotationError(reply, error)
     }
