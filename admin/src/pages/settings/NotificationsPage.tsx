@@ -201,7 +201,7 @@ export const NotificationsPage = () => {
 
   return (
     <SettingsPanel
-      eyebrow="General"
+      eyebrow="Account"
       title="Notifications"
       actions={
         <button

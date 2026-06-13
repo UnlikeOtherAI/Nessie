@@ -120,6 +120,14 @@ toolCall → resolve ToolRegistryEntry → check ToolGrant → route by transpor
 
 ## 7) UI (Slice E)
 
+> **Update (2026-06-13 — settings IA cleanup):** the tools surface was
+> consolidated to a single canonical route **`/agents/tools`** (owner-only). It
+> renders this section's registry view (filters + detail + per-agent grant
+> matrix). The earlier read-only `/settings/tools` stub and the orphaned
+> `/workflows/tools` route were removed; both now redirect to `/agents/tools`.
+> The MCP App Store is reachable from the sidebar as **Connectors**
+> (`/mcp-app-store`). Read `/admin/workflows/tools` below as `/agents/tools`.
+
 Per **D8** the UI splits in two:
 
 **`/admin/workflows/tools`** (inside Workflows section)

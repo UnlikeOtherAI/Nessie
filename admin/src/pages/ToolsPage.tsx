@@ -1,121 +1,121 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import type {
+  ToolRegistryEntryStatus,
+  ToolRegistrySource,
+} from '@nessie/schemas'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
-import { ColumnBrowserItem } from '../components/shared/column-browser/ColumnBrowserItem'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
-import { StatusPill } from '../components/primitives/StatusPill'
-import { useTools } from '../facades/tools/hooks'
-import type { ToolDescriptor } from '../lib/api-client'
+import { AgentGrantMatrix } from '../components/features/workflow-tools/AgentGrantMatrix'
+import { ToolDetailDrawer } from '../components/features/workflow-tools/ToolDetailDrawer'
+import { ToolFilterBar } from '../components/features/workflow-tools/ToolFilterBar'
+import { ToolList } from '../components/features/workflow-tools/ToolList'
+import { useAgents } from '../facades/agents/hooks'
+import { useMcpToolRegistry } from '../facades/tool-grants/hooks'
+import { useAuthSession } from '../providers/AuthSessionProvider'
 
-const serializeFlag = (value?: boolean) => (value ? 'Yes' : 'No')
-
-const formatToolStatus = (tool: ToolDescriptor) => {
-  if (tool.enabled === false) return 'disabled'
-  if (tool.builtin) return 'builtin'
-  return 'available'
-}
-
-const getToolStatusTone = (tool: ToolDescriptor) => {
-  if (tool.enabled === false) return 'muted' as const
-  if (tool.safe) return 'success' as const
-  return 'warning' as const
-}
-
+/**
+ * `/agents/tools` — the single, canonical tool surface.
+ *
+ * Three-pane column-browser layout:
+ *   [filters] → [tool list] → [tool detail + per-agent grant matrix]
+ *
+ * Reads the full tool registry (`/api/mcp/tools`, owner-only) which is a
+ * superset of the legacy builtin-only descriptor feed: it carries builtin,
+ * MCP, and bundle tools with source/transport/tags/status, and manages
+ * per-agent grants inline. This absorbs the former read-only `/settings/tools`
+ * and the orphaned `/workflows/tools`.
+ */
 export const ToolsPage = () => {
-  const navigate = useNavigate()
-  const { data: tools = [] } = useTools()
-  const [selectedToolId, setSelectedToolId] = useState<string | undefined>(
-    undefined,
+  const { me } = useAuthSession()
+  const isOwner = me?.user.roleIds.includes('owner') ?? false
+
+  const [source, setSource] = useState<ToolRegistrySource | undefined>()
+  const [status, setStatus] = useState<ToolRegistryEntryStatus | undefined>()
+  const [tag, setTag] = useState<string | undefined>()
+  const [selectedToolId, setSelectedToolId] = useState<string | undefined>()
+
+  const toolsQuery = useMcpToolRegistry({ source, status }, isOwner)
+  const agentsQuery = useAgents()
+
+  const allTools = useMemo(() => toolsQuery.data ?? [], [toolsQuery.data])
+  const tagOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const tool of allTools) {
+      for (const value of tool.tags) {
+        set.add(value)
+      }
+    }
+    return Array.from(set).sort()
+  }, [allTools])
+
+  const filteredTools = useMemo(
+    () => (tag ? allTools.filter((tool) => tool.tags.includes(tag)) : allTools),
+    [allTools, tag],
   )
 
   const sortedTools = useMemo(
-    () => [...tools].sort((left, right) => left.label.localeCompare(right.label)),
-    [tools],
+    () =>
+      [...filteredTools].sort((left, right) =>
+        left.label.localeCompare(right.label),
+      ),
+    [filteredTools],
   )
 
-  const effectiveToolId = selectedToolId ?? sortedTools[0]?.id
   const selectedTool = useMemo(
-    () => sortedTools.find((tool) => tool.id === effectiveToolId),
-    [effectiveToolId, sortedTools],
+    () =>
+      sortedTools.find((tool) => tool.id === selectedToolId)
+      ?? sortedTools[0],
+    [sortedTools, selectedToolId],
   )
+
+  if (!isOwner) {
+    return (
+      <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
+        Owner access required
+      </section>
+    )
+  }
 
   const columns = [
-    <ColumnBrowserColumn
-      headerAction={
-        <button
-          className="admin-button admin-button-primary"
-          onClick={() => void navigate('/settings/tools')}
-          type="button"
-        >
-          Manage tools
-        </button>
-      }
-      key="tools"
-      title="All tools"
-    >
-      {sortedTools.length === 0 ? (
-        <div className="py-8 text-center text-sm text-[color:var(--tx3)]">
-          No tools available.
-        </div>
-      ) : (
-        <div className="grid gap-3">
-          {sortedTools.map((tool) => (
-            <ColumnBrowserItem
-              caption={`ID ${tool.id}`}
-              isSelected={tool.id === effectiveToolId}
-              key={tool.id}
-              meta={<StatusPill tone={getToolStatusTone(tool)}>{formatToolStatus(tool)}</StatusPill>}
-              onClick={() => setSelectedToolId(tool.id)}
-              subtitle={tool.handlerKind ?? (tool.safe ? 'safe tool' : 'restricted tool')}
-              title={tool.label}
-            >
-              {tool.description}
-            </ColumnBrowserItem>
-          ))}
-        </div>
-      )}
+    <ColumnBrowserColumn key="filters" title="Filters">
+      <ToolFilterBar
+        onSourceChange={setSource}
+        onStatusChange={setStatus}
+        onTagChange={setTag}
+        source={source}
+        status={status}
+        tag={tag}
+        tagOptions={tagOptions}
+      />
+    </ColumnBrowserColumn>,
+    <ColumnBrowserColumn key="list" title={`Tools (${sortedTools.length})`}>
+      <ToolList
+        onSelect={(tool) => setSelectedToolId(tool.id)}
+        selectedId={selectedTool?.id}
+        tools={sortedTools}
+      />
     </ColumnBrowserColumn>,
   ]
 
   if (selectedTool) {
     columns.push(
-      <ColumnBrowserColumn
-        key={`tool-${selectedTool.id}`}
-        title={selectedTool.label}
-      >
-        <div className="grid gap-4">
-          <div className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--scrim-weak)] p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="min-w-0 flex-1 text-xl font-semibold text-[color:var(--tx)]">
-                {selectedTool.label}
-              </h2>
-              <StatusPill tone={selectedTool.safe ? 'success' : 'warning'}>
-                {selectedTool.safe ? 'safe' : 'restricted'}
-              </StatusPill>
+      <ColumnBrowserColumn key={`detail-${selectedTool.id}`} title={selectedTool.label}>
+        <div className="grid gap-6">
+          <ToolDetailDrawer tool={selectedTool} />
+          <section>
+            <h3 className="text-sm font-semibold text-[color:var(--tx)]">Per-agent grants</h3>
+            <p className="mt-1 text-xs text-[color:var(--tx3)]">
+              Tick a cell to grant the tool to that agent. The grant is created
+              as `allowed`; removing access uses the dedicated DELETE endpoint
+              (per-tool drawer in a follow-up).
+            </p>
+            <div className="mt-3">
+              <AgentGrantMatrix
+                agents={agentsQuery.data ?? []}
+                tools={[selectedTool]}
+              />
             </div>
-            <div className="mt-3 text-sm text-[color:var(--tx2)]">
-              {selectedTool.description}
-            </div>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            {[
-              ['Handler', selectedTool.handlerKind ?? 'Not specified'],
-              ['Built in', serializeFlag(selectedTool.builtin)],
-              ['Enabled', serializeFlag(selectedTool.enabled ?? true)],
-              ['ID', selectedTool.id],
-            ].map(([label, value]) => (
-              <div
-                className="rounded-xl border border-[color:var(--sep)] bg-[color:var(--scrim-weak)] p-3"
-                key={label}
-              >
-                <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                  {label}
-                </div>
-                <div className="mt-2 text-sm text-[color:var(--tx)]">{value}</div>
-              </div>
-            ))}
-          </div>
+          </section>
         </div>
       </ColumnBrowserColumn>,
     )
@@ -124,7 +124,7 @@ export const ToolsPage = () => {
   return (
     <div className="h-full w-full">
       <ColumnBrowserViewport
-        activeColumn={selectedToolId && selectedTool ? 1 : 0}
+        activeColumn={selectedTool ? 2 : 1}
         columns={columns}
       />
     </div>
