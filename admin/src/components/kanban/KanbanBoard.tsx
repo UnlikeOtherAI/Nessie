@@ -1,5 +1,5 @@
 import {
-  type TouchEvent as ReactTouchEvent,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -66,7 +66,6 @@ export const KanbanBoard = ({
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const pageRef = useRef(0)
   const lastEdgePageAtRef = useRef(0)
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
   const isDraggingCard = draggingTask !== null
@@ -154,30 +153,43 @@ export const KanbanBoard = ({
     pageByClientX(deltaX > 0 ? viewport.getBoundingClientRect().right : viewport.getBoundingClientRect().left)
   }, [pageByClientX])
 
-  const handleViewportTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
-    if (!paginated || isDraggingCard) return
+  // Pan pages by dragging blank board area — works for mouse, touch, and pen via
+  // pointer events. Cards own their own pointer gestures (open / drag-to-move),
+  // so a press that lands on a card or a control never starts a page swipe. The
+  // gesture finishes on the window so a release outside the viewport (mouse) is
+  // still caught.
+  const handleViewportPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!paginated || isDraggingCard || !event.isPrimary) return
 
-    const touch = event.touches.item(0)
-    if (touch) touchStartRef.current = { x: touch.clientX, y: touch.clientY }
-  }, [isDraggingCard, paginated])
-
-  const handleViewportTouchEnd = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
-    if (!paginated || isDraggingCard) {
-      touchStartRef.current = null
+    const target = event.target as HTMLElement
+    if (target.closest('[data-kanban-card], button, a, input, textarea, select, [role="button"]')) {
       return
     }
 
-    const start = touchStartRef.current
-    const touch = event.changedTouches.item(0)
-    touchStartRef.current = null
-    if (!start || !touch) return
+    const startX = event.clientX
+    const startY = event.clientY
+    const pointerId = event.pointerId
 
-    const deltaX = touch.clientX - start.x
-    const deltaY = touch.clientY - start.y
-    if (Math.abs(deltaX) < SWIPE_PAGE_MIN_PX) return
-    if (Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_PAGE_RATIO) return
+    const onUp = (end: PointerEvent) => {
+      if (end.pointerId !== pointerId) return
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
 
-    showPage(pageRef.current + (deltaX < 0 ? 1 : -1))
+      const deltaX = end.clientX - startX
+      const deltaY = end.clientY - startY
+      if (Math.abs(deltaX) < SWIPE_PAGE_MIN_PX) return
+      if (Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_PAGE_RATIO) return
+
+      showPage(pageRef.current + (deltaX < 0 ? 1 : -1))
+    }
+    const onCancel = (end: PointerEvent) => {
+      if (end.pointerId !== pointerId) return
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+    }
+
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
   }, [isDraggingCard, paginated, showPage])
 
   useEffect(() => {
@@ -277,11 +289,8 @@ export const KanbanBoard = ({
           className="flex min-h-0 flex-1 gap-3 overflow-hidden overscroll-x-contain pb-2"
           data-kanban-board-viewport
           data-kanban-dragging={isDraggingCard ? 'true' : undefined}
-          onTouchCancel={() => {
-            touchStartRef.current = null
-          }}
-          onTouchEnd={handleViewportTouchEnd}
-          onTouchStart={handleViewportTouchStart}
+          onPointerDown={handleViewportPointerDown}
+          style={{ touchAction: 'pan-y' }}
         >
           {columns.map((column, index) => (
             <KanbanColumn

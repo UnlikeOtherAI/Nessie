@@ -314,6 +314,20 @@ moves the `+ New task` button into the page header (supersedes line 102's
 - `handleDragEnd` only moves a card when dropped on an actual column droppable
   (no implicit "current mobile page" fallback).
 
+#### Swipe (mouse + touch + pen)
+
+- Page swiping is unified on **pointer events** (`onPointerDown`), so it works
+  with a **mouse drag** as well as a finger/pen — the old touch-only
+  `onTouchStart/End` handlers are gone.
+- Only a drag on **blank board area** pans pages: a press whose target is inside
+  a card (`[data-kanban-card]`) or a control (`button/a/input/...`) is left to the
+  card's own click/drag, so dnd-kit card moves and the open-task click are
+  unaffected. The gesture completes on `window` `pointerup`/`pointercancel`, so a
+  mouse release outside the viewport still registers. A page only changes when the
+  horizontal delta clears `SWIPE_PAGE_MIN_PX` and dominates the vertical delta.
+- The viewport sets `touch-action: pan-y` so vertical page scroll passes through
+  while horizontal drags are reserved for swiping.
+
 ### New task button
 
 - Moved from the board content area to the **top-right of the page header**:
@@ -327,3 +341,6 @@ moves the `+ New task` button into the page header (supersedes line 102's
   fill width (4×332 → 3×313 → 2×386 → 1×388), dots appear at 2/2/2/4 pages, and
   the New task button sits in the header row (`top: 50px`, right-aligned). Project
   board (5 columns) shows 4 + a second page. No console/page errors.
+- Swipe verified at 1280px (2 pages): a **mouse drag** on blank board area flips
+  to the next/previous page (left→page 2, right→page 1), and a synthetic
+  **touch** pointer swipe does the same. No page errors.
