@@ -20,7 +20,7 @@ export const PushCredentialsPage = () => {
   }
 
   return (
-    <SettingsPanel eyebrow="Platform" title="Push notifications">
+    <SettingsPanel eyebrow="Platform" title="Push credentials">
       <div className="grid gap-4 xl:grid-cols-2">
         <ApnsCard status={status?.apns} />
         <FcmCard status={status?.fcm} />
