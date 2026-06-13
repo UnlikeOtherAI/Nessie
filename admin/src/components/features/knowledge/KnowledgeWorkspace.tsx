@@ -65,7 +65,7 @@ export const KnowledgeWorkspace = () => {
   if (editor) {
     return (
       <KnowledgePane onBack={closeEditor} title={editor.mode === 'edit' ? 'Edit page' : 'Create page'}>
-        <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
+        <div className="flex h-full w-full flex-col">
           <PageEditor
             mode={editor.mode}
             onCancel={closeEditor}

@@ -1363,3 +1363,22 @@ button.reaction-pill-active:focus-visible {
   color: var(--tx3);
   pointer-events: none;
 }
+
+/* Knowledge reader — the published/draft page always renders on a white "sheet"
+   with dark text, independent of the active theme, so documents read like paper.
+   Tokens are redeclared (mirroring the light "daylight" palette) so every themed
+   child inside the reader stays legible on white; --accent is left inherited so
+   links and folder icons keep the brand colour. */
+.kb-reader {
+  color-scheme: light;
+  background: #ffffff;
+  color: var(--tx);
+  --tx: #111827;
+  --tx2: #334155;
+  --tx3: #64748b;
+  --sep: #d8dee8;
+  --overlay-weak: rgba(15, 23, 42, 0.05);
+  --overlay: rgba(15, 23, 42, 0.08);
+  --warning-text: #92400e;
+  --success-text: #166534;
+}

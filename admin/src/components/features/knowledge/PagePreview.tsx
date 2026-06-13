@@ -66,7 +66,7 @@ export const PagePreview = ({
     onBack={onBack}
     title={page.title}
   >
-    <div className="mx-auto w-full max-w-3xl px-6 py-8">
+    <div className="kb-reader mx-auto my-8 w-full max-w-3xl rounded-xl px-8 py-8 shadow-sm">
       <div className="text-xs uppercase tracking-[0.16em]">
         <span className={pageStatusTone[page.status]}>{page.status}</span>
       </div>
