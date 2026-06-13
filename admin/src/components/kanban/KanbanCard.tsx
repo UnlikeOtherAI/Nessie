@@ -103,24 +103,36 @@ export const KanbanCard = ({
     onOpen(task)
   }
 
-  // The card follows the pointer in place and siblings animate to make room
-  // (transition) — no separate drag overlay, so position is always correct.
+  // While dragging, this card becomes the drop placeholder: it stays put in the
+  // slot it would land in (no follow transform) and shows as a dashed, card-sized
+  // rectangle with its contents hidden. Siblings animate to make room
+  // (transition). The board relocates this slot to wherever the cursor hovers.
+  const style = isDragging
+    ? {
+        transition,
+        touchAction: 'none' as const,
+        border: '2px dashed var(--accent)',
+        background: 'var(--overlay-weak)',
+      }
+    : { transform: CSS.Transform.toString(transform), transition, touchAction: 'none' as const }
+
   return (
     <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
       data-kanban-card
+      data-kanban-placeholder={isDragging ? 'true' : undefined}
       className={[
         'admin-card grid select-none gap-2 p-3',
         'cursor-grab active:cursor-grabbing',
-        isDragging ? 'relative z-50 shadow-xl' : '',
+        isDragging ? '[&>*]:invisible' : '',
         pulse ? 'kanban-card-pulse' : '',
       ].join(' ')}
       onAnimationEnd={pulse ? onPulseEnd : undefined}
       onClick={handleClick}
       onPointerDown={handlePointerDown}
-      style={{ transform: CSS.Transform.toString(transform), transition, touchAction: 'none' }}
+      style={style}
     >
       <KanbanCardContent projectName={projectName} showProject={showProject} task={task} />
     </div>
