@@ -11,6 +11,14 @@ export type TextQuoteAnchor = {
 export type AnnotationKind = 'comment' | 'note'
 export type AnnotationState = 'open' | 'resolved'
 
+export type KnowledgeAnnotationReaction = {
+  id: string
+  emoji: string
+  userId: string | null
+  agentId: string | null
+  createdAt: string
+}
+
 export type KnowledgeAnnotationRecord = {
   id: string
   pageId: string
@@ -29,6 +37,7 @@ export type KnowledgeAnnotationRecord = {
   editedAt: string | null
   createdAt: string
   updatedAt: string
+  reactions: KnowledgeAnnotationReaction[]
   replies: KnowledgeAnnotationRecord[]
 }
 
@@ -126,6 +135,19 @@ export const useDeleteAnnotation = (pageId: string) => {
     mutationFn: (input: { annotationId: string }) =>
       apiClient.delete<{ id: string; deleted: boolean }>(
         `/api/knowledge-base/annotations/${input.annotationId}`,
+      ),
+    onSuccess: invalidate,
+  })
+}
+
+export const useToggleAnnotationReaction = (pageId: string) => {
+  const apiClient = useApiClient()
+  const invalidate = useInvalidateAnnotations(pageId)
+  return useMutation({
+    mutationFn: (input: { annotationId: string; emoji: string }) =>
+      apiClient.post<KnowledgeAnnotationRecord>(
+        `/api/knowledge-base/annotations/${input.annotationId}/reactions`,
+        { emoji: input.emoji },
       ),
     onSuccess: invalidate,
   })

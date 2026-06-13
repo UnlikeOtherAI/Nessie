@@ -2,18 +2,19 @@ import { useEffect, type MouseEvent as ReactMouseEvent } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { computeAnchor, type TextQuoteAnchor } from '@nessie/schemas'
-import { buildDocText, posToOffset } from './notes/doc-text'
 import {
   NoteHighlight,
   noteHighlightKey,
   type NoteAnchorInput,
 } from './notes/note-highlight-extension'
 
+export type SelectionPoint = { top: number; left: number }
+
 type RichTextContentProps = {
   html: string
   notes?: NoteAnchorInput[]
   onNoteHover?: (id: string) => void
-  onSelectNote?: (anchor: TextQuoteAnchor) => void
+  onSelectNote?: (anchor: TextQuoteAnchor, at: SelectionPoint) => void
 }
 
 // Read-only renderer for stored page HTML. Parsing through the ProseMirror
@@ -58,8 +59,10 @@ export const RichTextContent = ({
       }
     : undefined
 
-  // Turn the current text selection into a text-quote anchor, computed against
-  // the same doc projection the highlight layer relocates against.
+  // Turn the current text selection into a text-quote anchor. Offsets are read
+  // straight from the rendered DOM (container.textContent), the same text-node
+  // projection the highlight layer relocates against — no ProseMirror posAtDOM,
+  // which can throw for non-editable views and silently swallow the selection.
   const handleMouseUp =
     onSelectNote && editor
       ? () => {
@@ -67,21 +70,17 @@ export const RichTextContent = ({
           if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
           const quote = selection.toString()
           if (!quote.trim()) return
+          const container = editor.view.dom as HTMLElement
           const range = selection.getRangeAt(0)
-          const { view } = editor
-          let fromPos: number
-          let toPos: number
-          try {
-            fromPos = view.posAtDOM(range.startContainer, range.startOffset)
-            toPos = view.posAtDOM(range.endContainer, range.endOffset)
-          } catch {
-            return
-          }
-          const docText = buildDocText(view.state.doc)
-          const startOffset = posToOffset(docText, Math.min(fromPos, toPos))
-          if (startOffset == null) return
-          const anchor = computeAnchor(docText.text, quote, startOffset)
-          if (anchor) onSelectNote(anchor)
+          if (!container.contains(range.commonAncestorContainer)) return
+          const fullText = container.textContent ?? ''
+          const pre = range.cloneRange()
+          pre.selectNodeContents(container)
+          pre.setEnd(range.startContainer, range.startOffset)
+          const anchor = computeAnchor(fullText, quote, pre.toString().length)
+          if (!anchor) return
+          const rect = range.getBoundingClientRect()
+          onSelectNote(anchor, { top: rect.bottom, left: rect.left + rect.width / 2 })
         }
       : undefined
 

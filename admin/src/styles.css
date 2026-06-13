@@ -1437,6 +1437,11 @@ button.reaction-pill-active:focus-visible {
   --overlay: rgba(15, 23, 42, 0.08);
   --warning-text: #92400e;
   --success-text: #166534;
+  /* Light surfaces for the reused channel-chat chrome (row hover, action menu,
+     reaction pills, note popover) so they read correctly on the white sheet. */
+  --main-hover: #f1f5f9;
+  --panel: #ffffff;
+  --panel-soft: rgba(15, 23, 42, 0.05);
 }
 
 /* Inline note highlights painted over anchored passages in the reader. */
