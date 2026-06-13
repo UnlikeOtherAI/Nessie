@@ -126,7 +126,11 @@ from `admin/src/layouts/admin-shell/NativeIPadToolbarBridge.tsx`, while global
 search opens from the native Search tab overlay. The per-section secondary sidebar
 (channel list, admin sub-pages, …) opens from a **top-left hamburger** as a
 slide-in drawer. Mobile *web* (a phone browser, no native shell) gets an
-equivalent web-rendered bottom tab bar instead.
+equivalent web-rendered bottom tab bar instead — and, like the native phone
+layout, hides the admin top bar entirely whenever that bottom tab bar is shown
+(`hideTopBar` in `AdminShellLayout.tsx`). Global search is reached from the bottom
+bar's **Search** tab, and each page renders its own mobile header (hamburger +
+title) for drawer access.
 
 **Shake to feedback.** Shaking the device (iOS/iPad/Android, via `expo-sensors`)
 captures a screenshot (`react-native-view-shot`), navigates the WebView to
