@@ -89,11 +89,12 @@ export const KanbanCard = ({ task, showProject, projectName, archived = false, o
   })
 
   // Distinguish a click (open the dialog) from a drag (move the card): record the
-  // pointer-down position and only open if the pointer barely moved.
+  // pointer-down position and only open if the pointer barely moved. The dnd
+  // sensor activators come from `listeners` (mousedown / touchstart) — touch drag
+  // is long-press activated, so a short touch swipe pages the board instead.
   const downAt = useRef<{ x: number; y: number } | null>(null)
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     downAt.current = { x: event.clientX, y: event.clientY }
-    listeners?.onPointerDown?.(event)
   }
   const handleClick = (event: { clientX: number; clientY: number }) => {
     const start = downAt.current
@@ -109,6 +110,7 @@ export const KanbanCard = ({ task, showProject, projectName, archived = false, o
     <div
       ref={setNodeRef}
       {...attributes}
+      {...listeners}
       data-kanban-card
       className={[
         'admin-card grid select-none gap-2 p-3',

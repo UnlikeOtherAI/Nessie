@@ -344,3 +344,37 @@ moves the `+ New task` button into the page header (supersedes line 102's
 - Swipe verified at 1280px (2 pages): a **mouse drag** on blank board area flips
   to the next/previous page (left→page 2, right→page 1), and a synthetic
   **touch** pointer swipe does the same. No page errors.
+
+## Update 2026-06-13 (2) — animated swipe + long-press to drag on touch
+
+Builds on the pointer swipe: the board is now a sliding carousel and touch drag
+is long-press activated so a short touch swipe pages instead of grabbing a card.
+
+### Board (`admin/`)
+
+- The viewport is a **carousel**: columns are chunked into one viewport-wide
+  panel per page inside a track that translates `translateX(-page * 100%)` with a
+  `transform 320ms` transition, so dot taps / swipes / drag-to-edge all animate
+  left↔right. Columns still `flex-1 min-w-[300px]` within their panel, so a page
+  fills the width (the `visible` show/hide prop on `KanbanColumn` is gone).
+- The swipe now **follows the pointer**: during a drag the track tracks the
+  finger/mouse (transition disabled, `translateX(calc(-page*100% + offsetPx))`,
+  offset clamped to the first/last page) and snaps to the nearest page on release.
+- Drag sensors split from a single `PointerSensor` into **`MouseSensor`
+  (distance: 8)** + **`TouchSensor` (delay: 250ms, tolerance: 8)**. On touch a
+  card only becomes draggable after a long-press, so a short touch swipe — even
+  one that starts on a card — pages the board; a long-press then drag moves the
+  card. On mouse/pen a press on a card still starts a card drag (cards are
+  excluded from the mouse swipe), and a `cardDragRef` guard stops a card drag from
+  also paging. `KanbanCard` now spreads dnd `listeners` (mousedown / touchstart)
+  instead of hand-wiring `onPointerDown`.
+
+### Verification
+
+- `tsc --noEmit` + `eslint --max-warnings 0` (admin) pass.
+- Playwright (isolated, dev-login token) at 1280px (2 pages): track transition is
+  `320ms`; mid-drag the track follows the pointer (`transition: none`, offset
+  ≈ −80px); a mouse swipe pages next/previous and re-enables the transition; a
+  synthetic **touch** swipe starting **on a card** pages (short swipe scrolls);
+  and a mouse card-drag sets `data-kanban-dragging` without changing the page.
+  Layout unchanged at 1680px (4 columns fill) and 1280px (3 + dots). No errors.

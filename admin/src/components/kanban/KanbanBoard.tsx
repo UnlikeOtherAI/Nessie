@@ -11,7 +11,8 @@ import {
   DndContext,
   DragOverlay,
   MeasuringStrategy,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   type DragEndEvent,
   type DragMoveEvent,
   type DragStartEvent,
@@ -39,7 +40,13 @@ const EDGE_PAGE_ZONE_PX = 56
 const EDGE_PAGE_INTERVAL_MS = 450
 const SWIPE_PAGE_MIN_PX = 48
 const SWIPE_PAGE_RATIO = 1.25
+const SWIPE_START_PX = 4
+const PAGE_TRANSITION = 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
 const DND_MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
+// Touch drag is long-press activated so a short touch swipe pages instead of
+// grabbing a card; mouse drag stays distance activated.
+const MOUSE_ACTIVATION = { activationConstraint: { distance: 8 } }
+const TOUCH_ACTIVATION = { activationConstraint: { delay: 250, tolerance: 8 } }
 
 type KanbanBoardProps = {
   columns: BoardColumnView[]
@@ -63,11 +70,20 @@ export const KanbanBoard = ({
   const [draggingTask, setDraggingTask] = useState<TaskRecord | null>(null)
   const [viewportWidth, setViewportWidth] = useState(0)
   const [page, setPage] = useState(0)
+  // Live finger-follow offset (px) and whether a swipe is in progress (disables
+  // the snap transition so the track tracks the pointer 1:1).
+  const [dragOffset, setDragOffset] = useState(0)
+  const [swiping, setSwiping] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const pageRef = useRef(0)
   const lastEdgePageAtRef = useRef(0)
+  // Set once a card drag activates so the page-swipe gesture yields to it.
+  const cardDragRef = useRef(false)
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  const sensors = useSensors(
+    useSensor(MouseSensor, MOUSE_ACTIVATION),
+    useSensor(TouchSensor, TOUCH_ACTIVATION),
+  )
   const isDraggingCard = draggingTask !== null
 
   // How many columns fit at >= MIN_COLUMN_PX, and how that splits into pages.
@@ -95,6 +111,13 @@ export const KanbanBoard = ({
     }
     return { byColumn: grouped, archived: archivedTasks }
   }, [tasks, columns])
+
+  // Columns chunked into pages; each page is one viewport-wide carousel panel.
+  const pageGroups = useMemo(() => {
+    const groups: BoardColumnView[][] = []
+    for (let i = 0; i < columns.length; i += perPage) groups.push(columns.slice(i, i + perPage))
+    return groups
+  }, [columns, perPage])
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current
@@ -153,44 +176,72 @@ export const KanbanBoard = ({
     pageByClientX(deltaX > 0 ? viewport.getBoundingClientRect().right : viewport.getBoundingClientRect().left)
   }, [pageByClientX])
 
-  // Pan pages by dragging blank board area — works for mouse, touch, and pen via
-  // pointer events. Cards own their own pointer gestures (open / drag-to-move),
-  // so a press that lands on a card or a control never starts a page swipe. The
-  // gesture finishes on the window so a release outside the viewport (mouse) is
-  // still caught.
+  // Swipe pages with mouse, touch, or pen. The track follows the pointer during
+  // the drag and snaps (animated) to the nearest page on release. A press that
+  // lands on a control never swipes; on mouse/pen a press on a card starts a card
+  // drag instead (touch cards need a long-press, so a short touch swipe pages).
   const handleViewportPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!paginated || isDraggingCard || !event.isPrimary) return
 
-    const target = event.target as HTMLElement
-    if (target.closest('[data-kanban-card], button, a, input, textarea, select, [role="button"]')) {
-      return
-    }
+    // Cards carry role="button" (dnd-kit), so the touch blocker excludes only real
+    // controls — a short touch swipe over a card still pages. On mouse/pen a press
+    // on a card starts a card drag, so cards are excluded there.
+    const controls = 'button, a, input, textarea, select'
+    const blocker =
+      event.pointerType === 'touch' ? controls : `[data-kanban-card], [role="button"], ${controls}`
+    if ((event.target as HTMLElement).closest(blocker)) return
 
+    cardDragRef.current = false
     const startX = event.clientX
     const startY = event.clientY
     const pointerId = event.pointerId
+    const basePage = pageRef.current
+    const width = viewportRef.current?.clientWidth ?? viewportWidth
+    const minOffset = -(pageCount - 1 - basePage) * width
+    const maxOffset = basePage * width
+    let following = false
 
-    const onUp = (end: PointerEvent) => {
-      if (end.pointerId !== pointerId) return
+    const reset = () => {
+      window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
-
-      const deltaX = end.clientX - startX
-      const deltaY = end.clientY - startY
+      setSwiping(false)
+      setDragOffset(0)
+    }
+    const onMove = (move: PointerEvent) => {
+      if (move.pointerId !== pointerId) return
+      if (cardDragRef.current) {
+        reset()
+        return
+      }
+      const deltaX = move.clientX - startX
+      const deltaY = move.clientY - startY
+      // Commit to a horizontal swipe only once it clearly dominates; leave mostly
+      // vertical drags alone so the page can still scroll.
+      if (!following && (Math.abs(deltaX) < SWIPE_START_PX || Math.abs(deltaX) < Math.abs(deltaY))) return
+      following = true
+      setSwiping(true)
+      setDragOffset(Math.max(minOffset, Math.min(maxOffset, deltaX)))
+    }
+    const onUp = (up: PointerEvent) => {
+      if (up.pointerId !== pointerId) return
+      const deltaX = up.clientX - startX
+      const deltaY = up.clientY - startY
+      reset()
+      if (cardDragRef.current) return
       if (Math.abs(deltaX) < SWIPE_PAGE_MIN_PX) return
       if (Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_PAGE_RATIO) return
-
-      showPage(pageRef.current + (deltaX < 0 ? 1 : -1))
+      showPage(basePage + (deltaX < 0 ? 1 : -1))
     }
-    const onCancel = (end: PointerEvent) => {
-      if (end.pointerId !== pointerId) return
-      window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('pointercancel', onCancel)
+    const onCancel = (cancel: PointerEvent) => {
+      if (cancel.pointerId !== pointerId) return
+      reset()
     }
 
+    window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onCancel)
-  }, [isDraggingCard, paginated, showPage])
+  }, [isDraggingCard, paginated, pageCount, showPage, viewportWidth])
 
   useEffect(() => {
     if (!paginated || !isDraggingCard) return
@@ -219,6 +270,7 @@ export const KanbanBoard = ({
     const columnId = task ? placeTask(task, columns) : null
     const columnIndex = columnId ? columns.findIndex((column) => column.id === columnId) : -1
 
+    cardDragRef.current = true
     setDraggingTask(task ?? null)
     lastEdgePageAtRef.current = performance.now() - EDGE_PAGE_INTERVAL_MS
     if (paginated && columnIndex >= 0) showPage(Math.floor(columnIndex / perPage))
@@ -232,6 +284,7 @@ export const KanbanBoard = ({
   const clearDraggingTask = () => {
     setDraggingTask(null)
     lastEdgePageAtRef.current = 0
+    cardDragRef.current = false
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -286,27 +339,39 @@ export const KanbanBoard = ({
         ) : null}
         <div
           ref={viewportRef}
-          className="flex min-h-0 flex-1 gap-3 overflow-hidden overscroll-x-contain pb-2"
+          className="min-h-0 flex-1 overflow-hidden"
           data-kanban-board-viewport
           data-kanban-dragging={isDraggingCard ? 'true' : undefined}
           onPointerDown={handleViewportPointerDown}
           style={{ touchAction: 'pan-y' }}
         >
-          {columns.map((column, index) => (
-            <KanbanColumn
-              key={column.id}
-              columnId={column.id}
-              count={byColumn[column.id]?.length ?? 0}
-              dot={CATEGORY_DOT[column.category]}
-              headerAction={column.category === 'done' ? <ArchiveDoneMenu /> : undefined}
-              label={column.name}
-              visible={index >= page * perPage && index < page * perPage + perPage}
-            >
-              {(byColumn[column.id] ?? []).map((task) => (
-                <KanbanCard key={task.id} {...cardProps(task)} />
-              ))}
-            </KanbanColumn>
-          ))}
+          <div
+            className="flex h-full w-full"
+            data-kanban-track
+            style={{
+              transform: `translateX(calc(-${page * 100}% + ${dragOffset}px))`,
+              transition: swiping ? 'none' : PAGE_TRANSITION,
+            }}
+          >
+            {pageGroups.map((group, groupIndex) => (
+              <div className="flex h-full w-full shrink-0 gap-3 pb-2" key={groupIndex}>
+                {group.map((column) => (
+                  <KanbanColumn
+                    key={column.id}
+                    columnId={column.id}
+                    count={byColumn[column.id]?.length ?? 0}
+                    dot={CATEGORY_DOT[column.category]}
+                    headerAction={column.category === 'done' ? <ArchiveDoneMenu /> : undefined}
+                    label={column.name}
+                  >
+                    {(byColumn[column.id] ?? []).map((task) => (
+                      <KanbanCard key={task.id} {...cardProps(task)} />
+                    ))}
+                  </KanbanColumn>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
         <DragOverlay dropAnimation={null}>
           {draggingTask ? (
