@@ -1,4 +1,5 @@
 import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { ReactNode } from 'react'
 
 type KanbanColumnProps = {
@@ -8,6 +9,8 @@ type KanbanColumnProps = {
   count: number
   children: ReactNode
   headerAction?: ReactNode
+  // Ordered task ids in this column — the SortableContext items for reordering.
+  itemIds: string[]
 }
 
 export const KanbanColumn = ({
@@ -17,11 +20,12 @@ export const KanbanColumn = ({
   count,
   children,
   headerAction,
+  itemIds,
 }: KanbanColumnProps) => {
+  // The column is itself a drop target so cards can be dropped into an empty
+  // column or below the last card.
   const { setNodeRef, isOver } = useDroppable({ id: columnId })
 
-  // Columns flex to fill their page; the page carousel in KanbanBoard decides
-  // which page is on screen.
   return (
     <div
       className="flex min-w-[300px] flex-1 flex-col"
@@ -43,7 +47,9 @@ export const KanbanColumn = ({
         ].join(' ')}
         data-kanban-dropzone={columnId}
       >
-        {children}
+        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+          {children}
+        </SortableContext>
       </div>
     </div>
   )

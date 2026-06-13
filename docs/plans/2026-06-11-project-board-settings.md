@@ -54,7 +54,8 @@ layer* keyed off status; the worker is never modified. The worker only ever sets
 
 ## Frontend (`admin/`)
 
-- `/projects` = aggregate board (canonical category columns). `/projects/:id` =
+- `/projects` redirects to the first project's board (the all-projects aggregate
+  board was removed on 2026-06-13 — see the kanban-menu plan). `/projects/:id` =
   tabbed `ProjectView` with an **Overview** placeholder. The scoped board lives at
   `/projects/:id/board`, with **Settings** plus **Backlog · Insights** when the style
   is scrum. The Channels sidebar uses `/channels/projects/:id` for the same

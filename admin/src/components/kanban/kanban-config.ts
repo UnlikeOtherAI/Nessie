@@ -1,9 +1,7 @@
 import type { ColumnCategory } from '../../facades/board/hooks'
 import type { TaskRecord, TaskStatus } from '../../facades/tasks/hooks'
 
-// A column the board renders. For a project board these come from the API
-// (id = BoardColumn.id). For the aggregate (all-projects) board they are
-// synthetic, with id = the category itself.
+// A column the board renders; these come from the API (id = BoardColumn.id).
 export type BoardColumnView = {
   id: string
   name: string
@@ -26,14 +24,6 @@ export const CATEGORY_DOT: Record<ColumnCategory, string> = {
   done: 'var(--success-text)',
 }
 
-// The canonical status a card takes when dropped into a column of this category.
-export const CATEGORY_TO_STATUS: Record<ColumnCategory, TaskStatus> = {
-  todo: 'inbox',
-  in_progress: 'in_progress',
-  review: 'review',
-  done: 'done',
-}
-
 // failed/cancelled never get a column; they live behind the Archive toggle.
 export const ARCHIVED_STATUSES: TaskStatus[] = ['failed', 'cancelled']
 
@@ -53,13 +43,6 @@ export const statusToCategory = (status: TaskStatus): ColumnCategory | null => {
       return null // failed / cancelled
   }
 }
-
-// The synthetic columns for the aggregate (all-projects) board.
-export const AGGREGATE_COLUMNS: BoardColumnView[] = CATEGORY_ORDER.map((category) => ({
-  id: category,
-  name: CATEGORY_LABEL[category],
-  category,
-}))
 
 export const statusLabel = (status: TaskStatus): string => status.replace(/_/g, ' ')
 

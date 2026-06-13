@@ -21,6 +21,7 @@ export const TaskRecordSchema = z.object({
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema.nullable(),
   columnId: z.string().uuid().nullable(),
+  position: z.number().int(),
   iterationId: z.string().uuid().nullable(),
   storyPoints: z.number().int().nullable(),
   agentId: AgentIdSchema.nullable(),
@@ -97,6 +98,8 @@ export type AssignableUser = z.infer<typeof AssignableUserSchema>
 
 export const MoveTaskBodySchema = z.object({
   columnId: z.string().uuid(),
+  // Target index within the destination column (0 = top). Omitted = append.
+  position: z.number().int().nonnegative().optional(),
 })
 
 // ─── Boards (per-project columns + style) ─────────────────────────────────

@@ -17,6 +17,7 @@ export type TaskRecord = {
   id: string
   projectId: string | null
   columnId: string | null
+  position: number
   iterationId: string | null
   storyPoints: number | null
   status: TaskStatus
@@ -187,19 +188,18 @@ const optimisticPatch = (
   return { snapshots }
 }
 
+// No optimistic cache patch: the board keeps a local ordered copy for instant
+// feedback while dragging, and an optimistic field-only patch (no array reorder)
+// would briefly fight the dropped order. We just persist and refetch.
 export const useMoveTask = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
-  return useMutation<TaskRecord, Error, { id: string; columnId: string }, OptimisticContext>({
+  return useMutation<TaskRecord, Error, { id: string; columnId: string; position?: number }>({
     mutationFn: (input) =>
-      apiClient.post<TaskRecord>(`/api/tasks/${input.id}/move`, { columnId: input.columnId }),
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: ['tasks'] })
-      return optimisticPatch(queryClient, input.id, { columnId: input.columnId })
-    },
-    onError: (_error, _input, context) => {
-      context?.snapshots.forEach(([key, data]) => queryClient.setQueryData(key, data))
-    },
+      apiClient.post<TaskRecord>(`/api/tasks/${input.id}/move`, {
+        columnId: input.columnId,
+        position: input.position,
+      }),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },

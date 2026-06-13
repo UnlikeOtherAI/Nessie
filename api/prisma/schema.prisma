@@ -1875,6 +1875,7 @@ model Task {
   organizationId   String            @map("organization_id") @db.Uuid
   projectId        String?           @map("project_id") @db.Uuid
   columnId         String?           @map("column_id") @db.Uuid
+  position         Int               @default(0)
   iterationId      String?           @map("iteration_id") @db.Uuid
   storyPoints      Int?              @map("story_points")
   parentTaskId     String?           @map("parent_task_id") @db.Uuid
@@ -1910,6 +1911,7 @@ model Task {
   @@index([agentId, status])
   @@index([organizationId, status])
   @@index([organizationId, projectId, status])
+  @@index([columnId, position])
   @@index([columnId])
   @@index([iterationId])
   @@index([assigneeUserId, status])
