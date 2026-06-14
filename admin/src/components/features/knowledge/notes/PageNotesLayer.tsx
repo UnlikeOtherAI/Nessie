@@ -101,8 +101,12 @@ export const PageNotesLayer = ({
             <CommentComposer
               autoFocus
               onCancel={() => setPending(null)}
-              onSubmit={(noteBody) => {
-                createNote.mutate({ anchor: pending.anchor, anchorVersionId: versionId, body: noteBody })
+              onSubmit={async (noteBody) => {
+                await createNote.mutateAsync({
+                  anchor: pending.anchor,
+                  anchorVersionId: versionId,
+                  body: noteBody,
+                })
                 setPending(null)
               }}
               pending={createNote.isPending}
