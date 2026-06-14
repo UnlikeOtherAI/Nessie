@@ -13,7 +13,7 @@ const mapUserRecord = (record: {
   displayName: string
   email: string
   id: string
-  organizationMembers: Array<{ role: string }>
+  organizationMembers: Array<{ role: string; deactivatedAt?: Date | null }>
   statuses: StatusWithRelations[]
   updatedAt: Date
 }): UserRecord => ({
@@ -21,6 +21,7 @@ const mapUserRecord = (record: {
   email: record.email,
   displayName: record.displayName,
   role: record.organizationMembers[0]?.role ?? 'member',
+  deactivatedAt: record.organizationMembers[0]?.deactivatedAt?.toISOString() ?? null,
   channelIds: record.channelMembers.map((member) => parseChannelId(member.channelId)),
   activeStatus: resolveActiveStatus(record.statuses),
   avatarUrl: record.avatarUrl ?? undefined,
@@ -65,40 +66,116 @@ export type SessionUserRecord = User & {
   }>
 }
 
+// Shared include so the list and single-member fetch hydrate identical
+// UserRecord shapes (channels in-org, the in-org membership role + deactivation,
+// and active status).
+const buildOrganizationUserInclude = (organizationId: string) =>
+  ({
+    channelMembers: {
+      where: { channel: { organizationId } },
+      select: { channelId: true },
+    },
+    organizationMembers: {
+      where: { organizationId },
+      select: { role: true, deactivatedAt: true },
+      take: 1,
+    },
+    statuses: {
+      where: { organizationId },
+      include: { schedules: true, rules: true },
+      orderBy: { createdAt: 'asc' },
+    },
+  }) satisfies Prisma.UserInclude
+
 export const listUsersForOrganization = async (
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<UserRecord[]> => {
   const users = await prisma.user.findMany({
-    where: {
-      organizationMembers: {
-        some: { organizationId },
-      },
-    },
-    include: {
-      channelMembers: {
-        where: {
-          channel: {
-            organizationId,
-          },
-        },
-        select: { channelId: true },
-      },
-      organizationMembers: {
-        where: { organizationId },
-        select: { role: true },
-        take: 1,
-      },
-      statuses: {
-        where: { organizationId },
-        include: { schedules: true, rules: true },
-        orderBy: { createdAt: 'asc' },
-      },
-    },
+    where: { organizationMembers: { some: { organizationId } } },
+    include: buildOrganizationUserInclude(organizationId),
     orderBy: { createdAt: 'asc' },
   })
 
   return users.map(mapUserRecord)
+}
+
+export const getOrganizationUserRecord = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  userId: string,
+): Promise<UserRecord | null> => {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, organizationMembers: { some: { organizationId } } },
+    include: buildOrganizationUserInclude(organizationId),
+  })
+
+  return user ? mapUserRecord(user) : null
+}
+
+export type MembershipSummary = {
+  role: MemberRole
+  deactivatedAt: Date | null
+}
+
+// Membership for one (org, user) pair — null when the user is not a member of
+// the org, which lets routes 404 instead of mutating across tenants.
+export const getOrganizationMembership = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  userId: string,
+): Promise<MembershipSummary | null> =>
+  prisma.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId, userId } },
+    select: { role: true, deactivatedAt: true },
+  })
+
+// Active (non-deactivated) owners in an org — used to block demoting/deactivating
+// the last owner and locking everyone out.
+export const countActiveOwners = (
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<number> =>
+  prisma.organizationMember.count({
+    where: { organizationId, role: 'owner', deactivatedAt: null },
+  })
+
+export const updateOrganizationMemberRole = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; userId: string; role: MemberRole },
+): Promise<void> => {
+  await prisma.organizationMember.update({
+    where: {
+      organizationId_userId: { organizationId: input.organizationId, userId: input.userId },
+    },
+    data: { role: input.role },
+  })
+}
+
+// Deactivation is reversible: keep the row + history, flip `deactivatedAt`, and
+// on deactivate revoke the user's refresh tokens so the session cannot be
+// renewed (the access token is rejected immediately in authenticateRequest).
+// Refresh tokens are global per user, so this also ends sessions in any other
+// org the user belongs to — acceptable for a security-sensitive action.
+export const setOrganizationMemberDeactivated = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; userId: string; deactivated: boolean },
+): Promise<void> => {
+  await prisma.$transaction(async (transaction) => {
+    await transaction.organizationMember.update({
+      where: {
+        organizationId_userId: { organizationId: input.organizationId, userId: input.userId },
+      },
+      data: { deactivatedAt: input.deactivated ? new Date() : null },
+    })
+
+    if (input.deactivated) {
+      await transaction.refreshToken.updateMany({
+        where: { userId: input.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      })
+    }
+  })
 }
 
 export const createUserForOrganization = async (

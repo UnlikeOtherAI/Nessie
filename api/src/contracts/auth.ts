@@ -60,3 +60,10 @@ export const LoginRequestSchema = z.object({
   redirectUri: z.string().url().optional(),
   theme: SsoThemeSchema.optional(),
 })
+
+// Change the signed-in user's local-account password. Only valid for accounts
+// that have a password (SSO accounts have none and are rejected server-side).
+export const ChangePasswordRequestSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+})

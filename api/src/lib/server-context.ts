@@ -286,6 +286,24 @@ export const createServerContext = () => {
       return null
     }
 
+    // Deactivated members keep their row + history but lose access immediately
+    // (their refresh tokens are revoked on deactivation, but a still-valid
+    // access token must be rejected too). Only a present-and-deactivated
+    // membership blocks; absent memberships (e.g. system actors) pass through.
+    const membership = await prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: verification.claims.org,
+          userId: verification.claims.sub,
+        },
+      },
+      select: { deactivatedAt: true },
+    })
+    if (membership?.deactivatedAt) {
+      sendApiError(reply, 403, 'ACCOUNT_DEACTIVATED', 'Your access to this organisation has been deactivated')
+      return null
+    }
+
     const actorContext = createActorContextFromClaims(verification.claims)
     request.actorContext = actorContext
 

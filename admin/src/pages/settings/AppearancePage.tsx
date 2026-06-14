@@ -1,21 +1,18 @@
 import { useState } from 'react'
 import { ColoursPanel } from './appearance/ColoursPanel'
-import { LogoPanel } from './appearance/LogoPanel'
 import { TypePanel } from './appearance/TypePanel'
 import { SettingsPanel } from './settings-shared'
 
-type AppearanceTab = 'colours' | 'type' | 'logo'
+type AppearanceTab = 'colours' | 'type'
 
 const TABS: ReadonlyArray<{ id: AppearanceTab; label: string }> = [
   { id: 'colours', label: 'Colours' },
   { id: 'type', label: 'Text size' },
-  { id: 'logo', label: 'Logo' },
 ]
 
 const PANELS: Record<AppearanceTab, () => React.JSX.Element> = {
   colours: ColoursPanel,
   type: TypePanel,
-  logo: LogoPanel,
 }
 
 export const AppearancePage = () => {

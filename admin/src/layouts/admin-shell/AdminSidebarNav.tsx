@@ -138,6 +138,16 @@ const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/settings/security',
+        label: 'Security',
+        icon: icon(
+          <>
+            <rect height="10" rx="2" width="14" x="5" y="11" />
+            <path d="M8 11V8a4 4 0 018 0v3" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
         path: '/settings/notifications',
         label: 'Notifications',
         icon: icon(
@@ -188,6 +198,17 @@ const ADMIN_NAV: AdminNavGroup[] = [
     heading: 'Organization',
     items: [
       {
+        path: '/settings/organization',
+        label: 'General',
+        ownerOnly: true,
+        icon: icon(
+          <>
+            <path d="M4 21V7l8-4 8 4v14" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M9 21v-6h6v6M9 11h.01M15 11h.01" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
         path: '/settings/channels',
         label: 'Channels',
         icon: icon(
@@ -211,9 +232,10 @@ const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
+    // Group is visible to all so any member can reach Approvals (they can act on
+    // approvals); the audit/cost/policy/health items stay owner-only per-item.
     id: 'governance',
     heading: 'Governance',
-    ownerOnly: true,
     items: [
       {
         path: '/approvals',
@@ -223,6 +245,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/audit',
         label: 'Audit log',
+        ownerOnly: true,
         icon: icon(
           <>
             <path d="M6 3h9l3 3v15H6z" strokeLinecap="round" strokeLinejoin="round" />
@@ -233,6 +256,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/tokens',
         label: 'Token usage',
+        ownerOnly: true,
         icon: icon(
           <>
             <circle cx="12" cy="12" r="8" />
@@ -243,6 +267,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/policy',
         label: 'Policy',
+        ownerOnly: true,
         icon: icon(
           <path
             d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z"
@@ -254,6 +279,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/ops',
         label: 'Health',
+        ownerOnly: true,
         icon: icon(
           <path d="M3 12h4l2 6 4-12 2 6h6" strokeLinecap="round" strokeLinejoin="round" />,
         ),

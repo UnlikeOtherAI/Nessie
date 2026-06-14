@@ -682,6 +682,10 @@ model OrganizationMember {
   organizationId String       @map("organization_id") @db.Uuid
   userId         String       @map("user_id") @db.Uuid
   role           MemberRole   @default(member)
+  // When set, the membership is deactivated: the user is denied access to this
+  // organisation (enforced in authenticateRequest) but the row + audit history
+  // are kept so an owner can reactivate. Reversible — no hard delete.
+  deactivatedAt  DateTime?    @map("deactivated_at")
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)

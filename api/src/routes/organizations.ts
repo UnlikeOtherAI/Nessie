@@ -3,7 +3,7 @@ import { recordStorageTransferUsage } from '@nessie/runtime'
 
 import {
   OrganizationSummarySchema,
-  UpdateOrganizationLogoRequestSchema,
+  UpdateOrganizationRequestSchema,
 } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { canAccessAttachment } from '../services/attachments.js'
@@ -65,12 +65,12 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         reply,
         403,
         'FORBIDDEN',
-        'Only organisation owners and admins can change the logo',
+        'Only organisation owners and admins can change organisation settings',
       )
       return reply
     }
 
-    const body = parseInput(UpdateOrganizationLogoRequestSchema, request.body, reply)
+    const body = parseInput(UpdateOrganizationRequestSchema, request.body, reply)
     if (!body) return reply
 
     if (body.logoAttachmentId) {
@@ -100,9 +100,14 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
       }
     }
 
+    // Each field is optional; only apply what was sent so a name-only PATCH
+    // leaves the logo intact and vice versa.
     const organization = await prisma.organization.update({
       where: { id: organizationId },
-      data: { logoAttachmentId: body.logoAttachmentId },
+      data: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.logoAttachmentId !== undefined ? { logoAttachmentId: body.logoAttachmentId } : {}),
+      },
     })
 
     return createApiResponse(

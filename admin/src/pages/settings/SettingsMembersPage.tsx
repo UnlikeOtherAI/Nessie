@@ -1,8 +1,101 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
-import { useCreateUser, useUsers } from '../../facades/users/hooks'
+import type { UserRecord } from '../../lib/api-client'
+import {
+  useCreateUser,
+  useSetUserDeactivated,
+  useUpdateUserRole,
+  useUsers,
+} from '../../facades/users/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { sectionTitleClass, SettingsPanel } from './settings-shared'
+
+const ROLE_OPTIONS = [
+  { value: 'owner', label: 'Owner' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'member', label: 'Member' },
+  { value: 'viewer', label: 'Viewer' },
+] as const
+
+const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
+  const updateRole = useUpdateUserRole()
+  const setDeactivated = useSetUserDeactivated()
+  const [error, setError] = useState<string | null>(null)
+  const deactivated = Boolean(user.deactivatedAt)
+  const busy = updateRole.isPending || setDeactivated.isPending
+
+  const changeRole = async (role: string) => {
+    setError(null)
+    try {
+      await updateRole.mutateAsync({ userId: user.id, role })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to update role')
+    }
+  }
+
+  const toggleDeactivated = async () => {
+    setError(null)
+    try {
+      await setDeactivated.mutateAsync({ userId: user.id, deactivated: !deactivated })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to update member')
+    }
+  }
+
+  return (
+    <div className="admin-card p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-[color:var(--tx)]">
+            {user.displayName}
+            {isSelf ? <span className="ml-1 text-[color:var(--tx3)]">(You)</span> : null}
+          </div>
+          <div className="mt-1 truncate text-sm text-[color:var(--tx2)]">{user.email}</div>
+        </div>
+        {deactivated ? (
+          <span
+            className={[
+              'shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
+              'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
+            ].join(' ')}
+          >
+            Deactivated
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <select
+          aria-label={`Role for ${user.displayName}`}
+          className="admin-input h-8 w-auto py-0 text-sm"
+          disabled={busy}
+          onChange={(event) => void changeRole(event.target.value)}
+          value={user.role}
+        >
+          {ROLE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {isSelf ? null : (
+          <button
+            className="admin-button admin-button-secondary h-8 py-0 text-sm"
+            disabled={busy}
+            onClick={() => void toggleDeactivated()}
+            type="button"
+          >
+            {deactivated ? 'Reactivate' : 'Deactivate'}
+          </button>
+        )}
+      </div>
+
+      {error ? (
+        <div className="mt-2 text-xs text-[color:var(--danger-text)]">{error}</div>
+      ) : null}
+    </div>
+  )
+}
 
 export const SettingsMembersPage = () => {
   const { me } = useAuthSession()
@@ -45,13 +138,7 @@ export const SettingsMembersPage = () => {
           <div className={sectionTitleClass}>People</div>
           <div className="mt-4 grid gap-2">
             {users.map((user) => (
-              <div key={user.id} className="admin-card p-3">
-                <div className="font-semibold text-[color:var(--tx)]">{user.displayName}</div>
-                <div className="mt-1 text-sm text-[color:var(--tx2)]">{user.email}</div>
-                <div className="mt-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-                  {user.role}
-                </div>
-              </div>
+              <MemberRow isSelf={user.id === me.user.id} key={user.id} user={user} />
             ))}
           </div>
         </section>
@@ -84,8 +171,11 @@ export const SettingsMembersPage = () => {
               onChange={(event) => setUserRole(event.target.value)}
               value={userRole}
             >
-              <option value="member">Member</option>
-              <option value="owner">Owner</option>
+              {ROLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
             <button
               className="admin-button admin-button-primary justify-self-start"

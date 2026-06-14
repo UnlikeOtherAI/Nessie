@@ -157,6 +157,19 @@ export const UpdateOrganizationLogoRequestSchema = z.object({
 })
 export type UpdateOrganizationLogoRequest = z.infer<typeof UpdateOrganizationLogoRequestSchema>
 
+// Owners/admins update the org profile: rename and/or set/clear the logo. Each
+// field is optional so a name-only or logo-only PATCH leaves the other intact;
+// at least one must be present.
+export const UpdateOrganizationRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    logoAttachmentId: z.string().uuid().nullable().optional(),
+  })
+  .refine((body) => body.name !== undefined || body.logoAttachmentId !== undefined, {
+    message: 'Provide a name or logoAttachmentId to update',
+  })
+export type UpdateOrganizationRequest = z.infer<typeof UpdateOrganizationRequestSchema>
+
 export const FeedbackRecordSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
