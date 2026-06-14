@@ -6,11 +6,12 @@ import {
 } from '../../facades/organization/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { LogoPanel } from './organization/LogoPanel'
-import { sectionTitleClass, SettingsPanel } from './settings-shared'
-
-const ADMIN_ROLES = new Set(['owner', 'admin'])
-
-type Feedback = { kind: 'success' | 'error'; message: string }
+import {
+  FeedbackBanner,
+  sectionTitleClass,
+  SettingsPanel,
+  type SettingsFeedback,
+} from './settings-shared'
 
 export const OrganizationSettingsPage = () => {
   const { me } = useAuthSession()
@@ -18,22 +19,26 @@ export const OrganizationSettingsPage = () => {
   const updateOrganization = useUpdateOrganization()
 
   const [name, setName] = useState('')
-  const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
 
+  // Seed the input from the loaded org once per org id. Keying on id (not the
+  // whole object) avoids a background refetch — e.g. after a logo save, which
+  // shares this query — clobbering an unsaved name edit.
+  const organizationId = organization?.id
   useEffect(() => {
     if (organization) {
       setName(organization.name)
     }
-  }, [organization])
+  }, [organizationId])
 
   if (!me) {
     return null
   }
 
-  // Org administration is for owners/admins; everyone else goes back to profile.
-  // (Owner is the common case; admins are honoured by the API too.)
-  const isAdmin = organization ? ADMIN_ROLES.has(organization.role) : false
-  if (organization && !isAdmin) {
+  // Owner-only, matching the owner-gated nav item and the other org-admin
+  // settings (Members). Non-owners are routed back to their profile.
+  const isOwner = me.user.roleIds.includes('owner')
+  if (!isOwner) {
     return <Navigate to="/settings/profile" replace />
   }
 
@@ -77,18 +82,7 @@ export const OrganizationSettingsPage = () => {
             >
               {updateOrganization.isPending ? 'Saving…' : 'Save name'}
             </button>
-            {feedback ? (
-              <div
-                className={[
-                  'rounded-md border px-3 py-2 text-sm',
-                  feedback.kind === 'success'
-                    ? 'border-[color:var(--success-border)] bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
-                    : 'border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
-                ].join(' ')}
-              >
-                {feedback.message}
-              </div>
-            ) : null}
+            <FeedbackBanner feedback={feedback} />
           </form>
         </section>
 

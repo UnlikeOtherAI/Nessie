@@ -31,6 +31,8 @@ export const ChannelRecordSchema = z.object({
   description: z.string().nullish(),
   archivedAt: TimestampSchema.nullish(),
   memberRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullish(),
+  // Whether the caller has muted notifications for this channel (per-member).
+  muted: z.boolean().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })

@@ -8,7 +8,12 @@ import {
   useUsers,
 } from '../../facades/users/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { sectionTitleClass, SettingsPanel } from './settings-shared'
+import {
+  FeedbackBanner,
+  sectionTitleClass,
+  SettingsPanel,
+  type SettingsFeedback,
+} from './settings-shared'
 
 const ROLE_OPTIONS = [
   { value: 'owner', label: 'Owner' },
@@ -91,7 +96,9 @@ const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
       </div>
 
       {error ? (
-        <div className="mt-2 text-xs text-[color:var(--danger-text)]">{error}</div>
+        <div className="mt-2 text-xs text-[color:var(--danger-text)]" role="alert">
+          {error}
+        </div>
       ) : null}
     </div>
   )
@@ -107,6 +114,7 @@ export const SettingsMembersPage = () => {
   const [userEmail, setUserEmail] = useState('')
   const [userPassword, setUserPassword] = useState('')
   const [userRole, setUserRole] = useState('member')
+  const [addFeedback, setAddFeedback] = useState<SettingsFeedback | null>(null)
 
   if (!me) {
     return null
@@ -119,17 +127,29 @@ export const SettingsMembersPage = () => {
 
   const createUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    await createUser.mutateAsync({
-      displayName: userDisplayName,
-      email: userEmail,
-      password: userPassword,
-      role: userRole,
-    })
-    setUserDisplayName('')
-    setUserEmail('')
-    setUserPassword('')
-    setUserRole('member')
+    setAddFeedback(null)
+    try {
+      await createUser.mutateAsync({
+        displayName: userDisplayName,
+        email: userEmail,
+        password: userPassword,
+        role: userRole,
+      })
+      setUserDisplayName('')
+      setUserEmail('')
+      setUserPassword('')
+      setUserRole('member')
+      setAddFeedback({ kind: 'success', message: 'Member added.' })
+    } catch (error) {
+      setAddFeedback({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Failed to add member.',
+      })
+    }
   }
+
+  const canAddMember =
+    !createUser.isPending && userEmail.trim().length > 0 && userPassword.length >= 8
 
   return (
     <SettingsPanel eyebrow="Organization" title="Members">
@@ -146,43 +166,58 @@ export const SettingsMembersPage = () => {
         <section className="admin-card p-4">
           <div className={sectionTitleClass}>Add member</div>
           <form className="mt-4 grid gap-3" onSubmit={createUserSubmit}>
-            <input
-              className="admin-input"
-              onChange={(event) => setUserDisplayName(event.target.value)}
-              placeholder="Display name"
-              value={userDisplayName}
-            />
-            <input
-              className="admin-input"
-              onChange={(event) => setUserEmail(event.target.value)}
-              placeholder="Email"
-              type="email"
-              value={userEmail}
-            />
-            <input
-              className="admin-input"
-              onChange={(event) => setUserPassword(event.target.value)}
-              placeholder="Password"
-              type="password"
-              value={userPassword}
-            />
-            <select
-              className="admin-input"
-              onChange={(event) => setUserRole(event.target.value)}
-              value={userRole}
-            >
-              {ROLE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+              Display name
+              <input
+                className="admin-input"
+                onChange={(event) => setUserDisplayName(event.target.value)}
+                placeholder="Display name"
+                value={userDisplayName}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+              Email
+              <input
+                className="admin-input"
+                onChange={(event) => setUserEmail(event.target.value)}
+                placeholder="name@example.com"
+                type="email"
+                value={userEmail}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+              Password
+              <input
+                autoComplete="new-password"
+                className="admin-input"
+                onChange={(event) => setUserPassword(event.target.value)}
+                placeholder="At least 8 characters"
+                type="password"
+                value={userPassword}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+              Role
+              <select
+                className="admin-input"
+                onChange={(event) => setUserRole(event.target.value)}
+                value={userRole}
+              >
+                {ROLE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
-              className="admin-button admin-button-primary justify-self-start"
+              className="admin-button admin-button-primary justify-self-start disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!canAddMember}
               type="submit"
             >
-              Add user
+              {createUser.isPending ? 'Adding…' : 'Add member'}
             </button>
+            <FeedbackBanner feedback={addFeedback} />
           </form>
         </section>
       </div>

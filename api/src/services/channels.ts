@@ -58,7 +58,7 @@ export const listChannelsForUser = async (
       },
       members: {
         where: { userId },
-        select: { role: true },
+        select: { role: true, muted: true },
         take: 1,
       },
       team: {
@@ -123,6 +123,7 @@ export const listChannelsForUser = async (
     description: channel.description ?? null,
     archivedAt: channel.archivedAt?.toISOString() ?? null,
     memberRole: channel.members[0]?.role ?? null,
+    muted: channel.members[0]?.muted ?? false,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
   }))

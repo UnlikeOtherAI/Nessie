@@ -174,10 +174,27 @@ export const createGrant = async (
     )
   }
 
+  const state = input.state ?? 'allowed'
+
+  // Idempotent: a grant for the same (tool, principal, state) already conveys the
+  // permission, so a double-submit returns the existing row instead of stacking a
+  // duplicate the UI can't see and a single revoke wouldn't fully clear.
+  const existing = await prisma.toolGrant.findFirst({
+    where: {
+      toolId: input.toolRegistryEntryId,
+      state,
+      roleId: input.roleId ?? null,
+      agentId: input.agentId ?? null,
+    },
+  })
+  if (existing) {
+    return toToolGrantRow(existing)
+  }
+
   const created = await prisma.toolGrant.create({
     data: {
       toolId: input.toolRegistryEntryId,
-      state: input.state ?? 'allowed',
+      state,
       config: (input.config ?? {}) as object,
       source: toPrismaToolGrantSource(hasAgent ? 'agent-override' : 'role') as never,
       roleId: input.roleId ?? null,

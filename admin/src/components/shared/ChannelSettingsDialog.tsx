@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ChannelRecord } from '../../lib/api-client'
 import {
   useArchiveChannel,
   useUpdateChannel,
 } from '../../facades/channels/hooks'
+import { useModalA11y } from './useModalA11y'
 
 type ChannelSettingsDialogProps = {
   channel: ChannelRecord
@@ -16,6 +17,8 @@ export const ChannelSettingsDialog = (
   { channel, onClose, open }: ChannelSettingsDialogProps,
 ) => {
   const navigate = useNavigate()
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  useModalA11y(dialogRef, onClose)
   const updateChannel = useUpdateChannel()
   const archiveChannel = useArchiveChannel()
 
@@ -97,10 +100,22 @@ export const ChannelSettingsDialog = (
         backdropFilter: 'blur(4px)',
       }}
     >
-      <div className="create-channel-panel">
+      <div
+        aria-labelledby="channel-settings-title"
+        aria-modal="true"
+        className="create-channel-panel"
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
+      >
         <div className="create-channel-header">
           <div>
-            <h2 className="text-lg font-bold text-[color:var(--tx)]">Channel settings</h2>
+            <h2
+              className="text-lg font-bold text-[color:var(--tx)]"
+              id="channel-settings-title"
+            >
+              Channel settings
+            </h2>
             <div className="text-xs text-[color:var(--tx3)]">#{channel.label}</div>
           </div>
           <button

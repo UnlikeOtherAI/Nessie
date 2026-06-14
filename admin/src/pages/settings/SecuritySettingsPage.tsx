@@ -6,17 +6,12 @@ import {
   type SessionSummary,
 } from '../../facades/auth/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { sectionTitleClass, SettingsPanel } from './settings-shared'
-
-type Feedback = { kind: 'success' | 'error'; message: string }
-
-const feedbackClass = (kind: Feedback['kind']): string =>
-  [
-    'rounded-md border px-3 py-2 text-sm',
-    kind === 'success'
-      ? 'border-[color:var(--success-border)] bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
-      : 'border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
-  ].join(' ')
+import {
+  FeedbackBanner,
+  sectionTitleClass,
+  SettingsPanel,
+  type SettingsFeedback,
+} from './settings-shared'
 
 const formatWhen = (iso: string): string => new Date(iso).toLocaleString()
 
@@ -65,7 +60,9 @@ const SessionRow = ({ session }: { session: SessionSummary }) => {
         )}
       </div>
       {error ? (
-        <div className="mt-2 text-xs text-[color:var(--danger-text)]">{error}</div>
+        <div className="mt-2 text-xs text-[color:var(--danger-text)]" role="alert">
+          {error}
+        </div>
       ) : null}
     </div>
   )
@@ -76,7 +73,7 @@ const ChangePasswordCard = () => {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -103,30 +100,39 @@ const ChangePasswordCard = () => {
     <section className="admin-card p-4">
       <div className={sectionTitleClass}>Password</div>
       <form className="mt-4 grid max-w-sm gap-3" onSubmit={submit}>
-        <input
-          autoComplete="current-password"
-          className="admin-input"
-          onChange={(event) => setCurrentPassword(event.target.value)}
-          placeholder="Current password"
-          type="password"
-          value={currentPassword}
-        />
-        <input
-          autoComplete="new-password"
-          className="admin-input"
-          onChange={(event) => setNewPassword(event.target.value)}
-          placeholder="New password (min 8 characters)"
-          type="password"
-          value={newPassword}
-        />
-        <input
-          autoComplete="new-password"
-          className="admin-input"
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder="Confirm new password"
-          type="password"
-          value={confirmPassword}
-        />
+        <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+          Current password
+          <input
+            autoComplete="current-password"
+            className="admin-input"
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            placeholder="Current password"
+            type="password"
+            value={currentPassword}
+          />
+        </label>
+        <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+          New password
+          <input
+            autoComplete="new-password"
+            className="admin-input"
+            onChange={(event) => setNewPassword(event.target.value)}
+            placeholder="At least 8 characters"
+            type="password"
+            value={newPassword}
+          />
+        </label>
+        <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
+          Confirm new password
+          <input
+            autoComplete="new-password"
+            className="admin-input"
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            placeholder="Re-enter new password"
+            type="password"
+            value={confirmPassword}
+          />
+        </label>
         <button
           className="admin-button admin-button-primary justify-self-start disabled:cursor-not-allowed disabled:opacity-60"
           disabled={
@@ -138,7 +144,7 @@ const ChangePasswordCard = () => {
         >
           {changePassword.isPending ? 'Saving…' : 'Change password'}
         </button>
-        {feedback ? <div className={feedbackClass(feedback.kind)}>{feedback.message}</div> : null}
+        <FeedbackBanner feedback={feedback} />
       </form>
     </section>
   )

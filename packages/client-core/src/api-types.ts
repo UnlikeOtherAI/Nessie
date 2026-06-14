@@ -43,6 +43,8 @@ export type ChannelRecord = {
   description?: string | null
   archivedAt?: string | null
   memberRole?: 'owner' | 'admin' | 'member' | 'viewer' | null
+  // Whether the caller has muted notifications for this channel (per-member).
+  muted?: boolean
 }
 
 export type ProjectRecord = {

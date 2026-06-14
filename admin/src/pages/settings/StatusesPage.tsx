@@ -77,18 +77,18 @@ export const StatusesPage = () => {
     }
   }, [navigate, statusId, statuses])
 
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+
+  // Seed the editor once per selected status (key on id only). Keying on every
+  // field would let a background ['statuses'] refetch — e.g. after toggling
+  // active — overwrite the user's in-progress edits.
   useEffect(() => {
     setLabel(selectedStatus?.label ?? '')
     setEmoji(selectedStatus?.emoji ?? '')
     setAgentEnabled(selectedStatus?.agentEnabled ?? false)
     setAgentInstructions(selectedStatus?.agentInstructions ?? '')
-  }, [
-    selectedStatus?.agentEnabled,
-    selectedStatus?.agentInstructions,
-    selectedStatus?.emoji,
-    selectedStatus?.id,
-    selectedStatus?.label,
-  ])
+    setConfirmingDelete(false)
+  }, [selectedStatus?.id])
 
   const createStatusSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -156,6 +156,12 @@ export const StatusesPage = () => {
 
   const deleteSelectedStatus = async () => {
     if (!selectedStatus) return
+    // Two-step confirm: deleting cascades schedules + rules, so the first click
+    // arms and the second commits.
+    if (!confirmingDelete) {
+      setConfirmingDelete(true)
+      return
+    }
     await deleteStatus.mutateAsync(selectedStatus.id)
     navigate('/settings/statuses', { replace: true })
   }
@@ -227,10 +233,12 @@ export const StatusesPage = () => {
                   </button>
                   <button
                     className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
-                    onClick={deleteSelectedStatus}
+                    disabled={deleteStatus.isPending}
+                    onClick={() => void deleteSelectedStatus()}
+                    onBlur={() => setConfirmingDelete(false)}
                     type="button"
                   >
-                    Delete
+                    {confirmingDelete ? 'Confirm delete' : 'Delete'}
                   </button>
                 </div>
               </div>
@@ -293,12 +301,14 @@ export const StatusesPage = () => {
                     <input
                       className="admin-input"
                       onChange={(event) => setStartsAt(event.target.value)}
+                      required
                       type="datetime-local"
                       value={startsAt}
                     />
                     <input
                       className="admin-input"
                       onChange={(event) => setEndsAt(event.target.value)}
+                      required
                       type="datetime-local"
                       value={endsAt}
                     />
