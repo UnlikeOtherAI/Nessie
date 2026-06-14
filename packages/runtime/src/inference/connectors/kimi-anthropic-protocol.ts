@@ -141,14 +141,26 @@ const renderAssistantWithToolCalls = (
   return parts.join('\n')
 }
 
+// A system block is either a plain string or Anthropic's content-block array
+// form, which lets us attach a cache_control breakpoint for prompt caching.
+type AnthropicSystem =
+  | string
+  | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }>
+
 // Anthropic puts the system prompt at the top level and forbids it as a
 // message role. Squash any system entries into a single string, then map the
 // rest. Tool/result messages are folded into text turns so the prompt-
 // translated tool layer can flow through unchanged.
+//
+// When `cache` is set, the system (the agent's prompt + the rendered tool block
+// — the large, byte-stable prefix) is emitted as a content-block array with a
+// cache_control breakpoint, so repeated turns/runs read it from the prompt cache
+// at a steep discount. Verified accepted + honored by Kimi's Anthropic endpoint.
 export const toAnthropicPayload = (
   messages: ProviderMessage[],
   tools?: ToolSchemaDescriptor[],
-): { system?: string; messages: Array<{ role: 'user' | 'assistant'; content: string }> } => {
+  opts?: { cache?: boolean },
+): { system?: AnthropicSystem; messages: Array<{ role: 'user' | 'assistant'; content: string }> } => {
   const systemParts: string[] = []
   const toolBlock = renderKimiTools(tools)
   if (toolBlock) {
@@ -188,8 +200,14 @@ export const toAnthropicPayload = (
     out.unshift({ role: 'user', content: '(continue)' })
   }
 
+  const systemText = systemParts.length > 0 ? systemParts.join('\n\n') : undefined
+  const system: AnthropicSystem | undefined =
+    systemText !== undefined && opts?.cache
+      ? [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
+      : systemText
+
   return {
-    system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
+    system,
     messages: out,
   }
 }

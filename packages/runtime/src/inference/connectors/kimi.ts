@@ -103,7 +103,9 @@ export const createKimiConnector = (
     ): Promise<ProviderInvocationResult> {
       const startedAt = Date.now()
       const model = resolveChatModel(request.model)
-      const payload = toAnthropicPayload(request.messages, request.tools)
+      const payload = toAnthropicPayload(request.messages, request.tools, {
+        cache: Boolean(request.promptCacheKey),
+      })
 
       try {
         const response = await invokeRequest({
@@ -164,7 +166,9 @@ export const createKimiConnector = (
     ): AsyncGenerator<ProviderStreamEvent, ProviderInvocationResult, undefined> {
       const startedAt = Date.now()
       const model = resolveChatModel(request.model)
-      const payload = toAnthropicPayload(request.messages, request.tools)
+      const payload = toAnthropicPayload(request.messages, request.tools, {
+        cache: Boolean(request.promptCacheKey),
+      })
 
       try {
         const response = await invokeRequest({
