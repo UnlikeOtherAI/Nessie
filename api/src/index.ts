@@ -222,6 +222,22 @@ export const buildApp = async () => {
     limits: { fileSize: config.storage.maxUploadBytes, files: 1 },
   })
 
+  // Baseline security response headers on every API response. The API serves
+  // JSON (no HTML document), so there is no CSP here — the admin SPA's CSP lives
+  // at its nginx edge. This does not touch CORS (owned by @fastify/cors above)
+  // and does not run for hijacked SSE streams (which manage their own headers),
+  // so realtime is unaffected. `Cross-Origin-Resource-Policy: cross-origin` is
+  // required so the admin, served from a different origin, can read responses.
+  app.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('X-Content-Type-Options', 'nosniff')
+    reply.header('X-Frame-Options', 'DENY')
+    reply.header('Referrer-Policy', 'no-referrer')
+    reply.header('Cross-Origin-Resource-Policy', 'cross-origin')
+    reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    reply.removeHeader('X-Powered-By')
+    return payload
+  })
+
   // Self-heal: ensure every pre-existing organization has the default policy
   // rules seeded. Bootstrap only runs on first install, so orgs provisioned
   // through migrations or older installs otherwise hit NO_MATCHING_ALLOW on

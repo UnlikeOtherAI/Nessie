@@ -162,7 +162,27 @@ export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const { ruleId } = request.params as { ruleId: string }
     const body = request.body as { actorType: string; actorId: string }
 
-    const binding = await addPolicyBinding(prisma, ruleId, body.actorType, body.actorId)
+    const binding = await addPolicyBinding(
+      prisma,
+      ruleId,
+      actorContext.tenant.organizationId,
+      body.actorType,
+      body.actorId,
+    )
+    if (!binding) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Policy rule not found')
+      return reply
+    }
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'policy.updated',
+      resourceType: 'policy',
+      resourceId: ruleId,
+      outcome: 'success',
+      metadata: { op: 'binding.added', bindingId: binding.id, actorType: body.actorType, actorId: body.actorId },
+    })
+
     return reply.code(201).send(createApiResponse(binding))
   })
 
@@ -171,8 +191,22 @@ export const registerPolicyRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
-    const { bindingId } = request.params as { ruleId: string; bindingId: string }
-    await removePolicyBinding(prisma, bindingId)
+    const { ruleId, bindingId } = request.params as { ruleId: string; bindingId: string }
+    const removed = await removePolicyBinding(prisma, bindingId, actorContext.tenant.organizationId)
+    if (!removed) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Policy binding not found')
+      return reply
+    }
+
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'policy.updated',
+      resourceType: 'policy',
+      resourceId: ruleId,
+      outcome: 'success',
+      metadata: { op: 'binding.removed', bindingId },
+    })
+
     return reply.code(204).send()
   })
 }

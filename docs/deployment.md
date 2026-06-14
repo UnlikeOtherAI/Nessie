@@ -241,6 +241,28 @@ docker ps --filter name=nessie                           # all four healthy
 docker logs nessie-worker 2>&1 | tail                    # "status":"ready"
 ```
 
+### Security response headers
+
+Both edges set baseline security headers:
+
+- **API** (`api/src/index.ts`, `onSend` hook) — every JSON response carries
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: no-referrer`, `Strict-Transport-Security`, and
+  `Cross-Origin-Resource-Policy: cross-origin` (so the admin, on a different
+  origin, can read responses). No CSP — the API serves no HTML. The hook does
+  not run for hijacked SSE streams, so realtime is unaffected.
+- **Admin** (`infrastructure/docker/admin-nginx.conf`) — the document responses
+  add `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, HSTS, and a
+  `Permissions-Policy` that **allows `camera`/`microphone`/`display-capture` for
+  `self`** (required for in-browser video calls — do not tighten to `()`).
+  `Content-Security-Policy-Report-Only` ships a baseline policy; it reports
+  violations without blocking. Promote it to an enforcing
+  `Content-Security-Policy` once the report stream is clean, and update its
+  `connect-src` if the admin gains a new outbound origin.
+
+Verify after deploy: `curl -sI https://api.nessie.unlikeotherai.com/api/health`
+and `curl -sI https://nessie.unlikeotherai.com/` should both show the headers.
+
 ## Configuration reference
 
 Runtime config is layered: `nessie.config.json` (mounted read-only into the API

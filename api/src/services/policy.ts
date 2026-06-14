@@ -439,9 +439,19 @@ export const deletePolicyRule = async (
 export const addPolicyBinding = async (
   prisma: PrismaClient,
   ruleId: string,
+  organizationId: string,
   actorType: string,
   actorId: string,
 ) => {
+  // Scope the parent rule to the caller's organization. Without this, an owner of
+  // one org could attach a binding to another org's policy rule (cross-tenant
+  // write IDOR) by passing a foreign ruleId.
+  const rule = await prisma.policyRule.findFirst({
+    where: { id: ruleId, organizationId },
+    select: { id: true },
+  })
+  if (!rule) return null
+
   const binding = await prisma.policyBinding.create({
     data: { policyRuleId: ruleId, actorType, actorId },
   })
@@ -451,8 +461,14 @@ export const addPolicyBinding = async (
 export const removePolicyBinding = async (
   prisma: PrismaClient,
   bindingId: string,
-) => {
-  await prisma.policyBinding.delete({ where: { id: bindingId } })
+  organizationId: string,
+): Promise<boolean> => {
+  // Only delete a binding whose parent rule belongs to the caller's org, so a
+  // foreign bindingId cannot be used to mutate another tenant's policy.
+  const { count } = await prisma.policyBinding.deleteMany({
+    where: { id: bindingId, policyRule: { is: { organizationId } } },
+  })
+  return count > 0
 }
 
 // ─── Default seed policies ──────────────────────────────────────────────────

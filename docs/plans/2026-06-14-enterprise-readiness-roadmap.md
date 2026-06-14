@@ -15,6 +15,44 @@
 
 ---
 
+## Verification & progress — 2026-06-14
+
+The sharpest criticals were spot-checked against the code before acting:
+
+- **Confirmed:** policy engine is invoked in only ~4 route areas (agents,
+  triggers, policy, knowledge) — tasks/channels/projects use
+  `requireActorContext`/`requireOwner`, not `checkPolicy`
+  (`api/src/services/policy.ts:174`, `api/src/routes/tasks.ts:41-129`).
+  Task authorization is org-level only (no project/team membership gate). The
+  human-in-the-loop approval gate denies-and-continues: the worker returns
+  `toolDeniedResult` on `approval_required` and never pauses/resumes
+  (`worker/src/run/execute/agent-loop.ts:279-308`) while the robust resolve-half
+  in `api/src/services/approvals.ts` is orphaned. Spend cap is a soft, post-hoc
+  cap that overshoots and is inert until a pricing profile exists
+  (`packages/runtime/src/budget.ts:21-22,269`). Admin served no security headers
+  (`infrastructure/docker/admin-nginx.conf`). `saml` is an enum placeholder with
+  no SP implementation.
+- **Corrections to the severities above:** the spend cap is *not* purely
+  advisory — an `enforce` mode does `block` automation runs and a `degrade` mode
+  exists; the gap is that it is racy/overshooting (post-hoc, not reservation),
+  not absent. The approval gate is *wire-it-up*, not *build-it* (the resolve
+  logic is sound). Storage quota **is** enforced exactly/synchronously. The
+  roadmap-#1 "openStream global-UUID `findUnique`" example did not reproduce
+  (the `FileService.openStream` calls pass `organizationId`); the underlying
+  thesis — isolation is discretionary hand-written `WHERE organizationId` with
+  no RLS/middleware backstop — still holds across every file read.
+- **Shipped this pass (quick wins):** the cross-tenant **policy-binding IDOR** is
+  fixed (`addPolicyBinding`/`removePolicyBinding` now org-scope the parent rule;
+  unit-tested in `api/test/policy-binding-isolation.test.ts`) and **security
+  response headers** are added at both edges (API `onSend` hook + admin nginx,
+  CSP in Report-Only). See `docs/deployment.md` → "Security response headers".
+- **Deliberately deferred:** OIDC fetches through the SSRF guard (a blanket
+  private-IP block would break legitimate on-prem internal IdPs — needs a
+  configurable allowlist), the task-visibility model (a product decision), and
+  all XL items (RLS, secrets vault, SCIM, SAML, encryption-at-rest, DR).
+
+---
+
 ## Executive summary
 
 Nessie has a credible *architectural* foundation — a real deny-overrides policy engine, a Postgres-backed queue with correct concurrency primitives, a shared SSRF guard, AES-256-GCM secret encryption, refresh-token rotation with reuse detection, and a token-cost ledger with rich attribution — but almost none of it is wired up to the standard a Fortune-500 security, IAM, GRC, and procurement review actually requires. The recurring failure pattern is **"capability exists in the schema or in one corner of the code, but is not enforced, not covered, or not operationalized"**: the policy engine governs 4 of 47 routes, the approval gate denies but never pauses/resumes, the spend cap is advisory, the audit log is mutable and ~20% covered, isolation rests on hand-written `WHERE` clauses, and production is a hand-built single-VM snowflake with no backups, no DR, no secrets vault, and no encryption at rest. **Overall maturity: early.** It is a promising platform for small trusted teams, but it is not deployable into a regulated enterprise today without a substantial, sequenced remediation program.
