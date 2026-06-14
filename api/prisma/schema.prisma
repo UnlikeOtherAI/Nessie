@@ -2512,6 +2512,11 @@ model KnowledgePage {
   @@index([spaceId, parentPageId, position], map: "knowledge_pages_space_parent_position_idx")
   @@index([publishedVersionId], map: "knowledge_pages_published_version_id_idx")
   @@index([privateToAgentId], map: "knowledge_pages_private_to_agent_id_idx")
+  // Trigram GIN indexes back the ILIKE '%q%' search (native-search.ts) so it
+  // doesn't sequentially scan every page per query. Requires the pg_trgm
+  // extension, created in the same migration.
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "knowledge_pages_title_trgm_idx")
+  @@index([summary(ops: raw("gin_trgm_ops"))], type: Gin, map: "knowledge_pages_summary_trgm_idx")
   @@map("knowledge_pages")
 }
 
@@ -2550,6 +2555,7 @@ model PageLabel {
 
   @@unique([pageId, normalizedName], map: "page_labels_page_normalized_key")
   @@index([organizationId, normalizedName], map: "page_labels_org_normalized_idx")
+  @@index([normalizedName(ops: raw("gin_trgm_ops"))], type: Gin, map: "page_labels_normalized_trgm_idx")
   @@map("page_labels")
 }
 

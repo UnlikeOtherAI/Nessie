@@ -104,21 +104,43 @@ export const iconForMime = (mime: string): IconDefinition => {
 export const canPreviewInline = (mime: string): boolean =>
   mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('text/') || mime === 'text/csv'
 
-export type PreviewKind = 'image' | 'pdf' | 'text' | null
+export type PreviewKind = 'image' | 'pdf' | 'text' | 'video' | 'audio' | null
 
-const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif'])
+const IMAGE_EXT = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif', 'ico', 'apng', 'jfif', 'pjpeg',
+])
+const VIDEO_EXT = new Set(['mp4', 'webm', 'ogv', 'm4v', 'mov'])
+const AUDIO_EXT = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'weba'])
 const TEXT_EXT = new Set([
-  'txt', 'md', 'csv', 'tsv', 'json', 'xml', 'yml', 'yaml', 'log',
-  'ts', 'js', 'tsx', 'jsx', 'py', 'go', 'rs', 'sh', 'html', 'css',
+  // data / config
+  'txt', 'text', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonc', 'json5', 'xml', 'yml', 'yaml',
+  'toml', 'ini', 'cfg', 'conf', 'config', 'env', 'properties', 'log', 'diff', 'patch', 'srt', 'vtt',
+  // code
+  'ts', 'js', 'mjs', 'cjs', 'tsx', 'jsx', 'py', 'rb', 'go', 'rs', 'sh', 'bash', 'zsh', 'fish',
+  'ps1', 'bat', 'c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'java', 'kt', 'kts', 'swift', 'scala', 'php',
+  'pl', 'lua', 'r', 'sql', 'graphql', 'gql', 'proto', 'gradle', 'groovy', 'dart', 'ex', 'exs',
+  'erl', 'clj', 'hs', 'elm', 'vue', 'svelte', 'astro', 'html', 'htm', 'css', 'scss', 'sass', 'less',
+])
+// Common text files that carry no extension.
+const TEXT_FILENAMES = new Set([
+  'dockerfile', 'makefile', 'readme', 'license', 'licence', 'changelog', 'authors', 'notice',
+  'gitignore', 'gitattributes', 'editorconfig', 'npmrc', 'nvmrc', 'prettierrc', 'eslintrc',
 ])
 
 // How a file node should be previewed in the viewer, inferred from its filename
-// (file nodes are titled with their filename). Returns null when not previewable.
+// (file nodes are titled with their filename). Returns null when not previewable
+// inline — those fall back to a typed download card. Office documents (doc(x),
+// xls(x), ppt(x)) can't render in-browser without an external converter, so they
+// intentionally stay download-only.
 export const previewKindForFilename = (filename: string): PreviewKind => {
+  const base = filename.toLowerCase().replace(/^\./, '')
+  if (TEXT_FILENAMES.has(base)) return 'text'
   const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
   if (!ext) return null
   if (IMAGE_EXT.has(ext)) return 'image'
   if (ext === 'pdf') return 'pdf'
+  if (VIDEO_EXT.has(ext)) return 'video'
+  if (AUDIO_EXT.has(ext)) return 'audio'
   if (TEXT_EXT.has(ext)) return 'text'
   return null
 }

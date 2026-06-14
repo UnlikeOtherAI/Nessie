@@ -41,8 +41,16 @@ export const FileNodeViewer = ({
   // <pre>, never an iframe — so the file's bytes can't run scripts). Binaries
   // stay download-only.
   const previewUrl = useAuthedObjectUrlFromPath(
-    (previewKind === 'image' || previewKind === 'pdf') && downloadPath ? downloadPath : null,
+    (previewKind === 'image' ||
+      previewKind === 'pdf' ||
+      previewKind === 'video' ||
+      previewKind === 'audio') &&
+      downloadPath
+      ? downloadPath
+      : null,
     token,
+    // Only the PDF iframe needs a pinned MIME; <img>/<video>/<audio> can't execute
+    // scripts, so they keep the server's media type for correct codec selection.
     previewMime,
   )
   const textPreview = useAuthedTextFromPath(
@@ -123,6 +131,20 @@ export const FileNodeViewer = ({
               src={previewUrl}
               title={page.title}
             />
+          ) : previewKind === 'video' && previewUrl ? (
+            <video
+              className="mx-auto max-h-[70vh] w-full rounded-lg border border-[color:var(--sep)] bg-black"
+              controls
+              src={previewUrl}
+            >
+              Your browser can’t play this video — use Download.
+            </video>
+          ) : previewKind === 'audio' && previewUrl ? (
+            <div className="rounded-lg border border-[color:var(--sep)] bg-[color:var(--sb)] p-4">
+              <audio className="w-full" controls src={previewUrl}>
+                Your browser can’t play this audio — use Download.
+              </audio>
+            </div>
           ) : previewKind === 'text' ? (
             textPreview.loading ? (
               <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
@@ -136,7 +158,11 @@ export const FileNodeViewer = ({
             )
           ) : isZipFilename(page.title) && version ? (
             <ZipContents pageId={page.id} versionId={version.id} />
-          ) : (previewKind === 'image' || previewKind === 'pdf') && !previewUrl ? (
+          ) : (previewKind === 'image' ||
+              previewKind === 'pdf' ||
+              previewKind === 'video' ||
+              previewKind === 'audio') &&
+            !previewUrl ? (
             <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
           ) : (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[color:var(--sep)] py-16 text-center">

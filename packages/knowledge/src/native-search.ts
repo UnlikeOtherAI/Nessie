@@ -45,8 +45,7 @@ export const searchNativePages = async (
         ? Prisma.sql`
           AND (
             p.title ILIKE ${likeQuery}
-            OR COALESCE(p.summary, '') ILIKE ${likeQuery}
-            OR COALESCE(p.metadata::text, '') ILIKE ${likeQuery}
+            OR p.summary ILIKE ${likeQuery}
             OR EXISTS (
               SELECT 1 FROM page_labels pl
               WHERE pl.page_id = p.id

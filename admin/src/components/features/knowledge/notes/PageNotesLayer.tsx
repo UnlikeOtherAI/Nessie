@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { faNoteSticky } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TextQuoteAnchor } from '@nessie/schemas'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import {
@@ -42,6 +44,31 @@ export const PageNotesLayer = ({
   const authorLabel = useAnnotationAuthors()
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingNote | null>(null)
+  // Two-step note creation: a fresh selection first shows a small "Add note"
+  // button that does NOT steal focus, so the user's text selection survives and
+  // can be copied. Only clicking it opens the (autofocusing) composer.
+  const [composing, setComposing] = useState(false)
+  const addNoteRef = useRef<HTMLButtonElement>(null)
+
+  const closeComposer = () => {
+    setPending(null)
+    setComposing(false)
+  }
+
+  // Dismiss the floating "Add note" button when the user clicks/selects elsewhere
+  // (without stealing focus or blocking the click, so selection + copy keep working).
+  useEffect(() => {
+    if (!pending || composing) return
+    const onDown = (event: PointerEvent) => {
+      if (addNoteRef.current?.contains(event.target as Node)) return
+      setPending(null)
+    }
+    const timer = window.setTimeout(() => document.addEventListener('pointerdown', onDown), 0)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('pointerdown', onDown)
+    }
+  }, [pending, composing])
 
   const noteInputs = useMemo<NoteAnchorInput[]>(
     () =>
@@ -75,15 +102,34 @@ export const PageNotesLayer = ({
         onSelectNote={(anchor, at) => {
           setPending({ anchor, at })
           setActiveNoteId(null)
+          setComposing(false)
         }}
       />
 
-      {pending ? (
+      {pending && !composing ? (
+        // Non-focus-stealing affordance: the text selection stays intact (so it
+        // can be copied) until the user explicitly chooses to add a note.
+        <button
+          aria-label="Add note to selection"
+          className="fixed z-50 flex items-center gap-1.5 rounded-md border border-[color:var(--sep)] bg-[color:var(--panel)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--tx)] shadow-[0_8px_24px_var(--scrim-strong)] hover:bg-[color:var(--overlay-weak)]"
+          onClick={() => setComposing(true)}
+          ref={addNoteRef}
+          style={{
+            top: `${pending.at.top + 8}px`,
+            left: `${popoverLeft}px`,
+            transform: 'translateX(-50%)',
+          }}
+          type="button"
+        >
+          <FontAwesomeIcon className="h-3 w-3 text-[color:var(--accent)]" icon={faNoteSticky} />
+          Add note
+        </button>
+      ) : pending && composing ? (
         <>
           <button
             aria-label="Dismiss note composer"
             className="fixed inset-0 z-40 cursor-default"
-            onClick={() => setPending(null)}
+            onClick={closeComposer}
             type="button"
           />
           <aside
@@ -100,14 +146,14 @@ export const PageNotesLayer = ({
             </blockquote>
             <CommentComposer
               autoFocus
-              onCancel={() => setPending(null)}
+              onCancel={closeComposer}
               onSubmit={async (noteBody) => {
                 await createNote.mutateAsync({
                   anchor: pending.anchor,
                   anchorVersionId: versionId,
                   body: noteBody,
                 })
-                setPending(null)
+                closeComposer()
               }}
               pending={createNote.isPending}
               placeholder="Write a note…"

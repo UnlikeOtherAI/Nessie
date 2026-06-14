@@ -227,6 +227,10 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 - `POST /api/knowledge-base/summarize`
 - `POST /api/knowledge-base/search`
   - accepts `topK`, `limit`, `cursor`, `sort`, `accessContext`, `tags`
+  - matching is case-insensitive substring (`ILIKE '%q%'`) over page **title**,
+    **summary**, and **label** names, backed by `pg_trgm` GIN trigram indexes so it
+    does not sequentially scan every page (`native-search.ts`). Page `metadata` is
+    not searched (it was unindexable JSON-cast text).
 - `POST /api/knowledge-base/read`
   - accepts `docId`, `projectId`, `accessContext`
 - `POST /api/knowledge-base/search-summary` (or `search.summary`)
@@ -390,10 +394,12 @@ Every page carries two kinds of annotation, backed by one model
   annotation API is page-kind-agnostic). Newest first.
 - **Notes** (`kind: note`, with anchor) — anchored to a quoted passage of the
   body. In the reader the passage is highlighted (a ProseMirror decoration via
-  `notes/note-highlight-extension.ts`); **selecting text** opens a small popover
-  right under the selection to add a note (`notes/PageNotesLayer.tsx`), and
-  **hovering** an existing highlight opens a floating card on the right with the
-  note, its author, and replies.
+  `notes/note-highlight-extension.ts`); **selecting text** shows a small, non-
+  focus-stealing **"Add note"** button under the selection (`notes/PageNotesLayer
+  .tsx`) — the selection stays intact so it can be copied, and only clicking the
+  button opens the (autofocusing) composer. **Hovering or keyboard-focusing** an
+  existing highlight opens a floating card on the right with the note, its author,
+  and replies.
 
 Comments and notes are rendered in the **channel-chat style** (`CommentThread`
 + `CommentRow`): avatar, author, timestamp, body, and a hover action bar
@@ -474,12 +480,16 @@ markdown file nodes are migrated on open: `KnowledgeWorkspace` calls
 flip `kind` → drop the now-unused blob) and then renders the document.
 
 **Type-aware file viewer.** Non-markdown file nodes keep the file-node path, with
-the viewer inferred from the filename: images and PDFs preview via an authed
-object URL; **text/config** (yaml, json, csv, code, logs, …) render as a themed
-`<pre>` of the fetched bytes (never an iframe, so a text/HTML file can't run
-scripts), capped at 512 KiB; **zip** archives show a browsable entry list
-(`ZipContents.tsx`) where text entries can be peeked inline; everything else
-(Office, binaries) shows a typed **Download to view** card. Zip listing reads the
+the viewer inferred from the filename (`previewKindForFilename`): **images** and
+**PDFs** preview via an authed object URL; **video** (mp4/webm/mov/…) and **audio**
+(mp3/wav/ogg/flac/…) play inline via `<video>`/`<audio>` (which, like `<img>`,
+can't execute scripts — only the PDF iframe needs a pinned MIME); **text/config**
+(yaml, json, csv, a broad set of code/markup extensions + common extension-less
+files like `Dockerfile`/`README`) render as a themed `<pre>` of the fetched bytes
+(never an iframe, so a text/HTML file can't run scripts), capped at 512 KiB; **zip**
+archives show a browsable entry list (`ZipContents.tsx`) where text entries can be
+peeked inline; everything else (Office documents, other binaries) shows a typed
+**Download to view** card. Zip listing reads the
 whole archive into memory (`adm-zip`, capped at `ZIP_LIST_MAX_BYTES` = 64 MiB —
 larger archives stay download-only); peeking decompresses only the requested
 entry (capped at `ZIP_ENTRY_PEEK_MAX_BYTES` = 256 KiB).
