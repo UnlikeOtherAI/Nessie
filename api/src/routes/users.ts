@@ -8,15 +8,20 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
-  countActiveOwners,
   createUserForOrganization,
   getOrganizationMembership,
   getOrganizationUserRecord,
+  LAST_OWNER_ERROR,
   listUsersForOrganization,
   setOrganizationMemberDeactivated,
   updateOrganizationMemberRole,
 } from '../services/users.js'
 import type { RouteDeps } from './types.js'
+
+// The membership mutators throw LAST_OWNER_ERROR from inside their transaction
+// (after an atomic, row-locked owner-count check); translate it to a 400.
+const isLastOwnerError = (error: unknown): boolean =>
+  error instanceof Error && error.message === LAST_OWNER_ERROR
 
 export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
@@ -100,22 +105,31 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
     const { userId } = request.params as { userId: string }
     const organizationId = actorContext.tenant.organizationId
+
+    // No actor may rewrite their own role in a single call (a stale owner token
+    // must not be able to re-grant or change its own membership).
+    if (userId === actorContext.actor.actorId) {
+      sendApiError(reply, 400, 'CANNOT_CHANGE_OWN_ROLE', 'You cannot change your own role')
+      return reply
+    }
+
     const membership = await getOrganizationMembership(prisma, organizationId, userId)
     if (!membership) {
       sendApiError(reply, 404, 'MEMBER_NOT_FOUND', 'No such member in this organisation')
       return reply
     }
 
-    // Never demote the last active owner out of ownership — it would lock
-    // everyone out of org administration.
-    if (membership.role === 'owner' && role !== 'owner') {
-      if ((await countActiveOwners(prisma, organizationId)) <= 1) {
+    // The last-active-owner guard is enforced atomically inside the service
+    // transaction (row-locked) and surfaces as LAST_OWNER_ERROR.
+    try {
+      await updateOrganizationMemberRole(prisma, { organizationId, userId, role })
+    } catch (error) {
+      if (isLastOwnerError(error)) {
         sendApiError(reply, 400, 'LAST_OWNER', 'Cannot demote the last active owner')
         return reply
       }
+      throw error
     }
-
-    await updateOrganizationMemberRole(prisma, { organizationId, userId, role })
     const updated = await getOrganizationUserRecord(prisma, organizationId, userId)
     return createApiResponse(UserRecordSchema.parse(updated))
   })
@@ -138,12 +152,17 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       sendApiError(reply, 404, 'MEMBER_NOT_FOUND', 'No such member in this organisation')
       return reply
     }
-    if (membership.role === 'owner' && (await countActiveOwners(prisma, organizationId)) <= 1) {
-      sendApiError(reply, 400, 'LAST_OWNER', 'Cannot deactivate the last active owner')
-      return reply
-    }
 
-    await setOrganizationMemberDeactivated(prisma, { organizationId, userId, deactivated: true })
+    // Last-active-owner guard is enforced atomically inside the service.
+    try {
+      await setOrganizationMemberDeactivated(prisma, { organizationId, userId, deactivated: true })
+    } catch (error) {
+      if (isLastOwnerError(error)) {
+        sendApiError(reply, 400, 'LAST_OWNER', 'Cannot deactivate the last active owner')
+        return reply
+      }
+      throw error
+    }
     const updated = await getOrganizationUserRecord(prisma, organizationId, userId)
     return createApiResponse(UserRecordSchema.parse(updated))
   })
