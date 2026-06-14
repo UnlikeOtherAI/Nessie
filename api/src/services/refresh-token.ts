@@ -51,6 +51,7 @@ type ValidationResult =
       ok: true
       familyId: string
       recordId: string
+      sessionId: string
       userId: string
       providerId: string
       providerType: string
@@ -70,6 +71,7 @@ export const validateRefreshToken = async (
       id: true,
       userId: true,
       familyId: true,
+      sessionId: true,
       providerId: true,
       providerType: true,
       revokedAt: true,
@@ -93,6 +95,7 @@ export const validateRefreshToken = async (
   return {
     ok: true,
     recordId: record.id,
+    sessionId: record.sessionId,
     userId: record.userId,
     familyId: record.familyId,
     providerId: record.providerId,
@@ -175,21 +178,34 @@ export type UserSession = {
   expiresAt: Date
 }
 
-// Active sessions for a user: one entry per `sessionId`, collapsed from that
-// session's live refresh-token rotation chain (non-revoked, unexpired).
-// `createdAt` is the first token in the chain; `lastUsedAt` the most recent.
+// Active sessions for a user: one entry per `sessionId` (stable across the
+// login's rotation chain). A session is active if any token in its chain is
+// still live (non-revoked, unexpired). `createdAt` is the login time (first
+// token in the chain), `lastUsedAt` the most recent rotation. Revoked
+// predecessors are scanned so the timestamps reflect the whole login, not just
+// the latest rotated token.
+type SessionAccumulator = UserSession & { active: boolean }
+
 export const listUserSessions = async (
   prisma: PrismaClient,
   userId: string,
 ): Promise<UserSession[]> => {
+  const now = Date.now()
   const tokens = await prisma.refreshToken.findMany({
-    where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
-    select: { sessionId: true, userAgent: true, createdAt: true, expiresAt: true },
+    where: { userId },
+    select: {
+      sessionId: true,
+      userAgent: true,
+      createdAt: true,
+      expiresAt: true,
+      revokedAt: true,
+    },
     orderBy: { createdAt: 'asc' },
   })
 
-  const bySession = new Map<string, UserSession>()
+  const bySession = new Map<string, SessionAccumulator>()
   for (const token of tokens) {
+    const live = !token.revokedAt && token.expiresAt.getTime() > now
     const existing = bySession.get(token.sessionId)
     if (!existing) {
       bySession.set(token.sessionId, {
@@ -198,19 +214,33 @@ export const listUserSessions = async (
         createdAt: token.createdAt,
         lastUsedAt: token.createdAt,
         expiresAt: token.expiresAt,
+        active: live,
       })
       continue
     }
+    // Tokens are ascending, so this one is later in the chain.
     existing.lastUsedAt = token.createdAt
     existing.expiresAt = token.expiresAt
-    if (!existing.userAgent && token.userAgent) {
+    if (token.userAgent) {
       existing.userAgent = token.userAgent
+    }
+    if (live) {
+      existing.active = true
     }
   }
 
-  return Array.from(bySession.values()).sort(
-    (left, right) => right.lastUsedAt.getTime() - left.lastUsedAt.getTime(),
-  )
+  return Array.from(bySession.values())
+    .filter((entry) => entry.active)
+    .map(
+      (entry): UserSession => ({
+        sessionId: entry.sessionId,
+        userAgent: entry.userAgent,
+        createdAt: entry.createdAt,
+        lastUsedAt: entry.lastUsedAt,
+        expiresAt: entry.expiresAt,
+      }),
+    )
+    .sort((left, right) => right.lastUsedAt.getTime() - left.lastUsedAt.getTime())
 }
 
 // Revoke a single session (all its live refresh tokens), scoped by `userId` so a

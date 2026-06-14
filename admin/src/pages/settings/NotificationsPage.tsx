@@ -3,7 +3,6 @@ import type { PushQuietHours, UserPreferences } from '@nessie/schemas'
 import { useUpdatePreferences } from '../../facades/auth/hooks'
 import { useChannels, useSetChannelMute } from '../../facades/channels/hooks'
 import { requestNotificationPermission } from '../../facades/notifications/permission'
-import type { ChannelRecord } from '../../lib/api-client'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { sectionTitleClass, SettingsPanel } from './settings-shared'
 
@@ -52,11 +51,6 @@ const getTimeZoneOptions = (selectedTimeZone: string, browserTimeZone: string): 
   return [...new Set(values.filter((value) => value.length > 0))].sort((a, b) =>
     a.localeCompare(b),
   )
-}
-
-const getChannelMuted = (channel: ChannelRecord): boolean | undefined => {
-  const maybeMuted = (channel as ChannelRecord & { muted?: unknown }).muted
-  return typeof maybeMuted === 'boolean' ? maybeMuted : undefined
 }
 
 // The preferences PATCH merges per-key, so this owns only the push slice:
@@ -316,7 +310,7 @@ export const NotificationsPage = () => {
               </div>
             ) : (
               channels.map((channel) => {
-                const muted = channelMuteOverrides[channel.id] ?? getChannelMuted(channel) ?? false
+                const muted = channelMuteOverrides[channel.id] ?? channel.muted ?? false
                 const pending =
                   setChannelMute.isPending && setChannelMute.variables?.channelId === channel.id
 
@@ -333,7 +327,7 @@ export const NotificationsPage = () => {
                     </div>
                     <ToggleControl
                       checked={muted}
-                      disabled={setChannelMute.isPending}
+                      disabled={pending}
                       label={`Toggle ${channel.label} notifications`}
                       onChange={(nextMuted) =>
                         void saveChannelMute(channel.id, muted, nextMuted)}

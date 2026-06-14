@@ -30,13 +30,17 @@ export const issueSessionToken = (
   input: SessionTokenInput,
   secret: string,
   ttlSeconds: number,
+  // A fresh login mints a new session id; a refresh passes the existing one so
+  // the access token's `sid` stays stable across a login's rotation chain
+  // (keeps session listing/revocation and session-scoped state coherent).
+  sessionId?: string,
 ): { expiresAt: string; sessionId: string; token: string } => {
   const issuedAt = Math.floor(Date.now() / 1000)
   const claims: SessionTokenClaims = {
     ...input,
     exp: issuedAt + ttlSeconds,
     iat: issuedAt,
-    sid: randomUUID(),
+    sid: sessionId ?? randomUUID(),
   }
 
   const header = encodeBase64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))

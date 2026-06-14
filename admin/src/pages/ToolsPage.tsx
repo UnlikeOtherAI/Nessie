@@ -76,6 +76,23 @@ export const ToolsPage = () => {
     )
   }
 
+  const listBody = toolsQuery.isLoading ? (
+    <div className="py-8 text-center text-sm text-[color:var(--tx3)]">Loading tools…</div>
+  ) : toolsQuery.isError ? (
+    <div className="py-8 text-center text-sm text-[color:var(--danger-text)]">
+      Failed to load tools.{' '}
+      <button className="underline" onClick={() => void toolsQuery.refetch()} type="button">
+        Retry
+      </button>
+    </div>
+  ) : (
+    <ToolList
+      onSelect={(tool) => setSelectedToolId(tool.id)}
+      selectedId={selectedTool?.id}
+      tools={sortedTools}
+    />
+  )
+
   const columns = [
     <ColumnBrowserColumn key="filters" title="Filters">
       <ToolFilterBar
@@ -89,11 +106,7 @@ export const ToolsPage = () => {
       />
     </ColumnBrowserColumn>,
     <ColumnBrowserColumn key="list" title={`Tools (${sortedTools.length})`}>
-      <ToolList
-        onSelect={(tool) => setSelectedToolId(tool.id)}
-        selectedId={selectedTool?.id}
-        tools={sortedTools}
-      />
+      {listBody}
     </ColumnBrowserColumn>,
   ]
 
@@ -105,15 +118,28 @@ export const ToolsPage = () => {
           <section>
             <h3 className="text-sm font-semibold text-[color:var(--tx)]">Per-agent grants</h3>
             <p className="mt-1 text-xs text-[color:var(--tx3)]">
-              Tick a cell to grant the tool to that agent. The grant is created
-              as `allowed`; removing access uses the dedicated DELETE endpoint
-              (per-tool drawer in a follow-up).
+              Tick a cell to grant this tool to an agent; untick to revoke. A
+              denied grant is shown as read-only and takes precedence.
             </p>
             <div className="mt-3">
-              <AgentGrantMatrix
-                agents={agentsQuery.data ?? []}
-                tools={[selectedTool]}
-              />
+              {agentsQuery.isLoading ? (
+                <div className="py-6 text-center text-sm text-[color:var(--tx3)]">
+                  Loading agents…
+                </div>
+              ) : agentsQuery.isError ? (
+                <div className="py-6 text-center text-sm text-[color:var(--danger-text)]">
+                  Failed to load agents.{' '}
+                  <button
+                    className="underline"
+                    onClick={() => void agentsQuery.refetch()}
+                    type="button"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <AgentGrantMatrix agents={agentsQuery.data ?? []} tools={[selectedTool]} />
+              )}
             </div>
           </section>
         </div>

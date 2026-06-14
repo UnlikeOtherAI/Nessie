@@ -9,6 +9,33 @@ export const hoverCardClass = [
   'hover:bg-[color:var(--main-hover)]',
 ].join(' ')
 
+export type SettingsFeedback = { kind: 'success' | 'error'; message: string }
+
+/**
+ * Inline success/error banner shared across settings pages. `role="alert"` so
+ * the message is announced to assistive tech when it appears after an async
+ * action.
+ */
+export const FeedbackBanner = ({ feedback }: { feedback: SettingsFeedback | null }) => {
+  if (!feedback) {
+    return null
+  }
+
+  return (
+    <div
+      className={[
+        'rounded-md border px-3 py-2 text-sm',
+        feedback.kind === 'success'
+          ? 'border-[color:var(--success-border)] bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
+          : 'border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+      ].join(' ')}
+      role="alert"
+    >
+      {feedback.message}
+    </div>
+  )
+}
+
 interface SettingsPanelProps {
   eyebrow: string
   title: string

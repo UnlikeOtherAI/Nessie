@@ -574,10 +574,18 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    const session = await buildLocalSession(validated.userId, [], {
-      providerId: validated.providerId,
-      providerType: validated.providerType as SessionTokenClaims['providerType'],
-    })
+    const session = await buildLocalSession(
+      validated.userId,
+      [],
+      {
+        providerId: validated.providerId,
+        providerType: validated.providerType as SessionTokenClaims['providerType'],
+      },
+      // Preserve the login's session id across the rotation chain so the
+      // access token's sid stays stable (accurate session list + current-device
+      // flag, coherent session-scoped state).
+      validated.sessionId,
+    )
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')

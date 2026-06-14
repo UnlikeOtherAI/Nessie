@@ -470,6 +470,9 @@ export const createServerContext = () => {
     userId: string,
     roles: string[],
     provider?: { providerId: string; providerType: SessionTokenClaims['providerType'] },
+    // Passed by /api/auth/refresh to keep the login's session id stable across
+    // its rotation chain; omitted on a fresh login so a new id is minted.
+    sessionId?: string,
   ) => {
     // Resolve user's actual memberships from DB instead of hardcoded bootstrap IDs
     const user = await prisma.user.findUnique({
@@ -498,6 +501,7 @@ export const createServerContext = () => {
       },
       authSecret,
       config.auth.tokenTtlSeconds,
+      sessionId,
     )
   }
 

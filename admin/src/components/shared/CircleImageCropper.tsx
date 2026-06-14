@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
+import { useModalA11y } from './useModalA11y'
 
 // On-screen editing stage (square). The circular crop is inscribed in it, so the
 // masked corners sit outside the circle. The exported image is rendered at a fixed
@@ -42,6 +43,8 @@ export const CircleImageCropper = ({
   description = 'Drag to reposition, scroll or use the slider to zoom. The circle is what gets saved.',
   saveLabel = 'Save',
 }: CircleImageCropperProps) => {
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  useModalA11y(dialogRef, onCancel)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const [url, setUrl] = useState<string | null>(null)
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
@@ -142,8 +145,18 @@ export const CircleImageCropper = ({
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'var(--scrim-strong)' }}
     >
-      <div className="admin-card w-full max-w-md p-5" style={{ background: 'var(--panel)' }}>
-        <div className="text-base font-semibold text-[color:var(--tx)]">{title}</div>
+      <div
+        aria-labelledby="cropper-title"
+        aria-modal="true"
+        className="admin-card w-full max-w-md p-5"
+        ref={dialogRef}
+        role="dialog"
+        style={{ background: 'var(--panel)' }}
+        tabIndex={-1}
+      >
+        <div className="text-base font-semibold text-[color:var(--tx)]" id="cropper-title">
+          {title}
+        </div>
         <div className="mt-1 text-sm text-[color:var(--tx2)]">{description}</div>
 
         <div className="mt-4 flex justify-center">
