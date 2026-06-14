@@ -130,25 +130,56 @@ export const getOrganizationMembership = async (
     select: { role: true, deactivatedAt: true },
   })
 
-// Active (non-deactivated) owners in an org — used to block demoting/deactivating
-// the last owner and locking everyone out.
-export const countActiveOwners = (
-  prisma: PrismaClient,
+// Sentinel thrown by the membership mutators when a change would remove the last
+// active owner; routes translate it to a 400 LAST_OWNER.
+export const LAST_OWNER_ERROR = 'LAST_OWNER'
+
+// Lock the org's active-owner rows FOR UPDATE and return their user ids. Called
+// inside the same transaction as an ownership-reducing write so two concurrent
+// owner-removals serialize on these rows — the second blocks until the first
+// commits, then re-reads the reduced set — preventing a race that would strand
+// the org with zero active owners.
+const lockActiveOwnerUserIds = async (
+  tx: Prisma.TransactionClient,
   organizationId: string,
-): Promise<number> =>
-  prisma.organizationMember.count({
-    where: { organizationId, role: 'owner', deactivatedAt: null },
-  })
+): Promise<string[]> => {
+  const rows = await tx.$queryRaw<Array<{ user_id: string }>>`
+    SELECT user_id FROM organization_members
+    WHERE organization_id = ${organizationId}::uuid
+      AND role = 'owner' AND deactivated_at IS NULL
+    FOR UPDATE`
+  return rows.map((row) => row.user_id)
+}
+
+// Throw LAST_OWNER_ERROR if removing `userId` from active ownership (via demotion
+// or deactivation) would leave the org with no active owner.
+const assertNotLastOwner = async (
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  userId: string,
+): Promise<void> => {
+  const ownerIds = await lockActiveOwnerUserIds(tx, organizationId)
+  if (ownerIds.includes(userId) && ownerIds.length <= 1) {
+    throw new Error(LAST_OWNER_ERROR)
+  }
+}
 
 export const updateOrganizationMemberRole = async (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string; role: MemberRole },
 ): Promise<void> => {
-  await prisma.organizationMember.update({
-    where: {
-      organizationId_userId: { organizationId: input.organizationId, userId: input.userId },
-    },
-    data: { role: input.role },
+  await prisma.$transaction(async (transaction) => {
+    // Demoting an owner could remove the last one — guard atomically under the
+    // owner-row lock so concurrent demotions/deactivations can't both pass.
+    if (input.role !== 'owner') {
+      await assertNotLastOwner(transaction, input.organizationId, input.userId)
+    }
+    await transaction.organizationMember.update({
+      where: {
+        organizationId_userId: { organizationId: input.organizationId, userId: input.userId },
+      },
+      data: { role: input.role },
+    })
   })
 }
 
@@ -162,6 +193,9 @@ export const setOrganizationMemberDeactivated = async (
   input: { organizationId: string; userId: string; deactivated: boolean },
 ): Promise<void> => {
   await prisma.$transaction(async (transaction) => {
+    if (input.deactivated) {
+      await assertNotLastOwner(transaction, input.organizationId, input.userId)
+    }
     await transaction.organizationMember.update({
       where: {
         organizationId_userId: { organizationId: input.organizationId, userId: input.userId },

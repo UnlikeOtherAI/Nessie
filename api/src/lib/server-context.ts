@@ -297,7 +297,7 @@ export const createServerContext = () => {
           userId: verification.claims.sub,
         },
       },
-      select: { deactivatedAt: true },
+      select: { role: true, deactivatedAt: true },
     })
     if (membership?.deactivatedAt) {
       sendApiError(reply, 403, 'ACCOUNT_DEACTIVATED', 'Your access to this organisation has been deactivated')
@@ -305,6 +305,13 @@ export const createServerContext = () => {
     }
 
     const actorContext = createActorContextFromClaims(verification.claims)
+    // Re-resolve the role from the live membership rather than trusting the
+    // (possibly stale) JWT claim, so a role change — e.g. demoting an owner —
+    // takes effect on the next request instead of at token expiry. Guards like
+    // requireOwner read actor.roles, so this is what makes them authoritative.
+    if (membership) {
+      actorContext.actor.roles = [membership.role]
+    }
     request.actorContext = actorContext
 
     return {

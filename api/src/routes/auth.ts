@@ -688,6 +688,19 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       where: { id: userId },
       data: { passwordHash: await hashPassword(body.newPassword) },
     })
+
+    // Changing a password should evict other devices (the usual reason to change
+    // it is suspected compromise). Revoke every refresh token except the caller's
+    // current session, so a stolen refresh cookie can no longer renew access.
+    const currentSid = currentSessionId(request)
+    await prisma.refreshToken.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+        ...(currentSid ? { sessionId: { not: currentSid } } : {}),
+      },
+      data: { revokedAt: new Date() },
+    })
     return createApiResponse({ ok: true })
   })
 
@@ -711,6 +724,12 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     })
     if (!orgMember) {
       sendApiError(reply, 403, 'NOT_A_MEMBER', 'Not a member of this organization')
+      return reply
+    }
+    // Don't mint a session for an org the caller is deactivated in (the row
+    // survives deactivation), mirroring the authenticateRequest check.
+    if (orgMember.deactivatedAt) {
+      sendApiError(reply, 403, 'ACCOUNT_DEACTIVATED', 'Your access to this organisation has been deactivated')
       return reply
     }
 
