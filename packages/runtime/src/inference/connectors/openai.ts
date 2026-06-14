@@ -198,6 +198,9 @@ export const createOpenAiLikeConnector = (
           max_completion_tokens: request.maxOutputTokens ?? 1024,
           messages: mapMessagesToOpenAi(request.messages),
           model,
+          // Routes requests with the same prefix to the same prompt cache for a
+          // higher hit rate (undefined is dropped by JSON.stringify).
+          prompt_cache_key: request.promptCacheKey,
           response_format: request.responseFormat,
           temperature: resolveOpenAiTemperature(model, request.temperature),
           tool_choice: request.toolChoice,
@@ -259,6 +262,7 @@ export const createOpenAiLikeConnector = (
           max_completion_tokens: request.maxOutputTokens ?? 1024,
           messages: mapMessagesToOpenAi(request.messages),
           model,
+          prompt_cache_key: request.promptCacheKey,
           response_format: request.responseFormat,
           stream: true,
           stream_options: { include_usage: true },

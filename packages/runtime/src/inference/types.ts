@@ -118,6 +118,9 @@ export type ProviderInvocationRequest = {
   maxOutputTokens?: number
   metadata?: Record<string, unknown>
   model: string
+  // Stable key grouping requests that share a prefix (system prompt + tools), so
+  // providers route them to the same prompt cache for higher hit rates.
+  promptCacheKey?: string
   responseFormat?: JsonObjectResponseFormat
   temperature?: number
   tools?: ToolSchemaDescriptor[]
@@ -208,6 +211,7 @@ export type InferenceRequest = {
   messages: ProviderMessage[]
   metadata?: Record<string, unknown>
   model?: string
+  promptCacheKey?: string
   requestId?: string
   responseFormat?: JsonObjectResponseFormat
   temperature?: number

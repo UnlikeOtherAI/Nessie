@@ -22,6 +22,8 @@ export type ModelOptions = {
   model?: string
   temperature?: number
   responseFormat?: { type: 'json_object' }
+  // Stable key so repeated calls sharing a prefix hit the same prompt cache.
+  promptCacheKey?: string
   usage?: LedgerAttribution
 }
 
@@ -114,6 +116,7 @@ export const createModelClient = (
       maxOutputTokens: options?.maxTokens,
       messages: toProviderMessages(messages),
       model: options?.model,
+      promptCacheKey: options?.promptCacheKey,
       responseFormat: options?.responseFormat,
       temperature: options?.temperature,
     })
@@ -157,6 +160,7 @@ export const createModelClient = (
       maxOutputTokens: options?.maxTokens,
       messages: toProviderMessages(messages),
       model: options?.model,
+      promptCacheKey: options?.promptCacheKey,
       responseFormat: options?.responseFormat,
       temperature: options?.temperature,
     })

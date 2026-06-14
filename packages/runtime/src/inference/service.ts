@@ -41,6 +41,7 @@ const buildProviderRequest = (
   messages: request.messages,
   metadata: request.metadata,
   model,
+  promptCacheKey: request.promptCacheKey,
   requestId,
   responseFormat: request.responseFormat,
   temperature: request.temperature,
