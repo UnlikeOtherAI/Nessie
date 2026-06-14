@@ -327,6 +327,65 @@ export const recordInferenceUsage = async (
   await prisma.tokenLedgerEvent.createMany({ data: rows, skipDuplicates: true })
 }
 
+/**
+ * Value historical token usage that was recorded before any pricing existed.
+ * estimated_cost_amount is computed at write time, so events logged while the
+ * org had no ModelPricingProfile stay null forever. This re-prices ONLY those
+ * still-null events using the current active profile per (provider, model) —
+ * already-priced rows are left untouched, so historical accuracy is preserved.
+ * One arithmetic UPDATE per (provider, model) pair (cheap, exact).
+ */
+export const recomputeTokenLedgerCosts = async (
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<{ updatedEvents: number; pricedPairs: number; unpricedPairs: number }> => {
+  const pairs = await prisma.tokenLedgerEvent.groupBy({
+    by: ['provider', 'model'],
+    where: { organizationId, estimatedCostAmount: null },
+  })
+
+  let updatedEvents = 0
+  let pricedPairs = 0
+  let unpricedPairs = 0
+
+  for (const pair of pairs) {
+    const pricing = await findPricingProfile(prisma, organizationId, pair.provider, pair.model)
+    if (!pricing) {
+      unpricedPairs += 1
+      continue
+    }
+    // Mirror calculateEstimatedCost: cache rates fall back to the base rate so
+    // cached tokens are never valued at $0 when only base rates are set.
+    const inputRate = pricing.inputPerMillion ?? 0
+    const outputRate = pricing.outputPerMillion ?? 0
+    const cacheInputRate = pricing.cachedInputPerMillion ?? pricing.inputPerMillion ?? 0
+    const cacheOutputRate = pricing.cachedOutputPerMillion ?? pricing.outputPerMillion ?? 0
+    const cacheReadRate = pricing.cacheReadPerMillion ?? pricing.inputPerMillion ?? 0
+    const cacheWriteRate = pricing.cacheWritePerMillion ?? pricing.inputPerMillion ?? 0
+
+    const updated = await prisma.$executeRaw`
+      UPDATE token_ledger_events SET
+        estimated_cost_amount =
+            COALESCE(input_tokens, 0)::numeric / 1000000 * ${inputRate}
+          + COALESCE(output_tokens, 0)::numeric / 1000000 * ${outputRate}
+          + COALESCE(cached_input_tokens, 0)::numeric / 1000000 * ${cacheInputRate}
+          + COALESCE(cached_output_tokens, 0)::numeric / 1000000 * ${cacheOutputRate}
+          + COALESCE(cache_read_tokens, 0)::numeric / 1000000 * ${cacheReadRate}
+          + COALESCE(cache_write_tokens, 0)::numeric / 1000000 * ${cacheWriteRate},
+        estimated_cost_currency = ${pricing.currency},
+        pricing_profile_id = ${pricing.id}::uuid
+      WHERE organization_id = ${organizationId}::uuid
+        AND provider = ${pair.provider}
+        AND model = ${pair.model}
+        AND estimated_cost_amount IS NULL
+    `
+    updatedEvents += Number(updated)
+    pricedPairs += 1
+  }
+
+  return { updatedEvents, pricedPairs, unpricedPairs }
+}
+
 /** Record one connector_usage_events row for a non-AI third-party connector call. */
 export const recordConnectorUsage = async (
   prisma: PrismaClient,

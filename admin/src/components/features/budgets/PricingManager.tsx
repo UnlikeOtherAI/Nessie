@@ -48,6 +48,7 @@ export const PricingManager = () => {
   const [cacheRead, setCacheRead] = useState('')
   const [cacheWrite, setCacheWrite] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
+  const [recomputeMsg, setRecomputeMsg] = useState<string | null>(null)
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: PRICING_PROFILES_KEY })
@@ -80,6 +81,24 @@ export const PricingManager = () => {
     mutationFn: (profileId: string) =>
       apiClient.delete(`/api/ledger/tokens/pricing/${profileId}`),
     onSuccess: invalidate,
+  })
+
+  // Re-price historical events that were logged before pricing existed (they
+  // stay $0 because cost is computed at write time).
+  const recompute = useMutation({
+    mutationFn: () =>
+      apiClient.post<{ updatedEvents: number; pricedPairs: number; unpricedPairs: number }>(
+        '/api/ledger/tokens/recompute-costs',
+        {},
+      ),
+    onSuccess: (r) => {
+      setRecomputeMsg(
+        `Re-priced ${r.updatedEvents.toLocaleString()} past event(s) across ${r.pricedPairs} model(s)` +
+          (r.unpricedPairs ? `; ${r.unpricedPairs} model(s) still have no pricing.` : '.'),
+      )
+      invalidate()
+    },
+    onError: (err) => setRecomputeMsg((err as Error).message),
   })
 
   const handleSave = () => {
@@ -170,7 +189,22 @@ export const PricingManager = () => {
       </div>
       {formError && <div className="mt-2 text-xs text-[var(--danger-text)]">{formError}</div>}
 
-      <div className={`${sectionTitle} mt-5`}>Configured pricing ({profiles.length})</div>
+      <div className="mt-5 flex items-center justify-between gap-2">
+        <span className={sectionTitle}>Configured pricing ({profiles.length})</span>
+        <button
+          className="admin-button admin-button-secondary"
+          disabled={recompute.isPending || profiles.length === 0}
+          onClick={() => {
+            setRecomputeMsg(null)
+            recompute.mutate()
+          }}
+          title="Value past usage that was logged before pricing existed"
+          type="button"
+        >
+          {recompute.isPending ? 'Re-pricing…' : 'Re-price historical usage'}
+        </button>
+      </div>
+      {recomputeMsg && <div className="mt-2 text-xs text-[color:var(--tx2)]">{recomputeMsg}</div>}
       <div className="mt-2 grid gap-2">
         {profiles.map((p) => (
           <div key={p.profileId} className="admin-card flex items-center justify-between gap-2 p-3">

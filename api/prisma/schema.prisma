@@ -2180,6 +2180,10 @@ model TokenLedgerEvent {
   @@index([organizationId, teamId, occurredAt(sort: Desc)])
   @@index([organizationId, channelId, occurredAt(sort: Desc)])
   @@index([organizationId, runId, occurredAt(sort: Desc)])
+  // Budget period sums query by project/team ALONE (scopeUsageWhere), so they
+  // need indexes leading with project_id / team_id, not organization_id.
+  @@index([projectId, occurredAt(sort: Desc)])
+  @@index([teamId, occurredAt(sort: Desc)])
   @@map("token_ledger_events")
 }
 

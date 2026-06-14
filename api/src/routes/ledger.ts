@@ -1,6 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 
-import { deleteBudget, listBudgetStatuses, setBudgetConfig } from '@nessie/runtime'
+import {
+  deleteBudget,
+  listBudgetStatuses,
+  recomputeTokenLedgerCosts,
+  setBudgetConfig,
+} from '@nessie/runtime'
 import {
   BudgetScopeIdSchema,
   BudgetScopeTypeSchema,
@@ -134,6 +139,18 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const { profileId } = request.params as { profileId: string }
     await deletePricingProfile(prisma, profileId, actorContext.tenant.organizationId, actorContext)
     return reply.code(204).send()
+  })
+
+  // Value historical usage that was logged before pricing existed (those events
+  // stay $0 because cost is computed at write time). Re-prices only still-null
+  // events with the current pricing; already-priced rows are untouched.
+  app.post('/api/ledger/tokens/recompute-costs', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const result = await recomputeTokenLedgerCosts(prisma, actorContext.tenant.organizationId)
+    return createApiResponse(result)
   })
 
   // Verify a budget scopeId belongs to the actor's organization before it can be
