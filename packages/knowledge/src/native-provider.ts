@@ -158,10 +158,18 @@ const listPages = async (
     const key = page.parentPageId ?? null
     childrenByParent.set(key, [...(childrenByParent.get(key) ?? []), page.id])
   }
-  return pages.map((page) => ({
-    ...mapPage(page),
-    childPageIds: childrenByParent.get(page.id) ?? [],
-  }))
+  return pages.map((page) => {
+    const record = mapPage(page)
+    return {
+      ...record,
+      // Drop the (potentially large) HTML body from the space-pages list — the
+      // tree/column views never render it, and the client otherwise holds every
+      // page's full body in memory. It is fetched on demand via GET /pages/:id
+      // when a document is opened or edited.
+      latestVersion: record.latestVersion ? { ...record.latestVersion, body: null } : null,
+      childPageIds: childrenByParent.get(page.id) ?? [],
+    }
+  })
 }
 
 const movePage = async (

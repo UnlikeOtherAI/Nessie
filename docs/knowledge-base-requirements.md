@@ -351,9 +351,12 @@ that column):
 Shared state lives in `KnowledgeProvider`
 (`admin/src/components/features/knowledge/`), which wraps the sidebar and the
 route outlet on the Knowledge route. The page hierarchy is derived client-side
-from the flat `GET /spaces/:id/pages` list via `parentPageId` and `childPageIds`
-(the list already includes each page's latest version body), so navigation needs
-no extra requests.
+from the flat `GET /spaces/:id/pages` list via `parentPageId` and `childPageIds`.
+That list **omits each page's latest-version body** (it can be large and the
+tree/column/preview-header views never need it); the body is fetched on demand
+via `GET /pages/:id` (`useKnowledgePage`) only when a document is opened, edited,
+or its history is viewed. The editor is gated on that fetch, so it never
+initialises from — and cannot save over — an empty body.
 
 ### First-visit seeding
 

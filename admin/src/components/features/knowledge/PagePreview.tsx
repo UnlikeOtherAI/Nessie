@@ -7,6 +7,8 @@ import { PageNotesLayer } from './notes/PageNotesLayer'
 import { pageStatusTone } from './page-status'
 
 type PagePreviewProps = {
+  // True while the page body is still being fetched on demand (the list omits it).
+  bodyPending?: boolean
   onBack: () => void
   onCreateChild: () => void
   onDrill: (childPageId: string) => void
@@ -28,6 +30,7 @@ const sortedSubPages = (pages: KnowledgePageRecord[]): KnowledgePageRecord[] =>
   })
 
 export const PagePreview = ({
+  bodyPending,
   onBack,
   onCreateChild,
   onDrill,
@@ -96,7 +99,11 @@ export const PagePreview = ({
         </div>
       ) : null}
 
-      {page.latestVersion?.body ? (
+      {bodyPending ? (
+        <div className="mt-6">
+          <p className="text-sm text-[color:var(--tx3)]">Loading…</p>
+        </div>
+      ) : page.latestVersion?.body ? (
         <PageNotesLayer
           body={page.latestVersion.body}
           pageId={page.id}

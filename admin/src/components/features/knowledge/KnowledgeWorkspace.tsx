@@ -7,7 +7,11 @@ import {
   useUploadFileVersion,
   useUploadPageAttachment,
 } from '../../../facades/knowledge/file-hooks'
-import { useKnowledgeVersions, type KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import {
+  useKnowledgePage,
+  useKnowledgeVersions,
+  type KnowledgePageRecord,
+} from '../../../facades/knowledge/hooks'
 import { getCookie, setCookie } from '../../../lib/storage'
 import type { UploadProgress } from '../../../lib/upload-xhr'
 import { AttachmentsDrawer } from './AttachmentsDrawer'
@@ -74,6 +78,22 @@ export const KnowledgeWorkspace = () => {
   const current = openPageId ? pageById(openPageId) : undefined
   const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
   const currentFolder = openPageId ? null : pathPages.at(-1)
+
+  // The space-pages list omits page bodies (they're large and the tree/column
+  // views never show them). Fetch the full body on demand for whichever page
+  // actually needs it — the editor is gated on this so it never opens, and
+  // therefore can never save, with an empty body.
+  const fullBodyPageId =
+    editor?.mode === 'edit'
+      ? editor.page.id
+      : historyPageId
+        ? historyPageId
+        : current && current.kind !== 'file'
+          ? current.id
+          : undefined
+  const fullPageQuery = useKnowledgePage(fullBodyPageId)
+  const fullPage =
+    fullPageQuery.data && fullPageQuery.data.id === fullBodyPageId ? fullPageQuery.data : undefined
 
   // ─── File upload wiring (file nodes, page attachments, new versions) ───────
   const [attachmentsPageId, setAttachmentsPageId] = useState<string | null>(null)
@@ -153,19 +173,28 @@ export const KnowledgeWorkspace = () => {
     />
   ) : null
 
-  // Full-width editor (create or edit) — takes the whole main area.
+  // Full-width editor (create or edit) — takes the whole main area. Editing waits
+  // for the on-demand full body so the editor never initialises from an empty
+  // (list-stripped) body and overwrites real content on save.
   if (editor) {
+    const editLoading = editor.mode === 'edit' && !fullPage
     return (
       <KnowledgePane onBack={closeEditor} title={editor.mode === 'edit' ? 'Edit page' : 'Create page'}>
         <div className="flex h-full w-full flex-col">
-          <PageEditor
-            mode={editor.mode}
-            onCancel={closeEditor}
-            onSubmit={savePage}
-            page={editor.mode === 'edit' ? editor.page : null}
-            parentPageId={editor.mode === 'create' ? editor.parentPageId : null}
-            pending={savePending}
-          />
+          {editLoading ? (
+            <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
+              Loading…
+            </div>
+          ) : (
+            <PageEditor
+              mode={editor.mode}
+              onCancel={closeEditor}
+              onSubmit={savePage}
+              page={editor.mode === 'edit' ? (fullPage ?? null) : null}
+              parentPageId={editor.mode === 'create' ? editor.parentPageId : null}
+              pending={savePending}
+            />
+          )}
         </div>
       </KnowledgePane>
     )
@@ -179,7 +208,7 @@ export const KnowledgeWorkspace = () => {
         <div className="mx-auto w-full max-w-3xl px-6 py-6">
           <VersionHistory
             onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
-            page={historyPage}
+            page={fullPage ?? historyPage}
             pending={restorePending}
             versions={versionsQuery.data ?? []}
           />
@@ -209,6 +238,7 @@ export const KnowledgeWorkspace = () => {
           />
         ) : (
           <PagePreview
+            bodyPending={!fullPage}
             onBack={() => popTo(depth)}
             onCreateChild={() => openCreate(current.id)}
             onDrill={(childPageId) => drillTo(depth, childPageId)}
@@ -216,7 +246,7 @@ export const KnowledgeWorkspace = () => {
             onOpenHistory={() => openHistory(current.id)}
             onPublish={() => publishPage(current.id)}
             onToggleAttachments={() => setAttachmentsPageId(current.id)}
-            page={current}
+            page={fullPage ?? current}
             publishPending={publishPending}
             subPages={childrenOf(current.id)}
           />
