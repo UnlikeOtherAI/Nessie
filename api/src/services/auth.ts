@@ -148,6 +148,16 @@ export const buildMeResponse = async (
 
   const memberships = await loadUserMemberships(prisma, user.id)
 
+  // Surface the live per-org role for the active context org so the admin's
+  // client-side gating matches the server's now-authoritative role check
+  // (authenticateRequest re-resolves actor.roles from the same membership): a
+  // demoted owner immediately loses owner-only UI instead of seeing buttons that
+  // 403. Fall back to the token claim for actors with no membership in this org.
+  const activeOrgId = parseOrganizationId(claims.org)
+  const activeRole = memberships.find(
+    (membership) => membership.organizationId === activeOrgId,
+  )?.role
+
   return {
     user: {
       id: parseUserId(user.id),
@@ -157,7 +167,7 @@ export const buildMeResponse = async (
       avatarAttachmentId: user.avatarAttachmentId ?? undefined,
       gravatarUrl: buildGravatarUrl(user.email),
       pronouns: user.pronouns ?? undefined,
-      roleIds: claims.roles,
+      roleIds: activeRole ? [activeRole] : claims.roles,
       superAdmin: user.superAdmin,
       preferences: (user.preferences as Record<string, unknown> | null) ?? undefined,
     },
