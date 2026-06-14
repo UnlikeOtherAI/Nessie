@@ -41,9 +41,21 @@ const CommentRow = ({
 
   return (
     <div
+      aria-label={`Comment by ${author.displayName} — actions`}
       className="admin-msg-row relative"
       data-actions-open={open}
       onClick={() => setOpen((value) => !value)}
+      onKeyDown={(event) => {
+        // Keyboard parity with the click toggle, and (via :focus-within) makes
+        // the Reply/Resolve/Edit/Delete/React bar reachable by keyboard/touch.
+        // Only respond when the row itself is focused, never a child control.
+        if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
+          event.preventDefault()
+          setOpen((value) => !value)
+        }
+      }}
+      role="group"
+      tabIndex={0}
     >
       <UserAvatar
         avatarAttachmentId={author.avatarAttachmentId}

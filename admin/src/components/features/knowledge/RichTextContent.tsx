@@ -1,4 +1,4 @@
-import { useEffect, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { computeAnchor, type TextQuoteAnchor } from '@nessie/schemas'
@@ -51,12 +51,17 @@ export const RichTextContent = ({
     editor.view.dispatch(editor.state.tr.setMeta(noteHighlightKey, notes ?? []))
   }, [editor, notes])
 
+  const openNoteFromEvent = (target: EventTarget | null) => {
+    const id = (target as HTMLElement | null)?.closest('[data-note-id]')?.getAttribute('data-note-id')
+    if (id) onNoteHover?.(id)
+  }
   const handleMouseOver = onNoteHover
-    ? (event: ReactMouseEvent) => {
-        const target = (event.target as HTMLElement).closest('[data-note-id]')
-        const id = target?.getAttribute('data-note-id')
-        if (id) onNoteHover(id)
-      }
+    ? (event: ReactMouseEvent) => openNoteFromEvent(event.target)
+    : undefined
+  // Keyboard parity: focusing a note highlight (tabindex on the decoration) opens
+  // its card, so notes are readable without a mouse.
+  const handleFocus = onNoteHover
+    ? (event: ReactFocusEvent) => openNoteFromEvent(event.target)
     : undefined
 
   // Turn the current text selection into a text-quote anchor. Offsets are read
@@ -85,7 +90,7 @@ export const RichTextContent = ({
       : undefined
 
   return (
-    <div onMouseOver={handleMouseOver} onMouseUp={handleMouseUp}>
+    <div onFocus={handleFocus} onMouseOver={handleMouseOver} onMouseUp={handleMouseUp}>
       <EditorContent editor={editor} />
     </div>
   )

@@ -26,6 +26,11 @@ const buildDecorations = (doc: ProseMirrorNode, notes: NoteAnchorInput[]): Decor
       Decoration.inline(from, to, {
         class: note.resolved ? 'kb-note-highlight kb-note-highlight-resolved' : 'kb-note-highlight',
         'data-note-id': note.id,
+        // Make the highlight keyboard-focusable so the note card can be opened
+        // without a mouse (the reader opens it on focus/Enter via RichTextContent).
+        tabindex: '0',
+        role: 'button',
+        'aria-label': 'View note',
       }),
     )
   }
