@@ -398,6 +398,30 @@ Required invariants:
 
 ## 9) Current state (Nessie as-of-2026-04-07)
 
+> **Member lifecycle & account security (implemented 2026-06-14).** The admin
+> settings surface now manages organisation membership and account security:
+> - **Member management** (`/settings/members`, owner-only): change a member's
+>   org role (`owner`/`admin`/`member`/`viewer`) via `PATCH /api/users/:id`, and
+>   **deactivate/reactivate** members (`POST /api/users/:id/deactivate` |
+>   `/reactivate`). Removal is **deactivate-only and reversible** — the
+>   `OrganizationMember` row + audit history are kept (`deactivatedAt`), never
+>   hard-deleted. Guards: you cannot change your own role or deactivate yourself,
+>   and the last active owner cannot be demoted/deactivated (enforced atomically
+>   under a `FOR UPDATE` lock on the org's owner rows). Deactivation revokes the
+>   user's refresh tokens and is enforced live in `authenticateRequest`
+>   (403 `ACCOUNT_DEACTIVATED`); role changes are also enforced live (the actor's
+>   role is re-resolved from the DB membership each request, not the JWT).
+> - **Account security** (`/settings/security`): list + revoke active sessions
+>   (`GET`/`DELETE /api/auth/sessions[/:id]`, RefreshToken-backed) and change the
+>   password for local accounts (`POST /api/auth/password`; SSO accounts manage
+>   credentials at their IdP). Changing a password evicts the user's other
+>   sessions.
+> - **Organisation profile** (`/settings/organization`, owner/admin): rename the
+>   org and set its logo (`PATCH /api/organizations/current`).
+> - **Approvals** are actionable by any signed-in member (the approvals API is
+>   ungated by design); other governance surfaces (audit, token usage, policy,
+>   health) remain owner-only.
+
 - No organization-level entity hierarchy exists yet.
 - No team/channel membership ACL persisted for user-to-channel or user-to-agent.
 - No team-aware filtering on `handleUserMessage`, tool execution, or MCP handlers.
