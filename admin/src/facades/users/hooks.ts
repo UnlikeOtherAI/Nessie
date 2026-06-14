@@ -29,3 +29,32 @@ export const useCreateUser = () => {
     },
   })
 }
+
+export const useUpdateUserRole = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { userId: string; role: string }) =>
+      apiClient.patch<UserRecord>(`/api/users/${input.userId}`, { role: input.role }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+  })
+}
+
+export const useSetUserDeactivated = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { userId: string; deactivated: boolean }) =>
+      apiClient.post<UserRecord>(
+        `/api/users/${input.userId}/${input.deactivated ? 'deactivate' : 'reactivate'}`,
+        {},
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+  })
+}

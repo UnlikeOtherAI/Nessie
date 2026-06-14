@@ -22,7 +22,9 @@ import { ProjectsIndexPage } from './pages/ProjectsIndexPage'
 import { ProjectView } from './pages/project/ProjectView'
 import { AppearancePage } from './pages/settings/AppearancePage'
 import { NotificationsPage } from './pages/settings/NotificationsPage'
+import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
+import { SecuritySettingsPage } from './pages/settings/SecuritySettingsPage'
 import { SettingsChannelsPage } from './pages/settings/SettingsChannelsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
 import { SettingsProfilePage } from './pages/settings/SettingsProfilePage'
@@ -172,6 +174,14 @@ export const router = createBrowserRouter([
       {
         path: '/settings/profile',
         element: <SettingsProfilePage />,
+      },
+      {
+        path: '/settings/security',
+        element: <SecuritySettingsPage />,
+      },
+      {
+        path: '/settings/organization',
+        element: <OrganizationSettingsPage />,
       },
       {
         path: '/settings/statuses',

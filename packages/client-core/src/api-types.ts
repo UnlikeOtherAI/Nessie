@@ -119,6 +119,9 @@ export type UserRecord = {
   email: string
   id: string
   role: string
+  // ISO timestamp when this org membership was deactivated, or null/absent when
+  // the member is active.
+  deactivatedAt?: string | null
   activeStatus?: UserActiveStatus | null
   avatarUrl?: string | null
   avatarAttachmentId?: string | null

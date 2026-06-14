@@ -13,6 +13,7 @@ import {
   AuthProviderDescriptorSchema,
   BootstrapModeResponseSchema,
   BootstrapRequestSchema,
+  ChangePasswordRequestSchema,
   LoginRequestSchema,
   SsoConfigQuerySchema,
 } from '../contracts.js'
@@ -29,7 +30,9 @@ import { createUserForOrganization, loadSessionUserByEmail } from '../services/u
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../lib/refresh-cookie.js'
 import {
   issueRefreshToken,
+  listUserSessions,
   revokeRefreshTokenByRaw,
+  revokeUserSession,
   rotateRefreshToken,
   validateRefreshToken,
 } from '../services/refresh-token.js'
@@ -610,6 +613,82 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     clearRefreshCookie(reply, config)
     reply.code(204)
     return null
+  })
+
+  // The `sid` of the access token on this request, used to flag the caller's
+  // current session in the list and to clear the cookie when they revoke it.
+  const currentSessionId = (request: FastifyRequest): string | null => {
+    const token = getAuthorizationToken(request)
+    if (!token) return null
+    const verification = verifySessionToken(token, authSecret)
+    return verification.ok ? verification.claims.sid : null
+  }
+
+  app.get('/api/auth/sessions', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const sessions = await listUserSessions(prisma, actorContext.actor.actorId)
+    const currentSid = currentSessionId(request)
+    return createApiResponse(
+      sessions.map((session) => ({
+        sessionId: session.sessionId,
+        userAgent: session.userAgent,
+        createdAt: session.createdAt.toISOString(),
+        lastUsedAt: session.lastUsedAt.toISOString(),
+        expiresAt: session.expiresAt.toISOString(),
+        current: session.sessionId === currentSid,
+      })),
+    )
+  })
+
+  app.delete('/api/auth/sessions/:sessionId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { sessionId } = request.params as { sessionId: string }
+    const revoked = await revokeUserSession(prisma, actorContext.actor.actorId, sessionId)
+    if (revoked === 0) {
+      sendApiError(reply, 404, 'SESSION_NOT_FOUND', 'No such active session')
+      return reply
+    }
+
+    // Revoking your own current session is a logout — clear the cookie too so it
+    // can't be resurrected by the still-valid refresh token.
+    if (currentSessionId(request) === sessionId) {
+      clearRefreshCookie(reply, config)
+    }
+    return createApiResponse({ revoked })
+  })
+
+  app.post('/api/auth/password', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const body = parseInput(ChangePasswordRequestSchema, request.body, reply)
+    if (!body) return reply
+
+    const userId = actorContext.actor.actorId
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { passwordHash: true },
+    })
+    // Only local-password accounts can change a password here; SSO accounts have
+    // no password and manage credentials at their identity provider.
+    if (!user?.passwordHash) {
+      sendApiError(reply, 400, 'PASSWORD_NOT_SUPPORTED', 'This account does not use a password')
+      return reply
+    }
+    if (!(await verifyPassword(body.currentPassword, user.passwordHash))) {
+      sendApiError(reply, 400, 'INVALID_PASSWORD', 'Current password is incorrect')
+      return reply
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await hashPassword(body.newPassword) },
+    })
+    return createApiResponse({ ok: true })
   })
 
   app.post('/api/auth/switch-context', async (request, reply) => {

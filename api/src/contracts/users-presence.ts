@@ -221,6 +221,9 @@ export const UserRecordSchema = z.object({
   email: z.string().email(),
   displayName: NonEmptyStringSchema,
   role: NonEmptyStringSchema,
+  // ISO timestamp when this org membership was deactivated, or null/absent when
+  // active. Deactivated members keep their row + history but lose access.
+  deactivatedAt: TimestampSchema.nullable().optional(),
   channelIds: z.array(ChannelIdSchema),
   activeStatus: UserActiveStatusSchema.nullable().optional(),
   // Avatar sources so member/people lists can render real profile pictures
@@ -239,4 +242,8 @@ export const CreateUserBodySchema = z.object({
   password: z.string().min(8),
   role: NonEmptyStringSchema.optional(),
   channelIds: z.array(ChannelIdSchema).optional(),
+})
+
+export const UpdateUserRoleBodySchema = z.object({
+  role: NonEmptyStringSchema,
 })

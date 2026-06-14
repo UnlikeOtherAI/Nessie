@@ -166,3 +166,64 @@ export const revokeRefreshTokenByRaw = async (
     await revokeFamily(prisma, record.familyId)
   }
 }
+
+export type UserSession = {
+  sessionId: string
+  userAgent: string | null
+  createdAt: Date
+  lastUsedAt: Date
+  expiresAt: Date
+}
+
+// Active sessions for a user: one entry per `sessionId`, collapsed from that
+// session's live refresh-token rotation chain (non-revoked, unexpired).
+// `createdAt` is the first token in the chain; `lastUsedAt` the most recent.
+export const listUserSessions = async (
+  prisma: PrismaClient,
+  userId: string,
+): Promise<UserSession[]> => {
+  const tokens = await prisma.refreshToken.findMany({
+    where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+    select: { sessionId: true, userAgent: true, createdAt: true, expiresAt: true },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  const bySession = new Map<string, UserSession>()
+  for (const token of tokens) {
+    const existing = bySession.get(token.sessionId)
+    if (!existing) {
+      bySession.set(token.sessionId, {
+        sessionId: token.sessionId,
+        userAgent: token.userAgent,
+        createdAt: token.createdAt,
+        lastUsedAt: token.createdAt,
+        expiresAt: token.expiresAt,
+      })
+      continue
+    }
+    existing.lastUsedAt = token.createdAt
+    existing.expiresAt = token.expiresAt
+    if (!existing.userAgent && token.userAgent) {
+      existing.userAgent = token.userAgent
+    }
+  }
+
+  return Array.from(bySession.values()).sort(
+    (left, right) => right.lastUsedAt.getTime() - left.lastUsedAt.getTime(),
+  )
+}
+
+// Revoke a single session (all its live refresh tokens), scoped by `userId` so a
+// caller can only revoke their own sessions. Returns the number of tokens
+// revoked (0 when the session isn't theirs or is already gone).
+export const revokeUserSession = async (
+  prisma: PrismaClient,
+  userId: string,
+  sessionId: string,
+): Promise<number> => {
+  const result = await prisma.refreshToken.updateMany({
+    where: { userId, sessionId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  })
+  return result.count
+}
