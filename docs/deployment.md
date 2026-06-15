@@ -73,9 +73,23 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 `/srv/infra/docker-compose.yml` owns the `caddy` and shared `postgres`
 containers and declares the external `edge` and `db` networks. Caddy mounts
 `/srv/infra/caddy/Caddyfile`. Nessie only edits the marked
-`# === Nessie production ===` site block in that Caddyfile and reloads Caddy —
-it never rewrites unrelated site blocks. Other apps (voicepos, hugo) share the
-same proxy and networks.
+`# === Nessie production ===` site block in that Caddyfile — it never rewrites
+unrelated site blocks. Keep the Nessie block above the direct-IP `:80` catch-all
+so Caddy's host-specific HTTP redirects and ACME challenge handling win for
+`nessie.works`. Other apps (voicepos, hugo) share the same proxy and networks.
+
+Caddy mounts the file read-only (`./caddy/Caddyfile:/etc/caddy/Caddyfile:ro`).
+After editing the host file, validate it with the same Caddy data volume and
+recreate only the Caddy service so Docker remounts the current file inode:
+
+```sh
+cd /srv/infra
+docker run --rm \
+  -v /srv/infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro \
+  -v infra_caddy_data:/data \
+  caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose up -d --force-recreate caddy
+```
 
 ## First deploy (from a dev machine)
 
@@ -114,10 +128,15 @@ Requires SSH access to the host and the Cloudflare full-token env var.
 
 5. **Caddy** — add or update the Nessie site blocks in `/srv/infra/caddy/Caddyfile`
    (holding page → `nessie-web:80`, admin → `nessie-admin:80`,
-   API → `nessie-api:5554`), then:
+   API → `nessie-api:5554`). Place the block above the direct-IP `:80`
+   catch-all, then validate and recreate only Caddy:
    ```sh
-   docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-   docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+   cd /srv/infra
+   docker run --rm \
+     -v /srv/infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro \
+     -v infra_caddy_data:/data \
+     caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+   docker compose up -d --force-recreate caddy
    ```
 
 6. **First owner account** — Nessie runs in `selfHosted` mode with no users, so
