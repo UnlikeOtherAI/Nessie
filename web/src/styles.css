@@ -42,8 +42,11 @@ a {
 
 .holding-logo {
   width: min(132px, 42vw);
+  aspect-ratio: 1;
   height: auto;
+  border-radius: 22px;
   display: block;
+  object-fit: cover;
 }
 
 .holding-status {
