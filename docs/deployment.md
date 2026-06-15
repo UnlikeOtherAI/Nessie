@@ -12,16 +12,24 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 
 | Component | URL | Container | Network(s) |
 |-----------|-----|-----------|------------|
-| Admin SPA | `https://nessie.unlikeotherai.com` | `nessie-admin` (nginx) | `edge` |
-| API (REST + WS) | `https://api.nessie.unlikeotherai.com` | `nessie-api` (Fastify, 5554) | `edge`, `db` |
+| Public holding page | `https://nessie.works` | `nessie-web` (nginx) | `edge` |
+| Admin SPA | `https://app.nessie.works` | `nessie-admin` (nginx) | `edge` |
+| API (REST + WS) | `https://api.nessie.works` | `nessie-api` (Fastify, 5554) | `edge`, `db` |
 | Push relay (optional) | `https://push.unlikeotherai.com` | `nessie-gateway` (Fastify, 5556) | `edge` |
 | Worker | — (no ingress) | `nessie-worker` | `db` |
 | Postgres + pgvector | — (internal) | `nessie-postgres` (pg17) | `db` |
 
 - **Host:** `178.105.82.46` (Hetzner, Ubuntu 24.04), SSH as `root`.
+- **DNS zone:** `nessie.works` in Cloudflare (`ffc45bc029478feb510f8e5791feaf20`),
+  nameservers `magali.ns.cloudflare.com` and `woz.ns.cloudflare.com`. The domain
+  is registered at 123-reg; the registrar nameservers must point to those two
+  Cloudflare nameservers before DNS activates.
 - **Deploy root on host:** `/srv/nessie` (rsync'd working tree + build context).
 - **Compose file:** `infrastructure/compose/docker-compose.prod.yml`.
 - **Env file (host only, not committed):** `/srv/nessie/infrastructure/compose/.env`.
+- **Legacy aliases during migration:** `https://nessie.unlikeotherai.com` still
+  serves the admin and `https://api.nessie.unlikeotherai.com` still serves the
+  API while clients move to the new domains.
 
 ## Why these choices
 
@@ -41,20 +49,20 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   single full-workspace image (`Dockerfile.app`) builds everything once; the
   worker container overrides the command to `node worker/dist/index.js`.
 - **Admin is built static.** `Dockerfile.admin` bakes
-  `VITE_API_BASE_URL=https://api.nessie.unlikeotherai.com` into the Vite bundle
-  and serves it with nginx. The admin therefore calls the API cross-origin; the
-  API's `NESSIE_CORS_ORIGINS` allowlists `https://nessie.unlikeotherai.com`.
+  `VITE_API_BASE_URL=https://api.nessie.works` into the Vite bundle and serves it
+  with nginx. The admin therefore calls the API cross-origin; the API's
+  `NESSIE_CORS_ORIGINS` allowlists `https://app.nessie.works` plus the legacy
+  admin alias during migration.
 - **Admin origin and API origin are not interchangeable.** The web app lives at
-  `https://nessie.unlikeotherai.com`; the API lives at
-  `https://api.nessie.unlikeotherai.com`. Any built admin artifact, including
-  the Tauri desktop app when it embeds `admin/dist`, must use
-  `VITE_API_BASE_URL=https://api.nessie.unlikeotherai.com`. Building with
-  `https://nessie.unlikeotherai.com` makes `/api/auth/providers` resolve to the
+  `https://app.nessie.works`; the API lives at `https://api.nessie.works`. Any
+  built admin artifact, including the Tauri desktop app when it embeds
+  `admin/dist`, must use `VITE_API_BASE_URL=https://api.nessie.works`. Building
+  with `https://app.nessie.works` makes `/api/auth/providers` resolve to the
   admin HTML shell, which leaves login stuck at "Loading providers...".
 - **Desktop CORS is deliberate.** The Fastify CORS policy always allows the
   fixed Tauri app origins (`tauri://localhost` and `http://tauri.localhost`) in
   addition to the configured web admin origin, so embedded desktop builds can
-  call `https://api.nessie.unlikeotherai.com` directly.
+  call `https://api.nessie.works` directly.
 - **Proxy trust is explicit.** The API uses Fastify's configured proxy trust
   rather than parsing `X-Forwarded-For` itself. Production behind Caddy sets
   `NESSIE_API_TRUSTED_PROXY_HOPS=1`; local and unproxied deployments default to
@@ -64,18 +72,20 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 
 `/srv/infra/docker-compose.yml` owns the `caddy` and shared `postgres`
 containers and declares the external `edge` and `db` networks. Caddy mounts
-`/srv/infra/caddy/Caddyfile`. Nessie only **appends** its site blocks to that
-Caddyfile (guarded by a `# === Nessie production ===` marker) and reloads Caddy
-— it never rewrites the file. Other apps (voicepos, hugo) share the same proxy
-and networks.
+`/srv/infra/caddy/Caddyfile`. Nessie only edits the marked
+`# === Nessie production ===` site block in that Caddyfile and reloads Caddy —
+it never rewrites unrelated site blocks. Other apps (voicepos, hugo) share the
+same proxy and networks.
 
 ## First deploy (from a dev machine)
 
-Requires SSH access to the host and the `CLOUDFLARE_API_TOKEN` env var.
+Requires SSH access to the host and the Cloudflare full-token env var.
 
-1. **DNS** — create DNS-only A records → `178.105.82.46`:
-   - `nessie.unlikeotherai.com`
-   - `api.nessie.unlikeotherai.com`
+1. **DNS** — in the `nessie.works` Cloudflare zone, create DNS-only records:
+   - `A nessie.works` → `178.105.82.46`
+   - `CNAME www.nessie.works` → `nessie.works`
+   - `A app.nessie.works` → `178.105.82.46`
+   - `A api.nessie.works` → `178.105.82.46`
 
 2. **Sync source** to the host build root:
    ```sh
@@ -94,7 +104,7 @@ Requires SSH access to the host and the `CLOUDFLARE_API_TOKEN` env var.
    ```sh
    cd /srv/nessie
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d nessie-postgres
-   docker compose -f infrastructure/compose/docker-compose.prod.yml build api admin
+   docker compose -f infrastructure/compose/docker-compose.prod.yml build api admin web
    docker compose -f infrastructure/compose/docker-compose.prod.yml \
      run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
    docker compose -f infrastructure/compose/docker-compose.prod.yml up -d
@@ -102,8 +112,9 @@ Requires SSH access to the host and the `CLOUDFLARE_API_TOKEN` env var.
    The production Dockerfiles run package lint before building. A lint failure
    is a build failure.
 
-5. **Caddy** — append the Nessie site blocks to `/srv/infra/caddy/Caddyfile`
-   (admin → `nessie-admin:80`, API → `nessie-api:5554`), then:
+5. **Caddy** — add or update the Nessie site blocks in `/srv/infra/caddy/Caddyfile`
+   (holding page → `nessie-web:80`, admin → `nessie-admin:80`,
+   API → `nessie-api:5554`), then:
    ```sh
    docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
    docker exec caddy caddy reload --config /etc/caddy/Caddyfile
@@ -114,7 +125,7 @@ Requires SSH access to the host and the `CLOUDFLARE_API_TOKEN` env var.
    ```sh
    docker logs nessie-api 2>&1 | grep bootstrap
    ```
-   Open `https://nessie.unlikeotherai.com/bootstrap?token=<token>` and create the
+   Open `https://app.nessie.works/bootstrap?token=<token>` and create the
    owner account. The token has a 15-minute TTL; restart `nessie-api` to mint a
    fresh one.
 
@@ -234,10 +245,11 @@ make the Nessie API or worker call it yet.
 ## Verifying
 
 ```sh
-curl https://api.nessie.unlikeotherai.com/api/health     # {"data":{"service":"api","status":"ok"}}
-curl https://api.nessie.unlikeotherai.com/api/auth/providers
-curl https://nessie.unlikeotherai.com/healthz            # ok
-docker ps --filter name=nessie                           # all four healthy
+curl https://api.nessie.works/api/health                 # {"data":{"service":"api","status":"ok"}}
+curl https://api.nessie.works/api/auth/providers
+curl https://app.nessie.works/healthz                    # ok
+curl https://nessie.works/healthz                        # ok
+docker ps --filter name=nessie                           # all five healthy
 docker logs nessie-worker 2>&1 | tail                    # "status":"ready"
 ```
 
@@ -259,9 +271,13 @@ Both edges set baseline security headers:
   violations without blocking. Promote it to an enforcing
   `Content-Security-Policy` once the report stream is clean, and update its
   `connect-src` if the admin gains a new outbound origin.
+- **Public web** (`infrastructure/docker/web-nginx.conf`) — the holding page
+  uses the same baseline document headers and an enforcing CSP because it only
+  serves static local assets.
 
-Verify after deploy: `curl -sI https://api.nessie.unlikeotherai.com/api/health`
-and `curl -sI https://nessie.unlikeotherai.com/` should both show the headers.
+Verify after deploy: `curl -sI https://api.nessie.works/api/health`,
+`curl -sI https://app.nessie.works/`, and `curl -sI https://nessie.works/`
+should show the expected headers.
 
 ## Configuration reference
 
@@ -273,7 +289,7 @@ production settings:
 |---------|-------|-------|
 | Mode | `NESSIE_MODE` | `selfHosted` (disables dev login, requires CORS allowlist) |
 | DB URL | `DATABASE_URL` / `NESSIE_DB_URL` | `postgresql://nessie:***@nessie-postgres:5432/nessie` |
-| CORS | `NESSIE_CORS_ORIGINS` | `https://nessie.unlikeotherai.com` (Tauri origins are allowed in code: `tauri://localhost`, `http://tauri.localhost`) |
+| CORS | `NESSIE_CORS_ORIGINS` | `https://app.nessie.works,https://nessie.unlikeotherai.com` (Tauri origins are allowed in code: `tauri://localhost`, `http://tauri.localhost`) |
 | Trusted proxy hops | `NESSIE_API_TRUSTED_PROXY_HOPS` | `1` behind the production Caddy proxy; default `0` ignores `X-Forwarded-For` |
 | Auth secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions, bootstrap tokens, and encrypts MCP OAuth secrets |
 | Session TTLs | `NESSIE_AUTH_TOKEN_TTL`, `NESSIE_AUTH_REFRESH_TOKEN_TTL` | optional, seconds; access JWT default 1800 (30 min), rotating refresh cookie default 2592000 (30 days). See [auth spec](deployment-modes-and-auth-spec.md) |
@@ -334,19 +350,19 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
 
 - The API serves a signed RS256 **config JWT** at
   `GET /api/auth/sso/config` (the `config_url`) and the matching **JWKS** at
-  `GET /.well-known/jwks.json`, both on `api.nessie.unlikeotherai.com`. The
+  `GET /.well-known/jwks.json`, both on `api.nessie.works`. The
   config allowlists both the hosted web callback and the native desktop
   callback: `nessie://auth/callback`. The config endpoint accepts
   `?theme=<theme-id>` so UOA can render with the user's selected Nessie palette.
 - On the web, clicking the button sends the browser to
-  `GET <uoa>/auth?config_url=…&redirect_url=https://nessie.unlikeotherai.com/login&code_challenge=…&code_challenge_method=S256`.
+  `GET <uoa>/auth?config_url=…&redirect_url=https://app.nessie.works/login&code_challenge=…&code_challenge_method=S256`.
   The admin includes the resolved selected theme when it asks the API for this
   authorize URL; the API adds that theme to the UOA `config_url`.
 - In the Tauri desktop app, clicking the button keeps the admin webview on the
   login page, opens the UOA authorize URL in the user's system browser, and uses
   `redirect_url=nessie://auth/callback`.
 - UOA renders its login UI (email/password, Google, …). On web success it redirects
-  to `https://nessie.unlikeotherai.com/login?code=…` (byte-exact allowlist; the
+  to `https://app.nessie.works/login?code=…` (byte-exact allowlist; the
   admin handles the callback on `/login`). On desktop success macOS opens
   `nessie://auth/callback?code=…`; Tauri's deep-link plugin delivers that URL to
   the admin login page, which exchanges the code with the same redirect URL.
@@ -371,11 +387,11 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
    plus `UOA_DOMAIN`, `UOA_CONFIG_URL`, `UOA_JWKS_URL`, `UOA_REDIRECT_URL`,
    `UOA_CONTACT_EMAIL` (see `.env.prod.example`). The deploy already does this.
 2. Validate the config JWT (optional sanity check):
-   `curl -XPOST <uoa>/config/validate -d '{"config_url":"https://api.nessie.unlikeotherai.com/api/auth/sso/config"}'`
+   `curl -XPOST <uoa>/config/validate -d '{"config_url":"https://api.nessie.works/api/auth/sso/config"}'`
    — expect `schema_valid: true`, `domain_match: true`. The signature check
    stays `false` until UOA stores the JWKS at approval time.
 3. Click **Sign in with SSO** once. UOA captures an integration request
-   ("Integration pending review") for `api.nessie.unlikeotherai.com`.
+   ("Integration pending review") for `api.nessie.works`.
 4. A UOA **superuser approves** the integration; the contact email then receives
    a **one-time link to copy the `client_secret`**.
 5. Set `UOA_CLIENT_SECRET` in the host `.env` and restart the API

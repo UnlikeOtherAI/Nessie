@@ -19,8 +19,8 @@ docker builder prune -af >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
 df -h / | tail -1
 
-echo "==> Building images (api + admin)"
-$COMPOSE build api admin
+echo "==> Building images (api + admin + web)"
+$COMPOSE build api admin web
 
 # The migrate step runs with --no-deps, which bypasses the nessie-postgres
 # `depends_on: service_healthy` gate. A freshly (re)started Postgres can still be
@@ -54,7 +54,7 @@ fi
 echo "==> Applying database migrations"
 $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
 
-echo "==> Recreating api + worker + admin"
+echo "==> Recreating api + worker + admin + web"
 $COMPOSE up -d
 
 # Reclaim Docker build cache + dangling images. Each rebuild adds layers and
@@ -74,5 +74,5 @@ cat <<'NOTE'
 
 If this is the first deploy (no users yet), grab the one-time owner bootstrap URL:
   docker logs nessie-api 2>&1 | grep bootstrap
-Then open https://nessie.unlikeotherai.com/bootstrap?token=<token>
+Then open https://app.nessie.works/bootstrap?token=<token>
 NOTE

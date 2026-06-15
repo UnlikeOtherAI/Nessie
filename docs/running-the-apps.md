@@ -17,7 +17,7 @@ There are two desktop modes:
   dev server proxies `/api` to the local API on `5454`.
 - **Installable production bundle:** Tauri embeds a built `admin/dist`. That
   bundle must call the production API directly at
-  `https://api.nessie.unlikeotherai.com`.
+  `https://api.nessie.works`.
 
 Terminal 1:
 
@@ -44,7 +44,7 @@ finishes the PKCE exchange from the deep link.
 To create a local distributable that contains the current local admin code:
 
 ```sh
-VITE_API_BASE_URL=https://api.nessie.unlikeotherai.com pnpm --filter @nessie/admin build
+VITE_API_BASE_URL=https://api.nessie.works pnpm --filter @nessie/admin build
 pnpm --dir desktop exec tauri build --bundles app \
   --config '{"build":{"frontendDist":"../../admin/dist"}}'
 ```
@@ -52,15 +52,15 @@ pnpm --dir desktop exec tauri build --bundles app \
 This produces `desktop/src-tauri/target/release/bundle/macos/Nessie.app`.
 The API origin in the first command is intentional:
 
-- `https://api.nessie.unlikeotherai.com` is the API and returns JSON for
+- `https://api.nessie.works` is the API and returns JSON for
   `/api/auth/providers`.
-- `https://nessie.unlikeotherai.com` is the hosted admin web app. Do **not**
+- `https://app.nessie.works` is the hosted admin web app. Do **not**
   use it as `VITE_API_BASE_URL`; `/api/auth/providers` will return the admin
   HTML shell and the desktop login page will sit at "Loading providers...".
 
 The plain `pnpm --filter @nessie/desktop exec tauri build` command uses
 `desktop/src-tauri/tauri.conf.json` as-is. That config points `frontendDist` at
-the hosted admin (`https://nessie.unlikeotherai.com`), so it is useful for a
+the hosted admin (`https://app.nessie.works`), so it is useful for a
 thin remote shell but does not embed un-deployed local admin changes.
 
 To replace the locally installed app:
@@ -81,7 +81,7 @@ If the installed app gets stuck at **Loading providers...**, check the API
 origin first:
 
 ```sh
-curl https://api.nessie.unlikeotherai.com/api/auth/providers
+curl https://api.nessie.works/api/auth/providers
 ```
 
 Expected result is JSON containing the SSO provider. If the response is HTML,
@@ -108,7 +108,7 @@ search overlay from the separated Search item. The URL split lives in
 
 - **dev** → `http://<YOUR-MAC-LAN-IP>:5455` (the admin Vite dev server; edits
   hot-reload on the device, and the admin's `/api` calls are proxied to the API)
-- **prod** → `https://nessie.unlikeotherai.com` (the hosted admin)
+- **prod** → `https://app.nessie.works` (the hosted admin)
 
 Update the dev branch of `ADMIN_URL` to your Mac's LAN IP before building. The
 old native app (login/channels screens) is archived at `archive/mobile-native`.
