@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
 import { useCurrentOrganization } from '../../facades/organization/hooks';
 import { useAuthedObjectUrl } from '../../lib/uploads';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
@@ -111,6 +112,8 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
       </Link>
 
       <div className="flex-1" />
+
+      <DebugTokenButton />
 
       {me && (
         <>
