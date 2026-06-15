@@ -123,7 +123,7 @@ export const DebugTokenButton = () => {
       <button
         aria-label="Open session debug"
         className={[
-          'admin-rail-btn border-0 bg-transparent',
+          'admin-rail-btn mb-[22px] border-0 bg-transparent',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
         ].join(' ')}
         onClick={handleOpen}

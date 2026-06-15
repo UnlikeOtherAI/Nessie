@@ -18,62 +18,74 @@ type KanbanCardProps = {
 }
 
 const chip = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold'
+const MAX_EXCERPT_CHARS = 180
+
+const buildCardExcerpt = (value: string | null | undefined): string | null => {
+  const normalized = value?.replace(/\s+/g, ' ').trim()
+  if (!normalized) return null
+  if (normalized.length <= MAX_EXCERPT_CHARS) return normalized
+  return `${normalized.slice(0, MAX_EXCERPT_CHARS).trimEnd()}...`
+}
 
 const KanbanCardContent = ({
   task,
   showProject,
   projectName,
   archived,
-}: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName'> & { archived?: boolean }) => (
-  <>
-    {showProject && projectName ? (
-      <span className={`${chip} justify-self-start bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
-        {projectName}
-      </span>
-    ) : null}
+}: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName'> & { archived?: boolean }) => {
+  const excerpt = buildCardExcerpt(task.detail ?? (task.title ? task.purpose : null))
 
-    <div className="break-words text-sm font-semibold leading-snug text-[color:var(--tx)] line-clamp-3">
-      {task.title ?? task.purpose ?? 'Untitled task'}
-    </div>
-    {task.purpose && task.title ? (
-      <div className="break-words text-xs leading-snug text-[color:var(--tx2)] line-clamp-3">
-        {task.purpose}
-      </div>
-    ) : null}
-
-    <div className="flex items-center gap-1.5">
-      <FontAwesomeIcon
-        className={`shrink-0 text-xs ${PRIORITY_SIGNAL[task.priority]}`}
-        icon={faSignal}
-        title={`${PRIORITY_LABEL[task.priority]} priority`}
-      />
-      <span className={`${chip} max-w-[11rem] truncate bg-[color:var(--overlay)] text-[color:var(--tx2)]`}>
-        {task.assigneeName ?? 'Unassigned'}
-      </span>
-      {task.dueDate || archived ? (
-        <span className="ml-auto flex items-center gap-1.5">
-          {task.dueDate ? (
-            <span
-              className={[
-                chip,
-                isOverdue(task.dueDate)
-                  ? 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]'
-                  : 'bg-[color:var(--overlay)] text-[color:var(--tx2)]',
-              ].join(' ')}
-            >
-              {formatDueDate(task.dueDate)}
-            </span>
-          ) : null}
-          {archived ? (
-            <span className={`${chip} bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
-              {statusLabel(task.status)}
-            </span>
-          ) : null}
+  return (
+    <>
+      {showProject && projectName ? (
+        <span className={`${chip} justify-self-start bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
+          {projectName}
         </span>
       ) : null}
-    </div>
-  </>
-)
+
+      <div className="break-words text-sm font-semibold leading-snug text-[color:var(--tx)] line-clamp-3">
+        {task.title ?? task.purpose ?? 'Untitled task'}
+      </div>
+      {excerpt ? (
+        <div className="break-words text-xs font-normal leading-snug text-[color:var(--tx2)] line-clamp-4">
+          {excerpt}
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-1.5">
+        <FontAwesomeIcon
+          className={`shrink-0 text-xs ${PRIORITY_SIGNAL[task.priority]}`}
+          icon={faSignal}
+          title={`${PRIORITY_LABEL[task.priority]} priority`}
+        />
+        <span className={`${chip} max-w-[11rem] truncate bg-[color:var(--overlay)] text-[color:var(--tx2)]`}>
+          {task.assigneeName ?? 'Unassigned'}
+        </span>
+        {task.dueDate || archived ? (
+          <span className="ml-auto flex items-center gap-1.5">
+            {task.dueDate ? (
+              <span
+                className={[
+                  chip,
+                  isOverdue(task.dueDate)
+                    ? 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]'
+                    : 'bg-[color:var(--overlay)] text-[color:var(--tx2)]',
+                ].join(' ')}
+              >
+                {formatDueDate(task.dueDate)}
+              </span>
+            ) : null}
+            {archived ? (
+              <span className={`${chip} bg-[color:var(--overlay)] uppercase tracking-[0.14em] text-[color:var(--tx3)]`}>
+                {statusLabel(task.status)}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
+      </div>
+    </>
+  )
+}
 
 // A board card: sortable within its column (vertical priority order) and
 // draggable to another column via dnd-kit. Must live inside a SortableContext.
