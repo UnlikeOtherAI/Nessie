@@ -404,7 +404,14 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
 1. Generate an RSA-2048 keypair and set `UOA_CONFIG_JWT_PRIVATE_KEY_B64`
    (base64 of the PEM, single line) + `UOA_CONFIG_JWT_KID` in the host `.env`,
    plus `UOA_DOMAIN`, `UOA_CONFIG_URL`, `UOA_JWKS_URL`, `UOA_REDIRECT_URL`,
-   `UOA_CONTACT_EMAIL` (see `.env.prod.example`). The deploy already does this.
+   `UOA_CONTACT_EMAIL` in `/srv/nessie/infrastructure/compose/.env`. The deploy
+   already does this.
+   `UOA_CONFIG_JWT_KID` must be unique per UOA domain. The `api.nessie.works`
+   production integration uses `nessie-works-2026-06`; do not reuse the legacy
+   `api.nessie.unlikeotherai.com` kid (`nessie-2026-06`) because UOA resolves
+   `kid` globally, verifies the config with the old domain key, skips
+   auto-onboarding, and then rejects `/auth/token` with 401 because no
+   `api.nessie.works` client secret exists.
 2. Validate the config JWT (optional sanity check):
    `curl -XPOST <uoa>/config/validate -d '{"config_url":"https://api.nessie.works/api/auth/sso/config"}'`
    — expect `schema_valid: true`, `domain_match: true`. The signature check
@@ -414,8 +421,15 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
 4. A UOA **superuser approves** the integration; the contact email then receives
    a **one-time link to copy the `client_secret`**.
 5. Set `UOA_CLIENT_SECRET` in the host `.env` and restart the API
-   (`docker compose -f infrastructure/compose/docker-compose.prod.yml up -d api`).
+   (`docker compose -f infrastructure/compose/docker-compose.prod.yml up -d --no-deps --force-recreate api`).
    SSO login is now live.
+
+For the 2026-06-15 `nessie.works` migration, the live host env was updated to
+`UOA_CONFIG_JWT_KID=nessie-works-2026-06`, UOA was prompted once via `/auth` so
+it created a pending `api.nessie.works` request, a UOA superuser accepted that
+request with one-time credential reveal, and the resulting `UOA_CLIENT_SECRET`
+was written to `/srv/nessie/infrastructure/compose/.env` before recreating only
+the `nessie-api` container.
 
 `nessie.config.json` enables the provider (`type: "uoa"`, `enabled: true`); no
 `clientId`/`issuerUrl` are needed (the config-JWT `config_url` identifies the
