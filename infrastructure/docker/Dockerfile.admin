@@ -1,8 +1,8 @@
 # Admin SPA build → static nginx image.
 #
 # The admin is a Vite/React app. `VITE_API_BASE_URL` is baked in at build time:
-# in production the admin runs on its own origin (nessie.unlikeotherai.com) and
-# talks to the API cross-origin (api.nessie.unlikeotherai.com), so the base URL
+# in production the admin runs on its own origin (app.nessie.works) and talks to
+# the API cross-origin (api.nessie.works), so the base URL
 # must be absolute. The API's CORS allowlist must include the admin origin.
 FROM node:22-slim AS builder
 

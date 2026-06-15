@@ -51,9 +51,9 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 
 - `pnpm --filter @nessie/admin build` produces the static admin bundle (`dist/`); `pnpm --filter @nessie/admin preview` serves it. This is for prod/CI, **not** the local dev loop — use `pnpm dev` instead.
 - Desktop installable builds that embed local admin changes must build admin
-  with `VITE_API_BASE_URL=https://api.nessie.unlikeotherai.com`, then run Tauri
+  with `VITE_API_BASE_URL=https://api.nessie.works`, then run Tauri
   with `--config '{"build":{"frontendDist":"../../admin/dist"}}'`. Do not use
-  the admin web origin (`https://nessie.unlikeotherai.com`) as the API base URL;
+  the admin web origin (`https://app.nessie.works`) as the API base URL;
   login will stall at "Loading providers...". See
   [docs/running-the-apps.md](docs/running-the-apps.md).
 - Rebuild the worker after every turn where worker code changed: `pnpm --filter @nessie/worker build`. In local mode the API runs the worker **embedded from its built `dist`** (`import('@nessie/worker')`), so worker source edits do not take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
@@ -65,9 +65,9 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   containers, reusing the host's shared Caddy edge proxy and Docker networks
   (`edge`/`db`). It is **not** GCP Cloud Run — the old GCP workflow/spec are
   retired (`docs/done/phase2-gcp-deployment-spec.md` is historical).
-- URLs: admin `https://nessie.unlikeotherai.com`, API
-  `https://api.nessie.unlikeotherai.com`. TLS is automatic (Caddy + Let's
-  Encrypt); DNS is Cloudflare, DNS-only.
+- URLs: public web `https://nessie.works`, admin `https://app.nessie.works`,
+  API `https://api.nessie.works`. TLS is automatic (Caddy + Let's Encrypt);
+  DNS is Cloudflare, DNS-only.
 - Stack: `nessie-api` + `nessie-worker` (one `Dockerfile.app` image, command
   override) + `nessie-admin` (static nginx) + a dedicated `nessie-postgres`
   (pgvector — the shared Postgres lacks the `vector` extension). No Redis (queue

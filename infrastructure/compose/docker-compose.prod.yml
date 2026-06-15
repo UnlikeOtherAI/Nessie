@@ -95,7 +95,7 @@ services:
       DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_CONFIG_PATH: /app/nessie.config.json
-      NESSIE_CORS_ORIGINS: https://nessie.unlikeotherai.com
+      NESSIE_CORS_ORIGINS: https://app.nessie.works,https://nessie.unlikeotherai.com
       # Object storage (MinIO).
       NESSIE_STORAGE_PROVIDER: s3
       NESSIE_STORAGE_ENDPOINT: http://nessie-minio:9000
@@ -161,9 +161,24 @@ services:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.admin
       args:
-        VITE_API_BASE_URL: https://api.nessie.unlikeotherai.com
+        VITE_API_BASE_URL: https://api.nessie.works
     image: nessie-admin:latest
     container_name: nessie-admin
+    restart: unless-stopped
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.web
+    image: nessie-web:latest
+    container_name: nessie-web
     restart: unless-stopped
     networks:
       - edge
