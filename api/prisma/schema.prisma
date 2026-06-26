@@ -2840,6 +2840,31 @@ model DeviceToken {
   @@map("device_tokens")
 }
 
+// ─── Web Push subscription registry (browser push targeting) ────────────────
+// One row per (user, browser PushSubscription). The admin SPA subscribes via
+// the Push API and POSTs the resulting endpoint + keys here; the worker fans a
+// notification out to a user's browser subscriptions exactly like device
+// tokens. `endpoint` is unique per browser; `p256dh`/`auth` are the per-
+// subscription public key and secret used for RFC 8291 payload encryption.
+// `organization_id`-scoped like every child table; integrity enforced at the
+// application layer to keep the slice additive.
+model WebPushSubscription {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  endpoint       String
+  p256dh         String
+  auth           String
+  userAgent      String?  @map("user_agent")
+  lastSeenAt     DateTime @default(now()) @map("last_seen_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, endpoint])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("web_push_subscriptions")
+}
+
 // ─── Push credentials (platform-global, super-admin only) ───────────────────
 // Non-secret metadata for the Apple APNs / Google FCM credentials that the
 // central push gateway uses. The secret bytes themselves (the `.p8` key, the
@@ -2849,6 +2874,7 @@ model DeviceToken {
 enum PushProvider {
   apns
   fcm
+  webpush
 }
 
 enum PushDeliveryStatus {

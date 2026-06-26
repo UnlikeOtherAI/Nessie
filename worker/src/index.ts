@@ -25,6 +25,7 @@ import {
   terminateExecutionEnvironmentInstance,
 } from './control/execution.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
+import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import {
   dispatchEventTriggers,
@@ -125,12 +126,40 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
+  const webPush = config.webPush
+  let webPushCreds = webPush.publicKey && webPush.privateKey && webPush.subject
+    ? {
+      publicKey: webPush.publicKey,
+      privateKey: webPush.privateKey,
+      subject: webPush.subject,
+    }
+    : undefined
+  if (webPushCreds) {
+    // Fail fast at startup, not per-notification: validate the subject + key
+    // material once. If it's malformed, disable web push with a clear warning
+    // rather than logging an error on every subscription forever.
+    try {
+      assertValidVapidSubject(webPushCreds.subject)
+      loadVapidPrivateKey(webPushCreds)
+    } catch (error) {
+      console.warn(
+        '[worker] Web Push disabled — invalid VAPID configuration:',
+        error instanceof Error ? error.message : String(error),
+      )
+      webPushCreds = undefined
+    }
+  }
+
   queueProvider.subscribe(
     'push.dispatch',
     async (job) => {
       const payload = PushDispatchJobPayloadSchema.parse(job.payload)
       await handlePushDispatch(
-        { prisma, authSecret: config.auth.secret ?? '' },
+        {
+          prisma,
+          authSecret: config.auth.secret ?? '',
+          ...(webPushCreds ? { webPush: webPushCreds } : {}),
+        },
         payload,
       )
     },

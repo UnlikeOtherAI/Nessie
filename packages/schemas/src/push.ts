@@ -13,6 +13,9 @@ import { z } from 'zod'
  * SecretStore; they never appear in any response shape below.
  */
 
+// Credential-upload providers only. Browser Web Push has no uploaded credential
+// (it uses the instance VAPID env keys), so it is intentionally absent here; the
+// `webpush` value lives only in the Prisma `PushProvider` enum for delivery logs.
 export const PushProviderSchema = z.enum(['apns', 'fcm'])
 export type PushProvider = z.infer<typeof PushProviderSchema>
 

@@ -319,6 +319,9 @@ production settings:
 | Storage endpoint | `NESSIE_STORAGE_ENDPOINT`, `NESSIE_STORAGE_REGION`, `NESSIE_STORAGE_FORCE_PATH_STYLE` | `http://nessie-minio:9000`, `us-east-1`, `true` (path-style is required for MinIO) |
 | Storage bucket/creds | `NESSIE_STORAGE_BUCKET`, `NESSIE_STORAGE_ACCESS_KEY_ID`, `NESSIE_STORAGE_SECRET_ACCESS_KEY` | bucket defaults to `nessie`; the key id/secret double as the MinIO root user/password (host `.env`) |
 | Max upload size | `NESSIE_MAX_UPLOAD_BYTES` | default `5368709120` (5 GiB); also pins the API multipart limit |
+| Web Push public key | `NESSIE_WEBPUSH_PUBLIC_KEY` | optional; VAPID public key served to browsers. Enables browser web push when set with the two below. See [web-push.md](web-push.md) |
+| Web Push private key | `NESSIE_WEBPUSH_PRIVATE_KEY` | optional; VAPID private key that signs push JWTs (secret) |
+| Web Push subject | `NESSIE_WEBPUSH_SUBJECT` | optional; VAPID subject, a `mailto:`/`https:` operator-contact URI. Generate the trio with `node scripts/generate-vapid-keys.mjs` |
 
 ### Object storage (MinIO)
 

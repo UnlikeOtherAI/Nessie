@@ -24,6 +24,13 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - Uploads stream end-to-end (default cap `NESSIE_MAX_UPLOAD_BYTES` = 5 GiB; never buffer whole files). `Attachment.sizeBytes` is `BigInt`, serialized as a string at API boundaries.
 - Backend = S3-compatible MinIO in production, `filesystem` in local dev. KB file nodes (`KnowledgePage.kind = file`) and page attachments live alongside documents — see [docs/knowledge-base-requirements.md](docs/knowledge-base-requirements.md).
 
+## Web Push (browser notifications)
+
+- Browser Web Push is a second push transport alongside native APNs/FCM: the worker's `handlePushDispatch` also fans messages out to users' `WebPushSubscription` rows. Crypto is in-process (`packages/push`, RFC 8291 + RFC 8292 VAPID, no third-party deps).
+- One VAPID key pair per instance via `NESSIE_WEBPUSH_PUBLIC_KEY`, `NESSIE_WEBPUSH_PRIVATE_KEY`, `NESSIE_WEBPUSH_SUBJECT` (all three required to enable). Generate with `node scripts/generate-vapid-keys.mjs`. Public key is safe to expose; private key is secret.
+- Admin SPA service worker (`admin/public/sw.js`) + manifest + a "Browser notifications" toggle on `/settings/notifications`; API endpoints under `/api/push/web/*`. Requires HTTPS (localhost exempt); iOS needs an installed PWA (16.4+).
+- **Authoritative guide: [docs/web-push.md](docs/web-push.md).**
+
 ## Tech
 
 - Node/TypeScript (strict mode), Fastify, Prisma + PostgreSQL
