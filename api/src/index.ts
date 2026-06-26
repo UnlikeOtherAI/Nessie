@@ -51,6 +51,7 @@ import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChannelRoutes } from './routes/channels.js'
 import { registerDesignerRoutes } from './routes/designer.js'
 import { registerDeviceRoutes } from './routes/devices.js'
+import { registerWebPushRoutes } from './routes/web-push.js'
 import { registerEventRoutes } from './routes/events.js'
 import { registerExecutionEnvironmentRoutes } from './routes/execution-environments.js'
 import { registerFavoriteRoutes } from './routes/favorites.js'
@@ -317,6 +318,7 @@ export const buildApp = async () => {
   // File uploads / attachments slice (Slack-parity files).
   registerUploadRoutes(app, deps)
   registerDeviceRoutes(app, deps)
+  registerWebPushRoutes(app, deps)
   registerCapabilityRoutes(app, deps)
   registerUserRoutes(app, deps)
   registerStatusRoutes(app, deps)
