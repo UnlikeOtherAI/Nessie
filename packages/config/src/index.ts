@@ -116,6 +116,17 @@ export const NessieConfigSchema = z.object({
       repo: z.string().min(1).regex(/^[A-Za-z0-9_.-]+$/).default('Nessie'),
     })
     .default({ owner: 'UnlikeOtherAI', repo: 'Nessie' }),
+  // Web Push (browser notifications) VAPID application-server keys. One key
+  // pair per instance, generated via `node scripts/generate-vapid-keys.mjs`.
+  // The public key is served to browsers so they can subscribe; the private
+  // key signs the per-request VAPID JWT in the worker. Absent ⇒ web push off.
+  webPush: z
+    .object({
+      publicKey: z.string().min(1).optional(),
+      privateKey: z.string().min(1).optional(),
+      subject: z.string().min(1).optional(),
+    })
+    .default({}),
 })
 export type NessieConfig = z.infer<typeof NessieConfigSchema>
 
@@ -159,6 +170,9 @@ export const ConfigEnvMap = {
   NESSIE_GITHUB_TOKEN: 'github.token',
   NESSIE_GITHUB_OWNER: 'github.owner',
   NESSIE_GITHUB_REPO: 'github.repo',
+  NESSIE_WEBPUSH_PUBLIC_KEY: 'webPush.publicKey',
+  NESSIE_WEBPUSH_PRIVATE_KEY: 'webPush.privateKey',
+  NESSIE_WEBPUSH_SUBJECT: 'webPush.subject',
 } as const
 
 export type LoadConfigOptions = {
@@ -221,6 +235,7 @@ const DEFAULT_CONFIG: NessieConfig = {
     owner: 'UnlikeOtherAI',
     repo: 'Nessie',
   },
+  webPush: {},
 }
 
 const isJsonObject = (value: unknown): value is JsonObject =>

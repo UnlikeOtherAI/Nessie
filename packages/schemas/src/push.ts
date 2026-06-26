@@ -13,7 +13,7 @@ import { z } from 'zod'
  * SecretStore; they never appear in any response shape below.
  */
 
-export const PushProviderSchema = z.enum(['apns', 'fcm'])
+export const PushProviderSchema = z.enum(['apns', 'fcm', 'webpush'])
 export type PushProvider = z.infer<typeof PushProviderSchema>
 
 export const PushDeliveryStatusSchema = z.enum(['sent', 'failed', 'dead'])

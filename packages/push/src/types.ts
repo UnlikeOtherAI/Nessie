@@ -48,6 +48,26 @@ export interface PushTarget {
   token: string
 }
 
+/** VAPID application-server credentials for Web Push, already decoded. */
+export interface WebPushCredentials {
+  /** base64url uncompressed P-256 public point (65 bytes). */
+  publicKey: string
+  /** base64url raw P-256 private scalar (32 bytes). */
+  privateKey: string
+  /** Contact `sub` claim — a `mailto:` or `https:` URI. */
+  subject: string
+}
+
+/** A single browser Web Push subscription to deliver to (the PushSubscription). */
+export interface WebPushTarget {
+  /** The push-service endpoint URL the browser handed us. */
+  endpoint: string
+  /** base64url subscription public key (`keys.p256dh`). */
+  p256dh: string
+  /** base64url subscription auth secret (`keys.auth`). */
+  auth: string
+}
+
 /** The outcome of a single delivery attempt. */
 export interface PushResult {
   /** True when the provider accepted the notification. */
