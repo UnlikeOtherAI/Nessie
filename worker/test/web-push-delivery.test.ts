@@ -163,16 +163,18 @@ test('a thrown sender is recorded as a non-dead failure, not pruned', async () =
   assert.equal(state.deliveries[0]!.errorCode, 'network down')
 })
 
-test('skips and prunes an endpoint the SSRF guard rejects (never sends)', async () => {
+test('skips an endpoint the SSRF guard rejects without sending or pruning', async () => {
   const state: FakeState = { subs: [sub('s1', 'u2')], deleted: [], deliveries: [] }
   const { sender, calls } = recordingSender()
   const denyAll = async () => { throw new UrlSafetyError('blocked') }
   const summary = await deliverWebPush({ ...input(state, sender), urlGuard: denyAll })
 
   assert.equal(calls.length, 0, 'must not POST to an unsafe endpoint')
-  assert.deepEqual(summary, { sent: 0, failed: 1, pruned: 1 })
-  assert.deepEqual(state.deleted, ['s1'])
-  assert.equal(state.deliveries[0]!.status, 'dead')
+  // Not pruned: a guard failure (which also covers transient DNS errors) must
+  // not destroy a subscription — it just fails harmlessly this round.
+  assert.deepEqual(summary, { sent: 0, failed: 1, pruned: 0 })
+  assert.deepEqual(state.deleted, [])
+  assert.equal(state.deliveries[0]!.status, 'failed')
 })
 
 test('no-ops when there are no recipients or no subscriptions', async () => {

@@ -137,10 +137,13 @@ unit-testable without a live database or network
 
 - **SSRF.** A subscription `endpoint` is client-supplied and becomes an outbound
   POST target in the worker. Every endpoint passes the shared SSRF guard
-  (`assertSafeUrl` from `@nessie/runtime`) — at subscribe time (reject) and again
-  before each send (skip + prune), the latter closing the DNS-rebinding window
-  where a stored host is later repointed at an internal address. `https` is
-  required; real push services are always `https`.
+  (`assertSafeUrl` from `@nessie/runtime`) — at subscribe time (reject with 400)
+  and again before each send (skip the POST), the latter closing the
+  DNS-rebinding window where a stored host is later repointed at an internal
+  address. A send-time guard failure is a non-dead failure, not a prune: the
+  guard throws the same error for a blocked host and a transient DNS hiccup, so
+  pruning on it could destroy a valid subscription. `https` is required; real
+  push services are always `https`.
 - **Input bounds.** `endpoint`, `p256dh`, and `auth` are length- and
   format-validated at subscribe time, so structurally-invalid subscriptions
   (which could never be encrypted for) are rejected rather than failing forever.

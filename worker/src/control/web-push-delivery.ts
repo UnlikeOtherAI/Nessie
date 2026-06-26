@@ -129,8 +129,13 @@ export const deliverWebPush = async (
         webPayload,
       )
     } catch (err) {
+      // A guard failure means we simply do NOT POST (SSRF-safe either way). Do
+      // not prune on it: `assertSafeUrl` throws the same error for a genuinely
+      // blocked host and for a transient DNS hiccup, so pruning would silently
+      // destroy a valid subscription on a momentary resolver blip. Count it as a
+      // (non-dead) failure; a truly blocked endpoint just keeps failing harmlessly.
       result = err instanceof UrlSafetyError
-        ? { ok: false, status: 0, deadToken: true, error: 'unsafe endpoint' }
+        ? { ok: false, status: 0, deadToken: false, error: 'endpoint failed safety check' }
         : resultFromError(err)
     }
 
