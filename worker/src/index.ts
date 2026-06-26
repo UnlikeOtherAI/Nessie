@@ -125,12 +125,25 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
+  const webPush = config.webPush
+  const webPushCreds = webPush.publicKey && webPush.privateKey && webPush.subject
+    ? {
+      publicKey: webPush.publicKey,
+      privateKey: webPush.privateKey,
+      subject: webPush.subject,
+    }
+    : undefined
+
   queueProvider.subscribe(
     'push.dispatch',
     async (job) => {
       const payload = PushDispatchJobPayloadSchema.parse(job.payload)
       await handlePushDispatch(
-        { prisma, authSecret: config.auth.secret ?? '' },
+        {
+          prisma,
+          authSecret: config.auth.secret ?? '',
+          ...(webPushCreds ? { webPush: webPushCreds } : {}),
+        },
         payload,
       )
     },

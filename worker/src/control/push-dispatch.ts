@@ -9,8 +9,10 @@ import {
   type PushPayload,
   type PushResult,
   type PushTarget,
+  type WebPushCredentials,
 } from '@nessie/push'
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
+import { deliverWebPush } from './web-push-delivery.js'
 import {
   PUSH_MAX_SEND_ATTEMPTS,
   defaultPushRetryDelayMs,
@@ -40,6 +42,7 @@ export type PushDispatchPrisma = Pick<
   | 'mcpOAuthSecret'
   | 'user'
   | 'pushDelivery'
+  | 'webPushSubscription'
 >
 
 export type PushSenders = {
@@ -59,6 +62,12 @@ export type PushDispatchDeps = {
   prisma: PushDispatchPrisma
   /** Deployment auth secret — the key the secret store encrypted creds under. */
   authSecret: string
+  /**
+   * VAPID credentials for browser Web Push, populated only when all three
+   * config values are present. When set, recipients' browser subscriptions are
+   * delivered to in addition to native APNs/FCM tokens.
+   */
+  webPush?: WebPushCredentials
   /** Push senders, injected so tests can stub them (default: real network). */
   senders?: PushSenders
   /** Clock injection keeps recipient preference filtering deterministic in tests. */
@@ -246,6 +255,100 @@ const loadFcmCreds = async (
   return { serviceAccountJson }
 }
 
+type NativeDeliveryInput = {
+  prisma: Pick<PushDispatchPrisma, 'deviceToken' | 'pushDelivery'>
+  apnsCreds: ApnsCredentials | null
+  fcmCreds: FcmCredentials | null
+  senders: PushSenders
+  retryDelayMs: (completedAttempt: number) => number
+  payload: PushPayload
+  recipientIds: string[]
+  organizationId: string
+  messageId: string
+}
+
+/**
+ * Deliver the notification to every recipient's registered native (APNs/FCM)
+ * device tokens, pruning the ones the provider reports dead. Returns a summary
+ * plus the number of tokens considered (for logging). Never throws out of the
+ * per-token loop.
+ */
+const deliverNativeTokens = async (
+  input: NativeDeliveryInput,
+): Promise<{ summary: PushDispatchSummary; tokenCount: number }> => {
+  const summary: PushDispatchSummary = { sent: 0, failed: 0, pruned: 0 }
+  const tokens = await input.prisma.deviceToken.findMany({
+    where: { userId: { in: input.recipientIds } },
+  })
+  if (tokens.length === 0) {
+    return { summary, tokenCount: 0 }
+  }
+
+  const deadTokenIds: string[] = []
+  for (const token of tokens) {
+    let outcome: PushSendOutcome | null = null
+    try {
+      outcome = await sendConfiguredToken({
+        apnsCreds: input.apnsCreds,
+        fcmCreds: input.fcmCreds,
+        payload: input.payload,
+        retryDelayMs: input.retryDelayMs,
+        senders: input.senders,
+        token,
+      })
+    } catch (err) {
+      summary.failed += 1
+      console.error('[push-dispatch] send failed', {
+        tokenId: token.id,
+        platform: token.platform,
+        err,
+      })
+      continue
+    }
+
+    if (!outcome) {
+      // No configured provider for this platform — skip silently.
+      continue
+    }
+
+    if (outcome.result.ok) {
+      summary.sent += 1
+    } else {
+      summary.failed += 1
+    }
+    if (outcome.result.deadToken) {
+      deadTokenIds.push(token.id)
+    }
+
+    try {
+      await input.prisma.pushDelivery.create({
+        data: {
+          organizationId: input.organizationId,
+          userId: token.userId,
+          messageId: input.messageId,
+          provider: outcome.provider,
+          status: deliveryStatusOf(outcome.result),
+          errorCode: errorCodeOf(outcome.result),
+          attempts: outcome.attempts,
+        },
+      })
+    } catch (err) {
+      console.error('[push-dispatch] delivery log failed', {
+        tokenId: token.id,
+        platform: token.platform,
+        err,
+      })
+    }
+  }
+
+  if (deadTokenIds.length > 0) {
+    await input.prisma.deviceToken.deleteMany({ where: { id: { in: deadTokenIds } } })
+    summary.pruned = deadTokenIds.length
+  }
+
+  return { summary, tokenCount: tokens.length }
+}
+
 export const handlePushDispatch = async (
   deps: PushDispatchDeps,
   payload: PushDispatchJobPayload,
@@ -254,17 +357,20 @@ export const handlePushDispatch = async (
   const senders: PushSenders = deps.senders ?? { sendApns, sendFcm }
   const retryDelayMs = deps.retryDelayMs ?? defaultPushRetryDelayMs
 
-  // 1. Load credentials. Nothing to do if neither provider is configured.
+  const webPushEnabled = Boolean(deps.webPush)
+
+  // 1. Load native credentials. Nothing to do when no native provider AND no
+  // web push is configured.
   const credRows = await deps.prisma.pushCredential.findMany()
   const apnsRow = credRows.find((r) => r.provider === 'apns') ?? null
   const fcmRow = credRows.find((r) => r.provider === 'fcm') ?? null
-  if (!apnsRow && !fcmRow) {
+  if (!apnsRow && !fcmRow && !webPushEnabled) {
     return summary
   }
 
   const apnsCreds = apnsRow ? await loadApnsCreds(deps, apnsRow) : null
   const fcmCreds = fcmRow ? await loadFcmCreds(deps, fcmRow) : null
-  if (!apnsCreds && !fcmCreds) {
+  if (!apnsCreds && !fcmCreds && !webPushEnabled) {
     return summary
   }
 
@@ -293,15 +399,8 @@ export const handlePushDispatch = async (
     return summary
   }
 
-  // 3. Load the recipients' device tokens.
-  const tokens = await deps.prisma.deviceToken.findMany({
-    where: { userId: { in: recipientIds } },
-  })
-  if (tokens.length === 0) {
-    return summary
-  }
-
-  // 4. Build the notification payload (deep-link data + per-channel coalescing).
+  // 3. Build the notification payload, shared by native + web push delivery
+  // (deep-link data + per-channel coalescing).
   const channel = await deps.prisma.channel.findUnique({
     where: { id: payload.channelId },
     select: { label: true },
@@ -317,74 +416,50 @@ export const handlePushDispatch = async (
     collapseId: payload.channelId,
   }
 
-  // 5. Deliver per-token; prune dead tokens; never throw out of the loop.
-  const deadTokenIds: string[] = []
-  for (const token of tokens) {
-    let outcome: PushSendOutcome | null = null
-    try {
-      outcome = await sendConfiguredToken({
-        apnsCreds,
-        fcmCreds,
-        payload: pushPayload,
-        retryDelayMs,
-        senders,
-        token,
-      })
-    } catch (err) {
-      summary.failed += 1
-      console.error('[push-dispatch] send failed', {
-        tokenId: token.id,
-        platform: token.platform,
-        err,
-      })
-      continue
-    }
-
-    if (!outcome) {
-      // No configured provider for this platform — skip silently.
-      continue
-    }
-
-    if (outcome.result.ok) {
-      summary.sent += 1
-    } else {
-      summary.failed += 1
-    }
-    if (outcome.result.deadToken) {
-      deadTokenIds.push(token.id)
-    }
-
-    try {
-      await deps.prisma.pushDelivery.create({
-        data: {
-          organizationId: payload.organizationId,
-          userId: token.userId,
-          messageId: payload.messageId,
-          provider: outcome.provider,
-          status: deliveryStatusOf(outcome.result),
-          errorCode: errorCodeOf(outcome.result),
-          attempts: outcome.attempts,
-        },
-      })
-    } catch (err) {
-      console.error('[push-dispatch] delivery log failed', {
-        tokenId: token.id,
-        platform: token.platform,
-        err,
-      })
-    }
+  // 4. Native delivery to registered APNs/FCM device tokens.
+  let tokenCount = 0
+  if (apnsCreds || fcmCreds) {
+    const native = await deliverNativeTokens({
+      prisma: deps.prisma,
+      apnsCreds,
+      fcmCreds,
+      senders,
+      retryDelayMs,
+      payload: pushPayload,
+      recipientIds,
+      organizationId: payload.organizationId,
+      messageId: payload.messageId,
+    })
+    summary.sent += native.summary.sent
+    summary.failed += native.summary.failed
+    summary.pruned += native.summary.pruned
+    tokenCount = native.tokenCount
   }
 
-  if (deadTokenIds.length > 0) {
-    await deps.prisma.deviceToken.deleteMany({ where: { id: { in: deadTokenIds } } })
-    summary.pruned = deadTokenIds.length
+  // 5. Web Push delivery, in addition to native, when VAPID creds are present.
+  let webPushSubscriptions = 0
+  if (deps.webPush) {
+    const web = await deliverWebPush({
+      prisma: deps.prisma,
+      creds: deps.webPush,
+      recipientIds,
+      payload: pushPayload,
+      organizationId: payload.organizationId,
+      messageId: payload.messageId,
+      channelId: payload.channelId,
+    })
+    summary.sent += web.sent
+    summary.failed += web.failed
+    summary.pruned += web.pruned
+    webPushSubscriptions = web.sent + web.failed
   }
 
   console.log('[push-dispatch] done', {
     messageId: payload.messageId,
     channelId: payload.channelId,
     recipients: recipientIds.length,
-    tokens: tokens.length,
+    tokens: tokenCount,
+    webPushSubscriptions,
     sent: summary.sent,
     failed: summary.failed,
     pruned: summary.pruned,
