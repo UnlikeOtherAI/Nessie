@@ -7,6 +7,7 @@ import type {
   WebPushCredentials,
   WebPushTarget,
 } from '@nessie/push'
+import { UrlSafetyError } from '@nessie/runtime'
 import {
   deliverWebPush,
   type WebPushDeliveryPrisma,
@@ -91,6 +92,9 @@ const basePayload: PushPayload = {
   collapseId: 'channel-1',
 }
 
+// Passthrough SSRF guard so tests stay hermetic (no real DNS resolution).
+const allowAll = async (_url: string) => undefined
+
 const input = (state: FakeState, sender: WebPushSender) => ({
   prisma: makeFakePrisma(state),
   creds: CREDS,
@@ -100,6 +104,7 @@ const input = (state: FakeState, sender: WebPushSender) => ({
   messageId: 'msg-1',
   channelId: 'channel-1',
   sender,
+  urlGuard: allowAll,
 })
 
 test('delivers to a recipient subscription with a deep-link url', async () => {
@@ -156,6 +161,18 @@ test('a thrown sender is recorded as a non-dead failure, not pruned', async () =
   assert.deepEqual(state.deleted, [])
   assert.equal(state.deliveries[0]!.status, 'failed')
   assert.equal(state.deliveries[0]!.errorCode, 'network down')
+})
+
+test('skips and prunes an endpoint the SSRF guard rejects (never sends)', async () => {
+  const state: FakeState = { subs: [sub('s1', 'u2')], deleted: [], deliveries: [] }
+  const { sender, calls } = recordingSender()
+  const denyAll = async () => { throw new UrlSafetyError('blocked') }
+  const summary = await deliverWebPush({ ...input(state, sender), urlGuard: denyAll })
+
+  assert.equal(calls.length, 0, 'must not POST to an unsafe endpoint')
+  assert.deepEqual(summary, { sent: 0, failed: 1, pruned: 1 })
+  assert.deepEqual(state.deleted, ['s1'])
+  assert.equal(state.deliveries[0]!.status, 'dead')
 })
 
 test('no-ops when there are no recipients or no subscriptions', async () => {

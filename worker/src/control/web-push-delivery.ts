@@ -6,6 +6,7 @@ import {
   type WebPushCredentials,
   type WebPushTarget,
 } from '@nessie/push'
+import { assertSafeUrl, UrlSafetyError } from '@nessie/runtime'
 
 /**
  * Browser Web Push fan-out for a dispatched notification. Runs alongside (not
@@ -49,6 +50,8 @@ export type DeliverWebPushInput = {
   channelId: string
   /** Sender injection for tests (default: the real {@link sendWebPush}). */
   sender?: WebPushSender
+  /** SSRF guard injection for tests (default: the real {@link assertSafeUrl}). */
+  urlGuard?: (url: string) => Promise<unknown>
 }
 
 type DeliveryStatus = 'sent' | 'failed' | 'dead'
@@ -98,19 +101,24 @@ export const deliverWebPush = async (
   }
 
   const subscriptions = await input.prisma.webPushSubscription.findMany({
-    where: { userId: { in: input.recipientIds } },
+    where: { userId: { in: input.recipientIds }, organizationId: input.organizationId },
   })
   if (subscriptions.length === 0) {
     return summary
   }
 
   const send = input.sender ?? sendWebPush
+  const urlGuard = input.urlGuard ?? assertSafeUrl
   const webPayload = buildWebPayload(input.payload, input.channelId)
   const deadSubscriptionIds: string[] = []
 
   for (const subscription of subscriptions) {
     let result: PushResult
     try {
+      // Re-validate the endpoint at send time: it was SSRF-checked at subscribe,
+      // but DNS can be repointed to an internal host afterwards. A stored unsafe
+      // endpoint is dead to us — mark it for pruning rather than POSTing to it.
+      await urlGuard(subscription.endpoint)
       result = await send(
         input.creds,
         {
@@ -121,7 +129,9 @@ export const deliverWebPush = async (
         webPayload,
       )
     } catch (err) {
-      result = resultFromError(err)
+      result = err instanceof UrlSafetyError
+        ? { ok: false, status: 0, deadToken: true, error: 'unsafe endpoint' }
+        : resultFromError(err)
     }
 
     if (result.ok) {

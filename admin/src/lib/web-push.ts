@@ -68,15 +68,43 @@ export const subscribeBrowser = async (
     )
   }
 
+  const applicationServerKey = urlBase64ToUint8Array(publicKey)
+
+  // Reuse an existing subscription only if it was created with the SAME VAPID
+  // key; after a key rotation a stale subscription is rejected by the push
+  // service (403), so drop it and re-subscribe with the current key.
   const existing = await registration.pushManager.getSubscription()
+  if (existing && !subscriptionMatchesKey(existing, applicationServerKey)) {
+    await existing.unsubscribe()
+  }
+  const reusable = existing && subscriptionMatchesKey(existing, applicationServerKey)
+    ? existing
+    : null
+
   const subscription =
-    existing ??
+    reusable ??
     (await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
+      applicationServerKey,
     }))
 
   return subscription.toJSON()
+}
+
+/** True when an existing subscription's server key equals the expected bytes. */
+const subscriptionMatchesKey = (
+  subscription: PushSubscription,
+  expected: Uint8Array<ArrayBuffer>,
+): boolean => {
+  const current = subscription.options.applicationServerKey
+  if (!current) {
+    return false
+  }
+  const currentBytes = new Uint8Array(current)
+  if (currentBytes.length !== expected.length) {
+    return false
+  }
+  return currentBytes.every((byte, index) => byte === expected[index])
 }
 
 /**

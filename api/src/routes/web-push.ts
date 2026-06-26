@@ -5,13 +5,18 @@ import {
   WebPushSubscriptionRecordSchema,
   WebPushUnsubscribeRequestSchema,
 } from '@nessie/schemas'
+import { assertSafeUrl, UrlSafetyError } from '@nessie/runtime'
 
-import { createApiResponse, parseInput } from '../lib/api.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RouteDeps } from './types.js'
 
 // User-Agent strings can be arbitrarily long; clamp to a sane DB-friendly size
 // so a hostile client can't bloat the row.
 const MAX_USER_AGENT_LENGTH = 512
+
+// Cap per-user subscriptions so a hostile client can't bloat the table or
+// amplify worker fan-out. A real user has a handful of browsers/devices.
+const MAX_SUBSCRIPTIONS_PER_USER = 20
 
 /**
  * Web Push subscription endpoints.
@@ -58,6 +63,19 @@ export const registerWebPushRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
+    // SSRF guard: the endpoint becomes an outbound POST target in the worker, so
+    // reject private/internal hosts (and non-http(s) schemes) up front. The
+    // schema already requires https; this resolves DNS and blocks internal IPs.
+    try {
+      await assertSafeUrl(body.endpoint)
+    } catch (error) {
+      if (error instanceof UrlSafetyError) {
+        sendApiError(reply, 400, 'UNSAFE_ENDPOINT', 'Push endpoint is not allowed')
+        return reply
+      }
+      throw error
+    }
+
     const organizationId = actorContext.tenant.organizationId
     const userId = actorContext.actor.actorId
     const userAgent = request.headers['user-agent']?.slice(0, MAX_USER_AGENT_LENGTH) ?? null
@@ -80,6 +98,21 @@ export const registerWebPushRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         lastSeenAt: new Date(),
       },
     })
+
+    // Bound table growth: keep only the most-recently-seen subscriptions, evicting
+    // the oldest beyond the cap (covers the case where this upsert created a new row).
+    const count = await prisma.webPushSubscription.count({ where: { userId } })
+    if (count > MAX_SUBSCRIPTIONS_PER_USER) {
+      const stale = await prisma.webPushSubscription.findMany({
+        where: { userId },
+        orderBy: { lastSeenAt: 'asc' },
+        take: count - MAX_SUBSCRIPTIONS_PER_USER,
+        select: { id: true },
+      })
+      await prisma.webPushSubscription.deleteMany({
+        where: { id: { in: stale.map((row) => row.id) } },
+      })
+    }
 
     return reply.code(201).send(
       createApiResponse(

@@ -11,17 +11,46 @@ import { z } from 'zod'
  */
 
 /**
+ * A push-service endpoint URL: an absolute `https://` URL, length-bounded. Only
+ * a structural check here — the SSRF guard (`assertSafeUrl`) rejects private /
+ * internal hosts at the route boundary; real push services are always https.
+ */
+const WebPushEndpointSchema = z
+  .string()
+  .url()
+  .max(2048)
+  .startsWith('https://', 'Web Push endpoints must be https')
+
+/**
+ * A base64url string that decodes to exactly `bytes`. Length-checked without
+ * `Buffer` so the schema stays browser-safe (the admin imports this package):
+ * N bytes encode to `ceil(N*4/3)` unpadded base64url characters.
+ */
+const base64urlOfLength = (bytes: number, label: string) => {
+  const encodedLength = Math.ceil((bytes * 4) / 3)
+  return z
+    .string()
+    .regex(/^[A-Za-z0-9_-]+={0,2}$/, `${label} must be base64url`)
+    .refine((value) => value.replace(/=+$/, '').length === encodedLength, {
+      message: `${label} must be ${bytes} bytes (base64url)`,
+    })
+}
+
+/**
  * Body for `POST /api/push/web/subscribe` — the JSON form of a browser
- * `PushSubscription` (`subscription.toJSON()`). `keys.p256dh` and `keys.auth`
- * are base64url; `endpoint` is the push-service URL the browser issued.
+ * `PushSubscription` (`subscription.toJSON()`). `keys.p256dh` is the 65-byte
+ * uncompressed P-256 public point and `keys.auth` the 16-byte secret, both
+ * base64url; `endpoint` is the push-service URL the browser issued. Key sizes
+ * are validated here so structurally-invalid subscriptions (which could never
+ * be encrypted for) are rejected at subscribe time rather than failing forever.
  */
 export const WebPushSubscribeRequestSchema = z.object({
-  endpoint: z.string().url(),
+  endpoint: WebPushEndpointSchema,
   // The browser includes `expirationTime` (usually null); accepted and ignored.
   expirationTime: z.number().nullable().optional(),
   keys: z.object({
-    p256dh: z.string().min(1),
-    auth: z.string().min(1),
+    p256dh: base64urlOfLength(65, 'p256dh'),
+    auth: base64urlOfLength(16, 'auth'),
   }),
 })
 export type WebPushSubscribeRequest = z.infer<typeof WebPushSubscribeRequestSchema>
@@ -31,7 +60,7 @@ export type WebPushSubscribeRequest = z.infer<typeof WebPushSubscribeRequestSche
  * endpoint (the browser knows its own endpoint after `getSubscription()`).
  */
 export const WebPushUnsubscribeRequestSchema = z.object({
-  endpoint: z.string().url(),
+  endpoint: WebPushEndpointSchema,
 })
 export type WebPushUnsubscribeRequest = z.infer<typeof WebPushUnsubscribeRequestSchema>
 

@@ -96,6 +96,20 @@ test('rejects a malformed p256dh key', () => {
   )
 })
 
+test('round-trips an empty payload', () => {
+  const { ecdh, p256dh, auth } = newSubscription()
+  const body = encryptWebPushPayload({ payload: Buffer.alloc(0), uaPublicKey: p256dh, authSecret: auth })
+  assert.deepEqual(decrypt(body, ecdh, p256dh, auth), Buffer.alloc(0))
+})
+
+test('rejects a payload too large for a single record', () => {
+  const { p256dh, auth } = newSubscription()
+  assert.throws(
+    () => encryptWebPushPayload({ payload: Buffer.alloc(4080), uaPublicKey: p256dh, authSecret: auth }),
+    /payload too large/,
+  )
+})
+
 test('rejects a wrong-length auth secret', () => {
   const { p256dh } = newSubscription()
   assert.throws(

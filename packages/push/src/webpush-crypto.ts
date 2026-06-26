@@ -74,6 +74,15 @@ export const encryptWebPushPayload = (input: WebPushEncryptInput): Buffer => {
 
   // Single record: plaintext followed by the 0x02 last-record delimiter.
   const record = Buffer.concat([input.payload, Buffer.from([0x02])])
+  // A single aes128gcm record (incl. the 16-byte GCM tag) must fit within `rs`,
+  // or the UA mis-frames it and decryption fails. Push services cap the body
+  // near this size too, so reject oversize payloads loudly instead of shipping
+  // an undeliverable blob.
+  if (record.length + 16 > RECORD_SIZE) {
+    throw new Error(
+      `Web Push payload too large: ${input.payload.length} bytes exceeds the single-record limit`,
+    )
+  }
   const cipher = createCipheriv('aes-128-gcm', cek, nonce)
   const ciphertext = Buffer.concat([cipher.update(record), cipher.final(), cipher.getAuthTag()])
 

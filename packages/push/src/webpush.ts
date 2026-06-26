@@ -75,7 +75,10 @@ export class WebPushClient {
       })
       const nowSeconds = Math.floor(this.now() / 1000)
       headers = {
-        authorization: buildVapidAuthHeader(this.key, this.creds, target.endpoint, nowSeconds, ttl),
+        // The VAPID JWT lifetime is independent of the message TTL — leave it on
+        // the conservative 12h default rather than the message TTL (which can be
+        // 24h, the spec ceiling, and risks clock-skew rejection at the service).
+        authorization: buildVapidAuthHeader(this.key, this.creds, target.endpoint, nowSeconds),
         'content-encoding': 'aes128gcm',
         'content-type': 'application/octet-stream',
         ttl: String(ttl),

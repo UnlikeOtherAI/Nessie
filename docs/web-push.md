@@ -110,7 +110,7 @@ All three are authenticated and scoped to the calling user within their tenant
 | Method + path | Body | Behaviour |
 |---------------|------|-----------|
 | `GET /api/push/web/config` | — | Returns `{ enabled, publicKey }`. `publicKey` is `null` when web push is off. The SPA reads this before showing the opt-in. |
-| `POST /api/push/web/subscribe` | the browser's `PushSubscription.toJSON()` (`{ endpoint, keys: { p256dh, auth } }`) | Upserts the caller's subscription by `(userId, endpoint)`; records the UA. Returns `201` with the stored record. |
+| `POST /api/push/web/subscribe` | the browser's `PushSubscription.toJSON()` (`{ endpoint, keys: { p256dh, auth } }`) | Validates the endpoint (`https` only, SSRF-guarded — see Security) and the key sizes (65-byte `p256dh`, 16-byte `auth`), then upserts the caller's subscription by `(userId, endpoint)`, records the UA, and evicts the caller's oldest rows beyond the per-user cap. Returns `201` with the stored record. |
 | `POST /api/push/web/unsubscribe` | `{ endpoint }` | Deletes the caller's matching subscription. Idempotent (missing row is not an error); returns `204`. A user can never delete another user's subscription. |
 
 ## Worker delivery
@@ -129,8 +129,37 @@ fan-out invoked from `handlePushDispatch` for the resolved recipient set:
    `410 Gone`, the subscription is deleted so it is never retried.
 
 The path never throws out of its loop — one failed endpoint cannot abort the
-rest — and the Prisma surface plus sender are injected so it is unit-testable
-without a live database or network (`worker/test/push-dispatch.test.ts`).
+rest — and the Prisma surface, sender, and SSRF guard are injected so it is
+unit-testable without a live database or network
+(`worker/test/web-push-delivery.test.ts`).
+
+## Security
+
+- **SSRF.** A subscription `endpoint` is client-supplied and becomes an outbound
+  POST target in the worker. Every endpoint passes the shared SSRF guard
+  (`assertSafeUrl` from `@nessie/runtime`) — at subscribe time (reject) and again
+  before each send (skip + prune), the latter closing the DNS-rebinding window
+  where a stored host is later repointed at an internal address. `https` is
+  required; real push services are always `https`.
+- **Input bounds.** `endpoint`, `p256dh`, and `auth` are length- and
+  format-validated at subscribe time, so structurally-invalid subscriptions
+  (which could never be encrypted for) are rejected rather than failing forever.
+- **Per-user cap.** A user keeps at most a small number of subscriptions
+  (`MAX_SUBSCRIPTIONS_PER_USER`); the oldest are evicted, bounding table growth
+  and worker fan-out amplification.
+- **Tenant isolation.** Subscribe/unsubscribe are scoped to the calling
+  `userId` + `organizationId`; the delivery query is org-scoped too. A user can
+  never read, clobber, or delete another user's subscription.
+- **VAPID key storage.** Unlike the APNs/FCM secrets (encrypted `PushSecretStore`),
+  the single instance-wide VAPID key pair lives in env/config. This is a
+  deliberate choice: it is one non-tenant key the worker needs at process start,
+  not a per-tenant secret. If per-tenant VAPID keys are ever needed, move them
+  into the secret store.
+- **Shared browsers.** Subscriptions are keyed by `(userId, endpoint)`, so two
+  users on one browser get separate rows. A user who does not toggle web push
+  off before another signs in leaves a row that keeps delivering to that browser
+  until they disable it; the per-user cap and dead-subscription pruning bound the
+  blast radius.
 
 ## Admin UI
 
