@@ -63,6 +63,8 @@ export const runExecutionAgentLoop = async (
   const subAgentBuiltinIds = new Set(
     [...input.resolvedToolIds].filter((id) => id !== 'delegate'),
   )
+  const mcpExposedNames = new Set(input.mcpToolset.descriptors.map((d) => d.toolName))
+  const mainToolDefs = [...input.toolDefs, ...input.mcpToolset.descriptors]
 
   const mainInferenceCallbacks: InferenceCallbacks = {
     onVisibleReasoningDelta: async (chunk) => {
@@ -240,6 +242,9 @@ export const runExecutionAgentLoop = async (
           success: result.success,
         }
       }
+      if (mcpExposedNames.has(toolName)) {
+        return input.mcpToolset.dispatch(toolName, args)
+      }
       const registryDecision = authorizeToolCall(
         toolName,
         input.allowedToolIds,
@@ -309,8 +314,8 @@ export const runExecutionAgentLoop = async (
       return executeBuiltinTool(toolName, args, buildBuiltinCtx(toolActorContext))
     },
     initialMessages: input.initialMessages,
-    runInference: (messages) => runMainInference(messages, input.toolDefs),
-    tools: input.toolDefs,
+    runInference: (messages) => runMainInference(messages, mainToolDefs),
+    tools: mainToolDefs,
   })
 
   if (subAgentInvocations.length > 0) {

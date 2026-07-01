@@ -74,6 +74,20 @@ const stringifyForOutput = (value: unknown): string => {
   }
 }
 
+export const applyBearerSecretToMcpTransport = (
+  transport: McpTransportConfig,
+  secret?: string | null,
+): McpTransportConfig => {
+  if (!secret || transport.transport === 'stdio') return transport
+  return {
+    ...transport,
+    headers: {
+      ...(transport.headers ?? {}),
+      Authorization: `Bearer ${secret}`,
+    },
+  }
+}
+
 /**
  * Decode an untyped `transportConfig` blob (as stored on `McpServerInstance`)
  * into a typed `McpTransportConfig`. Centralised here so every entry point —
@@ -97,7 +111,10 @@ export const dispatchTool = async (
   switch (input.spec.transport) {
     case 'mcp': {
       const result = await runMcpTool({
-        transport: input.spec.connection,
+        transport: applyBearerSecretToMcpTransport(
+          input.spec.connection,
+          input.secret,
+        ),
         toolName: input.spec.toolName,
         args: input.args,
         timeoutMs: input.timeoutMs,

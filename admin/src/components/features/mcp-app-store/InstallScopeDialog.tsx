@@ -15,8 +15,10 @@ type InstallScopeDialogProps = {
   catalogEntry: McpCatalogEntryRecord
   onCancel: () => void
   onConfirm: (input: {
+    credentialRef?: string | null
     scopeType: McpServerScopeType
     scopeId: string
+    transportConfig?: Record<string, unknown>
   }) => Promise<void>
   organizationId: string
   currentUserId: string
@@ -44,6 +46,12 @@ const inputClass = [
   'focus:border-[color:var(--accent)] focus:outline-none',
 ].join(' ')
 
+const transportUrlFrom = (config: Record<string, unknown>): string =>
+  typeof config.url === 'string' ? config.url : ''
+
+const protocolNeedsEndpoint = (protocol: string): boolean =>
+  protocol === 'http' || protocol === 'sse' || protocol === 'ws'
+
 export const InstallScopeDialog = ({
   catalogEntry,
   onCancel,
@@ -60,6 +68,10 @@ export const InstallScopeDialog = ({
   const [scopeId, setScopeId] = useState(
     canChooseScope ? organizationId : currentUserId,
   )
+  const initialEndpoint = transportUrlFrom(catalogEntry.defaultTransportConfig)
+  const needsEndpoint = protocolNeedsEndpoint(catalogEntry.protocol)
+  const [endpointUrl, setEndpointUrl] = useState(initialEndpoint)
+  const [credentialRef, setCredentialRef] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -69,8 +81,44 @@ export const InstallScopeDialog = ({
       setError('Scope ID is required')
       return
     }
+    const trimmedEndpoint = endpointUrl.trim()
+    if (needsEndpoint && !trimmedEndpoint) {
+      setError('Endpoint URL is required')
+      return
+    }
+    if (needsEndpoint) {
+      try {
+        const parsed = new URL(trimmedEndpoint)
+        if (
+          catalogEntry.protocol === 'ws'
+          && parsed.protocol !== 'ws:'
+          && parsed.protocol !== 'wss:'
+        ) {
+          setError('Endpoint URL must use ws:// or wss://')
+          return
+        }
+        if (
+          (catalogEntry.protocol === 'http' || catalogEntry.protocol === 'sse')
+          && parsed.protocol !== 'http:'
+          && parsed.protocol !== 'https:'
+        ) {
+          setError('Endpoint URL must use http:// or https://')
+          return
+        }
+      } catch {
+        setError('Endpoint URL is invalid')
+        return
+      }
+    }
     try {
-      await onConfirm({ scopeType, scopeId: scopeId.trim() })
+      await onConfirm({
+        credentialRef: credentialRef.trim() || null,
+        scopeType,
+        scopeId: scopeId.trim(),
+        transportConfig: needsEndpoint
+          ? { transport: catalogEntry.protocol, url: trimmedEndpoint }
+          : undefined,
+      })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Install failed')
     }
@@ -129,6 +177,34 @@ export const InstallScopeDialog = ({
               value={scopeId}
             />
           </label>
+          {needsEndpoint ? (
+            <label className={labelClass}>
+              Endpoint URL
+              <input
+                className={inputClass}
+                onChange={(event) => setEndpointUrl(event.target.value)}
+                placeholder={
+                  catalogEntry.protocol === 'sse'
+                    ? 'https://crawler.example.com/mcp/sse'
+                    : 'https://example.com/mcp'
+                }
+                value={endpointUrl}
+              />
+            </label>
+          ) : null}
+          {catalogEntry.authMethod !== 'none' ? (
+            <label className={labelClass}>
+              Credential ref
+              <input
+                autoComplete="new-password"
+                className={inputClass}
+                onChange={(event) => setCredentialRef(event.target.value)}
+                placeholder="CRAWL4AI_BEARER_TOKEN"
+                type="password"
+                value={credentialRef}
+              />
+            </label>
+          ) : null}
           {error ? (
             <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]">
               {error}

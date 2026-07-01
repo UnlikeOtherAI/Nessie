@@ -129,6 +129,8 @@ export const executeRunJob = async (
       deps.prisma,
       context.channel.organizationId,
       toolPolicy,
+      payload.actorContext,
+      { agentId: context.agent.id, channelId: context.channel.id },
       attributionFromActorContext(payload.actorContext, {
         agentId: context.agent.id,
         runId: context.run.id,

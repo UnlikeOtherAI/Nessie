@@ -1,5 +1,6 @@
 import { recordConnectorUsage, type LedgerAttribution, type ToolSchemaDescriptor } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext, McpCredentialPrincipalType } from '@nessie/schemas'
 import { dispatchTool, parseMcpTransportConfig } from './tool-dispatch.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
@@ -23,7 +24,13 @@ type RegistryRow = {
   inputSchema: unknown
   transportConfig: unknown
   mcpInstanceId: string | null
-  mcpInstance: { transportConfig: unknown } | null
+  mcpInstance: {
+    credentialRef: string | null
+    transportConfig: unknown
+    catalogEntry: {
+      defaultTransportConfig: unknown
+    }
+  } | null
 }
 
 const isAllowedByPolicy = (toolPolicy: McpToolPolicy, registryEntryId: string): boolean => {
@@ -33,6 +40,73 @@ const isAllowedByPolicy = (toolPolicy: McpToolPolicy, registryEntryId: string): 
 
 const stringRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+
+type CredentialResolutionContext = {
+  userId?: string | null
+  agentId?: string | null
+  channelId?: string | null
+  teamId?: string | null
+  projectId?: string | null
+  organizationId?: string | null
+}
+
+const CREDENTIAL_RESOLUTION_ORDER: Array<{
+  principalType: McpCredentialPrincipalType
+  field: keyof CredentialResolutionContext
+}> = [
+  { principalType: 'user', field: 'userId' },
+  { principalType: 'agent', field: 'agentId' },
+  { principalType: 'channel', field: 'channelId' },
+  { principalType: 'team', field: 'teamId' },
+  { principalType: 'project', field: 'projectId' },
+  { principalType: 'organization', field: 'organizationId' },
+]
+
+const buildCredentialContext = (
+  actorContext: AuthorizedActionContext,
+  agentId: string,
+  channelId: string,
+): CredentialResolutionContext => ({
+  userId:
+    actorContext.actor.actorType === 'user'
+      ? actorContext.actor.actorId
+      : actorContext.actionContext.effectiveUserId,
+  agentId,
+  channelId,
+  teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId,
+  projectId: actorContext.tenant.projectId,
+  organizationId: actorContext.tenant.organizationId,
+})
+
+const resolveCredentialRef = async (
+  prisma: PrismaClient,
+  instanceId: string,
+  context: CredentialResolutionContext,
+  defaultRef: string | null,
+): Promise<string | null> => {
+  for (const { principalType, field } of CREDENTIAL_RESOLUTION_ORDER) {
+    const principalId = context[field]
+    if (!principalId) continue
+    const override = await prisma.mcpServerCredentialOverride.findUnique({
+      where: {
+        instanceId_principalType_principalId: {
+          instanceId,
+          principalType,
+          principalId,
+        },
+      },
+      select: { credentialRef: true },
+    })
+    if (override?.credentialRef) return override.credentialRef
+  }
+  return defaultRef
+}
+
+const resolveSecret = (credentialRef: string | null): string | null => {
+  if (!credentialRef) return null
+  const value = process.env[credentialRef]
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
 
 const extractOriginalToolName = (row: RegistryRow): string | null => {
   const tc = stringRecord(row.transportConfig)
@@ -66,6 +140,8 @@ export const buildMcpToolset = async (
   prisma: PrismaClient,
   organizationId: string,
   toolPolicy: McpToolPolicy,
+  actorContext: AuthorizedActionContext,
+  runtimeContext: { agentId: string; channelId: string },
   // Attribution for connector usage billing — every dispatched MCP tool call
   // writes a connector_usage_events row keyed to the run's org/agent/channel/run.
   attribution: LedgerAttribution,
@@ -85,7 +161,13 @@ export const buildMcpToolset = async (
       inputSchema: true,
       transportConfig: true,
       mcpInstanceId: true,
-      mcpInstance: { select: { transportConfig: true } },
+      mcpInstance: {
+        select: {
+          credentialRef: true,
+          transportConfig: true,
+          catalogEntry: { select: { defaultTransportConfig: true } },
+        },
+      },
     },
   })) as unknown as RegistryRow[]
 
@@ -94,6 +176,7 @@ export const buildMcpToolset = async (
     transport: ReturnType<typeof parseMcpTransportConfig>
     originalToolName: string
     instanceId: string
+    secret: string | null
   }
   const transportByExposedName = new Map<string, TransportTarget>()
   const usedNames = new Set<string>()
@@ -115,11 +198,24 @@ export const buildMcpToolset = async (
 
     let transport: ReturnType<typeof parseMcpTransportConfig>
     try {
-      transport = parseMcpTransportConfig(row.mcpInstance.transportConfig)
+      transport = parseMcpTransportConfig({
+        ...stringRecord(row.mcpInstance.catalogEntry.defaultTransportConfig),
+        ...stringRecord(row.mcpInstance.transportConfig),
+      })
     } catch {
       // Skip malformed transport configs rather than failing the whole sub-agent.
       continue
     }
+    const credentialRef = await resolveCredentialRef(
+      prisma,
+      row.mcpInstanceId,
+      buildCredentialContext(
+        actorContext,
+        runtimeContext.agentId,
+        runtimeContext.channelId,
+      ),
+      row.mcpInstance.credentialRef,
+    )
 
     entries.push({
       registryEntryId: row.id,
@@ -133,6 +229,7 @@ export const buildMcpToolset = async (
       transport,
       originalToolName,
       instanceId: row.mcpInstanceId,
+      secret: resolveSecret(credentialRef),
     })
   }
 
@@ -178,6 +275,7 @@ export const buildMcpToolset = async (
       const result = await dispatchTool({
         spec: { transport: 'mcp', connection: target.transport, toolName: target.originalToolName },
         args,
+        secret: target.secret,
       })
       await recordMcpUsage(target, result.success, Date.now() - startedAt)
       return {

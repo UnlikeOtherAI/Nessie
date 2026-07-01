@@ -20,10 +20,12 @@ type SeedConnector = {
   name: string
   label: string
   description: string
+  authMethod?: 'bearer' | 'none'
   vendor: string
   sourceUrl: string
-  /** HTTP MCP endpoint, stored as the catalog default transport. */
-  url: string
+  /** MCP endpoint, stored as the catalog default transport when known. */
+  url?: string
+  protocol: 'http' | 'sse'
 }
 
 /**
@@ -42,7 +44,20 @@ const SEED_CONNECTORS: SeedConnector[] = [
       + 'served over a public no-auth HTTP MCP endpoint.',
     vendor: 'Upstash',
     sourceUrl: 'https://github.com/upstash/context7',
+    protocol: 'http',
     url: 'https://mcp.context7.com/mcp',
+  },
+  {
+    id: 'b0c7e6d2-7e2a-4f1a-9c3e-000000000002',
+    name: 'crawl4ai',
+    label: 'Crawl4AI',
+    description:
+      'Self-hosted Crawl4AI web scanning and crawling over MCP. Install with '
+      + 'a reachable SSE endpoint such as https://crawler.example.com/mcp/sse.',
+    authMethod: 'bearer',
+    vendor: 'Crawl4AI',
+    sourceUrl: 'https://github.com/unclecode/crawl4ai',
+    protocol: 'sse',
   },
 ]
 
@@ -62,7 +77,11 @@ export const seedPublicConnectors = async (
   let seeded = 0
 
   for (const connector of SEED_CONNECTORS) {
-    const transportConfig = { transport: 'http', url: connector.url }
+    const transportConfig = connector.url
+      ? { transport: connector.protocol, url: connector.url }
+      : {}
+    const authMethod = connector.authMethod ?? 'none'
+    const authConfig = { method: authMethod }
     await prisma.mcpCatalogEntry.upsert({
       where: { id: connector.id },
       update: {
@@ -70,6 +89,9 @@ export const seedPublicConnectors = async (
         description: connector.description,
         vendor: connector.vendor,
         sourceUrl: connector.sourceUrl,
+        protocol: connector.protocol,
+        authMethod,
+        authConfig,
         defaultTransportConfig: transportConfig,
         visibility: 'public',
         status: 'published',
@@ -80,9 +102,9 @@ export const seedPublicConnectors = async (
         name: connector.name,
         label: connector.label,
         description: connector.description,
-        protocol: 'http',
-        authMethod: 'none',
-        authConfig: { method: 'none' },
+        protocol: connector.protocol,
+        authMethod,
+        authConfig,
         defaultTransportConfig: transportConfig,
         vendor: connector.vendor,
         sourceUrl: connector.sourceUrl,

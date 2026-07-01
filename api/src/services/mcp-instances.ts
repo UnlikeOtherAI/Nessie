@@ -1,11 +1,8 @@
-import { Prisma, type PrismaClient } from '@prisma/client'
-import { McpClientManager, type McpToolDescriptor } from '@nessie/mcp-client'
+import { type PrismaClient } from '@prisma/client'
 import {
-  McpTransportConfigSchema,
   type AuthorizedActionContext,
   type McpServerLifecycleState,
   type McpServerScopeType,
-  type McpTransportConfig,
 } from '@nessie/schemas'
 
 import {
@@ -15,10 +12,35 @@ import {
 } from './mcp-catalog.js'
 import {
   McpSecurityError,
-  assertMcpTransportSafe,
   assertUserAuthoredMcpTransportSafe,
 } from './mcp-security.js'
-import { toPrismaToolRegistrySource } from './tool-enum-mapping.js'
+import {
+  MCP_INSTANCE_ERROR_CODES,
+  McpInstanceError,
+} from './mcp-instance-errors.js'
+import {
+  probeConnection,
+  resolveProbeTransport,
+  type ManagerFactory,
+} from './mcp-instance-probe.js'
+import { projectMcpToolDescriptors } from './mcp-tool-registry-projection.js'
+import type { SecretResolver } from './secret-resolver.js'
+
+export {
+  MCP_INSTANCE_ERROR_CODES,
+  McpInstanceError,
+} from './mcp-instance-errors.js'
+export {
+  probeConnection,
+  resolveInstanceTransport,
+} from './mcp-instance-probe.js'
+export type {
+  ManagerFactory,
+  McpProbeResult,
+} from './mcp-instance-probe.js'
+export {
+  descriptorDiffersFromEntry,
+} from './mcp-tool-registry-projection.js'
 
 /**
  * MCP server instance service.
@@ -30,22 +52,6 @@ import { toPrismaToolRegistrySource } from './tool-enum-mapping.js'
  * (`testInstance`) runs `tools/list` and projects discovered tools into the
  * `ToolRegistryEntry` table at `status: 'pending_review'` (plan D9).
  */
-
-export const MCP_INSTANCE_ERROR_CODES = {
-  NOT_FOUND: 'MCP_INSTANCE_NOT_FOUND',
-  CATALOG_ENTRY_NOT_FOUND: 'MCP_INSTANCE_CATALOG_ENTRY_NOT_FOUND',
-  DUPLICATE_SCOPE: 'MCP_INSTANCE_DUPLICATE_SCOPE',
-  TRANSPORT_CONFIG_INVALID: 'MCP_INSTANCE_TRANSPORT_CONFIG_INVALID',
-  PROBE_FAILED: 'MCP_INSTANCE_PROBE_FAILED',
-} as const
-
-export class McpInstanceError extends Error {
-  override readonly name = 'McpInstanceError'
-
-  constructor(public readonly code: string, message: string) {
-    super(message)
-  }
-}
 
 export type McpInstanceRow = {
   id: string
@@ -92,69 +98,6 @@ const mapSecurityError = (error: unknown): never => {
     )
   }
   throw error
-}
-
-/**
- * Build a stable scope-key string for projecting discovered MCP tools into
- * `ToolRegistryEntry`. The base CRUD-side registry uses a string `scopeKey`
- * (see `services/tools.ts`); we mirror that here so MCP-emitted rows compose
- * with builtin/custom rows under the same unique constraint.
- */
-const toRegistryScopeKey = (
-  organizationId: string,
-  scopeType: McpServerScopeType,
-  scopeId: string,
-): string => `mcp:${organizationId}:${scopeType}:${scopeId}`
-
-const toRegistryToolId = (instanceId: string, toolName: string): string =>
-  `mcp:${instanceId}:${toolName}`
-
-/**
- * Stable deep-equality for the JSON-ish payloads we persist on
- * `ToolRegistryEntry` (inputSchema, outputSchema). Object keys are sorted so
- * field-order differences from the upstream MCP server don't trigger a false
- * "schema drifted" reset. `undefined`, `null`, and missing keys all collapse
- * to the same canonical form (the stored `outputSchema` is nullable but a
- * descriptor may simply omit it).
- */
-const canonicalJson = (value: unknown): unknown => {
-  if (value === undefined || value === null) return null
-  if (Array.isArray(value)) return value.map(canonicalJson)
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([k, v]) => [k, canonicalJson(v)] as const)
-    return Object.fromEntries(entries)
-  }
-  return value
-}
-
-const jsonEqual = (a: unknown, b: unknown): boolean =>
-  JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b))
-
-/**
- * Decide whether a freshly-probed descriptor materially differs from the
- * existing `ToolRegistryEntry` row. We compare the four user-visible /
- * governance-relevant fields the upsert writes: label, description,
- * inputSchema, outputSchema. Other internal fields (transport, source,
- * mcpInstanceId) are derived from the instance and never need a re-review.
- */
-export const descriptorDiffersFromEntry = (
-  descriptor: McpToolDescriptor,
-  entry: {
-    label: string
-    description: string
-    inputSchema: unknown
-    outputSchema: unknown
-  },
-): boolean => {
-  const nextLabel = descriptor.title ?? descriptor.name
-  if (nextLabel !== entry.label) return true
-  if ((descriptor.description ?? '') !== entry.description) return true
-  if (!jsonEqual(descriptor.inputSchema ?? {}, entry.inputSchema)) return true
-  if (!jsonEqual(descriptor.outputSchema ?? null, entry.outputSchema)) return true
-  return false
 }
 
 export const listInstances = async (
@@ -245,137 +188,6 @@ export const deleteInstance = async (
 }
 
 /**
- * Merge an instance's `transportConfig` with the catalog entry's
- * `defaultTransportConfig`, with the instance value winning. The merged value
- * must satisfy `McpTransportConfigSchema` (stdio | http | sse | ws) before we
- * pass it to the universal client.
- */
-export const resolveInstanceTransport = (
-  instance: McpInstanceRow,
-  catalogEntry: { defaultTransportConfig: unknown },
-): McpTransportConfig => {
-  const merged = {
-    ...toRecord(catalogEntry.defaultTransportConfig),
-    ...toRecord(instance.transportConfig),
-  }
-  const parsed = McpTransportConfigSchema.safeParse(merged)
-  if (!parsed.success) {
-    throw new McpInstanceError(
-      MCP_INSTANCE_ERROR_CODES.TRANSPORT_CONFIG_INVALID,
-      `Resolved transport config is invalid: ${
-        parsed.error.issues[0]?.message ?? 'shape mismatch'
-      }`,
-    )
-  }
-  return parsed.data
-}
-
-const transportToConnectionSpec = (
-  config: McpTransportConfig,
-): Parameters<McpClientManager['open']>[0] => {
-  switch (config.transport) {
-    case 'stdio':
-      return {
-        transport: 'stdio',
-        command: config.command,
-        args: config.args ?? [],
-        env: config.env,
-      }
-    case 'http':
-      return { transport: 'http', url: config.url, headers: config.headers }
-    case 'sse':
-      return { transport: 'sse', url: config.url, headers: config.headers }
-    case 'ws':
-      // The universal client supports stdio/http/sse only today (per plan §5
-      // and packages/mcp-client/src/types.ts). Surface a typed error rather
-      // than a silent crash so the UI can prompt for an alternative.
-      throw new McpInstanceError(
-        MCP_INSTANCE_ERROR_CODES.TRANSPORT_CONFIG_INVALID,
-        'ws transport is not yet supported by the MCP client',
-      )
-    default: {
-      const _never: never = config
-      void _never
-      throw new McpInstanceError(
-        MCP_INSTANCE_ERROR_CODES.TRANSPORT_CONFIG_INVALID,
-        'Unsupported MCP transport',
-      )
-    }
-  }
-}
-
-export type ManagerFactory = () => McpClientManager
-
-const defaultManagerFactory: ManagerFactory = () => new McpClientManager()
-
-const stringifyError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
-/**
- * Structured outcome of a single probe attempt. Returned from `probeConnection`
- * and surfaced via `testInstance` so callers (route handler, admin UI) can
- * render lifecycle transitions accurately. `ok: true` means we opened the
- * connection, ran `tools/list`, and received a well-formed descriptor array
- * (which may legitimately be empty for a server that has not registered any
- * tools yet — that is still a successful handshake).
- */
-export type McpProbeResult = {
-  ok: boolean
-  error?: string
-  latencyMs: number
-  toolCount?: number
-  descriptors?: McpToolDescriptor[]
-}
-
-/**
- * Run a one-shot probe against an already-resolved transport spec. Pure with
- * respect to Prisma: takes a `ManagerFactory` so tests can inject a fake
- * `McpClientManager` and assert on probe outcomes without touching the DB.
- *
- * A throw at any stage (transport, protocol, auth, timeout) is captured as
- * `{ ok: false, error }`. A return shape from `listTools` that is not an array
- * is treated as a malformed handshake — also `ok: false`. Empty arrays are
- * considered a successful handshake.
- */
-export const probeConnection = async (
-  transport: McpTransportConfig,
-  managerFactory: ManagerFactory = defaultManagerFactory,
-): Promise<McpProbeResult> => {
-  const manager = managerFactory()
-  const startedAt = Date.now()
-  try {
-    await assertMcpTransportSafe(transport)
-    const connectionId = await manager.open(transportToConnectionSpec(transport))
-    try {
-      const descriptors = await manager.listTools(connectionId)
-      if (!Array.isArray(descriptors)) {
-        return {
-          ok: false,
-          error: 'tools/list response was not an array',
-          latencyMs: Date.now() - startedAt,
-        }
-      }
-      return {
-        ok: true,
-        latencyMs: Date.now() - startedAt,
-        toolCount: descriptors.length,
-        descriptors,
-      }
-    } finally {
-      await manager.close(connectionId).catch(() => undefined)
-    }
-  } catch (error) {
-    return {
-      ok: false,
-      error: stringifyError(error),
-      latencyMs: Date.now() - startedAt,
-    }
-  } finally {
-    await manager.closeAll().catch(() => undefined)
-  }
-}
-
-/**
  * Synchronous health probe (task #20, plan §6 `/healthcheck`). Reuses
  * `probeConnection` so the success criteria stay identical to `testInstance`,
  * but does NOT mutate the instance row — admins can poll this without
@@ -395,7 +207,7 @@ export const healthcheckInstance = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
-  options: { managerFactory?: ManagerFactory } = {},
+  options: { managerFactory?: ManagerFactory; secretResolver?: SecretResolver } = {},
 ): Promise<HealthcheckResult> => {
   const instance = await getInstance(prisma, organizationId, id)
   if (!instance) {
@@ -412,7 +224,11 @@ export const healthcheckInstance = async (
     )
   }
   ensureAuthConfigMatchesMethod(catalogEntry.authMethod, catalogEntry.authConfig)
-  const transport = resolveInstanceTransport(instance, catalogEntry)
+  const transport = await resolveProbeTransport(
+    instance,
+    catalogEntry,
+    options.secretResolver,
+  )
   const probe = await probeConnection(transport, options.managerFactory)
   return {
     healthy: probe.ok,
@@ -441,7 +257,7 @@ export const refreshInstance = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
-  options: { managerFactory?: ManagerFactory } = {},
+  options: { managerFactory?: ManagerFactory; secretResolver?: SecretResolver } = {},
 ): Promise<McpInstanceRow> => {
   try {
     return await testInstance(prisma, organizationId, id, options)
@@ -480,7 +296,7 @@ export const testInstance = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
-  options: { managerFactory?: ManagerFactory } = {},
+  options: { managerFactory?: ManagerFactory; secretResolver?: SecretResolver } = {},
 ): Promise<McpInstanceRow> => {
   const instance = await getInstance(prisma, organizationId, id)
   if (!instance) {
@@ -498,11 +314,15 @@ export const testInstance = async (
     )
   }
 
-  // Sanity-check the auth config before opening anything. The actual secret
-  // injection happens at call time in the worker dispatcher.
+  // Sanity-check the auth config before opening anything. Bearer auth is also
+  // applied to probes so authenticated MCP servers can be tested before use.
   ensureAuthConfigMatchesMethod(catalogEntry.authMethod, catalogEntry.authConfig)
 
-  const transport = resolveInstanceTransport(instance, catalogEntry)
+  const transport = await resolveProbeTransport(
+    instance,
+    catalogEntry,
+    options.secretResolver,
+  )
   const probe = await probeConnection(transport, options.managerFactory)
 
   const now = new Date()
@@ -529,7 +349,6 @@ export const testInstance = async (
   }
 
   const descriptors = probe.descriptors ?? []
-  const scopeKey = toRegistryScopeKey(organizationId, instance.scopeType, instance.scopeId)
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.mcpServerInstance.update({
@@ -543,110 +362,7 @@ export const testInstance = async (
       },
     })
 
-    // Snapshot existing registry rows for this instance BEFORE the upsert
-    // sweep so we can (a) detect schema/label/description drift on rows that
-    // survive the re-probe and reset them to `pending_review`, and (b) reset
-    // any row whose tool has been REMOVED from the upstream server (it stays
-    // enabled — silent disable would mask the drift; pending_review surfaces
-    // it to the owner without breaking active grants).
-    const existingEntries = await tx.toolRegistryEntry.findMany({
-      where: { mcpInstanceId: id },
-      select: {
-        id: true,
-        toolId: true,
-        label: true,
-        description: true,
-        inputSchema: true,
-        outputSchema: true,
-      },
-    })
-    const existingByToolId = new Map(existingEntries.map((e) => [e.toolId, e]))
-
-    const prismaSource = toPrismaToolRegistrySource('mcp-remote') as never
-    const seenToolIds = new Set<string>()
-    for (const descriptor of descriptors) {
-      const toolId = toRegistryToolId(id, descriptor.name)
-      seenToolIds.add(toolId)
-      const existing = existingByToolId.get(toolId)
-      const drifted = existing
-        ? descriptorDiffersFromEntry(descriptor, existing)
-        : false
-      await tx.toolRegistryEntry.upsert({
-        where: {
-          organizationId_scopeKey_toolId: { organizationId, scopeKey, toolId },
-        },
-        create: {
-          organizationId,
-          scopeKey,
-          toolId,
-          label: descriptor.title ?? descriptor.name,
-          description: descriptor.description ?? '',
-          // Spec §3.1 requires a non-empty `overview`. Prefer the upstream
-          // description; fall back to the human label, then the tool name,
-          // and finally a synthesised string keyed off the instance id so we
-          // never write empty.
-          overview:
-            descriptor.description
-            ?? descriptor.title
-            ?? descriptor.name
-            ?? `MCP tool from instance ${instance.id}`,
-          safe: false,
-          builtin: false,
-          enabled: true,
-          handlerKind: 'mcp',
-          metadata: {} as object,
-          source: prismaSource,
-          transport: 'mcp',
-          transportConfig: {
-            transport: 'mcp',
-            serverId: id,
-            toolName: descriptor.name,
-          } as object,
-          mcpInstanceId: id,
-          inputSchema: (descriptor.inputSchema ?? {}) as object,
-          outputSchema: descriptor.outputSchema
-            ? (descriptor.outputSchema as object)
-            : undefined,
-          tags: [],
-          status: 'pending_review',
-          version: '0.0.0',
-          createdBy: 'mcp',
-        },
-        update: {
-          label: descriptor.title ?? descriptor.name,
-          description: descriptor.description ?? '',
-          source: prismaSource,
-          transport: 'mcp',
-          transportConfig: {
-            transport: 'mcp',
-            serverId: id,
-            toolName: descriptor.name,
-          } as object,
-          mcpInstanceId: id,
-          inputSchema: (descriptor.inputSchema ?? {}) as object,
-          outputSchema: descriptor.outputSchema
-            ? (descriptor.outputSchema as object)
-            : Prisma.JsonNull,
-          // Only flip status when the new descriptor diverges from what was
-          // approved. An identical re-probe leaves an `active` entry active.
-          ...(drifted ? { status: 'pending_review' as const } : {}),
-        },
-      })
-    }
-
-    // Sweep entries whose upstream tool disappeared. Keep them enabled so
-    // dispatch errors stay loud (HARD-failing call vs silently passing the
-    // wrong arg) — but flip them to pending_review so the owner sees the
-    // drift in the admin UI and can decide whether to delete / archive.
-    const removedIds = existingEntries
-      .filter((e) => !seenToolIds.has(e.toolId))
-      .map((e) => e.id)
-    if (removedIds.length > 0) {
-      await tx.toolRegistryEntry.updateMany({
-        where: { id: { in: removedIds } },
-        data: { status: 'pending_review' },
-      })
-    }
+    await projectMcpToolDescriptors(tx, { organizationId, instance, descriptors })
 
     return updated
   })

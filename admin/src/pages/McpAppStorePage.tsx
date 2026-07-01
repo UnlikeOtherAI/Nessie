@@ -117,14 +117,21 @@ export const McpAppStorePage = () => {
     setSelectedCatalogId(undefined)
   }
 
-  const handleInstall = async (input: { scopeType: string; scopeId: string }) => {
+  const handleInstall = async (input: {
+    credentialRef?: string | null
+    scopeType: string
+    scopeId: string
+    transportConfig?: Record<string, unknown>
+  }) => {
     if (!installCandidate) return
     await createInstance.mutateAsync({
       catalogEntryId: installCandidate.id,
+      credentialRef: input.credentialRef,
       scopeType: input.scopeType as Parameters<
         typeof createInstance.mutateAsync
       >[0]['scopeType'],
       scopeId: input.scopeId,
+      transportConfig: input.transportConfig,
     })
     setInstallTarget(null)
   }

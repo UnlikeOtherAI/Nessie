@@ -6,6 +6,7 @@ import type { McpClientManager, McpConnectionId, McpToolResult } from '@nessie/m
 import {
   TOOL_DISPATCH_ERROR_CODES,
   ToolDispatchError,
+  applyBearerSecretToMcpTransport,
   dispatchTool,
   parseMcpTransportConfig,
 } from '../src/run/tool-dispatch.js'
@@ -65,6 +66,24 @@ test('parseMcpTransportConfig throws typed error on garbage', () => {
     (thrown as ToolDispatchError).code,
     TOOL_DISPATCH_ERROR_CODES.TRANSPORT_CONFIG_INVALID,
   )
+})
+
+test('applyBearerSecretToMcpTransport injects Authorization without dropping headers', () => {
+  const transport = applyBearerSecretToMcpTransport(
+    {
+      headers: { 'X-Trace': 'abc' },
+      transport: 'sse',
+      url: 'https://crawler.example.com/mcp/sse',
+    },
+    'secret-token',
+  )
+  assert.equal(transport.transport, 'sse')
+  if (transport.transport === 'sse') {
+    assert.deepEqual(transport.headers, {
+      Authorization: 'Bearer secret-token',
+      'X-Trace': 'abc',
+    })
+  }
 })
 
 test('dispatchTool routes mcp transport through runMcpTool and stringifies structured output', async () => {
