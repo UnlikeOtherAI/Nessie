@@ -497,6 +497,25 @@ entry (capped at `ZIP_ENTRY_PEEK_MAX_BYTES` = 256 KiB).
 
 Agent/MCP built-in tools for the new file surface are a follow-up (agent parity).
 
+## 9c) Page version chunk index (implemented first slice)
+
+Inline document page version bodies are now chunked at write time with Chonkie
+(`@chonkiejs/core` `RecursiveChunker`) and persisted in
+`knowledge_page_chunks`. Chunks are generated from the same canonical
+`htmlToPlainText` projection used by note anchoring, so stored chunk offsets
+refer to readable page text rather than raw TipTap HTML.
+
+Each chunk stores `pageId`, `versionId`, `chunkIndex`, `content`,
+`contentHash`, plain-text offsets, approximate token count, and the full
+KnowledgePage scoping envelope (`organizationId`, project/team/channel/thread/
+user, `visibility`, `sensitivityTier`, `privateToAgentId`). The table also
+declares optional `embedding vector(1536)`, `embeddingModel`, `dims`, and a
+generated `searchVector` with HNSW/GIN indexes. Embeddings and
+`match_knowledge_chunks_*` retrieval functions remain the next slice; body-ref
+and file-backed versions still need a streaming ingestion/backfill path. This
+change establishes deterministic chunk boundaries and the storage shape they
+will consume.
+
 ## 10) Phase annotation
 
 This spec targets **Phase 3**.

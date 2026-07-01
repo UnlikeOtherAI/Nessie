@@ -656,6 +656,7 @@ model Organization {
   thoughts         Thought[]
   knowledgeSpaces  KnowledgeSpace[]
   knowledgePages   KnowledgePage[]
+  knowledgePageChunks KnowledgePageChunk[]
   tasks            Task[]
   budgets          Budget[]
   plans            Plan[]
@@ -2509,6 +2510,7 @@ model KnowledgePage {
   publishedVersion KnowledgePageVersion?  @relation("KnowledgePagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
   labels           PageLabel[]
   annotations      KnowledgePageAnnotation[]
+  chunks           KnowledgePageChunk[]
 
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
   @@index([organizationId, visibility, updatedAt], map: "knowledge_pages_org_visibility_updated_idx")
@@ -2540,11 +2542,56 @@ model KnowledgePageVersion {
 
   page             KnowledgePage  @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
   publishedForPage KnowledgePage? @relation("KnowledgePagePublishedVersion")
+  chunks           KnowledgePageChunk[]
 
   @@unique([pageId, versionNumber], map: "knowledge_page_versions_page_version_key")
   @@index([pageId, createdAt(sort: Desc)], map: "knowledge_page_versions_page_created_idx")
   @@index([attachmentId], map: "knowledge_page_versions_attachment_id_idx")
   @@map("knowledge_page_versions")
+}
+
+model KnowledgePageChunk {
+  id          String @id @default(uuid()) @db.Uuid
+  pageId      String @map("page_id") @db.Uuid
+  versionId   String @map("version_id") @db.Uuid
+  chunkIndex  Int    @map("chunk_index")
+  content     String @db.Text
+  contentHash String @map("content_hash")
+  startOffset Int    @map("start_offset")
+  endOffset   Int    @map("end_offset")
+  tokenCount  Int?   @map("token_count")
+
+  embedding      Unsupported("vector(1536)")?
+  embeddingModel String?                      @map("embedding_model")
+  dims           Int?
+  searchVector   Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))")) @map("search_vector")
+
+  // Mirrors KnowledgePage/Thought scoping so retrieval can enforce access in
+  // the candidate query without joining back through mutable page metadata.
+  organizationId   String            @map("organization_id") @db.Uuid
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId        String            @map("project_id") @db.Uuid
+  teamId           String?           @map("team_id") @db.Uuid
+  channelId        String?           @map("channel_id") @db.Uuid
+  threadId         String?           @map("thread_id") @db.Uuid
+  userId           String?           @map("user_id") @db.Uuid
+  visibility       ThoughtVisibility @default(project)
+  sensitivityTier  SensitivityTier   @default(normal) @map("sensitivity_tier")
+  privateToAgentId String?           @map("private_to_agent_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  page    KnowledgePage        @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  version KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, chunkIndex], map: "knowledge_page_chunks_version_chunk_key")
+  @@index([pageId, versionId], map: "knowledge_page_chunks_page_version_idx")
+  @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_page_chunks_org_project_updated_id_idx")
+  @@index([organizationId, visibility, updatedAt], map: "knowledge_page_chunks_org_visibility_updated_idx")
+  @@index([organizationId, sensitivityTier], map: "knowledge_page_chunks_org_sensitivity_idx")
+  @@index([privateToAgentId], map: "knowledge_page_chunks_private_to_agent_id_idx")
+  @@map("knowledge_page_chunks")
 }
 
 model PageLabel {

@@ -33,3 +33,19 @@ export const KNOWLEDGE_PAGE_SCOPED_CONTENT_MAPPING = assertScopedContentMapping(
   deletedAtColumn: 'deleted_at',
   tableName: 'knowledge_pages',
 })
+
+export const KNOWLEDGE_PAGE_CHUNK_SCOPED_CONTENT_MAPPING = assertScopedContentMapping({
+  columns: {
+    channelId: 'channel_id',
+    organizationId: 'organization_id',
+    privateToAgentId: 'private_to_agent_id',
+    projectId: 'project_id',
+    sensitivityTier: 'sensitivity_tier',
+    teamId: 'team_id',
+    threadId: 'thread_id',
+    userId: 'user_id',
+    visibility: 'visibility',
+  },
+  contentType: 'knowledge_page_chunk',
+  tableName: 'knowledge_page_chunks',
+})

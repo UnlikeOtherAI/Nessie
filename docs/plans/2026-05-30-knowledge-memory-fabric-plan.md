@@ -81,8 +81,13 @@ Verified against `api/prisma/schema.prisma`, the migrations, and worker code.
 
 - pgvector + HNSW + GIN, embeddings via `ModelClient.embed` (`packages/runtime/src/model.ts:101`),
   cost-tracked through `TokenLedgerEvent` (`operationType='embedding'`).
-- **Absent**: any chunking, reranking, document/message semantic search, RRF outside the thoughts
-  SQL, deterministic-metadata-first search.
+- **Present first slice**: Inline KB page version bodies are chunked with
+  Chonkie (`@chonkiejs/core` `RecursiveChunker`) into
+  `knowledge_page_chunks`, including the shared scoping envelope, generated
+  `tsvector`, and optional pgvector columns for the embedding slice.
+- **Absent**: body-ref/file-backed chunk ingestion, chunk embeddings,
+  `match_knowledge_chunks_*`, reranking, document/message semantic search, and
+  RRF outside the thoughts SQL.
 
 ### Governance — ready to extend
 
@@ -359,9 +364,10 @@ the **external facade tier**, not the first-party authoring model.
 
 ## Part 7 — Open questions
 
-- **Chunking strategy** for versioned pages and synced docs: ~512-token overlap at markdown heading
-  boundaries is the starting heuristic, but chunk quality dominates retrieval quality and has no
-  existing code — needs a golden-file evaluation harness before it is trusted.
+- **Chunking strategy** for versioned pages and synced docs: the first
+  implementation uses Chonkie recursive chunking over the canonical plain-text
+  page projection and persists offsets/content hashes. Chunk quality still needs
+  a golden-file evaluation harness before semantic retrieval is trusted.
 - **Per-type quotas vs pure RRF** when fusing memory + document + (later) message candidates: does
   one type drown another, and at what corpus ratio? Measure once both candidate generators exist.
 - **Reranker timing and cost**: an LLM-scoring or cross-encoder rerank per run consumes the agentic

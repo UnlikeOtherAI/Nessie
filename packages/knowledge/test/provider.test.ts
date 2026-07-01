@@ -9,6 +9,7 @@ import {
   KnowledgeConflictError,
 } from '../src/index.js'
 import {
+  KNOWLEDGE_PAGE_CHUNK_SCOPED_CONTENT_MAPPING,
   KNOWLEDGE_PAGE_SCOPED_CONTENT_MAPPING,
   KNOWLEDGE_SPACE_SCOPED_CONTENT_MAPPING,
 } from '../src/scoped-mappings.js'
@@ -115,8 +116,10 @@ test('native provider declares governed first-party capabilities', () => {
 test('knowledge models satisfy the shared scoped-content contract', () => {
   assert.deepEqual(KNOWLEDGE_SPACE_SCOPED_CONTENT_MAPPING.columns, scopedColumns)
   assert.deepEqual(KNOWLEDGE_PAGE_SCOPED_CONTENT_MAPPING.columns, scopedColumns)
+  assert.deepEqual(KNOWLEDGE_PAGE_CHUNK_SCOPED_CONTENT_MAPPING.columns, scopedColumns)
   assert.equal(KNOWLEDGE_SPACE_SCOPED_CONTENT_MAPPING.deletedAtColumn, 'deleted_at')
   assert.equal(KNOWLEDGE_PAGE_SCOPED_CONTENT_MAPPING.deletedAtColumn, 'deleted_at')
+  assert.equal(KNOWLEDGE_PAGE_CHUNK_SCOPED_CONTENT_MAPPING.tableName, 'knowledge_page_chunks')
 })
 
 test('native source refs are stable and version-addressable', () => {
@@ -221,6 +224,7 @@ test('native move cycle walk is scoped to the caller organization', async () => 
 
 test('native update retries append-only version creation after a version-number race', async () => {
   const createAttempts: number[] = []
+  const rawChunkIndexCalls: unknown[] = []
   let transactionCount = 0
   const prisma = {
     $transaction: async <T>(callback: (client: unknown) => Promise<T>) => {
@@ -254,6 +258,10 @@ test('native update retries append-only version creation after a version-number 
             }
           },
         },
+        $executeRaw: async (query: unknown) => {
+          rawChunkIndexCalls.push(query)
+          return 0
+        },
       }
       return callback(tx)
     },
@@ -270,4 +278,5 @@ test('native update retries append-only version creation after a version-number 
   assert.equal(updated?.latestVersion?.versionNumber, 3)
   assert.deepEqual(createAttempts, [2, 3])
   assert.equal(transactionCount, 2)
+  assert.equal(rawChunkIndexCalls.length, 2)
 })

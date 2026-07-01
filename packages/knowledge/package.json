@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@chonkiejs/core": "0.0.11",
     "@nessie/retrieval": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@prisma/client": "^6.17.1"

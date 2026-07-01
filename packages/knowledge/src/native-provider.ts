@@ -4,6 +4,7 @@ import { replaceLabels } from './native-labels.js'
 import { canReadSpace } from './access.js'
 import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './native-mappers.js'
 import { searchNativePages } from './native-search.js'
+import { replaceKnowledgePageVersionChunks } from './native-chunks.js'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import type {
   AddFileVersionInput,
@@ -102,7 +103,20 @@ const getMutablePage = async (
 ) => {
   const page = await tx.knowledgePage.findFirst({
     where: { id: pageId, organizationId, deletedAt: null },
-    select: { id: true, spaceId: true, status: true },
+    select: {
+      id: true,
+      spaceId: true,
+      status: true,
+      organizationId: true,
+      projectId: true,
+      teamId: true,
+      channelId: true,
+      threadId: true,
+      userId: true,
+      visibility: true,
+      sensitivityTier: true,
+      privateToAgentId: true,
+    },
   })
   if (!page) return null
   if (page.status === 'archived') throw new KnowledgeConflictError(ARCHIVED_PAGE_MESSAGE)
@@ -219,6 +233,7 @@ const publishPage = async (
       orderBy: { versionNumber: 'desc' },
     })
     if (!latest) return null
+    await replaceKnowledgePageVersionChunks(tx, { page, version: latest })
     await tx.knowledgePage.update({
       where: { id: input.pageId },
       data: { publishedVersionId: latest.id, status: 'published' },
@@ -240,7 +255,7 @@ const restoreVersion = async (
       },
     })
     if (!version) return null
-    await tx.knowledgePageVersion.create({
+    const restored = await tx.knowledgePageVersion.create({
       data: {
         pageId: input.pageId,
         versionNumber: await nextVersionNumber(tx, input.pageId),
@@ -252,6 +267,7 @@ const restoreVersion = async (
         changeComment: input.changeComment ?? `Restored version ${version.versionNumber}`,
       },
     })
+    await replaceKnowledgePageVersionChunks(tx, { page, version: restored })
     await tx.knowledgePage.update({
       where: { id: input.pageId },
       data: { status: 'draft' },
@@ -294,7 +310,7 @@ const updatePage = async (
     if (!existing) return null
     const createsVersion = input.body !== undefined || input.bodyRef !== undefined
     if (createsVersion) {
-      await tx.knowledgePageVersion.create({
+      const version = await tx.knowledgePageVersion.create({
         data: {
           pageId,
           versionNumber: await nextVersionNumber(tx, pageId),
@@ -305,6 +321,7 @@ const updatePage = async (
           changeComment: input.changeComment ?? null,
         },
       })
+      await replaceKnowledgePageVersionChunks(tx, { page: existing, version })
     }
     await tx.knowledgePage.update({
       where: { id: pageId },
@@ -394,7 +411,7 @@ export const createNativeKnowledgeProvider = (
           createdBy: input.createdBy,
         },
       })
-      await tx.knowledgePageVersion.create({
+      const version = await tx.knowledgePageVersion.create({
         data: {
           pageId: page.id,
           versionNumber: 1,
@@ -406,6 +423,7 @@ export const createNativeKnowledgeProvider = (
           changeComment: input.changeComment ?? null,
         },
       })
+      await replaceKnowledgePageVersionChunks(tx, { page, version })
       await replaceLabels(tx, {
         labels: input.labels,
         organizationId: input.organizationId,

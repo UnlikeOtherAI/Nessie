@@ -15,6 +15,12 @@ export type { KnowledgeAnnotationErrorCode } from './errors.js'
 export { createAnnotationService, findAnnotationLocation } from './annotations/service.js'
 export type { AnnotationService } from './annotations/service.js'
 export {
+  DEFAULT_KNOWLEDGE_CHUNK_SIZE,
+  DEFAULT_MIN_CHUNK_CHARACTERS,
+  chunkKnowledgePageBody,
+} from './chunking.js'
+export type { ChunkKnowledgePageBodyOptions, KnowledgePageChunkDraft } from './chunking.js'
+export {
   htmlToPlainText,
   computeAnchor,
   relocateAnchor,
