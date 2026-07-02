@@ -102,16 +102,13 @@ const parseSchedule = (raw: unknown): ParsedSchedule => {
 const visibleChannelWhere = (
   organizationId: string,
   userId: string | null,
-  orgWide: boolean,
 ): Prisma.ChannelWhereInput =>
-  orgWide
-    ? { organizationId }
-    : userId
-      ? {
-          organizationId,
-          OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
-        }
-      : { organizationId, visibility: 'public' }
+  userId
+    ? {
+        organizationId,
+        OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
+      }
+    : { organizationId, visibility: 'public' }
 
 type ResolvedTarget = {
   channelId: string
@@ -143,11 +140,7 @@ const resolveNamedChannelTarget = async (
   const candidates = await context.prisma.channel.findMany({
     where: {
       AND: [
-        visibleChannelWhere(
-          context.channel.organizationId,
-          userId,
-          isDelegatingPersonalAssistant(context),
-        ),
+        visibleChannelWhere(context.channel.organizationId, userId),
         { archivedAt: null },
         {
           OR: [
@@ -217,11 +210,7 @@ const resolveTarget = async (
     ? await context.prisma.channel.findFirst({
         where: {
           AND: [
-            visibleChannelWhere(
-              context.channel.organizationId,
-              userId,
-              isDelegatingPersonalAssistant(context),
-            ),
+            visibleChannelWhere(context.channel.organizationId, userId),
             { id: target },
           ],
         },
@@ -269,8 +258,9 @@ export const runScheduleTaskTool = async (
 
   // Posting into a channel other than the current one requires the agent to be a
   // member there, mirroring the binding check the scheduler enforces at fire time.
-  // The personal assistant is exempt: it is its owner's delegate and reaches
-  // every channel in the organization, so binding does not apply to it.
+  // The personal assistant is exempt from the binding check: it acts as its owner,
+  // and the target was already resolved against the owner's own visibility above,
+  // so a binding for the bot itself is not required.
   if (
     target.channelId !== context.channel.id
     && !isDelegatingPersonalAssistant(context)

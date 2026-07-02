@@ -7,7 +7,6 @@ import {
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
   buildVisibleChannelWhere,
-  isDelegatingPersonalAssistant,
   requireActingUserId,
 } from './access.js'
 import { clampLimit, formatChannelRef, formatSection, truncate } from './tool-output.js'
@@ -94,11 +93,7 @@ export const runChannelListTool = async (
 
   const channels = await context.prisma.channel.findMany({
     where: {
-      ...buildVisibleChannelWhere(
-        organizationId,
-        userId,
-        isDelegatingPersonalAssistant(context),
-      ),
+      ...buildVisibleChannelWhere(organizationId, userId),
       ...(input.includeArchived ? {} : { archivedAt: null }),
     },
     orderBy: { createdAt: 'asc' },
@@ -150,11 +145,7 @@ export const runChannelFindTool = async (
 
   const channels = (await context.prisma.channel.findMany({
     where: {
-      ...buildVisibleChannelWhere(
-        organizationId,
-        userId,
-        isDelegatingPersonalAssistant(context),
-      ),
+      ...buildVisibleChannelWhere(organizationId, userId),
       archivedAt: null,
       OR: [
         { label: { contains: query, mode: 'insensitive' } },

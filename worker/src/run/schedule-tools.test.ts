@@ -242,7 +242,7 @@ test('schedule_task into another channel requires the agent to be a member', asy
   )
 })
 
-test('schedule_task: personal assistant reaches any channel without a binding', async () => {
+test('schedule_task: personal assistant reaches the owner\'s channels without a binding', async () => {
   const prisma = makeFakePrisma({
     channel: { id: 'channel-2', label: 'general' },
     thread: { id: 'thread-2' },
@@ -260,13 +260,18 @@ test('schedule_task: personal assistant reaches any channel without a binding', 
   assert.equal(result.toolName, 'schedule_task')
   const create = (prisma.calls['agentTrigger.create'] as Array<{ data: Record<string, unknown> }>)[0]!
   assert.equal(create.data.targetChannelId, 'channel-2')
-  // No binding lookup: the personal assistant is its owner's delegate.
+  // No binding lookup: the personal assistant acts as its owner, so the bot does
+  // not need its own binding to the target channel.
   assert.equal(prisma.calls['agentBinding.findFirst'], undefined)
-  // Channel resolution is org-wide (no public/membership access clause).
+  // Channel resolution is scoped to what the owner can see (public + member),
+  // never org-wide: a private channel the owner isn't in must not resolve.
   const lookup = (
     prisma.calls['channel.findMany'] as Array<{ where: { AND: Array<Record<string, unknown>> } }>
   )[0]!
-  assert.deepEqual(lookup.where.AND[0], { organizationId: 'org-1' })
+  assert.deepEqual(lookup.where.AND[0], {
+    organizationId: 'org-1',
+    OR: [{ visibility: 'public' }, { members: { some: { userId: 'user-1' } } }],
+  })
 })
 
 test('schedule_task rejects ambiguous bare channel names', async () => {

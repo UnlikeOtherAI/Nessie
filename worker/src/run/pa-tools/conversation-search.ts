@@ -1,7 +1,6 @@
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
   buildVisibleChannelWhere,
-  isDelegatingPersonalAssistant,
   resolveAccessibleChannelIds,
 } from './access.js'
 import {
@@ -213,7 +212,6 @@ export const runAuthoredMessageSearchTool = async (
   const visibleChannelWhere = buildVisibleChannelWhere(
     context.channel.organizationId,
     userId,
-    isDelegatingPersonalAssistant(context),
   )
   const textFilter = { contains: searchQuery, mode: 'insensitive' as const }
 

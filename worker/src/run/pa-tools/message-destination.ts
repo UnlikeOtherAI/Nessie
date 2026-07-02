@@ -6,7 +6,6 @@ import {
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import {
   buildVisibleChannelWhere,
-  isDelegatingPersonalAssistant,
   requireActingUserId,
   type ChannelAgent,
 } from './access.js'
@@ -241,7 +240,6 @@ export const resolveMessageDestination = async (
 }> => {
   const userId = requireActingUserId(context)
   const organizationId = context.channel.organizationId
-  const orgWide = isDelegatingPersonalAssistant(context)
   const explicitDestinationCount = [
     input.threadId ? 1 : 0,
     input.channelId ? 1 : 0,
@@ -291,7 +289,7 @@ export const resolveMessageDestination = async (
     const channel = await context.prisma.channel.findFirst({
       where: {
         id: input.channelId,
-        ...buildVisibleChannelWhere(organizationId, userId, orgWide),
+        ...buildVisibleChannelWhere(organizationId, userId),
       },
       select: {
         id: true,
@@ -338,7 +336,7 @@ export const resolveMessageDestination = async (
     const thread = await context.prisma.thread.findFirst({
       where: {
         id: input.threadId,
-        channel: buildVisibleChannelWhere(organizationId, userId, orgWide),
+        channel: buildVisibleChannelWhere(organizationId, userId),
       },
       select: {
         id: true,
@@ -386,7 +384,7 @@ export const resolveMessageDestination = async (
   const thread = await context.prisma.thread.findFirst({
     where: {
       id: fallbackThreadId,
-      channel: buildVisibleChannelWhere(organizationId, userId, orgWide),
+      channel: buildVisibleChannelWhere(organizationId, userId),
     },
     select: {
       id: true,
