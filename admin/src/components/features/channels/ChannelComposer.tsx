@@ -5,6 +5,7 @@ import {
   type MentionEntity,
   type MentionInputHandle,
 } from '../../shared/MentionInput'
+import type { PendingAgentInvite } from '../../../facades/messages/hooks'
 import { toolbarButtonClass } from './channel-helpers'
 
 interface ChannelComposerProps {
@@ -19,6 +20,11 @@ interface ChannelComposerProps {
   onSubmitForm: (event?: FormEvent<HTMLFormElement>) => void
   onInsertHashSign: () => void
   onInsertAtSign: () => void
+  pendingAgentInvites: PendingAgentInvite[]
+  invitingAgentId: string | null
+  inviteErrors: Record<string, string>
+  onInvitePendingAgent: (agentId: string) => void
+  onDismissPendingAgent: (agentId: string) => void
 }
 
 export const ChannelComposer = ({
@@ -33,8 +39,56 @@ export const ChannelComposer = ({
   onSubmitForm,
   onInsertHashSign,
   onInsertAtSign,
+  pendingAgentInvites,
+  invitingAgentId,
+  inviteErrors,
+  onInvitePendingAgent,
+  onDismissPendingAgent,
 }: ChannelComposerProps) => (
   <div className="flex-shrink-0 px-5 pb-[14px]">
+    {pendingAgentInvites.length > 0 && (
+      <div className="admin-card mb-2 flex flex-col gap-2 p-3">
+        {pendingAgentInvites.map((agent) => (
+          <div className="flex flex-col gap-1" key={agent.id}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-[color:var(--tx)]">
+                <span className="font-semibold text-[color:var(--accent)]">
+                  @{agent.name}
+                </span>{' '}
+                isn’t in this channel yet, so it didn’t respond.
+              </span>
+              <span className="flex flex-shrink-0 items-center gap-2">
+                <button
+                  className="admin-button-primary"
+                  disabled={invitingAgentId === agent.id}
+                  onClick={() => onInvitePendingAgent(agent.id)}
+                  type="button"
+                >
+                  {invitingAgentId === agent.id
+                    ? 'Inviting…'
+                    : 'Invite to channel'}
+                </button>
+                <button
+                  className="admin-button-secondary"
+                  onClick={() => onDismissPendingAgent(agent.id)}
+                  type="button"
+                >
+                  Dismiss
+                </button>
+              </span>
+            </div>
+            {inviteErrors[agent.id] && (
+              <span
+                className="text-xs text-[color:var(--danger-text)]"
+                role="alert"
+              >
+                {inviteErrors[agent.id]}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    )}
     <form className="admin-compose" onSubmit={onSubmitForm}>
       <MentionInput
         ref={mentionRef}

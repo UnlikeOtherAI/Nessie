@@ -4,13 +4,25 @@ import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
+/** An agent @mentioned in a message that is not a member of the channel. */
+export interface PendingAgentInvite {
+  id: string
+  name: string
+}
+
+/** Response of POST /api/threads/:threadId/messages. */
+export interface SendMessageResponse {
+  message: ThreadMessageRecord
+  pendingAgentInvites: PendingAgentInvite[]
+}
+
 export const useSendMessage = (threadId?: string) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (input: { content: string; attachmentIds?: string[] }) =>
-      apiClient.post<ThreadMessageRecord>(`/api/threads/${threadId}/messages`, input),
+      apiClient.post<SendMessageResponse>(`/api/threads/${threadId}/messages`, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
     },
@@ -23,7 +35,7 @@ export const useSendMessageToThread = () => {
 
   return useMutation({
     mutationFn: (input: { attachmentIds?: string[]; content: string; threadId: string }) =>
-      apiClient.post<ThreadMessageRecord>(`/api/threads/${input.threadId}/messages`, {
+      apiClient.post<SendMessageResponse>(`/api/threads/${input.threadId}/messages`, {
         attachmentIds: input.attachmentIds,
         content: input.content,
       }),
