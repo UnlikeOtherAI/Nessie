@@ -47,7 +47,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Follow the provider system and frontend architecture in `docs/provider-system-and-frontend-architecture.md`.
 - Follow the implementation phases in `docs/implementation-phases.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
-- Crawl4AI web scanning is an MCP connector template: install a Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, then approve/grant the discovered tools. Do not embed Crawl4AI's Python package in the API/worker or expose an unauthenticated crawler to the public internet.
+- deep.agent crawl web scanning is an MCP connector template: install a Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, then approve/grant the discovered tools. The crawl library implementation belongs behind the deep.agent service boundary; do not embed Crawl4AI's Python package in the API/worker or expose an unauthenticated crawler to the public internet.
 
 ## File storage & accounting — single chokepoint
 

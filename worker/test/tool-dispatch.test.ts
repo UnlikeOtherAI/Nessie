@@ -73,7 +73,7 @@ test('applyBearerSecretToMcpTransport injects Authorization without dropping hea
     {
       headers: { 'X-Trace': 'abc' },
       transport: 'sse',
-      url: 'https://crawler.example.com/mcp/sse',
+      url: 'https://deep-agent.example.com/mcp/sse',
     },
     'secret-token',
   )

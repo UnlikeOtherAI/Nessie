@@ -196,41 +196,41 @@ public-routable and pass SSRF validation. For internal-only hosts, on-prem
 networks, or local subprocesses, register a Remote MCP Server instead. The
 system still discovers tools, creates registry entries, and requires approval.
 
-### Crawl4AI Web Scanning Connector
+### deep.agent Crawl Web Scanning Connector
 
-Crawl4AI is the preferred first catalog template for agent web scanning because
-it already exposes browser-backed crawling, markdown extraction, screenshots,
+deep.agent crawl is the preferred first catalog template for agent web scanning
+because it exposes browser-backed crawling, markdown extraction, screenshots,
 PDF capture, JavaScript execution, and multi-URL crawl as MCP tools. Nessie
-should use Crawl4AI through the MCP universal connector, not by embedding the
+should use it through the MCP universal connector, not by embedding Crawl4AI's
 Python package or spawning a crawler process inside the API/worker.
 
 Connector shape:
 
 ```json
 {
-  "name": "crawl4ai",
+  "name": "deep-agent-crawl",
   "protocol": "sse",
-  "endpoint": "https://crawler.example.com/mcp/sse",
+  "endpoint": "https://deep-agent.example.com/mcp/sse",
   "auth_method": "bearer",
-  "credential_ref": "CRAWL4AI_BEARER_TOKEN"
+  "credential_ref": "DEEP_AGENT_CRAWL_BEARER_TOKEN"
 }
 ```
 
 Operational rules:
 
-- Use the SSE endpoint (`/mcp/sse`). Nessie's MCP client does not support
-  Crawl4AI's WebSocket endpoint yet.
+- Use the SSE endpoint (`/mcp/sse`). Nessie's MCP client does not support a
+  crawler WebSocket endpoint yet.
 - The endpoint must be reachable from Nessie and must pass the SSRF guard.
   `localhost`, private IP ranges, link-local addresses, and cloud metadata
   addresses are rejected for cloud-side connectors.
-- Do not expose an unauthenticated Crawl4AI server on the public internet.
-  Crawl4AI 0.9 is secure-by-default; keep bearer/JWT auth enabled or terminate
-  auth at a trusted gateway that is still private to the organization.
-- Treat Crawl4AI as an external data-acquisition service. Crawled URLs should
-  still be validated by Nessie policy before dispatch where Nessie owns the
-  input surface; Crawl4AI server-side allowlists should mirror the same
+- Do not expose an unauthenticated deep.agent crawl service on the public
+  internet. Keep bearer/JWT auth enabled or terminate auth at a trusted gateway
+  that is still private to the organization.
+- Treat deep.agent crawl as an external data-acquisition service. Crawled URLs
+  should still be validated by Nessie policy before dispatch where Nessie owns
+  the input surface; crawler-side allowlists should mirror the same
   public-web-only boundary because the crawler fetches from its own network.
-- After install, Nessie probes `tools/list`, projects discovered Crawl4AI tools
+- After install, Nessie probes `tools/list`, projects discovered crawler tools
   into `ToolRegistryEntry` rows as `pending_review`, and agents can use only the
   approved, granted tools.
 

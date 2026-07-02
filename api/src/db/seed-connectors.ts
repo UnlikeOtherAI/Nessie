@@ -22,7 +22,7 @@ type SeedConnector = {
   description: string
   authMethod?: 'bearer' | 'none'
   vendor: string
-  sourceUrl: string
+  sourceUrl?: string | null
   /** MCP endpoint, stored as the catalog default transport when known. */
   url?: string
   protocol: 'http' | 'sse'
@@ -49,14 +49,14 @@ const SEED_CONNECTORS: SeedConnector[] = [
   },
   {
     id: 'b0c7e6d2-7e2a-4f1a-9c3e-000000000002',
-    name: 'crawl4ai',
-    label: 'Crawl4AI',
+    name: 'deep-agent-crawl',
+    label: 'deep.agent Crawl',
     description:
-      'Self-hosted Crawl4AI web scanning and crawling over MCP. Install with '
-      + 'a reachable SSE endpoint such as https://crawler.example.com/mcp/sse.',
+      'Self-hosted deep.agent web scanning and crawling over MCP. Install with '
+      + 'a reachable SSE endpoint such as https://deep-agent.example.com/mcp/sse.',
     authMethod: 'bearer',
-    vendor: 'Crawl4AI',
-    sourceUrl: 'https://github.com/unclecode/crawl4ai',
+    vendor: 'deep.agent',
+    sourceUrl: 'https://deep.agent',
     protocol: 'sse',
   },
 ]
@@ -85,10 +85,11 @@ export const seedPublicConnectors = async (
     await prisma.mcpCatalogEntry.upsert({
       where: { id: connector.id },
       update: {
+        name: connector.name,
         label: connector.label,
         description: connector.description,
         vendor: connector.vendor,
-        sourceUrl: connector.sourceUrl,
+        sourceUrl: connector.sourceUrl ?? null,
         protocol: connector.protocol,
         authMethod,
         authConfig,
@@ -107,7 +108,7 @@ export const seedPublicConnectors = async (
         authConfig,
         defaultTransportConfig: transportConfig,
         vendor: connector.vendor,
-        sourceUrl: connector.sourceUrl,
+        sourceUrl: connector.sourceUrl ?? null,
         status: 'published',
         visibility: 'public',
         ownerUserId: null,

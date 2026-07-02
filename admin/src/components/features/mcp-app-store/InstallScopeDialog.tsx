@@ -185,7 +185,7 @@ export const InstallScopeDialog = ({
                 onChange={(event) => setEndpointUrl(event.target.value)}
                 placeholder={
                   catalogEntry.protocol === 'sse'
-                    ? 'https://crawler.example.com/mcp/sse'
+                    ? 'https://deep-agent.example.com/mcp/sse'
                     : 'https://example.com/mcp'
                 }
                 value={endpointUrl}
@@ -199,7 +199,7 @@ export const InstallScopeDialog = ({
                 autoComplete="new-password"
                 className={inputClass}
                 onChange={(event) => setCredentialRef(event.target.value)}
-                placeholder="CRAWL4AI_BEARER_TOKEN"
+                placeholder="DEEP_AGENT_CRAWL_BEARER_TOKEN"
                 type="password"
                 value={credentialRef}
               />

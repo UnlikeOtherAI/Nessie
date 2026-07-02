@@ -125,10 +125,12 @@ and HTTP/SSE/OAuth URLs are checked by the shared SSRF guard before save or use.
 Use remote MCP runners for private networks, local machines, or subprocess-based
 servers.
 
-Crawl4AI web scanning uses the MCP connector path: install a Nessie-reachable
-SSE endpoint (`/mcp/sse`) with bearer auth, approve the discovered tools, and
-grant them to agents. Do not embed the Crawl4AI Python package in the API/worker
-or expose an unauthenticated crawler to the public internet.
+deep.agent crawl web scanning uses the MCP connector path: install a
+Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, approve the
+discovered tools, and grant them to agents. The crawl library implementation
+belongs behind the deep.agent service boundary; do not embed the Crawl4AI
+Python package in the API/worker or expose an unauthenticated crawler to the
+public internet.
 
 > **Legacy JSON-RPC MCP server removed.** The old `GET /mcp` / `POST /mcp` JSON-RPC server (`src/mcp/server.ts`) that exposed `send_message`, `invoke_tool`, `tools/list`, and 37 tools existed only in the legacy `src/` tree, which is being deleted. There is no JSON-RPC `/mcp` endpoint on the live `api/` server.
 
