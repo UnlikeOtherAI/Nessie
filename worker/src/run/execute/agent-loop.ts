@@ -251,6 +251,7 @@ export const runExecutionAgentLoop = async (
         BUILTIN_TOOL_DEFINITIONS,
         input.toolPolicy,
         context.agent.parentAgentId,
+        context.agent.agentKind,
       )
 
       if (!registryDecision.allowed || !input.resolvedToolIds.has(toolName)) {

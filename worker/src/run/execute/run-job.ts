@@ -123,6 +123,7 @@ export const executeRunJob = async (
       BUILTIN_TOOL_DEFINITIONS,
       toolPolicy,
       context.agent.parentAgentId,
+      context.agent.agentKind,
     )
 
     const mcpToolset = await buildMcpToolset(

@@ -11,6 +11,16 @@ export type BuiltinToolDefinition = {
   }
   safe: boolean
   /**
+   * When true, only the personal assistant (`agentKind = 'personal_assistant'`)
+   * may call this tool. These are the "act as the user" tools — they write or
+   * search using the acting user's own identity/authority (e.g. sending a
+   * message as the user, joining the user to a channel, reading the user's
+   * authored messages, managing channels with the user's admin rights). Ordinary
+   * shared agents are denied them, so a user's delegated authority cannot be
+   * exercised by an agent the user did not delegate to.
+   */
+  personalAssistantOnly?: boolean
+  /**
    * Optional Zod input schema. Slice F (MCP universal connector) tools require
    * this so the worker can validate args before invoking the handler. Existing
    * builtin tools predate the schema and continue to rely on `parameters`.

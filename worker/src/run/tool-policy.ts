@@ -3,6 +3,8 @@ import type { BuiltinToolDefinition } from '@nessie/runtime'
 
 type ToolPolicy = Record<string, boolean>
 
+export type AgentKind = 'personal_assistant' | 'shared'
+
 type ResolvedToolSet = {
   descriptors: ToolSchemaDescriptor[]
   allowedIds: Set<string>
@@ -11,6 +13,7 @@ type ResolvedToolSet = {
 export type ToolDenialReason =
   | 'agent_policy_denied'
   | 'parent_agent_subtask_denied'
+  | 'personal_assistant_only'
   | 'tool_not_granted'
   | 'unknown_tool'
 
@@ -27,13 +30,23 @@ export const authorizeToolCall = (
   allToolDefinitions: BuiltinToolDefinition[],
   agentToolPolicy: ToolPolicy | null,
   parentAgentId: string | null,
+  agentKind: AgentKind,
 ): ToolAuthorizationDecision => {
-  if (!allToolDefinitions.some((tool) => tool.id === toolId)) {
+  const definition = allToolDefinitions.find((tool) => tool.id === toolId)
+  if (!definition) {
     return { allowed: false, reason: 'unknown_tool' }
   }
 
   if (hasPolicyDeny(agentToolPolicy, toolId)) {
     return { allowed: false, reason: 'agent_policy_denied' }
+  }
+
+  // "Act as the user" tools are reserved for the personal assistant, the only
+  // agent that is a user's explicit delegate. Any other agent is denied so a
+  // user's identity/authority cannot be exercised by an agent it never
+  // delegated to (e.g. one pulled into a channel by an @mention).
+  if (definition.personalAssistantOnly && agentKind !== 'personal_assistant') {
+    return { allowed: false, reason: 'personal_assistant_only' }
   }
 
   if (parentAgentId && toolId === 'spawn_subtask') {
@@ -52,6 +65,7 @@ export const resolveAgentTools = (
   allToolDefinitions: BuiltinToolDefinition[],
   agentToolPolicy: ToolPolicy | null,
   parentAgentId: string | null,
+  agentKind: AgentKind,
 ): ResolvedToolSet => {
   const allowedIds = new Set<string>()
   for (const tool of allToolDefinitions) {
@@ -62,6 +76,7 @@ export const resolveAgentTools = (
         allToolDefinitions,
         agentToolPolicy,
         parentAgentId,
+        agentKind,
       ).allowed
     ) {
       allowedIds.add(tool.id)

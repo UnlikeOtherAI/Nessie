@@ -110,6 +110,22 @@ Special policies:
 > (`shared`) agents are unaffected. If an "org-wide search" capability is wanted
 > later, it should be an explicit, role-gated feature — not the default for every
 > user's assistant.
+>
+> **Update (2026-07-02) — "act as the user" tools are delegate-only.** The tools
+> that write or search using the acting user's own identity/authority — currently
+> `send_message`, `authored_message_search`, `update_preferences`, `channel_join`,
+> `channel_update`, `channel_archive` — are marked `personalAssistantOnly` in the
+> builtin tool registry (`packages/runtime/src/builtin-tools.ts`) and enforced in
+> `authorizeToolCall` / `resolveAgentTools` (`worker/src/run/tool-policy.ts`),
+> keyed on `agentKind = personal_assistant`. Only the PA (a user's explicit
+> delegate) may use them; any other agent — including one pulled into a channel by
+> an `@mention` — is denied with reason `personal_assistant_only`. This prevents a
+> user's delegated authority from being exercised by an agent it never delegated
+> to. Read tools (`workspace_search`, `message_search`, `channel_find/list`,
+> attachment reads) are **not** gated: they stay available to every agent but
+> remain bounded by the resolved scope, which for a user-tasked run is already the
+> intersection of the agent's reach and the tasking user's access (`user_shared`),
+> so an agent can never retrieve data the tasking user cannot see.
 
 This keeps the MVP small and gives us a clean path to future managed assistants.
 
