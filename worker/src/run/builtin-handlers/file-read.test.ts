@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
 import { runFileRead } from './file-read.js'
 import { SandboxViolationError } from './sandbox.js'
+import { createSymlinkOrSkip } from './test-symlink.js'
 
 const setup = async (): Promise<{
   root: string
@@ -84,7 +85,7 @@ test('runFileRead refuses when transportConfig is missing', async () => {
   )
 })
 
-test('runFileRead rejects a symlink that points outside the allowed root', async () => {
+test('runFileRead rejects a symlink that points outside the allowed root', async (t) => {
   const { root, cleanup } = await setup()
   const escapeTarget = await mkdtemp(join(tmpdir(), 'nessie-file-read-out-'))
   try {
@@ -92,7 +93,10 @@ test('runFileRead rejects a symlink that points outside the allowed root', async
     await writeFile(secret, 'leak', 'utf8')
 
     const linkPath = join(root, 'link.txt')
-    await symlink(secret, linkPath)
+    const linked = await createSymlinkOrSkip(t, secret, linkPath, 'file')
+    if (!linked) {
+      return
+    }
 
     await assert.rejects(
       runFileRead({ path: linkPath }, { allowedRoots: [root] }),

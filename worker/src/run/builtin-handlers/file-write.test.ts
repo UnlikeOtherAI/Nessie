@@ -4,7 +4,6 @@ import {
   readFile,
   realpath,
   rm,
-  symlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -13,6 +12,7 @@ import test from 'node:test'
 
 import { FileWriteOverwriteError, runFileWrite } from './file-write.js'
 import { SandboxViolationError } from './sandbox.js'
+import { createSymlinkOrSkip } from './test-symlink.js'
 
 const setup = async (): Promise<{
   root: string
@@ -117,7 +117,7 @@ test('runFileWrite creates parent directories when createParents=true', async ()
   }
 })
 
-test('runFileWrite rejects a symlinked destination that escapes the root', async () => {
+test('runFileWrite rejects a symlinked destination that escapes the root', async (t) => {
   const { root, cleanup } = await setup()
   const escapeTarget = await mkdtemp(join(tmpdir(), 'nessie-file-write-out-'))
   try {
@@ -125,7 +125,10 @@ test('runFileWrite rejects a symlinked destination that escapes the root', async
     await writeFile(outside, 'old', 'utf8')
 
     const linkPath = join(root, 'link.txt')
-    await symlink(outside, linkPath)
+    const linked = await createSymlinkOrSkip(t, outside, linkPath, 'file')
+    if (!linked) {
+      return
+    }
 
     await assert.rejects(
       runFileWrite(

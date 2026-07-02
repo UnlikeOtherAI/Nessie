@@ -3,7 +3,6 @@ import {
   mkdtemp,
   realpath,
   rm,
-  symlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -15,6 +14,7 @@ import {
   extractSandboxConfig,
   SandboxViolationError,
 } from './sandbox.js'
+import { createSymlinkOrSkip } from './test-symlink.js'
 
 const firstAllowedRoot = (
   config: Awaited<ReturnType<typeof extractSandboxConfig>>,
@@ -298,7 +298,7 @@ test('assertInsideSandbox rejects sub-path for file root', async () => {
 
 // ── Symlink escape still blocked ────────────────────────────────────────────
 
-test('assertInsideSandbox rejects symlink escape regardless of access mode', async () => {
+test('assertInsideSandbox rejects symlink escape regardless of access mode', async (t) => {
   const { root, cleanup } = await setupDir()
   const escapeTarget = await mkdtemp(join(tmpdir(), 'nessie-sandbox-out-'))
   try {
@@ -306,7 +306,10 @@ test('assertInsideSandbox rejects symlink escape regardless of access mode', asy
     await writeFile(secret, 'leak', 'utf8')
 
     const linkPath = join(root, 'link.txt')
-    await symlink(secret, linkPath)
+    const linked = await createSymlinkOrSkip(t, secret, linkPath, 'file')
+    if (!linked) {
+      return
+    }
 
     const config = await extractSandboxConfig(
       { allowedRoots: [{ path: root, access: 'rw' }] },
