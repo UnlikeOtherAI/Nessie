@@ -32,7 +32,7 @@ import { sendApiError } from './lib/api.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
 import { sweepExpiredApprovals } from './services/approvals.js'
-import { createPgSecretStore } from '@nessie/mcp-manage'
+import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 import { createThoughtService } from './services/thoughts.js'
 import {
   createCorsOriginChecker,
@@ -368,6 +368,10 @@ export const buildApp = async () => {
     requireActorContext,
     requireOwner,
     oauthSecretStore: createPgSecretStore(prisma, authSecret ?? ''),
+    // Probe/test paths resolve credentialRefs through the same layered
+    // resolver the worker uses (encrypted pg store first, env fallback), so
+    // OAuth tokens and assistant-collected secrets work for connection tests.
+    secretResolver: createMcpSecretResolver(prisma, authSecret ?? ''),
   })
 
   registerToolBundleRoutes(app, {

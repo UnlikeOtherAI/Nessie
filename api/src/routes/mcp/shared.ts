@@ -4,12 +4,17 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { sendApiError } from '../../lib/api.js'
-import { McpCatalogError, MCP_CATALOG_ERROR_CODES } from '@nessie/mcp-manage'
-import { McpInstanceError, MCP_INSTANCE_ERROR_CODES } from '@nessie/mcp-manage'
-import { McpOAuthError, MCP_OAUTH_ERROR_CODES, type SecretStore } from '@nessie/mcp-manage'
 import {
+  McpCatalogError,
+  MCP_CATALOG_ERROR_CODES,
   McpCredentialError,
   MCP_CREDENTIAL_ERROR_CODES,
+  McpInstanceError,
+  MCP_INSTANCE_ERROR_CODES,
+  McpOAuthError,
+  MCP_OAUTH_ERROR_CODES,
+  type SecretResolver,
+  type SecretStore,
 } from '@nessie/mcp-manage'
 import { ToolGrantError, TOOL_GRANT_ERROR_CODES } from '../../services/tool-grants.js'
 
@@ -36,6 +41,12 @@ export type McpRouteHelpers = {
    * a placeholder ref and is NOT safe for real credentials.
    */
   oauthSecretStore?: SecretStore
+  /**
+   * Resolver for `credentialRef` values on probe/test paths. Production wires
+   * the layered pg+env resolver (`createMcpSecretResolver`) so OAuth tokens
+   * and assistant-collected secrets resolve exactly like env-provisioned refs.
+   */
+  secretResolver?: SecretResolver
 }
 
 /**
@@ -49,6 +60,7 @@ export type McpSubRegistrarContext = {
   requireActorContext: McpRouteHelpers['requireActorContext']
   requireOwner: McpRouteHelpers['requireOwner']
   oauthSecretStore: SecretStore
+  secretResolver: SecretResolver
 }
 
 export const JsonRecordSchema = z.record(z.string(), z.unknown())

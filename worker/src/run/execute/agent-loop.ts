@@ -142,6 +142,7 @@ export const runExecutionAgentLoop = async (
       organizationId: parseOrganizationId(context.channel.organizationId),
       systemChannelType: context.channel.systemChannelType,
     },
+    mcpSecrets: deps.mcpSecrets,
     memoryCaptureConfig: {
       modelClient: deps.modelClient,
       pool: deps.searchConfig.pool,

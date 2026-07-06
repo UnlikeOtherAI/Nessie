@@ -9,6 +9,13 @@ import {
   runChannelJoinTool,
   runChannelListTool,
   runChannelUpdateTool,
+  runConnectorDiscoverTool,
+  runConnectorInstallTool,
+  runConnectorLibrarySearchTool,
+  runConnectorListTool,
+  runConnectorSetSecretTool,
+  runConnectorTestTool,
+  runConnectorUninstallTool,
   runKbCommentAddTool,
   runKbCommentReplyTool,
   runKbCommentResolveTool,
@@ -410,6 +417,55 @@ export const executeBuiltinTool = async (
           position: typeof args.position === 'number' ? args.position : undefined,
           title: typeof args.title === 'string' ? args.title : undefined,
           labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
+        }),
+      )
+    case 'connector_list':
+      return wrapTool(inputSummary, () => runConnectorListTool(context))
+    case 'connector_library_search':
+      return wrapTool(inputSummary, () =>
+        runConnectorLibrarySearchTool(context, {
+          query: String(args.query ?? ''),
+        }),
+      )
+    case 'connector_discover':
+      return wrapTool(inputSummary, () =>
+        runConnectorDiscoverTool(context, { url: String(args.url ?? '') }),
+      )
+    case 'connector_install':
+      return wrapTool(inputSummary, () =>
+        runConnectorInstallTool(context, {
+          catalogEntryId:
+            typeof args.catalogEntryId === 'string' ? args.catalogEntryId : undefined,
+          name: typeof args.name === 'string' ? args.name : undefined,
+          label: typeof args.label === 'string' ? args.label : undefined,
+          description:
+            typeof args.description === 'string' ? args.description : undefined,
+          url: typeof args.url === 'string' ? args.url : undefined,
+          transport: typeof args.transport === 'string' ? args.transport : undefined,
+          authMethod:
+            typeof args.authMethod === 'string' ? args.authMethod : undefined,
+          scope: typeof args.scope === 'string' ? args.scope : undefined,
+          scopeId: typeof args.scopeId === 'string' ? args.scopeId : undefined,
+        }),
+      )
+    case 'connector_test':
+      return wrapTool(inputSummary, () =>
+        runConnectorTestTool(context, {
+          instanceId: String(args.instanceId ?? ''),
+        }),
+      )
+    case 'connector_set_secret':
+      return wrapTool(inputSummary, () =>
+        runConnectorSetSecretTool(context, {
+          instanceId: String(args.instanceId ?? ''),
+          secret: String(args.secret ?? ''),
+          shared: typeof args.shared === 'boolean' ? args.shared : undefined,
+        }),
+      )
+    case 'connector_uninstall':
+      return wrapTool(inputSummary, () =>
+        runConnectorUninstallTool(context, {
+          instanceId: String(args.instanceId ?? ''),
         }),
       )
     case 'kb_publish_request':

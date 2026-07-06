@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 
-import { inMemorySecretStoreStub } from '@nessie/mcp-manage'
+import { EnvSecretResolver, inMemorySecretStoreStub } from '@nessie/mcp-manage'
 
 import { registerMcpCatalogRoutes } from './mcp/catalog.js'
 import { registerMcpCredentialRoutes } from './mcp/credentials.js'
 import { registerMcpInstanceRoutes } from './mcp/instances.js'
+import { registerMcpLibraryRoutes } from './mcp/library.js'
 import { registerMcpOAuthRoutes } from './mcp/oauth.js'
 import { registerMcpToolsRoutes } from './mcp/tools.js'
 import type { McpRouteHelpers, McpSubRegistrarContext } from './mcp/shared.js'
@@ -65,6 +66,9 @@ export const registerMcpRoutes = (
     requireActorContext: helpers.requireActorContext,
     requireOwner: helpers.requireOwner,
     oauthSecretStore,
+    // Env-only resolution is the pre-secret-store behaviour and remains the
+    // safe default for tests; production wires the layered pg+env resolver.
+    secretResolver: helpers.secretResolver ?? new EnvSecretResolver(),
   }
 
   registerMcpCatalogRoutes(app, ctx)
@@ -72,4 +76,5 @@ export const registerMcpRoutes = (
   registerMcpCredentialRoutes(app, ctx)
   registerMcpToolsRoutes(app, ctx)
   registerMcpOAuthRoutes(app, ctx)
+  registerMcpLibraryRoutes(app, ctx)
 }

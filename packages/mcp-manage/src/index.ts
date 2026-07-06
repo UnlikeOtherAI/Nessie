@@ -9,6 +9,7 @@
  * both the API routes and the worker can share one implementation.
  */
 
+export * from './auth-apply.js'
 export * from './mcp-catalog.js'
 export * from './mcp-catalog-review.js'
 export * from './mcp-credentials.js'

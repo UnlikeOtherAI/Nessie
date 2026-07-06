@@ -17,6 +17,15 @@ export {
   runChannelUpdateTool,
 } from './pa-tools/channels.js'
 export {
+  runConnectorDiscoverTool,
+  runConnectorInstallTool,
+  runConnectorLibrarySearchTool,
+  runConnectorListTool,
+  runConnectorSetSecretTool,
+  runConnectorTestTool,
+  runConnectorUninstallTool,
+} from './pa-tools/connectors.js'
+export {
   runAuthoredMessageSearchTool,
   runWorkspaceSearchTool,
 } from './pa-tools/conversation-search.js'

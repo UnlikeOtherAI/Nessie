@@ -42,3 +42,21 @@ export class EnvSecretResolver implements SecretResolver {
     return typeof value === 'string' && value.length > 0 ? value : null
   }
 }
+
+/**
+ * Try each resolver in order; first non-null answer wins. Used to compose the
+ * encrypted Postgres store (`secret_*` refs minted by OAuth handshakes and
+ * assistant-collected credentials) with the env-var convention that predates
+ * it, so every dispatch/probe path resolves both kinds of ref.
+ */
+export const createLayeredSecretResolver = (
+  resolvers: SecretResolver[],
+): SecretResolver => ({
+  resolve: async (ref: string): Promise<string | null> => {
+    for (const resolver of resolvers) {
+      const value = await resolver.resolve(ref)
+      if (value !== null) return value
+    }
+    return null
+  },
+})

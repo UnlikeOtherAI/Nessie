@@ -42,6 +42,8 @@ import {
   MEMORY_CONSOLIDATION_TOPIC,
   RunMemoryConsolidateJobPayloadSchema,
 } from './run/memory-consolidation.js'
+import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
+
 import { executeOrchestrateDecideJob } from './run/orchestrate.js'
 
 const config = loadConfig()
@@ -90,6 +92,15 @@ export const startWorker = async (
       }
     },
   })
+  // MCP credential plumbing shared by the agentic MCP toolset and the
+  // personal assistant's connector tools: encrypts assistant-collected
+  // secrets at rest and resolves any credentialRef (pg store, then env).
+  const mcpSecrets = {
+    store: createPgSecretStore(prisma, config.auth.secret ?? '', {
+      refPrefix: 'secret_mcp_',
+    }),
+    resolver: createMcpSecretResolver(prisma, config.auth.secret ?? ''),
+  }
   const abortController = new AbortController()
   const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`
 
@@ -99,6 +110,7 @@ export const startWorker = async (
       const payload = RunExecuteJobPayloadSchema.parse(job.payload)
       await executeRunJob(
         {
+          mcpSecrets,
           modelClient,
           prisma,
           queueProvider,

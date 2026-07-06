@@ -1,20 +1,24 @@
+import {
+  canManageInstanceScope,
+  createInstance,
+  deleteInstance,
+  getInstance,
+  healthcheckInstance,
+  isOwnerRole,
+  listInstances,
+  listInstancesVisibleToUser,
+  MCP_INSTANCE_ERROR_CODES,
+  refreshInstance,
+  resolveMcpUserAccess,
+  testInstance,
+  type McpInstanceRow,
+  type McpUserAccess,
+} from '@nessie/mcp-manage'
 import { McpServerScopeTypeSchema, type AuthorizedActionContext } from '@nessie/schemas'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
-import { isOwnerRole } from '@nessie/mcp-manage'
-import {
-  createInstance,
-  deleteInstance,
-  getInstance,
-  healthcheckInstance,
-  listInstances,
-  MCP_INSTANCE_ERROR_CODES,
-  refreshInstance,
-  testInstance,
-  type McpInstanceRow,
-} from '@nessie/mcp-manage'
 
 import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
@@ -23,9 +27,16 @@ import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './s
  * `docs/plans/2026-05-30-mcp-store-publishing-approval.md`).
  *
  * Owns CRUD + lifecycle (`test`, `refresh`, `healthcheck`) on
- * `McpServerInstance`. Superusers (`owner` role) manage installs at any scope;
- * every other user may install and manage connectors only for themselves — i.e.
- * at their own `user` scope (`scopeType === 'user'`, `scopeId === actorId`).
+ * `McpServerInstance`. Scope rules (shared with the worker's
+ * personal-assistant connector tools via `@nessie/mcp-manage`):
+ *
+ * - `owner` role manages installs at any scope and sees everything;
+ * - `admin` role manages the shared scopes (organization/project/team/channel)
+ *   — "make this connector available to the whole team/org" — plus their own
+ *   user scope;
+ * - everyone else installs and manages connectors only at their own `user`
+ *   scope, but can SEE shared-scope installs they can reach (org-wide plus
+ *   the teams/channels/projects they belong to).
  */
 
 const CreateInstanceBodySchema = z.object({
@@ -36,18 +47,9 @@ const CreateInstanceBodySchema = z.object({
   transportConfig: JsonRecordSchema.optional(),
 })
 
-/** Whether the actor may operate on the given install scope. */
-const canManageScope = (
-  actorContext: AuthorizedActionContext,
-  scopeType: string,
-  scopeId: string,
-): boolean =>
-  isOwnerRole(actorContext)
-  || (scopeType === 'user' && scopeId === actorContext.actor.actorId)
-
 const FORBIDDEN_SCOPE = {
   code: 'MCP_INSTANCE_FORBIDDEN',
-  message: 'You can only install or manage connectors for yourself',
+  message: 'You do not have permission to manage connectors at this scope',
 }
 
 const denyScope = (reply: FastifyReply): FastifyReply => {
@@ -60,6 +62,28 @@ export const registerMcpInstanceRoutes = (
   ctx: McpSubRegistrarContext,
 ): void => {
   const { prisma, requireActorContext } = ctx
+
+  const accessFor = (actorContext: AuthorizedActionContext): Promise<McpUserAccess> =>
+    resolveMcpUserAccess(
+      prisma,
+      actorContext.tenant.organizationId,
+      actorContext.actor.actorId,
+    )
+
+  const canManage = async (
+    actorContext: AuthorizedActionContext,
+    scopeType: string,
+    scopeId: string,
+  ): Promise<boolean> => {
+    if (isOwnerRole(actorContext)) return true
+    const access = await accessFor(actorContext)
+    return canManageInstanceScope(
+      access,
+      actorContext.actor.actorId,
+      scopeType,
+      scopeId,
+    )
+  }
 
   /**
    * Load an instance and confirm the actor may manage its scope. Returns the
@@ -79,7 +103,7 @@ export const registerMcpInstanceRoutes = (
       sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
       return null
     }
-    if (!canManageScope(actorContext, instance.scopeType, instance.scopeId)) {
+    if (!(await canManage(actorContext, instance.scopeType, instance.scopeId))) {
       denyScope(reply)
       return null
     }
@@ -98,21 +122,26 @@ export const registerMcpInstanceRoutes = (
       sendApiError(reply, 400, 'VALIDATION_ERROR', 'Invalid scopeType filter', 'scopeType')
       return reply
     }
+    const scopeType = scopeTypeParsed?.success ? scopeTypeParsed.data : undefined
 
-    // Non-superusers only ever see their own user-scope installs, regardless of
-    // any filter they pass.
-    const filters = isOwnerRole(actorContext)
-      ? {
-          scopeType: scopeTypeParsed?.success ? scopeTypeParsed.data : undefined,
+    // Owners see everything; everyone else sees their own user-scope installs
+    // plus the shared-scope installs they can reach.
+    const instances = isOwnerRole(actorContext)
+      ? await listInstances(prisma, actorContext.tenant.organizationId, {
+          scopeType,
           scopeId: query.scopeId,
-        }
-      : { scopeType: 'user' as const, scopeId: actorContext.actor.actorId }
-
-    const instances = await listInstances(
-      prisma,
-      actorContext.tenant.organizationId,
-      filters,
-    )
+        })
+      : (
+          await listInstancesVisibleToUser(
+            prisma,
+            actorContext.tenant.organizationId,
+            actorContext.actor.actorId,
+          )
+        ).filter(
+          (instance) =>
+            (!scopeType || instance.scopeType === scopeType)
+            && (!query.scopeId || instance.scopeId === query.scopeId),
+        )
     return createApiResponse(instances)
   })
 
@@ -122,7 +151,7 @@ export const registerMcpInstanceRoutes = (
 
     const body = parseInput(CreateInstanceBodySchema, request.body, reply)
     if (!body) return reply
-    if (!canManageScope(actorContext, body.scopeType, body.scopeId)) {
+    if (!(await canManage(actorContext, body.scopeType, body.scopeId))) {
       return denyScope(reply)
     }
 
@@ -140,8 +169,27 @@ export const registerMcpInstanceRoutes = (
     if (!actorContext) return reply
 
     const { instanceId } = request.params as { instanceId: string }
-    const instance = await loadManageable(actorContext, instanceId, reply)
-    if (!instance) return reply
+    const instance = await getInstance(
+      prisma,
+      actorContext.tenant.organizationId,
+      instanceId,
+    )
+    if (!instance) {
+      sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
+      return reply
+    }
+    // Reading is allowed for anyone who can see the instance (shared scopes
+    // are meant to be discovered); managing still requires scope rights.
+    if (!(await canManage(actorContext, instance.scopeType, instance.scopeId))) {
+      const visible = await listInstancesVisibleToUser(
+        prisma,
+        actorContext.tenant.organizationId,
+        actorContext.actor.actorId,
+      )
+      if (!visible.some((row) => row.id === instance.id)) {
+        return denyScope(reply)
+      }
+    }
     return createApiResponse(instance)
   })
 
@@ -156,6 +204,7 @@ export const registerMcpInstanceRoutes = (
         prisma,
         actorContext.tenant.organizationId,
         instanceId,
+        { secretResolver: ctx.secretResolver },
       )
       return createApiResponse(instance)
     } catch (error) {
@@ -176,6 +225,7 @@ export const registerMcpInstanceRoutes = (
         prisma,
         actorContext.tenant.organizationId,
         instanceId,
+        { secretResolver: ctx.secretResolver },
       )
       return createApiResponse(instance)
     } catch (error) {
@@ -197,6 +247,7 @@ export const registerMcpInstanceRoutes = (
         prisma,
         actorContext.tenant.organizationId,
         instanceId,
+        { secretResolver: ctx.secretResolver },
       )
       return createApiResponse(result)
     } catch (error) {

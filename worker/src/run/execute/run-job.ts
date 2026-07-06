@@ -131,11 +131,16 @@ export const executeRunJob = async (
       context.channel.organizationId,
       toolPolicy,
       payload.actorContext,
-      { agentId: context.agent.id, channelId: context.channel.id },
+      {
+        agentId: context.agent.id,
+        agentKind: context.agent.agentKind,
+        channelId: context.channel.id,
+      },
       attributionFromActorContext(payload.actorContext, {
         agentId: context.agent.id,
         runId: context.run.id,
       }),
+      { secretResolver: deps.mcpSecrets?.resolver },
     )
 
     const conversation = await loadConversation(deps.prisma, context.run.threadId)

@@ -4,6 +4,7 @@ import {
   type McpTransportConfig,
 } from '@nessie/schemas'
 
+import { applyAuthSecretToTransport } from './auth-apply.js'
 import { MCP_INSTANCE_ERROR_CODES, McpInstanceError } from './mcp-instance-errors.js'
 import { assertMcpTransportSafe } from './mcp-security.js'
 import { EnvSecretResolver, type SecretResolver } from './secret-resolver.js'
@@ -75,34 +76,23 @@ const defaultSecretResolver = new EnvSecretResolver()
 const stringifyError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-const applyBearerSecret = (
-  transport: McpTransportConfig,
-  secret: string | null,
-): McpTransportConfig => {
-  if (!secret || transport.transport === 'stdio') return transport
-  return {
-    ...transport,
-    headers: {
-      ...(transport.headers ?? {}),
-      Authorization: `Bearer ${secret}`,
-    },
-  }
-}
+const CREDENTIALED_AUTH_METHODS = new Set(['bearer', 'api_key', 'oauth2'])
 
 export const resolveProbeTransport = async (
   instance: McpInstanceRow,
   catalogEntry: {
     authMethod: string
+    authConfig?: unknown
     defaultTransportConfig: unknown
   },
   secretResolver: SecretResolver = defaultSecretResolver,
 ): Promise<McpTransportConfig> => {
   const transport = resolveInstanceTransport(instance, catalogEntry)
-  if (catalogEntry.authMethod !== 'bearer' || !instance.credentialRef) {
+  if (!CREDENTIALED_AUTH_METHODS.has(catalogEntry.authMethod) || !instance.credentialRef) {
     return transport
   }
   const secret = await secretResolver.resolve(instance.credentialRef)
-  return applyBearerSecret(transport, secret)
+  return applyAuthSecretToTransport(transport, catalogEntry.authConfig, secret)
 }
 
 /**

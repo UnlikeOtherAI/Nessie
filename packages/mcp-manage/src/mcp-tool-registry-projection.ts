@@ -89,6 +89,14 @@ export const projectMcpToolDescriptors = async (
     instance.scopeType,
     instance.scopeId,
   )
+  // User-scoped connectors are self-service: the installer is the only person
+  // whose runs can ever see these tools (the worker toolset gates user-scope
+  // instances to the installing user's delegated personal-assistant runs), so
+  // requiring an org-owner review of each discovered tool would only break the
+  // "paste a link, start using it" flow. Shared scopes (org/team/channel/…)
+  // keep the pending_review governance gate.
+  const projectedStatus =
+    instance.scopeType === 'user' ? ('active' as const) : ('pending_review' as const)
   const existingEntries = await tx.toolRegistryEntry.findMany({
     where: { mcpInstanceId: instance.id },
     select: {
@@ -148,7 +156,7 @@ export const projectMcpToolDescriptors = async (
           ? (descriptor.outputSchema as object)
           : undefined,
         tags: [],
-        status: 'pending_review',
+        status: projectedStatus,
         version: '0.0.0',
         createdBy: 'mcp',
       },
@@ -169,7 +177,8 @@ export const projectMcpToolDescriptors = async (
           : Prisma.JsonNull,
         // Only flip status when the new descriptor diverges from what was
         // approved. An identical re-probe leaves an `active` entry active.
-        ...(drifted ? { status: 'pending_review' as const } : {}),
+        // User-scope drift re-activates: the installer is the reviewer.
+        ...(drifted ? { status: projectedStatus } : {}),
       },
     })
   }

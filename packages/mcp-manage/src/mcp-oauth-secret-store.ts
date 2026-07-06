@@ -9,6 +9,11 @@ import {
 } from '@nessie/runtime'
 
 import type { SecretStore } from './mcp-oauth.js'
+import {
+  createLayeredSecretResolver,
+  EnvSecretResolver,
+  type SecretResolver,
+} from './secret-resolver.js'
 
 /**
  * Persistent, encrypted implementation of the MCP OAuth {@link SecretStore}.
@@ -39,11 +44,23 @@ type StoredBundle = {
 export const createPgSecretStore = (
   prisma: PrismaClient,
   encryptionSecret: string,
+  options: {
+    /**
+     * Ref prefix for minted secrets. Must start with `secret_` so refs stay
+     * recognisable to the resolver chain. OAuth handshakes use the default;
+     * assistant-collected credentials use `secret_mcp_`.
+     */
+    refPrefix?: string
+  } = {},
 ): SecretStore => {
+  const refPrefix = options.refPrefix ?? 'secret_oauth_'
+  if (!refPrefix.startsWith('secret_')) {
+    throw new Error(`Secret ref prefix must start with "secret_", got "${refPrefix}"`)
+  }
   const key = deriveSecretKey(encryptionSecret)
   return {
     put: async (input) => {
-      const ref = `secret_oauth_${crypto.randomBytes(16).toString('hex')}`
+      const ref = `${refPrefix}${crypto.randomBytes(16).toString('hex')}`
       const bundle: StoredBundle = {
         accessToken: input.accessToken,
         refreshToken: input.refreshToken,
@@ -60,19 +77,19 @@ export const createPgSecretStore = (
 }
 
 /**
- * Read side of {@link createPgSecretStore}. Resolves a `secret_oauth_*` ref to
- * the plaintext access token (the value the dispatcher injects into the MCP
+ * Read side of {@link createPgSecretStore}. Resolves a `secret_*` ref to the
+ * plaintext access token (the value the dispatcher injects into the MCP
  * transport). Returns `null` for unknown refs so callers can fall through to
  * other resolvers.
  */
 export const createPgSecretResolver = (
   prisma: PrismaClient,
   encryptionSecret: string,
-): { resolve: (ref: string) => Promise<string | null> } => {
+): SecretResolver => {
   const key = deriveSecretKey(encryptionSecret)
   return {
     resolve: async (ref) => {
-      if (!ref.startsWith('secret_oauth_')) {
+      if (!ref.startsWith('secret_')) {
         return null
       }
       const row = await prisma.mcpOAuthSecret.findUnique({ where: { ref } })
@@ -90,3 +107,18 @@ export const createPgSecretResolver = (
     },
   }
 }
+
+/**
+ * The standard resolver chain for MCP credentials: encrypted Postgres store
+ * first (OAuth tokens + assistant-collected secrets), then the env-var
+ * convention for operator-provisioned refs. Wire this into probe routes and
+ * the worker's MCP toolset so both resolve the same refs the same way.
+ */
+export const createMcpSecretResolver = (
+  prisma: PrismaClient,
+  encryptionSecret: string,
+): SecretResolver =>
+  createLayeredSecretResolver([
+    createPgSecretResolver(prisma, encryptionSecret),
+    new EnvSecretResolver(),
+  ])

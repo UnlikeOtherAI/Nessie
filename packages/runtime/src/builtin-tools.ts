@@ -3,6 +3,7 @@ import {
   ATTACHMENT_READ_TOOL_DEFINITION,
   ATTACHMENT_UPLOAD_TOOL_DEFINITION,
 } from './builtin-attachment-tools.js'
+import { CONNECTOR_TOOL_DEFINITIONS } from './builtin-connector-tools.js'
 import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
 import { KB_TOOL_DEFINITIONS } from './builtin-kb-tools.js'
 import {
@@ -426,6 +427,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   ...KB_COMMENT_TOOL_DEFINITIONS,
   ...KB_TOOL_DEFINITIONS,
+  ...CONNECTOR_TOOL_DEFINITIONS,
 ]
 
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = buildWorkflowToolDefinitions(
