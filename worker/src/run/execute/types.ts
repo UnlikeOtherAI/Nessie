@@ -11,7 +11,12 @@ export type ExecutionDependencies = {
    * touch connectors keep working; connector features degrade to env-only
    * resolution without it.
    */
-  mcpSecrets?: { store: SecretStore; resolver: SecretResolver }
+  mcpSecrets?: {
+    store: SecretStore
+    resolver: SecretResolver
+    /** Absolute OAuth callback URL for assistant-minted authorization flows. */
+    oauthCallbackUrl?: string
+  }
   modelClient: ModelClient
   prisma: PrismaClient
   queueProvider: QueueProvider

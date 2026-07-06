@@ -129,21 +129,25 @@ export const McpBasicAuthConfigSchema = z.object({
 export type McpBasicAuthConfig = z.infer<typeof McpBasicAuthConfigSchema>
 
 /**
- * Per RFC 6749 §2.2 + §4.1, a confidential OAuth2 client identifies itself to
- * the authorization server via a public `client_id` (sent on the auth URL) and
- * authenticates token exchange with a `client_secret` (sent in the token POST
- * body or HTTP Basic auth header). Both are required for the
- * `authorization_code` grant we implement — providers reject the flow without
- * them. Storing the secret in the catalog row is acceptable for v1 because the
- * catalog is org-scoped admin configuration; future hardening can move the
- * secret behind the `secret_*` ref convention the dispatcher already uses.
+ * OAuth2 auth config, two shapes behind one `method`:
+ *
+ * - **Static** — a pre-registered confidential client per RFC 6749 §2.2 +
+ *   §4.1: `authorizationUrl` + `tokenUrl` + `clientId` (+ optional
+ *   `clientSecret`; public clients have none). Storing the secret in the
+ *   catalog row is acceptable for v1 because the catalog is org-scoped admin
+ *   configuration.
+ * - **Dynamic** (MCP authorization spec) — `{ method: "oauth2" }` alone. All
+ *   endpoints are discovered from the server's RFC 9728/8414 metadata and a
+ *   client is minted via Dynamic Client Registration (RFC 7591) at first use.
+ *
+ * `startOAuth` picks the mode by whether the static fields are present.
  */
 export const McpOAuth2AuthConfigSchema = z.object({
   method: z.literal('oauth2'),
-  authorizationUrl: z.string().url(),
-  tokenUrl: z.string().url(),
-  clientId: z.string().min(1),
-  clientSecret: z.string().min(1),
+  authorizationUrl: z.string().url().optional(),
+  tokenUrl: z.string().url().optional(),
+  clientId: z.string().min(1).optional(),
+  clientSecret: z.string().min(1).optional(),
   scopes: z.array(z.string()).default([]),
   refreshUrl: z.string().url().optional(),
 })

@@ -129,7 +129,7 @@ test('searchMcpLibrary dedups registry entries that match curated endpoints', as
 test('curated library only lists remote transports with expressible auth', () => {
   for (const entry of CURATED_MCP_LIBRARY) {
     assert.ok(['http', 'sse'].includes(entry.transport), entry.key)
-    assert.ok(['none', 'bearer', 'api_key'].includes(entry.authMethod), entry.key)
+    assert.ok(['none', 'bearer', 'api_key', 'oauth2'].includes(entry.authMethod), entry.key)
     assert.ok(entry.url.startsWith('https://'), entry.key)
   }
 })

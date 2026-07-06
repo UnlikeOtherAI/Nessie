@@ -94,12 +94,17 @@ export const startWorker = async (
   })
   // MCP credential plumbing shared by the agentic MCP toolset and the
   // personal assistant's connector tools: encrypts assistant-collected
-  // secrets at rest and resolves any credentialRef (pg store, then env).
+  // secrets at rest, resolves any credentialRef (pg store, then env), and
+  // carries the public OAuth callback URL so the assistant can mint sign-in
+  // links (config NESSIE_API_PUBLIC_URL in prod; localhost in dev).
   const mcpSecrets = {
     store: createPgSecretStore(prisma, config.auth.secret ?? '', {
       refPrefix: 'secret_mcp_',
     }),
     resolver: createMcpSecretResolver(prisma, config.auth.secret ?? ''),
+    oauthCallbackUrl: `${
+      config.api.publicUrl ?? `http://localhost:${config.api.port}`
+    }/api/mcp/oauth/callback`,
   }
   const abortController = new AbortController()
   const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`

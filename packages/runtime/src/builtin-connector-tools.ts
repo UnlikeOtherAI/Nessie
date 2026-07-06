@@ -99,8 +99,10 @@ export const CONNECTOR_INSTALL_TOOL_DEFINITION: BuiltinToolDefinition = {
       },
       authMethod: {
         type: 'string',
-        enum: ['none', 'bearer', 'api_key'],
-        description: 'How the server authenticates',
+        enum: ['none', 'bearer', 'api_key', 'oauth2'],
+        description:
+          'How the server authenticates (oauth2 = sign-in based; the install '
+          + 'response includes the authorization link)',
       },
       scope: {
         type: 'string',
@@ -112,6 +114,25 @@ export const CONNECTOR_INSTALL_TOOL_DEFINITION: BuiltinToolDefinition = {
         description: 'Target id for team/channel scope (defaults to the current context)',
       },
     },
+  },
+  safe: false,
+  personalAssistantOnly: true,
+}
+
+export const CONNECTOR_AUTHORIZE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'connector_authorize',
+  label: 'Connector Authorize',
+  description:
+    'Start an OAuth sign-in for a connector that supports it (authMethod '
+    + 'oauth2). Returns a link the user must open in their browser to approve '
+    + 'access with their existing account — send them the link, then call '
+    + 'connector_test once they confirm they have finished signing in.',
+  parameters: {
+    type: 'object',
+    properties: {
+      instanceId: { type: 'string', description: 'Connector instance id' },
+    },
+    required: ['instanceId'],
   },
   safe: false,
   personalAssistantOnly: true,
@@ -183,6 +204,7 @@ export const CONNECTOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   CONNECTOR_LIBRARY_SEARCH_TOOL_DEFINITION,
   CONNECTOR_DISCOVER_TOOL_DEFINITION,
   CONNECTOR_INSTALL_TOOL_DEFINITION,
+  CONNECTOR_AUTHORIZE_TOOL_DEFINITION,
   CONNECTOR_TEST_TOOL_DEFINITION,
   CONNECTOR_SET_SECRET_TOOL_DEFINITION,
   CONNECTOR_UNINSTALL_TOOL_DEFINITION,

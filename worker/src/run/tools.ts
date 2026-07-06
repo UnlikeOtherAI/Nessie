@@ -9,6 +9,7 @@ import {
   runChannelJoinTool,
   runChannelListTool,
   runChannelUpdateTool,
+  runConnectorAuthorizeTool,
   runConnectorDiscoverTool,
   runConnectorInstallTool,
   runConnectorLibrarySearchTool,
@@ -446,6 +447,12 @@ export const executeBuiltinTool = async (
             typeof args.authMethod === 'string' ? args.authMethod : undefined,
           scope: typeof args.scope === 'string' ? args.scope : undefined,
           scopeId: typeof args.scopeId === 'string' ? args.scopeId : undefined,
+        }),
+      )
+    case 'connector_authorize':
+      return wrapTool(inputSummary, () =>
+        runConnectorAuthorizeTool(context, {
+          instanceId: String(args.instanceId ?? ''),
         }),
       )
     case 'connector_test':

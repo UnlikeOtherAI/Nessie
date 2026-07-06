@@ -210,7 +210,7 @@ export const registerMcpInstanceRoutes = (
         prisma,
         actorContext.tenant.organizationId,
         instanceId,
-        { secretResolver: ctx.secretResolver },
+        { secretResolver: ctx.secretResolver, probeUserId: actorContext.actor.actorId },
       )
       return createApiResponse(instance)
     } catch (error) {
@@ -231,7 +231,7 @@ export const registerMcpInstanceRoutes = (
         prisma,
         actorContext.tenant.organizationId,
         instanceId,
-        { secretResolver: ctx.secretResolver },
+        { secretResolver: ctx.secretResolver, probeUserId: actorContext.actor.actorId },
       )
       return createApiResponse(instance)
     } catch (error) {
@@ -253,7 +253,7 @@ export const registerMcpInstanceRoutes = (
         prisma,
         actorContext.tenant.organizationId,
         instanceId,
-        { secretResolver: ctx.secretResolver },
+        { secretResolver: ctx.secretResolver, probeUserId: actorContext.actor.actorId },
       )
       return createApiResponse(result)
     } catch (error) {

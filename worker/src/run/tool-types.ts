@@ -27,7 +27,11 @@ export type BuiltinToolRuntimeContext = {
   // credentialRef for probes. Optional so existing test fixtures that build a
   // partial context keep compiling; connector tools fail with a clear message
   // when absent.
-  mcpSecrets?: { store: SecretStore; resolver: SecretResolver }
+  mcpSecrets?: {
+    store: SecretStore
+    resolver: SecretResolver
+    oauthCallbackUrl?: string
+  }
   memoryCaptureConfig?: CaptureConfig | null
   // Shared inference client for tools that need it directly (e.g. kb_search's
   // query embedding step). Optional so existing test fixtures that build a

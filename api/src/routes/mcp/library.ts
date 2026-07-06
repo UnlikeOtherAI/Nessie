@@ -47,7 +47,7 @@ const ImportBodySchema = z.object({
     description: z.string().max(4000).optional(),
     url: z.string().url(),
     transport: z.enum(['http', 'sse']),
-    authMethod: z.enum(['none', 'bearer', 'api_key']),
+    authMethod: z.enum(['none', 'bearer', 'api_key', 'oauth2']),
     vendor: z.string().max(200).nullable().optional(),
     sourceUrl: z.string().url().nullable().optional(),
     apiKeyHeaderName: z.string().min(1).max(100).optional(),
@@ -111,6 +111,8 @@ export const registerMcpLibraryRoutes = (
               headerName: entry.apiKeyHeaderName ?? 'Authorization',
               valuePrefix: entry.apiKeyValuePrefix ?? '',
             }
+          // `oauth2` imports as the dynamic (client-less) config: endpoints
+          // and a client are discovered/registered at connect time.
           : { method: entry.authMethod },
       defaultTransportConfig: { transport: entry.transport, url: entry.url },
       vendor: entry.vendor ?? null,

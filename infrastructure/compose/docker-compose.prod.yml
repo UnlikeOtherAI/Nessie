@@ -92,6 +92,9 @@ services:
       NESSIE_API_HOST: 0.0.0.0
       NESSIE_API_PORT: "5554"
       NESSIE_API_TRUSTED_PROXY_HOPS: "1"
+      # Public origin for OAuth redirect URIs minted outside an HTTP request
+      # (the worker's personal assistant connector_authorize flow).
+      NESSIE_API_PUBLIC_URL: https://api.nessie.works
       DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_CONFIG_PATH: /app/nessie.config.json
@@ -132,6 +135,7 @@ services:
     environment:
       NODE_ENV: production
       NESSIE_MODE: selfHosted
+      NESSIE_API_PUBLIC_URL: https://api.nessie.works
       DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_CONFIG_PATH: /app/nessie.config.json

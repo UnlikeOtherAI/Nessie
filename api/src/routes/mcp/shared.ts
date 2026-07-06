@@ -13,6 +13,7 @@ import {
   MCP_INSTANCE_ERROR_CODES,
   McpOAuthError,
   MCP_OAUTH_ERROR_CODES,
+  type OAuthStateStore,
   type SecretResolver,
   type SecretStore,
 } from '@nessie/mcp-manage'
@@ -52,6 +53,11 @@ export type McpRouteHelpers = {
    * route). Defaults to the OAuth secret store when omitted.
    */
   mcpSecretStore?: SecretStore
+  /**
+   * OAuth authorization state store. Defaults to the Postgres-backed store
+   * (cross-process one-shot state); tests may inject an in-memory one.
+   */
+  oauthStateStore?: OAuthStateStore
 }
 
 /**
@@ -67,6 +73,7 @@ export type McpSubRegistrarContext = {
   oauthSecretStore: SecretStore
   secretResolver: SecretResolver
   mcpSecretStore: SecretStore
+  oauthStateStore?: OAuthStateStore
 }
 
 export const JsonRecordSchema = z.record(z.string(), z.unknown())

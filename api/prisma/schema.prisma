@@ -674,6 +674,7 @@ model Organization {
   inferenceCredentialBindings InferenceCredentialBinding[]
   inferenceRoutingProfiles    InferenceRoutingProfile[]
   mcpCatalogEntries           McpCatalogEntry[]
+  mcpOAuthClients             McpOAuthClient[]
 
   @@map("organizations")
 }
@@ -2838,8 +2839,42 @@ model McpOAuthSecret {
   iv         String
   authTag    String   @map("auth_tag")
   createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("mcp_oauth_secret")
+}
+
+/// One-shot OAuth authorization state (RFC 6749 `state` + PKCE verifier and
+/// the dynamic-flow parameters the callback needs). Postgres-backed so any
+/// API/worker process can mint a flow that another process completes; rows
+/// are deleted on first read and expire after 10 minutes.
+model McpOAuthState {
+  token     String   @id
+  payload   Json
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("mcp_oauth_states")
+}
+
+/// OAuth client obtained via Dynamic Client Registration (RFC 7591), one per
+/// (organization, authorization-server issuer). Public clients carry no
+/// secret; when a server issues one anyway it is stored behind an encrypted
+/// `secret_*` ref, never in plaintext.
+model McpOAuthClient {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  issuer          String
+  clientId        String       @map("client_id")
+  clientSecretRef String?      @map("client_secret_ref")
+  redirectUris    String[]     @map("redirect_uris")
+  metadata        Json         @default("{}")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, issuer])
+  @@map("mcp_oauth_clients")
 }
 
 // ─── File uploads / attachments (Slack-parity files slice) ──────────────────

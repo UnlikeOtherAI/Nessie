@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import {
   useImportLibraryEntry,
   useSetInstanceSecret,
+  useStartInstanceOAuth,
   type McpLibraryEntryRecord,
 } from '../../../facades/mcp-library/hooks'
 import {
@@ -11,10 +12,11 @@ import {
 
 /**
  * One-click install flow for a library entry (or a discovered endpoint):
- * import → install at the chosen scope → store the credential (encrypted)
- * when the server needs one → connection test + tool discovery. Designed for
- * non-technical users: no UUIDs, no env-var refs — just "who is this for" and
- * "paste your key".
+ * import → install at the chosen scope → credential step → connection test +
+ * tool discovery. Designed for non-technical users: no UUIDs, no env-var
+ * refs. The credential step adapts to the server: paste-a-key connectors
+ * store the secret encrypted; OAuth connectors open the provider's sign-in
+ * page in a new tab and finish with a connection test once the user approves.
  */
 
 type LibraryInstallDialogProps = {
@@ -55,19 +57,43 @@ export const LibraryInstallDialog = ({
   const importEntry = useImportLibraryEntry()
   const createInstance = useCreateInstance()
   const setSecret = useSetInstanceSecret()
+  const startOAuth = useStartInstanceOAuth()
   const testInstance = useTestInstance()
 
   const [audience, setAudience] = useState<'me' | 'organization'>('me')
   const [secret, setSecretValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<string | null>(null)
+  // Set once the OAuth tab has been opened; the dialog then waits for the
+  // user to finish signing in and offers the final "Test connection" step.
+  const [oauthInstanceId, setOauthInstanceId] = useState<string | null>(null)
+  const [oauthCatalogEntryId, setOauthCatalogEntryId] = useState<string | null>(null)
 
-  const needsSecret = entry.authMethod !== 'none'
+  const isOAuth = entry.authMethod === 'oauth2'
+  const needsSecret = entry.authMethod !== 'none' && !isOAuth
   const pending =
     importEntry.isPending
     || createInstance.isPending
     || setSecret.isPending
+    || startOAuth.isPending
     || testInstance.isPending
+
+  const finishAfterOAuth = async () => {
+    if (!oauthInstanceId || !oauthCatalogEntryId) return
+    setError(null)
+    setProgress('Testing connection…')
+    try {
+      await testInstance.mutateAsync(oauthInstanceId)
+      onDone(oauthCatalogEntryId)
+    } catch (caught) {
+      setProgress(null)
+      setError(
+        `Connection test failed: ${
+          caught instanceof Error ? caught.message : 'unknown error'
+        }. Finish the sign-in in the other tab, then try again.`,
+      )
+    }
+  }
 
   const runInstall = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -112,6 +138,18 @@ export const LibraryInstallDialog = ({
         scopeType: audience === 'organization' ? 'organization' : 'user',
         scopeId: audience === 'organization' ? organizationId : currentUserId,
       })
+
+      if (isOAuth) {
+        // Open the provider's sign-in page and switch the dialog to its
+        // "waiting for approval" stage.
+        setProgress('Starting sign-in…')
+        const flow = await startOAuth.mutateAsync({ instanceId: instance.id })
+        window.open(flow.authorizationUrl, '_blank', 'noopener')
+        setOauthInstanceId(instance.id)
+        setOauthCatalogEntryId(catalogEntry.id)
+        setProgress(null)
+        return
+      }
 
       if (needsSecret && secret.trim()) {
         setProgress('Storing credential…')
@@ -164,7 +202,19 @@ export const LibraryInstallDialog = ({
         </p>
 
         <div className="mt-4 grid gap-3">
-          {canShareToOrg ? (
+          {oauthInstanceId ? (
+            <div className="grid gap-2 text-sm text-[color:var(--tx2)]">
+              <p>
+                A sign-in tab has opened — approve access with your account
+                there, then come back and finish the setup.
+              </p>
+              <p className="text-xs text-[color:var(--tx3)]">
+                Didn&apos;t see the tab? Check your popup blocker, then press
+                &ldquo;Finish setup&rdquo; to retry.
+              </p>
+            </div>
+          ) : null}
+          {!oauthInstanceId && canShareToOrg ? (
             <label className={labelClass}>
               Who is this for?
               <select
@@ -180,7 +230,7 @@ export const LibraryInstallDialog = ({
             </label>
           ) : null}
 
-          {needsSecret ? (
+          {!oauthInstanceId && needsSecret ? (
             <label className={labelClass}>
               {audience === 'organization' ? 'Shared credential' : 'Your API key / token'}
               <input
@@ -197,12 +247,19 @@ export const LibraryInstallDialog = ({
                 </span>
               ) : null}
             </label>
-          ) : (
+          ) : null}
+          {!oauthInstanceId && isOAuth ? (
+            <div className="text-sm text-[color:var(--tx2)]">
+              You&apos;ll sign in with your existing account — a new tab opens to
+              approve access. {entry.authHint ?? ''}
+            </div>
+          ) : null}
+          {!oauthInstanceId && !needsSecret && !isOAuth ? (
             <div className="text-sm text-[color:var(--tx2)]">
               This connector works without a key — it will be tested and its tools
               discovered automatically.
             </div>
-          )}
+          ) : null}
 
           {progress && !error ? (
             <div className="text-sm text-[color:var(--tx2)]">{progress}</div>
@@ -225,16 +282,30 @@ export const LibraryInstallDialog = ({
           >
             Cancel
           </button>
-          <button
-            className={[
-              'admin-button admin-button-primary rounded-md px-4 py-2',
-              'text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40',
-            ].join(' ')}
-            disabled={pending}
-            type="submit"
-          >
-            {pending ? progress ?? 'Adding…' : 'Add connector'}
-          </button>
+          {oauthInstanceId ? (
+            <button
+              className={[
+                'admin-button admin-button-primary rounded-md px-4 py-2',
+                'text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40',
+              ].join(' ')}
+              disabled={pending}
+              onClick={() => void finishAfterOAuth()}
+              type="button"
+            >
+              {pending ? progress ?? 'Finishing…' : "I've signed in — finish setup"}
+            </button>
+          ) : (
+            <button
+              className={[
+                'admin-button admin-button-primary rounded-md px-4 py-2',
+                'text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40',
+              ].join(' ')}
+              disabled={pending}
+              type="submit"
+            >
+              {pending ? progress ?? 'Adding…' : isOAuth ? 'Sign in & add' : 'Add connector'}
+            </button>
+          )}
         </div>
       </form>
     </div>

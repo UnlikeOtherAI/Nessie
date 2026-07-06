@@ -1,6 +1,7 @@
 import { assertSafeUrl, UrlSafetyError } from '@nessie/runtime'
 
 import { probeConnection, type ManagerFactory } from './mcp-instance-probe.js'
+import { discoverOAuthServerConfig } from './oauth-discovery.js'
 import type { McpLibraryAuthMethod, McpLibraryTransport } from './library.js'
 
 /**
@@ -15,9 +16,10 @@ import type { McpLibraryAuthMethod, McpLibraryTransport } from './library.js'
  *
  * Outcomes per candidate:
  * - a successful `tools/list` handshake → installable with `authMethod: none`;
- * - an HTTP 401/403 from the endpoint → a real server that wants credentials
- *   (`authMethod: bearer` is the proposal; the `WWW-Authenticate` header is
- *   captured as evidence so OAuth-capable servers can be recognised);
+ * - an HTTP 401/403 from the endpoint → a real server that wants credentials.
+ *   When the server publishes OAuth metadata (RFC 9728/8414) the proposal is
+ *   `authMethod: oauth2` — sign-in based, no key to paste; otherwise
+ *   `authMethod: bearer` with guidance to obtain an API key;
  * - anything else → not an MCP endpoint at that URL.
  */
 
@@ -123,13 +125,12 @@ const fetchAuthSignal = async (
   }
 }
 
-const authNote = (signal: AuthSignal): string => {
-  const scheme = signal?.wwwAuthenticate ?? ''
-  if (/resource_metadata|oauth/i.test(scheme)) {
-    return 'This server supports OAuth sign-in. A bearer token (API key or personal access token) will also work if the vendor issues one.'
-  }
-  return 'This server requires a credential. Ask the vendor for an API key or personal access token and add it as the connector secret.'
-}
+const BEARER_NOTE =
+  'This server requires a credential. Ask the vendor for an API key or '
+  + 'personal access token and add it as the connector secret.'
+const OAUTH_NOTE =
+  'This server supports OAuth sign-in — connect it and approve access with '
+  + 'your existing account; no key to paste.'
 
 export const discoverMcpEndpoint = async (
   rawUrl: string,
@@ -201,13 +202,31 @@ export const discoverMcpEndpoint = async (
         detail,
       })
       if (looksAuthFailure && !authProposal) {
-        const signal = await fetchAuthSignal(url, fetchImpl, probeTimeoutMs)
-        authProposal = {
-          url,
-          transport,
-          authMethod: 'bearer',
-          toolNames: [],
-          note: authNote(signal),
+        // Prefer OAuth when the server publishes discovery metadata — the
+        // user just signs in, no key to obtain. Fall back to bearer guidance.
+        const oauth = await discoverOAuthServerConfig(url, {
+          fetchImpl,
+          timeoutMs: probeTimeoutMs,
+        }).catch(() => null)
+        if (oauth && oauth.metadataSource === 'metadata') {
+          authProposal = {
+            url,
+            transport,
+            authMethod: 'oauth2',
+            toolNames: [],
+            note: OAUTH_NOTE,
+          }
+        } else {
+          const signal = await fetchAuthSignal(url, fetchImpl, probeTimeoutMs)
+          authProposal = {
+            url,
+            transport,
+            authMethod: 'bearer',
+            toolNames: [],
+            note: /oauth/i.test(signal?.wwwAuthenticate ?? '')
+              ? `${BEARER_NOTE} (The server hints at OAuth support but publishes no usable metadata.)`
+              : BEARER_NOTE,
+          }
         }
       }
     }

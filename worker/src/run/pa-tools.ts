@@ -17,6 +17,7 @@ export {
   runChannelUpdateTool,
 } from './pa-tools/channels.js'
 export {
+  runConnectorAuthorizeTool,
   runConnectorDiscoverTool,
   runConnectorInstallTool,
   runConnectorLibrarySearchTool,

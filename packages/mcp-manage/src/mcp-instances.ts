@@ -14,6 +14,7 @@ import {
   McpSecurityError,
   assertUserAuthoredMcpTransportSafe,
 } from './mcp-security.js'
+import { resolveCredentialRef } from './mcp-credentials.js'
 import {
   MCP_INSTANCE_ERROR_CODES,
   McpInstanceError,
@@ -364,7 +365,7 @@ export const healthcheckInstance = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
-  options: { managerFactory?: ManagerFactory; secretResolver?: SecretResolver } = {},
+  options: ProbeOptions = {},
 ): Promise<HealthcheckResult> => {
   const instance = await getInstance(prisma, organizationId, id)
   if (!instance) {
@@ -381,8 +382,14 @@ export const healthcheckInstance = async (
     )
   }
   ensureAuthConfigMatchesMethod(catalogEntry.authMethod, catalogEntry.authConfig)
-  const transport = await resolveProbeTransport(
+  const credentialRef = await resolveProbeCredentialRef(
+    prisma,
+    organizationId,
     instance,
+    options.probeUserId,
+  )
+  const transport = await resolveProbeTransport(
+    { ...instance, credentialRef },
     catalogEntry,
     options.secretResolver,
   )
@@ -414,7 +421,7 @@ export const refreshInstance = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
-  options: { managerFactory?: ManagerFactory; secretResolver?: SecretResolver } = {},
+  options: ProbeOptions = {},
 ): Promise<McpInstanceRow> => {
   try {
     return await testInstance(prisma, organizationId, id, options)
@@ -449,11 +456,36 @@ export const refreshInstance = async (
  *   thrown so the route handler can return 502 with the error message — the
  *   admin UI surfaces this verbatim.
  */
+export type ProbeOptions = {
+  managerFactory?: ManagerFactory
+  secretResolver?: SecretResolver
+  /**
+   * Probe with this user's credential (their override, falling back to the
+   * instance default via the 7-level chain). This is what makes shared OAuth
+   * connectors testable: each user connects their own account, and their
+   * probe runs with their own token.
+   */
+  probeUserId?: string
+}
+
+const resolveProbeCredentialRef = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  instance: McpInstanceRow,
+  probeUserId?: string,
+): Promise<string | null> => {
+  if (!probeUserId) return instance.credentialRef
+  return resolveCredentialRef(prisma, instance.id, {
+    userId: probeUserId,
+    organizationId,
+  })
+}
+
 export const testInstance = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
-  options: { managerFactory?: ManagerFactory; secretResolver?: SecretResolver } = {},
+  options: ProbeOptions = {},
 ): Promise<McpInstanceRow> => {
   const instance = await getInstance(prisma, organizationId, id)
   if (!instance) {
@@ -475,8 +507,14 @@ export const testInstance = async (
   // applied to probes so authenticated MCP servers can be tested before use.
   ensureAuthConfigMatchesMethod(catalogEntry.authMethod, catalogEntry.authConfig)
 
-  const transport = await resolveProbeTransport(
+  const credentialRef = await resolveProbeCredentialRef(
+    prisma,
+    organizationId,
     instance,
+    options.probeUserId,
+  )
+  const transport = await resolveProbeTransport(
+    { ...instance, credentialRef },
     catalogEntry,
     options.secretResolver,
   )

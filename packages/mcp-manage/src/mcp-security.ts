@@ -97,8 +97,14 @@ export const assertMcpAuthUrlsSafe = async (
   options: McpUrlSafetyOptions = {},
 ): Promise<void> => {
   if (config.method !== 'oauth2') return
-  await assertMcpUrlSafe(config.authorizationUrl, options)
-  await assertMcpUrlSafe(config.tokenUrl, options)
+  // Dynamic-mode configs carry no static URLs — endpoints are discovered from
+  // server metadata and SSRF-checked at discovery time instead.
+  if (config.authorizationUrl) {
+    await assertMcpUrlSafe(config.authorizationUrl, options)
+  }
+  if (config.tokenUrl) {
+    await assertMcpUrlSafe(config.tokenUrl, options)
+  }
   if (config.refreshUrl) {
     await assertMcpUrlSafe(config.refreshUrl, options)
   }

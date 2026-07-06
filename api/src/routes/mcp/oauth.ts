@@ -1,7 +1,13 @@
+import {
+  canStartOAuthForInstance,
+  completeOAuth,
+  createPgOAuthStateStore,
+  getInstance,
+  startOAuth,
+} from '@nessie/mcp-manage'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 import { createApiResponse, sendApiError } from '../../lib/api.js'
-import { completeOAuth, startOAuth } from '@nessie/mcp-manage'
 
 import { sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
@@ -27,15 +33,18 @@ const sanitizeOAuthErrorCode = (raw: unknown): string => {
 }
 
 /**
- * OAuth handshake sub-registrar (plan §6).
+ * OAuth handshake sub-registrar.
  *
  * `start` mints a cryptographically random state token (10-min TTL,
- * single-use) and returns the authorization URL the admin UI should send the
- * user to. The callback verifies state, exchanges the auth code for tokens
- * via the catalog entry's `tokenUrl`, persists the access token through the
- * injected `SecretStore`, and links the resulting `secret_*` ref onto a
- * per-user `McpServerCredentialOverride` row so multiple users installing
- * the same instance keep separate OAuth identities.
+ * single-use, Postgres-backed so worker-minted flows complete here too) and
+ * returns the authorization URL. Static catalog configs use the
+ * pre-registered client; dynamic configs discover the server's OAuth metadata
+ * and register a client on the fly (PKCE, RFC 8707 `resource`).
+ *
+ * `start` is open to any signed-in user who can reach the instance: the
+ * minted token only ever lands on the caller's own identity (their user-scope
+ * instance or their per-user credential override), so connecting "my Notion"
+ * is self-service by construction.
  */
 
 /**
@@ -61,21 +70,68 @@ const buildOAuthCallbackUrl = (request: FastifyRequest): string => {
   return `${proto}://${host}/api/mcp/oauth/callback`
 }
 
+/**
+ * Static success page for the browser tab the provider redirects into. No
+ * request data is interpolated — the page is a constant string, so there is
+ * no reflected-XSS surface.
+ */
+const CALLBACK_SUCCESS_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Connected</title>
+<style>
+  body { font-family: system-ui, sans-serif; display: grid; place-items: center; min-height: 90vh; color: #333; background: #faf9f7; }
+  .card { text-align: center; padding: 2rem 3rem; border: 1px solid #e5e1da; border-radius: 12px; background: #fff; }
+  h1 { font-size: 1.2rem; margin: 0 0 .5rem; }
+  p { margin: 0; color: #666; }
+</style></head>
+<body><div class="card">
+  <h1>Connected ✓</h1>
+  <p>Your account is linked. You can close this tab and return to Nessie.</p>
+</div></body>
+</html>`
+
 export const registerMcpOAuthRoutes = (
   app: FastifyInstance,
   ctx: McpSubRegistrarContext,
 ): void => {
-  const { prisma, requireActorContext, requireOwner, oauthSecretStore } = ctx
+  const { prisma, requireActorContext, oauthSecretStore } = ctx
+  const stateStore = ctx.oauthStateStore ?? createPgOAuthStateStore(prisma)
 
   app.post('/api/mcp/instances/:instanceId/oauth/start', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireOwner(actorContext, reply)) return reply
 
     const { instanceId } = request.params as { instanceId: string }
+    const instance = await getInstance(
+      prisma,
+      actorContext.tenant.organizationId,
+      instanceId,
+    )
+    if (!instance) {
+      sendApiError(reply, 404, 'MCP_OAUTH_INSTANCE_NOT_FOUND', 'Instance not found')
+      return reply
+    }
+    const allowed = await canStartOAuthForInstance(
+      prisma,
+      actorContext.tenant.organizationId,
+      actorContext.actor.actorId,
+      instance,
+    )
+    if (!allowed) {
+      sendApiError(
+        reply,
+        403,
+        'MCP_INSTANCE_FORBIDDEN',
+        'You do not have access to this connector',
+      )
+      return reply
+    }
+
     try {
       const result = await startOAuth({
         prisma,
+        store: stateStore,
+        secretStore: oauthSecretStore,
         instanceId,
         actorContext,
         callbackUrl: buildOAuthCallbackUrl(request),
@@ -132,14 +188,18 @@ export const registerMcpOAuthRoutes = (
       return reply
     }
     try {
-      const result = await completeOAuth({
+      await completeOAuth({
         prisma,
+        store: stateStore,
         secretStore: oauthSecretStore,
+        secretResolver: ctx.secretResolver,
         state: query.state,
         code: query.code,
         callbackUrl: buildOAuthCallbackUrl(request),
       })
-      return createApiResponse(result)
+      // The redirect lands in a bare browser tab — answer with a human page,
+      // not JSON.
+      return reply.type('text/html').send(CALLBACK_SUCCESS_HTML)
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error

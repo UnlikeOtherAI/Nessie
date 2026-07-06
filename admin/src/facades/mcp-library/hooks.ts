@@ -11,7 +11,7 @@ import type { McpCatalogEntryRecord } from '../mcp-catalog/hooks'
  */
 
 export type McpLibraryTransport = 'http' | 'sse'
-export type McpLibraryAuthMethod = 'none' | 'bearer' | 'api_key'
+export type McpLibraryAuthMethod = 'none' | 'bearer' | 'api_key' | 'oauth2'
 
 export type McpLibraryEntryRecord = {
   source: 'curated' | 'registry'
@@ -103,6 +103,18 @@ export const useDiscoverMcpEndpoint = () => {
   return useMutation({
     mutationFn: (input: { url: string }) =>
       apiClient.post<McpDiscoveryResultRecord>('/api/mcp/discover', input),
+  })
+}
+
+export const useStartInstanceOAuth = () => {
+  const apiClient = useApiClient()
+
+  return useMutation({
+    mutationFn: (input: { instanceId: string }) =>
+      apiClient.post<{ authorizationUrl: string; state: string; mode: 'static' | 'dynamic' }>(
+        `/api/mcp/instances/${input.instanceId}/oauth/start`,
+        {},
+      ),
   })
 }
 

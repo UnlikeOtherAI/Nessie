@@ -193,29 +193,63 @@ configs. Three signed-in endpoints, backed by `@nessie/mcp-manage`
 (`library.ts`, `discovery.ts`), close the gap:
 
 - `GET /api/mcp/library?search=` — unified search over (a) a **curated list**
-  of well-known officially hosted remote servers (DeepWiki, Context7, GitHub,
-  Stripe, Zapier, Hugging Face, PayPal, Square, Cloudflare Docs, Semgrep — all
-  installable end-to-end with `none`/`bearer`/`api_key` auth) and (b) the
-  **official MCP registry** (`registry.modelcontextprotocol.io`), filtered to
-  HTTP/SSE remotes (stdio/package-only servers are dropped) with auth
-  classified from the registry's header metadata. Registry outages degrade to
-  curated-only.
+  of well-known officially hosted remote servers (key-based: DeepWiki,
+  Context7, GitHub, Stripe, Zapier, Hugging Face, PayPal, Square, Cloudflare
+  Docs, Semgrep; OAuth sign-in: Notion, Linear, Sentry, Atlassian, Asana) and
+  (b) the **official MCP registry** (`registry.modelcontextprotocol.io`),
+  filtered to HTTP/SSE remotes (stdio/package-only servers are dropped) with
+  auth classified from the registry's header metadata. Registry outages
+  degrade to curated-only.
 - `POST /api/mcp/discover` `{ url }` — probes a pasted link for an MCP
   endpoint: the URL itself plus well-known suffixes (`/mcp`, `/sse`,
   `/mcp/sse`), streamable HTTP first then legacy SSE, every candidate through
   the SSRF guard. A successful `tools/list` handshake yields an installable
-  `authMethod: none` proposal (with tool names); a 401/403 yields a `bearer`
-  proposal with a `WWW-Authenticate`-derived hint. Redirects are never
-  followed.
+  `authMethod: none` proposal (with tool names); a 401/403 yields an
+  `oauth2` proposal when the server publishes genuine RFC 9728/8414 metadata
+  (sign-in based, nothing to paste), else a `bearer` proposal with guidance
+  to obtain a key. Redirects are never followed.
 - `POST /api/mcp/library/import` — turns a library entry / discovery proposal
   into a catalog entry: private self-published for members, or (owners with
   `shareToOrg: true`) published straight into the org store.
 
 The admin Connectors page exposes these as the **Library** tab (search +
 "Only have a link?" box + one-click guided install: pick "Just me" / "Whole
-organisation", paste the API key if one is needed, then the instance is
-created, the secret stored encrypted, and the connection tested + tools
-discovered in one flow).
+organisation", then either paste the API key — stored encrypted — or, for
+OAuth connectors, approve access in the sign-in tab that opens; the flow ends
+with a connection test + tool discovery either way).
+
+### OAuth (dynamic, MCP authorization spec)
+
+`{ method: "oauth2" }` on a catalog entry — with no static client — activates
+the dynamic flow in `@nessie/mcp-manage` (`oauth-discovery.ts`,
+`mcp-oauth.ts`):
+
+1. **Discovery**: the instance endpoint's 401 challenge (`WWW-Authenticate:
+   Bearer resource_metadata=…`, RFC 9728) → protected-resource metadata →
+   authorization-server metadata (RFC 8414, OIDC discovery fallback; legacy
+   servers fall back to the spec's default `/authorize` + `/token` +
+   `/register` endpoints). Every URL is SSRF-checked; redirects never
+   followed.
+2. **Dynamic Client Registration** (RFC 7591): a public client
+   (`token_endpoint_auth_method: none`) is registered once per
+   (organization × issuer) and persisted in `mcp_oauth_clients`; secrets a
+   server issues anyway go behind an encrypted `secret_*` ref.
+3. **Authorization code + PKCE (S256) + RFC 8707 `resource`**: state is
+   one-shot and Postgres-backed (`mcp_oauth_states`, 10-min TTL) so a flow
+   minted by the worker's personal assistant completes at the API callback.
+4. **Token placement**: the user's own user-scope instance takes the token as
+   its connection credential (probes work immediately); shared instances get
+   a per-user override, so every user keeps their own identity.
+5. **Refresh**: the encrypted bundle carries refresh metadata; the shared
+   resolver renews expired access tokens in place (refresh_token grant,
+   rotation-aware) transparently at probe/dispatch time.
+
+Static configs (pre-registered `authorizationUrl`/`tokenUrl`/`clientId`) keep
+the original flow for vendors without dynamic registration.
+`POST /api/mcp/instances/:id/oauth/start` is open to any signed-in user who
+can reach the instance — the minted token only ever lands on the caller's own
+identity. Probe/test paths accept a `probeUserId` so each user's connection
+test runs with their own credential.
 
 ### Personal-Assistant Connector Management
 
@@ -230,8 +264,9 @@ rights through the same `@nessie/mcp-manage` helpers as the routes):
 | `connector_list` | Instances the user can reach (own + shared), state + tool counts |
 | `connector_library_search` | Org catalog + curated library + official registry, by service name |
 | `connector_discover` | Probe a pasted URL for an MCP endpoint + auth requirements |
-| `connector_install` | Install from catalog id, or register + install from url/transport/auth; owners/admins may target `organization`/`team`/`channel` scope |
-| `connector_test` | Probe + project tools, report discovered tool names |
+| `connector_install` | Install from catalog id, or register + install from url/transport/auth; owners/admins may target `organization`/`team`/`channel` scope; OAuth connectors get their sign-in link minted immediately |
+| `connector_authorize` | Mint an OAuth sign-in link for the user to open in their browser (dynamic discovery + registration under the hood) |
+| `connector_test` | Probe + project tools with the acting user's credential, report discovered tool names |
 | `connector_set_secret` | Store a chat-provided credential encrypted (never echoed; redacted from tool summaries) and re-test |
 | `connector_uninstall` | Remove a manageable instance + its registry entries |
 

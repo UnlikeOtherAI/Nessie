@@ -21,7 +21,7 @@ import { z } from 'zod'
  */
 
 export type McpLibraryTransport = 'http' | 'sse'
-export type McpLibraryAuthMethod = 'none' | 'bearer' | 'api_key'
+export type McpLibraryAuthMethod = 'none' | 'bearer' | 'api_key' | 'oauth2'
 
 export type McpLibraryEntry = {
   source: 'curated' | 'registry'
@@ -44,12 +44,76 @@ export type McpLibraryEntry = {
 
 /**
  * Curated well-known remote servers. Endpoints are the vendors' officially
- * documented remote MCP URLs. Keep this list small, remote-only, and limited
- * to auth methods a Nessie connector can express today — OAuth-only servers
- * (Notion, Linear, Atlassian, …) are reachable through the registry search
- * instead and need an admin-configured OAuth client.
+ * documented remote MCP URLs. Keep this list small and remote-only. `oauth2`
+ * entries use dynamic discovery + registration (MCP authorization spec) —
+ * users just sign in with their existing account, no vendor console needed.
  */
 export const CURATED_MCP_LIBRARY: McpLibraryEntry[] = [
+  {
+    source: 'curated',
+    key: 'notion',
+    name: 'notion',
+    label: 'Notion',
+    description: 'Search, read, create and update pages and databases in your Notion workspace.',
+    vendor: 'Notion',
+    sourceUrl: 'https://developers.notion.com/docs/mcp',
+    url: 'https://mcp.notion.com/mcp',
+    transport: 'http',
+    authMethod: 'oauth2',
+    authHint: 'Sign in with your Notion account when prompted.',
+  },
+  {
+    source: 'curated',
+    key: 'linear',
+    name: 'linear',
+    label: 'Linear',
+    description: 'Create and update issues, projects and comments in Linear.',
+    vendor: 'Linear',
+    sourceUrl: 'https://linear.app/docs/mcp',
+    url: 'https://mcp.linear.app/mcp',
+    transport: 'http',
+    authMethod: 'oauth2',
+    authHint: 'Sign in with your Linear account when prompted.',
+  },
+  {
+    source: 'curated',
+    key: 'sentry',
+    name: 'sentry',
+    label: 'Sentry',
+    description: 'Query issues, events and projects in Sentry.',
+    vendor: 'Sentry',
+    sourceUrl: 'https://docs.sentry.io/product/sentry-mcp/',
+    url: 'https://mcp.sentry.dev/mcp',
+    transport: 'http',
+    authMethod: 'oauth2',
+    authHint: 'Sign in with your Sentry account when prompted.',
+  },
+  {
+    source: 'curated',
+    key: 'atlassian',
+    name: 'atlassian',
+    label: 'Atlassian (Jira & Confluence)',
+    description: 'Work with Jira issues and Confluence pages via the official Atlassian remote MCP server.',
+    vendor: 'Atlassian',
+    sourceUrl: 'https://www.atlassian.com/platform/remote-mcp-server',
+    url: 'https://mcp.atlassian.com/v1/sse',
+    transport: 'sse',
+    authMethod: 'oauth2',
+    authHint: 'Sign in with your Atlassian account when prompted.',
+  },
+  {
+    source: 'curated',
+    key: 'asana',
+    name: 'asana',
+    label: 'Asana',
+    description: 'Tasks, projects and workspaces via the official Asana MCP server.',
+    vendor: 'Asana',
+    sourceUrl: 'https://developers.asana.com/docs/using-asanas-mcp-server',
+    url: 'https://mcp.asana.com/sse',
+    transport: 'sse',
+    authMethod: 'oauth2',
+    authHint: 'Sign in with your Asana account when prompted.',
+  },
   {
     source: 'curated',
     key: 'deepwiki',
@@ -413,6 +477,8 @@ export const libraryEntryToCatalogInput = (entry: McpLibraryEntry): {
   authConfig:
     entry.authMethod === 'api_key'
       ? { method: 'api_key', headerName: 'Authorization', valuePrefix: '' }
+      // oauth2 maps to the dynamic (client-less) config — endpoints and the
+      // client are discovered/registered at connect time.
       : { method: entry.authMethod },
   defaultTransportConfig: { transport: entry.transport, url: entry.url },
   vendor: entry.vendor,

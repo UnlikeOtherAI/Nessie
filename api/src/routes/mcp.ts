@@ -70,6 +70,7 @@ export const registerMcpRoutes = (
     // safe default for tests; production wires the layered pg+env resolver.
     secretResolver: helpers.secretResolver ?? new EnvSecretResolver(),
     mcpSecretStore: helpers.mcpSecretStore ?? oauthSecretStore,
+    oauthStateStore: helpers.oauthStateStore,
   }
 
   registerMcpCatalogRoutes(app, ctx)

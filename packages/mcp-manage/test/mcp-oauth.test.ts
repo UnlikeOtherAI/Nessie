@@ -186,7 +186,7 @@ test('startOAuth stores the state with a 10-minute TTL for callback verification
     callbackUrl: 'https://app.example/api/mcp/oauth/callback',
     resolveHost: publicResolver,
   })
-  const record = store.take(result.state)
+  const record = await store.take(result.state)
   assert.ok(record)
   assert.equal(record?.instanceId, 'instance-1')
   assert.equal(record?.organizationId, ORG_A)
@@ -691,36 +691,23 @@ test('defaultTokenExchange POSTs client_id + client_secret in the form body', as
   )
 })
 
-test('McpOAuth2AuthConfigSchema rejects configs missing clientId', () => {
-  let thrown: unknown
-  try {
-    McpOAuth2AuthConfigSchema.parse({
-      method: 'oauth2',
-      authorizationUrl: 'https://provider.example/auth',
-      tokenUrl: 'https://provider.example/token',
-      clientSecret: 'shh',
-      scopes: [],
-    })
-  } catch (error) {
-    thrown = error
-  }
-  assert.ok(thrown, 'expected schema to reject config missing clientId')
+test('McpOAuth2AuthConfigSchema accepts a dynamic (client-less) config', () => {
+  const parsed = McpOAuth2AuthConfigSchema.parse({ method: 'oauth2' })
+  assert.equal(parsed.method, 'oauth2')
+  assert.equal(parsed.clientId, undefined)
+  assert.deepEqual(parsed.scopes, [])
 })
 
-test('McpOAuth2AuthConfigSchema rejects configs missing clientSecret', () => {
-  let thrown: unknown
-  try {
-    McpOAuth2AuthConfigSchema.parse({
-      method: 'oauth2',
-      authorizationUrl: 'https://provider.example/auth',
-      tokenUrl: 'https://provider.example/token',
-      clientId: 'abc',
-      scopes: [],
-    })
-  } catch (error) {
-    thrown = error
-  }
-  assert.ok(thrown, 'expected schema to reject config missing clientSecret')
+test('McpOAuth2AuthConfigSchema accepts a static config without clientSecret (public client)', () => {
+  const parsed = McpOAuth2AuthConfigSchema.parse({
+    method: 'oauth2',
+    authorizationUrl: 'https://provider.example/auth',
+    tokenUrl: 'https://provider.example/token',
+    clientId: 'abc',
+    scopes: [],
+  })
+  assert.equal(parsed.clientId, 'abc')
+  assert.equal(parsed.clientSecret, undefined)
 })
 
 test('McpOAuth2AuthConfigSchema rejects empty clientId / clientSecret strings', () => {
@@ -744,17 +731,12 @@ test('McpOAuth2AuthConfigSchema rejects empty clientId / clientSecret strings', 
   }
 })
 
-test('McpServerAuthConfigSchema discriminated union enforces oauth2 client credentials', () => {
-  let thrown: unknown
-  try {
-    McpServerAuthConfigSchema.parse({
-      method: 'oauth2',
-      authorizationUrl: 'https://provider.example/auth',
-      tokenUrl: 'https://provider.example/token',
-      scopes: [],
-    })
-  } catch (error) {
-    thrown = error
-  }
-  assert.ok(thrown, 'discriminated union must reject oauth2 without client creds')
+test('McpServerAuthConfigSchema discriminated union accepts dynamic oauth2 configs', () => {
+  const parsed = McpServerAuthConfigSchema.parse({
+    method: 'oauth2',
+    authorizationUrl: 'https://provider.example/auth',
+    tokenUrl: 'https://provider.example/token',
+    scopes: [],
+  })
+  assert.equal(parsed.method, 'oauth2')
 })

@@ -1,15 +1,19 @@
 import {
   canManageInstanceScope,
+  canStartOAuthForInstance,
   createCatalogEntry,
   createInstance,
+  createPgOAuthStateStore,
   discoverMcpEndpoint,
   getCatalogEntry,
   listInstancesVisibleToUser,
   MCP_CATALOG_ERROR_CODES,
   McpCatalogError,
   McpInstanceError,
+  McpOAuthError,
   resolveMcpUserAccess,
   searchMcpLibrary,
+  startOAuth,
   storeInstanceSecret,
   testInstance,
   publishCatalogEntry,
@@ -73,6 +77,9 @@ const requireMcpSecrets = (context: BuiltinToolRuntimeContext) => {
 const describeAuth = (authMethod: string, authHint: string | null): string => {
   if (authMethod === 'none') return 'no credential needed'
   const hint = authHint ? ` — ${authHint}` : ''
+  if (authMethod === 'oauth2') {
+    return `sign-in based (OAuth)${hint}`
+  }
   return `requires a credential (${authMethod})${hint}`
 }
 
@@ -112,10 +119,12 @@ const runTestAndDescribe = async (
   context: BuiltinToolRuntimeContext,
   organizationId: string,
   instanceId: string,
+  probeUserId?: string,
 ): Promise<string> => {
   try {
     const tested = await testInstance(context.prisma, organizationId, instanceId, {
       secretResolver: context.mcpSecrets?.resolver,
+      probeUserId,
     })
     const tools = Array.isArray(tested.discoveredTools)
       ? (tested.discoveredTools as Array<{ name?: string }>)
@@ -327,7 +336,9 @@ const registerCatalogEntry = async (
   }
   const transport = input.transport === 'sse' ? 'sse' : 'http'
   const authMethod =
-    input.authMethod === 'bearer' || input.authMethod === 'api_key'
+    input.authMethod === 'bearer'
+    || input.authMethod === 'api_key'
+    || input.authMethod === 'oauth2'
       ? input.authMethod
       : 'none'
   const baseName = slugify(input.name ?? input.label ?? new URL(input.url).hostname)
@@ -433,11 +444,31 @@ export const runConnectorInstallTool = async (
     throw error
   }
 
-  const needsCredential = entry.authMethod !== 'none'
-  const testSummary = needsCredential
-    ? `This connector ${describeAuth(entry.authMethod, null)}. Ask the user for their `
+  let testSummary: string
+  if (entry.authMethod === 'oauth2') {
+    // Sign-in based: mint the authorization link right away so the user can
+    // approve access in one step.
+    try {
+      const url = await mintAuthorizeUrl(context, ctx, instance.id)
+      testSummary =
+        'This connector uses OAuth sign-in. Share this link with the user to '
+        + `open in their browser: ${url}\n`
+        + 'When they confirm they have approved access, call connector_test '
+        + `(instanceId=${instance.id}) to finish setup. The link expires in 10 minutes.`
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      testSummary =
+        `This connector uses OAuth sign-in, but the flow could not be started: ${
+          truncate(message, 200)
+        } You can retry with connector_authorize (instanceId=${instance.id}).`
+    }
+  } else if (entry.authMethod !== 'none') {
+    testSummary =
+      `This connector ${describeAuth(entry.authMethod, null)}. Ask the user for their `
       + `API key or token, then call connector_set_secret (instanceId=${instance.id}).`
-    : await runTestAndDescribe(context, ctx.organizationId, instance.id)
+  } else {
+    testSummary = await runTestAndDescribe(context, ctx.organizationId, instance.id, ctx.userId)
+  }
 
   return {
     inputSummary: `label=${entry.label} scope=${scopeType}`,
@@ -445,6 +476,81 @@ export const runConnectorInstallTool = async (
       `Installed "${entry.label}" at ${scopeType} scope (instanceId=${instance.id}). `
       + testSummary,
     toolName: 'connector_install',
+  }
+}
+
+// ─── connector_authorize ────────────────────────────────────────────────────
+
+const mintAuthorizeUrl = async (
+  context: BuiltinToolRuntimeContext,
+  ctx: ConnectorToolContext,
+  instanceId: string,
+): Promise<string> => {
+  const callbackUrl = context.mcpSecrets?.oauthCallbackUrl
+  if (!callbackUrl) {
+    throw new Error('OAuth is not configured on this worker (no public API URL).')
+  }
+  const result = await startOAuth({
+    prisma: context.prisma,
+    store: createPgOAuthStateStore(context.prisma),
+    secretStore: context.mcpSecrets?.store,
+    instanceId,
+    actorContext: ctx.actorContext,
+    callbackUrl,
+  })
+  return result.authorizationUrl
+}
+
+export const runConnectorAuthorizeTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { instanceId: string },
+): Promise<ToolExecutionResult> => {
+  const ctx = await buildConnectorContext(context)
+  const inputSummary = `instanceId=${input.instanceId}`
+  const instance = await context.prisma.mcpServerInstance.findFirst({
+    where: { id: input.instanceId, organizationId: ctx.organizationId },
+  })
+  if (!instance) {
+    return { inputSummary, outputPreview: 'Connector instance not found.', toolName: 'connector_authorize' }
+  }
+  const allowed = await canStartOAuthForInstance(
+    context.prisma,
+    ctx.organizationId,
+    ctx.userId,
+    instance,
+  )
+  if (!allowed) {
+    return {
+      inputSummary,
+      outputPreview: 'You do not have access to this connector.',
+      toolName: 'connector_authorize',
+    }
+  }
+  try {
+    const url = await mintAuthorizeUrl(context, ctx, instance.id)
+    return {
+      inputSummary,
+      outputPreview:
+        'Share this sign-in link with the user (it is for them to open in '
+        + `their browser): ${url}\n`
+        + 'After they approve access, they should tell you — then call '
+        + `connector_test (instanceId=${instance.id}) to finish setup. `
+        + 'The link expires in 10 minutes.',
+      toolName: 'connector_authorize',
+    }
+  } catch (error) {
+    const message =
+      error instanceof McpOAuthError || error instanceof Error
+        ? error.message
+        : String(error)
+    return {
+      inputSummary,
+      outputPreview:
+        `Could not start the sign-in flow: ${truncate(message, 240)} `
+        + 'If the server expects an API key instead, ask the user for it and '
+        + 'call connector_set_secret.',
+      toolName: 'connector_authorize',
+    }
   }
 }
 
@@ -484,7 +590,7 @@ export const runConnectorTestTool = async (
       toolName: 'connector_test',
     }
   }
-  const summary = await runTestAndDescribe(context, ctx.organizationId, input.instanceId)
+  const summary = await runTestAndDescribe(context, ctx.organizationId, input.instanceId, ctx.userId)
   return {
     inputSummary: `instanceId=${input.instanceId}`,
     outputPreview: summary,
@@ -535,7 +641,7 @@ export const runConnectorSetSecretTool = async (
         : 'as your personal credential for this shared connector'
 
   const testSummary = manageable
-    ? ` ${await runTestAndDescribe(context, ctx.organizationId, instance.id)}`
+    ? ` ${await runTestAndDescribe(context, ctx.organizationId, instance.id, ctx.userId)}`
     : ''
   return {
     inputSummary,
