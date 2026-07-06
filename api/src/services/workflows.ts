@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   type AgentTriggerType,
@@ -176,6 +177,126 @@ const parseWorkflowTemplateTriggers = (
         ]
       })
     : []
+
+/**
+ * Save-time validation of workflow graph steps against what the worker
+ * runtime actually executes (`worker/src/control/workflows.ts`). Anything
+ * rejected here would otherwise fail the run at execution time. Values that
+ * contain `{{ … }}` binding tokens are resolved at run time, so literal
+ * checks are skipped for them; `channelId` is never required because the
+ * runtime falls back to the installation's channel.
+ */
+export class WorkflowTemplateValidationError extends Error {
+  readonly issues: string[]
+
+  constructor(issues: string[]) {
+    super('WORKFLOW_TEMPLATE_INVALID')
+    this.issues = issues
+  }
+}
+
+const WORKFLOW_STEP_TYPES = new Set([
+  'agent',
+  'agent_task',
+  'environment_launch',
+  'tool',
+  'tool_call',
+  'trigger',
+])
+
+const hasBindingToken = (value: unknown): boolean =>
+  typeof value === 'string' && value.includes('{{')
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const readStepInputString = (
+  input: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined => {
+  const value = input?.[key]
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
+}
+
+export const validateWorkflowGraphSteps = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  graph: WorkflowGraph,
+): Promise<void> => {
+  const issues: string[] = []
+  const seenStepIds = new Set<string>()
+  const literalAgentIds = new Set<string>()
+
+  for (const step of graph.steps) {
+    const label = step.title?.trim() || step.id
+
+    if (seenStepIds.has(step.id)) {
+      issues.push(`Duplicate step id "${step.id}" — step outputs would collide.`)
+    }
+    seenStepIds.add(step.id)
+
+    if (!WORKFLOW_STEP_TYPES.has(step.type)) {
+      issues.push(
+        `Step "${label}" has unsupported type "${step.type}". Supported: trigger, tool, agent, environment_launch.`,
+      )
+      continue
+    }
+
+    if (step.type === 'tool' || step.type === 'tool_call') {
+      const toolName = readStepInputString(step.input, 'toolName')
+      if (!toolName) {
+        issues.push(`Tool step "${label}" is missing toolName.`)
+      } else if (!hasBindingToken(toolName) && !WORKFLOW_TOOL_IDS.has(toolName)) {
+        issues.push(
+          `Tool step "${label}" uses unknown tool "${toolName}". Available: ${[...WORKFLOW_TOOL_IDS].sort().join(', ')}.`,
+        )
+      }
+    }
+
+    if (step.type === 'agent' || step.type === 'agent_task') {
+      const agentId = readStepInputString(step.input, 'agentId')
+      if (!agentId) {
+        issues.push(`Agent step "${label}" is missing agentId.`)
+      } else if (!hasBindingToken(agentId)) {
+        if (UUID_PATTERN.test(agentId)) {
+          literalAgentIds.add(agentId)
+        } else {
+          issues.push(`Agent step "${label}" has an invalid agentId "${agentId}".`)
+        }
+      }
+    }
+
+    if (step.type === 'environment_launch') {
+      const templateId = readStepInputString(step.input, 'templateId')
+      const templateBindingKey = readStepInputString(step.input, 'templateBindingKey')
+      if (!templateId && !templateBindingKey) {
+        issues.push(
+          `Environment step "${label}" needs templateId or templateBindingKey.`,
+        )
+      }
+    }
+  }
+
+  if (literalAgentIds.size > 0) {
+    const agents = await prisma.agent.findMany({
+      where: {
+        id: { in: [...literalAgentIds] },
+        OR: [{ organizationId }, { organizationId: null }],
+      },
+      select: { id: true },
+    })
+    const foundIds = new Set(agents.map((agent) => agent.id))
+    for (const agentId of literalAgentIds) {
+      if (!foundIds.has(agentId)) {
+        issues.push(`Agent ${agentId.slice(0, 8)} referenced by an agent step does not exist.`)
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new WorkflowTemplateValidationError(issues)
+  }
+}
 
 const validateRequiredEnvironmentTemplateIds = async (
   prisma: PrismaClient,
@@ -466,6 +587,11 @@ export const createWorkflowTemplate = async (
     variableSchema?: unknown
   },
 ): Promise<WorkflowTemplateRecord> => {
+  await validateWorkflowGraphSteps(
+    prisma,
+    actorContext.tenant.organizationId,
+    input.graph,
+  )
   await validateRequiredEnvironmentTemplateIds(
     prisma,
     actorContext.tenant.organizationId,
@@ -520,6 +646,11 @@ export const updateWorkflowTemplate = async (
     variableSchema?: unknown
   },
 ): Promise<WorkflowTemplateRecord | null> => {
+  await validateWorkflowGraphSteps(
+    prisma,
+    actorContext.tenant.organizationId,
+    input.graph,
+  )
   await validateRequiredEnvironmentTemplateIds(
     prisma,
     actorContext.tenant.organizationId,

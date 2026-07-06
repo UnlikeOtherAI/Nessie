@@ -11,8 +11,36 @@ import {
   getWorkflowTemplate,
   listWorkflowTemplates,
   updateWorkflowTemplate,
+  WorkflowTemplateValidationError,
 } from '../../services/workflows.js'
+import type { FastifyReply } from 'fastify'
 import type { RouteDeps } from '../types.js'
+
+/**
+ * Shared 4xx mapping for template create/update: step-validation problems are
+ * a 400 with every issue listed so the designer can show them verbatim.
+ */
+const sendTemplateSaveError = (reply: FastifyReply, error: unknown): boolean => {
+  if (error instanceof WorkflowTemplateValidationError) {
+    sendApiError(reply, 400, 'WORKFLOW_TEMPLATE_INVALID', error.issues.join(' '))
+    return true
+  }
+
+  if (
+    error instanceof Error &&
+    error.message === 'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND'
+  ) {
+    sendApiError(
+      reply,
+      404,
+      'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND',
+      'One or more required execution environment templates were not found',
+    )
+    return true
+  }
+
+  return false
+}
 
 export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireOwner } = deps
@@ -48,16 +76,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     try {
       workflow = await createWorkflowTemplate(prisma, actorContext, body)
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === 'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND'
-      ) {
-        sendApiError(
-          reply,
-          404,
-          'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND',
-          'One or more required execution environment templates were not found',
-        )
+      if (sendTemplateSaveError(reply, error)) {
         return reply
       }
       throw error
@@ -113,16 +132,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
         body,
       )
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === 'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND'
-      ) {
-        sendApiError(
-          reply,
-          404,
-          'WORKFLOW_TEMPLATE_ENVIRONMENT_TEMPLATE_NOT_FOUND',
-          'One or more required execution environment templates were not found',
-        )
+      if (sendTemplateSaveError(reply, error)) {
         return reply
       }
       throw error

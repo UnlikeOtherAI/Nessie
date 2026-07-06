@@ -137,7 +137,35 @@ the trigger/tool/agent machinery:
   install time (verified live: scheduled trigger created with correct
   next-run).
 
-## 6) Known follow-ups
+## 6) n8n adoptions (same day, third pass)
+
+- **Test run from the designer** (`useWorkflowTestRun`): the header's "Test
+  run" persists the graph, reuses/creates an installation, starts a run and
+  polls it; per-step status renders on the canvas nodes (step runs map to
+  nodes via `stepKey` = graph step id) and the inspector shows the selected
+  node's last-run status, error and output.
+- **Save-time template validation** (`validateWorkflowGraphSteps`,
+  `api/src/services/workflows.ts`): unsupported step types, duplicate step
+  ids, unknown tool names, missing/nonexistent agent ids and environment
+  steps without a template reference are rejected with a 400
+  `WORKFLOW_TEMPLATE_INVALID` listing every issue. Values containing
+  `{{ … }}` binding tokens are exempt from literal checks; `channelId` is
+  never required (the runtime falls back to the installation channel). The
+  designer surfaces save failures in the header and stops autosave from
+  re-submitting a rejected graph.
+- **Workflow lifecycle events** (`worker/src/control/workflow-run-events.ts`):
+  terminal runs enqueue `trigger.event.dispatch` with event types
+  `workflow.run.completed` / `workflow.run.failed` (dedupe key
+  `workflow-run-event:<runId>:<status>`), so an event trigger listening for
+  `workflow.run.failed` implements an n8n-style error workflow with no new
+  machinery.
+- **Template JSON export/import**
+  (`admin/src/components/features/workflows/workflow-transfer.ts`): Export on
+  the template detail downloads `{name, description, graph, triggers,
+  version}`; Import on the Workflows page validates the file and creates a
+  template — the groundwork for a template gallery.
+
+## 7) Known follow-ups
 
 - The designer's provider/model select lists are still hardcoded; the
   inference control plane (`/api/inference/models`) is the natural source once

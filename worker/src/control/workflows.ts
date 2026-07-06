@@ -11,9 +11,9 @@ import {
   ensureWorkflowStepRuns,
   listWorkflowStepRuns,
   loadWorkflowGraph,
-  markWorkflowRunFinished,
+  markWorkflowRunFinished as markWorkflowRunFinishedRaw,
   markWorkflowRunStarted,
-  markWorkflowStepRunFinished,
+  markWorkflowStepRunFinished as markWorkflowStepRunFinishedRaw,
   markWorkflowStepRunQueued,
   markWorkflowStepRunStarted,
 } from '../run/workflows.js'
@@ -21,6 +21,10 @@ import {
   executeWorkflowBuiltinTool,
   type WorkflowBuiltinToolRuntimeContext,
 } from '../run/tools.js'
+import {
+  buildWorkflowRunEventContext,
+  emitWorkflowRunTerminalEvent,
+} from './workflow-run-events.js'
 
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -423,6 +427,49 @@ const validateWorkflowEnvironmentLaunch = async (
   return { template }
 }
 
+type LoadedWorkflowGraph = NonNullable<Awaited<ReturnType<typeof loadWorkflowGraph>>>
+
+// Wraps the run/workflows.js step- and run-finish primitives so every place a
+// workflow run can reach a terminal state (a step failure, which always fails
+// the run per computeWorkflowStepFinishTransition, or the last step
+// completing) also emits the `workflow.run.completed` / `workflow.run.failed`
+// system event. Safe to call from multiple sites for the same run: the
+// dedupe key in emitWorkflowRunTerminalEvent collapses duplicate enqueues.
+const markWorkflowStepRunFinished = async (
+  prisma: PrismaClient,
+  workflow: LoadedWorkflowGraph,
+  input: Parameters<typeof markWorkflowStepRunFinishedRaw>[1],
+): ReturnType<typeof markWorkflowStepRunFinishedRaw> => {
+  const result = await markWorkflowStepRunFinishedRaw(prisma, input)
+
+  if (!input.success) {
+    await emitWorkflowRunTerminalEvent(
+      prisma,
+      buildWorkflowRunEventContext(workflow),
+      'failed',
+      input.summary,
+    )
+  } else if (result.workflowRunCompleted) {
+    await emitWorkflowRunTerminalEvent(prisma, buildWorkflowRunEventContext(workflow), 'completed')
+  }
+
+  return result
+}
+
+const markWorkflowRunFinished = async (
+  prisma: PrismaClient,
+  workflow: LoadedWorkflowGraph,
+  input: Parameters<typeof markWorkflowRunFinishedRaw>[1],
+): ReturnType<typeof markWorkflowRunFinishedRaw> => {
+  await markWorkflowRunFinishedRaw(prisma, input)
+  await emitWorkflowRunTerminalEvent(
+    prisma,
+    buildWorkflowRunEventContext(workflow),
+    input.success ? 'completed' : 'failed',
+    input.summary,
+  )
+}
+
 export const executeWorkflowRun = async (
   prisma: PrismaClient,
   workflowRunId: string,
@@ -453,7 +500,7 @@ export const executeWorkflowRun = async (
 
     const nextStep = stepRuns.find((step) => step.status === 'pending')
     if (!nextStep) {
-      await markWorkflowRunFinished(prisma, {
+      await markWorkflowRunFinished(prisma, workflow, {
         workflowRunId,
         success: true,
         summary: 'Workflow run completed.',
@@ -463,7 +510,7 @@ export const executeWorkflowRun = async (
 
     const stepDefinition = workflow.graph.steps[nextStep.sequence]
     if (!stepDefinition) {
-      await markWorkflowStepRunFinished(prisma, {
+      await markWorkflowStepRunFinished(prisma, workflow, {
         workflowRunId,
         stepRunId: nextStep.id,
         success: false,
@@ -481,7 +528,7 @@ export const executeWorkflowRun = async (
         workflowInput: workflow.run.input,
       })
     } catch (error) {
-      await markWorkflowStepRunFinished(prisma, {
+      await markWorkflowStepRunFinished(prisma, workflow, {
         workflowRunId,
         stepRunId: nextStep.id,
         success: false,
@@ -498,7 +545,7 @@ export const executeWorkflowRun = async (
       typeof resolvedStepInput !== 'object' ||
       Array.isArray(resolvedStepInput)
     ) {
-      await markWorkflowStepRunFinished(prisma, {
+      await markWorkflowStepRunFinished(prisma, workflow, {
         workflowRunId,
         stepRunId: nextStep.id,
         success: false,
@@ -516,7 +563,7 @@ export const executeWorkflowRun = async (
           : stepDefinition.type
 
     if (runtimeStepType === 'trigger') {
-      await markWorkflowStepRunFinished(prisma, {
+      await markWorkflowStepRunFinished(prisma, workflow, {
         output: {
           skipped: true,
         },
@@ -531,7 +578,7 @@ export const executeWorkflowRun = async (
     if (runtimeStepType === 'tool_call') {
       const toolName = typeof stepInput['toolName'] === 'string' ? stepInput['toolName'] : ''
       if (!toolName) {
-        await markWorkflowStepRunFinished(prisma, {
+        await markWorkflowStepRunFinished(prisma, workflow, {
           workflowRunId,
           stepRunId: nextStep.id,
           success: false,
@@ -565,7 +612,7 @@ export const executeWorkflowRun = async (
         }
         const toolResult = await executeWorkflowBuiltinTool(toolName, toolArgs, toolContext)
 
-        const finishResult = await markWorkflowStepRunFinished(prisma, {
+        const finishResult = await markWorkflowStepRunFinished(prisma, workflow, {
           output: {
             result: toolResult.output,
             toolName,
@@ -580,7 +627,7 @@ export const executeWorkflowRun = async (
           return
         }
       } catch (error) {
-        await markWorkflowStepRunFinished(prisma, {
+        await markWorkflowStepRunFinished(prisma, workflow, {
           workflowRunId,
           stepRunId: nextStep.id,
           success: false,
@@ -604,7 +651,7 @@ export const executeWorkflowRun = async (
       const threadId = typeof stepInput['threadId'] === 'string' ? stepInput['threadId'] : undefined
 
       if (!toAgentId || !channelId) {
-        await markWorkflowStepRunFinished(prisma, {
+        await markWorkflowStepRunFinished(prisma, workflow, {
           workflowRunId,
           stepRunId: nextStep.id,
           success: false,
@@ -621,7 +668,7 @@ export const executeWorkflowRun = async (
           threadId,
         })
       } catch (error) {
-        await markWorkflowStepRunFinished(prisma, {
+        await markWorkflowStepRunFinished(prisma, workflow, {
           workflowRunId,
           stepRunId: nextStep.id,
           success: false,
@@ -670,7 +717,7 @@ export const executeWorkflowRun = async (
             : undefined
 
       if (!templateId) {
-        await markWorkflowStepRunFinished(prisma, {
+        await markWorkflowStepRunFinished(prisma, workflow, {
           workflowRunId,
           stepRunId: nextStep.id,
           success: false,
@@ -691,7 +738,7 @@ export const executeWorkflowRun = async (
           channelId: resolvedChannelId ?? undefined,
         })
       } catch (error) {
-        await markWorkflowStepRunFinished(prisma, {
+        await markWorkflowStepRunFinished(prisma, workflow, {
           workflowRunId,
           stepRunId: nextStep.id,
           success: false,
@@ -754,7 +801,7 @@ export const executeWorkflowRun = async (
     }
 
     await markWorkflowStepRunStarted(prisma, { input: stepInput, stepRunId: nextStep.id })
-    await markWorkflowStepRunFinished(prisma, {
+    await markWorkflowStepRunFinished(prisma, workflow, {
       workflowRunId,
       stepRunId: nextStep.id,
       success: false,

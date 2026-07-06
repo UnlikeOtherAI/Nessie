@@ -17,6 +17,7 @@ import { ColumnBrowserViewport } from '../components/shared/column-browser/Colum
 import { WorkflowInstallationDetail } from '../components/features/workflows/WorkflowInstallationDetail'
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
+import { WorkflowImportButton } from '../components/features/workflows/WorkflowImportButton'
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -200,14 +201,23 @@ export const WorkflowsPage = () => {
       title={`Workflows (${sortedTemplates.length})`}
     >
       <div className="grid gap-3">
-        <input
-          autoComplete="off"
-          className="admin-input"
-          onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Search workflows…"
-          type="search"
-          value={searchQuery}
-        />
+        <div className="flex items-start gap-2">
+          <input
+            autoComplete="off"
+            className="admin-input flex-1"
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search workflows…"
+            type="search"
+            value={searchQuery}
+          />
+          <WorkflowImportButton
+            onImported={(template) => {
+              setSelectedTemplateId(template.id)
+              setSelectedInstallationId(undefined)
+              setSelectedRunId(undefined)
+            }}
+          />
+        </div>
         {filteredTemplates.length === 0 ? (
           <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
             {sortedTemplates.length === 0

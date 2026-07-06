@@ -68,9 +68,13 @@ export const useWorkflowGraphIo = ({
   const hydratedWorkflowIdRef = useRef<string | null>(null)
   const lastSavedWorkflowSignatureRef = useRef<string | null>(null)
   const lastStoredDraftSignatureRef = useRef<string | null>(null)
+  // Signature of the last graph the server rejected — autosave skips it so a
+  // validation error doesn't turn into a request loop; manual save always retries.
+  const lastFailedSignatureRef = useRef<string | null>(null)
 
   const [autoSaveDraft, setAutoSaveDraft] = useState(true)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const workflowDesignerLocationState = useMemo<WorkflowDesignerLocationState>(() => {
     const state = location.state
@@ -212,13 +216,24 @@ export const useWorkflowGraphIo = ({
         triggers: buildWorkflowTriggers(nodes, connections),
       }
 
-      const savedWorkflow = workflowTemplateId
-        ? await updateWorkflowTemplate.mutateAsync({
-            ...payload,
-            workflowTemplateId,
-          })
-        : await createWorkflowTemplate.mutateAsync(payload)
+      let savedWorkflow
+      try {
+        savedWorkflow = workflowTemplateId
+          ? await updateWorkflowTemplate.mutateAsync({
+              ...payload,
+              workflowTemplateId,
+            })
+          : await createWorkflowTemplate.mutateAsync(payload)
+      } catch (error) {
+        // Surface server-side validation (400 WORKFLOW_TEMPLATE_INVALID etc.)
+        // in the header instead of dying as an unhandled rejection.
+        lastFailedSignatureRef.current = workflowSignature
+        setSaveError(error instanceof Error ? error.message : 'Failed to save workflow.')
+        throw error
+      }
 
+      lastFailedSignatureRef.current = null
+      setSaveError(null)
       lastSavedWorkflowSignatureRef.current = JSON.stringify({
         connections,
         nodes,
@@ -304,8 +319,12 @@ export const useWorkflowGraphIo = ({
       return
     }
 
+    if (workflowSignature === lastFailedSignatureRef.current) {
+      return
+    }
+
     const timeoutId = window.setTimeout(() => {
-      void persistWorkflow('auto')
+      void persistWorkflow('auto').catch(() => undefined)
     }, 700)
 
     return () => {
@@ -326,6 +345,7 @@ export const useWorkflowGraphIo = ({
   return {
     autoSaveDraft,
     setAutoSaveDraft,
+    saveError,
     saveMessage,
     workflowTemplateId,
     isWorkflowTemplateLoading,

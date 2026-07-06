@@ -1,6 +1,6 @@
 import { nodeThemes, sectionLabelClass } from '../../../lib/workflow-designer/constants'
 import type { WorkflowCanvasNode } from '../../../lib/workflow-designer/types'
-import type { ChannelRecord } from '../../../lib/api-client'
+import type { ChannelRecord, WorkflowStepRunRecord } from '../../../lib/api-client'
 
 /**
  * Node inspector. Known node types edit through structured fields (channel
@@ -24,6 +24,7 @@ type WorkflowNodeInspectorProps = {
   selectedNodeSourceOptions: NodeSourceOption[]
   selectedNodeConfigDraft: string
   selectedNodeConfigError: string | null
+  selectedNodeStepRun?: WorkflowStepRunRecord
   selectedNodeUpstreamSteps: WorkflowCanvasNode[]
   onLabelChange: (value: string) => void
   onSourceChange: (sourceId: string) => void
@@ -229,6 +230,7 @@ export const WorkflowNodeInspector = ({
   selectedNodeSourceOptions,
   selectedNodeConfigDraft,
   selectedNodeConfigError,
+  selectedNodeStepRun,
   selectedNodeUpstreamSteps,
   onLabelChange,
   onSourceChange,
@@ -315,6 +317,33 @@ export const WorkflowNodeInspector = ({
               node={selectedNode}
               onConfigPatch={onConfigPatch}
             />
+
+            {selectedNodeStepRun ? (
+              <div className="rounded-lg border border-black/10 bg-white px-3 py-2.5">
+                <div className={fieldLabelClass}>Last test run</div>
+                <div className="mt-1.5 text-sm text-[#433349]">
+                  {selectedNodeStepRun.status}
+                </div>
+                {selectedNodeStepRun.errorMessage ? (
+                  <div className="mt-1 text-xs text-[var(--danger)]">
+                    {selectedNodeStepRun.errorMessage}
+                  </div>
+                ) : null}
+                {selectedNodeStepRun.output &&
+                Object.keys(selectedNodeStepRun.output).length > 0 ? (
+                  <details className="mt-2">
+                    <summary
+                      className={`cursor-pointer select-none ${fieldLabelClass}`}
+                    >
+                      Output
+                    </summary>
+                    <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-black/10 bg-[#faf7fc] p-2 text-[11px] leading-4 text-[#433349]">
+                      {JSON.stringify(selectedNodeStepRun.output, null, 2)}
+                    </pre>
+                  </details>
+                ) : null}
+              </div>
+            ) : null}
 
             {selectedNodeUpstreamSteps.length > 0 ? (
               <div className="rounded-lg border border-black/10 bg-white px-3 py-2.5">

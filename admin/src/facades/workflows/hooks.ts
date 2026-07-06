@@ -142,13 +142,23 @@ export const useWorkflowInstallationTriggers = (
   })
 }
 
-export const useWorkflowRun = (workflowRunId?: string, enabled = true) => {
+export const useWorkflowRun = (
+  workflowRunId?: string,
+  enabled = true,
+  pollWhileActive = false,
+) => {
   const apiClient = useApiClient()
 
   return useQuery<WorkflowRunDetail>({
     queryKey: ['workflow-runs', workflowRunId],
     queryFn: () => apiClient.get(`/api/workflow-runs/${workflowRunId}`),
     enabled: enabled && Boolean(workflowRunId),
+    refetchInterval: pollWhileActive
+      ? (query) => {
+          const status = query.state.data?.run.status
+          return status === 'pending' || status === 'running' ? 1500 : false
+        }
+      : undefined,
   })
 }
 

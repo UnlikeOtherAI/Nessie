@@ -18,6 +18,7 @@ import {
   getInstallationTone,
   sectionTitle,
 } from './presentation'
+import { downloadWorkflowExport } from './workflow-transfer'
 
 /**
  * Template detail: what the workflow does (step chain), then where it runs
@@ -88,6 +89,13 @@ export const WorkflowTemplateDetail = ({
               type="button"
             >
               Open in designer
+            </button>
+            <button
+              className="admin-button admin-button-secondary"
+              onClick={() => downloadWorkflowExport(template)}
+              type="button"
+            >
+              Export
             </button>
           </div>
         </div>
