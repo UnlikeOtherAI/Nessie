@@ -265,6 +265,13 @@ test('native update retries append-only version creation after a version-number 
         // Chunk existence probe (replaceKnowledgePageVersionChunks) — no
         // pre-existing chunks, so the insert path runs.
         $queryRaw: async () => [],
+        // Writing chunks also triggers wikilink maintenance
+        // (replaceKnowledgePageLinks), which always deletes the page's
+        // existing link rows first; the updated body here carries no anchors
+        // so nothing further is queried.
+        knowledgePageLink: {
+          deleteMany: async () => ({ count: 0 }),
+        },
       }
       return callback(tx)
     },

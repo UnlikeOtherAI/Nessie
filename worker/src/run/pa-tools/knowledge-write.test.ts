@@ -124,7 +124,14 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
         return { id: 'approval-new' }
       },
     },
+    knowledgePageLink: {
+      deleteMany: async () => ({ count: 0 }),
+      createMany: async () => ({ count: 0 }),
+    },
     $queryRaw: async () => [],
+    // Wikilink title-resolution (resolveLinksToPage) issues a raw UPDATE on
+    // title changes; these fixtures carry no pending links.
+    $executeRaw: async () => 0,
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
   }
   return { prisma: prisma as unknown as BuiltinToolRuntimeContext['prisma'], approvalCreateCalls }

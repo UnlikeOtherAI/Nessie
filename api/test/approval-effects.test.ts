@@ -121,7 +121,12 @@ const buildFakePrisma = (options: {
     // publishPage's chunk-indexing step (replaceKnowledgePageVersionChunks)
     // runs a raw existence check then a raw insert against
     // knowledge_page_chunks — stubbed as "no chunks yet, insert a no-op" so
-    // the transaction completes without a real database.
+    // the transaction completes without a real database. Writing chunks also
+    // triggers wikilink maintenance (replaceKnowledgePageLinks), which always
+    // deletes the page's existing link rows first.
+    knowledgePageLink: {
+      deleteMany: async () => ({ count: 0 }),
+    },
     $queryRaw: async () => [],
     $executeRaw: async () => undefined,
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),

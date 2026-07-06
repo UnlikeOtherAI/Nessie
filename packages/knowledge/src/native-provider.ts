@@ -6,6 +6,7 @@ import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './nati
 import { searchNativePages } from './native-search.js'
 import { searchNativePagesHybrid } from './native-search-hybrid.js'
 import { replaceKnowledgePageVersionChunks, type ChunkablePage } from './native-chunks.js'
+import { replaceKnowledgePageLinks, resolveLinksToPage } from './native-links.js'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import type {
   AddFileVersionInput,
@@ -163,7 +164,11 @@ const getMutablePage = async (
 }
 
 // Chunk a version and fire the index hook when rows were actually written
-// (replaceKnowledgePageVersionChunks no-ops on already-chunked versions).
+// (replaceKnowledgePageVersionChunks no-ops on already-chunked versions). The
+// same "written" gate doubles as the wikilink-maintenance seam: it is true
+// exactly once per genuinely new version (create/update/restore), so a
+// publish that re-runs on an already-chunked version skips both chunking and
+// link recomputation — the links already reflect that version's body.
 const indexVersionChunks = async (
   tx: Prisma.TransactionClient,
   options: NativeKnowledgeProviderOptions,
@@ -171,7 +176,13 @@ const indexVersionChunks = async (
   version: { body: string | null; id: string },
 ): Promise<void> => {
   const written = await replaceKnowledgePageVersionChunks(tx, { page, version })
-  if (written && options.onVersionChunksReplaced) {
+  if (!written) return
+  await replaceKnowledgePageLinks(tx, {
+    organizationId: page.organizationId,
+    sourcePageId: page.id,
+    bodyHtml: version.body,
+  })
+  if (options.onVersionChunksReplaced) {
     await options.onVersionChunksReplaced(tx, {
       organizationId: page.organizationId,
       pageId: page.id,
@@ -398,6 +409,15 @@ const updatePage = async (
         ...(createsVersion ? { status: 'draft' as const } : {}),
       },
     })
+    if (input.title !== undefined) {
+      // A rename may match a still-unresolved wikilink title elsewhere; it
+      // never un-resolves an already-resolved link (those are tracked by id).
+      await resolveLinksToPage(tx, {
+        organizationId: input.organizationId,
+        pageId,
+        title: input.title,
+      })
+    }
     await replaceLabels(tx, {
       labels: input.labels,
       organizationId: input.organizationId,
@@ -471,6 +491,13 @@ export const createNativeKnowledgeProvider = (
           privateToAgentId: input.privateToAgentId ?? space.privateToAgentId,
           createdBy: input.createdBy,
         },
+      })
+      // Repoint any pre-existing unresolved wikilinks (`[[This Title]]`
+      // written before this page existed) at the newly created page.
+      await resolveLinksToPage(tx, {
+        organizationId: input.organizationId,
+        pageId: page.id,
+        title: page.title,
       })
       const version = await tx.knowledgePageVersion.create({
         data: {

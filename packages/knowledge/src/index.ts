@@ -22,6 +22,23 @@ export {
 } from './native-search-hybrid.js'
 export type { GroupedPageHit } from './native-search-hybrid.js'
 export {
+  extractWikilinks,
+  replaceKnowledgePageLinks,
+  resolveLinksToPage,
+} from './native-links.js'
+export type {
+  ExtractedWikilink,
+  ReplaceKnowledgePageLinksInput,
+  ResolveLinksToPageInput,
+} from './native-links.js'
+export { listBacklinks, listUnlinkedMentions } from './native-links-queries.js'
+export type {
+  BacklinkRow,
+  ListBacklinksInput,
+  ListUnlinkedMentionsInput,
+  MentionRow,
+} from './native-links-queries.js'
+export {
   KnowledgeConflictError,
   isKnowledgeConflictError,
   KnowledgeAnnotationError,
