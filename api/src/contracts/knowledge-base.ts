@@ -174,11 +174,42 @@ export const KnowledgeListQuerySchema = z.object({
   projectId: UuidSchema.optional(),
 })
 
+// Opt-in `search.summary`: bounded, cited answer synthesized from the top
+// hybrid-search chunks. `taskId`, when set, restricts results to chunks
+// whose page is bound to that ticket (mirrors HybridSearchPagesInput.taskId).
+export const SearchSummaryBodySchema = z.object({
+  query: NonEmptyStringSchema.max(500),
+  projectId: UuidSchema.optional(),
+  spaceId: UuidSchema.optional(),
+  taskId: UuidSchema.optional(),
+  limit: z.number().int().positive().max(50).optional(),
+})
+
+export const SearchSummaryResponseSchema = z.object({
+  answer: z.string().nullable(),
+  citations: z.array(z.object({
+    pageId: UuidSchema,
+    title: NonEmptyStringSchema,
+    spaceId: UuidSchema,
+    quote: z.string().max(200),
+  })),
+  sources: z.array(z.object({
+    pageId: UuidSchema,
+    title: NonEmptyStringSchema,
+    spaceId: UuidSchema,
+    snippet: NonEmptyStringSchema,
+  })),
+  reason: z.literal('no_matches').optional(),
+  policyChainTrace: z.array(z.string()),
+})
+
 export type CreateKnowledgePageBody = z.infer<typeof CreateKnowledgePageBodySchema>
 export type CreateKnowledgeSpaceBody = z.infer<typeof CreateKnowledgeSpaceBodySchema>
 export type MoveKnowledgePageBody = z.infer<typeof MoveKnowledgePageBodySchema>
 export type RestoreKnowledgePageVersionBody =
   z.infer<typeof RestoreKnowledgePageVersionBodySchema>
 export type SearchKnowledgePagesBody = z.infer<typeof SearchKnowledgePagesBodySchema>
+export type SearchSummaryBody = z.infer<typeof SearchSummaryBodySchema>
+export type SearchSummaryResponse = z.infer<typeof SearchSummaryResponseSchema>
 export type UpdateKnowledgePageBody = z.infer<typeof UpdateKnowledgePageBodySchema>
 export type UpdateKnowledgeSpaceBody = z.infer<typeof UpdateKnowledgeSpaceBodySchema>
