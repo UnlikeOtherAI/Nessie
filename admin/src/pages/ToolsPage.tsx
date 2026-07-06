@@ -135,7 +135,7 @@ export const ToolsPage = () => {
         showBack={isMobile}
         title={selectedTool.label}
       >
-        <div className="grid gap-6">
+        <div className="grid max-w-3xl gap-6">
           <ToolDetailDrawer tool={selectedTool} />
           <section>
             <h3 className="text-sm font-semibold text-[color:var(--tx)]">Agent access</h3>

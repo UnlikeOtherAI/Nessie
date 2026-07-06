@@ -71,7 +71,39 @@ separate, additive system; deny-overrides still wins at execution time.
   read-only `denied` pill (deny-overrides).
 - Schema/transport JSON blocks in the detail drawer are collapsible.
 
-## 4) Known follow-ups
+## 4) Design language (second pass, same day)
+
+A follow-up pass replaced the first iteration's card-heavy look with an
+explicit set of rules; new work on these surfaces should follow them:
+
+- **One fact, one place.** The trigger type lives in the header (icon +
+  label) only; the schedule is a single definition row; status is one pill.
+  The former Type/Mode/"Up next"/disabled-pill duplications are gone —
+  the list is sorted soonest-next-run so it *is* the queue.
+- **Exception-based badges.** A tool row renders a source/transport/status
+  badge only when the value deviates from the default
+  (builtin / direct / active). A visible badge means "look at me"; 36 rows
+  of identical pills mean nothing.
+- **One primary action per view.** Trigger detail: "Run now" is the only
+  filled button; pause/edit are quiet; delete is a de-emphasised text
+  button at the bottom, needing a second click. List columns keep their
+  single primary ("New trigger").
+- **Flat grouped lists, not stacked cards.** Rows live in one bordered
+  container with hairline dividers and a 2px accent bar for selection
+  (`divide-y` + `border-l-2`); status is a colour dot in rows, spelled out
+  in the detail.
+- **Filters: one segmented control + quiet selects.** The glanceable,
+  operational dimension (trigger status with counts, tool source) gets the
+  `SegmentedControl` primitive (`components/primitives/SegmentedControl.tsx`);
+  narrowing dimensions (type, status, tag) collapse into compact selects.
+- **Forms ordered by decision weight.** The trigger editor runs
+  name → type → target → type-specific config → optional description, with
+  the enabled Switch in the footer next to the submit actions.
+- Meaningless identifiers are hidden: connector policy keys (registry
+  uuids) no longer render in the designer tool picker; builtin ids do,
+  because operators grep for them.
+
+## 5) Known follow-ups
 
 - The designer's provider/model select lists are still hardcoded; the
   inference control plane (`/api/inference/models`) is the natural source once

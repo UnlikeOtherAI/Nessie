@@ -82,7 +82,9 @@ const ToolGroupSection = ({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-[var(--tx)]">{tool.label}</span>
-                    <code className="text-[10px] text-[color:var(--tx3)]">{tool.key.length > 24 ? `${tool.key.slice(0, 8)}…` : tool.key}</code>
+                    {tool.kind === 'builtin' ? (
+                      <code className="text-[10px] text-[color:var(--tx3)]">{tool.key}</code>
+                    ) : null}
                   </div>
                   <div className="mt-0.5 line-clamp-2 text-xs text-[color:var(--tx3)]">
                     {tool.description}

@@ -73,6 +73,23 @@ export const getTriggerTone = (status: AgentTriggerRecord['status']) => {
   }
 }
 
+/**
+ * Status as a colour token for the compact list dot — colour carries the
+ * state in dense rows; the full pill is reserved for the detail header.
+ */
+export const getTriggerStatusColor = (status: AgentTriggerRecord['status']): string => {
+  switch (status) {
+    case 'active':
+      return 'var(--success-text)'
+    case 'paused':
+      return 'var(--warning-text)'
+    case 'error':
+      return 'var(--danger-text)'
+    default:
+      return 'var(--tx3)'
+  }
+}
+
 export const TRIGGER_TYPE_ICONS: Record<AgentTriggerRecord['type'], IconDefinition> = {
   event: faTowerBroadcast,
   interval: faRotate,
@@ -173,51 +190,10 @@ export const formatTriggerTarget = (
   return 'unassigned'
 }
 
-export const getTriggerConfigRows = (
-  trigger: AgentTriggerRecord,
-): Array<[string, string]> => {
-  if (trigger.type === 'scheduled') {
-    const config = trigger.config ?? {}
-    const cronExpression = getCronExpression(config)
-    const timezone =
-      typeof config.timezone === 'string' && config.timezone.trim().length > 0
-        ? config.timezone
-        : undefined
-
-    if (cronExpression) {
-      return [
-        ['Schedule', cronExpression],
-        ['Timezone', timezone ?? 'Default'],
-      ]
-    }
-
-    return [['Run at', formatTimestamp(trigger.nextRunAt)]]
-  }
-
-  if (trigger.type === 'interval') {
-    const intervalMinutes =
-      typeof trigger.config?.interval_minutes === 'number'
-        ? `${trigger.config.interval_minutes} minutes`
-        : 'Not set'
-    return [
-      ['Every', intervalMinutes],
-      ['First run', formatTimestamp(trigger.nextRunAt)],
-    ]
-  }
-
-  if (trigger.type === 'webhook') {
-    return []
-  }
-
-  if (trigger.type === 'event') {
-    const events = Array.isArray(trigger.config?.events)
-      ? trigger.config.events.filter(
-          (value): value is string => typeof value === 'string' && value.trim().length > 0,
-        )
-      : []
-
-    return [['Events', events.length > 0 ? events.join(', ') : 'Not configured']]
-  }
-
-  return [['Mode', 'Run when manually started']]
-}
+/** Event names configured on an event trigger (empty for other types). */
+export const getTriggerEventNames = (trigger: AgentTriggerRecord): string[] =>
+  trigger.type === 'event' && Array.isArray(trigger.config?.events)
+    ? trigger.config.events.filter(
+        (value): value is string => typeof value === 'string' && value.trim().length > 0,
+      )
+    : []

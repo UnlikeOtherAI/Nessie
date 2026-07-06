@@ -81,10 +81,10 @@ const AgentAccessRow = ({ agent, baseline, tool }: AgentAccessRowProps) => {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2">
+    <div className="flex items-center justify-between gap-3 px-3 py-2.5">
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-[var(--tx)]">{agent.name}</div>
-        <div className="truncate text-xs text-[color:var(--tx3)]">{agent.role}</div>
+        <span className="text-sm font-medium text-[var(--tx)]">{agent.name}</span>
+        <span className="ml-2 text-xs text-[color:var(--tx3)]">{agent.role}</span>
         {error ? (
           <div className="mt-1 text-[11px] text-[var(--danger-text)]" role="alert">
             {error}
@@ -144,14 +144,16 @@ export const ToolAgentAccessPanel = ({ agents, tool }: ToolAgentAccessPanelProps
       <div className="text-xs text-[color:var(--tx3)]">
         {grantedCount} of {agents.length} agents granted
       </div>
-      {agents.map((agent) => (
-        <AgentAccessRow
-          agent={agent}
-          baseline={baselines.get(agent.id) ?? { allowedGrantId: null, denied: false }}
-          key={agent.id}
-          tool={tool}
-        />
-      ))}
+      <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+        {agents.map((agent) => (
+          <AgentAccessRow
+            agent={agent}
+            baseline={baselines.get(agent.id) ?? { allowedGrantId: null, denied: false }}
+            key={agent.id}
+            tool={tool}
+          />
+        ))}
+      </div>
     </div>
   )
 }

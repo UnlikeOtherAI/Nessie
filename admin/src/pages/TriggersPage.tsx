@@ -22,7 +22,6 @@ export const TriggersPage = () => {
 
   const columns = [
     <TriggerListColumn
-      activeCount={state.activeCount}
       effectiveTriggerId={state.effectiveTriggerId}
       filteredTriggers={state.filteredTriggers}
       key="triggers"
@@ -33,10 +32,10 @@ export const TriggersPage = () => {
       onTypeFilterChange={state.setTypeFilter}
       registry={state.registry}
       searchQuery={state.searchQuery}
+      statusCounts={state.statusCounts}
       statusFilter={state.statusFilter}
       totalCount={state.totalCount}
       typeFilter={state.typeFilter}
-      upcomingTriggers={state.upcomingTriggers}
     />,
   ]
 

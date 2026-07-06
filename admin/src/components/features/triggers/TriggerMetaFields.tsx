@@ -14,6 +14,13 @@ import {
 import { getWorkflowInstallationLabel } from './trigger-presentation'
 import { TriggerTypePicker } from './TriggerTypePicker'
 
+/**
+ * Identity portion of the trigger editor, ordered by decision weight:
+ * name → what kind of trigger → what it targets. Optional metadata
+ * (description) and the enabled state live outside this block, after the
+ * type-specific configuration.
+ */
+
 type TriggerMetaFieldsProps = {
   agentChannels: ChannelRecord[]
   agents: AgentRecord[]
@@ -67,69 +74,47 @@ export const TriggerMetaFields = ({
       />
     </div>
 
-    <div className="grid gap-1.5 md:col-span-2">
-      <label className={fieldLabelClass} htmlFor="trigger-description">
-        Description
-      </label>
-      <textarea
-        className="admin-input min-h-24 resize-y"
-        id="trigger-description"
-        onChange={(nextEvent) =>
-          setForm((current) => ({
-            ...current,
-            description: nextEvent.target.value,
-          }))
-        }
-        placeholder="Optional notes for operators"
-        value={form.description}
-      />
-    </div>
+    {mode === 'create' ? (
+      <div className="grid gap-1.5 md:col-span-2">
+        <div className={fieldLabelClass}>Trigger type</div>
+        <TriggerTypePicker
+          onChange={(nextType) =>
+            setForm((current) => ({ ...current, triggerType: nextType }))
+          }
+          value={form.triggerType}
+        />
+      </div>
+    ) : (
+      <div className="grid gap-1.5">
+        <div className={fieldLabelClass}>Trigger type</div>
+        <div className="admin-input cursor-default opacity-70">
+          {currentTriggerLabel}
+        </div>
+      </div>
+    )}
 
     {showTargetChooser ? (
-      <>
-        <div className="grid gap-1.5">
-          <label className={fieldLabelClass} htmlFor="trigger-target-kind">
-            Target kind
-          </label>
-          <select
-            className="admin-input"
-            id="trigger-target-kind"
-            onChange={(nextEvent) =>
-              setForm((current) => ({
-                ...current,
-                targetKind: nextEvent.target.value as TriggerTargetKind,
-              }))
-            }
-            value={form.targetKind}
-          >
-            {workflowInstallations.length > 0 ? (
-              <option value="workflow">Workflow</option>
-            ) : null}
-            {agents.length > 0 ? <option value="agent">Agent</option> : null}
-          </select>
-        </div>
-
-        <div className="grid gap-1.5">
-          <label className={fieldLabelClass} htmlFor="trigger-enabled">
-            Status
-          </label>
-          <label className="flex h-full items-center gap-3 rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2 text-sm text-[var(--tx)]">
-            <input
-              checked={form.enabled}
-              className="accent-[var(--accent)]"
-              id="trigger-enabled"
-              onChange={(nextEvent) =>
-                setForm((current) => ({
-                  ...current,
-                  enabled: nextEvent.target.checked,
-                }))
-              }
-              type="checkbox"
-            />
-            Start enabled
-          </label>
-        </div>
-      </>
+      <div className="grid gap-1.5">
+        <label className={fieldLabelClass} htmlFor="trigger-target-kind">
+          Target kind
+        </label>
+        <select
+          className="admin-input"
+          id="trigger-target-kind"
+          onChange={(nextEvent) =>
+            setForm((current) => ({
+              ...current,
+              targetKind: nextEvent.target.value as TriggerTargetKind,
+            }))
+          }
+          value={form.targetKind}
+        >
+          {workflowInstallations.length > 0 ? (
+            <option value="workflow">Workflow</option>
+          ) : null}
+          {agents.length > 0 ? <option value="agent">Agent</option> : null}
+        </select>
+      </div>
     ) : (
       <>
         <div className="grid gap-1.5">
@@ -148,26 +133,8 @@ export const TriggerMetaFields = ({
           </div>
         </div>
 
-        <div className="grid gap-1.5">
-          <div className={fieldLabelClass}>Status</div>
-          <label className="flex h-full items-center gap-3 rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2 text-sm text-[var(--tx)]">
-            <input
-              checked={form.enabled}
-              className="accent-[var(--accent)]"
-              onChange={(nextEvent) =>
-                setForm((current) => ({
-                  ...current,
-                  enabled: nextEvent.target.checked,
-                }))
-              }
-              type="checkbox"
-            />
-            Enabled
-          </label>
-        </div>
-
         {trigger?.agentId ? (
-          <div className="grid gap-1.5 md:col-span-2">
+          <div className="grid gap-1.5">
             <label className={fieldLabelClass} htmlFor="trigger-edit-channel">
               Channel
             </label>
@@ -277,24 +244,5 @@ export const TriggerMetaFields = ({
         </select>
       </div>
     ) : null}
-
-    {mode === 'create' ? (
-      <div className="grid gap-1.5 md:col-span-2">
-        <div className={fieldLabelClass}>Trigger type</div>
-        <TriggerTypePicker
-          onChange={(nextType) =>
-            setForm((current) => ({ ...current, triggerType: nextType }))
-          }
-          value={form.triggerType}
-        />
-      </div>
-    ) : (
-      <div className="grid gap-1.5">
-        <div className={fieldLabelClass}>Trigger type</div>
-        <div className="admin-input cursor-default opacity-70">
-          {currentTriggerLabel}
-        </div>
-      </div>
-    )}
   </div>
 )
