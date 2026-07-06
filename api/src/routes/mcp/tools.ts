@@ -16,7 +16,7 @@ import {
   type ToolGrantRow,
   type ToolRegistryRow,
 } from '../../services/tool-grants.js'
-import { fromPrismaToolGrantSource } from '../../services/tool-enum-mapping.js'
+import { fromPrismaToolGrantSource } from '@nessie/mcp-manage'
 import { ensureBuiltinToolsRegistered } from '../../services/tools.js'
 
 import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './shared.js'

@@ -20,7 +20,7 @@ import {
   testInstance,
   type McpInstanceRow,
   type ManagerFactory,
-} from '../src/services/mcp-instances.js'
+} from '../src/index.js'
 
 const baseInstance: McpInstanceRow = {
   id: 'instance-1',
@@ -469,7 +469,7 @@ test('refreshInstance persists lastError when the probe fails', async () => {
     mcpCatalogEntry: {
       findFirst: async () => catalogEntryStub,
     },
-    $transaction: async <T,>(fn: any) => fn({}),
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
   } as unknown as Parameters<typeof refreshInstance>[0]
 
   const { factory } = makeFakeManagerFactory({
@@ -579,7 +579,7 @@ test('refreshInstance returns the updated row (lifecycleState=error) on probe fa
     mcpCatalogEntry: {
       findFirst: async () => catalogEntryStub,
     },
-    $transaction: async <T,>(fn: any) => fn({}),
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
   } as unknown as Parameters<typeof refreshInstance>[0]
 
   const { factory } = makeFakeManagerFactory({

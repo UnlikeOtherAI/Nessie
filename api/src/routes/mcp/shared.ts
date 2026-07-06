@@ -4,13 +4,13 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { sendApiError } from '../../lib/api.js'
-import { McpCatalogError, MCP_CATALOG_ERROR_CODES } from '../../services/mcp-catalog.js'
-import { McpInstanceError, MCP_INSTANCE_ERROR_CODES } from '../../services/mcp-instances.js'
-import { McpOAuthError, MCP_OAUTH_ERROR_CODES, type SecretStore } from '../../services/mcp-oauth.js'
+import { McpCatalogError, MCP_CATALOG_ERROR_CODES } from '@nessie/mcp-manage'
+import { McpInstanceError, MCP_INSTANCE_ERROR_CODES } from '@nessie/mcp-manage'
+import { McpOAuthError, MCP_OAUTH_ERROR_CODES, type SecretStore } from '@nessie/mcp-manage'
 import {
   McpCredentialError,
   MCP_CREDENTIAL_ERROR_CODES,
-} from '../../services/mcp-credentials.js'
+} from '@nessie/mcp-manage'
 import { ToolGrantError, TOOL_GRANT_ERROR_CODES } from '../../services/tool-grants.js'
 
 /**

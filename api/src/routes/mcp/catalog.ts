@@ -19,12 +19,12 @@ import {
   publishCatalogEntry,
   updateCatalogEntry,
   type CatalogView,
-} from '../../services/mcp-catalog.js'
+} from '@nessie/mcp-manage'
 import {
   approveSubmission,
   rejectSubmission,
   submitForReview,
-} from '../../services/mcp-catalog-review.js'
+} from '@nessie/mcp-manage'
 
 import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './shared.js'
 

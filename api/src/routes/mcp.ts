@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-import { inMemorySecretStoreStub } from '../services/mcp-oauth.js'
+import { inMemorySecretStoreStub } from '@nessie/mcp-manage'
 
 import { registerMcpCatalogRoutes } from './mcp/catalog.js'
 import { registerMcpCredentialRoutes } from './mcp/credentials.js'

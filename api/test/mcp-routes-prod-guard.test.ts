@@ -6,7 +6,7 @@ import Fastify from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 
 import { registerMcpRoutes } from '../src/routes/mcp.js'
-import type { SecretStore } from '../src/services/mcp-oauth.js'
+import type { SecretStore } from '@nessie/mcp-manage'
 
 /**
  * Task #38 — production-guard coverage for `registerMcpRoutes`.

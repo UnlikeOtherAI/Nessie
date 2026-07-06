@@ -32,7 +32,7 @@ import { sendApiError } from './lib/api.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
 import { sweepExpiredApprovals } from './services/approvals.js'
-import { createPgSecretStore } from './services/mcp-oauth-secret-store.js'
+import { createPgSecretStore } from '@nessie/mcp-manage'
 import { createThoughtService } from './services/thoughts.js'
 import {
   createCorsOriginChecker,

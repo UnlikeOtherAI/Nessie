@@ -8,7 +8,7 @@ import {
   TOOL_DISPATCH_ERROR_CODES,
   ToolDispatchError,
 } from '../src/services/tool-dispatch.js'
-import type { SecretResolver } from '../src/services/secret-resolver.js'
+import type { SecretResolver } from '@nessie/mcp-manage'
 
 /**
  * Regression coverage for the cross-org dispatch bypass closed in #19.

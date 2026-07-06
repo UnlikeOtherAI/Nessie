@@ -6,7 +6,7 @@ import {
   fromPrismaToolRegistrySource,
   toPrismaToolGrantSource,
   toPrismaToolRegistrySource,
-} from '../src/services/tool-enum-mapping.js'
+} from '../src/index.js'
 
 test('toPrismaToolRegistrySource translates kebab-case to snake_case', () => {
   assert.equal(toPrismaToolRegistrySource('builtin'), 'builtin')

@@ -7,11 +7,11 @@ import { sendMcpError } from '../src/routes/mcp/shared.js'
 import {
   MCP_CATALOG_ERROR_CODES,
   McpCatalogError,
-} from '../src/services/mcp-catalog.js'
+} from '@nessie/mcp-manage'
 import {
   MCP_OAUTH_ERROR_CODES,
   McpOAuthError,
-} from '../src/services/mcp-oauth.js'
+} from '@nessie/mcp-manage'
 
 /**
  * Task #39 — pin the HTTP status mapping for catalog/OAuth lifecycle errors.

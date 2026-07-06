@@ -14,12 +14,12 @@ import {
   publishCatalogEntry,
   updateCatalogEntry,
   type McpCatalogEntryRow,
-} from '../src/services/mcp-catalog.js'
+} from '../src/index.js'
 import {
   approveSubmission,
   rejectSubmission,
   submitForReview,
-} from '../src/services/mcp-catalog-review.js'
+} from '../src/index.js'
 
 test('ensureAuthConfigMatchesMethod returns parsed config when method matches', () => {
   const result = ensureAuthConfigMatchesMethod('api_key', {

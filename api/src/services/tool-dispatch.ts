@@ -4,14 +4,14 @@ import {
   type ToolTransportConfig,
 } from '@nessie/schemas'
 
-import { resolveCredentialRef } from './mcp-credentials.js'
-import type { CredentialResolutionContext } from './mcp-credentials.js'
+import { resolveCredentialRef } from '@nessie/mcp-manage'
+import type { CredentialResolutionContext } from '@nessie/mcp-manage'
 import { hasAllowedGrantForPrincipals } from './tool-grants.js'
-import { NullSecretResolver, type SecretResolver } from './secret-resolver.js'
+import { NullSecretResolver, type SecretResolver } from '@nessie/mcp-manage'
 import {
   McpSecurityError,
   assertUserAuthoredMcpTransportSafe,
-} from './mcp-security.js'
+} from '@nessie/mcp-manage'
 
 /**
  * API-side tool dispatch orchestration (plan §5/§6).

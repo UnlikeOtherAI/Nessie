@@ -8,8 +8,8 @@ import {
 } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 
-import type { McpCatalogEntryRow } from '../src/services/mcp-catalog.js'
-import type { McpInstanceRow } from '../src/services/mcp-instances.js'
+import type { McpCatalogEntryRow } from '../src/index.js'
+import type { McpInstanceRow } from '../src/index.js'
 
 import {
   MCP_OAUTH_ERROR_CODES,
@@ -21,7 +21,7 @@ import {
   startOAuth,
   type SecretStore,
   type TokenExchangeFn,
-} from '../src/services/mcp-oauth.js'
+} from '../src/index.js'
 
 /**
  * Unit coverage for the OAuth2 handshake helper (task #20). The store is
@@ -123,7 +123,7 @@ const makePrismaStub = (options: StubOptions = {}): {
       findFirst: async () => catalogEntry,
     },
     mcpServerCredentialOverride: {
-      upsert: async ({ create }: { create: any }) => {
+      upsert: async ({ create }: { create: Record<string, string> }) => {
         upserts.push({
           instanceId: create.instanceId,
           principalType: create.principalType,
@@ -265,8 +265,8 @@ test('startOAuth rejects unsafe OAuth authorization URLs', async () => {
 
 // ─── completeOAuth ──────────────────────────────────────────────────────────
 
-const makeSecretStore = (): { store: SecretStore; calls: number; lastInput: any } => {
-  const data = { calls: 0, lastInput: undefined as any }
+const makeSecretStore = (): { store: SecretStore; calls: number; lastInput: unknown } => {
+  const data: { calls: number; lastInput: unknown } = { calls: 0, lastInput: undefined }
   const store: SecretStore = {
     put: async (input) => {
       data.calls += 1
@@ -282,7 +282,7 @@ const makeSecretStore = (): { store: SecretStore; calls: number; lastInput: any 
     get lastInput() {
       return data.lastInput
     },
-  } as any
+  }
 }
 
 const stubTokenExchange = (

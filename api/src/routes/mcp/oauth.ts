@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 import { createApiResponse, sendApiError } from '../../lib/api.js'
-import { completeOAuth, startOAuth } from '../../services/mcp-oauth.js'
+import { completeOAuth, startOAuth } from '@nessie/mcp-manage'
 
 import { sendMcpError, type McpSubRegistrarContext } from './shared.js'
 

@@ -1,0 +1,222 @@
+import { assertSafeUrl, UrlSafetyError } from '@nessie/runtime'
+
+import { probeConnection, type ManagerFactory } from './mcp-instance-probe.js'
+import type { McpLibraryAuthMethod, McpLibraryTransport } from './library.js'
+
+/**
+ * MCP endpoint discovery: turn "I have a link" into an installable connector
+ * proposal (plan: admin "Add from link" + personal-assistant
+ * `connector_discover` tool).
+ *
+ * Given a bare URL (or one copied from a vendor's docs), we try the URL itself
+ * plus the well-known endpoint suffixes (`/mcp`, `/sse`, `/mcp/sse`) over both
+ * MCP remote transports (streamable HTTP first, then legacy SSE). Every
+ * candidate URL passes the shared SSRF guard before any traffic is sent.
+ *
+ * Outcomes per candidate:
+ * - a successful `tools/list` handshake → installable with `authMethod: none`;
+ * - an HTTP 401/403 from the endpoint → a real server that wants credentials
+ *   (`authMethod: bearer` is the proposal; the `WWW-Authenticate` header is
+ *   captured as evidence so OAuth-capable servers can be recognised);
+ * - anything else → not an MCP endpoint at that URL.
+ */
+
+export type McpDiscoveryAttempt = {
+  url: string
+  transport: McpLibraryTransport
+  outcome: 'ok' | 'auth_required' | 'unreachable' | 'not_mcp' | 'blocked'
+  detail: string | null
+  toolCount?: number
+}
+
+export type McpDiscoveryProposal = {
+  url: string
+  transport: McpLibraryTransport
+  authMethod: McpLibraryAuthMethod
+  /** Tool names seen during the unauthenticated handshake, when it succeeded. */
+  toolNames: string[]
+  /** Human guidance for finishing setup (e.g. what credential to provide). */
+  note: string | null
+}
+
+export type McpDiscoveryResult = {
+  input: string
+  ok: boolean
+  proposal: McpDiscoveryProposal | null
+  attempts: McpDiscoveryAttempt[]
+}
+
+export type DiscoverOptions = {
+  fetchImpl?: typeof fetch
+  managerFactory?: ManagerFactory
+  /** Per-candidate probe budget. Discovery tries up to 8 transport probes. */
+  probeTimeoutMs?: number
+}
+
+const DEFAULT_PROBE_TIMEOUT_MS = 8_000
+const WELL_KNOWN_SUFFIXES = ['/mcp', '/sse', '/mcp/sse']
+
+const normalizeInputUrl = (raw: string): string => {
+  const trimmed = raw.trim()
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+/** The URL as given, then well-known suffixes appended to its origin+path. */
+export const candidateUrlsFor = (rawUrl: string): string[] => {
+  const base = normalizeInputUrl(rawUrl)
+  let parsed: URL
+  try {
+    parsed = new URL(base)
+  } catch {
+    return [base]
+  }
+  const withoutSlash = `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`
+  const candidates = [base]
+  for (const suffix of WELL_KNOWN_SUFFIXES) {
+    if (withoutSlash.endsWith(suffix)) continue
+    const candidate = `${withoutSlash}${suffix}`
+    if (!candidates.includes(candidate)) candidates.push(candidate)
+  }
+  return candidates
+}
+
+const withTimeout = async <T>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+type AuthSignal = { status: number; wwwAuthenticate: string | null } | null
+
+/**
+ * Ask the endpoint directly whether it wants credentials. Uses a plain GET
+ * with redirects disabled (a redirect could point inside the network, so we
+ * never follow one). Any network failure is treated as "no signal".
+ */
+const fetchAuthSignal = async (
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+): Promise<AuthSignal> => {
+  try {
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: { accept: 'application/json, text/event-stream' },
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    // Drain nothing: status + headers are all we need.
+    await response.body?.cancel().catch(() => undefined)
+    return {
+      status: response.status,
+      wwwAuthenticate: response.headers.get('www-authenticate'),
+    }
+  } catch {
+    return null
+  }
+}
+
+const authNote = (signal: AuthSignal): string => {
+  const scheme = signal?.wwwAuthenticate ?? ''
+  if (/resource_metadata|oauth/i.test(scheme)) {
+    return 'This server supports OAuth sign-in. A bearer token (API key or personal access token) will also work if the vendor issues one.'
+  }
+  return 'This server requires a credential. Ask the vendor for an API key or personal access token and add it as the connector secret.'
+}
+
+export const discoverMcpEndpoint = async (
+  rawUrl: string,
+  options: DiscoverOptions = {},
+): Promise<McpDiscoveryResult> => {
+  const fetchImpl = options.fetchImpl ?? fetch
+  const probeTimeoutMs = options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
+  const attempts: McpDiscoveryAttempt[] = []
+  const input = normalizeInputUrl(rawUrl)
+
+  let authProposal: McpDiscoveryProposal | null = null
+
+  for (const url of candidateUrlsFor(rawUrl)) {
+    try {
+      await assertSafeUrl(url)
+    } catch (error) {
+      attempts.push({
+        url,
+        transport: 'http',
+        outcome: 'blocked',
+        detail: error instanceof UrlSafetyError ? error.message : String(error),
+      })
+      continue
+    }
+
+    // Streamable HTTP first (current spec), legacy SSE second. SSE endpoints
+    // ending in /sse virtually never speak streamable HTTP, so skip it there.
+    const transports: McpLibraryTransport[] = url.endsWith('/sse') ? ['sse'] : ['http', 'sse']
+    for (const transport of transports) {
+      const probe = await withTimeout(
+        probeConnection({ transport, url }, options.managerFactory),
+        probeTimeoutMs,
+        `MCP probe (${transport})`,
+      ).catch((error: unknown) => ({
+        ok: false as const,
+        error: error instanceof Error ? error.message : String(error),
+        latencyMs: probeTimeoutMs,
+      }))
+
+      if (probe.ok) {
+        const descriptors = 'descriptors' in probe ? probe.descriptors ?? [] : []
+        attempts.push({
+          url,
+          transport,
+          outcome: 'ok',
+          detail: null,
+          toolCount: descriptors.length,
+        })
+        return {
+          input,
+          ok: true,
+          proposal: {
+            url,
+            transport,
+            authMethod: 'none',
+            toolNames: descriptors.map((d) => d.name),
+            note: null,
+          },
+          attempts,
+        }
+      }
+
+      const detail = 'error' in probe ? probe.error ?? null : null
+      const looksAuthFailure = detail !== null && /\b(401|403|unauthorized|forbidden)\b/i.test(detail)
+      attempts.push({
+        url,
+        transport,
+        outcome: looksAuthFailure ? 'auth_required' : 'not_mcp',
+        detail,
+      })
+      if (looksAuthFailure && !authProposal) {
+        const signal = await fetchAuthSignal(url, fetchImpl, probeTimeoutMs)
+        authProposal = {
+          url,
+          transport,
+          authMethod: 'bearer',
+          toolNames: [],
+          note: authNote(signal),
+        }
+      }
+    }
+  }
+
+  return {
+    input,
+    ok: authProposal !== null,
+    proposal: authProposal,
+    attempts,
+  }
+}

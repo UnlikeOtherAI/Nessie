@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
-import { isOwnerRole } from '../../services/mcp-catalog.js'
+import { isOwnerRole } from '@nessie/mcp-manage'
 import {
   createInstance,
   deleteInstance,
@@ -14,7 +14,7 @@ import {
   refreshInstance,
   testInstance,
   type McpInstanceRow,
-} from '../../services/mcp-instances.js'
+} from '@nessie/mcp-manage'
 
 import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './shared.js'
 

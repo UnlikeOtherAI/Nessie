@@ -23,6 +23,7 @@
     "@nessie/db": "workspace:*",
     "@nessie/knowledge": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
+    "@nessie/mcp-manage": "workspace:*",
     "@nessie/push": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
