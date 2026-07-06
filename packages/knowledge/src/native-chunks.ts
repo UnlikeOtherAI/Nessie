@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { chunkKnowledgePageBody } from './chunking.js'
 
-type ChunkablePage = {
+export type ChunkablePage = {
   channelId: string | null
   id: string
   organizationId: string
@@ -19,20 +19,27 @@ type ChunkableVersion = {
   id: string
 }
 
+// Returns true when chunk rows were written for this version. Versions are
+// append-only, so a version's chunks never change once written: when they
+// already exist (e.g. publish re-running on an already-chunked version) this
+// is a no-op — deleting and re-inserting would wipe embeddings the
+// knowledge.embed worker job has already filled in.
 export const replaceKnowledgePageVersionChunks = async (
   tx: Prisma.TransactionClient,
   input: {
     page: ChunkablePage
     version: ChunkableVersion
   },
-): Promise<void> => {
-  await tx.$executeRaw(Prisma.sql`
-    DELETE FROM knowledge_page_chunks
+): Promise<boolean> => {
+  const existing = await tx.$queryRaw<Array<{ present: number }>>(Prisma.sql`
+    SELECT 1 AS present FROM knowledge_page_chunks
     WHERE version_id = ${input.version.id}::uuid
+    LIMIT 1
   `)
+  if (existing.length > 0) return false
 
   const chunks = await chunkKnowledgePageBody(input.version.body)
-  if (chunks.length === 0) return
+  if (chunks.length === 0) return false
 
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO knowledge_page_chunks (
@@ -78,5 +85,6 @@ export const replaceKnowledgePageVersionChunks = async (
       now()
     )`))}
   `)
+  return true
 }
 

@@ -4,7 +4,7 @@ import { replaceLabels } from './native-labels.js'
 import { canReadSpace } from './access.js'
 import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './native-mappers.js'
 import { searchNativePages } from './native-search.js'
-import { replaceKnowledgePageVersionChunks } from './native-chunks.js'
+import { replaceKnowledgePageVersionChunks, type ChunkablePage } from './native-chunks.js'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import type {
   AddFileVersionInput,
@@ -18,6 +18,22 @@ import type {
   RestorePageVersionInput,
   UpdatePageInput,
 } from './types.js'
+
+export type KnowledgeVersionIndexedEvent = {
+  organizationId: string
+  pageId: string
+  versionId: string
+}
+
+export type NativeKnowledgeProviderOptions = {
+  // Invoked inside the same transaction that wrote a version's chunk rows —
+  // the api wires this to enqueue the `knowledge.embed` job, so a failed
+  // enqueue rolls the save back instead of silently losing the embedding pass.
+  onVersionChunksReplaced?: (
+    tx: Prisma.TransactionClient,
+    event: KnowledgeVersionIndexedEvent,
+  ) => Promise<void>
+}
 
 const nativeCapabilities = {
   canWrite: true,
@@ -123,6 +139,24 @@ const getMutablePage = async (
   return page
 }
 
+// Chunk a version and fire the index hook when rows were actually written
+// (replaceKnowledgePageVersionChunks no-ops on already-chunked versions).
+const indexVersionChunks = async (
+  tx: Prisma.TransactionClient,
+  options: NativeKnowledgeProviderOptions,
+  page: ChunkablePage,
+  version: { body: string | null; id: string },
+): Promise<void> => {
+  const written = await replaceKnowledgePageVersionChunks(tx, { page, version })
+  if (written && options.onVersionChunksReplaced) {
+    await options.onVersionChunksReplaced(tx, {
+      organizationId: page.organizationId,
+      pageId: page.id,
+      versionId: version.id,
+    })
+  }
+}
+
 const assertMoveDoesNotCycle = async (
   tx: Prisma.TransactionClient,
   organizationId: string,
@@ -223,6 +257,7 @@ const movePage = async (
 
 const publishPage = async (
   prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions,
   input: PublishPageInput,
 ) =>
   prisma.$transaction(async (tx) => {
@@ -233,7 +268,7 @@ const publishPage = async (
       orderBy: { versionNumber: 'desc' },
     })
     if (!latest) return null
-    await replaceKnowledgePageVersionChunks(tx, { page, version: latest })
+    await indexVersionChunks(tx, options, page, latest)
     await tx.knowledgePage.update({
       where: { id: input.pageId },
       data: { publishedVersionId: latest.id, status: 'published' },
@@ -243,6 +278,7 @@ const publishPage = async (
 
 const restoreVersion = async (
   prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions,
   input: RestorePageVersionInput,
 ) =>
   withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
@@ -267,7 +303,7 @@ const restoreVersion = async (
         changeComment: input.changeComment ?? `Restored version ${version.versionNumber}`,
       },
     })
-    await replaceKnowledgePageVersionChunks(tx, { page, version: restored })
+    await indexVersionChunks(tx, options, page, restored)
     await tx.knowledgePage.update({
       where: { id: input.pageId },
       data: { status: 'draft' },
@@ -302,6 +338,7 @@ const addFileVersion = async (
 
 const updatePage = async (
   prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions,
   pageId: string,
   input: UpdatePageInput,
 ) =>
@@ -321,7 +358,7 @@ const updatePage = async (
           changeComment: input.changeComment ?? null,
         },
       })
-      await replaceKnowledgePageVersionChunks(tx, { page: existing, version })
+      await indexVersionChunks(tx, options, existing, version)
     }
     await tx.knowledgePage.update({
       where: { id: pageId },
@@ -348,6 +385,7 @@ const updatePage = async (
 
 export const createNativeKnowledgeProvider = (
   prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions = {},
 ): KnowledgeProvider => ({
   capabilities: nativeCapabilities,
   id: 'native:first-party',
@@ -423,7 +461,7 @@ export const createNativeKnowledgeProvider = (
           changeComment: input.changeComment ?? null,
         },
       })
-      await replaceKnowledgePageVersionChunks(tx, { page, version })
+      await indexVersionChunks(tx, options, page, version)
       await replaceLabels(tx, {
         labels: input.labels,
         organizationId: input.organizationId,
@@ -524,10 +562,10 @@ export const createNativeKnowledgeProvider = (
   },
 
   movePage: (input) => movePage(prisma, input),
-  publishPage: (input) => publishPage(prisma, input),
-  restoreVersion: (input) => restoreVersion(prisma, input),
+  publishPage: (input) => publishPage(prisma, options, input),
+  restoreVersion: (input) => restoreVersion(prisma, options, input),
   searchPages: (input) => searchNativePages(prisma, input),
-  updatePage: (pageId, input) => updatePage(prisma, pageId, input),
+  updatePage: (pageId, input) => updatePage(prisma, options, pageId, input),
 
   updateSpace: async (organizationId, spaceId, input) => {
     const space = await prisma.$transaction(async (tx) => {

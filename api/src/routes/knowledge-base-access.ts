@@ -11,6 +11,7 @@ import {
   type KnowledgeSpaceRecord,
   type SpaceViewer,
 } from '@nessie/knowledge'
+import { KNOWLEDGE_EMBED_TOPIC } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
   PolicyAction,
@@ -18,6 +19,7 @@ import type {
   PolicyResourceType,
 } from '@nessie/schemas'
 import { sendApiError } from '../lib/api.js'
+import { enqueueQueueJob } from '../queue/pgqueue.js'
 import { checkPolicy } from '../services/policy.js'
 import type { RouteDeps } from './types.js'
 
@@ -112,7 +114,17 @@ export const requestIds = (request: FastifyRequest) => ({
 // route deps once. Both route modules destructure exactly what they need.
 export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
   const { prisma } = deps
-  const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma)
+  const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma, {
+    // Enqueued inside the save transaction: the job becomes visible only when
+    // the version + chunk rows commit, and a failed enqueue rolls the save back.
+    onVersionChunksReplaced: async (tx, event) => {
+      await enqueueQueueJob(tx, {
+        idempotencyKey: `kb-embed:${event.pageId}:${event.versionId}`,
+        payload: event,
+        topic: KNOWLEDGE_EMBED_TOPIC,
+      })
+    },
+  })
 
   const buildViewer = (actorContext: AuthorizedActionContext): Promise<SpaceViewer> => {
     const isUser = actorContext.actor.actorType === 'user'
