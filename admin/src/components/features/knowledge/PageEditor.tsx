@@ -6,6 +6,9 @@ import type {
 import { RichTextEditor } from './RichTextEditor'
 
 type PageEditorProps = {
+  // Prefills the title in 'create' mode — used when the editor is opened from
+  // an unresolved wikilink's "create this page?" confirmation.
+  initialTitle?: string
   mode: 'create' | 'edit'
   onCancel: () => void
   onSubmit: (input: SavePageInput) => Promise<void>
@@ -21,6 +24,7 @@ const splitLabels = (raw: string): string[] =>
     .filter(Boolean)
 
 export const PageEditor = ({
+  initialTitle,
   mode,
   onCancel,
   onSubmit,
@@ -36,13 +40,13 @@ export const PageEditor = ({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setTitle(page?.title ?? '')
+    setTitle(page?.title ?? initialTitle ?? '')
     setSummary(page?.summary ?? '')
     setLabels(page?.labels.join(', ') ?? '')
     setBody(page?.latestVersion?.body ?? '')
     setChangeComment('')
     setError(null)
-  }, [page])
+  }, [page, initialTitle])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

@@ -224,6 +224,7 @@ export const KnowledgeWorkspace = () => {
             </div>
           ) : (
             <PageEditor
+              initialTitle={editor.mode === 'create' ? editor.initialTitle : undefined}
               mode={editor.mode}
               onCancel={closeEditor}
               onSubmit={savePage}

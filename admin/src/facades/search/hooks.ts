@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type {
   ChannelRecord,
@@ -6,6 +6,7 @@ import type {
   ProjectRecord,
   UserRecord,
 } from '../../lib/api-client'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useChannels } from '../channels/hooks'
@@ -68,18 +69,6 @@ export interface GlobalSearchResults {
   errorMessage: string | null
 }
 
-// Debounce a value so we do not fire a search request on every keystroke.
-const useDebounced = (value: string, delayMs: number): string => {
-  const [debounced, setDebounced] = useState(value)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delayMs)
-    return () => window.clearTimeout(timer)
-  }, [value, delayMs])
-
-  return debounced
-}
-
 const includesQuery = (haystack: string | null | undefined, needle: string): boolean =>
   (haystack ?? '').toLowerCase().includes(needle)
 
@@ -125,7 +114,7 @@ export const useGlobalSearch = (
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds?.includes('owner') ?? false
 
-  const debounced = useDebounced(query, DEBOUNCE_MS)
+  const debounced = useDebouncedValue(query, DEBOUNCE_MS)
   const trimmed = debounced.trim()
   const needle = trimmed.toLowerCase()
   const active = trimmed.length >= MIN_QUERY_LENGTH

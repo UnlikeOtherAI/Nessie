@@ -3,6 +3,7 @@ import { faFileLines, faFolder, faPaperclip } from '@fortawesome/free-solid-svg-
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { AgentDraftBadge } from './AgentDraftBadge'
+import { BacklinksPanel } from './backlinks/BacklinksPanel'
 import { CommentsSection } from './comments/CommentsSection'
 import { KnowledgePane } from './KnowledgePane'
 import { PageNotesLayer } from './notes/PageNotesLayer'
@@ -131,6 +132,8 @@ export const PagePreview = ({
             <p className="text-sm text-[color:var(--tx3)]">No content yet. Press Edit to start writing.</p>
           </div>
         )}
+
+        <BacklinksPanel pageId={page.id} />
 
         <CommentsSection composerRef={commentsComposerRef} pageId={page.id} />
 

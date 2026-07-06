@@ -30,7 +30,7 @@ import {
 } from './example-page'
 
 export type KnowledgeEditorState =
-  | { mode: 'create'; parentPageId: string | null }
+  | { mode: 'create'; parentPageId: string | null; initialTitle?: string }
   | { mode: 'edit'; page: KnowledgePageRecord }
   | null
 
@@ -59,7 +59,10 @@ type KnowledgeContextValue = {
   drillTo: (depth: number, childPageId: string) => void
   popTo: (depth: number) => void
   editor: KnowledgeEditorState
-  openCreate: (parentPageId: string | null) => void
+  // initialTitle prefills the create form's title — used by the unresolved
+  // wikilink "create this page?" confirmation, which already knows the title
+  // the reader typed/linked and shouldn't make them retype it.
+  openCreate: (parentPageId: string | null, initialTitle?: string) => void
   openEdit: (page: KnowledgePageRecord) => void
   closeEditor: () => void
   createFolder: (parentPageId: string | null, title: string) => Promise<void>
@@ -250,7 +253,8 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     setHistoryPageId(undefined)
   }
 
-  const openCreate = (parentPageId: string | null) => setEditor({ mode: 'create', parentPageId })
+  const openCreate = (parentPageId: string | null, initialTitle?: string) =>
+    setEditor({ mode: 'create', parentPageId, initialTitle })
   const openEdit = (page: KnowledgePageRecord) => setEditor({ mode: 'edit', page })
   const closeEditor = () => setEditor(null)
 

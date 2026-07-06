@@ -2,6 +2,9 @@ import { useEffect } from 'react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import Placeholder from '@tiptap/extension-placeholder'
 import StarterKit from '@tiptap/starter-kit'
+import { Wikilink } from './wikilink/wikilink-node'
+import { WikilinkSuggestion } from './wikilink/wikilink-suggestion'
+import { WikilinkSuggestionMenu } from './wikilink/WikilinkSuggestionMenu'
 
 type RichTextEditorProps = {
   onChange: (html: string) => void
@@ -111,6 +114,11 @@ const Toolbar = ({ editor }: { editor: Editor }) => {
         onClick={setLink}
         title="Link"
       />
+      <ToolbarButton
+        label="[[ ]]"
+        onClick={() => editor.chain().focus().insertContent('[[').run()}
+        title="Link page"
+      />
     </div>
   )
 }
@@ -124,6 +132,8 @@ export const RichTextEditor = ({ onChange, placeholder, value }: RichTextEditorP
     extensions: [
       StarterKit.configure({ link: { openOnClick: false, autolink: true } }),
       Placeholder.configure({ placeholder: placeholder ?? 'Write something…' }),
+      Wikilink,
+      WikilinkSuggestion,
     ],
     immediatelyRender: false,
     onUpdate: ({ editor: instance }) => onChange(instance.getHTML()),
@@ -141,6 +151,7 @@ export const RichTextEditor = ({ onChange, placeholder, value }: RichTextEditorP
     <div className="kb-editor flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-[color:var(--sep)]">
       {editor ? <Toolbar editor={editor} /> : null}
       <EditorContent className="min-h-0 flex-1 overflow-y-auto p-3" editor={editor} />
+      {editor ? <WikilinkSuggestionMenu editor={editor} /> : null}
     </div>
   )
 }
