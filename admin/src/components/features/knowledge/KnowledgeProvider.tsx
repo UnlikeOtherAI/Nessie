@@ -17,9 +17,11 @@ import {
   useRestoreKnowledgeVersion,
   useSeedKnowledgeBase,
   useUpdateKnowledgePage,
+  useUpdateKnowledgeSpace,
   type KnowledgePageRecord,
   type KnowledgeSpaceRecord,
   type SavePageInput,
+  type UpdateSpaceInput,
 } from '../../../facades/knowledge/hooks'
 import {
   EXAMPLE_PAGE_HTML,
@@ -37,8 +39,13 @@ type KnowledgeContextValue = {
   selectedSpaceId?: string
   selectedSpace: KnowledgeSpaceRecord | null
   selectSpace: (spaceId: string) => void
-  createSpace: (name: string) => Promise<KnowledgeSpaceRecord>
+  createSpace: (name: string, memberAgentIds?: string[]) => Promise<KnowledgeSpaceRecord>
   createSpacePending: boolean
+  spaceSettingsOpen: boolean
+  openSpaceSettings: () => void
+  closeSpaceSettings: () => void
+  updateSpace: (input: Omit<UpdateSpaceInput, 'spaceId'>) => Promise<void>
+  updateSpacePending: boolean
   pages: KnowledgePageRecord[]
   rootPages: KnowledgePageRecord[]
   childrenOf: (parentPageId: string) => KnowledgePageRecord[]
@@ -90,11 +97,13 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const [openPageId, setOpenPageId] = useState<string | undefined>()
   const [editor, setEditor] = useState<KnowledgeEditorState>(null)
   const [historyPageId, setHistoryPageId] = useState<string | undefined>()
+  const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false)
 
   const pagesQuery = useKnowledgePages(selectedSpaceId)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
 
   const createSpaceMutation = useCreateKnowledgeSpace()
+  const updateSpaceMutation = useUpdateKnowledgeSpace()
   const createPageMutation = useCreateKnowledgePage(selectedSpaceId)
   const updatePageMutation = useUpdateKnowledgePage()
   const publishPageMutation = usePublishKnowledgePage()
@@ -169,11 +178,13 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     setOpenPageId(undefined)
     setEditor(null)
     setHistoryPageId(undefined)
+    setSpaceSettingsOpen(false)
   }
 
-  const createSpace = async (name: string) => {
+  const createSpace = async (name: string, memberAgentIds?: string[]) => {
     const created = await createSpaceMutation.mutateAsync({
       name,
+      memberAgentIds,
       projectId: me?.context.projectId,
     })
     setSelectedSpaceId(created.id)
@@ -182,6 +193,15 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     setEditor(null)
     setHistoryPageId(undefined)
     return created
+  }
+
+  const openSpaceSettings = () => setSpaceSettingsOpen(true)
+  const closeSpaceSettings = () => setSpaceSettingsOpen(false)
+
+  const updateSpace = async (input: Omit<UpdateSpaceInput, 'spaceId'>) => {
+    if (!selectedSpaceId) return
+    await updateSpaceMutation.mutateAsync({ spaceId: selectedSpaceId, ...input })
+    setSpaceSettingsOpen(false)
   }
 
   const browseTo = (path: string[]) => {
@@ -269,6 +289,11 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     selectSpace,
     createSpace,
     createSpacePending: createSpaceMutation.isPending,
+    spaceSettingsOpen,
+    openSpaceSettings,
+    closeSpaceSettings,
+    updateSpace,
+    updateSpacePending: updateSpaceMutation.isPending,
     pages,
     rootPages,
     childrenOf: (parentPageId) => pagesByParent.get(parentPageId) ?? [],

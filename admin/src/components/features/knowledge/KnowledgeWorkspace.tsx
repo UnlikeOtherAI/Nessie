@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { faFolderPlus } from '@fortawesome/free-solid-svg-icons'
+import { faFolderPlus, faGear } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   useConvertToDocument,
@@ -30,6 +30,7 @@ import {
 } from './KnowledgeViewToggle'
 import { PageEditor } from './PageEditor'
 import { PagePreview } from './PagePreview'
+import { SpaceSettingsDialog } from './SpaceSettingsDialog'
 import { useFileDrop } from './useFileDrop'
 import { VersionHistory } from './VersionHistory'
 
@@ -64,6 +65,11 @@ export const KnowledgeWorkspace = () => {
     publishPending,
     restoreVersion,
     restorePending,
+    spaceSettingsOpen,
+    openSpaceSettings,
+    closeSpaceSettings,
+    updateSpace,
+    updateSpacePending,
   } = useKnowledge()
   const [viewMode, setViewMode] = useState<KnowledgeViewMode>(() => {
     const stored = getCookie(VIEW_MODE_COOKIE)
@@ -279,6 +285,18 @@ export const KnowledgeWorkspace = () => {
             <>
               <StorageUsageMeter />
               <button
+                aria-label="Space settings"
+                className={[
+                  'admin-button admin-button-secondary flex items-center justify-center',
+                  'rounded-md px-2 py-1 text-xs',
+                ].join(' ')}
+                onClick={openSpaceSettings}
+                title="Space settings"
+                type="button"
+              >
+                <FontAwesomeIcon className="h-3 w-3" icon={faGear} />
+              </button>
+              <button
                 className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
                 onClick={() => fileInputRef.current?.click()}
                 type="button"
@@ -357,6 +375,15 @@ export const KnowledgeWorkspace = () => {
         type="file"
       />
       {versionDialog}
+      {selectedSpace ? (
+        <SpaceSettingsDialog
+          onClose={closeSpaceSettings}
+          onSave={updateSpace}
+          open={spaceSettingsOpen}
+          pending={updateSpacePending}
+          space={selectedSpace}
+        />
+      ) : null}
     </div>
   )
 }

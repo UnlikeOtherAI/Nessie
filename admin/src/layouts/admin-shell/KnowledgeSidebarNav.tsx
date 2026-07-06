@@ -67,6 +67,17 @@ export const KnowledgeSidebarNav = () => {
                   <path d="M3 13l9 5 9-5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 <span className="min-w-0 flex-1 truncate">{space.name}</span>
+                {space.memberAgentIds.length > 0 ? (
+                  <span
+                    className={[
+                      'flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                      'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
+                    ].join(' ')}
+                    title={`${space.memberAgentIds.length} agent${space.memberAgentIds.length === 1 ? '' : 's'} tagged in`}
+                  >
+                    {space.memberAgentIds.length} agent{space.memberAgentIds.length === 1 ? '' : 's'}
+                  </span>
+                ) : null}
               </button>
             ))
           ))}
@@ -74,8 +85,8 @@ export const KnowledgeSidebarNav = () => {
 
       <CreateSpaceDialog
         onClose={() => setCreateOpen(false)}
-        onCreate={async (name) => {
-          await createSpace(name)
+        onCreate={async (name, memberAgentIds) => {
+          await createSpace(name, memberAgentIds)
         }}
         open={createOpen}
         pending={createSpacePending}

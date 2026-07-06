@@ -26,6 +26,8 @@ export type KnowledgeSpaceRecord = {
   projectId: string
   visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
+  memberUserIds: string[]
+  memberAgentIds: string[]
   sourceRef: string
   visibilityReason: string
   policyChainTrace: string[]
@@ -61,6 +63,14 @@ type CreateSpaceInput = {
   projectId?: string
   visibility?: KnowledgeSpaceRecord['visibility']
   sensitivityTier?: KnowledgeSpaceRecord['sensitivityTier']
+  memberAgentIds?: string[]
+}
+
+export type UpdateSpaceInput = {
+  spaceId: string
+  name?: string
+  description?: string | null
+  memberAgentIds?: string[]
 }
 
 export type SavePageInput = {
@@ -137,6 +147,19 @@ export const useCreateKnowledgeSpace = () => {
     mutationFn: (input: CreateSpaceInput) =>
       apiClient.post<KnowledgeSpaceRecord>('/api/knowledge-base/spaces', input),
     onSuccess: () => invalidateKnowledge(queryClient),
+  })
+}
+
+export const useUpdateKnowledgeSpace = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: UpdateSpaceInput) => {
+      const { spaceId, ...body } = input
+      return apiClient.patch<KnowledgeSpaceRecord>(`/api/knowledge-base/spaces/${spaceId}`, body)
+    },
+    onSuccess: (space) => invalidateKnowledge(queryClient, { spaceId: space.id }),
   })
 }
 

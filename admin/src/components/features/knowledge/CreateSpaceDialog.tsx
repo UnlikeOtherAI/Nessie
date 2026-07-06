@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useAgents } from '../../../facades/agents/hooks'
+import { AgentMemberChecklist } from './AgentMemberChecklist'
 
 type CreateSpaceDialogProps = {
   onClose: () => void
-  onCreate: (name: string) => Promise<void> | void
+  onCreate: (name: string, memberAgentIds: string[]) => Promise<void> | void
   open: boolean
   pending?: boolean
 }
@@ -10,6 +12,8 @@ type CreateSpaceDialogProps = {
 export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSpaceDialogProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
+  const [memberAgentIds, setMemberAgentIds] = useState<string[]>([])
+  const agentsQuery = useAgents()
 
   useEffect(() => {
     if (open) {
@@ -19,6 +23,7 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
 
   const handleClose = () => {
     setName('')
+    setMemberAgentIds([])
     onClose()
   }
 
@@ -26,7 +31,7 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
     event.preventDefault()
     const trimmedName = name.trim()
     if (!trimmedName) return
-    await onCreate(trimmedName)
+    await onCreate(trimmedName, memberAgentIds)
     handleClose()
   }
 
@@ -94,6 +99,22 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
               onChange={(event) => setName(event.target.value)}
               placeholder="e.g. Engineering"
               value={name}
+            />
+          </div>
+
+          <div className="grid gap-1.5">
+            <span
+              className={[
+                'text-xs font-semibold uppercase',
+                'tracking-[0.16em] text-[color:var(--tx3)]',
+              ].join(' ')}
+            >
+              Agents
+            </span>
+            <AgentMemberChecklist
+              agents={agentsQuery.data ?? []}
+              onChange={setMemberAgentIds}
+              selectedAgentIds={memberAgentIds}
             />
           </div>
 
