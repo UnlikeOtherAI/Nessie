@@ -1087,6 +1087,7 @@ model Agent {
   statusRules                   UserStatusRule[]
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowStepAssignedAgent")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
+  knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
 
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -2454,18 +2455,25 @@ model KnowledgeSpace {
 // Explicit per-space access grants. Used by `private` visibility (who can read)
 // and by `writeRestricted` spaces (who can write). The space creator always has
 // full access regardless of membership.
+// A member row grants one principal — a user XOR an agent — access to a
+// space. Exactly one of userId/agentId is set (enforced in the service layer;
+// both columns are nullable so either principal kind can be granted).
 model KnowledgeSpaceMember {
   id             String   @id @default(uuid()) @db.Uuid
   spaceId        String   @map("space_id") @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  agentId        String?  @map("agent_id") @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at")
 
   space KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent?         @relation("KnowledgeSpaceAgentMembers", fields: [agentId], references: [id], onDelete: Cascade)
 
   @@unique([spaceId, userId])
+  @@unique([spaceId, agentId])
   @@index([userId])
+  @@index([agentId])
   @@index([organizationId])
   @@map("knowledge_space_members")
 }

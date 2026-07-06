@@ -14,7 +14,7 @@ export const pageInclude = {
 export type PageRow = Prisma.KnowledgePageGetPayload<{ include: typeof pageInclude }>
 
 export const spaceInclude = {
-  members: { select: { userId: true } },
+  members: { select: { userId: true, agentId: true } },
 } satisfies Prisma.KnowledgeSpaceInclude
 
 export type SpaceRow = Prisma.KnowledgeSpaceGetPayload<{ include: typeof spaceInclude }>
@@ -50,7 +50,12 @@ export const mapSpace = (space: SpaceRow): KnowledgeSpaceRecord => ({
   description: space.description,
   metadata: toJsonRecord(space.metadata),
   writeRestricted: space.writeRestricted,
-  memberUserIds: space.members.map((member) => member.userId),
+  memberUserIds: space.members
+    .map((member) => member.userId)
+    .filter((id): id is string => id !== null),
+  memberAgentIds: space.members
+    .map((member) => member.agentId)
+    .filter((id): id is string => id !== null),
   organizationId: space.organizationId,
   projectId: space.projectId,
   teamId: space.teamId,

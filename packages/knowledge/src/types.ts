@@ -66,6 +66,7 @@ export type KnowledgeSpaceRecord = KnowledgeScopeInput & {
   metadata: Record<string, unknown> | null
   writeRestricted: boolean
   memberUserIds: string[]
+  memberAgentIds: string[]
   createdBy: string
   deletedAt: string | null
   createdAt: string
