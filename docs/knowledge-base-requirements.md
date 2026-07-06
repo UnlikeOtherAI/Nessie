@@ -2,6 +2,12 @@
 
 > Status: target-state design.
 
+> **Superseded in part (2026-07-06):** the retrieval/RAG pipeline, agent tool
+> contract (§3), and external-source facade (§2.1) are redesigned by
+> [plans/2026-07-06-documents-rag-redesign.md](plans/2026-07-06-documents-rag-redesign.md)
+> (hybrid RAG over `KnowledgePageChunk`, `knowledge-base` tool family,
+> Librarian agent, ticket-bound docs). Read those sections through that plan.
+
 > Phase B note: this document now describes the future external facade/source tier.
 > The first-party authoring envelope is implemented as `KnowledgeSpace`,
 > hierarchical `KnowledgePage`, append-only `KnowledgePageVersion`, and `PageLabel`
