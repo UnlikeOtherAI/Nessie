@@ -119,6 +119,12 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 
 The live API server (`api/`) exposes a **REST MCP connector-management surface** under `/api/mcp/*`. This is for managing third-party MCP connectors (register, list, approve, activate, delete) — it is not a JSON-RPC tool server.
 
+The management core lives in the shared **`@nessie/mcp-manage`** package (catalog, instances, probe, tool projection, credentials, OAuth, encrypted secret store, SSRF wrapper) so the API routes and the worker's personal-assistant tools share one implementation. On top of it:
+
+- **Library + discovery**: `GET /api/mcp/library` (curated well-known remote servers + live search of the official MCP registry, HTTP/SSE remotes only), `POST /api/mcp/discover` (probe a pasted link for an MCP endpoint + auth requirements), `POST /api/mcp/library/import`. Surfaced as the admin Connectors page **Library** tab with a guided one-click install.
+- **Personal-assistant connector tools** (PA-only builtins): `connector_list`, `connector_library_search`, `connector_discover`, `connector_install`, `connector_test`, `connector_set_secret`, `connector_uninstall` — full conversational setup from just a service name or URL, with secrets stored encrypted (`POST /api/mcp/instances/:id/secret` is the UI equivalent).
+- **Scoped sharing**: owners manage every install scope; org **admins** manage the shared scopes (organization/project/team/channel); members self-serve at their own user scope and see shared installs they can reach. Worker toolset assembly is scope-aware (user-scope connectors surface only in the installing user's PA runs); user-scope installs auto-activate their discovered tools, shared scopes keep the `pending_review` gate. See `docs/external-tool-integration.md` §2.
+
 User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The
 cloud API and worker reject stdio process execution for catalog/instance data,
 and HTTP/SSE/OAuth URLs are checked by the shared SSRF guard before save or use.

@@ -7,6 +7,9 @@ import { CatalogList } from '../components/features/mcp-app-store/CatalogList'
 import { CredentialsDialog } from '../components/features/mcp-app-store/CredentialsDialog'
 import { InstallScopeDialog } from '../components/features/mcp-app-store/InstallScopeDialog'
 import { InstanceList } from '../components/features/mcp-app-store/InstanceList'
+import { LibraryDetailPanel } from '../components/features/mcp-app-store/LibraryDetailPanel'
+import { LibraryInstallDialog } from '../components/features/mcp-app-store/LibraryInstallDialog'
+import { LibraryPanel } from '../components/features/mcp-app-store/LibraryPanel'
 import { RejectDialog } from '../components/features/mcp-app-store/RejectDialog'
 import {
   useApproveCatalogEntry,
@@ -26,6 +29,10 @@ import {
   useTestInstance,
   type McpServerInstanceRecord,
 } from '../facades/mcp-instances/hooks'
+import {
+  useMcpLibrary,
+  type McpLibraryEntryRecord,
+} from '../facades/mcp-library/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 /**
@@ -37,7 +44,9 @@ import { useAuthSession } from '../providers/AuthSessionProvider'
  *   submissions are approved or rejected.
  */
 
-type TabConfig = { view: CatalogView; label: string }
+type PageView = CatalogView | 'library'
+
+type TabConfig = { view: PageView; label: string }
 
 const tabClass = (active: boolean): string =>
   [
@@ -50,13 +59,21 @@ const tabClass = (active: boolean): string =>
 export const McpAppStorePage = () => {
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isElevated = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const currentUserId = me?.user.id ?? ''
   const organizationId = me?.context.organizationId ?? ''
 
-  const [view, setView] = useState<CatalogView>('store')
+  const [view, setView] = useState<PageView>('store')
   const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>()
+  const [librarySearch, setLibrarySearch] = useState('')
+  const [selectedLibraryEntry, setSelectedLibraryEntry] =
+    useState<McpLibraryEntryRecord | null>(null)
+  const [libraryInstallTarget, setLibraryInstallTarget] =
+    useState<McpLibraryEntryRecord | null>(null)
 
-  const catalogQuery = useMcpCatalog({ view })
+  const catalogView: CatalogView = view === 'library' ? 'store' : view
+  const catalogQuery = useMcpCatalog({ view: catalogView })
+  const libraryQuery = useMcpLibrary(librarySearch, { enabled: view === 'library' })
   const instancesQuery = useMcpInstances({})
   const createCatalog = useCreateCatalogEntry()
   const publishCatalog = usePublishCatalogEntry()
@@ -76,6 +93,7 @@ export const McpAppStorePage = () => {
 
   const tabs: TabConfig[] = [
     { view: 'store', label: 'Store' },
+    { view: 'library', label: 'Library' },
     { view: 'mine', label: 'My connectors' },
     ...(isOwner ? [{ view: 'queue' as const, label: 'Approval queue' }] : []),
   ]
@@ -112,9 +130,10 @@ export const McpAppStorePage = () => {
     || rejectCatalog.isPending
     || deleteCatalog.isPending
 
-  const switchView = (next: CatalogView) => {
+  const switchView = (next: PageView) => {
     setView(next)
     setSelectedCatalogId(undefined)
+    setSelectedLibraryEntry(null)
   }
 
   const handleInstall = async (input: {
@@ -181,16 +200,43 @@ export const McpAppStorePage = () => {
     >
       <div className="grid gap-3">
         {tabBar}
-        <CatalogList
-          entries={catalogEntries}
-          onSelect={setSelectedCatalogId}
-          selectedId={selectedCatalog?.id}
-        />
+        {view === 'library' ? (
+          <LibraryPanel
+            entries={libraryQuery.data?.entries ?? []}
+            loading={libraryQuery.isLoading}
+            onDiscovered={(entry) => setSelectedLibraryEntry(entry)}
+            onSearchChange={setLibrarySearch}
+            onSelect={(entry) => setSelectedLibraryEntry(entry)}
+            registryError={libraryQuery.data?.registryError ?? null}
+            search={librarySearch}
+            selectedKey={selectedLibraryEntry?.key}
+          />
+        ) : (
+          <CatalogList
+            entries={catalogEntries}
+            onSelect={setSelectedCatalogId}
+            selectedId={selectedCatalog?.id}
+          />
+        )}
       </div>
     </ColumnBrowserColumn>,
   ]
 
-  if (selectedCatalog) {
+  if (view === 'library' && selectedLibraryEntry) {
+    columns.push(
+      <ColumnBrowserColumn
+        key={`library-${selectedLibraryEntry.key}`}
+        title={selectedLibraryEntry.label}
+      >
+        <LibraryDetailPanel
+          entry={selectedLibraryEntry}
+          onAdd={() => setLibraryInstallTarget(selectedLibraryEntry)}
+        />
+      </ColumnBrowserColumn>,
+    )
+  }
+
+  if (view !== 'library' && selectedCatalog) {
     columns.push(
       <ColumnBrowserColumn key={`detail-${selectedCatalog.id}`} title={selectedCatalog.label}>
         <CatalogDetailPanel
@@ -226,9 +272,12 @@ export const McpAppStorePage = () => {
     )
   }
 
+  const hasDetailColumn =
+    view === 'library' ? Boolean(selectedLibraryEntry) : Boolean(selectedCatalog)
+
   return (
     <div className="h-full w-full">
-      <ColumnBrowserViewport activeColumn={selectedCatalog ? 1 : 0} columns={columns} />
+      <ColumnBrowserViewport activeColumn={hasDetailColumn ? 1 : 0} columns={columns} />
 
       {wizardOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--scrim-strong)] px-4">
@@ -260,6 +309,22 @@ export const McpAppStorePage = () => {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {libraryInstallTarget ? (
+        <LibraryInstallDialog
+          canShareToOrg={isElevated}
+          currentUserId={currentUserId}
+          entry={libraryInstallTarget}
+          isOwner={isOwner}
+          onCancel={() => setLibraryInstallTarget(null)}
+          onDone={(catalogEntryId) => {
+            setLibraryInstallTarget(null)
+            switchView('mine')
+            setSelectedCatalogId(catalogEntryId)
+          }}
+          organizationId={organizationId}
+        />
       ) : null}
 
       {installCandidate ? (

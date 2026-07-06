@@ -98,7 +98,7 @@ const exposedNames = async (
       agentKind: options.agentKind ?? 'personal_assistant',
       channelId: options.channelId ?? 'channel-1',
     },
-    { organizationId: 'org-1' },
+    { organizationId: 'org-1', actorId: 'agent-1' },
   )
   return toolset.entries.map((entry) => entry.originalToolName)
 }

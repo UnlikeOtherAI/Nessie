@@ -10,6 +10,7 @@
  */
 
 export * from './auth-apply.js'
+export * from './instance-secret.js'
 export * from './mcp-catalog.js'
 export * from './mcp-catalog-review.js'
 export * from './mcp-credentials.js'

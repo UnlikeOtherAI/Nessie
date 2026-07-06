@@ -10,8 +10,8 @@ import {
   McpInstanceError,
   resolveMcpUserAccess,
   searchMcpLibrary,
+  storeInstanceSecret,
   testInstance,
-  upsertOverride,
   publishCatalogEntry,
   type CreateCatalogEntryInput,
   type McpInstanceRow,
@@ -520,31 +520,19 @@ export const runConnectorSetSecretTool = async (
     instance.scopeType,
     instance.scopeId,
   )
-  const ref = await secrets.store.put({ accessToken: secretValue })
-
-  let where: string
-  if (instance.scopeType === 'user' && instance.scopeId === ctx.userId) {
-    // The user's own connector: the credential IS the connection credential.
-    await context.prisma.mcpServerInstance.update({
-      where: { id: instance.id },
-      data: { credentialRef: ref },
-    })
-    where = 'as this connector\'s credential'
-  } else if (input.shared && manageable) {
-    await context.prisma.mcpServerInstance.update({
-      where: { id: instance.id },
-      data: { credentialRef: ref },
-    })
-    where = 'as the shared credential for everyone using this connector'
-  } else {
-    await upsertOverride(context.prisma, {
-      instanceId: instance.id,
-      principalType: 'user',
-      principalId: ctx.userId,
-      credentialRef: ref,
-    })
-    where = 'as your personal credential for this shared connector'
-  }
+  const { placement } = await storeInstanceSecret(context.prisma, secrets.store, {
+    instance,
+    userId: ctx.userId,
+    access: ctx.access,
+    secret: secretValue,
+    shared: input.shared,
+  })
+  const where =
+    placement === 'instance'
+      ? 'as this connector\'s credential'
+      : placement === 'shared_default'
+        ? 'as the shared credential for everyone using this connector'
+        : 'as your personal credential for this shared connector'
 
   const testSummary = manageable
     ? ` ${await runTestAndDescribe(context, ctx.organizationId, instance.id)}`

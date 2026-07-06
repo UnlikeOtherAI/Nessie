@@ -69,6 +69,7 @@ export const registerMcpRoutes = (
     // Env-only resolution is the pre-secret-store behaviour and remains the
     // safe default for tests; production wires the layered pg+env resolver.
     secretResolver: helpers.secretResolver ?? new EnvSecretResolver(),
+    mcpSecretStore: helpers.mcpSecretStore ?? oauthSecretStore,
   }
 
   registerMcpCatalogRoutes(app, ctx)

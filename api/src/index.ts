@@ -372,6 +372,9 @@ export const buildApp = async () => {
     // resolver the worker uses (encrypted pg store first, env fallback), so
     // OAuth tokens and assistant-collected secrets work for connection tests.
     secretResolver: createMcpSecretResolver(prisma, authSecret ?? ''),
+    mcpSecretStore: createPgSecretStore(prisma, authSecret ?? '', {
+      refPrefix: 'secret_mcp_',
+    }),
   })
 
   registerToolBundleRoutes(app, {

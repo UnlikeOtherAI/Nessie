@@ -47,6 +47,11 @@ export type McpRouteHelpers = {
    * and assistant-collected secrets resolve exactly like env-provisioned refs.
    */
   secretResolver?: SecretResolver
+  /**
+   * Store for user-provided connector credentials (the instance `/secret`
+   * route). Defaults to the OAuth secret store when omitted.
+   */
+  mcpSecretStore?: SecretStore
 }
 
 /**
@@ -61,6 +66,7 @@ export type McpSubRegistrarContext = {
   requireOwner: McpRouteHelpers['requireOwner']
   oauthSecretStore: SecretStore
   secretResolver: SecretResolver
+  mcpSecretStore: SecretStore
 }
 
 export const JsonRecordSchema = z.record(z.string(), z.unknown())

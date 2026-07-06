@@ -10,6 +10,7 @@ import {
   MCP_INSTANCE_ERROR_CODES,
   refreshInstance,
   resolveMcpUserAccess,
+  storeInstanceSecret,
   testInstance,
   type McpInstanceRow,
   type McpUserAccess,
@@ -45,6 +46,11 @@ const CreateInstanceBodySchema = z.object({
   scopeId: z.string().uuid(),
   credentialRef: z.string().nullable().optional(),
   transportConfig: JsonRecordSchema.optional(),
+})
+
+const SetSecretBodySchema = z.object({
+  secret: z.string().min(1).max(8192),
+  shared: z.boolean().optional(),
 })
 
 const FORBIDDEN_SCOPE = {
@@ -254,6 +260,59 @@ export const registerMcpInstanceRoutes = (
       if (sendMcpError(reply, error)) return reply
       throw error
     }
+  })
+
+  // Store a user-provided credential for an instance (encrypted at rest).
+  // Open to anyone who can SEE the instance: their own instances take the
+  // secret as the connection credential, shared instances get a per-user
+  // override unless the caller manages the scope and asks for shared=true.
+  // Mirrors the personal assistant's connector_set_secret tool exactly
+  // (same @nessie/mcp-manage implementation).
+  app.post('/api/mcp/instances/:instanceId/secret', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const body = parseInput(SetSecretBodySchema, request.body, reply)
+    if (!body) return reply
+
+    const { instanceId } = request.params as { instanceId: string }
+    const instance = await getInstance(
+      prisma,
+      actorContext.tenant.organizationId,
+      instanceId,
+    )
+    if (!instance) {
+      sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
+      return reply
+    }
+    const access = await accessFor(actorContext)
+    const manageable =
+      isOwnerRole(actorContext)
+      || canManageInstanceScope(
+        access,
+        actorContext.actor.actorId,
+        instance.scopeType,
+        instance.scopeId,
+      )
+    if (!manageable) {
+      const visible = await listInstancesVisibleToUser(
+        prisma,
+        actorContext.tenant.organizationId,
+        actorContext.actor.actorId,
+      )
+      if (!visible.some((row) => row.id === instance.id)) {
+        return denyScope(reply)
+      }
+    }
+
+    const result = await storeInstanceSecret(prisma, ctx.mcpSecretStore, {
+      instance,
+      userId: actorContext.actor.actorId,
+      access: isOwnerRole(actorContext) ? { role: 'owner' } : access,
+      secret: body.secret,
+      shared: body.shared,
+    })
+    return createApiResponse({ placement: result.placement })
   })
 
   app.delete('/api/mcp/instances/:instanceId', async (request, reply) => {

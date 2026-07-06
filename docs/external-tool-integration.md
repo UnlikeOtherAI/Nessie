@@ -168,11 +168,79 @@ Example:
    │     source = 'mcp-remote'
    │     transport = 'mcp'
    │     transportConfig = { serverId: instance.id, toolName: "stripe_create_customer" }
-   │     status = 'pending_review' (default — admin must approve before agents can use)
+   │     status = 'pending_review' (shared scopes — admin must approve before agents can use)
+   │     status = 'active'         (user-scope installs — self-service, see below)
    │
    └── 8. Admin approves tools → status becomes 'active'
          Agents can now discover and use these tools
 ```
+
+**User-scope installs are self-service.** Tools discovered from a `user`-scoped
+instance project as `active` immediately (and drift re-activates rather than
+re-flagging): the installer is the only person whose runs can ever reach those
+tools, so an org-owner review gate would only break the "paste a link, start
+using it" flow. The worker enforces the reach rule at toolset assembly
+(`worker/src/run/mcp-toolset.ts`): user-scope instances surface **only** in
+the installing user's delegated personal-assistant runs — never in shared
+agents' channels; org/system instances surface to every run in the org; and
+team/project/channel instances follow the run's context. An explicit per-agent
+`toolPolicy` verdict overrides the scope default in either direction.
+
+### Connector Library & Link Discovery
+
+Non-technical users (and the personal assistant) don't hand-author transport
+configs. Three signed-in endpoints, backed by `@nessie/mcp-manage`
+(`library.ts`, `discovery.ts`), close the gap:
+
+- `GET /api/mcp/library?search=` — unified search over (a) a **curated list**
+  of well-known officially hosted remote servers (DeepWiki, Context7, GitHub,
+  Stripe, Zapier, Hugging Face, PayPal, Square, Cloudflare Docs, Semgrep — all
+  installable end-to-end with `none`/`bearer`/`api_key` auth) and (b) the
+  **official MCP registry** (`registry.modelcontextprotocol.io`), filtered to
+  HTTP/SSE remotes (stdio/package-only servers are dropped) with auth
+  classified from the registry's header metadata. Registry outages degrade to
+  curated-only.
+- `POST /api/mcp/discover` `{ url }` — probes a pasted link for an MCP
+  endpoint: the URL itself plus well-known suffixes (`/mcp`, `/sse`,
+  `/mcp/sse`), streamable HTTP first then legacy SSE, every candidate through
+  the SSRF guard. A successful `tools/list` handshake yields an installable
+  `authMethod: none` proposal (with tool names); a 401/403 yields a `bearer`
+  proposal with a `WWW-Authenticate`-derived hint. Redirects are never
+  followed.
+- `POST /api/mcp/library/import` — turns a library entry / discovery proposal
+  into a catalog entry: private self-published for members, or (owners with
+  `shareToOrg: true`) published straight into the org store.
+
+The admin Connectors page exposes these as the **Library** tab (search +
+"Only have a link?" box + one-click guided install: pick "Just me" / "Whole
+organisation", paste the API key if one is needed, then the instance is
+created, the secret stored encrypted, and the connection tested + tools
+discovered in one flow).
+
+### Personal-Assistant Connector Management
+
+The personal assistant can run the whole lifecycle conversationally via
+PA-only builtin tools (defined in
+`packages/runtime/src/builtin-connector-tools.ts`, handlers in
+`worker/src/run/pa-tools/connectors.ts`, all re-checking the acting user's
+rights through the same `@nessie/mcp-manage` helpers as the routes):
+
+| Tool | Purpose |
+| --- | --- |
+| `connector_list` | Instances the user can reach (own + shared), state + tool counts |
+| `connector_library_search` | Org catalog + curated library + official registry, by service name |
+| `connector_discover` | Probe a pasted URL for an MCP endpoint + auth requirements |
+| `connector_install` | Install from catalog id, or register + install from url/transport/auth; owners/admins may target `organization`/`team`/`channel` scope |
+| `connector_test` | Probe + project tools, report discovered tool names |
+| `connector_set_secret` | Store a chat-provided credential encrypted (never echoed; redacted from tool summaries) and re-test |
+| `connector_uninstall` | Remove a manageable instance + its registry entries |
+
+Scope-management rights are role-derived and shared with the API routes
+(`canManageInstanceScope`): `owner` manages every scope, `admin` manages the
+shared scopes (organization/project/team/channel) — this is how "an admin
+makes a connector available to the whole team/org" — and everyone manages
+their own `user` scope. Instance listing for non-owners returns their own
+installs plus shared-scope installs they can reach.
 
 ### Self-Hosted MCP Servers
 
@@ -984,6 +1052,20 @@ Agent decides to call "acme_create_contact" with { email: "john@acme.com", name:
 ### For MCP Servers
 
 Same principle. The MCP server instance has a `credential_ref`. When the execution engine connects to the MCP server, it resolves the credential and passes it to the remote endpoint or runner config — never through the agent's message stream.
+
+**Ref resolution is layered and identical on both paths** (probe/test in the
+API, dispatch in the worker), via `createMcpSecretResolver` in
+`@nessie/mcp-manage`: refs starting `secret_` resolve from the encrypted
+Postgres store (AES-256-GCM under the deployment auth secret — OAuth token
+bundles use `secret_oauth_*`, user/assistant-provided keys `secret_mcp_*`),
+anything else falls back to the env-var convention. Header application is also
+shared (`applyAuthSecretToTransport`): `bearer`/`oauth2` → `Authorization:
+Bearer …`, `api_key` → the catalog entry's configured header name + value
+prefix. User-provided secrets enter through `POST
+/api/mcp/instances/:id/secret` (admin UI) or the PA's `connector_set_secret`
+tool — one shared implementation (`storeInstanceSecret`): own user-scope
+instance → the instance credential; shared instance + manage rights +
+`shared: true` → the shared default; otherwise a per-user override.
 
 ```
 Agent calls MCP tool "stripe_create_customer"
