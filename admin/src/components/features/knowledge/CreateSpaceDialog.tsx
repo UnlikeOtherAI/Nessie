@@ -1,18 +1,34 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
+import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
 import { AgentMemberChecklist } from './AgentMemberChecklist'
+
+type SpaceVisibility = KnowledgeSpaceRecord['visibility']
 
 type CreateSpaceDialogProps = {
   onClose: () => void
-  onCreate: (name: string, memberAgentIds: string[]) => Promise<void> | void
+  onCreate: (
+    name: string,
+    memberAgentIds: string[],
+    visibility: SpaceVisibility,
+  ) => Promise<void> | void
   open: boolean
   pending?: boolean
 }
+
+const VISIBILITY_OPTIONS: { value: SpaceVisibility; label: string; description: string }[] = [
+  { value: 'private', label: 'Private', description: 'Only you and people or agents you add' },
+  { value: 'channel', label: 'Channel', description: 'Everyone in a channel you pick' },
+  { value: 'team', label: 'Team', description: 'Everyone on your team' },
+  { value: 'project', label: 'Project', description: 'Everyone on the project' },
+  { value: 'organization', label: 'Organization', description: 'Everyone in the organization' },
+]
 
 export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSpaceDialogProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
   const [memberAgentIds, setMemberAgentIds] = useState<string[]>([])
+  const [visibility, setVisibility] = useState<SpaceVisibility>('private')
   const agentsQuery = useAgents()
 
   useEffect(() => {
@@ -24,6 +40,7 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
   const handleClose = () => {
     setName('')
     setMemberAgentIds([])
+    setVisibility('private')
     onClose()
   }
 
@@ -31,7 +48,7 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
     event.preventDefault()
     const trimmedName = name.trim()
     if (!trimmedName) return
-    await onCreate(trimmedName, memberAgentIds)
+    await onCreate(trimmedName, memberAgentIds, visibility)
     handleClose()
   }
 
@@ -100,6 +117,35 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
               placeholder="e.g. Engineering"
               value={name}
             />
+          </div>
+
+          <div className="grid gap-1.5">
+            <span
+              className={[
+                'text-xs font-semibold uppercase',
+                'tracking-[0.16em] text-[color:var(--tx3)]',
+              ].join(' ')}
+            >
+              Visibility
+            </span>
+            <div className="grid gap-1.5">
+              {VISIBILITY_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  className={[
+                    'flex flex-col items-start gap-0.5 rounded-md px-3 py-2 text-left transition-colors',
+                    visibility === option.value
+                      ? 'bg-[color:var(--overlay)] ring-1 ring-inset ring-[color:var(--accent)]'
+                      : 'bg-[color:var(--overlay-weak)] hover:bg-[color:var(--overlay)]',
+                  ].join(' ')}
+                  onClick={() => setVisibility(option.value)}
+                  type="button"
+                >
+                  <span className="text-sm font-semibold text-[color:var(--tx)]">{option.label}</span>
+                  <span className="text-xs text-[color:var(--tx3)]">{option.description}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid gap-1.5">

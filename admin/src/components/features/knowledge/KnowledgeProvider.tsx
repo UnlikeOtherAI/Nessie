@@ -11,6 +11,7 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import {
   useCreateKnowledgePage,
   useCreateKnowledgeSpace,
+  useEnsureMyDocsSpace,
   useKnowledgePages,
   useKnowledgeSpaces,
   usePublishKnowledgePage,
@@ -36,10 +37,17 @@ export type KnowledgeEditorState =
 
 type KnowledgeContextValue = {
   spaces: KnowledgeSpaceRecord[]
+  // The caller's personal "My Docs" space, provisioned once per session via
+  // the idempotent ensure endpoint. Undefined until that call resolves.
+  myDocsSpaceId?: string
   selectedSpaceId?: string
   selectedSpace: KnowledgeSpaceRecord | null
   selectSpace: (spaceId: string) => void
-  createSpace: (name: string, memberAgentIds?: string[]) => Promise<KnowledgeSpaceRecord>
+  createSpace: (
+    name: string,
+    memberAgentIds?: string[],
+    visibility?: KnowledgeSpaceRecord['visibility'],
+  ) => Promise<KnowledgeSpaceRecord>
   createSpacePending: boolean
   spaceSettingsOpen: boolean
   openSpaceSettings: () => void
@@ -91,6 +99,7 @@ export const useKnowledge = (): KnowledgeContextValue => {
 export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const { me } = useAuthSession()
   const spacesQuery = useKnowledgeSpaces()
+  const myDocsQuery = useEnsureMyDocsSpace()
   const spaces = useMemo(
     () => [...(spacesQuery.data ?? [])].sort((left, right) => left.name.localeCompare(right.name)),
     [spacesQuery.data],
@@ -185,11 +194,16 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     setSpaceSettingsOpen(false)
   }
 
-  const createSpace = async (name: string, memberAgentIds?: string[]) => {
+  const createSpace = async (
+    name: string,
+    memberAgentIds?: string[],
+    visibility?: KnowledgeSpaceRecord['visibility'],
+  ) => {
     const created = await createSpaceMutation.mutateAsync({
       name,
       memberAgentIds,
       projectId: me?.context.projectId,
+      visibility,
     })
     setSelectedSpaceId(created.id)
     setPagePath([])
@@ -301,6 +315,7 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
 
   const value: KnowledgeContextValue = {
     spaces,
+    myDocsSpaceId: myDocsQuery.data?.spaceId,
     selectedSpaceId,
     selectedSpace,
     selectSpace,

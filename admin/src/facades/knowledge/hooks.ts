@@ -83,7 +83,10 @@ export type SavePageInput = {
   title: string
 }
 
+export type EnsureMyDocsResponse = { spaceId: string }
+
 const spacesKey = ['knowledge-spaces'] as const
+const myDocsKey = ['knowledge-my-docs'] as const
 const pagesKey = (spaceId?: string) => ['knowledge-pages', spaceId ?? 'none'] as const
 const pageKey = (pageId?: string) => ['knowledge-page', pageId ?? 'none'] as const
 const versionsKey = (pageId?: string) => ['knowledge-versions', pageId ?? 'none'] as const
@@ -136,6 +139,19 @@ export const useKnowledgeVersions = (pageId?: string) => {
     queryKey: versionsKey(pageId),
     queryFn: () => apiClient.get(`/api/knowledge-base/pages/${pageId}/versions`),
     enabled: Boolean(pageId),
+  })
+}
+
+// Idempotent "ensure my personal space" call — provisions (or fetches) the
+// caller's private "My Docs" space. staleTime: Infinity because the result
+// never changes for the session; we only need to call it once per mount.
+export const useEnsureMyDocsSpace = () => {
+  const apiClient = useApiClient()
+
+  return useQuery<EnsureMyDocsResponse>({
+    queryKey: myDocsKey,
+    queryFn: () => apiClient.post('/api/knowledge-base/my-docs', {}),
+    staleTime: Infinity,
   })
 }
 

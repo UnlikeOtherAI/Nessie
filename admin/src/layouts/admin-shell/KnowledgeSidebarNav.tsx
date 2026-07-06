@@ -1,11 +1,18 @@
 import { useState } from 'react'
+import { faUser } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
 import { useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
 
 export const KnowledgeSidebarNav = () => {
-  const { spaces, selectedSpaceId, selectSpace, createSpace, createSpacePending } = useKnowledge()
+  const { spaces, myDocsSpaceId, selectedSpaceId, selectSpace, createSpace, createSpacePending } =
+    useKnowledge()
   const [collapsed, setCollapsed] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+
+  const myDocsSpace = spaces.find((space) => space.id === myDocsSpaceId)
+  // The personal space is pinned above "Spaces" — never duplicated below.
+  const otherSpaces = spaces.filter((space) => space.id !== myDocsSpaceId)
 
   return (
     <aside
@@ -19,6 +26,28 @@ export const KnowledgeSidebarNav = () => {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
+        {myDocsSpace ? (
+          <div className="border-b border-[color:var(--sep)] pb-1">
+            <div className="admin-sec-row">
+              <span className="admin-sec-hdr" style={{ cursor: 'default' }}>
+                My Docs
+              </span>
+            </div>
+            <button
+              className={['admin-sb-item', myDocsSpace.id === selectedSpaceId ? 'active' : ''].join(' ')}
+              onClick={() => selectSpace(myDocsSpace.id)}
+              type="button"
+            >
+              <FontAwesomeIcon
+                className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--accent)]"
+                fixedWidth
+                icon={faUser}
+              />
+              <span className="min-w-0 flex-1 truncate font-medium">{myDocsSpace.name}</span>
+            </button>
+          </div>
+        ) : null}
+
         <div className="admin-sec-row">
           <button className="admin-sec-hdr" onClick={() => setCollapsed((value) => !value)} type="button">
             <svg
@@ -46,10 +75,10 @@ export const KnowledgeSidebarNav = () => {
         </div>
 
         {!collapsed &&
-          (spaces.length === 0 ? (
+          (otherSpaces.length === 0 ? (
             <div className="px-4 py-3 text-sm text-[color:var(--tx3)]">No spaces yet</div>
           ) : (
-            spaces.map((space) => (
+            otherSpaces.map((space) => (
               <button
                 className={['admin-sb-item', space.id === selectedSpaceId ? 'active' : ''].join(' ')}
                 key={space.id}
@@ -85,8 +114,8 @@ export const KnowledgeSidebarNav = () => {
 
       <CreateSpaceDialog
         onClose={() => setCreateOpen(false)}
-        onCreate={async (name, memberAgentIds) => {
-          await createSpace(name, memberAgentIds)
+        onCreate={async (name, memberAgentIds, visibility) => {
+          await createSpace(name, memberAgentIds, visibility)
         }}
         open={createOpen}
         pending={createSpacePending}
