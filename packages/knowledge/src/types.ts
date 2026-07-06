@@ -162,6 +162,7 @@ export type CreateSpaceInput = KnowledgeScopeInput & {
   createdBy: string
   description?: string | null
   memberUserIds?: string[]
+  memberAgentIds?: string[]
   metadata?: Record<string, unknown> | null
   name: string
   writeRestricted?: boolean
@@ -170,6 +171,7 @@ export type CreateSpaceInput = KnowledgeScopeInput & {
 export type UpdateSpaceInput = Partial<{
   description: string | null
   memberUserIds: string[]
+  memberAgentIds: string[]
   metadata: Record<string, unknown> | null
   name: string
   sensitivityTier: KnowledgeSensitivityTier

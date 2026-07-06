@@ -10,6 +10,7 @@ import {
   type KnowledgeProvider,
   type KnowledgeSpaceRecord,
   type SpaceViewer,
+  type SpaceViewerPrincipal,
 } from '@nessie/knowledge'
 import { KNOWLEDGE_EMBED_TOPIC } from '@nessie/schemas'
 import type {
@@ -126,9 +127,16 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     },
   })
 
+  // 'user' and 'agent' map to their real principal; anything else (including
+  // 'service') is a bypass viewer — there is no third first-class principal
+  // kind in the knowledge base's access model.
   const buildViewer = (actorContext: AuthorizedActionContext): Promise<SpaceViewer> => {
-    const isUser = actorContext.actor.actorType === 'user'
-    return loadSpaceViewer(prisma, isUser ? actorContext.actor.actorId : null, !isUser)
+    const { actorType, actorId } = actorContext.actor
+    const principal: SpaceViewerPrincipal =
+      actorType === 'user' || actorType === 'agent'
+        ? { actorType, actorId }
+        : { actorType: 'service', actorId }
+    return loadSpaceViewer(prisma, actorContext.tenant.organizationId, principal)
   }
 
   const denyAccess = (reply: FastifyReply, reason: string) =>

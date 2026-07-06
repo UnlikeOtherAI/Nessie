@@ -8,8 +8,12 @@ export type {
   NativeKnowledgeProviderOptions,
 } from './native-provider.js'
 export { canReadSpace, canWriteSpace, loadSpaceViewer } from './access.js'
-export type { SpaceViewer } from './access.js'
-export { readableSpaceIdsSql } from './native-search-access.js'
+export type { SpaceViewer, SpaceViewerAgentScopes, SpaceViewerPrincipal } from './access.js'
+export {
+  readableSpaceIdsSql,
+  readableSpaceIdsSqlForAgent,
+  readableSpaceIdsSqlForViewer,
+} from './native-search-access.js'
 export {
   groupFusedChunksByPage,
   searchNativePagesHybrid,

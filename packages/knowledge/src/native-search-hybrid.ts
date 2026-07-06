@@ -7,7 +7,8 @@ import {
   type RetrievalCandidateBase,
 } from '@nessie/retrieval'
 import { mapPage, pageInclude } from './native-mappers.js'
-import { readableSpaceIdsSql } from './native-search-access.js'
+import { readableSpaceIdsSqlForViewer } from './native-search-access.js'
+import type { SpaceViewer } from './access.js'
 import type {
   HybridSearchPagesInput,
   KnowledgePageCursorPage,
@@ -43,19 +44,40 @@ type ChunkCandidate = RetrievalCandidateBase & {
 const clampPageLimit = (limit?: number): number =>
   Math.min(Math.max(limit ?? DEFAULT_PAGE_LIMIT, 1), MAX_PAGE_LIMIT)
 
+// Chunk-level privacy predicates beyond the space-level filter: a chunk
+// inherits its page's sensitivityTier/privateToAgentId, and pages can be more
+// restrictive than their space. Agent viewers never see restricted chunks or
+// chunks privately scoped to a different agent; user (and bypass) viewers
+// never see agent-private chunks at all — that privacy is agent-to-agent, not
+// a grant any user principal holds.
+const chunkPrivacyWhere = (viewer?: SpaceViewer): Prisma.Sql => {
+  if (!viewer || viewer.bypass) return Prisma.empty
+  if (viewer.agent) {
+    return Prisma.sql`
+      AND c.sensitivity_tier <> 'restricted'::"SensitivityTier"
+      AND (c.private_to_agent_id IS NULL OR c.private_to_agent_id = ${viewer.agent.id}::uuid)
+    `
+  }
+  return Prisma.sql`AND c.private_to_agent_id IS NULL`
+}
+
 // Predicates shared by the lexical and semantic candidate queries: same
 // organization/lifecycle/scope filters, restricted to the latest version's
-// chunks and (when a non-bypass viewer is supplied) the spaces they may read.
-const sharedChunkWhere = (input: HybridSearchPagesInput): Prisma.Sql => Prisma.sql`
-  c.organization_id = ${input.organizationId}::uuid
-  AND p.deleted_at IS NULL
-  AND p.status <> 'archived'::"KnowledgePageStatus"
-  ${input.projectId ? Prisma.sql`AND p.project_id = ${input.projectId}::uuid` : Prisma.empty}
-  ${input.spaceId ? Prisma.sql`AND p.space_id = ${input.spaceId}::uuid` : Prisma.empty}
-  ${input.viewer && !input.viewer.bypass
-    ? Prisma.sql`AND p.space_id IN (${readableSpaceIdsSql(input.organizationId, input.viewer)})`
-    : Prisma.empty}
-`
+// chunks and (when a viewer is supplied) the spaces/chunks they may read.
+const sharedChunkWhere = (input: HybridSearchPagesInput): Prisma.Sql => {
+  const spaceFilter = input.viewer
+    ? readableSpaceIdsSqlForViewer(input.organizationId, input.viewer)
+    : null
+  return Prisma.sql`
+    c.organization_id = ${input.organizationId}::uuid
+    AND p.deleted_at IS NULL
+    AND p.status <> 'archived'::"KnowledgePageStatus"
+    ${input.projectId ? Prisma.sql`AND p.project_id = ${input.projectId}::uuid` : Prisma.empty}
+    ${input.spaceId ? Prisma.sql`AND p.space_id = ${input.spaceId}::uuid` : Prisma.empty}
+    ${spaceFilter ? Prisma.sql`AND p.space_id IN (${spaceFilter})` : Prisma.empty}
+    ${chunkPrivacyWhere(input.viewer)}
+  `
+}
 
 // Only the latest version's chunks are current; older versions' chunk rows
 // must never surface in search.

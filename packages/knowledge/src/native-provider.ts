@@ -49,6 +49,28 @@ const nativeCapabilities = {
 const VERSION_CREATE_MAX_ATTEMPTS = 3
 const ARCHIVED_PAGE_MESSAGE = 'Archived pages are read-only'
 
+// Knowledge-space agent membership grants must name real agents in the same
+// org — otherwise a grant silently never matches any SpaceViewer.agent.id and
+// looks like a bug in access.ts rather than bad input. Reject rather than
+// silently drop foreign/unknown ids.
+const assertAgentsBelongToOrg = async (
+  client: PrismaClient | Prisma.TransactionClient,
+  organizationId: string,
+  agentIds: string[],
+): Promise<void> => {
+  const found = await client.agent.findMany({
+    where: { id: { in: agentIds }, organizationId },
+    select: { id: true },
+  })
+  const foundIds = new Set(found.map((agent) => agent.id))
+  const unknown = agentIds.filter((id) => !foundIds.has(id))
+  if (unknown.length > 0) {
+    throw new KnowledgeConflictError(
+      `Unknown agent id(s) for knowledge space membership: ${unknown.join(', ')}`,
+    )
+  }
+}
+
 const fetchPage = async (
   client: PrismaClient | Prisma.TransactionClient,
   organizationId: string,
@@ -475,6 +497,10 @@ export const createNativeKnowledgeProvider = (
 
   createSpace: async (input) => {
     const memberUserIds = Array.from(new Set(input.memberUserIds ?? []))
+    const memberAgentIds = Array.from(new Set(input.memberAgentIds ?? []))
+    if (memberAgentIds.length > 0) {
+      await assertAgentsBelongToOrg(prisma, input.organizationId, memberAgentIds)
+    }
     const space = await prisma.knowledgeSpace.create({
       data: {
         name: input.name,
@@ -491,12 +517,18 @@ export const createNativeKnowledgeProvider = (
         sensitivityTier: input.sensitivityTier ?? 'normal',
         privateToAgentId: input.privateToAgentId ?? null,
         createdBy: input.createdBy,
-        members: memberUserIds.length
+        members: memberUserIds.length || memberAgentIds.length
           ? {
-              create: memberUserIds.map((userId) => ({
-                userId,
-                organizationId: input.organizationId,
-              })),
+              create: [
+                ...memberUserIds.map((userId) => ({
+                  userId,
+                  organizationId: input.organizationId,
+                })),
+                ...memberAgentIds.map((agentId) => ({
+                  agentId,
+                  organizationId: input.organizationId,
+                })),
+              ],
             }
           : undefined,
       },
@@ -571,27 +603,50 @@ export const createNativeKnowledgeProvider = (
 
   updateSpace: async (organizationId, spaceId, input) => {
     const space = await prisma.$transaction(async (tx) => {
-      const result = await tx.knowledgeSpace.updateMany({
+      // Existence is checked separately from the scalar update: a members-only
+      // patch has an empty scalar data object, and updateMany with empty data
+      // matches nothing — which would wrongly read as "space not found".
+      const existing = await tx.knowledgeSpace.findFirst({
         where: { id: spaceId, organizationId, deletedAt: null },
-        data: {
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.metadata !== undefined
-            ? { metadata: input.metadata as Prisma.InputJsonValue }
-            : {}),
-          ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
-          ...(input.writeRestricted !== undefined
-            ? { writeRestricted: input.writeRestricted }
-            : {}),
-          ...(input.sensitivityTier !== undefined
-            ? { sensitivityTier: input.sensitivityTier }
-            : {}),
-        },
+        select: { id: true },
       })
-      if (result.count === 0) return null
+      if (!existing) return null
+      const data = {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.metadata !== undefined
+          ? { metadata: input.metadata as Prisma.InputJsonValue }
+          : {}),
+        ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
+        ...(input.writeRestricted !== undefined
+          ? { writeRestricted: input.writeRestricted }
+          : {}),
+        ...(input.sensitivityTier !== undefined
+          ? { sensitivityTier: input.sensitivityTier }
+          : {}),
+      }
+      if (Object.keys(data).length > 0) {
+        await tx.knowledgeSpace.update({ where: { id: spaceId }, data })
+      }
+      // Each principal kind is replaced independently (only when its field is
+      // provided), so patching memberUserIds alone can never wipe out agent
+      // members as a side effect, and vice versa — both stay atomic within
+      // this transaction relative to the caller's intent.
+      if (input.memberAgentIds !== undefined) {
+        const memberAgentIds = Array.from(new Set(input.memberAgentIds))
+        if (memberAgentIds.length > 0) {
+          await assertAgentsBelongToOrg(tx, organizationId, memberAgentIds)
+        }
+        await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId, agentId: { not: null } } })
+        if (memberAgentIds.length) {
+          await tx.knowledgeSpaceMember.createMany({
+            data: memberAgentIds.map((agentId) => ({ spaceId, agentId, organizationId })),
+          })
+        }
+      }
       if (input.memberUserIds !== undefined) {
         const memberUserIds = Array.from(new Set(input.memberUserIds))
-        await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId } })
+        await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId, userId: { not: null } } })
         if (memberUserIds.length) {
           await tx.knowledgeSpaceMember.createMany({
             data: memberUserIds.map((userId) => ({ spaceId, userId, organizationId })),

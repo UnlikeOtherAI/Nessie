@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import { normalizeLabels } from './native-labels.js'
 import { mapPage, pageInclude } from './native-mappers.js'
-import { readableSpaceIdsSql } from './native-search-access.js'
+import { readableSpaceIdsSqlForViewer } from './native-search-access.js'
 import type {
   KnowledgePageCursorPage,
   KnowledgeSearchHit,
@@ -24,6 +24,9 @@ export const searchNativePages = async (
   const query = input.query?.trim()
   const likeQuery = query ? `%${query}%` : null
   const labels = normalizeLabels(input.labels).map((label) => label.normalizedName)
+  const spaceFilter = input.viewer
+    ? readableSpaceIdsSqlForViewer(input.organizationId, input.viewer)
+    : null
   const rows = await prisma.$queryRaw<SearchRow[]>(Prisma.sql`
     SELECT p.id, p.updated_at AS "updatedAt",
            COALESCE(p.summary, p.title) AS snippet
@@ -35,9 +38,7 @@ export const searchNativePages = async (
       AND s.deleted_at IS NULL
       ${input.projectId ? Prisma.sql`AND p.project_id = ${input.projectId}::uuid` : Prisma.empty}
       ${input.spaceId ? Prisma.sql`AND p.space_id = ${input.spaceId}::uuid` : Prisma.empty}
-      ${input.viewer && !input.viewer.bypass
-        ? Prisma.sql`AND p.space_id IN (${readableSpaceIdsSql(input.organizationId, input.viewer)})`
-        : Prisma.empty}
+      ${spaceFilter ? Prisma.sql`AND p.space_id IN (${spaceFilter})` : Prisma.empty}
       ${cursor
         ? Prisma.sql`
           AND (

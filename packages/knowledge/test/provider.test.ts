@@ -285,3 +285,149 @@ test('native update retries append-only version creation after a version-number 
   // idempotent existence probe, which goes through $queryRaw instead.)
   assert.equal(rawChunkIndexCalls.length, 1)
 })
+
+const agentA = '00000000-0000-4000-8000-000000000101'
+const agentB = '00000000-0000-4000-8000-000000000102'
+const foreignAgent = '00000000-0000-4000-8000-000000000103'
+
+const spaceRow = (members: Array<{ userId: string | null; agentId: string | null }> = []) => ({
+  id: spaceId,
+  name: 'Engineering',
+  description: null,
+  metadata: null,
+  writeRestricted: false,
+  members,
+  organizationId,
+  projectId,
+  teamId: null,
+  channelId: null,
+  threadId: null,
+  userId: null,
+  visibility: 'project',
+  sensitivityTier: 'normal',
+  privateToAgentId: null,
+  createdBy: 'user-1',
+  deletedAt: null,
+  createdAt: now,
+  updatedAt: now,
+})
+
+test('native createSpace rejects unknown/foreign agent ids in memberAgentIds', async () => {
+  const prisma = {
+    agent: {
+      findMany: async () => [{ id: agentA }],
+    },
+    knowledgeSpace: { create: async () => spaceRow() },
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.createSpace({
+      name: 'Engineering',
+      organizationId,
+      projectId,
+      createdBy: 'user-1',
+      memberAgentIds: [agentA, foreignAgent],
+    }),
+    (error) =>
+      error instanceof KnowledgeConflictError && error.message.includes(foreignAgent),
+  )
+})
+
+test('native createSpace writes agent member rows (agentId set, userId null) after validating org membership', async () => {
+  const createCalls: Array<Record<string, unknown>> = []
+  const prisma = {
+    agent: {
+      findMany: async () => [{ id: agentA }, { id: agentB }],
+    },
+    knowledgeSpace: {
+      create: async (args: { data: Record<string, unknown> }) => {
+        createCalls.push(args.data)
+        return spaceRow([
+          { userId: 'user-1', agentId: null },
+          { userId: null, agentId: agentA },
+          { userId: null, agentId: agentB },
+        ])
+      },
+    },
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  const created = await provider.createSpace({
+    name: 'Engineering',
+    organizationId,
+    projectId,
+    createdBy: 'user-1',
+    memberUserIds: ['user-1'],
+    memberAgentIds: [agentA, agentB],
+  })
+
+  assert.deepEqual(created.memberAgentIds.sort(), [agentA, agentB].sort())
+  assert.deepEqual(created.memberUserIds, ['user-1'])
+  const membersCreate = createCalls[0]?.['members'] as { create: Array<Record<string, unknown>> }
+  assert.deepEqual(
+    membersCreate.create.map((m) => ('agentId' in m ? m['agentId'] : null)),
+    [null, agentA, agentB],
+  )
+})
+
+test('native updateSpace replaces agent members without touching user members when only memberAgentIds is provided', async () => {
+  const deleteCalls: Array<Record<string, unknown>> = []
+  const createCalls: Array<Record<string, unknown>> = []
+  const tx = {
+    knowledgeSpace: {
+      // A members-only patch must not touch space scalars at all.
+      update: async () => {
+        throw new Error('scalar update must not run for a members-only patch')
+      },
+      findFirst: async () => spaceRow([
+        { userId: 'user-1', agentId: null },
+        { userId: null, agentId: agentB },
+      ]),
+    },
+    knowledgeSpaceMember: {
+      deleteMany: async (args: Record<string, unknown>) => {
+        deleteCalls.push(args)
+        return { count: 0 }
+      },
+      createMany: async (args: { data: Array<Record<string, unknown>> }) => {
+        createCalls.push(...args.data)
+        return { count: args.data.length }
+      },
+    },
+    agent: { findMany: async () => [{ id: agentB }] },
+  }
+  const prisma = {
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  const updated = await provider.updateSpace(organizationId, spaceId, { memberAgentIds: [agentB] })
+
+  assert.deepEqual(updated?.memberAgentIds, [agentB])
+  // Only the agent-member rows were touched; user membership was never deleted.
+  assert.equal(deleteCalls.length, 1)
+  assert.equal(deleteCalls[0]?.['where']?.['agentId']?.['not'], null)
+  assert.deepEqual(createCalls, [{ spaceId, agentId: agentB, organizationId }])
+})
+
+test('native updateSpace rejects unknown agent ids before touching membership rows', async () => {
+  const tx = {
+    knowledgeSpace: { findFirst: async () => ({ id: spaceId }) },
+    knowledgeSpaceMember: {
+      deleteMany: async () => {
+        throw new Error('must not be called when validation fails')
+      },
+    },
+    agent: { findMany: async () => [] },
+  }
+  const prisma = {
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.updateSpace(organizationId, spaceId, { memberAgentIds: [foreignAgent] }),
+    (error) => error instanceof KnowledgeConflictError,
+  )
+})

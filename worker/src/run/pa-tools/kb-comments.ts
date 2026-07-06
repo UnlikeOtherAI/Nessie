@@ -8,6 +8,7 @@ import {
   type AnnotationAccess,
   type AnnotationActor,
   type AnnotationRecord,
+  type SpaceViewerPrincipal,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveEffectiveUserId } from './access.js'
@@ -22,6 +23,17 @@ const buildActor = (context: BuiltinToolRuntimeContext): AnnotationActor => {
     : { authorType: 'agent', authorId: context.agentId }
 }
 
+// A delegating PA (personal assistant acting for its owner) reads/writes with
+// the owner's own space access, same as buildActor above; an autonomous agent
+// is checked against its own channel bindings / explicit space grants — no
+// more blanket bypass for either case.
+const buildPrincipal = (context: BuiltinToolRuntimeContext): SpaceViewerPrincipal => {
+  const effectiveUserId = resolveEffectiveUserId(context)
+  return effectiveUserId
+    ? { actorType: 'user', actorId: effectiveUserId }
+    : { actorType: 'agent', actorId: context.agentId }
+}
+
 const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string) => {
   const organizationId = String(context.channel.organizationId)
   const provider = createNativeKnowledgeProvider(context.prisma)
@@ -29,8 +41,7 @@ const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string
   if (!page) throw new Error(`Knowledge page not found: ${pageId}`)
   const space = await provider.getSpace(organizationId, page.spaceId)
   if (!space) throw new Error(`Knowledge space not found for page: ${pageId}`)
-  // Agents bypass per-user space checks; org scoping still applies on every query.
-  const viewer = await loadSpaceViewer(context.prisma, resolveEffectiveUserId(context), true)
+  const viewer = await loadSpaceViewer(context.prisma, organizationId, buildPrincipal(context))
   const access: AnnotationAccess = {
     space,
     viewer,

@@ -9,6 +9,7 @@ import {
   snippetAroundMatch,
   truncateSnippet,
 } from '../src/native-search-hybrid.js'
+import type { SpaceViewer, SpaceViewerAgentScopes } from '../src/access.js'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const pageA = '00000000-0000-4000-8000-000000000010'
@@ -147,6 +148,81 @@ test('searchNativePagesHybrid issues both channels when queryEmbedding is presen
   assert.equal(queries.length, 2)
   assert.match(queries[0] ?? '', /websearch_to_tsquery/)
   assert.match(queries[1] ?? '', /embedding <=>/)
+})
+
+const agentScopes = (overrides: Partial<SpaceViewerAgentScopes> = {}): SpaceViewerAgentScopes => ({
+  id: '00000000-0000-4000-8000-000000000020',
+  orgBound: true,
+  channelIds: new Set(),
+  teamIds: new Set(),
+  projectIds: new Set(),
+  memberSpaceIds: new Set(),
+  ...overrides,
+})
+
+test('searchNativePagesHybrid excludes restricted/other-agent-private chunks for an agent viewer', async () => {
+  const queries: string[] = []
+  const prisma = {
+    $queryRaw: async (query: { sql: string }) => {
+      queries.push(query.sql)
+      return []
+    },
+    knowledgePage: { findMany: async () => [] },
+  } as unknown as PrismaClient
+  const agentViewer: SpaceViewer = { bypass: false, userId: null, projectIds: new Set(), agent: agentScopes() }
+
+  await searchNativePagesHybrid(prisma, {
+    organizationId,
+    query: 'runbook',
+    queryEmbedding: null,
+    viewer: agentViewer,
+  })
+
+  assert.match(queries[0] ?? '', /c\.sensitivity_tier <> 'restricted'::"SensitivityTier"/)
+  assert.match(queries[0] ?? '', /c\.private_to_agent_id IS NULL OR c\.private_to_agent_id = \?::uuid/)
+})
+
+test('searchNativePagesHybrid excludes agent-private chunks entirely for a user viewer', async () => {
+  const queries: string[] = []
+  const prisma = {
+    $queryRaw: async (query: { sql: string }) => {
+      queries.push(query.sql)
+      return []
+    },
+    knowledgePage: { findMany: async () => [] },
+  } as unknown as PrismaClient
+  const userViewer: SpaceViewer = { bypass: false, userId: 'user-1', projectIds: new Set() }
+
+  await searchNativePagesHybrid(prisma, {
+    organizationId,
+    query: 'runbook',
+    queryEmbedding: null,
+    viewer: userViewer,
+  })
+
+  assert.match(queries[0] ?? '', /AND c\.private_to_agent_id IS NULL/)
+  assert.doesNotMatch(queries[0] ?? '', /sensitivity_tier <> 'restricted'/)
+})
+
+test('searchNativePagesHybrid adds no chunk-privacy predicate for a bypass viewer', async () => {
+  const queries: string[] = []
+  const prisma = {
+    $queryRaw: async (query: { sql: string }) => {
+      queries.push(query.sql)
+      return []
+    },
+    knowledgePage: { findMany: async () => [] },
+  } as unknown as PrismaClient
+
+  await searchNativePagesHybrid(prisma, {
+    organizationId,
+    query: 'runbook',
+    queryEmbedding: null,
+    viewer: { bypass: true, userId: null, projectIds: new Set() },
+  })
+
+  assert.doesNotMatch(queries[0] ?? '', /private_to_agent_id/)
+  assert.doesNotMatch(queries[0] ?? '', /sensitivity_tier <> 'restricted'/)
 })
 
 test('searchNativePagesHybrid short-circuits on blank query without hitting the database', async () => {

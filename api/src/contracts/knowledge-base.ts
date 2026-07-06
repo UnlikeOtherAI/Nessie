@@ -110,6 +110,7 @@ export const CreateKnowledgeSpaceBodySchema = OptionalScopeSchema.extend({
   metadata: JsonRecordSchema.nullable().optional(),
   writeRestricted: z.boolean().optional(),
   memberUserIds: z.array(UuidSchema).max(500).optional(),
+  memberAgentIds: z.array(UuidSchema).max(64).optional(),
 })
 
 export const UpdateKnowledgeSpaceBodySchema = z.object({
@@ -120,6 +121,7 @@ export const UpdateKnowledgeSpaceBodySchema = z.object({
   sensitivityTier: KnowledgeSensitivityTierSchema.optional(),
   writeRestricted: z.boolean().optional(),
   memberUserIds: z.array(UuidSchema).max(500).optional(),
+  memberAgentIds: z.array(UuidSchema).max(64).optional(),
 })
 
 export const CreateKnowledgePageBodySchema = OptionalScopeSchema.extend({

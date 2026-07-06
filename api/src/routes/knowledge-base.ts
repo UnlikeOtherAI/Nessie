@@ -1,5 +1,9 @@
 import type { FastifyInstance } from 'fastify'
-import { buildNativeSourceRef, type KnowledgePageRecord } from '@nessie/knowledge'
+import {
+  buildNativeSourceRef,
+  type KnowledgePageRecord,
+  type KnowledgeSpaceRecord,
+} from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import {
   CreateKnowledgePageBodySchema,
@@ -72,10 +76,13 @@ export const registerKnowledgeBaseRoutes = (
     if (!decision) return reply
     const viewer = await buildViewer(actorContext)
     // The org-wide knowledge_space:create grant is evaluated against the caller's
-    // own session project, so without this check a user could pass any sibling
-    // project's id in the body and plant a writable space there. Human actors may
-    // only create in a project they belong to; agents/services keep bypass.
-    if (!viewer.bypass && !viewer.projectIds.has(projectId)) {
+    // own session project, so without this check a user (or agent) could pass any
+    // sibling project's id in the body and plant a writable space there. Human
+    // actors may only create in a project they belong to; agents may only create
+    // in a project reached via one of their channel bindings; services keep bypass.
+    const inProjectReach = viewer.bypass
+      || (viewer.agent ? viewer.agent.projectIds.has(projectId) : viewer.projectIds.has(projectId))
+    if (!inProjectReach) {
       sendApiError(
         reply,
         403,
@@ -84,12 +91,21 @@ export const registerKnowledgeBaseRoutes = (
       )
       return reply
     }
-    const space = await provider.createSpace({
-      ...body,
-      organizationId: actorContext.tenant.organizationId,
-      projectId,
-      createdBy: actorContext.actor.actorId,
-    })
+    let space: KnowledgeSpaceRecord
+    try {
+      space = await provider.createSpace({
+        ...body,
+        organizationId: actorContext.tenant.organizationId,
+        projectId,
+        createdBy: actorContext.actor.actorId,
+      })
+    } catch (error) {
+      return sendKnowledgeMutationError(request, reply, error, {
+        code: 'KNOWLEDGE_SPACE_INVALID',
+        message: 'Knowledge space could not be created',
+        statusCode: 400,
+      })
+    }
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'kb.space.created',
@@ -124,7 +140,16 @@ export const registerKnowledgeBaseRoutes = (
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
     if (!(await accessSpace(actorContext, spaceId, viewer, 'write', reply))) return reply
-    const space = await provider.updateSpace(actorContext.tenant.organizationId, spaceId, body)
+    let space: KnowledgeSpaceRecord | null
+    try {
+      space = await provider.updateSpace(actorContext.tenant.organizationId, spaceId, body)
+    } catch (error) {
+      return sendKnowledgeMutationError(request, reply, error, {
+        code: 'KNOWLEDGE_SPACE_INVALID',
+        message: 'Knowledge space could not be updated',
+        statusCode: 400,
+      })
+    }
     if (!space) return sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
     await emitAuditEvent(prisma, {
       actorContext,
