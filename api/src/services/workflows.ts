@@ -435,6 +435,7 @@ export const listWorkflowTemplates = async (
       name: true,
       description: true,
       version: true,
+      graphJson: true,
       triggersJson: true,
       variableSchema: true,
       bindingSchema: true,
@@ -446,7 +447,10 @@ export const listWorkflowTemplates = async (
     },
   })
 
-  return templates.map((template) => mapWorkflowTemplate({ ...template, graphJson: {} }))
+  // The real graph must be returned: WorkflowGraphSchema requires at least
+  // one step, so substituting an empty graph made this endpoint 500 as soon
+  // as any template existed — and the admin list renders step counts.
+  return templates.map(mapWorkflowTemplate)
 }
 
 export const createWorkflowTemplate = async (

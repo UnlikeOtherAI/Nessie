@@ -118,14 +118,17 @@ export const WorkflowDesignerPage = () => {
         />
 
         <WorkflowNodeInspector
+          channels={state.channels}
           selectedNode={state.selectedNode}
           selectedNodeSource={state.selectedNodeSource}
           selectedNodeSourceOptions={state.selectedNodeSourceOptions}
           selectedNodeConfigDraft={state.selectedNodeConfigDraft}
           selectedNodeConfigError={state.selectedNodeConfigError}
+          selectedNodeUpstreamSteps={state.selectedNodeUpstreamSteps}
           onLabelChange={state.handleSelectedNodeLabelChange}
           onSourceChange={state.handleSelectedNodeSourceChange}
           onConfigChange={state.handleSelectedNodeConfigChange}
+          onConfigPatch={state.handleSelectedNodeConfigPatch}
         />
       </div>
     </div>

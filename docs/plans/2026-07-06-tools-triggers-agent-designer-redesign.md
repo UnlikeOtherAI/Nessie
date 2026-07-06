@@ -103,7 +103,41 @@ explicit set of rules; new work on these surfaces should follow them:
   uuids) no longer render in the designer tool picker; builtin ids do,
   because operators grep for them.
 
-## 5) Known follow-ups
+## 5) Workflows wired in (same day)
+
+The workflow surfaces were brought up to the same standard and connected to
+the trigger/tool/agent machinery:
+
+- **`GET /api/workflows` was broken with real data**: the list view replaced
+  the stored graph with `{}`, which `WorkflowGraphSchema` (min 1 step)
+  rejects — the endpoint 500'd as soon as one template existed. The list now
+  returns the real graph (`api/src/services/workflows.ts`).
+- **Workflows page IA**: one workflow list (search, derived status pill)
+  with drill-down workflow → installation → run; installations are
+  subordinate rows in the template detail instead of a parallel top-level
+  list of UUIDs.
+- **Installation detail is the operational hub**: facts as a definition
+  list (channel resolved to its label), an inline **Add trigger** button
+  that opens the same `TriggerEditorDialog` used by the Triggers page
+  (pre-targeted at the installation), trigger rows that deep-link to the
+  Triggers page, and a run list with status dots, relative time and
+  duration. Start-run explains itself when the installation is not active.
+- **Run detail** is a step timeline: status dot, type, duration, error;
+  payload JSON collapsed by default; skip/block/unblock only render when
+  the step state actually allows them; cancel/retry appear per run state.
+- **Designer node inspector** edits structured fields instead of raw JSON:
+  agent steps get agent/channel/instruction/subject (with an inline warning
+  when the channel is missing — the runtime requires it), tool steps get
+  their primary arguments (`web_search.query`, `web_fetch.url`,
+  `state_get/put.key`…), scheduled/interval triggers get cron/timezone/
+  minutes. An "Use earlier step output" panel lists upstream steps as
+  ready-to-paste `{{steps.<id>.output}}` binding tokens. Raw JSON remains
+  under an "Advanced" disclosure.
+- Template trigger nodes materialise into real installation triggers at
+  install time (verified live: scheduled trigger created with correct
+  next-run).
+
+## 6) Known follow-ups
 
 - The designer's provider/model select lists are still hardcoded; the
   inference control plane (`/api/inference/models`) is the natural source once
