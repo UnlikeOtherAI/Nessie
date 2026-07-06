@@ -279,6 +279,77 @@ test('knowledge publish maps archived page conflicts to a clean 409', async () =
   await app.close()
 })
 
+test('knowledge search falls back to keyword mode when there is no query text', async () => {
+  const searchCalls: string[] = []
+  const { app } = makeApp('allow', {
+    searchPages: async () => {
+      searchCalls.push('searchPages')
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+    searchPagesHybrid: async () => {
+      searchCalls.push('searchPagesHybrid')
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+  })
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/knowledge-base/search',
+    payload: {},
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(searchCalls, ['searchPages'])
+  await app.close()
+})
+
+test('knowledge search uses hybrid mode by default when a query is present', async () => {
+  const searchCalls: string[] = []
+  const { app } = makeApp('allow', {
+    searchPages: async () => {
+      searchCalls.push('searchPages')
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+    searchPagesHybrid: async (input) => {
+      searchCalls.push('searchPagesHybrid')
+      assert.equal(input.query, 'runbook')
+      assert.equal(input.queryEmbedding, null)
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+  })
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/knowledge-base/search',
+    payload: { query: 'runbook' },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(searchCalls, ['searchPagesHybrid'])
+  await app.close()
+})
+
+test('knowledge search honors an explicit keyword mode even with a query present', async () => {
+  const searchCalls: string[] = []
+  const { app } = makeApp('allow', {
+    searchPages: async () => {
+      searchCalls.push('searchPages')
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+    searchPagesHybrid: async () => {
+      searchCalls.push('searchPagesHybrid')
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+  })
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/knowledge-base/search',
+    payload: { query: 'runbook', mode: 'keyword' },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(searchCalls, ['searchPages'])
+  await app.close()
+})
+
 test('knowledge mutations map Prisma unique conflicts without leaking constraint text', async () => {
   const { app } = makeApp('allow', {
     updatePage: async () => {

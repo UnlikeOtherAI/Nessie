@@ -4,6 +4,7 @@ import { replaceLabels } from './native-labels.js'
 import { canReadSpace } from './access.js'
 import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './native-mappers.js'
 import { searchNativePages } from './native-search.js'
+import { searchNativePagesHybrid } from './native-search-hybrid.js'
 import { replaceKnowledgePageVersionChunks, type ChunkablePage } from './native-chunks.js'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import type {
@@ -565,6 +566,7 @@ export const createNativeKnowledgeProvider = (
   publishPage: (input) => publishPage(prisma, options, input),
   restoreVersion: (input) => restoreVersion(prisma, options, input),
   searchPages: (input) => searchNativePages(prisma, input),
+  searchPagesHybrid: (input) => searchNativePagesHybrid(prisma, input),
   updatePage: (pageId, input) => updatePage(prisma, options, pageId, input),
 
   updateSpace: async (organizationId, spaceId, input) => {

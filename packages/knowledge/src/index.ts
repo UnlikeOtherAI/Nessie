@@ -9,6 +9,14 @@ export type {
 } from './native-provider.js'
 export { canReadSpace, canWriteSpace, loadSpaceViewer } from './access.js'
 export type { SpaceViewer } from './access.js'
+export { readableSpaceIdsSql } from './native-search-access.js'
+export {
+  groupFusedChunksByPage,
+  searchNativePagesHybrid,
+  snippetAroundMatch,
+  truncateSnippet,
+} from './native-search-hybrid.js'
+export type { GroupedPageHit } from './native-search-hybrid.js'
 export {
   KnowledgeConflictError,
   isKnowledgeConflictError,
@@ -52,9 +60,11 @@ export type {
   KnowledgeProviderKind,
   KnowledgeScopeInput,
   KnowledgeSearchHit,
+  KnowledgeSearchPassage,
   KnowledgeSensitivityTier,
   KnowledgeSpaceRecord,
   KnowledgeVisibility,
+  HybridSearchPagesInput,
   ListPagesInput,
   ListSpacesInput,
   MovePageInput,

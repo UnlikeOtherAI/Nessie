@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import { normalizeLabels } from './native-labels.js'
 import { mapPage, pageInclude } from './native-mappers.js'
+import { readableSpaceIdsSql } from './native-search-access.js'
 import type {
   KnowledgePageCursorPage,
   KnowledgeSearchHit,
@@ -34,6 +35,9 @@ export const searchNativePages = async (
       AND s.deleted_at IS NULL
       ${input.projectId ? Prisma.sql`AND p.project_id = ${input.projectId}::uuid` : Prisma.empty}
       ${input.spaceId ? Prisma.sql`AND p.space_id = ${input.spaceId}::uuid` : Prisma.empty}
+      ${input.viewer && !input.viewer.bypass
+        ? Prisma.sql`AND p.space_id IN (${readableSpaceIdsSql(input.organizationId, input.viewer)})`
+        : Prisma.empty}
       ${cursor
         ? Prisma.sql`
           AND (

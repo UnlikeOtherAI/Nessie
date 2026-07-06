@@ -232,11 +232,23 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 - `POST /api/knowledge-base/reindex`
 - `POST /api/knowledge-base/summarize`
 - `POST /api/knowledge-base/search`
-  - accepts `topK`, `limit`, `cursor`, `sort`, `accessContext`, `tags`
-  - matching is case-insensitive substring (`ILIKE '%q%'`) over page **title**,
-    **summary**, and **label** names, backed by `pg_trgm` GIN trigram indexes so it
-    does not sequentially scan every page (`native-search.ts`). Page `metadata` is
-    not searched (it was unindexable JSON-cast text).
+  - accepts `query`, `labels`, `projectId`, `spaceId`, `limit`, `cursor`, and
+    `mode: 'keyword' | 'hybrid'` (defaults to `hybrid` when query text is
+    present, `keyword` otherwise).
+  - **keyword** mode: case-insensitive substring (`ILIKE '%q%'`) over page
+    **title**, **summary**, and **label** names, backed by `pg_trgm` GIN
+    trigram indexes (`native-search.ts`). Page `metadata` is not searched.
+  - **hybrid** mode (implemented): RRF fusion of a lexical `tsvector`
+    (`websearch_to_tsquery` + `ts_rank_cd`, GIN) channel and a semantic
+    pgvector cosine channel (HNSW) over `knowledge_page_chunks`
+    (`native-search-hybrid.ts`), restricted to each page's latest version.
+    Hits carry matched `passages` (content + plain-text offsets + score) and a
+    match-windowed `snippet`. Degrades to lexical-only when no query embedding
+    is available. Query embeddings come from the org model client
+    (`text-embedding-3-small`), cached 15 min per normalized query and billed
+    to the token ledger.
+  - Both modes enforce viewer access with an in-SQL readable-spaces pre-filter
+    (`readableSpaceIdsSql`, mirrors `canReadSpace`) — no post-filtering.
 - `POST /api/knowledge-base/read`
   - accepts `docId`, `projectId`, `accessContext`
 - `POST /api/knowledge-base/search-summary` (or `search.summary`)
@@ -516,11 +528,19 @@ Each chunk stores `pageId`, `versionId`, `chunkIndex`, `content`,
 KnowledgePage scoping envelope (`organizationId`, project/team/channel/thread/
 user, `visibility`, `sensitivityTier`, `privateToAgentId`). The table also
 declares optional `embedding vector(1536)`, `embeddingModel`, `dims`, and a
-generated `searchVector` with HNSW/GIN indexes. Embeddings and
-`match_knowledge_chunks_*` retrieval functions remain the next slice; body-ref
-and file-backed versions still need a streaming ingestion/backfill path. This
-change establishes deterministic chunk boundaries and the storage shape they
-will consume.
+generated `searchVector` with HNSW/GIN indexes.
+
+Embeddings are now populated asynchronously: every version save enqueues a
+`knowledge.embed` queue job (transactionally, idempotency key
+`kb-embed:<pageId>:<versionId>`), and the worker fills NULL embeddings —
+copying by `contentHash` within the org first (identical content never
+re-embeds), then batching ≤64 chunks per provider call
+(`worker/src/control/knowledge-embed.ts`, billed to the token ledger as a
+system actor). Chunk rows are immutable per append-only version; superseded
+versions' chunks are deleted after a newer version embeds. Retrieval is the
+hybrid search described in §3 (TypeScript RRF fusion via `@nessie/retrieval`,
+not PL/pgSQL `match_*` functions). Body-ref and file-backed versions still
+need a streaming ingestion/extraction path (redesign plan Phase 5).
 
 ## 10) Phase annotation
 

@@ -371,11 +371,17 @@ paths, which this design does.
 Each phase is independently shippable and verified (kelpie on 5455) before the
 next starts.
 
-1. **Retrieval core** — `knowledge.embed` job + incremental embedding;
-   scoped-content mapping + hybrid `kb` candidates in `packages/retrieval`;
-   `mode=hybrid` search API + UI passage highlighting. *Accept:* body text is
-   searchable; private spaces never leak into another viewer's results
-   (test: SQL scope filter, not post-filter).
+1. **Retrieval core** — ✅ **shipped (2026-07-06).** `knowledge.embed` job +
+   incremental embedding (copy-by-content-hash, ≤64-chunk batches,
+   ledger-billed); hybrid lexical+semantic candidates fused with
+   `@nessie/retrieval` RRF (`native-search-hybrid.ts` — kept in
+   `packages/knowledge` rather than a retrieval-package mapping, since the
+   human-viewer space filter lives naturally beside `canReadSpace`; the
+   agent-scope mapping arrives with Phase 2); `mode=hybrid` search API + UI
+   passage highlighting in `/search` and the ⌘K palette. *Acceptance
+   verified against live pgvector:* body text searchable (lexical-only
+   degradation included), private/project spaces never leak across viewers —
+   enforced by the in-SQL readable-spaces pre-filter, post-filter removed.
 2. **Agent access + Librarian read path** — agent-principal ACL (kill
    `bypass`), `KnowledgeSpaceMember.agentId`, `kb_search`/`kb_page_read`/
    `kb_list` tools, Librarian agent seeded + grantable. *Accept:* untagged

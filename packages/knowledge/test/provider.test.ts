@@ -262,6 +262,9 @@ test('native update retries append-only version creation after a version-number 
           rawChunkIndexCalls.push(query)
           return 0
         },
+        // Chunk existence probe (replaceKnowledgePageVersionChunks) — no
+        // pre-existing chunks, so the insert path runs.
+        $queryRaw: async () => [],
       }
       return callback(tx)
     },
@@ -278,5 +281,7 @@ test('native update retries append-only version creation after a version-number 
   assert.equal(updated?.latestVersion?.versionNumber, 3)
   assert.deepEqual(createAttempts, [2, 3])
   assert.equal(transactionCount, 2)
-  assert.equal(rawChunkIndexCalls.length, 2)
+  // One raw call: the chunk INSERT. (The former DELETE was replaced by the
+  // idempotent existence probe, which goes through $queryRaw instead.)
+  assert.equal(rawChunkIndexCalls.length, 1)
 })

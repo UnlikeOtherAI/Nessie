@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { buildNativeSourceRef, canReadSpace, type KnowledgePageRecord } from '@nessie/knowledge'
+import { buildNativeSourceRef, type KnowledgePageRecord } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import {
   CreateKnowledgePageBodySchema,
@@ -13,6 +13,7 @@ import {
 } from '../contracts/knowledge-base.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { getQueryEmbedding } from '../services/knowledge-query-embedding.js'
 import {
   actorAuthorType,
   attachPageEnvelope,
@@ -225,25 +226,51 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'search')
     if (!decision) return reply
     const viewer = await buildViewer(actorContext)
+    const organizationId = actorContext.tenant.organizationId
+    const projectId = body.projectId ?? actorContext.tenant.projectId ?? undefined
+    const query = body.query?.trim()
+    // Hybrid needs query text and provider support; force keyword mode
+    // otherwise. Both paths pass `viewer` through so the provider applies the
+    // space-read SQL pre-filter itself (readableSpaceIdsSql) instead of the
+    // per-space post-filter this route used to run after the fact — bypass
+    // viewers were never filtered anyway.
+    const hybridSearch = provider.searchPagesHybrid
+    const mode = body.mode ?? (query ? 'hybrid' : 'keyword')
+
+    if (mode === 'hybrid' && query && hybridSearch) {
+      const queryEmbedding = await getQueryEmbedding(
+        deps.sharedModelClient,
+        query,
+        attributionFromActorContext(actorContext),
+      )
+      const result = await hybridSearch({
+        organizationId,
+        query,
+        queryEmbedding,
+        viewer,
+        projectId,
+        spaceId: body.spaceId,
+        limit: body.limit,
+      })
+      return createApiResponse(
+        result.data.map((hit) => ({
+          page: attachPageEnvelope(hit.page, decision),
+          snippet: hit.snippet,
+          passages: hit.passages,
+          score: hit.score,
+        })),
+        result.meta,
+      )
+    }
+
     const result = await provider.searchPages({
       ...body,
-      organizationId: actorContext.tenant.organizationId,
-      projectId: body.projectId ?? actorContext.tenant.projectId ?? undefined,
+      organizationId,
+      projectId,
+      viewer,
     })
-    // Drop hits the viewer may not read (decision cached per space).
-    const readableBySpace = new Map<string, boolean>()
-    const allowed: typeof result.data = []
-    for (const hit of result.data) {
-      let readable = readableBySpace.get(hit.page.spaceId)
-      if (readable === undefined) {
-        const space = await provider.getSpace(actorContext.tenant.organizationId, hit.page.spaceId)
-        readable = space ? canReadSpace(space, viewer) : false
-        readableBySpace.set(hit.page.spaceId, readable)
-      }
-      if (readable) allowed.push(hit)
-    }
     return createApiResponse(
-      allowed.map((hit) => ({
+      result.data.map((hit) => ({
         page: attachPageEnvelope(hit.page, decision),
         snippet: hit.snippet,
       })),

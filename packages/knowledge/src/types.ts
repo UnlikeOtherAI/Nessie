@@ -92,9 +92,18 @@ export type KnowledgePageRecord = KnowledgeScopeInput & {
   updatedAt: string
 }
 
+export type KnowledgeSearchPassage = {
+  content: string
+  endOffset: number
+  score: number
+  startOffset: number
+}
+
 export type KnowledgeSearchHit = {
   page: KnowledgePageRecord
   snippet: string
+  passages?: KnowledgeSearchPassage[]
+  score?: number
 }
 
 export type KnowledgePageTreeNode = KnowledgePageRecord & {
@@ -133,6 +142,19 @@ export type SearchPagesInput = {
   projectId?: string
   query?: string
   spaceId?: string
+  // When set (and not a bypass viewer), results are pre-filtered in SQL to
+  // spaces the viewer is allowed to read (mirrors canReadSpace).
+  viewer?: SpaceViewer
+}
+
+export type HybridSearchPagesInput = {
+  organizationId: string
+  query: string
+  queryEmbedding: number[] | null
+  viewer?: SpaceViewer
+  projectId?: string
+  spaceId?: string
+  limit?: number
 }
 
 export type CreateSpaceInput = KnowledgeScopeInput & {
@@ -241,6 +263,9 @@ export type KnowledgeProvider = {
   publishPage: (input: PublishPageInput) => Promise<KnowledgePageRecord | null>
   restoreVersion: (input: RestorePageVersionInput) => Promise<KnowledgePageRecord | null>
   searchPages: (input: SearchPagesInput) => Promise<KnowledgePageCursorPage<KnowledgeSearchHit>>
+  searchPagesHybrid?: (
+    input: HybridSearchPagesInput,
+  ) => Promise<KnowledgePageCursorPage<KnowledgeSearchHit>>
   updatePage: (pageId: string, input: UpdatePageInput) => Promise<KnowledgePageRecord | null>
   updateSpace: (
     organizationId: string,

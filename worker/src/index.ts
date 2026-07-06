@@ -10,6 +10,8 @@ import {
 import {
   ExecutionEnvironmentAllocateJobPayloadSchema,
   ExecutionEnvironmentTerminateJobPayloadSchema,
+  KNOWLEDGE_EMBED_TOPIC,
+  KnowledgeEmbedJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
@@ -24,6 +26,7 @@ import {
   renewExecutionLeases,
   terminateExecutionEnvironmentInstance,
 } from './control/execution.js'
+import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import {
@@ -150,6 +153,15 @@ export const startWorker = async (
         },
         payload,
       )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    KNOWLEDGE_EMBED_TOPIC,
+    async (job) => {
+      const payload = KnowledgeEmbedJobPayloadSchema.parse(job.payload)
+      await executeKnowledgeEmbedJob({ modelClient, prisma }, payload)
     },
     { signal: abortController.signal },
   )

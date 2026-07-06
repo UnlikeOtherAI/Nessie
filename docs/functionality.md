@@ -777,7 +777,12 @@ type ControlCommandDefinition = {
   - spaces: list/create/read/update/archive,
   - pages: tree/create/read/update/archive/move/publish,
   - versions: list/restore-as-new-version,
-  - deterministic search: `POST /api/knowledge-base/search` over title, metadata, and labels.
+  - search: `POST /api/knowledge-base/search` — `mode: 'keyword'` (trigram
+    title/summary/label match) or `mode: 'hybrid'` (default with query text;
+    tsvector + pgvector RRF over page-body chunks, returns matched passages
+    with offsets). Access is enforced in SQL via a readable-spaces pre-filter.
+    Chunk embeddings are filled asynchronously by the worker `knowledge.embed`
+    queue job (incremental by content hash, batched, ledger-billed).
 - Every first-party search/read response carries `sourceRef`, `visibilityReason`, and `policyChainTrace`.
 - Knowledge sources must be importable as a first-class tool action in the later external facade tier:
   - folder path,

@@ -90,9 +90,18 @@ export const KnowledgePageRecordSchema = OptionalScopeSchema.extend({
   updatedAt: NonEmptyStringSchema,
 }).merge(KnowledgeResponseEnvelopeSchema)
 
+export const KnowledgeSearchPassageSchema = z.object({
+  content: NonEmptyStringSchema,
+  endOffset: z.number().int().nonnegative(),
+  score: z.number(),
+  startOffset: z.number().int().nonnegative(),
+})
+
 export const KnowledgeSearchHitSchema = z.object({
   page: KnowledgePageRecordSchema,
   snippet: NonEmptyStringSchema,
+  passages: z.array(KnowledgeSearchPassageSchema).optional(),
+  score: z.number().optional(),
 })
 
 export const CreateKnowledgeSpaceBodySchema = OptionalScopeSchema.extend({
@@ -153,6 +162,7 @@ export const SearchKnowledgePagesBodySchema = z.object({
   spaceId: UuidSchema.optional(),
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(200).optional(),
+  mode: z.enum(['keyword', 'hybrid']).optional(),
 })
 
 export const KnowledgeListQuerySchema = z.object({
