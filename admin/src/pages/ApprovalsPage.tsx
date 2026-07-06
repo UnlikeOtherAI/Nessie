@@ -19,11 +19,6 @@ type ApprovalRequest = {
   createdAt: string
 }
 
-type ApprovalsResponse = {
-  data: ApprovalRequest[]
-  meta: { cursor: string | null; hasMore: boolean }
-}
-
 const sectionTitle =
   'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
@@ -63,7 +58,10 @@ export const ApprovalsPage = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
-  const { data } = useQuery<ApprovalsResponse>({
+  // apiClient unwraps the {data, meta} envelope and returns the payload array
+  // directly — typing the full envelope here made `data?.data` permanently
+  // undefined, so the page rendered empty even with pending approvals.
+  const { data } = useQuery<ApprovalRequest[]>({
     queryKey: ['approvals'],
     queryFn: () => apiClient.get('/api/approvals?limit=50'),
     enabled: Boolean(me),
@@ -79,8 +77,8 @@ export const ApprovalsPage = () => {
     },
   })
 
-  const pending = (data?.data ?? []).filter((a) => a.status === 'pending')
-  const resolved = (data?.data ?? []).filter((a) => a.status !== 'pending')
+  const pending = (data ?? []).filter((a) => a.status === 'pending')
+  const resolved = (data ?? []).filter((a) => a.status !== 'pending')
 
   return (
     <section className="flex h-full min-h-0 flex-col">
