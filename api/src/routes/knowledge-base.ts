@@ -389,6 +389,17 @@ export const registerKnowledgeBaseRoutes = (
   app.post('/api/knowledge-base/pages/:pageId/publish', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    // Agents draft; only a human may publish. Agents request publication via
+    // kb_publish_request, which opens a knowledge.page.publish approval instead.
+    if (actorContext.actor.actorType === 'agent') {
+      sendApiError(
+        reply,
+        403,
+        'POLICY_DENIED',
+        'Agents cannot publish knowledge pages directly — request publication via approval instead',
+      )
+      return reply
+    }
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'approve')
     if (!decision) return reply
     const { pageId } = request.params as { pageId: string }

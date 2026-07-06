@@ -164,10 +164,18 @@ test('ensureLibrarianAgent grants its tool set without stacking duplicate grants
   const grantedToolIds = new Set(registry.map((row) => row.toolId))
   assert.deepEqual(
     [...grantedToolIds].sort(),
-    ['kb_list', 'kb_page_read', 'kb_search', 'send_message'].sort(),
+    [
+      'kb_draft_write',
+      'kb_file',
+      'kb_list',
+      'kb_page_read',
+      'kb_publish_request',
+      'kb_search',
+      'send_message',
+    ].sort(),
   )
 
-  // 4 tools granted once each, not doubled by the second ensure call.
-  assert.equal(grants.length, 4)
+  // 7 tools granted once each, not doubled by the second ensure call.
+  assert.equal(grants.length, 7)
   assert.ok(grants.every((grant) => grant.agentId === agentId && grant.state === 'allowed'))
 })

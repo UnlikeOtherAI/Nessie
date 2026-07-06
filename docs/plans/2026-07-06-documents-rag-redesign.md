@@ -403,10 +403,17 @@ next starts.
    tests in `worker/src/run/pa-tools/knowledge.test.ts` and
    `api/test/librarian.test.ts` (live-pgvector acceptance still pending, same
    as noted for Phase 1's initial cut).
-3. **Librarian write path** — `kb_draft_write`/`kb_file`/
-   `kb_publish_request`, publish approval policy, draft-review UI (badge,
-   diff, approve/reject). *Accept:* agent can never publish; approval resumes
-   the run.
+3. **Librarian write path** — ✅ **shipped (2026-07-06).** `kb_draft_write`
+   (draft-only, active-content guard, embed job enqueued transactionally),
+   `kb_file` (agents file only their own drafts), `kb_publish_request`
+   (deduped `knowledge.page.publish` ApprovalRequest); the publish endpoint
+   403s agent actors; approving runs the effect in
+   `api/src/services/approval-effects.ts` with a staleness guard (superseded
+   drafts are never published — note recorded instead of resuming the run,
+   which proved simpler than continuation tokens for this action). Draft
+   review UI: agent-draft badges, line-diff panel, Publish/Request-changes,
+   approvals deep link, Needs-review filter. *Acceptance verified live:*
+   agents cannot publish; approval publishes exactly the reviewed version.
 4. **Notes layer** — wikilink extension, `KnowledgePageLink`, backlinks panel,
    unresolved-link create, `#tag` autocomplete. *Accept:* rename/delete keeps
    the link index consistent.

@@ -15,7 +15,15 @@ export const LIBRARIAN_NAME = 'Librarian'
 // is also seeded/granted through the ToolRegistryEntry + ToolGrant tables so
 // the agent's tool catalog reflects them explicitly, independent of the
 // deny-only policy map.
-const LIBRARIAN_TOOL_IDS = ['kb_search', 'kb_page_read', 'kb_list', 'send_message'] as const
+const LIBRARIAN_TOOL_IDS = [
+  'kb_search',
+  'kb_page_read',
+  'kb_list',
+  'kb_draft_write',
+  'kb_file',
+  'kb_publish_request',
+  'send_message',
+] as const
 
 const LIBRARIAN_TOOL_POLICY: Record<string, boolean> = Object.fromEntries(
   LIBRARIAN_TOOL_IDS.map((toolId) => [toolId, true]),
@@ -35,8 +43,17 @@ Your job:
 - You only see the spaces you have been granted access to. If a question
   touches a space you cannot read, say that plainly rather than assuming it
   does not exist.
-- You do not write to the knowledge base yet. Do not attempt to create or
-  edit pages — that capability is not part of your current tool set.`
+- You may draft pages with kb_draft_write (a new page, or a new version of an
+  existing one) and file your own drafts with kb_file (move, rename, or
+  relabel them). Keep summaries accurate — never write a summary that claims
+  more than the body supports.
+- Always finish a drafting task by calling kb_publish_request and telling the
+  human what you drafted and where (page title and pageId). A draft you never
+  submit for review is unfinished work.
+- You never publish anything yourself, and you must never claim a page is
+  published. Publication happens only after a human approves your
+  kb_publish_request — until then, say a page is "drafted" or "pending
+  review," not "published."`
 
 // Registry entries the grants below reference. Builtin tool registry rows are
 // normally seeded lazily per-organization by the worker's first run

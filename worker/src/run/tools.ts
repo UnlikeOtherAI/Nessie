@@ -13,9 +13,12 @@ import {
   runKbCommentReplyTool,
   runKbCommentResolveTool,
   runKbCommentsListTool,
+  runKbDraftWriteTool,
+  runKbFileTool,
   runKbListTool,
   runKbNoteAddTool,
   runKbPageReadTool,
+  runKbPublishRequestTool,
   runKbSearchTool,
   runMessageDeleteTool,
   runMessageEditTool,
@@ -379,6 +382,41 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () =>
         runKbListTool(context, {
           spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
+        }),
+      )
+    case 'kb_draft_write':
+      return wrapTool(inputSummary, () =>
+        runKbDraftWriteTool(context, {
+          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
+          pageId: typeof args.pageId === 'string' ? args.pageId : undefined,
+          title: typeof args.title === 'string' ? args.title : undefined,
+          body: String(args.body ?? ''),
+          summary: typeof args.summary === 'string' ? args.summary : undefined,
+          labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
+          parentPageId: typeof args.parentPageId === 'string' ? args.parentPageId : undefined,
+          changeComment: typeof args.changeComment === 'string' ? args.changeComment : undefined,
+        }),
+      )
+    case 'kb_file':
+      return wrapTool(inputSummary, () =>
+        runKbFileTool(context, {
+          pageId: String(args.pageId ?? ''),
+          // Distinguish "omitted" (no move) from "explicit null" (move to the
+          // space root) — both would otherwise collapse to undefined.
+          parentPageId:
+            'parentPageId' in args
+              ? (typeof args.parentPageId === 'string' ? args.parentPageId : null)
+              : undefined,
+          position: typeof args.position === 'number' ? args.position : undefined,
+          title: typeof args.title === 'string' ? args.title : undefined,
+          labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
+        }),
+      )
+    case 'kb_publish_request':
+      return wrapTool(inputSummary, () =>
+        runKbPublishRequestTool(context, {
+          pageId: String(args.pageId ?? ''),
+          reason: typeof args.reason === 'string' ? args.reason : undefined,
         }),
       )
     default:

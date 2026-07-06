@@ -152,6 +152,7 @@ const makeProvider = (
 const makeApp = (
   effect: 'allow' | 'deny',
   providerOverrides: Partial<KnowledgeProvider> = {},
+  actorContextOverride: AuthorizedActionContext = actorContext,
 ) => {
   const auditLogs: Array<Record<string, unknown>> = []
   const calls: string[] = []
@@ -167,12 +168,18 @@ const makeApp = (
     projectMember: {
       findMany: async () => [{ projectId }],
     },
+    agentBinding: {
+      findMany: async () => [],
+    },
+    knowledgeSpaceMember: {
+      findMany: async () => [],
+    },
   } as unknown as PrismaClient
   const app = Fastify({ logger: false })
   registerKnowledgeBaseRoutes(app, {
     prisma,
     knowledgeProvider: makeProvider(calls, providerOverrides),
-    requireActorContext: () => actorContext,
+    requireActorContext: () => actorContextOverride,
   } as unknown as Parameters<typeof registerKnowledgeBaseRoutes>[1])
   return { app, auditLogs, calls }
 }
@@ -276,6 +283,30 @@ test('knowledge publish maps archived page conflicts to a clean 409', async () =
   assert.equal(response.statusCode, 409)
   assert.equal(payload.error.code, 'KNOWLEDGE_MUTATION_CONFLICT')
   assert.equal(payload.error.message, 'Archived pages are read-only')
+  await app.close()
+})
+
+test('knowledge publish rejects an agent actor before touching policy or the provider', async () => {
+  const agentActorContext: AuthorizedActionContext = {
+    actor: { actorType: 'agent', actorId: '00000000-0000-4000-8000-000000000099', roles: [] },
+    tenant: { organizationId, projectId },
+    actionContext: { requestId: 'req-kb-agent-publish' },
+  }
+  const { app, calls } = makeApp('allow', {
+    publishPage: async () => {
+      calls.push('publishPage')
+      return makePage({ status: 'published' })
+    },
+  }, agentActorContext)
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/knowledge-base/pages/${pageId}/publish`,
+  })
+  const payload = response.json() as { error: { code: string } }
+
+  assert.equal(response.statusCode, 403)
+  assert.equal(payload.error.code, 'POLICY_DENIED')
+  assert.deepEqual(calls, [])
   await app.close()
 })
 

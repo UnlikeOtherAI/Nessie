@@ -32,6 +32,11 @@ export {
   runKbPageReadTool,
   runKbSearchTool,
 } from './pa-tools/knowledge.js'
+export {
+  runKbDraftWriteTool,
+  runKbFileTool,
+  runKbPublishRequestTool,
+} from './pa-tools/knowledge-write.js'
 export { runSendMessageTool } from './pa-tools/message-delivery.js'
 export {
   runPeopleSearchTool,
