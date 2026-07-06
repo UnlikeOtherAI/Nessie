@@ -38,7 +38,7 @@ export const SearchModeToggle = ({
         onClick={() => onChange(option.value)}
         title={
           option.value === 'semantic'
-            ? 'Semantic searches memory. Messages and knowledge stay in Text mode.'
+            ? 'Semantic searches memory and knowledge by meaning. Messages stay in Text mode.'
             : 'Text searches channels, people, projects, messages, and knowledge.'
         }
         type="button"

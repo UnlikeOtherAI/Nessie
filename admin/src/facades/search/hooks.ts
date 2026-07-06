@@ -18,7 +18,18 @@ const SEARCH_MODE_STORAGE_KEY = 'nessie.search.mode'
 
 export type GlobalSearchMode = 'text' | 'semantic'
 
+// A passage of a knowledge page matched by hybrid search, with its position in
+// the source page and a per-passage relevance score (ranking metadata only —
+// never rendered directly).
+export interface KnowledgeSearchPassage {
+  content: string
+  startOffset: number
+  endOffset: number
+  score: number
+}
+
 // Shape returned by POST /api/knowledge-base/search — one hit per readable page.
+// `passages` and `score` are only populated in hybrid mode.
 export interface KnowledgeSearchHit {
   page: {
     id: string
@@ -27,6 +38,8 @@ export interface KnowledgeSearchHit {
     summary: string | null
   }
   snippet: string
+  passages?: KnowledgeSearchPassage[]
+  score?: number
 }
 
 // Shape returned by POST /api/thoughts/search for semantic memory recall.
@@ -159,11 +172,17 @@ export const useGlobalSearch = (
     enabled: active && textMode,
   })
 
+  // Text mode uses keyword search; semantic mode uses hybrid search so
+  // knowledge results (with highlighted passages) surface alongside thoughts.
   const knowledgeQuery = useQuery<KnowledgeSearchHit[]>({
     queryKey: ['search', 'knowledge', trimmed, mode],
     queryFn: () =>
-      apiClient.post<KnowledgeSearchHit[]>('/api/knowledge-base/search', { query: trimmed }),
-    enabled: active && textMode,
+      apiClient.post<KnowledgeSearchHit[]>('/api/knowledge-base/search', {
+        query: trimmed,
+        mode: textMode ? 'keyword' : 'hybrid',
+        limit: 20,
+      }),
+    enabled: active,
   })
 
   const thoughtsQuery = useQuery<ThoughtSearchHit[]>({
@@ -182,13 +201,13 @@ export const useGlobalSearch = (
     people: filteredPeople,
     projects: filteredProjects,
     messages: active && textMode ? messagesQuery.data ?? [] : [],
-    knowledge: active && textMode ? knowledgeQuery.data ?? [] : [],
+    knowledge: active ? knowledgeQuery.data ?? [] : [],
     thoughts: active && semanticMode ? thoughtsQuery.data ?? [] : [],
     isLoading:
       active &&
       (textMode
         ? messagesQuery.isFetching || knowledgeQuery.isFetching
-        : thoughtsQuery.isFetching),
+        : thoughtsQuery.isFetching || knowledgeQuery.isFetching),
     errorMessage: active
       ? queryErrorMessage(messagesQuery.error)
         ?? queryErrorMessage(knowledgeQuery.error)
