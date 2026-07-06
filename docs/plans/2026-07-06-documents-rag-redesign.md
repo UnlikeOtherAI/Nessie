@@ -414,13 +414,22 @@ next starts.
    review UI: agent-draft badges, line-diff panel, Publish/Request-changes,
    approvals deep link, Needs-review filter. *Acceptance verified live:*
    agents cannot publish; approval publishes exactly the reviewed version.
-4. **Notes layer** — wikilink extension, `KnowledgePageLink`, backlinks panel,
-   unresolved-link create, `#tag` autocomplete. *Accept:* rename/delete keeps
-   the link index consistent.
-5. **Tickets + files + extras** — `taskId` envelope, Project Documents space,
-   TaskDialog Documents tab, `taskId` retrieval filter; file-node extraction
-   (`knowledge.extract`); `search.summary`; My Docs auto-provisioning &
-   sidebar grouping; graph view if time allows.
+4. **Notes layer** — ✅ **shipped (2026-07-06).** `[[wikilink]]` TipTap node
+   with suggestion popup and create-on-click for unresolved links;
+   `knowledge_page_links` maintained transactionally with chunking; creating
+   or renaming a page resolves pending links to its title; ACL-filtered
+   backlinks + unlinked-mentions endpoints and panel. Deliberately dropped
+   from scope: `#tag` autocomplete (labels UI already exists) and the graph
+   view (deferred; the link data is in place). *Acceptance verified live:*
+   rename keeps id-tracked links; deletes cascade the index.
+5. **Tickets + files + extras** — ✅ **shipped (2026-07-06).** `taskId`
+   envelope through pages/chunks/search/kb tools; advisory-locked
+   Project Documents + per-ticket folder provisioning; TaskDialog Documents
+   section (list/note/upload); `knowledge.extract` job (text/PDF/DOCX →
+   chunks → embeddings, 20 MiB/500k-char caps, FileService-only byte
+   access); `POST /search-summary` (≤8 chunks, one cheap chatJson call,
+   validated citations); My Docs auto-provisioning + pinned sidebar section
+   and the visibility picker. Graph view remains deferred.
 
 ## 10. Security notes
 

@@ -156,6 +156,7 @@ const getMutablePage = async (
       visibility: true,
       sensitivityTier: true,
       privateToAgentId: true,
+      taskId: true,
     },
   })
   if (!page) return null
@@ -489,6 +490,7 @@ export const createNativeKnowledgeProvider = (
           visibility: input.visibility ?? space.visibility,
           sensitivityTier: input.sensitivityTier ?? space.sensitivityTier,
           privateToAgentId: input.privateToAgentId ?? space.privateToAgentId,
+          taskId: input.taskId ?? null,
           createdBy: input.createdBy,
         },
       })

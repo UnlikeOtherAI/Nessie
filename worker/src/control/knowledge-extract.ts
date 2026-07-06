@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module'
 import type { Readable } from 'node:stream'
-import { Prisma, type PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import type { FileService } from '@nessie/runtime'
-import { chunkKnowledgePageBody } from '@nessie/knowledge'
+import { replaceKnowledgePageVersionChunks } from '@nessie/knowledge'
 import { KNOWLEDGE_EMBED_TOPIC, type KnowledgeExtractJobPayload } from '@nessie/schemas'
 import mammoth from 'mammoth'
 import { enqueueQueueJob } from '../queue.js'
@@ -124,89 +124,6 @@ const extractText = async (
   return result.value
 }
 
-// Fields replaceKnowledgePageVersionChunks (packages/knowledge/src/native-chunks.ts)
-// needs to write a knowledge_page_chunks row. That helper — and the
-// ChunkablePage type it takes — is an internal of @nessie/knowledge, not part
-// of the package's public export surface (packages/knowledge/src/index.ts),
-// and packages/knowledge/src is out of scope for this job (owned elsewhere).
-// The insert below intentionally mirrors that helper's SQL/columns exactly;
-// only the exported `chunkKnowledgePageBody` primitive is reused. This is the
-// same known, documented duplication pattern already used for the queue
-// insert itself (worker/src/queue.ts vs api/src/queue/pgqueue.ts).
-type ExtractionPage = {
-  channelId: string | null
-  id: string
-  organizationId: string
-  privateToAgentId: string | null
-  projectId: string
-  sensitivityTier: string
-  teamId: string | null
-  threadId: string | null
-  userId: string | null
-  visibility: string
-}
-
-const writeExtractedChunks = async (
-  tx: Prisma.TransactionClient,
-  input: { page: ExtractionPage; versionId: string; text: string },
-): Promise<boolean> => {
-  const existing = await tx.$queryRaw<Array<{ present: number }>>(Prisma.sql`
-    SELECT 1 AS present FROM knowledge_page_chunks
-    WHERE version_id = ${input.versionId}::uuid
-    LIMIT 1
-  `)
-  if (existing.length > 0) return false
-
-  const chunks = await chunkKnowledgePageBody(input.text)
-  if (chunks.length === 0) return false
-
-  await tx.$executeRaw(Prisma.sql`
-    INSERT INTO knowledge_page_chunks (
-      page_id,
-      version_id,
-      chunk_index,
-      content,
-      content_hash,
-      start_offset,
-      end_offset,
-      token_count,
-      organization_id,
-      project_id,
-      team_id,
-      channel_id,
-      thread_id,
-      user_id,
-      visibility,
-      sensitivity_tier,
-      private_to_agent_id,
-      created_at,
-      updated_at
-    )
-    VALUES ${Prisma.join(chunks.map((chunk) => Prisma.sql`(
-      ${input.page.id}::uuid,
-      ${input.versionId}::uuid,
-      ${chunk.chunkIndex},
-      ${chunk.content},
-      ${chunk.contentHash},
-      ${chunk.startOffset},
-      ${chunk.endOffset},
-      ${chunk.tokenCount},
-      ${input.page.organizationId}::uuid,
-      ${input.page.projectId}::uuid,
-      ${input.page.teamId}::uuid,
-      ${input.page.channelId}::uuid,
-      ${input.page.threadId}::uuid,
-      ${input.page.userId}::uuid,
-      ${input.page.visibility}::"ThoughtVisibility",
-      ${input.page.sensitivityTier}::"SensitivityTier",
-      ${input.page.privateToAgentId}::uuid,
-      now(),
-      now()
-    )`))}
-  `)
-  return true
-}
-
 type KnowledgeExtractDeps = {
   fileService: FileService
   prisma: PrismaClient
@@ -244,6 +161,7 @@ export const executeKnowledgeExtractJob = async (
       visibility: true,
       sensitivityTier: true,
       privateToAgentId: true,
+      taskId: true,
     },
   })
   // Page deleted, or converted away from a file node, since the job was
@@ -286,10 +204,12 @@ export const executeKnowledgeExtractJob = async (
   if (!text) return
 
   await deps.prisma.$transaction(async (tx) => {
-    const written = await writeExtractedChunks(tx, {
+    // Canonical chunk writer (idempotent per append-only version) — passing
+    // extracted plain text as the body is correct: chunking runs its
+    // htmlToPlainText projection, a no-op for plain text.
+    const written = await replaceKnowledgePageVersionChunks(tx, {
       page,
-      versionId: payload.versionId,
-      text,
+      version: { body: text, id: payload.versionId },
     })
     if (!written) return
     await enqueueQueueJob(tx, {

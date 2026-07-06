@@ -371,6 +371,7 @@ export const executeBuiltinTool = async (
           query: String(args.query ?? ''),
           spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
           projectId: typeof args.projectId === 'string' ? args.projectId : undefined,
+          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
           limit: args.limit,
         }),
       )
@@ -382,6 +383,7 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () =>
         runKbListTool(context, {
           spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
+          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
         }),
       )
     case 'kb_draft_write':
@@ -394,6 +396,7 @@ export const executeBuiltinTool = async (
           summary: typeof args.summary === 'string' ? args.summary : undefined,
           labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
           parentPageId: typeof args.parentPageId === 'string' ? args.parentPageId : undefined,
+          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
           changeComment: typeof args.changeComment === 'string' ? args.changeComment : undefined,
         }),
       )

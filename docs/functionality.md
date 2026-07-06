@@ -782,7 +782,25 @@ type ControlCommandDefinition = {
     tsvector + pgvector RRF over page-body chunks, returns matched passages
     with offsets). Access is enforced in SQL via a readable-spaces pre-filter.
     Chunk embeddings are filled asynchronously by the worker `knowledge.embed`
-    queue job (incremental by content hash, batched, ledger-billed).
+    queue job (incremental by content hash, batched, ledger-billed). Optional
+    `taskId` filter restricts hits to a ticket's documents.
+  - summary: `POST /api/knowledge-base/search-summary` — opt-in bounded cited
+    synthesis over the top hybrid chunks (≤8 chunks, one ledger-attributed
+    completion call, zod-validated citations, no model call on zero matches).
+  - links: version saves maintain `knowledge_page_links` from `[[wikilink]]`
+    anchors; `GET /pages/:id/backlinks` and `/mentions` serve the ACL-filtered
+    reverse index. Unresolved `[[Title]]` links auto-resolve when a matching
+    page is created or renamed.
+  - ticket docs: `POST /api/knowledge-base/my-docs` (personal space ensure),
+    `GET/POST /api/knowledge-base/tasks/:taskId/pages` and `POST .../files` —
+    ticket documents live in an auto-provisioned per-project
+    "Project Documents" space under a per-ticket folder, carry `taskId`
+    through pages and chunks, and surface in the ticket dialog's Documents
+    section.
+  - file extraction: file-node uploads/versions enqueue `knowledge.extract`
+    (text/code, PDF, DOCX; 20 MiB / 500k-char caps; bytes via FileService
+    only) which chunks the extracted text and feeds the same embed pipeline —
+    uploads are hybrid-searchable with zero LLM calls in the path.
 - Every first-party search/read response carries `sourceRef`, `visibilityReason`, and `policyChainTrace`.
 - Agent-facing retrieval tools are implemented: builtin `kb_search` /
   `kb_page_read` / `kb_list` (read-only, ACL-checked per call, no bypass for

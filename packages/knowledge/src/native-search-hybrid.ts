@@ -74,6 +74,7 @@ const sharedChunkWhere = (input: HybridSearchPagesInput): Prisma.Sql => {
     AND p.status <> 'archived'::"KnowledgePageStatus"
     ${input.projectId ? Prisma.sql`AND p.project_id = ${input.projectId}::uuid` : Prisma.empty}
     ${input.spaceId ? Prisma.sql`AND p.space_id = ${input.spaceId}::uuid` : Prisma.empty}
+    ${input.taskId ? Prisma.sql`AND c.task_id = ${input.taskId}::uuid` : Prisma.empty}
     ${spaceFilter ? Prisma.sql`AND p.space_id IN (${spaceFilter})` : Prisma.empty}
     ${chunkPrivacyWhere(input.viewer)}
   `

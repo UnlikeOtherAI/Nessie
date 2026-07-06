@@ -81,6 +81,7 @@ export const mapPage = (page: PageRow): KnowledgePageRecord => ({
   parentPageId: page.parentPageId,
   position: page.position,
   status: page.status,
+  taskId: page.taskId,
   labels: page.labels.map((label) => label.name),
   latestVersion: mapVersion(page.versions[0] ?? null),
   publishedVersion: mapVersion(page.publishedVersion),

@@ -76,6 +76,8 @@ export const KnowledgePageRecordSchema = OptionalScopeSchema.extend({
   parentPageId: UuidSchema.nullable(),
   position: z.number().int().nonnegative(),
   status: KnowledgePageStatusSchema,
+  // Set when this page is a ticket-bound document (or a ticket's document folder).
+  taskId: UuidSchema.nullable(),
   labels: z.array(NonEmptyStringSchema),
   latestVersion: KnowledgePageVersionRecordSchema.nullable(),
   publishedVersion: KnowledgePageVersionRecordSchema.nullable(),
@@ -167,6 +169,16 @@ export const SearchKnowledgePagesBodySchema = z.object({
   mode: z.enum(['keyword', 'hybrid']).optional(),
 })
 
+// Ticket-bound documents + personal-space provisioning (api/src/routes/knowledge-tasks.ts).
+export const MyDocsSpaceResponseSchema = z.object({
+  spaceId: UuidSchema,
+})
+
+export const CreateTaskDocumentBodySchema = z.object({
+  title: NonEmptyStringSchema.max(240),
+  body: z.string().nullable().optional(),
+})
+
 export const KnowledgeListQuerySchema = z.object({
   cursor: z.string().optional(),
   includeArchived: z.enum(['true', 'false']).optional(),
@@ -205,6 +217,8 @@ export const SearchSummaryResponseSchema = z.object({
 
 export type CreateKnowledgePageBody = z.infer<typeof CreateKnowledgePageBodySchema>
 export type CreateKnowledgeSpaceBody = z.infer<typeof CreateKnowledgeSpaceBodySchema>
+export type CreateTaskDocumentBody = z.infer<typeof CreateTaskDocumentBodySchema>
+export type MyDocsSpaceResponse = z.infer<typeof MyDocsSpaceResponseSchema>
 export type MoveKnowledgePageBody = z.infer<typeof MoveKnowledgePageBodySchema>
 export type RestoreKnowledgePageVersionBody =
   z.infer<typeof RestoreKnowledgePageVersionBodySchema>

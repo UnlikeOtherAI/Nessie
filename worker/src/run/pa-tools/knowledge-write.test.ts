@@ -13,6 +13,7 @@ type PageFixtureOverrides = Partial<{
   authorType: 'user' | 'agent'
   projectId: string
   teamId: string | null
+  taskId: string | null
 }>
 
 const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
@@ -25,6 +26,7 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
   parentPageId: null,
   position: 0,
   status: overrides.status ?? 'published',
+  taskId: overrides.taskId ?? null,
   labels: [],
   versions: [
     {
@@ -94,16 +96,33 @@ type FakePrismaOptions = {
 
 const buildFakePrisma = (options: FakePrismaOptions = {}) => {
   const approvalCreateCalls: unknown[] = []
+  const createPageCalls: Array<Record<string, unknown>> = []
   const prisma = {
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
       update: async () => options.page,
       updateMany: async () => ({ count: 1 }),
+      count: async () => 0,
+      create: async (args: { data: Record<string, unknown> }) => {
+        createPageCalls.push(args.data)
+        return { id: options.page?.id ?? 'page-new', title: args.data['title'] }
+      },
     },
     knowledgePageVersion: {
       findFirst: async () => options.page?.versions[0] ?? null,
-      create: async () => options.page?.versions[0],
+      create: async () => options.page?.versions[0] ?? {
+        id: 'version-1',
+        pageId: options.page?.id ?? 'page-new',
+        versionNumber: 1,
+        body: '<p>hi</p>',
+        bodyRef: null,
+        attachmentId: null,
+        authorType: 'agent',
+        authorId: 'agent-1',
+        changeComment: null,
+        createdAt: now,
+      },
     },
     knowledgeSpace: {
       findFirst: async () => options.space ?? null,
@@ -134,7 +153,11 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     $executeRaw: async () => 0,
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
   }
-  return { prisma: prisma as unknown as BuiltinToolRuntimeContext['prisma'], approvalCreateCalls }
+  return {
+    prisma: prisma as unknown as BuiltinToolRuntimeContext['prisma'],
+    approvalCreateCalls,
+    createPageCalls,
+  }
 }
 
 const makeContext = (
@@ -219,6 +242,37 @@ test('kb_draft_write rejects a body carrying an inline event-handler attribute',
       }),
     /disallowed active content/,
   )
+})
+
+test('kb_draft_write binds a newly created page to its ticket via taskId', async () => {
+  const page = buildPageRow({ id: 'page-new', title: 'Design notes', taskId: 'task-1' })
+  const space = buildSpaceRow()
+  const { prisma, createPageCalls } = buildFakePrisma({ page, space })
+  const context = makeContext(prisma)
+
+  const result = await runKbDraftWriteTool(context, {
+    spaceId: 'space-1',
+    title: 'Design notes',
+    body: '<p>hi</p>',
+    taskId: 'task-1',
+  })
+
+  assert.equal(result.toolName, 'kb_draft_write')
+  assert.equal(createPageCalls.length, 1)
+  assert.equal(createPageCalls[0]?.['taskId'], 'task-1')
+  assert.match(result.outputPreview, /Created draft page "Design notes"/)
+})
+
+test('kb_draft_write defaults taskId to null on a new page when not supplied', async () => {
+  const page = buildPageRow({ id: 'page-new', title: 'Design notes' })
+  const space = buildSpaceRow()
+  const { prisma, createPageCalls } = buildFakePrisma({ page, space })
+  const context = makeContext(prisma)
+
+  await runKbDraftWriteTool(context, { spaceId: 'space-1', title: 'Design notes', body: '<p>hi</p>' })
+
+  assert.equal(createPageCalls.length, 1)
+  assert.equal(createPageCalls[0]?.['taskId'], null)
 })
 
 test('kb_publish_request returns the existing pending approval instead of creating a duplicate', async () => {
