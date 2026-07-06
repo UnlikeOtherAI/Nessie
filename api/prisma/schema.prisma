@@ -2506,6 +2506,10 @@ model KnowledgePage {
 
   visibility      ThoughtVisibility @default(project)
   sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
+  // Ticket binding: a page carrying taskId is a ticket document. Loose scoping
+  // column like the rest of the envelope (no FK) — task deletion archives
+  // pages at the app layer, it does not cascade here.
+  taskId          String?           @map("task_id") @db.Uuid
   createdBy       String            @map("created_by")
   deletedAt       DateTime?         @map("deleted_at")
   createdAt       DateTime          @default(now()) @map("created_at")
@@ -2519,7 +2523,10 @@ model KnowledgePage {
   labels           PageLabel[]
   annotations      KnowledgePageAnnotation[]
   chunks           KnowledgePageChunk[]
+  outgoingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkSource")
+  incomingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkTarget")
 
+  @@index([taskId], map: "knowledge_pages_task_id_idx")
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
   @@index([organizationId, visibility, updatedAt], map: "knowledge_pages_org_visibility_updated_idx")
   @@index([organizationId, sensitivityTier], map: "knowledge_pages_org_sensitivity_idx")
@@ -2586,6 +2593,7 @@ model KnowledgePageChunk {
   visibility       ThoughtVisibility @default(project)
   sensitivityTier  SensitivityTier   @default(normal) @map("sensitivity_tier")
   privateToAgentId String?           @map("private_to_agent_id") @db.Uuid
+  taskId           String?           @map("task_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -2599,7 +2607,29 @@ model KnowledgePageChunk {
   @@index([organizationId, visibility, updatedAt], map: "knowledge_page_chunks_org_visibility_updated_idx")
   @@index([organizationId, sensitivityTier], map: "knowledge_page_chunks_org_sensitivity_idx")
   @@index([privateToAgentId], map: "knowledge_page_chunks_private_to_agent_id_idx")
+  @@index([taskId], map: "knowledge_page_chunks_task_id_idx")
   @@map("knowledge_page_chunks")
+}
+
+// Wikilink index: one row per outgoing link in a page's latest body.
+// Maintained transactionally alongside chunking on every version save.
+// targetPageId is null for unresolved [[Title]] links; creating a page whose
+// title matches resolves them.
+model KnowledgePageLink {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sourcePageId   String   @map("source_page_id") @db.Uuid
+  targetPageId   String?  @map("target_page_id") @db.Uuid
+  targetTitle    String   @map("target_title")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  sourcePage KnowledgePage  @relation("KnowledgePageLinkSource", fields: [sourcePageId], references: [id], onDelete: Cascade)
+  targetPage KnowledgePage? @relation("KnowledgePageLinkTarget", fields: [targetPageId], references: [id], onDelete: SetNull)
+
+  @@index([sourcePageId])
+  @@index([targetPageId])
+  @@index([organizationId, targetTitle])
+  @@map("knowledge_page_links")
 }
 
 model PageLabel {
