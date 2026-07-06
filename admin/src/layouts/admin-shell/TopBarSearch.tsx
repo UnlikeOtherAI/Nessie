@@ -188,7 +188,7 @@ export const TopBarSearch = ({
         navigate(`/channels/${item.data.channelId}`)
         break
       case 'knowledge':
-        navigate('/knowledge-base')
+        navigate(`/knowledge-base?spaceId=${item.data.page.spaceId}&pageId=${item.data.page.id}`)
         break
       case 'thought':
         navigate(`/search?query=${encodeURIComponent(query.trim())}&mode=semantic`)

@@ -106,7 +106,8 @@ export const SearchPage = () => {
   const openChannel = (channel: ChannelRecord) => navigate(`/channels/${channel.id}`)
   const openProject = (project: ProjectRecord) => navigate(`/projects/${project.id}`)
   const openMessage = (message: MessageSearchResult) => navigate(`/channels/${message.channelId}`)
-  const openKnowledge = (_hit: KnowledgeSearchHit) => navigate('/knowledge-base')
+  const openKnowledge = (hit: KnowledgeSearchHit) =>
+    navigate(`/knowledge-base?spaceId=${hit.page.spaceId}&pageId=${hit.page.id}`)
 
   const updateSearchParams = (nextQuery: string, nextMode = mode) => {
     const next = new URLSearchParams(searchParams)

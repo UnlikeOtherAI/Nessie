@@ -55,6 +55,7 @@ type KnowledgeContextValue = {
   browseTo: (path: string[]) => void
   openPagePath: (path: string[]) => void
   openRootPage: (pageId: string) => void
+  openPageDeepLink: (input: { spaceId: string; pageId: string }) => void
   drillTo: (depth: number, childPageId: string) => void
   popTo: (depth: number) => void
   editor: KnowledgeEditorState
@@ -222,6 +223,18 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
 
   const openRootPage = (pageId: string) => openPagePath([pageId])
 
+  // Jumps straight to a page from outside the browsing flow (an approval's
+  // "Open page" link, a search result). We don't know the page's ancestor
+  // chain up front, so the path is just the page itself — enough for the
+  // preview to open; breadcrumbs/back just fall back to the space root.
+  const openPageDeepLink = (input: { spaceId: string; pageId: string }) => {
+    setSelectedSpaceId(input.spaceId)
+    setPagePath([input.pageId])
+    setOpenPageId(input.pageId)
+    setEditor(null)
+    setHistoryPageId(undefined)
+  }
+
   const drillTo = (depth: number, childPageId: string) => {
     setPagePath((current) => [...current.slice(0, depth + 1), childPageId])
     setOpenPageId(childPageId)
@@ -303,6 +316,7 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     browseTo,
     openPagePath,
     openRootPage,
+    openPageDeepLink,
     drillTo,
     popTo,
     editor,

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -8,6 +9,7 @@ type ApprovalRequest = {
   agentId: string
   action: string
   reason: string
+  context?: Record<string, unknown>
   status: string
   requesterId: string
   resolverId: string | null
@@ -25,10 +27,41 @@ type ApprovalsResponse = {
 const sectionTitle =
   'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
+const KNOWLEDGE_PAGE_PUBLISH_ACTION = 'knowledge.page.publish'
+
+type KnowledgePagePublishContext = {
+  pageId: string
+  versionId: string
+  spaceId: string
+  title: string
+}
+
+// Narrows an approval's opaque `context` blob to the shape the knowledge-base
+// publish action always sends. Returns null for anything malformed so the UI
+// falls back to the generic action-name rendering rather than crashing.
+const readKnowledgePagePublishContext = (
+  approval: ApprovalRequest,
+): KnowledgePagePublishContext | null => {
+  if (approval.action !== KNOWLEDGE_PAGE_PUBLISH_ACTION) return null
+  const context = approval.context
+  if (!context) return null
+  const { pageId, versionId, spaceId, title } = context
+  if (
+    typeof pageId === 'string' &&
+    typeof versionId === 'string' &&
+    typeof spaceId === 'string' &&
+    typeof title === 'string'
+  ) {
+    return { pageId, versionId, spaceId, title }
+  }
+  return null
+}
+
 export const ApprovalsPage = () => {
   const { me } = useAuthSession()
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
 
   const { data } = useQuery<ApprovalsResponse>({
     queryKey: ['approvals'],
@@ -66,13 +99,21 @@ export const ApprovalsPage = () => {
           <div className="mb-4">
             <div className={sectionTitle}>Pending</div>
             <div className="mt-2 grid gap-2">
-              {pending.map((approval) => (
+              {pending.map((approval) => {
+                const knowledgePublish = readKnowledgePagePublishContext(approval)
+                return (
                 <div key={approval.id} className="admin-card p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="font-mono text-sm font-semibold text-[color:var(--tx)]">
-                        {approval.action}
-                      </span>
+                      {knowledgePublish ? (
+                        <span className="text-sm font-semibold text-[color:var(--tx)]">
+                          Publish knowledge page: {knowledgePublish.title}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-sm font-semibold text-[color:var(--tx)]">
+                          {approval.action}
+                        </span>
+                      )}
                       <span className="ml-2 text-xs text-[color:var(--tx3)]">
                         Agent: {approval.agentId.slice(0, 8)}
                       </span>
@@ -84,6 +125,21 @@ export const ApprovalsPage = () => {
                   <div className="mt-2 text-sm text-[color:var(--tx2)]">
                     {approval.reason}
                   </div>
+                  {knowledgePublish ? (
+                    <div className="mt-2">
+                      <button
+                        className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+                        onClick={() =>
+                          navigate(
+                            `/knowledge-base?spaceId=${knowledgePublish.spaceId}&pageId=${knowledgePublish.pageId}`,
+                          )
+                        }
+                        type="button"
+                      >
+                        Open page
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="mt-3 flex gap-2">
                     <button
                       className="admin-button admin-button-primary"
@@ -107,7 +163,8 @@ export const ApprovalsPage = () => {
                     </button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -115,11 +172,19 @@ export const ApprovalsPage = () => {
         <div>
           <div className={sectionTitle}>History</div>
           <div className="mt-2 grid gap-2">
-            {resolved.map((approval) => (
+            {resolved.map((approval) => {
+              const knowledgePublish = readKnowledgePagePublishContext(approval)
+              return (
               <div key={approval.id} className="admin-card p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-[color:var(--tx)]">{approval.action}</span>
+                    {knowledgePublish ? (
+                      <span className="text-xs text-[color:var(--tx)]">
+                        Publish knowledge page: {knowledgePublish.title}
+                      </span>
+                    ) : (
+                      <span className="font-mono text-xs text-[color:var(--tx)]">{approval.action}</span>
+                    )}
                     <span
                       className={[
                         'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
@@ -138,7 +203,8 @@ export const ApprovalsPage = () => {
                   </span>
                 </div>
               </div>
-            ))}
+              )
+            })}
             {resolved.length === 0 && pending.length === 0 && (
               <div className="py-8 text-center text-[color:var(--tx3)]">
                 No approvals yet
