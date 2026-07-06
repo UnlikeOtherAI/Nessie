@@ -542,6 +542,44 @@ hybrid search described in §3 (TypeScript RRF fusion via `@nessie/retrieval`,
 not PL/pgSQL `match_*` functions). Body-ref and file-backed versions still
 need a streaming ingestion/extraction path (redesign plan Phase 5).
 
+## 9d) Retrieval tools + Librarian agent (implemented, read path)
+
+Agents get read-only, ACL-checked knowledge-base access via three builtin
+tools (`packages/runtime/src/builtin-kb-tools.ts`,
+`worker/src/run/pa-tools/knowledge.ts`), distinct from the §9 comment/note
+tools:
+
+- `kb_search` — hybrid retrieval (§9c/§3 fusion), args `query`, optional
+  `spaceId`/`projectId`, `limit` (1-8, default 5). Returns compact hits
+  (title, `pageId`, `spaceId`, match snippet) — never full bodies. Degrades to
+  lexical-only when no model client is available or the query-embedding call
+  fails.
+- `kb_page_read` — full plain-text projection of one page (published version
+  if present, else latest; capped at 20,000 characters with a truncation
+  note). Denies an agent viewer not just when the page's *space* is
+  unreadable, but also when the **page itself** is `sensitivityTier =
+  restricted` or `privateToAgentId` names a different agent — a page can be
+  more restrictive than its space.
+- `kb_list` — no `spaceId`: lists spaces the caller can read; with `spaceId`:
+  an indented page-tree outline after an explicit `canReadSpace` check.
+
+Every handler re-derives the caller's `SpaceViewer` per call (`loadSpaceViewer`
++ the same delegating-PA-vs-autonomous-agent principal resolution as the §9
+comment tools) — there is no bypass for agents, matching
+[plans/2026-07-06-documents-rag-redesign.md](plans/2026-07-06-documents-rag-redesign.md)
+§3.3/§6.1.
+
+`ensureLibrarianAgent` (`api/src/services/librarian.ts`,
+`POST /api/knowledge-base/librarian`) idempotently seeds one shared,
+system-managed **Librarian** agent per organization (mirrors
+`ensurePersonalAssistantAgent`'s advisory-lock upsert-by-kind pattern) and
+grants it `kb_search`/`kb_page_read`/`kb_list`/`send_message`. Like every
+agent, the Librarian only sees spaces it has actually been tagged into
+(`AgentBinding` reach or an explicit `KnowledgeSpaceMember.agentId` grant) —
+untagged means invisible, not merely unlisted. It has no write tools yet;
+`kb_draft_write`/`kb_file`/`kb_publish_request` (draft-only writes + publish
+approval) are Phase 3 of the redesign plan.
+
 ## 10) Phase annotation
 
 This spec targets **Phase 3**.

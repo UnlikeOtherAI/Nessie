@@ -3,6 +3,7 @@ import {
   resolveAccessibleScopes,
   type ScopeResolutionMode,
 } from '@nessie/memory'
+import type { SpaceViewerPrincipal } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 export type ChannelAgent = {
@@ -46,6 +47,20 @@ export const requireActingUserId = (
     throw new Error('This tool requires a user actor context.')
   }
   return userId
+}
+
+// The knowledge-base access principal for a tool call: a delegating PA (or
+// interactive user run) reads/writes with the owner's own space access; an
+// autonomous agent is checked against its own channel bindings / explicit
+// space grants. Shared by every knowledge-base builtin tool (comments, notes,
+// search, page read, listing) so the two never drift apart.
+export const buildSpaceViewerPrincipal = (
+  context: BuiltinToolRuntimeContext,
+): SpaceViewerPrincipal => {
+  const effectiveUserId = resolveEffectiveUserId(context)
+  return effectiveUserId
+    ? { actorType: 'user', actorId: effectiveUserId }
+    : { actorType: 'agent', actorId: context.agentId }
 }
 
 // Channels a delegated run may target: public channels plus the ones the acting

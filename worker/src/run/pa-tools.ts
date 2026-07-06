@@ -27,6 +27,11 @@ export {
   runKbCommentsListTool,
   runKbNoteAddTool,
 } from './pa-tools/kb-comments.js'
+export {
+  runKbListTool,
+  runKbPageReadTool,
+  runKbSearchTool,
+} from './pa-tools/knowledge.js'
 export { runSendMessageTool } from './pa-tools/message-delivery.js'
 export {
   runPeopleSearchTool,

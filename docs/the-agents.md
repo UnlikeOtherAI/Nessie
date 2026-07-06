@@ -150,6 +150,31 @@ Current constraints:
 - Max concurrent spawns: 3
 - Timeout per child: 1–3600 seconds
 
+### Implemented System-Managed Agents
+
+This document is aspirational target-state design (see the banner at the
+top), but two concrete agents already exist as real `agents` rows
+(`agentKind: 'shared' | 'personal_assistant'`, `systemManaged: true`), each
+seeded idempotently per organization by an `ensure<Name>Agent` service
+function (advisory-lock upsert-by-kind — find-by-kind-and-name, else create):
+
+- **Personal Assistant** (`api/src/services/personal-assistant.ts`,
+  `ensurePersonalAssistantAgent`) — `agentKind: 'personal_assistant'`, DM-only
+  surface, delegates as its owning user for "act as the user" tools
+  (`send_message`, channel management, etc.).
+- **Librarian** (`api/src/services/librarian.ts`, `ensureLibrarianAgent`,
+  bootstrapped via `POST /api/knowledge-base/librarian`) — `agentKind:
+  'shared'`, read-only knowledge-base research today (`kb_search`,
+  `kb_page_read`, `kb_list`, `send_message`); see
+  [knowledge-base-requirements.md §9d](knowledge-base-requirements.md#9d-retrieval-tools--librarian-agent-implemented-read-path)
+  and [plans/2026-07-06-documents-rag-redesign.md §6](plans/2026-07-06-documents-rag-redesign.md)
+  for its access model and planned write/publish path (Phase 3).
+
+Both stay in sync with their own design docs rather than being restated here,
+since the execution model this document describes below (§3) predates the
+current multi-tool agentic loop and should not be treated as current-state for
+either agent.
+
 ---
 
 ## 3. How an Agent Runs Today (Current State)

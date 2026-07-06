@@ -784,6 +784,14 @@ type ControlCommandDefinition = {
     Chunk embeddings are filled asynchronously by the worker `knowledge.embed`
     queue job (incremental by content hash, batched, ledger-billed).
 - Every first-party search/read response carries `sourceRef`, `visibilityReason`, and `policyChainTrace`.
+- Agent-facing retrieval tools are implemented: builtin `kb_search` /
+  `kb_page_read` / `kb_list` (read-only, ACL-checked per call, no bypass for
+  agents) plus a per-organization, system-managed **Librarian** agent seeded
+  via `POST /api/knowledge-base/librarian` (`ensureLibrarianAgent`). See
+  [knowledge-base-requirements.md §9d](./knowledge-base-requirements.md#9d-retrieval-tools--librarian-agent-implemented-read-path)
+  for the tool contract and
+  [plans/2026-07-06-documents-rag-redesign.md](./plans/2026-07-06-documents-rag-redesign.md)
+  §6 for the full Librarian design (write/publish path is Phase 3, not yet built).
 - Knowledge sources must be importable as a first-class tool action in the later external facade tier:
   - folder path,
   - local document,

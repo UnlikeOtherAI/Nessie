@@ -146,6 +146,7 @@ export const runExecutionAgentLoop = async (
       modelClient: deps.modelClient,
       pool: deps.searchConfig.pool,
     },
+    modelClient: deps.modelClient,
     prisma: deps.prisma,
     realtimeTransport: deps.realtimeTransport,
     run: {

@@ -13,7 +13,10 @@ import {
   runKbCommentReplyTool,
   runKbCommentResolveTool,
   runKbCommentsListTool,
+  runKbListTool,
   runKbNoteAddTool,
+  runKbPageReadTool,
+  runKbSearchTool,
   runMessageDeleteTool,
   runMessageEditTool,
   runMessageSearchTool,
@@ -357,6 +360,25 @@ export const executeBuiltinTool = async (
           pageId: String(args.pageId ?? ''),
           quote: String(args.quote ?? ''),
           body: String(args.body ?? ''),
+        }),
+      )
+    case 'kb_search':
+      return wrapTool(inputSummary, () =>
+        runKbSearchTool(context, {
+          query: String(args.query ?? ''),
+          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
+          projectId: typeof args.projectId === 'string' ? args.projectId : undefined,
+          limit: args.limit,
+        }),
+      )
+    case 'kb_page_read':
+      return wrapTool(inputSummary, () =>
+        runKbPageReadTool(context, { pageId: String(args.pageId ?? '') }),
+      )
+    case 'kb_list':
+      return wrapTool(inputSummary, () =>
+        runKbListTool(context, {
+          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
         }),
       )
     default:

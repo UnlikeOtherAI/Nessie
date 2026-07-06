@@ -382,11 +382,27 @@ next starts.
    verified against live pgvector:* body text searchable (lexical-only
    degradation included), private/project spaces never leak across viewers —
    enforced by the in-SQL readable-spaces pre-filter, post-filter removed.
-2. **Agent access + Librarian read path** — agent-principal ACL (kill
-   `bypass`), `KnowledgeSpaceMember.agentId`, `kb_search`/`kb_page_read`/
-   `kb_list` tools, Librarian agent seeded + grantable. *Accept:* untagged
-   Librarian returns zero hits from a private space; tagged returns cited
-   answers.
+2. **Agent access + Librarian read path** — ✅ **shipped (2026-07-06).**
+   `kb_search`/`kb_page_read`/`kb_list` builtin tools
+   (`packages/runtime/src/builtin-kb-tools.ts`,
+   `worker/src/run/pa-tools/knowledge.ts`), each re-checking the caller's
+   `SpaceViewer` (agent-principal ACL, no bypass) before returning results;
+   `kb_page_read` additionally denies an agent viewer when the *page itself*
+   (not just its space) is `restricted` or privately scoped to a different
+   agent. `ensureLibrarianAgent` (`api/src/services/librarian.ts`,
+   `POST /api/knowledge-base/librarian`) idempotently seeds the org's shared,
+   system-managed Librarian agent and grants it the three read tools plus
+   `send_message`; it holds no write tools yet (§6.2's `kb_draft_write`/
+   `kb_file`/`kb_publish_request` remain Phase 3). *Note on
+   `KnowledgeSpaceMember.agentId` from the original §3.3 plan:* the schema
+   already supports agent members (`memberAgentIds` on `KnowledgeSpaceRecord`,
+   enforced in `access.ts`'s `canReadSpace`/`canAgentReadSpace`) — this phase
+   wires the Librarian and its tools through that existing mechanism rather
+   than adding a new column. *Accept:* untagged Librarian returns zero hits
+   from a private space; tagged returns cited answers — verified via unit
+   tests in `worker/src/run/pa-tools/knowledge.test.ts` and
+   `api/test/librarian.test.ts` (live-pgvector acceptance still pending, same
+   as noted for Phase 1's initial cut).
 3. **Librarian write path** — `kb_draft_write`/`kb_file`/
    `kb_publish_request`, publish approval policy, draft-review UI (badge,
    diff, approve/reject). *Accept:* agent can never publish; approval resumes

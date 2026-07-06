@@ -8,10 +8,9 @@ import {
   type AnnotationAccess,
   type AnnotationActor,
   type AnnotationRecord,
-  type SpaceViewerPrincipal,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { resolveEffectiveUserId } from './access.js'
+import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
 import { truncate } from './tool-output.js'
 
 // A delegating PA authors as its owning user (with the agent recorded); an
@@ -23,17 +22,6 @@ const buildActor = (context: BuiltinToolRuntimeContext): AnnotationActor => {
     : { authorType: 'agent', authorId: context.agentId }
 }
 
-// A delegating PA (personal assistant acting for its owner) reads/writes with
-// the owner's own space access, same as buildActor above; an autonomous agent
-// is checked against its own channel bindings / explicit space grants — no
-// more blanket bypass for either case.
-const buildPrincipal = (context: BuiltinToolRuntimeContext): SpaceViewerPrincipal => {
-  const effectiveUserId = resolveEffectiveUserId(context)
-  return effectiveUserId
-    ? { actorType: 'user', actorId: effectiveUserId }
-    : { actorType: 'agent', actorId: context.agentId }
-}
-
 const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string) => {
   const organizationId = String(context.channel.organizationId)
   const provider = createNativeKnowledgeProvider(context.prisma)
@@ -41,7 +29,7 @@ const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string
   if (!page) throw new Error(`Knowledge page not found: ${pageId}`)
   const space = await provider.getSpace(organizationId, page.spaceId)
   if (!space) throw new Error(`Knowledge space not found for page: ${pageId}`)
-  const viewer = await loadSpaceViewer(context.prisma, organizationId, buildPrincipal(context))
+  const viewer = await loadSpaceViewer(context.prisma, organizationId, buildSpaceViewerPrincipal(context))
   const access: AnnotationAccess = {
     space,
     viewer,

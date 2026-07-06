@@ -59,6 +59,7 @@ import { registerInferenceControlPlaneRoutes } from './routes/inference-control-
 import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
 import { registerKnowledgeBaseFileRoutes } from './routes/knowledge-base-files.js'
 import { registerKnowledgeCommentRoutes } from './routes/knowledge-comments.js'
+import { registerKnowledgeLibrarianRoutes } from './routes/knowledge-librarian.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerFeedbackRoutes } from './routes/feedback.js'
@@ -340,6 +341,7 @@ export const buildApp = async () => {
   registerKnowledgeBaseRoutes(app, deps)
   registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)
+  registerKnowledgeLibrarianRoutes(app, deps)
   registerTaskRoutes(app, deps)
   registerLedgerRoutes(app, deps)
 
