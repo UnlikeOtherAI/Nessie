@@ -1,8 +1,10 @@
 import { pathToFileURL } from 'node:url'
 import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
 import {
+  createFileService,
   createModelClient,
   createPgPool,
+  getStorage,
   PgQueueProvider,
   PgRealtimeTransport,
   recordInferenceUsage,
@@ -11,7 +13,9 @@ import {
   ExecutionEnvironmentAllocateJobPayloadSchema,
   ExecutionEnvironmentTerminateJobPayloadSchema,
   KNOWLEDGE_EMBED_TOPIC,
+  KNOWLEDGE_EXTRACT_TOPIC,
   KnowledgeEmbedJobPayloadSchema,
+  KnowledgeExtractJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
@@ -27,6 +31,7 @@ import {
   terminateExecutionEnvironmentInstance,
 } from './control/execution.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
+import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import {
@@ -78,6 +83,15 @@ export const startWorker = async (
   }
   queueProvider = new PgQueueProvider(pool)
   const realtimeTransport = new PgRealtimeTransport(pool, databaseUrl)
+  // Same chokepoint the api builds (api/src/index.ts) — the worker only ever
+  // reads bytes back out (knowledge.extract), it never stores/deletes, but the
+  // guardrail is "route all blob file work through FileService", not "only
+  // where writes happen".
+  const fileService = createFileService({
+    prisma,
+    storage: getStorage(config.storage),
+    maxUploadBytes: config.storage.maxUploadBytes,
+  })
   // The shared model client (orchestrator engagement, memory capture/search/
   // consolidation) bills through the same token ledger as the agentic loop when
   // a call supplies attribution.
@@ -162,6 +176,15 @@ export const startWorker = async (
     async (job) => {
       const payload = KnowledgeEmbedJobPayloadSchema.parse(job.payload)
       await executeKnowledgeEmbedJob({ modelClient, prisma }, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    KNOWLEDGE_EXTRACT_TOPIC,
+    async (job) => {
+      const payload = KnowledgeExtractJobPayloadSchema.parse(job.payload)
+      await executeKnowledgeExtractJob({ fileService, prisma }, payload)
     },
     { signal: abortController.signal },
   )
