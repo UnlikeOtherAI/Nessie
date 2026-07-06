@@ -61,6 +61,8 @@ import { registerKnowledgeBaseFileRoutes } from './routes/knowledge-base-files.j
 import { registerKnowledgeCommentRoutes } from './routes/knowledge-comments.js'
 import { registerKnowledgeLibrarianRoutes } from './routes/knowledge-librarian.js'
 import { registerKnowledgeLinkRoutes } from './routes/knowledge-links.js'
+import { registerKnowledgeSummaryRoutes } from './routes/knowledge-summary.js'
+import { registerKnowledgeTaskRoutes } from './routes/knowledge-tasks.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerFeedbackRoutes } from './routes/feedback.js'
@@ -344,6 +346,8 @@ export const buildApp = async () => {
   registerKnowledgeCommentRoutes(app, deps)
   registerKnowledgeLibrarianRoutes(app, deps)
   registerKnowledgeLinkRoutes(app, deps)
+  registerKnowledgeSummaryRoutes(app, deps)
+  registerKnowledgeTaskRoutes(app, deps)
   registerTaskRoutes(app, deps)
   registerLedgerRoutes(app, deps)
 
