@@ -1,10 +1,24 @@
+import {
+  faBolt,
+  faClock,
+  faHandPointer,
+  faRotate,
+  faTowerBroadcast,
+  type IconDefinition,
+} from '@fortawesome/free-solid-svg-icons'
 import type {
   AgentRecord,
   AgentTriggerRecord,
   ChannelRecord,
   WorkflowInstallationRecord,
   WorkflowTemplateRecord,
-} from '../../lib/api-client'
+} from '../../../lib/api-client'
+
+/**
+ * Single source for trigger display logic: labels, tones, icons, schedule
+ * summaries and target formatting. Used by the Triggers page, the trigger
+ * editor and the per-agent trigger panel.
+ */
 
 export const sectionTitle =
   'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
@@ -25,6 +39,27 @@ export const parseTriggerHash = (hash: string): string | undefined => {
 export const formatTimestamp = (value?: string) =>
   value ? new Date(value).toLocaleString() : '—'
 
+export const formatRelativeTime = (value?: string): string | undefined => {
+  if (!value) return undefined
+
+  const target = new Date(value).getTime()
+  if (Number.isNaN(target)) return undefined
+
+  const deltaMs = target - Date.now()
+  const absMinutes = Math.round(Math.abs(deltaMs) / 60_000)
+  const suffix = deltaMs >= 0 ? 'in ' : ''
+  const prefix = deltaMs >= 0 ? '' : ' ago'
+
+  if (absMinutes < 1) return deltaMs >= 0 ? 'in <1 min' : 'just now'
+  if (absMinutes < 60) return `${suffix}${absMinutes} min${prefix}`
+
+  const absHours = Math.round(absMinutes / 60)
+  if (absHours < 48) return `${suffix}${absHours} h${prefix}`
+
+  const absDays = Math.round(absHours / 24)
+  return `${suffix}${absDays} d${prefix}`
+}
+
 export const getTriggerTone = (status: AgentTriggerRecord['status']) => {
   switch (status) {
     case 'active':
@@ -38,21 +73,63 @@ export const getTriggerTone = (status: AgentTriggerRecord['status']) => {
   }
 }
 
+export const TRIGGER_TYPE_ICONS: Record<AgentTriggerRecord['type'], IconDefinition> = {
+  event: faTowerBroadcast,
+  interval: faRotate,
+  manual: faHandPointer,
+  scheduled: faClock,
+  webhook: faBolt,
+}
+
+const getCronExpression = (config: Record<string, unknown>): string | undefined =>
+  typeof config.cron === 'string' && config.cron.trim().length > 0
+    ? config.cron
+    : undefined
+
 export const getTriggerTypeLabel = (trigger: AgentTriggerRecord): string => {
   if (trigger.type === 'manual') return 'Manual start'
   if (trigger.type === 'interval') return 'Repeating interval'
   if (trigger.type === 'webhook') return 'Webhook'
   if (trigger.type === 'event') return 'System event'
 
-  const cronExpression =
-    typeof trigger.config?.cron === 'string' && trigger.config.cron.trim().length > 0
-      ? trigger.config.cron
-      : undefined
-
-  return cronExpression ? 'Cron schedule' : 'One-off schedule'
+  return getCronExpression(trigger.config ?? {}) ? 'Cron schedule' : 'One-off schedule'
 }
 
-const getWorkflowInstallationLabel = (
+/**
+ * Compact single-line description of when the trigger fires, for list rows.
+ */
+export const getScheduleSummary = (trigger: AgentTriggerRecord): string => {
+  const config = trigger.config ?? {}
+
+  if (trigger.type === 'manual') return 'Fires only when started manually'
+  if (trigger.type === 'webhook') return 'Fires on incoming webhook calls'
+
+  if (trigger.type === 'event') {
+    const events = Array.isArray(config.events)
+      ? config.events.filter(
+          (value): value is string => typeof value === 'string' && value.trim().length > 0,
+        )
+      : []
+    return events.length > 0 ? `On ${events.join(', ')}` : 'No events configured'
+  }
+
+  if (trigger.type === 'interval') {
+    const minutes =
+      typeof config.interval_minutes === 'number' ? config.interval_minutes : undefined
+    return minutes ? `Every ${minutes} min` : 'Interval not set'
+  }
+
+  const cron = getCronExpression(config)
+  if (cron) {
+    const timezone = typeof config.timezone === 'string' ? config.timezone : undefined
+    return timezone ? `Cron ${cron} (${timezone})` : `Cron ${cron}`
+  }
+
+  const relative = formatRelativeTime(trigger.nextRunAt)
+  return trigger.nextRunAt ? `Once ${relative ?? formatTimestamp(trigger.nextRunAt)}` : 'One-off (no run scheduled)'
+}
+
+export const getWorkflowInstallationLabel = (
   installation: WorkflowInstallationRecord,
   templatesById: Map<string, WorkflowTemplateRecord>,
 ): string => {
@@ -100,13 +177,11 @@ export const getTriggerConfigRows = (
   trigger: AgentTriggerRecord,
 ): Array<[string, string]> => {
   if (trigger.type === 'scheduled') {
-    const cronExpression =
-      typeof trigger.config?.cron === 'string' && trigger.config.cron.trim().length > 0
-        ? trigger.config.cron
-        : undefined
+    const config = trigger.config ?? {}
+    const cronExpression = getCronExpression(config)
     const timezone =
-      typeof trigger.config?.timezone === 'string' && trigger.config.timezone.trim().length > 0
-        ? trigger.config.timezone
+      typeof config.timezone === 'string' && config.timezone.trim().length > 0
+        ? config.timezone
         : undefined
 
     if (cronExpression) {
@@ -131,10 +206,7 @@ export const getTriggerConfigRows = (
   }
 
   if (trigger.type === 'webhook') {
-    return [
-      ['Endpoint', '/api/triggers/webhook'],
-      ['API key', trigger.webhookApiKey ?? 'Not generated yet'],
-    ]
+    return []
   }
 
   if (trigger.type === 'event') {

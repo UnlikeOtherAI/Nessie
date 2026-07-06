@@ -16,7 +16,17 @@ export const DesignerFormStateSchema = z.object({
   tools: z.record(z.string(), z.boolean()),
 })
 
+// Catalog of tools the designer model may toggle. Sent by the admin so the
+// prompt reflects the org's real tool registry instead of a hardcoded list.
+export const DesignerToolDescriptorSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+  kind: z.enum(['builtin', 'mcp']).optional(),
+})
+
 export const DesignerChatBodySchema = z.object({
   messages: z.array(DesignerChatMessageSchema),
   formState: DesignerFormStateSchema,
+  availableTools: z.array(DesignerToolDescriptorSchema).optional(),
 })

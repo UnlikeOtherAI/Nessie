@@ -11,6 +11,14 @@ type ScheduledTriggerFieldsProps = {
   setForm: Dispatch<SetStateAction<TriggerFormState>>
 }
 
+const CRON_PRESETS: Array<{ cron: string; label: string }> = [
+  { label: 'Hourly', cron: '0 * * * *' },
+  { label: 'Daily 9:00', cron: '0 9 * * *' },
+  { label: 'Weekdays 9:00', cron: '0 9 * * 1-5' },
+  { label: 'Weekly Mon 9:00', cron: '0 9 * * 1' },
+  { label: 'Monthly 1st 9:00', cron: '0 9 1 * *' },
+]
+
 export const ScheduledTriggerFields = ({
   form,
   isEditMode,
@@ -75,6 +83,25 @@ export const ScheduledTriggerFields = ({
               placeholder="0 9 * * 1-5"
               value={form.cron}
             />
+            <div className="flex flex-wrap gap-1.5">
+              {CRON_PRESETS.map((preset) => (
+                <button
+                  className={[
+                    'rounded-full border px-2.5 py-1 text-[11px] transition',
+                    form.cron === preset.cron
+                      ? 'border-[color:var(--accent)] bg-[var(--accent-soft)] text-[var(--tx)]'
+                      : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
+                  ].join(' ')}
+                  key={preset.cron}
+                  onClick={() =>
+                    setForm((current) => ({ ...current, cron: preset.cron }))
+                  }
+                  type="button"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid gap-1.5">

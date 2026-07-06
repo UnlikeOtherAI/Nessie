@@ -4,9 +4,9 @@ import type {
 } from '@nessie/schemas'
 
 /**
- * Filter pills above the registry list. Source / status pickers map 1:1 to
- * `/api/mcp/tools` query params so toggling a pill rebuilds the cache key
- * through the facade (no manual fetch).
+ * Compact filter bar rendered above the tool list. Source / status pills map
+ * 1:1 to `/api/mcp/tools` query params so toggling rebuilds the cache key
+ * through the facade; the tag filter narrows client-side.
  */
 
 type ToolFilterBarProps = {
@@ -19,24 +19,24 @@ type ToolFilterBarProps = {
   tagOptions: string[]
 }
 
-const SOURCES: Array<ToolRegistrySource | undefined> = [
-  undefined,
-  'builtin',
-  'custom',
-  'mcp-remote',
-  'interactive-session',
+const SOURCES: Array<{ label: string; value?: ToolRegistrySource }> = [
+  { label: 'All sources' },
+  { label: 'Built-in', value: 'builtin' },
+  { label: 'Custom', value: 'custom' },
+  { label: 'MCP', value: 'mcp-remote' },
+  { label: 'Session', value: 'interactive-session' },
 ]
 
-const STATUSES: Array<ToolRegistryEntryStatus | undefined> = [
-  undefined,
-  'active',
-  'pending_review',
-  'disabled',
+const STATUSES: Array<{ label: string; value?: ToolRegistryEntryStatus }> = [
+  { label: 'Any status' },
+  { label: 'Active', value: 'active' },
+  { label: 'Pending review', value: 'pending_review' },
+  { label: 'Disabled', value: 'disabled' },
 ]
 
 const pillClass = (active: boolean) =>
   [
-    'rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]',
+    'rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] transition',
     active
       ? 'border-[color:var(--accent)] bg-[var(--accent-soft)] text-[var(--tx)]'
       : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
@@ -51,66 +51,45 @@ export const ToolFilterBar = ({
   tag,
   tagOptions,
 }: ToolFilterBarProps) => (
-  <div className="grid gap-3">
-    <div>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-        Source
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {SOURCES.map((value) => (
-          <button
-            className={pillClass(source === value)}
-            key={value ?? 'all'}
-            onClick={() => onSourceChange(value)}
-            type="button"
-          >
-            {value ?? 'all'}
-          </button>
-        ))}
-      </div>
+  <div className="grid gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
+      {SOURCES.map((option) => (
+        <button
+          className={pillClass(source === option.value)}
+          key={option.value ?? 'all'}
+          onClick={() => onSourceChange(option.value)}
+          type="button"
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
-    <div>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-        Status
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {STATUSES.map((value) => (
-          <button
-            className={pillClass(status === value)}
-            key={value ?? 'all'}
-            onClick={() => onStatusChange(value)}
-            type="button"
-          >
-            {value ?? 'all'}
-          </button>
-        ))}
-      </div>
-    </div>
-    {tagOptions.length > 0 && (
-      <div>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-          Tag
-        </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            className={pillClass(!tag)}
-            onClick={() => onTagChange(undefined)}
-            type="button"
-          >
-            all
-          </button>
+    <div className="flex flex-wrap items-center gap-1.5">
+      {STATUSES.map((option) => (
+        <button
+          className={pillClass(status === option.value)}
+          key={option.value ?? 'all'}
+          onClick={() => onStatusChange(option.value)}
+          type="button"
+        >
+          {option.label}
+        </button>
+      ))}
+      {tagOptions.length > 0 && (
+        <select
+          aria-label="Filter by tag"
+          className="admin-input ml-auto w-auto py-1 text-xs"
+          onChange={(event) => onTagChange(event.target.value || undefined)}
+          value={tag ?? ''}
+        >
+          <option value="">All tags</option>
           {tagOptions.map((value) => (
-            <button
-              className={pillClass(tag === value)}
-              key={value}
-              onClick={() => onTagChange(value)}
-              type="button"
-            >
+            <option key={value} value={value}>
               {value}
-            </button>
+            </option>
           ))}
-        </div>
-      </div>
-    )}
+        </select>
+      )}
+    </div>
   </div>
 )

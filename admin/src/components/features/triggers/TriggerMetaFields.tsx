@@ -8,10 +8,11 @@ import type {
 } from '../../../lib/api-client'
 import {
   fieldLabelClass,
-  getWorkflowInstallationLabel,
   type TriggerFormState,
   type TriggerTargetKind,
 } from './trigger-config'
+import { getWorkflowInstallationLabel } from './trigger-presentation'
+import { TriggerTypePicker } from './TriggerTypePicker'
 
 type TriggerMetaFieldsProps = {
   agentChannels: ChannelRecord[]
@@ -161,7 +162,7 @@ export const TriggerMetaFields = ({
               }
               type="checkbox"
             />
-            Start enabled
+            Enabled
           </label>
         </div>
 
@@ -277,37 +278,23 @@ export const TriggerMetaFields = ({
       </div>
     ) : null}
 
-    <div className="grid gap-1.5">
-      <label className={fieldLabelClass} htmlFor="trigger-type">
-        Trigger type
-      </label>
-      <select
-        className="admin-input"
-        disabled={mode === 'edit'}
-        id="trigger-type"
-        onChange={(nextEvent) =>
-          setForm((current) => ({
-            ...current,
-            triggerType: nextEvent.target.value as AgentTriggerRecord['type'],
-          }))
-        }
-        value={form.triggerType}
-      >
-        <option value="manual">Manual start</option>
-        <option value="scheduled">Calendar / cron</option>
-        <option value="interval">Repeating interval</option>
-        <option value="webhook">Webhook</option>
-        <option value="event">System event</option>
-      </select>
-    </div>
-
-    {mode === 'edit' ? (
+    {mode === 'create' ? (
+      <div className="grid gap-1.5 md:col-span-2">
+        <div className={fieldLabelClass}>Trigger type</div>
+        <TriggerTypePicker
+          onChange={(nextType) =>
+            setForm((current) => ({ ...current, triggerType: nextType }))
+          }
+          value={form.triggerType}
+        />
+      </div>
+    ) : (
       <div className="grid gap-1.5">
-        <div className={fieldLabelClass}>Mode</div>
+        <div className={fieldLabelClass}>Trigger type</div>
         <div className="admin-input cursor-default opacity-70">
           {currentTriggerLabel}
         </div>
       </div>
-    ) : null}
+    )}
   </div>
 )

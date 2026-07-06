@@ -1,3 +1,5 @@
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Link } from 'react-router-dom'
 import {
   useAgentTriggers,
   useFireTrigger,
@@ -7,17 +9,19 @@ import {
 } from '../../../facades/triggers/hooks'
 import type { AgentRecord, AgentTriggerRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { StatusPill } from '../../primitives/StatusPill'
 import { EmptyState } from '../../shared/EmptyState'
+import {
+  TRIGGER_TYPE_ICONS,
+  formatTimestamp,
+  getScheduleSummary,
+  getTriggerTone,
+  sectionTitle,
+} from '../triggers/trigger-presentation'
 
 type AgentTriggerPanelProps = {
   agent: AgentRecord
 }
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
-
-const formatTimestamp = (value?: string) =>
-  value ? new Date(value).toLocaleString() : '—'
 
 const TriggerRow = ({
   onFire,
@@ -35,29 +39,28 @@ const TriggerRow = ({
   return (
     <div className="admin-card p-4">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="font-semibold text-[var(--tx)]">{trigger.name ?? trigger.type}</div>
-            <span
-              className={[
-                'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
-                trigger.status === 'active'
-                  ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-                  : trigger.status === 'paused'
-                    ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
-                    : 'bg-[var(--danger-soft)] text-[var(--danger-text)]',
-              ].join(' ')}
-            >
-              {trigger.status}
-            </span>
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--overlay-weak)] text-[color:var(--tx2)]">
+            <FontAwesomeIcon className="h-3.5 w-3.5" icon={TRIGGER_TYPE_ICONS[trigger.type]} />
           </div>
-          <div className="mt-1 text-sm text-[color:var(--tx2)]">
-            {trigger.description ?? `Target ${trigger.targetChannelId?.slice(0, 8) ?? 'unbound'}`}
-          </div>
-          <div className="mt-2 grid gap-1 text-xs text-[color:var(--tx3)]">
-            <div>Type: {trigger.type}</div>
-            <div>Next run: {formatTimestamp(trigger.nextRunAt)}</div>
-            <div>Last fired: {formatTimestamp(trigger.lastFiredAt)}</div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Link
+                className="truncate font-semibold text-[var(--tx)] hover:underline"
+                to={`/agents/triggers#trigger-${encodeURIComponent(trigger.id)}`}
+              >
+                {trigger.name ?? trigger.type}
+              </Link>
+              <StatusPill tone={getTriggerTone(trigger.status)}>{trigger.status}</StatusPill>
+            </div>
+            <div className="mt-1 text-sm text-[color:var(--tx2)]">
+              {trigger.description ?? getScheduleSummary(trigger)}
+            </div>
+            <div className="mt-2 grid gap-1 text-xs text-[color:var(--tx3)]">
+              <div>{getScheduleSummary(trigger)}</div>
+              <div>Next run: {formatTimestamp(trigger.nextRunAt)}</div>
+              <div>Last fired: {formatTimestamp(trigger.lastFiredAt)}</div>
+            </div>
           </div>
         </div>
 
@@ -67,7 +70,7 @@ const TriggerRow = ({
             onClick={() => onFire(trigger)}
             type="button"
           >
-            Trigger now
+            Run now
           </button>
           {trigger.status === 'paused' ? (
             <button
@@ -101,11 +104,11 @@ const TriggerRow = ({
                 className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+                  <StatusPill tone={delivery.status === 'failed' ? 'danger' : 'muted'}>
                     {delivery.status}
-                  </span>
+                  </StatusPill>
                   <span className="text-xs text-[color:var(--tx3)]">
-                    {new Date(delivery.createdAt).toLocaleString()}
+                    {formatTimestamp(delivery.createdAt)}
                   </span>
                 </div>
                 <div className="mt-1 text-xs text-[color:var(--tx2)]">
@@ -152,7 +155,13 @@ export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
 
       <div className="mt-4 grid gap-3">
         {triggers.length === 0 ? (
-          <EmptyState>No triggers configured for this agent yet.</EmptyState>
+          <EmptyState>
+            No triggers configured for this agent yet. Create one on the{' '}
+            <Link className="underline" to="/agents/triggers">
+              Triggers page
+            </Link>
+            .
+          </EmptyState>
         ) : (
           triggers.map((trigger) => (
             <TriggerRow

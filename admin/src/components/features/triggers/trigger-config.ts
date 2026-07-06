@@ -3,7 +3,6 @@ import type {
   AgentTriggerRecord,
   ChannelRecord,
   WorkflowInstallationRecord,
-  WorkflowTemplateRecord,
 } from '../../../lib/api-client'
 
 export type TriggerTargetKind = 'agent' | 'workflow'
@@ -175,19 +174,12 @@ export const getEditState = (
   }
 }
 
-export const getWorkflowInstallationLabel = (
-  installation: WorkflowInstallationRecord,
-  templatesById: Map<string, WorkflowTemplateRecord>,
-): string => {
-  const template = templatesById.get(installation.workflowTemplateId)
-  if (template) {
-    return `${template.name} · ${installation.id.slice(0, 8)}`
-  }
-
-  return `Workflow ${installation.id.slice(0, 8)}`
-}
-
-export const getTriggerTypeLabel = (input: {
+/**
+ * Label for the form's current type selection (unlike the record-based
+ * `getTriggerTypeLabel` in trigger-presentation, this reflects the not-yet-
+ * saved schedule mode).
+ */
+export const getFormTriggerTypeLabel = (input: {
   scheduleMode?: ScheduleMode
   type: AgentTriggerRecord['type']
 }): string => {

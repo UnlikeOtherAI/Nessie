@@ -111,6 +111,7 @@ export type AgentRecord = {
   systemManaged?: boolean
   status: AgentStatusResponse['status']
   systemPrompt?: string
+  toolPolicy?: Record<string, boolean>
   updatedAt: string
 }
 

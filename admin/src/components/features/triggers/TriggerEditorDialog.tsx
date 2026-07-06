@@ -16,7 +16,7 @@ import {
   buildSubmitPayload,
   getDefaultCreateState,
   getEditState,
-  getTriggerTypeLabel,
+  getFormTriggerTypeLabel,
   type DefaultTarget,
   type TriggerFormState,
 } from './trigger-config'
@@ -243,7 +243,7 @@ export const TriggerEditorDialog = ({
     return null
   }
 
-  const currentTriggerLabel = getTriggerTypeLabel({
+  const currentTriggerLabel = getFormTriggerTypeLabel({
     type: form.triggerType,
     scheduleMode: form.scheduleMode,
   })
