@@ -16,10 +16,12 @@ import {
   useCreateCatalogEntry,
   useDeleteCatalogEntry,
   useDeprecateCatalogEntry,
+  useLockCatalogEntry,
   useMcpCatalog,
   usePublishCatalogEntry,
   useRejectCatalogEntry,
   useSubmitCatalogEntry,
+  useUnlockCatalogEntry,
   type CatalogView,
   type McpCatalogEntryRecord,
 } from '../facades/mcp-catalog/hooks'
@@ -82,6 +84,8 @@ export const McpAppStorePage = () => {
   const approveCatalog = useApproveCatalogEntry()
   const rejectCatalog = useRejectCatalogEntry()
   const deleteCatalog = useDeleteCatalogEntry()
+  const lockCatalog = useLockCatalogEntry()
+  const unlockCatalog = useUnlockCatalogEntry()
   const createInstance = useCreateInstance()
   const testInstance = useTestInstance()
 
@@ -129,6 +133,8 @@ export const McpAppStorePage = () => {
     || approveCatalog.isPending
     || rejectCatalog.isPending
     || deleteCatalog.isPending
+    || lockCatalog.isPending
+    || unlockCatalog.isPending
 
   const switchView = (next: PageView) => {
     setView(next)
@@ -242,8 +248,14 @@ export const McpAppStorePage = () => {
         <CatalogDetailPanel
           busy={busy}
           entry={selectedCatalog}
+          isElevated={isElevated}
           isMine={selectedCatalog.ownerUserId === currentUserId}
           isOwner={isOwner}
+          onLockToggle={() =>
+            void (selectedCatalog.locked
+              ? unlockCatalog.mutateAsync(selectedCatalog.id)
+              : lockCatalog.mutateAsync(selectedCatalog.id))
+          }
           onApprove={() => void approveCatalog.mutateAsync(selectedCatalog.id)}
           onDelete={() => {
             void deleteCatalog.mutateAsync(selectedCatalog.id)

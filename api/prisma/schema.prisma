@@ -1772,6 +1772,12 @@ model McpCatalogEntry {
   signature              String?
   status                 McpCatalogStatus     @default(draft)
   visibility             McpCatalogVisibility @default(private)
+  // Admin lock: members cannot install (or re-register the same endpoint as)
+  // a locked connector; owners/admins are exempt. Purely an install-time
+  // gate — already-installed instances keep working until removed.
+  locked                 Boolean              @default(false)
+  lockedAt               DateTime?            @map("locked_at")
+  lockedBy               String?              @map("locked_by") @db.Uuid
   ownerUserId            String?              @map("owner_user_id") @db.Uuid
   submittedAt            DateTime?            @map("submitted_at")
   reviewedAt             DateTime?            @map("reviewed_at")

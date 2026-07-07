@@ -45,9 +45,12 @@ export const CatalogList = ({
           isSelected={entry.id === selectedId}
           key={entry.id}
           meta={
-            <StatusPill tone={STATUS_TONE[entry.status]}>
-              {entry.status}
-            </StatusPill>
+            <span className="flex items-center gap-1">
+              {entry.locked ? <StatusPill tone="muted">🔒 locked</StatusPill> : null}
+              <StatusPill tone={STATUS_TONE[entry.status]}>
+                {entry.status}
+              </StatusPill>
+            </span>
           }
           onClick={() => onSelect(entry.id)}
           subtitle={`auth: ${entry.authMethod}`}

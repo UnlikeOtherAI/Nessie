@@ -4,9 +4,15 @@ import {
   EnvSecretResolver,
   type SecretResolver,
 } from '@nessie/mcp-manage'
-import { recordConnectorUsage, type LedgerAttribution, type ToolSchemaDescriptor } from '@nessie/runtime'
+import { recordConnectorUsage, type LedgerAttribution } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  buildDeferredView,
+  buildInlineView,
+  DEFAULT_INLINE_TOOL_LIMIT,
+  type McpToolsetView,
+} from './mcp-toolset-deferred.js'
 import { dispatchTool, parseMcpTransportConfig } from './tool-dispatch.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
@@ -36,6 +42,7 @@ type RegistryRow = {
     scopeId: string
     transportConfig: unknown
     catalogEntry: {
+      label: string
       authConfig: unknown
       defaultTransportConfig: unknown
     }
@@ -135,12 +142,32 @@ export type McpToolEntry = {
   description: string
   inputSchema: Record<string, unknown>
   instanceId: string
+  connectorLabel: string
 }
 
 export type McpToolset = {
   entries: McpToolEntry[]
-  descriptors: ToolSchemaDescriptor[]
+  /**
+   * `inline` exposes every tool schema directly (small setups); `deferred`
+   * exposes the mcp_find_tools / mcp_load_tools / mcp_drop_tools flow so a
+   * large connector fleet doesn't flood the model's context with schemas.
+   */
+  mode: 'inline' | 'deferred'
+  /**
+   * Per-consumer presentation. The main loop and each delegate sub-agent
+   * create their own view so loading schemas in one context never mutates
+   * another. `view.descriptors` is LIVE — recompose the model's tool list
+   * from it on every inference call.
+   */
+  createView: () => McpToolsetView
+  /** Direct dispatch of a real MCP tool by exposed name (views wrap this). */
   dispatch: (exposedName: string, args: Record<string, unknown>) => Promise<AgenticToolResult>
+}
+
+const resolveInlineToolLimit = (override?: number): number => {
+  if (typeof override === 'number' && override >= 0) return override
+  const fromEnv = Number(process.env.NESSIE_MCP_INLINE_TOOL_LIMIT)
+  return Number.isFinite(fromEnv) && fromEnv >= 0 ? fromEnv : DEFAULT_INLINE_TOOL_LIMIT
 }
 
 const defaultSecretResolver = new EnvSecretResolver()
@@ -158,7 +185,7 @@ export const buildMcpToolset = async (
   // Attribution for connector usage billing — every dispatched MCP tool call
   // writes a connector_usage_events row keyed to the run's org/agent/channel/run.
   attribution: LedgerAttribution,
-  options: { secretResolver?: SecretResolver } = {},
+  options: { secretResolver?: SecretResolver; inlineToolLimit?: number } = {},
 ): Promise<McpToolset> => {
   const secretResolver = options.secretResolver ?? defaultSecretResolver
   const rows = (await prisma.toolRegistryEntry.findMany({
@@ -183,7 +210,7 @@ export const buildMcpToolset = async (
           scopeId: true,
           transportConfig: true,
           catalogEntry: {
-            select: { authConfig: true, defaultTransportConfig: true },
+            select: { label: true, authConfig: true, defaultTransportConfig: true },
           },
         },
       },
@@ -243,6 +270,7 @@ export const buildMcpToolset = async (
       description: row.description,
       inputSchema: stringRecord(row.inputSchema),
       instanceId: row.mcpInstanceId,
+      connectorLabel: row.mcpInstance.catalogEntry.label,
     })
     transportByExposedName.set(exposedName, {
       // Auth headers are applied once here so probe (API) and dispatch
@@ -256,12 +284,6 @@ export const buildMcpToolset = async (
       instanceId: row.mcpInstanceId,
     })
   }
-
-  const descriptors: ToolSchemaDescriptor[] = entries.map((entry) => ({
-    toolName: entry.exposedName,
-    description: entry.description || `MCP tool ${entry.originalToolName}`,
-    inputSchema: entry.inputSchema,
-  }))
 
   // Record one connector_usage_events row per MCP tool call. Best-effort: a
   // ledger failure must never break the tool dispatch.
@@ -314,5 +336,18 @@ export const buildMcpToolset = async (
     }
   }
 
-  return { entries, descriptors, dispatch }
+  const mode: McpToolset['mode'] =
+    entries.length > resolveInlineToolLimit(options.inlineToolLimit)
+      ? 'deferred'
+      : 'inline'
+
+  return {
+    entries,
+    mode,
+    createView: () =>
+      mode === 'deferred'
+        ? buildDeferredView(entries, dispatch)
+        : buildInlineView(entries, dispatch),
+    dispatch,
+  }
 }

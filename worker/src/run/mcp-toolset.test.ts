@@ -149,3 +149,36 @@ test('an explicit per-agent policy verdict overrides scope defaults both ways', 
   })
   assert.deepEqual(names, ['far_tool'])
 })
+
+test('toolset picks deferred mode above the inline limit', async () => {
+  const rows: RowSeed[] = Array.from({ length: 3 }, (_, i) => ({
+    id: `r${i}`,
+    toolName: `tool_${i}`,
+    scopeType: 'organization',
+    scopeId: 'org-1',
+  }))
+  const buildWith = async (inlineToolLimit: number) =>
+    buildMcpToolset(
+      makePrisma(rows),
+      'org-1',
+      null,
+      actorContext({}),
+      { agentId: 'agent-1', agentKind: 'shared', channelId: 'channel-1' },
+      { organizationId: 'org-1', actorId: 'agent-1' },
+      { inlineToolLimit },
+    )
+
+  const inline = await buildWith(10)
+  assert.equal(inline.mode, 'inline')
+  const inlineView = inline.createView()
+  assert.equal(inlineView.descriptors.length, 3)
+
+  const deferred = await buildWith(2)
+  assert.equal(deferred.mode, 'deferred')
+  const deferredView = deferred.createView()
+  assert.deepEqual(
+    deferredView.descriptors.map((d) => d.toolName),
+    ['mcp_find_tools', 'mcp_load_tools', 'mcp_drop_tools'],
+  )
+  assert.ok(deferredView.handledNames.has('mcp_tool_0'))
+})

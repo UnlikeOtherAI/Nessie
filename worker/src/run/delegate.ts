@@ -84,8 +84,11 @@ export const runDelegate = async (
     }
   }
 
+  // Sub-agents get their own MCP view: in deferred mode they search/load
+  // schemas independently without mutating the parent agent's tool list.
+  const mcpView = ctx.mcpToolset.createView()
   const tools: ToolSchemaDescriptor[] = [
-    ...ctx.mcpToolset.descriptors,
+    ...mcpView.descriptors,
     ...ctx.builtinDescriptors,
   ]
 
@@ -101,7 +104,7 @@ export const runDelegate = async (
     }
   }
 
-  const mcpExposedNames = new Set(ctx.mcpToolset.descriptors.map((d) => d.toolName))
+  const mcpExposedNames = mcpView.handledNames
 
   const loopResult = await runAgenticLoop({
     budget: SUB_AGENT_BUDGET,
@@ -121,7 +124,7 @@ export const runDelegate = async (
         }
       }
       if (mcpExposedNames.has(toolName)) {
-        return ctx.mcpToolset.dispatch(toolName, toolArgs)
+        return mcpView.dispatch(toolName, toolArgs)
       }
       if (ctx.allowedBuiltinIds.has(toolName)) {
         return ctx.executeBuiltinTool(toolName, toolArgs)
@@ -133,7 +136,8 @@ export const runDelegate = async (
       }
     },
     initialMessages: buildInitialMessages(task, hint),
-    runInference: (messages) => ctx.runInference(messages, tools),
+    runInference: (messages) =>
+      ctx.runInference(messages, [...mcpView.descriptors, ...ctx.builtinDescriptors]),
     tools,
   })
 

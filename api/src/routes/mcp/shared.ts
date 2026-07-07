@@ -89,6 +89,7 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
       error.code === MCP_CATALOG_ERROR_CODES.NOT_FOUND
         ? 404
         : error.code === MCP_CATALOG_ERROR_CODES.FORBIDDEN
+            || error.code === MCP_CATALOG_ERROR_CODES.LOCKED
           ? 403
           // `DUPLICATE_NAME` and `INVALID_TRANSITION` both describe a
           // pre-existing resource that conflicts with the requested mutation
@@ -106,7 +107,9 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
       error.code === MCP_INSTANCE_ERROR_CODES.NOT_FOUND
         || error.code === MCP_INSTANCE_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND
         ? 404
-        : error.code === MCP_INSTANCE_ERROR_CODES.DUPLICATE_SCOPE
+        : error.code === MCP_INSTANCE_ERROR_CODES.LOCKED
+          ? 403
+          : error.code === MCP_INSTANCE_ERROR_CODES.DUPLICATE_SCOPE
           ? 409
           : error.code === MCP_INSTANCE_ERROR_CODES.PROBE_FAILED
             ? 502

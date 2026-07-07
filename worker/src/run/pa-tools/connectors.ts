@@ -203,13 +203,22 @@ export const runConnectorLibrarySearchTool = async (
         },
       ],
     },
-    select: { id: true, name: true, label: true, description: true, authMethod: true },
+    select: {
+      id: true,
+      name: true,
+      label: true,
+      description: true,
+      authMethod: true,
+      locked: true,
+    },
     take: 10,
   })
   const catalogLines = catalogHits.map((entry) =>
     [
       `- ${entry.label} (${entry.name}) [org catalog] catalogEntryId=${entry.id}`,
-      `  ${describeAuth(entry.authMethod, null)} | install with connector_install`,
+      entry.locked
+        ? "  LOCKED by your organisation's admins — members cannot install this"
+        : `  ${describeAuth(entry.authMethod, null)} | install with connector_install`,
     ].join('\n'),
   )
 
@@ -413,7 +422,18 @@ export const runConnectorInstallTool = async (
     }
     entry = { id: existing.id, label: existing.label, authMethod: existing.authMethod }
   } else {
-    entry = await registerCatalogEntry(context, ctx, input)
+    try {
+      entry = await registerCatalogEntry(context, ctx, input)
+    } catch (error) {
+      if (error instanceof McpCatalogError) {
+        return {
+          inputSummary: `scope=${scopeType}`,
+          outputPreview: error.message,
+          toolName: 'connector_install',
+        }
+      }
+      throw error
+    }
   }
 
   let instance: McpInstanceRow

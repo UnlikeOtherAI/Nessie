@@ -7,8 +7,11 @@ import {
 
 import {
   ensureAuthConfigMatchesMethod,
+  findApplicableLock,
   getAccessibleCatalogEntry,
   getCatalogEntry,
+  isAdminRole,
+  isAdminUser,
 } from './mcp-catalog.js'
 import {
   McpSecurityError,
@@ -297,6 +300,23 @@ export const createInstance = async (
       MCP_INSTANCE_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND,
       `Catalog entry ${input.catalogEntryId} not found in this scope`,
     )
+  }
+
+  // Admin lock: members cannot install a locked connector (or the same
+  // endpoint re-registered under another name). Owners/admins are exempt.
+  // The role check is DB-authoritative because worker-derived actor contexts
+  // (the personal assistant) may carry no JWT roles.
+  const lock = await findApplicableLock(prisma, organizationId, catalogEntry)
+  if (lock) {
+    const isAdmin =
+      isAdminRole(actorContext)
+      || (await isAdminUser(prisma, organizationId, actorContext.actor.actorId))
+    if (!isAdmin) {
+      throw new McpInstanceError(
+        MCP_INSTANCE_ERROR_CODES.LOCKED,
+        `"${lock.label}" is locked by your organisation's admins and cannot be installed`,
+      )
+    }
   }
 
   await assertScopeIdInOrganization(prisma, organizationId, input.scopeType, input.scopeId)

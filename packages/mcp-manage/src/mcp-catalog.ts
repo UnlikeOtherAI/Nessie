@@ -42,6 +42,7 @@ export const MCP_CATALOG_ERROR_CODES = {
   DUPLICATE_NAME: 'MCP_CATALOG_ENTRY_DUPLICATE_NAME',
   INVALID_TRANSITION: 'MCP_CATALOG_ENTRY_INVALID_TRANSITION',
   FORBIDDEN: 'MCP_CATALOG_ENTRY_FORBIDDEN',
+  LOCKED: 'MCP_CATALOG_ENTRY_LOCKED',
 } as const
 
 export class McpCatalogError extends Error {
@@ -68,6 +69,9 @@ export type McpCatalogEntryRow = {
   signature: string | null
   status: McpCatalogStatus
   visibility: McpCatalogVisibility
+  locked: boolean
+  lockedAt: Date | null
+  lockedBy: string | null
   ownerUserId: string | null
   submittedAt: Date | null
   reviewedAt: Date | null
@@ -115,6 +119,28 @@ export type CatalogView = 'store' | 'mine' | 'queue' | 'all'
 
 export const isOwnerRole = (actorContext: AuthorizedActionContext): boolean =>
   actorContext.actor.roles?.includes('owner') ?? false
+
+/** Owner or org admin — the roles that manage shared connector policy. */
+export const isAdminRole = (actorContext: AuthorizedActionContext): boolean =>
+  isOwnerRole(actorContext) || (actorContext.actor.roles?.includes('admin') ?? false)
+
+/**
+ * DB-authoritative admin check for contexts whose JWT roles may be absent or
+ * stale (the personal assistant derives its acting-user context in the
+ * worker). Falls back to the membership row.
+ */
+export const isAdminUser = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  userId: string,
+): Promise<boolean> => {
+  const membership = await prisma.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId, userId } },
+    select: { role: true, deactivatedAt: true },
+  })
+  if (!membership || membership.deactivatedAt) return false
+  return membership.role === 'owner' || membership.role === 'admin'
+}
 
 export const ensureAuthConfigMatchesMethod = (
   authMethod: McpCatalogAuthMethod,
@@ -309,6 +335,36 @@ export const createCatalogEntry = async (
     protocol: input.protocol,
   })
 
+  // A member must not bypass an admin lock by re-registering the same
+  // endpoint under a fresh name. Owners/admins are exempt.
+  const transportUrl =
+    input.defaultTransportConfig && typeof input.defaultTransportConfig.url === 'string'
+      ? input.defaultTransportConfig.url
+      : null
+  if (transportUrl) {
+    const lock = await findApplicableLock(
+      prisma,
+      actorContext.tenant.organizationId,
+      null,
+      transportUrl,
+    )
+    if (lock) {
+      const isAdmin =
+        isAdminRole(actorContext)
+        || (await isAdminUser(
+          prisma,
+          actorContext.tenant.organizationId,
+          actorContext.actor.actorId,
+        ))
+      if (!isAdmin) {
+        throw new McpCatalogError(
+          MCP_CATALOG_ERROR_CODES.LOCKED,
+          `This endpoint belongs to "${lock.label}", which is locked by your organisation's admins`,
+        )
+      }
+    }
+  }
+
   try {
     return await prisma.mcpCatalogEntry.create({
       data: {
@@ -468,4 +524,74 @@ export const deprecateCatalogEntry = async (
     where: { id },
     data: { status: 'deprecated' },
   })
+}
+
+// ─── Admin locking ───────────────────────────────────────────────────────────
+
+/**
+ * Lock/unlock an entry for member self-service (owner or org admin only).
+ * A locked entry cannot be installed by members — and its endpoint URL cannot
+ * be re-registered by them under a different name — but already-installed
+ * instances keep working until removed. Idempotent.
+ */
+export const setCatalogEntryLocked = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  id: string,
+  locked: boolean,
+): Promise<McpCatalogEntryRow | null> => {
+  if (!isAdminRole(actorContext)) {
+    throw new McpCatalogError(
+      MCP_CATALOG_ERROR_CODES.FORBIDDEN,
+      'Only organisation owners/admins can lock or unlock connectors',
+    )
+  }
+  const existing = await getAccessibleCatalogEntry(prisma, actorContext, id)
+  if (!existing) return null
+  if (existing.locked === locked) return existing
+  return prisma.mcpCatalogEntry.update({
+    where: { id },
+    data: {
+      locked,
+      lockedAt: locked ? new Date() : null,
+      lockedBy: locked ? actorContext.actor.actorId : null,
+    },
+  })
+}
+
+const endpointUrlOf = (entry: { defaultTransportConfig: unknown }): string | null => {
+  const config = entry.defaultTransportConfig
+  if (config && typeof config === 'object' && !Array.isArray(config)) {
+    const url = (config as Record<string, unknown>).url
+    if (typeof url === 'string' && url.length > 0) return url.replace(/\/+$/, '')
+  }
+  return null
+}
+
+/**
+ * The lock that applies to installing/re-registering an endpoint, if any:
+ * the entry's own lock, or a lock on any org/global entry pointing at the
+ * same endpoint URL (so members cannot bypass a lock by importing the same
+ * server under a fresh name).
+ */
+export const findApplicableLock = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  entry: Pick<McpCatalogEntryRow, 'locked' | 'label' | 'defaultTransportConfig'> | null,
+  endpointUrl?: string | null,
+): Promise<{ label: string } | null> => {
+  if (entry?.locked) return { label: entry.label }
+  const url = endpointUrl?.replace(/\/+$/, '') ?? (entry ? endpointUrlOf(entry) : null)
+  if (!url) return null
+  const lockedEntries = await prisma.mcpCatalogEntry.findMany({
+    where: {
+      locked: true,
+      OR: [{ organizationId }, { organizationId: null }],
+    },
+    select: { label: true, defaultTransportConfig: true },
+  })
+  for (const candidate of lockedEntries) {
+    if (endpointUrlOf(candidate) === url) return { label: candidate.label }
+  }
+  return null
 }

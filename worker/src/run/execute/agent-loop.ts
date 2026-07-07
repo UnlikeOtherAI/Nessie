@@ -63,8 +63,12 @@ export const runExecutionAgentLoop = async (
   const subAgentBuiltinIds = new Set(
     [...input.resolvedToolIds].filter((id) => id !== 'delegate'),
   )
-  const mcpExposedNames = new Set(input.mcpToolset.descriptors.map((d) => d.toolName))
-  const mainToolDefs = [...input.toolDefs, ...input.mcpToolset.descriptors]
+  // Per-run MCP view: in deferred mode its descriptor array is LIVE
+  // (mcp_load_tools / mcp_drop_tools mutate it), so the model's tool list is
+  // recomposed from it on every inference call below.
+  const mcpView = input.mcpToolset.createView()
+  const mcpExposedNames = mcpView.handledNames
+  const mainToolDefs = [...input.toolDefs, ...mcpView.descriptors]
 
   const mainInferenceCallbacks: InferenceCallbacks = {
     onVisibleReasoningDelta: async (chunk) => {
@@ -245,7 +249,7 @@ export const runExecutionAgentLoop = async (
         }
       }
       if (mcpExposedNames.has(toolName)) {
-        return input.mcpToolset.dispatch(toolName, args)
+        return mcpView.dispatch(toolName, args)
       }
       const registryDecision = authorizeToolCall(
         toolName,
@@ -317,7 +321,8 @@ export const runExecutionAgentLoop = async (
       return executeBuiltinTool(toolName, args, buildBuiltinCtx(toolActorContext))
     },
     initialMessages: input.initialMessages,
-    runInference: (messages) => runMainInference(messages, mainToolDefs),
+    runInference: (messages) =>
+      runMainInference(messages, [...input.toolDefs, ...mcpView.descriptors]),
     tools: mainToolDefs,
   })
 

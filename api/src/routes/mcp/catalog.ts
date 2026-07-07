@@ -12,6 +12,7 @@ import {
   createCatalogEntry,
   deleteCatalogEntry,
   deprecateCatalogEntry,
+  setCatalogEntryLocked,
   getAccessibleCatalogEntry,
   isOwnerRole,
   listCatalogEntries,
@@ -185,6 +186,37 @@ export const registerMcpCatalogRoutes = (
     const { catalogEntryId } = request.params as { catalogEntryId: string }
     try {
       const entry = await publishCatalogEntry(prisma, actorContext, catalogEntryId)
+      if (!entry) return notFound(reply)
+      return createApiResponse(entry)
+    } catch (error) {
+      if (sendMcpError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  // ─── Admin lock / unlock (owner or org admin) ───────────────────────────
+  app.post('/api/mcp/catalog/:catalogEntryId/lock', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { catalogEntryId } = request.params as { catalogEntryId: string }
+    try {
+      const entry = await setCatalogEntryLocked(prisma, actorContext, catalogEntryId, true)
+      if (!entry) return notFound(reply)
+      return createApiResponse(entry)
+    } catch (error) {
+      if (sendMcpError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.post('/api/mcp/catalog/:catalogEntryId/unlock', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { catalogEntryId } = request.params as { catalogEntryId: string }
+    try {
+      const entry = await setCatalogEntryLocked(prisma, actorContext, catalogEntryId, false)
       if (!entry) return notFound(reply)
       return createApiResponse(entry)
     } catch (error) {

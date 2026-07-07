@@ -270,6 +270,16 @@ rights through the same `@nessie/mcp-manage` helpers as the routes):
 | `connector_set_secret` | Store a chat-provided credential encrypted (never echoed; redacted from tool summaries) and re-test |
 | `connector_uninstall` | Remove a manageable instance + its registry entries |
 
+**Admin locking.** Owners/admins can lock a catalog entry
+(`POST /api/mcp/catalog/:id/lock` / `/unlock`, or the Lock button on the
+entry). A locked connector cannot be installed by members — and its endpoint
+URL cannot be re-registered by them under a fresh name (`findApplicableLock`
+matches by endpoint) — while owners/admins remain exempt. Locking is an
+install-time gate: already-installed instances keep working until removed.
+Locked entries render with a 🔒 pill and a disabled Install button in the
+admin UI, and the personal assistant reports them as locked in
+`connector_library_search` / refuses `connector_install` with the reason.
+
 Scope-management rights are role-derived and shared with the API routes
 (`canManageInstanceScope`): `owner` manages every scope, `admin` manages the
 shared scopes (organization/project/team/channel) — this is how "an admin
@@ -1154,6 +1164,18 @@ Generated plugins and execution environments are part of the same capability sys
 ---
 
 ## 5. Temporary Context and Tool Resolution
+
+> **Implemented for MCP connectors** (`worker/src/run/mcp-toolset-deferred.ts`):
+> up to `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) exposed MCP tools are
+> inlined as ordinary schemas; above that the toolset presents exactly three
+> small meta tools — `mcp_find_tools` (ranked directory search with parameter
+> summaries and a per-connector count directory in the description),
+> `mcp_load_tools` (loads full schemas into the LIVE tool array the loop
+> recomposes each iteration; capped at 15 with oldest-first eviction) and
+> `mcp_drop_tools` (frees them again). Known tool names dispatch even when
+> their schema is not loaded, and every consumer (main loop, each delegate
+> sub-agent) gets an independent view so loads never leak across contexts.
+> The resolver-sub-agent variant below remains the fuller design target.
 
 Tool schemas consume context window space. An agent with access to 50 MCP tools and 30 API endpoints would waste thousands of tokens on tool definitions it doesn't need. The solution: a two-part context model where the main agent's context has a **permanent** section (conversation, reasoning, memories) and a **temporary** section (tool schemas loaded on demand and dropped when no longer needed). A cheap resolver sub-agent finds the right tools; the main agent uses them directly.
 
