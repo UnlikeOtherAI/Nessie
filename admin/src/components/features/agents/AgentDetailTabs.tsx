@@ -123,7 +123,7 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
           />
         )}
 
-        {activeTab === 'tools' && <AgentAvailableTools />}
+        {activeTab === 'tools' && <AgentAvailableTools agent={agent} />}
 
         {activeTab === 'messages' && (
           <div className="grid gap-4">

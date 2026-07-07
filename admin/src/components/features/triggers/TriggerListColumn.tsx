@@ -1,34 +1,120 @@
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
-import { StatusPill } from '../../primitives/StatusPill'
+import type {
+  TriggerStatusCounts,
+  TriggerStatusFilter,
+  TriggerTypeFilter,
+} from '../../../pages/triggers/useTriggersPageState'
+import { SegmentedControl } from '../../primitives/SegmentedControl'
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
-import { ColumnBrowserItem } from '../../shared/column-browser/ColumnBrowserItem'
 import {
-  formatTimestamp,
+  TRIGGER_TYPE_ICONS,
+  formatRelativeTime,
   formatTriggerTarget,
-  getTriggerTone,
-  getTriggerTypeLabel,
-  sectionTitle,
+  getScheduleSummary,
+  getTriggerStatusColor,
   type TriggerRegistryMaps,
-} from '../../../pages/triggers/trigger-presentation'
+} from './trigger-presentation'
+
+/**
+ * Trigger list: one flat, next-run-ordered group of rows. Status is a colour
+ * dot (the detail header carries the full pill), the type is an icon, and the
+ * second line compresses schedule + target into a single scan line. Filters
+ * are one segmented status strip (the operational dimension, with counts)
+ * plus a quiet type select (a narrowing dimension, rarely used).
+ */
 
 type TriggerListColumnProps = {
-  activeCount: number
   effectiveTriggerId?: string
+  filteredTriggers: AgentTriggerRecord[]
   onCreate: () => void
+  onSearchChange: (query: string) => void
+  onSelect: (triggerId: string) => void
+  onStatusFilterChange: (filter: TriggerStatusFilter) => void
+  onTypeFilterChange: (filter: TriggerTypeFilter) => void
+  registry: TriggerRegistryMaps
+  searchQuery: string
+  statusCounts: TriggerStatusCounts
+  statusFilter: TriggerStatusFilter
+  totalCount: number
+  typeFilter: TriggerTypeFilter
+}
+
+const TYPE_OPTIONS: Array<{ label: string; value: TriggerTypeFilter }> = [
+  { label: 'All types', value: 'all' },
+  { label: 'Manual', value: 'manual' },
+  { label: 'Schedule', value: 'scheduled' },
+  { label: 'Interval', value: 'interval' },
+  { label: 'Webhook', value: 'webhook' },
+  { label: 'Event', value: 'event' },
+]
+
+const TriggerRow = ({
+  isSelected,
+  onSelect,
+  registry,
+  trigger,
+}: {
+  isSelected: boolean
   onSelect: (triggerId: string) => void
   registry: TriggerRegistryMaps
-  scheduledTriggers: AgentTriggerRecord[]
-  sortedTriggers: AgentTriggerRecord[]
+  trigger: AgentTriggerRecord
+}) => {
+  const nextRun = trigger.enabled ? formatRelativeTime(trigger.nextRunAt) : undefined
+
+  return (
+    <button
+      className={[
+        'w-full border-l-2 px-3 py-2.5 text-left transition-colors',
+        isSelected
+          ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
+          : 'border-transparent hover:bg-[var(--overlay-weak)]',
+      ].join(' ')}
+      onClick={() => onSelect(trigger.id)}
+      type="button"
+    >
+      <div className="flex items-center gap-2">
+        <FontAwesomeIcon
+          className="h-3 w-3 flex-shrink-0 text-[color:var(--tx3)]"
+          icon={TRIGGER_TYPE_ICONS[trigger.type]}
+        />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
+          {trigger.name ?? trigger.type}
+        </span>
+        {nextRun ? (
+          <span className="flex-shrink-0 text-[11px] tabular-nums text-[color:var(--tx3)]">
+            {nextRun}
+          </span>
+        ) : null}
+        <span
+          aria-label={`Status: ${trigger.status}`}
+          className="h-2 w-2 flex-shrink-0 rounded-full"
+          role="img"
+          style={{ background: getTriggerStatusColor(trigger.status) }}
+          title={trigger.status}
+        />
+      </div>
+      <div className="mt-0.5 truncate pl-5 text-xs text-[color:var(--tx3)]">
+        {getScheduleSummary(trigger)} · {formatTriggerTarget(trigger, registry)}
+      </div>
+    </button>
+  )
 }
 
 export const TriggerListColumn = ({
-  activeCount,
   effectiveTriggerId,
+  filteredTriggers,
   onCreate,
+  onSearchChange,
   onSelect,
+  onStatusFilterChange,
+  onTypeFilterChange,
   registry,
-  scheduledTriggers,
-  sortedTriggers,
+  searchQuery,
+  statusCounts,
+  statusFilter,
+  totalCount,
+  typeFilter,
 }: TriggerListColumnProps) => (
   <ColumnBrowserColumn
     headerAction={
@@ -41,72 +127,62 @@ export const TriggerListColumn = ({
       </button>
     }
     key="triggers"
-    title="All triggers"
+    title="Triggers"
   >
-    <div className="grid gap-6">
-      <div>
-        <div className="flex items-center justify-between gap-3">
-          <div className={sectionTitle}>Configured</div>
-          <div className="rounded-full bg-[var(--overlay-weak)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-            {activeCount} active
-          </div>
+    <div className="grid gap-3">
+      <input
+        autoComplete="off"
+        className="admin-input"
+        onChange={(event) => onSearchChange(event.target.value)}
+        placeholder="Search triggers…"
+        type="search"
+        value={searchQuery}
+      />
+
+      <SegmentedControl
+        ariaLabel="Filter by status"
+        onChange={onStatusFilterChange}
+        options={[
+          { label: 'All', value: 'all', count: statusCounts.all },
+          { label: 'Active', value: 'active', count: statusCounts.active },
+          { label: 'Paused', value: 'paused', count: statusCounts.paused },
+          { label: 'Error', value: 'error', count: statusCounts.error },
+        ]}
+        value={statusFilter}
+      />
+
+      <select
+        aria-label="Filter by type"
+        className="admin-input py-1.5 text-xs"
+        onChange={(event) => onTypeFilterChange(event.target.value as TriggerTypeFilter)}
+        value={typeFilter}
+      >
+        {TYPE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+
+      {filteredTriggers.length === 0 ? (
+        <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
+          {totalCount === 0
+            ? 'No triggers yet. Create one to wake an agent or workflow automatically.'
+            : 'No triggers match the current filters.'}
         </div>
-        <div className="mt-3 grid gap-3">
-          {sortedTriggers.map((trigger) => (
-            <ColumnBrowserItem
-              caption={`Next run ${formatTimestamp(trigger.nextRunAt)}`}
+      ) : (
+        <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
+          {filteredTriggers.map((trigger) => (
+            <TriggerRow
               isSelected={trigger.id === effectiveTriggerId}
               key={trigger.id}
-              meta={<StatusPill tone={getTriggerTone(trigger.status)}>{trigger.status}</StatusPill>}
-              onClick={() => onSelect(trigger.id)}
-              subtitle={`${formatTriggerTarget(trigger, registry)} · ${getTriggerTypeLabel(
-                trigger,
-              )}`}
-              title={trigger.name ?? trigger.type}
-            >
-              {trigger.description ?? 'Ready to fire or schedule.'}
-            </ColumnBrowserItem>
+              onSelect={onSelect}
+              registry={registry}
+              trigger={trigger}
+            />
           ))}
-          {sortedTriggers.length === 0 ? (
-            <div className="py-8 text-center text-sm text-[color:var(--tx3)]">
-              No triggers yet.
-            </div>
-          ) : null}
         </div>
-      </div>
-
-      <div>
-        <div className={sectionTitle}>Scheduled queue</div>
-        <div className="mt-3 grid gap-2">
-          {scheduledTriggers.map((trigger) => (
-            <button
-              className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] px-3 py-2 text-left transition hover:bg-[var(--scrim)]"
-              key={trigger.id}
-              onClick={() => onSelect(trigger.id)}
-              type="button"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold text-[var(--tx)]">
-                    {trigger.name ?? trigger.type}
-                  </div>
-                  <div className="mt-1 text-xs text-[color:var(--tx3)]">
-                    {getTriggerTypeLabel(trigger)} · {formatTimestamp(trigger.nextRunAt)}
-                  </div>
-                </div>
-                <StatusPill tone={getTriggerTone(trigger.status)}>
-                  {trigger.status}
-                </StatusPill>
-              </div>
-            </button>
-          ))}
-          {scheduledTriggers.length === 0 ? (
-            <div className="py-6 text-center text-sm text-[color:var(--tx3)]">
-              No scheduled triggers in queue.
-            </div>
-          ) : null}
-        </div>
-      </div>
+      )}
     </div>
   </ColumnBrowserColumn>
 )

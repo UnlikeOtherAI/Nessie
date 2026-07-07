@@ -15,6 +15,7 @@ import type {
   WorkflowDraftConnection,
   WorkflowHoveredHandle,
 } from '../../../lib/workflow-designer/types'
+import type { WorkflowStepRunRecord } from '../../../lib/api-client'
 import { WorkflowCanvasNode } from './WorkflowCanvasNode'
 
 type WorkflowCanvasProps = {
@@ -28,6 +29,7 @@ type WorkflowCanvasProps = {
   invalidDraftTarget: WorkflowHoveredHandle | null
   nodes: WorkflowCanvasNodeType[]
   selectedNodeId: string | null
+  stepRunsByNodeId: Map<string, WorkflowStepRunRecord>
   dragStateRef: MutableRefObject<{
     offsetX: number
     offsetY: number
@@ -58,6 +60,7 @@ export const WorkflowCanvas = ({
   invalidDraftTarget,
   nodes,
   selectedNodeId,
+  stepRunsByNodeId,
   dragStateRef,
   onClearSelection,
   onNodePointerDown,
@@ -183,6 +186,7 @@ export const WorkflowCanvas = ({
           hoveredHandle={hoveredHandle}
           invalidDraftTarget={invalidDraftTarget}
           selectedNodeId={selectedNodeId}
+          stepRun={stepRunsByNodeId.get(node.id)}
           isDragging={dragStateRef.current?.nodeId === node.id}
           onNodePointerDown={onNodePointerDown}
           onConnectionStart={onConnectionStart}

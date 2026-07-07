@@ -12,26 +12,53 @@ import { useAgentDesigner } from '../components/features/agents/designer/useAgen
 import type { AgentFormState } from '../components/features/agents/designer/useAgentDesigner'
 import { useAgents, useCreateAgent, useUpdateAgent } from '../facades/agents/hooks'
 import { useDesignerChat } from '../facades/designer/hooks'
-
-const DEFAULT_TOOLS: Record<string, boolean> = {
-  'bash': false,
-  'file-read': false,
-  'file-write': false,
-  'glob': false,
-  'grep': false,
-  'web-search': false,
-}
+import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/tool-catalog'
+import type { AgentRecord } from '../lib/api-client'
+import { useAuthSession } from '../providers/AuthSessionProvider'
 
 export const AgentDesignerPage = () => {
+  const { agentId } = useParams<{ agentId?: string }>()
+  const agentsQuery = useAgents()
+  const agents = agentsQuery.data ?? []
+  const editingAgent = agentId ? agents.find((a) => a.id === agentId) : undefined
+  const isEditMode = Boolean(agentId)
+
+  // The reducer inside the designer initialises once, so wait for the agent
+  // record before mounting it in edit mode (deep links load agents async) and
+  // remount whenever the target agent changes.
+  if (isEditMode && !editingAgent) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
+        {agentsQuery.isLoading ? 'Loading agent…' : 'Agent not found.'}
+      </div>
+    )
+  }
+
+  return (
+    <AgentDesignerContent
+      agents={agents}
+      editingAgent={editingAgent}
+      key={agentId ?? 'new'}
+    />
+  )
+}
+
+type AgentDesignerContentProps = {
+  agents: AgentRecord[]
+  editingAgent?: AgentRecord
+}
+
+const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProps) => {
   const location = useLocation()
   const navigate = useNavigate()
-  const { agentId } = useParams<{ agentId?: string }>()
   const [searchParams] = useSearchParams()
+  const { me } = useAuthSession()
+  const isOwner = me?.user.roleIds.includes('owner') ?? false
   const parentId = searchParams.get('parentId') ?? undefined
-  const { data: agents = [] } = useAgents()
-  const editingAgent = agentId ? agents.find((a) => a.id === agentId) : undefined
   const parentAgent = parentId ? agents.find((a) => a.id === parentId) : undefined
-  const isEditMode = Boolean(agentId)
+  const isEditMode = Boolean(editingAgent)
+
+  const toolCatalog = useDesignerToolCatalog(isOwner)
 
   const initialState = useMemo<Partial<AgentFormState> | undefined>(() => {
     if (!editingAgent) return undefined
@@ -41,12 +68,12 @@ export const AgentDesignerPage = () => {
       provider: editingAgent.provider ?? 'openai',
       model: editingAgent.model ?? 'gpt-5',
       systemPrompt: editingAgent.systemPrompt ?? '',
-      tools: DEFAULT_TOOLS,
+      tools: editingAgent.toolPolicy ?? {},
     }
   }, [editingAgent])
 
   const { actions, state } = useAgentDesigner(initialState)
-  const chat = useDesignerChat(state, actions)
+  const chat = useDesignerChat(state, actions, toolCatalog.options)
   const createAgent = useCreateAgent()
   const updateAgent = useUpdateAgent()
 
@@ -87,19 +114,17 @@ export const AgentDesignerPage = () => {
   const handleSave = async () => {
     if (!state.name.trim()) return
 
-    const enabledTools = Object.fromEntries(
-      Object.entries(state.tools).filter(([, v]) => v),
-    )
+    const toolPolicy = buildToolPolicy(toolCatalog.options, state.tools)
 
-    if (isEditMode && agentId) {
+    if (isEditMode && editingAgent) {
       await updateAgent.mutateAsync({
-        agentId,
+        agentId: editingAgent.id,
         name: state.name.trim(),
         role: state.role.trim() || 'assistant',
         systemPrompt: state.systemPrompt.trim() || undefined,
         provider: state.provider || undefined,
         model: state.model || undefined,
-        toolPolicy: Object.keys(enabledTools).length > 0 ? state.tools : undefined,
+        toolPolicy,
       })
     } else {
       await createAgent.mutateAsync({
@@ -108,7 +133,7 @@ export const AgentDesignerPage = () => {
         systemPrompt: state.systemPrompt.trim() || undefined,
         provider: state.provider || undefined,
         model: state.model || undefined,
-        toolPolicy: Object.keys(enabledTools).length > 0 ? state.tools : undefined,
+        toolPolicy: Object.keys(toolPolicy).length > 0 ? toolPolicy : undefined,
         parentAgentId: parentId,
       })
     }
@@ -172,7 +197,13 @@ export const AgentDesignerPage = () => {
         <div className="min-h-0 flex-1 overflow-y-auto border-b border-[color:var(--sep)] p-5 lg:flex-[7] lg:border-b-0 lg:border-r">
           <div className="grid gap-5">
             {editingAgent ? <AgentAvatarPanel agent={editingAgent} /> : null}
-            <AgentDesignerForm actions={actions} parentAgentName={parentAgent?.name} state={state} />
+            <AgentDesignerForm
+              actions={actions}
+              parentAgentName={parentAgent?.name}
+              state={state}
+              toolGroups={toolCatalog.groups}
+              toolsLoading={toolCatalog.isLoading}
+            />
           </div>
         </div>
 

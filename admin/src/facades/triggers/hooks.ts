@@ -35,16 +35,6 @@ export const useTriggerHistory = (triggerId?: string, limit = 10) => {
   })
 }
 
-export const useUpcomingTriggers = (enabled = true) => {
-  const apiClient = useApiClient()
-
-  return useQuery<AgentTriggerRecord[]>({
-    queryKey: ['triggers', 'upcoming'],
-    queryFn: () => apiClient.get('/api/triggers/scheduled?limit=50'),
-    enabled,
-  })
-}
-
 export const useCreateAgentTrigger = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
@@ -130,6 +120,19 @@ export const useUpdateTrigger = () => {
       void queryClient.invalidateQueries({ queryKey: ['triggers'] })
       void queryClient.invalidateQueries({ queryKey: ['agents'] })
       void queryClient.invalidateQueries({ queryKey: ['workflow-installations'] })
+    },
+  })
+}
+
+export const useDeleteTrigger = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (triggerId: string) => apiClient.delete(`/api/triggers/${triggerId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
     },
   })
 }

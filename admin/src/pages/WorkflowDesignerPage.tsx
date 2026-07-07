@@ -8,6 +8,7 @@ import type { ToolbarMenuItem } from '../lib/workflow-designer/types'
 import { useWorkflowCanvasInteractions } from './workflow-designer/useWorkflowCanvasInteractions'
 import { useWorkflowDesignerState } from './workflow-designer/useWorkflowDesignerState'
 import { useWorkflowGraphIo } from './workflow-designer/useWorkflowGraphIO'
+import { useWorkflowTestRun } from './workflow-designer/useWorkflowTestRun'
 
 const normalizeReturnTo = (pathname: string, search: string, hash: string) =>
   `${pathname}${search}${hash}`
@@ -53,6 +54,11 @@ export const WorkflowDesignerPage = () => {
     setWorkflowName: state.setWorkflowName,
   })
 
+  const testRun = useWorkflowTestRun({
+    persistWorkflow: graphIo.persistWorkflow,
+    workflowTemplateId: graphIo.workflowTemplateId,
+  })
+
   const handleMenuItemClick = (item: ToolbarMenuItem) => {
     canvas.setOpenMenu(null)
 
@@ -77,6 +83,7 @@ export const WorkflowDesignerPage = () => {
         workflowName={state.workflowName}
         onWorkflowNameChange={state.setWorkflowName}
         isWorkflowTemplateLoading={graphIo.isWorkflowTemplateLoading}
+        saveError={graphIo.saveError ?? testRun.error}
         saveMessage={graphIo.saveMessage}
         workflowTemplateId={graphIo.workflowTemplateId}
         autoSaveDraft={graphIo.autoSaveDraft}
@@ -87,8 +94,12 @@ export const WorkflowDesignerPage = () => {
         isSavingWorkflow={graphIo.isSavingWorkflow}
         onBack={graphIo.handleBack}
         onSave={() => {
-          void graphIo.persistWorkflow('manual')
+          void graphIo.persistWorkflow('manual').catch(() => undefined)
         }}
+        onTestRun={() => {
+          void testRun.startTestRun()
+        }}
+        testRunState={testRun.state}
       />
 
       <WorkflowToolbar
@@ -110,6 +121,7 @@ export const WorkflowDesignerPage = () => {
           invalidDraftTarget={canvas.invalidDraftTarget}
           nodes={state.nodes}
           selectedNodeId={state.selectedNodeId}
+          stepRunsByNodeId={testRun.stepRunsByNodeId}
           dragStateRef={canvas.dragStateRef}
           onClearSelection={() => state.setSelectedNodeId(null)}
           onNodePointerDown={canvas.handleNodePointerDown}
@@ -118,14 +130,22 @@ export const WorkflowDesignerPage = () => {
         />
 
         <WorkflowNodeInspector
+          channels={state.channels}
           selectedNode={state.selectedNode}
           selectedNodeSource={state.selectedNodeSource}
           selectedNodeSourceOptions={state.selectedNodeSourceOptions}
           selectedNodeConfigDraft={state.selectedNodeConfigDraft}
           selectedNodeConfigError={state.selectedNodeConfigError}
+          selectedNodeStepRun={
+            state.selectedNodeId
+              ? testRun.stepRunsByNodeId.get(state.selectedNodeId)
+              : undefined
+          }
+          selectedNodeUpstreamSteps={state.selectedNodeUpstreamSteps}
           onLabelChange={state.handleSelectedNodeLabelChange}
           onSourceChange={state.handleSelectedNodeSourceChange}
           onConfigChange={state.handleSelectedNodeConfigChange}
+          onConfigPatch={state.handleSelectedNodeConfigPatch}
         />
       </div>
     </div>

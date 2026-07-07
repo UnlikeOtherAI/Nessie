@@ -5,6 +5,7 @@ import type {
 } from '../../components/features/agents/designer/useAgentDesigner'
 import { getBaseUrl } from '../../lib/api-client'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import type { DesignerToolOption } from './tool-catalog'
 
 export type ChatMessage = {
   content: string
@@ -81,6 +82,7 @@ const scrollSystemPromptToBottom = (): void => {
 export const useDesignerChat = (
   formState: AgentFormState,
   actions: AgentDesignerActions,
+  availableTools: DesignerToolOption[] = [],
 ) => {
   const { token } = useAuthSession()
   const [state, setState] = useState<DesignerChatState>({
@@ -137,6 +139,12 @@ export const useDesignerChat = (
               model: formState.model,
               tools: formState.tools,
             },
+            availableTools: availableTools.map((tool) => ({
+              id: tool.key,
+              label: tool.label,
+              description: tool.description,
+              kind: tool.kind,
+            })),
           }),
           signal: controller.signal,
         })
@@ -208,7 +216,7 @@ export const useDesignerChat = (
         abortRef.current = null
       }
     },
-    [state.messages, state.streaming, formState, actions, token],
+    [state.messages, state.streaming, formState, actions, token, availableTools],
   )
 
   const stop = useCallback(() => {
