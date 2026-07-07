@@ -3,8 +3,13 @@ import {
   createNativeKnowledgeProvider,
   htmlToPlainText,
   loadSpaceViewer,
+  mapPage,
+  pageInclude,
   searchNativePagesHybrid,
+  type KnowledgePageRecord,
   type KnowledgePageTreeNode,
+  type KnowledgeSpaceRecord,
+  type SpaceViewer,
 } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import { KNOWLEDGE_EMBEDDING_MODEL } from '@nessie/schemas'
@@ -45,7 +50,7 @@ const resolveQueryEmbedding = async (
 
 export const runKbSearchTool = async (
   context: BuiltinToolRuntimeContext,
-  input: { query: string; spaceId?: string; projectId?: string; limit?: unknown },
+  input: { query: string; spaceId?: string; projectId?: string; taskId?: string; limit?: unknown },
 ): Promise<ToolExecutionResult> => {
   const query = input.query.trim()
   if (!query) {
@@ -68,6 +73,7 @@ export const runKbSearchTool = async (
     viewer,
     projectId: input.projectId,
     spaceId: input.spaceId,
+    taskId: input.taskId,
     limit,
   })
 
@@ -183,9 +189,54 @@ const renderPageTree = (nodes: KnowledgePageTreeNode[]): string => {
   return lines.join('\n')
 }
 
+// Flat listing (no tree — a ticket's documents sit under one folder, not a
+// space-wide hierarchy) of the pages bound to a ticket. Access is enforced
+// per distinct space the returned pages belong to (cached, since in practice
+// they all share the ticket's one "Project Documents" space) rather than by
+// loading a SpaceViewer-filtered tree, because the KnowledgeProvider has no
+// taskId-scoped list method — this queries knowledgePage directly and reuses
+// the shared mapPage/pageInclude shape.
+const runKbListByTaskTool = async (
+  context: BuiltinToolRuntimeContext,
+  organizationId: string,
+  viewer: SpaceViewer,
+  taskId: string,
+): Promise<ToolExecutionResult> => {
+  const provider = createNativeKnowledgeProvider(context.prisma)
+  const rows = await context.prisma.knowledgePage.findMany({
+    where: { taskId, organizationId, deletedAt: null, status: { not: 'archived' } },
+    include: pageInclude,
+    orderBy: [{ createdAt: 'asc' }],
+  })
+  const pages = rows.map((row) => mapPage(row))
+
+  const spaceCache = new Map<string, KnowledgeSpaceRecord | null>()
+  const visible: KnowledgePageRecord[] = []
+  for (const page of pages) {
+    let space = spaceCache.get(page.spaceId)
+    if (space === undefined) {
+      space = await provider.getSpace(organizationId, page.spaceId)
+      spaceCache.set(page.spaceId, space)
+    }
+    if (space && canReadSpace(space, viewer)) visible.push(page)
+  }
+
+  if (visible.length === 0) {
+    return {
+      inputSummary: `taskId=${taskId}`,
+      outputPreview: 'No accessible documents are filed under this ticket.',
+      toolName: 'kb_list',
+    }
+  }
+  const lines = visible.map(
+    (page, index) => `${index + 1}. ${page.title} (pageId=${page.id}, kind=${page.kind})`,
+  )
+  return { inputSummary: `taskId=${taskId}`, outputPreview: lines.join('\n'), toolName: 'kb_list' }
+}
+
 export const runKbListTool = async (
   context: BuiltinToolRuntimeContext,
-  input: { spaceId?: string },
+  input: { spaceId?: string; taskId?: string },
 ): Promise<ToolExecutionResult> => {
   const organizationId = String(context.channel.organizationId)
   const provider = createNativeKnowledgeProvider(context.prisma)
@@ -194,6 +245,10 @@ export const runKbListTool = async (
     organizationId,
     buildSpaceViewerPrincipal(context),
   )
+
+  if (input.taskId) {
+    return runKbListByTaskTool(context, organizationId, viewer, input.taskId)
+  }
 
   if (!input.spaceId) {
     const result = await provider.listSpaces({ organizationId, viewer, limit: MAX_LIST_SPACES })

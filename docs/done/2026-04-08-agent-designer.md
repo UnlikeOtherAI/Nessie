@@ -1,5 +1,10 @@
 # Agent Designer Implementation Plan
 
+> **Status: done / partially superseded (2026-07-06).** The designer shipped as
+> planned, but the hardcoded tool list (`bash`, `file-read`, …) described below
+> was replaced by the live org tool catalog — see
+> [docs/plans/2026-07-06-tools-triggers-agent-designer-redesign.md](../plans/2026-07-06-tools-triggers-agent-designer-redesign.md).
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace the simple "create agent" dialog with a full Agent Designer page featuring an AI-assisted chat that can control every form field in real-time with streaming token updates.

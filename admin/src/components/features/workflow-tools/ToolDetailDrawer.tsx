@@ -4,18 +4,18 @@ import { ToolTransportPill } from '../../shared/ToolTransportPill'
 import type { McpToolRegistryRecord } from '../../../facades/tool-grants/hooks'
 
 /**
- * Read-only per-tool config drawer (plan §7 surface 2). Surfaces the JSON
- * schemas + transport config so admins can audit what they're about to grant
- * without having to leave the page.
+ * Read-only per-tool config drawer. Surfaces the JSON schemas + transport
+ * config (collapsed by default) so admins can audit what they're about to
+ * grant without leaving the page.
  */
 
 type ToolDetailDrawerProps = {
   tool: McpToolRegistryRecord
 }
 
-const sectionTitleClass = [
-  'text-[11px] font-semibold uppercase tracking-[0.18em]',
-  'text-[color:var(--tx3)]',
+const summaryClass = [
+  'cursor-pointer select-none text-[11px] font-semibold uppercase',
+  'tracking-[0.18em] text-[color:var(--tx3)] hover:text-[color:var(--tx2)]',
 ].join(' ')
 
 const codeBlockClass = [
@@ -24,6 +24,21 @@ const codeBlockClass = [
 ].join(' ')
 
 const renderJson = (value: unknown) => JSON.stringify(value, null, 2)
+
+const JsonSection = ({
+  defaultOpen = false,
+  title,
+  value,
+}: {
+  defaultOpen?: boolean
+  title: string
+  value: unknown
+}) => (
+  <details open={defaultOpen}>
+    <summary className={summaryClass}>{title}</summary>
+    <pre className={codeBlockClass}>{renderJson(value)}</pre>
+  </details>
+)
 
 export const ToolDetailDrawer = ({ tool }: ToolDetailDrawerProps) => (
   <div className="grid gap-4">
@@ -44,6 +59,10 @@ export const ToolDetailDrawer = ({ tool }: ToolDetailDrawerProps) => (
         <dd className="text-[var(--tx)]">{tool.scopeKey}</dd>
         <dt className="text-[color:var(--tx3)]">Version</dt>
         <dd className="text-[var(--tx)]">{tool.version}</dd>
+        <dt className="text-[color:var(--tx3)]">Enabled</dt>
+        <dd className="text-[var(--tx)]">{tool.enabled ? 'Yes' : 'No'}</dd>
+        <dt className="text-[color:var(--tx3)]">Tags</dt>
+        <dd className="text-[var(--tx)]">{tool.tags.length > 0 ? tool.tags.join(', ') : '—'}</dd>
         <dt className="text-[color:var(--tx3)]">Bundle</dt>
         <dd className="text-[var(--tx)]">{tool.bundleId ?? '—'}</dd>
         <dt className="text-[color:var(--tx3)]">MCP instance</dt>
@@ -51,21 +70,12 @@ export const ToolDetailDrawer = ({ tool }: ToolDetailDrawerProps) => (
       </dl>
     </div>
 
-    <div>
-      <div className={sectionTitleClass}>Transport config</div>
-      <pre className={codeBlockClass}>{renderJson(tool.transportConfig)}</pre>
+    <div className="grid gap-3">
+      <JsonSection title="Input schema" value={tool.inputSchema} />
+      {tool.outputSchema ? (
+        <JsonSection title="Output schema" value={tool.outputSchema} />
+      ) : null}
+      <JsonSection title="Transport config" value={tool.transportConfig} />
     </div>
-
-    <div>
-      <div className={sectionTitleClass}>Input schema</div>
-      <pre className={codeBlockClass}>{renderJson(tool.inputSchema)}</pre>
-    </div>
-
-    {tool.outputSchema ? (
-      <div>
-        <div className={sectionTitleClass}>Output schema</div>
-        <pre className={codeBlockClass}>{renderJson(tool.outputSchema)}</pre>
-      </div>
-    ) : null}
   </div>
 )

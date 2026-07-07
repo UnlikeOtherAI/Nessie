@@ -107,8 +107,8 @@ const DESIGNER_TOOLS = [
           toolId: {
             type: 'string',
             description:
-              'Tool identifier: bash, file-read, file-write,'
-              + ' glob, grep, web-search',
+              'Tool identifier — must be one of the ids in the'
+              + ' "Available tools" list from the system prompt',
           },
           enabled: { type: 'boolean' },
         },
@@ -165,8 +165,25 @@ const DESIGNER_TOOLS = [
 const DESIGNER_MODEL = 'gpt-5-mini'
 const MAX_TOOL_ROUNDS = 5
 
+const buildAvailableToolLines = (
+  availableTools: DesignerChatInput['availableTools'],
+  formStateTools: Record<string, boolean>,
+): string[] => {
+  if (availableTools && availableTools.length > 0) {
+    return availableTools.map((tool) => {
+      const kind = tool.kind === 'mcp' ? ' [connector]' : ''
+      const description = tool.description ? ` — ${tool.description.slice(0, 120)}` : ''
+      return `- ${tool.id}${kind}: ${tool.label}${description}`
+    })
+  }
+
+  const knownIds = Object.keys(formStateTools)
+  return knownIds.length > 0 ? knownIds.map((id) => `- ${id}`) : ['(none registered)']
+}
+
 const buildSystemPrompt = (
   formState: DesignerChatInput['formState'],
+  availableTools: DesignerChatInput['availableTools'],
 ): string => {
   const enabledTools = Object.entries(formState.tools)
     .filter(([, v]) => v)
@@ -189,7 +206,8 @@ const buildSystemPrompt = (
     `- Model: ${formState.model}`,
     `- Tools enabled: ${enabledTools.length > 0 ? enabledTools.join(', ') : 'none'}`,
     '',
-    'Grantable agent tools: bash, file-read, file-write, glob, grep, web-search',
+    'Available tools (use the exact id with toggle_tool / batch_toggle_tools):',
+    ...buildAvailableToolLines(availableTools, formState.tools),
     '',
     '# Your principles',
     '',
@@ -489,7 +507,7 @@ export const streamDesignerChat = async (
   reply.raw.socket?.setNoDelay(true)
 
   const messages: OpenAIMessage[] = [
-    { role: 'system', content: buildSystemPrompt(input.formState) },
+    { role: 'system', content: buildSystemPrompt(input.formState, input.availableTools) },
     ...input.messages.map((m) => ({
       role: m.role as 'assistant' | 'user',
       content: m.content,

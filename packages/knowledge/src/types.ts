@@ -84,6 +84,10 @@ export type KnowledgePageRecord = KnowledgeScopeInput & {
   position: number
   status: KnowledgePageStatus
   labels: string[]
+  // Ticket binding: set when this page is a ticket-bound document (or the
+  // ticket's document folder). Loose envelope column — see the schema comment
+  // on KnowledgePage.taskId.
+  taskId: string | null
   latestVersion: KnowledgePageVersionRecord | null
   publishedVersion: KnowledgePageVersionRecord | null
   publishedVersionId: string | null
@@ -143,6 +147,8 @@ export type SearchPagesInput = {
   projectId?: string
   query?: string
   spaceId?: string
+  // When set, results are restricted to pages bound to this ticket.
+  taskId?: string
   // When set (and not a bypass viewer), results are pre-filtered in SQL to
   // spaces the viewer is allowed to read (mirrors canReadSpace).
   viewer?: SpaceViewer
@@ -155,6 +161,9 @@ export type HybridSearchPagesInput = {
   viewer?: SpaceViewer
   projectId?: string
   spaceId?: string
+  // When set, results are restricted to chunks whose page is bound to this
+  // ticket.
+  taskId?: string
   limit?: number
 }
 
@@ -196,6 +205,8 @@ export type CreatePageInput = KnowledgeScopeInput & {
   spaceId: string
   summary?: string | null
   title: string
+  // Binds the created page to a ticket (Task.id). Loose envelope column, no FK.
+  taskId?: string | null
 }
 
 // Add a new version to a file node, backed by a freshly stored attachment.

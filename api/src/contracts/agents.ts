@@ -28,6 +28,7 @@ export const AgentRecordSchema = z.object({
   parentAgentId: AgentIdSchema.nullish(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  toolPolicy: z.record(z.string(), z.boolean()).optional(),
   avatarAttachmentId: z.string().uuid().nullish(),
   routingProfileId: z.string().uuid().optional(),
   createdAt: TimestampSchema,

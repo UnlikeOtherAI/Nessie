@@ -23,6 +23,10 @@ export const KB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
         type: 'string',
         description: 'Optional project id to scope the search to',
       },
+      taskId: {
+        type: 'string',
+        description: 'Optional ticket (task) id — restricts results to documents bound to this ticket',
+      },
       limit: {
         type: 'integer',
         description: 'Maximum number of hits to return (1-8, default 5)',
@@ -53,7 +57,8 @@ export const KB_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_list',
   label: 'KB List',
   description:
-    'List knowledge spaces you can access, or the page tree of one space.',
+    'List knowledge spaces you can access, the page tree of one space, or the ' +
+    'documents filed under a ticket.',
   parameters: {
     type: 'object',
     properties: {
@@ -61,6 +66,11 @@ export const KB_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
         type: 'string',
         description:
           'When set, list the page tree of this space; omit to list spaces instead',
+      },
+      taskId: {
+        type: 'string',
+        description:
+          'When set, list the documents bound to this ticket (task) instead of a space tree',
       },
     },
   },
@@ -102,6 +112,12 @@ export const KB_DRAFT_WRITE_TOOL_DEFINITION: BuiltinToolDefinition = {
       parentPageId: {
         type: 'string',
         description: 'Optional parent page id to nest this page under (new pages only)',
+      },
+      taskId: {
+        type: 'string',
+        description:
+          'Optional ticket (task) id to bind a new page to (new pages only — ignored when ' +
+          'adding a version to an existing page via pageId)',
       },
       changeComment: {
         type: 'string',

@@ -150,6 +150,45 @@ test('searchNativePagesHybrid issues both channels when queryEmbedding is presen
   assert.match(queries[1] ?? '', /embedding <=>/)
 })
 
+test('searchNativePagesHybrid filters chunks to a ticket when taskId is supplied', async () => {
+  const queries: string[] = []
+  const prisma = {
+    $queryRaw: async (query: { sql: string }) => {
+      queries.push(query.sql)
+      return []
+    },
+    knowledgePage: { findMany: async () => [] },
+  } as unknown as PrismaClient
+
+  await searchNativePagesHybrid(prisma, {
+    organizationId,
+    query: 'runbook',
+    queryEmbedding: null,
+    taskId: '00000000-0000-4000-8000-000000000099',
+  })
+
+  assert.match(queries[0] ?? '', /AND c\.task_id = /)
+})
+
+test('searchNativePagesHybrid omits the taskId filter when not supplied', async () => {
+  const queries: string[] = []
+  const prisma = {
+    $queryRaw: async (query: { sql: string }) => {
+      queries.push(query.sql)
+      return []
+    },
+    knowledgePage: { findMany: async () => [] },
+  } as unknown as PrismaClient
+
+  await searchNativePagesHybrid(prisma, {
+    organizationId,
+    query: 'runbook',
+    queryEmbedding: null,
+  })
+
+  assert.doesNotMatch(queries[0] ?? '', /c\.task_id/)
+})
+
 const agentScopes = (overrides: Partial<SpaceViewerAgentScopes> = {}): SpaceViewerAgentScopes => ({
   id: '00000000-0000-4000-8000-000000000020',
   orgBound: true,

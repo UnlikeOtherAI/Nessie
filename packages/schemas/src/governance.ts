@@ -244,6 +244,7 @@ export const AuditActionSchema = z.enum([
   'kb.page.restored',
   'kb.page.archived',
   'kb.librarian.ensured',
+  'kb.search.summarized',
   'kb.annotation.created',
   'kb.annotation.replied',
   'kb.annotation.resolved',

@@ -43,15 +43,23 @@ export const ColumnBrowserViewport = ({
         className="flex h-full transition-transform duration-300 ease-out"
         style={{ transform: `translateX(${translateX}%)` }}
       >
-        {normalizedColumns.map((column, index) => (
-          <div
-            className="h-full w-full flex-shrink-0"
-            key={index}
-            style={{ width: `${100 / visibleColumns}%` }}
-          >
-            {column}
-          </div>
-        ))}
+        {normalizedColumns.map((column, index) => {
+          // The last column absorbs any unused slots so a two-column layout
+          // does not leave a dead third of the viewport on desktop.
+          const slots =
+            index === totalColumns - 1
+              ? Math.max(1, visibleColumns - (totalColumns - 1))
+              : 1
+          return (
+            <div
+              className="h-full w-full flex-shrink-0"
+              key={index}
+              style={{ width: `${(100 / visibleColumns) * slots}%` }}
+            >
+              {column}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

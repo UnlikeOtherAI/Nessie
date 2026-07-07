@@ -61,6 +61,9 @@ export const runKbDraftWriteTool = async (
     summary?: string
     labels?: string[]
     parentPageId?: string
+    // Binds a newly created page to a ticket. Ignored when pageId is set (an
+    // existing page's taskId is set once at creation, not editable here).
+    taskId?: string
     changeComment?: string
   },
 ): Promise<ToolExecutionResult> => {
@@ -134,6 +137,7 @@ export const runKbDraftWriteTool = async (
     summary: input.summary ?? null,
     labels: input.labels,
     parentPageId: input.parentPageId,
+    taskId: input.taskId ?? null,
     changeComment: input.changeComment ?? null,
     authorId: author.authorId,
     authorType: author.authorType,

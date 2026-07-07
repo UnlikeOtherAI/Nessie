@@ -8,6 +8,7 @@ export type ChunkablePage = {
   privateToAgentId: string | null
   projectId: string
   sensitivityTier: string
+  taskId: string | null
   teamId: string | null
   threadId: string | null
   userId: string | null
@@ -60,6 +61,7 @@ export const replaceKnowledgePageVersionChunks = async (
       visibility,
       sensitivity_tier,
       private_to_agent_id,
+      task_id,
       created_at,
       updated_at
     )
@@ -81,6 +83,7 @@ export const replaceKnowledgePageVersionChunks = async (
       ${input.page.visibility}::"ThoughtVisibility",
       ${input.page.sensitivityTier}::"SensitivityTier",
       ${input.page.privateToAgentId}::uuid,
+      ${input.page.taskId}::uuid,
       now(),
       now()
     )`))}

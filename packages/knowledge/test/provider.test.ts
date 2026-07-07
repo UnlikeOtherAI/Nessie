@@ -59,6 +59,7 @@ const pageRow = (
     organizationId?: string
     parentPageId?: string | null
     status?: 'draft' | 'published' | 'archived'
+    taskId?: string | null
   } = {},
 ) => ({
   id: input.id ?? pageId,
@@ -71,6 +72,7 @@ const pageRow = (
   status: input.status ?? 'draft',
   publishedVersionId: null,
   privateToAgentId: null,
+  taskId: input.taskId ?? null,
   organizationId: input.organizationId ?? organizationId,
   projectId,
   teamId: null,
@@ -291,6 +293,132 @@ test('native update retries append-only version creation after a version-number 
   // One raw call: the chunk INSERT. (The former DELETE was replaced by the
   // idempotent existence probe, which goes through $queryRaw instead.)
   assert.equal(rawChunkIndexCalls.length, 1)
+})
+
+test('native createPage persists the taskId envelope column and returns it on the mapped record', async () => {
+  const createCalls: Array<Record<string, unknown>> = []
+  const taskId = '00000000-0000-4000-8000-000000000050'
+  const tx = {
+    knowledgeSpace: {
+      findFirst: async () => ({
+        id: spaceId,
+        organizationId,
+        projectId,
+        teamId: null,
+        channelId: null,
+        threadId: null,
+        userId: null,
+        visibility: 'project',
+        sensitivityTier: 'normal',
+        privateToAgentId: null,
+        deletedAt: null,
+      }),
+    },
+    knowledgePage: {
+      count: async () => 0,
+      create: async (args: QueryArgs) => {
+        createCalls.push(args.data ?? {})
+        return { id: pageId }
+      },
+      findFirst: async (args: QueryArgs) => (args.include ? pageRow({ taskId }) : null),
+    },
+    knowledgePageVersion: {
+      create: async () => ({
+        id: 'version-1',
+        pageId,
+        versionNumber: 1,
+        body: null,
+        bodyRef: null,
+        attachmentId: null,
+        authorType: 'user',
+        authorId: 'user-1',
+        changeComment: null,
+        createdAt: now,
+      }),
+    },
+    $executeRaw: async () => 0,
+    $queryRaw: async () => [],
+  }
+  const prisma = {
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  const created = await provider.createPage({
+    organizationId,
+    projectId,
+    spaceId,
+    title: 'Runbook',
+    authorId: 'user-1',
+    authorType: 'user',
+    createdBy: 'user-1',
+    taskId,
+  })
+
+  assert.equal(createCalls[0]?.['taskId'], taskId)
+  assert.equal(created.taskId, taskId)
+})
+
+test('native createPage defaults taskId to null when not supplied', async () => {
+  const createCalls: Array<Record<string, unknown>> = []
+  const tx = {
+    knowledgeSpace: {
+      findFirst: async () => ({
+        id: spaceId,
+        organizationId,
+        projectId,
+        teamId: null,
+        channelId: null,
+        threadId: null,
+        userId: null,
+        visibility: 'project',
+        sensitivityTier: 'normal',
+        privateToAgentId: null,
+        deletedAt: null,
+      }),
+    },
+    knowledgePage: {
+      count: async () => 0,
+      create: async (args: QueryArgs) => {
+        createCalls.push(args.data ?? {})
+        return { id: pageId }
+      },
+      findFirst: async (args: QueryArgs) => (args.include ? pageRow() : null),
+    },
+    knowledgePageVersion: {
+      create: async () => ({
+        id: 'version-1',
+        pageId,
+        versionNumber: 1,
+        body: null,
+        bodyRef: null,
+        attachmentId: null,
+        authorType: 'user',
+        authorId: 'user-1',
+        changeComment: null,
+        createdAt: now,
+      }),
+    },
+    $executeRaw: async () => 0,
+    $queryRaw: async () => [],
+  }
+  const prisma = {
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  const created = await provider.createPage({
+    organizationId,
+    projectId,
+    spaceId,
+    title: 'Runbook',
+    authorId: 'user-1',
+    authorType: 'user',
+    createdBy: 'user-1',
+  })
+
+  assert.equal(createCalls[0]?.['taskId'], null)
+  assert.equal(created.taskId, null)
 })
 
 const agentA = '00000000-0000-4000-8000-000000000101'

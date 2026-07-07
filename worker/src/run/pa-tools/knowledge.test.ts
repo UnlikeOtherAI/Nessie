@@ -17,6 +17,7 @@ type PageFixtureOverrides = Partial<{
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
   privateToAgentId: string | null
   body: string
+  taskId: string | null
 }>
 
 const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
@@ -29,6 +30,7 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
   parentPageId: null,
   position: 0,
   status: 'published',
+  taskId: overrides.taskId ?? null,
   labels: [],
   versions: [
     {
@@ -95,6 +97,7 @@ type FakePrismaOptions = {
   space?: ReturnType<typeof buildSpaceRow> | null
   agentBindings?: Array<{ channelId: string; channel: { teamId: string; projectId: string } }>
   agentSpaceMemberships?: Array<{ spaceId: string }>
+  onQueryRaw?: (query: { sql: string }) => void
 }
 
 const buildFakePrisma = (options: FakePrismaOptions = {}) => {
@@ -113,7 +116,10 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     knowledgeSpaceMember: {
       findMany: async () => options.agentSpaceMemberships ?? [],
     },
-    $queryRaw: async () => [],
+    $queryRaw: async (query: { sql: string }) => {
+      options.onQueryRaw?.(query)
+      return []
+    },
   }
   return prisma as unknown as BuiltinToolRuntimeContext['prisma']
 }
@@ -221,6 +227,53 @@ test('kb_page_read returns the page body when the agent is allowed to read it', 
 
   assert.match(result.outputPreview, /Title: Runbook/)
   assert.match(result.outputPreview, /Restart the service, then check logs\./)
+})
+
+test('kb_search passes taskId through to the hybrid search as a chunk filter', async () => {
+  const queries: Array<{ sql: string }> = []
+  const prisma = buildFakePrisma({ onQueryRaw: (query) => queries.push(query) })
+  const context = makeContext(prisma)
+
+  await runKbSearchTool(context, { query: 'deployment runbook', taskId: 'task-1' })
+
+  assert.match(queries[0]?.sql ?? '', /AND c\.task_id = /)
+})
+
+test('kb_search omits the taskId filter when not supplied', async () => {
+  const queries: Array<{ sql: string }> = []
+  const prisma = buildFakePrisma({ onQueryRaw: (query) => queries.push(query) })
+  const context = makeContext(prisma)
+
+  await runKbSearchTool(context, { query: 'deployment runbook' })
+
+  assert.doesNotMatch(queries[0]?.sql ?? '', /c\.task_id/)
+})
+
+test('kb_list lists a ticket\'s accessible documents when taskId is supplied', async () => {
+  const page = buildPageRow({ id: 'page-1', spaceId: 'space-1', title: 'Design notes', taskId: 'task-1' })
+  const space = buildSpaceRow({ visibility: 'organization' })
+  const prisma = buildFakePrisma({
+    page,
+    space,
+    agentBindings: [{ channelId: 'channel-1', channel: { teamId: 'team-1', projectId: 'project-1' } }],
+  })
+  const context = makeContext(prisma)
+
+  const result = await runKbListTool(context, { taskId: 'task-1' })
+
+  assert.equal(result.toolName, 'kb_list')
+  assert.match(result.outputPreview, /Design notes/)
+})
+
+test('kb_list hides ticket documents whose space the agent cannot read', async () => {
+  const page = buildPageRow({ id: 'page-1', spaceId: 'space-1', taskId: 'task-1' })
+  const space = buildSpaceRow({ visibility: 'team', teamId: 'team-x' })
+  const prisma = buildFakePrisma({ page, space })
+  const context = makeContext(prisma)
+
+  const result = await runKbListTool(context, { taskId: 'task-1' })
+
+  assert.equal(result.outputPreview, 'No accessible documents are filed under this ticket.')
 })
 
 test('kb_list denies access to a space the agent cannot read', async () => {

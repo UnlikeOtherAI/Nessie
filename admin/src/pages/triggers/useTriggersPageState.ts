@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useTriggers, useUpcomingTriggers } from '../../facades/triggers/hooks'
+import { useTriggers } from '../../facades/triggers/hooks'
 import { useAgents } from '../../facades/agents/hooks'
 import { useChannels } from '../../facades/channels/hooks'
 import {
@@ -15,32 +15,47 @@ import type {
   WorkflowInstallationRecord,
   WorkflowTemplateRecord,
 } from '../../lib/api-client'
-import { parseTriggerHash, type TriggerRegistryMaps } from './trigger-presentation'
+import {
+  formatTriggerTarget,
+  parseTriggerHash,
+  type TriggerRegistryMaps,
+} from '../../components/features/triggers/trigger-presentation'
 
 type CreateTarget =
   | { targetKind: 'agent'; agentId: string; targetChannelId?: string }
   | { targetKind: 'workflow'; workflowInstallationId: string }
   | undefined
 
+export type TriggerStatusFilter = 'all' | AgentTriggerRecord['status']
+export type TriggerTypeFilter = 'all' | AgentTriggerRecord['type']
+
+export type TriggerStatusCounts = Record<TriggerStatusFilter, number>
+
 export type TriggersPageState = {
-  activeCount: number
   agents: AgentRecord[]
   channels: ChannelRecord[]
   defaultCreateTarget: CreateTarget
   editingTrigger?: AgentTriggerRecord
   effectiveTriggerId?: string
+  filteredTriggers: AgentTriggerRecord[]
+  isCreateDialogOpen: boolean
   isOwner: boolean
   registry: TriggerRegistryMaps
-  scheduledTriggers: AgentTriggerRecord[]
+  searchQuery: string
   selectedTrigger?: AgentTriggerRecord
   selectedTriggerId?: string
   setCreateDialogOpen: (open: boolean) => void
   setEditingTriggerId: (triggerId: string | undefined) => void
+  setSearchQuery: (query: string) => void
   setSelectedTriggerId: (triggerId: string | undefined) => void
-  sortedTriggers: AgentTriggerRecord[]
+  setStatusFilter: (filter: TriggerStatusFilter) => void
+  setTypeFilter: (filter: TriggerTypeFilter) => void
+  statusCounts: TriggerStatusCounts
+  statusFilter: TriggerStatusFilter
+  totalCount: number
+  typeFilter: TriggerTypeFilter
   workflowInstallations: WorkflowInstallationRecord[]
   workflowTemplates: WorkflowTemplateRecord[]
-  isCreateDialogOpen: boolean
 }
 
 export const useTriggersPageState = (): TriggersPageState => {
@@ -48,7 +63,6 @@ export const useTriggersPageState = (): TriggersPageState => {
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const { data: triggers = [] } = useTriggers(isOwner)
-  const { data: scheduled = [] } = useUpcomingTriggers(isOwner)
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
   const { data: workflowInstallations = [] } = useWorkflowInstallations(isOwner)
@@ -58,21 +72,24 @@ export const useTriggersPageState = (): TriggersPageState => {
   )
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editingTriggerId, setEditingTriggerId] = useState<string | undefined>(undefined)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<TriggerStatusFilter>('all')
+  const [typeFilter, setTypeFilter] = useState<TriggerTypeFilter>('all')
 
+  // Soonest-to-fire first, so the list itself answers "what runs next" and no
+  // separate queue section is needed; triggers with nothing scheduled follow
+  // alphabetically.
   const sortedTriggers = useMemo(
     () =>
-      [...triggers].sort((left, right) =>
-        (left.name ?? left.type).localeCompare(right.name ?? right.type),
-      ),
+      [...triggers].sort((left, right) => {
+        const leftNext = left.enabled && left.nextRunAt ? left.nextRunAt : undefined
+        const rightNext = right.enabled && right.nextRunAt ? right.nextRunAt : undefined
+        if (leftNext && rightNext) return leftNext.localeCompare(rightNext)
+        if (leftNext) return -1
+        if (rightNext) return 1
+        return (left.name ?? left.type).localeCompare(right.name ?? right.type)
+      }),
     [triggers],
-  )
-
-  const scheduledTriggers = useMemo(
-    () =>
-      [...scheduled].sort((left, right) =>
-        (left.nextRunAt ?? '').localeCompare(right.nextRunAt ?? ''),
-      ),
-    [scheduled],
   )
 
   const agentsById = useMemo(
@@ -104,20 +121,44 @@ export const useTriggersPageState = (): TriggersPageState => {
     [agentsById, channelsById, workflowInstallationsById, workflowTemplatesById],
   )
 
+  const filteredTriggers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return sortedTriggers.filter((trigger) => {
+      if (statusFilter !== 'all' && trigger.status !== statusFilter) return false
+      if (typeFilter !== 'all' && trigger.type !== typeFilter) return false
+      if (!query) return true
+
+      const haystack = [
+        trigger.name ?? '',
+        trigger.description ?? '',
+        trigger.type,
+        formatTriggerTarget(trigger, registry),
+      ]
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [registry, searchQuery, sortedTriggers, statusFilter, typeFilter])
+
   useEffect(() => {
     const hashedTriggerId = parseTriggerHash(location.hash)
     if (hashedTriggerId) setSelectedTriggerId(hashedTriggerId)
   }, [location.hash])
 
-  const activeCount = useMemo(
-    () => sortedTriggers.filter((trigger) => trigger.status === 'active').length,
+  const statusCounts = useMemo<TriggerStatusCounts>(
+    () => ({
+      all: sortedTriggers.length,
+      active: sortedTriggers.filter((trigger) => trigger.status === 'active').length,
+      paused: sortedTriggers.filter((trigger) => trigger.status === 'paused').length,
+      error: sortedTriggers.filter((trigger) => trigger.status === 'error').length,
+    }),
     [sortedTriggers],
   )
 
   const effectiveTriggerId =
     selectedTriggerId && sortedTriggers.some((trigger) => trigger.id === selectedTriggerId)
       ? selectedTriggerId
-      : sortedTriggers[0]?.id
+      : filteredTriggers[0]?.id
 
   const selectedTrigger = useMemo(
     () => sortedTriggers.find((trigger) => trigger.id === effectiveTriggerId),
@@ -151,23 +192,29 @@ export const useTriggersPageState = (): TriggersPageState => {
   }, [selectedTrigger])
 
   return {
-    activeCount,
     agents,
     channels,
     defaultCreateTarget,
     editingTrigger,
     effectiveTriggerId,
+    filteredTriggers,
+    isCreateDialogOpen: createDialogOpen,
     isOwner,
     registry,
-    scheduledTriggers,
+    searchQuery,
     selectedTrigger,
     selectedTriggerId,
     setCreateDialogOpen,
     setEditingTriggerId,
+    setSearchQuery,
     setSelectedTriggerId,
-    sortedTriggers,
+    setStatusFilter,
+    setTypeFilter,
+    statusCounts,
+    statusFilter,
+    totalCount: sortedTriggers.length,
+    typeFilter,
     workflowInstallations,
     workflowTemplates,
-    isCreateDialogOpen: createDialogOpen,
   }
 }

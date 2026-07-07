@@ -180,12 +180,21 @@ export const SearchPage = () => {
                 ? 'Search memory and knowledge by meaning.'
                 : 'Search channels, people, projects, messages, and knowledge.'}
             </p>
-          ) : results.errorMessage ? (
-            <p className="px-3 text-sm text-[color:var(--danger)]">{results.errorMessage}</p>
           ) : !hasResults && !results.isLoading ? (
-            <p className="px-3 text-sm text-[color:var(--tx3)]">No results</p>
+            results.errorMessage ? (
+              <p className="px-3 text-sm text-[color:var(--danger)]">{results.errorMessage}</p>
+            ) : (
+              <p className="px-3 text-sm text-[color:var(--tx3)]">No results</p>
+            )
           ) : (
             <>
+              {results.errorMessage ? (
+                // One section failing (e.g. memory search without an embedding
+                // model) must not hide the sections that did return results.
+                <p className="px-3 text-sm text-[color:var(--danger)]">
+                  {results.errorMessage}
+                </p>
+              ) : null}
               {results.channels.length > 0 ? (
                 <SearchSection title="Channels">
                   {results.channels.map((channel) => (
