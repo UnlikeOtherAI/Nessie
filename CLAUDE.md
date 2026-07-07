@@ -153,6 +153,7 @@ The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. Th
 
 - [brief.md](docs/brief.md) — Historical architecture brief (see banner)
 - [build-ai-coworker.md](docs/done/build-ai-coworker.md) — Historical macOS app build plan (moved to done/)
+- [context-window-optimization-audit.md](docs/context-window-optimization-audit.md) — Audit + prioritized roadmap for LLM context-window usage in the agentic run pipeline
 - Finished documents belong in `docs/done/`.
 
 ## Documentation & Goals — update with every change
