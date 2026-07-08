@@ -16,6 +16,8 @@ boundaries.
 The target experience:
 
 - users sign in once through UOA and can see which sibling products are linked;
+- team/workspace owners enable sibling products once for the active team, then
+  users inherit access through shared SSO;
 - Nessie shows the sibling products in the left rail as launchable integrations;
 - each product can also be installed as a Nessie plugin/capability bundle;
 - Nessie agents can use each product through approved MCP tools;
@@ -93,11 +95,15 @@ Observed capabilities:
 - UOA is the shared OAuth/auth service;
 - UOA already models domains, orgs, teams, apps, app startup payloads, feature
   flags, and kill switches;
-- the Slack-style login plan adds workspace selection, active org/team claims,
-  linked auth identities, lifecycle states, and product-owned sidebar contracts.
+- the Slack-style login/workspace work is present in the repo: workspace chooser
+  UI, create-workspace card, invite cards, membership lifecycle, team join
+  policies, invite links, and access-token `active { orgId, teamId }` claims;
+- no connected-products/product-entitlement table was found in UOA yet.
 
-UOA is the right place for a cross-product connected-app/account-linking screen.
-Nessie should consume UOA account context, not re-invent product identity.
+UOA is the right place for team/workspace creation, workspace selection,
+membership lifecycle, and a cross-product connected-app/account-linking screen.
+Nessie should consume UOA account and active-workspace context, not re-invent
+product identity or team creation.
 
 ## Architecture
 
@@ -141,6 +147,14 @@ installations can represent local MCP or API-key integrations before a UOA
 identity is attached. UOA remains the source of truth for hosted cross-product
 identity.
 
+Team/workspace product enablement must not create a second team model in Nessie.
+The preferred source of truth is a UOA connected-products entitlement keyed to
+UOA's active `teamId`. Until UOA exposes that API, Nessie may maintain only a
+temporary projection/cache keyed to UOA `active.teamId`, never a separate
+workspace creation path. `product_account_links` remains the per-user SSO/account
+projection and should not be used as the installation decision. Team-scoped
+billing can later aggregate from UOA's active `teamId`.
+
 The product registry powers the ESC UI. The MCP catalog powers agent tools.
 They can point to the same product, but they are not the same object.
 
@@ -169,9 +183,21 @@ Current Nessie slice:
 - `/integrations` is a full-width shell route with no secondary channel sidebar;
 - desktop rail exposes Integrations between Projects and Knowledge;
 - mobile web does not add Integrations as a sixth permanent tab;
-- the page renders registry-backed product rows and a detail surface for native
-  pages, chat cards, custom controls, agent/MCP access, artifacts, and next
+- the page renders registry-backed product rows, manifest details, native page
+  intent, chat cards, custom controls, agent/MCP access, artifacts, and next
   setup step.
+
+Current UOA/auth finding:
+
+- UOA already owns Slack-style workspace/team identity. Its `Team` is the
+  workspace, `Organisation` is the higher grouping, and `/auth/select-team`
+  carries the chosen workspace into access/refresh tokens.
+- Nessie's current UOA integration only reads `email`/display claims and does
+  not request UOA `org_features`, workspace selection, or consume the
+  `active { orgId, teamId }` claim yet.
+- Therefore, do not add Nessie team creation or team-product write APIs until
+  Nessie consumes UOA active workspace context. First-registration create/join
+  is an SSO/Auth-window concern in UOA, not a Nessie-owned onboarding fork.
 
 ### 3. Interface Surface Contract
 
@@ -245,7 +271,7 @@ POST /account/connected-apps/:slug/revoke
 ```
 
 Nessie should store only the local projection it needs for UX, caching, audit,
-and per-org setup. UOA remains the source of truth for identity and global
+and per-team setup. UOA remains the source of truth for identity and global
 account linking.
 
 ### 5. Installable Plugin Model
@@ -265,6 +291,56 @@ The plugin manifest should declare:
 - Knowledge import/export behavior;
 - usage/cost ledger mapping;
 - security review notes.
+
+Current Nessie slice:
+
+- first-party `NessieIntegrationPlugin` manifests exist for Deep Water,
+  DeepTest, and buildme.live;
+- manifests are API-versioned as `integrations.nessie.io/v1`;
+- `GET /api/integrations/products/:productSlug/manifest` returns the selected
+  manifest for authenticated users;
+- the `/integrations` product detail page renders install modes, MCP/catalog
+  intent, declared tools, available UI surfaces, and privacy/import policy;
+- the manifest is intentionally product-level. Tool execution still requires
+  MCP catalog installation, tool discovery/projection, admin approval, and
+  agent/role grants through the existing tool registry.
+- team/workspace enablement is deliberately not implemented in this slice
+  because UOA already owns workspace identity and Nessie does not yet consume
+  UOA `active.teamId`.
+
+Manifest skeleton:
+
+```json
+{
+  "apiVersion": "integrations.nessie.io/v1",
+  "kind": "NessieIntegrationPlugin",
+  "manifestRef": "first-party/deep-water",
+  "productSlug": "deep-water",
+  "install": [{ "mode": "remote_mcp_oauth", "availability": "both" }],
+  "mcp": {
+    "catalogTemplate": {
+      "name": "deep-water",
+      "protocol": "http",
+      "authMethod": "oauth2",
+      "transport": { "transport": "http", "urlEnv": "DEEP_WATER_MCP_URL" }
+    },
+    "toolBundleRef": "first-party/deep-water-tools",
+    "tools": []
+  },
+  "ui": { "pages": [], "cards": [], "controls": [] },
+  "artifacts": [],
+  "privacy": {
+    "dataBoundary": "...",
+    "defaultImportPolicy": "...",
+    "prohibitedByDefault": []
+  },
+  "usage": {
+    "ledger": "connector_usage_events",
+    "connectorType": "mcp",
+    "costFields": []
+  }
+}
+```
 
 Hosted Nessie can preinstall first-party products. Open-source Nessie should be
 able to install the same products manually from the marketplace/library.
@@ -463,6 +539,10 @@ Acceptance:
   in current slice.**
 - Render metadata-driven integration cards inside chat messages. **Implemented
   in current slice.**
+- Add first-party plugin manifests and expose them in the ESC detail page.
+  **Implemented in current slice.**
+- Add UOA active-workspace consumption, then add a connected-products
+  entitlement API or projection keyed to UOA `active.teamId`.
 - Add health checks for link-only products and MCP-backed products.
 
 ### Phase 2: Deep Water Native Plugin
@@ -517,12 +597,12 @@ Acceptance:
   "Integrations"?
 - Is the buildme.live project-management code in another folder/repo, or does it
   still need to be built?
-- Should hosted Nessie preinstall the Deep Water plugin for all organizations, or
-  should it appear as a one-click first-party marketplace item?
+- Should hosted Nessie preinstall the Deep Water plugin globally, or should it
+  appear as a one-click first-party marketplace item that teams enable?
 - Should DeepTest have a hosted deeptest.live workspace, or remain local-first
   with only link-out/account state in hosted Nessie?
-- Should UOA's connected-products screen be user-facing only, or also include an
-  org-admin view for product entitlement and revocation?
+- Should UOA's connected-products screen be user-facing only, or also include a
+  team/workspace owner view for product entitlement and revocation?
 
 ## Definition Of Done For The Whole Goal
 

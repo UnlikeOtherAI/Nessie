@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { IntegratedProductResponse } from '../lib/api-client'
+import { ManifestPanel } from '../components/features/integrations/ManifestPanel'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
-import { useIntegratedProducts } from '../facades/integrations/hooks'
+import {
+  useIntegratedProducts,
+  useIntegrationPluginManifest,
+} from '../facades/integrations/hooks'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 
 type SurfacePlan = {
@@ -165,6 +169,7 @@ const ProductDetail = ({
   product: IntegratedProductResponse
   showBack: boolean
 }) => {
+  const manifestQuery = useIntegrationPluginManifest(product.slug)
   const plan = surfacePlans[product.slug] ?? {
     nativePage: 'Custom product page registered from the integration manifest.',
     chatCards: 'Cards rendered from message metadata when agents run product work.',
@@ -228,6 +233,8 @@ const ProductDetail = ({
             <SurfaceRow label="Artifacts" value={plan.artifacts} />
           </div>
         </section>
+
+        <ManifestPanel loading={manifestQuery.isLoading} manifest={manifestQuery.data} />
 
         <section className="border-t border-[var(--sep)] pt-4">
           <h3 className="text-sm font-semibold text-[var(--tx)]">Capabilities</h3>
