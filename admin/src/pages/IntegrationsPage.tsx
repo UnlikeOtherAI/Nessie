@@ -7,8 +7,10 @@ import { ColumnBrowserViewport } from '../components/shared/column-browser/Colum
 import {
   useIntegratedProducts,
   useIntegrationPluginManifest,
+  useSetProductTeamEnablement,
 } from '../facades/integrations/hooks'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { useAuthSession } from '../providers/AuthSessionProvider'
 
 type SurfacePlan = {
   nativePage: string
@@ -110,6 +112,9 @@ const accountLabel = (product: IntegratedProductResponse): string => {
   return 'Auth setup pending'
 }
 
+const teamEnablementLabel = (product: IntegratedProductResponse): string =>
+  product.teamEnablement?.enabled ? 'Team enabled' : 'Team disabled'
+
 const capabilityLabel = (value: string): string =>
   value.replace(/[-_]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
@@ -147,6 +152,9 @@ const ProductRow = ({
           <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
             {accountLabel(product)}
           </span>
+          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+            {teamEnablementLabel(product)}
+          </span>
         </div>
       </div>
     </div>
@@ -160,6 +168,71 @@ const SurfaceRow = ({ label, value }: { label: string; value: string }) => (
   </div>
 )
 
+const TeamAccessSection = ({
+  isOwner,
+  product,
+}: {
+  isOwner: boolean
+  product: IntegratedProductResponse
+}) => {
+  const setTeamEnablement = useSetProductTeamEnablement()
+  const enabled = product.teamEnablement?.enabled ?? false
+  const isToggling =
+    setTeamEnablement.isPending && setTeamEnablement.variables?.productSlug === product.slug
+  const externalTeamId = product.teamEnablement?.externalTeamId ?? product.accountLink?.activeTeamId
+  const externalOrgId = product.teamEnablement?.externalOrgId ?? product.accountLink?.activeOrgId
+
+  return (
+    <section className="border-t border-[var(--sep)] pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--tx)]">Team access</h3>
+          <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+            {enabled ? 'Enabled for the active team.' : 'Not enabled for the active team.'}
+          </p>
+        </div>
+        <label className="inline-flex min-h-9 items-center gap-2 rounded border border-[var(--sep)] px-3 text-sm text-[var(--tx)]">
+          <input
+            checked={enabled}
+            className="h-4 w-4 accent-[var(--accent)]"
+            disabled={!isOwner || isToggling}
+            onChange={() =>
+              setTeamEnablement.mutate({
+                enabled: !enabled,
+                productSlug: product.slug,
+              })
+            }
+            type="checkbox"
+          />
+          <span>{isToggling ? 'Saving...' : 'Enabled'}</span>
+        </label>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <div className="rounded border border-[var(--sep)] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Account</div>
+          <div className="mt-1 text-sm text-[var(--tx)]">{accountLabel(product)}</div>
+        </div>
+        <div className="rounded border border-[var(--sep)] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">UOA workspace</div>
+          <div className="mt-1 truncate text-sm text-[var(--tx)]">
+            {externalTeamId ? `${externalOrgId ?? 'org'} / ${externalTeamId}` : 'Not projected yet'}
+          </div>
+        </div>
+      </div>
+      {!isOwner ? (
+        <p className="mt-2 text-xs text-[var(--tx3)]">Owner access required to change team access.</p>
+      ) : null}
+      {setTeamEnablement.isError ? (
+        <p className="mt-2 text-xs text-[var(--danger-text)]">
+          {setTeamEnablement.error instanceof Error
+            ? setTeamEnablement.error.message
+            : 'Failed to update team access.'}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
 const ProductDetail = ({
   onBack,
   product,
@@ -169,7 +242,9 @@ const ProductDetail = ({
   product: IntegratedProductResponse
   showBack: boolean
 }) => {
+  const { me } = useAuthSession()
   const manifestQuery = useIntegrationPluginManifest(product.slug)
+  const isOwner = me?.user.roleIds.includes('owner') ?? false
   const plan = surfacePlans[product.slug] ?? {
     nativePage: 'Custom product page registered from the integration manifest.',
     chatCards: 'Cards rendered from message metadata when agents run product work.',
@@ -205,6 +280,9 @@ const ProductDetail = ({
             <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
               {accountLabel(product)}
             </span>
+            <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
+              {teamEnablementLabel(product)}
+            </span>
           </div>
           <div className="flex flex-wrap gap-2">
             {product.launchUrl ? (
@@ -222,6 +300,8 @@ const ProductDetail = ({
             </Link>
           </div>
         </section>
+
+        <TeamAccessSection isOwner={isOwner} product={product} />
 
         <section>
           <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>

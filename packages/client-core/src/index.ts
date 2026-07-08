@@ -77,6 +77,8 @@ export type {
   OrganizationSummary,
   ProductAccountLinkRecord,
   ProductAccountLinkStatus,
+  ProductTeamEnablementRecord,
+  SetProductTeamEnablementRequest,
   ToolCallEntry,
   UpdateOrganizationLogoRequest,
 } from '@nessie/schemas'

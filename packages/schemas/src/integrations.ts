@@ -57,6 +57,22 @@ export const ProductAccountLinkRecordSchema = z.object({
 })
 export type ProductAccountLinkRecord = z.infer<typeof ProductAccountLinkRecordSchema>
 
+export const ProductTeamEnablementRecordSchema = z.object({
+  id: z.string().uuid(),
+  configuredByUserId: z.string().uuid().nullable(),
+  createdAt: TimestampSchema,
+  enabled: z.boolean(),
+  externalOrgId: z.string().nullable(),
+  externalTeamId: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()),
+  organizationId: z.string().uuid(),
+  productSlug: NonEmptyStringSchema,
+  teamId: z.string().uuid(),
+  updatedAt: TimestampSchema,
+})
+export type ProductTeamEnablementRecord =
+  z.infer<typeof ProductTeamEnablementRecordSchema>
+
 export const IntegratedProductResponseSchema = z.object({
   id: z.string().uuid(),
   accountLink: ProductAccountLinkRecordSchema.nullable(),
@@ -76,9 +92,16 @@ export const IntegratedProductResponseSchema = z.object({
   slug: NonEmptyStringSchema,
   sortOrder: z.number().int(),
   summary: z.string(),
+  teamEnablement: ProductTeamEnablementRecordSchema.nullable(),
   updatedAt: TimestampSchema,
 })
 export type IntegratedProductResponse = z.infer<typeof IntegratedProductResponseSchema>
+
+export const SetProductTeamEnablementRequestSchema = z.object({
+  enabled: z.boolean(),
+})
+export type SetProductTeamEnablementRequest =
+  z.infer<typeof SetProductTeamEnablementRequestSchema>
 
 export const IntegrationUiCardStatusSchema = z.enum([
   'idle',

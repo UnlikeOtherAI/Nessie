@@ -140,6 +140,17 @@ product_account_links
   status                       # linked | needs_auth | revoked | error
   last_verified_at
   metadata_json
+
+product_team_enablements
+  id
+  organization_id
+  team_id
+  product_slug
+  enabled
+  external_org_id?
+  external_team_id?
+  configured_by_user_id?
+  metadata_json
 ```
 
 `uoa_sub` is nullable in Nessie's local projection so self-hosted/local
@@ -154,6 +165,19 @@ temporary projection/cache keyed to UOA `active.teamId`, never a separate
 workspace creation path. `product_account_links` remains the per-user SSO/account
 projection and should not be used as the installation decision. Team-scoped
 billing can later aggregate from UOA's active `teamId`.
+
+Current team-enable slice:
+
+- `product_team_enablements` stores the active Nessie team's product switch and
+  optional UOA active org/team IDs captured from the user's account link.
+- `GET /api/integrations/products` returns both `accountLink` and
+  `teamEnablement`, so the UI can show account state separately from team access.
+- `PATCH /api/integrations/products/:productSlug/team-enablement` lets an owner
+  enable/disable the active team. It validates that the team belongs to the
+  current Nessie organization and does not create or mirror UOA teams.
+- This remains a Nessie projection until UOA exposes the connected-products
+  entitlement API; at that point the table should become cache/audit state or be
+  replaced by a UOA-backed read model.
 
 The product registry powers the ESC UI. The MCP catalog powers agent tools.
 They can point to the same product, but they are not the same object.
@@ -202,8 +226,10 @@ Current UOA/auth slice:
   in the current Nessie organization/user context. Those rows carry the UOA
   subject and active external org/team IDs for UX and future handoff, not team
   entitlement authority.
-- Team/workspace product enablement still needs a UOA connected-products
-  entitlement API or a temporary projection keyed to UOA `active.teamId`.
+- Team/workspace product enablement now has a Nessie projection for the active
+  local team, annotated with UOA active team IDs where available. It still needs
+  a UOA connected-products entitlement API before it can become the cross-product
+  source of truth.
   First-registration create/join remains an SSO/Auth-window concern in UOA, not
   a Nessie-owned onboarding fork.
 
@@ -313,8 +339,10 @@ Current Nessie slice:
   MCP catalog installation, tool discovery/projection, admin approval, and
   agent/role grants through the existing tool registry.
 - UOA active-workspace projection is implemented for first-party
-  `product_account_links`; team/workspace enablement is deliberately still not
-  implemented here because UOA remains the workspace authority.
+  `product_account_links`.
+- Owner-controlled `product_team_enablements` are implemented as a Nessie
+  projection for the active team. UOA remains the desired workspace entitlement
+  authority once the connected-products API exists.
 
 Manifest skeleton:
 
@@ -551,7 +579,8 @@ Acceptance:
   **Implemented in current slice.**
 - Add UOA active-workspace consumption. **Implemented in current slice.**
 - Add a connected-products entitlement API or projection keyed to UOA
-  `active.teamId`.
+  `active.teamId`. **Projection implemented in current slice; UOA authority
+  remains future work.**
 - Add health checks for link-only products and MCP-backed products.
 
 ### Phase 2: Deep Water Native Plugin

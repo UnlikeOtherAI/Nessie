@@ -174,5 +174,7 @@ export type {
   MeResponse,
   ProductAccountLinkRecord,
   ProductAccountLinkStatus,
+  ProductTeamEnablementRecord,
+  SetProductTeamEnablementRequest,
   ToolCallEntry,
 } from '@nessie/schemas'

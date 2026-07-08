@@ -649,6 +649,7 @@ model User {
   feedback            Feedback[]
   refreshTokens       RefreshToken[]
   productAccountLinks ProductAccountLink[]
+  productTeamEnablements ProductTeamEnablement[]
   avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
@@ -702,6 +703,7 @@ model Organization {
   feedback         Feedback[]
   favorites        Favorite[]
   productAccountLinks ProductAccountLink[]
+  productTeamEnablements ProductTeamEnablement[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -737,6 +739,7 @@ model IntegratedProduct {
   updatedAt           DateTime                       @updatedAt @map("updated_at")
 
   accountLinks        ProductAccountLink[]
+  teamEnablements     ProductTeamEnablement[]
   mcpCatalogEntry     McpCatalogEntry?               @relation(fields: [mcpCatalogEntryId], references: [id], onDelete: SetNull)
 
   @@index([category])
@@ -766,6 +769,29 @@ model ProductAccountLink {
   @@unique([organizationId, userId, productSlug])
   @@index([productSlug, status])
   @@map("product_account_links")
+}
+
+model ProductTeamEnablement {
+  id                 String            @id @default(uuid()) @db.Uuid
+  organizationId     String            @map("organization_id") @db.Uuid
+  teamId             String            @map("team_id") @db.Uuid
+  productSlug        String            @map("product_slug")
+  enabled            Boolean           @default(false)
+  externalOrgId      String?           @map("external_org_id")
+  externalTeamId     String?           @map("external_team_id")
+  configuredByUserId String?           @map("configured_by_user_id") @db.Uuid
+  metadata           Json              @default("{}") @map("metadata_json")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team               Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  product            IntegratedProduct @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
+  configuredByUser   User?             @relation(fields: [configuredByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, teamId, productSlug])
+  @@index([productSlug, enabled])
+  @@map("product_team_enablements")
 }
 
 model OrganizationMember {
@@ -869,6 +895,7 @@ model Team {
   channels         Channel[]
   plans            Plan[]
   approvalRequests ApprovalRequest[]
+  productEnablements ProductTeamEnablement[]
 
   @@map("teams")
 }

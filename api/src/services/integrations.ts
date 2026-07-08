@@ -7,6 +7,7 @@ import type { ExternalAuthWorkspace } from './identity-display.js'
 
 type ProductOwner = {
   organizationId: string
+  teamId?: string
   userId: string
 }
 
@@ -18,6 +19,20 @@ type UoaProductAccountLinkSyncInput = ProductOwner & {
 
 type ProductSlugRow = {
   slug: string
+}
+
+type ProductTeamEnablementRow = {
+  id: string
+  organization_id: string
+  team_id: string
+  product_slug: string
+  enabled: boolean
+  external_org_id: string | null
+  external_team_id: string | null
+  configured_by_user_id: string | null
+  metadata_json: unknown
+  created_at: Date | string
+  updated_at: Date | string
 }
 
 type IntegratedProductRow = {
@@ -49,6 +64,17 @@ type IntegratedProductRow = {
   account_status: string | null
   account_last_verified_at: Date | string | null
   account_metadata_json: unknown
+  team_enablement_id: string | null
+  team_enablement_organization_id: string | null
+  team_enablement_team_id: string | null
+  team_enablement_product_slug: string | null
+  team_enablement_enabled: boolean | null
+  team_enablement_external_org_id: string | null
+  team_enablement_external_team_id: string | null
+  team_enablement_configured_by_user_id: string | null
+  team_enablement_metadata_json: unknown
+  team_enablement_created_at: Date | string | null
+  team_enablement_updated_at: Date | string | null
 }
 
 const toIsoString = (value: Date | string): string =>
@@ -63,6 +89,22 @@ const toMetadataRecord = (value: unknown): Record<string, unknown> => {
   }
   return value as Record<string, unknown>
 }
+
+const mapTeamEnablementRow = (
+  row: ProductTeamEnablementRow,
+) => ({
+  id: row.id,
+  configuredByUserId: row.configured_by_user_id,
+  createdAt: toIsoString(row.created_at),
+  enabled: row.enabled,
+  externalOrgId: row.external_org_id,
+  externalTeamId: row.external_team_id,
+  metadata: toMetadataRecord(row.metadata_json),
+  organizationId: row.organization_id,
+  productSlug: row.product_slug,
+  teamId: row.team_id,
+  updatedAt: toIsoString(row.updated_at),
+})
 
 const mapProductRow = (row: IntegratedProductRow): IntegratedProductResponse =>
   IntegratedProductResponseSchema.parse({
@@ -98,6 +140,21 @@ const mapProductRow = (row: IntegratedProductRow): IntegratedProductResponse =>
     slug: row.slug,
     sortOrder: row.sort_order,
     summary: row.summary,
+    teamEnablement: row.team_enablement_id
+      ? mapTeamEnablementRow({
+          id: row.team_enablement_id,
+          configured_by_user_id: row.team_enablement_configured_by_user_id,
+          created_at: row.team_enablement_created_at ?? row.updated_at,
+          enabled: row.team_enablement_enabled ?? false,
+          external_org_id: row.team_enablement_external_org_id,
+          external_team_id: row.team_enablement_external_team_id,
+          metadata_json: row.team_enablement_metadata_json,
+          organization_id: row.team_enablement_organization_id ?? row.account_organization_id ?? '',
+          product_slug: row.team_enablement_product_slug ?? row.slug,
+          team_id: row.team_enablement_team_id ?? '',
+          updated_at: row.team_enablement_updated_at ?? row.updated_at,
+        })
+      : null,
     updatedAt: toIsoString(row.updated_at),
   })
 
@@ -181,6 +238,91 @@ export const syncUoaProductAccountLinks = async (
   )
 }
 
+const teamEnablementMetadata = (): Prisma.InputJsonObject => ({
+  authority: 'nessie_projection',
+  source: 'esc_team_enablement',
+})
+
+export const setProductTeamEnablement = async (
+  prisma: PrismaClient,
+  input: ProductOwner & { enabled: boolean; productSlug: string },
+): Promise<ProductTeamEnablementRow | null> => {
+  if (!input.teamId) {
+    return null
+  }
+
+  const metadataJson = JSON.stringify(teamEnablementMetadata())
+  const rows = await prisma.$queryRaw<ProductTeamEnablementRow[]>(Prisma.sql`
+    WITH account_link AS (
+      SELECT
+        "active_org_id",
+        "active_team_id"
+      FROM "product_account_links"
+      WHERE "organization_id" = CAST(${input.organizationId} AS uuid)
+        AND "user_id" = CAST(${input.userId} AS uuid)
+        AND "product_slug" = ${input.productSlug}
+      LIMIT 1
+    ),
+    upserted AS (
+      INSERT INTO "product_team_enablements" (
+        "id",
+        "organization_id",
+        "team_id",
+        "product_slug",
+        "enabled",
+        "external_org_id",
+        "external_team_id",
+        "configured_by_user_id",
+        "metadata_json",
+        "created_at",
+        "updated_at"
+      )
+      SELECT
+        gen_random_uuid(),
+        CAST(${input.organizationId} AS uuid),
+        CAST(${input.teamId} AS uuid),
+        p."slug",
+        ${input.enabled},
+        account_link."active_org_id",
+        account_link."active_team_id",
+        CAST(${input.userId} AS uuid),
+        CAST(${metadataJson} AS jsonb),
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+      FROM "integrated_products" p
+      JOIN "teams" t
+        ON t."id" = CAST(${input.teamId} AS uuid)
+      JOIN "projects" pr
+        ON pr."id" = t."project_id"
+        AND pr."organization_id" = CAST(${input.organizationId} AS uuid)
+      LEFT JOIN account_link ON TRUE
+      WHERE p."slug" = ${input.productSlug}
+      ON CONFLICT ("organization_id", "team_id", "product_slug") DO UPDATE SET
+        "enabled" = EXCLUDED."enabled",
+        "external_org_id" = EXCLUDED."external_org_id",
+        "external_team_id" = EXCLUDED."external_team_id",
+        "configured_by_user_id" = EXCLUDED."configured_by_user_id",
+        "metadata_json" = EXCLUDED."metadata_json",
+        "updated_at" = CURRENT_TIMESTAMP
+      RETURNING
+        "id"::text AS "id",
+        "organization_id"::text AS "organization_id",
+        "team_id"::text AS "team_id",
+        "product_slug",
+        "enabled",
+        "external_org_id",
+        "external_team_id",
+        "configured_by_user_id"::text AS "configured_by_user_id",
+        "metadata_json",
+        "created_at",
+        "updated_at"
+    )
+    SELECT * FROM upserted
+  `)
+
+  return rows[0] ?? null
+}
+
 export const listIntegratedProducts = async (
   prisma: PrismaClient,
   owner: ProductOwner,
@@ -214,12 +356,27 @@ export const listIntegratedProducts = async (
       pal.active_team_id AS account_active_team_id,
       pal.status::text AS account_status,
       pal.last_verified_at AS account_last_verified_at,
-      pal.metadata_json AS account_metadata_json
+      pal.metadata_json AS account_metadata_json,
+      pte.id::text AS team_enablement_id,
+      pte.organization_id::text AS team_enablement_organization_id,
+      pte.team_id::text AS team_enablement_team_id,
+      pte.product_slug AS team_enablement_product_slug,
+      pte.enabled AS team_enablement_enabled,
+      pte.external_org_id AS team_enablement_external_org_id,
+      pte.external_team_id AS team_enablement_external_team_id,
+      pte.configured_by_user_id::text AS team_enablement_configured_by_user_id,
+      pte.metadata_json AS team_enablement_metadata_json,
+      pte.created_at AS team_enablement_created_at,
+      pte.updated_at AS team_enablement_updated_at
     FROM integrated_products p
     LEFT JOIN product_account_links pal
       ON pal.product_slug = p.slug
       AND pal.organization_id = CAST(${owner.organizationId} AS uuid)
       AND pal.user_id = CAST(${owner.userId} AS uuid)
+    LEFT JOIN product_team_enablements pte
+      ON pte.product_slug = p.slug
+      AND pte.organization_id = CAST(${owner.organizationId} AS uuid)
+      AND pte.team_id = CAST(${owner.teamId ?? null} AS uuid)
     ORDER BY p.sort_order ASC, p.name ASC
   `)
 

@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   IntegratedProductResponse,
   IntegrationPluginManifest,
+  SetProductTeamEnablementRequest,
 } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -25,5 +26,26 @@ export const useIntegrationPluginManifest = (productSlug?: string) => {
     queryKey: integrationManifestKey(productSlug),
     queryFn: () => apiClient.get(`/api/integrations/products/${productSlug}/manifest`),
     enabled: Boolean(productSlug),
+  })
+}
+
+export const useSetProductTeamEnablement = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (
+      input: SetProductTeamEnablementRequest & { productSlug: string },
+    ) =>
+      apiClient.patch<IntegratedProductResponse>(
+        `/api/integrations/products/${input.productSlug}/team-enablement`,
+        { enabled: input.enabled },
+      ),
+    onSuccess: (product) => {
+      queryClient.setQueryData<IntegratedProductResponse[]>(
+        integratedProductsKey,
+        (current) => current?.map((item) => (item.slug === product.slug ? product : item)),
+      )
+    },
   })
 }
