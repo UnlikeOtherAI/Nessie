@@ -210,6 +210,9 @@ Current Nessie slice:
 - the page renders registry-backed product rows, manifest details, native page
   intent, chat cards, custom controls, agent/MCP access, artifacts, and next
   setup step.
+- Deep Water and DeepTest product rows now point at public, published MCP
+  catalog entries. BuildMe remains unlinked to the MCP catalog until a board API
+  and MCP contract exist.
 
 Current UOA/auth slice:
 
@@ -577,6 +580,8 @@ Acceptance:
   in current slice.**
 - Add first-party plugin manifests and expose them in the ESC detail page.
   **Implemented in current slice.**
+- Seed and link public MCP catalog entries for MCP-backed first-party products.
+  **Deep Water and DeepTest implemented; BuildMe intentionally pending.**
 - Add UOA active-workspace consumption. **Implemented in current slice.**
 - Add a connected-products entitlement API or projection keyed to UOA
   `active.teamId`. **Projection implemented in current slice; UOA authority
@@ -585,7 +590,8 @@ Acceptance:
 
 ### Phase 2: Deep Water Native Plugin
 
-- Add Deep Water MCP catalog entry and install flow.
+- Add Deep Water MCP catalog entry and install flow. **Catalog entry seeded;
+  install/setup flow still pending.**
 - Add credential setup and tool approval flow.
 - Add a Deep Water run wrapper in Nessie jobs/runs.
 - Add result import into Knowledge and FileService-backed attachments.
@@ -596,6 +602,8 @@ Acceptance:
 
 - Add DeepTest link-out product card.
 - Add local MCP install instructions and plugin manifest.
+- Add DeepTest MCP catalog entry. **Catalog entry seeded; local-runner setup and
+  approval flow still pending.**
 - Expose the recommended `deeptest_review` flow as the primary approved tool.
 - Add share-safe report import into Knowledge.
 - Keep owner-local/raw report import behind explicit user action and warning.
