@@ -3,10 +3,21 @@ import {
   IntegratedProductResponseSchema,
   type IntegratedProductResponse,
 } from '@nessie/schemas'
+import type { ExternalAuthWorkspace } from './identity-display.js'
 
 type ProductOwner = {
   organizationId: string
   userId: string
+}
+
+type UoaProductAccountLinkSyncInput = ProductOwner & {
+  email: string
+  externalSubject: string | undefined
+  workspace: ExternalAuthWorkspace | undefined
+}
+
+type ProductSlugRow = {
+  slug: string
 }
 
 type IntegratedProductRow = {
@@ -89,6 +100,86 @@ const mapProductRow = (row: IntegratedProductRow): IntegratedProductResponse =>
     summary: row.summary,
     updatedAt: toIsoString(row.updated_at),
   })
+
+const FIRST_PARTY_PLUGIN_MANIFEST_PREFIX = 'first-party/'
+
+const uoaLinkMetadata = (workspace?: ExternalAuthWorkspace): Prisma.InputJsonObject => {
+  const metadata = {
+    provider: 'uoa',
+    teamIds: workspace?.teamIds ?? [],
+    teamRoles: workspace?.teamRoles ?? {},
+  }
+  return workspace?.orgRole ? { ...metadata, orgRole: workspace.orgRole } : metadata
+}
+
+export const syncUoaProductAccountLinks = async (
+  prisma: PrismaClient,
+  input: UoaProductAccountLinkSyncInput,
+): Promise<void> => {
+  const products = await prisma.$queryRaw<ProductSlugRow[]>(Prisma.sql`
+    SELECT "slug"
+    FROM "integrated_products"
+    WHERE "plugin_manifest_ref" LIKE ${`${FIRST_PARTY_PLUGIN_MANIFEST_PREFIX}%`}
+      AND "auth_mode"::text IN ('uoa_sso', 'oauth_mcp', 'local_mcp')
+  `)
+  if (products.length === 0) {
+    return
+  }
+
+  const now = new Date()
+  const metadata = uoaLinkMetadata(input.workspace)
+  const externalAccountId = input.externalSubject ?? input.email
+  const activeOrgId = input.workspace?.activeOrgId ?? input.workspace?.orgId ?? null
+  const activeTeamId = input.workspace?.activeTeamId ?? null
+  const metadataJson = JSON.stringify(metadata)
+  const uoaSub = input.externalSubject ?? null
+
+  await prisma.$transaction(
+    products.map((product) =>
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "product_account_links" (
+          "id",
+          "organization_id",
+          "user_id",
+          "product_slug",
+          "uoa_sub",
+          "external_account_id",
+          "active_org_id",
+          "active_team_id",
+          "status",
+          "last_verified_at",
+          "metadata_json",
+          "created_at",
+          "updated_at"
+        )
+        VALUES (
+          gen_random_uuid(),
+          CAST(${input.organizationId} AS uuid),
+          CAST(${input.userId} AS uuid),
+          ${product.slug},
+          ${uoaSub},
+          ${externalAccountId},
+          ${activeOrgId},
+          ${activeTeamId},
+          'linked'::"ProductAccountLinkStatus",
+          ${now},
+          CAST(${metadataJson} AS jsonb),
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+        )
+        ON CONFLICT ("organization_id", "user_id", "product_slug") DO UPDATE SET
+          "uoa_sub" = EXCLUDED."uoa_sub",
+          "external_account_id" = EXCLUDED."external_account_id",
+          "active_org_id" = EXCLUDED."active_org_id",
+          "active_team_id" = EXCLUDED."active_team_id",
+          "status" = EXCLUDED."status",
+          "last_verified_at" = EXCLUDED."last_verified_at",
+          "metadata_json" = EXCLUDED."metadata_json",
+          "updated_at" = CURRENT_TIMESTAMP
+      `),
+    ),
+  )
+}
 
 export const listIntegratedProducts = async (
   prisma: PrismaClient,

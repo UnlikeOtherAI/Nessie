@@ -24,6 +24,7 @@ import {
 } from '../services/auth.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import { buildExternalAuthAuthorizeUrl, exchangeExternalAuthCode } from '../services/external-auth.js'
+import { syncUoaProductAccountLinks } from '../services/integrations.js'
 import { seedDefaultPolicies } from '../services/policy.js'
 import { buildConfigJwt, buildPublicJwks, isUoaConfigured, loadUoaSettings } from '../services/uoa-auth.js'
 import { createUserForOrganization, loadSessionUserByEmail } from '../services/users.js'
@@ -422,6 +423,16 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         if (!organizationMember || !projectMember || !teamMember) {
           sendApiError(reply, 403, 'FORBIDDEN', 'User is missing required workspace membership')
           return reply
+        }
+
+        if (provider.type === 'uoa') {
+          await syncUoaProductAccountLinks(prisma, {
+            email: identity.email,
+            externalSubject: identity.externalSubject,
+            organizationId: organizationMember.organizationId,
+            userId: sessionUser.id,
+            workspace: identity.workspace,
+          })
         }
 
         const session = buildSessionForUser({

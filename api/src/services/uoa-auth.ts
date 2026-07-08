@@ -4,6 +4,7 @@ import type { SsoTheme } from '../contracts/auth.js'
 import {
   resolveIdentityDisplayName,
   type ExternalAuthIdentity,
+  type ExternalAuthWorkspace,
 } from './identity-display.js'
 
 /**
@@ -23,9 +24,10 @@ import {
  *   4. Exchanging the returned `code` server-to-server at `POST <base>/auth/token`
  *      authenticated with `Bearer <client_hash>` where
  *      `client_hash = SHA256(domain + client_secret)`. The response carries an
- *      HS256 access token whose claims (`sub`, `email`) identify the user; per
- *      UOA's contract the RP does not verify it cryptographically (trust derives
- *      from the authenticated backend channel).
+ *      HS256 access token whose claims (`sub`, `email`, optional `org`, and
+ *      optional `active`) identify the user and selected UOA workspace; per UOA's
+ *      contract the RP does not verify it cryptographically (trust derives from
+ *      the authenticated backend channel).
  */
 
 export type UoaSettings = {
@@ -279,6 +281,10 @@ export const buildConfigJwt = (settings: UoaSettings, theme?: SsoTheme): string 
     enabled_auth_methods: ['email_password', 'google'],
     language_config: 'en',
     ui_theme: defaultUiTheme(settings, theme),
+    org_features: {
+      enabled: true,
+      allow_user_create_org: true,
+    },
     jwks_url: settings.jwksUrl,
     contact_email: settings.contactEmail,
   })
@@ -326,12 +332,97 @@ export const buildUoaAuthorizeUrl = (input: {
 
 type UoaTokenResponse = { access_token?: string }
 
+const trimString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+const stringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map(trimString)
+    .filter((item): item is string => Boolean(item))
+}
+
+const stringRecord = (value: unknown): Record<string, string> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+
+  const entries = Object.entries(value)
+    .map(([key, item]) => [trimString(key), trimString(item)] as const)
+    .filter((entry): entry is readonly [string, string] => Boolean(entry[0]) && Boolean(entry[1]))
+  return Object.fromEntries(entries)
+}
+
 const decodeJwtClaims = (token: string): Record<string, unknown> => {
   const segment = token.split('.')[1]
   if (!segment) {
     throw new Error('[uoa] access token is not a JWT')
   }
   return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as Record<string, unknown>
+}
+
+const parseUoaWorkspace = (claims: Record<string, unknown>): ExternalAuthWorkspace | undefined => {
+  const orgClaim = claims.org
+  const activeClaim = claims.active
+  const org = orgClaim && typeof orgClaim === 'object' && !Array.isArray(orgClaim)
+    ? orgClaim as Record<string, unknown>
+    : undefined
+  const active = activeClaim && typeof activeClaim === 'object' && !Array.isArray(activeClaim)
+    ? activeClaim as Record<string, unknown>
+    : undefined
+
+  const workspace: ExternalAuthWorkspace = {
+    teamIds: stringArray(org?.teams),
+    teamRoles: stringRecord(org?.team_roles),
+  }
+  const activeOrgId = trimString(active?.orgId)
+  const activeTeamId = trimString(active?.teamId)
+  const orgId = trimString(org?.org_id)
+  const orgRole = trimString(org?.org_role)
+
+  if (activeOrgId) workspace.activeOrgId = activeOrgId
+  if (activeTeamId) workspace.activeTeamId = activeTeamId
+  if (orgId) workspace.orgId = orgId
+  if (orgRole) workspace.orgRole = orgRole
+
+  if (
+    !workspace.activeOrgId &&
+    !workspace.activeTeamId &&
+    !workspace.orgId &&
+    !workspace.orgRole &&
+    workspace.teamIds.length === 0 &&
+    Object.keys(workspace.teamRoles).length === 0
+  ) {
+    return undefined
+  }
+  return workspace
+}
+
+export const resolveUoaIdentityFromAccessToken = (accessToken: string): ExternalAuthIdentity => {
+  const claims = decodeJwtClaims(accessToken)
+  const email = trimString(claims.email)?.toLowerCase() ?? ''
+  if (!email) {
+    throw new Error('[uoa] access token did not carry an email claim')
+  }
+  const name = trimString(claims.name)
+  const preferredUsername = trimString(claims.preferred_username)
+
+  const identity: ExternalAuthIdentity = {
+    displayName: resolveIdentityDisplayName(email, [name, preferredUsername]),
+    email,
+  }
+  const externalSubject = trimString(claims.sub)
+  const workspace = parseUoaWorkspace(claims)
+  if (externalSubject) identity.externalSubject = externalSubject
+  if (workspace) identity.workspace = workspace
+  return identity
 }
 
 /**
@@ -376,18 +467,5 @@ export const exchangeUoaCode = async (input: {
     throw new Error('[uoa] token response missing access_token')
   }
 
-  const claims = decodeJwtClaims(payload.access_token)
-  const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : ''
-  if (!email) {
-    throw new Error('[uoa] access token did not carry an email claim')
-  }
-  const name = typeof claims.name === 'string' ? claims.name : undefined
-  const preferredUsername = typeof claims.preferred_username === 'string'
-    ? claims.preferred_username
-    : undefined
-
-  return {
-    displayName: resolveIdentityDisplayName(email, [name, preferredUsername]),
-    email,
-  }
+  return resolveUoaIdentityFromAccessToken(payload.access_token)
 }

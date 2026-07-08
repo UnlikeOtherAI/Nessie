@@ -7,6 +7,7 @@ import {
   buildUoaAuthorizeUrl,
   exchangeUoaCode,
   loadUoaSettings,
+  resolveUoaIdentityFromAccessToken,
 } from '../src/services/uoa-auth.js'
 
 const testPrivateKeyPem = String(
@@ -106,6 +107,17 @@ test('buildConfigJwt uses the selected hosted-login theme palette', async () => 
   })
 })
 
+test('buildConfigJwt requests UOA workspace features', async () => {
+  await withUoaEnv(async () => {
+    const payload = decodeJwtPayload(buildConfigJwt(loadUoaSettings()))
+
+    assert.deepEqual(payload.org_features, {
+      allow_user_create_org: true,
+      enabled: true,
+    })
+  })
+})
+
 test('buildUoaAuthorizeUrl passes the selected theme through config_url', async () => {
   await withUoaEnv(async () => {
     const authorizeUrl = new URL(buildUoaAuthorizeUrl({
@@ -135,6 +147,39 @@ test('exchangeUoaCode reuses the selected theme for the token config_url', async
       },
       'https://uoa.example.com/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig%3Ftheme%3Drose',
     )
+  })
+})
+
+test('resolveUoaIdentityFromAccessToken decodes UOA workspace claims', () => {
+  const identity = resolveUoaIdentityFromAccessToken(jwtForClaims({
+    active: { orgId: 'org-active', teamId: 'team-active' },
+    email: 'Ada.Lovelace@Example.com ',
+    name: 'Ada Lovelace',
+    org: {
+      org_id: 'org-default',
+      org_role: 'admin',
+      team_roles: {
+        'team-active': 'owner',
+        'team-other': 'member',
+      },
+      teams: ['team-active', 'team-other'],
+    },
+    sub: 'uoa-user-123',
+  }))
+
+  assert.equal(identity.displayName, 'Ada Lovelace')
+  assert.equal(identity.email, 'ada.lovelace@example.com')
+  assert.equal(identity.externalSubject, 'uoa-user-123')
+  assert.deepEqual(identity.workspace, {
+    activeOrgId: 'org-active',
+    activeTeamId: 'team-active',
+    orgId: 'org-default',
+    orgRole: 'admin',
+    teamIds: ['team-active', 'team-other'],
+    teamRoles: {
+      'team-active': 'owner',
+      'team-other': 'member',
+    },
   })
 })
 

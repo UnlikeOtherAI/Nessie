@@ -187,17 +187,25 @@ Current Nessie slice:
   intent, chat cards, custom controls, agent/MCP access, artifacts, and next
   setup step.
 
-Current UOA/auth finding:
+Current UOA/auth slice:
 
 - UOA already owns Slack-style workspace/team identity. Its `Team` is the
   workspace, `Organisation` is the higher grouping, and `/auth/select-team`
   carries the chosen workspace into access/refresh tokens.
-- Nessie's current UOA integration only reads `email`/display claims and does
-  not request UOA `org_features`, workspace selection, or consume the
-  `active { orgId, teamId }` claim yet.
-- Therefore, do not add Nessie team creation or team-product write APIs until
-  Nessie consumes UOA active workspace context. First-registration create/join
-  is an SSO/Auth-window concern in UOA, not a Nessie-owned onboarding fork.
+- Nessie's UOA config JWT now requests `org_features.enabled` and
+  `allow_user_create_org` so UOA can expose workspace membership/create state
+  through its existing SSO flow.
+- Nessie's UOA token exchange now decodes `sub`, `org`, and
+  `active { orgId, teamId }` claims. It stores them only as external
+  product-account projection data; Nessie does not create local teams from UOA.
+- UOA login now upserts `product_account_links` for first-party sibling products
+  in the current Nessie organization/user context. Those rows carry the UOA
+  subject and active external org/team IDs for UX and future handoff, not team
+  entitlement authority.
+- Team/workspace product enablement still needs a UOA connected-products
+  entitlement API or a temporary projection keyed to UOA `active.teamId`.
+  First-registration create/join remains an SSO/Auth-window concern in UOA, not
+  a Nessie-owned onboarding fork.
 
 ### 3. Interface Surface Contract
 
@@ -304,9 +312,9 @@ Current Nessie slice:
 - the manifest is intentionally product-level. Tool execution still requires
   MCP catalog installation, tool discovery/projection, admin approval, and
   agent/role grants through the existing tool registry.
-- team/workspace enablement is deliberately not implemented in this slice
-  because UOA already owns workspace identity and Nessie does not yet consume
-  UOA `active.teamId`.
+- UOA active-workspace projection is implemented for first-party
+  `product_account_links`; team/workspace enablement is deliberately still not
+  implemented here because UOA remains the workspace authority.
 
 Manifest skeleton:
 
@@ -541,8 +549,9 @@ Acceptance:
   in current slice.**
 - Add first-party plugin manifests and expose them in the ESC detail page.
   **Implemented in current slice.**
-- Add UOA active-workspace consumption, then add a connected-products
-  entitlement API or projection keyed to UOA `active.teamId`.
+- Add UOA active-workspace consumption. **Implemented in current slice.**
+- Add a connected-products entitlement API or projection keyed to UOA
+  `active.teamId`.
 - Add health checks for link-only products and MCP-backed products.
 
 ### Phase 2: Deep Water Native Plugin
