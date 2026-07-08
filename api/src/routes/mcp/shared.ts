@@ -4,13 +4,19 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { sendApiError } from '../../lib/api.js'
-import { McpCatalogError, MCP_CATALOG_ERROR_CODES } from '../../services/mcp-catalog.js'
-import { McpInstanceError, MCP_INSTANCE_ERROR_CODES } from '../../services/mcp-instances.js'
-import { McpOAuthError, MCP_OAUTH_ERROR_CODES, type SecretStore } from '../../services/mcp-oauth.js'
 import {
+  McpCatalogError,
+  MCP_CATALOG_ERROR_CODES,
   McpCredentialError,
   MCP_CREDENTIAL_ERROR_CODES,
-} from '../../services/mcp-credentials.js'
+  McpInstanceError,
+  MCP_INSTANCE_ERROR_CODES,
+  McpOAuthError,
+  MCP_OAUTH_ERROR_CODES,
+  type OAuthStateStore,
+  type SecretResolver,
+  type SecretStore,
+} from '@nessie/mcp-manage'
 import { ToolGrantError, TOOL_GRANT_ERROR_CODES } from '../../services/tool-grants.js'
 
 /**
@@ -36,6 +42,22 @@ export type McpRouteHelpers = {
    * a placeholder ref and is NOT safe for real credentials.
    */
   oauthSecretStore?: SecretStore
+  /**
+   * Resolver for `credentialRef` values on probe/test paths. Production wires
+   * the layered pg+env resolver (`createMcpSecretResolver`) so OAuth tokens
+   * and assistant-collected secrets resolve exactly like env-provisioned refs.
+   */
+  secretResolver?: SecretResolver
+  /**
+   * Store for user-provided connector credentials (the instance `/secret`
+   * route). Defaults to the OAuth secret store when omitted.
+   */
+  mcpSecretStore?: SecretStore
+  /**
+   * OAuth authorization state store. Defaults to the Postgres-backed store
+   * (cross-process one-shot state); tests may inject an in-memory one.
+   */
+  oauthStateStore?: OAuthStateStore
 }
 
 /**
@@ -49,6 +71,9 @@ export type McpSubRegistrarContext = {
   requireActorContext: McpRouteHelpers['requireActorContext']
   requireOwner: McpRouteHelpers['requireOwner']
   oauthSecretStore: SecretStore
+  secretResolver: SecretResolver
+  mcpSecretStore: SecretStore
+  oauthStateStore?: OAuthStateStore
 }
 
 export const JsonRecordSchema = z.record(z.string(), z.unknown())
@@ -64,6 +89,7 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
       error.code === MCP_CATALOG_ERROR_CODES.NOT_FOUND
         ? 404
         : error.code === MCP_CATALOG_ERROR_CODES.FORBIDDEN
+            || error.code === MCP_CATALOG_ERROR_CODES.LOCKED
           ? 403
           // `DUPLICATE_NAME` and `INVALID_TRANSITION` both describe a
           // pre-existing resource that conflicts with the requested mutation
@@ -81,7 +107,9 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
       error.code === MCP_INSTANCE_ERROR_CODES.NOT_FOUND
         || error.code === MCP_INSTANCE_ERROR_CODES.CATALOG_ENTRY_NOT_FOUND
         ? 404
-        : error.code === MCP_INSTANCE_ERROR_CODES.DUPLICATE_SCOPE
+        : error.code === MCP_INSTANCE_ERROR_CODES.LOCKED
+          ? 403
+          : error.code === MCP_INSTANCE_ERROR_CODES.DUPLICATE_SCOPE
           ? 409
           : error.code === MCP_INSTANCE_ERROR_CODES.PROBE_FAILED
             ? 502

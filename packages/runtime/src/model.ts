@@ -49,6 +49,7 @@ export interface ModelClient {
   chat(messages: ModelMessage[], options?: ModelOptions): Promise<string>
   chatJson<T = unknown>(messages: ModelMessage[], options?: ModelOptions): Promise<T>
   embed(text: string, options?: EmbedOptions): Promise<number[]>
+  embedMany(texts: string[], options?: EmbedOptions): Promise<number[][]>
   stream(
     messages: ModelMessage[],
     options?: ModelOptions,
@@ -155,6 +156,21 @@ export const createModelClient = (
     return result.embedding
   }
 
+  const embedMany: ModelClient['embedMany'] = async (texts, options) => {
+    const result = await inferenceService.embedBatch(texts, {
+      model: options?.model,
+    })
+
+    recordUsageFromModel(
+      usageTracker,
+      result.invocation.model,
+      result.invocation.usage,
+    )
+    await ledger([result.invocation], options?.usage)
+
+    return result.embeddings
+  }
+
   const stream: ModelClient['stream'] = async function* (messages, options) {
     const source = inferenceService.stream?.({
       maxOutputTokens: options?.maxTokens,
@@ -194,6 +210,7 @@ export const createModelClient = (
       inferenceService.close()
     },
     embed,
+    embedMany,
     fetchCompletion: (body) => inferenceService.fetchCompletion(body),
     stream,
     usage: usageTracker,

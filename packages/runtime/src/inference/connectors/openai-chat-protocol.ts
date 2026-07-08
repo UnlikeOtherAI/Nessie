@@ -37,7 +37,7 @@ export type OpenAiChatResponse = {
 }
 
 export type OpenAiEmbeddingResponse = {
-  data?: Array<{ embedding?: number[] }>
+  data?: Array<{ embedding?: number[]; index?: number }>
   model?: string
   usage?: {
     prompt_tokens: number

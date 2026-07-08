@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type {
   ChannelRecord,
@@ -6,6 +6,7 @@ import type {
   ProjectRecord,
   UserRecord,
 } from '../../lib/api-client'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useChannels } from '../channels/hooks'
@@ -18,7 +19,18 @@ const SEARCH_MODE_STORAGE_KEY = 'nessie.search.mode'
 
 export type GlobalSearchMode = 'text' | 'semantic'
 
+// A passage of a knowledge page matched by hybrid search, with its position in
+// the source page and a per-passage relevance score (ranking metadata only —
+// never rendered directly).
+export interface KnowledgeSearchPassage {
+  content: string
+  startOffset: number
+  endOffset: number
+  score: number
+}
+
 // Shape returned by POST /api/knowledge-base/search — one hit per readable page.
+// `passages` and `score` are only populated in hybrid mode.
 export interface KnowledgeSearchHit {
   page: {
     id: string
@@ -27,6 +39,8 @@ export interface KnowledgeSearchHit {
     summary: string | null
   }
   snippet: string
+  passages?: KnowledgeSearchPassage[]
+  score?: number
 }
 
 // Shape returned by POST /api/thoughts/search for semantic memory recall.
@@ -53,18 +67,6 @@ export interface GlobalSearchResults {
   thoughts: ThoughtSearchHit[]
   isLoading: boolean
   errorMessage: string | null
-}
-
-// Debounce a value so we do not fire a search request on every keystroke.
-const useDebounced = (value: string, delayMs: number): string => {
-  const [debounced, setDebounced] = useState(value)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delayMs)
-    return () => window.clearTimeout(timer)
-  }, [value, delayMs])
-
-  return debounced
 }
 
 const includesQuery = (haystack: string | null | undefined, needle: string): boolean =>
@@ -112,7 +114,7 @@ export const useGlobalSearch = (
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds?.includes('owner') ?? false
 
-  const debounced = useDebounced(query, DEBOUNCE_MS)
+  const debounced = useDebouncedValue(query, DEBOUNCE_MS)
   const trimmed = debounced.trim()
   const needle = trimmed.toLowerCase()
   const active = trimmed.length >= MIN_QUERY_LENGTH
@@ -159,11 +161,17 @@ export const useGlobalSearch = (
     enabled: active && textMode,
   })
 
+  // Text mode uses keyword search; semantic mode uses hybrid search so
+  // knowledge results (with highlighted passages) surface alongside thoughts.
   const knowledgeQuery = useQuery<KnowledgeSearchHit[]>({
     queryKey: ['search', 'knowledge', trimmed, mode],
     queryFn: () =>
-      apiClient.post<KnowledgeSearchHit[]>('/api/knowledge-base/search', { query: trimmed }),
-    enabled: active && textMode,
+      apiClient.post<KnowledgeSearchHit[]>('/api/knowledge-base/search', {
+        query: trimmed,
+        mode: textMode ? 'keyword' : 'hybrid',
+        limit: 20,
+      }),
+    enabled: active,
   })
 
   const thoughtsQuery = useQuery<ThoughtSearchHit[]>({
@@ -182,13 +190,13 @@ export const useGlobalSearch = (
     people: filteredPeople,
     projects: filteredProjects,
     messages: active && textMode ? messagesQuery.data ?? [] : [],
-    knowledge: active && textMode ? knowledgeQuery.data ?? [] : [],
+    knowledge: active ? knowledgeQuery.data ?? [] : [],
     thoughts: active && semanticMode ? thoughtsQuery.data ?? [] : [],
     isLoading:
       active &&
       (textMode
         ? messagesQuery.isFetching || knowledgeQuery.isFetching
-        : thoughtsQuery.isFetching),
+        : thoughtsQuery.isFetching || knowledgeQuery.isFetching),
     errorMessage: active
       ? queryErrorMessage(messagesQuery.error)
         ?? queryErrorMessage(knowledgeQuery.error)

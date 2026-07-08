@@ -9,11 +9,25 @@ import {
   runChannelJoinTool,
   runChannelListTool,
   runChannelUpdateTool,
+  runConnectorAuthorizeTool,
+  runConnectorDiscoverTool,
+  runConnectorInstallTool,
+  runConnectorLibrarySearchTool,
+  runConnectorListTool,
+  runConnectorSetSecretTool,
+  runConnectorTestTool,
+  runConnectorUninstallTool,
   runKbCommentAddTool,
   runKbCommentReplyTool,
   runKbCommentResolveTool,
   runKbCommentsListTool,
+  runKbDraftWriteTool,
+  runKbFileTool,
+  runKbListTool,
   runKbNoteAddTool,
+  runKbPageReadTool,
+  runKbPublishRequestTool,
+  runKbSearchTool,
   runMessageDeleteTool,
   runMessageEditTool,
   runMessageSearchTool,
@@ -357,6 +371,118 @@ export const executeBuiltinTool = async (
           pageId: String(args.pageId ?? ''),
           quote: String(args.quote ?? ''),
           body: String(args.body ?? ''),
+        }),
+      )
+    case 'kb_search':
+      return wrapTool(inputSummary, () =>
+        runKbSearchTool(context, {
+          query: String(args.query ?? ''),
+          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
+          projectId: typeof args.projectId === 'string' ? args.projectId : undefined,
+          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
+          limit: args.limit,
+        }),
+      )
+    case 'kb_page_read':
+      return wrapTool(inputSummary, () =>
+        runKbPageReadTool(context, { pageId: String(args.pageId ?? '') }),
+      )
+    case 'kb_list':
+      return wrapTool(inputSummary, () =>
+        runKbListTool(context, {
+          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
+          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
+        }),
+      )
+    case 'kb_draft_write':
+      return wrapTool(inputSummary, () =>
+        runKbDraftWriteTool(context, {
+          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
+          pageId: typeof args.pageId === 'string' ? args.pageId : undefined,
+          title: typeof args.title === 'string' ? args.title : undefined,
+          body: String(args.body ?? ''),
+          summary: typeof args.summary === 'string' ? args.summary : undefined,
+          labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
+          parentPageId: typeof args.parentPageId === 'string' ? args.parentPageId : undefined,
+          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
+          changeComment: typeof args.changeComment === 'string' ? args.changeComment : undefined,
+        }),
+      )
+    case 'kb_file':
+      return wrapTool(inputSummary, () =>
+        runKbFileTool(context, {
+          pageId: String(args.pageId ?? ''),
+          // Distinguish "omitted" (no move) from "explicit null" (move to the
+          // space root) — both would otherwise collapse to undefined.
+          parentPageId:
+            'parentPageId' in args
+              ? (typeof args.parentPageId === 'string' ? args.parentPageId : null)
+              : undefined,
+          position: typeof args.position === 'number' ? args.position : undefined,
+          title: typeof args.title === 'string' ? args.title : undefined,
+          labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
+        }),
+      )
+    case 'connector_list':
+      return wrapTool(inputSummary, () => runConnectorListTool(context))
+    case 'connector_library_search':
+      return wrapTool(inputSummary, () =>
+        runConnectorLibrarySearchTool(context, {
+          query: String(args.query ?? ''),
+        }),
+      )
+    case 'connector_discover':
+      return wrapTool(inputSummary, () =>
+        runConnectorDiscoverTool(context, { url: String(args.url ?? '') }),
+      )
+    case 'connector_install':
+      return wrapTool(inputSummary, () =>
+        runConnectorInstallTool(context, {
+          catalogEntryId:
+            typeof args.catalogEntryId === 'string' ? args.catalogEntryId : undefined,
+          name: typeof args.name === 'string' ? args.name : undefined,
+          label: typeof args.label === 'string' ? args.label : undefined,
+          description:
+            typeof args.description === 'string' ? args.description : undefined,
+          url: typeof args.url === 'string' ? args.url : undefined,
+          transport: typeof args.transport === 'string' ? args.transport : undefined,
+          authMethod:
+            typeof args.authMethod === 'string' ? args.authMethod : undefined,
+          scope: typeof args.scope === 'string' ? args.scope : undefined,
+          scopeId: typeof args.scopeId === 'string' ? args.scopeId : undefined,
+        }),
+      )
+    case 'connector_authorize':
+      return wrapTool(inputSummary, () =>
+        runConnectorAuthorizeTool(context, {
+          instanceId: String(args.instanceId ?? ''),
+        }),
+      )
+    case 'connector_test':
+      return wrapTool(inputSummary, () =>
+        runConnectorTestTool(context, {
+          instanceId: String(args.instanceId ?? ''),
+        }),
+      )
+    case 'connector_set_secret':
+      return wrapTool(inputSummary, () =>
+        runConnectorSetSecretTool(context, {
+          instanceId: String(args.instanceId ?? ''),
+          secret: String(args.secret ?? ''),
+          shared: typeof args.shared === 'boolean' ? args.shared : undefined,
+        }),
+      )
+    case 'connector_uninstall':
+      return wrapTool(inputSummary, () =>
+        runConnectorUninstallTool(context, {
+          instanceId: String(args.instanceId ?? ''),
+        }),
+      )
+    case 'kb_publish_request':
+      return wrapTool(inputSummary, () =>
+        runKbPublishRequestTool(context, {
+          pageId: String(args.pageId ?? ''),
+          reason: typeof args.reason === 'string' ? args.reason : undefined,
         }),
       )
     default:

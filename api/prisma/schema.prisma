@@ -674,6 +674,7 @@ model Organization {
   inferenceCredentialBindings InferenceCredentialBinding[]
   inferenceRoutingProfiles    InferenceRoutingProfile[]
   mcpCatalogEntries           McpCatalogEntry[]
+  mcpOAuthClients             McpOAuthClient[]
 
   @@map("organizations")
 }
@@ -1087,6 +1088,7 @@ model Agent {
   statusRules                   UserStatusRule[]
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowStepAssignedAgent")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
+  knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
 
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -1770,6 +1772,12 @@ model McpCatalogEntry {
   signature              String?
   status                 McpCatalogStatus     @default(draft)
   visibility             McpCatalogVisibility @default(private)
+  // Admin lock: members cannot install (or re-register the same endpoint as)
+  // a locked connector; owners/admins are exempt. Purely an install-time
+  // gate — already-installed instances keep working until removed.
+  locked                 Boolean              @default(false)
+  lockedAt               DateTime?            @map("locked_at")
+  lockedBy               String?              @map("locked_by") @db.Uuid
   ownerUserId            String?              @map("owner_user_id") @db.Uuid
   submittedAt            DateTime?            @map("submitted_at")
   reviewedAt             DateTime?            @map("reviewed_at")
@@ -2454,18 +2462,25 @@ model KnowledgeSpace {
 // Explicit per-space access grants. Used by `private` visibility (who can read)
 // and by `writeRestricted` spaces (who can write). The space creator always has
 // full access regardless of membership.
+// A member row grants one principal — a user XOR an agent — access to a
+// space. Exactly one of userId/agentId is set (enforced in the service layer;
+// both columns are nullable so either principal kind can be granted).
 model KnowledgeSpaceMember {
   id             String   @id @default(uuid()) @db.Uuid
   spaceId        String   @map("space_id") @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  agentId        String?  @map("agent_id") @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at")
 
   space KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent?         @relation("KnowledgeSpaceAgentMembers", fields: [agentId], references: [id], onDelete: Cascade)
 
   @@unique([spaceId, userId])
+  @@unique([spaceId, agentId])
   @@index([userId])
+  @@index([agentId])
   @@index([organizationId])
   @@map("knowledge_space_members")
 }
@@ -2498,6 +2513,10 @@ model KnowledgePage {
 
   visibility      ThoughtVisibility @default(project)
   sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
+  // Ticket binding: a page carrying taskId is a ticket document. Loose scoping
+  // column like the rest of the envelope (no FK) — task deletion archives
+  // pages at the app layer, it does not cascade here.
+  taskId          String?           @map("task_id") @db.Uuid
   createdBy       String            @map("created_by")
   deletedAt       DateTime?         @map("deleted_at")
   createdAt       DateTime          @default(now()) @map("created_at")
@@ -2511,7 +2530,10 @@ model KnowledgePage {
   labels           PageLabel[]
   annotations      KnowledgePageAnnotation[]
   chunks           KnowledgePageChunk[]
+  outgoingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkSource")
+  incomingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkTarget")
 
+  @@index([taskId], map: "knowledge_pages_task_id_idx")
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
   @@index([organizationId, visibility, updatedAt], map: "knowledge_pages_org_visibility_updated_idx")
   @@index([organizationId, sensitivityTier], map: "knowledge_pages_org_sensitivity_idx")
@@ -2578,6 +2600,7 @@ model KnowledgePageChunk {
   visibility       ThoughtVisibility @default(project)
   sensitivityTier  SensitivityTier   @default(normal) @map("sensitivity_tier")
   privateToAgentId String?           @map("private_to_agent_id") @db.Uuid
+  taskId           String?           @map("task_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -2591,7 +2614,29 @@ model KnowledgePageChunk {
   @@index([organizationId, visibility, updatedAt], map: "knowledge_page_chunks_org_visibility_updated_idx")
   @@index([organizationId, sensitivityTier], map: "knowledge_page_chunks_org_sensitivity_idx")
   @@index([privateToAgentId], map: "knowledge_page_chunks_private_to_agent_id_idx")
+  @@index([taskId], map: "knowledge_page_chunks_task_id_idx")
   @@map("knowledge_page_chunks")
+}
+
+// Wikilink index: one row per outgoing link in a page's latest body.
+// Maintained transactionally alongside chunking on every version save.
+// targetPageId is null for unresolved [[Title]] links; creating a page whose
+// title matches resolves them.
+model KnowledgePageLink {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sourcePageId   String   @map("source_page_id") @db.Uuid
+  targetPageId   String?  @map("target_page_id") @db.Uuid
+  targetTitle    String   @map("target_title")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  sourcePage KnowledgePage  @relation("KnowledgePageLinkSource", fields: [sourcePageId], references: [id], onDelete: Cascade)
+  targetPage KnowledgePage? @relation("KnowledgePageLinkTarget", fields: [targetPageId], references: [id], onDelete: SetNull)
+
+  @@index([sourcePageId])
+  @@index([targetPageId])
+  @@index([organizationId, targetTitle])
+  @@map("knowledge_page_links")
 }
 
 model PageLabel {
@@ -2800,8 +2845,42 @@ model McpOAuthSecret {
   iv         String
   authTag    String   @map("auth_tag")
   createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("mcp_oauth_secret")
+}
+
+/// One-shot OAuth authorization state (RFC 6749 `state` + PKCE verifier and
+/// the dynamic-flow parameters the callback needs). Postgres-backed so any
+/// API/worker process can mint a flow that another process completes; rows
+/// are deleted on first read and expire after 10 minutes.
+model McpOAuthState {
+  token     String   @id
+  payload   Json
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("mcp_oauth_states")
+}
+
+/// OAuth client obtained via Dynamic Client Registration (RFC 7591), one per
+/// (organization, authorization-server issuer). Public clients carry no
+/// secret; when a server issues one anyway it is stored behind an encrypted
+/// `secret_*` ref, never in plaintext.
+model McpOAuthClient {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  issuer          String
+  clientId        String       @map("client_id")
+  clientSecretRef String?      @map("client_secret_ref")
+  redirectUris    String[]     @map("redirect_uris")
+  metadata        Json         @default("{}")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, issuer])
+  @@map("mcp_oauth_clients")
 }
 
 // ─── File uploads / attachments (Slack-parity files slice) ──────────────────

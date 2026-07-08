@@ -1,8 +1,10 @@
 import { pathToFileURL } from 'node:url'
 import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
 import {
+  createFileService,
   createModelClient,
   createPgPool,
+  getStorage,
   PgQueueProvider,
   PgRealtimeTransport,
   recordInferenceUsage,
@@ -10,6 +12,10 @@ import {
 import {
   ExecutionEnvironmentAllocateJobPayloadSchema,
   ExecutionEnvironmentTerminateJobPayloadSchema,
+  KNOWLEDGE_EMBED_TOPIC,
+  KNOWLEDGE_EXTRACT_TOPIC,
+  KnowledgeEmbedJobPayloadSchema,
+  KnowledgeExtractJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
@@ -24,6 +30,8 @@ import {
   renewExecutionLeases,
   terminateExecutionEnvironmentInstance,
 } from './control/execution.js'
+import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
+import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import {
@@ -39,6 +47,8 @@ import {
   MEMORY_CONSOLIDATION_TOPIC,
   RunMemoryConsolidateJobPayloadSchema,
 } from './run/memory-consolidation.js'
+import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
+
 import { executeOrchestrateDecideJob } from './run/orchestrate.js'
 
 const config = loadConfig()
@@ -75,6 +85,15 @@ export const startWorker = async (
   }
   queueProvider = new PgQueueProvider(pool)
   const realtimeTransport = new PgRealtimeTransport(pool, databaseUrl)
+  // Same chokepoint the api builds (api/src/index.ts) — the worker only ever
+  // reads bytes back out (knowledge.extract), it never stores/deletes, but the
+  // guardrail is "route all blob file work through FileService", not "only
+  // where writes happen".
+  const fileService = createFileService({
+    prisma,
+    storage: getStorage(config.storage),
+    maxUploadBytes: config.storage.maxUploadBytes,
+  })
   // The shared model client (orchestrator engagement, memory capture/search/
   // consolidation) bills through the same token ledger as the agentic loop when
   // a call supplies attribution.
@@ -87,6 +106,20 @@ export const startWorker = async (
       }
     },
   })
+  // MCP credential plumbing shared by the agentic MCP toolset and the
+  // personal assistant's connector tools: encrypts assistant-collected
+  // secrets at rest, resolves any credentialRef (pg store, then env), and
+  // carries the public OAuth callback URL so the assistant can mint sign-in
+  // links (config NESSIE_API_PUBLIC_URL in prod; localhost in dev).
+  const mcpSecrets = {
+    store: createPgSecretStore(prisma, config.auth.secret ?? '', {
+      refPrefix: 'secret_mcp_',
+    }),
+    resolver: createMcpSecretResolver(prisma, config.auth.secret ?? ''),
+    oauthCallbackUrl: `${
+      config.api.publicUrl ?? `http://localhost:${config.api.port}`
+    }/api/mcp/oauth/callback`,
+  }
   const abortController = new AbortController()
   const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`
 
@@ -96,6 +129,7 @@ export const startWorker = async (
       const payload = RunExecuteJobPayloadSchema.parse(job.payload)
       await executeRunJob(
         {
+          mcpSecrets,
           modelClient,
           prisma,
           queueProvider,
@@ -150,6 +184,24 @@ export const startWorker = async (
         },
         payload,
       )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    KNOWLEDGE_EMBED_TOPIC,
+    async (job) => {
+      const payload = KnowledgeEmbedJobPayloadSchema.parse(job.payload)
+      await executeKnowledgeEmbedJob({ modelClient, prisma }, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    KNOWLEDGE_EXTRACT_TOPIC,
+    async (job) => {
+      const payload = KnowledgeExtractJobPayloadSchema.parse(job.payload)
+      await executeKnowledgeExtractJob({ fileService, prisma }, payload)
     },
     { signal: abortController.signal },
   )

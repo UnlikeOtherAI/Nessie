@@ -1,11 +1,13 @@
-import { faCheck } from '@fortawesome/free-solid-svg-icons'
+import { faCheck, faPlay } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { DEFAULT_WORKFLOW_NAME } from '../../../lib/workflow-designer/constants'
+import type { WorkflowTestRunState } from '../../../pages/workflow-designer/useWorkflowTestRun'
 
 type WorkflowDesignerHeaderProps = {
   workflowName: string
   onWorkflowNameChange: (value: string) => void
   isWorkflowTemplateLoading: boolean
+  saveError: string | null
   saveMessage: string | null
   workflowTemplateId?: string
   autoSaveDraft: boolean
@@ -14,12 +16,23 @@ type WorkflowDesignerHeaderProps = {
   isSavingWorkflow: boolean
   onBack: () => void
   onSave: () => void
+  onTestRun: () => void
+  testRunState: WorkflowTestRunState
+}
+
+const TEST_RUN_LABELS: Record<WorkflowTestRunState, string> = {
+  completed: 'Test run',
+  failed: 'Test run',
+  idle: 'Test run',
+  running: 'Running…',
+  starting: 'Starting…',
 }
 
 export const WorkflowDesignerHeader = ({
   workflowName,
   onWorkflowNameChange,
   isWorkflowTemplateLoading,
+  saveError,
   saveMessage,
   workflowTemplateId,
   autoSaveDraft,
@@ -28,7 +41,10 @@ export const WorkflowDesignerHeader = ({
   isSavingWorkflow,
   onBack,
   onSave,
+  onTestRun,
+  testRunState,
 }: WorkflowDesignerHeaderProps) => {
+  const isTestRunBusy = testRunState === 'starting' || testRunState === 'running'
   return (
     <header className="flex h-14 items-center justify-between gap-4 border-b border-[var(--line)] bg-[var(--surface-inverse)] px-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -66,9 +82,13 @@ export const WorkflowDesignerHeader = ({
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="min-w-[96px] text-right text-[11px] text-[var(--muted)]">
+        <div className="max-w-[320px] min-w-[96px] truncate text-right text-[11px] text-[var(--muted)]">
           {isWorkflowTemplateLoading ? (
             'Loading workflow...'
+          ) : saveError ? (
+            <span className="text-[var(--danger)]" title={saveError}>
+              {saveError}
+            </span>
           ) : saveMessage ? (
             <span className="inline-flex items-center gap-1">
               <FontAwesomeIcon className="text-[10px]" icon={faCheck} />
@@ -101,6 +121,16 @@ export const WorkflowDesignerHeader = ({
             />
           </button>
         </label>
+
+        <button
+          className="admin-button admin-button-secondary inline-flex items-center gap-1.5"
+          disabled={!hasWorkflowToSave || isTestRunBusy || isSavingWorkflow}
+          onClick={onTestRun}
+          type="button"
+        >
+          <FontAwesomeIcon className="text-[10px]" icon={faPlay} />
+          {TEST_RUN_LABELS[testRunState]}
+        </button>
 
         <button
           className="admin-button admin-button-primary min-w-[88px]"

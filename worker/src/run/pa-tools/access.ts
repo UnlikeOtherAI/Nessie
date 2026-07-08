@@ -3,6 +3,7 @@ import {
   resolveAccessibleScopes,
   type ScopeResolutionMode,
 } from '@nessie/memory'
+import type { SpaceViewerPrincipal } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 export type ChannelAgent = {
@@ -24,9 +25,11 @@ export const resolveEffectiveUserId = (
     ? context.actorContext.actor.actorId
     : null)
 
-// The personal assistant is a privileged delegate of its owner: it acts as that
-// user across every channel in the organization. True only when this run is the
-// PA and it has an owner to act as.
+// The personal assistant is a delegate of its owner: it acts as that user and,
+// unlike a shared agent, is not restricted to channels the bot is bound to. Its
+// reach is still the owner's own reach (public + member channels) — being a
+// delegate exempts it from the binding gate, not from the owner's visibility.
+// True only when this run is the PA and it has an owner to act as.
 export const isDelegatingPersonalAssistant = (
   context: BuiltinToolRuntimeContext,
 ): boolean =>
@@ -46,20 +49,31 @@ export const requireActingUserId = (
   return userId
 }
 
-// Channels a delegated run may target. The personal assistant reaches every
-// channel in the organization (it is its owner's delegate); everyone else is
-// scoped to public channels plus the ones the acting user belongs to.
+// The knowledge-base access principal for a tool call: a delegating PA (or
+// interactive user run) reads/writes with the owner's own space access; an
+// autonomous agent is checked against its own channel bindings / explicit
+// space grants. Shared by every knowledge-base builtin tool (comments, notes,
+// search, page read, listing) so the two never drift apart.
+export const buildSpaceViewerPrincipal = (
+  context: BuiltinToolRuntimeContext,
+): SpaceViewerPrincipal => {
+  const effectiveUserId = resolveEffectiveUserId(context)
+  return effectiveUserId
+    ? { actorType: 'user', actorId: effectiveUserId }
+    : { actorType: 'agent', actorId: context.agentId }
+}
+
+// Channels a delegated run may target: public channels plus the ones the acting
+// user belongs to. The personal assistant acts as its owner, so this is also its
+// reach — the same channels the owner can see, never a private channel the owner
+// was not admitted to.
 export const buildVisibleChannelWhere = (
   organizationId: string,
   userId: string,
-  orgWide = false,
-): Prisma.ChannelWhereInput =>
-  orgWide
-    ? { organizationId }
-    : {
-        organizationId,
-        OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
-      }
+): Prisma.ChannelWhereInput => ({
+  organizationId,
+  OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
+})
 
 // The set of channels an agent run may search past conversations in. Shares
 // the exact access model used for curated-memory recall, so search can never

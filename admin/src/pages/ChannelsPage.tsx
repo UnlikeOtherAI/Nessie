@@ -126,6 +126,11 @@ export const ChannelsPage = () => {
     sendText,
     sendMessageSubmit,
     sendAsFile,
+    pendingAgentInvites,
+    invitingAgentId,
+    inviteErrors,
+    invitePendingAgent,
+    dismissPendingAgent,
   } = useChannelComposer({
     activeChannel,
     threadMessages,
@@ -398,6 +403,11 @@ export const ChannelsPage = () => {
         onSubmitForm={(event) => void sendMessageSubmit(event)}
         onInsertHashSign={() => mentionRef.current?.insertHashSign()}
         onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+        pendingAgentInvites={pendingAgentInvites}
+        invitingAgentId={invitingAgentId}
+        inviteErrors={inviteErrors}
+        onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
+        onDismissPendingAgent={dismissPendingAgent}
       />
 
       {showMembersPopup && activeChannel ? (

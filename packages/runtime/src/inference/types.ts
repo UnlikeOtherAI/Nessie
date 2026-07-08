@@ -157,6 +157,19 @@ export type ProviderEmbeddingResult = {
   invocation: InvocationRecord
 }
 
+export type ProviderEmbeddingBatchRequest = {
+  requestId: string
+  correlationId?: string
+  input: string[]
+  metadata?: Record<string, unknown>
+  model?: string
+}
+
+export type ProviderEmbeddingBatchResult = {
+  embeddings: number[][]
+  invocation: InvocationRecord
+}
+
 export type ProviderHealthReport = {
   status: ProviderHealthStatus
   checkedAt: string
@@ -169,6 +182,7 @@ export interface ProviderConnector {
   checkHealth(): Promise<ProviderHealthReport>
   close(): void
   embed?(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResult>
+  embedBatch?(request: ProviderEmbeddingBatchRequest): Promise<ProviderEmbeddingBatchResult>
   fetchCompletion(body: Record<string, unknown>): Promise<Response>
   getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot>
   getProviderMeta(): Promise<{
@@ -251,6 +265,10 @@ export interface InferenceService {
     input: string,
     request?: InferenceEmbedRequest,
   ): Promise<ProviderEmbeddingResult>
+  embedBatch(
+    input: string[],
+    request?: InferenceEmbedRequest,
+  ): Promise<ProviderEmbeddingBatchResult>
   fetchCompletion(body: Record<string, unknown>): Promise<Response>
   getCapabilities(model?: string): Promise<CapabilityResolution>
   run(request: InferenceRequest): Promise<InferenceResult>

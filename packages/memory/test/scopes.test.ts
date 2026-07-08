@@ -125,12 +125,16 @@ test('personal_assistant grants the user full accessible scope plus private memo
   assert.ok(pairs.some(([t, i]) => t === 'user' && i === USER))
 })
 
-test('personal_assistant reaches every channel in the org (no membership filter)', async () => {
+test('personal_assistant is limited to channels the owner can access', async () => {
   let channelsSql = ''
-  const pool = createPoolStub((sql) => {
+  let channelsParams: unknown[] | undefined
+  const pool = createPoolStub((sql, params) => {
     if (sql.includes('FROM channels c') && !sql.includes('agent_bindings')) {
       channelsSql = sql
-      return { rows: [{ id: 'chan-private' }, { id: 'chan-public' }] }
+      channelsParams = params
+      // The membership predicate excludes private channels the owner isn't in;
+      // only the public channel and the owner's own private channel come back.
+      return { rows: [{ id: 'chan-public' }, { id: 'chan-member' }] }
     }
     if (sql.includes('FROM teams t') && sql.includes('JOIN projects p')) {
       return { rows: [] }
@@ -149,10 +153,12 @@ test('personal_assistant reaches every channel in the org (no membership filter)
     pool,
   )
 
-  // Org-wide: the channels query must not filter by membership or visibility.
-  assert.ok(!channelsSql.includes('channel_members'))
-  assert.ok(!channelsSql.includes('visibility'))
-  assert.deepEqual(scopes.channelIds.sort(), ['chan-private', 'chan-public'])
+  // Owner-scoped: the channels query must filter by visibility + membership, and
+  // pass the owner's id so a private channel they were not admitted to is excluded.
+  assert.ok(channelsSql.includes('channel_members'))
+  assert.ok(channelsSql.includes('visibility'))
+  assert.deepEqual(channelsParams, [ORG, USER])
+  assert.deepEqual(scopes.channelIds.sort(), ['chan-member', 'chan-public'])
 })
 
 test('autonomous is bound by the agent configured scope, with no user-private', async () => {

@@ -3,13 +3,13 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
-import { getInstance, MCP_INSTANCE_ERROR_CODES } from '../../services/mcp-instances.js'
+import { getInstance, MCP_INSTANCE_ERROR_CODES } from '@nessie/mcp-manage'
 import {
   deleteOverride,
   listOverrides,
   MCP_CREDENTIAL_ERROR_CODES,
   upsertOverride,
-} from '../../services/mcp-credentials.js'
+} from '@nessie/mcp-manage'
 
 import { sendMcpError, type McpSubRegistrarContext } from './shared.js'
 

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { faFolderPlus } from '@fortawesome/free-solid-svg-icons'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { faFolderPlus, faGear } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   useConvertToDocument,
@@ -22,6 +22,7 @@ import { FileVersionUploadDialog } from './FileVersionUploadDialog'
 import { KnowledgeFilesystemBrowser } from './KnowledgeFilesystemBrowser'
 import { useKnowledge } from './KnowledgeProvider'
 import { KnowledgePane } from './KnowledgePane'
+import { isAgentDraft } from './page-status'
 import { StorageUsageMeter } from './StorageUsageMeter'
 import {
   isKnowledgeViewMode,
@@ -30,6 +31,7 @@ import {
 } from './KnowledgeViewToggle'
 import { PageEditor } from './PageEditor'
 import { PagePreview } from './PagePreview'
+import { SpaceSettingsDialog } from './SpaceSettingsDialog'
 import { useFileDrop } from './useFileDrop'
 import { VersionHistory } from './VersionHistory'
 
@@ -64,12 +66,47 @@ export const KnowledgeWorkspace = () => {
     publishPending,
     restoreVersion,
     restorePending,
+    spaceSettingsOpen,
+    openSpaceSettings,
+    closeSpaceSettings,
+    updateSpace,
+    updateSpacePending,
   } = useKnowledge()
   const [viewMode, setViewMode] = useState<KnowledgeViewMode>(() => {
     const stored = getCookie(VIEW_MODE_COOKIE)
     return isKnowledgeViewMode(stored) ? stored : 'column'
   })
   const [creatingFolder, setCreatingFolder] = useState(false)
+
+  // "Needs review" filters the current space's tree down to agent drafts (and
+  // their ancestor folders, so the tree stays navigable) — a client-side
+  // filter over the already-loaded pages list, no extra request.
+  const [needsReviewOnly, setNeedsReviewOnly] = useState(false)
+  useEffect(() => setNeedsReviewOnly(false), [selectedSpaceId])
+
+  const agentDraftCount = useMemo(() => pages.filter(isAgentDraft).length, [pages])
+  const reviewVisibleIds = useMemo(() => {
+    if (!needsReviewOnly) return null
+    const byId = new Map(pages.map((page) => [page.id, page]))
+    const visible = new Set<string>()
+    for (const page of pages) {
+      if (!isAgentDraft(page)) continue
+      let current: KnowledgePageRecord | undefined = page
+      while (current) {
+        visible.add(current.id)
+        current = current.parentPageId ? byId.get(current.parentPageId) : undefined
+      }
+    }
+    return visible
+  }, [needsReviewOnly, pages])
+
+  const visibleRootPages = reviewVisibleIds
+    ? rootPages.filter((page) => reviewVisibleIds.has(page.id))
+    : rootPages
+  const visibleChildrenOf = (parentPageId: string) =>
+    reviewVisibleIds
+      ? childrenOf(parentPageId).filter((page) => reviewVisibleIds.has(page.id))
+      : childrenOf(parentPageId)
 
   const versionsQuery = useKnowledgeVersions(historyPageId)
   const pathPages = pagePath
@@ -187,6 +224,7 @@ export const KnowledgeWorkspace = () => {
             </div>
           ) : (
             <PageEditor
+              initialTitle={editor.mode === 'create' ? editor.initialTitle : undefined}
               mode={editor.mode}
               onCancel={closeEditor}
               onSubmit={savePage}
@@ -279,6 +317,32 @@ export const KnowledgeWorkspace = () => {
             <>
               <StorageUsageMeter />
               <button
+                aria-label="Space settings"
+                className={[
+                  'admin-button admin-button-secondary flex items-center justify-center',
+                  'rounded-md px-2 py-1 text-xs',
+                ].join(' ')}
+                onClick={openSpaceSettings}
+                title="Space settings"
+                type="button"
+              >
+                <FontAwesomeIcon className="h-3 w-3" icon={faGear} />
+              </button>
+              {agentDraftCount > 0 || needsReviewOnly ? (
+                <button
+                  className={[
+                    'rounded-md px-3 py-1 text-xs font-medium',
+                    needsReviewOnly
+                      ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
+                      : 'admin-button admin-button-secondary',
+                  ].join(' ')}
+                  onClick={() => setNeedsReviewOnly((value) => !value)}
+                  type="button"
+                >
+                  Needs review ({agentDraftCount})
+                </button>
+              ) : null}
+              <button
                 className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
                 onClick={() => fileInputRef.current?.click()}
                 type="button"
@@ -318,7 +382,7 @@ export const KnowledgeWorkspace = () => {
             </div>
           ) : (
             <KnowledgeFilesystemBrowser
-              childrenOf={childrenOf}
+              childrenOf={visibleChildrenOf}
               creatingFolder={creatingFolder}
               createFolderPending={createFolderPending}
               mode={viewMode}
@@ -333,7 +397,7 @@ export const KnowledgeWorkspace = () => {
               pageById={pageById}
               pagePath={pagePath}
               pages={pages}
-              rootPages={rootPages}
+              rootPages={visibleRootPages}
               selectedSpaceId={selectedSpaceId}
               selectedSpaceName={selectedSpace?.name ?? 'Pages'}
             />
@@ -357,6 +421,15 @@ export const KnowledgeWorkspace = () => {
         type="file"
       />
       {versionDialog}
+      {selectedSpace ? (
+        <SpaceSettingsDialog
+          onClose={closeSpaceSettings}
+          onSave={updateSpace}
+          open={spaceSettingsOpen}
+          pending={updateSpacePending}
+          space={selectedSpace}
+        />
+      ) : null}
     </div>
   )
 }

@@ -76,6 +76,8 @@ export const KnowledgePageRecordSchema = OptionalScopeSchema.extend({
   parentPageId: UuidSchema.nullable(),
   position: z.number().int().nonnegative(),
   status: KnowledgePageStatusSchema,
+  // Set when this page is a ticket-bound document (or a ticket's document folder).
+  taskId: UuidSchema.nullable(),
   labels: z.array(NonEmptyStringSchema),
   latestVersion: KnowledgePageVersionRecordSchema.nullable(),
   publishedVersion: KnowledgePageVersionRecordSchema.nullable(),
@@ -90,9 +92,18 @@ export const KnowledgePageRecordSchema = OptionalScopeSchema.extend({
   updatedAt: NonEmptyStringSchema,
 }).merge(KnowledgeResponseEnvelopeSchema)
 
+export const KnowledgeSearchPassageSchema = z.object({
+  content: NonEmptyStringSchema,
+  endOffset: z.number().int().nonnegative(),
+  score: z.number(),
+  startOffset: z.number().int().nonnegative(),
+})
+
 export const KnowledgeSearchHitSchema = z.object({
   page: KnowledgePageRecordSchema,
   snippet: NonEmptyStringSchema,
+  passages: z.array(KnowledgeSearchPassageSchema).optional(),
+  score: z.number().optional(),
 })
 
 export const CreateKnowledgeSpaceBodySchema = OptionalScopeSchema.extend({
@@ -101,6 +112,7 @@ export const CreateKnowledgeSpaceBodySchema = OptionalScopeSchema.extend({
   metadata: JsonRecordSchema.nullable().optional(),
   writeRestricted: z.boolean().optional(),
   memberUserIds: z.array(UuidSchema).max(500).optional(),
+  memberAgentIds: z.array(UuidSchema).max(64).optional(),
 })
 
 export const UpdateKnowledgeSpaceBodySchema = z.object({
@@ -111,6 +123,7 @@ export const UpdateKnowledgeSpaceBodySchema = z.object({
   sensitivityTier: KnowledgeSensitivityTierSchema.optional(),
   writeRestricted: z.boolean().optional(),
   memberUserIds: z.array(UuidSchema).max(500).optional(),
+  memberAgentIds: z.array(UuidSchema).max(64).optional(),
 })
 
 export const CreateKnowledgePageBodySchema = OptionalScopeSchema.extend({
@@ -153,6 +166,17 @@ export const SearchKnowledgePagesBodySchema = z.object({
   spaceId: UuidSchema.optional(),
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(200).optional(),
+  mode: z.enum(['keyword', 'hybrid']).optional(),
+})
+
+// Ticket-bound documents + personal-space provisioning (api/src/routes/knowledge-tasks.ts).
+export const MyDocsSpaceResponseSchema = z.object({
+  spaceId: UuidSchema,
+})
+
+export const CreateTaskDocumentBodySchema = z.object({
+  title: NonEmptyStringSchema.max(240),
+  body: z.string().nullable().optional(),
 })
 
 export const KnowledgeListQuerySchema = z.object({
@@ -162,11 +186,44 @@ export const KnowledgeListQuerySchema = z.object({
   projectId: UuidSchema.optional(),
 })
 
+// Opt-in `search.summary`: bounded, cited answer synthesized from the top
+// hybrid-search chunks. `taskId`, when set, restricts results to chunks
+// whose page is bound to that ticket (mirrors HybridSearchPagesInput.taskId).
+export const SearchSummaryBodySchema = z.object({
+  query: NonEmptyStringSchema.max(500),
+  projectId: UuidSchema.optional(),
+  spaceId: UuidSchema.optional(),
+  taskId: UuidSchema.optional(),
+  limit: z.number().int().positive().max(50).optional(),
+})
+
+export const SearchSummaryResponseSchema = z.object({
+  answer: z.string().nullable(),
+  citations: z.array(z.object({
+    pageId: UuidSchema,
+    title: NonEmptyStringSchema,
+    spaceId: UuidSchema,
+    quote: z.string().max(200),
+  })),
+  sources: z.array(z.object({
+    pageId: UuidSchema,
+    title: NonEmptyStringSchema,
+    spaceId: UuidSchema,
+    snippet: NonEmptyStringSchema,
+  })),
+  reason: z.literal('no_matches').optional(),
+  policyChainTrace: z.array(z.string()),
+})
+
 export type CreateKnowledgePageBody = z.infer<typeof CreateKnowledgePageBodySchema>
 export type CreateKnowledgeSpaceBody = z.infer<typeof CreateKnowledgeSpaceBodySchema>
+export type CreateTaskDocumentBody = z.infer<typeof CreateTaskDocumentBodySchema>
+export type MyDocsSpaceResponse = z.infer<typeof MyDocsSpaceResponseSchema>
 export type MoveKnowledgePageBody = z.infer<typeof MoveKnowledgePageBodySchema>
 export type RestoreKnowledgePageVersionBody =
   z.infer<typeof RestoreKnowledgePageVersionBodySchema>
 export type SearchKnowledgePagesBody = z.infer<typeof SearchKnowledgePagesBodySchema>
+export type SearchSummaryBody = z.infer<typeof SearchSummaryBodySchema>
+export type SearchSummaryResponse = z.infer<typeof SearchSummaryResponseSchema>
 export type UpdateKnowledgePageBody = z.infer<typeof UpdateKnowledgePageBodySchema>
 export type UpdateKnowledgeSpaceBody = z.infer<typeof UpdateKnowledgeSpaceBodySchema>

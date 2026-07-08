@@ -6,6 +6,7 @@ import type {
   ProjectRecord,
   UserRecord,
 } from '../lib/api-client'
+import { HighlightedPassage } from '../components/features/search/HighlightedPassage'
 import { SearchModeToggle } from '../components/features/search/SearchModeToggle'
 import {
   parseGlobalSearchMode,
@@ -14,6 +15,7 @@ import {
   type KnowledgeSearchHit,
 } from '../facades/search/hooks'
 import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
+import { selectBestPassage } from '../lib/highlight-passage'
 import { sectionTitleClass } from './settings/settings-shared'
 
 const rowClass = [
@@ -29,7 +31,7 @@ const markerClass = [
 interface SearchResultRowProps {
   marker: ReactNode
   primary: string
-  secondary?: string | null
+  secondary?: ReactNode
   onClick?: () => void
 }
 
@@ -71,6 +73,18 @@ const SearchSection = ({ title, children }: SearchSectionProps) => (
 
 const initial = (value: string): string => value.trim().charAt(0).toUpperCase() || '?'
 
+// Hybrid-mode hits carry ranked passages; show the best one with query terms
+// highlighted. Keyword-mode hits fall back to the plain snippet. `hit.score`
+// is ranking metadata only and is never rendered.
+const knowledgeSecondary = (hit: KnowledgeSearchHit, query: string): ReactNode => {
+  const bestPassage = selectBestPassage(hit.passages)
+  return bestPassage ? (
+    <HighlightedPassage passage={bestPassage.content} query={query} />
+  ) : (
+    hit.snippet
+  )
+}
+
 export const SearchPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -92,7 +106,8 @@ export const SearchPage = () => {
   const openChannel = (channel: ChannelRecord) => navigate(`/channels/${channel.id}`)
   const openProject = (project: ProjectRecord) => navigate(`/projects/${project.id}`)
   const openMessage = (message: MessageSearchResult) => navigate(`/channels/${message.channelId}`)
-  const openKnowledge = (_hit: KnowledgeSearchHit) => navigate('/knowledge-base')
+  const openKnowledge = (hit: KnowledgeSearchHit) =>
+    navigate(`/knowledge-base?spaceId=${hit.page.spaceId}&pageId=${hit.page.id}`)
 
   const updateSearchParams = (nextQuery: string, nextMode = mode) => {
     const next = new URLSearchParams(searchParams)
@@ -142,7 +157,7 @@ export const SearchPage = () => {
               onChange={(event) => updateQuery(event.target.value)}
               placeholder={
                 mode === 'semantic'
-                  ? 'Search semantic memory...'
+                  ? 'Search semantic memory and knowledge...'
                   : 'Search channels, people, projects, messages, knowledge...'
               }
               type="search"
@@ -152,7 +167,8 @@ export const SearchPage = () => {
           </div>
           {mode === 'semantic' ? (
             <p className="mt-3 text-xs text-[color:var(--tx3)]">
-              Semantic mode searches memory. Messages and knowledge pages remain in Text mode.
+              Semantic mode searches memory and knowledge by meaning. Messages remain in Text
+              mode.
             </p>
           ) : null}
         </div>
@@ -161,15 +177,24 @@ export const SearchPage = () => {
           {!active ? (
             <p className="px-3 text-sm text-[color:var(--tx3)]">
               {mode === 'semantic'
-                ? 'Search memory by meaning.'
+                ? 'Search memory and knowledge by meaning.'
                 : 'Search channels, people, projects, messages, and knowledge.'}
             </p>
-          ) : results.errorMessage ? (
-            <p className="px-3 text-sm text-[color:var(--danger)]">{results.errorMessage}</p>
           ) : !hasResults && !results.isLoading ? (
-            <p className="px-3 text-sm text-[color:var(--tx3)]">No results</p>
+            results.errorMessage ? (
+              <p className="px-3 text-sm text-[color:var(--danger)]">{results.errorMessage}</p>
+            ) : (
+              <p className="px-3 text-sm text-[color:var(--tx3)]">No results</p>
+            )
           ) : (
             <>
+              {results.errorMessage ? (
+                // One section failing (e.g. memory search without an embedding
+                // model) must not hide the sections that did return results.
+                <p className="px-3 text-sm text-[color:var(--danger)]">
+                  {results.errorMessage}
+                </p>
+              ) : null}
               {results.channels.length > 0 ? (
                 <SearchSection title="Channels">
                   {results.channels.map((channel) => (
@@ -233,7 +258,7 @@ export const SearchPage = () => {
                       marker="📄"
                       onClick={() => openKnowledge(hit)}
                       primary={hit.page.title}
-                      secondary={hit.snippet}
+                      secondary={knowledgeSecondary(hit, query)}
                     />
                   ))}
                 </SearchSection>

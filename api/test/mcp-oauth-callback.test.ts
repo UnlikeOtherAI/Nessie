@@ -6,7 +6,7 @@ import Fastify from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 
 import { registerMcpOAuthRoutes } from '../src/routes/mcp/oauth.js'
-import type { SecretStore } from '../src/services/mcp-oauth.js'
+import type { SecretStore } from '@nessie/mcp-manage'
 
 /**
  * Task #39 — pin the OAuth callback's handling of the upstream `error` param.

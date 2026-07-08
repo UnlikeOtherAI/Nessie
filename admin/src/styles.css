@@ -1454,3 +1454,25 @@ button.reaction-pill-active:focus-visible {
   background: var(--overlay-weak);
   border-bottom: 2px solid var(--tx3);
 }
+
+/* Wikilinks ([[Page title]]) — resolved links use the accent colour with a
+   solid underline; unresolved ("broken") links are muted with a dashed
+   underline so the reader can tell at a glance which pages don't exist yet. */
+.kb-prose a.kb-wikilink {
+  padding: 0 0.15rem;
+  border-radius: 3px;
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent);
+  cursor: pointer;
+}
+.kb-prose a.kb-wikilink:hover {
+  background: var(--accent-soft);
+}
+.kb-prose a.kb-wikilink-unresolved {
+  color: var(--tx3);
+  border-bottom: 1px dashed var(--tx3);
+}
+.kb-prose a.kb-wikilink-unresolved:hover {
+  background: var(--overlay-weak);
+}

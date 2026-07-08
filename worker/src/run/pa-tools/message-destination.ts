@@ -6,7 +6,6 @@ import {
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import {
   buildVisibleChannelWhere,
-  isDelegatingPersonalAssistant,
   requireActingUserId,
   type ChannelAgent,
 } from './access.js'
@@ -52,7 +51,6 @@ const resolveChannelAgents = async (
   prisma: PrismaClient,
   channelId: string,
   organizationId: string,
-  content: string,
 ): Promise<ChannelAgent[]> => {
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
@@ -73,42 +71,15 @@ const resolveChannelAgents = async (
     throw new Error('Channel not found')
   }
 
-  const channelAgents: ChannelAgent[] = channel.agentBindings.map((binding) => ({
+  // Only members (bound agents) participate. An @mention of an agent that is not
+  // a member of the channel does not dispatch it — the API surfaces such
+  // mentions as pending invites so the mentioner can add the agent first.
+  return channel.agentBindings.map((binding) => ({
     id: binding.agent.id,
     name: binding.agent.name,
     role: binding.agent.role,
     systemPrompt: binding.agent.systemPrompt,
   }))
-
-  if (!content.includes('@')) {
-    return channelAgents
-  }
-
-  const boundIds = new Set(channelAgents.map((agent) => agent.id))
-  const candidates = await prisma.agent.findMany({
-    where: {
-      agentKind: 'shared',
-      id: { notIn: [...boundIds] },
-      organizationId,
-      systemManaged: false,
-    },
-    select: { id: true, name: true, role: true, systemPrompt: true },
-  })
-
-  for (const agent of candidates) {
-    const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const mentionRe = new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i')
-    if (mentionRe.test(content)) {
-      channelAgents.push({
-        id: agent.id,
-        name: agent.name,
-        role: agent.role,
-        systemPrompt: agent.systemPrompt,
-      })
-    }
-  }
-
-  return channelAgents
 }
 
 const resolveDmChannel = async (
@@ -241,7 +212,6 @@ export const resolveMessageDestination = async (
 }> => {
   const userId = requireActingUserId(context)
   const organizationId = context.channel.organizationId
-  const orgWide = isDelegatingPersonalAssistant(context)
   const explicitDestinationCount = [
     input.threadId ? 1 : 0,
     input.channelId ? 1 : 0,
@@ -275,7 +245,6 @@ export const resolveMessageDestination = async (
         context.prisma,
         dm.channelId,
         organizationId,
-        input.content,
       ),
       channelId: dm.channelId,
       channelLabel: dm.channelLabel,
@@ -291,7 +260,7 @@ export const resolveMessageDestination = async (
     const channel = await context.prisma.channel.findFirst({
       where: {
         id: input.channelId,
-        ...buildVisibleChannelWhere(organizationId, userId, orgWide),
+        ...buildVisibleChannelWhere(organizationId, userId),
       },
       select: {
         id: true,
@@ -322,7 +291,6 @@ export const resolveMessageDestination = async (
         context.prisma,
         channel.id,
         organizationId,
-        input.content,
       ),
       channelId: channel.id,
       channelLabel: channel.label,
@@ -338,7 +306,7 @@ export const resolveMessageDestination = async (
     const thread = await context.prisma.thread.findFirst({
       where: {
         id: input.threadId,
-        channel: buildVisibleChannelWhere(organizationId, userId, orgWide),
+        channel: buildVisibleChannelWhere(organizationId, userId),
       },
       select: {
         id: true,
@@ -369,7 +337,6 @@ export const resolveMessageDestination = async (
         context.prisma,
         thread.channel.id,
         organizationId,
-        input.content,
       ),
       channelId: thread.channel.id,
       channelLabel: thread.channel.label,
@@ -386,7 +353,7 @@ export const resolveMessageDestination = async (
   const thread = await context.prisma.thread.findFirst({
     where: {
       id: fallbackThreadId,
-      channel: buildVisibleChannelWhere(organizationId, userId, orgWide),
+      channel: buildVisibleChannelWhere(organizationId, userId),
     },
     select: {
       id: true,
@@ -417,7 +384,6 @@ export const resolveMessageDestination = async (
       context.prisma,
       thread.channel.id,
       organizationId,
-      input.content,
     ),
     channelId: thread.channel.id,
     channelLabel: thread.channel.label,

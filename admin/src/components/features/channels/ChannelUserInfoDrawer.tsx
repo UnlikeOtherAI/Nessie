@@ -124,6 +124,11 @@ export const ChannelUserInfoDrawer = ({
     sendText,
     sendMessageSubmit,
     sendAsFile,
+    pendingAgentInvites,
+    invitingAgentId,
+    inviteErrors,
+    invitePendingAgent,
+    dismissPendingAgent,
   } = useChannelComposer({
     activeChannel: dmChannel,
     currentUserId: meUserId,
@@ -266,6 +271,11 @@ export const ChannelUserInfoDrawer = ({
             onOversizePaste={(paste) => setOversizePaste(paste)}
             onSubmitForm={(event) => void sendMessageSubmit(event)}
             onSubmitText={(text) => void sendText(text)}
+            pendingAgentInvites={pendingAgentInvites}
+            invitingAgentId={invitingAgentId}
+            inviteErrors={inviteErrors}
+            onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
+            onDismissPendingAgent={dismissPendingAgent}
           />
         ) : null}
       </aside>

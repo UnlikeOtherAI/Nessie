@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { MentionInputHandle } from '../../shared/MentionInput'
-import { useSendMessage, useUploadAttachment } from '../../../facades/messages/hooks'
+import {
+  useSendMessage,
+  useUploadAttachment,
+  type PendingAgentInvite,
+} from '../../../facades/messages/hooks'
+import { useBindAgent } from '../../../facades/agents/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
 import type { OptimisticMessage } from './channel-helpers'
 
@@ -22,6 +27,11 @@ interface UseChannelComposerResult {
   sendText: (rawText: string) => Promise<void>
   sendMessageSubmit: (event?: FormEvent<HTMLFormElement>) => Promise<void>
   sendAsFile: (rawText: string) => Promise<void>
+  pendingAgentInvites: PendingAgentInvite[]
+  invitingAgentId: string | null
+  inviteErrors: Record<string, string>
+  invitePendingAgent: (agentId: string) => Promise<void>
+  dismissPendingAgent: (agentId: string) => void
 }
 
 export const useChannelComposer = ({
@@ -31,9 +41,13 @@ export const useChannelComposer = ({
 }: UseChannelComposerParams): UseChannelComposerResult => {
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
   const uploadAttachment = useUploadAttachment()
+  const bindAgent = useBindAgent()
   const [message, setMessage] = useState('')
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
+  const [pendingAgentInvites, setPendingAgentInvites] = useState<PendingAgentInvite[]>([])
+  const [invitingAgentId, setInvitingAgentId] = useState<string | null>(null)
+  const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({})
   const mentionRef = useRef<MentionInputHandle>(null)
 
   // Clear optimistic bubble once the real message from the server arrives.
@@ -53,9 +67,11 @@ export const useChannelComposer = ({
     }
   }, [threadMessages, optimisticMessages, currentUserId])
 
-  // Reset optimistic state when switching channels.
+  // Reset optimistic + pending-invite state when switching channels.
   useEffect(() => {
     setOptimisticMessages([])
+    setPendingAgentInvites([])
+    setInviteErrors({})
   }, [activeChannel?.id])
 
   const sendText = useCallback(
@@ -88,7 +104,15 @@ export const useChannelComposer = ({
       mentionRef.current?.clear()
 
       try {
-        await sendMessage.mutateAsync({ content: text })
+        const result = await sendMessage.mutateAsync({ content: text })
+        // Surface @mentioned agents that aren't members of this channel so the
+        // user can invite them; they were not dispatched.
+        if (result.pendingAgentInvites.length > 0) {
+          setPendingAgentInvites((current) => {
+            const seen = new Set(current.map((a) => a.id))
+            return [...current, ...result.pendingAgentInvites.filter((a) => !seen.has(a.id))]
+          })
+        }
       } catch {
         setOptimisticMessages((current) =>
           current.map((entry) =>
@@ -98,6 +122,46 @@ export const useChannelComposer = ({
       }
     },
     [activeChannel, sendMessage],
+  )
+
+  const clearInviteError = (agentId: string) =>
+    setInviteErrors((current) => {
+      if (!(agentId in current)) {
+        return current
+      }
+      const next = { ...current }
+      delete next[agentId]
+      return next
+    })
+
+  const dismissPendingAgent = useCallback((agentId: string) => {
+    setPendingAgentInvites((current) => current.filter((a) => a.id !== agentId))
+    clearInviteError(agentId)
+  }, [])
+
+  const invitePendingAgent = useCallback(
+    async (agentId: string) => {
+      if (!activeChannel) {
+        return
+      }
+      setInvitingAgentId(agentId)
+      clearInviteError(agentId)
+      try {
+        await bindAgent.mutateAsync({ agentId, channelId: activeChannel.id })
+        setPendingAgentInvites((current) => current.filter((a) => a.id !== agentId))
+      } catch (error) {
+        setInviteErrors((current) => ({
+          ...current,
+          [agentId]:
+            error instanceof Error && error.message
+              ? error.message
+              : 'Could not invite this agent. Please try again.',
+        }))
+      } finally {
+        setInvitingAgentId(null)
+      }
+    },
+    [activeChannel, bindAgent],
   )
 
   const sendMessageSubmit = async (event?: FormEvent<HTMLFormElement>) => {
@@ -139,5 +203,10 @@ export const useChannelComposer = ({
     sendText,
     sendMessageSubmit,
     sendAsFile,
+    pendingAgentInvites,
+    invitingAgentId,
+    inviteErrors,
+    invitePendingAgent,
+    dismissPendingAgent,
   }
 }

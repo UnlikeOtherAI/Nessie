@@ -16,6 +16,17 @@ import type {
   WorkflowConnection,
   WorkflowHoveredHandle,
 } from '../../../lib/workflow-designer/types'
+import type { WorkflowStepRunRecord } from '../../../lib/api-client'
+
+// Whiteboard-exception palette (see constants.ts) for live run states.
+const STEP_RUN_COLORS: Record<WorkflowStepRunRecord['status'], string> = {
+  blocked: '#d97706',
+  completed: '#2e7d32',
+  failed: '#c62828',
+  pending: '#8b7a93',
+  running: '#d97706',
+  skipped: '#8b7a93',
+}
 
 type WorkflowCanvasNodeProps = {
   node: WorkflowCanvasNodeType
@@ -23,6 +34,7 @@ type WorkflowCanvasNodeProps = {
   hoveredHandle: WorkflowHoveredHandle | null
   invalidDraftTarget: WorkflowHoveredHandle | null
   selectedNodeId: string | null
+  stepRun?: WorkflowStepRunRecord
   isDragging: boolean
   onNodePointerDown: (
     event: ReactPointerEvent<HTMLDivElement>,
@@ -41,6 +53,7 @@ export const WorkflowCanvasNode = ({
   hoveredHandle,
   invalidDraftTarget,
   selectedNodeId,
+  stepRun,
   isDragging,
   onNodePointerDown,
   onConnectionStart,
@@ -181,7 +194,24 @@ export const WorkflowCanvasNode = ({
         </div>
 
         <div className="mt-auto text-[11px] leading-5 text-[var(--muted)]">
-          Drag to position. Use the connector circles to build the workflow.
+          {stepRun ? (
+            <span
+              className="inline-flex items-center gap-1.5 font-medium"
+              style={{ color: STEP_RUN_COLORS[stepRun.status] }}
+            >
+              <span
+                className={[
+                  'inline-block h-2 w-2 rounded-full',
+                  stepRun.status === 'running' ? 'animate-pulse' : '',
+                ].join(' ')}
+                style={{ background: STEP_RUN_COLORS[stepRun.status] }}
+              />
+              {stepRun.status}
+              {stepRun.errorMessage ? ' — see inspector' : ''}
+            </span>
+          ) : (
+            'Drag to position. Use the connector circles to build the workflow.'
+          )}
         </div>
       </div>
     </div>

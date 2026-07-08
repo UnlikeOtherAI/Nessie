@@ -9,6 +9,7 @@ import type {
   InferenceService,
   InferenceStreamEvent,
   ModelProviderConfig,
+  ProviderEmbeddingBatchResult,
   ProviderEmbeddingResult,
   ProviderInvocationRequest,
 } from './types.js'
@@ -165,6 +166,27 @@ export const createInferenceService = (
       }
 
       return connector.embed({
+        correlationId: request.correlationId
+          ?? request.actorContext?.actionContext.correlationId,
+        input,
+        metadata: request.metadata,
+        model: request.model,
+        requestId:
+          request.requestId
+          ?? request.actorContext?.actionContext.requestId
+          ?? requestIdFactory(),
+      })
+    },
+
+    async embedBatch(
+      input: string[],
+      request = {},
+    ): Promise<ProviderEmbeddingBatchResult> {
+      if (!connector.embedBatch) {
+        throw new Error(`${config.provider} does not support batch embeddings`)
+      }
+
+      return connector.embedBatch({
         correlationId: request.correlationId
           ?? request.actorContext?.actionContext.correlationId,
         input,

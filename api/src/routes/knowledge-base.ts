@@ -1,5 +1,9 @@
 import type { FastifyInstance } from 'fastify'
-import { buildNativeSourceRef, canReadSpace, type KnowledgePageRecord } from '@nessie/knowledge'
+import {
+  buildNativeSourceRef,
+  type KnowledgePageRecord,
+  type KnowledgeSpaceRecord,
+} from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import {
   CreateKnowledgePageBodySchema,
@@ -13,6 +17,7 @@ import {
 } from '../contracts/knowledge-base.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { getQueryEmbedding } from '../services/knowledge-query-embedding.js'
 import {
   actorAuthorType,
   attachPageEnvelope,
@@ -71,10 +76,13 @@ export const registerKnowledgeBaseRoutes = (
     if (!decision) return reply
     const viewer = await buildViewer(actorContext)
     // The org-wide knowledge_space:create grant is evaluated against the caller's
-    // own session project, so without this check a user could pass any sibling
-    // project's id in the body and plant a writable space there. Human actors may
-    // only create in a project they belong to; agents/services keep bypass.
-    if (!viewer.bypass && !viewer.projectIds.has(projectId)) {
+    // own session project, so without this check a user (or agent) could pass any
+    // sibling project's id in the body and plant a writable space there. Human
+    // actors may only create in a project they belong to; agents may only create
+    // in a project reached via one of their channel bindings; services keep bypass.
+    const inProjectReach = viewer.bypass
+      || (viewer.agent ? viewer.agent.projectIds.has(projectId) : viewer.projectIds.has(projectId))
+    if (!inProjectReach) {
       sendApiError(
         reply,
         403,
@@ -83,12 +91,21 @@ export const registerKnowledgeBaseRoutes = (
       )
       return reply
     }
-    const space = await provider.createSpace({
-      ...body,
-      organizationId: actorContext.tenant.organizationId,
-      projectId,
-      createdBy: actorContext.actor.actorId,
-    })
+    let space: KnowledgeSpaceRecord
+    try {
+      space = await provider.createSpace({
+        ...body,
+        organizationId: actorContext.tenant.organizationId,
+        projectId,
+        createdBy: actorContext.actor.actorId,
+      })
+    } catch (error) {
+      return sendKnowledgeMutationError(request, reply, error, {
+        code: 'KNOWLEDGE_SPACE_INVALID',
+        message: 'Knowledge space could not be created',
+        statusCode: 400,
+      })
+    }
     await emitAuditEvent(prisma, {
       actorContext,
       action: 'kb.space.created',
@@ -123,7 +140,16 @@ export const registerKnowledgeBaseRoutes = (
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
     if (!(await accessSpace(actorContext, spaceId, viewer, 'write', reply))) return reply
-    const space = await provider.updateSpace(actorContext.tenant.organizationId, spaceId, body)
+    let space: KnowledgeSpaceRecord | null
+    try {
+      space = await provider.updateSpace(actorContext.tenant.organizationId, spaceId, body)
+    } catch (error) {
+      return sendKnowledgeMutationError(request, reply, error, {
+        code: 'KNOWLEDGE_SPACE_INVALID',
+        message: 'Knowledge space could not be updated',
+        statusCode: 400,
+      })
+    }
     if (!space) return sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
     await emitAuditEvent(prisma, {
       actorContext,
@@ -225,25 +251,51 @@ export const registerKnowledgeBaseRoutes = (
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'search')
     if (!decision) return reply
     const viewer = await buildViewer(actorContext)
+    const organizationId = actorContext.tenant.organizationId
+    const projectId = body.projectId ?? actorContext.tenant.projectId ?? undefined
+    const query = body.query?.trim()
+    // Hybrid needs query text and provider support; force keyword mode
+    // otherwise. Both paths pass `viewer` through so the provider applies the
+    // space-read SQL pre-filter itself (readableSpaceIdsSql) instead of the
+    // per-space post-filter this route used to run after the fact — bypass
+    // viewers were never filtered anyway.
+    const hybridSearch = provider.searchPagesHybrid
+    const mode = body.mode ?? (query ? 'hybrid' : 'keyword')
+
+    if (mode === 'hybrid' && query && hybridSearch) {
+      const queryEmbedding = await getQueryEmbedding(
+        deps.sharedModelClient,
+        query,
+        attributionFromActorContext(actorContext),
+      )
+      const result = await hybridSearch({
+        organizationId,
+        query,
+        queryEmbedding,
+        viewer,
+        projectId,
+        spaceId: body.spaceId,
+        limit: body.limit,
+      })
+      return createApiResponse(
+        result.data.map((hit) => ({
+          page: attachPageEnvelope(hit.page, decision),
+          snippet: hit.snippet,
+          passages: hit.passages,
+          score: hit.score,
+        })),
+        result.meta,
+      )
+    }
+
     const result = await provider.searchPages({
       ...body,
-      organizationId: actorContext.tenant.organizationId,
-      projectId: body.projectId ?? actorContext.tenant.projectId ?? undefined,
+      organizationId,
+      projectId,
+      viewer,
     })
-    // Drop hits the viewer may not read (decision cached per space).
-    const readableBySpace = new Map<string, boolean>()
-    const allowed: typeof result.data = []
-    for (const hit of result.data) {
-      let readable = readableBySpace.get(hit.page.spaceId)
-      if (readable === undefined) {
-        const space = await provider.getSpace(actorContext.tenant.organizationId, hit.page.spaceId)
-        readable = space ? canReadSpace(space, viewer) : false
-        readableBySpace.set(hit.page.spaceId, readable)
-      }
-      if (readable) allowed.push(hit)
-    }
     return createApiResponse(
-      allowed.map((hit) => ({
+      result.data.map((hit) => ({
         page: attachPageEnvelope(hit.page, decision),
         snippet: hit.snippet,
       })),
@@ -337,6 +389,17 @@ export const registerKnowledgeBaseRoutes = (
   app.post('/api/knowledge-base/pages/:pageId/publish', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    // Agents draft; only a human may publish. Agents request publication via
+    // kb_publish_request, which opens a knowledge.page.publish approval instead.
+    if (actorContext.actor.actorType === 'agent') {
+      sendApiError(
+        reply,
+        403,
+        'POLICY_DENIED',
+        'Agents cannot publish knowledge pages directly — request publication via approval instead',
+      )
+      return reply
+    }
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'approve')
     if (!decision) return reply
     const { pageId } = request.params as { pageId: string }

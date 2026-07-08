@@ -1,0 +1,313 @@
+import { randomUUID } from 'node:crypto'
+import {
+  canWriteSpace,
+  loadSpaceViewer,
+  type KnowledgeAuthorType,
+} from '@nessie/knowledge'
+import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
+import { buildSpaceViewerPrincipal } from './access.js'
+import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
+
+const MAX_BODY_CHARS = 200_000
+const MAX_LABELS = 16
+// Cheap, obvious-active-content guard. This is not the sanitizer — the
+// admin's read-only TipTap schema is — it only stops an agent from planting
+// blatant script/iframe/event-handler content in a draft body before a human
+// ever reviews it.
+const UNSAFE_BODY_PATTERN = /<script\b|<iframe\b|\bon\w+\s*=/i
+const PENDING_APPROVAL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
+
+const assertSafeBody = (body: string): void => {
+  if (body.length > MAX_BODY_CHARS) {
+    throw new Error(`Draft body exceeds the ${MAX_BODY_CHARS}-character limit.`)
+  }
+  if (UNSAFE_BODY_PATTERN.test(body)) {
+    throw new Error(
+      'Draft body contains disallowed active content (script/iframe tags or on* attributes).',
+    )
+  }
+}
+
+const assertValidLabels = (labels: string[] | undefined): void => {
+  if (labels && labels.length > MAX_LABELS) {
+    throw new Error(`A page may carry at most ${MAX_LABELS} labels.`)
+  }
+}
+
+// The write tools' access principal doubles as the version/approval author:
+// a delegating PA writes as the user it acts for, an autonomous agent writes
+// as itself. Mirrors buildSpaceViewerPrincipal's own actorType resolution so
+// the two can never drift.
+const resolveAuthor = (
+  context: BuiltinToolRuntimeContext,
+): { authorId: string; authorType: KnowledgeAuthorType } => {
+  const principal = buildSpaceViewerPrincipal(context)
+  // buildSpaceViewerPrincipal never actually returns 'service' (it only ever
+  // resolves a user or agent actor), but its declared type is the full
+  // SpaceViewerPrincipal union — narrow explicitly so authorId stays `string`.
+  if (principal.actorType === 'service') {
+    throw new Error('Knowledge write tools require a user or agent actor.')
+  }
+  return { authorId: principal.actorId, authorType: principal.actorType }
+}
+
+export const runKbDraftWriteTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: {
+    spaceId?: string
+    pageId?: string
+    title?: string
+    body: string
+    summary?: string
+    labels?: string[]
+    parentPageId?: string
+    // Binds a newly created page to a ticket. Ignored when pageId is set (an
+    // existing page's taskId is set once at creation, not editable here).
+    taskId?: string
+    changeComment?: string
+  },
+): Promise<ToolExecutionResult> => {
+  assertSafeBody(input.body)
+  assertValidLabels(input.labels)
+
+  const organizationId = String(context.channel.organizationId)
+  const provider = createWorkerKnowledgeProvider(context.prisma)
+  const principal = buildSpaceViewerPrincipal(context)
+  const author = resolveAuthor(context)
+
+  const existingPage = input.pageId ? await provider.getPage(organizationId, input.pageId) : null
+  if (input.pageId && !existingPage) {
+    throw new Error(`Knowledge page not found: ${input.pageId}`)
+  }
+
+  const spaceId = existingPage ? existingPage.spaceId : input.spaceId
+  if (!spaceId) {
+    throw new Error('spaceId is required when creating a new page.')
+  }
+
+  const space = await provider.getSpace(organizationId, spaceId)
+  if (!space) {
+    throw new Error(`Knowledge space not found: ${spaceId}`)
+  }
+
+  // Checked ahead of the general canWriteSpace gate (which already denies any
+  // agent write to a restricted space) so a restricted-space attempt always
+  // surfaces this specific reason rather than the generic write-access one.
+  if (principal.actorType === 'agent' && space.sensitivityTier === 'restricted') {
+    throw new Error('Agents may not write to a restricted knowledge space.')
+  }
+  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
+  if (!canWriteSpace(space, viewer)) {
+    throw new Error('You do not have write access to this knowledge space.')
+  }
+
+  if (existingPage) {
+    const updated = await provider.updatePage(existingPage.id, {
+      organizationId,
+      authorId: author.authorId,
+      authorType: author.authorType,
+      body: input.body,
+      ...(input.summary !== undefined ? { summary: input.summary } : {}),
+      ...(input.labels !== undefined ? { labels: input.labels } : {}),
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.changeComment !== undefined ? { changeComment: input.changeComment } : {}),
+    })
+    if (!updated || !updated.latestVersion) {
+      throw new Error(`Knowledge page not found: ${existingPage.id}`)
+    }
+    return {
+      inputSummary: `pageId=${existingPage.id}`,
+      outputPreview:
+        `Added draft version ${updated.latestVersion.versionNumber} to page "${updated.title}" ` +
+        `(pageId=${updated.id}). Call kb_publish_request when it is ready for review.`,
+      toolName: 'kb_draft_write',
+    }
+  }
+
+  if (!input.title) {
+    throw new Error('title is required when creating a new page.')
+  }
+
+  const created = await provider.createPage({
+    organizationId,
+    projectId: space.projectId,
+    spaceId,
+    title: input.title,
+    body: input.body,
+    summary: input.summary ?? null,
+    labels: input.labels,
+    parentPageId: input.parentPageId,
+    taskId: input.taskId ?? null,
+    changeComment: input.changeComment ?? null,
+    authorId: author.authorId,
+    authorType: author.authorType,
+    createdBy: author.authorId,
+  })
+
+  return {
+    inputSummary: `spaceId=${spaceId} title=${input.title}`,
+    outputPreview:
+      `Created draft page "${created.title}" (pageId=${created.id}, version=` +
+      `${created.latestVersion?.versionNumber ?? 1}). Call kb_publish_request when it is ready for review.`,
+    toolName: 'kb_draft_write',
+  }
+}
+
+export const runKbFileTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: {
+    pageId: string
+    parentPageId?: string | null
+    position?: number
+    title?: string
+    labels?: string[]
+  },
+): Promise<ToolExecutionResult> => {
+  assertValidLabels(input.labels)
+
+  const organizationId = String(context.channel.organizationId)
+  const provider = createWorkerKnowledgeProvider(context.prisma)
+  const principal = buildSpaceViewerPrincipal(context)
+
+  const page = await provider.getPage(organizationId, input.pageId)
+  if (!page) {
+    throw new Error(`Knowledge page not found: ${input.pageId}`)
+  }
+
+  const space = await provider.getSpace(organizationId, page.spaceId)
+  if (!space) {
+    throw new Error(`Knowledge space not found for page: ${input.pageId}`)
+  }
+
+  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
+  if (!canWriteSpace(space, viewer)) {
+    throw new Error('You do not have write access to this knowledge space.')
+  }
+
+  // Agents may only organize their own drafts, never a human's or another
+  // agent's already-published page.
+  if (
+    principal.actorType === 'agent' &&
+    !(page.status === 'draft' && page.latestVersion?.authorType === 'agent')
+  ) {
+    throw new Error('You may only file draft pages you authored.')
+  }
+
+  const changes: string[] = []
+
+  if (input.parentPageId !== undefined || input.position !== undefined) {
+    const moved = await provider.movePage({
+      organizationId,
+      pageId: page.id,
+      parentPageId: input.parentPageId ?? null,
+      position: input.position ?? page.position,
+    })
+    if (!moved) {
+      throw new Error('Could not move the page — check that the target parent exists in the same space.')
+    }
+    changes.push('location')
+  }
+
+  if (input.title !== undefined || input.labels !== undefined) {
+    const author = resolveAuthor(context)
+    const updated = await provider.updatePage(page.id, {
+      organizationId,
+      authorId: author.authorId,
+      authorType: author.authorType,
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.labels !== undefined ? { labels: input.labels } : {}),
+    })
+    if (!updated) {
+      throw new Error(`Knowledge page not found: ${page.id}`)
+    }
+    changes.push(input.title !== undefined ? 'title' : 'labels')
+  }
+
+  return {
+    inputSummary: `pageId=${page.id}`,
+    outputPreview: changes.length
+      ? `Filed page ${page.id}: updated ${changes.join(', ')}.`
+      : `No changes requested for page ${page.id}.`,
+    toolName: 'kb_file',
+  }
+}
+
+const DEFAULT_PUBLISH_REASON = 'Agent-authored draft ready for review.'
+
+export const runKbPublishRequestTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { pageId: string; reason?: string },
+): Promise<ToolExecutionResult> => {
+  const organizationId = String(context.channel.organizationId)
+  const provider = createWorkerKnowledgeProvider(context.prisma)
+  const principal = buildSpaceViewerPrincipal(context)
+
+  const page = await provider.getPage(organizationId, input.pageId)
+  if (!page) {
+    throw new Error(`Knowledge page not found: ${input.pageId}`)
+  }
+
+  const space = await provider.getSpace(organizationId, page.spaceId)
+  if (!space) {
+    throw new Error(`Knowledge space not found for page: ${input.pageId}`)
+  }
+
+  const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
+  if (!canWriteSpace(space, viewer)) {
+    throw new Error('You do not have write access to this knowledge space.')
+  }
+
+  if (page.status !== 'draft' || page.latestVersion?.authorType !== 'agent') {
+    throw new Error('Only agent-authored drafts can be submitted for publication with this tool.')
+  }
+
+  const versionId = page.latestVersion.id
+
+  // Dedupe: never open a second pending approval for the same draft version.
+  const pendingForAgent = await context.prisma.approvalRequest.findMany({
+    where: {
+      organizationId,
+      agentId: context.agentId,
+      action: 'knowledge.page.publish',
+      status: 'pending',
+    },
+    select: { id: true, context: true },
+  })
+  const existing = pendingForAgent.find((row) => {
+    const rowContext = row.context as Record<string, unknown> | null
+    return rowContext?.['pageId'] === page.id && rowContext?.['versionId'] === versionId
+  })
+  if (existing) {
+    return {
+      inputSummary: `pageId=${page.id}`,
+      outputPreview: `Publication already requested — approval ${existing.id} pending human review.`,
+      toolName: 'kb_publish_request',
+    }
+  }
+
+  const approval = await context.prisma.approvalRequest.create({
+    data: {
+      organizationId,
+      projectId: page.projectId,
+      teamId: page.teamId ?? null,
+      channelId: context.channel.id,
+      taskId: null,
+      runId: context.run.id,
+      agentId: context.agentId,
+      requesterId: context.agentId,
+      action: 'knowledge.page.publish',
+      reason: input.reason?.trim() || DEFAULT_PUBLISH_REASON,
+      context: { pageId: page.id, versionId, spaceId: page.spaceId, title: page.title },
+      status: 'pending',
+      continuationToken: randomUUID(),
+      expiresAt: new Date(Date.now() + PENDING_APPROVAL_EXPIRY_MS),
+    },
+    select: { id: true },
+  })
+
+  return {
+    inputSummary: `pageId=${page.id}`,
+    outputPreview: `Publication requested — approval ${approval.id} pending human review.`,
+    toolName: 'kb_publish_request',
+  }
+}

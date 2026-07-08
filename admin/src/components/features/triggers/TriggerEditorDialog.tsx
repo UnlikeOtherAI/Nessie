@@ -14,9 +14,10 @@ import type {
 import { getBaseUrl } from '../../../lib/api-client'
 import {
   buildSubmitPayload,
+  fieldLabelClass,
   getDefaultCreateState,
   getEditState,
-  getTriggerTypeLabel,
+  getFormTriggerTypeLabel,
   type DefaultTarget,
   type TriggerFormState,
 } from './trigger-config'
@@ -25,6 +26,7 @@ import { IntervalTriggerFields } from './IntervalTriggerFields'
 import { ScheduledTriggerFields } from './ScheduledTriggerFields'
 import { TriggerMetaFields } from './TriggerMetaFields'
 import { WebhookTriggerFields } from './WebhookTriggerFields'
+import { Switch } from '../../primitives/Switch'
 
 type TriggerEditorDialogProps = {
   agents: AgentRecord[]
@@ -243,7 +245,7 @@ export const TriggerEditorDialog = ({
     return null
   }
 
-  const currentTriggerLabel = getTriggerTypeLabel({
+  const currentTriggerLabel = getFormTriggerTypeLabel({
     type: form.triggerType,
     scheduleMode: form.scheduleMode,
   })
@@ -348,34 +350,64 @@ export const TriggerEditorDialog = ({
             <EventTriggerFields form={form} setForm={setForm} />
           ) : null}
 
+          <div className="grid gap-1.5">
+            <label className={fieldLabelClass} htmlFor="trigger-description">
+              Description <span className="normal-case tracking-normal opacity-70">(optional)</span>
+            </label>
+            <textarea
+              className="admin-input min-h-20 resize-y"
+              id="trigger-description"
+              onChange={(nextEvent) =>
+                setForm((current) => ({
+                  ...current,
+                  description: nextEvent.target.value,
+                }))
+              }
+              placeholder="Notes for operators"
+              value={form.description}
+            />
+          </div>
+
           {formError ? (
             <div className="rounded-xl border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-3 text-sm text-[var(--danger-text)]">
               {formError}
             </div>
           ) : null}
 
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              className="admin-button admin-button-secondary"
-              disabled={isSubmitting}
-              onClick={handleClose}
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              className="admin-button admin-button-primary"
-              disabled={isSubmitting}
-              type="submit"
-            >
-              {isSubmitting
-                ? mode === 'edit'
-                  ? 'Saving...'
-                  : 'Creating...'
-                : mode === 'edit'
-                  ? 'Save changes'
-                  : 'Create trigger'}
-            </button>
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <label className="flex items-center gap-2 text-sm text-[color:var(--tx2)]">
+              <Switch
+                checked={form.enabled}
+                label={form.enabled ? 'Disable trigger' : 'Enable trigger'}
+                onChange={(next) =>
+                  setForm((current) => ({ ...current, enabled: next }))
+                }
+              />
+              Enabled
+            </label>
+            <div className="flex gap-2">
+              <button
+                className="admin-button admin-button-secondary"
+                disabled={isSubmitting}
+                onClick={handleClose}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="admin-button admin-button-primary"
+                disabled={isSubmitting}
+                type="submit"
+              >
+                {isSubmitting
+                  ? mode === 'edit'
+                    ? 'Saving...'
+                    : 'Creating...'
+                  : mode === 'edit'
+                    ? 'Save changes'
+                    : 'Create trigger'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

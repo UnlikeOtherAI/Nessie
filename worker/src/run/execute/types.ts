@@ -1,8 +1,22 @@
 import type { PrismaClient } from '@prisma/client'
+import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
 import type { ModelClient, PgRealtimeTransport, QueueProvider } from '@nessie/runtime'
 
 export type ExecutionDependencies = {
+  /**
+   * MCP credential plumbing: `store` encrypts assistant-collected secrets into
+   * Postgres, `resolver` turns any credentialRef (pg-stored or env-var) into
+   * plaintext for probes and dispatch. Optional so test fixtures that never
+   * touch connectors keep working; connector features degrade to env-only
+   * resolution without it.
+   */
+  mcpSecrets?: {
+    store: SecretStore
+    resolver: SecretResolver
+    /** Absolute OAuth callback URL for assistant-minted authorization flows. */
+    oauthCallbackUrl?: string
+  }
   modelClient: ModelClient
   prisma: PrismaClient
   queueProvider: QueueProvider

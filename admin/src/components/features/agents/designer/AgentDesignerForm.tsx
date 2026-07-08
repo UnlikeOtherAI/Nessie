@@ -1,10 +1,13 @@
+import type { DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
 import type { AgentDesignerActions, AgentFormState } from './useAgentDesigner'
-import { TOOL_CATEGORIES, ToolCategorySection } from './ToolCategorySection'
+import { ToolPicker } from './ToolPicker'
 
 type AgentDesignerFormProps = {
   actions: AgentDesignerActions
   parentAgentName?: string
   state: AgentFormState
+  toolGroups: DesignerToolGroup[]
+  toolsLoading: boolean
 }
 
 const PROVIDERS = [
@@ -52,7 +55,13 @@ const fieldLabelClass = [
   'tracking-[0.16em] text-[color:var(--tx3)]',
 ].join(' ')
 
-export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesignerFormProps) => {
+export const AgentDesignerForm = ({
+  actions,
+  parentAgentName,
+  state,
+  toolGroups,
+  toolsLoading,
+}: AgentDesignerFormProps) => {
   const isStreaming = (field: string) => state.streamingField === field
 
   return (
@@ -190,17 +199,16 @@ export const AgentDesignerForm = ({ actions, parentAgentName, state }: AgentDesi
       {/* Tools */}
       <div className="grid gap-1.5">
         <div className={fieldLabelClass}>Tools</div>
-        <div className="grid gap-2">
-          {TOOL_CATEGORIES.map((cat, i) => (
-            <ToolCategorySection
-              category={cat}
-              defaultExpanded={i === 0}
-              key={cat.id}
-              onToggle={actions.toggleTool}
-              tools={state.tools}
-            />
-          ))}
-        </div>
+        <p className="text-xs text-[color:var(--tx3)]">
+          Built-in tools are on by default; connector (MCP) tools must be
+          switched on per agent.
+        </p>
+        <ToolPicker
+          groups={toolGroups}
+          isLoading={toolsLoading}
+          onToggle={actions.toggleTool}
+          toolState={state.tools}
+        />
       </div>
     </div>
   )

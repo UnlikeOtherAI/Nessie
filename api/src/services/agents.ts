@@ -79,6 +79,17 @@ const mapToolCall = (toolCall: {
   outputPreview: toolCall.outputPreview?.slice(0, 200) ?? undefined,
 })
 
+const toToolPolicyRecord = (value: unknown): Record<string, boolean> | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>).filter(
+    (entry): entry is [string, boolean] => typeof entry[1] === 'boolean',
+  )
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
 export const mapAgentRecord = (agent: {
   bindings: Array<{ channelId: string }>
   createdAt: Date
@@ -102,6 +113,7 @@ export const mapAgentRecord = (agent: {
   delegationMode: 'act_as_requesting_user' | 'none'
   status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
   systemPrompt: string | null
+  toolPolicy?: unknown
   updatedAt: Date
 }): AgentRecord => {
   const latestRun = agent.runs?.[0]
@@ -139,6 +151,7 @@ export const mapAgentRecord = (agent: {
     parentAgentId: agent.parentAgentId ? parseAgentId(agent.parentAgentId) : undefined,
     provider: agent.provider ?? undefined,
     model: agent.model ?? undefined,
+    toolPolicy: toToolPolicyRecord(agent.toolPolicy),
     avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),

@@ -1,6 +1,18 @@
-import { recordConnectorUsage, type LedgerAttribution, type ToolSchemaDescriptor } from '@nessie/runtime'
+import {
+  applyAuthSecretToTransport,
+  resolveCredentialRef,
+  EnvSecretResolver,
+  type SecretResolver,
+} from '@nessie/mcp-manage'
+import { recordConnectorUsage, type LedgerAttribution } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext, McpCredentialPrincipalType } from '@nessie/schemas'
+import type { AuthorizedActionContext } from '@nessie/schemas'
+import {
+  buildDeferredView,
+  buildInlineView,
+  DEFAULT_INLINE_TOOL_LIMIT,
+  type McpToolsetView,
+} from './mcp-toolset-deferred.js'
 import { dispatchTool, parseMcpTransportConfig } from './tool-dispatch.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
@@ -26,87 +38,89 @@ type RegistryRow = {
   mcpInstanceId: string | null
   mcpInstance: {
     credentialRef: string | null
+    scopeType: string
+    scopeId: string
     transportConfig: unknown
     catalogEntry: {
+      label: string
+      authConfig: unknown
       defaultTransportConfig: unknown
     }
   } | null
 }
 
-const isAllowedByPolicy = (toolPolicy: McpToolPolicy, registryEntryId: string): boolean => {
-  if (!toolPolicy) return false
-  return toolPolicy[registryEntryId] === true
-}
-
 const stringRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 
-type CredentialResolutionContext = {
-  userId?: string | null
-  agentId?: string | null
-  channelId?: string | null
-  teamId?: string | null
-  projectId?: string | null
-  organizationId?: string | null
+type RunScopeContext = {
+  agentKind: 'personal_assistant' | 'shared'
+  effectiveUserId: string | null
+  channelId: string
+  teamId: string | null
+  projectId: string | null
 }
 
-const CREDENTIAL_RESOLUTION_ORDER: Array<{
-  principalType: McpCredentialPrincipalType
-  field: keyof CredentialResolutionContext
-}> = [
-  { principalType: 'user', field: 'userId' },
-  { principalType: 'agent', field: 'agentId' },
-  { principalType: 'channel', field: 'channelId' },
-  { principalType: 'team', field: 'teamId' },
-  { principalType: 'project', field: 'projectId' },
-  { principalType: 'organization', field: 'organizationId' },
-]
-
-const buildCredentialContext = (
-  actorContext: AuthorizedActionContext,
-  agentId: string,
-  channelId: string,
-): CredentialResolutionContext => ({
-  userId:
-    actorContext.actor.actorType === 'user'
-      ? actorContext.actor.actorId
-      : actorContext.actionContext.effectiveUserId,
-  agentId,
-  channelId,
-  teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId,
-  projectId: actorContext.tenant.projectId,
-  organizationId: actorContext.tenant.organizationId,
-})
-
-const resolveCredentialRef = async (
-  prisma: PrismaClient,
-  instanceId: string,
-  context: CredentialResolutionContext,
-  defaultRef: string | null,
-): Promise<string | null> => {
-  for (const { principalType, field } of CREDENTIAL_RESOLUTION_ORDER) {
-    const principalId = context[field]
-    if (!principalId) continue
-    const override = await prisma.mcpServerCredentialOverride.findUnique({
-      where: {
-        instanceId_principalType_principalId: {
-          instanceId,
-          principalType,
-          principalId,
-        },
-      },
-      select: { credentialRef: true },
-    })
-    if (override?.credentialRef) return override.credentialRef
+/**
+ * Whether an instance's install scope reaches this run. Shared scopes follow
+ * tenancy: org-/system-wide instances reach every run in the org, team /
+ * project / channel instances reach runs inside that container. User-scoped
+ * instances reach ONLY the installing user's delegated personal-assistant
+ * runs — a user's personal connector must never surface in a shared agent's
+ * channel where other people could drive it.
+ */
+const scopeMatchesRun = (
+  scopeType: string,
+  scopeId: string,
+  ctx: RunScopeContext,
+): boolean => {
+  switch (scopeType) {
+    case 'system':
+    case 'organization':
+      return true
+    case 'project':
+      return ctx.projectId === scopeId
+    case 'team':
+      return ctx.teamId === scopeId
+    case 'channel':
+      return ctx.channelId === scopeId
+    case 'user':
+      return ctx.agentKind === 'personal_assistant' && ctx.effectiveUserId === scopeId
+    default:
+      return false
   }
-  return defaultRef
 }
 
-const resolveSecret = (credentialRef: string | null): string | null => {
-  if (!credentialRef) return null
-  const value = process.env[credentialRef]
-  return typeof value === 'string' && value.length > 0 ? value : null
+/**
+ * Exposure rule for one registry entry: an explicit per-agent policy verdict
+ * always wins (true exposes, false hides); otherwise the instance's install
+ * scope decides. This is what makes an admin's org-scope install available to
+ * the whole org, and a member's self-installed connector available to their
+ * own personal assistant, without owner-managed per-agent policy edits.
+ */
+const isExposed = (
+  toolPolicy: McpToolPolicy,
+  registryEntryId: string,
+  instance: { scopeType: string; scopeId: string },
+  ctx: RunScopeContext,
+): boolean => {
+  const verdict = toolPolicy?.[registryEntryId]
+  if (verdict === true) return true
+  if (verdict === false) return false
+  return scopeMatchesRun(instance.scopeType, instance.scopeId, ctx)
 }
+
+const buildRunScopeContext = (
+  actorContext: AuthorizedActionContext,
+  runtimeContext: { agentId: string; agentKind: 'personal_assistant' | 'shared'; channelId: string },
+): RunScopeContext => ({
+  agentKind: runtimeContext.agentKind,
+  effectiveUserId:
+    actorContext.actionContext.effectiveUserId
+    ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null),
+  channelId: runtimeContext.channelId,
+  teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? null,
+  projectId: actorContext.tenant.projectId ?? null,
+})
 
 const extractOriginalToolName = (row: RegistryRow): string | null => {
   const tc = stringRecord(row.transportConfig)
@@ -128,24 +142,52 @@ export type McpToolEntry = {
   description: string
   inputSchema: Record<string, unknown>
   instanceId: string
+  connectorLabel: string
 }
 
 export type McpToolset = {
   entries: McpToolEntry[]
-  descriptors: ToolSchemaDescriptor[]
+  /**
+   * `inline` exposes every tool schema directly (small setups); `deferred`
+   * exposes the mcp_find_tools / mcp_load_tools / mcp_drop_tools flow so a
+   * large connector fleet doesn't flood the model's context with schemas.
+   */
+  mode: 'inline' | 'deferred'
+  /**
+   * Per-consumer presentation. The main loop and each delegate sub-agent
+   * create their own view so loading schemas in one context never mutates
+   * another. `view.descriptors` is LIVE — recompose the model's tool list
+   * from it on every inference call.
+   */
+  createView: () => McpToolsetView
+  /** Direct dispatch of a real MCP tool by exposed name (views wrap this). */
   dispatch: (exposedName: string, args: Record<string, unknown>) => Promise<AgenticToolResult>
 }
+
+const resolveInlineToolLimit = (override?: number): number => {
+  if (typeof override === 'number' && override >= 0) return override
+  const fromEnv = Number(process.env.NESSIE_MCP_INLINE_TOOL_LIMIT)
+  return Number.isFinite(fromEnv) && fromEnv >= 0 ? fromEnv : DEFAULT_INLINE_TOOL_LIMIT
+}
+
+const defaultSecretResolver = new EnvSecretResolver()
 
 export const buildMcpToolset = async (
   prisma: PrismaClient,
   organizationId: string,
   toolPolicy: McpToolPolicy,
   actorContext: AuthorizedActionContext,
-  runtimeContext: { agentId: string; channelId: string },
+  runtimeContext: {
+    agentId: string
+    agentKind: 'personal_assistant' | 'shared'
+    channelId: string
+  },
   // Attribution for connector usage billing — every dispatched MCP tool call
   // writes a connector_usage_events row keyed to the run's org/agent/channel/run.
   attribution: LedgerAttribution,
+  options: { secretResolver?: SecretResolver; inlineToolLimit?: number } = {},
 ): Promise<McpToolset> => {
+  const secretResolver = options.secretResolver ?? defaultSecretResolver
   const rows = (await prisma.toolRegistryEntry.findMany({
     where: {
       organizationId,
@@ -164,26 +206,31 @@ export const buildMcpToolset = async (
       mcpInstance: {
         select: {
           credentialRef: true,
+          scopeType: true,
+          scopeId: true,
           transportConfig: true,
-          catalogEntry: { select: { defaultTransportConfig: true } },
+          catalogEntry: {
+            select: { label: true, authConfig: true, defaultTransportConfig: true },
+          },
         },
       },
     },
   })) as unknown as RegistryRow[]
+
+  const runScope = buildRunScopeContext(actorContext, runtimeContext)
 
   const entries: McpToolEntry[] = []
   type TransportTarget = {
     transport: ReturnType<typeof parseMcpTransportConfig>
     originalToolName: string
     instanceId: string
-    secret: string | null
   }
   const transportByExposedName = new Map<string, TransportTarget>()
   const usedNames = new Set<string>()
 
   for (const row of rows) {
     if (!row.mcpInstanceId || !row.mcpInstance) continue
-    if (!isAllowedByPolicy(toolPolicy, row.id)) continue
+    if (!isExposed(toolPolicy, row.id, row.mcpInstance, runScope)) continue
 
     const originalToolName = extractOriginalToolName(row)
     if (!originalToolName) continue
@@ -206,16 +253,15 @@ export const buildMcpToolset = async (
       // Skip malformed transport configs rather than failing the whole sub-agent.
       continue
     }
-    const credentialRef = await resolveCredentialRef(
-      prisma,
-      row.mcpInstanceId,
-      buildCredentialContext(
-        actorContext,
-        runtimeContext.agentId,
-        runtimeContext.channelId,
-      ),
-      row.mcpInstance.credentialRef,
-    )
+    const credentialRef = await resolveCredentialRef(prisma, row.mcpInstanceId, {
+      userId: runScope.effectiveUserId,
+      agentId: runtimeContext.agentId,
+      channelId: runtimeContext.channelId,
+      teamId: runScope.teamId,
+      projectId: runScope.projectId,
+      organizationId,
+    })
+    const secret = credentialRef ? await secretResolver.resolve(credentialRef) : null
 
     entries.push({
       registryEntryId: row.id,
@@ -224,20 +270,20 @@ export const buildMcpToolset = async (
       description: row.description,
       inputSchema: stringRecord(row.inputSchema),
       instanceId: row.mcpInstanceId,
+      connectorLabel: row.mcpInstance.catalogEntry.label,
     })
     transportByExposedName.set(exposedName, {
-      transport,
+      // Auth headers are applied once here so probe (API) and dispatch
+      // (worker) share the exact same header semantics via @nessie/mcp-manage.
+      transport: applyAuthSecretToTransport(
+        transport,
+        row.mcpInstance.catalogEntry.authConfig,
+        secret,
+      ),
       originalToolName,
       instanceId: row.mcpInstanceId,
-      secret: resolveSecret(credentialRef),
     })
   }
-
-  const descriptors: ToolSchemaDescriptor[] = entries.map((entry) => ({
-    toolName: entry.exposedName,
-    description: entry.description || `MCP tool ${entry.originalToolName}`,
-    inputSchema: entry.inputSchema,
-  }))
 
   // Record one connector_usage_events row per MCP tool call. Best-effort: a
   // ledger failure must never break the tool dispatch.
@@ -275,7 +321,7 @@ export const buildMcpToolset = async (
       const result = await dispatchTool({
         spec: { transport: 'mcp', connection: target.transport, toolName: target.originalToolName },
         args,
-        secret: target.secret,
+        secret: null,
       })
       await recordMcpUsage(target, result.success, Date.now() - startedAt)
       return {
@@ -290,5 +336,18 @@ export const buildMcpToolset = async (
     }
   }
 
-  return { entries, descriptors, dispatch }
+  const mode: McpToolset['mode'] =
+    entries.length > resolveInlineToolLimit(options.inlineToolLimit)
+      ? 'deferred'
+      : 'inline'
+
+  return {
+    entries,
+    mode,
+    createView: () =>
+      mode === 'deferred'
+        ? buildDeferredView(entries, dispatch)
+        : buildInlineView(entries, dispatch),
+    dispatch,
+  }
 }

@@ -7,8 +7,9 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { AgentDraftBadge } from './AgentDraftBadge'
 import { iconForFilename } from './file-icons'
-import { pageStatusTone } from './page-status'
+import { isAgentDraft, pageStatusTone } from './page-status'
 
 export type KnowledgeFilesystemItemKind = 'file' | 'folder'
 
@@ -133,9 +134,12 @@ export const KnowledgeItemRow = ({
         file
       </span>
     ) : (
-      <span className={`shrink-0 text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[page.status]}`}>
-        {page.status}
-      </span>
+      <>
+        {isAgentDraft(page) ? <AgentDraftBadge /> : null}
+        <span className={`shrink-0 text-[10px] uppercase tracking-[0.14em] ${pageStatusTone[page.status]}`}>
+          {page.status}
+        </span>
+      </>
     )}
     {trailing ?? (
       kind === 'folder' ? (

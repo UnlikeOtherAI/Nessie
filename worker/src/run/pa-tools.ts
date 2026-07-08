@@ -17,6 +17,16 @@ export {
   runChannelUpdateTool,
 } from './pa-tools/channels.js'
 export {
+  runConnectorAuthorizeTool,
+  runConnectorDiscoverTool,
+  runConnectorInstallTool,
+  runConnectorLibrarySearchTool,
+  runConnectorListTool,
+  runConnectorSetSecretTool,
+  runConnectorTestTool,
+  runConnectorUninstallTool,
+} from './pa-tools/connectors.js'
+export {
   runAuthoredMessageSearchTool,
   runWorkspaceSearchTool,
 } from './pa-tools/conversation-search.js'
@@ -27,6 +37,16 @@ export {
   runKbCommentsListTool,
   runKbNoteAddTool,
 } from './pa-tools/kb-comments.js'
+export {
+  runKbListTool,
+  runKbPageReadTool,
+  runKbSearchTool,
+} from './pa-tools/knowledge.js'
+export {
+  runKbDraftWriteTool,
+  runKbFileTool,
+  runKbPublishRequestTool,
+} from './pa-tools/knowledge-write.js'
 export { runSendMessageTool } from './pa-tools/message-delivery.js'
 export {
   runPeopleSearchTool,

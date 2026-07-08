@@ -265,9 +265,10 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
 
     return reply.code(201).send(
-      createApiResponse(
-        ThreadMessageRecordSchema.parse(mapMessageRecord(result.message)),
-      ),
+      createApiResponse({
+        message: ThreadMessageRecordSchema.parse(mapMessageRecord(result.message)),
+        pendingAgentInvites: result.pendingAgentInvites,
+      }),
     )
   })
 

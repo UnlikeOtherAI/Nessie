@@ -4,7 +4,9 @@ import { replaceLabels } from './native-labels.js'
 import { canReadSpace } from './access.js'
 import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './native-mappers.js'
 import { searchNativePages } from './native-search.js'
-import { replaceKnowledgePageVersionChunks } from './native-chunks.js'
+import { searchNativePagesHybrid } from './native-search-hybrid.js'
+import { replaceKnowledgePageVersionChunks, type ChunkablePage } from './native-chunks.js'
+import { replaceKnowledgePageLinks, resolveLinksToPage } from './native-links.js'
 import { clampLimit, parseCursor, trimPage } from './pagination.js'
 import type {
   AddFileVersionInput,
@@ -19,6 +21,22 @@ import type {
   UpdatePageInput,
 } from './types.js'
 
+export type KnowledgeVersionIndexedEvent = {
+  organizationId: string
+  pageId: string
+  versionId: string
+}
+
+export type NativeKnowledgeProviderOptions = {
+  // Invoked inside the same transaction that wrote a version's chunk rows —
+  // the api wires this to enqueue the `knowledge.embed` job, so a failed
+  // enqueue rolls the save back instead of silently losing the embedding pass.
+  onVersionChunksReplaced?: (
+    tx: Prisma.TransactionClient,
+    event: KnowledgeVersionIndexedEvent,
+  ) => Promise<void>
+}
+
 const nativeCapabilities = {
   canWrite: true,
   canIncrementalSync: false,
@@ -31,6 +49,28 @@ const nativeCapabilities = {
 
 const VERSION_CREATE_MAX_ATTEMPTS = 3
 const ARCHIVED_PAGE_MESSAGE = 'Archived pages are read-only'
+
+// Knowledge-space agent membership grants must name real agents in the same
+// org — otherwise a grant silently never matches any SpaceViewer.agent.id and
+// looks like a bug in access.ts rather than bad input. Reject rather than
+// silently drop foreign/unknown ids.
+const assertAgentsBelongToOrg = async (
+  client: PrismaClient | Prisma.TransactionClient,
+  organizationId: string,
+  agentIds: string[],
+): Promise<void> => {
+  const found = await client.agent.findMany({
+    where: { id: { in: agentIds }, organizationId },
+    select: { id: true },
+  })
+  const foundIds = new Set(found.map((agent) => agent.id))
+  const unknown = agentIds.filter((id) => !foundIds.has(id))
+  if (unknown.length > 0) {
+    throw new KnowledgeConflictError(
+      `Unknown agent id(s) for knowledge space membership: ${unknown.join(', ')}`,
+    )
+  }
+}
 
 const fetchPage = async (
   client: PrismaClient | Prisma.TransactionClient,
@@ -116,11 +156,40 @@ const getMutablePage = async (
       visibility: true,
       sensitivityTier: true,
       privateToAgentId: true,
+      taskId: true,
     },
   })
   if (!page) return null
   if (page.status === 'archived') throw new KnowledgeConflictError(ARCHIVED_PAGE_MESSAGE)
   return page
+}
+
+// Chunk a version and fire the index hook when rows were actually written
+// (replaceKnowledgePageVersionChunks no-ops on already-chunked versions). The
+// same "written" gate doubles as the wikilink-maintenance seam: it is true
+// exactly once per genuinely new version (create/update/restore), so a
+// publish that re-runs on an already-chunked version skips both chunking and
+// link recomputation — the links already reflect that version's body.
+const indexVersionChunks = async (
+  tx: Prisma.TransactionClient,
+  options: NativeKnowledgeProviderOptions,
+  page: ChunkablePage,
+  version: { body: string | null; id: string },
+): Promise<void> => {
+  const written = await replaceKnowledgePageVersionChunks(tx, { page, version })
+  if (!written) return
+  await replaceKnowledgePageLinks(tx, {
+    organizationId: page.organizationId,
+    sourcePageId: page.id,
+    bodyHtml: version.body,
+  })
+  if (options.onVersionChunksReplaced) {
+    await options.onVersionChunksReplaced(tx, {
+      organizationId: page.organizationId,
+      pageId: page.id,
+      versionId: version.id,
+    })
+  }
 }
 
 const assertMoveDoesNotCycle = async (
@@ -223,6 +292,7 @@ const movePage = async (
 
 const publishPage = async (
   prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions,
   input: PublishPageInput,
 ) =>
   prisma.$transaction(async (tx) => {
@@ -233,7 +303,7 @@ const publishPage = async (
       orderBy: { versionNumber: 'desc' },
     })
     if (!latest) return null
-    await replaceKnowledgePageVersionChunks(tx, { page, version: latest })
+    await indexVersionChunks(tx, options, page, latest)
     await tx.knowledgePage.update({
       where: { id: input.pageId },
       data: { publishedVersionId: latest.id, status: 'published' },
@@ -243,6 +313,7 @@ const publishPage = async (
 
 const restoreVersion = async (
   prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions,
   input: RestorePageVersionInput,
 ) =>
   withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
@@ -267,7 +338,7 @@ const restoreVersion = async (
         changeComment: input.changeComment ?? `Restored version ${version.versionNumber}`,
       },
     })
-    await replaceKnowledgePageVersionChunks(tx, { page, version: restored })
+    await indexVersionChunks(tx, options, page, restored)
     await tx.knowledgePage.update({
       where: { id: input.pageId },
       data: { status: 'draft' },
@@ -302,6 +373,7 @@ const addFileVersion = async (
 
 const updatePage = async (
   prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions,
   pageId: string,
   input: UpdatePageInput,
 ) =>
@@ -321,7 +393,7 @@ const updatePage = async (
           changeComment: input.changeComment ?? null,
         },
       })
-      await replaceKnowledgePageVersionChunks(tx, { page: existing, version })
+      await indexVersionChunks(tx, options, existing, version)
     }
     await tx.knowledgePage.update({
       where: { id: pageId },
@@ -338,6 +410,15 @@ const updatePage = async (
         ...(createsVersion ? { status: 'draft' as const } : {}),
       },
     })
+    if (input.title !== undefined) {
+      // A rename may match a still-unresolved wikilink title elsewhere; it
+      // never un-resolves an already-resolved link (those are tracked by id).
+      await resolveLinksToPage(tx, {
+        organizationId: input.organizationId,
+        pageId,
+        title: input.title,
+      })
+    }
     await replaceLabels(tx, {
       labels: input.labels,
       organizationId: input.organizationId,
@@ -348,6 +429,7 @@ const updatePage = async (
 
 export const createNativeKnowledgeProvider = (
   prisma: PrismaClient,
+  options: NativeKnowledgeProviderOptions = {},
 ): KnowledgeProvider => ({
   capabilities: nativeCapabilities,
   id: 'native:first-party',
@@ -408,8 +490,16 @@ export const createNativeKnowledgeProvider = (
           visibility: input.visibility ?? space.visibility,
           sensitivityTier: input.sensitivityTier ?? space.sensitivityTier,
           privateToAgentId: input.privateToAgentId ?? space.privateToAgentId,
+          taskId: input.taskId ?? null,
           createdBy: input.createdBy,
         },
+      })
+      // Repoint any pre-existing unresolved wikilinks (`[[This Title]]`
+      // written before this page existed) at the newly created page.
+      await resolveLinksToPage(tx, {
+        organizationId: input.organizationId,
+        pageId: page.id,
+        title: page.title,
       })
       const version = await tx.knowledgePageVersion.create({
         data: {
@@ -423,7 +513,7 @@ export const createNativeKnowledgeProvider = (
           changeComment: input.changeComment ?? null,
         },
       })
-      await replaceKnowledgePageVersionChunks(tx, { page, version })
+      await indexVersionChunks(tx, options, page, version)
       await replaceLabels(tx, {
         labels: input.labels,
         organizationId: input.organizationId,
@@ -436,6 +526,10 @@ export const createNativeKnowledgeProvider = (
 
   createSpace: async (input) => {
     const memberUserIds = Array.from(new Set(input.memberUserIds ?? []))
+    const memberAgentIds = Array.from(new Set(input.memberAgentIds ?? []))
+    if (memberAgentIds.length > 0) {
+      await assertAgentsBelongToOrg(prisma, input.organizationId, memberAgentIds)
+    }
     const space = await prisma.knowledgeSpace.create({
       data: {
         name: input.name,
@@ -452,12 +546,18 @@ export const createNativeKnowledgeProvider = (
         sensitivityTier: input.sensitivityTier ?? 'normal',
         privateToAgentId: input.privateToAgentId ?? null,
         createdBy: input.createdBy,
-        members: memberUserIds.length
+        members: memberUserIds.length || memberAgentIds.length
           ? {
-              create: memberUserIds.map((userId) => ({
-                userId,
-                organizationId: input.organizationId,
-              })),
+              create: [
+                ...memberUserIds.map((userId) => ({
+                  userId,
+                  organizationId: input.organizationId,
+                })),
+                ...memberAgentIds.map((agentId) => ({
+                  agentId,
+                  organizationId: input.organizationId,
+                })),
+              ],
             }
           : undefined,
       },
@@ -524,34 +624,58 @@ export const createNativeKnowledgeProvider = (
   },
 
   movePage: (input) => movePage(prisma, input),
-  publishPage: (input) => publishPage(prisma, input),
-  restoreVersion: (input) => restoreVersion(prisma, input),
+  publishPage: (input) => publishPage(prisma, options, input),
+  restoreVersion: (input) => restoreVersion(prisma, options, input),
   searchPages: (input) => searchNativePages(prisma, input),
-  updatePage: (pageId, input) => updatePage(prisma, pageId, input),
+  searchPagesHybrid: (input) => searchNativePagesHybrid(prisma, input),
+  updatePage: (pageId, input) => updatePage(prisma, options, pageId, input),
 
   updateSpace: async (organizationId, spaceId, input) => {
     const space = await prisma.$transaction(async (tx) => {
-      const result = await tx.knowledgeSpace.updateMany({
+      // Existence is checked separately from the scalar update: a members-only
+      // patch has an empty scalar data object, and updateMany with empty data
+      // matches nothing — which would wrongly read as "space not found".
+      const existing = await tx.knowledgeSpace.findFirst({
         where: { id: spaceId, organizationId, deletedAt: null },
-        data: {
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.metadata !== undefined
-            ? { metadata: input.metadata as Prisma.InputJsonValue }
-            : {}),
-          ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
-          ...(input.writeRestricted !== undefined
-            ? { writeRestricted: input.writeRestricted }
-            : {}),
-          ...(input.sensitivityTier !== undefined
-            ? { sensitivityTier: input.sensitivityTier }
-            : {}),
-        },
+        select: { id: true },
       })
-      if (result.count === 0) return null
+      if (!existing) return null
+      const data = {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.metadata !== undefined
+          ? { metadata: input.metadata as Prisma.InputJsonValue }
+          : {}),
+        ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
+        ...(input.writeRestricted !== undefined
+          ? { writeRestricted: input.writeRestricted }
+          : {}),
+        ...(input.sensitivityTier !== undefined
+          ? { sensitivityTier: input.sensitivityTier }
+          : {}),
+      }
+      if (Object.keys(data).length > 0) {
+        await tx.knowledgeSpace.update({ where: { id: spaceId }, data })
+      }
+      // Each principal kind is replaced independently (only when its field is
+      // provided), so patching memberUserIds alone can never wipe out agent
+      // members as a side effect, and vice versa — both stay atomic within
+      // this transaction relative to the caller's intent.
+      if (input.memberAgentIds !== undefined) {
+        const memberAgentIds = Array.from(new Set(input.memberAgentIds))
+        if (memberAgentIds.length > 0) {
+          await assertAgentsBelongToOrg(tx, organizationId, memberAgentIds)
+        }
+        await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId, agentId: { not: null } } })
+        if (memberAgentIds.length) {
+          await tx.knowledgeSpaceMember.createMany({
+            data: memberAgentIds.map((agentId) => ({ spaceId, agentId, organizationId })),
+          })
+        }
+      }
       if (input.memberUserIds !== undefined) {
         const memberUserIds = Array.from(new Set(input.memberUserIds))
-        await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId } })
+        await tx.knowledgeSpaceMember.deleteMany({ where: { spaceId, userId: { not: null } } })
         if (memberUserIds.length) {
           await tx.knowledgeSpaceMember.createMany({
             data: memberUserIds.map((userId) => ({ spaceId, userId, organizationId })),

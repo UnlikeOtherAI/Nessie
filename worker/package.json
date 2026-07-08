@@ -13,20 +13,26 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch --env-file=../.env src/index.ts",
     "lint": "eslint src --max-warnings 0",
-    "test": "node --test --import tsx test/**/*.test.ts src/**/*.test.ts",
+    "test": "node --test --import tsx 'test/**/*.test.ts' 'src/**/*.test.ts'",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@nessie/memory": "workspace:*",
-    "@prisma/client": "^6.17.1",
     "@nessie/config": "workspace:*",
     "@nessie/db": "workspace:*",
     "@nessie/knowledge": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
+    "@nessie/mcp-manage": "workspace:*",
+    "@nessie/memory": "workspace:*",
     "@nessie/push": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
+    "@prisma/client": "^6.17.1",
     "cron-parser": "^5.5.0",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "1.1.1",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/pdf-parse": "^1.1.5"
   }
 }

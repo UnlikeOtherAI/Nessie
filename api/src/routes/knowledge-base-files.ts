@@ -25,6 +25,7 @@ import {
   type KnowledgeRouteDeps,
 } from './knowledge-base-access.js'
 import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
+import { enqueueKnowledgeExtract } from './knowledge-base-file-extract.js'
 import { sendFileServiceError, streamAttachmentDownload } from './uploads.js'
 
 const CreateFileNodeQuerySchema = z.object({
@@ -196,6 +197,16 @@ export const registerKnowledgeBaseFileRoutes = (
         metadata: { spaceId, title: page.title, kind: 'file' },
         ...requestIds(request),
       })
+      if (page.latestVersion) {
+        await enqueueKnowledgeExtract(prisma, {
+          organizationId: actorContext.tenant.organizationId,
+          pageId: page.id,
+          versionId: page.latestVersion.id,
+          attachmentId,
+          filename,
+          mime,
+        })
+      }
       return reply.code(201).send(createApiResponse(attachPageEnvelope(page, decision)))
     } catch (error) {
       // Roll back the orphaned object if the page row could not be created.
@@ -270,6 +281,14 @@ export const registerKnowledgeBaseFileRoutes = (
           .catch(() => undefined)
         return sendApiError(reply, 404, 'KNOWLEDGE_PAGE_NOT_FOUND', 'Page not found')
       }
+      await enqueueKnowledgeExtract(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        pageId,
+        versionId: version.id,
+        attachmentId,
+        filename,
+        mime,
+      })
       return reply.code(201).send(createApiResponse(version))
     } catch (error) {
       await fileService

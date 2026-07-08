@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type RefObject } from 'react'
 
 type CommentComposerProps = {
   // May return a promise; the composer clears/keeps text based on its outcome.
@@ -9,6 +9,9 @@ type CommentComposerProps = {
   autoFocus?: boolean
   initialValue?: string
   onCancel?: () => void
+  // Lets a caller (e.g. the draft-review panel's "Request changes" action)
+  // scroll to and focus this composer's textarea programmatically.
+  textareaRef?: RefObject<HTMLTextAreaElement | null>
 }
 
 // Shared textarea + submit used for new comments, replies, and inline edits.
@@ -22,6 +25,7 @@ export const CommentComposer = ({
   autoFocus,
   initialValue = '',
   onCancel,
+  textareaRef,
 }: CommentComposerProps) => {
   const [value, setValue] = useState(initialValue)
   const [busy, setBusy] = useState(false)
@@ -54,6 +58,7 @@ export const CommentComposer = ({
           if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') void submit()
         }}
         placeholder={placeholder ?? 'Add a comment…'}
+        ref={textareaRef}
         value={value}
       />
       {error ? <p className="text-xs text-[var(--danger-text)]">{error}</p> : null}

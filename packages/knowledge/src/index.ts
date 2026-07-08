@@ -3,8 +3,46 @@ export {
   buildSpaceSourceRef,
   createNativeKnowledgeProvider,
 } from './native-provider.js'
+export type {
+  KnowledgeVersionIndexedEvent,
+  NativeKnowledgeProviderOptions,
+} from './native-provider.js'
 export { canReadSpace, canWriteSpace, loadSpaceViewer } from './access.js'
-export type { SpaceViewer } from './access.js'
+// Mapper + include shape re-exported so callers that need to list pages by a
+// filter the KnowledgeProvider interface doesn't expose (e.g. by taskId) can
+// query knowledgePage directly and still get the same KnowledgePageRecord shape.
+export { mapPage, pageInclude } from './native-mappers.js'
+export type { PageRow } from './native-mappers.js'
+export type { SpaceViewer, SpaceViewerAgentScopes, SpaceViewerPrincipal } from './access.js'
+export {
+  readableSpaceIdsSql,
+  readableSpaceIdsSqlForAgent,
+  readableSpaceIdsSqlForViewer,
+} from './native-search-access.js'
+export {
+  groupFusedChunksByPage,
+  searchNativePagesHybrid,
+  snippetAroundMatch,
+  truncateSnippet,
+} from './native-search-hybrid.js'
+export type { GroupedPageHit } from './native-search-hybrid.js'
+export {
+  extractWikilinks,
+  replaceKnowledgePageLinks,
+  resolveLinksToPage,
+} from './native-links.js'
+export type {
+  ExtractedWikilink,
+  ReplaceKnowledgePageLinksInput,
+  ResolveLinksToPageInput,
+} from './native-links.js'
+export { listBacklinks, listUnlinkedMentions } from './native-links-queries.js'
+export type {
+  BacklinkRow,
+  ListBacklinksInput,
+  ListUnlinkedMentionsInput,
+  MentionRow,
+} from './native-links-queries.js'
 export {
   KnowledgeConflictError,
   isKnowledgeConflictError,
@@ -20,6 +58,8 @@ export {
   chunkKnowledgePageBody,
 } from './chunking.js'
 export type { ChunkKnowledgePageBodyOptions, KnowledgePageChunkDraft } from './chunking.js'
+export { replaceKnowledgePageVersionChunks } from './native-chunks.js'
+export type { ChunkablePage } from './native-chunks.js'
 export {
   htmlToPlainText,
   computeAnchor,
@@ -48,9 +88,11 @@ export type {
   KnowledgeProviderKind,
   KnowledgeScopeInput,
   KnowledgeSearchHit,
+  KnowledgeSearchPassage,
   KnowledgeSensitivityTier,
   KnowledgeSpaceRecord,
   KnowledgeVisibility,
+  HybridSearchPagesInput,
   ListPagesInput,
   ListSpacesInput,
   MovePageInput,

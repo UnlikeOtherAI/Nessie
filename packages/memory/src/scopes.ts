@@ -136,12 +136,18 @@ const resolvePersonalAssistantScopes = async (
   userId: string,
 ): Promise<{ channelIds: string[]; teamIds: string[]; projectIds: string[] }> => {
   const [channels, teams, projects] = await Promise.all([
-    // The personal assistant is its owner's delegate and reaches every channel
-    // in the organization — not just public ones or ones the owner joined.
+    // The personal assistant is its owner's delegate: it reaches every channel
+    // the owner can access — public ones plus the private ones the owner is a
+    // member of — but never a private channel the owner was not admitted to.
+    // Unlike a shared agent it is not limited to channels the bot is bound to;
+    // the boundary is the owner's own visibility, not the bot's bindings.
     db.query(
       `SELECT c.id FROM channels c
-       WHERE c.organization_id = $1`,
-      [organizationId],
+       WHERE c.organization_id = $1
+         AND (c.visibility = 'public'
+              OR EXISTS (SELECT 1 FROM channel_members cm
+                         WHERE cm.channel_id = c.id AND cm.user_id = $2))`,
+      [organizationId, userId],
     ),
     db.query(
       `SELECT t.id FROM teams t

@@ -32,7 +32,7 @@ import { sendApiError } from './lib/api.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
 import { sweepExpiredApprovals } from './services/approvals.js'
-import { createPgSecretStore } from './services/mcp-oauth-secret-store.js'
+import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 import { createThoughtService } from './services/thoughts.js'
 import {
   createCorsOriginChecker,
@@ -59,6 +59,10 @@ import { registerInferenceControlPlaneRoutes } from './routes/inference-control-
 import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
 import { registerKnowledgeBaseFileRoutes } from './routes/knowledge-base-files.js'
 import { registerKnowledgeCommentRoutes } from './routes/knowledge-comments.js'
+import { registerKnowledgeLibrarianRoutes } from './routes/knowledge-librarian.js'
+import { registerKnowledgeLinkRoutes } from './routes/knowledge-links.js'
+import { registerKnowledgeSummaryRoutes } from './routes/knowledge-summary.js'
+import { registerKnowledgeTaskRoutes } from './routes/knowledge-tasks.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerFeedbackRoutes } from './routes/feedback.js'
@@ -340,6 +344,10 @@ export const buildApp = async () => {
   registerKnowledgeBaseRoutes(app, deps)
   registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)
+  registerKnowledgeLibrarianRoutes(app, deps)
+  registerKnowledgeLinkRoutes(app, deps)
+  registerKnowledgeSummaryRoutes(app, deps)
+  registerKnowledgeTaskRoutes(app, deps)
   registerTaskRoutes(app, deps)
   registerLedgerRoutes(app, deps)
 
@@ -360,6 +368,13 @@ export const buildApp = async () => {
     requireActorContext,
     requireOwner,
     oauthSecretStore: createPgSecretStore(prisma, authSecret ?? ''),
+    // Probe/test paths resolve credentialRefs through the same layered
+    // resolver the worker uses (encrypted pg store first, env fallback), so
+    // OAuth tokens and assistant-collected secrets work for connection tests.
+    secretResolver: createMcpSecretResolver(prisma, authSecret ?? ''),
+    mcpSecretStore: createPgSecretStore(prisma, authSecret ?? '', {
+      refPrefix: 'secret_mcp_',
+    }),
   })
 
   registerToolBundleRoutes(app, {
