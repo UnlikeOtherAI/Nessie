@@ -575,6 +575,41 @@ enum UserStatusRuleScope {
   project
 }
 
+enum IntegratedProductCategory {
+  research
+  security
+  development
+  project_management
+}
+
+enum IntegratedProductAuthMode {
+  uoa_sso
+  api_key
+  oauth_mcp
+  local_mcp
+}
+
+enum IntegratedProductInstallState {
+  link_only
+  installable
+  native
+}
+
+enum IntegratedProductHealthStatus {
+  unknown
+  healthy
+  degraded
+  unreachable
+  setup_required
+}
+
+enum ProductAccountLinkStatus {
+  linked
+  needs_auth
+  revoked
+  error
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique
@@ -613,6 +648,7 @@ model User {
   statuses            UserStatus[]
   feedback            Feedback[]
   refreshTokens       RefreshToken[]
+  productAccountLinks ProductAccountLink[]
   avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
@@ -665,6 +701,7 @@ model Organization {
   userStatuses     UserStatus[]
   feedback         Feedback[]
   favorites        Favorite[]
+  productAccountLinks ProductAccountLink[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -677,6 +714,58 @@ model Organization {
   mcpOAuthClients             McpOAuthClient[]
 
   @@map("organizations")
+}
+
+model IntegratedProduct {
+  id                  String                         @id @default(uuid()) @db.Uuid
+  slug                String                         @unique
+  name                String
+  summary             String
+  category            IntegratedProductCategory
+  launchUrl           String?                        @map("launch_url")
+  apiBaseUrl          String?                        @map("api_base_url")
+  authMode            IntegratedProductAuthMode      @map("auth_mode")
+  defaultInstallState IntegratedProductInstallState  @map("default_install_state")
+  mcpCatalogEntryId   String?                        @map("mcp_catalog_entry_id") @db.Uuid
+  pluginManifestRef   String?                        @map("plugin_manifest_ref")
+  healthStatus        IntegratedProductHealthStatus  @default(unknown) @map("health_status")
+  healthDetail        String?                        @map("health_detail")
+  capabilities        String[]                       @default([])
+  setupHint           String?                        @map("setup_hint")
+  sortOrder           Int                            @default(100) @map("sort_order")
+  createdAt           DateTime                       @default(now()) @map("created_at")
+  updatedAt           DateTime                       @updatedAt @map("updated_at")
+
+  accountLinks        ProductAccountLink[]
+  mcpCatalogEntry     McpCatalogEntry?               @relation(fields: [mcpCatalogEntryId], references: [id], onDelete: SetNull)
+
+  @@index([category])
+  @@index([healthStatus])
+  @@map("integrated_products")
+}
+
+model ProductAccountLink {
+  id                String                   @id @default(uuid()) @db.Uuid
+  organizationId    String                   @map("organization_id") @db.Uuid
+  userId            String                   @map("user_id") @db.Uuid
+  productSlug       String                   @map("product_slug")
+  uoaSub            String?                  @map("uoa_sub")
+  externalAccountId String?                  @map("external_account_id")
+  activeOrgId       String?                  @map("active_org_id")
+  activeTeamId      String?                  @map("active_team_id")
+  status            ProductAccountLinkStatus
+  lastVerifiedAt    DateTime?                @map("last_verified_at")
+  metadata          Json                     @default("{}") @map("metadata_json")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product           IntegratedProduct        @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, productSlug])
+  @@index([productSlug, status])
+  @@map("product_account_links")
 }
 
 model OrganizationMember {
@@ -1795,6 +1884,7 @@ model McpCatalogEntry {
   owner        User?               @relation("McpCatalogOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   reviewer     User?               @relation("McpCatalogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
   instances    McpServerInstance[]
+  integratedProducts IntegratedProduct[]
 
   // Uniqueness is enforced by partial indexes (see migration): public entries
   // are unique on `name` store-wide; private entries are unique per owner. A

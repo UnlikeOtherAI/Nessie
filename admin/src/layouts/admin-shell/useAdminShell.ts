@@ -49,6 +49,7 @@ export const useAdminShell = () => {
   const isAgentsRoute = location.pathname.startsWith('/agents');
   const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base');
   const isProjectsRoute = location.pathname.startsWith('/projects');
+  const isIntegrationsRoute = location.pathname.startsWith('/integrations');
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
   const isAdminRoute = matchesAdminRoute(location.pathname);
   const currentChannelId = parseChannelIdFromPath(location.pathname);
@@ -422,6 +423,7 @@ export const useAdminShell = () => {
     isAdminRoute,
     isAgentsRoute,
     isFeedbackRoute,
+    isIntegrationsRoute,
     isKnowledgeRoute,
     isProjectsRoute,
     isOwner,

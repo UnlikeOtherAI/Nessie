@@ -128,8 +128,9 @@ export const AdminShellLayout = () => {
   );
 
   // The contextual secondary nav for the active section. Knowledge needs the
-  // KnowledgeProvider (wrapped below). Feedback has no secondary column on
-  // desktop; everything else falls back to the channels/DMs SidebarNav.
+  // KnowledgeProvider (wrapped below). Integrations and Feedback have no
+  // secondary column on desktop; everything else falls back to the
+  // channels/DMs SidebarNav.
   const secNavElement = shell.isKnowledgeRoute ? (
     <KnowledgeSidebarNav />
   ) : shell.isProjectsRoute ? (
@@ -140,7 +141,7 @@ export const AdminShellLayout = () => {
       isSuperAdmin={shell.isSuperAdmin}
       pathname={shell.pathname}
     />
-  ) : shell.isFeedbackRoute ? null : (
+  ) : shell.isIntegrationsRoute || shell.isFeedbackRoute ? null : (
     sidebarNavElement
   );
 

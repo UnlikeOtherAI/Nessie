@@ -13,6 +13,7 @@ import {
   type OptimisticMessage,
   type PendingStreamMessage,
 } from './channel-helpers'
+import { MessageUiCards } from './MessageUiCards'
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -377,6 +378,9 @@ export const ChannelMessageFeed = ({
                     {renderContent(item.message.content)}
                   </p>
                 )}
+                {!isEditingMessage ? (
+                  <MessageUiCards metadata={item.message.metadata} />
+                ) : null}
                 <MessageAttachments messageId={item.message.id} />
                 {!isEditingMessage ? (
                   <ChannelMessageActions
