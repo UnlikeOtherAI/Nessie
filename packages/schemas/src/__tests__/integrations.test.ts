@@ -19,7 +19,20 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
     healthDetail: null,
     healthStatus: 'setup_required',
     launchUrl: null,
-    mcpCatalogEntryId: null,
+    mcpCatalogEntryId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d601',
+    mcpInstallation: {
+      id: '8f3a5a00-0e64-4d10-a517-0d0b69c1d701',
+      catalogEntryId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d601',
+      createdAt: '2026-07-08T12:00:00.000Z',
+      healthFailureCount: 0,
+      healthLastCheckedAt: '2026-07-08T12:02:00.000Z',
+      lastError: null,
+      lifecycleState: 'active',
+      scopeId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d501',
+      scopeType: 'team',
+      toolCount: 5,
+      updatedAt: '2026-07-08T12:02:00.000Z',
+    },
     name: 'Deep Water',
     pluginManifestRef: 'first-party/deep-water',
     setupHint: null,
@@ -44,6 +57,8 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
 
   assert.equal(parsed.teamEnablement?.enabled, true)
   assert.equal(parsed.teamEnablement?.externalTeamId, 'uoa-team-1')
+  assert.equal(parsed.mcpInstallation?.lifecycleState, 'active')
+  assert.equal(parsed.mcpInstallation?.toolCount, 5)
 })
 
 test('SetProductTeamEnablementRequestSchema requires a boolean enabled flag', () => {

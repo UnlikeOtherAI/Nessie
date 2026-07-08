@@ -75,6 +75,17 @@ type IntegratedProductRow = {
   team_enablement_metadata_json: unknown
   team_enablement_created_at: Date | string | null
   team_enablement_updated_at: Date | string | null
+  mcp_instance_id: string | null
+  mcp_instance_catalog_entry_id: string | null
+  mcp_instance_scope_type: string | null
+  mcp_instance_scope_id: string | null
+  mcp_instance_lifecycle_state: string | null
+  mcp_instance_health_last_checked_at: Date | string | null
+  mcp_instance_health_failure_count: number | null
+  mcp_instance_last_error: string | null
+  mcp_instance_tool_count: number | bigint | null
+  mcp_instance_created_at: Date | string | null
+  mcp_instance_updated_at: Date | string | null
 }
 
 const toIsoString = (value: Date | string): string =>
@@ -134,6 +145,23 @@ const mapProductRow = (row: IntegratedProductRow): IntegratedProductResponse =>
     healthStatus: row.health_status,
     launchUrl: row.launch_url,
     mcpCatalogEntryId: row.mcp_catalog_entry_id,
+    mcpInstallation: row.mcp_instance_id
+      ? {
+          id: row.mcp_instance_id,
+          catalogEntryId: row.mcp_instance_catalog_entry_id,
+          createdAt: toIsoString(row.mcp_instance_created_at ?? row.updated_at),
+          healthFailureCount: row.mcp_instance_health_failure_count ?? 0,
+          healthLastCheckedAt: toNullableIsoString(
+            row.mcp_instance_health_last_checked_at,
+          ),
+          lastError: row.mcp_instance_last_error,
+          lifecycleState: row.mcp_instance_lifecycle_state,
+          scopeId: row.mcp_instance_scope_id,
+          scopeType: row.mcp_instance_scope_type,
+          toolCount: Number(row.mcp_instance_tool_count ?? 0),
+          updatedAt: toIsoString(row.mcp_instance_updated_at ?? row.updated_at),
+        }
+      : null,
     name: row.name,
     pluginManifestRef: row.plugin_manifest_ref,
     setupHint: row.setup_hint,
@@ -367,7 +395,18 @@ export const listIntegratedProducts = async (
       pte.configured_by_user_id::text AS team_enablement_configured_by_user_id,
       pte.metadata_json AS team_enablement_metadata_json,
       pte.created_at AS team_enablement_created_at,
-      pte.updated_at AS team_enablement_updated_at
+      pte.updated_at AS team_enablement_updated_at,
+      mcp_instance.id::text AS mcp_instance_id,
+      mcp_instance.catalog_entry_id::text AS mcp_instance_catalog_entry_id,
+      mcp_instance.scope_type::text AS mcp_instance_scope_type,
+      mcp_instance.scope_id::text AS mcp_instance_scope_id,
+      mcp_instance.lifecycle_state::text AS mcp_instance_lifecycle_state,
+      mcp_instance.health_last_checked_at AS mcp_instance_health_last_checked_at,
+      mcp_instance.health_failure_count AS mcp_instance_health_failure_count,
+      mcp_instance.last_error AS mcp_instance_last_error,
+      mcp_instance.tool_count AS mcp_instance_tool_count,
+      mcp_instance.created_at AS mcp_instance_created_at,
+      mcp_instance.updated_at AS mcp_instance_updated_at
     FROM integrated_products p
     LEFT JOIN product_account_links pal
       ON pal.product_slug = p.slug
@@ -377,6 +416,55 @@ export const listIntegratedProducts = async (
       ON pte.product_slug = p.slug
       AND pte.organization_id = CAST(${owner.organizationId} AS uuid)
       AND pte.team_id = CAST(${owner.teamId ?? null} AS uuid)
+    LEFT JOIN LATERAL (
+      SELECT
+        msi.id,
+        msi.catalog_entry_id,
+        msi.scope_type,
+        msi.scope_id,
+        msi.lifecycle_state,
+        msi.health_last_checked_at,
+        msi.health_failure_count,
+        msi.last_error,
+        CASE
+          WHEN jsonb_typeof(msi.discovered_tools) = 'array'
+            THEN jsonb_array_length(msi.discovered_tools)
+          ELSE 0
+        END AS tool_count,
+        msi.created_at,
+        msi.updated_at
+      FROM mcp_server_instances msi
+      WHERE p.mcp_catalog_entry_id IS NOT NULL
+        AND msi.catalog_entry_id = p.mcp_catalog_entry_id
+        AND msi.organization_id = CAST(${owner.organizationId} AS uuid)
+        AND (
+          (
+            CAST(${owner.teamId ?? null} AS uuid) IS NOT NULL
+            AND msi.scope_type = 'team'::"McpServerScopeType"
+            AND msi.scope_id = CAST(${owner.teamId ?? null} AS uuid)
+          )
+          OR (
+            msi.scope_type = 'organization'::"McpServerScopeType"
+            AND msi.scope_id = CAST(${owner.organizationId} AS uuid)
+          )
+          OR msi.scope_type = 'system'::"McpServerScopeType"
+        )
+      ORDER BY
+        CASE
+          WHEN msi.scope_type = 'team'::"McpServerScopeType" THEN 1
+          WHEN msi.scope_type = 'organization'::"McpServerScopeType" THEN 2
+          WHEN msi.scope_type = 'system'::"McpServerScopeType" THEN 3
+          ELSE 4
+        END,
+        CASE
+          WHEN msi.lifecycle_state = 'active'::"McpServerLifecycleState" THEN 1
+          WHEN msi.lifecycle_state = 'pending_setup'::"McpServerLifecycleState" THEN 2
+          WHEN msi.lifecycle_state = 'error'::"McpServerLifecycleState" THEN 3
+          ELSE 4
+        END,
+        msi.updated_at DESC
+      LIMIT 1
+    ) mcp_instance ON TRUE
     ORDER BY p.sort_order ASC, p.name ASC
   `)
 

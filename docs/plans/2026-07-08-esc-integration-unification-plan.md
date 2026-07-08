@@ -213,6 +213,10 @@ Current Nessie slice:
 - Deep Water and DeepTest product rows now point at public, published MCP
   catalog entries. BuildMe remains unlinked to the MCP catalog until a board API
   and MCP contract exist.
+- `GET /api/integrations/products` now includes the active team's shared MCP
+  installation summary for each MCP-backed product, preferring team scope and
+  then falling back to organization/system scope. The ESC page shows that agent
+  connector state and deep-links to the matching MCP catalog entry.
 
 Current UOA/auth slice:
 
@@ -582,11 +586,15 @@ Acceptance:
   **Implemented in current slice.**
 - Seed and link public MCP catalog entries for MCP-backed first-party products.
   **Deep Water and DeepTest implemented; BuildMe intentionally pending.**
+- Surface shared MCP installation readiness in ESC. **Implemented for team,
+  organization, and system-scoped MCP instances.**
 - Add UOA active-workspace consumption. **Implemented in current slice.**
 - Add a connected-products entitlement API or projection keyed to UOA
   `active.teamId`. **Projection implemented in current slice; UOA authority
   remains future work.**
-- Add health checks for link-only products and MCP-backed products.
+- Add health checks for link-only products and MCP-backed products. **MCP
+  installation readiness is surfaced; active product health polling remains
+  pending.**
 
 ### Phase 2: Deep Water Native Plugin
 

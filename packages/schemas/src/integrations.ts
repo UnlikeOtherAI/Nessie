@@ -1,5 +1,9 @@
 import { z } from 'zod'
 
+import {
+  McpServerLifecycleStateSchema,
+  McpServerScopeTypeSchema,
+} from './mcp.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
 export const IntegratedProductCategorySchema = z.enum([
@@ -73,6 +77,22 @@ export const ProductTeamEnablementRecordSchema = z.object({
 export type ProductTeamEnablementRecord =
   z.infer<typeof ProductTeamEnablementRecordSchema>
 
+export const ProductMcpInstallationRecordSchema = z.object({
+  id: z.string().uuid(),
+  catalogEntryId: z.string().uuid(),
+  createdAt: TimestampSchema,
+  healthFailureCount: z.number().int().nonnegative(),
+  healthLastCheckedAt: TimestampSchema.nullable(),
+  lastError: z.string().nullable(),
+  lifecycleState: McpServerLifecycleStateSchema,
+  scopeId: z.string().uuid(),
+  scopeType: McpServerScopeTypeSchema,
+  toolCount: z.number().int().nonnegative(),
+  updatedAt: TimestampSchema,
+})
+export type ProductMcpInstallationRecord =
+  z.infer<typeof ProductMcpInstallationRecordSchema>
+
 export const IntegratedProductResponseSchema = z.object({
   id: z.string().uuid(),
   accountLink: ProductAccountLinkRecordSchema.nullable(),
@@ -86,6 +106,7 @@ export const IntegratedProductResponseSchema = z.object({
   healthStatus: IntegratedProductHealthStatusSchema,
   launchUrl: z.string().nullable(),
   mcpCatalogEntryId: z.string().uuid().nullable(),
+  mcpInstallation: ProductMcpInstallationRecordSchema.nullable(),
   name: NonEmptyStringSchema,
   pluginManifestRef: z.string().nullable(),
   setupHint: z.string().nullable(),

@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { IntegratedProductResponse } from '../lib/api-client'
+import {
+  AgentConnectorSection,
+  mcpCatalogHref,
+  mcpConnectorClass,
+  mcpConnectorLabel,
+} from '../components/features/integrations/AgentConnectorSection'
 import { ManifestPanel } from '../components/features/integrations/ManifestPanel'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
@@ -155,6 +161,7 @@ const ProductRow = ({
           <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
             {teamEnablementLabel(product)}
           </span>
+          <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
         </div>
       </div>
     </div>
@@ -283,6 +290,7 @@ const ProductDetail = ({
             <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
               {teamEnablementLabel(product)}
             </span>
+            <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {product.launchUrl ? (
@@ -295,13 +303,17 @@ const ProductDetail = ({
                 Open <LaunchIcon />
               </a>
             ) : null}
-            <Link className="admin-button admin-button-secondary text-xs" to="/mcp-app-store">
+            <Link
+              className="admin-button admin-button-secondary text-xs"
+              to={mcpCatalogHref(product)}
+            >
               MCP store
             </Link>
           </div>
         </section>
 
         <TeamAccessSection isOwner={isOwner} product={product} />
+        <AgentConnectorSection product={product} />
 
         <section>
           <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>

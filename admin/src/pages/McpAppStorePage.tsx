@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import { AddServerWizard } from '../components/features/mcp-app-store/AddServerWizard'
@@ -60,13 +61,16 @@ const tabClass = (active: boolean): string =>
 
 export const McpAppStorePage = () => {
   const { me } = useAuthSession()
+  const [searchParams] = useSearchParams()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const isElevated = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const currentUserId = me?.user.id ?? ''
   const organizationId = me?.context.organizationId ?? ''
 
   const [view, setView] = useState<PageView>('store')
-  const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>()
+  const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>(
+    searchParams.get('catalogEntryId') ?? undefined,
+  )
   const [librarySearch, setLibrarySearch] = useState('')
   const [selectedLibraryEntry, setSelectedLibraryEntry] =
     useState<McpLibraryEntryRecord | null>(null)

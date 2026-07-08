@@ -174,6 +174,7 @@ export type {
   MeResponse,
   ProductAccountLinkRecord,
   ProductAccountLinkStatus,
+  ProductMcpInstallationRecord,
   ProductTeamEnablementRecord,
   SetProductTeamEnablementRequest,
   ToolCallEntry,

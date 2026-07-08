@@ -66,6 +66,7 @@ export type {
   ProjectRecord,
   ProductAccountLinkRecord,
   ProductAccountLinkStatus,
+  ProductMcpInstallationRecord,
   ProductTeamEnablementRecord,
   SetProductTeamEnablementRequest,
   SessionState,
