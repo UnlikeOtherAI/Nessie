@@ -136,6 +136,11 @@ product_account_links
   metadata_json
 ```
 
+`uoa_sub` is nullable in Nessie's local projection so self-hosted/local
+installations can represent local MCP or API-key integrations before a UOA
+identity is attached. UOA remains the source of truth for hosted cross-product
+identity.
+
 The product registry powers the ESC UI. The MCP catalog powers agent tools.
 They can point to the same product, but they are not the same object.
 
@@ -159,7 +164,57 @@ put Integrations under Admin or expose it from the workspace menu initially.
 Do not put plugin configuration inside the left rail itself. The rail only
 launches the section; product cards and detail pages own configuration.
 
-### 3. UOA Account Linking
+Current Nessie slice:
+
+- `/integrations` is a full-width shell route with no secondary channel sidebar;
+- desktop rail exposes Integrations between Projects and Knowledge;
+- mobile web does not add Integrations as a sixth permanent tab;
+- the page renders registry-backed product rows and a detail surface for native
+  pages, chat cards, custom controls, agent/MCP access, artifacts, and next
+  setup step.
+
+### 3. Interface Surface Contract
+
+Nessie should display product work in three UI surfaces, all declared by product
+or plugin metadata rather than hard-coded product internals:
+
+- **custom pages** for durable product workflows and history, such as Deep Water
+  research runs, DeepTest local runner state, or BuildMe board pairing;
+- **chat cards** for transient agent/user work inside conversations, such as
+  research progress, security review summaries, cost, sources, and safe report
+  links;
+- **custom controls** for launch/configuration state, such as Deep Water depth
+  and budget, DeepTest review profile and local-runner target, or BuildMe column
+  mapping.
+
+Chat cards use the existing `Message.metadata` channel. Product integrations and
+agents should emit:
+
+```json
+{
+  "uiCards": [
+    {
+      "kind": "deep_research",
+      "productSlug": "deep-water",
+      "title": "Market scan",
+      "status": "running",
+      "summary": "Collecting sources",
+      "fields": [{ "label": "Budget", "value": "$4.00 cap" }],
+      "actions": [{ "label": "Open run", "href": "/integrations", "variant": "primary" }]
+    }
+  ]
+}
+```
+
+The supported card kinds are currently `integration`, `deep_research`,
+`security_review`, and `project_board`. The supported statuses are `idle`,
+`queued`, `running`, `needs_setup`, `completed`, `failed`, and `warning`.
+
+Cards are not a storage layer. Finished reports, source bundles, security
+reports, screenshots, and PDFs must still become Knowledge/FileService artifacts
+when they need to persist beyond the conversation.
+
+### 4. UOA Account Linking
 
 Add a UOA screen, not a Nessie-only screen:
 
@@ -193,7 +248,7 @@ Nessie should store only the local projection it needs for UX, caching, audit,
 and per-org setup. UOA remains the source of truth for identity and global
 account linking.
 
-### 4. Installable Plugin Model
+### 5. Installable Plugin Model
 
 Every sibling integration must ship in two forms:
 
@@ -214,7 +269,7 @@ The plugin manifest should declare:
 Hosted Nessie can preinstall first-party products. Open-source Nessie should be
 able to install the same products manually from the marketplace/library.
 
-### 5. MCP And Agent Access
+### 6. MCP And Agent Access
 
 All product functionality that agents need must enter Nessie through the MCP
 catalog/tool registry:
@@ -230,7 +285,7 @@ catalog/tool registry:
 Nessie agents must not hold product API keys in prompts. Credentials resolve
 through the existing secret/credential chain and dispatch plan.
 
-### 6. Durable Artifacts
+### 7. Durable Artifacts
 
 Deep research and security outputs should not live only as chat text.
 
@@ -244,14 +299,15 @@ Use Nessie Knowledge for durable documents:
 Use `FileService` for imported files or generated PDFs. No route, tool, or
 import job may bypass `createFileService`.
 
-### 7. Cost And Usage
+### 8. Cost And Usage
 
 Use the existing ledgers:
 
 - model/provider calls stay in `token_ledger_events`;
 - product/API operations stay in `connector_usage_events`;
-- Deep Water imported job cost should become a connector usage row with
-  `connectorType = 'deep-water'`;
+- Deep Water imported job cost should become connector usage rows through the
+  existing connector enum (`mcp`, `http`, or `other`) plus a product slug /
+  connector id in metadata, not a new enum value per product;
 - DeepTest content-free metering should remain content-free and should not
   include target labels, URLs, repo names, findings, prompts, or reports.
 
@@ -397,10 +453,16 @@ Acceptance:
 
 ### Phase 1: ESC Shell In Nessie
 
-- Add `Integrations` top-level route and rail item.
-- Add `integrated_products` and `product_account_links` schema.
+- Add `Integrations` top-level route and rail item. **Implemented in current
+  slice.**
+- Add `integrated_products` and `product_account_links` schema. **Implemented
+  in current slice.**
 - Seed first-party product rows for Deep Water, DeepTest, and buildme.live.
-- Render product cards with launch URLs and account/plugin status.
+  **Implemented in current slice.**
+- Render product cards with launch URLs and account/plugin status. **Implemented
+  in current slice.**
+- Render metadata-driven integration cards inside chat messages. **Implemented
+  in current slice.**
 - Add health checks for link-only products and MCP-backed products.
 
 ### Phase 2: Deep Water Native Plugin

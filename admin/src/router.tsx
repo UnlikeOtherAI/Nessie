@@ -12,6 +12,7 @@ import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverv
 import { ChannelConversationComposePage } from './pages/ChannelConversationComposePage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { FeedbackPage } from './pages/FeedbackPage'
+import { IntegrationsPage } from './pages/IntegrationsPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
 import { LoginPage } from './pages/LoginPage'
 import { McpAppStorePage } from './pages/McpAppStorePage'
@@ -116,6 +117,10 @@ export const router = createBrowserRouter([
       {
         path: '/projects/:projectId/settings',
         element: <ProjectView />,
+      },
+      {
+        path: '/integrations',
+        element: <IntegrationsPage />,
       },
       {
         path: '/agents',
