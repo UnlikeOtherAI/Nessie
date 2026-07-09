@@ -217,6 +217,11 @@ Current Nessie slice:
   installation summary for each MCP-backed product, preferring team scope and
   then falling back to organization/system scope. The ESC page shows that agent
   connector state and deep-links to the matching MCP catalog entry.
+- When an MCP-backed product has no shared connector installed, ESC now links
+  directly to `/mcp-app-store?catalogEntryId=...&action=install`, and the MCP
+  store opens its validated install dialog for that catalog entry. Install
+  scope, credential refs, duplicate checks, probing, and tool approval stay in
+  the existing MCP install path rather than being duplicated inside ESC.
 - `GET /api/integrations/products` also includes a month-to-date connector
   usage summary for each product. For MCP-backed products, usage is read from
   `connector_usage_events.connector_id = mcp_server_instances.id`; future native
@@ -606,7 +611,8 @@ Acceptance:
 ### Phase 2: Deep Water Native Plugin
 
 - Add Deep Water MCP catalog entry and install flow. **Catalog entry seeded;
-  install/setup flow still pending.**
+  ESC now deep-links into the MCP install dialog; credential setup, probing, and
+  tool approval remain in the MCP store flow.**
 - Add credential setup and tool approval flow.
 - Add a Deep Water run wrapper in Nessie jobs/runs.
 - Add result import into Knowledge and FileService-backed attachments.
@@ -617,8 +623,9 @@ Acceptance:
 
 - Add DeepTest link-out product card.
 - Add local MCP install instructions and plugin manifest.
-- Add DeepTest MCP catalog entry. **Catalog entry seeded; local-runner setup and
-  approval flow still pending.**
+- Add DeepTest MCP catalog entry. **Catalog entry seeded; ESC now deep-links
+  into the MCP install dialog. Local-runner endpoint setup and approval flow
+  still pending.**
 - Expose the recommended `deeptest_review` flow as the primary approved tool.
 - Add share-safe report import into Knowledge.
 - Keep owner-local/raw report import behind explicit user action and warning.

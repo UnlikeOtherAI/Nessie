@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
@@ -62,6 +62,8 @@ const tabClass = (active: boolean): string =>
 export const McpAppStorePage = () => {
   const { me } = useAuthSession()
   const [searchParams] = useSearchParams()
+  const action = searchParams.get('action')
+  const catalogEntryIdParam = searchParams.get('catalogEntryId') ?? undefined
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const isElevated = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const currentUserId = me?.user.id ?? ''
@@ -69,7 +71,7 @@ export const McpAppStorePage = () => {
 
   const [view, setView] = useState<PageView>('store')
   const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>(
-    searchParams.get('catalogEntryId') ?? undefined,
+    catalogEntryIdParam,
   )
   const [librarySearch, setLibrarySearch] = useState('')
   const [selectedLibraryEntry, setSelectedLibraryEntry] =
@@ -95,6 +97,7 @@ export const McpAppStorePage = () => {
 
   const [wizardOpen, setWizardOpen] = useState(false)
   const [installTarget, setInstallTarget] = useState<string | null>(null)
+  const autoInstallOpenedRef = useRef(false)
   const [rejectTarget, setRejectTarget] = useState<McpCatalogEntryRecord | null>(null)
   const [credentialsTarget, setCredentialsTarget] =
     useState<McpServerInstanceRecord | null>(null)
@@ -145,6 +148,28 @@ export const McpAppStorePage = () => {
     setSelectedCatalogId(undefined)
     setSelectedLibraryEntry(null)
   }
+
+  useEffect(() => {
+    if (catalogEntryIdParam) {
+      setSelectedCatalogId(catalogEntryIdParam)
+    }
+  }, [catalogEntryIdParam])
+
+  useEffect(() => {
+    if (
+      action !== 'install'
+      || autoInstallOpenedRef.current
+      || !catalogEntryIdParam
+      || !selectedCatalog
+      || selectedCatalog.id !== catalogEntryIdParam
+      || selectedCatalog.status !== 'published'
+    ) {
+      return
+    }
+
+    setInstallTarget(selectedCatalog.id)
+    autoInstallOpenedRef.current = true
+  }, [action, catalogEntryIdParam, selectedCatalog])
 
   const handleInstall = async (input: {
     credentialRef?: string | null

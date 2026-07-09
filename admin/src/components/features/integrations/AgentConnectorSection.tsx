@@ -42,6 +42,26 @@ export const mcpCatalogHref = (product: IntegratedProductResponse): string =>
     ? `/mcp-app-store?catalogEntryId=${product.mcpCatalogEntryId}`
     : '/mcp-app-store'
 
+export const mcpInstallHref = (product: IntegratedProductResponse): string =>
+  product.mcpCatalogEntryId
+    ? `/mcp-app-store?catalogEntryId=${product.mcpCatalogEntryId}&action=install`
+    : '/mcp-app-store'
+
+const mcpActionHref = (product: IntegratedProductResponse): string =>
+  product.mcpCatalogEntryId && !product.mcpInstallation
+    ? mcpInstallHref(product)
+    : mcpCatalogHref(product)
+
+const mcpActionLabel = (product: IntegratedProductResponse): string =>
+  product.mcpCatalogEntryId && !product.mcpInstallation
+    ? 'Install connector'
+    : 'MCP store'
+
+const mcpActionClass = (product: IntegratedProductResponse): string =>
+  product.mcpCatalogEntryId && !product.mcpInstallation
+    ? 'admin-button admin-button-primary text-xs'
+    : 'admin-button admin-button-secondary text-xs'
+
 export const AgentConnectorSection = ({
   product,
 }: {
@@ -62,8 +82,8 @@ export const AgentConnectorSection = ({
                 : 'This product has no MCP connector contract yet.'}
           </p>
         </div>
-        <Link className="admin-button admin-button-secondary text-xs" to={mcpCatalogHref(product)}>
-          MCP store
+        <Link className={mcpActionClass(product)} to={mcpActionHref(product)}>
+          {mcpActionLabel(product)}
         </Link>
       </div>
 
