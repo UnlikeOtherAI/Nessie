@@ -170,6 +170,10 @@ Current team-enable slice:
 
 - `product_team_enablements` stores the active Nessie team's product switch and
   optional UOA active org/team IDs captured from the user's account link.
+- API responses expose `teamEnablement.authority`, currently
+  `nessie_projection`, so clients do not infer source-of-truth from ad hoc
+  metadata. The enum already reserves `uoa_connected_products` for the later
+  UOA-backed entitlement source.
 - `GET /api/integrations/products` returns both `accountLink` and
   `teamEnablement`, so the UI can show account state separately from team access.
 - `PATCH /api/integrations/products/:productSlug/team-enablement` lets an owner
@@ -276,6 +280,8 @@ Current UOA/auth slice:
   local team, annotated with UOA active team IDs where available. It still needs
   a UOA connected-products entitlement API before it can become the cross-product
   source of truth.
+  The current API/UI labels that distinction explicitly as `nessie_projection`
+  rather than treating the local row as permanent authority.
   First-registration create/join remains an SSO/Auth-window concern in UOA, not
   a Nessie-owned onboarding fork.
 
@@ -649,7 +655,10 @@ Acceptance:
 - Add UOA active-workspace consumption. **Implemented in current slice.**
 - Add a connected-products entitlement API or projection keyed to UOA
   `active.teamId`. **Projection implemented in current slice; UOA authority
-  remains future work.**
+  remains future work. Responses now expose the projection authority explicitly
+  and the route has been split into product-status and handoff modules so the
+  UOA-backed switch can land without growing `api/src/routes/integrations.ts`
+  beyond the file-size guardrail.**
 - Add health checks for link-only products and MCP-backed products. **MCP
   installation readiness is surfaced; active product health polling remains
   pending. Month-to-date connector usage/cost is surfaced in ESC.**

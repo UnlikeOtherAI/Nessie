@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client'
 import {
   IntegratedProductResponseSchema,
   type IntegratedProductResponse,
+  type ProductTeamEnablementAuthority,
 } from '@nessie/schemas'
 
 export type ProductTeamEnablementRow = {
@@ -93,21 +94,32 @@ const toMetadataRecord = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>
 }
 
+const toTeamEnablementAuthority = (
+  metadata: Record<string, unknown>,
+): ProductTeamEnablementAuthority =>
+  metadata.authority === 'uoa_connected_products'
+    ? 'uoa_connected_products'
+    : 'nessie_projection'
+
 export const mapTeamEnablementRow = (
   row: ProductTeamEnablementRow,
-) => ({
-  id: row.id,
-  configuredByUserId: row.configured_by_user_id,
-  createdAt: toIsoString(row.created_at),
-  enabled: row.enabled,
-  externalOrgId: row.external_org_id,
-  externalTeamId: row.external_team_id,
-  metadata: toMetadataRecord(row.metadata_json),
-  organizationId: row.organization_id,
-  productSlug: row.product_slug,
-  teamId: row.team_id,
-  updatedAt: toIsoString(row.updated_at),
-})
+) => {
+  const metadata = toMetadataRecord(row.metadata_json)
+  return {
+    id: row.id,
+    authority: toTeamEnablementAuthority(metadata),
+    configuredByUserId: row.configured_by_user_id,
+    createdAt: toIsoString(row.created_at),
+    enabled: row.enabled,
+    externalOrgId: row.external_org_id,
+    externalTeamId: row.external_team_id,
+    metadata,
+    organizationId: row.organization_id,
+    productSlug: row.product_slug,
+    teamId: row.team_id,
+    updatedAt: toIsoString(row.updated_at),
+  }
+}
 
 export const mapProductRow = (row: IntegratedProductRow): IntegratedProductResponse =>
   IntegratedProductResponseSchema.parse({

@@ -128,6 +128,12 @@ const accountLabel = (product: IntegratedProductResponse): string => {
 const teamEnablementLabel = (product: IntegratedProductResponse): string =>
   product.teamEnablement?.enabled ? 'Team enabled' : 'Team disabled'
 
+const teamAuthorityLabel = (product: IntegratedProductResponse): string => {
+  if (product.teamEnablement?.authority === 'uoa_connected_products') return 'UOA authority'
+  if (product.teamEnablement) return 'Nessie projection'
+  return 'Team source pending'
+}
+
 const capabilityLabel = (value: string): string =>
   value.replace(/[-_]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
@@ -167,6 +173,9 @@ const ProductRow = ({
           </span>
           <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
             {teamEnablementLabel(product)}
+          </span>
+          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+            {teamAuthorityLabel(product)}
           </span>
           <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
           <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
@@ -235,6 +244,10 @@ const TeamAccessSection = ({
             {externalTeamId ? `${externalOrgId ?? 'org'} / ${externalTeamId}` : 'Not projected yet'}
           </div>
         </div>
+        <div className="rounded border border-[var(--sep)] px-3 py-2 sm:col-span-2">
+          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Authority</div>
+          <div className="mt-1 text-sm text-[var(--tx)]">{teamAuthorityLabel(product)}</div>
+        </div>
       </div>
       {!isOwner ? (
         <p className="mt-2 text-xs text-[var(--tx3)]">Owner access required to change team access.</p>
@@ -299,6 +312,9 @@ const ProductDetail = ({
             </span>
             <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
               {teamEnablementLabel(product)}
+            </span>
+            <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
+              {teamAuthorityLabel(product)}
             </span>
             <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
           </div>

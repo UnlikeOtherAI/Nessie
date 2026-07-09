@@ -44,6 +44,7 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
     summary: 'Deep research runs.',
     teamEnablement: {
       id: '8f3a5a00-0e64-4d10-a517-0d0b69c1d201',
+      authority: 'nessie_projection',
       configuredByUserId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d301',
       createdAt: '2026-07-08T12:00:00.000Z',
       enabled: true,
@@ -70,6 +71,7 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
   })
 
   assert.equal(parsed.teamEnablement?.enabled, true)
+  assert.equal(parsed.teamEnablement?.authority, 'nessie_projection')
   assert.equal(parsed.teamEnablement?.externalTeamId, 'uoa-team-1')
   assert.equal(parsed.mcpInstallation?.lifecycleState, 'active')
   assert.equal(parsed.mcpInstallation?.toolCount, 5)

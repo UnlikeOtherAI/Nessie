@@ -46,6 +46,13 @@ export const ProductAccountLinkStatusSchema = z.enum([
 ])
 export type ProductAccountLinkStatus = z.infer<typeof ProductAccountLinkStatusSchema>
 
+export const ProductTeamEnablementAuthoritySchema = z.enum([
+  'nessie_projection',
+  'uoa_connected_products',
+])
+export type ProductTeamEnablementAuthority =
+  z.infer<typeof ProductTeamEnablementAuthoritySchema>
+
 export const ProductAccountLinkRecordSchema = z.object({
   id: z.string().uuid(),
   activeOrgId: z.string().nullable(),
@@ -63,6 +70,7 @@ export type ProductAccountLinkRecord = z.infer<typeof ProductAccountLinkRecordSc
 
 export const ProductTeamEnablementRecordSchema = z.object({
   id: z.string().uuid(),
+  authority: ProductTeamEnablementAuthoritySchema,
   configuredByUserId: z.string().uuid().nullable(),
   createdAt: TimestampSchema,
   enabled: z.boolean(),
