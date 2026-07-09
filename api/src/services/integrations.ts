@@ -238,6 +238,46 @@ export const syncUoaProductAccountLinks = async (
   )
 }
 
+/**
+ * Upsert a single per-user product account link, preserving the recorded
+ * `uoaSub` unless a new one is supplied. Used by the external-agent activation
+ * flow to record link state (`linked` / `needs_auth` / `revoked`) alongside the
+ * bulk `syncUoaProductAccountLinks` path that runs at UOA login.
+ */
+export const upsertProductAccountLink = async (
+  prisma: PrismaClient,
+  input: {
+    organizationId: string
+    userId: string
+    productSlug: string
+    status: 'linked' | 'needs_auth' | 'revoked' | 'error'
+    uoaSub?: string | null
+  },
+): Promise<void> => {
+  await prisma.productAccountLink.upsert({
+    where: {
+      organizationId_userId_productSlug: {
+        organizationId: input.organizationId,
+        userId: input.userId,
+        productSlug: input.productSlug,
+      },
+    },
+    create: {
+      organizationId: input.organizationId,
+      userId: input.userId,
+      productSlug: input.productSlug,
+      status: input.status,
+      uoaSub: input.uoaSub ?? null,
+      lastVerifiedAt: new Date(),
+    },
+    update: {
+      status: input.status,
+      lastVerifiedAt: new Date(),
+      ...(input.uoaSub !== undefined ? { uoaSub: input.uoaSub } : {}),
+    },
+  })
+}
+
 const teamEnablementMetadata = (): Prisma.InputJsonObject => ({
   authority: 'nessie_projection',
   source: 'esc_team_enablement',

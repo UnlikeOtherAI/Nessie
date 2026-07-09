@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
 import type { ModelClient, PgRealtimeTransport, QueueProvider } from '@nessie/runtime'
@@ -37,7 +37,7 @@ export type RunContext = {
   channel: {
     id: string
     organizationId: string
-    systemChannelType: 'personal_assistant' | null
+    systemChannelType: ChannelSystemType | null
   }
   run: {
     id: string

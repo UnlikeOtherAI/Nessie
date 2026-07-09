@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { CaptureConfig } from '@nessie/memory'
 import type { ConnectorUsage, ModelClient, PgRealtimeTransport } from '@nessie/runtime'
@@ -20,7 +20,7 @@ export type BuiltinToolRuntimeContext = {
   channel: {
     id: string
     organizationId: RunExecuteJobPayload['actorContext']['tenant']['organizationId']
-    systemChannelType?: 'personal_assistant' | null
+    systemChannelType?: ChannelSystemType | null
   }
   // MCP credential plumbing for the connector management tools: the store
   // encrypts user-provided secrets into Postgres, the resolver resolves any

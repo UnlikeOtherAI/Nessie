@@ -22,7 +22,7 @@ export const AgentDelegationModeSchema = z.enum([
 ])
 export type AgentDelegationMode = z.infer<typeof AgentDelegationModeSchema>
 
-export const SystemChannelTypeSchema = z.enum(['personal_assistant'])
+export const SystemChannelTypeSchema = z.enum(['personal_assistant', 'external_agent'])
 export type SystemChannelType = z.infer<typeof SystemChannelTypeSchema>
 
 export const AgentTriggerTypeSchema = z.enum([

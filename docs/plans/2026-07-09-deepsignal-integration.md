@@ -194,13 +194,24 @@ by a separate effort. DeepSignal also *consumes* DeepWater internally, but only 
   doc)*: streamable-HTTP MCP endpoint with UOA bearer auth resolving real per-user
   principals; conversation persistence + `chat(conversationId)` / `conversation_history` /
   `conversation_list` tools; RFC 9728 metadata; UOA audience support.
-- **Phase 1 — Registration & activation (Nessie)** *(pending)*: `deepsignal` product row +
-  manifest + first-party catalog entry + curated library entry; team enablement; per-user
-  install → OAuth link → `ProductAccountLink`; Integrations page card with Activate flow.
-- **Phase 2 — Conversation surface & driver (Nessie)** *(pending)*: `external_agent` channel
-  type + bootstrap; `Agent.executionMode = external_mcp`; worker `runExternalConversation`
-  (request/response first — thinking bubble + final message with uiCards); channel labels in
-  `ChannelMessageFeed`. Kelpie-verify the channel UI.
+- **Phase 1 — Registration & activation (Nessie)** *(backend implemented; admin card
+  pending)*: `deepsignal` product row + manifest + first-party catalog entry + curated
+  library entry — all shipped (`20260709121000_deepsignal_product` migration,
+  `integration-plugin-manifests.ts`, `CURATED_MCP_LIBRARY`). Per-user activation backend
+  shipped: `POST /api/integrations/products/deepsignal/activate` and `.../deactivate`
+  (`external-agent-activation.ts`) — team-gate check → user-scoped `McpServerInstance` +
+  dynamic-OAuth start → `ProductAccountLink` (`linked` / `needs_auth`) → channel bootstrap,
+  returning `{ channelId, instanceId, authorizeUrl? }`. The Integrations page Activate card
+  is still pending (separate admin slice).
+- **Phase 2 — Conversation surface & driver (Nessie)** *(schema groundwork implemented;
+  driver + UI pending)*: `external_agent` `ChannelSystemType` value and the
+  `Agent.executionMode = external_mcp` enum + column landed additively
+  (`20260709120000_agent_execution_mode_external_agent`), plus the idempotent per-user DM
+  bootstrap service `external-agent.ts` (system-managed `Agent` + private DM channel keyed
+  `extagent:deepsignal:${orgId}:${userId}` + default thread + binding). Still pending: the
+  worker `runExternalConversation` driver (request/response first — thinking bubble + final
+  message with uiCards) and the channel labels in `ChannelMessageFeed`. Kelpie-verify the
+  channel UI once the driver + UI land.
 - **Phase 3 — History & proactive delivery** *(pending)*: history hydration on channel open;
   webhook receiver → insight cards in-channel; snooze/done actions proxied over MCP.
 - **Phase 4 — Streaming & polish** *(pending)*: MCP progress notifications → live activity
