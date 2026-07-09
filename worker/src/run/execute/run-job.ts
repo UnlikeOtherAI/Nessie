@@ -15,6 +15,7 @@ import { resolveAgentTools } from '../tool-policy.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import { applyBudgetGate } from './budget-gate.js'
 import { completeRunExecution } from './completion.js'
+import { runExternalConversation } from '../external-conversation.js'
 import { handleRunExecutionFailure } from './failure.js'
 import {
   claimRunForExecution,
@@ -70,6 +71,15 @@ export const executeRunJob = async (
   }
 
   const prompt = payload.promptOverride?.trim() || message.content
+
+  // External-agent turns bypass the inference loop entirely: the driver proxies
+  // the message to the external product over MCP and owns its own run
+  // lifecycle. Nessie runs no inference for these runs (plan §5).
+  if (context.agent.executionMode === 'external_mcp') {
+    await runExternalConversation(deps, payload, context, prompt)
+    return
+  }
+
   let streamStarted = false
   let planContext: RunPlanContext | null = null
 

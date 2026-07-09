@@ -203,15 +203,28 @@ by a separate effort. DeepSignal also *consumes* DeepWater internally, but only 
   dynamic-OAuth start → `ProductAccountLink` (`linked` / `needs_auth`) → channel bootstrap,
   returning `{ channelId, instanceId, authorizeUrl? }`. The Integrations page Activate card
   is still pending (separate admin slice).
-- **Phase 2 — Conversation surface & driver (Nessie)** *(schema groundwork implemented;
-  driver + UI pending)*: `external_agent` `ChannelSystemType` value and the
+- **Phase 2 — Conversation surface & driver (Nessie)** *(driver implemented; admin UI
+  pending)*: `external_agent` `ChannelSystemType` value and the
   `Agent.executionMode = external_mcp` enum + column landed additively
   (`20260709120000_agent_execution_mode_external_agent`), plus the idempotent per-user DM
   bootstrap service `external-agent.ts` (system-managed `Agent` + private DM channel keyed
-  `extagent:deepsignal:${orgId}:${userId}` + default thread + binding). Still pending: the
-  worker `runExternalConversation` driver (request/response first — thinking bubble + final
-  message with uiCards) and the channel labels in `ChannelMessageFeed`. Kelpie-verify the
-  channel UI once the driver + UI land.
+  `extagent:deepsignal:${orgId}:${userId}` + default thread + binding). The worker
+  `runExternalConversation` driver is now shipped (`worker/src/run/external-conversation.ts`
+  + `external-conversation-cards.ts`): `run-job` branches on
+  `agent.executionMode === 'external_mcp'` **before** any inference setup and hands the turn
+  to the driver, which resolves the user-scoped MCP instance (product slug parsed from the
+  channel `dmKey`), calls the `chat` tool via the shared MCP plumbing
+  (`worker/src/run/mcp-instance-call.ts`, reused by the toolset), emits `stream.start` /
+  `stream.done`, records a `ConnectorUsageEvent`, and persists one assistant `Message` with
+  `metadata.uiCards` (activities + cards mapped onto `IntegrationUiCardSchema`) and
+  `metadata.external = { product, conversationId, turnId }`. The conversation id round-trips
+  through `Thread.metadata.<slug>.conversationId` (new additive `threads.metadata` JSONB
+  column, `20260709122000_thread_metadata`). Missing/unauthorized connector → `needs_setup`
+  card + clean completion; expired auth → `needs_setup`; transport error → `failed` card +
+  failed run. **No inference is ever invoked** (asserted in
+  `worker/src/run/external-conversation.test.ts` via a model client that throws on access).
+  Still pending: the channel labels in `ChannelMessageFeed`. Kelpie-verify the channel UI
+  once the admin slice lands.
 - **Phase 3 — History & proactive delivery** *(pending)*: history hydration on channel open;
   webhook receiver → insight cards in-channel; snooze/done actions proxied over MCP.
 - **Phase 4 — Streaming & polish** *(pending)*: MCP progress notifications → live activity
