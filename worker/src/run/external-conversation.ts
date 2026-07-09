@@ -1,5 +1,13 @@
 import { Prisma } from '@prisma/client'
-import { EnvSecretResolver, type SecretResolver } from '@nessie/mcp-manage'
+import {
+  EnvSecretResolver,
+  failedCard,
+  mapChatResultToUiCards,
+  needsSetupCard,
+  parseChatToolResult,
+  resolveInstanceMcpTransport,
+  type SecretResolver,
+} from '@nessie/mcp-manage'
 import {
   attributionFromActorContext,
   recordConnectorUsage,
@@ -13,14 +21,7 @@ import {
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
 
-import { resolveInstanceMcpTransport } from './mcp-instance-call.js'
 import { dispatchTool, type ToolDispatchResult } from './tool-dispatch.js'
-import {
-  failedCard,
-  mapChatResultToUiCards,
-  needsSetupCard,
-  parseChatToolResult,
-} from './external-conversation-cards.js'
 import {
   claimRunForExecution,
   setAgentStatus,

@@ -1,4 +1,5 @@
 import {
+  buildAuthorizedTransport,
   resolveCredentialRef,
   EnvSecretResolver,
   type SecretResolver,
@@ -12,7 +13,6 @@ import {
   DEFAULT_INLINE_TOOL_LIMIT,
   type McpToolsetView,
 } from './mcp-toolset-deferred.js'
-import { buildAuthorizedTransport } from './mcp-instance-call.js'
 import { dispatchTool } from './tool-dispatch.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
