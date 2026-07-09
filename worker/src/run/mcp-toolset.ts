@@ -1,19 +1,19 @@
 import {
-  applyAuthSecretToTransport,
   resolveCredentialRef,
   EnvSecretResolver,
   type SecretResolver,
 } from '@nessie/mcp-manage'
 import { recordConnectorUsage, type LedgerAttribution } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import type { AuthorizedActionContext, McpTransportConfig } from '@nessie/schemas'
 import {
   buildDeferredView,
   buildInlineView,
   DEFAULT_INLINE_TOOL_LIMIT,
   type McpToolsetView,
 } from './mcp-toolset-deferred.js'
-import { dispatchTool, parseMcpTransportConfig } from './tool-dispatch.js'
+import { buildAuthorizedTransport } from './mcp-instance-call.js'
+import { dispatchTool } from './tool-dispatch.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
@@ -221,7 +221,7 @@ export const buildMcpToolset = async (
 
   const entries: McpToolEntry[] = []
   type TransportTarget = {
-    transport: ReturnType<typeof parseMcpTransportConfig>
+    transport: McpTransportConfig
     originalToolName: string
     instanceId: string
   }
@@ -243,16 +243,6 @@ export const buildMcpToolset = async (
     }
     usedNames.add(exposedName)
 
-    let transport: ReturnType<typeof parseMcpTransportConfig>
-    try {
-      transport = parseMcpTransportConfig({
-        ...stringRecord(row.mcpInstance.catalogEntry.defaultTransportConfig),
-        ...stringRecord(row.mcpInstance.transportConfig),
-      })
-    } catch {
-      // Skip malformed transport configs rather than failing the whole sub-agent.
-      continue
-    }
     const credentialRef = await resolveCredentialRef(prisma, row.mcpInstanceId, {
       userId: runScope.effectiveUserId,
       agentId: runtimeContext.agentId,
@@ -262,6 +252,21 @@ export const buildMcpToolset = async (
       organizationId,
     })
     const secret = credentialRef ? await secretResolver.resolve(credentialRef) : null
+
+    let transport: McpTransportConfig
+    try {
+      // Merge + parse + apply auth once here so probe (API), the toolset, and
+      // the external driver share the exact same header semantics.
+      transport = buildAuthorizedTransport({
+        catalogDefaultTransportConfig: row.mcpInstance.catalogEntry.defaultTransportConfig,
+        instanceTransportConfig: row.mcpInstance.transportConfig,
+        authConfig: row.mcpInstance.catalogEntry.authConfig,
+        secret,
+      })
+    } catch {
+      // Skip malformed transport configs rather than failing the whole sub-agent.
+      continue
+    }
 
     entries.push({
       registryEntryId: row.id,
@@ -273,13 +278,7 @@ export const buildMcpToolset = async (
       connectorLabel: row.mcpInstance.catalogEntry.label,
     })
     transportByExposedName.set(exposedName, {
-      // Auth headers are applied once here so probe (API) and dispatch
-      // (worker) share the exact same header semantics via @nessie/mcp-manage.
-      transport: applyAuthSecretToTransport(
-        transport,
-        row.mcpInstance.catalogEntry.authConfig,
-        secret,
-      ),
+      transport,
       originalToolName,
       instanceId: row.mcpInstanceId,
     })
