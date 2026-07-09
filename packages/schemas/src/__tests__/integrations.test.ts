@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
   IntegratedProductResponseSchema,
   SetProductTeamEnablementRequestSchema,
@@ -105,6 +106,37 @@ test('DeepWaterResearchLaunchRequestSchema keeps launcher controls MCP-safe', ()
     DeepWaterResearchLaunchRequestSchema.safeParse({
       depth: 'uncapped',
       query: 'x',
+    }).success,
+    false,
+  )
+})
+
+test('DeepTestReviewHandoffRequestSchema rejects target material fields', () => {
+  const parsed = DeepTestReviewHandoffRequestSchema.parse({
+    artifactPolicy: 'share_safe_report',
+    depth: 'overnight',
+    runner: 'local_mcp',
+  })
+
+  assert.equal(parsed.depth, 'overnight')
+  assert.equal(parsed.artifactPolicy, 'share_safe_report')
+  assert.equal(parsed.runner, 'local_mcp')
+  assert.deepEqual(DeepTestReviewHandoffRequestSchema.parse({}), {
+    artifactPolicy: 'share_safe_report',
+    depth: 'standard',
+    runner: 'local_mcp',
+  })
+  assert.equal(
+    DeepTestReviewHandoffRequestSchema.safeParse({
+      depth: 'deep',
+      targetUrl: 'https://api.customer.example',
+    }).success,
+    false,
+  )
+  assert.equal(
+    DeepTestReviewHandoffRequestSchema.safeParse({
+      depth: 'deep',
+      prompt: 'review this diff',
     }).success,
     false,
   )

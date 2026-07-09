@@ -7,6 +7,7 @@ import {
   mcpConnectorClass,
   mcpConnectorLabel,
 } from '../components/features/integrations/AgentConnectorSection'
+import { DeepTestSecurityPanel } from '../components/features/integrations/DeepTestSecurityPanel'
 import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
 import { ManifestPanel } from '../components/features/integrations/ManifestPanel'
 import {
@@ -324,6 +325,7 @@ const ProductDetail = ({
         <AgentConnectorSection product={product} />
         <ProductOperationsSection product={product} />
         {product.slug === 'deep-water' ? <DeepWaterResearchPanel product={product} /> : null}
+        {product.slug === 'deeptest' ? <DeepTestSecurityPanel product={product} /> : null}
 
         <section>
           <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>

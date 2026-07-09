@@ -157,6 +157,8 @@ export type {
   AgentChild,
   AgentMessage,
   AgentStatusResponse,
+  DeepTestReviewDepth,
+  DeepTestReviewHandoffRequest,
   DeepWaterResearchDepth,
   DeepWaterResearchLaunchRequest,
   IntegratedProductAuthMode,

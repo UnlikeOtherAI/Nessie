@@ -1,15 +1,11 @@
-import { Prisma } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import {
+  DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
   IntegratedProductResponseSchema,
   IntegrationUiCardSchema,
   IntegrationPluginManifestSchema,
-  parseChannelId,
-  parseThreadId,
-  parseUserId,
   SetProductTeamEnablementRequestSchema,
-  withActionContext,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
@@ -19,11 +15,9 @@ import {
   ThreadRecordSchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
+import { createPersonalAssistantIntegrationHandoff } from '../services/integration-handoffs.js'
 import { getIntegrationPluginManifest } from '../services/integration-plugin-manifests.js'
 import { listIntegratedProducts, setProductTeamEnablement } from '../services/integrations.js'
-import { mapMessageRecord, messageInclude } from '../services/messages.js'
-import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
 import type { RouteDeps } from './types.js'
 
 const ProductSlugParamsSchema = z.object({
@@ -44,6 +38,12 @@ type DeepWaterLaunchInput = {
   title?: string
 }
 
+type DeepTestReviewHandoffInput = {
+  artifactPolicy: 'share_safe_report' | 'external_link_only'
+  depth: 'shallow' | 'standard' | 'deep' | 'overnight'
+  runner: 'local_mcp' | 'private_runner'
+}
+
 const normalizeDeepWaterLaunchInput = (
   input: Partial<DeepWaterLaunchInput> & { query: string },
 ): DeepWaterLaunchInput => ({
@@ -60,13 +60,17 @@ const normalizeDeepWaterLaunchInput = (
   title: input.title,
 })
 
+const normalizeDeepTestReviewHandoffInput = (
+  input: Partial<DeepTestReviewHandoffInput>,
+): DeepTestReviewHandoffInput => ({
+  artifactPolicy: input.artifactPolicy ?? 'share_safe_report',
+  depth: input.depth ?? 'standard',
+  runner: input.runner ?? 'local_mcp',
+})
+
 export const registerIntegrationRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
-    buildChannelRealtimeScopes,
-    isPersonalAssistantChannelType,
-    loadPersonalAssistantState,
     prisma,
-    realtimeHub,
     requireActorContext,
     requireOwner,
     requireUserActor,
@@ -182,92 +186,100 @@ export const registerIntegrationRoutes = (app: FastifyInstance, deps: RouteDeps)
       sendApiError(reply, 409, 'DEEP_WATER_TEAM_DISABLED', 'Deep Water is not enabled for this team')
       return reply
     }
-    if (product.mcpInstallation?.lifecycleState !== 'active') {
+    const mcpInstallation = product.mcpInstallation
+    if (!mcpInstallation || mcpInstallation.lifecycleState !== 'active') {
       sendApiError(reply, 409, 'DEEP_WATER_MCP_INACTIVE', 'Deep Water MCP is not active for this team')
       return reply
     }
 
-    await ensurePersonalAssistantBootstrap(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      teamId,
-      userId: actorContext.actor.actorId,
-    })
-    const paState = await loadPersonalAssistantState(actorContext)
-    if (!paState?.agent || !paState.channel || !paState.thread) {
+    let handoff: Awaited<ReturnType<typeof createPersonalAssistantIntegrationHandoff>>
+    try {
+      handoff = await createPersonalAssistantIntegrationHandoff(deps, {
+        actorContext,
+        content: buildDeepWaterLaunchMessage(body),
+        metadata: ({ channelId }) => buildDeepWaterLaunchMetadata(body, {
+          channelId,
+          connectorId: mcpInstallation.id,
+          productSlug: product.slug,
+        }),
+        teamId,
+      })
+    } catch {
       sendApiError(reply, 500, 'PERSONAL_ASSISTANT_UNAVAILABLE', 'Personal Assistant is unavailable')
       return reply
     }
 
-    const agent = await prisma.agent.findUnique({
-      where: { id: paState.agent.id },
-      select: { id: true, name: true, role: true, systemPrompt: true },
-    })
-    if (!agent) {
-      sendApiError(reply, 500, 'PERSONAL_ASSISTANT_UNAVAILABLE', 'Personal Assistant agent is unavailable')
+    return reply.code(202).send(createApiResponse({
+      channel: ChannelRecordSchema.parse(handoff.channel),
+      message: ThreadMessageRecordSchema.parse(handoff.message),
+      thread: ThreadRecordSchema.parse(handoff.thread),
+    }))
+  })
+
+  app.post('/api/integrations/products/:productSlug/security-handoff', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const params = parseInput(ProductSlugParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    if (params.productSlug !== 'deeptest') {
+      sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
       return reply
     }
 
-    const content = buildDeepWaterLaunchMessage(body)
-    const metadata = buildDeepWaterLaunchMetadata(body, {
-      channelId: paState.channel.id,
-      connectorId: product.mcpInstallation.id,
-    })
-    const message = await prisma.message.create({
-      data: {
-        content,
-        metadata: metadata as Prisma.InputJsonValue,
-        role: 'user',
-        threadId: paState.thread.id,
-        userId: actorContext.actor.actorId,
-      },
-      include: messageInclude,
-    })
+    const parsedBody = parseInput(DeepTestReviewHandoffRequestSchema, request.body, reply)
+    if (!parsedBody) return reply
+    const body = normalizeDeepTestReviewHandoffInput(parsedBody)
 
-    await realtimeHub.publishWs(
-      buildChannelRealtimeScopes({
-        channelId: paState.channel.id,
-        organizationId: actorContext.tenant.organizationId,
-        systemChannelType: paState.channel.systemChannelType,
-      }),
-      {
-        data: {
-          agentId: undefined,
-          authorUserId: parseUserId(actorContext.actor.actorId),
-          channelId: parseChannelId(paState.channel.id),
-          contentPreview: content.slice(0, 200),
-          messageId: message.id,
-          role: message.role,
-          threadId: parseThreadId(paState.thread.id),
-        },
-        event: 'message.new',
-      },
-    )
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (!teamId) {
+      sendApiError(reply, 400, 'TEAM_CONTEXT_REQUIRED', 'A team context is required')
+      return reply
+    }
 
-    const orchestrationActorContext = isPersonalAssistantChannelType(
-      paState.channel.systemChannelType,
-    )
-      ? withActionContext(actorContext, {
-          effectiveUserId: parseUserId(actorContext.actor.actorId),
-        })
-      : actorContext
-    await enqueueOrchestrateDecide(
-      prisma,
-      {
-        actorContext: orchestrationActorContext,
-        channelAgents: [agent],
-        channelId: parseChannelId(paState.channel.id),
-        content,
-        messageId: message.id,
-        role: message.role,
-        threadId: parseThreadId(paState.thread.id),
-      },
-      `orchestrate:${message.id}`,
-    )
+    const products = await listIntegratedProducts(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId,
+      userId: actorContext.actor.actorId,
+    })
+    const product = products.find((candidate) => candidate.slug === 'deeptest')
+    if (!product) {
+      sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
+      return reply
+    }
+    if (!product.teamEnablement?.enabled) {
+      sendApiError(reply, 409, 'DEEPTEST_TEAM_DISABLED', 'DeepTest is not enabled for this team')
+      return reply
+    }
+    const mcpInstallation = product.mcpInstallation
+    if (!mcpInstallation || mcpInstallation.lifecycleState !== 'active') {
+      sendApiError(reply, 409, 'DEEPTEST_MCP_INACTIVE', 'DeepTest MCP is not active for this team')
+      return reply
+    }
+
+    let handoff: Awaited<ReturnType<typeof createPersonalAssistantIntegrationHandoff>>
+    try {
+      handoff = await createPersonalAssistantIntegrationHandoff(deps, {
+        actorContext,
+        content: buildDeepTestReviewHandoffMessage(body),
+        metadata: ({ channelId }) => buildDeepTestReviewHandoffMetadata(body, {
+          channelId,
+          connectorId: mcpInstallation.id,
+          launchUrl: product.launchUrl,
+          productSlug: product.slug,
+        }),
+        teamId,
+      })
+    } catch {
+      sendApiError(reply, 500, 'PERSONAL_ASSISTANT_UNAVAILABLE', 'Personal Assistant is unavailable')
+      return reply
+    }
 
     return reply.code(202).send(createApiResponse({
-      channel: ChannelRecordSchema.parse(paState.channel),
-      message: ThreadMessageRecordSchema.parse(mapMessageRecord(message)),
-      thread: ThreadRecordSchema.parse(paState.thread),
+      channel: ChannelRecordSchema.parse(handoff.channel),
+      message: ThreadMessageRecordSchema.parse(handoff.message),
+      thread: ThreadRecordSchema.parse(handoff.thread),
     }))
   })
 }
@@ -305,12 +317,12 @@ const buildDeepWaterLaunchMessage = (
 
 const buildDeepWaterLaunchMetadata = (
   input: DeepWaterLaunchInput,
-  context: { channelId: string; connectorId: string },
+  context: { channelId: string; connectorId: string; productSlug: string },
 ): Record<string, unknown> => ({
   integrationLaunch: {
     artifactDestination: input.artifactDestination,
     connectorId: context.connectorId,
-    productSlug: 'deep-water',
+    productSlug: context.productSlug,
     requestedAt: new Date().toISOString(),
   },
   mentions: { agentIds: [], broadcast: null, userIds: [] },
@@ -333,6 +345,67 @@ const buildDeepWaterLaunchMetadata = (
       status: 'queued',
       summary: 'Personal Assistant will launch this through Deep Water MCP and report progress here.',
       title: input.title?.trim() || 'Deep Water research',
+    }),
+  ],
+})
+
+const buildDeepTestReviewHandoffMessage = (
+  input: DeepTestReviewHandoffInput,
+): string => {
+  const artifactPolicy =
+    input.artifactPolicy === 'share_safe_report'
+      ? 'Import only a share-safe, target-neutral report into Knowledge if the local runner returns one.'
+      : 'Keep artifacts in DeepTest and link out; do not import reports into Nessie.'
+
+  return [
+    'Prepare a DeepTest security review through the approved local MCP connector.',
+    '',
+    `Depth: ${input.depth}`,
+    `Runner: ${input.runner}`,
+    `Artifact policy: ${input.artifactPolicy}`,
+    '',
+    'Privacy boundary:',
+    '- Do not ask the user to paste target URLs, source code, PR diffs, findings, prompts, secrets, or raw reports into Nessie.',
+    '- The user must configure the target inside DeepTest or its local runner.',
+    '- Use mcp_deeptest_review only after the local runner and approved tool grant are available.',
+    '- If a report is returned, summarize only status, controlled counts, neutral next steps, and share-safe artifacts.',
+    artifactPolicy,
+  ].join('\n')
+}
+
+const buildDeepTestReviewHandoffMetadata = (
+  input: DeepTestReviewHandoffInput,
+  context: { channelId: string; connectorId: string; launchUrl: string | null; productSlug: string },
+): Record<string, unknown> => ({
+  integrationLaunch: {
+    artifactPolicy: input.artifactPolicy,
+    connectorId: context.connectorId,
+    productSlug: context.productSlug,
+    requestedAt: new Date().toISOString(),
+  },
+  mentions: { agentIds: [], broadcast: null, userIds: [] },
+  uiCards: [
+    IntegrationUiCardSchema.parse({
+      actions: [
+        { href: `/channels/${context.channelId}`, label: 'Open chat', variant: 'primary' },
+        ...(context.launchUrl
+          ? [{ href: context.launchUrl, label: 'Open DeepTest', variant: 'secondary' as const }]
+          : []),
+      ],
+      fields: [
+        { label: 'Depth', value: input.depth },
+        {
+          label: 'Import',
+          value: input.artifactPolicy === 'share_safe_report' ? 'Share-safe only' : 'Link only',
+        },
+        { label: 'Runner', value: input.runner === 'local_mcp' ? 'Local MCP' : 'Private runner' },
+        { label: 'Boundary', value: 'No target material in Nessie' },
+      ],
+      kind: 'security_review',
+      productSlug: 'deeptest',
+      status: 'queued',
+      summary: 'Personal Assistant will use DeepTest MCP while keeping target material local.',
+      title: 'DeepTest security review',
     }),
   ],
 })

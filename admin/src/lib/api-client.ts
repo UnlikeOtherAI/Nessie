@@ -33,6 +33,8 @@ export type {
   ChannelMetadataRecord,
   ChannelRecord,
   CreateFeedbackRequest,
+  DeepTestReviewDepth,
+  DeepTestReviewHandoffRequest,
   DeepWaterResearchDepth,
   DeepWaterResearchLaunchRequest,
   FavoriteRecord,

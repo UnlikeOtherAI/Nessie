@@ -58,6 +58,8 @@ export type {
   AgentMessage,
   AgentStatusResponse,
   CreateFeedbackRequest,
+  DeepTestReviewDepth,
+  DeepTestReviewHandoffRequest,
   DeepWaterResearchDepth,
   DeepWaterResearchLaunchRequest,
   FeedbackRecord,

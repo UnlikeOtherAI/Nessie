@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   ChannelRecord,
+  DeepTestReviewHandoffRequest,
   DeepWaterResearchLaunchRequest,
   IntegratedProductResponse,
   IntegrationPluginManifest,
@@ -60,6 +61,12 @@ export type DeepWaterResearchLaunchResponse = {
   thread: ThreadRecord
 }
 
+export type IntegrationHandoffResponse = {
+  channel: ChannelRecord
+  message: ThreadMessageRecord
+  thread: ThreadRecord
+}
+
 export const useLaunchDeepWaterResearch = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
@@ -68,6 +75,26 @@ export const useLaunchDeepWaterResearch = () => {
     mutationFn: (input: DeepWaterResearchLaunchRequest) =>
       apiClient.post<DeepWaterResearchLaunchResponse>(
         '/api/integrations/products/deep-water/research-launch',
+        input,
+      ),
+    onSuccess: (response) => {
+      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['threads', response.thread.id, 'messages'],
+      })
+    },
+  })
+}
+
+export const usePrepareDeepTestReview = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: DeepTestReviewHandoffRequest) =>
+      apiClient.post<IntegrationHandoffResponse>(
+        '/api/integrations/products/deeptest/security-handoff',
         input,
       ),
     onSuccess: (response) => {

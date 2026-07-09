@@ -166,6 +166,23 @@ export const DeepWaterResearchLaunchRequestSchema = z.object({
 export type DeepWaterResearchLaunchRequest =
   z.infer<typeof DeepWaterResearchLaunchRequestSchema>
 
+export const DeepTestReviewDepthSchema = z.enum([
+  'shallow',
+  'standard',
+  'deep',
+  'overnight',
+])
+export type DeepTestReviewDepth =
+  z.infer<typeof DeepTestReviewDepthSchema>
+
+export const DeepTestReviewHandoffRequestSchema = z.object({
+  artifactPolicy: z.enum(['share_safe_report', 'external_link_only']).default('share_safe_report'),
+  depth: DeepTestReviewDepthSchema.default('standard'),
+  runner: z.enum(['local_mcp', 'private_runner']).default('local_mcp'),
+}).strict()
+export type DeepTestReviewHandoffRequest =
+  z.infer<typeof DeepTestReviewHandoffRequestSchema>
+
 export const IntegrationUiCardStatusSchema = z.enum([
   'idle',
   'queued',

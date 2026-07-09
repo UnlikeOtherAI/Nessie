@@ -18,6 +18,14 @@ test('first-party integration manifests cover the sibling products', () => {
 
   const deepTest = getIntegrationPluginManifest('deeptest')
   assert.equal(deepTest?.mcp.tools[0]?.privacyTier, 'local_only')
+  assert.equal(deepTest?.mcp.tools.some((tool) => tool.name === 'deeptest_review'), true)
+  assert.equal(deepTest?.mcp.tools.every((tool) => tool.status === 'available'), true)
+  assert.equal(
+    deepTest?.ui.controls.some(
+      (control) => control.id === 'share-safe-import' && control.status === 'available',
+    ),
+    true,
+  )
   assert.equal(deepTest?.privacy.prohibitedByDefault.includes('source code'), true)
 
   const buildMe = getIntegrationPluginManifest('buildme')

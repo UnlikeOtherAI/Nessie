@@ -237,6 +237,16 @@ Current Nessie slice:
   `mcp_research_get`). This gives the UI a real launch path without bypassing
   MCP approval/grants. The durable Nessie run wrapper, automatic progress
   projection, and Knowledge import job remain Phase 2 work.
+- DeepTest now has a privacy-safe ESC handoff panel gated by team enablement and
+  an active shared MCP connector. `POST
+  /api/integrations/products/deeptest/security-handoff` accepts only controlled
+  depth/runner/share-safe-import choices; it rejects target URLs, source code,
+  PR diffs, prompts, findings, reports, and other freeform target material by
+  schema. It creates a Personal Assistant message carrying a `security_review`
+  card and instructs the PA to use the approved local `mcp_deeptest_review`
+  tool only after the user has configured the target inside DeepTest/local
+  runner. Share-safe import remains the default; raw owner-local artifacts stay
+  outside Nessie unless a later explicit import flow is built.
 
 Current UOA/auth slice:
 
@@ -312,6 +322,9 @@ Current Deep Water launcher slice:
 - The launch message asks the PA to import the completed report as a Knowledge
   draft and request publication when `artifactDestination=knowledge_draft`.
   Automatic import without PA mediation still belongs to the Phase 2 run wrapper.
+- ESC renders DeepTest controls for review depth, runner boundary, and
+  share-safe/external-link report handoff. It intentionally has no text field for
+  target URLs, repo paths, source, PR diffs, findings, prompts, or raw reports.
 
 ### 4. UOA Account Linking
 
@@ -382,6 +395,10 @@ Current Nessie slice:
 - Owner-controlled `product_team_enablements` are implemented as a Nessie
   projection for the active team. UOA remains the desired workspace entitlement
   authority once the connected-products API exists.
+- DeepTest's manifest now marks the recommended `deeptest_review`, share-safe
+  report retrieval, and content-free metering tools as available. The native
+  ESC handoff panel is available; durable review history and explicit Knowledge
+  import remain later work.
 
 Manifest skeleton:
 
@@ -650,6 +667,8 @@ Acceptance:
   into the MCP install dialog. Local-runner endpoint setup and approval flow
   still pending.**
 - Expose the recommended `deeptest_review` flow as the primary approved tool.
+  **Manifest updated from DeepTest's MCP docs; PA handoff is implemented and
+  requires active approved MCP installation.**
 - Add share-safe report import into Knowledge.
 - Keep owner-local/raw report import behind explicit user action and warning.
 

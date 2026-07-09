@@ -139,7 +139,7 @@ const rawManifests = [
         availability: 'self_hosted',
         label: 'Local MCP runner',
         requiredForAgentUse: true,
-        setup: 'Connect a local DeepTest MCP endpoint from the user machine or a private runner.',
+        setup: 'Expose the local DeepTest stdio MCP server through an approved private runner or loopback bridge.',
       },
       {
         mode: 'link_out',
@@ -165,20 +165,35 @@ const rawManifests = [
           label: 'Run security review',
           description: 'Run the recommended DeepTest review flow through an approved local runner.',
           privacyTier: 'local_only',
-          status: 'planned',
+          status: 'available',
         },
         {
-          name: 'deeptest_share_safe_report',
-          label: 'Read share-safe report',
-          description: 'Return only content-minimized report metadata and share-safe output.',
+          name: 'get_deeptest_share_safe_repo_security_scan',
+          label: 'Read share-safe scan',
+          description: 'Return a target-neutral share-safe single-scan report projection.',
           privacyTier: 'sensitive',
-          status: 'planned',
+          status: 'available',
+        },
+        {
+          name: 'get_deeptest_share_safe_repo_security_scan_suite',
+          label: 'Read share-safe suite',
+          description: 'Return a target-neutral share-safe multi-report suite projection.',
+          privacyTier: 'sensitive',
+          status: 'available',
+        },
+        {
+          name: 'prepare_usage_metering_event',
+          label: 'Prepare metering event',
+          description: 'Create content-free metering metadata for local DeepTest usage.',
+          privacyTier: 'normal',
+          status: 'available',
         },
       ],
     },
     ui: {
       pages: [
-        { id: 'runner-status', label: 'Runner status', status: 'planned' },
+        { id: 'security-handoff', label: 'Security review handoff', status: 'available' },
+        { id: 'runner-status', label: 'Runner status', status: 'available' },
         { id: 'review-history', label: 'Review history', status: 'planned' },
       ],
       cards: [
@@ -186,8 +201,9 @@ const rawManifests = [
         { kind: 'integration', label: 'Runner/setup status', status: 'available' },
       ],
       controls: [
-        { id: 'review-profile', label: 'Review profile', status: 'planned' },
-        { id: 'share-safe-import', label: 'Share-safe import', status: 'planned' },
+        { id: 'review-depth', label: 'Review depth', status: 'available' },
+        { id: 'runner-boundary', label: 'Runner boundary', status: 'available' },
+        { id: 'share-safe-import', label: 'Share-safe import', status: 'available' },
       ],
     },
     artifacts: [
