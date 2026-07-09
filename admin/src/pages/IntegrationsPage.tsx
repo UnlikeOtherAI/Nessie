@@ -8,6 +8,10 @@ import {
   mcpConnectorLabel,
 } from '../components/features/integrations/AgentConnectorSection'
 import { ManifestPanel } from '../components/features/integrations/ManifestPanel'
+import {
+  ProductOperationsSection,
+  productUsageBadgeLabel,
+} from '../components/features/integrations/ProductOperationsSection'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import {
@@ -34,7 +38,7 @@ const surfacePlans: Record<string, SurfacePlan> = {
     controls: 'Depth, source mode, budget cap, citation mode, and artifact destination.',
     agentAccess: 'Approved MCP tools for create, poll, cancel, sources, reports, and usage.',
     artifacts: 'Reports and evidence land in Knowledge; file blobs go through FileService.',
-    nextStep: 'Create the first-party plugin manifest and bind the OAuth MCP connector.',
+    nextStep: 'Install and approve the OAuth MCP connector, then add the native run wrapper.',
   },
   deeptest: {
     nativePage: 'Link-out plus local runner status, safe report history, and review profile state.',
@@ -42,7 +46,7 @@ const surfacePlans: Record<string, SurfacePlan> = {
     controls: 'Review profile, local runner target, share-safe import, and disclosure boundary.',
     agentAccess: 'Approved MCP wrapper around deeptest_review and safe status/report retrieval.',
     artifacts: 'Share-safe reports can enter Knowledge; raw target material stays local by default.',
-    nextStep: 'Publish the DeepTest local MCP plugin and hosted runner handoff contract.',
+    nextStep: 'Install the local MCP runner, approve safe tools, and preserve the privacy boundary.',
   },
   buildme: {
     nativePage: 'Link-out now; project-board source pairing later once BuildMe exposes board APIs.',
@@ -162,6 +166,9 @@ const ProductRow = ({
             {teamEnablementLabel(product)}
           </span>
           <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
+          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+            {productUsageBadgeLabel(product)}
+          </span>
         </div>
       </div>
     </div>
@@ -314,6 +321,7 @@ const ProductDetail = ({
 
         <TeamAccessSection isOwner={isOwner} product={product} />
         <AgentConnectorSection product={product} />
+        <ProductOperationsSection product={product} />
 
         <section>
           <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>

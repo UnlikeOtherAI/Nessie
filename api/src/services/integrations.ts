@@ -1,9 +1,11 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import {
-  IntegratedProductResponseSchema,
-  type IntegratedProductResponse,
-} from '@nessie/schemas'
+import type { IntegratedProductResponse } from '@nessie/schemas'
 import type { ExternalAuthWorkspace } from './identity-display.js'
+import {
+  mapProductRow,
+  type IntegratedProductRow,
+  type ProductTeamEnablementRow,
+} from './integration-product-rows.js'
 
 type ProductOwner = {
   organizationId: string
@@ -20,171 +22,6 @@ type UoaProductAccountLinkSyncInput = ProductOwner & {
 type ProductSlugRow = {
   slug: string
 }
-
-type ProductTeamEnablementRow = {
-  id: string
-  organization_id: string
-  team_id: string
-  product_slug: string
-  enabled: boolean
-  external_org_id: string | null
-  external_team_id: string | null
-  configured_by_user_id: string | null
-  metadata_json: unknown
-  created_at: Date | string
-  updated_at: Date | string
-}
-
-type IntegratedProductRow = {
-  id: string
-  slug: string
-  name: string
-  summary: string
-  category: string
-  launch_url: string | null
-  api_base_url: string | null
-  auth_mode: string
-  default_install_state: string
-  mcp_catalog_entry_id: string | null
-  plugin_manifest_ref: string | null
-  health_status: string
-  health_detail: string | null
-  capabilities: string[] | null
-  setup_hint: string | null
-  sort_order: number
-  created_at: Date | string
-  updated_at: Date | string
-  account_link_id: string | null
-  account_organization_id: string | null
-  account_user_id: string | null
-  account_uoa_sub: string | null
-  account_external_account_id: string | null
-  account_active_org_id: string | null
-  account_active_team_id: string | null
-  account_status: string | null
-  account_last_verified_at: Date | string | null
-  account_metadata_json: unknown
-  team_enablement_id: string | null
-  team_enablement_organization_id: string | null
-  team_enablement_team_id: string | null
-  team_enablement_product_slug: string | null
-  team_enablement_enabled: boolean | null
-  team_enablement_external_org_id: string | null
-  team_enablement_external_team_id: string | null
-  team_enablement_configured_by_user_id: string | null
-  team_enablement_metadata_json: unknown
-  team_enablement_created_at: Date | string | null
-  team_enablement_updated_at: Date | string | null
-  mcp_instance_id: string | null
-  mcp_instance_catalog_entry_id: string | null
-  mcp_instance_scope_type: string | null
-  mcp_instance_scope_id: string | null
-  mcp_instance_lifecycle_state: string | null
-  mcp_instance_health_last_checked_at: Date | string | null
-  mcp_instance_health_failure_count: number | null
-  mcp_instance_last_error: string | null
-  mcp_instance_tool_count: number | bigint | null
-  mcp_instance_created_at: Date | string | null
-  mcp_instance_updated_at: Date | string | null
-}
-
-const toIsoString = (value: Date | string): string =>
-  value instanceof Date ? value.toISOString() : new Date(value).toISOString()
-
-const toNullableIsoString = (value: Date | string | null): string | null =>
-  value ? toIsoString(value) : null
-
-const toMetadataRecord = (value: unknown): Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {}
-  }
-  return value as Record<string, unknown>
-}
-
-const mapTeamEnablementRow = (
-  row: ProductTeamEnablementRow,
-) => ({
-  id: row.id,
-  configuredByUserId: row.configured_by_user_id,
-  createdAt: toIsoString(row.created_at),
-  enabled: row.enabled,
-  externalOrgId: row.external_org_id,
-  externalTeamId: row.external_team_id,
-  metadata: toMetadataRecord(row.metadata_json),
-  organizationId: row.organization_id,
-  productSlug: row.product_slug,
-  teamId: row.team_id,
-  updatedAt: toIsoString(row.updated_at),
-})
-
-const mapProductRow = (row: IntegratedProductRow): IntegratedProductResponse =>
-  IntegratedProductResponseSchema.parse({
-    id: row.id,
-    accountLink: row.account_link_id
-      ? {
-          id: row.account_link_id,
-          activeOrgId: row.account_active_org_id,
-          activeTeamId: row.account_active_team_id,
-          externalAccountId: row.account_external_account_id,
-          lastVerifiedAt: toNullableIsoString(row.account_last_verified_at),
-          metadata: toMetadataRecord(row.account_metadata_json),
-          organizationId: row.account_organization_id,
-          productSlug: row.slug,
-          status: row.account_status,
-          uoaSub: row.account_uoa_sub,
-          userId: row.account_user_id,
-        }
-      : null,
-    apiBaseUrl: row.api_base_url,
-    authMode: row.auth_mode,
-    capabilities: row.capabilities ?? [],
-    category: row.category,
-    createdAt: toIsoString(row.created_at),
-    defaultInstallState: row.default_install_state,
-    healthDetail: row.health_detail,
-    healthStatus: row.health_status,
-    launchUrl: row.launch_url,
-    mcpCatalogEntryId: row.mcp_catalog_entry_id,
-    mcpInstallation: row.mcp_instance_id
-      ? {
-          id: row.mcp_instance_id,
-          catalogEntryId: row.mcp_instance_catalog_entry_id,
-          createdAt: toIsoString(row.mcp_instance_created_at ?? row.updated_at),
-          healthFailureCount: row.mcp_instance_health_failure_count ?? 0,
-          healthLastCheckedAt: toNullableIsoString(
-            row.mcp_instance_health_last_checked_at,
-          ),
-          lastError: row.mcp_instance_last_error,
-          lifecycleState: row.mcp_instance_lifecycle_state,
-          scopeId: row.mcp_instance_scope_id,
-          scopeType: row.mcp_instance_scope_type,
-          toolCount: Number(row.mcp_instance_tool_count ?? 0),
-          updatedAt: toIsoString(row.mcp_instance_updated_at ?? row.updated_at),
-        }
-      : null,
-    name: row.name,
-    pluginManifestRef: row.plugin_manifest_ref,
-    setupHint: row.setup_hint,
-    slug: row.slug,
-    sortOrder: row.sort_order,
-    summary: row.summary,
-    teamEnablement: row.team_enablement_id
-      ? mapTeamEnablementRow({
-          id: row.team_enablement_id,
-          configured_by_user_id: row.team_enablement_configured_by_user_id,
-          created_at: row.team_enablement_created_at ?? row.updated_at,
-          enabled: row.team_enablement_enabled ?? false,
-          external_org_id: row.team_enablement_external_org_id,
-          external_team_id: row.team_enablement_external_team_id,
-          metadata_json: row.team_enablement_metadata_json,
-          organization_id: row.team_enablement_organization_id ?? row.account_organization_id ?? '',
-          product_slug: row.team_enablement_product_slug ?? row.slug,
-          team_id: row.team_enablement_team_id ?? '',
-          updated_at: row.team_enablement_updated_at ?? row.updated_at,
-        })
-      : null,
-    updatedAt: toIsoString(row.updated_at),
-  })
 
 const FIRST_PARTY_PLUGIN_MANIFEST_PREFIX = 'first-party/'
 
@@ -355,6 +192,8 @@ export const listIntegratedProducts = async (
   prisma: PrismaClient,
   owner: ProductOwner,
 ): Promise<IntegratedProductResponse[]> => {
+  const now = new Date()
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
   const rows = await prisma.$queryRaw<IntegratedProductRow[]>(Prisma.sql`
     SELECT
       p.id::text AS id,
@@ -406,7 +245,16 @@ export const listIntegratedProducts = async (
       mcp_instance.last_error AS mcp_instance_last_error,
       mcp_instance.tool_count AS mcp_instance_tool_count,
       mcp_instance.created_at AS mcp_instance_created_at,
-      mcp_instance.updated_at AS mcp_instance_updated_at
+      mcp_instance.updated_at AS mcp_instance_updated_at,
+      product_usage.month_start AS product_usage_month_start,
+      product_usage.total_calls AS product_usage_total_calls,
+      product_usage.total_units AS product_usage_total_units,
+      product_usage.total_cost AS product_usage_total_cost,
+      product_usage.currency AS product_usage_currency,
+      product_usage.last_used_at AS product_usage_last_used_at,
+      product_usage.last_operation AS product_usage_last_operation,
+      product_usage.success_count AS product_usage_success_count,
+      product_usage.failure_count AS product_usage_failure_count
     FROM integrated_products p
     LEFT JOIN product_account_links pal
       ON pal.product_slug = p.slug
@@ -465,6 +313,39 @@ export const listIntegratedProducts = async (
         msi.updated_at DESC
       LIMIT 1
     ) mcp_instance ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT
+        CAST(${monthStart} AS timestamptz) AS month_start,
+        COALESCE(SUM(cue.calls), 0) AS total_calls,
+        COALESCE(SUM(cue.units), 0) AS total_units,
+        COALESCE(SUM(cue.cost_amount), 0) AS total_cost,
+        COALESCE(
+          (
+            ARRAY_AGG(cue.cost_currency ORDER BY cue.occurred_at DESC)
+            FILTER (WHERE cue.cost_currency IS NOT NULL)
+          )[1],
+          'USD'
+        ) AS currency,
+        MAX(cue.occurred_at) AS last_used_at,
+        (
+          ARRAY_AGG(cue.operation ORDER BY cue.occurred_at DESC)
+          FILTER (WHERE cue.operation IS NOT NULL)
+        )[1] AS last_operation,
+        COALESCE(SUM(CASE WHEN cue.success IS TRUE THEN 1 ELSE 0 END), 0) AS success_count,
+        COALESCE(SUM(CASE WHEN cue.success IS FALSE THEN 1 ELSE 0 END), 0) AS failure_count
+      FROM connector_usage_events cue
+      WHERE cue.organization_id = CAST(${owner.organizationId} AS uuid)
+        AND cue.occurred_at >= CAST(${monthStart} AS timestamptz)
+        AND (
+          (
+            mcp_instance.id IS NOT NULL
+            AND cue.connector_id = mcp_instance.id
+          )
+          OR cue.metadata->>'productSlug' = p.slug
+          OR cue.metadata->>'product_slug' = p.slug
+          OR cue.metadata->>'product' = p.slug
+        )
+    ) product_usage ON TRUE
     ORDER BY p.sort_order ASC, p.name ASC
   `)
 

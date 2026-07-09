@@ -176,6 +176,7 @@ export type {
   ProductAccountLinkStatus,
   ProductMcpInstallationRecord,
   ProductTeamEnablementRecord,
+  ProductUsageSummaryRecord,
   SetProductTeamEnablementRequest,
   ToolCallEntry,
 } from '@nessie/schemas'

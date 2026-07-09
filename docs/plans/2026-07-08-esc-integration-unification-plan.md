@@ -217,6 +217,12 @@ Current Nessie slice:
   installation summary for each MCP-backed product, preferring team scope and
   then falling back to organization/system scope. The ESC page shows that agent
   connector state and deep-links to the matching MCP catalog entry.
+- `GET /api/integrations/products` also includes a month-to-date connector
+  usage summary for each product. For MCP-backed products, usage is read from
+  `connector_usage_events.connector_id = mcp_server_instances.id`; future native
+  wrappers can also tag rows with `metadata.productSlug`. ESC renders calls,
+  units, spend, last activity, and failures without introducing a second
+  accounting path.
 
 Current UOA/auth slice:
 
@@ -432,7 +438,8 @@ Use the existing ledgers:
 
 The ESC product detail page should show:
 
-- month-to-date calls/spend for that product;
+- month-to-date calls/spend for that product; **implemented from
+  `connector_usage_events` for selected MCP instances and product-tagged rows**
 - current health;
 - recent job/review history;
 - which agents can use it.
@@ -594,7 +601,7 @@ Acceptance:
   remains future work.**
 - Add health checks for link-only products and MCP-backed products. **MCP
   installation readiness is surfaced; active product health polling remains
-  pending.**
+  pending. Month-to-date connector usage/cost is surfaced in ESC.**
 
 ### Phase 2: Deep Water Native Plugin
 
