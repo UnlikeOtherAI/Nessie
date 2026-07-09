@@ -26,6 +26,7 @@ const productLabel = (slug: string | undefined): string => {
   if (slug === 'deep-water') return 'Deep Water'
   if (slug === 'deeptest') return 'DeepTest'
   if (slug === 'buildme') return 'buildme.live'
+  if (slug === 'deepsignal') return 'DeepSignal'
   return 'Integration'
 }
 

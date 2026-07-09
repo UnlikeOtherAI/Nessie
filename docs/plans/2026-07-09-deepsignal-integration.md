@@ -194,17 +194,20 @@ by a separate effort. DeepSignal also *consumes* DeepWater internally, but only 
   doc)*: streamable-HTTP MCP endpoint with UOA bearer auth resolving real per-user
   principals; conversation persistence + `chat(conversationId)` / `conversation_history` /
   `conversation_list` tools; RFC 9728 metadata; UOA audience support.
-- **Phase 1 — Registration & activation (Nessie)** *(backend implemented; admin card
-  pending)*: `deepsignal` product row + manifest + first-party catalog entry + curated
+- **Phase 1 — Registration & activation (Nessie)** *(backend + admin UI implemented)*:
+  `deepsignal` product row + manifest + first-party catalog entry + curated
   library entry — all shipped (`20260709121000_deepsignal_product` migration,
   `integration-plugin-manifests.ts`, `CURATED_MCP_LIBRARY`). Per-user activation backend
   shipped: `POST /api/integrations/products/deepsignal/activate` and `.../deactivate`
   (`external-agent-activation.ts`) — team-gate check → user-scoped `McpServerInstance` +
   dynamic-OAuth start → `ProductAccountLink` (`linked` / `needs_auth`) → channel bootstrap,
   returning `{ channelId, instanceId, authorizeUrl? }`. The Integrations page Activate card
-  is still pending (separate admin slice).
-- **Phase 2 — Conversation surface & driver (Nessie)** *(driver implemented; admin UI
-  pending)*: `external_agent` `ChannelSystemType` value and the
+  is shipped (`ExternalAgentActivationSection.tsx`, keyed off
+  `capabilities.includes('external_agent')` so a second external agent needs no new
+  component): activate → open the authorize tab when returned → "I've signed in" re-calls
+  the same idempotent endpoint → linked state with an "Open channel" link and Deactivate.
+- **Phase 2 — Conversation surface & driver (Nessie)** *(driver + channel UI
+  implemented)*: `external_agent` `ChannelSystemType` value and the
   `Agent.executionMode = external_mcp` enum + column landed additively
   (`20260709120000_agent_execution_mode_external_agent`), plus the idempotent per-user DM
   bootstrap service `external-agent.ts` (system-managed `Agent` + private DM channel keyed
@@ -223,8 +226,14 @@ by a separate effort. DeepSignal also *consumes* DeepWater internally, but only 
   card + clean completion; expired auth → `needs_setup`; transport error → `failed` card +
   failed run. **No inference is ever invoked** (asserted in
   `worker/src/run/external-conversation.test.ts` via a model client that throws on access).
-  Still pending: the channel labels in `ChannelMessageFeed`. Kelpie-verify the channel UI
-  once the admin slice lands.
+  The channel UI is shipped too: `ChannelMessageFeed`/`ChannelMessageRow` render an
+  `external_agent` channel as a first-class agent conversation (author label + "thinking"
+  pending wording derived from the channel's own name, mirroring the Personal Assistant
+  special-casing so a second external agent needs no code change), and the sidebar DM list
+  (`useAdminShell.ts` `sidebarAgentDms`) surfaces the channel by its label since the
+  system-managed `Agent` row is excluded from the general agent list. Kelpie visual
+  verification is still owed once a dev stack is available (not possible in the remote
+  implementation environment).
 - **Phase 3 — History & proactive delivery** *(pending)*: history hydration on channel open;
   webhook receiver → insight cards in-channel; snooze/done actions proxied over MCP.
 - **Phase 4 — Streaming & polish** *(pending)*: MCP progress notifications → live activity

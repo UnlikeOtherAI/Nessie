@@ -1,51 +1,15 @@
-import { useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
-import { usePresenceLookup, type PresenceView } from '../../../providers/PresenceProvider'
+import { usePresenceLookup } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
-import { MessageAttachments } from '../../shared/MessageAttachments'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
-import { ChannelMessageActions } from './ChannelMessageActions'
+import { ChannelMessageRow, StatusBadge } from './ChannelMessageRow'
 import {
-  formatClock,
-  getDisplayName,
   type FeedItem,
   type MessageUserIdentity,
   type OptimisticMessage,
   type PendingStreamMessage,
 } from './channel-helpers'
-import { MessageUiCards } from './MessageUiCards'
-
-const SpeechBubbleIcon = () => (
-  <svg
-    fill="none"
-    height="13"
-    stroke="currentColor"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth="2"
-    viewBox="0 0 24 24"
-    width="13"
-  >
-    <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.4 8.4 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" />
-  </svg>
-)
-
-// The status chip shown after an author's name: their active status emoji, or a
-// speech bubble when they have no emoji. Hovering reveals the status message.
-const StatusBadge = ({ presence }: { presence: PresenceView | null }) => {
-  const emoji = presence?.statusEmoji ?? null
-  const label = presence?.statusLabel ?? null
-  return (
-    <span className="admin-status-badge">
-      <span className="admin-status-badge-icon">{emoji ?? <SpeechBubbleIcon />}</span>
-      {label ? (
-        <span className="admin-tooltip" role="tooltip">
-          {label}
-        </span>
-      ) : null}
-    </span>
-  )
-}
 
 // Tombstone for a deleted message that still has replies below it: a small
 // light-dashed bubble in place of the original row (no avatar/name).
@@ -68,6 +32,12 @@ interface ChannelMessageFeedProps {
   meAvatar: AvatarSources
   token: string | null
   isPersonalAssistantConversation: boolean
+  // First-class external-agent conversation (e.g. DeepSignal): same
+  // special-casing as the Personal Assistant (author label, no generic
+  // "agent" pill, "thinking" wording), but the display name comes from the
+  // channel itself so a second external agent needs no code change here.
+  isExternalAgentConversation?: boolean
+  externalAgentDisplayName?: string
   renderContent: (text: string) => ReactNode
   editingMessageId: string | null
   editingContent: string
@@ -93,6 +63,8 @@ export const ChannelMessageFeed = ({
   meAvatar,
   token,
   isPersonalAssistantConversation,
+  isExternalAgentConversation = false,
+  externalAgentDisplayName,
   renderContent,
   editingMessageId,
   editingContent,
@@ -107,6 +79,16 @@ export const ChannelMessageFeed = ({
   onSelectUser,
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
+  // Both the Personal Assistant and any external agent (DeepSignal, ...) read
+  // as a first-class assistant conversation: one dedicated author identity,
+  // no generic "agent" pill, "thinking" rather than "running".
+  const isDedicatedAgentConversation =
+    isPersonalAssistantConversation || isExternalAgentConversation
+  const assistantFallbackName = isPersonalAssistantConversation
+    ? 'Personal Assistant'
+    : isExternalAgentConversation
+      ? externalAgentDisplayName ?? 'Agent'
+      : 'Agent'
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null)
   const lastPointerDownAt = useRef(0)
   const [collapsedDateKeys, setCollapsedDateKeys] = useState<Set<string>>(
@@ -193,211 +175,34 @@ export const ChannelMessageFeed = ({
           return index < lastMessageIndex ? <DeletedBubble key={item.message.id} /> : null
         }
 
-        const displayName = getDisplayName(
-          item.message,
-          meDisplayName,
-          agentMap,
-          isPersonalAssistantConversation ? 'Personal Assistant' : 'Agent',
-        )
-        const canManageOwnMessage =
-          item.message.role === 'user' && item.message.userId === meUserId
-        const isEditingMessage = editingMessageId === item.message.id
-        const messageAgent =
-          item.message.role === 'assistant' && onSelectAgent
-            ? agentMap.get(item.message.agentId ?? '') ?? null
-            : null
-        const authorIdentity =
-          item.message.role === 'user' &&
-          item.message.userId &&
-          onSelectUser
-            ? {
-                avatarAttachmentId: item.message.author?.avatarAttachmentId
-                  ?? (item.message.userId === meUserId ? meAvatar.avatarAttachmentId : undefined),
-                avatarUrl: item.message.author?.avatarUrl
-                  ?? (item.message.userId === meUserId ? meAvatar.avatarUrl : undefined),
-                displayName,
-                gravatarUrl: item.message.author?.gravatarUrl
-                  ?? (item.message.userId === meUserId ? meAvatar.gravatarUrl : undefined),
-                id: item.message.userId,
-              }
-            : null
-        const selectAuthor = (event: MouseEvent<HTMLButtonElement>) => {
-          event.stopPropagation()
-          if (authorIdentity) {
-            onSelectUser?.(authorIdentity)
-          }
-        }
-        const selectAgent = (event: MouseEvent<HTMLButtonElement>) => {
-          event.stopPropagation()
-          if (messageAgent) {
-            onSelectAgent?.(messageAgent)
-          }
-        }
-
         return (
-          <article
+          <ChannelMessageRow
+            activeActionMessageId={activeActionMessageId}
+            agentMap={agentMap}
+            assistantFallbackName={assistantFallbackName}
+            editingContent={editingContent}
+            editingMessageId={editingMessageId}
+            getPresence={getPresence}
+            isDedicatedAgentConversation={isDedicatedAgentConversation}
             key={item.message.id}
-            id={`msg-${item.message.id}`}
-            aria-label={`Message from ${displayName}`}
-            className="admin-msg-row relative py-1"
-            data-actions-open={activeActionMessageId === item.message.id}
-            onClick={() =>
-              setActiveActionMessageId((current) =>
-                current === item.message.id ? null : item.message.id,
-              )
-            }
-            onFocus={() => {
-              if (Date.now() - lastPointerDownAt.current > 500) {
-                setActiveActionMessageId(item.message.id)
-              }
-            }}
-            onPointerDown={() => {
-              lastPointerDownAt.current = Date.now()
-            }}
-            tabIndex={0}
-          >
-            {messageAgent ? (
-              <button
-                aria-label={`Open ${displayName}`}
-                className="rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                onClick={selectAgent}
-                type="button"
-              >
-                <ChannelAgentGlyph agent={messageAgent} token={token} />
-              </button>
-            ) : item.message.role === 'assistant' ? (
-              <ChannelAgentGlyph agent={agentMap.get(item.message.agentId ?? '')} token={token} />
-            ) : authorIdentity ? (
-              <button
-                aria-label={`Open ${displayName}`}
-                className="rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                onClick={selectAuthor}
-                type="button"
-              >
-                <UserAvatar
-                  avatarAttachmentId={item.message.author?.avatarAttachmentId ?? undefined}
-                  avatarUrl={item.message.author?.avatarUrl ?? undefined}
-                  displayName={displayName}
-                  gravatarUrl={item.message.author?.gravatarUrl ?? undefined}
-                  size={36}
-                  token={token}
-                />
-              </button>
-            ) : (
-              <UserAvatar
-                avatarAttachmentId={item.message.author?.avatarAttachmentId ?? undefined}
-                avatarUrl={item.message.author?.avatarUrl ?? undefined}
-                displayName={displayName}
-                gravatarUrl={item.message.author?.gravatarUrl ?? undefined}
-                size={36}
-                token={token}
-              />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2">
-                {messageAgent || authorIdentity ? (
-                  <button
-                    className="min-w-0 text-left text-sm font-bold text-[var(--tx)] hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                    onClick={messageAgent ? selectAgent : selectAuthor}
-                    type="button"
-                  >
-                    {displayName}
-                  </button>
-                ) : (
-                  <span className="text-sm font-bold text-[var(--tx)]">
-                    {displayName}
-                  </span>
-                )}
-                {item.message.role === 'user' ? (
-                  <StatusBadge presence={getPresence(item.message.userId)} />
-                ) : null}
-                {item.message.role === 'assistant' && !isPersonalAssistantConversation ? (
-                  <span
-                    className={[
-                      'inline-flex items-center gap-1 rounded',
-                      'border border-[var(--accent)]',
-                      'bg-[var(--accent-soft)] px-1.5 py-0.5',
-                      'text-[11px] font-semibold text-[var(--thinking)]',
-                    ].join(' ')}
-                  >
-                    agent
-                  </span>
-                ) : null}
-                <span className="text-xs text-[color:var(--tx3)]">
-                  {formatClock(item.message.createdAt)}
-                </span>
-                {item.message.editedAt ? (
-                  <span className="text-xs italic text-[color:var(--tx3)]">(edited)</span>
-                ) : null}
-              </div>
-              <div
-                className={
-                  item.message.role === 'assistant'
-                    ? 'mt-0.5 border-l-2 border-[var(--accent)] pl-3'
-                    : 'mt-0.5'
-                }
-              >
-                {isEditingMessage ? (
-                  <div className="flex flex-col gap-2">
-                    <textarea
-                      autoFocus
-                      className="admin-input w-full resize-y text-sm"
-                      onChange={(event) => onChangeEditingContent(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' && !event.shiftKey) {
-                          event.preventDefault()
-                          onSubmitEdit(item.message.id)
-                        }
-                        if (event.key === 'Escape') {
-                          onCancelEdit()
-                        }
-                      }}
-                      rows={2}
-                      value={editingContent}
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="admin-button admin-button-primary"
-                        disabled={updatePending}
-                        onClick={() => onSubmitEdit(item.message.id)}
-                        type="button"
-                      >
-                        Save
-                      </button>
-                      <button
-                        className="admin-button admin-button-secondary"
-                        onClick={onCancelEdit}
-                        type="button"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
-                    {renderContent(item.message.content)}
-                  </p>
-                )}
-                {!isEditingMessage ? (
-                  <MessageUiCards metadata={item.message.metadata} />
-                ) : null}
-                <MessageAttachments messageId={item.message.id} />
-                {!isEditingMessage ? (
-                  <ChannelMessageActions
-                    canDelete={canManageOwnMessage}
-                    canEdit={canManageOwnMessage}
-                    content={item.message.content}
-                    currentUserId={meUserId}
-                    messageId={item.message.id}
-                    reactions={item.message.reactions ?? []}
-                    onAddReaction={onAddReaction}
-                    onConfirmDelete={onConfirmDelete}
-                    onStartEdit={onStartEdit}
-                  />
-                ) : null}
-              </div>
-            </div>
-          </article>
+            lastPointerDownAt={lastPointerDownAt}
+            meAvatar={meAvatar}
+            meDisplayName={meDisplayName}
+            meUserId={meUserId}
+            message={item.message}
+            renderContent={renderContent}
+            setActiveActionMessageId={setActiveActionMessageId}
+            token={token}
+            updatePending={updatePending}
+            onAddReaction={onAddReaction}
+            onCancelEdit={onCancelEdit}
+            onChangeEditingContent={onChangeEditingContent}
+            onConfirmDelete={onConfirmDelete}
+            onSelectAgent={onSelectAgent}
+            onSelectUser={onSelectUser}
+            onStartEdit={onStartEdit}
+            onSubmitEdit={onSubmitEdit}
+          />
         )
       })}
 
@@ -466,8 +271,8 @@ export const ChannelMessageFeed = ({
 
       {pendingMessages.map((entry) => {
         const pendingAgent = agentById.get(entry.agentId) ?? null
-        const pendingDisplayName = isPersonalAssistantConversation
-          ? 'Personal Assistant'
+        const pendingDisplayName = isDedicatedAgentConversation
+          ? assistantFallbackName
           : pendingAgent?.name ?? 'Agent'
 
         return (
@@ -485,7 +290,7 @@ export const ChannelMessageFeed = ({
                     'text-[11px] font-semibold text-[var(--thinking)]',
                   ].join(' ')}
                 >
-                  {isPersonalAssistantConversation ? 'thinking' : 'running'}
+                  {isDedicatedAgentConversation ? 'thinking' : 'running'}
                 </span>
               </div>
               <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
