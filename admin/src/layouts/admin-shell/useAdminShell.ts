@@ -4,6 +4,7 @@ import { useAgentRealtime, useAgents } from '../../facades/agents/hooks';
 import { useChannels, useOpenDm } from '../../facades/channels/hooks';
 import { useFavorites, useSetFavorite } from '../../facades/favorites/hooks';
 import {
+  isExternalAgentChannel,
   isPersonalAssistantChannel,
   isUserDmChannel,
   usePersonalAssistant,
@@ -342,13 +343,24 @@ export const useAdminShell = () => {
         .filter((channel) => channel.type === 'dm' && !isPersonalAssistantChannel(channel))
         .flatMap((channel) => {
           const agent = agents.find((candidate) => candidate.channelIds.includes(channel.id));
-          return agent
-            ? [{
-                dmChannelId: channel.id,
-                id: agent.id,
-                label: agent.name,
-              }]
-            : [];
+          if (agent) {
+            return [{
+              dmChannelId: channel.id,
+              id: agent.id,
+              label: agent.name,
+            }];
+          }
+          // External agents (DeepSignal, ...) bind a system-managed `Agent`
+          // row that the general agent list excludes, so it never resolves
+          // above — fall back to the channel's own label, keyed by channel id.
+          if (isExternalAgentChannel(channel)) {
+            return [{
+              dmChannelId: channel.id,
+              id: channel.id,
+              label: channel.label,
+            }];
+          }
+          return [];
         }),
     [agents, channels],
   );

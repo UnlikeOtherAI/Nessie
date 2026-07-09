@@ -28,8 +28,19 @@ export const isPersonalAssistantChannel = (channel?: ChannelRecord | null): bool
   channel?.systemChannelType === 'personal_assistant'
   || channel?.metadata?.systemChannelType === 'personal_assistant'
 
+// External agents (e.g. DeepSignal) are a peer of the Personal Assistant: a
+// per-user private DM channel proxied to an external product over MCP, keyed
+// by `systemChannelType` the same way the PA channel is. New external agents
+// are a data change on the backend, not a UI code fork — this predicate stays
+// generic across all of them.
+export const isExternalAgentChannel = (channel?: ChannelRecord | null): boolean =>
+  channel?.systemChannelType === 'external_agent'
+  || channel?.metadata?.systemChannelType === 'external_agent'
+
 export const isUserDmChannel = (channel?: ChannelRecord | null): boolean =>
-  channel?.type === 'dm' && !isPersonalAssistantChannel(channel)
+  channel?.type === 'dm'
+  && !isPersonalAssistantChannel(channel)
+  && !isExternalAgentChannel(channel)
 
 export const usePersonalAssistant = (enabled = true) => {
   const apiClient = useApiClient()
