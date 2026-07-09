@@ -82,9 +82,15 @@ export const AgentConnectorSection = ({
                 : 'This product has no MCP connector contract yet.'}
           </p>
         </div>
-        <Link className={mcpActionClass(product)} to={mcpActionHref(product)}>
-          {mcpActionLabel(product)}
-        </Link>
+        {product.mcpCatalogEntryId ? (
+          <Link className={mcpActionClass(product)} to={mcpActionHref(product)}>
+            {mcpActionLabel(product)}
+          </Link>
+        ) : (
+          <span className="rounded border border-[var(--sep)] px-3 py-2 text-xs text-[var(--tx3)]">
+            Contract pending
+          </span>
+        )}
       </div>
 
       {installation ? (

@@ -247,6 +247,15 @@ Current Nessie slice:
   tool only after the user has configured the target inside DeepTest/local
   runner. Share-safe import remains the default; raw owner-local artifacts stay
   outside Nessie unless a later explicit import flow is built.
+- BuildMe now has an explicit ESC link-out handoff panel gated by team
+  enablement and the user's UOA account link. `POST
+  /api/integrations/products/buildme/project-handoff` accepts only a controlled
+  handoff intent and active-project/team context scope, then creates a Personal
+  Assistant message carrying a `project_board` readiness card. It does not
+  accept board ids, column mappings, card payloads, workspace files, credentials,
+  or sync instructions. Native board rendering remains blocked on the BuildMe
+  board-source API/MCP contract in
+  `docs/integrations/buildme-board-source-contract.md`.
 
 Current UOA/auth slice:
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  BuildMeProjectHandoffRequestSchema,
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
   IntegratedProductResponseSchema,
@@ -137,6 +138,40 @@ test('DeepTestReviewHandoffRequestSchema rejects target material fields', () => 
     DeepTestReviewHandoffRequestSchema.safeParse({
       depth: 'deep',
       prompt: 'review this diff',
+    }).success,
+    false,
+  )
+})
+
+test('BuildMeProjectHandoffRequestSchema rejects board sync payload fields', () => {
+  const parsed = BuildMeProjectHandoffRequestSchema.parse({
+    contextScope: 'active_team',
+    intent: 'board_source_discovery',
+  })
+
+  assert.equal(parsed.contextScope, 'active_team')
+  assert.equal(parsed.intent, 'board_source_discovery')
+  assert.deepEqual(BuildMeProjectHandoffRequestSchema.parse({}), {
+    contextScope: 'active_project',
+    intent: 'project_definition',
+  })
+  assert.equal(
+    BuildMeProjectHandoffRequestSchema.safeParse({
+      boardId: 'buildme-board-1',
+      intent: 'board_source_discovery',
+    }).success,
+    false,
+  )
+  assert.equal(
+    BuildMeProjectHandoffRequestSchema.safeParse({
+      columnMapping: { todo: 'Backlog' },
+      intent: 'board_source_discovery',
+    }).success,
+    false,
+  )
+  assert.equal(
+    BuildMeProjectHandoffRequestSchema.safeParse({
+      intent: 'sync_now',
     }).success,
     false,
   )

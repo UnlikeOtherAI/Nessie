@@ -7,6 +7,7 @@ import {
   mcpConnectorClass,
   mcpConnectorLabel,
 } from '../components/features/integrations/AgentConnectorSection'
+import { BuildMeProjectPanel } from '../components/features/integrations/BuildMeProjectPanel'
 import { DeepTestSecurityPanel } from '../components/features/integrations/DeepTestSecurityPanel'
 import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
 import { ManifestPanel } from '../components/features/integrations/ManifestPanel'
@@ -312,18 +313,21 @@ const ProductDetail = ({
                 Open <LaunchIcon />
               </a>
             ) : null}
-            <Link
-              className="admin-button admin-button-secondary text-xs"
-              to={mcpCatalogHref(product)}
-            >
-              MCP store
-            </Link>
+            {product.mcpCatalogEntryId ? (
+              <Link
+                className="admin-button admin-button-secondary text-xs"
+                to={mcpCatalogHref(product)}
+              >
+                MCP store
+              </Link>
+            ) : null}
           </div>
         </section>
 
         <TeamAccessSection isOwner={isOwner} product={product} />
         <AgentConnectorSection product={product} />
         <ProductOperationsSection product={product} />
+        {product.slug === 'buildme' ? <BuildMeProjectPanel product={product} /> : null}
         {product.slug === 'deep-water' ? <DeepWaterResearchPanel product={product} /> : null}
         {product.slug === 'deeptest' ? <DeepTestSecurityPanel product={product} /> : null}
 

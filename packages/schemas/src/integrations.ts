@@ -183,6 +183,21 @@ export const DeepTestReviewHandoffRequestSchema = z.object({
 export type DeepTestReviewHandoffRequest =
   z.infer<typeof DeepTestReviewHandoffRequestSchema>
 
+export const BuildMeProjectHandoffIntentSchema = z.enum([
+  'project_definition',
+  'development_workspace',
+  'board_source_discovery',
+])
+export type BuildMeProjectHandoffIntent =
+  z.infer<typeof BuildMeProjectHandoffIntentSchema>
+
+export const BuildMeProjectHandoffRequestSchema = z.object({
+  contextScope: z.enum(['active_project', 'active_team']).default('active_project'),
+  intent: BuildMeProjectHandoffIntentSchema.default('project_definition'),
+}).strict()
+export type BuildMeProjectHandoffRequest =
+  z.infer<typeof BuildMeProjectHandoffRequestSchema>
+
 export const IntegrationUiCardStatusSchema = z.enum([
   'idle',
   'queued',

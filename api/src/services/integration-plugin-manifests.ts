@@ -277,13 +277,16 @@ const rawManifests = [
     },
     ui: {
       pages: [
-        { id: 'project-source-pairing', label: 'Project source pairing', status: 'blocked' },
+        { id: 'link-handoff', label: 'Link-out handoff', status: 'available' },
+        { id: 'project-source-pairing', label: 'Project source pairing', status: 'planned' },
       ],
       cards: [
-        { kind: 'project_board', label: 'Board sync status', status: 'planned' },
+        { kind: 'project_board', label: 'Board source readiness', status: 'available' },
         { kind: 'integration', label: 'Link-out/account status', status: 'available' },
       ],
       controls: [
+        { id: 'handoff-intent', label: 'Handoff intent', status: 'available' },
+        { id: 'context-scope', label: 'Context scope', status: 'available' },
         { id: 'column-mapping', label: 'Column mapping', status: 'blocked' },
         { id: 'conflict-policy', label: 'Conflict policy', status: 'blocked' },
       ],

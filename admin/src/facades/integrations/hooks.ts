@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
+  BuildMeProjectHandoffRequest,
   ChannelRecord,
   DeepTestReviewHandoffRequest,
   DeepWaterResearchLaunchRequest,
@@ -95,6 +96,26 @@ export const usePrepareDeepTestReview = () => {
     mutationFn: (input: DeepTestReviewHandoffRequest) =>
       apiClient.post<IntegrationHandoffResponse>(
         '/api/integrations/products/deeptest/security-handoff',
+        input,
+      ),
+    onSuccess: (response) => {
+      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['threads', response.thread.id, 'messages'],
+      })
+    },
+  })
+}
+
+export const usePrepareBuildMeProjectHandoff = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: BuildMeProjectHandoffRequest) =>
+      apiClient.post<IntegrationHandoffResponse>(
+        '/api/integrations/products/buildme/project-handoff',
         input,
       ),
     onSuccess: (response) => {

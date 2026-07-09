@@ -57,6 +57,8 @@ export type {
   AgentChild,
   AgentMessage,
   AgentStatusResponse,
+  BuildMeProjectHandoffIntent,
+  BuildMeProjectHandoffRequest,
   CreateFeedbackRequest,
   DeepTestReviewDepth,
   DeepTestReviewHandoffRequest,

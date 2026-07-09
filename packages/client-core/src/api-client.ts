@@ -157,6 +157,8 @@ export type {
   AgentChild,
   AgentMessage,
   AgentStatusResponse,
+  BuildMeProjectHandoffIntent,
+  BuildMeProjectHandoffRequest,
   DeepTestReviewDepth,
   DeepTestReviewHandoffRequest,
   DeepWaterResearchDepth,

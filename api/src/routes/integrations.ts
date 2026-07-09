@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import {
+  BuildMeProjectHandoffRequestSchema,
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
   IntegratedProductResponseSchema,
@@ -44,6 +45,11 @@ type DeepTestReviewHandoffInput = {
   runner: 'local_mcp' | 'private_runner'
 }
 
+type BuildMeProjectHandoffInput = {
+  contextScope: 'active_project' | 'active_team'
+  intent: 'project_definition' | 'development_workspace' | 'board_source_discovery'
+}
+
 const normalizeDeepWaterLaunchInput = (
   input: Partial<DeepWaterLaunchInput> & { query: string },
 ): DeepWaterLaunchInput => ({
@@ -66,6 +72,13 @@ const normalizeDeepTestReviewHandoffInput = (
   artifactPolicy: input.artifactPolicy ?? 'share_safe_report',
   depth: input.depth ?? 'standard',
   runner: input.runner ?? 'local_mcp',
+})
+
+const normalizeBuildMeProjectHandoffInput = (
+  input: Partial<BuildMeProjectHandoffInput>,
+): BuildMeProjectHandoffInput => ({
+  contextScope: input.contextScope ?? 'active_project',
+  intent: input.intent ?? 'project_definition',
 })
 
 export const registerIntegrationRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -282,6 +295,71 @@ export const registerIntegrationRoutes = (app: FastifyInstance, deps: RouteDeps)
       thread: ThreadRecordSchema.parse(handoff.thread),
     }))
   })
+
+  app.post('/api/integrations/products/:productSlug/project-handoff', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const params = parseInput(ProductSlugParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    if (params.productSlug !== 'buildme') {
+      sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
+      return reply
+    }
+
+    const parsedBody = parseInput(BuildMeProjectHandoffRequestSchema, request.body, reply)
+    if (!parsedBody) return reply
+    const body = normalizeBuildMeProjectHandoffInput(parsedBody)
+
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (!teamId) {
+      sendApiError(reply, 400, 'TEAM_CONTEXT_REQUIRED', 'A team context is required')
+      return reply
+    }
+
+    const products = await listIntegratedProducts(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId,
+      userId: actorContext.actor.actorId,
+    })
+    const product = products.find((candidate) => candidate.slug === 'buildme')
+    if (!product) {
+      sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
+      return reply
+    }
+    if (!product.teamEnablement?.enabled) {
+      sendApiError(reply, 409, 'BUILDME_TEAM_DISABLED', 'buildme.live is not enabled for this team')
+      return reply
+    }
+    if (product.accountLink?.status !== 'linked') {
+      sendApiError(reply, 409, 'BUILDME_ACCOUNT_UNLINKED', 'buildme.live account link is unavailable')
+      return reply
+    }
+
+    let handoff: Awaited<ReturnType<typeof createPersonalAssistantIntegrationHandoff>>
+    try {
+      handoff = await createPersonalAssistantIntegrationHandoff(deps, {
+        actorContext,
+        content: buildBuildMeProjectHandoffMessage(body, product.launchUrl),
+        metadata: ({ channelId }) => buildBuildMeProjectHandoffMetadata(body, {
+          channelId,
+          launchUrl: product.launchUrl,
+          productSlug: product.slug,
+        }),
+        teamId,
+      })
+    } catch {
+      sendApiError(reply, 500, 'PERSONAL_ASSISTANT_UNAVAILABLE', 'Personal Assistant is unavailable')
+      return reply
+    }
+
+    return reply.code(202).send(createApiResponse({
+      channel: ChannelRecordSchema.parse(handoff.channel),
+      message: ThreadMessageRecordSchema.parse(handoff.message),
+      thread: ThreadRecordSchema.parse(handoff.thread),
+    }))
+  })
 }
 
 const buildDeepWaterLaunchMessage = (
@@ -406,6 +484,69 @@ const buildDeepTestReviewHandoffMetadata = (
       status: 'queued',
       summary: 'Personal Assistant will use DeepTest MCP while keeping target material local.',
       title: 'DeepTest security review',
+    }),
+  ],
+})
+
+const buildBuildMeProjectHandoffMessage = (
+  input: BuildMeProjectHandoffInput,
+  launchUrl: string | null,
+): string => {
+  const intent = input.intent.replace(/_/g, ' ')
+  const scope =
+    input.contextScope === 'active_project'
+      ? 'Use only the active Nessie project/team as context.'
+      : 'Use only the active Nessie team as context.'
+
+  return [
+    'Prepare a buildme.live project handoff.',
+    '',
+    `Intent: ${intent}`,
+    `Context scope: ${input.contextScope}`,
+    launchUrl ? `Launch URL: ${launchUrl}` : null,
+    '',
+    'Boundary:',
+    '- Use UOA SSO link-out for the BuildMe workspace.',
+    '- Do not create, sync, or mutate Nessie project-board columns from BuildMe yet.',
+    '- Do not ask the user to paste BuildMe board payloads, card lists, column mappings, credentials, or workspace files into Nessie.',
+    '- If the user asks for native board pairing, explain that it needs the BuildMe board API/MCP contract first.',
+    scope,
+  ].filter((line): line is string => line !== null).join('\n')
+}
+
+const buildBuildMeProjectHandoffMetadata = (
+  input: BuildMeProjectHandoffInput,
+  context: { channelId: string; launchUrl: string | null; productSlug: string },
+): Record<string, unknown> => ({
+  integrationLaunch: {
+    contextScope: input.contextScope,
+    intent: input.intent,
+    productSlug: context.productSlug,
+    requestedAt: new Date().toISOString(),
+  },
+  mentions: { agentIds: [], broadcast: null, userIds: [] },
+  uiCards: [
+    IntegrationUiCardSchema.parse({
+      actions: [
+        { href: `/channels/${context.channelId}`, label: 'Open chat', variant: 'primary' },
+        ...(context.launchUrl
+          ? [{ href: context.launchUrl, label: 'Open buildme.live', variant: 'secondary' as const }]
+          : []),
+      ],
+      fields: [
+        { label: 'Intent', value: input.intent.replace(/_/g, ' ') },
+        {
+          label: 'Context',
+          value: input.contextScope === 'active_project' ? 'Active project' : 'Active team',
+        },
+        { label: 'SSO', value: 'UOA linked' },
+        { label: 'Board API', value: 'Contract pending' },
+      ],
+      kind: 'project_board',
+      productSlug: 'buildme',
+      status: 'needs_setup',
+      summary: 'Personal Assistant will prepare a link-out handoff and keep board sync blocked.',
+      title: 'buildme.live project handoff',
     }),
   ],
 })

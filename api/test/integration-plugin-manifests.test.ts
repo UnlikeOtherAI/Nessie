@@ -31,4 +31,16 @@ test('first-party integration manifests cover the sibling products', () => {
   const buildMe = getIntegrationPluginManifest('buildme')
   assert.equal(buildMe?.mcp.catalogTemplate, null)
   assert.equal(buildMe?.mcp.tools.every((tool) => tool.status === 'blocked'), true)
+  assert.equal(
+    buildMe?.ui.pages.some(
+      (page) => page.id === 'link-handoff' && page.status === 'available',
+    ),
+    true,
+  )
+  assert.equal(
+    buildMe?.ui.controls.some(
+      (control) => control.id === 'handoff-intent' && control.status === 'available',
+    ),
+    true,
+  )
 })

@@ -28,6 +28,8 @@ export type {
   AgentTriggerRecord,
   AuthProviderDescriptor,
   BootstrapModeResponse,
+  BuildMeProjectHandoffIntent,
+  BuildMeProjectHandoffRequest,
   CallParticipantRecord,
   CallRecord,
   ChannelMetadataRecord,
