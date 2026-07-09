@@ -7,6 +7,7 @@ import {
   mcpConnectorClass,
   mcpConnectorLabel,
 } from '../components/features/integrations/AgentConnectorSection'
+import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
 import { ManifestPanel } from '../components/features/integrations/ManifestPanel'
 import {
   ProductOperationsSection,
@@ -35,8 +36,8 @@ const surfacePlans: Record<string, SurfacePlan> = {
   'deep-water': {
     nativePage: 'Research workspace with runs, source review, spend, and Knowledge import.',
     chatCards: 'Progress, result, source, and cost cards rendered from message metadata.',
-    controls: 'Depth, source mode, budget cap, citation mode, and artifact destination.',
-    agentAccess: 'Approved MCP tools for create, poll, cancel, sources, reports, and usage.',
+    controls: 'Depth, chapter detail, search quality, recency, output language, and artifact destination.',
+    agentAccess: 'Approved MCP tools for create, poll, list, and research scoping conversations.',
     artifacts: 'Reports and evidence land in Knowledge; file blobs go through FileService.',
     nextStep: 'Install and approve the OAuth MCP connector, then add the native run wrapper.',
   },
@@ -322,6 +323,7 @@ const ProductDetail = ({
         <TeamAccessSection isOwner={isOwner} product={product} />
         <AgentConnectorSection product={product} />
         <ProductOperationsSection product={product} />
+        {product.slug === 'deep-water' ? <DeepWaterResearchPanel product={product} /> : null}
 
         <section>
           <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>

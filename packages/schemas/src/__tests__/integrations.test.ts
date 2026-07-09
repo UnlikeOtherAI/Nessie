@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  DeepWaterResearchLaunchRequestSchema,
   IntegratedProductResponseSchema,
   SetProductTeamEnablementRequestSchema,
 } from '../integrations.js'
@@ -56,7 +57,7 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
     usageSummary: {
       currency: 'USD',
       failureCount: 1,
-      lastOperation: 'deep_water_create_research',
+      lastOperation: 'research_create',
       lastUsedAt: '2026-07-08T12:04:00.000Z',
       monthStart: '2026-07-01T00:00:00.000Z',
       successCount: 7,
@@ -71,7 +72,7 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
   assert.equal(parsed.mcpInstallation?.lifecycleState, 'active')
   assert.equal(parsed.mcpInstallation?.toolCount, 5)
   assert.equal(parsed.usageSummary.totalCalls, 8)
-  assert.equal(parsed.usageSummary.lastOperation, 'deep_water_create_research')
+  assert.equal(parsed.usageSummary.lastOperation, 'research_create')
 })
 
 test('SetProductTeamEnablementRequestSchema requires a boolean enabled flag', () => {
@@ -79,4 +80,32 @@ test('SetProductTeamEnablementRequestSchema requires a boolean enabled flag', ()
     enabled: false,
   })
   assert.equal(SetProductTeamEnablementRequestSchema.safeParse({ enabled: 'yes' }).success, false)
+})
+
+test('DeepWaterResearchLaunchRequestSchema keeps launcher controls MCP-safe', () => {
+  const parsed = DeepWaterResearchLaunchRequestSchema.parse({
+    depth: 'deep',
+    query: 'Map the commercial risks for EU geothermal projects.',
+    searchQuality: 'premium',
+    title: 'Geothermal risk map',
+  })
+
+  assert.equal(parsed.depth, 'deep')
+  assert.equal(parsed.query, 'Map the commercial risks for EU geothermal projects.')
+  assert.equal(parsed.outputTier, 'full')
+  assert.equal(parsed.artifactDestination, 'knowledge_draft')
+  assert.equal(parsed.searchQuality, 'premium')
+  const withBudget = DeepWaterResearchLaunchRequestSchema.parse({
+    budgetUsd: 100,
+    depth: 'deep',
+    query: 'x',
+  })
+  assert.equal('budgetUsd' in withBudget, false)
+  assert.equal(
+    DeepWaterResearchLaunchRequestSchema.safeParse({
+      depth: 'uncapped',
+      query: 'x',
+    }).success,
+    false,
+  )
 })

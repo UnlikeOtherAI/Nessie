@@ -1,8 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
+  ChannelRecord,
+  DeepWaterResearchLaunchRequest,
   IntegratedProductResponse,
   IntegrationPluginManifest,
   SetProductTeamEnablementRequest,
+  ThreadMessageRecord,
+  ThreadRecord,
 } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -46,6 +50,32 @@ export const useSetProductTeamEnablement = () => {
         integratedProductsKey,
         (current) => current?.map((item) => (item.slug === product.slug ? product : item)),
       )
+    },
+  })
+}
+
+export type DeepWaterResearchLaunchResponse = {
+  channel: ChannelRecord
+  message: ThreadMessageRecord
+  thread: ThreadRecord
+}
+
+export const useLaunchDeepWaterResearch = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: DeepWaterResearchLaunchRequest) =>
+      apiClient.post<DeepWaterResearchLaunchResponse>(
+        '/api/integrations/products/deep-water/research-launch',
+        input,
+      ),
+    onSuccess: (response) => {
+      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['threads', response.thread.id, 'messages'],
+      })
     },
   })
 }

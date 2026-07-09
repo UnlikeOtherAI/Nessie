@@ -228,6 +228,15 @@ Current Nessie slice:
   wrappers can also tag rows with `metadata.productSlug`. ESC renders calls,
   units, spend, last activity, and failures without introducing a second
   accounting path.
+- Deep Water now has a native ESC launcher gated by team enablement and an
+  active shared MCP connector. `POST
+  /api/integrations/products/deep-water/research-launch` creates or loads the
+  user's Personal Assistant DM, posts a server-built launch message carrying a
+  `deep_research` `uiCards` card, and enqueues the PA so it can call the
+  approved Deep Water MCP tools (`mcp_research_create`, then
+  `mcp_research_get`). This gives the UI a real launch path without bypassing
+  MCP approval/grants. The durable Nessie run wrapper, automatic progress
+  projection, and Knowledge import job remain Phase 2 work.
 
 Current UOA/auth slice:
 
@@ -262,7 +271,7 @@ or plugin metadata rather than hard-coded product internals:
   research progress, security review summaries, cost, sources, and safe report
   links;
 - **custom controls** for launch/configuration state, such as Deep Water depth
-  and budget, DeepTest review profile and local-runner target, or BuildMe column
+  and import destination, DeepTest review profile and local-runner target, or BuildMe column
   mapping.
 
 Chat cards use the existing `Message.metadata` channel. Product integrations and
@@ -291,6 +300,18 @@ The supported card kinds are currently `integration`, `deep_research`,
 Cards are not a storage layer. Finished reports, source bundles, security
 reports, screenshots, and PDFs must still become Knowledge/FileService artifacts
 when they need to persist beyond the conversation.
+
+Current Deep Water launcher slice:
+
+- ESC renders Deep Water controls for title, prompt, depth, chapter detail,
+  output tier, language, search quality, recency, section count, searches per
+  pillar, and artifact destination.
+- The launch DTO mirrors Deep Water's MCP-safe allow-list. It intentionally does
+  not expose `budget_usd`, `total_search_budget`, or model-routing knobs because
+  Deep Water's OAuth MCP server rejects those for agent-callable launches.
+- The launch message asks the PA to import the completed report as a Knowledge
+  draft and request publication when `artifactDestination=knowledge_draft`.
+  Automatic import without PA mediation still belongs to the Phase 2 run wrapper.
 
 ### 4. UOA Account Linking
 
@@ -463,9 +484,8 @@ Phase 1 native slice:
 4. Expose tools to agents:
    - create research;
    - get research;
-   - cancel research;
-   - get sources;
-   - get usage.
+   - list research;
+   - run a scoping conversation before launch.
 5. Add Nessie job wrapper:
    - create a Nessie async job/run when a user or agent launches research;
    - poll or subscribe to Deep Water progress;
@@ -613,6 +633,9 @@ Acceptance:
 - Add Deep Water MCP catalog entry and install flow. **Catalog entry seeded;
   ESC now deep-links into the MCP install dialog; credential setup, probing, and
   tool approval remain in the MCP store flow.**
+- Add a Deep Water ESC launcher backed by the Personal Assistant and approved
+  MCP tools. **Implemented for team-enabled products with active shared MCP
+  installations.**
 - Add credential setup and tool approval flow.
 - Add a Deep Water run wrapper in Nessie jobs/runs.
 - Add result import into Knowledge and FileService-backed attachments.

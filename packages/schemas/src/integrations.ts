@@ -139,6 +139,33 @@ export const SetProductTeamEnablementRequestSchema = z.object({
 export type SetProductTeamEnablementRequest =
   z.infer<typeof SetProductTeamEnablementRequestSchema>
 
+export const DeepWaterResearchDepthSchema = z.enum([
+  'light',
+  'standard',
+  'deep',
+  'heavy',
+  'thesis',
+  'dissertation',
+])
+export type DeepWaterResearchDepth =
+  z.infer<typeof DeepWaterResearchDepthSchema>
+
+export const DeepWaterResearchLaunchRequestSchema = z.object({
+  artifactDestination: z.enum(['knowledge_draft', 'chat_only']).default('knowledge_draft'),
+  chapterDepth: z.enum(['brief', 'standard', 'detailed', 'exhaustive']).default('standard'),
+  depth: DeepWaterResearchDepthSchema.default('standard'),
+  outputLanguage: z.string().trim().min(2).max(12).default('en'),
+  outputTier: z.enum(['summary', 'full']).default('full'),
+  query: z.string().trim().min(1).max(5_000),
+  recency: z.enum(['any', 'day', 'week', 'month', 'year']).default('any'),
+  searchQuality: z.enum(['standard', 'premium']).default('standard'),
+  searchesPerPillar: z.number().int().min(1).max(20).default(4),
+  sections: z.number().int().min(3).max(20).default(8),
+  title: z.string().trim().max(200).optional(),
+})
+export type DeepWaterResearchLaunchRequest =
+  z.infer<typeof DeepWaterResearchLaunchRequestSchema>
+
 export const IntegrationUiCardStatusSchema = z.enum([
   'idle',
   'queued',
