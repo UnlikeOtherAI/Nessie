@@ -195,6 +195,109 @@ const rawManifests = [
   {
     apiVersion: 'integrations.nessie.io/v1',
     kind: 'NessieIntegrationPlugin',
+    manifestRef: 'first-party/deepsignal',
+    productSlug: 'deepsignal',
+    name: 'DeepSignal',
+    version: '0.1.0',
+    vendor: 'UnlikeOtherAI',
+    install: [
+      {
+        mode: 'remote_mcp_oauth',
+        availability: 'both',
+        label: 'Per-user external agent',
+        requiredForAgentUse: true,
+        setup: 'Activate DeepSignal for yourself and sign in with your account so each turn is proxied to DeepSignal over MCP under your own identity.',
+      },
+    ],
+    mcp: {
+      catalogTemplate: {
+        name: 'deepsignal',
+        label: 'DeepSignal',
+        protocol: 'http',
+        authMethod: 'oauth2',
+        transport: { transport: 'http', url: 'https://api.deepsignal.live/mcp' },
+        auth: { method: 'oauth2' },
+      },
+      toolBundleRef: 'first-party/deepsignal-tools',
+      tools: [
+        {
+          name: 'chat',
+          label: 'Chat',
+          description: 'Send a conversation turn to DeepSignal and receive the reply and activity cards. Nessie never runs inference for this turn.',
+          privacyTier: 'sensitive',
+          status: 'planned',
+        },
+        {
+          name: 'conversation_list',
+          label: 'List conversations',
+          description: 'List the DeepSignal conversations for the linked user.',
+          privacyTier: 'sensitive',
+          status: 'planned',
+        },
+        {
+          name: 'conversation_history',
+          label: 'Read conversation history',
+          description: 'Read past turns of a DeepSignal conversation, including turns made on other surfaces, for history hydration.',
+          privacyTier: 'sensitive',
+          status: 'planned',
+        },
+        {
+          name: 'insight_digest',
+          label: 'Read insight digest',
+          description: 'Pull the digest of surfaced opportunities and risks the user should not miss.',
+          privacyTier: 'normal',
+          status: 'planned',
+        },
+        {
+          name: 'insight_act',
+          label: 'Act on an insight',
+          description: 'Mark an insight done or snooze it; the action is proxied back to DeepSignal.',
+          privacyTier: 'normal',
+          status: 'planned',
+        },
+        {
+          name: 'api_research',
+          label: 'Research reference',
+          description: 'Resolve DeepWater research references (api_research_*) DeepSignal holds as ids, for read-only deep-linking.',
+          privacyTier: 'normal',
+          status: 'planned',
+        },
+      ],
+    },
+    ui: {
+      pages: [
+        { id: 'insight-digest', label: 'Insight digest', status: 'planned' },
+      ],
+      cards: [
+        { kind: 'integration', label: 'Insight', status: 'planned' },
+        { kind: 'integration', label: 'Conversation activity', status: 'planned' },
+      ],
+      controls: [
+        { id: 'activate', label: 'Activate for me', status: 'available' },
+      ],
+    },
+    artifacts: [
+      {
+        kind: 'research_reference',
+        label: 'DeepWater report reference',
+        defaultDestination: 'External link',
+        fileServiceRequired: false,
+      },
+    ],
+    privacy: {
+      dataBoundary: 'Conversation content, insights, and pursuits live in DeepSignal; Nessie mirrors turns for display and notification only, keyed by DeepSignal ids.',
+      defaultImportPolicy: 'Nessie stores mirrored turns and insight cards for the linked user only; edits and actions flow back over MCP, never applied locally-only.',
+      prohibitedByDefault: ['Nessie inference on DeepSignal turns', 'shared/org-scope install of the chat surface', 'service-account impersonation'],
+    },
+    usage: {
+      ledger: 'connector_usage_events',
+      connectorType: 'mcp',
+      costFields: ['conversationId', 'turnId'],
+    },
+  },
+  {
+    apiVersion: 'integrations.nessie.io/v1',
+    kind: 'NessieIntegrationPlugin',
     manifestRef: 'first-party/buildme',
     productSlug: 'buildme',
     name: 'buildme.live',
