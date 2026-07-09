@@ -35,6 +35,14 @@ enum AgentDelegationMode {
   act_as_requesting_user
 }
 
+// How an agent's turns are executed. `inference` (the default for every
+// existing agent) runs Nessie's own agentic loop; `external_mcp` proxies each
+// turn directly to an external product over MCP with no Nessie inference.
+enum AgentExecutionMode {
+  inference
+  external_mcp
+}
+
 enum FavoriteTargetType {
   agent
   channel
@@ -204,6 +212,7 @@ enum ChannelType {
 
 enum ChannelSystemType {
   personal_assistant
+  external_agent
 }
 
 enum ChannelVisibility {
@@ -1172,6 +1181,7 @@ model Agent {
   systemManaged                 Boolean                        @default(false) @map("system_managed")
   surfacePolicy                 AgentSurfacePolicy             @default(shared) @map("surface_policy")
   delegationMode                AgentDelegationMode            @default(none) @map("delegation_mode")
+  executionMode                 AgentExecutionMode             @default(inference) @map("execution_mode")
   systemPrompt                  String?                        @map("system_prompt")
   toolPolicy                    Json?                          @map("tool_policy")
   provider                      String?                        @map("provider")
