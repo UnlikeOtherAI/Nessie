@@ -713,6 +713,7 @@ model Organization {
   favorites        Favorite[]
   productAccountLinks ProductAccountLink[]
   productTeamEnablements ProductTeamEnablement[]
+  productWebhookSecrets ProductWebhookSecret[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -2976,6 +2977,27 @@ model McpOAuthSecret {
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("mcp_oauth_secret")
+}
+
+/// Per-organization signing secret for an integrated product's inbound webhooks
+/// (e.g. DeepSignal `insight.surfaced`). Set once by an org admin who pastes the
+/// secret the product returned at webhook-registration time. Stored encrypted at
+/// rest (AES-256-GCM under a key derived from the deployment auth secret); the
+/// plaintext is only ever read to verify an inbound HMAC signature.
+model ProductWebhookSecret {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  productSlug    String   @map("product_slug")
+  ciphertext     String
+  iv             String
+  authTag        String   @map("auth_tag")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, productSlug])
+  @@map("product_webhook_secrets")
 }
 
 /// One-shot OAuth authorization state (RFC 6749 `state` + PKCE verifier and
