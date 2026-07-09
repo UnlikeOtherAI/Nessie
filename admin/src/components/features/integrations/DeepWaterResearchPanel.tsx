@@ -4,7 +4,11 @@ import type {
   DeepWaterResearchDepth,
   IntegratedProductResponse,
 } from '../../../lib/api-client'
-import { useLaunchDeepWaterResearch } from '../../../facades/integrations/hooks'
+import {
+  useDeepWaterResearchRuns,
+  useLaunchDeepWaterResearch,
+} from '../../../facades/integrations/hooks'
+import { DeepWaterRunHistory } from './DeepWaterRunHistory'
 
 const depthOptions: Array<{ label: string; value: DeepWaterResearchDepth }> = [
   { label: 'Light', value: 'light' },
@@ -40,6 +44,7 @@ export const DeepWaterResearchPanel = ({
 }) => {
   const navigate = useNavigate()
   const launch = useLaunchDeepWaterResearch()
+  const runsQuery = useDeepWaterResearchRuns()
   const [title, setTitle] = useState('')
   const [query, setQuery] = useState('')
   const [depth, setDepth] = useState<DeepWaterResearchDepth>('standard')
@@ -102,6 +107,11 @@ export const DeepWaterResearchPanel = ({
           <div className="text-xs text-[var(--tx3)]">{product.usageSummary.totalCalls} calls</div>
         </div>
       </div>
+
+      <DeepWaterRunHistory
+        loading={runsQuery.isLoading}
+        runs={runsQuery.data ?? []}
+      />
 
       <div className="mt-4 grid gap-3">
         <label className="grid gap-1 text-sm">

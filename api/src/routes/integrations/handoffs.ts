@@ -12,6 +12,11 @@ import {
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import { createPersonalAssistantIntegrationHandoff } from '../../services/integration-handoffs.js'
+import {
+  attachDeepWaterResearchHandoff,
+  createDeepWaterResearchRun,
+  markDeepWaterResearchRunFailed,
+} from '../../services/integration-runs.js'
 import { listIntegratedProducts } from '../../services/integrations.js'
 import type { RouteDeps } from '../types.js'
 import {
@@ -34,11 +39,13 @@ type IntegrationHandoff = Awaited<ReturnType<typeof createPersonalAssistantInteg
 const sendHandoffResponse = (
   reply: FastifyReply,
   handoff: IntegrationHandoff,
+  extra?: Record<string, unknown>,
 ) =>
   reply.code(202).send(createApiResponse({
     channel: ChannelRecordSchema.parse(handoff.channel),
     message: ThreadMessageRecordSchema.parse(handoff.message),
     thread: ThreadRecordSchema.parse(handoff.thread),
+    ...extra,
   }))
 
 export const registerIntegrationHandoffRoutes = (
@@ -89,6 +96,14 @@ export const registerIntegrationHandoffRoutes = (
       return reply
     }
 
+    const run = await createDeepWaterResearchRun(prisma, {
+      connectorId: mcpInstallation.id,
+      input: body,
+      organizationId: actorContext.tenant.organizationId,
+      requestedByUserId: actorContext.actor.actorId,
+      teamId,
+    })
+
     let handoff: IntegrationHandoff
     try {
       handoff = await createPersonalAssistantIntegrationHandoff(deps, {
@@ -98,15 +113,28 @@ export const registerIntegrationHandoffRoutes = (
           channelId,
           connectorId: mcpInstallation.id,
           productSlug: product.slug,
+          runId: run.id,
         }),
         teamId,
       })
     } catch {
+      await markDeepWaterResearchRunFailed(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        runId: run.id,
+      })
       sendApiError(reply, 500, 'PERSONAL_ASSISTANT_UNAVAILABLE', 'Personal Assistant is unavailable')
       return reply
     }
 
-    return sendHandoffResponse(reply, handoff)
+    const attachedRun = await attachDeepWaterResearchHandoff(prisma, {
+      channelId: handoff.channel.id,
+      messageId: handoff.message.id,
+      organizationId: actorContext.tenant.organizationId,
+      runId: run.id,
+      threadId: handoff.thread.id,
+    })
+
+    return sendHandoffResponse(reply, handoff, { run: attachedRun })
   })
 
   app.post('/api/integrations/products/:productSlug/security-handoff', async (request, reply) => {

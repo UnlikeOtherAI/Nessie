@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   BuildMeProjectHandoffRequestSchema,
+  DeepWaterResearchRunRecordSchema,
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
   IntegratedProductResponseSchema,
@@ -112,6 +113,40 @@ test('DeepWaterResearchLaunchRequestSchema keeps launcher controls MCP-safe', ()
     }).success,
     false,
   )
+})
+
+test('DeepWaterResearchRunRecordSchema accepts durable Deep Water run projection', () => {
+  const parsed = DeepWaterResearchRunRecordSchema.parse({
+    id: '8f3a5a00-0e64-4d10-a517-0d0b69c1d801',
+    artifactDestination: 'knowledge_draft',
+    channelId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d802',
+    completedAt: null,
+    connectorId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d803',
+    createdAt: '2026-07-10T10:30:00.000Z',
+    currency: null,
+    depth: 'deep',
+    externalRunId: null,
+    knowledgePageId: null,
+    messageId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d804',
+    organizationId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d401',
+    outputTier: 'full',
+    productSlug: 'deep-water',
+    queryPreview: 'Map geothermal project risks.',
+    requestedAt: '2026-07-10T10:30:00.000Z',
+    requestedByUserId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d301',
+    searchQuality: 'premium',
+    sourceCount: null,
+    status: 'queued',
+    teamId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d501',
+    threadId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d805',
+    title: 'Geothermal risk map',
+    totalCost: null,
+    updatedAt: '2026-07-10T10:30:00.000Z',
+  })
+
+  assert.equal(parsed.status, 'queued')
+  assert.equal(parsed.productSlug, 'deep-water')
+  assert.equal(parsed.depth, 'deep')
 })
 
 test('DeepTestReviewHandoffRequestSchema rejects target material fields', () => {

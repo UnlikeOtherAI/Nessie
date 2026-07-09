@@ -115,6 +115,54 @@ export const ProductUsageSummaryRecordSchema = z.object({
 export type ProductUsageSummaryRecord =
   z.infer<typeof ProductUsageSummaryRecordSchema>
 
+export const ProductIntegrationRunStatusSchema = z.enum([
+  'queued',
+  'running',
+  'needs_setup',
+  'completed',
+  'failed',
+  'warning',
+])
+export type ProductIntegrationRunStatus =
+  z.infer<typeof ProductIntegrationRunStatusSchema>
+
+export const DeepWaterResearchRunRecordSchema = z.object({
+  id: z.string().uuid(),
+  artifactDestination: z.enum(['knowledge_draft', 'chat_only']),
+  channelId: z.string().uuid().nullable(),
+  completedAt: TimestampSchema.nullable(),
+  connectorId: z.string().uuid().nullable(),
+  createdAt: TimestampSchema,
+  currency: NonEmptyStringSchema.nullable(),
+  depth: z.enum([
+    'light',
+    'standard',
+    'deep',
+    'heavy',
+    'thesis',
+    'dissertation',
+  ]),
+  externalRunId: z.string().nullable(),
+  knowledgePageId: z.string().uuid().nullable(),
+  messageId: z.string().uuid().nullable(),
+  organizationId: z.string().uuid(),
+  outputTier: z.enum(['summary', 'full']),
+  productSlug: z.literal('deep-water'),
+  queryPreview: z.string(),
+  requestedAt: TimestampSchema,
+  requestedByUserId: z.string().uuid().nullable(),
+  searchQuality: z.enum(['standard', 'premium']),
+  sourceCount: z.number().int().nonnegative().nullable(),
+  status: ProductIntegrationRunStatusSchema,
+  teamId: z.string().uuid(),
+  threadId: z.string().uuid().nullable(),
+  title: z.string().nullable(),
+  totalCost: z.number().nonnegative().nullable(),
+  updatedAt: TimestampSchema,
+})
+export type DeepWaterResearchRunRecord =
+  z.infer<typeof DeepWaterResearchRunRecordSchema>
+
 export const IntegratedProductResponseSchema = z.object({
   id: z.string().uuid(),
   accountLink: ProductAccountLinkRecordSchema.nullable(),

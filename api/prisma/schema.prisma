@@ -610,6 +610,15 @@ enum ProductAccountLinkStatus {
   error
 }
 
+enum ProductIntegrationRunStatus {
+  queued
+  running
+  needs_setup
+  completed
+  failed
+  warning
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique
@@ -650,6 +659,7 @@ model User {
   refreshTokens       RefreshToken[]
   productAccountLinks ProductAccountLink[]
   productTeamEnablements ProductTeamEnablement[]
+  productIntegrationRuns ProductIntegrationRun[]
   avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
@@ -704,6 +714,7 @@ model Organization {
   favorites        Favorite[]
   productAccountLinks ProductAccountLink[]
   productTeamEnablements ProductTeamEnablement[]
+  productIntegrationRuns ProductIntegrationRun[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -740,6 +751,7 @@ model IntegratedProduct {
 
   accountLinks        ProductAccountLink[]
   teamEnablements     ProductTeamEnablement[]
+  integrationRuns     ProductIntegrationRun[]
   mcpCatalogEntry     McpCatalogEntry?               @relation(fields: [mcpCatalogEntryId], references: [id], onDelete: SetNull)
 
   @@index([category])
@@ -792,6 +804,49 @@ model ProductTeamEnablement {
   @@unique([organizationId, teamId, productSlug])
   @@index([productSlug, enabled])
   @@map("product_team_enablements")
+}
+
+model ProductIntegrationRun {
+  id                String                      @id @default(uuid()) @db.Uuid
+  organizationId    String                      @map("organization_id") @db.Uuid
+  teamId            String                      @map("team_id") @db.Uuid
+  productSlug       String                      @map("product_slug")
+  requestedByUserId String?                     @map("requested_by_user_id") @db.Uuid
+  connectorId       String?                     @map("connector_id") @db.Uuid
+  channelId         String?                     @map("channel_id") @db.Uuid
+  threadId          String?                     @map("thread_id") @db.Uuid
+  messageId         String?                     @map("message_id") @db.Uuid
+  externalRunId     String?                     @map("external_run_id")
+  status            ProductIntegrationRunStatus @default(queued)
+  title             String?
+  queryPreview      String                      @default("") @map("query_preview")
+  input             Json                        @default("{}") @map("input_json")
+  result            Json                        @default("{}") @map("result_json")
+  costAmount        Decimal?                    @map("cost_amount") @db.Decimal(18, 6)
+  costCurrency      String?                     @map("cost_currency")
+  sourceCount       Int?                        @map("source_count")
+  knowledgePageId   String?                     @map("knowledge_page_id") @db.Uuid
+  requestedAt       DateTime                    @default(now()) @map("requested_at")
+  completedAt       DateTime?                   @map("completed_at")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
+
+  organization      Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team              Team                        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  product           IntegratedProduct           @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
+  requestedByUser   User?                       @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  connector         McpServerInstance?          @relation(fields: [connectorId], references: [id], onDelete: SetNull)
+  channel           Channel?                    @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  thread            Thread?                     @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  message           Message?                    @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  knowledgePage     KnowledgePage?              @relation(fields: [knowledgePageId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, teamId, productSlug, requestedAt(sort: Desc)], map: "product_integration_runs_scope_requested_idx")
+  @@index([organizationId, productSlug, status], map: "product_integration_runs_status_idx")
+  @@index([connectorId, requestedAt(sort: Desc)], map: "product_integration_runs_connector_idx")
+  @@index([messageId], map: "product_integration_runs_message_idx")
+  @@index([knowledgePageId], map: "product_integration_runs_knowledge_page_idx")
+  @@map("product_integration_runs")
 }
 
 model OrganizationMember {
@@ -896,6 +951,7 @@ model Team {
   plans            Plan[]
   approvalRequests ApprovalRequest[]
   productEnablements ProductTeamEnablement[]
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@map("teams")
 }
@@ -941,6 +997,7 @@ model Channel {
   plans             Plan[]
   approvalRequests  ApprovalRequest[]
   statusRules       UserStatusRule[]
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@index([organizationId, type])
   @@index([projectId])
@@ -976,6 +1033,7 @@ model Thread {
   runs            Run[]
   streamEvents    ThreadStreamEvent[]
   triggerTargets  AgentTrigger[]        @relation("TriggerTargetThread")
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -1125,6 +1183,7 @@ model Message {
   agent     Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
   user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   reactions MessageReaction[]
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
@@ -1942,6 +2001,7 @@ model McpServerInstance {
   catalogEntry        McpCatalogEntry               @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
   credentialOverrides McpServerCredentialOverride[]
   toolRegistryEntries ToolRegistryEntry[]
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@unique([catalogEntryId, scopeType, scopeId])
   @@index([organizationId, scopeType, scopeId])
@@ -2649,6 +2709,7 @@ model KnowledgePage {
   chunks           KnowledgePageChunk[]
   outgoingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkSource")
   incomingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkTarget")
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@index([taskId], map: "knowledge_pages_task_id_idx")
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import {
+  DeepWaterResearchRunRecordSchema,
   IntegratedProductResponseSchema,
   IntegrationPluginManifestSchema,
   SetProductTeamEnablementRequestSchema,
@@ -7,6 +8,7 @@ import {
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import { getIntegrationPluginManifest } from '../../services/integration-plugin-manifests.js'
+import { listDeepWaterResearchRuns } from '../../services/integration-runs.js'
 import { listIntegratedProducts, setProductTeamEnablement } from '../../services/integrations.js'
 import type { RouteDeps } from '../types.js'
 import { ProductSlugParamsSchema } from './route-schemas.js'
@@ -51,6 +53,32 @@ export const registerIntegrationProductRoutes = (
     }
 
     return createApiResponse(IntegrationPluginManifestSchema.parse(manifest))
+  })
+
+  app.get('/api/integrations/products/:productSlug/research-runs', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+
+    const params = parseInput(ProductSlugParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    if (params.productSlug !== 'deep-water') {
+      sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
+      return reply
+    }
+
+    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (!teamId) {
+      sendApiError(reply, 400, 'TEAM_CONTEXT_REQUIRED', 'A team context is required')
+      return reply
+    }
+
+    const runs = await listDeepWaterResearchRuns(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId,
+    })
+
+    return createApiResponse(DeepWaterResearchRunRecordSchema.array().parse(runs))
   })
 
   app.patch('/api/integrations/products/:productSlug/team-enablement', async (request, reply) => {

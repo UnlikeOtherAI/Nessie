@@ -4,6 +4,7 @@ import type {
   ChannelRecord,
   DeepTestReviewHandoffRequest,
   DeepWaterResearchLaunchRequest,
+  DeepWaterResearchRunRecord,
   IntegratedProductResponse,
   IntegrationPluginManifest,
   SetProductTeamEnablementRequest,
@@ -13,6 +14,8 @@ import type {
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const integratedProductsKey = ['integrations', 'products'] as const
+export const deepWaterResearchRunsKey =
+  ['integrations', 'products', 'deep-water', 'research-runs'] as const
 export const integrationManifestKey = (productSlug?: string) =>
   ['integrations', 'manifest', productSlug ?? 'none'] as const
 
@@ -32,6 +35,15 @@ export const useIntegrationPluginManifest = (productSlug?: string) => {
     queryKey: integrationManifestKey(productSlug),
     queryFn: () => apiClient.get(`/api/integrations/products/${productSlug}/manifest`),
     enabled: Boolean(productSlug),
+  })
+}
+
+export const useDeepWaterResearchRuns = () => {
+  const apiClient = useApiClient()
+
+  return useQuery<DeepWaterResearchRunRecord[]>({
+    queryKey: deepWaterResearchRunsKey,
+    queryFn: () => apiClient.get('/api/integrations/products/deep-water/research-runs'),
   })
 }
 
@@ -59,6 +71,7 @@ export const useSetProductTeamEnablement = () => {
 export type DeepWaterResearchLaunchResponse = {
   channel: ChannelRecord
   message: ThreadMessageRecord
+  run: DeepWaterResearchRunRecord
   thread: ThreadRecord
 }
 
@@ -79,7 +92,15 @@ export const useLaunchDeepWaterResearch = () => {
         input,
       ),
     onSuccess: (response) => {
+      queryClient.setQueryData<DeepWaterResearchRunRecord[]>(
+        deepWaterResearchRunsKey,
+        (current) => {
+          const withoutRun = current?.filter((run) => run.id !== response.run.id) ?? []
+          return [response.run, ...withoutRun].slice(0, 10)
+        },
+      )
       void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({ queryKey: deepWaterResearchRunsKey })
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
       void queryClient.invalidateQueries({
         queryKey: ['threads', response.thread.id, 'messages'],

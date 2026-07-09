@@ -39,13 +39,14 @@ export const buildDeepWaterLaunchMessage = (
 
 export const buildDeepWaterLaunchMetadata = (
   input: DeepWaterLaunchInput,
-  context: { channelId: string; connectorId: string; productSlug: string },
+  context: { channelId: string; connectorId: string; productSlug: string; runId: string },
 ): Record<string, unknown> => ({
   integrationLaunch: {
     artifactDestination: input.artifactDestination,
     connectorId: context.connectorId,
     productSlug: context.productSlug,
     requestedAt: new Date().toISOString(),
+    runId: context.runId,
   },
   mentions: { agentIds: [], broadcast: null, userIds: [] },
   uiCards: [
@@ -61,6 +62,7 @@ export const buildDeepWaterLaunchMetadata = (
           value: input.artifactDestination === 'knowledge_draft' ? 'Knowledge draft' : 'Chat',
         },
         { label: 'Connector', value: 'MCP active' },
+        { label: 'Run', value: context.runId.slice(0, 8) },
       ],
       kind: 'deep_research',
       productSlug: 'deep-water',

@@ -239,8 +239,12 @@ Current Nessie slice:
   `deep_research` `uiCards` card, and enqueues the PA so it can call the
   approved Deep Water MCP tools (`mcp_research_create`, then
   `mcp_research_get`). This gives the UI a real launch path without bypassing
-  MCP approval/grants. The durable Nessie run wrapper, automatic progress
-  projection, and Knowledge import job remain Phase 2 work.
+  MCP approval/grants. Nessie now also creates a durable
+  `product_integration_runs` projection for each Deep Water launch and exposes
+  recent active-team runs through `GET
+  /api/integrations/products/deep-water/research-runs`; automatic progress
+  polling, completion updates, usage ledger reconciliation, and Knowledge
+  import jobs remain Phase 2 work.
 - DeepTest now has a privacy-safe ESC handoff panel gated by team enablement and
   an active shared MCP connector. `POST
   /api/integrations/products/deeptest/security-handoff` accepts only controlled
@@ -336,7 +340,11 @@ Current Deep Water launcher slice:
   Deep Water's OAuth MCP server rejects those for agent-callable launches.
 - The launch message asks the PA to import the completed report as a Knowledge
   draft and request publication when `artifactDestination=knowledge_draft`.
-  Automatic import without PA mediation still belongs to the Phase 2 run wrapper.
+- ESC now shows recent Deep Water launch records from Nessie's durable
+  `product_integration_runs` projection, including status, launch options,
+  PA chat destination, and pending source/cost fields.
+- Automatic progress polling, cost reconciliation, and import without PA
+  mediation still belong to the Phase 2 completion wrapper.
 - ESC renders DeepTest controls for review depth, runner boundary, and
   share-safe/external-link report handoff. It intentionally has no text field for
   target URLs, repo paths, source, PR diffs, findings, prompts, or raw reports.
@@ -672,10 +680,14 @@ Acceptance:
   MCP tools. **Implemented for team-enabled products with active shared MCP
   installations.**
 - Add credential setup and tool approval flow.
-- Add a Deep Water run wrapper in Nessie jobs/runs.
+- Add a Deep Water run wrapper in Nessie jobs/runs. **Initial durable launch
+  projection is implemented in `product_integration_runs`; polling/completion
+  reconciliation remains pending.**
 - Add result import into Knowledge and FileService-backed attachments.
 - Add connector usage ledger rows for job cost.
 - Add UI panels for research history, report link, sources, and spend.
+  **Recent launch history is implemented; report links, source review, and
+  final spend projection remain pending.**
 
 ### Phase 3: DeepTest Link-Out And MCP
 
