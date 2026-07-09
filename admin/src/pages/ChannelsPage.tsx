@@ -4,6 +4,7 @@ import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
+import { useSyncExternalAgentChannel } from '../facades/integrations/hooks'
 import {
   isExternalAgentChannel,
   isPersonalAssistantChannel,
@@ -181,6 +182,27 @@ export const ChannelsPage = () => {
     setSelectedMessageUser(null)
     setSelectedMessageAgentId(null)
   }, [activeChannel?.id, cancelEdit, closeSearch])
+
+  // History hydration (DeepSignal §6): when an external-agent channel is opened,
+  // pull any turns the user made on the product's own surfaces into the channel.
+  // Idempotent server-side, so firing once per open is safe.
+  const syncExternalAgentChannel = useSyncExternalAgentChannel()
+  const syncExternalAgentMutate = syncExternalAgentChannel.mutate
+  const activeChannelId = activeChannel?.id
+  const activeChannelThreadId = activeChannel?.defaultThreadId
+  useEffect(() => {
+    if (isExternalAgentActiveChannel && activeChannelId) {
+      syncExternalAgentMutate({
+        channelId: activeChannelId,
+        threadId: activeChannelThreadId ?? undefined,
+      })
+    }
+  }, [
+    activeChannelId,
+    activeChannelThreadId,
+    isExternalAgentActiveChannel,
+    syncExternalAgentMutate,
+  ])
 
   const lastReadMarkerRef = useRef<string | null>(null)
   const pendingReadMarkerRef = useRef<string | null>(null)

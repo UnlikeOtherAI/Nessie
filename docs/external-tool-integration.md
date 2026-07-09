@@ -347,6 +347,35 @@ Operational rules:
   into `ToolRegistryEntry` rows as `pending_review`, and agents can use only the
   approved, granted tools.
 
+### External-Agent Products (DeepSignal)
+
+Some first-party products (e.g. **DeepSignal**) are surfaced not as a *toolset
+inside* an agent run but as a **peer conversation** — a per-user DM channel whose
+bound agent has `executionMode = external_mcp`. Nessie runs **no inference** for
+these turns: each message is proxied directly to the product's MCP endpoint under
+the acting user's own UOA token, and the reply + activity/generative cards are
+rendered verbatim. Full design: `docs/plans/2026-07-09-deepsignal-integration.md`.
+
+The connector plumbing is the ordinary MCP path — a first-party catalog entry, a
+user-scoped `McpServerInstance`, dynamic OAuth, the encrypted secret store, and
+the SSRF guard all apply unchanged. What differs is execution + two extra
+surfaces, both of which reuse the shared `@nessie/mcp-manage` "connect + call one
+tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
+`probeConnection`):
+
+- **History hydration** — `POST /api/channels/:channelId/external-sync` pulls the
+  thread's conversation from the product (`conversation_list` to adopt the most
+  recent conversation, then `conversation_history`) and mirrors unseen turns into
+  the channel, idempotent on `Message.metadata.external.turnId`. The product is the
+  source of truth; Nessie mirrors for display/notification only.
+- **Proactive insights** — `POST /api/integrations/deepsignal/events` is an
+  unauthenticated, per-org **HMAC-verified** webhook receiver (`X-DeepSignal-Signature`,
+  timing-safe). The per-org signing secret is set by an admin/owner via
+  `PUT /api/integrations/products/:productSlug/webhook-secret` (stored encrypted in
+  `product_webhook_secrets`); DeepSignal returns that secret once at webhook
+  registration and the admin pastes it. On `insight.surfaced` the receiver posts one
+  idempotent agent-authored insight card into each linked recipient's channel.
+
 ### MCP Server Lifecycle
 
 ```

@@ -234,8 +234,52 @@ by a separate effort. DeepSignal also *consumes* DeepWater internally, but only 
   system-managed `Agent` row is excluded from the general agent list. Kelpie visual
   verification is still owed once a dev stack is available (not possible in the remote
   implementation environment).
-- **Phase 3 — History & proactive delivery** *(pending)*: history hydration on channel open;
-  webhook receiver → insight cards in-channel; snooze/done actions proxied over MCP.
+- **Phase 3 — History & proactive delivery** *(backend + admin hook implemented)*:
+  - **Shared MCP single-call seam** — the "connect to one instance + call one
+    tool" plumbing (`buildAuthorizedTransport`, `resolveInstanceMcpTransport`) plus
+    a new `callInstanceTool` now live in `@nessie/mcp-manage`
+    (`mcp-instance-call.ts`), alongside `probeConnection`, reusing the probe's
+    transport/credential/auth-apply internals. The chat-result → UI-card mapping
+    moved there too (`external-chat.ts`). The worker imports both from the package;
+    the API hydration path reuses the identical implementation.
+  - **History hydration** — `POST /api/channels/:channelId/external-sync`
+    (`external-agent-sync.ts`): member-gated, `external_agent`-only. Resolves the
+    product slug from the channel `dmKey`, the user's user-scoped instance, and the
+    thread's `metadata.<slug>.conversationId`; when the thread has no conversation
+    yet it calls `conversation_list` and adopts the user's most recent conversation
+    (so console/mobile chats surface even before the Nessie channel is opened),
+    storing it on the thread. Then calls `conversation_history` (limit 50) and
+    upserts unseen turns as Messages — idempotent on `metadata.external.turnId`,
+    colleague turns rendered verbatim + activity/card `uiCards`, user turns authored
+    by the channel owner, ordered by DeepSignal `createdAt`. Returns
+    `{ imported, total }`. The admin fires it on channel open
+    (`useSyncExternalAgentChannel` + a `ChannelsPage` effect keyed on the opened
+    external-agent channel), invalidating the thread's message list only when new
+    turns land.
+  - **Insight webhook receiver** — `POST /api/integrations/deepsignal/events`
+    (`routes/external-agent.ts` + `deepsignal-webhook.ts`): unauthenticated,
+    HMAC-SHA256 over the raw body verified with a timing-safe compare against the
+    per-org signing secret (`X-DeepSignal-Signature`, `sha256=` prefix accepted).
+    The org is resolved by whichever stored secret reproduces the signature, so one
+    receiver URL serves every org without leaking targeting. Per-org secrets are set
+    by an org **admin/owner** via
+    `PUT /api/integrations/products/:productSlug/webhook-secret` and stored encrypted
+    (AES-256-GCM) in the new `product_webhook_secrets` table
+    (`20260709123000_product_webhook_secret`). On `insight.surfaced` the receiver
+    resolves recipients (payload UOA subs via `ProductAccountLink.uoaSub` when
+    present, else every `linked` DeepSignal user in the org) and posts ONE
+    agent-authored message per recipient — a short headline + one `integration`
+    insight card (why-it-matters + key facts + an "Open in DeepSignal" action when
+    the payload carries a URL) with `metadata.external = { product, insightId }`.
+    Idempotent per insight per channel; realtime `message.new` is published
+    best-effort so open channels update live.
+  - **Manual registration step:** DeepSignal returns the webhook signing secret
+    exactly once when the webhook is registered on its side. A Nessie org admin
+    pastes that secret via the webhook-secret endpoint (Integrations UI equivalent
+    is future work) before insights can be verified/delivered.
+  - **Not in this slice (future work):** snooze/done/mute/reopen worklist actions
+    proxied back over the MCP `insight_act` tool from the insight card, and an
+    Integrations-page control for pasting the webhook secret.
 - **Phase 4 — Streaming & polish** *(pending)*: MCP progress notifications → live activity
   cards / incremental status; usage metering surfaced in ESC usage UI; admin lock/e2e tests;
   update `CLAUDE.md`/`AGENTS.md` (MCP surface + new run mode) and `docs/functionality.md`.

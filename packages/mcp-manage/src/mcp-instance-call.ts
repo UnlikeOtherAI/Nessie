@@ -7,7 +7,7 @@ import { resolveCredentialRef, type CredentialResolutionContext } from './mcp-cr
 import { MCP_INSTANCE_ERROR_CODES, McpInstanceError } from './mcp-instance-errors.js'
 import { assertMcpTransportSafe } from './mcp-security.js'
 import { transportToConnectionSpec, type ManagerFactory } from './mcp-instance-probe.js'
-import { EnvSecretResolver, type SecretResolver } from './secret-resolver.js'
+import type { SecretResolver } from './secret-resolver.js'
 
 /**
  * Shared "connect to one instance + call one tool" plumbing.
@@ -133,5 +133,3 @@ export const callInstanceTool = async (input: {
     await manager.closeAll().catch(() => undefined)
   }
 }
-
-export const defaultCallSecretResolver = new EnvSecretResolver()
