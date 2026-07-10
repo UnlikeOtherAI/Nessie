@@ -9,17 +9,23 @@ import {
  * Nessie's in-channel rendering surface (`Message.metadata.uiCards`).
  *
  * DeepSignal returns JSON text content shaped
- * `{ conversationId, turnId, reply, activities[], cards[] }`. `activities` are
- * typed tool/skill events; `cards` are generative UI specs. Both are mapped
- * onto `IntegrationUiCardSchema` so the existing `MessageUiCards` component
- * renders them with no product-specific code. Everything here is defensive: a
- * plain-text tool result degrades to a bare reply with no cards, and any card
- * that fails schema validation is dropped rather than corrupting the message.
+ * `{ conversationId, userTurnId?, turnId, reply, activities[], cards[] }`.
+ * `activities` are typed tool/skill events; `cards` are generative UI specs.
+ * Both are mapped onto `IntegrationUiCardSchema` so the existing `MessageUiCards`
+ * component renders them with no product-specific code. `turnId` is the
+ * colleague (assistant) turn id; `userTurnId` is the id DeepSignal assigned to
+ * the user turn that drove this exchange — the worker driver tags the inbound
+ * user message with it so history re-hydration dedupes both roles (plan §6).
+ * Everything here is defensive: a plain-text tool result degrades to a bare
+ * reply with no cards, `userTurnId` is optional (older DeepSignal omits it), and
+ * any card that fails schema validation is dropped rather than corrupting the
+ * message.
  */
 
 export type ExternalChatResult = {
   reply: string
   conversationId: string | null
+  userTurnId: string | null
   turnId: string | null
   activities: unknown[]
   cards: unknown[]
@@ -85,11 +91,19 @@ const coerceChatPayload = (output: string): Record<string, unknown> | string => 
 export const parseChatToolResult = (output: string): ExternalChatResult => {
   const payload = coerceChatPayload(output)
   if (typeof payload === 'string') {
-    return { reply: payload, conversationId: null, turnId: null, activities: [], cards: [] }
+    return {
+      reply: payload,
+      conversationId: null,
+      userTurnId: null,
+      turnId: null,
+      activities: [],
+      cards: [],
+    }
   }
   return {
     reply: firstString(payload, ['reply', 'message', 'text', 'output']) ?? '',
     conversationId: firstString(payload, ['conversationId', 'conversation_id']),
+    userTurnId: firstString(payload, ['userTurnId', 'user_turn_id']),
     turnId: firstString(payload, ['turnId', 'turn_id']),
     activities: asArray(payload.activities),
     cards: asArray(payload.cards),
