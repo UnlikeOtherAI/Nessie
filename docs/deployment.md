@@ -176,8 +176,12 @@ docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
 `infrastructure/compose/redeploy.sh` over SSH. The workflow authenticates with
 the `DEPLOY_SSH_KEY` repo secret (a dedicated key in the host's
 `~/.ssh/authorized_keys`); host/user come from the `DEPLOY_HOST` / `DEPLOY_USER`
-secrets. It never uses `--delete` and excludes `infrastructure/compose/.env`, so
-host-only secrets and the Postgres volume are never touched.
+secrets. It rsyncs with `--delete` so files removed from the repo don't linger
+on the host and get compiled into the image (a stale `api/src` copy left by the
+mcp-manage extraction broke every build until this was added). rsync never
+deletes excluded paths, so `infrastructure/compose/.env` (and any `.env`) is
+preserved, and the Postgres/MinIO data live in named Docker volumes outside the
+synced tree, so host-only state is never touched.
 
 **Manual:** from the dev machine `rsync` the tree to `/srv/nessie`, then on the
 host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
