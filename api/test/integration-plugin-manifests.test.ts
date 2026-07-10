@@ -9,7 +9,7 @@ import {
 test('first-party integration manifests cover the sibling products', () => {
   assert.deepEqual(
     integrationPluginManifests.map((manifest) => manifest.productSlug).sort(),
-    ['buildme', 'deep-water', 'deeptest'],
+    ['buildme', 'deep-water', 'deepsignal', 'deeptest'],
   )
 
   const deepWater = getIntegrationPluginManifest('deep-water')
@@ -41,6 +41,30 @@ test('first-party integration manifests cover the sibling products', () => {
     buildMe?.ui.controls.some(
       (control) => control.id === 'handoff-intent' && control.status === 'available',
     ),
+    true,
+  )
+
+  const deepSignal = getIntegrationPluginManifest('deepsignal')
+  assert.equal(deepSignal?.mcp.catalogTemplate?.authMethod, 'oauth2')
+  assert.equal(
+    deepSignal?.mcp.catalogTemplate?.transport.url,
+    'https://api.deepsignal.live/mcp',
+  )
+  assert.equal(deepSignal?.install[0]?.mode, 'remote_mcp_oauth')
+  assert.equal(deepSignal?.install.some((entry) => entry.requiredForAgentUse), true)
+  assert.deepEqual(
+    deepSignal?.mcp.tools.map((tool) => tool.name),
+    [
+      'chat',
+      'conversation_list',
+      'conversation_history',
+      'insight_digest',
+      'insight_act',
+      'api_research',
+    ],
+  )
+  assert.equal(
+    deepSignal?.privacy.prohibitedByDefault.includes('Nessie inference on DeepSignal turns'),
     true,
   )
 })

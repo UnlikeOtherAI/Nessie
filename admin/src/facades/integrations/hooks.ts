@@ -47,6 +47,83 @@ export const useDeepWaterResearchRuns = () => {
   })
 }
 
+// Response shapes for the external-agent activation endpoints
+// (`api/src/routes/integrations/external-agent.ts`). These aren't part of
+// `@nessie/schemas` yet — they're validated at the route boundary — so they're
+// typed locally here rather than widening the shared client-core surface for two
+// fields.
+export type ActivateExternalAgentProductResponse = {
+  channelId: string
+  instanceId: string
+  authorizeUrl?: string
+}
+
+export type DeactivateExternalAgentProductResponse = {
+  channelId: string | null
+  instanceId: string | null
+}
+
+// Per-user activation is idempotent on the backend: calling it again after a
+// fresh OAuth sign-in resolves the now-active instance and flips the account
+// link to `linked` without reopening the provider tab, so the same mutation
+// both starts and confirms sign-in.
+export const useActivateExternalAgentProduct = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (productSlug: string) =>
+      apiClient.post<ActivateExternalAgentProductResponse>(
+        `/api/integrations/products/${productSlug}/activate`,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}
+
+export const useDeactivateExternalAgentProduct = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (productSlug: string) =>
+      apiClient.post<DeactivateExternalAgentProductResponse>(
+        `/api/integrations/products/${productSlug}/deactivate`,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}
+
+export type ExternalAgentSyncResponse = { imported: number; total: number }
+
+// History hydration for an external-agent channel (DeepSignal §6). Called on
+// channel open: pulls turns made on the product's own surfaces into the Nessie
+// channel. Idempotent server-side (turnId dedupe), so a repeat open is cheap and
+// only invalidates the message list when something new actually landed.
+export const useSyncExternalAgentChannel = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { channelId: string; threadId?: string }) =>
+      apiClient.post<ExternalAgentSyncResponse>(
+        `/api/channels/${input.channelId}/external-sync`,
+      ),
+    onSuccess: (result, input) => {
+      if (result.imported > 0 && input.threadId) {
+        void queryClient.invalidateQueries({
+          queryKey: ['threads', input.threadId, 'messages'],
+        })
+      }
+    },
+  })
+}
+
 export const useSetProductTeamEnablement = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

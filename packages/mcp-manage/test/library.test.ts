@@ -126,6 +126,15 @@ test('searchMcpLibrary dedups registry entries that match curated endpoints', as
   assert.equal(matching[0]?.source, 'curated')
 })
 
+test('curated library includes the DeepSignal first-party OAuth endpoint', () => {
+  const deepSignal = CURATED_MCP_LIBRARY.find((entry) => entry.key === 'deepsignal')
+  assert.ok(deepSignal)
+  assert.equal(deepSignal.source, 'curated')
+  assert.equal(deepSignal.url, 'https://api.deepsignal.live/mcp')
+  assert.equal(deepSignal.transport, 'http')
+  assert.equal(deepSignal.authMethod, 'oauth2')
+})
+
 test('curated library only lists remote transports with expressible auth', () => {
   for (const entry of CURATED_MCP_LIBRARY) {
     assert.ok(['http', 'sse'].includes(entry.transport), entry.key)

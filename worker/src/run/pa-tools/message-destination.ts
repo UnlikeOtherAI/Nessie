@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import {
   parseChannelId,
   parseOrganizationId,
@@ -206,7 +206,7 @@ export const resolveMessageDestination = async (
   channelScope: string
   channelAgents: ChannelAgent[]
   channelType: 'dm' | 'standard'
-  systemChannelType: 'personal_assistant' | null
+  systemChannelType: ChannelSystemType | null
   threadId: string
   threadLabel: string | null
 }> => {
@@ -398,7 +398,7 @@ export const resolveMessageDestination = async (
 export const buildRealtimeScopesForChannel = (input: {
   channelId: string
   organizationId: string
-  systemChannelType: 'personal_assistant' | null
+  systemChannelType: ChannelSystemType | null
 }) =>
   input.systemChannelType === 'personal_assistant'
     ? [{ kind: 'channel' as const, channelId: parseChannelId(input.channelId) }]

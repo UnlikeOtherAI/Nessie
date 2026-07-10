@@ -10,6 +10,7 @@ import {
 import { BuildMeProjectPanel } from '../components/features/integrations/BuildMeProjectPanel'
 import { DeepTestSecurityPanel } from '../components/features/integrations/DeepTestSecurityPanel'
 import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
+import { ExternalAgentActivationSection } from '../components/features/integrations/ExternalAgentActivationSection'
 import { ManifestPanel } from '../components/features/integrations/ManifestPanel'
 import {
   ProductOperationsSection,
@@ -59,6 +60,14 @@ const surfacePlans: Record<string, SurfacePlan> = {
     artifacts: 'Project specs can link into Nessie project docs without duplicating board state.',
     nextStep: 'Define and ship the BuildMe board API before native board rendering.',
   },
+  deepsignal: {
+    nativePage: 'Per-user private DeepSignal channel; an insight digest page is planned.',
+    chatCards: 'Conversation activity and insight cards rendered from message metadata.',
+    controls: 'Activate for me (per-user sign-in + private channel) and deactivate.',
+    agentAccess: 'DeepSignal MCP chat, history, and insight tools, called under your own UOA token.',
+    artifacts: 'DeepWater research references deep-link out; DeepSignal owns the report content.',
+    nextStep: 'Ship the worker driver that proxies channel turns to DeepSignal over MCP.',
+  },
 }
 
 const categoryLabels: Record<IntegratedProductResponse['category'], string> = {
@@ -98,6 +107,7 @@ const productAccent = (slug: string): string => {
   if (slug === 'deep-water') return '#0f766e'
   if (slug === 'deeptest') return '#991b1b'
   if (slug === 'buildme') return '#4338ca'
+  if (slug === 'deepsignal') return 'var(--accent)'
   return '#475569'
 }
 
@@ -346,6 +356,8 @@ const ProductDetail = ({
         {product.slug === 'buildme' ? <BuildMeProjectPanel product={product} /> : null}
         {product.slug === 'deep-water' ? <DeepWaterResearchPanel product={product} /> : null}
         {product.slug === 'deeptest' ? <DeepTestSecurityPanel product={product} /> : null}
+
+        <ExternalAgentActivationSection product={product} />
 
         <section>
           <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>

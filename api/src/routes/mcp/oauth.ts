@@ -53,7 +53,7 @@ const sanitizeOAuthErrorCode = (raw: unknown): string => {
  * same code works behind a reverse proxy or on localhost dev. The path is
  * fixed at `/api/mcp/oauth/callback` per task #20 spec.
  */
-const buildOAuthCallbackUrl = (request: FastifyRequest): string => {
+export const buildOAuthCallbackUrl = (request: FastifyRequest): string => {
   const protoHeader = request.headers['x-forwarded-proto']
   const proto = typeof protoHeader === 'string'
     ? protoHeader.split(',')[0]?.trim() ?? request.protocol

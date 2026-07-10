@@ -57,6 +57,7 @@ import { registerFavoriteRoutes } from './routes/favorites.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
 import { registerIntegrationRoutes } from './routes/integrations.js'
+import { registerExternalAgentRoutes } from './routes/external-agent.js'
 import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
 import { registerKnowledgeBaseFileRoutes } from './routes/knowledge-base-files.js'
 import { registerKnowledgeCommentRoutes } from './routes/knowledge-comments.js'
@@ -330,6 +331,7 @@ export const buildApp = async () => {
   registerOrganizationRoutes(app, deps)
   registerFeedbackRoutes(app, deps)
   registerIntegrationRoutes(app, deps)
+  registerExternalAgentRoutes(app, deps)
   registerProjectRoutes(app, deps)
   registerBoardRoutes(app, deps)
   registerIterationRoutes(app, deps)

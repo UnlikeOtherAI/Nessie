@@ -35,6 +35,14 @@ enum AgentDelegationMode {
   act_as_requesting_user
 }
 
+// How an agent's turns are executed. `inference` (the default for every
+// existing agent) runs Nessie's own agentic loop; `external_mcp` proxies each
+// turn directly to an external product over MCP with no Nessie inference.
+enum AgentExecutionMode {
+  inference
+  external_mcp
+}
+
 enum FavoriteTargetType {
   agent
   channel
@@ -204,6 +212,7 @@ enum ChannelType {
 
 enum ChannelSystemType {
   personal_assistant
+  external_agent
 }
 
 enum ChannelVisibility {
@@ -715,6 +724,7 @@ model Organization {
   productAccountLinks ProductAccountLink[]
   productTeamEnablements ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
+  productWebhookSecrets ProductWebhookSecret[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -1024,6 +1034,7 @@ model Thread {
   id              String                @id @default(uuid()) @db.Uuid
   channelId       String                @map("channel_id") @db.Uuid
   title           String?
+  metadata        Json?                 @default("{}")
   createdAt       DateTime              @default(now()) @map("created_at")
   updatedAt       DateTime              @updatedAt @map("updated_at")
   channel         Channel               @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -1231,6 +1242,7 @@ model Agent {
   systemManaged                 Boolean                        @default(false) @map("system_managed")
   surfacePolicy                 AgentSurfacePolicy             @default(shared) @map("surface_policy")
   delegationMode                AgentDelegationMode            @default(none) @map("delegation_mode")
+  executionMode                 AgentExecutionMode             @default(inference) @map("execution_mode")
   systemPrompt                  String?                        @map("system_prompt")
   toolPolicy                    Json?                          @map("tool_policy")
   provider                      String?                        @map("provider")
@@ -3026,6 +3038,27 @@ model McpOAuthSecret {
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("mcp_oauth_secret")
+}
+
+/// Per-organization signing secret for an integrated product's inbound webhooks
+/// (e.g. DeepSignal `insight.surfaced`). Set once by an org admin who pastes the
+/// secret the product returned at webhook-registration time. Stored encrypted at
+/// rest (AES-256-GCM under a key derived from the deployment auth secret); the
+/// plaintext is only ever read to verify an inbound HMAC signature.
+model ProductWebhookSecret {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  productSlug    String   @map("product_slug")
+  ciphertext     String
+  iv             String
+  authTag        String   @map("auth_tag")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, productSlug])
+  @@map("product_webhook_secrets")
 }
 
 /// One-shot OAuth authorization state (RFC 6749 `state` + PKCE verifier and

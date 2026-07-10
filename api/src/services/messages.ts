@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import type { PrismaClient, Thread } from '@prisma/client'
+import type { ChannelSystemType, PrismaClient, Thread } from '@prisma/client'
 import {
   parseAgentId,
   parseChannelId,
@@ -129,7 +129,7 @@ export const findThreadForUser = async (
       id: string
       organizationId: string
       type: 'dm' | 'standard'
-      systemChannelType: 'personal_assistant' | null
+      systemChannelType: ChannelSystemType | null
     }
   }) | null
 > =>

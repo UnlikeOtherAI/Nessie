@@ -34,7 +34,7 @@ export const resolveInstanceTransport = (
   return parsed.data
 }
 
-const transportToConnectionSpec = (
+export const transportToConnectionSpec = (
   config: McpTransportConfig,
 ): Parameters<McpClientManager['open']>[0] => {
   switch (config.transport) {
