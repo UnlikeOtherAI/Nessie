@@ -32,6 +32,7 @@ type Captured = {
   threadMetadata: unknown[]
   connectorUsage: Array<{ success: boolean | null | undefined }>
   sse: Array<{ event: string; data: unknown }>
+  inboundUpdates: Array<{ id: string; metadata: unknown }>
 }
 
 type HarnessOptions = {
@@ -49,7 +50,15 @@ const makeHarness = (opts: HarnessOptions = {}) => {
     threadMetadata: [],
     connectorUsage: [],
     sse: [],
+    inboundUpdates: [],
   }
+
+  // Inbound user message the run is triggered by, pre-persisted by the normal
+  // send path with `metadata.mentions` and no `external` key.
+  let threadMeta: unknown = opts.threadMetadata ?? {}
+  const inboundMessages = new Map<string, { metadata: unknown }>([
+    ['msg-in', { metadata: { mentions: { userIds: [], agentIds: [], broadcast: null } } }],
+  ])
 
   const prisma = {
     run: {
@@ -92,13 +101,21 @@ const makeHarness = (opts: HarnessOptions = {}) => {
       findUnique: async () => null,
     },
     thread: {
-      findUnique: async () => ({ metadata: opts.threadMetadata ?? {} }),
+      findUnique: async () => ({ metadata: threadMeta }),
       update: async ({ data }: { data: { metadata: unknown } }) => {
+        threadMeta = data.metadata
         captured.threadMetadata.push(data.metadata)
         return {}
       },
     },
     message: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        inboundMessages.get(where.id) ?? null,
+      update: async ({ where, data }: { where: { id: string }; data: { metadata: unknown } }) => {
+        inboundMessages.set(where.id, { metadata: data.metadata })
+        captured.inboundUpdates.push({ id: where.id, metadata: data.metadata })
+        return { id: where.id }
+      },
       create: async ({ data }: { data: { content: string; metadata: unknown; role: string } }) => {
         captured.messages.push({ content: data.content, metadata: data.metadata, role: data.role })
         return { id: 'msg-out', content: data.content, createdAt: new Date() }
@@ -194,6 +211,7 @@ test('happy path: persists reply with mapped uiCards, external ids, and saved co
       raw: {},
       output: JSON.stringify({
         conversationId: 'conv-9',
+        userTurnId: 'uturn-2',
         turnId: 'turn-3',
         reply: 'Here are your signals.',
         activities: [{ label: 'Scan markets', status: 'complete' }],
@@ -226,6 +244,68 @@ test('happy path: persists reply with mapped uiCards, external ids, and saved co
   assert.deepEqual(captured.connectorUsage, [{ success: true }])
   assert.ok(captured.sse.some((e) => e.event === 'stream.start'))
   assert.ok(captured.sse.some((e) => e.event === 'stream.done'))
+
+  // The inbound user message is tagged with its userTurnId so history
+  // re-hydration dedupes it — the pre-existing `mentions` key is preserved.
+  assert.equal(captured.inboundUpdates.length, 1)
+  const inbound = captured.inboundUpdates[0]
+  if (!inbound) throw new Error('expected an inbound message update')
+  assert.equal(inbound.id, 'msg-in')
+  const inboundMeta = inbound.metadata as { mentions?: unknown; external?: Record<string, unknown> }
+  assert.ok(inboundMeta.mentions, 'existing mentions key is preserved')
+  assert.deepEqual(inboundMeta.external, {
+    product: 'deepsignal',
+    conversationId: 'conv-9',
+    turnId: 'uturn-2',
+  })
+})
+
+test('older DeepSignal (no userTurnId) leaves the inbound user message untagged', async () => {
+  const { deps, payload, context, captured } = makeHarness()
+  const callChat: ExternalChatCaller = async () => ({
+    success: true,
+    raw: {},
+    // No userTurnId field — the pre-contract DeepSignal shape.
+    output: JSON.stringify({ conversationId: 'conv-9', turnId: 'turn-3', reply: 'ok' }),
+  })
+
+  await runExternalConversation(deps, payload, context, 'hi', { callChat })
+
+  assert.equal(captured.inboundUpdates.length, 0, 'no tagging without userTurnId')
+})
+
+test('concurrent first turns reuse one conversation (per-thread race guard)', async () => {
+  const { deps, payload, context } = makeHarness()
+  const calls: Array<Record<string, unknown>> = []
+  const callChat: ExternalChatCaller = async ({ args }) => {
+    calls.push(args)
+    // The minting turn (no conversationId) is slow, so a naive second turn would
+    // dispatch before the first stored its conversationId and mint a second.
+    if (!('conversationId' in args)) {
+      await new Promise((resolve) => setTimeout(resolve, 15))
+    }
+    return {
+      success: true,
+      raw: {},
+      output: JSON.stringify({
+        conversationId: 'conv-race',
+        userTurnId: 'uturn-x',
+        turnId: 'turn-x',
+        reply: 'ok',
+      }),
+    }
+  }
+
+  await Promise.all([
+    runExternalConversation(deps, payload, context, 'first', { callChat }),
+    runExternalConversation(deps, payload, context, 'second', { callChat }),
+  ])
+
+  assert.equal(calls.length, 2)
+  const minted = calls.filter((a) => !('conversationId' in a))
+  const reused = calls.filter((a) => a.conversationId === 'conv-race')
+  assert.equal(minted.length, 1, 'only the first turn mints a conversation')
+  assert.equal(reused.length, 1, 'the second turn reuses the stored conversationId')
 })
 
 test('reuses the stored conversationId on a follow-up turn', async () => {

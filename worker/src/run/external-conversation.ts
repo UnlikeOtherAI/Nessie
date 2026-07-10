@@ -23,6 +23,12 @@ import {
 
 import { dispatchTool, type ToolDispatchResult } from './tool-dispatch.js'
 import {
+  readConversationId,
+  tagInboundUserMessage,
+  withThreadLock,
+  writeConversationId,
+} from './external-conversation-store.js'
+import {
   claimRunForExecution,
   setAgentStatus,
   updateRunStatus,
@@ -73,9 +79,6 @@ const defaultCallChat: ExternalChatCaller = (input) =>
     secret: null,
   })
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-
 const AUTH_ERROR_PATTERN =
   /\b(401|403)\b|unauthor|forbidden|invalid[_ ]?token|token.{0,12}expired|not.{0,4}authenticated/i
 
@@ -100,32 +103,6 @@ const productSlugFromDmKey = (dmKey: string | null): string | null => {
   if (!dmKey) return null
   const parts = dmKey.split(':')
   return parts[0] === 'extagent' && parts[1] ? parts[1] : null
-}
-
-const readConversationId = (metadata: unknown, slug: string): string | null => {
-  if (!isRecord(metadata)) return null
-  const bag = metadata[slug]
-  if (isRecord(bag) && typeof bag.conversationId === 'string' && bag.conversationId.length > 0) {
-    return bag.conversationId
-  }
-  return null
-}
-
-const writeConversationId = async (
-  deps: ExecutionDependencies,
-  threadId: string,
-  metadata: unknown,
-  slug: string,
-  conversationId: string,
-): Promise<void> => {
-  const base = isRecord(metadata) ? metadata : {}
-  const bag = isRecord(base[slug]) ? (base[slug] as Record<string, unknown>) : {}
-  await deps.prisma.thread.update({
-    where: { id: threadId },
-    data: {
-      metadata: { ...base, [slug]: { ...bag, conversationId } } as Prisma.InputJsonValue,
-    },
-  })
 }
 
 type ExternalTarget = {
@@ -312,6 +289,16 @@ const dispatchTurn = async (
     })
   }
 
+  if (parsed.userTurnId) {
+    await tagInboundUserMessage(deps, payload.messageId, {
+      product: target.slug,
+      conversationId: parsed.conversationId,
+      turnId: parsed.userTurnId,
+    }).catch(() => {
+      // Best-effort: a missed tag only risks a one-time re-import on reopen.
+    })
+  }
+
   return {
     content: parsed.reply.trim().length > 0 ? parsed.reply : `(${target.label} returned no reply.)`,
     uiCards: mapChatResultToUiCards(target.slug, parsed),
@@ -397,8 +384,6 @@ export const runExternalConversation = async (
   const callChat = options.callChat ?? defaultCallChat
 
   try {
-    await validateRunActorContext(deps.prisma, payload.actorContext, context)
-
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')
     await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
     await publishRunUpdated(deps.realtimeTransport, context, 'running')
@@ -413,38 +398,46 @@ export const runExternalConversation = async (
       threadId: parseThreadId(context.run.threadId),
     })
 
-    const resolution = await resolveTarget(deps, payload, context, secretResolver)
-    if (!resolution) {
-      // Not actually an external-agent channel — end the run cleanly rather than
-      // silently doing nothing (the branch should never be taken, but be safe).
-      await finalizeTurn(deps, context, {
-        content: 'This conversation is not connected to an external agent.',
-        uiCards: [],
-        runStatus: 'failed',
-        agentStatus: 'error',
-      })
-      return
-    }
+    // Emit `stream.start` first so a validation failure still balances with the
+    // `stream.done` the catch path finalizes.
+    await validateRunActorContext(deps.prisma, payload.actorContext, context)
 
-    if (resolution.kind === 'needs_setup') {
-      await finalizeTurn(deps, context, {
-        content: resolution.summary,
-        uiCards: [needsSetupCard(resolution.slug, resolution.label, resolution.summary)],
-        runStatus: 'completed',
-        agentStatus: 'idle',
-      })
-      return
-    }
+    // Serialize per thread so a concurrent first turn's conversationId write is
+    // observed here rather than each turn minting a fresh DeepSignal conversation.
+    await withThreadLock(context.run.threadId, async () => {
+      const resolution = await resolveTarget(deps, payload, context, secretResolver)
+      if (!resolution) {
+        // Not actually an external-agent channel — end the run cleanly rather than
+        // silently doing nothing (the branch should never be taken, but be safe).
+        await finalizeTurn(deps, context, {
+          content: 'This conversation is not connected to an external agent.',
+          uiCards: [],
+          runStatus: 'failed',
+          agentStatus: 'error',
+        })
+        return
+      }
 
-    const outcome = await dispatchTurn(
-      deps,
-      payload,
-      context,
-      resolution.target,
-      prompt,
-      callChat,
-    )
-    await finalizeTurn(deps, context, outcome)
+      if (resolution.kind === 'needs_setup') {
+        await finalizeTurn(deps, context, {
+          content: resolution.summary,
+          uiCards: [needsSetupCard(resolution.slug, resolution.label, resolution.summary)],
+          runStatus: 'completed',
+          agentStatus: 'idle',
+        })
+        return
+      }
+
+      const outcome = await dispatchTurn(
+        deps,
+        payload,
+        context,
+        resolution.target,
+        prompt,
+        callChat,
+      )
+      await finalizeTurn(deps, context, outcome)
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[worker] external conversation run ${context.run.id} failed`, message)
