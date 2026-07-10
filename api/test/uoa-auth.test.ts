@@ -115,6 +115,12 @@ test('buildConfigJwt requests UOA workspace features', async () => {
       allow_user_create_org: true,
       enabled: true,
     })
+    // Slack-style workspace chooser must be requested so UOA issues the
+    // `active { orgId, teamId }` claim Nessie routes on.
+    assert.deepEqual(payload.login_flow, {
+      email_code_enabled: true,
+      workspace_selection: 'auto',
+    })
   })
 })
 

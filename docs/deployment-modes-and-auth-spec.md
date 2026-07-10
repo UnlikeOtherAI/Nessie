@@ -276,6 +276,21 @@ For SSO providers, the flow is:
 4. frontend calls `POST /api/auth/session` with `{ providerId, code, codeVerifier, redirectUri }`
 5. API exchanges code for user info, creates or matches the user, issues JWT
 
+#### UOA workspaces → Nessie environments (Slack-style login)
+
+For the `uoa` provider, Nessie's config JWT enables UOA's workspace chooser
+(`login_flow.workspace_selection: "auto"`), so the user picks a **workspace**
+before returning; UOA then carries the selection in the access-token
+`active { orgId, teamId }` claim. On exchange, `POST /api/auth/session` routes
+the session to that workspace instead of the first org's default team: the
+selected UOA workspace maps to a Nessie **Team** inside the one shared
+Organization (auto-provisioned — project + team + `#general` — on first entry;
+the first person owns it). Users switch between the workspaces they belong to via
+`POST /api/auth/switch-context` (surfaced by the sidebar workspace switcher).
+Non-UOA OIDC providers and single-workspace users carry no `active` claim and
+land in their existing/default team, unchanged. See
+[docs/plans/2026-07-10-slack-workspace-login-nessie.md](plans/2026-07-10-slack-workspace-login-nessie.md).
+
 ### 4.3c Fastify auth middleware
 
 The API uses a Fastify `preHandler` hook for authentication.

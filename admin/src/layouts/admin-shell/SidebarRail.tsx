@@ -7,6 +7,7 @@ import { useAuthedObjectUrl } from '../../lib/uploads';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { NAV_ITEMS } from './nav-items';
 import { UserMenuPopover } from './UserMenuPopover';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
 
@@ -69,6 +70,8 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
           </svg>
         )}
       </Link>
+
+      <WorkspaceSwitcher />
 
       {SIDEBAR_RAIL_ITEMS.map((item) => {
         const Icon = item.icon;

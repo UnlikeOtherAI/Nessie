@@ -16,6 +16,7 @@ import {
   type BootstrapInput,
   type BootstrapModeResponse,
   type LoginInput,
+  type SwitchContextInput,
 } from '@nessie/client-core'
 import {
   clearStoredToken,
@@ -36,6 +37,7 @@ type AuthSessionContextValue = {
   refreshAccessToken: () => Promise<string | null>
   refreshSession: () => Promise<void>
   sessionState: AuthSessionState
+  switchContext: (input: SwitchContextInput) => Promise<void>
   token: string | null
 }
 
@@ -154,6 +156,10 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     applySession(await authApi.login(input))
   }
 
+  const switchContext = async (input: SwitchContextInput): Promise<void> => {
+    applySession(await authApi.switchContext(token, input))
+  }
+
   const logout = async (): Promise<void> => {
     await authApi.logout(token)
     clearSession()
@@ -172,6 +178,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       refreshAccessToken,
       refreshSession,
       sessionState,
+      switchContext,
       token,
     }),
     [bootstrapState, me, providers, refreshAccessToken, sessionState, token],

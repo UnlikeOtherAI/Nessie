@@ -36,6 +36,14 @@ export type SessionPayload = {
   token: string
 }
 
+// Re-scope the session to another workspace the user already belongs to. The
+// server re-validates membership of the full org/project/team triple.
+export type SwitchContextInput = {
+  organizationId: string
+  projectId: string
+  teamId: string
+}
+
 // Result of fetching the current session: either an authenticated user, the
 // bootstrap flow, or unauthenticated.
 export type SessionSnapshot =
@@ -53,6 +61,8 @@ export type AuthSessionApi = {
   // Renew the access token from the httpOnly refresh cookie. Returns the new
   // session, or null when there is no valid refresh cookie.
   refresh: () => Promise<SessionPayload | null>
+  // Switch the active workspace (org/project/team); returns the re-scoped session.
+  switchContext: (token: string | null, input: SwitchContextInput) => Promise<SessionPayload>
 }
 
 const normaliseBaseUrl = (baseUrl: string): string => baseUrl.trim().replace(/\/$/, '')
@@ -157,6 +167,22 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
       }).catch(() => null)
       if (!response || !response.ok) {
         return null
+      }
+      return parseResponse<SessionPayload>(response)
+    },
+    switchContext: async (token, input) => {
+      const response = await fetch(`${resolvedBaseUrl}/api/auth/switch-context`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(input),
+        // Rotate the refresh cookie to the newly scoped session.
+        credentials: 'include',
+      })
+      if (!response.ok) {
+        throw new Error(await parseApiError(response))
       }
       return parseResponse<SessionPayload>(response)
     },

@@ -127,5 +127,6 @@ export {
   type LoginInput,
   type SessionPayload,
   type SessionSnapshot,
+  type SwitchContextInput,
   type TokenStore,
 } from './auth-session.js'

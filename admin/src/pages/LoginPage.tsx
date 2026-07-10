@@ -3,14 +3,14 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuthProviders } from '../facades/auth/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { isDesktopApp } from '../lib/desktop'
+import { DESKTOP_REDIRECT_URI, startExternalSignIn } from '../lib/external-auth'
 import { isReactNativeWebView } from '../lib/mobile-shell'
-import { beginExternalAuth, clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
+import { clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { resolveAppliedTheme, useTheme, type Theme } from '../providers/ThemeProvider'
 
 const LOCAL_DEMO_EMAIL = 'owner@example.com'
 const LOCAL_DEMO_PASSWORD = 'Password123!'
-const DESKTOP_REDIRECT_URI = 'nessie://auth/callback'
 
 const fieldClass = [
   'w-full rounded-2xl border border-[var(--line)]',
@@ -38,20 +38,6 @@ type ExternalSignInCallback = {
 }
 
 const webRedirectUri = (): string => `${window.location.origin}/login`
-
-type RnWebViewWindow = Window & {
-  ReactNativeWebView?: { postMessage: (data: string) => void }
-}
-
-const reactNativeWebView = (): RnWebViewWindow['ReactNativeWebView'] =>
-  (window as RnWebViewWindow).ReactNativeWebView
-
-// Embedded webviews (Tauri desktop + React Native mobile) cannot run Google
-// OAuth inline — Google blocks embedded user-agents (error 403
-// disallowed_useragent). They round-trip through the OS browser and return via
-// the nessie:// deep link instead.
-const externalAuthRedirectUri = (): string =>
-  isDesktopApp() || isReactNativeWebView() ? DESKTOP_REDIRECT_URI : webRedirectUri()
 
 const parseDesktopAuthCallback = (value: string): Omit<ExternalSignInCallback, 'redirectUri'> | null => {
   let url: URL
@@ -136,43 +122,27 @@ export const LoginPage = () => {
     [login, navigate],
   )
 
-  const startExternalSignIn = useCallback(async (providerId: string): Promise<void> => {
-    const redirectUri = externalAuthRedirectUri()
-    const authorizeUrl = await beginExternalAuth(providerId, redirectUri, resolveAppliedTheme(theme))
-
-    if (isDesktopApp()) {
-      const { openUrl } = await import('@tauri-apps/plugin-opener')
-      await openUrl(authorizeUrl)
-      return
-    }
-
-    const mobileWebView = reactNativeWebView()
-    if (mobileWebView) {
-      // Hand the authorize URL to the native shell; it opens the OS browser
-      // (ASWebAuthenticationSession) and posts the callback URL back to
-      // window.__nessieExternalAuthCallback below.
-      mobileWebView.postMessage(JSON.stringify({ type: 'nessie:external-auth', url: authorizeUrl }))
-      return
-    }
-
-    window.location.assign(authorizeUrl)
-  }, [theme])
+  const beginSsoSignIn = useCallback(
+    (providerId: string): Promise<void> => startExternalSignIn(providerId, resolveAppliedTheme(theme)),
+    [theme],
+  )
 
   useEffect(() => {
-    if (sessionState === 'authenticated') {
+    // An in-flight OAuth callback (readPendingExternalAuth is only set right after
+    // starting SSO) is processed even when already authenticated, so re-running
+    // SSO from the "add a workspace" action re-scopes the session. `code=` in the
+    // URL also suppresses the authenticated→/channels redirects below until the
+    // exchange completes.
+    if (sessionState === 'authenticated' && !window.location.search.includes('code=')) {
       void navigate('/channels', { replace: true })
     }
   }, [navigate, sessionState])
 
   useEffect(() => {
-    if (sessionState !== 'unauthenticated') {
-      return
-    }
-
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     const state = params.get('state')
-    if (!code) {
+    if (!code || !readPendingExternalAuth()) {
       return
     }
 
@@ -282,14 +252,14 @@ export const LoginPage = () => {
 
     setIsSubmitting(true)
     setError(null)
-    void startExternalSignIn(autoRedirectProvider.providerId)
+    void beginSsoSignIn(autoRedirectProvider.providerId)
       .catch((submitError) => {
         setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
         setIsSubmitting(false)
       })
-  }, [autoRedirectProvider, sessionState, startExternalSignIn])
+  }, [autoRedirectProvider, beginSsoSignIn, sessionState])
 
-  if (sessionState === 'authenticated') {
+  if (sessionState === 'authenticated' && !window.location.search.includes('code=')) {
     return <Navigate to="/channels" replace />
   }
 
@@ -331,7 +301,7 @@ export const LoginPage = () => {
     setIsSubmitting(true)
 
     try {
-      await startExternalSignIn(providerId)
+      await beginSsoSignIn(providerId)
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
       setIsSubmitting(false)

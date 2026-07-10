@@ -285,6 +285,16 @@ export const buildConfigJwt = (settings: UoaSettings, theme?: SsoTheme): string 
       enabled: true,
       allow_user_create_org: true,
     },
+    // Slack-style workspace login: ask UOA to show the workspace chooser (and to
+    // offer email sign-in codes) so a user picks the workspace they're entering.
+    // UOA then issues the `active { orgId, teamId }` claim Nessie routes on
+    // (services/workspace-context.ts). "auto" shows the chooser only when the
+    // user has 2+ active teams or a pending invite — single-team users are
+    // unaffected. See docs/plans/2026-07-10-slack-workspace-login-nessie.md.
+    login_flow: {
+      email_code_enabled: true,
+      workspace_selection: 'auto',
+    },
     jwks_url: settings.jwksUrl,
     contact_email: settings.contactEmail,
   })

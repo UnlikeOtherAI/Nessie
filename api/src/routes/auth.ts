@@ -27,7 +27,8 @@ import { buildExternalAuthAuthorizeUrl, exchangeExternalAuthCode } from '../serv
 import { syncUoaProductAccountLinks } from '../services/integrations.js'
 import { seedDefaultPolicies } from '../services/policy.js'
 import { buildConfigJwt, buildPublicJwks, isUoaConfigured, loadUoaSettings } from '../services/uoa-auth.js'
-import { createUserForOrganization, loadSessionUserByEmail } from '../services/users.js'
+import { loadSessionUserByEmail } from '../services/users.js'
+import { resolveUoaWorkspaceContext } from '../services/workspace-context.js'
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../lib/refresh-cookie.js'
 import {
   issueRefreshToken,
@@ -350,53 +351,24 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
           theme: body.theme,
         })
 
-        let sessionUser = await loadSessionUserByEmail(prisma, identity.email)
-        if (!sessionUser) {
-          // Resolve the default org/project/team from DB for SSO auto-provisioning
-          const defaultOrg = await prisma.organization.findFirst({ orderBy: CREATED_AT_ASC })
-          const defaultProject = defaultOrg
-            ? await prisma.project.findFirst({ where: { organizationId: defaultOrg.id }, orderBy: CREATED_AT_ASC })
-            : null
-          const defaultTeam = defaultProject
-            ? await prisma.team.findFirst({ where: { projectId: defaultProject.id }, orderBy: CREATED_AT_ASC })
-            : null
-          const defaultChannel = defaultOrg
-            ? await prisma.channel.findFirst({
-                where: { organizationId: defaultOrg.id, visibility: 'public' },
-                orderBy: CREATED_AT_ASC,
-              })
-            : null
-
-          if (!defaultOrg || !defaultProject || !defaultTeam) {
-            // Fresh instance with no workspace yet: the first SSO user bootstraps
-            // the default org/project/team/channel and becomes its owner. This
-            // makes SSO fully self-serve — no separate owner-account step.
-            if ((await prisma.user.count()) === 0) {
-              const seeded = await seedBootstrapRecords(prisma, {
-                avatarUrl: identity.avatarUrl,
-                displayName: identity.displayName,
-                email: identity.email,
-              })
-              await seedDefaultPolicies(prisma, seeded.organizationId, seeded.user.id)
-            } else {
-              sendApiError(reply, 500, 'NO_DEFAULT_ORG', 'No organization configured for SSO provisioning')
-              return reply
-            }
-          } else {
-            await createUserForOrganization(prisma, {
-              avatarUrl: identity.avatarUrl,
-              channelIds: defaultChannel ? [defaultChannel.id] : [],
-              displayName: identity.displayName,
-              email: identity.email,
-              organizationId: defaultOrg.id,
-              projectId: defaultProject.id,
-              role: 'member',
-              teamId: defaultTeam.id,
-            })
-          }
-          sessionUser = await loadSessionUserByEmail(prisma, identity.email)
+        // Slack-style workspace routing: resolve (auto-provisioning as needed)
+        // the shared org + the project/team for the UOA workspace the user
+        // selected (`identity.workspace.active*`), and the memberships, instead
+        // of always landing every SSO user in the first org's default team.
+        // Non-UOA providers and single-workspace users carry no workspace and
+        // fall back to their existing/default team unchanged.
+        const context = await resolveUoaWorkspaceContext(prisma, {
+          avatarUrl: identity.avatarUrl,
+          displayName: identity.displayName,
+          email: identity.email,
+          workspace: identity.workspace,
+        })
+        if (!context) {
+          sendApiError(reply, 500, 'NO_DEFAULT_ORG', 'No organization configured for SSO provisioning')
+          return reply
         }
 
+        let sessionUser = await loadSessionUserByEmail(prisma, identity.email)
         if (!sessionUser) {
           sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
           return reply
@@ -417,32 +389,24 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
           }
         }
 
-        const organizationMember = sessionUser.organizationMembers[0]
-        const projectMember = sessionUser.projectMembers[0]
-        const teamMember = sessionUser.teamMembers[0]
-        if (!organizationMember || !projectMember || !teamMember) {
-          sendApiError(reply, 403, 'FORBIDDEN', 'User is missing required workspace membership')
-          return reply
-        }
-
         if (provider.type === 'uoa') {
           await syncUoaProductAccountLinks(prisma, {
             email: identity.email,
             externalSubject: identity.externalSubject,
-            organizationId: organizationMember.organizationId,
-            userId: sessionUser.id,
+            organizationId: context.organizationId,
+            userId: context.userId,
             workspace: identity.workspace,
           })
         }
 
         const session = buildSessionForUser({
-          organizationId: organizationMember.organizationId,
-          projectId: projectMember.projectId,
+          organizationId: context.organizationId,
+          projectId: context.projectId,
           providerId: provider.providerId,
           providerType: provider.type,
-          roles: [organizationMember.role],
-          teamId: teamMember.teamId,
-          userId: sessionUser.id,
+          roles: [context.orgRole],
+          teamId: context.teamId,
+          userId: context.userId,
         })
         const verification = verifySessionToken(session.token, authSecret)
         if (!verification.ok) {

@@ -953,6 +953,15 @@ model Team {
   name             String
   projectId        String            @map("project_id") @db.Uuid
   systemManaged    Boolean           @default(false) @map("system_managed")
+  // Slack-style workspace binding. When this Nessie team represents a UOA
+  // workspace, `externalWorkspaceId` is that workspace's UOA team id
+  // (`active.teamId`) — unique, so one Nessie team per UOA workspace — and
+  // `externalOrgId` is the owning UOA org id, kept for traceability. Null on
+  // teams that were not provisioned from a UOA workspace (e.g. the bootstrap
+  // default team, local-mode teams). See
+  // docs/plans/2026-07-10-slack-workspace-login-nessie.md.
+  externalWorkspaceId String?        @unique @map("external_workspace_id")
+  externalOrgId    String?           @map("external_org_id")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
