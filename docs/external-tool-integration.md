@@ -168,11 +168,124 @@ Example:
    │     source = 'mcp-remote'
    │     transport = 'mcp'
    │     transportConfig = { serverId: instance.id, toolName: "stripe_create_customer" }
-   │     status = 'pending_review' (default — admin must approve before agents can use)
+   │     status = 'pending_review' (shared scopes — admin must approve before agents can use)
+   │     status = 'active'         (user-scope installs — self-service, see below)
    │
    └── 8. Admin approves tools → status becomes 'active'
          Agents can now discover and use these tools
 ```
+
+**User-scope installs are self-service.** Tools discovered from a `user`-scoped
+instance project as `active` immediately (and drift re-activates rather than
+re-flagging): the installer is the only person whose runs can ever reach those
+tools, so an org-owner review gate would only break the "paste a link, start
+using it" flow. The worker enforces the reach rule at toolset assembly
+(`worker/src/run/mcp-toolset.ts`): user-scope instances surface **only** in
+the installing user's delegated personal-assistant runs — never in shared
+agents' channels; org/system instances surface to every run in the org; and
+team/project/channel instances follow the run's context. An explicit per-agent
+`toolPolicy` verdict overrides the scope default in either direction.
+
+### Connector Library & Link Discovery
+
+Non-technical users (and the personal assistant) don't hand-author transport
+configs. Three signed-in endpoints, backed by `@nessie/mcp-manage`
+(`library.ts`, `discovery.ts`), close the gap:
+
+- `GET /api/mcp/library?search=` — unified search over (a) a **curated list**
+  of well-known officially hosted remote servers (key-based: DeepWiki,
+  Context7, GitHub, Stripe, Zapier, Hugging Face, PayPal, Square, Cloudflare
+  Docs, Semgrep; OAuth sign-in: Notion, Linear, Sentry, Atlassian, Asana) and
+  (b) the **official MCP registry** (`registry.modelcontextprotocol.io`),
+  filtered to HTTP/SSE remotes (stdio/package-only servers are dropped) with
+  auth classified from the registry's header metadata. Registry outages
+  degrade to curated-only.
+- `POST /api/mcp/discover` `{ url }` — probes a pasted link for an MCP
+  endpoint: the URL itself plus well-known suffixes (`/mcp`, `/sse`,
+  `/mcp/sse`), streamable HTTP first then legacy SSE, every candidate through
+  the SSRF guard. A successful `tools/list` handshake yields an installable
+  `authMethod: none` proposal (with tool names); a 401/403 yields an
+  `oauth2` proposal when the server publishes genuine RFC 9728/8414 metadata
+  (sign-in based, nothing to paste), else a `bearer` proposal with guidance
+  to obtain a key. Redirects are never followed.
+- `POST /api/mcp/library/import` — turns a library entry / discovery proposal
+  into a catalog entry: private self-published for members, or (owners with
+  `shareToOrg: true`) published straight into the org store.
+
+The admin Connectors page exposes these as the **Library** tab (search +
+"Only have a link?" box + one-click guided install: pick "Just me" / "Whole
+organisation", then either paste the API key — stored encrypted — or, for
+OAuth connectors, approve access in the sign-in tab that opens; the flow ends
+with a connection test + tool discovery either way).
+
+### OAuth (dynamic, MCP authorization spec)
+
+`{ method: "oauth2" }` on a catalog entry — with no static client — activates
+the dynamic flow in `@nessie/mcp-manage` (`oauth-discovery.ts`,
+`mcp-oauth.ts`):
+
+1. **Discovery**: the instance endpoint's 401 challenge (`WWW-Authenticate:
+   Bearer resource_metadata=…`, RFC 9728) → protected-resource metadata →
+   authorization-server metadata (RFC 8414, OIDC discovery fallback; legacy
+   servers fall back to the spec's default `/authorize` + `/token` +
+   `/register` endpoints). Every URL is SSRF-checked; redirects never
+   followed.
+2. **Dynamic Client Registration** (RFC 7591): a public client
+   (`token_endpoint_auth_method: none`) is registered once per
+   (organization × issuer) and persisted in `mcp_oauth_clients`; secrets a
+   server issues anyway go behind an encrypted `secret_*` ref.
+3. **Authorization code + PKCE (S256) + RFC 8707 `resource`**: state is
+   one-shot and Postgres-backed (`mcp_oauth_states`, 10-min TTL) so a flow
+   minted by the worker's personal assistant completes at the API callback.
+4. **Token placement**: the user's own user-scope instance takes the token as
+   its connection credential (probes work immediately); shared instances get
+   a per-user override, so every user keeps their own identity.
+5. **Refresh**: the encrypted bundle carries refresh metadata; the shared
+   resolver renews expired access tokens in place (refresh_token grant,
+   rotation-aware) transparently at probe/dispatch time.
+
+Static configs (pre-registered `authorizationUrl`/`tokenUrl`/`clientId`) keep
+the original flow for vendors without dynamic registration.
+`POST /api/mcp/instances/:id/oauth/start` is open to any signed-in user who
+can reach the instance — the minted token only ever lands on the caller's own
+identity. Probe/test paths accept a `probeUserId` so each user's connection
+test runs with their own credential.
+
+### Personal-Assistant Connector Management
+
+The personal assistant can run the whole lifecycle conversationally via
+PA-only builtin tools (defined in
+`packages/runtime/src/builtin-connector-tools.ts`, handlers in
+`worker/src/run/pa-tools/connectors.ts`, all re-checking the acting user's
+rights through the same `@nessie/mcp-manage` helpers as the routes):
+
+| Tool | Purpose |
+| --- | --- |
+| `connector_list` | Instances the user can reach (own + shared), state + tool counts |
+| `connector_library_search` | Org catalog + curated library + official registry, by service name |
+| `connector_discover` | Probe a pasted URL for an MCP endpoint + auth requirements |
+| `connector_install` | Install from catalog id, or register + install from url/transport/auth; owners/admins may target `organization`/`team`/`channel` scope; OAuth connectors get their sign-in link minted immediately |
+| `connector_authorize` | Mint an OAuth sign-in link for the user to open in their browser (dynamic discovery + registration under the hood) |
+| `connector_test` | Probe + project tools with the acting user's credential, report discovered tool names |
+| `connector_set_secret` | Store a chat-provided credential encrypted (never echoed; redacted from tool summaries) and re-test |
+| `connector_uninstall` | Remove a manageable instance + its registry entries |
+
+**Admin locking.** Owners/admins can lock a catalog entry
+(`POST /api/mcp/catalog/:id/lock` / `/unlock`, or the Lock button on the
+entry). A locked connector cannot be installed by members — and its endpoint
+URL cannot be re-registered by them under a fresh name (`findApplicableLock`
+matches by endpoint) — while owners/admins remain exempt. Locking is an
+install-time gate: already-installed instances keep working until removed.
+Locked entries render with a 🔒 pill and a disabled Install button in the
+admin UI, and the personal assistant reports them as locked in
+`connector_library_search` / refuses `connector_install` with the reason.
+
+Scope-management rights are role-derived and shared with the API routes
+(`canManageInstanceScope`): `owner` manages every scope, `admin` manages the
+shared scopes (organization/project/team/channel) — this is how "an admin
+makes a connector available to the whole team/org" — and everyone manages
+their own `user` scope. Instance listing for non-owners returns their own
+installs plus shared-scope installs they can reach.
 
 ### Self-Hosted MCP Servers
 
@@ -195,6 +308,73 @@ Same flow as marketplace install, but no catalog_id. The endpoint must be
 public-routable and pass SSRF validation. For internal-only hosts, on-prem
 networks, or local subprocesses, register a Remote MCP Server instead. The
 system still discovers tools, creates registry entries, and requires approval.
+
+### deep.agent Crawl Web Scanning Connector
+
+deep.agent crawl is the preferred first catalog template for agent web scanning
+because it exposes browser-backed crawling, markdown extraction, screenshots,
+PDF capture, JavaScript execution, and multi-URL crawl as MCP tools. Nessie
+should use it through the MCP universal connector, not by embedding Crawl4AI's
+Python package or spawning a crawler process inside the API/worker.
+
+Connector shape:
+
+```json
+{
+  "name": "deep-agent-crawl",
+  "protocol": "sse",
+  "endpoint": "https://deep-agent.example.com/mcp/sse",
+  "auth_method": "bearer",
+  "credential_ref": "DEEP_AGENT_CRAWL_BEARER_TOKEN"
+}
+```
+
+Operational rules:
+
+- Use the SSE endpoint (`/mcp/sse`). Nessie's MCP client does not support a
+  crawler WebSocket endpoint yet.
+- The endpoint must be reachable from Nessie and must pass the SSRF guard.
+  `localhost`, private IP ranges, link-local addresses, and cloud metadata
+  addresses are rejected for cloud-side connectors.
+- Do not expose an unauthenticated deep.agent crawl service on the public
+  internet. Keep bearer/JWT auth enabled or terminate auth at a trusted gateway
+  that is still private to the organization.
+- Treat deep.agent crawl as an external data-acquisition service. Crawled URLs
+  should still be validated by Nessie policy before dispatch where Nessie owns
+  the input surface; crawler-side allowlists should mirror the same
+  public-web-only boundary because the crawler fetches from its own network.
+- After install, Nessie probes `tools/list`, projects discovered crawler tools
+  into `ToolRegistryEntry` rows as `pending_review`, and agents can use only the
+  approved, granted tools.
+
+### External-Agent Products (DeepSignal)
+
+Some first-party products (e.g. **DeepSignal**) are surfaced not as a *toolset
+inside* an agent run but as a **peer conversation** — a per-user DM channel whose
+bound agent has `executionMode = external_mcp`. Nessie runs **no inference** for
+these turns: each message is proxied directly to the product's MCP endpoint under
+the acting user's own UOA token, and the reply + activity/generative cards are
+rendered verbatim. Full design: `docs/plans/2026-07-09-deepsignal-integration.md`.
+
+The connector plumbing is the ordinary MCP path — a first-party catalog entry, a
+user-scoped `McpServerInstance`, dynamic OAuth, the encrypted secret store, and
+the SSRF guard all apply unchanged. What differs is execution + two extra
+surfaces, both of which reuse the shared `@nessie/mcp-manage` "connect + call one
+tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
+`probeConnection`):
+
+- **History hydration** — `POST /api/channels/:channelId/external-sync` pulls the
+  thread's conversation from the product (`conversation_list` to adopt the most
+  recent conversation, then `conversation_history`) and mirrors unseen turns into
+  the channel, idempotent on `Message.metadata.external.turnId`. The product is the
+  source of truth; Nessie mirrors for display/notification only.
+- **Proactive insights** — `POST /api/integrations/deepsignal/events` is an
+  unauthenticated, per-org **HMAC-verified** webhook receiver (`X-DeepSignal-Signature`,
+  timing-safe). The per-org signing secret is set by an admin/owner via
+  `PUT /api/integrations/products/:productSlug/webhook-secret` (stored encrypted in
+  `product_webhook_secrets`); DeepSignal returns that secret once at webhook
+  registration and the admin pastes it. On `insight.surfaced` the receiver posts one
+  idempotent agent-authored insight card into each linked recipient's channel.
 
 ### MCP Server Lifecycle
 
@@ -947,6 +1127,20 @@ Agent decides to call "acme_create_contact" with { email: "john@acme.com", name:
 
 Same principle. The MCP server instance has a `credential_ref`. When the execution engine connects to the MCP server, it resolves the credential and passes it to the remote endpoint or runner config — never through the agent's message stream.
 
+**Ref resolution is layered and identical on both paths** (probe/test in the
+API, dispatch in the worker), via `createMcpSecretResolver` in
+`@nessie/mcp-manage`: refs starting `secret_` resolve from the encrypted
+Postgres store (AES-256-GCM under the deployment auth secret — OAuth token
+bundles use `secret_oauth_*`, user/assistant-provided keys `secret_mcp_*`),
+anything else falls back to the env-var convention. Header application is also
+shared (`applyAuthSecretToTransport`): `bearer`/`oauth2` → `Authorization:
+Bearer …`, `api_key` → the catalog entry's configured header name + value
+prefix. User-provided secrets enter through `POST
+/api/mcp/instances/:id/secret` (admin UI) or the PA's `connector_set_secret`
+tool — one shared implementation (`storeInstanceSecret`): own user-scope
+instance → the instance credential; shared instance + manage rights +
+`shared: true` → the shared default; otherwise a per-user override.
+
 ```
 Agent calls MCP tool "stripe_create_customer"
   │
@@ -999,6 +1193,18 @@ Generated plugins and execution environments are part of the same capability sys
 ---
 
 ## 5. Temporary Context and Tool Resolution
+
+> **Implemented for MCP connectors** (`worker/src/run/mcp-toolset-deferred.ts`):
+> up to `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) exposed MCP tools are
+> inlined as ordinary schemas; above that the toolset presents exactly three
+> small meta tools — `mcp_find_tools` (ranked directory search with parameter
+> summaries and a per-connector count directory in the description),
+> `mcp_load_tools` (loads full schemas into the LIVE tool array the loop
+> recomposes each iteration; capped at 15 with oldest-first eviction) and
+> `mcp_drop_tools` (frees them again). Known tool names dispatch even when
+> their schema is not loaded, and every consumer (main loop, each delegate
+> sub-agent) gets an independent view so loads never leak across contexts.
+> The resolver-sub-agent variant below remains the fuller design target.
 
 Tool schemas consume context window space. An agent with access to 50 MCP tools and 30 API endpoints would waste thousands of tokens on tool definitions it doesn't need. The solution: a two-part context model where the main agent's context has a **permanent** section (conversation, reasoning, memories) and a **temporary** section (tool schemas loaded on demand and dropped when no longer needed). A cheap resolver sub-agent finds the right tools; the main agent uses them directly.
 

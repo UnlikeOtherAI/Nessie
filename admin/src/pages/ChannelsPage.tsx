@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
-import { useMessageSearch } from '../facades/messages/hooks'
-import { isPersonalAssistantChannel, usePersonalAssistant } from '../facades/personal-assistant/hooks'
+import { useSyncExternalAgentChannel } from '../facades/integrations/hooks'
+import {
+  isExternalAgentChannel,
+  isPersonalAssistantChannel,
+  usePersonalAssistant,
+} from '../facades/personal-assistant/hooks'
 import { useMarkThreadRead, useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { useTools } from '../facades/tools/hooks'
 import { useUsers } from '../facades/users/hooks'
@@ -19,14 +23,16 @@ import { ChannelComposer } from '../components/features/channels/ChannelComposer
 import { ChannelAgentInfoDrawer } from '../components/features/channels/ChannelAgentInfoDrawer'
 import { ChannelHeader } from '../components/features/channels/ChannelHeader'
 import { ChannelMessageFeed } from '../components/features/channels/ChannelMessageFeed'
+import { ChannelSearchPanel } from '../components/features/channels/ChannelSearchPanel'
 import { ChannelTabBar } from '../components/features/channels/ChannelTabBar'
 import { ChannelTabPanels } from '../components/features/channels/ChannelTabPanels'
 import { ChannelUserInfoDrawer } from '../components/features/channels/ChannelUserInfoDrawer'
-import { buildFeedItems, formatClock, isOperationsTab, type ChannelTab, type MessageUserIdentity } from '../components/features/channels/channel-helpers'
+import { buildFeedItems, isOperationsTab, type ChannelTab, type MessageUserIdentity } from '../components/features/channels/channel-helpers'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { useChannelCall } from './channels/useChannelCall'
 import { useChannelMentions } from './channels/useChannelMentions'
+import { useChannelMessageSearch } from './channels/useChannelMessageSearch'
 import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
 
 export const ChannelsPage = () => {
@@ -43,6 +49,7 @@ export const ChannelsPage = () => {
   const activeChannel =
     channels.find((channel) => channel.id === channelId) ?? channels[0] ?? null
   const isPersonalAssistantActiveChannel = isPersonalAssistantChannel(activeChannel)
+  const isExternalAgentActiveChannel = isExternalAgentChannel(activeChannel)
   const boundAgents = useMemo(
     () =>
       activeChannel
@@ -126,6 +133,11 @@ export const ChannelsPage = () => {
     sendText,
     sendMessageSubmit,
     sendAsFile,
+    pendingAgentInvites,
+    invitingAgentId,
+    inviteErrors,
+    invitePendingAgent,
+    dismissPendingAgent,
   } = useChannelComposer({
     activeChannel,
     threadMessages,
@@ -144,22 +156,18 @@ export const ChannelsPage = () => {
     submitEdit,
     updatePending,
   } = useChannelMessageActions(activeChannel?.defaultThreadId)
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const { data: searchResults = [] } = useMessageSearch(activeChannel?.id, searchQuery)
+  const {
+    closeSearch,
+    jumpToMessage,
+    searchOpen,
+    searchQuery,
+    searchResults,
+    setSearchQuery,
+    toggleSearch,
+  } = useChannelMessageSearch(activeChannel?.id)
   // sp-channels: channel settings dialog + join.
   const [showChannelSettings, setShowChannelSettings] = useState(false)
   const joinChannel = useJoinChannel()
-
-  const jumpToMessage = useCallback((messageId: string) => {
-    const element = document.getElementById(`msg-${messageId}`)
-    if (!element) {
-      return
-    }
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    element.classList.add('admin-msg-highlight')
-    window.setTimeout(() => element.classList.remove('admin-msg-highlight'), 1600)
-  }, [])
 
   useEffect(() => {
     if (isConversationSurface && isOperationsTab(activeTab)) {
@@ -169,12 +177,32 @@ export const ChannelsPage = () => {
 
   useEffect(() => {
     cancelEdit()
-    setSearchOpen(false)
-    setSearchQuery('')
+    closeSearch()
     setShowChannelSettings(false)
     setSelectedMessageUser(null)
     setSelectedMessageAgentId(null)
-  }, [activeChannel?.id, cancelEdit])
+  }, [activeChannel?.id, cancelEdit, closeSearch])
+
+  // History hydration (DeepSignal §6): when an external-agent channel is opened,
+  // pull any turns the user made on the product's own surfaces into the channel.
+  // Idempotent server-side, so firing once per open is safe.
+  const syncExternalAgentChannel = useSyncExternalAgentChannel()
+  const syncExternalAgentMutate = syncExternalAgentChannel.mutate
+  const activeChannelId = activeChannel?.id
+  const activeChannelThreadId = activeChannel?.defaultThreadId
+  useEffect(() => {
+    if (isExternalAgentActiveChannel && activeChannelId) {
+      syncExternalAgentMutate({
+        channelId: activeChannelId,
+        threadId: activeChannelThreadId ?? undefined,
+      })
+    }
+  }, [
+    activeChannelId,
+    activeChannelThreadId,
+    isExternalAgentActiveChannel,
+    syncExternalAgentMutate,
+  ])
 
   const lastReadMarkerRef = useRef<string | null>(null)
   const pendingReadMarkerRef = useRef<string | null>(null)
@@ -256,65 +284,20 @@ export const ChannelsPage = () => {
             joinChannel.mutate({ channelId: activeChannel.id })
           }
         }}
-        onToggleSearch={() =>
-          setSearchOpen((open) => {
-            if (open) {
-              setSearchQuery('')
-            }
-            return !open
-          })
-        }
+        onToggleSearch={toggleSearch}
       />
 
       {searchOpen ? (
-        <div className="border-b border-[color:var(--sep)] px-5 py-2">
-          <input
-            autoFocus
-            className="admin-input w-full text-sm"
-            onChange={(event) => setSearchQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                setSearchOpen(false)
-                setSearchQuery('')
-              }
-            }}
-            placeholder="Search messages in this channel"
-            type="text"
-            value={searchQuery}
-          />
-          {searchQuery.trim().length > 0 ? (
-            <div className="mt-2 max-h-64 overflow-y-auto">
-              {searchResults.length === 0 ? (
-                <div className="px-1 py-2 text-sm text-[color:var(--tx3)]">
-                  No matches.
-                </div>
-              ) : (
-                searchResults.map((result) => (
-                  <button
-                    key={result.id}
-                    className="flex w-full flex-col gap-0.5 rounded-lg px-2 py-2 text-left hover:bg-[color:var(--overlay-weak)]"
-                    onClick={() => {
-                      jumpToMessage(result.id)
-                      setSearchOpen(false)
-                      setSearchQuery('')
-                    }}
-                    type="button"
-                  >
-                    <span className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
-                      <span className="font-semibold text-[color:var(--tx2)]">
-                        {result.authorName}
-                      </span>
-                      #{result.channelLabel} · {formatClock(result.createdAt)}
-                    </span>
-                    <span className="truncate text-sm text-[color:var(--tx)]">
-                      {result.snippet}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          ) : null}
-        </div>
+        <ChannelSearchPanel
+          onChangeQuery={setSearchQuery}
+          onClose={closeSearch}
+          onSelectResult={(messageId) => {
+            jumpToMessage(messageId)
+            closeSearch()
+          }}
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+        />
       ) : null}
 
       {activeCall && !isInCall && callEligible && activeParticipants.length > 0 && (
@@ -348,6 +331,8 @@ export const ChannelsPage = () => {
             }}
             token={token}
             isPersonalAssistantConversation={isPersonalAssistantConversation}
+            isExternalAgentConversation={isExternalAgentActiveChannel}
+            externalAgentDisplayName={activeChannel?.label}
             renderContent={renderContent}
             editingMessageId={editingMessageId}
             editingContent={editingContent}
@@ -398,6 +383,11 @@ export const ChannelsPage = () => {
         onSubmitForm={(event) => void sendMessageSubmit(event)}
         onInsertHashSign={() => mentionRef.current?.insertHashSign()}
         onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+        pendingAgentInvites={pendingAgentInvites}
+        invitingAgentId={invitingAgentId}
+        inviteErrors={inviteErrors}
+        onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
+        onDismissPendingAgent={dismissPendingAgent}
       />
 
       {showMembersPopup && activeChannel ? (

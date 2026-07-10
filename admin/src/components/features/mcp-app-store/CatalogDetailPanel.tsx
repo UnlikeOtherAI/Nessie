@@ -11,6 +11,8 @@ import type { McpCatalogEntryRecord } from '../../../facades/mcp-catalog/hooks'
 type CatalogDetailPanelProps = {
   entry: McpCatalogEntryRecord
   isOwner: boolean
+  /** Owner or org admin — may lock/unlock and install despite a lock. */
+  isElevated: boolean
   isMine: boolean
   busy: boolean
   onPublish: () => void
@@ -20,6 +22,7 @@ type CatalogDetailPanelProps = {
   onReject: () => void
   onInstall: () => void
   onDelete: () => void
+  onLockToggle: () => void
 }
 
 const ghostButton = [
@@ -42,6 +45,7 @@ const dangerButton = [
 export const CatalogDetailPanel = ({
   entry,
   isOwner,
+  isElevated,
   isMine,
   busy,
   onPublish,
@@ -51,6 +55,7 @@ export const CatalogDetailPanel = ({
   onReject,
   onInstall,
   onDelete,
+  onLockToggle,
 }: CatalogDetailPanelProps) => {
   const canManage = isMine || isOwner
   const isPrivateDraft = entry.visibility === 'private' && entry.status === 'draft'
@@ -85,6 +90,18 @@ export const CatalogDetailPanel = ({
           </div>
         ) : null}
 
+        {entry.locked ? (
+          <div
+            className="mt-3 rounded-md border border-[color:var(--sep)] bg-[var(--overlay-weak)] px-3 py-2 text-xs text-[color:var(--tx2)]"
+            data-testid="catalog-locked-note"
+          >
+            🔒 <span className="font-semibold">Locked by your organisation&apos;s admins.</span>{' '}
+            {isElevated
+              ? 'Members cannot install this connector; you can, or unlock it below.'
+              : 'You cannot install this connector. Ask an admin if you need it.'}
+          </div>
+        ) : null}
+
         {inReview ? (
           <div className="mt-3 rounded-md border border-[color:var(--sep)] bg-[var(--overlay-weak)] px-3 py-2 text-xs text-[color:var(--tx2)]">
             {isOwner
@@ -98,11 +115,23 @@ export const CatalogDetailPanel = ({
             <button
               className={primaryButton}
               data-testid="catalog-install"
-              disabled={busy}
+              disabled={busy || (entry.locked && !isElevated)}
               onClick={onInstall}
               type="button"
             >
-              Install
+              {entry.locked && !isElevated ? '🔒 Locked' : 'Install'}
+            </button>
+          ) : null}
+
+          {isElevated ? (
+            <button
+              className={ghostButton}
+              data-testid="catalog-lock-toggle"
+              disabled={busy}
+              onClick={onLockToggle}
+              type="button"
+            >
+              {entry.locked ? 'Unlock' : 'Lock for members'}
             </button>
           ) : null}
 

@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import {
   PersonalAssistantConfigSummarySchema,
   parseAgentId,
@@ -314,7 +314,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     organizationId: string,
     channelId: string,
   ): Promise<{
-    systemChannelType?: 'personal_assistant'
+    systemChannelType?: ChannelSystemType
     type: string
     visibility: string
   } | null> => {
@@ -357,7 +357,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     organizationId: string,
     channelId: string,
   ): Promise<{
-    systemChannelType?: 'personal_assistant'
+    systemChannelType?: ChannelSystemType
     type: string
     visibility: string
   } | null> => {

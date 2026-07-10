@@ -14,6 +14,7 @@ import {
   useUpdateTask,
 } from '../../facades/tasks/hooks'
 import { ARCHIVED_STATUSES, statusLabel } from './kanban-config'
+import { TaskDocuments } from './TaskDocuments'
 import {
   PRIORITY_LABEL,
   PRIORITY_ORDER,
@@ -330,6 +331,8 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
               </div>
             ) : null}
           </div>
+
+          {isEdit && task ? <TaskDocuments taskId={task.id} /> : null}
 
           {error ? (
             <div className="rounded-md border border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] px-3 py-2 text-xs text-[color:var(--danger-text)] md:col-span-2">

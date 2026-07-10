@@ -2,11 +2,12 @@ import type {
   ToolRegistryEntryStatus,
   ToolRegistrySource,
 } from '@nessie/schemas'
+import { SegmentedControl } from '../../primitives/SegmentedControl'
 
 /**
- * Filter pills above the registry list. Source / status pickers map 1:1 to
- * `/api/mcp/tools` query params so toggling a pill rebuilds the cache key
- * through the facade (no manual fetch).
+ * Tool list filters. Source is the primary mental model ("where does this
+ * tool come from") so it gets the segmented strip; status and tag are
+ * narrowing dimensions and collapse into quiet selects on one row.
  */
 
 type ToolFilterBarProps = {
@@ -19,28 +20,22 @@ type ToolFilterBarProps = {
   tagOptions: string[]
 }
 
-const SOURCES: Array<ToolRegistrySource | undefined> = [
-  undefined,
-  'builtin',
-  'custom',
-  'mcp-remote',
-  'interactive-session',
+type SourceSegment = 'all' | ToolRegistrySource
+
+const SOURCE_OPTIONS: Array<{ label: string; value: SourceSegment }> = [
+  { label: 'All', value: 'all' },
+  { label: 'Built-in', value: 'builtin' },
+  { label: 'Custom', value: 'custom' },
+  { label: 'MCP', value: 'mcp-remote' },
+  { label: 'Session', value: 'interactive-session' },
 ]
 
-const STATUSES: Array<ToolRegistryEntryStatus | undefined> = [
-  undefined,
-  'active',
-  'pending_review',
-  'disabled',
+const STATUS_OPTIONS: Array<{ label: string; value: '' | ToolRegistryEntryStatus }> = [
+  { label: 'Any status', value: '' },
+  { label: 'Active', value: 'active' },
+  { label: 'Pending review', value: 'pending_review' },
+  { label: 'Disabled', value: 'disabled' },
 ]
-
-const pillClass = (active: boolean) =>
-  [
-    'rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]',
-    active
-      ? 'border-[color:var(--accent)] bg-[var(--accent-soft)] text-[var(--tx)]'
-      : 'border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
-  ].join(' ')
 
 export const ToolFilterBar = ({
   onSourceChange,
@@ -51,66 +46,47 @@ export const ToolFilterBar = ({
   tag,
   tagOptions,
 }: ToolFilterBarProps) => (
-  <div className="grid gap-3">
-    <div>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-        Source
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {SOURCES.map((value) => (
-          <button
-            className={pillClass(source === value)}
-            key={value ?? 'all'}
-            onClick={() => onSourceChange(value)}
-            type="button"
-          >
-            {value ?? 'all'}
-          </button>
+  <div className="grid gap-2">
+    <SegmentedControl<SourceSegment>
+      ariaLabel="Filter by source"
+      onChange={(next) => onSourceChange(next === 'all' ? undefined : next)}
+      options={SOURCE_OPTIONS}
+      value={source ?? 'all'}
+    />
+    <div className="flex gap-2">
+      <select
+        aria-label="Filter by status"
+        className="admin-input flex-1 py-1.5 text-xs"
+        onChange={(event) =>
+          onStatusChange(
+            event.target.value === ''
+              ? undefined
+              : (event.target.value as ToolRegistryEntryStatus),
+          )
+        }
+        value={status ?? ''}
+      >
+        {STATUS_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
         ))}
-      </div>
-    </div>
-    <div>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-        Status
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {STATUSES.map((value) => (
-          <button
-            className={pillClass(status === value)}
-            key={value ?? 'all'}
-            onClick={() => onStatusChange(value)}
-            type="button"
-          >
-            {value ?? 'all'}
-          </button>
-        ))}
-      </div>
-    </div>
-    {tagOptions.length > 0 && (
-      <div>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-          Tag
-        </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            className={pillClass(!tag)}
-            onClick={() => onTagChange(undefined)}
-            type="button"
-          >
-            all
-          </button>
+      </select>
+      {tagOptions.length > 0 ? (
+        <select
+          aria-label="Filter by tag"
+          className="admin-input flex-1 py-1.5 text-xs"
+          onChange={(event) => onTagChange(event.target.value || undefined)}
+          value={tag ?? ''}
+        >
+          <option value="">All tags</option>
           {tagOptions.map((value) => (
-            <button
-              className={pillClass(tag === value)}
-              key={value}
-              onClick={() => onTagChange(value)}
-              type="button"
-            >
+            <option key={value} value={value}>
               {value}
-            </button>
+            </option>
           ))}
-        </div>
-      </div>
-    )}
+        </select>
+      ) : null}
+    </div>
   </div>
 )

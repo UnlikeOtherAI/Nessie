@@ -3,6 +3,8 @@ import type {
   ModelProviderConfig,
   ModelProviderName,
   ProviderConnector,
+  ProviderEmbeddingBatchRequest,
+  ProviderEmbeddingBatchResult,
   ProviderEmbeddingRequest,
   ProviderEmbeddingResult,
   ProviderHealthReport,
@@ -137,6 +139,71 @@ export const createOpenAiLikeConnector = (
 
         return {
           embedding,
+          invocation: createInvocationRecord({
+            correlationId: request.correlationId,
+            latencyMs: Date.now() - startedAt,
+            metadata: request.metadata,
+            model: json.model ?? model,
+            operationType: 'embedding',
+            provider,
+            requestId: request.requestId,
+            usage: embeddingUsageFromOpenAi(json.usage),
+          }),
+        }
+      } catch (error) {
+        throw providerError({
+          cause: error,
+          correlationId: request.correlationId,
+          latencyMs: Date.now() - startedAt,
+          metadata: request.metadata,
+          model,
+          operationType: 'embedding',
+          provider,
+          requestId: request.requestId,
+        })
+      }
+    },
+
+    async embedBatch(
+      request: ProviderEmbeddingBatchRequest,
+    ): Promise<ProviderEmbeddingBatchResult> {
+      const startedAt = Date.now()
+      const model = request.model ?? DEFAULT_EMBEDDING_MODEL
+
+      try {
+        const response = await fetch(`${baseUrl}/embeddings`, {
+          body: JSON.stringify({
+            input: request.input.map((text) => text.slice(0, 8000)),
+            model,
+          }),
+          headers,
+          method: 'POST',
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`${provider} embedding error ${response.status}: ${errorText}`)
+        }
+
+        const json = (await response.json()) as OpenAiEmbeddingResponse
+        const data = json.data ?? []
+        if (data.length !== request.input.length) {
+          throw new Error(
+            `Expected ${request.input.length} embeddings from provider, got ${data.length}`,
+          )
+        }
+
+        const embeddings = [...data]
+          .sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
+          .map((item) => {
+            if (!item.embedding) {
+              throw new Error('No embedding returned from provider')
+            }
+            return item.embedding
+          })
+
+        return {
+          embeddings,
           invocation: createInvocationRecord({
             correlationId: request.correlationId,
             latencyMs: Date.now() - startedAt,

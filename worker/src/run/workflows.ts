@@ -119,6 +119,7 @@ export const loadWorkflowGraph = async (
     projectId: string | null
     resolvedBindings: unknown
     teamId: string | null
+    workflowTemplateId: string
     workflowTemplateVersion: number
   }
   run: {
@@ -149,6 +150,7 @@ export const loadWorkflowGraph = async (
           projectId: true,
           resolvedBindings: true,
           teamId: true,
+          workflowTemplateId: true,
           workflowTemplateVersion: true,
           workflowTemplate: {
             select: {
@@ -205,6 +207,7 @@ export const loadWorkflowGraph = async (
       projectId: workflowRun.installation.projectId,
       resolvedBindings: workflowRun.installation.resolvedBindings,
       teamId: workflowRun.installation.teamId,
+      workflowTemplateId: workflowRun.installation.workflowTemplateId,
       workflowTemplateVersion: workflowRun.installation.workflowTemplateVersion,
     },
     run: {

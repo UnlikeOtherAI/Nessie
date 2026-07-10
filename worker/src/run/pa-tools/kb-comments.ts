@@ -10,7 +10,7 @@ import {
   type AnnotationRecord,
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { resolveEffectiveUserId } from './access.js'
+import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
 import { truncate } from './tool-output.js'
 
 // A delegating PA authors as its owning user (with the agent recorded); an
@@ -29,8 +29,7 @@ const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string
   if (!page) throw new Error(`Knowledge page not found: ${pageId}`)
   const space = await provider.getSpace(organizationId, page.spaceId)
   if (!space) throw new Error(`Knowledge space not found for page: ${pageId}`)
-  // Agents bypass per-user space checks; org scoping still applies on every query.
-  const viewer = await loadSpaceViewer(context.prisma, resolveEffectiveUserId(context), true)
+  const viewer = await loadSpaceViewer(context.prisma, organizationId, buildSpaceViewerPrincipal(context))
   const access: AnnotationAccess = {
     space,
     viewer,

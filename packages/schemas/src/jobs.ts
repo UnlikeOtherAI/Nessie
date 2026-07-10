@@ -125,6 +125,45 @@ export type ExecutionEnvironmentTerminateJobPayload = z.infer<
   typeof ExecutionEnvironmentTerminateJobPayloadSchema
 >
 
+// `knowledge.embed` queue job — enqueued in the same transaction that chunks a
+// knowledge page version, consumed by the worker to fill the version's NULL
+// chunk embeddings (copy-by-content-hash first, then batched provider calls).
+// Idempotency key: kb-embed:<pageId>:<versionId>.
+export const KNOWLEDGE_EMBED_TOPIC = 'knowledge.embed'
+
+export const KnowledgeEmbedJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  pageId: z.string().uuid(),
+  versionId: z.string().uuid(),
+})
+export type KnowledgeEmbedJobPayload = z.infer<typeof KnowledgeEmbedJobPayloadSchema>
+
+// Embedding model for knowledge page chunks. Shared by the worker (chunk
+// embedding) and the api (query embedding) — the two sides must agree or
+// cosine distances are meaningless. Dims are pinned by the
+// knowledge_page_chunks.embedding vector(1536) column.
+export const KNOWLEDGE_EMBEDDING_MODEL = 'text-embedding-3-small'
+export const KNOWLEDGE_EMBEDDING_DIMS = 1536
+
+// `knowledge.extract` queue job — enqueued whenever a file-node page (or a new
+// version of one) is written, consumed by the worker to deterministically pull
+// text out of the uploaded blob (plain text / pdf / docx) so file uploads
+// become searchable like native documents. This job is stage 1 of the file
+// pipeline: extract (this job, writes chunk rows via
+// replaceKnowledgePageVersionChunks) -> chunk (same transaction) -> the
+// existing knowledge.embed job (enqueued only when chunks were actually
+// written) fills in the embeddings. Idempotency key:
+// kb-extract:<pageId>:<versionId>.
+export const KNOWLEDGE_EXTRACT_TOPIC = 'knowledge.extract'
+
+export const KnowledgeExtractJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  pageId: z.string().uuid(),
+  versionId: z.string().uuid(),
+  attachmentId: z.string().uuid(),
+})
+export type KnowledgeExtractJobPayload = z.infer<typeof KnowledgeExtractJobPayloadSchema>
+
 export const TriggerEventDispatchJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   dedupeKey: NonEmptyStringSchema.optional(),

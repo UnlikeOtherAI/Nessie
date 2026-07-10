@@ -3,7 +3,10 @@ import {
   ATTACHMENT_READ_TOOL_DEFINITION,
   ATTACHMENT_UPLOAD_TOOL_DEFINITION,
 } from './builtin-attachment-tools.js'
+import { CONNECTOR_TOOL_DEFINITIONS } from './builtin-connector-tools.js'
+import { INTEGRATION_TOOL_DEFINITIONS } from './builtin-integration-tools.js'
 import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
+import { KB_TOOL_DEFINITIONS } from './builtin-kb-tools.js'
 import {
   CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
   LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
@@ -96,6 +99,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'authored_message_search',
     label: 'Authored Message Search',
+    personalAssistantOnly: true,
     description:
       'Search messages authored by the current user across visible workspace channels and threads.',
     parameters: {
@@ -138,6 +142,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'send_message',
     label: 'Send Message',
+    personalAssistantOnly: true,
     description:
       'Send a message as the current user to a thread, channelId, or a DM by targetUserId. ' +
       'Resolve named channels with channel_find first; do not guess between duplicate channel names.',
@@ -168,6 +173,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'update_preferences',
     label: 'Update Preferences',
+    personalAssistantOnly: true,
     description:
       'Update the current user preferences object, such as starred channels or people.',
     parameters: {
@@ -348,6 +354,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'channel_update',
     label: 'Update Channel',
+    personalAssistantOnly: true,
     description:
       'Update a channel label, topic, and/or description. Requires the acting ' +
       'principal to be able to manage the channel (channel owner/admin, or an ' +
@@ -379,6 +386,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'channel_archive',
     label: 'Archive Channel',
+    personalAssistantOnly: true,
     description:
       'Archive or unarchive a channel. Archiving hides it from default ' +
       'listings without deleting its history. Requires channel-manage rights.',
@@ -402,6 +410,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'channel_join',
     label: 'Join Channel',
+    personalAssistantOnly: true,
     description:
       'Join a public channel in the current organization. Private and ' +
       'protected channels require an explicit invite and cannot be joined.',
@@ -418,6 +427,9 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   ...KB_COMMENT_TOOL_DEFINITIONS,
+  ...KB_TOOL_DEFINITIONS,
+  ...CONNECTOR_TOOL_DEFINITIONS,
+  ...INTEGRATION_TOOL_DEFINITIONS,
 ]
 
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = buildWorkflowToolDefinitions(

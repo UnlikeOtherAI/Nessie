@@ -10,10 +10,7 @@ import {
 } from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import {
-  buildVisibleChannelWhere,
-  isDelegatingPersonalAssistant,
-} from './access.js'
+import { buildVisibleChannelWhere } from './access.js'
 import { clampLimit, formatSection, truncate } from './tool-output.js'
 
 const ATTACHMENT_READ_MAX_TEXT_BYTES = 64 * 1024
@@ -106,11 +103,7 @@ export const runAttachmentListTool = async (
   // back to the run's own thread.
   const threadId = input.threadId ?? (input.channelId ? undefined : context.run.threadId)
   const visibleChannel = userId
-    ? buildVisibleChannelWhere(
-        organizationId,
-        userId,
-        isDelegatingPersonalAssistant(context),
-      )
+    ? buildVisibleChannelWhere(organizationId, userId)
     : { organizationId }
 
   const messageWhere = input.channelId
@@ -181,11 +174,7 @@ export const runAttachmentReadTool = async (
     throw new Error('Attachment not found.')
   }
   const visibleChannel = readerId
-    ? buildVisibleChannelWhere(
-        attachment.organizationId,
-        readerId,
-        isDelegatingPersonalAssistant(context),
-      )
+    ? buildVisibleChannelWhere(attachment.organizationId, readerId)
     : { organizationId: attachment.organizationId }
   const visibleMessage = await context.prisma.message.findFirst({
     where: { id: attachment.messageId, thread: { channel: visibleChannel } },

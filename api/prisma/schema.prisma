@@ -35,6 +35,14 @@ enum AgentDelegationMode {
   act_as_requesting_user
 }
 
+// How an agent's turns are executed. `inference` (the default for every
+// existing agent) runs Nessie's own agentic loop; `external_mcp` proxies each
+// turn directly to an external product over MCP with no Nessie inference.
+enum AgentExecutionMode {
+  inference
+  external_mcp
+}
+
 enum FavoriteTargetType {
   agent
   channel
@@ -204,6 +212,7 @@ enum ChannelType {
 
 enum ChannelSystemType {
   personal_assistant
+  external_agent
 }
 
 enum ChannelVisibility {
@@ -575,6 +584,50 @@ enum UserStatusRuleScope {
   project
 }
 
+enum IntegratedProductCategory {
+  research
+  security
+  development
+  project_management
+}
+
+enum IntegratedProductAuthMode {
+  uoa_sso
+  api_key
+  oauth_mcp
+  local_mcp
+}
+
+enum IntegratedProductInstallState {
+  link_only
+  installable
+  native
+}
+
+enum IntegratedProductHealthStatus {
+  unknown
+  healthy
+  degraded
+  unreachable
+  setup_required
+}
+
+enum ProductAccountLinkStatus {
+  linked
+  needs_auth
+  revoked
+  error
+}
+
+enum ProductIntegrationRunStatus {
+  queued
+  running
+  needs_setup
+  completed
+  failed
+  warning
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   email               String               @unique
@@ -613,6 +666,9 @@ model User {
   statuses            UserStatus[]
   feedback            Feedback[]
   refreshTokens       RefreshToken[]
+  productAccountLinks ProductAccountLink[]
+  productTeamEnablements ProductTeamEnablement[]
+  productIntegrationRuns ProductIntegrationRun[]
   avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
@@ -656,6 +712,7 @@ model Organization {
   thoughts         Thought[]
   knowledgeSpaces  KnowledgeSpace[]
   knowledgePages   KnowledgePage[]
+  knowledgePageChunks KnowledgePageChunk[]
   tasks            Task[]
   budgets          Budget[]
   plans            Plan[]
@@ -664,6 +721,10 @@ model Organization {
   userStatuses     UserStatus[]
   feedback         Feedback[]
   favorites        Favorite[]
+  productAccountLinks ProductAccountLink[]
+  productTeamEnablements ProductTeamEnablement[]
+  productIntegrationRuns ProductIntegrationRun[]
+  productWebhookSecrets ProductWebhookSecret[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -673,8 +734,129 @@ model Organization {
   inferenceCredentialBindings InferenceCredentialBinding[]
   inferenceRoutingProfiles    InferenceRoutingProfile[]
   mcpCatalogEntries           McpCatalogEntry[]
+  mcpOAuthClients             McpOAuthClient[]
 
   @@map("organizations")
+}
+
+model IntegratedProduct {
+  id                  String                         @id @default(uuid()) @db.Uuid
+  slug                String                         @unique
+  name                String
+  summary             String
+  category            IntegratedProductCategory
+  launchUrl           String?                        @map("launch_url")
+  apiBaseUrl          String?                        @map("api_base_url")
+  authMode            IntegratedProductAuthMode      @map("auth_mode")
+  defaultInstallState IntegratedProductInstallState  @map("default_install_state")
+  mcpCatalogEntryId   String?                        @map("mcp_catalog_entry_id") @db.Uuid
+  pluginManifestRef   String?                        @map("plugin_manifest_ref")
+  healthStatus        IntegratedProductHealthStatus  @default(unknown) @map("health_status")
+  healthDetail        String?                        @map("health_detail")
+  capabilities        String[]                       @default([])
+  setupHint           String?                        @map("setup_hint")
+  sortOrder           Int                            @default(100) @map("sort_order")
+  createdAt           DateTime                       @default(now()) @map("created_at")
+  updatedAt           DateTime                       @updatedAt @map("updated_at")
+
+  accountLinks        ProductAccountLink[]
+  teamEnablements     ProductTeamEnablement[]
+  integrationRuns     ProductIntegrationRun[]
+  mcpCatalogEntry     McpCatalogEntry?               @relation(fields: [mcpCatalogEntryId], references: [id], onDelete: SetNull)
+
+  @@index([category])
+  @@index([healthStatus])
+  @@map("integrated_products")
+}
+
+model ProductAccountLink {
+  id                String                   @id @default(uuid()) @db.Uuid
+  organizationId    String                   @map("organization_id") @db.Uuid
+  userId            String                   @map("user_id") @db.Uuid
+  productSlug       String                   @map("product_slug")
+  uoaSub            String?                  @map("uoa_sub")
+  externalAccountId String?                  @map("external_account_id")
+  activeOrgId       String?                  @map("active_org_id")
+  activeTeamId      String?                  @map("active_team_id")
+  status            ProductAccountLinkStatus
+  lastVerifiedAt    DateTime?                @map("last_verified_at")
+  metadata          Json                     @default("{}") @map("metadata_json")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product           IntegratedProduct        @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, productSlug])
+  @@index([productSlug, status])
+  @@map("product_account_links")
+}
+
+model ProductTeamEnablement {
+  id                 String            @id @default(uuid()) @db.Uuid
+  organizationId     String            @map("organization_id") @db.Uuid
+  teamId             String            @map("team_id") @db.Uuid
+  productSlug        String            @map("product_slug")
+  enabled            Boolean           @default(false)
+  externalOrgId      String?           @map("external_org_id")
+  externalTeamId     String?           @map("external_team_id")
+  configuredByUserId String?           @map("configured_by_user_id") @db.Uuid
+  metadata           Json              @default("{}") @map("metadata_json")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team               Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  product            IntegratedProduct @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
+  configuredByUser   User?             @relation(fields: [configuredByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, teamId, productSlug])
+  @@index([productSlug, enabled])
+  @@map("product_team_enablements")
+}
+
+model ProductIntegrationRun {
+  id                String                      @id @default(uuid()) @db.Uuid
+  organizationId    String                      @map("organization_id") @db.Uuid
+  teamId            String                      @map("team_id") @db.Uuid
+  productSlug       String                      @map("product_slug")
+  requestedByUserId String?                     @map("requested_by_user_id") @db.Uuid
+  connectorId       String?                     @map("connector_id") @db.Uuid
+  channelId         String?                     @map("channel_id") @db.Uuid
+  threadId          String?                     @map("thread_id") @db.Uuid
+  messageId         String?                     @map("message_id") @db.Uuid
+  externalRunId     String?                     @map("external_run_id")
+  status            ProductIntegrationRunStatus @default(queued)
+  title             String?
+  queryPreview      String                      @default("") @map("query_preview")
+  input             Json                        @default("{}") @map("input_json")
+  result            Json                        @default("{}") @map("result_json")
+  costAmount        Decimal?                    @map("cost_amount") @db.Decimal(18, 6)
+  costCurrency      String?                     @map("cost_currency")
+  sourceCount       Int?                        @map("source_count")
+  knowledgePageId   String?                     @map("knowledge_page_id") @db.Uuid
+  requestedAt       DateTime                    @default(now()) @map("requested_at")
+  completedAt       DateTime?                   @map("completed_at")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
+
+  organization      Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team              Team                        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  product           IntegratedProduct           @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
+  requestedByUser   User?                       @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  connector         McpServerInstance?          @relation(fields: [connectorId], references: [id], onDelete: SetNull)
+  channel           Channel?                    @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  thread            Thread?                     @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  message           Message?                    @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  knowledgePage     KnowledgePage?              @relation(fields: [knowledgePageId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, teamId, productSlug, requestedAt(sort: Desc)], map: "product_integration_runs_scope_requested_idx")
+  @@index([organizationId, productSlug, status], map: "product_integration_runs_status_idx")
+  @@index([connectorId, requestedAt(sort: Desc)], map: "product_integration_runs_connector_idx")
+  @@index([messageId], map: "product_integration_runs_message_idx")
+  @@index([knowledgePageId], map: "product_integration_runs_knowledge_page_idx")
+  @@map("product_integration_runs")
 }
 
 model OrganizationMember {
@@ -778,6 +960,8 @@ model Team {
   channels         Channel[]
   plans            Plan[]
   approvalRequests ApprovalRequest[]
+  productEnablements ProductTeamEnablement[]
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@map("teams")
 }
@@ -823,6 +1007,7 @@ model Channel {
   plans             Plan[]
   approvalRequests  ApprovalRequest[]
   statusRules       UserStatusRule[]
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@index([organizationId, type])
   @@index([projectId])
@@ -849,6 +1034,7 @@ model Thread {
   id              String                @id @default(uuid()) @db.Uuid
   channelId       String                @map("channel_id") @db.Uuid
   title           String?
+  metadata        Json?                 @default("{}")
   createdAt       DateTime              @default(now()) @map("created_at")
   updatedAt       DateTime              @updatedAt @map("updated_at")
   channel         Channel               @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -858,6 +1044,7 @@ model Thread {
   runs            Run[]
   streamEvents    ThreadStreamEvent[]
   triggerTargets  AgentTrigger[]        @relation("TriggerTargetThread")
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -1007,6 +1194,7 @@ model Message {
   agent     Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
   user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   reactions MessageReaction[]
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
@@ -1054,6 +1242,7 @@ model Agent {
   systemManaged                 Boolean                        @default(false) @map("system_managed")
   surfacePolicy                 AgentSurfacePolicy             @default(shared) @map("surface_policy")
   delegationMode                AgentDelegationMode            @default(none) @map("delegation_mode")
+  executionMode                 AgentExecutionMode             @default(inference) @map("execution_mode")
   systemPrompt                  String?                        @map("system_prompt")
   toolPolicy                    Json?                          @map("tool_policy")
   provider                      String?                        @map("provider")
@@ -1086,6 +1275,7 @@ model Agent {
   statusRules                   UserStatusRule[]
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowStepAssignedAgent")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
+  knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
 
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -1769,6 +1959,12 @@ model McpCatalogEntry {
   signature              String?
   status                 McpCatalogStatus     @default(draft)
   visibility             McpCatalogVisibility @default(private)
+  // Admin lock: members cannot install (or re-register the same endpoint as)
+  // a locked connector; owners/admins are exempt. Purely an install-time
+  // gate — already-installed instances keep working until removed.
+  locked                 Boolean              @default(false)
+  lockedAt               DateTime?            @map("locked_at")
+  lockedBy               String?              @map("locked_by") @db.Uuid
   ownerUserId            String?              @map("owner_user_id") @db.Uuid
   submittedAt            DateTime?            @map("submitted_at")
   reviewedAt             DateTime?            @map("reviewed_at")
@@ -1786,6 +1982,7 @@ model McpCatalogEntry {
   owner        User?               @relation("McpCatalogOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   reviewer     User?               @relation("McpCatalogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
   instances    McpServerInstance[]
+  integratedProducts IntegratedProduct[]
 
   // Uniqueness is enforced by partial indexes (see migration): public entries
   // are unique on `name` store-wide; private entries are unique per owner. A
@@ -1816,6 +2013,7 @@ model McpServerInstance {
   catalogEntry        McpCatalogEntry               @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
   credentialOverrides McpServerCredentialOverride[]
   toolRegistryEntries ToolRegistryEntry[]
+  productIntegrationRuns ProductIntegrationRun[]
 
   @@unique([catalogEntryId, scopeType, scopeId])
   @@index([organizationId, scopeType, scopeId])
@@ -2453,18 +2651,25 @@ model KnowledgeSpace {
 // Explicit per-space access grants. Used by `private` visibility (who can read)
 // and by `writeRestricted` spaces (who can write). The space creator always has
 // full access regardless of membership.
+// A member row grants one principal — a user XOR an agent — access to a
+// space. Exactly one of userId/agentId is set (enforced in the service layer;
+// both columns are nullable so either principal kind can be granted).
 model KnowledgeSpaceMember {
   id             String   @id @default(uuid()) @db.Uuid
   spaceId        String   @map("space_id") @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  agentId        String?  @map("agent_id") @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at")
 
   space KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent?         @relation("KnowledgeSpaceAgentMembers", fields: [agentId], references: [id], onDelete: Cascade)
 
   @@unique([spaceId, userId])
+  @@unique([spaceId, agentId])
   @@index([userId])
+  @@index([agentId])
   @@index([organizationId])
   @@map("knowledge_space_members")
 }
@@ -2497,6 +2702,10 @@ model KnowledgePage {
 
   visibility      ThoughtVisibility @default(project)
   sensitivityTier SensitivityTier   @default(normal) @map("sensitivity_tier")
+  // Ticket binding: a page carrying taskId is a ticket document. Loose scoping
+  // column like the rest of the envelope (no FK) — task deletion archives
+  // pages at the app layer, it does not cascade here.
+  taskId          String?           @map("task_id") @db.Uuid
   createdBy       String            @map("created_by")
   deletedAt       DateTime?         @map("deleted_at")
   createdAt       DateTime          @default(now()) @map("created_at")
@@ -2509,7 +2718,12 @@ model KnowledgePage {
   publishedVersion KnowledgePageVersion?  @relation("KnowledgePagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
   labels           PageLabel[]
   annotations      KnowledgePageAnnotation[]
+  chunks           KnowledgePageChunk[]
+  outgoingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkSource")
+  incomingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkTarget")
+  productIntegrationRuns ProductIntegrationRun[]
 
+  @@index([taskId], map: "knowledge_pages_task_id_idx")
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
   @@index([organizationId, visibility, updatedAt], map: "knowledge_pages_org_visibility_updated_idx")
   @@index([organizationId, sensitivityTier], map: "knowledge_pages_org_sensitivity_idx")
@@ -2540,11 +2754,79 @@ model KnowledgePageVersion {
 
   page             KnowledgePage  @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
   publishedForPage KnowledgePage? @relation("KnowledgePagePublishedVersion")
+  chunks           KnowledgePageChunk[]
 
   @@unique([pageId, versionNumber], map: "knowledge_page_versions_page_version_key")
   @@index([pageId, createdAt(sort: Desc)], map: "knowledge_page_versions_page_created_idx")
   @@index([attachmentId], map: "knowledge_page_versions_attachment_id_idx")
   @@map("knowledge_page_versions")
+}
+
+model KnowledgePageChunk {
+  id          String @id @default(uuid()) @db.Uuid
+  pageId      String @map("page_id") @db.Uuid
+  versionId   String @map("version_id") @db.Uuid
+  chunkIndex  Int    @map("chunk_index")
+  content     String @db.Text
+  contentHash String @map("content_hash")
+  startOffset Int    @map("start_offset")
+  endOffset   Int    @map("end_offset")
+  tokenCount  Int?   @map("token_count")
+
+  embedding      Unsupported("vector(1536)")?
+  embeddingModel String?                      @map("embedding_model")
+  dims           Int?
+  searchVector   Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))")) @map("search_vector")
+
+  // Mirrors KnowledgePage/Thought scoping so retrieval can enforce access in
+  // the candidate query without joining back through mutable page metadata.
+  organizationId   String            @map("organization_id") @db.Uuid
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId        String            @map("project_id") @db.Uuid
+  teamId           String?           @map("team_id") @db.Uuid
+  channelId        String?           @map("channel_id") @db.Uuid
+  threadId         String?           @map("thread_id") @db.Uuid
+  userId           String?           @map("user_id") @db.Uuid
+  visibility       ThoughtVisibility @default(project)
+  sensitivityTier  SensitivityTier   @default(normal) @map("sensitivity_tier")
+  privateToAgentId String?           @map("private_to_agent_id") @db.Uuid
+  taskId           String?           @map("task_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  page    KnowledgePage        @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  version KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, chunkIndex], map: "knowledge_page_chunks_version_chunk_key")
+  @@index([pageId, versionId], map: "knowledge_page_chunks_page_version_idx")
+  @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_page_chunks_org_project_updated_id_idx")
+  @@index([organizationId, visibility, updatedAt], map: "knowledge_page_chunks_org_visibility_updated_idx")
+  @@index([organizationId, sensitivityTier], map: "knowledge_page_chunks_org_sensitivity_idx")
+  @@index([privateToAgentId], map: "knowledge_page_chunks_private_to_agent_id_idx")
+  @@index([taskId], map: "knowledge_page_chunks_task_id_idx")
+  @@map("knowledge_page_chunks")
+}
+
+// Wikilink index: one row per outgoing link in a page's latest body.
+// Maintained transactionally alongside chunking on every version save.
+// targetPageId is null for unresolved [[Title]] links; creating a page whose
+// title matches resolves them.
+model KnowledgePageLink {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sourcePageId   String   @map("source_page_id") @db.Uuid
+  targetPageId   String?  @map("target_page_id") @db.Uuid
+  targetTitle    String   @map("target_title")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  sourcePage KnowledgePage  @relation("KnowledgePageLinkSource", fields: [sourcePageId], references: [id], onDelete: Cascade)
+  targetPage KnowledgePage? @relation("KnowledgePageLinkTarget", fields: [targetPageId], references: [id], onDelete: SetNull)
+
+  @@index([sourcePageId])
+  @@index([targetPageId])
+  @@index([organizationId, targetTitle])
+  @@map("knowledge_page_links")
 }
 
 model PageLabel {
@@ -2753,8 +3035,63 @@ model McpOAuthSecret {
   iv         String
   authTag    String   @map("auth_tag")
   createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("mcp_oauth_secret")
+}
+
+/// Per-organization signing secret for an integrated product's inbound webhooks
+/// (e.g. DeepSignal `insight.surfaced`). Set once by an org admin who pastes the
+/// secret the product returned at webhook-registration time. Stored encrypted at
+/// rest (AES-256-GCM under a key derived from the deployment auth secret); the
+/// plaintext is only ever read to verify an inbound HMAC signature.
+model ProductWebhookSecret {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  productSlug    String   @map("product_slug")
+  ciphertext     String
+  iv             String
+  authTag        String   @map("auth_tag")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, productSlug])
+  @@map("product_webhook_secrets")
+}
+
+/// One-shot OAuth authorization state (RFC 6749 `state` + PKCE verifier and
+/// the dynamic-flow parameters the callback needs). Postgres-backed so any
+/// API/worker process can mint a flow that another process completes; rows
+/// are deleted on first read and expire after 10 minutes.
+model McpOAuthState {
+  token     String   @id
+  payload   Json
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("mcp_oauth_states")
+}
+
+/// OAuth client obtained via Dynamic Client Registration (RFC 7591), one per
+/// (organization, authorization-server issuer). Public clients carry no
+/// secret; when a server issues one anyway it is stored behind an encrypted
+/// `secret_*` ref, never in plaintext.
+model McpOAuthClient {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  issuer          String
+  clientId        String       @map("client_id")
+  clientSecretRef String?      @map("client_secret_ref")
+  redirectUris    String[]     @map("redirect_uris")
+  metadata        Json         @default("{}")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, issuer])
+  @@map("mcp_oauth_clients")
 }
 
 // ─── File uploads / attachments (Slack-parity files slice) ──────────────────

@@ -12,7 +12,7 @@ import {
   fromPrismaToolRegistrySource,
   toPrismaToolGrantSource,
   toPrismaToolRegistrySource,
-} from './tool-enum-mapping.js'
+} from '@nessie/mcp-manage'
 
 /**
  * Tool grant service.

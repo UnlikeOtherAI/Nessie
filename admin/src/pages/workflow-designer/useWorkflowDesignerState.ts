@@ -7,6 +7,7 @@ import {
   faScrewdriverWrench,
 } from '@fortawesome/free-solid-svg-icons'
 import { useAgents } from '../../facades/agents/hooks'
+import { useChannels } from '../../facades/channels/hooks'
 import { useTools } from '../../facades/tools/hooks'
 import {
   CANVAS_NODE_INSERT_OFFSET,
@@ -17,6 +18,7 @@ import {
 } from '../../lib/workflow-designer/constants'
 import { getCanvasInsertionPoint } from '../../lib/workflow-designer/geometry'
 import { formatJson, readJsonObject } from '../../lib/workflow-designer/json'
+import { getLinearWorkflowNodes } from '../../lib/workflow-designer/serialization'
 import {
   getWorkflowNodeInitialConfig,
   getWorkflowNodeLabel,
@@ -41,6 +43,7 @@ export const useWorkflowDesignerState = ({
   nextInsertOffsetRef,
 }: UseWorkflowDesignerStateInput) => {
   const { data: agents = [] } = useAgents()
+  const { data: channels = [] } = useChannels()
   const { data: tools = [] } = useTools()
 
   const [connections, setConnections] = useState<WorkflowConnection[]>([])
@@ -293,6 +296,50 @@ export const useWorkflowDesignerState = ({
     setSelectedNodeConfigError(null)
   }
 
+  /**
+   * Merge structured-field edits into the selected node's config. Empty
+   * values delete the key so the persisted config stays sparse; the JSON
+   * draft is refreshed to keep the advanced editor in sync.
+   */
+  const handleSelectedNodeConfigPatch = (patch: Record<string, unknown>) => {
+    if (!selectedNode) {
+      return
+    }
+
+    const merged: Record<string, unknown> = {
+      ...readJsonObject(formatJson(selectedNode.config)),
+      ...patch,
+    }
+    for (const key of Object.keys(merged)) {
+      if (merged[key] === undefined || merged[key] === '') {
+        delete merged[key]
+      }
+    }
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === selectedNode.id ? { ...node, config: merged } : node,
+      ),
+    )
+    setSelectedNodeConfigDraft(formatJson(merged))
+    setSelectedNodeConfigError(null)
+  }
+
+  // Non-trigger nodes that execute before the selected node in the linear
+  // order — these are the step outputs the selected node can reference via
+  // `{{steps.<id>.output}}` bindings.
+  const selectedNodeUpstreamSteps = useMemo(() => {
+    if (!selectedNode || selectedNode.type === 'trigger') {
+      return []
+    }
+
+    const orderedSteps = getLinearWorkflowNodes(nodes, connections).filter(
+      (node) => node.type !== 'trigger',
+    )
+    const selectedIndex = orderedSteps.findIndex((node) => node.id === selectedNode.id)
+    return selectedIndex > 0 ? orderedSteps.slice(0, selectedIndex) : []
+  }, [connections, nodes, selectedNode])
+
   const handleSelectedNodeConfigChange = (value: string) => {
     setSelectedNodeConfigDraft(value)
     const parsed = readJsonObject(value)
@@ -314,6 +361,7 @@ export const useWorkflowDesignerState = ({
   }
 
   return {
+    channels,
     connections,
     setConnections,
     nodes,
@@ -325,6 +373,7 @@ export const useWorkflowDesignerState = ({
     setSelectedNodeConfigDraft,
     selectedNodeConfigError,
     setSelectedNodeConfigError,
+    selectedNodeUpstreamSteps,
     workflowName,
     setWorkflowName,
     topLevelAgentSources,
@@ -337,5 +386,6 @@ export const useWorkflowDesignerState = ({
     handleSelectedNodeLabelChange,
     handleSelectedNodeSourceChange,
     handleSelectedNodeConfigChange,
+    handleSelectedNodeConfigPatch,
   }
 }

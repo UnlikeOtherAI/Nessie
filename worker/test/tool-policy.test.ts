@@ -18,6 +18,14 @@ const definitions = [
     parameters: { properties: {}, type: 'object' },
     safe: false,
   },
+  {
+    description: 'Send a message as the current user.',
+    id: 'send_message',
+    label: 'Send message',
+    parameters: { properties: {}, type: 'object' },
+    personalAssistantOnly: true,
+    safe: false,
+  },
 ] satisfies BuiltinToolDefinition[]
 
 test('resolveAgentTools does not let agent policy allow ungranted tools', () => {
@@ -26,6 +34,7 @@ test('resolveAgentTools does not let agent policy allow ungranted tools', () => 
     definitions,
     { spawn_subtask: true },
     null,
+    'shared',
   )
 
   assert.deepEqual([...resolved.allowedIds].sort(), ['web_search'])
@@ -41,26 +50,64 @@ test('resolveAgentTools lets agent policy deny a granted tool', () => {
     definitions,
     { web_search: false },
     null,
+    'shared',
   )
 
   assert.deepEqual([...resolved.allowedIds], ['spawn_subtask'])
 })
 
+test('resolveAgentTools withholds personal-assistant-only tools from a shared agent', () => {
+  const resolved = resolveAgentTools(
+    new Set(['web_search', 'send_message']),
+    definitions,
+    null,
+    null,
+    'shared',
+  )
+
+  // The shared agent keeps ordinary tools but never sees the act-as-user tool.
+  assert.deepEqual([...resolved.allowedIds].sort(), ['web_search'])
+  assert.ok(!resolved.descriptors.some((d) => d.toolName === 'send_message'))
+})
+
+test('resolveAgentTools grants personal-assistant-only tools to the personal assistant', () => {
+  const resolved = resolveAgentTools(
+    new Set(['web_search', 'send_message']),
+    definitions,
+    null,
+    null,
+    'personal_assistant',
+  )
+
+  assert.deepEqual([...resolved.allowedIds].sort(), ['send_message', 'web_search'])
+})
+
 test('authorizeToolCall reports structured denial reasons', () => {
   assert.deepEqual(
-    authorizeToolCall('web_search', new Set(['web_search']), definitions, { web_search: false }, null),
+    authorizeToolCall('web_search', new Set(['web_search']), definitions, { web_search: false }, null, 'shared'),
     { allowed: false, reason: 'agent_policy_denied' },
   )
   assert.deepEqual(
-    authorizeToolCall('spawn_subtask', new Set(['spawn_subtask']), definitions, null, 'parent-1'),
+    authorizeToolCall('spawn_subtask', new Set(['spawn_subtask']), definitions, null, 'parent-1', 'shared'),
     { allowed: false, reason: 'parent_agent_subtask_denied' },
   )
   assert.deepEqual(
-    authorizeToolCall('web_search', new Set(), definitions, null, null),
+    authorizeToolCall('web_search', new Set(), definitions, null, null, 'shared'),
     { allowed: false, reason: 'tool_not_granted' },
   )
   assert.deepEqual(
-    authorizeToolCall('missing_tool', new Set(['missing_tool']), definitions, null, null),
+    authorizeToolCall('missing_tool', new Set(['missing_tool']), definitions, null, null, 'shared'),
     { allowed: false, reason: 'unknown_tool' },
+  )
+})
+
+test('authorizeToolCall denies act-as-user tools to a shared agent but allows the personal assistant', () => {
+  assert.deepEqual(
+    authorizeToolCall('send_message', new Set(['send_message']), definitions, null, null, 'shared'),
+    { allowed: false, reason: 'personal_assistant_only' },
+  )
+  assert.deepEqual(
+    authorizeToolCall('send_message', new Set(['send_message']), definitions, null, null, 'personal_assistant'),
+    { allowed: true },
   )
 })

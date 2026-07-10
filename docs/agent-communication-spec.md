@@ -144,6 +144,19 @@ Multiple explicit mentions:
 - default outcome is only those tagged agents + organizer synthesis of their responses.
 - untagged agents are not considered in this explicit mode unless fallback routing triggers.
 
+Membership is required to participate (as-of-2026-07-02):
+- Only agents that are **members of the channel** (an `AgentBinding` exists) are
+  dispatched by an `@mention`. Mentioning an agent that is not a member does not
+  silently pull it in.
+- The message-create response returns those mentioned non-member agents as
+  `pendingAgentInvites`; the client offers to invite (bind) them. Once bound,
+  the agent participates on subsequent mentions like any other member.
+- This is enforced in both the API (`createThreadMessage`,
+  `api/src/services/messages.ts`) and the worker's `send_message` destination
+  resolver (`resolveChannelAgents`, `worker/src/run/pa-tools/message-destination.ts`),
+  so an agent cannot be invoked into a channel it is not a member of from either
+  the human or agent-authored path.
+
 ### 3.0a Language normalization and translated delivery
 
 - the canonical thread record is stored in the organization default language.

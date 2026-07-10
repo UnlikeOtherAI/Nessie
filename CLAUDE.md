@@ -126,11 +126,28 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 
 The live API server (`api/`) exposes a **REST MCP connector-management surface** under `/api/mcp/*`. This is for managing third-party MCP connectors (register, list, approve, activate, delete) — it is not a JSON-RPC tool server.
 
+The management core lives in the shared **`@nessie/mcp-manage`** package (catalog, instances, probe, tool projection, credentials, OAuth, encrypted secret store, SSRF wrapper) so the API routes and the worker's personal-assistant tools share one implementation. On top of it:
+
+- **Library + discovery**: `GET /api/mcp/library` (curated well-known remote servers + live search of the official MCP registry, HTTP/SSE remotes only), `POST /api/mcp/discover` (probe a pasted link for an MCP endpoint + auth requirements), `POST /api/mcp/library/import`. Surfaced as the admin Connectors page **Library** tab with a guided one-click install.
+- **Personal-assistant connector tools** (PA-only builtins): `connector_list`, `connector_library_search`, `connector_discover`, `connector_install`, `connector_authorize`, `connector_test`, `connector_set_secret`, `connector_uninstall` — full conversational setup from just a service name or URL, with secrets stored encrypted (`POST /api/mcp/instances/:id/secret` is the UI equivalent).
+- **Dynamic OAuth** (MCP authorization spec): `{ method: "oauth2" }` with no static client triggers metadata discovery (RFC 9728/8414), Dynamic Client Registration (RFC 7591, one public client per org × issuer in `mcp_oauth_clients`), authorization-code + PKCE S256 + RFC 8707 `resource`, pg-backed one-shot state (`mcp_oauth_states`), per-user token placement, and automatic refresh at probe/dispatch. Notion/Linear/Sentry/Atlassian/Asana are curated OAuth entries — users just sign in. Set `NESSIE_API_PUBLIC_URL` in prod so the worker can mint callback URLs.
+- **Scoped sharing**: owners manage every install scope; org **admins** manage the shared scopes (organization/project/team/channel); members self-serve at their own user scope and see shared installs they can reach. Worker toolset assembly is scope-aware (user-scope connectors surface only in the installing user's PA runs); user-scope installs auto-activate their discovered tools, shared scopes keep the `pending_review` gate. See `docs/external-tool-integration.md` §2.
+- **Admin locking**: owners/admins can lock a catalog entry (`/lock`, `/unlock`); members cannot install it or re-register its endpoint under another name (🔒 pill + disabled install in the UI, clear refusal from the PA). Install-time gate only — existing instances keep working.
+- **Context-safe toolsets**: above `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) exposed MCP tools, agent runs get three meta tools (`mcp_find_tools` → `mcp_load_tools` → call directly, `mcp_drop_tools` to free) over a live tool list instead of every schema inlined — see `docs/external-tool-integration.md` §5.
+- **External-agent products** (e.g. DeepSignal): a first-party product can be surfaced as a per-user DM channel whose bound agent has `executionMode = external_mcp` — turns are proxied straight to the product's MCP endpoint under the user's own token with **no Nessie inference**, reply + cards rendered verbatim. The worker driver and the API share one `@nessie/mcp-manage` "connect + call one tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, next to `probeConnection`). History hydration (`POST /api/channels/:id/external-sync`, idempotent on `metadata.external.turnId`) and a per-org HMAC-verified insight webhook (`POST /api/integrations/deepsignal/events`; secret set via `PUT /api/integrations/products/:slug/webhook-secret`, stored encrypted) keep the product as source of truth. See `docs/plans/2026-07-09-deepsignal-integration.md` + `docs/external-tool-integration.md` §2.
+
 User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The
 cloud API and worker reject stdio process execution for catalog/instance data,
 and HTTP/SSE/OAuth URLs are checked by the shared SSRF guard before save or use.
 Use remote MCP runners for private networks, local machines, or subprocess-based
 servers.
+
+deep.agent crawl web scanning uses the MCP connector path: install a
+Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, approve the
+discovered tools, and grant them to agents. The crawl library implementation
+belongs behind the deep.agent service boundary; do not embed the Crawl4AI
+Python package in the API/worker or expose an unauthenticated crawler to the
+public internet.
 
 > **Legacy JSON-RPC MCP server removed.** The old `GET /mcp` / `POST /mcp` JSON-RPC server (`src/mcp/server.ts`) that exposed `send_message`, `invoke_tool`, `tools/list`, and 37 tools existed only in the legacy `src/` tree, which is being deleted. There is no JSON-RPC `/mcp` endpoint on the live `api/` server.
 
@@ -144,6 +161,7 @@ The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. Th
 
 - [brief.md](docs/brief.md) — Historical architecture brief (see banner)
 - [build-ai-coworker.md](docs/done/build-ai-coworker.md) — Historical macOS app build plan (moved to done/)
+- [context-window-optimization-audit.md](docs/context-window-optimization-audit.md) — Audit + prioritized roadmap for LLM context-window usage in the agentic run pipeline
 - Finished documents belong in `docs/done/`.
 
 ## Documentation & Goals — update with every change

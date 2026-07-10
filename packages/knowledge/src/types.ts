@@ -66,6 +66,7 @@ export type KnowledgeSpaceRecord = KnowledgeScopeInput & {
   metadata: Record<string, unknown> | null
   writeRestricted: boolean
   memberUserIds: string[]
+  memberAgentIds: string[]
   createdBy: string
   deletedAt: string | null
   createdAt: string
@@ -83,6 +84,10 @@ export type KnowledgePageRecord = KnowledgeScopeInput & {
   position: number
   status: KnowledgePageStatus
   labels: string[]
+  // Ticket binding: set when this page is a ticket-bound document (or the
+  // ticket's document folder). Loose envelope column — see the schema comment
+  // on KnowledgePage.taskId.
+  taskId: string | null
   latestVersion: KnowledgePageVersionRecord | null
   publishedVersion: KnowledgePageVersionRecord | null
   publishedVersionId: string | null
@@ -92,9 +97,18 @@ export type KnowledgePageRecord = KnowledgeScopeInput & {
   updatedAt: string
 }
 
+export type KnowledgeSearchPassage = {
+  content: string
+  endOffset: number
+  score: number
+  startOffset: number
+}
+
 export type KnowledgeSearchHit = {
   page: KnowledgePageRecord
   snippet: string
+  passages?: KnowledgeSearchPassage[]
+  score?: number
 }
 
 export type KnowledgePageTreeNode = KnowledgePageRecord & {
@@ -133,12 +147,31 @@ export type SearchPagesInput = {
   projectId?: string
   query?: string
   spaceId?: string
+  // When set, results are restricted to pages bound to this ticket.
+  taskId?: string
+  // When set (and not a bypass viewer), results are pre-filtered in SQL to
+  // spaces the viewer is allowed to read (mirrors canReadSpace).
+  viewer?: SpaceViewer
+}
+
+export type HybridSearchPagesInput = {
+  organizationId: string
+  query: string
+  queryEmbedding: number[] | null
+  viewer?: SpaceViewer
+  projectId?: string
+  spaceId?: string
+  // When set, results are restricted to chunks whose page is bound to this
+  // ticket.
+  taskId?: string
+  limit?: number
 }
 
 export type CreateSpaceInput = KnowledgeScopeInput & {
   createdBy: string
   description?: string | null
   memberUserIds?: string[]
+  memberAgentIds?: string[]
   metadata?: Record<string, unknown> | null
   name: string
   writeRestricted?: boolean
@@ -147,6 +180,7 @@ export type CreateSpaceInput = KnowledgeScopeInput & {
 export type UpdateSpaceInput = Partial<{
   description: string | null
   memberUserIds: string[]
+  memberAgentIds: string[]
   metadata: Record<string, unknown> | null
   name: string
   sensitivityTier: KnowledgeSensitivityTier
@@ -171,6 +205,8 @@ export type CreatePageInput = KnowledgeScopeInput & {
   spaceId: string
   summary?: string | null
   title: string
+  // Binds the created page to a ticket (Task.id). Loose envelope column, no FK.
+  taskId?: string | null
 }
 
 // Add a new version to a file node, backed by a freshly stored attachment.
@@ -241,6 +277,9 @@ export type KnowledgeProvider = {
   publishPage: (input: PublishPageInput) => Promise<KnowledgePageRecord | null>
   restoreVersion: (input: RestorePageVersionInput) => Promise<KnowledgePageRecord | null>
   searchPages: (input: SearchPagesInput) => Promise<KnowledgePageCursorPage<KnowledgeSearchHit>>
+  searchPagesHybrid?: (
+    input: HybridSearchPagesInput,
+  ) => Promise<KnowledgePageCursorPage<KnowledgeSearchHit>>
   updatePage: (pageId: string, input: UpdatePageInput) => Promise<KnowledgePageRecord | null>
   updateSpace: (
     organizationId: string,

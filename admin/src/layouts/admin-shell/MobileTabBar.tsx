@@ -3,13 +3,14 @@ import { NAV_ITEMS } from './nav-items';
 
 // Bottom tab bar for mobile web (browser). The native app provides its own
 // native glass tab bar instead, so this is only mounted when NOT in the native
-// shell. Mirrors the 5 top-level sections from the shared nav registry.
+// shell. Mirrors the compact top-level sections from the shared nav registry.
 export const MobileTabBar = () => {
   const { pathname } = useLocation();
+  const tabItems = NAV_ITEMS.filter((item) => item.showInMobileTab !== false);
 
   return (
     <nav className="mobile-tabbar">
-      {NAV_ITEMS.map((item) => {
+      {tabItems.map((item) => {
         const Icon = item.icon;
         const active = item.isActive(pathname);
         return (

@@ -90,17 +90,42 @@ Special policies:
 - user-equivalent action scope: if the user can do it, the assistant can do it;
   if the user would need to delegate another agent, the assistant does that too
 
-> **Update (2026-06-11) — privileged delegate, org-wide reach.** The personal
-> assistant is treated as its owner's privileged delegate and reaches **every
-> channel in the organization** — not only public channels plus the ones the
-> owner has joined. It is exempt from the `AgentBinding` "is this bot a member of
-> the channel?" gate (both when scheduling a task and when the scheduled task
-> fires), because binding does not apply to a delegate that acts as the user.
-> Channel resolution (post/schedule/list), workspace + message search, and
-> curated-thought recall (`resolveAccessibleScopes` `personal_assistant` mode)
-> all resolve org-wide for the PA. This deliberately broadens the original
-> "same scope as the user" framing above; the gate is `agentKind =
-> personal_assistant`, so ordinary (`shared`) agents are unaffected.
+> **Update (2026-06-11) — privileged delegate, org-wide reach.** *(Superseded —
+> see the 2026-07-02 update below.)* The personal assistant was treated as its
+> owner's privileged delegate and reached **every channel in the organization**,
+> not only public channels plus the ones the owner has joined.
+>
+> **Update (2026-07-02) — delegate, but owner-scoped reach.** The org-wide reach
+> is withdrawn: it let any user's PA read, search, and post in **private channels
+> the owner was never admitted to**, which contradicts the "same scope as the
+> user" guarantee at the top of this section and exposes private-channel content
+> to a delegate of a non-member. The PA is now scoped to exactly what its owner
+> can access — public channels plus the private channels the owner is a member of
+> — for channel resolution (post/schedule/list), workspace + message search, and
+> curated-thought recall (`resolveAccessibleScopes` `personal_assistant` mode).
+> It **remains exempt from the `AgentBinding` "is this bot a member of the
+> channel?" gate** (when scheduling and when the scheduled task fires), because it
+> acts as the user: the boundary is the *owner's* visibility, not the bot's
+> bindings. The gate is still `agentKind = personal_assistant`, so ordinary
+> (`shared`) agents are unaffected. If an "org-wide search" capability is wanted
+> later, it should be an explicit, role-gated feature — not the default for every
+> user's assistant.
+>
+> **Update (2026-07-02) — "act as the user" tools are delegate-only.** The tools
+> that write or search using the acting user's own identity/authority — currently
+> `send_message`, `authored_message_search`, `update_preferences`, `channel_join`,
+> `channel_update`, `channel_archive` — are marked `personalAssistantOnly` in the
+> builtin tool registry (`packages/runtime/src/builtin-tools.ts`) and enforced in
+> `authorizeToolCall` / `resolveAgentTools` (`worker/src/run/tool-policy.ts`),
+> keyed on `agentKind = personal_assistant`. Only the PA (a user's explicit
+> delegate) may use them; any other agent — including one pulled into a channel by
+> an `@mention` — is denied with reason `personal_assistant_only`. This prevents a
+> user's delegated authority from being exercised by an agent it never delegated
+> to. Read tools (`workspace_search`, `message_search`, `channel_find/list`,
+> attachment reads) are **not** gated: they stay available to every agent but
+> remain bounded by the resolved scope, which for a user-tasked run is already the
+> intersection of the agent's reach and the tasking user's access (`user_shared`),
+> so an agent can never retrieve data the tasking user cannot see.
 
 This keeps the MVP small and gives us a clean path to future managed assistants.
 

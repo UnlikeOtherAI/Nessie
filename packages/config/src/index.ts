@@ -103,6 +103,11 @@ export const NessieConfigSchema = z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.number().int().positive().default(5454),
     trustedProxyHops: z.number().int().nonnegative().default(0),
+    // Public origin of the API as reachable from a user's browser (e.g.
+    // https://api.nessie.works). Used to build OAuth redirect URIs minted
+    // outside an HTTP request (the worker's personal assistant). Defaults to
+    // localhost:{port} for local dev.
+    publicUrl: z.string().url().optional(),
   }),
   // GitHub integration for the in-app Feedback section: submitted feedback
   // becomes an issue in this repo. The token is required to actually create
@@ -167,6 +172,7 @@ export const ConfigEnvMap = {
   NESSIE_API_HOST: 'api.host',
   NESSIE_API_PORT: 'api.port',
   NESSIE_API_TRUSTED_PROXY_HOPS: 'api.trustedProxyHops',
+  NESSIE_API_PUBLIC_URL: 'api.publicUrl',
   NESSIE_GITHUB_TOKEN: 'github.token',
   NESSIE_GITHUB_OWNER: 'github.owner',
   NESSIE_GITHUB_REPO: 'github.repo',

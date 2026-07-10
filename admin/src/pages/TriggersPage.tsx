@@ -22,14 +22,20 @@ export const TriggersPage = () => {
 
   const columns = [
     <TriggerListColumn
-      activeCount={state.activeCount}
       effectiveTriggerId={state.effectiveTriggerId}
+      filteredTriggers={state.filteredTriggers}
       key="triggers"
       onCreate={() => state.setCreateDialogOpen(true)}
+      onSearchChange={state.setSearchQuery}
       onSelect={state.setSelectedTriggerId}
+      onStatusFilterChange={state.setStatusFilter}
+      onTypeFilterChange={state.setTypeFilter}
       registry={state.registry}
-      scheduledTriggers={state.scheduledTriggers}
-      sortedTriggers={state.sortedTriggers}
+      searchQuery={state.searchQuery}
+      statusCounts={state.statusCounts}
+      statusFilter={state.statusFilter}
+      totalCount={state.totalCount}
+      typeFilter={state.typeFilter}
     />,
   ]
 
@@ -42,6 +48,7 @@ export const TriggersPage = () => {
         title={selectedTrigger.name ?? selectedTrigger.type}
       >
         <TriggerDetail
+          onDeleted={() => state.setSelectedTriggerId(undefined)}
           onEdit={() => state.setEditingTriggerId(selectedTrigger.id)}
           registry={state.registry}
           trigger={selectedTrigger}

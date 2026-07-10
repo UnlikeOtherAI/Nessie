@@ -2,6 +2,12 @@
 
 > Status: target-state design.
 
+> **Superseded in part (2026-07-06):** the retrieval/RAG pipeline, agent tool
+> contract (§3), and external-source facade (§2.1) are redesigned by
+> [plans/2026-07-06-documents-rag-redesign.md](plans/2026-07-06-documents-rag-redesign.md)
+> (hybrid RAG over `KnowledgePageChunk`, `knowledge-base` tool family,
+> Librarian agent, ticket-bound docs). Read those sections through that plan.
+
 > Phase B note: this document now describes the future external facade/source tier.
 > The first-party authoring envelope is implemented as `KnowledgeSpace`,
 > hierarchical `KnowledgePage`, append-only `KnowledgePageVersion`, and `PageLabel`
@@ -226,11 +232,23 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 - `POST /api/knowledge-base/reindex`
 - `POST /api/knowledge-base/summarize`
 - `POST /api/knowledge-base/search`
-  - accepts `topK`, `limit`, `cursor`, `sort`, `accessContext`, `tags`
-  - matching is case-insensitive substring (`ILIKE '%q%'`) over page **title**,
-    **summary**, and **label** names, backed by `pg_trgm` GIN trigram indexes so it
-    does not sequentially scan every page (`native-search.ts`). Page `metadata` is
-    not searched (it was unindexable JSON-cast text).
+  - accepts `query`, `labels`, `projectId`, `spaceId`, `limit`, `cursor`, and
+    `mode: 'keyword' | 'hybrid'` (defaults to `hybrid` when query text is
+    present, `keyword` otherwise).
+  - **keyword** mode: case-insensitive substring (`ILIKE '%q%'`) over page
+    **title**, **summary**, and **label** names, backed by `pg_trgm` GIN
+    trigram indexes (`native-search.ts`). Page `metadata` is not searched.
+  - **hybrid** mode (implemented): RRF fusion of a lexical `tsvector`
+    (`websearch_to_tsquery` + `ts_rank_cd`, GIN) channel and a semantic
+    pgvector cosine channel (HNSW) over `knowledge_page_chunks`
+    (`native-search-hybrid.ts`), restricted to each page's latest version.
+    Hits carry matched `passages` (content + plain-text offsets + score) and a
+    match-windowed `snippet`. Degrades to lexical-only when no query embedding
+    is available. Query embeddings come from the org model client
+    (`text-embedding-3-small`), cached 15 min per normalized query and billed
+    to the token ledger.
+  - Both modes enforce viewer access with an in-SQL readable-spaces pre-filter
+    (`readableSpaceIdsSql`, mirrors `canReadSpace`) — no post-filtering.
 - `POST /api/knowledge-base/read`
   - accepts `docId`, `projectId`, `accessContext`
 - `POST /api/knowledge-base/search-summary` (or `search.summary`)
@@ -496,6 +514,71 @@ entry (capped at `ZIP_ENTRY_PEEK_MAX_BYTES` = 256 KiB).
 - `GET /api/knowledge-base/storage-usage?scopeType=&scopeId=`
 
 Agent/MCP built-in tools for the new file surface are a follow-up (agent parity).
+
+## 9c) Page version chunk index (implemented first slice)
+
+Inline document page version bodies are now chunked at write time with Chonkie
+(`@chonkiejs/core` `RecursiveChunker`) and persisted in
+`knowledge_page_chunks`. Chunks are generated from the same canonical
+`htmlToPlainText` projection used by note anchoring, so stored chunk offsets
+refer to readable page text rather than raw TipTap HTML.
+
+Each chunk stores `pageId`, `versionId`, `chunkIndex`, `content`,
+`contentHash`, plain-text offsets, approximate token count, and the full
+KnowledgePage scoping envelope (`organizationId`, project/team/channel/thread/
+user, `visibility`, `sensitivityTier`, `privateToAgentId`). The table also
+declares optional `embedding vector(1536)`, `embeddingModel`, `dims`, and a
+generated `searchVector` with HNSW/GIN indexes.
+
+Embeddings are now populated asynchronously: every version save enqueues a
+`knowledge.embed` queue job (transactionally, idempotency key
+`kb-embed:<pageId>:<versionId>`), and the worker fills NULL embeddings —
+copying by `contentHash` within the org first (identical content never
+re-embeds), then batching ≤64 chunks per provider call
+(`worker/src/control/knowledge-embed.ts`, billed to the token ledger as a
+system actor). Chunk rows are immutable per append-only version; superseded
+versions' chunks are deleted after a newer version embeds. Retrieval is the
+hybrid search described in §3 (TypeScript RRF fusion via `@nessie/retrieval`,
+not PL/pgSQL `match_*` functions). Body-ref and file-backed versions still
+need a streaming ingestion/extraction path (redesign plan Phase 5).
+
+## 9d) Retrieval tools + Librarian agent (implemented, read path)
+
+Agents get read-only, ACL-checked knowledge-base access via three builtin
+tools (`packages/runtime/src/builtin-kb-tools.ts`,
+`worker/src/run/pa-tools/knowledge.ts`), distinct from the §9 comment/note
+tools:
+
+- `kb_search` — hybrid retrieval (§9c/§3 fusion), args `query`, optional
+  `spaceId`/`projectId`, `limit` (1-8, default 5). Returns compact hits
+  (title, `pageId`, `spaceId`, match snippet) — never full bodies. Degrades to
+  lexical-only when no model client is available or the query-embedding call
+  fails.
+- `kb_page_read` — full plain-text projection of one page (published version
+  if present, else latest; capped at 20,000 characters with a truncation
+  note). Denies an agent viewer not just when the page's *space* is
+  unreadable, but also when the **page itself** is `sensitivityTier =
+  restricted` or `privateToAgentId` names a different agent — a page can be
+  more restrictive than its space.
+- `kb_list` — no `spaceId`: lists spaces the caller can read; with `spaceId`:
+  an indented page-tree outline after an explicit `canReadSpace` check.
+
+Every handler re-derives the caller's `SpaceViewer` per call (`loadSpaceViewer`
++ the same delegating-PA-vs-autonomous-agent principal resolution as the §9
+comment tools) — there is no bypass for agents, matching
+[plans/2026-07-06-documents-rag-redesign.md](plans/2026-07-06-documents-rag-redesign.md)
+§3.3/§6.1.
+
+`ensureLibrarianAgent` (`api/src/services/librarian.ts`,
+`POST /api/knowledge-base/librarian`) idempotently seeds one shared,
+system-managed **Librarian** agent per organization (mirrors
+`ensurePersonalAssistantAgent`'s advisory-lock upsert-by-kind pattern) and
+grants it `kb_search`/`kb_page_read`/`kb_list`/`send_message`. Like every
+agent, the Librarian only sees spaces it has actually been tagged into
+(`AgentBinding` reach or an explicit `KnowledgeSpaceMember.agentId` grant) —
+untagged means invisible, not merely unlisted. It has no write tools yet;
+`kb_draft_write`/`kb_file`/`kb_publish_request` (draft-only writes + publish
+approval) are Phase 3 of the redesign plan.
 
 ## 10) Phase annotation
 

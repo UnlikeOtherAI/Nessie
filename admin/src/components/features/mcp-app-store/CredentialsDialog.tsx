@@ -6,14 +6,14 @@ import {
   useDeleteInstanceCredential,
   type McpServerInstanceRecord,
 } from '../../../facades/mcp-instances/hooks'
+import { useStartInstanceOAuth } from '../../../facades/mcp-library/hooks'
 
 /**
  * Per-server credential modal. The user enters a `credentialRef` (which the
  * runtime secret resolver dereferences — never plaintext per plan D7) keyed by
  * principal type + principal ID. For oauth2 servers we also surface a
- * "Connect" button that hands off to the API's OAuth2 start route (the route
- * will be exposed in a later slice; the button is rendered for parity with the
- * UI plan §7).
+ * "Connect" button that starts the OAuth flow (static or dynamic) and opens
+ * the provider's sign-in page in a new tab.
  */
 
 type CredentialsDialogProps = {
@@ -150,7 +150,11 @@ export const CredentialsDialog = ({
     }
   }
 
-  const oauthStartUrl = `/api/mcp/instances/${instance.id}/oauth/start`
+  const startOAuth = useStartInstanceOAuth()
+  const connectViaOAuth = async () => {
+    const flow = await startOAuth.mutateAsync({ instanceId: instance.id })
+    window.open(flow.authorizationUrl, '_blank', 'noopener')
+  }
 
   return (
     <div
@@ -181,17 +185,18 @@ export const CredentialsDialog = ({
         </div>
 
         {oauth2 && (
-          <a
+          <button
             className={[
               'admin-button admin-button-primary mt-4 inline-flex',
               'rounded-md px-3 py-1 text-xs font-semibold',
+              'disabled:cursor-not-allowed disabled:opacity-40',
             ].join(' ')}
-            href={oauthStartUrl}
-            rel="noreferrer"
-            target="_blank"
+            disabled={startOAuth.isPending}
+            onClick={() => void connectViaOAuth()}
+            type="button"
           >
-            Connect via OAuth2
-          </a>
+            {startOAuth.isPending ? 'Starting…' : 'Connect via OAuth2'}
+          </button>
         )}
 
         <form

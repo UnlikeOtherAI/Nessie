@@ -20,10 +20,12 @@ type SeedConnector = {
   name: string
   label: string
   description: string
+  authMethod?: 'bearer' | 'none'
   vendor: string
-  sourceUrl: string
-  /** HTTP MCP endpoint, stored as the catalog default transport. */
-  url: string
+  sourceUrl?: string | null
+  /** MCP endpoint, stored as the catalog default transport when known. */
+  url?: string
+  protocol: 'http' | 'sse'
 }
 
 /**
@@ -42,7 +44,20 @@ const SEED_CONNECTORS: SeedConnector[] = [
       + 'served over a public no-auth HTTP MCP endpoint.',
     vendor: 'Upstash',
     sourceUrl: 'https://github.com/upstash/context7',
+    protocol: 'http',
     url: 'https://mcp.context7.com/mcp',
+  },
+  {
+    id: 'b0c7e6d2-7e2a-4f1a-9c3e-000000000002',
+    name: 'deep-agent-crawl',
+    label: 'deep.agent Crawl',
+    description:
+      'Self-hosted deep.agent web scanning and crawling over MCP. Install with '
+      + 'a reachable SSE endpoint such as https://deep-agent.example.com/mcp/sse.',
+    authMethod: 'bearer',
+    vendor: 'deep.agent',
+    sourceUrl: 'https://deep.agent',
+    protocol: 'sse',
   },
 ]
 
@@ -62,14 +77,22 @@ export const seedPublicConnectors = async (
   let seeded = 0
 
   for (const connector of SEED_CONNECTORS) {
-    const transportConfig = { transport: 'http', url: connector.url }
+    const transportConfig = connector.url
+      ? { transport: connector.protocol, url: connector.url }
+      : {}
+    const authMethod = connector.authMethod ?? 'none'
+    const authConfig = { method: authMethod }
     await prisma.mcpCatalogEntry.upsert({
       where: { id: connector.id },
       update: {
+        name: connector.name,
         label: connector.label,
         description: connector.description,
         vendor: connector.vendor,
-        sourceUrl: connector.sourceUrl,
+        sourceUrl: connector.sourceUrl ?? null,
+        protocol: connector.protocol,
+        authMethod,
+        authConfig,
         defaultTransportConfig: transportConfig,
         visibility: 'public',
         status: 'published',
@@ -80,12 +103,12 @@ export const seedPublicConnectors = async (
         name: connector.name,
         label: connector.label,
         description: connector.description,
-        protocol: 'http',
-        authMethod: 'none',
-        authConfig: { method: 'none' },
+        protocol: connector.protocol,
+        authMethod,
+        authConfig,
         defaultTransportConfig: transportConfig,
         vendor: connector.vendor,
-        sourceUrl: connector.sourceUrl,
+        sourceUrl: connector.sourceUrl ?? null,
         status: 'published',
         visibility: 'public',
         ownerUserId: null,

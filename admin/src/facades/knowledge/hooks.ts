@@ -26,6 +26,8 @@ export type KnowledgeSpaceRecord = {
   projectId: string
   visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
+  memberUserIds: string[]
+  memberAgentIds: string[]
   sourceRef: string
   visibilityReason: string
   policyChainTrace: string[]
@@ -61,6 +63,14 @@ type CreateSpaceInput = {
   projectId?: string
   visibility?: KnowledgeSpaceRecord['visibility']
   sensitivityTier?: KnowledgeSpaceRecord['sensitivityTier']
+  memberAgentIds?: string[]
+}
+
+export type UpdateSpaceInput = {
+  spaceId: string
+  name?: string
+  description?: string | null
+  memberAgentIds?: string[]
 }
 
 export type SavePageInput = {
@@ -73,7 +83,10 @@ export type SavePageInput = {
   title: string
 }
 
+export type EnsureMyDocsResponse = { spaceId: string }
+
 const spacesKey = ['knowledge-spaces'] as const
+const myDocsKey = ['knowledge-my-docs'] as const
 const pagesKey = (spaceId?: string) => ['knowledge-pages', spaceId ?? 'none'] as const
 const pageKey = (pageId?: string) => ['knowledge-page', pageId ?? 'none'] as const
 const versionsKey = (pageId?: string) => ['knowledge-versions', pageId ?? 'none'] as const
@@ -129,6 +142,19 @@ export const useKnowledgeVersions = (pageId?: string) => {
   })
 }
 
+// Idempotent "ensure my personal space" call — provisions (or fetches) the
+// caller's private "My Docs" space. staleTime: Infinity because the result
+// never changes for the session; we only need to call it once per mount.
+export const useEnsureMyDocsSpace = () => {
+  const apiClient = useApiClient()
+
+  return useQuery<EnsureMyDocsResponse>({
+    queryKey: myDocsKey,
+    queryFn: () => apiClient.post('/api/knowledge-base/my-docs', {}),
+    staleTime: Infinity,
+  })
+}
+
 export const useCreateKnowledgeSpace = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
@@ -137,6 +163,19 @@ export const useCreateKnowledgeSpace = () => {
     mutationFn: (input: CreateSpaceInput) =>
       apiClient.post<KnowledgeSpaceRecord>('/api/knowledge-base/spaces', input),
     onSuccess: () => invalidateKnowledge(queryClient),
+  })
+}
+
+export const useUpdateKnowledgeSpace = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: UpdateSpaceInput) => {
+      const { spaceId, ...body } = input
+      return apiClient.patch<KnowledgeSpaceRecord>(`/api/knowledge-base/spaces/${spaceId}`, body)
+    },
+    onSuccess: (space) => invalidateKnowledge(queryClient, { spaceId: space.id }),
   })
 }
 

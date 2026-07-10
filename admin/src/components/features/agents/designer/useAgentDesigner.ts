@@ -21,6 +21,9 @@ export type AgentDesignerAction =
   | { role: string; type: 'set_role' }
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
 
+// `tools` is a sparse overlay over the org tool catalog: unset keys fall back
+// to the tool kind's default (builtin on, connector off) — the same semantics
+// the worker applies to `Agent.toolPolicy`.
 const DEFAULT_STATE: AgentFormState = {
   model: 'gpt-5',
   name: '',
@@ -28,14 +31,7 @@ const DEFAULT_STATE: AgentFormState = {
   role: 'assistant',
   streamingField: null,
   systemPrompt: '',
-  tools: {
-    'bash': false,
-    'file-read': false,
-    'file-write': false,
-    'glob': false,
-    'grep': false,
-    'web-search': false,
-  },
+  tools: {},
 }
 
 const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormState => {

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import type { PrismaClient, Thread } from '@prisma/client'
+import type { ChannelSystemType, PrismaClient, Thread } from '@prisma/client'
 import {
   parseAgentId,
   parseChannelId,
@@ -129,7 +129,7 @@ export const findThreadForUser = async (
       id: string
       organizationId: string
       type: 'dm' | 'standard'
-      systemChannelType: 'personal_assistant' | null
+      systemChannelType: ChannelSystemType | null
     }
   }) | null
 > =>
@@ -291,6 +291,9 @@ export type CreateThreadMessageResult =
       kind: 'created'
       message: MessageWithReactions
       channelAgents: ChannelAgent[]
+      // Agents @mentioned in the message that are not members of the channel.
+      // They are NOT dispatched; the client offers to invite them.
+      pendingAgentInvites: { id: string; name: string }[]
     }
   | {
       kind: 'thread_not_found'
@@ -365,11 +368,13 @@ export const createThreadMessage = async (
       ? channelAgents.slice(0, 1)
       : channelAgents
 
-  // Also resolve @mentioned agents not yet bound to this channel. Agent
-  // names can contain spaces, so we can't split them out of free text with
-  // a regex alone — we fetch the candidate list first and then match each
-  // name against the content with the same escape rule the orchestrator
-  // uses, so parsing is identical on both sides.
+  // An @mention of an agent that is NOT a member (bound) of this channel does
+  // not silently pull it in: only members participate. Such mentions are
+  // surfaced as pending invites so the client can offer to add the agent to the
+  // channel (after which it participates like any other member). Agent names can
+  // contain spaces, so we match each candidate name against the content with the
+  // same escape rule the orchestrator uses rather than splitting on whitespace.
+  const pendingAgentInvites: { id: string; name: string }[] = []
   if (input.content.includes('@')) {
     const boundIds = new Set(resolvedChannelAgents.map((a) => a.id))
     const candidates = await prisma.agent.findMany({
@@ -379,19 +384,14 @@ export const createThreadMessage = async (
         organizationId: thread.channel.organizationId,
         systemManaged: false,
       },
-      select: { id: true, name: true, role: true, systemPrompt: true },
+      select: { id: true, name: true },
     })
 
     for (const agent of candidates) {
       const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       const mentionRe = new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i')
       if (mentionRe.test(input.content)) {
-        resolvedChannelAgents.push({
-          id: agent.id,
-          name: agent.name,
-          role: agent.role,
-          systemPrompt: agent.systemPrompt,
-        })
+        pendingAgentInvites.push({ id: agent.id, name: agent.name })
       }
     }
   }
@@ -417,6 +417,7 @@ export const createThreadMessage = async (
     kind: 'created',
     message: persistedMessage,
     channelAgents: resolvedChannelAgents,
+    pendingAgentInvites,
   }
 }
 

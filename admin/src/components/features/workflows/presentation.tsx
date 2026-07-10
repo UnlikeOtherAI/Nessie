@@ -22,6 +22,74 @@ export const stepActionPill =
 export const formatTimestamp = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : '—'
 
+export const formatRelativeTime = (value?: string | null): string | undefined => {
+  if (!value) return undefined
+
+  const target = new Date(value).getTime()
+  if (Number.isNaN(target)) return undefined
+
+  const deltaMs = target - Date.now()
+  const absMinutes = Math.round(Math.abs(deltaMs) / 60_000)
+  if (absMinutes < 1) return deltaMs >= 0 ? 'in <1 min' : 'just now'
+
+  const suffix = deltaMs >= 0 ? 'in ' : ''
+  const prefix = deltaMs >= 0 ? '' : ' ago'
+  if (absMinutes < 60) return `${suffix}${absMinutes} min${prefix}`
+
+  const absHours = Math.round(absMinutes / 60)
+  if (absHours < 48) return `${suffix}${absHours} h${prefix}`
+
+  return `${suffix}${Math.round(absHours / 24)} d${prefix}`
+}
+
+export const formatDuration = (
+  start?: string | null,
+  end?: string | null,
+): string | undefined => {
+  if (!start || !end) return undefined
+
+  const ms = new Date(end).getTime() - new Date(start).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return undefined
+  if (ms < 1000) return `${ms} ms`
+  if (ms < 60_000) return `${Math.round(ms / 100) / 10} s`
+  return `${Math.round(ms / 60_000)} min`
+}
+
+/** Status as a colour token for compact list dots. */
+export const getRunStatusColor = (status: WorkflowRunRecord['status']): string => {
+  switch (status) {
+    case 'running':
+      return 'var(--success-text)'
+    case 'pending':
+      return 'var(--warning-text)'
+    case 'completed':
+      return 'var(--info-text)'
+    case 'failed':
+      return 'var(--danger-text)'
+    default:
+      return 'var(--tx3)'
+  }
+}
+
+export const getStepStatusColor = (
+  status: WorkflowStepRunRecord['status'],
+): string => {
+  switch (status) {
+    case 'running':
+      return 'var(--success-text)'
+    case 'pending':
+      return 'var(--warning-text)'
+    case 'completed':
+      return 'var(--info-text)'
+    case 'failed':
+      return 'var(--danger-text)'
+    case 'blocked':
+      return 'var(--warning-text)'
+    default:
+      return 'var(--tx3)'
+  }
+}
+
 const formatJsonValue = (value: unknown) => {
   if (value === undefined) {
     return 'undefined'

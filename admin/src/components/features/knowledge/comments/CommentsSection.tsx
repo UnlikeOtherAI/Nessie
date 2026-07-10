@@ -1,3 +1,4 @@
+import type { RefObject } from 'react'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import {
   useCreateComment,
@@ -11,7 +12,13 @@ import { useAnnotationAuthors } from './useAnnotationAuthors'
 // The page-level discussion shown below the document body: a composer plus the
 // list of comments, newest first. Notes (text-anchored) are rendered inline in
 // the reader, not here.
-export const CommentsSection = ({ pageId }: { pageId: string }) => {
+export const CommentsSection = ({
+  composerRef,
+  pageId,
+}: {
+  composerRef?: RefObject<HTMLTextAreaElement | null>
+  pageId: string
+}) => {
   const { me } = useAuthSession()
   const { data: comments = [] } = useKnowledgeAnnotations(pageId, 'comment')
   const createComment = useCreateComment(pageId)
@@ -29,6 +36,7 @@ export const CommentsSection = ({ pageId }: { pageId: string }) => {
           pending={createComment.isPending}
           placeholder="Add a comment…"
           submitLabel="Comment"
+          textareaRef={composerRef}
         />
       </div>
       <div className="mt-4 flex flex-col gap-3">

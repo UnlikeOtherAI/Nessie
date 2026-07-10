@@ -1,7 +1,18 @@
+export type ExternalAuthWorkspace = {
+  activeOrgId?: string
+  activeTeamId?: string
+  orgId?: string
+  orgRole?: string
+  teamIds: string[]
+  teamRoles: Record<string, string>
+}
+
 export type ExternalAuthIdentity = {
   avatarUrl?: string
   displayName: string
   email: string
+  externalSubject?: string
+  workspace?: ExternalAuthWorkspace
 }
 
 const EMAIL_LIKE_DISPLAY_NAME = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

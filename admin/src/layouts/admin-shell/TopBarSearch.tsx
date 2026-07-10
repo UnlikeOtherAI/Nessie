@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type {
   ChannelRecord,
@@ -6,6 +6,7 @@ import type {
   ProjectRecord,
   UserRecord,
 } from '../../lib/api-client'
+import { HighlightedPassage } from '../../components/features/search/HighlightedPassage'
 import { SearchModeToggle } from '../../components/features/search/SearchModeToggle'
 import { useCurrentOrganization } from '../../facades/organization/hooks'
 import {
@@ -14,6 +15,7 @@ import {
   type KnowledgeSearchHit,
   type ThoughtSearchHit,
 } from '../../facades/search/hooks'
+import { selectBestPassage } from '../../lib/highlight-passage'
 
 // A single selectable entry in the flattened results list. Flattening lets the
 // keyboard handler move a single cursor across every group in display order.
@@ -22,7 +24,13 @@ type ResultItem =
   | { kind: 'person'; id: string; primary: string; secondary?: string; data: UserRecord }
   | { kind: 'project'; id: string; primary: string; secondary?: string; data: ProjectRecord }
   | { kind: 'message'; id: string; primary: string; secondary: string; data: MessageSearchResult }
-  | { kind: 'knowledge'; id: string; primary: string; secondary: string; data: KnowledgeSearchHit }
+  | {
+      kind: 'knowledge'
+      id: string
+      primary: string
+      secondary: ReactNode
+      data: KnowledgeSearchHit
+    }
   | { kind: 'thought'; id: string; primary: string; secondary: string; data: ThoughtSearchHit }
 
 const SearchGlyph = () => (
@@ -96,13 +104,21 @@ export const TopBarSearch = ({
         secondary: `${m.authorName} · ${m.channelLabel}`,
         data: m,
       })),
-      ...results.knowledge.map((k): ResultItem => ({
-        kind: 'knowledge',
-        id: `knowledge:${k.page.id}`,
-        primary: k.page.title,
-        secondary: k.snippet,
-        data: k,
-      })),
+      ...results.knowledge.map((k): ResultItem => {
+        const bestPassage = selectBestPassage(k.passages)
+        return {
+          kind: 'knowledge',
+          id: `knowledge:${k.page.id}`,
+          primary: k.page.title,
+          // hit.score is ranking metadata only and is never rendered.
+          secondary: bestPassage ? (
+            <HighlightedPassage passage={bestPassage.content} query={query} />
+          ) : (
+            k.snippet
+          ),
+          data: k,
+        }
+      }),
       ...results.thoughts.map((thought): ResultItem => ({
         kind: 'thought',
         id: `thought:${thought.id}`,
@@ -111,7 +127,7 @@ export const TopBarSearch = ({
         data: thought,
       })),
     ]
-  }, [active, results])
+  }, [active, query, results])
 
   // Clamp the active row whenever the result set changes.
   useEffect(() => {
@@ -172,7 +188,7 @@ export const TopBarSearch = ({
         navigate(`/channels/${item.data.channelId}`)
         break
       case 'knowledge':
-        navigate('/knowledge-base')
+        navigate(`/knowledge-base?spaceId=${item.data.page.spaceId}&pageId=${item.data.page.id}`)
         break
       case 'thought':
         navigate(`/search?query=${encodeURIComponent(query.trim())}&mode=semantic`)
@@ -242,7 +258,7 @@ export const TopBarSearch = ({
         <div className="admin-topbar-results" role="listbox">
           {mode === 'semantic' ? (
             <p className="px-3 pb-2 pt-1 text-xs text-[color:var(--tx3)]">
-              Semantic searches memory. Messages and knowledge stay in Text mode.
+              Semantic searches memory and knowledge by meaning. Messages stay in Text mode.
             </p>
           ) : null}
           {results.errorMessage ? (

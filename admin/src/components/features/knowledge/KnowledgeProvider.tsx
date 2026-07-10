@@ -11,15 +11,18 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import {
   useCreateKnowledgePage,
   useCreateKnowledgeSpace,
+  useEnsureMyDocsSpace,
   useKnowledgePages,
   useKnowledgeSpaces,
   usePublishKnowledgePage,
   useRestoreKnowledgeVersion,
   useSeedKnowledgeBase,
   useUpdateKnowledgePage,
+  useUpdateKnowledgeSpace,
   type KnowledgePageRecord,
   type KnowledgeSpaceRecord,
   type SavePageInput,
+  type UpdateSpaceInput,
 } from '../../../facades/knowledge/hooks'
 import {
   EXAMPLE_PAGE_HTML,
@@ -28,17 +31,29 @@ import {
 } from './example-page'
 
 export type KnowledgeEditorState =
-  | { mode: 'create'; parentPageId: string | null }
+  | { mode: 'create'; parentPageId: string | null; initialTitle?: string }
   | { mode: 'edit'; page: KnowledgePageRecord }
   | null
 
 type KnowledgeContextValue = {
   spaces: KnowledgeSpaceRecord[]
+  // The caller's personal "My Docs" space, provisioned once per session via
+  // the idempotent ensure endpoint. Undefined until that call resolves.
+  myDocsSpaceId?: string
   selectedSpaceId?: string
   selectedSpace: KnowledgeSpaceRecord | null
   selectSpace: (spaceId: string) => void
-  createSpace: (name: string) => Promise<KnowledgeSpaceRecord>
+  createSpace: (
+    name: string,
+    memberAgentIds?: string[],
+    visibility?: KnowledgeSpaceRecord['visibility'],
+  ) => Promise<KnowledgeSpaceRecord>
   createSpacePending: boolean
+  spaceSettingsOpen: boolean
+  openSpaceSettings: () => void
+  closeSpaceSettings: () => void
+  updateSpace: (input: Omit<UpdateSpaceInput, 'spaceId'>) => Promise<void>
+  updateSpacePending: boolean
   pages: KnowledgePageRecord[]
   rootPages: KnowledgePageRecord[]
   childrenOf: (parentPageId: string) => KnowledgePageRecord[]
@@ -48,10 +63,14 @@ type KnowledgeContextValue = {
   browseTo: (path: string[]) => void
   openPagePath: (path: string[]) => void
   openRootPage: (pageId: string) => void
+  openPageDeepLink: (input: { spaceId: string; pageId: string }) => void
   drillTo: (depth: number, childPageId: string) => void
   popTo: (depth: number) => void
   editor: KnowledgeEditorState
-  openCreate: (parentPageId: string | null) => void
+  // initialTitle prefills the create form's title — used by the unresolved
+  // wikilink "create this page?" confirmation, which already knows the title
+  // the reader typed/linked and shouldn't make them retype it.
+  openCreate: (parentPageId: string | null, initialTitle?: string) => void
   openEdit: (page: KnowledgePageRecord) => void
   closeEditor: () => void
   createFolder: (parentPageId: string | null, title: string) => Promise<void>
@@ -80,6 +99,7 @@ export const useKnowledge = (): KnowledgeContextValue => {
 export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const { me } = useAuthSession()
   const spacesQuery = useKnowledgeSpaces()
+  const myDocsQuery = useEnsureMyDocsSpace()
   const spaces = useMemo(
     () => [...(spacesQuery.data ?? [])].sort((left, right) => left.name.localeCompare(right.name)),
     [spacesQuery.data],
@@ -90,11 +110,13 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const [openPageId, setOpenPageId] = useState<string | undefined>()
   const [editor, setEditor] = useState<KnowledgeEditorState>(null)
   const [historyPageId, setHistoryPageId] = useState<string | undefined>()
+  const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false)
 
   const pagesQuery = useKnowledgePages(selectedSpaceId)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
 
   const createSpaceMutation = useCreateKnowledgeSpace()
+  const updateSpaceMutation = useUpdateKnowledgeSpace()
   const createPageMutation = useCreateKnowledgePage(selectedSpaceId)
   const updatePageMutation = useUpdateKnowledgePage()
   const publishPageMutation = usePublishKnowledgePage()
@@ -169,12 +191,19 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     setOpenPageId(undefined)
     setEditor(null)
     setHistoryPageId(undefined)
+    setSpaceSettingsOpen(false)
   }
 
-  const createSpace = async (name: string) => {
+  const createSpace = async (
+    name: string,
+    memberAgentIds?: string[],
+    visibility?: KnowledgeSpaceRecord['visibility'],
+  ) => {
     const created = await createSpaceMutation.mutateAsync({
       name,
+      memberAgentIds,
       projectId: me?.context.projectId,
+      visibility,
     })
     setSelectedSpaceId(created.id)
     setPagePath([])
@@ -182,6 +211,15 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     setEditor(null)
     setHistoryPageId(undefined)
     return created
+  }
+
+  const openSpaceSettings = () => setSpaceSettingsOpen(true)
+  const closeSpaceSettings = () => setSpaceSettingsOpen(false)
+
+  const updateSpace = async (input: Omit<UpdateSpaceInput, 'spaceId'>) => {
+    if (!selectedSpaceId) return
+    await updateSpaceMutation.mutateAsync({ spaceId: selectedSpaceId, ...input })
+    setSpaceSettingsOpen(false)
   }
 
   const browseTo = (path: string[]) => {
@@ -202,6 +240,18 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
 
   const openRootPage = (pageId: string) => openPagePath([pageId])
 
+  // Jumps straight to a page from outside the browsing flow (an approval's
+  // "Open page" link, a search result). We don't know the page's ancestor
+  // chain up front, so the path is just the page itself — enough for the
+  // preview to open; breadcrumbs/back just fall back to the space root.
+  const openPageDeepLink = (input: { spaceId: string; pageId: string }) => {
+    setSelectedSpaceId(input.spaceId)
+    setPagePath([input.pageId])
+    setOpenPageId(input.pageId)
+    setEditor(null)
+    setHistoryPageId(undefined)
+  }
+
   const drillTo = (depth: number, childPageId: string) => {
     setPagePath((current) => [...current.slice(0, depth + 1), childPageId])
     setOpenPageId(childPageId)
@@ -217,7 +267,8 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     setHistoryPageId(undefined)
   }
 
-  const openCreate = (parentPageId: string | null) => setEditor({ mode: 'create', parentPageId })
+  const openCreate = (parentPageId: string | null, initialTitle?: string) =>
+    setEditor({ mode: 'create', parentPageId, initialTitle })
   const openEdit = (page: KnowledgePageRecord) => setEditor({ mode: 'edit', page })
   const closeEditor = () => setEditor(null)
 
@@ -264,11 +315,17 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
 
   const value: KnowledgeContextValue = {
     spaces,
+    myDocsSpaceId: myDocsQuery.data?.spaceId,
     selectedSpaceId,
     selectedSpace,
     selectSpace,
     createSpace,
     createSpacePending: createSpaceMutation.isPending,
+    spaceSettingsOpen,
+    openSpaceSettings,
+    closeSpaceSettings,
+    updateSpace,
+    updateSpacePending: updateSpaceMutation.isPending,
     pages,
     rootPages,
     childrenOf: (parentPageId) => pagesByParent.get(parentPageId) ?? [],
@@ -278,6 +335,7 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     browseTo,
     openPagePath,
     openRootPage,
+    openPageDeepLink,
     drillTo,
     popTo,
     editor,

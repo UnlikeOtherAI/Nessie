@@ -7,6 +7,9 @@ import {
   noteHighlightKey,
   type NoteAnchorInput,
 } from './notes/note-highlight-extension'
+import { WikilinkCreateConfirm } from './wikilink/WikilinkCreateConfirm'
+import { useWikilinkNavigation } from './wikilink/use-wikilink-navigation'
+import { Wikilink } from './wikilink/wikilink-node'
 
 export type SelectionPoint = { top: number; left: number }
 
@@ -35,9 +38,12 @@ export const RichTextContent = ({
     extensions: [
       StarterKit.configure({ link: { openOnClick: true } }),
       NoteHighlight.configure({ notes: notes ?? [] }),
+      Wikilink,
     ],
     immediatelyRender: false,
   })
+  const { confirmCreate, navigateToPage, requestCreate, cancelCreate, confirmCreateNow } =
+    useWikilinkNavigation()
 
   useEffect(() => {
     if (editor && html !== editor.getHTML()) {
@@ -89,9 +95,38 @@ export const RichTextContent = ({
         }
       : undefined
 
+  // Resolved wikilinks deep-link straight to their target page (after a
+  // lazy pageId → spaceId lookup); unresolved ones open a small "create this
+  // page?" confirmation instead of navigating anywhere.
+  const handleClick = (event: ReactMouseEvent) => {
+    const target = event.target as HTMLElement
+    const resolvedEl = target.closest('[data-kb-page-id]')
+    if (resolvedEl) {
+      const pageId = resolvedEl.getAttribute('data-kb-page-id')
+      if (pageId) navigateToPage(pageId)
+      return
+    }
+    const unresolvedEl = target.closest('[data-kb-unresolved-title]')
+    if (unresolvedEl) {
+      const title = unresolvedEl.getAttribute('data-kb-unresolved-title')
+      if (title) {
+        const rect = unresolvedEl.getBoundingClientRect()
+        requestCreate(title, { top: rect.bottom, left: rect.left + rect.width / 2 })
+      }
+    }
+  }
+
   return (
-    <div onFocus={handleFocus} onMouseOver={handleMouseOver} onMouseUp={handleMouseUp}>
+    <div onClick={handleClick} onFocus={handleFocus} onMouseOver={handleMouseOver} onMouseUp={handleMouseUp}>
       <EditorContent editor={editor} />
+      {confirmCreate ? (
+        <WikilinkCreateConfirm
+          at={confirmCreate.at}
+          onCancel={cancelCreate}
+          onConfirm={confirmCreateNow}
+          title={confirmCreate.title}
+        />
+      ) : null}
     </div>
   )
 }

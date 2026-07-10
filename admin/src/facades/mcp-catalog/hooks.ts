@@ -40,6 +40,9 @@ export type McpCatalogEntryRecord = {
   signature: string | null
   status: McpCatalogStatus
   visibility: McpCatalogVisibility
+  locked: boolean
+  lockedAt: string | null
+  lockedBy: string | null
   ownerUserId: string | null
   submittedAt: string | null
   reviewedAt: string | null
@@ -162,6 +165,16 @@ const useCatalogAction = <TBody = void>(action: string) => {
       void invalidateCatalog(queryClient)
     },
   })
+}
+
+export const useLockCatalogEntry = () => {
+  const action = useCatalogAction('lock')
+  return { ...action, mutateAsync: (id: string) => action.mutateAsync({ id }) }
+}
+
+export const useUnlockCatalogEntry = () => {
+  const action = useCatalogAction('unlock')
+  return { ...action, mutateAsync: (id: string) => action.mutateAsync({ id }) }
 }
 
 export const usePublishCatalogEntry = () => {

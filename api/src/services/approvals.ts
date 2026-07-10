@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import { runApprovalEffect } from './approval-effects.js'
 import { emitAuditEvent } from './audit.js'
 
 const DEFAULT_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
@@ -196,9 +197,42 @@ export const resolveApprovalRequest = async (
     }
   }
 
-  const updated = await prisma.approvalRequest.findFirstOrThrow({
+  let updated = await prisma.approvalRequest.findFirstOrThrow({
     where: { id: approvalId },
   })
+
+  // The effect (e.g. actually publishing a knowledge page) runs after the
+  // atomic claim above, so a crash mid-effect never leaves the approval
+  // un-resolved or double-claimable. A failed effect does not un-approve the
+  // request — it stays approved and the failure is appended to the note, so
+  // a human can see what happened and re-trigger the follow-up manually.
+  if (resolution === 'approved') {
+    try {
+      const effect = await runApprovalEffect(
+        prisma,
+        { id: updated.id, action: updated.action, context: updated.context as Record<string, unknown> | null },
+        actorContext,
+      )
+      if (effect.note) {
+        const resolutionNote = updated.resolutionNote
+          ? `${updated.resolutionNote} · effect: ${effect.note}`
+          : `effect: ${effect.note}`
+        updated = await prisma.approvalRequest.update({
+          where: { id: approvalId },
+          data: { resolutionNote },
+        })
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const resolutionNote = updated.resolutionNote
+        ? `${updated.resolutionNote} · effect failed: ${message}`
+        : `effect failed: ${message}`
+      updated = await prisma.approvalRequest.update({
+        where: { id: approvalId },
+        data: { resolutionNote },
+      })
+    }
+  }
 
   const auditAction = resolution === 'approved' ? 'approval.approved' : 'approval.rejected'
   await emitAuditEvent(prisma, {

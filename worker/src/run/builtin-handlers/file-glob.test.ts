@@ -4,7 +4,6 @@ import {
   mkdtemp,
   realpath,
   rm,
-  symlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -13,6 +12,7 @@ import test from 'node:test'
 
 import { runFileGlob } from './file-glob.js'
 import { SandboxViolationError } from './sandbox.js'
+import { createSymlinkOrSkip } from './test-symlink.js'
 
 const setup = async (): Promise<{
   root: string
@@ -104,12 +104,20 @@ test('runFileGlob refuses when allowedRoots is empty', async () => {
   )
 })
 
-test('runFileGlob skips matches reached via a symlink that escapes the root', async () => {
+test('runFileGlob skips matches reached via a symlink that escapes the root', async (t) => {
   const { root, cleanup } = await setup()
   const escapeTarget = await mkdtemp(join(tmpdir(), 'nessie-file-glob-out-'))
   try {
     await writeFile(join(escapeTarget, 'secret.ts'), 'x')
-    await symlink(escapeTarget, join(root, 'src', 'escape'))
+    const linked = await createSymlinkOrSkip(
+      t,
+      escapeTarget,
+      join(root, 'src', 'escape'),
+      'dir',
+    )
+    if (!linked) {
+      return
+    }
 
     const result = await runFileGlob(
       { pattern: '**/*.ts', cwd: root },

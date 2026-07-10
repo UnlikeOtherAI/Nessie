@@ -1,18 +1,47 @@
 import type { PrismaClient } from '@prisma/client'
 import type { KnowledgeSpaceRecord } from './types.js'
 
-// Per-space access. The space creator always has full access. Non-human actors
-// (agents / services) bypass per-user checks for now; fine-grained agent access
-// lands with the MCP / agent-tools phase.
+// Per-space access. The space creator always has full access. `bypass` is now
+// reserved for genuine service/system actors (workers acting outside any
+// principal, scheduled jobs, migrations) — user and agent viewers are always
+// evaluated against the real access rules below.
+export type SpaceViewerAgentScopes = {
+  id: string
+  // True when the agent has at least one channel binding in this org — grants
+  // organization-visibility spaces, mirroring "every human in the org can read
+  // an org-visibility space."
+  orgBound: boolean
+  channelIds: Set<string>
+  teamIds: Set<string>
+  projectIds: Set<string>
+  // Spaces the agent was explicitly granted via KnowledgeSpaceMember.
+  memberSpaceIds: Set<string>
+}
+
 export type SpaceViewer = {
   bypass: boolean
-  projectIds: Set<string>
   userId: string | null
+  projectIds: Set<string>
+  agent?: SpaceViewerAgentScopes
 }
+
+export type SpaceViewerPrincipal =
+  | { actorType: 'user'; actorId: string }
+  | { actorType: 'agent'; actorId: string }
+  | { actorType: 'service'; actorId: string | null }
 
 type SpaceAccessFacts = Pick<
   KnowledgeSpaceRecord,
-  'visibility' | 'writeRestricted' | 'projectId' | 'createdBy' | 'memberUserIds'
+  | 'visibility'
+  | 'writeRestricted'
+  | 'projectId'
+  | 'teamId'
+  | 'channelId'
+  | 'createdBy'
+  | 'memberUserIds'
+  | 'memberAgentIds'
+  | 'sensitivityTier'
+  | 'privateToAgentId'
 >
 
 const isMember = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean =>
@@ -21,8 +50,59 @@ const isMember = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean =>
 const isCreator = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean =>
   viewer.userId !== null && space.createdBy === viewer.userId
 
+// Rules 2-4 of the agent access model: private-to-this-agent, creator, or an
+// explicit KnowledgeSpaceMember grant. Shared by the read arm and the
+// writeRestricted branch of the write arm.
+const agentHasExplicitGrant = (
+  space: SpaceAccessFacts,
+  agent: SpaceViewerAgentScopes,
+): boolean =>
+  space.privateToAgentId === agent.id ||
+  space.createdBy === agent.id ||
+  space.memberAgentIds.includes(agent.id)
+
+// Rule 5: fall back to visibility-scoped reach when there is no explicit
+// grant. `private` visibility is members-only, so it has no agent arm here.
+const agentReachesByVisibility = (
+  space: SpaceAccessFacts,
+  agent: SpaceViewerAgentScopes,
+): boolean => {
+  switch (space.visibility) {
+    case 'organization':
+      return agent.orgBound
+    case 'project':
+      return agent.projectIds.has(space.projectId)
+    case 'team':
+      return typeof space.teamId === 'string' && agent.teamIds.has(space.teamId)
+    case 'channel':
+      return typeof space.channelId === 'string' && agent.channelIds.has(space.channelId)
+    default:
+      return false
+  }
+}
+
+const canAgentReadSpace = (
+  space: SpaceAccessFacts,
+  agent: SpaceViewerAgentScopes,
+): boolean => {
+  // Restricted content is humans-only: this wins over every other agent arm,
+  // including the agent's own private space or explicit membership.
+  if (space.sensitivityTier === 'restricted') return false
+  return agentHasExplicitGrant(space, agent) || agentReachesByVisibility(space, agent)
+}
+
+const canAgentWriteSpace = (
+  space: SpaceAccessFacts,
+  agent: SpaceViewerAgentScopes,
+): boolean => {
+  if (space.sensitivityTier === 'restricted') return false
+  if (space.writeRestricted) return agentHasExplicitGrant(space, agent)
+  return agentHasExplicitGrant(space, agent) || agentReachesByVisibility(space, agent)
+}
+
 export const canReadSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean => {
   if (viewer.bypass) return true
+  if (viewer.agent) return canAgentReadSpace(space, viewer.agent)
   if (isCreator(space, viewer)) return true
   switch (space.visibility) {
     case 'organization':
@@ -37,6 +117,7 @@ export const canReadSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): bool
 
 export const canWriteSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean => {
   if (viewer.bypass) return true
+  if (viewer.agent) return canAgentWriteSpace(space, viewer.agent)
   if (isCreator(space, viewer)) return true
   // "public read-only, private write": readable per visibility, written by members.
   if (space.writeRestricted) return isMember(space, viewer)
@@ -50,21 +131,76 @@ export const canWriteSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boo
   }
 }
 
-export const loadSpaceViewer = async (
+const loadUserViewer = async (
   prisma: PrismaClient,
-  userId: string | null,
-  bypass: boolean,
+  userId: string,
 ): Promise<SpaceViewer> => {
-  if (bypass || userId === null) {
-    return { bypass: true, projectIds: new Set(), userId }
-  }
   const memberships = await prisma.projectMember.findMany({
     select: { projectId: true },
     where: { userId },
   })
   return {
     bypass: false,
-    projectIds: new Set(memberships.map((m) => m.projectId)),
     userId,
+    projectIds: new Set(memberships.map((m) => m.projectId)),
   }
+}
+
+const loadAgentViewer = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  agentId: string,
+): Promise<SpaceViewer> => {
+  const [bindings, memberships] = await Promise.all([
+    prisma.agentBinding.findMany({
+      where: { agentId, channel: { organizationId } },
+      select: {
+        channelId: true,
+        channel: { select: { teamId: true, projectId: true } },
+      },
+    }),
+    prisma.knowledgeSpaceMember.findMany({
+      where: { agentId, organizationId },
+      select: { spaceId: true },
+    }),
+  ])
+  const channelIds = new Set<string>()
+  const teamIds = new Set<string>()
+  const projectIds = new Set<string>()
+  for (const binding of bindings) {
+    channelIds.add(binding.channelId)
+    teamIds.add(binding.channel.teamId)
+    projectIds.add(binding.channel.projectId)
+  }
+  return {
+    bypass: false,
+    userId: null,
+    projectIds: new Set(),
+    agent: {
+      id: agentId,
+      orgBound: bindings.length > 0,
+      channelIds,
+      teamIds,
+      projectIds,
+      memberSpaceIds: new Set(memberships.map((m) => m.spaceId)),
+    },
+  }
+}
+
+// Resolves the access facts for one principal, once per request. Service
+// actors (workers acting outside any user/agent, migrations, system jobs)
+// bypass per-space checks entirely; users and agents are always evaluated
+// against `canReadSpace` / `canWriteSpace`.
+export const loadSpaceViewer = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  principal: SpaceViewerPrincipal,
+): Promise<SpaceViewer> => {
+  if (principal.actorType === 'service') {
+    return { bypass: true, userId: null, projectIds: new Set() }
+  }
+  if (principal.actorType === 'user') {
+    return loadUserViewer(prisma, principal.actorId)
+  }
+  return loadAgentViewer(prisma, organizationId, principal.actorId)
 }
