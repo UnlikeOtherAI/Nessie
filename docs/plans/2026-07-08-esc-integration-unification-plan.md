@@ -245,8 +245,11 @@ Current Nessie slice:
   /api/integrations/products/deep-water/research-runs`. The PA can now call the
   PA-only `deep_water_run_update` builtin after approved Deep Water MCP calls to
   project external run id, status, source count, cost, report URL, and Knowledge
-  draft page id into that durable record. Autonomous polling, usage ledger
-  reconciliation, and Knowledge import jobs remain Phase 2 work.
+  draft page id into that durable record. Terminal PA write-back now reconciles
+  reported run cost into `connector_usage_events` exactly once per Deep Water
+  run, so the ESC month-to-date usage panel can include the completed external
+  research spend. Autonomous polling and Knowledge import jobs remain Phase 2
+  work.
 - DeepTest now has a privacy-safe ESC handoff panel gated by team enablement and
   an active shared MCP connector. `POST
   /api/integrations/products/deeptest/security-handoff` accepts only controlled
@@ -349,7 +352,9 @@ Current Deep Water launcher slice:
 - Automatic progress polling, cost reconciliation, and import without PA
   mediation still belong to the Phase 2 completion wrapper. The current
   write-back path is explicit PA bookkeeping around the approved MCP flow, not
-  an independent background worker.
+  an independent background worker. Terminal PA write-back now does reconcile
+  the reported cost into Nessie's connector usage ledger with an idempotent
+  per-run marker.
 - ESC renders DeepTest controls for review depth, runner boundary, and
   share-safe/external-link report handoff. It intentionally has no text field for
   target URLs, repo paths, source, PR diffs, findings, prompts, or raw reports.
@@ -691,6 +696,8 @@ Acceptance:
   reconciliation remains pending.**
 - Add result import into Knowledge and FileService-backed attachments.
 - Add connector usage ledger rows for job cost.
+  **Implemented for terminal PA write-back with reported cost; autonomous
+  background reconciliation remains pending.**
 - Add UI panels for research history, report link, sources, and spend.
   **Recent launch history, report links, Knowledge draft links, source counts,
   and final spend projection are implemented when the PA writes them back;

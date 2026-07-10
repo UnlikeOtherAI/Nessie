@@ -48,14 +48,37 @@ const makeDeepWaterRunRow = () => ({
 })
 
 const makeContext = (
-  overrides: { agentKind?: 'personal_assistant' | 'shared' } = {},
+  overrides: {
+    agentKind?: 'personal_assistant' | 'shared'
+    runRow?: ReturnType<typeof makeDeepWaterRunRow>
+  } = {},
 ) => {
   const queries: unknown[] = []
+  const ledgerEvents: unknown[] = []
+  const resultUpdates: unknown[] = []
+  const row = overrides.runRow ?? makeDeepWaterRunRow()
+  const tx = {
+    $executeRaw: async (query: unknown) => {
+      resultUpdates.push(query)
+      return 1
+    },
+    $queryRaw: async (query: unknown) => {
+      queries.push({ query, transaction: true })
+      return [row]
+    },
+    connectorUsageEvent: {
+      create: async (input: unknown) => {
+        ledgerEvents.push(input)
+        return { id: 'ledger-event-1' }
+      },
+    },
+  }
   const prisma = {
     $queryRaw: async (query: unknown) => {
       queries.push(query)
-      return [makeDeepWaterRunRow()]
+      return [row]
     },
+    $transaction: async <T>(fn: (client: typeof tx) => Promise<T>) => fn(tx),
   }
 
   const context = {
@@ -80,11 +103,11 @@ const makeContext = (
     },
   } as unknown as BuiltinToolRuntimeContext
 
-  return { context, queries }
+  return { context, ledgerEvents, queries, resultUpdates }
 }
 
 test('deep_water_run_update writes terminal status projection', async () => {
-  const { context, queries } = makeContext()
+  const { context, ledgerEvents, queries, resultUpdates } = makeContext()
 
   const result = await runDeepWaterRunUpdateTool(context, {
     currency: 'USD',
@@ -102,7 +125,56 @@ test('deep_water_run_update writes terminal status projection', async () => {
   assert.match(result.outputPreview, /status=completed/)
   assert.match(result.outputPreview, /18 sources/)
   assert.match(result.outputPreview, /4\.25 USD/)
-  assert.equal(queries.length, 1)
+  assert.match(result.outputPreview, /usage ledger recorded/)
+  assert.equal(queries.length, 2)
+  assert.equal(ledgerEvents.length, 1)
+  assert.equal(resultUpdates.length, 1)
+  assert.deepEqual(
+    (ledgerEvents[0] as { data: { metadata: { productSlug: string }; operation: string } })
+      .data.metadata.productSlug,
+    'deep-water',
+  )
+  assert.equal(
+    (ledgerEvents[0] as { data: { costAmount: number; operation: string; unitType: string } })
+      .data.costAmount,
+    4.25,
+  )
+  assert.equal(
+    (ledgerEvents[0] as { data: { costAmount: number; operation: string; unitType: string } })
+      .data.operation,
+    'research.completed',
+  )
+  assert.equal(
+    (ledgerEvents[0] as { data: { costAmount: number; operation: string; unitType: string } })
+      .data.unitType,
+    'sources',
+  )
+})
+
+test('deep_water_run_update does not double-record an already ledgered run', async () => {
+  const runRow = {
+    ...makeDeepWaterRunRow(),
+    result_json: {
+      reportUrl: 'https://deepwater.example/reports/dw-run-123',
+      statusDetail: 'Report ready for review.',
+      usageLedgerCorrelationId: `deep-water:${RUN_ID}`,
+      usageLedgerRecordedAt: '2026-07-10T10:46:00.000Z',
+    },
+  }
+  const { context, ledgerEvents, resultUpdates } = makeContext({ runRow })
+
+  const result = await runDeepWaterRunUpdateTool(context, {
+    currency: 'USD',
+    runId: RUN_ID,
+    sourceCount: 18,
+    status: 'completed',
+    totalCost: 4.25,
+  })
+
+  assert.equal(result.toolName, 'deep_water_run_update')
+  assert.doesNotMatch(result.outputPreview, /usage ledger recorded/)
+  assert.equal(ledgerEvents.length, 0)
+  assert.equal(resultUpdates.length, 0)
 })
 
 test('deep_water_run_update rejects non-PA callers before touching the database', async () => {

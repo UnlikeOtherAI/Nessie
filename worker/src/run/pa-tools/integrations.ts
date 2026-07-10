@@ -3,6 +3,8 @@ import {
   type ProductIntegrationRunStatus,
 } from '@nessie/schemas'
 import {
+  attributionFromActorContext,
+  reconcileDeepWaterResearchRunUsage,
   updateDeepWaterResearchRun,
   type DeepWaterResearchRunUpdateInput,
 } from '@nessie/runtime'
@@ -69,18 +71,27 @@ export const runDeepWaterRunUpdateTool = async (
   }
 
   const updated = await updateDeepWaterResearchRun(context.prisma, update)
+  const usage = await reconcileDeepWaterResearchRunUsage(context.prisma, {
+    attribution: attributionFromActorContext(context.actorContext, {
+      agentId: context.agentId,
+      runId: context.run.id,
+    }),
+    organizationId: String(context.channel.organizationId),
+    runId: updated.id,
+  })
   const cost =
     updated.totalCost === null
       ? 'cost pending'
       : `${updated.totalCost.toFixed(2)} ${updated.currency ?? 'USD'}`
   const sources =
     updated.sourceCount === null ? 'sources pending' : `${updated.sourceCount} sources`
+  const usageNote = usage.recorded ? ', usage ledger recorded' : ''
 
   return {
     inputSummary: `runId=${updated.id} status=${updated.status}`,
     outputPreview:
       `Updated Deep Water run ${updated.id}: status=${updated.status}, ` +
-      `${sources}, ${cost}.`,
+      `${sources}, ${cost}${usageNote}.`,
     toolName: 'deep_water_run_update',
   }
 }

@@ -5,6 +5,7 @@ import {
   type DeepWaterResearchRunRecord,
   type ProductIntegrationRunStatus,
 } from '@nessie/schemas'
+import type { LedgerAttribution } from './ledger.js'
 
 type DeepWaterRunRow = {
   id: string
@@ -40,6 +41,21 @@ type DeepWaterLaunchOwner = {
   teamId: string
 }
 
+type DeepWaterUsageLedgerRow = {
+  id: string
+  organization_id: string
+  team_id: string
+  connector_id: string | null
+  channel_id: string | null
+  thread_id: string | null
+  external_run_id: string | null
+  status: ProductIntegrationRunStatus
+  result_json: unknown
+  cost_amount: Prisma.Decimal | number | string | null
+  cost_currency: string | null
+  source_count: number | null
+}
+
 export type DeepWaterResearchRunUpdateInput = {
   completedAt?: Date | null
   costAmount?: number | null
@@ -54,6 +70,23 @@ export type DeepWaterResearchRunUpdateInput = {
   status?: ProductIntegrationRunStatus
   statusDetail?: string | null
   threadId?: string | null
+}
+
+export type DeepWaterResearchRunUsageReconciliationResult =
+  | { recorded: true; correlationId: string }
+  | {
+      recorded: false
+      reason:
+        | 'already_recorded'
+        | 'missing_cost'
+        | 'non_terminal_status'
+        | 'run_not_found'
+    }
+
+export type DeepWaterResearchRunUsageReconciliationInput = {
+  attribution: LedgerAttribution
+  organizationId: string
+  runId: string
 }
 
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
@@ -282,6 +315,10 @@ const toNullableCost = (value: number | null | undefined): number | null => {
   return Math.max(0, value)
 }
 
+const hasUsageLedgerRecorded = (result: Record<string, unknown>): boolean =>
+  typeof result.usageLedgerRecordedAt === 'string'
+  || typeof result.usageLedgerCorrelationId === 'string'
+
 const buildDeepWaterResultPatch = (
   input: DeepWaterResearchRunUpdateInput,
 ): Prisma.InputJsonObject => {
@@ -358,6 +395,101 @@ export const updateDeepWaterResearchRun = async (
 
   return mapDeepWaterRunRow(requireDeepWaterRunRow(rows[0]))
 }
+
+export const reconcileDeepWaterResearchRunUsage = async (
+  prisma: PrismaClient,
+  input: DeepWaterResearchRunUsageReconciliationInput,
+): Promise<DeepWaterResearchRunUsageReconciliationResult> =>
+  prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<DeepWaterUsageLedgerRow[]>(Prisma.sql`
+      SELECT
+        "id",
+        "organization_id",
+        "team_id",
+        "connector_id",
+        "channel_id",
+        "thread_id",
+        "external_run_id",
+        "status",
+        "result_json",
+        "cost_amount",
+        "cost_currency",
+        "source_count"
+      FROM "product_integration_runs"
+      WHERE "id" = CAST(${input.runId} AS uuid)
+        AND "organization_id" = CAST(${input.organizationId} AS uuid)
+        AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+      FOR UPDATE
+    `)
+    const row = rows[0]
+    if (!row) {
+      return { recorded: false, reason: 'run_not_found' }
+    }
+    if (!TERMINAL_STATUSES.includes(row.status)) {
+      return { recorded: false, reason: 'non_terminal_status' }
+    }
+
+    const costAmount = toNullableNumber(row.cost_amount)
+    if (costAmount === null) {
+      return { recorded: false, reason: 'missing_cost' }
+    }
+
+    const result = toRecord(row.result_json)
+    if (hasUsageLedgerRecorded(result)) {
+      return { recorded: false, reason: 'already_recorded' }
+    }
+
+    const occurredAt = new Date()
+    const correlationId = `${DEEP_WATER_PRODUCT_SLUG}:${row.id}`
+    await tx.connectorUsageEvent.create({
+      data: {
+        actorId: input.attribution.actorId,
+        actorType: input.attribution.actorType ?? null,
+        agentId: input.attribution.agentId ?? null,
+        calls: 1,
+        channelId: row.channel_id ?? input.attribution.channelId ?? null,
+        connectorId: row.connector_id,
+        connectorType: 'mcp',
+        correlationId,
+        costAmount,
+        costCurrency: row.cost_currency ?? DEFAULT_CURRENCY,
+        latencyMs: null,
+        metadata: {
+          externalRunId: row.external_run_id,
+          productIntegrationRunId: row.id,
+          productSlug: DEEP_WATER_PRODUCT_SLUG,
+          source: 'deep_water_run_update',
+          status: row.status,
+        } as Prisma.InputJsonValue,
+        occurredAt,
+        operation: `research.${row.status}`,
+        organizationId: row.organization_id,
+        projectId: input.attribution.projectId ?? null,
+        requestId: input.attribution.requestId ?? null,
+        runId: input.attribution.runId ?? null,
+        success: row.status !== 'failed',
+        target: DEEP_WATER_PRODUCT_SLUG,
+        taskId: input.attribution.taskId ?? null,
+        teamId: row.team_id,
+        threadId: row.thread_id ?? input.attribution.threadId ?? null,
+        units: row.source_count,
+        unitType: row.source_count === null ? null : 'sources',
+      },
+    })
+
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE "product_integration_runs"
+      SET
+        "result_json" = COALESCE("result_json", '{}'::jsonb) || CAST(${JSON.stringify({
+          usageLedgerCorrelationId: correlationId,
+          usageLedgerRecordedAt: occurredAt.toISOString(),
+        })} AS jsonb),
+        "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = CAST(${row.id} AS uuid)
+    `)
+
+    return { recorded: true, correlationId }
+  })
 
 export const listDeepWaterResearchRuns = async (
   prisma: PrismaClient,
