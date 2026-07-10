@@ -37,6 +37,7 @@ export {
   runKbCommentsListTool,
   runKbNoteAddTool,
 } from './pa-tools/kb-comments.js'
+export { runDeepWaterRunUpdateTool } from './pa-tools/integrations.js'
 export {
   runKbListTool,
   runKbPageReadTool,

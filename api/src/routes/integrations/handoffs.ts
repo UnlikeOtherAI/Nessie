@@ -4,6 +4,11 @@ import {
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
 } from '@nessie/schemas'
+import {
+  attachDeepWaterResearchHandoff,
+  createDeepWaterResearchRun,
+  markDeepWaterResearchRunFailed,
+} from '@nessie/runtime'
 
 import {
   ChannelRecordSchema,
@@ -12,11 +17,6 @@ import {
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import { createPersonalAssistantIntegrationHandoff } from '../../services/integration-handoffs.js'
-import {
-  attachDeepWaterResearchHandoff,
-  createDeepWaterResearchRun,
-  markDeepWaterResearchRunFailed,
-} from '../../services/integration-runs.js'
 import { listIntegratedProducts } from '../../services/integrations.js'
 import type { RouteDeps } from '../types.js'
 import {

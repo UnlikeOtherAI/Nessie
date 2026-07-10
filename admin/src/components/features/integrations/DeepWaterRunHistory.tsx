@@ -62,6 +62,9 @@ const modeLabel = (run: DeepWaterResearchRunRecord): string =>
 const runTitle = (run: DeepWaterResearchRunRecord): string =>
   run.title?.trim() || run.queryPreview || 'Deep Water research'
 
+const knowledgeHref = (pageId: string): string =>
+  `/knowledge-base?pageId=${encodeURIComponent(pageId)}`
+
 export const DeepWaterRunHistory = ({
   loading,
   runs,
@@ -113,7 +116,30 @@ export const DeepWaterRunHistory = ({
                   Open chat
                 </Link>
               ) : null}
+              {run.reportUrl ? (
+                <a
+                  className="admin-button admin-button-secondary h-8 text-xs"
+                  href={run.reportUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Report
+                </a>
+              ) : null}
+              {run.knowledgePageId ? (
+                <Link
+                  className="admin-button admin-button-secondary h-8 text-xs"
+                  to={knowledgeHref(run.knowledgePageId)}
+                >
+                  Knowledge
+                </Link>
+              ) : null}
             </div>
+            {run.statusDetail ? (
+              <div className="mt-2 text-xs leading-5 text-[var(--tx2)]">
+                {run.statusDetail}
+              </div>
+            ) : null}
             <div className="mt-3 grid gap-2 text-xs text-[var(--tx2)] sm:grid-cols-4">
               <div className="rounded bg-[var(--overlay)] px-2 py-1 capitalize">
                 {modeLabel(run)}

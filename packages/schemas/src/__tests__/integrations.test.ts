@@ -132,21 +132,25 @@ test('DeepWaterResearchRunRecordSchema accepts durable Deep Water run projection
     outputTier: 'full',
     productSlug: 'deep-water',
     queryPreview: 'Map geothermal project risks.',
+    reportUrl: 'https://deepwater.example/reports/research-123',
     requestedAt: '2026-07-10T10:30:00.000Z',
     requestedByUserId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d301',
     searchQuality: 'premium',
-    sourceCount: null,
-    status: 'queued',
+    sourceCount: 18,
+    status: 'completed',
+    statusDetail: 'Report ready for review.',
     teamId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d501',
     threadId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d805',
     title: 'Geothermal risk map',
-    totalCost: null,
+    totalCost: 4.25,
     updatedAt: '2026-07-10T10:30:00.000Z',
   })
 
-  assert.equal(parsed.status, 'queued')
+  assert.equal(parsed.status, 'completed')
   assert.equal(parsed.productSlug, 'deep-water')
   assert.equal(parsed.depth, 'deep')
+  assert.equal(parsed.reportUrl, 'https://deepwater.example/reports/research-123')
+  assert.equal(parsed.sourceCount, 18)
 })
 
 test('DeepTestReviewHandoffRequestSchema rejects target material fields', () => {

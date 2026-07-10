@@ -242,9 +242,11 @@ Current Nessie slice:
   MCP approval/grants. Nessie now also creates a durable
   `product_integration_runs` projection for each Deep Water launch and exposes
   recent active-team runs through `GET
-  /api/integrations/products/deep-water/research-runs`; automatic progress
-  polling, completion updates, usage ledger reconciliation, and Knowledge
-  import jobs remain Phase 2 work.
+  /api/integrations/products/deep-water/research-runs`. The PA can now call the
+  PA-only `deep_water_run_update` builtin after approved Deep Water MCP calls to
+  project external run id, status, source count, cost, report URL, and Knowledge
+  draft page id into that durable record. Autonomous polling, usage ledger
+  reconciliation, and Knowledge import jobs remain Phase 2 work.
 - DeepTest now has a privacy-safe ESC handoff panel gated by team enablement and
   an active shared MCP connector. `POST
   /api/integrations/products/deeptest/security-handoff` accepts only controlled
@@ -342,9 +344,12 @@ Current Deep Water launcher slice:
   draft and request publication when `artifactDestination=knowledge_draft`.
 - ESC now shows recent Deep Water launch records from Nessie's durable
   `product_integration_runs` projection, including status, launch options,
-  PA chat destination, and pending source/cost fields.
+  PA chat destination, report link, Knowledge draft link, status detail, and
+  source/cost fields when the PA writes them back.
 - Automatic progress polling, cost reconciliation, and import without PA
-  mediation still belong to the Phase 2 completion wrapper.
+  mediation still belong to the Phase 2 completion wrapper. The current
+  write-back path is explicit PA bookkeeping around the approved MCP flow, not
+  an independent background worker.
 - ESC renders DeepTest controls for review depth, runner boundary, and
   share-safe/external-link report handoff. It intentionally has no text field for
   target URLs, repo paths, source, PR diffs, findings, prompts, or raw reports.
@@ -681,13 +686,15 @@ Acceptance:
   installations.**
 - Add credential setup and tool approval flow.
 - Add a Deep Water run wrapper in Nessie jobs/runs. **Initial durable launch
-  projection is implemented in `product_integration_runs`; polling/completion
+  projection is implemented in `product_integration_runs`; PA write-back can
+  now update status/cost/source/report fields; autonomous polling/completion
   reconciliation remains pending.**
 - Add result import into Knowledge and FileService-backed attachments.
 - Add connector usage ledger rows for job cost.
 - Add UI panels for research history, report link, sources, and spend.
-  **Recent launch history is implemented; report links, source review, and
-  final spend projection remain pending.**
+  **Recent launch history, report links, Knowledge draft links, source counts,
+  and final spend projection are implemented when the PA writes them back;
+  source review remains pending.**
 
 ### Phase 3: DeepTest Link-Out And MCP
 

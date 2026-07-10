@@ -32,7 +32,9 @@ export const buildDeepWaterLaunchMessage = (
     input.query,
     '',
     'Use mcp_research_create with these settings, then poll with mcp_research_get until the job reaches a terminal state.',
-    'When reporting back, include the Deep Water run id, status, source count, and any usage/cost fields returned by the tool.',
+    'After mcp_research_create returns an external Deep Water id, call deep_water_run_update with the Nessie run id, externalRunId, and status=running.',
+    'After each poll with new terminal or cost/source/report data, call deep_water_run_update again with status, sourceCount, totalCost, currency, reportUrl, statusDetail, and knowledgePageId if you drafted a Knowledge page.',
+    'When reporting back, include the Deep Water run id, external run id, status, source count, report link, and any usage/cost fields returned by the tool.',
     destination,
   ].filter((line): line is string => line !== null).join('\n')
 }

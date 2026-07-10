@@ -5,10 +5,10 @@ import {
   IntegrationPluginManifestSchema,
   SetProductTeamEnablementRequestSchema,
 } from '@nessie/schemas'
+import { listDeepWaterResearchRuns } from '@nessie/runtime'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import { getIntegrationPluginManifest } from '../../services/integration-plugin-manifests.js'
-import { listDeepWaterResearchRuns } from '../../services/integration-runs.js'
 import { listIntegratedProducts, setProductTeamEnablement } from '../../services/integrations.js'
 import type { RouteDeps } from '../types.js'
 import { ProductSlugParamsSchema } from './route-schemas.js'

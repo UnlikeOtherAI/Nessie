@@ -40,9 +40,26 @@ type DeepWaterLaunchOwner = {
   teamId: string
 }
 
+export type DeepWaterResearchRunUpdateInput = {
+  completedAt?: Date | null
+  costAmount?: number | null
+  costCurrency?: string | null
+  externalRunId?: string | null
+  knowledgePageId?: string | null
+  organizationId: string
+  reportUrl?: string | null
+  result?: Record<string, unknown>
+  runId: string
+  sourceCount?: number | null
+  status?: ProductIntegrationRunStatus
+  statusDetail?: string | null
+  threadId?: string | null
+}
+
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
 const QUERY_PREVIEW_MAX = 240
 const DEFAULT_CURRENCY = 'USD'
+const TERMINAL_STATUSES: ProductIntegrationRunStatus[] = ['completed', 'failed', 'warning']
 
 const toIsoString = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString()
@@ -69,6 +86,9 @@ const pickString = <T extends string>(
   fallback: T,
 ): T => allowed.includes(value as T) ? value as T : fallback
 
+const pickNullableString = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+
 const compactPreview = (query: string): string =>
   query.replace(/\s+/g, ' ').trim().slice(0, QUERY_PREVIEW_MAX)
 
@@ -90,6 +110,7 @@ const deepWaterInputJson = (
 
 const mapDeepWaterRunRow = (row: DeepWaterRunRow): DeepWaterResearchRunRecord => {
   const input = toRecord(row.input_json)
+  const result = toRecord(row.result_json)
   return DeepWaterResearchRunRecordSchema.parse({
     id: row.id,
     artifactDestination: pickString(
@@ -114,11 +135,13 @@ const mapDeepWaterRunRow = (row: DeepWaterRunRow): DeepWaterResearchRunRecord =>
     outputTier: pickString(input.outputTier, ['summary', 'full'] as const, 'full'),
     productSlug: DEEP_WATER_PRODUCT_SLUG,
     queryPreview: row.query_preview,
+    reportUrl: pickNullableString(result.reportUrl),
     requestedAt: toIsoString(row.requested_at),
     requestedByUserId: row.requested_by_user_id,
     searchQuality: pickString(input.searchQuality, ['standard', 'premium'] as const, 'standard'),
     sourceCount: row.source_count,
     status: row.status,
+    statusDetail: pickNullableString(result.statusDetail),
     teamId: row.team_id,
     threadId: row.thread_id,
     title: row.title,
@@ -245,6 +268,95 @@ export const markDeepWaterResearchRunFailed = async (
       AND "organization_id" = CAST(${input.organizationId} AS uuid)
       AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
   `)
+}
+
+const toNullableInteger = (value: number | null | undefined): number | null => {
+  if (value === undefined || value === null) return null
+  if (!Number.isFinite(value)) return null
+  return Math.max(0, Math.trunc(value))
+}
+
+const toNullableCost = (value: number | null | undefined): number | null => {
+  if (value === undefined || value === null) return null
+  if (!Number.isFinite(value)) return null
+  return Math.max(0, value)
+}
+
+const buildDeepWaterResultPatch = (
+  input: DeepWaterResearchRunUpdateInput,
+): Prisma.InputJsonObject => {
+  const result: Record<string, unknown> = { ...(input.result ?? {}) }
+  if (input.reportUrl !== undefined) {
+    result.reportUrl = input.reportUrl?.trim() || null
+  }
+  if (input.statusDetail !== undefined) {
+    result.statusDetail = input.statusDetail?.trim() || null
+  }
+  return result as Prisma.InputJsonObject
+}
+
+export const updateDeepWaterResearchRun = async (
+  prisma: PrismaClient,
+  input: DeepWaterResearchRunUpdateInput,
+): Promise<DeepWaterResearchRunRecord> => {
+  const resultPatchJson = JSON.stringify(buildDeepWaterResultPatch(input))
+  const costAmount = toNullableCost(input.costAmount)
+  const costCurrency = input.costCurrency?.trim() || null
+  const externalRunId = input.externalRunId?.trim() || null
+  const knowledgePageId = input.knowledgePageId?.trim() || null
+  const sourceCount = toNullableInteger(input.sourceCount)
+  const status = input.status ?? null
+  const threadId = input.threadId?.trim() || null
+  const completedAt = input.completedAt === undefined ? null : input.completedAt
+  const shouldComplete =
+    input.completedAt !== undefined
+    || (status ? TERMINAL_STATUSES.includes(status) : false)
+
+  const rows = await prisma.$queryRaw<DeepWaterRunRow[]>(Prisma.sql`
+    UPDATE "product_integration_runs"
+    SET
+      "external_run_id" = CASE
+        WHEN ${externalRunId} IS NULL THEN "external_run_id"
+        ELSE ${externalRunId}
+      END,
+      "status" = CASE
+        WHEN ${status} IS NULL THEN "status"
+        ELSE CAST(${status} AS "ProductIntegrationRunStatus")
+      END,
+      "result_json" = COALESCE("result_json", '{}'::jsonb) || CAST(${resultPatchJson} AS jsonb),
+      "cost_amount" = CASE
+        WHEN ${costAmount} IS NULL THEN "cost_amount"
+        ELSE CAST(${costAmount} AS DECIMAL(18, 6))
+      END,
+      "cost_currency" = CASE
+        WHEN ${costCurrency} IS NULL THEN "cost_currency"
+        ELSE ${costCurrency}
+      END,
+      "source_count" = CASE
+        WHEN ${sourceCount} IS NULL THEN "source_count"
+        ELSE ${sourceCount}
+      END,
+      "knowledge_page_id" = CASE
+        WHEN ${knowledgePageId} IS NULL THEN "knowledge_page_id"
+        ELSE CAST(${knowledgePageId} AS uuid)
+      END,
+      "completed_at" = CASE
+        WHEN ${shouldComplete} THEN COALESCE(${completedAt}, "completed_at", CURRENT_TIMESTAMP)
+        ELSE "completed_at"
+      END,
+      "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = CAST(${input.runId} AS uuid)
+      AND "organization_id" = CAST(${input.organizationId} AS uuid)
+      AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+      AND (
+        ${threadId} IS NULL
+        OR "thread_id" IS NULL
+        OR "thread_id" = CAST(${threadId} AS uuid)
+      )
+    RETURNING ${deepWaterRunReturning}
+  `)
+
+  return mapDeepWaterRunRow(requireDeepWaterRunRow(rows[0]))
 }
 
 export const listDeepWaterResearchRuns = async (

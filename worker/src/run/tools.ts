@@ -17,6 +17,7 @@ import {
   runConnectorSetSecretTool,
   runConnectorTestTool,
   runConnectorUninstallTool,
+  runDeepWaterRunUpdateTool,
   runKbCommentAddTool,
   runKbCommentReplyTool,
   runKbCommentResolveTool,
@@ -478,6 +479,8 @@ export const executeBuiltinTool = async (
           instanceId: String(args.instanceId ?? ''),
         }),
       )
+    case 'deep_water_run_update':
+      return wrapTool(inputSummary, () => runDeepWaterRunUpdateTool(context, args))
     case 'kb_publish_request':
       return wrapTool(inputSummary, () =>
         runKbPublishRequestTool(context, {
