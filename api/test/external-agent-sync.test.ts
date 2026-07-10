@@ -146,6 +146,35 @@ test('hydration is idempotent on turnId across repeated syncs', async () => {
   assert.equal((user?.metadata.external as { turnId: string }).turnId, 't1')
 })
 
+test('hydration skips a user turn already tagged live by the worker driver', async () => {
+  const fake = makeFake({ deepsignal: { conversationId: 'conv-x' } })
+  // Simulate the live path: the worker driver already persisted the user turn
+  // (metadata.mentions from the send path + metadata.external.turnId it tagged).
+  fake.messages.push({
+    threadId: 'thread-1',
+    role: 'user',
+    metadata: {
+      mentions: { userIds: [], agentIds: [], broadcast: null },
+      external: { product: 'deepsignal', conversationId: 'conv-x', turnId: 't1' },
+    },
+  })
+
+  const callTool = async (): Promise<McpToolResult> => toolResult({ turns: historyTurns() })
+
+  const result = await syncExternalAgentChannel(
+    asPrisma(fake),
+    CHANNEL,
+    { organizationId: ORG, userId: USER, callTool },
+    new NullSecretResolver(),
+  )
+
+  assert.equal(result.total, 2)
+  assert.equal(result.imported, 1, 'only the colleague turn is imported; the tagged user turn dedupes')
+  // No second copy of the user turn t1 was created.
+  const userTurns = fake.messages.filter((m) => m.role === 'user')
+  assert.equal(userTurns.length, 1, 'the live-tagged user turn is not duplicated')
+})
+
 test('hydration is a no-op when no conversation exists yet', async () => {
   const fake = makeFake({})
   const callTool = async (input: { toolName: string }): Promise<McpToolResult> => {

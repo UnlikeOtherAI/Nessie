@@ -138,7 +138,12 @@ Today every chat path runs `runExecutionAgentLoop → runInferenceGraph`; MCP is
   credential path as `buildMcpToolset`, including auto-refresh and the SSRF guard), and calls
   the DeepSignal MCP tool **`chat`** with `{ conversationId, input }`.
   - `conversationId` is stored on the thread (`Thread.metadata.deepsignal.conversationId`);
-    first turn omits it and stores the id DeepSignal returns.
+    first turn omits it and stores the id DeepSignal returns. First-turn dispatch is
+    serialized per thread by an in-process lock (`external-conversation-store.ts`
+    `withThreadLock`) so two turns racing before the first `conversationId` write cannot each
+    mint a separate DeepSignal conversation and clobber `thread.metadata`; the second turn
+    observes the stored id and reuses it. In-process only (private-DM concurrency is rare and
+    single-worker in practice).
 - While the call is in flight the driver emits `stream.start` (and `agent.status`) so the
   existing "thinking" bubble renders; MCP **progress notifications** from DeepSignal (activity
   events: tool started/completed, effect, visibleStatus) are forwarded as incremental card
@@ -166,6 +171,25 @@ Today every chat path runs `runExecutionAgentLoop → runInferenceGraph`; MCP is
   `metadata.external.turnId` is the idempotency key. Turns made from the DeepSignal console
   or mobile therefore appear in the Nessie channel. Nessie-originated turns are already
   persisted at send time (§5) and are skipped by the same key.
+- **Pinned cross-seam id contract (both roles).** DeepSignal persists each exchange as **two**
+  turns — a `user`-role turn and a `colleague` (assistant)-role turn — and `conversation_history`
+  returns both as discrete entries, each with a stable `id` and `role`. Dedupe on re-hydration
+  is keyed on `Message.metadata.external.turnId`, so **every** mirrored message of **both** roles
+  must carry the DeepSignal turn id it corresponds to. Two invariants make this hold:
+  - **Assistant dedupe requires** the `chat` result's `turnId` to equal the colleague turn's
+    `id` in `conversation_history`. The worker driver tags the assistant reply message with
+    `metadata.external.turnId = <colleague turnId>` at send time (§5).
+  - **User dedupe requires** the `chat` result's `userTurnId` to equal the user turn's `id` in
+    `conversation_history`. The inbound user message is persisted by the normal send path with
+    no `external` key, so the driver additionally tags it with
+    `metadata.external = { product, conversationId, turnId: <userTurnId> }` (merging, preserving
+    `metadata.mentions`). `userTurnId` is optional on the `chat` result: an older DeepSignal that
+    omits it leaves the user message untagged — the only cost is a one-time re-import of that
+    user turn on the next channel reopen, never a wrong id.
+  Both ids live in the **same DeepSignal turn-id space**, so a live-tagged message and its
+  `conversation_history` entry match exactly. The hydration dedupe set is built from **all**
+  thread messages carrying `metadata.external.<product>` (both roles), and each hydrated turn is
+  inserted tagged with its history `id`, so console-originated turns dedupe on reopen too.
 - **Proactive insights ("the things you don't want to miss"):** Nessie registers one
   DeepSignal **webhook** per linked org (`insight.surfaced`, HMAC-verified) at
   `POST /api/integrations/deepsignal/events`. The receiver resolves the target user by
