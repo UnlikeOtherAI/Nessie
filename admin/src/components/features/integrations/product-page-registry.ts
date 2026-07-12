@@ -1,11 +1,14 @@
 import type { ComponentType } from 'react'
 import type { ResolvedNavPageSurface } from '../../../facades/integrations/useProductSurfaces'
+import { SignalsPage } from '../../../pages/SignalsPage'
 
 export type ProductPageProps = { surface: ResolvedNavPageSurface }
 
 // Registry of concrete product pages, keyed by the manifest `nav_page` route.
-// Slice A ships the generic host + registry with no concrete pages yet; slice B
-// registers the DeepSignal Signals page here (e.g. `'/signals': SignalsPage`)
-// with no router or shell change required. Until a route is registered the host
-// renders a placeholder so the plumbing is testable now.
-export const productPageComponents: Record<string, ComponentType<ProductPageProps>> = {}
+// Slice A ships the generic host + registry; slice B registers the DeepSignal
+// Signals page here, so the generic `ProductPageHost` renders it for `/signals`
+// with no router or shell change. A route with no entry falls back to the host's
+// gated placeholder.
+export const productPageComponents: Record<string, ComponentType<ProductPageProps>> = {
+  '/signals': SignalsPage,
+}
