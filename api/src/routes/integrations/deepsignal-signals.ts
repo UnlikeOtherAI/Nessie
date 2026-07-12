@@ -7,7 +7,7 @@ import {
 } from '@nessie/schemas'
 import { z } from 'zod'
 
-import { createApiResponse, parseInput } from '../../lib/api.js'
+import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
   actOnDeepSignalSignal,
   listDeepSignalSignals,
@@ -44,16 +44,23 @@ export const registerDeepSignalSignalsRoutes = (
     const query = parseInput(IncludeQuerySchema, request.query, reply, 'query')
     if (!query) return reply
 
-    const result = await listDeepSignalSignals(
-      prisma,
-      {
-        organizationId: actorContext.tenant.organizationId,
-        userId: actorContext.actor.actorId,
-      },
-      secretResolver,
-      query.include as DeepSignalDigestInclude,
-    )
-    return createApiResponse(DeepSignalSignalsResponseSchema.parse(result))
+    try {
+      const result = await listDeepSignalSignals(
+        prisma,
+        {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        },
+        secretResolver,
+        query.include as DeepSignalDigestInclude,
+      )
+      return createApiResponse(DeepSignalSignalsResponseSchema.parse(result))
+    } catch {
+      // Not-linked fails closed to `needs_setup` inside the service; a throw here
+      // is an upstream/MCP tool failure — surface it as 502, like external-sync.
+      sendApiError(reply, 502, 'UPSTREAM_UNAVAILABLE', 'DeepSignal is unavailable')
+      return reply
+    }
   })
 
   app.post(
@@ -68,17 +75,22 @@ export const registerDeepSignalSignalsRoutes = (
       const body = parseInput(DeepSignalSignalActRequestSchema, request.body, reply)
       if (!body) return reply
 
-      const result = await actOnDeepSignalSignal(
-        prisma,
-        {
-          organizationId: actorContext.tenant.organizationId,
-          userId: actorContext.actor.actorId,
-        },
-        secretResolver,
-        params.insightId,
-        body.action,
-      )
-      return createApiResponse(DeepSignalSignalActResponseSchema.parse(result))
+      try {
+        const result = await actOnDeepSignalSignal(
+          prisma,
+          {
+            organizationId: actorContext.tenant.organizationId,
+            userId: actorContext.actor.actorId,
+          },
+          secretResolver,
+          params.insightId,
+          body.action,
+        )
+        return createApiResponse(DeepSignalSignalActResponseSchema.parse(result))
+      } catch {
+        sendApiError(reply, 502, 'UPSTREAM_UNAVAILABLE', 'DeepSignal is unavailable')
+        return reply
+      }
     },
   )
 }
