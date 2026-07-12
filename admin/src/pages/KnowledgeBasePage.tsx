@@ -22,18 +22,27 @@ export const KnowledgeBasePage = () => {
   // resolved from the page record itself before opening it.
   useEffect(() => {
     if (!deepLinkPageId) return
-    setSearchParams({}, { replace: true })
+    // Cancellation is scoped to unmount only. We must NOT clear the search params
+    // up front: doing so flips `deepLinkPageId` to null, which re-runs this effect
+    // and fires the cleanup — cancelling the in-flight lookup before it resolves,
+    // so the doc never opens. Instead, open first, then clear the params (after
+    // the async lookup resolves for the pageId-only path).
+    let cancelled = false
 
     if (deepLinkSpaceId) {
       openPageDeepLink({ pageId: deepLinkPageId, spaceId: deepLinkSpaceId })
-      return
+      setSearchParams({}, { replace: true })
+      return () => {
+        cancelled = true
+      }
     }
 
-    let cancelled = false
     void pageLookup
       .mutateAsync(deepLinkPageId)
       .then((page) => {
-        if (!cancelled) openPageDeepLink({ pageId: page.id, spaceId: page.spaceId })
+        if (cancelled) return
+        openPageDeepLink({ pageId: page.id, spaceId: page.spaceId })
+        setSearchParams({}, { replace: true })
       })
       .catch(() => {
         // Page no longer exists / not visible to this user — nothing to open.
