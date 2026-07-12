@@ -125,9 +125,25 @@ rather than a hard-coded ladder.
   products, "unlocks on activation" hints otherwise. Existing operational panels
   (DeepWaterResearchPanel etc.) are unchanged. Concrete Signals page / Research view are
   slices B/C: register a component in the respective registry — no shell/router change needed.
-- **Slice B — DeepSignal surfaces** *(pending, after A)*: Signals page + backend signals
-  route (insight_digest/insight_act over the user's MCP instance) + the chat-assistant link
-  live under the PA.
+- **Slice B — DeepSignal surfaces** *(done, 2026-07-12)*: the concrete Signals page + its
+  backend, plus confirming the chat-assistant link under the PA. Backend:
+  `GET /api/integrations/products/deepsignal/signals` (optional `?include=active|all`) and
+  `POST .../signals/:insightId/act` (`{ action: done|snooze|mute|reopen }`) in
+  `api/src/routes/integrations/deepsignal-signals.ts`, served by
+  `api/src/services/deepsignal-signals.ts`. Both resolve the requesting user's **user-scoped**
+  DeepSignal `McpServerInstance` and call the `insight_digest` / `insight_act` MCP tools through
+  the shared `resolveUserScopedProductTransport` (`external-agent-instance.ts`) +
+  `@nessie/mcp-manage` `callInstanceTool` seam — the same seam history hydration uses, extracted
+  here so neither side forks it. Not-linked / auth-needed returns a typed `{ status: 'needs_setup' }`
+  (fail-closed, never a 500); tenancy is strictly the authenticated principal. Typed response
+  schemas (`DeepSignalSignalRecord`/`…SignalsResponse`/`…SignalActRequest`/`…SignalActResponse`)
+  live in `@nessie/schemas`. Frontend: `useDeepSignalSignals()` + `useActOnSignal()`
+  (`admin/src/facades/integrations/hooks.ts`), the `SignalsPage`
+  (`admin/src/pages/SignalsPage.tsx`) + `SignalCard` row, registered into
+  `product-page-registry` at `/signals` (no router/shell change). Loading, empty ("you're all
+  caught up"), needs-setup ("Connect DeepSignal", links `/integrations`), and error states are
+  all handled. The chat-assistant link is Slice A's generic `SidebarDmSection` path (resolves the
+  external-agent channel by label match) and needed no change for DeepSignal.
 - **Slice C — DeepWater Research in Documents** *(pending, after A)*: Research documents view
   reusing the run-history component + service.
 - **Slice D — Verify & ship** *(pending)*: build/kelpie the new surfaces, docs, merge to main.
