@@ -49,6 +49,16 @@ export const authorizeToolCall = (
     return { allowed: false, reason: 'personal_assistant_only' }
   }
 
+  // Explicit-grant tools are OFF by default: they surface only when the agent's
+  // policy carries an explicit allow (`=== true`). An absent/inherited verdict
+  // is a denial (the opposite of ordinary builtins, which are allowed unless the
+  // policy sets `false`). This is the per-agent "allow this agent" gate for
+  // powerful integration builtins such as `deep_water_run_update`, grantable to
+  // any agent kind (PA or shared), not PA-only.
+  if (definition.requiresExplicitGrant && agentToolPolicy?.[toolId] !== true) {
+    return { allowed: false, reason: 'tool_not_granted' }
+  }
+
   if (parentAgentId && toolId === 'spawn_subtask') {
     return { allowed: false, reason: 'parent_agent_subtask_denied' }
   }

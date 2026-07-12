@@ -8,6 +8,12 @@ import {
 import { listDeepWaterResearchRuns } from '@nessie/runtime'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
+import {
+  DEEP_WATER_PRODUCT_SLUG,
+  DeepWaterMcpUrlUnsetError,
+  ensureDeepWaterTeamInstance,
+  removeDeepWaterTeamInstance,
+} from '../../services/deepwater-activation.js'
 import { getIntegrationPluginManifest } from '../../services/integration-plugin-manifests.js'
 import { listIntegratedProducts, setProductTeamEnablement } from '../../services/integrations.js'
 import type { RouteDeps } from '../types.js'
@@ -98,6 +104,28 @@ export const registerIntegrationProductRoutes = (
       return reply
     }
 
+    // Enabling DeepWater provisions a team-scoped, tool-projecting MCP instance
+    // so `mcp_research_*` becomes grantable to any agent (PA or shared). Provision
+    // BEFORE persisting the enablement flag so a fail-loud provisioning error
+    // (e.g. DEEP_WATER_MCP_URL unset) can't leave the toggle reading enabled with
+    // no instance behind it. Disabling tears the instance down after the flag is
+    // cleared. Other products are unaffected.
+    const isDeepWater = params.productSlug === DEEP_WATER_PRODUCT_SLUG
+    if (isDeepWater && body.enabled) {
+      try {
+        await ensureDeepWaterTeamInstance(prisma, actorContext, {
+          organizationId: actorContext.tenant.organizationId,
+          teamId,
+        })
+      } catch (error) {
+        if (error instanceof DeepWaterMcpUrlUnsetError) {
+          sendApiError(reply, 503, error.code, error.message)
+          return reply
+        }
+        throw error
+      }
+    }
+
     const enablement = await setProductTeamEnablement(prisma, {
       enabled: body.enabled,
       organizationId: actorContext.tenant.organizationId,
@@ -108,6 +136,13 @@ export const registerIntegrationProductRoutes = (
     if (!enablement) {
       sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
       return reply
+    }
+
+    if (isDeepWater && !body.enabled) {
+      await removeDeepWaterTeamInstance(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        teamId,
+      })
     }
 
     const products = await listIntegratedProducts(prisma, {

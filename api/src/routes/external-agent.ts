@@ -56,10 +56,17 @@ const isAdminOrOwner = (roles: string[] | undefined): boolean =>
 const firstHeader = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value
 
-/** Positive-number env override, else undefined (service default applies). */
-const envPositive = (name: string): number | undefined => {
-  const value = Number(process.env[name])
-  return Number.isFinite(value) && value > 0 ? value : undefined
+/**
+ * Non-negative-integer env override, else undefined (service default applies).
+ * `0` is a valid, distinct value — notably `NESSIE_SIGNAL_BUDGET_MAX=0` suppresses
+ * every fresh proactive digest. Negatives and fractions are rejected (fall back
+ * to the default) rather than silently coerced.
+ */
+const envNonNegativeInt = (name: string): number | undefined => {
+  const raw = process.env[name]
+  if (raw === undefined || raw.trim() === '') return undefined
+  const value = Number(raw)
+  return Number.isInteger(value) && value >= 0 ? value : undefined
 }
 
 /**
@@ -68,9 +75,9 @@ const envPositive = (name: string): number | undefined => {
  * in force — deliberate, overridable defaults, not hard rules.
  */
 const digestOptionsFromEnv = (): SignalDigestOptions => ({
-  coalesceWindowMs: envPositive('NESSIE_SIGNAL_DIGEST_WINDOW_MS'),
-  budgetWindowMs: envPositive('NESSIE_SIGNAL_BUDGET_WINDOW_MS'),
-  budgetMax: envPositive('NESSIE_SIGNAL_BUDGET_MAX'),
+  coalesceWindowMs: envNonNegativeInt('NESSIE_SIGNAL_DIGEST_WINDOW_MS'),
+  budgetWindowMs: envNonNegativeInt('NESSIE_SIGNAL_BUDGET_WINDOW_MS'),
+  budgetMax: envNonNegativeInt('NESSIE_SIGNAL_BUDGET_MAX'),
 })
 
 export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {

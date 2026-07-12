@@ -311,6 +311,10 @@ export type ToolDescriptor = {
   handlerKind?: string
   id: string
   label: string
+  // When true this builtin is OFF for every agent by default and needs an
+  // explicit per-agent tool-policy allow to be exposed (mirrors the worker's
+  // `requiresExplicitGrant` resolution — e.g. `deep_water_run_update`).
+  requiresExplicitGrant?: boolean
   safe: boolean
 }
 

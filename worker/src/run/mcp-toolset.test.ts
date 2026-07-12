@@ -17,6 +17,7 @@ type RowSeed = {
   toolName: string
   scopeType: string
   scopeId: string
+  requiresExplicitGrant?: boolean
 }
 
 const makePrisma = (rows: RowSeed[]): PrismaClient => {
@@ -34,6 +35,7 @@ const makePrisma = (rows: RowSeed[]): PrismaClient => {
             serverId: `inst-${row.id}`,
             toolName: row.toolName,
           },
+          metadata: row.requiresExplicitGrant ? { requiresExplicitGrant: true } : {},
           mcpInstanceId: `inst-${row.id}`,
           mcpInstance: {
             credentialRef: null,
@@ -136,6 +138,40 @@ test('team and channel scopes follow the run context', async () => {
     'team_tool',
     'chan_tool',
   ])
+})
+
+test('explicit-grant DeepWater tools are OFF by default and need an explicit allow', async () => {
+  // A team-scoped DeepWater instance projects research_create flagged
+  // requiresExplicitGrant: team scope alone must NOT expose it — only an
+  // explicit per-agent allow does, for PA or shared agents alike.
+  const rows: RowSeed[] = [
+    {
+      id: 'dw',
+      toolName: 'research_create',
+      scopeType: 'team',
+      scopeId: 'team-1',
+      requiresExplicitGrant: true,
+    },
+  ]
+  // Default off: a shared agent in-team with no policy does NOT see it.
+  assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), [])
+  // Default off: an in-team PA with no grant does NOT see it either.
+  assert.deepEqual(await exposedNames(rows, { agentKind: 'personal_assistant' }), [])
+  // Exposed ONLY with an explicit allow (shared agent).
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { dw: true } }),
+    ['research_create'],
+  )
+  // Exposed with an explicit allow (personal assistant) too.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { dw: true } }),
+    ['research_create'],
+  )
+  // An explicit deny still hides it.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { dw: false } }),
+    [],
+  )
 })
 
 test('an explicit per-agent policy verdict overrides scope defaults both ways', async () => {

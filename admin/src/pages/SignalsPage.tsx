@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { DeepSignalSignalRecord } from '../lib/api-client'
 import type { ProductPageProps } from '../components/features/integrations/product-page-registry'
@@ -63,8 +63,31 @@ export const SignalsPage = ({ surface }: ProductPageProps) => {
     : null
   const actingId = actMutation.isPending ? actMutation.variables?.insightId : undefined
 
+  // A stable close handler: `useModalA11y` re-runs its effect (rebuilding the
+  // focus trap) whenever `onClose` changes identity, and this parent re-renders
+  // mid-act as `isPending` toggles — a fresh closure each render would tear down
+  // the trap and yank focus off the button the user just pressed.
+  const closeSignal = useCallback(() => setOpenSignal(null), [])
+
   const act = (insightId: string, action: SignalActionType) => {
-    actMutation.mutate({ action, insightId })
+    actMutation.mutate(
+      { action, insightId },
+      {
+        onSuccess: (response) => {
+          if (response.status !== 'ok' || !response.item) return
+          const updated = response.item
+          // Reflect the acted-on signal's new status in the open drawer rather
+          // than falling back to the stale "active" snapshot (which would show
+          // its actions re-enabled and allow a duplicate act). If it no longer
+          // belongs in the current filter, close the drawer instead.
+          setOpenSignal((current) => {
+            if (!current || current.id !== updated.id) return current
+            const stillVisible = includeAll || updated.status === 'active'
+            return stillVisible ? updated : null
+          })
+        },
+      },
+    )
   }
 
   if (signalsQuery.isLoading) {
@@ -141,7 +164,7 @@ export const SignalsPage = ({ surface }: ProductPageProps) => {
         <SignalDetailDrawer
           acting={actingId === openSignalLive.id}
           onAct={(action) => act(openSignalLive.id, action)}
-          onClose={() => setOpenSignal(null)}
+          onClose={closeSignal}
           signal={openSignalLive}
         />
       ) : null}

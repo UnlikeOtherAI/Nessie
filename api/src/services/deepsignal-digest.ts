@@ -128,14 +128,21 @@ const buildMetadata = (insights: InsightSummary[]): Prisma.InputJsonValue =>
     external: { product: DEEPSIGNAL_SLUG, kind: SIGNAL_DIGEST_KIND, insights },
   }) as Prisma.InputJsonValue
 
+/**
+ * Recent, non-deleted digests in the coalesce/budget window. Soft-deleted
+ * digests (content blanked, `deletedAt` set) are excluded so folding never
+ * rewrites — and thus resurrects — a tombstoned row, and so a deleted digest
+ * never consumes the fresh-digest budget.
+ */
 const loadRecentDigests = async (
-  prisma: PrismaClient,
+  tx: Prisma.TransactionClient,
   threadId: string,
   since: Date,
 ): Promise<DigestRow[]> =>
-  prisma.message.findMany({
+  tx.message.findMany({
     where: {
       threadId,
+      deletedAt: null,
       createdAt: { gte: since },
       metadata: { path: ['external', 'kind'], equals: SIGNAL_DIGEST_KIND },
     },
@@ -144,64 +151,96 @@ const loadRecentDigests = async (
   })
 
 /**
+ * Unbounded idempotency: has this insight ever been recorded on any non-deleted
+ * digest in this thread? The signed webhook body carries no timestamp/nonce, so
+ * a retry or replay can arrive past the budget window — the windowed scan would
+ * miss it and re-record + re-ping. This containment check has no time bound.
+ */
+const findDigestWithInsight = async (
+  tx: Prisma.TransactionClient,
+  threadId: string,
+  insightId: string,
+): Promise<{ id: string } | null> =>
+  tx.message.findFirst({
+    where: {
+      threadId,
+      deletedAt: null,
+      metadata: { path: ['external', 'insights'], array_contains: [{ insightId }] },
+    },
+    select: { id: true },
+  })
+
+/**
  * Deliver one insight into the user's rolling digest for a thread, coalescing +
- * budgeting per the options. Returns the message it touched and how, or `null`
- * when the insight can neither start a digest (over budget, none to fold into)
- * nor be recorded — the inbox still shows it via DeepSignal, source of truth.
+ * budgeting per the options, and returns the message it touched and how. The
+ * whole load→decide→write runs under a per-thread advisory lock so concurrent
+ * deliveries for the same user cannot race (double-record, split digests, or a
+ * lost insight via last-writer-wins).
  */
 export const deliverInsightToDigest = async (
   prisma: PrismaClient,
   input: { threadId: string; agentId: string | null; insight: InsightSummary },
   options: SignalDigestOptions = {},
-): Promise<DigestDelivery | null> => {
+): Promise<DigestDelivery> => {
   const now = options.now ?? new Date()
   const coalesceWindowMs = options.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS
   const budgetWindowMs = options.budgetWindowMs ?? DEFAULT_BUDGET_WINDOW_MS
   const budgetMax = options.budgetMax ?? DEFAULT_BUDGET_MAX
   const { threadId, agentId, insight } = input
 
-  const recent = await loadRecentDigests(prisma, threadId, new Date(now.getTime() - budgetWindowMs))
+  return prisma.$transaction(async (tx): Promise<DigestDelivery> => {
+    // Serialize per thread: the read-modify-write below is not atomic on its own.
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext(${threadId}),
+        hashtext(${SIGNAL_DIGEST_KIND})
+      )
+    `
 
-  // Idempotency: an insight already folded into any recent digest is a no-op.
-  for (const row of recent) {
-    if (readInsights(row.metadata).some((entry) => entry.insightId === insight.insightId)) {
-      return { messageId: row.id, mode: 'duplicate' }
+    const prior = await findDigestWithInsight(tx, threadId, insight.insightId)
+    if (prior) return { messageId: prior.id, mode: 'duplicate' }
+
+    const recent = await loadRecentDigests(tx, threadId, new Date(now.getTime() - budgetWindowMs))
+    const newest = recent[0]
+    const withinCoalesce =
+      newest !== undefined && now.getTime() - newest.createdAt.getTime() < coalesceWindowMs
+
+    const foldInto = async (row: DigestRow, mode: DigestDeliveryMode): Promise<DigestDelivery> => {
+      const insights = [...readInsights(row.metadata), insight]
+      await tx.message.update({
+        where: { id: row.id },
+        data: { content: buildDigestContent(insights), metadata: buildMetadata(insights), editedAt: now },
+      })
+      return { messageId: row.id, mode }
     }
-  }
 
-  const newest = recent[0]
-  const withinCoalesce =
-    newest !== undefined && now.getTime() - newest.createdAt.getTime() < coalesceWindowMs
+    const createDigest = async (mode: DigestDeliveryMode): Promise<DigestDelivery> => {
+      const insights = [insight]
+      const message = await tx.message.create({
+        data: {
+          agentId,
+          threadId,
+          role: 'assistant',
+          content: buildDigestContent(insights),
+          metadata: buildMetadata(insights),
+        },
+        select: { id: true },
+      })
+      return { messageId: message.id, mode }
+    }
 
-  const foldInto = async (row: DigestRow, mode: DigestDeliveryMode): Promise<DigestDelivery> => {
-    const insights = [...readInsights(row.metadata), insight]
-    await prisma.message.update({
-      where: { id: row.id },
-      data: { content: buildDigestContent(insights), metadata: buildMetadata(insights), editedAt: now },
-    })
-    return { messageId: row.id, mode }
-  }
+    // Within the coalesce window: fold into the current rolling digest, silently.
+    if (withinCoalesce && newest) return foldInto(newest, 'coalesced')
 
-  // Within the coalesce window: fold into the current rolling digest, silently.
-  if (withinCoalesce && newest) return foldInto(newest, 'coalesced')
+    // A fresh digest would start a new proactive interruption — budget it. Over
+    // budget (including budgetMax=0, which suppresses every fresh interruption):
+    // still record the insight, but with no realtime ping. Fold into the latest
+    // digest when one exists; otherwise record a fresh but silent digest so the
+    // insight is never dropped.
+    if (recent.length >= budgetMax) {
+      return newest ? foldInto(newest, 'suppressed') : createDigest('suppressed')
+    }
 
-  // A fresh window would start a new proactive interruption — budget it. Over
-  // budget: still record the insight by folding into the latest digest (no new
-  // message, no realtime ping); the interruption is suppressed.
-  if (recent.length >= budgetMax) {
-    return newest ? foldInto(newest, 'suppressed') : null
-  }
-
-  const insights = [insight]
-  const message = await prisma.message.create({
-    data: {
-      agentId,
-      threadId,
-      role: 'assistant',
-      content: buildDigestContent(insights),
-      metadata: buildMetadata(insights),
-    },
-    select: { id: true },
+    return createDigest('posted')
   })
-  return { messageId: message.id, mode: 'posted' }
 }
