@@ -35,6 +35,7 @@ type RegistryRow = {
   description: string
   inputSchema: unknown
   transportConfig: unknown
+  metadata: unknown
   mcpInstanceId: string | null
   mcpInstance: {
     credentialRef: string | null
@@ -91,19 +92,36 @@ const scopeMatchesRun = (
 }
 
 /**
- * Exposure rule for one registry entry: an explicit per-agent policy verdict
- * always wins (true exposes, false hides); otherwise the instance's install
- * scope decides. This is what makes an admin's org-scope install available to
- * the whole org, and a member's self-installed connector available to their
- * own personal assistant, without owner-managed per-agent policy edits.
+ * A tool row requires an explicit per-agent grant when its metadata carries
+ * `requiresExplicitGrant: true`. DeepWater's team-scoped, tool-projecting
+ * instance flags its projected rows this way so the research tools are OFF for
+ * every agent by default and grantable only through an explicit policy allow.
+ */
+const rowRequiresExplicitGrant = (metadata: unknown): boolean =>
+  stringRecord(metadata).requiresExplicitGrant === true
+
+/**
+ * Exposure rule for one registry entry.
+ *
+ * - Rows flagged `requiresExplicitGrant` are OFF by default: they surface ONLY
+ *   when the per-agent policy carries an explicit allow (`=== true`). Scope
+ *   never exposes them on its own — this is the "default off, per-agent allow"
+ *   gate for DeepWater's team-scoped research tools.
+ * - For every other row an explicit verdict wins (true exposes, false hides);
+ *   otherwise the instance's install scope decides. This is what makes an
+ *   admin's org-scope install available to the whole org, and a member's
+ *   self-installed connector available to their own personal assistant, without
+ *   owner-managed per-agent policy edits.
  */
 const isExposed = (
   toolPolicy: McpToolPolicy,
   registryEntryId: string,
   instance: { scopeType: string; scopeId: string },
   ctx: RunScopeContext,
+  requiresExplicitGrant: boolean,
 ): boolean => {
   const verdict = toolPolicy?.[registryEntryId]
+  if (requiresExplicitGrant) return verdict === true
   if (verdict === true) return true
   if (verdict === false) return false
   return scopeMatchesRun(instance.scopeType, instance.scopeId, ctx)
@@ -202,6 +220,7 @@ export const buildMcpToolset = async (
       description: true,
       inputSchema: true,
       transportConfig: true,
+      metadata: true,
       mcpInstanceId: true,
       mcpInstance: {
         select: {
@@ -230,7 +249,17 @@ export const buildMcpToolset = async (
 
   for (const row of rows) {
     if (!row.mcpInstanceId || !row.mcpInstance) continue
-    if (!isExposed(toolPolicy, row.id, row.mcpInstance, runScope)) continue
+    if (
+      !isExposed(
+        toolPolicy,
+        row.id,
+        row.mcpInstance,
+        runScope,
+        rowRequiresExplicitGrant(row.metadata),
+      )
+    ) {
+      continue
+    }
 
     const originalToolName = extractOriginalToolName(row)
     if (!originalToolName) continue

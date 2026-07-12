@@ -11,6 +11,10 @@ export const ToolDescriptorSchema = z.object({
   builtin: z.boolean().optional(),
   enabled: z.boolean().optional(),
   handlerKind: z.string().optional(),
+  // When true this builtin is OFF for every agent by default and requires an
+  // explicit per-agent tool-policy allow to be exposed (mirrors the worker's
+  // `requiresExplicitGrant` resolution — e.g. `deep_water_run_update`).
+  requiresExplicitGrant: z.boolean().optional(),
 })
 export type ToolDescriptor = z.infer<typeof ToolDescriptorSchema>
 

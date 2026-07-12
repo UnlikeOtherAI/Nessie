@@ -21,6 +21,15 @@ export type BuiltinToolDefinition = {
    */
   personalAssistantOnly?: boolean
   /**
+   * When true, the tool is OFF for every agent by default and is exposed ONLY
+   * to an agent whose per-agent `toolPolicy` carries an explicit allow
+   * (`toolPolicy[id] === true`). Unlike the ordinary builtin default (enabled
+   * unless the policy sets `false`), an absent/inherited verdict does NOT expose
+   * the tool. Use for powerful integration builtins (e.g. `deep_water_run_update`)
+   * that must be granted deliberately, PA or shared agent alike.
+   */
+  requiresExplicitGrant?: boolean
+  /**
    * Optional Zod input schema. Slice F (MCP universal connector) tools require
    * this so the worker can validate args before invoking the handler. Existing
    * builtin tools predate the schema and continue to rely on `parameters`.
