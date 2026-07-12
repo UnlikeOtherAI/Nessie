@@ -10,6 +10,7 @@ import { listDeepWaterResearchRuns } from '@nessie/runtime'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
   DEEP_WATER_PRODUCT_SLUG,
+  DeepWaterMcpUrlUnsetError,
   ensureDeepWaterTeamInstance,
   removeDeepWaterTeamInstance,
 } from '../../services/deepwater-activation.js'
@@ -120,10 +121,20 @@ export const registerIntegrationProductRoutes = (
     // disabling tears it down. Other products are unaffected.
     if (params.productSlug === DEEP_WATER_PRODUCT_SLUG) {
       if (body.enabled) {
-        await ensureDeepWaterTeamInstance(prisma, actorContext, {
-          organizationId: actorContext.tenant.organizationId,
-          teamId,
-        })
+        try {
+          await ensureDeepWaterTeamInstance(prisma, actorContext, {
+            organizationId: actorContext.tenant.organizationId,
+            teamId,
+          })
+        } catch (error) {
+          // Fail loud: a missing DeepWater MCP endpoint would otherwise create a
+          // dead instance whose tools silently drop. Surface it to the caller.
+          if (error instanceof DeepWaterMcpUrlUnsetError) {
+            sendApiError(reply, 503, error.code, error.message)
+            return reply
+          }
+          throw error
+        }
       } else {
         await removeDeepWaterTeamInstance(prisma, {
           organizationId: actorContext.tenant.organizationId,
