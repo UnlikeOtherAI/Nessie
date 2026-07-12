@@ -1,4 +1,5 @@
 import { IntegrationUiCardSchema, type IntegrationUiCard } from '@nessie/schemas'
+import { AgentActivityTimeline } from './AgentActivityTimeline'
 
 type IntegrationUiCardAction = NonNullable<IntegrationUiCard['actions']>[number]
 
@@ -115,19 +116,36 @@ const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
 
 export const MessageUiCards = ({
   metadata,
+  // External-agent assistant turns render their `role: 'activity'` cards as a
+  // collapsed plan/timeline (the reasoning view); result cards stay flat. For
+  // every other surface all cards render flat, exactly as before.
+  isExternalAgent = false,
 }: {
   metadata: Record<string, unknown> | undefined
+  isExternalAgent?: boolean
 }) => {
   const cards = readIntegrationCards(metadata)
   if (cards.length === 0) {
     return null
   }
 
+  const activities = isExternalAgent
+    ? cards.filter((card) => card.role === 'activity')
+    : []
+  const flatCards = isExternalAgent
+    ? cards.filter((card) => card.role !== 'activity')
+    : cards
+
   return (
-    <div className="mt-2 grid max-w-2xl gap-2">
-      {cards.map((card, index) => (
-        <MessageUiCard card={card} key={`${card.kind}:${card.title}:${index}`} />
-      ))}
-    </div>
+    <>
+      {activities.length > 0 ? <AgentActivityTimeline activities={activities} /> : null}
+      {flatCards.length > 0 ? (
+        <div className="mt-2 grid max-w-2xl gap-2">
+          {flatCards.map((card, index) => (
+            <MessageUiCard card={card} key={`${card.kind}:${card.title}:${index}`} />
+          ))}
+        </div>
+      ) : null}
+    </>
   )
 }

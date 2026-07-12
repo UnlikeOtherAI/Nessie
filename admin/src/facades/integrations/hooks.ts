@@ -1,4 +1,6 @@
+import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ChatAssistantSurface } from '@nessie/schemas'
 import type {
   BuildMeProjectHandoffRequest,
   ChannelRecord,
@@ -15,6 +17,7 @@ import type {
   ThreadRecord,
 } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { isExternalAgentChannel } from '../personal-assistant/hooks'
 
 export const integratedProductsKey = ['integrations', 'products'] as const
 export const deepWaterResearchRunsKey =
@@ -41,6 +44,47 @@ export const useIntegrationPluginManifest = (productSlug?: string) => {
     queryFn: () => apiClient.get(`/api/integrations/products/${productSlug}/manifest`),
     enabled: Boolean(productSlug),
   })
+}
+
+// Function-first identity + conversation starters for an external-agent DM,
+// sourced entirely from the product's plugin manifest so a second external agent
+// needs no code change here. The external-agent channel carries no product slug,
+// but its label is the product name, so we resolve the product (and thus its
+// manifest) by matching on that — the same join the sidebar uses.
+export type ExternalAgentIdentity = {
+  productSlug: string
+  name: string
+  description: string | null
+  iconGlyph: string | null
+  conversationStarters: string[]
+}
+
+export const useExternalAgentIdentity = (
+  channel: ChannelRecord | null | undefined,
+): ExternalAgentIdentity | null => {
+  const isExternal = isExternalAgentChannel(channel)
+  const productsQuery = useIntegratedProducts()
+  const product = isExternal
+    ? productsQuery.data?.find((entry) => entry.name === channel?.label)
+    : undefined
+  const manifestQuery = useIntegrationPluginManifest(product?.slug)
+
+  return useMemo(() => {
+    if (!isExternal || !product || !manifestQuery.data) {
+      return null
+    }
+    const manifest = manifestQuery.data
+    const chat = manifest.surfaces.find(
+      (surface): surface is ChatAssistantSurface => surface.type === 'chat_assistant',
+    )
+    return {
+      productSlug: product.slug,
+      name: chat?.label ?? product.name,
+      description: chat?.description ?? (product.summary || null),
+      iconGlyph: chat?.iconGlyph ?? null,
+      conversationStarters: manifest.conversationStarters ?? [],
+    }
+  }, [isExternal, product, manifestQuery.data])
 }
 
 // DeepSignal Signals digest (surface-registry plan §4). The route returns a

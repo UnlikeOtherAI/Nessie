@@ -1,3 +1,4 @@
+import type { ExternalAgentIdentity } from '../../../facades/integrations/hooks'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../lib/api-client'
 import { MobileMenuButton } from '../../../layouts/admin-shell/MobileMenuButton'
 import { UserAvatar } from '../../primitives/UserAvatar'
@@ -39,6 +40,10 @@ const HeaderAgentAvatar = ({ agent }: { agent: AgentRecord }) => {
 interface ChannelHeaderProps {
   activeChannel: ChannelRecord | null
   isPersonalAssistantConversation: boolean
+  // A first-class external-agent DM (DeepSignal, ...): render its non-human
+  // product glyph + function-first identity instead of a generic DM avatar.
+  isExternalAgentConversation: boolean
+  externalAgentIdentity: ExternalAgentIdentity | null
   channelUsers: UserRecord[]
   boundAgents: AgentRecord[]
   callEligible: boolean
@@ -57,6 +62,8 @@ interface ChannelHeaderProps {
 export const ChannelHeader = ({
   activeChannel,
   isPersonalAssistantConversation,
+  isExternalAgentConversation,
+  externalAgentIdentity,
   channelUsers,
   boundAgents,
   callEligible,
@@ -78,6 +85,11 @@ export const ChannelHeader = ({
         <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[9px] font-bold text-[var(--thinking)]">
           ⚡
         </div>
+      ) : isExternalAgentConversation ? (
+        <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[9px] font-bold text-[var(--thinking)]">
+          {externalAgentIdentity?.iconGlyph
+            ?? (externalAgentIdentity?.name ?? activeChannel?.label ?? 'A').slice(0, 1).toUpperCase()}
+        </div>
       ) : activeChannel?.type === 'dm' ? (
         <div
           className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-[var(--on-accent)]"
@@ -95,7 +107,9 @@ export const ChannelHeader = ({
       <h1 className="truncate text-[17px] font-bold text-[var(--tx)]">
         {isPersonalAssistantConversation
           ? 'Personal Assistant'
-          : activeChannel?.label ?? 'channels'}
+          : isExternalAgentConversation
+            ? externalAgentIdentity?.name ?? activeChannel?.label ?? 'channels'
+            : activeChannel?.label ?? 'channels'}
       </h1>
       <ChannelFavoriteButton favorite={titleFavorite} />
       {isPersonalAssistantConversation && (
@@ -103,6 +117,11 @@ export const ChannelHeader = ({
           system managed
         </span>
       )}
+      {isExternalAgentConversation && externalAgentIdentity?.description ? (
+        <span className="hidden min-w-0 truncate text-xs text-[color:var(--tx3)] sm:inline">
+          {externalAgentIdentity.description}
+        </span>
+      ) : null}
     </div>
 
     <div className="flex flex-shrink-0 items-center gap-2">
