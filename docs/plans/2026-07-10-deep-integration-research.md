@@ -129,6 +129,22 @@ the run row — not a separate silo the user context-switches into. The Research
 *index*; the report itself lives in the document model. (Our run records already carry
 `knowledgePageId` — lean on it.)
 
+> **Implemented (2026-07-12).** A completed run's row in the Documents "Research" view
+> (`DeepWaterResearchView` → `DeepWaterRunHistory`) now opens its native Knowledge document as
+> the primary action — the run title links to it and an "Open document" button leads, with
+> "Open original report"/"Open chat" as secondary. `knowledgePageId`-only deep links (no
+> `spaceId`, since the run record doesn't carry one) are resolved via a page lookup in
+> `KnowledgeBasePage`, and `openPageDeepLink` now clears any active product view first so the
+> link always lands on the real document instead of staying behind the Research index. Runs
+> without a `knowledgePageId` (still running, failed, or predating the Knowledge draft) degrade
+> to status + chat/report links, unchanged. The chat-turn deep link is only partially done: the
+> DeepWater launch card (`buildDeepWaterLaunchMetadata`) is emitted once at launch, before
+> `knowledgePageId`/`reportUrl` exist, and run completion is only reported back as plain PA text
+> (no uiCard is re-emitted on `deep_water_run_update`) — adding one is a real feature (new
+> worker-side message/card emission on run completion) owned by the DeepWater run-update path,
+> deferred here. As a stopgap, the PA's handoff instructions now ask it to mention the
+> `/knowledge-base?pageId=...` link in its own completion reply when it set `knowledgePageId`.
+
 ## 5. Strategic lever: let the products ship their own UI via MCP Apps / MCP-UI
 
 The most important finding for avoiding "Nessie hand-rebuilds every product's cards forever":
@@ -184,7 +200,8 @@ this (dynamic OAuth in-app) — keep it, and make activation *visibly* light up 
    shouldn't miss" product; get it right.)*
 3. **Promote DeepWater reports to native Knowledge documents** — report → Knowledge page
    (`knowledgePageId`), deep-linked; the Research section is the index, the doc lives in the
-   document model.
+   document model. **Documents-view side implemented (2026-07-12)** — see §4; the chat-turn
+   card deep link is deferred (owned by the DeepWater run-update path, plain-text link only).
 4. **Grow the contribution vocabulary + gating** — add overview/home, split-panel, command, card,
    activity surface types; gate each on scope (user/team/org) **and** granted permission;
    activation-lazy. *(Extends Slice A, doesn't replace it.)*
