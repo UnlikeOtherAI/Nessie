@@ -95,13 +95,29 @@ test('webhook signature: valid HMAC resolves the signing org, tampered body is r
 // ─── Insight fan-out + idempotency ──────────────────────────────────────────
 
 type Link = { organizationId: string; userId: string; productSlug: string; status: string; uoaSub: string | null }
-type StoredMessage = { threadId: string; role: string; agentId: string | null; metadata: Record<string, unknown> }
+type StoredMessage = {
+  id: string
+  threadId: string
+  role: string
+  agentId: string | null
+  content: string
+  createdAt: Date
+  metadata: Record<string, unknown>
+}
 
 const USER_A = '00000000-0000-4000-8000-0000000000b1'
 const USER_B = '00000000-0000-4000-8000-0000000000b2'
 
+const digestInsights = (message: StoredMessage): Array<{ insightId: string; kind: string | null }> =>
+  ((message.metadata.external as { insights?: Array<{ insightId: string; kind: string | null }> })
+    ?.insights ?? [])
+
+// Prisma fake for the digest delivery path: a `messages` array with findMany
+// (Json path + createdAt window), create, and in-place update. `clock` is the
+// simulated wall time each created row is stamped with, advanced by the test.
 const makeInsightFake = (links: Link[]) => {
   const messages: StoredMessage[] = []
+  const state = { clock: new Date('2026-07-12T00:00:00.000Z') }
   const channels = new Map<string, { id: string; archivedAt: Date | null }>()
   for (const link of links) {
     channels.set(`extagent:deepsignal:${link.organizationId}:${link.userId}`, {
@@ -111,6 +127,7 @@ const makeInsightFake = (links: Link[]) => {
   }
   return {
     messages,
+    state,
     productAccountLink: {
       findMany: async (args: {
         where: { organizationId: string; productSlug: string; status: string; uoaSub?: { in: string[] } }
@@ -136,21 +153,34 @@ const makeInsightFake = (links: Link[]) => {
       findFirst: async () => ({ agentId: 'agent-ds' }),
     },
     message: {
-      findFirst: async (args: { where: { threadId: string; metadata: { equals: string } } }) =>
-        messages.find(
-          (m) =>
-            m.threadId === args.where.threadId &&
-            (m.metadata.external as { insightId?: string })?.insightId === args.where.metadata.equals,
-        ) ?? null,
-      create: async (args: { data: StoredMessage }) => {
-        messages.push(args.data)
-        return { id: `msg-${messages.length}` }
+      findMany: async (args: {
+        where: { threadId: string; createdAt: { gte: Date }; metadata: { equals: string } }
+        orderBy: { createdAt: 'desc' }
+      }) =>
+        messages
+          .filter(
+            (m) =>
+              m.threadId === args.where.threadId &&
+              m.createdAt.getTime() >= args.where.createdAt.gte.getTime() &&
+              (m.metadata.external as { kind?: string })?.kind === args.where.metadata.equals,
+          )
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+      create: async (args: { data: Omit<StoredMessage, 'id' | 'createdAt'> }) => {
+        const row: StoredMessage = { ...args.data, id: `msg-${messages.length + 1}`, createdAt: state.clock }
+        messages.push(row)
+        return { id: row.id }
+      },
+      update: async (args: { where: { id: string }; data: Partial<StoredMessage> }) => {
+        const row = messages.find((m) => m.id === args.where.id)!
+        Object.assign(row, args.data)
+        return { id: row.id }
       },
     },
   }
 }
 
-const asPrisma = (fake: ReturnType<typeof makeInsightFake>): PrismaClient => fake as unknown as PrismaClient
+type InsightFake = ReturnType<typeof makeInsightFake>
+const asPrisma = (fake: InsightFake): PrismaClient => fake as unknown as PrismaClient
 
 const insightPayload = (insightId: string, extra: Record<string, unknown> = {}) => ({
   event: 'insight.surfaced',
@@ -162,34 +192,102 @@ const insightPayload = (insightId: string, extra: Record<string, unknown> = {}) 
     whatChanged: 'Supplier risk detected',
     whyItMatters: 'A key supplier may miss delivery',
     recommendedAction: 'Contact procurement',
+    kind: 'risk',
     band: 'high',
   },
   ...extra,
 })
 
-test('insight fan-out posts one message per linked user and is idempotent per insight', async () => {
+test('insight fan-out coalesces multiple insights into one rolling digest per user', async () => {
   const fake = makeInsightFake([
     { organizationId: ORG, userId: USER_A, productSlug: 'deepsignal', status: 'linked', uoaSub: 'sub-a' },
     { organizationId: ORG, userId: USER_B, productSlug: 'deepsignal', status: 'linked', uoaSub: 'sub-b' },
     { organizationId: ORG, userId: 'x', productSlug: 'deepsignal', status: 'revoked', uoaSub: 'sub-x' },
   ])
+  const now = fake.state.clock
 
-  const first = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'))
+  const first = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'), { now })
   assert.equal(first.insightId, 'ins-1')
   assert.equal(first.deliveries.length, 2, 'both linked users, not the revoked one')
-  assert.equal(fake.messages.length, 2)
+  assert.deepEqual(
+    first.deliveries.map((d) => d.mode),
+    ['posted', 'posted'],
+  )
+  assert.equal(fake.messages.length, 2, 'one digest per user')
 
-  // The card is well-formed and carries the insight key for idempotency.
+  // A second, different insight moments later folds into the same two messages —
+  // NOT one-message-per-event.
+  const second = await handleDeepSignalInsightSurfaced(
+    asPrisma(fake),
+    ORG,
+    insightPayload('ins-2', { brief: { insightId: 'ins-2', whatChanged: 'New tender opened', kind: 'opportunity' } }),
+    { now },
+  )
+  assert.deepEqual(
+    second.deliveries.map((d) => d.mode),
+    ['coalesced', 'coalesced'],
+  )
+  assert.equal(fake.messages.length, 2, 'still one digest per user after two events')
+
   const msg = fake.messages[0]!
   assert.equal(msg.role, 'assistant')
-  assert.equal((msg.metadata.external as { insightId: string }).insightId, 'ins-1')
-  const cards = msg.metadata.uiCards as Array<{ kind: string; productSlug: string; status: string }>
+  assert.equal(msg.content, 'You have 2 new signals from DeepSignal')
+  assert.deepEqual(
+    digestInsights(msg).map((i) => i.insightId),
+    ['ins-1', 'ins-2'],
+  )
+  const cards = msg.metadata.uiCards as Array<{ kind: string; productSlug: string; fields?: Array<{ label: string }> }>
   assert.equal(cards[0]?.kind, 'integration')
   assert.equal(cards[0]?.productSlug, 'deepsignal')
+  assert.ok(cards[0]?.fields?.some((f) => f.label === 'Risks'))
+  assert.ok(cards[0]?.fields?.some((f) => f.label === 'Opportunities'))
+})
 
-  const second = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'))
-  assert.equal(second.deliveries.length, 0, 'same insight is not re-posted')
-  assert.equal(fake.messages.length, 2)
+test('insight fan-out is idempotent per insight (no double count)', async () => {
+  const fake = makeInsightFake([
+    { organizationId: ORG, userId: USER_A, productSlug: 'deepsignal', status: 'linked', uoaSub: 'sub-a' },
+  ])
+  const now = fake.state.clock
+
+  await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'), { now })
+  const repeat = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'), { now })
+
+  assert.deepEqual(
+    repeat.deliveries.map((d) => d.mode),
+    ['duplicate'],
+    'same insight is recognised, not re-counted',
+  )
+  assert.equal(fake.messages.length, 1)
+  assert.equal(digestInsights(fake.messages[0]!).length, 1, 'insight counted once')
+})
+
+test('over-budget insights are suppressed from the channel but still recorded', async () => {
+  const fake = makeInsightFake([
+    { organizationId: ORG, userId: USER_A, productSlug: 'deepsignal', status: 'linked', uoaSub: 'sub-a' },
+  ])
+  // budgetMax=1 + coalesceWindow=0: the first insight posts a fresh digest; the
+  // next (outside the coalesce window, budget exhausted) must NOT post a second
+  // message — it folds into the existing digest instead.
+  const opts = { budgetMax: 1, coalesceWindowMs: 0, budgetWindowMs: 24 * 60 * 60 * 1000 }
+
+  fake.state.clock = new Date('2026-07-12T00:00:00.000Z')
+  const first = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'), {
+    ...opts,
+    now: fake.state.clock,
+  })
+  assert.deepEqual(first.deliveries.map((d) => d.mode), ['posted'])
+  assert.equal(fake.messages.length, 1)
+
+  fake.state.clock = new Date('2026-07-12T02:00:00.000Z')
+  const second = await handleDeepSignalInsightSurfaced(
+    asPrisma(fake),
+    ORG,
+    insightPayload('ins-2', { brief: { insightId: 'ins-2', whatChanged: 'Second event', kind: 'opportunity' } }),
+    { ...opts, now: fake.state.clock },
+  )
+  assert.deepEqual(second.deliveries.map((d) => d.mode), ['suppressed'], 'no fresh interruption over budget')
+  assert.equal(fake.messages.length, 1, 'no second channel message')
+  assert.equal(digestInsights(fake.messages[0]!).length, 2, 'insight still recorded on the digest')
 })
 
 test('insight fan-out targets only the named recipient subs when present', async () => {
@@ -200,13 +298,14 @@ test('insight fan-out targets only the named recipient subs when present', async
   const result = await handleDeepSignalInsightSurfaced(
     asPrisma(fake),
     ORG,
-    insightPayload('ins-2', { recipientSubs: ['sub-b'], url: 'https://deepsignal.live/i/ins-2' }),
+    insightPayload('ins-2', { recipientSubs: ['sub-b'] }),
+    { now: fake.state.clock },
   )
   assert.equal(result.deliveries.length, 1)
   assert.equal(result.deliveries[0]?.channelId, `chan-${USER_B}`)
 
-  // The payload URL becomes an "Open in DeepSignal" action.
+  // The digest card links to the Signals inbox, not a per-insight external link.
   const cards = fake.messages[0]!.metadata.uiCards as Array<{ actions?: Array<{ label: string; href: string }> }>
-  assert.equal(cards[0]?.actions?.[0]?.label, 'Open in DeepSignal')
-  assert.equal(cards[0]?.actions?.[0]?.href, 'https://deepsignal.live/i/ins-2')
+  assert.equal(cards[0]?.actions?.[0]?.label, 'View signals')
+  assert.equal(cards[0]?.actions?.[0]?.href, '/signals')
 })
