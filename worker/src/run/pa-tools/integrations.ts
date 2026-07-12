@@ -52,6 +52,12 @@ export const runDeepWaterRunUpdateTool = async (
   }
 
   const status = parseStatus(args.status)
+  // Tenancy is taken strictly from the run context, never from tool args: the
+  // update is scoped to the caller's own team + the thread this run belongs to.
+  const teamId = context.actorContext.tenant.teamId
+  if (!teamId) {
+    throw new Error('Deep Water run updates require a team context.')
+  }
   const update: DeepWaterResearchRunUpdateInput = {
     costAmount: nullableNonNegativeNumber(args.totalCost),
     costCurrency: nullableString(args.currency),
@@ -63,6 +69,7 @@ export const runDeepWaterRunUpdateTool = async (
     sourceCount: nullableNonNegativeInteger(args.sourceCount),
     status,
     statusDetail: nullableString(args.statusDetail),
+    teamId: String(teamId),
     threadId: context.run.threadId,
   }
 
