@@ -165,6 +165,70 @@ export const DeepWaterResearchRunRecordSchema = z.object({
 export type DeepWaterResearchRunRecord =
   z.infer<typeof DeepWaterResearchRunRecordSchema>
 
+// DeepSignal Signals page (surface-registry plan §4). The Signals route calls
+// the product's `insight_digest` MCP tool through the user's user-scoped
+// instance and returns the digest as typed records; `insight_act` proxies a
+// done/snooze/mute/reopen action back. Fail-closed: when the connector is not
+// installed / signed in for the user the route returns `needs_setup` (not a
+// fabricated list), which the page renders as a "Connect DeepSignal" empty
+// state.
+export const DeepSignalSignalStatusSchema = z.enum([
+  'active',
+  'done',
+  'snoozed',
+  'muted',
+])
+export type DeepSignalSignalStatus = z.infer<typeof DeepSignalSignalStatusSchema>
+
+export const DeepSignalSignalKindSchema = z.enum(['opportunity', 'risk', 'signal'])
+export type DeepSignalSignalKind = z.infer<typeof DeepSignalSignalKindSchema>
+
+export const DeepSignalSignalRecordSchema = z.object({
+  id: NonEmptyStringSchema,
+  headline: NonEmptyStringSchema,
+  summary: z.string(),
+  status: DeepSignalSignalStatusSchema,
+  kind: DeepSignalSignalKindSchema.nullable(),
+  actionIds: z.array(NonEmptyStringSchema),
+  deepLink: z.string().url().nullable(),
+  surfacedAt: TimestampSchema.nullable(),
+})
+export type DeepSignalSignalRecord = z.infer<typeof DeepSignalSignalRecordSchema>
+
+export const DeepSignalSignalsResponseSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('ok'),
+    items: z.array(DeepSignalSignalRecordSchema),
+  }),
+  z.object({ status: z.literal('needs_setup') }),
+])
+export type DeepSignalSignalsResponse =
+  z.infer<typeof DeepSignalSignalsResponseSchema>
+
+export const DeepSignalSignalActionSchema = z.enum([
+  'done',
+  'snooze',
+  'mute',
+  'reopen',
+])
+export type DeepSignalSignalAction = z.infer<typeof DeepSignalSignalActionSchema>
+
+export const DeepSignalSignalActRequestSchema = z.object({
+  action: DeepSignalSignalActionSchema,
+})
+export type DeepSignalSignalActRequest =
+  z.infer<typeof DeepSignalSignalActRequestSchema>
+
+export const DeepSignalSignalActResponseSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('ok'),
+    item: DeepSignalSignalRecordSchema.nullable(),
+  }),
+  z.object({ status: z.literal('needs_setup') }),
+])
+export type DeepSignalSignalActResponse =
+  z.infer<typeof DeepSignalSignalActResponseSchema>
+
 export const IntegratedProductResponseSchema = z.object({
   id: z.string().uuid(),
   accountLink: ProductAccountLinkRecordSchema.nullable(),
@@ -327,6 +391,57 @@ export const IntegrationPluginPrivacyTierSchema = z.enum([
 export type IntegrationPluginPrivacyTier =
   z.infer<typeof IntegrationPluginPrivacyTierSchema>
 
+// A product surface is a place an activated integration weaves itself into the
+// real app. `requires` gates visibility against the live product record from
+// `GET /api/integrations/products` (see `useProductSurfaces` on the client).
+// The union is additive/optional on the manifest so existing manifests and
+// consumers are unaffected.
+export const ProductSurfaceRequirementSchema = z.object({
+  linked: z.boolean().optional(),
+  teamEnabled: z.boolean().optional(),
+  capability: NonEmptyStringSchema.optional(),
+  connectorActive: z.boolean().optional(),
+})
+export type ProductSurfaceRequirement =
+  z.infer<typeof ProductSurfaceRequirementSchema>
+
+export const ChatAssistantSurfaceSchema = z.object({
+  type: z.literal('chat_assistant'),
+  channelKind: z.literal('external_agent'),
+  productSlug: NonEmptyStringSchema,
+  label: NonEmptyStringSchema,
+  iconGlyph: z.string().optional(),
+  requires: ProductSurfaceRequirementSchema,
+})
+export type ChatAssistantSurface = z.infer<typeof ChatAssistantSurfaceSchema>
+
+export const NavPageSurfaceSchema = z.object({
+  type: z.literal('nav_page'),
+  id: NonEmptyStringSchema,
+  label: NonEmptyStringSchema,
+  route: NonEmptyStringSchema,
+  iconGlyph: z.string().optional(),
+  requires: ProductSurfaceRequirementSchema,
+})
+export type NavPageSurface = z.infer<typeof NavPageSurfaceSchema>
+
+export const DocumentsSectionSurfaceSchema = z.object({
+  type: z.literal('documents_section'),
+  id: NonEmptyStringSchema,
+  label: NonEmptyStringSchema,
+  view: NonEmptyStringSchema,
+  iconGlyph: z.string().optional(),
+  requires: ProductSurfaceRequirementSchema,
+})
+export type DocumentsSectionSurface = z.infer<typeof DocumentsSectionSurfaceSchema>
+
+export const ProductSurfaceSchema = z.discriminatedUnion('type', [
+  ChatAssistantSurfaceSchema,
+  NavPageSurfaceSchema,
+  DocumentsSectionSurfaceSchema,
+])
+export type ProductSurface = z.infer<typeof ProductSurfaceSchema>
+
 export const IntegrationPluginManifestSchema = z.object({
   apiVersion: z.literal('integrations.nessie.io/v1'),
   kind: z.literal('NessieIntegrationPlugin'),
@@ -403,6 +518,10 @@ export const IntegrationPluginManifestSchema = z.object({
     ]).nullable(),
     costFields: z.array(NonEmptyStringSchema),
   }),
+  // Surfaces the product weaves into the real app when active (chat sidebar,
+  // left rail + page, Documents section). Optional/additive: manifests without
+  // it declare no surfaces and behave exactly as before.
+  surfaces: z.array(ProductSurfaceSchema).default([]),
 })
 export type IntegrationPluginManifest =
   z.infer<typeof IntegrationPluginManifestSchema>

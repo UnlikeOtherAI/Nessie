@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   BuildMeProjectHandoffRequest,
   ChannelRecord,
+  DeepSignalSignalAction,
+  DeepSignalSignalActResponse,
+  DeepSignalSignalsResponse,
   DeepTestReviewHandoffRequest,
   DeepWaterResearchLaunchRequest,
   DeepWaterResearchRunRecord,
@@ -16,6 +19,8 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 export const integratedProductsKey = ['integrations', 'products'] as const
 export const deepWaterResearchRunsKey =
   ['integrations', 'products', 'deep-water', 'research-runs'] as const
+export const deepSignalSignalsKey =
+  ['integrations', 'products', 'deepsignal', 'signals'] as const
 export const integrationManifestKey = (productSlug?: string) =>
   ['integrations', 'manifest', productSlug ?? 'none'] as const
 
@@ -35,6 +40,41 @@ export const useIntegrationPluginManifest = (productSlug?: string) => {
     queryKey: integrationManifestKey(productSlug),
     queryFn: () => apiClient.get(`/api/integrations/products/${productSlug}/manifest`),
     enabled: Boolean(productSlug),
+  })
+}
+
+// DeepSignal Signals digest (surface-registry plan §4). The route returns a
+// discriminated response: `{ status: 'ok', items }` or `{ status: 'needs_setup' }`
+// when the connector isn't linked for this user — the page renders the latter as
+// a "Connect DeepSignal" empty state rather than an error.
+export const useDeepSignalSignals = () => {
+  const apiClient = useApiClient()
+
+  return useQuery<DeepSignalSignalsResponse>({
+    queryKey: deepSignalSignalsKey,
+    queryFn: () => apiClient.get('/api/integrations/products/deepsignal/signals'),
+  })
+}
+
+// Proxy a done/snooze/mute/reopen action for one insight back to DeepSignal, then
+// refetch the digest so the acted-on signal drops out of the active list.
+export const useActOnSignal = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation<
+    DeepSignalSignalActResponse,
+    unknown,
+    { insightId: string; action: DeepSignalSignalAction }
+  >({
+    mutationFn: (input) =>
+      apiClient.post(
+        `/api/integrations/products/deepsignal/signals/${input.insightId}/act`,
+        { action: input.action },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: deepSignalSignalsKey })
+    },
   })
 }
 

@@ -112,6 +112,7 @@ export const AdminShellLayout = () => {
       sidebarAgentDms={shell.sidebarAgentDms}
       sidebarMenu={shell.sidebarMenu}
       sidebarPeople={shell.sidebarPeople}
+      sidebarProductAssistants={shell.sidebarProductAssistants}
       starredChannelIds={shell.starredChannelIds}
       starredCollapsed={shell.starredCollapsed}
       starredProjectIds={shell.starredProjectIds}
@@ -141,7 +142,7 @@ export const AdminShellLayout = () => {
       isSuperAdmin={shell.isSuperAdmin}
       pathname={shell.pathname}
     />
-  ) : shell.isIntegrationsRoute || shell.isFeedbackRoute ? null : (
+  ) : shell.isIntegrationsRoute || shell.isFeedbackRoute || shell.isProductPageRoute ? null : (
     sidebarNavElement
   );
 

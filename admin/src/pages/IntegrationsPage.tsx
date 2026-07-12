@@ -11,7 +11,7 @@ import { BuildMeProjectPanel } from '../components/features/integrations/BuildMe
 import { DeepTestSecurityPanel } from '../components/features/integrations/DeepTestSecurityPanel'
 import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
 import { ExternalAgentActivationSection } from '../components/features/integrations/ExternalAgentActivationSection'
-import { ManifestPanel } from '../components/features/integrations/ManifestPanel'
+import { ProductSurfacesPanel } from '../components/features/integrations/ProductSurfacesPanel'
 import {
   ProductOperationsSection,
   productUsageBadgeLabel,
@@ -370,7 +370,11 @@ const ProductDetail = ({
           </div>
         </section>
 
-        <ManifestPanel loading={manifestQuery.isLoading} manifest={manifestQuery.data} />
+        <ProductSurfacesPanel
+          loading={manifestQuery.isLoading}
+          manifest={manifestQuery.data}
+          product={product}
+        />
 
         <section className="border-t border-[var(--sep)] pt-4">
           <h3 className="text-sm font-semibold text-[var(--tx)]">Capabilities</h3>

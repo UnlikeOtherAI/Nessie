@@ -375,6 +375,15 @@ tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
   `product_webhook_secrets`); DeepSignal returns that secret once at webhook
   registration and the admin pastes it. On `insight.surfaced` the receiver posts one
   idempotent agent-authored insight card into each linked recipient's channel.
+- **Signals digest** — `GET /api/integrations/products/deepsignal/signals`
+  (optional `?include=active|all`) reads the user's insight digest via the
+  `insight_digest` tool, and `POST .../signals/:insightId/act`
+  (`{ action: done|snooze|mute|reopen }`) proxies an action via `insight_act`. Both
+  resolve the requesting user's user-scoped instance through the same seam
+  (`resolveUserScopedProductTransport` → `callInstanceTool`); tenancy is strictly
+  the authenticated principal and a not-linked user gets a typed
+  `{ status: 'needs_setup' }` (fail-closed, never a 500). Rendered as the admin
+  **Signals** page (surface-registry plan §4).
 
 ### MCP Server Lifecycle
 

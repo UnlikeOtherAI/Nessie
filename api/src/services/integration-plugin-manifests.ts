@@ -100,6 +100,18 @@ const rawManifests = [
         { id: 'budget-cap', label: 'Budget cap', status: 'planned' },
       ],
     },
+    surfaces: [
+      {
+        type: 'documents_section',
+        id: 'research',
+        label: 'Research',
+        view: 'deep-water-research',
+        // Research is usable once the Deep Water MCP connector is installed and
+        // active for the workspace — that is the real signal the run history +
+        // launcher can be reached, so gate on the connector, not an account link.
+        requires: { connectorActive: true },
+      },
+    ],
     artifacts: [
       {
         kind: 'knowledge_page',
@@ -206,6 +218,7 @@ const rawManifests = [
         { id: 'share-safe-import', label: 'Share-safe import', status: 'available' },
       ],
     },
+    surfaces: [],
     artifacts: [
       {
         kind: 'share_safe_report',
@@ -315,6 +328,25 @@ const rawManifests = [
         { id: 'activate', label: 'Activate for me', status: 'available' },
       ],
     },
+    surfaces: [
+      {
+        type: 'chat_assistant',
+        channelKind: 'external_agent',
+        productSlug: 'deepsignal',
+        label: 'DeepSignal',
+        // The per-user private DeepSignal channel appears under the Personal
+        // Assistant only once the user has activated + signed in (account
+        // linked) and the external-agent capability is present.
+        requires: { capability: 'external_agent', linked: true },
+      },
+      {
+        type: 'nav_page',
+        id: 'signals',
+        label: 'Signals',
+        route: '/signals',
+        requires: { linked: true },
+      },
+    ],
     artifacts: [
       {
         kind: 'research_reference',
@@ -394,6 +426,7 @@ const rawManifests = [
         { id: 'conflict-policy', label: 'Conflict policy', status: 'blocked' },
       ],
     },
+    surfaces: [],
     artifacts: [
       {
         kind: 'external_project_link',

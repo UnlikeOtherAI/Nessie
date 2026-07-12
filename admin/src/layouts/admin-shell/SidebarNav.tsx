@@ -11,6 +11,7 @@ import type {
   SidebarAgentDm,
   SidebarMenu,
   SidebarPerson,
+  SidebarProductAssistant,
   SidebarProject,
   StarredItem,
   VisibleStarredEntry,
@@ -50,6 +51,7 @@ type SidebarNavProps = {
   sidebarAgentDms: SidebarAgentDm[];
   sidebarMenu: SidebarMenu;
   sidebarPeople: SidebarPerson[];
+  sidebarProductAssistants: SidebarProductAssistant[];
   starredChannelIds: Set<string>;
   starredCollapsed: boolean;
   starredProjectIds: Set<string>;
@@ -99,6 +101,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     sidebarAgentDms,
     sidebarMenu,
     sidebarPeople,
+    sidebarProductAssistants,
     starredChannelIds,
     starredCollapsed,
     starredProjectIds,
@@ -230,6 +233,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           personalAssistantUnreadCount={personalAssistantUnreadCount}
           sidebarAgentDms={sidebarAgentDms}
           sidebarPeople={sidebarPeople}
+          sidebarProductAssistants={sidebarProductAssistants}
           starredUserIds={starredUserIds}
           toggleDmCollapsed={toggleDmCollapsed}
           unreadCountByChannelId={unreadCountByChannelId}
