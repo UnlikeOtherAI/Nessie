@@ -233,7 +233,19 @@ Current Nessie slice:
   units, spend, last activity, and failures without introducing a second
   accounting path.
 - Deep Water now has a native ESC launcher gated by team enablement and an
-  active shared MCP connector. `POST
+  active shared MCP connector. **Enabling Deep Water for a team now provisions
+  that connector automatically:** `PATCH
+  /api/integrations/products/deep-water/team-enablement` (owner-only) creates a
+  team-scoped, tool-projecting `McpServerInstance` from the `deep-water` catalog
+  entry and projects the plugin manifest's `research_*` tools into
+  `ToolRegistryEntry` as `active` (surfaced to agent runs as `mcp_research_*`);
+  disabling deactivates and removes it. Because the install is team-scoped it
+  reaches **every** agent run inside the team — personal assistant and shared
+  agents alike — so the tools are grantable to any permitted agent through its
+  per-agent tool policy (default off). Deep Water is OAuth2 + first-party
+  hosted, so the tool contract comes from the plugin manifest rather than a
+  per-user network probe, and each user still authorises Deep Water with their
+  own token at dispatch. `POST
   /api/integrations/products/deep-water/research-launch` creates or loads the
   user's Personal Assistant DM, posts a server-built launch message carrying a
   `deep_research` `uiCards` card, and enqueues the PA so it can call the
@@ -242,10 +254,11 @@ Current Nessie slice:
   MCP approval/grants. Nessie now also creates a durable
   `product_integration_runs` projection for each Deep Water launch and exposes
   recent active-team runs through `GET
-  /api/integrations/products/deep-water/research-runs`. The PA can now call the
-  PA-only `deep_water_run_update` builtin after approved Deep Water MCP calls to
-  project external run id, status, source count, cost, report URL, and Knowledge
-  draft page id into that durable record. Terminal PA write-back now reconciles
+  /api/integrations/products/deep-water/research-runs`. Any granted agent —
+  personal assistant or shared — can call the `deep_water_run_update` builtin
+  after Deep Water MCP calls to project external run id, status, source count,
+  cost, report URL, and Knowledge draft page id into that durable record.
+  Terminal write-back now reconciles
   reported run cost into `connector_usage_events` exactly once per Deep Water
   run, so the ESC month-to-date usage panel can include the completed external
   research spend. Autonomous polling and Knowledge import jobs remain Phase 2
@@ -485,6 +498,13 @@ catalog/tool registry:
 
 Nessie agents must not hold product API keys in prompts. Credentials resolve
 through the existing secret/credential chain and dispatch plan.
+
+First-party team-enabled products (Deep Water) auto-provision this path: the
+owner's `team-enablement` toggle stands in for the manual install + admin
+approve steps, so the team-scoped instance's projected tools are marked
+`active` (grantable) at enable time. Per-agent grant stays the real gate and
+defaults off. Third-party/user connectors keep the full `pending_review` +
+admin-approve flow.
 
 ### 7. Durable Artifacts
 
