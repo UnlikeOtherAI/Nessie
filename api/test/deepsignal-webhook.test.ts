@@ -102,8 +102,14 @@ type StoredMessage = {
   agentId: string | null
   content: string
   createdAt: Date
+  deletedAt: Date | null
   metadata: Record<string, unknown>
 }
+
+const messageInsightIds = (message: StoredMessage): string[] =>
+  ((message.metadata.external as { insights?: Array<{ insightId: string }> })?.insights ?? []).map(
+    (entry) => entry.insightId,
+  )
 
 const USER_A = '00000000-0000-4000-8000-0000000000b1'
 const USER_B = '00000000-0000-4000-8000-0000000000b2'
@@ -125,7 +131,7 @@ const makeInsightFake = (links: Link[]) => {
       archivedAt: null,
     })
   }
-  return {
+  const client = {
     messages,
     state,
     productAccountLink: {
@@ -152,21 +158,46 @@ const makeInsightFake = (links: Link[]) => {
     agentBinding: {
       findFirst: async () => ({ agentId: 'agent-ds' }),
     },
+    $executeRaw: async () => 0,
     message: {
+      // Unbounded dedupe: `metadata.external.insights[*].insightId` containment,
+      // no time bound, non-deleted only.
+      findFirst: async (args: {
+        where: {
+          threadId: string
+          deletedAt: null
+          metadata: { array_contains: Array<{ insightId: string }> }
+        }
+      }) => {
+        const target = args.where.metadata.array_contains[0]!.insightId
+        const match = messages.find(
+          (m) =>
+            m.threadId === args.where.threadId &&
+            m.deletedAt === null &&
+            messageInsightIds(m).includes(target),
+        )
+        return match ? { id: match.id } : null
+      },
       findMany: async (args: {
-        where: { threadId: string; createdAt: { gte: Date }; metadata: { equals: string } }
+        where: { threadId: string; deletedAt: null; createdAt: { gte: Date }; metadata: { equals: string } }
         orderBy: { createdAt: 'desc' }
       }) =>
         messages
           .filter(
             (m) =>
               m.threadId === args.where.threadId &&
+              m.deletedAt === null &&
               m.createdAt.getTime() >= args.where.createdAt.gte.getTime() &&
               (m.metadata.external as { kind?: string })?.kind === args.where.metadata.equals,
           )
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
-      create: async (args: { data: Omit<StoredMessage, 'id' | 'createdAt'> }) => {
-        const row: StoredMessage = { ...args.data, id: `msg-${messages.length + 1}`, createdAt: state.clock }
+      create: async (args: { data: Omit<StoredMessage, 'id' | 'createdAt' | 'deletedAt'> }) => {
+        const row: StoredMessage = {
+          ...args.data,
+          id: `msg-${messages.length + 1}`,
+          createdAt: state.clock,
+          deletedAt: null,
+        }
         messages.push(row)
         return { id: row.id }
       },
@@ -177,6 +208,12 @@ const makeInsightFake = (links: Link[]) => {
       },
     },
   }
+  // Interactive transaction: the fake is its own transaction client. Attached via
+  // Object.assign (not the literal) so the closure over `client` isn't a
+  // self-reference in the initializer.
+  return Object.assign(client, {
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
+  })
 }
 
 type InsightFake = ReturnType<typeof makeInsightFake>
@@ -308,4 +345,81 @@ test('insight fan-out targets only the named recipient subs when present', async
   const cards = fake.messages[0]!.metadata.uiCards as Array<{ actions?: Array<{ label: string; href: string }> }>
   assert.equal(cards[0]?.actions?.[0]?.label, 'View signals')
   assert.equal(cards[0]?.actions?.[0]?.href, '/signals')
+})
+
+test('dedupe is unbounded: a replay past the budget window is still a no-op', async () => {
+  const fake = makeInsightFake([
+    { organizationId: ORG, userId: USER_A, productSlug: 'deepsignal', status: 'linked', uoaSub: 'sub-a' },
+  ])
+  // A 1h budget window: the replay arrives 2h later, outside the windowed scan.
+  const opts = { budgetWindowMs: 60 * 60 * 1000, coalesceWindowMs: 0, budgetMax: 6 }
+
+  fake.state.clock = new Date('2026-07-12T00:00:00.000Z')
+  const first = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'), {
+    ...opts,
+    now: fake.state.clock,
+  })
+  assert.deepEqual(first.deliveries.map((d) => d.mode), ['posted'])
+
+  // Same insight replayed after the budget window elapses (signed body carries no
+  // nonce/timestamp). The old windowed scan would miss it and re-record + re-ping;
+  // the unbounded containment check recognises it as a duplicate.
+  fake.state.clock = new Date('2026-07-12T02:00:00.000Z')
+  const replay = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'), {
+    ...opts,
+    now: fake.state.clock,
+  })
+  assert.deepEqual(replay.deliveries.map((d) => d.mode), ['duplicate'], 'replay is not re-recorded')
+  assert.equal(fake.messages.length, 1, 'no second digest from the replay')
+  assert.equal(messageInsightIds(fake.messages[0]!).length, 1, 'insight counted once')
+})
+
+test('soft-deleted digests are ignored: a fresh digest is posted, not resurrected', async () => {
+  const fake = makeInsightFake([
+    { organizationId: ORG, userId: USER_A, productSlug: 'deepsignal', status: 'linked', uoaSub: 'sub-a' },
+  ])
+  const now = new Date('2026-07-12T00:00:00.000Z')
+  fake.state.clock = now
+
+  const first = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'), { now })
+  assert.deepEqual(first.deliveries.map((d) => d.mode), ['posted'])
+
+  // The user deletes the digest: content is blanked and `deletedAt` set.
+  fake.messages[0]!.deletedAt = new Date()
+  fake.messages[0]!.content = ''
+
+  // A new insight must post a FRESH digest — never fold into (and un-blank) the
+  // tombstoned row.
+  const second = await handleDeepSignalInsightSurfaced(
+    asPrisma(fake),
+    ORG,
+    insightPayload('ins-2', { brief: { insightId: 'ins-2', whatChanged: 'New tender', kind: 'opportunity' } }),
+    { now },
+  )
+  assert.deepEqual(second.deliveries.map((d) => d.mode), ['posted'], 'fresh digest, not a fold')
+  assert.equal(fake.messages.length, 2)
+  assert.equal(fake.messages[0]!.content, '', 'deleted digest stays blanked')
+
+  // An insight recorded only on the deleted digest is no longer a duplicate, so
+  // it can be re-delivered onto the live digest.
+  const redeliver = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'), { now })
+  assert.notEqual(redeliver.deliveries[0]?.mode, 'duplicate', 'dedupe ignores deleted digests')
+  assert.equal(fake.messages[0]!.content, '', 'deleted digest still untouched')
+})
+
+test('budgetMax=0 suppresses the ping but still records the insight', async () => {
+  const fake = makeInsightFake([
+    { organizationId: ORG, userId: USER_A, productSlug: 'deepsignal', status: 'linked', uoaSub: 'sub-a' },
+  ])
+  const now = fake.state.clock
+
+  const result = await handleDeepSignalInsightSurfaced(asPrisma(fake), ORG, insightPayload('ins-1'), {
+    now,
+    budgetMax: 0,
+  })
+  // Not 'posted' → publishInsightDeliveries emits no realtime ping, yet the
+  // insight is recorded on a (silent) digest, not dropped.
+  assert.deepEqual(result.deliveries.map((d) => d.mode), ['suppressed'])
+  assert.equal(fake.messages.length, 1, 'insight recorded on a silent digest')
+  assert.equal(messageInsightIds(fake.messages[0]!).length, 1)
 })

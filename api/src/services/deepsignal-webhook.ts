@@ -122,7 +122,6 @@ const deliverToUser = async (
   const agentId = binding?.agentId ?? null
 
   const delivery = await deliverInsightToDigest(prisma, { threadId, agentId, insight }, options)
-  if (!delivery) return null
   return { channelId: channel.id, threadId, messageId: delivery.messageId, agentId, mode: delivery.mode }
 }
 
