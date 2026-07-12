@@ -135,6 +135,9 @@ const ReactionPill = ({ summary, onToggle }: ReactionPillProps) => {
       return
     }
     clearPressTimer()
+    // A previous long-press that never produced a click must not swallow the
+    // next tap's toggle.
+    suppressClick.current = false
     pressTimer.current = window.setTimeout(() => {
       pressTimer.current = null
       suppressClick.current = true
