@@ -3,7 +3,9 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'deep_water_run_update',
   label: 'Deep Water Run Update',
-  personalAssistantOnly: true,
+  // Available to any granted agent (personal assistant or shared): a shared
+  // agent that calls the DeepWater MCP tools writes the durable Nessie run
+  // record back through this tool. Grant is still per-agent (default off).
   description:
     'Update Nessie\'s durable Deep Water run record after calling the approved Deep Water MCP tools. ' +
     'Use this with the Nessie runId from the launch card; record the external Deep Water run id, status, source count, cost, report URL, and Knowledge draft page when available.',

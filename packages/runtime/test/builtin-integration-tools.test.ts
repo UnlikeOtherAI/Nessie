@@ -6,9 +6,10 @@ import {
   DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION,
 } from '../src/index.js'
 
-test('Deep Water run update is a Personal Assistant builtin tool', () => {
+test('Deep Water run update is grantable to any agent (not PA-only)', () => {
   assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.id, 'deep_water_run_update')
-  assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.personalAssistantOnly, true)
+  // Not PA-only: a granted shared agent may write the durable run record back.
+  assert.notEqual(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.personalAssistantOnly, true)
   assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.safe, true)
   assert.deepEqual(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.required, [
     'runId',
@@ -23,5 +24,5 @@ test('builtin registry includes the Deep Water run update tool', () => {
 
   assert.ok(tool)
   assert.equal(tool.label, 'Deep Water Run Update')
-  assert.equal(tool.personalAssistantOnly, true)
+  assert.notEqual(tool.personalAssistantOnly, true)
 })

@@ -177,14 +177,22 @@ test('deep_water_run_update does not double-record an already ledgered run', asy
   assert.equal(resultUpdates.length, 0)
 })
 
-test('deep_water_run_update rejects non-PA callers before touching the database', async () => {
-  const { context, queries } = makeContext({ agentKind: 'shared' })
+test('deep_water_run_update is available to a granted shared agent', async () => {
+  const { context, ledgerEvents, queries, resultUpdates } = makeContext({ agentKind: 'shared' })
 
-  await assert.rejects(
-    () => runDeepWaterRunUpdateTool(context, { runId: RUN_ID, status: 'completed' }),
-    /only available to the Personal Assistant/,
-  )
-  assert.equal(queries.length, 0)
+  const result = await runDeepWaterRunUpdateTool(context, {
+    currency: 'USD',
+    runId: RUN_ID,
+    sourceCount: 18,
+    status: 'completed',
+    totalCost: 4.25,
+  })
+
+  assert.equal(result.toolName, 'deep_water_run_update')
+  assert.match(result.outputPreview, /status=completed/)
+  assert.equal(queries.length, 2)
+  assert.equal(ledgerEvents.length, 1)
+  assert.equal(resultUpdates.length, 1)
 })
 
 test('deep_water_run_update rejects unsupported status values', async () => {
