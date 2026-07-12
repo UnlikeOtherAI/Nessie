@@ -118,6 +118,20 @@ daily budget + batching + synthesis**; only genuinely time-sensitive, actionable
 DeepSignal's webhook already carries `insightId` + `actions`; add a **severity/confidence** score
 and a **batchable digest** rather than firehosing.
 
+> **Status (2026-07-12): shipped.** The Signals page is now an Overview/Inbox — an attention
+> tally ("N need attention · X opportunities · Y risks"), active signals grouped by kind (risks
+> first, then recency, since the digest exposes no severity field to sort on), inline act / snooze
+> / mute, a "Show resolved" toggle over the `include=all` param, and a mission detail drawer. The
+> webhook receiver (`api/src/services/deepsignal-webhook.ts` + `deepsignal-digest.ts`) coalesces
+> insights into a single rolling "You have N new signals" digest message per user (updated in
+> place within the coalesce window; per-insight ids retained for idempotency + counts-by-kind) and
+> budgets fresh proactive digests per user per rolling window; over budget the insight is still
+> recorded on the digest but the channel interruption is suppressed. The window/budget figures are
+> env-tunable heuristics (`NESSIE_SIGNAL_DIGEST_WINDOW_MS` ~1h, `NESSIE_SIGNAL_BUDGET_MAX` 6 /
+> `NESSIE_SIGNAL_BUDGET_WINDOW_MS` 24h) — deliberately **not** hardcoded as law, per the
+> verification caveat above. Deferred: a true LLM synthesis of related alerts and a
+> severity/confidence score from the product.
+
 ## 4. Deep-research output: weave into existing tools, don't silo
 
 "Content-heavy outputs (reports, summaries) should be delivered through the user's **existing
@@ -181,7 +195,10 @@ this (dynamic OAuth in-app) — keep it, and make activation *visibly* light up 
 2. **Turn Signals into an Overview/Inbox** — priority-grouped triage (act/snooze/mute), mission
    detail pages with the five resolution-flow types, an Activity Log. Make the **webhook path
    budgeted + batched + synthesized**, not one-card-per-event. *(This is the "things you
-   shouldn't miss" product; get it right.)*
+   shouldn't miss" product; get it right.)* **— Done (2026-07-12):** kind-grouped triage inbox +
+   mission detail drawer, and a coalesced + budgeted webhook digest (see §3 status). Remaining:
+   LLM synthesis of related alerts, an explicit Activity Log, and the full five-flow taxonomy
+   (today's drawer covers Communication + Decision via act/snooze/mute).
 3. **Promote DeepWater reports to native Knowledge documents** — report → Knowledge page
    (`knowledgePageId`), deep-linked; the Research section is the index, the doc lives in the
    document model.
