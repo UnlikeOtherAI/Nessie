@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AgentRecord } from '../../../lib/api-client'
+import type { AgentRecord, MessageReaction, UserRecord } from '../../../lib/api-client'
 import { usePresenceLookup } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelMessageRow, StatusBadge } from './ChannelMessageRow'
+import type { ResolveReactorName } from './ReactionPills'
 import {
   type FeedItem,
   type MessageUserIdentity,
@@ -30,6 +31,9 @@ interface ChannelMessageFeedProps {
   // Avatar sources for the signed-in user — used for optimistic (not-yet-saved)
   // messages, which have no server-side author payload yet.
   meAvatar: AvatarSources
+  // Channel members, when the host has them — lets the "who reacted" popover
+  // name members who reacted without ever posting in the thread.
+  channelUsers?: UserRecord[]
   token: string | null
   isPersonalAssistantConversation: boolean
   // First-class external-agent conversation (e.g. DeepSignal): same
@@ -64,6 +68,7 @@ export const ChannelMessageFeed = ({
   meDisplayName,
   meUserId,
   meAvatar,
+  channelUsers,
   token,
   isPersonalAssistantConversation,
   isExternalAgentConversation = false,
@@ -95,6 +100,37 @@ export const ChannelMessageFeed = ({
       : 'Agent'
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null)
   const lastPointerDownAt = useRef(0)
+  // Name resolution for the "who reacted" popover, layered from what this feed
+  // already knows: the viewer ("You"), channel members (when provided), the
+  // loaded messages' embedded authors, and the agent maps for agent reactions.
+  const resolveReactorName = useMemo<ResolveReactorName>(() => {
+    const userNames = new Map<string, string>()
+    for (const user of channelUsers ?? []) {
+      userNames.set(user.id, user.displayName)
+    }
+    for (const item of feedItems) {
+      if (
+        item.kind === 'message' &&
+        item.message.userId &&
+        item.message.author?.displayName
+      ) {
+        userNames.set(item.message.userId, item.message.author.displayName)
+      }
+    }
+    return (reaction: MessageReaction): string => {
+      if (reaction.userId) {
+        if (reaction.userId === meUserId) {
+          return 'You'
+        }
+        return userNames.get(reaction.userId) ?? 'Someone'
+      }
+      if (reaction.agentId) {
+        const agent = agentMap.get(reaction.agentId) ?? agentById.get(reaction.agentId)
+        return agent?.name ?? assistantFallbackName
+      }
+      return 'Someone'
+    }
+  }, [agentById, agentMap, assistantFallbackName, channelUsers, feedItems, meUserId])
   const [collapsedDateKeys, setCollapsedDateKeys] = useState<Set<string>>(
     () => new Set(),
   )
@@ -198,6 +234,7 @@ export const ChannelMessageFeed = ({
             meUserId={meUserId}
             message={item.message}
             renderContent={renderContent}
+            resolveReactorName={resolveReactorName}
             setActiveActionMessageId={setActiveActionMessageId}
             token={token}
             updatePending={updatePending}

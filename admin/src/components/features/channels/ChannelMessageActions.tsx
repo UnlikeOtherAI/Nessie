@@ -1,7 +1,6 @@
 import {
   useEffect,
   useId,
-  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -17,6 +16,7 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MessageReaction } from '../../../lib/api-client'
 import { EmojiPickerPanel } from '../../shared/EmojiPickerPanel'
+import { ReactionPills, type ResolveReactorName } from './ReactionPills'
 
 const THUMBS_UP = '\u{1F44D}'
 
@@ -27,6 +27,7 @@ type ChannelMessageActionsProps = {
   currentUserId: string
   messageId: string
   reactions: MessageReaction[]
+  resolveReactorName: ResolveReactorName
   onAddReaction: (messageId: string, emoji: string) => void
   onConfirmDelete: (messageId: string) => void
   onStartEdit: (messageId: string, content: string) => void
@@ -48,6 +49,7 @@ export const ChannelMessageActions = ({
   currentUserId,
   messageId,
   reactions,
+  resolveReactorName,
   onAddReaction,
   onConfirmDelete,
   onStartEdit,
@@ -55,23 +57,6 @@ export const ChannelMessageActions = ({
   const pickerId = useId()
   const pickerRef = useRef<HTMLDivElement>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const reactionSummary = useMemo(() => {
-    const counts = new Map<
-      string,
-      { count: number; emoji: string; reactedByMe: boolean }
-    >()
-    for (const reaction of reactions) {
-      const summary = counts.get(reaction.emoji) ?? {
-        count: 0,
-        emoji: reaction.emoji,
-        reactedByMe: false,
-      }
-      summary.count += 1
-      summary.reactedByMe ||= reaction.userId === currentUserId
-      counts.set(reaction.emoji, summary)
-    }
-    return Array.from(counts.values())
-  }, [currentUserId, reactions])
 
   useEffect(() => {
     if (!pickerOpen) {
@@ -102,32 +87,12 @@ export const ChannelMessageActions = ({
 
   return (
     <>
-      {reactionSummary.length > 0 ? (
-        <div className="mt-1 flex flex-wrap gap-1" onClick={stopRowToggle}>
-          {reactionSummary.map(({ count, emoji, reactedByMe }) => {
-            const label = reactedByMe
-              ? `Remove ${emoji} reaction`
-              : `Add ${emoji} reaction`
-
-            return (
-              <button
-                key={emoji}
-                aria-label={label}
-                aria-pressed={reactedByMe}
-                className={
-                  reactedByMe ? 'reaction-pill reaction-pill-active' : 'reaction-pill'
-                }
-                onClick={() => addReaction(emoji)}
-                title={label}
-                type="button"
-              >
-                {emoji}
-                {count > 1 ? ` ${count}` : ''}
-              </button>
-            )
-          })}
-        </div>
-      ) : null}
+      <ReactionPills
+        currentUserId={currentUserId}
+        reactions={reactions}
+        resolveReactorName={resolveReactorName}
+        onToggle={addReaction}
+      />
 
       <div
         className="admin-msg-actions"

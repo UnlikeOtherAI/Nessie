@@ -338,6 +338,7 @@ export const ChannelsPage = () => {
               avatarAttachmentId: me.user.avatarAttachmentId,
               gravatarUrl: me.user.gravatarUrl,
             }}
+            channelUsers={channelUsers}
             token={token}
             isPersonalAssistantConversation={isPersonalAssistantConversation}
             isExternalAgentConversation={isExternalAgentActiveChannel}

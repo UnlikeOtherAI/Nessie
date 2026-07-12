@@ -5,6 +5,7 @@ import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { MessageAttachments } from '../../shared/MessageAttachments'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelMessageActions } from './ChannelMessageActions'
+import type { ResolveReactorName } from './ReactionPills'
 import { formatClock, getDisplayName, type MessageUserIdentity } from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
 
@@ -64,6 +65,7 @@ interface ChannelMessageRowProps {
   onConfirmDelete: (messageId: string) => void
   onSelectAgent?: (agent: AgentRecord) => void
   onSelectUser?: (user: MessageUserIdentity) => void
+  resolveReactorName: ResolveReactorName
   getPresence: (userId: string | null | undefined) => PresenceView | null
   activeActionMessageId: string | null
   setActiveActionMessageId: Dispatch<SetStateAction<string | null>>
@@ -96,6 +98,7 @@ export const ChannelMessageRow = ({
   onConfirmDelete,
   onSelectAgent,
   onSelectUser,
+  resolveReactorName,
   getPresence,
   activeActionMessageId,
   setActiveActionMessageId,
@@ -291,6 +294,7 @@ export const ChannelMessageRow = ({
               currentUserId={meUserId}
               messageId={message.id}
               reactions={message.reactions ?? []}
+              resolveReactorName={resolveReactorName}
               onAddReaction={onAddReaction}
               onConfirmDelete={onConfirmDelete}
               onStartEdit={onStartEdit}
