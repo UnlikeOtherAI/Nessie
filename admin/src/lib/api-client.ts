@@ -37,6 +37,7 @@ export type {
   CreateFeedbackRequest,
   DeepSignalSignalAction,
   DeepSignalSignalActResponse,
+  DeepSignalSignalKind,
   DeepSignalSignalRecord,
   DeepSignalSignalsResponse,
   DeepTestReviewDepth,

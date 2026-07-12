@@ -46,13 +46,16 @@ export const useIntegrationPluginManifest = (productSlug?: string) => {
 // DeepSignal Signals digest (surface-registry plan §4). The route returns a
 // discriminated response: `{ status: 'ok', items }` or `{ status: 'needs_setup' }`
 // when the connector isn't linked for this user — the page renders the latter as
-// a "Connect DeepSignal" empty state rather than an error.
-export const useDeepSignalSignals = () => {
+// a "Connect DeepSignal" empty state rather than an error. `include` toggles
+// between the active-only triage view (default) and the full list (with resolved
+// signals); both variants cache under the shared prefix so an act invalidates all.
+export const useDeepSignalSignals = (include: 'active' | 'all' = 'active') => {
   const apiClient = useApiClient()
 
   return useQuery<DeepSignalSignalsResponse>({
-    queryKey: deepSignalSignalsKey,
-    queryFn: () => apiClient.get('/api/integrations/products/deepsignal/signals'),
+    queryKey: [...deepSignalSignalsKey, include],
+    queryFn: () =>
+      apiClient.get(`/api/integrations/products/deepsignal/signals?include=${include}`),
   })
 }
 
