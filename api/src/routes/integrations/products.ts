@@ -104,6 +104,28 @@ export const registerIntegrationProductRoutes = (
       return reply
     }
 
+    // Enabling DeepWater provisions a team-scoped, tool-projecting MCP instance
+    // so `mcp_research_*` becomes grantable to any agent (PA or shared). Provision
+    // BEFORE persisting the enablement flag so a fail-loud provisioning error
+    // (e.g. DEEP_WATER_MCP_URL unset) can't leave the toggle reading enabled with
+    // no instance behind it. Disabling tears the instance down after the flag is
+    // cleared. Other products are unaffected.
+    const isDeepWater = params.productSlug === DEEP_WATER_PRODUCT_SLUG
+    if (isDeepWater && body.enabled) {
+      try {
+        await ensureDeepWaterTeamInstance(prisma, actorContext, {
+          organizationId: actorContext.tenant.organizationId,
+          teamId,
+        })
+      } catch (error) {
+        if (error instanceof DeepWaterMcpUrlUnsetError) {
+          sendApiError(reply, 503, error.code, error.message)
+          return reply
+        }
+        throw error
+      }
+    }
+
     const enablement = await setProductTeamEnablement(prisma, {
       enabled: body.enabled,
       organizationId: actorContext.tenant.organizationId,
@@ -116,31 +138,11 @@ export const registerIntegrationProductRoutes = (
       return reply
     }
 
-    // Enabling DeepWater provisions a team-scoped, tool-projecting MCP instance
-    // so `mcp_research_*` becomes grantable to any agent (PA or shared);
-    // disabling tears it down. Other products are unaffected.
-    if (params.productSlug === DEEP_WATER_PRODUCT_SLUG) {
-      if (body.enabled) {
-        try {
-          await ensureDeepWaterTeamInstance(prisma, actorContext, {
-            organizationId: actorContext.tenant.organizationId,
-            teamId,
-          })
-        } catch (error) {
-          // Fail loud: a missing DeepWater MCP endpoint would otherwise create a
-          // dead instance whose tools silently drop. Surface it to the caller.
-          if (error instanceof DeepWaterMcpUrlUnsetError) {
-            sendApiError(reply, 503, error.code, error.message)
-            return reply
-          }
-          throw error
-        }
-      } else {
-        await removeDeepWaterTeamInstance(prisma, {
-          organizationId: actorContext.tenant.organizationId,
-          teamId,
-        })
-      }
+    if (isDeepWater && !body.enabled) {
+      await removeDeepWaterTeamInstance(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        teamId,
+      })
     }
 
     const products = await listIntegratedProducts(prisma, {
