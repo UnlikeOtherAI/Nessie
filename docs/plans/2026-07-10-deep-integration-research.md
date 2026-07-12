@@ -118,6 +118,20 @@ daily budget + batching + synthesis**; only genuinely time-sensitive, actionable
 DeepSignal's webhook already carries `insightId` + `actions`; add a **severity/confidence** score
 and a **batchable digest** rather than firehosing.
 
+> **Status (2026-07-12): shipped.** The Signals page is now an Overview/Inbox — an attention
+> tally ("N need attention · X opportunities · Y risks"), active signals grouped by kind (risks
+> first, then recency, since the digest exposes no severity field to sort on), inline act / snooze
+> / mute, a "Show resolved" toggle over the `include=all` param, and a mission detail drawer. The
+> webhook receiver (`api/src/services/deepsignal-webhook.ts` + `deepsignal-digest.ts`) coalesces
+> insights into a single rolling "You have N new signals" digest message per user (updated in
+> place within the coalesce window; per-insight ids retained for idempotency + counts-by-kind) and
+> budgets fresh proactive digests per user per rolling window; over budget the insight is still
+> recorded on the digest but the channel interruption is suppressed. The window/budget figures are
+> env-tunable heuristics (`NESSIE_SIGNAL_DIGEST_WINDOW_MS` ~1h, `NESSIE_SIGNAL_BUDGET_MAX` 6 /
+> `NESSIE_SIGNAL_BUDGET_WINDOW_MS` 24h) — deliberately **not** hardcoded as law, per the
+> verification caveat above. Deferred: a true LLM synthesis of related alerts and a
+> severity/confidence score from the product.
+
 ## 4. Deep-research output: weave into existing tools, don't silo
 
 "Content-heavy outputs (reports, summaries) should be delivered through the user's **existing
@@ -128,6 +142,22 @@ Knowledge page/artifact** in Nessie (title, sources, body), deep-linked from the
 the run row — not a separate silo the user context-switches into. The Research section is the
 *index*; the report itself lives in the document model. (Our run records already carry
 `knowledgePageId` — lean on it.)
+
+> **Implemented (2026-07-12).** A completed run's row in the Documents "Research" view
+> (`DeepWaterResearchView` → `DeepWaterRunHistory`) now opens its native Knowledge document as
+> the primary action — the run title links to it and an "Open document" button leads, with
+> "Open original report"/"Open chat" as secondary. `knowledgePageId`-only deep links (no
+> `spaceId`, since the run record doesn't carry one) are resolved via a page lookup in
+> `KnowledgeBasePage`, and `openPageDeepLink` now clears any active product view first so the
+> link always lands on the real document instead of staying behind the Research index. Runs
+> without a `knowledgePageId` (still running, failed, or predating the Knowledge draft) degrade
+> to status + chat/report links, unchanged. The chat-turn deep link is only partially done: the
+> DeepWater launch card (`buildDeepWaterLaunchMetadata`) is emitted once at launch, before
+> `knowledgePageId`/`reportUrl` exist, and run completion is only reported back as plain PA text
+> (no uiCard is re-emitted on `deep_water_run_update`) — adding one is a real feature (new
+> worker-side message/card emission on run completion) owned by the DeepWater run-update path,
+> deferred here. As a stopgap, the PA's handoff instructions now ask it to mention the
+> `/knowledge-base?pageId=...` link in its own completion reply when it set `knowledgePageId`.
 
 ## 5. Strategic lever: let the products ship their own UI via MCP Apps / MCP-UI
 
@@ -181,10 +211,14 @@ this (dynamic OAuth in-app) — keep it, and make activation *visibly* light up 
 2. **Turn Signals into an Overview/Inbox** — priority-grouped triage (act/snooze/mute), mission
    detail pages with the five resolution-flow types, an Activity Log. Make the **webhook path
    budgeted + batched + synthesized**, not one-card-per-event. *(This is the "things you
-   shouldn't miss" product; get it right.)*
+   shouldn't miss" product; get it right.)* **— Done (2026-07-12):** kind-grouped triage inbox +
+   mission detail drawer, and a coalesced + budgeted webhook digest (see §3 status). Remaining:
+   LLM synthesis of related alerts, an explicit Activity Log, and the full five-flow taxonomy
+   (today's drawer covers Communication + Decision via act/snooze/mute).
 3. **Promote DeepWater reports to native Knowledge documents** — report → Knowledge page
    (`knowledgePageId`), deep-linked; the Research section is the index, the doc lives in the
-   document model.
+   document model. **Documents-view side implemented (2026-07-12)** — see §4; the chat-turn
+   card deep link is deferred (owned by the DeepWater run-update path, plain-text link only).
 4. **Grow the contribution vocabulary + gating** — add overview/home, split-panel, command, card,
    activity surface types; gate each on scope (user/team/org) **and** granted permission;
    activation-lazy. *(Extends Slice A, doesn't replace it.)*

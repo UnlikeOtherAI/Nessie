@@ -328,12 +328,21 @@ const rawManifests = [
         { id: 'activate', label: 'Activate for me', status: 'available' },
       ],
     },
+    conversationStarters: [
+      'What signals need my attention today?',
+      "Summarize this week's risks and opportunities",
+      'What changed since I last checked?',
+    ],
     surfaces: [
       {
         type: 'chat_assistant',
         channelKind: 'external_agent',
         productSlug: 'deepsignal',
         label: 'DeepSignal',
+        // A non-human product glyph (not a person avatar) + a function-first
+        // one-liner: lead with what it does, per Slack agent-design.
+        iconGlyph: '◎',
+        description: "Surfaces the signals and decisions you shouldn't miss",
         // The per-user private DeepSignal channel appears under the Personal
         // Assistant only once the user has activated + signed in (account
         // linked) and the external-agent capability is present.

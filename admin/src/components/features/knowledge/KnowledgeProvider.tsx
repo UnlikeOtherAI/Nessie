@@ -257,10 +257,15 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const openRootPage = (pageId: string) => openPagePath([pageId])
 
   // Jumps straight to a page from outside the browsing flow (an approval's
-  // "Open page" link, a search result). We don't know the page's ancestor
-  // chain up front, so the path is just the page itself — enough for the
-  // preview to open; breadcrumbs/back just fall back to the space root.
+  // "Open page" link, a search result, a DeepWater research run's native
+  // Knowledge document). We don't know the page's ancestor chain up front, so
+  // the path is just the page itself — enough for the preview to open;
+  // breadcrumbs/back just fall back to the space root. Also clears any active
+  // product view (e.g. the DeepWater "Research" Documents view) so a deep
+  // link always lands on the real document instead of staying stuck behind
+  // whichever product surface the caller happened to be viewing.
   const openPageDeepLink = (input: { spaceId: string; pageId: string }) => {
+    setActiveProductView(undefined)
     setSelectedSpaceId(input.spaceId)
     setPagePath([input.pageId])
     setOpenPageId(input.pageId)

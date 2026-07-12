@@ -2,13 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  IntegrationPluginManifestSchema,
+  ProductSurfaceSchema,
+} from '../integration-plugin.js'
+import {
   BuildMeProjectHandoffRequestSchema,
   DeepWaterResearchRunRecordSchema,
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
   IntegratedProductResponseSchema,
-  IntegrationPluginManifestSchema,
-  ProductSurfaceSchema,
   SetProductTeamEnablementRequestSchema,
 } from '../integrations.js'
 

@@ -49,6 +49,9 @@ interface ChannelMessageRowProps {
   token: string | null
   assistantFallbackName: string
   isDedicatedAgentConversation: boolean
+  // A first-class external-agent turn (DeepSignal, ...) renders its narrated
+  // activities as a collapsed plan/timeline; other surfaces render flat cards.
+  isExternalAgentConversation: boolean
   renderContent: (text: string) => ReactNode
   editingMessageId: string | null
   editingContent: string
@@ -80,6 +83,7 @@ export const ChannelMessageRow = ({
   token,
   assistantFallbackName,
   isDedicatedAgentConversation,
+  isExternalAgentConversation,
   renderContent,
   editingMessageId,
   editingContent,
@@ -270,7 +274,14 @@ export const ChannelMessageRow = ({
               {renderContent(message.content)}
             </p>
           )}
-          {!isEditingMessage ? <MessageUiCards metadata={message.metadata} /> : null}
+          {!isEditingMessage ? (
+            <MessageUiCards
+              isExternalAgent={
+                isExternalAgentConversation && message.role === 'assistant'
+              }
+              metadata={message.metadata}
+            />
+          ) : null}
           <MessageAttachments messageId={message.id} />
           {!isEditingMessage ? (
             <ChannelMessageActions

@@ -154,6 +154,31 @@ rather than a hard-coded ladder.
   the existing `DeepWaterResearchPanel` launch flow lives). Loading, empty ("No researches
   yet"), and not-connected states handled. `/knowledge-base?view=deep-water-research`
   deep-links straight into it via Slice A's `selectProductView`.
+- **Slice E — DeepSignal DM as a native thinking assistant** *(done, 2026-07-12)*: reframes the
+  external-agent DM as a first-class assistant per the verified Slack agent-design guidance
+  (research doc §2 / §8.1), gated strictly to `external_agent` channels so the PA and normal
+  channels are untouched. Sourced declaratively from the product manifest so a second external
+  agent needs no code change:
+  - **Conversation starters** — new optional `conversationStarters?: string[]` (2–4) on
+    `IntegrationPluginManifestSchema` (now in `packages/schemas/src/integration-plugin.ts`,
+    split out of `integrations.ts` along the manifest/surfaces seam to stay under the 500-line
+    cap). The DeepSignal manifest carries three starters. `useExternalAgentIdentity(channel)`
+    (`admin/src/facades/integrations/hooks.ts`) resolves the product (by channel-label match) +
+    its manifest; `ExternalAgentIntro.tsx` renders the empty-channel state (identity + clickable
+    starter chips that send on click) via a new optional `emptyState` prop on
+    `ChannelMessageFeed`.
+  - **Function-first identity** — new optional `description?` on `ChatAssistantSurfaceSchema`
+    (+ existing `iconGlyph`). The DeepSignal chat-assistant surface declares the non-human glyph
+    `◎` and "Surfaces the signals and decisions you shouldn't miss". `ChannelHeader` renders the
+    product glyph + name + one-line description for external-agent channels.
+  - **Status-on-send** — the existing pending "thinking" bubble already fires for dedicated-agent
+    conversations; wording refined to plain-language "<Name> is thinking…".
+  - **Activity timeline** — external-agent assistant turns render their narrated activities as a
+    **collapsed-by-default, expandable** plan/timeline (`AgentActivityTimeline.tsx`) instead of
+    flat cards. A tiny additive `role?: 'activity' | 'result'` on `IntegrationUiCardSchema`
+    (set by `packages/mcp-manage/src/external-chat.ts`: activities→`activity`, cards→`result`)
+    lets `MessageUiCards` split activities into the timeline while result cards stay flat. No
+    backend contract change beyond that one optional field.
 - **Slice D — Verify & ship** *(pending)*: build/kelpie the new surfaces, docs, merge to main.
 
 ## Open Questions

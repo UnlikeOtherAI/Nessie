@@ -1,4 +1,6 @@
+import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ChatAssistantSurface } from '@nessie/schemas'
 import type {
   BuildMeProjectHandoffRequest,
   ChannelRecord,
@@ -15,6 +17,7 @@ import type {
   ThreadRecord,
 } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { isExternalAgentChannel } from '../personal-assistant/hooks'
 
 export const integratedProductsKey = ['integrations', 'products'] as const
 export const deepWaterResearchRunsKey =
@@ -43,16 +46,60 @@ export const useIntegrationPluginManifest = (productSlug?: string) => {
   })
 }
 
+// Function-first identity + conversation starters for an external-agent DM,
+// sourced entirely from the product's plugin manifest so a second external agent
+// needs no code change here. The external-agent channel carries no product slug,
+// but its label is the product name, so we resolve the product (and thus its
+// manifest) by matching on that — the same join the sidebar uses.
+export type ExternalAgentIdentity = {
+  productSlug: string
+  name: string
+  description: string | null
+  iconGlyph: string | null
+  conversationStarters: string[]
+}
+
+export const useExternalAgentIdentity = (
+  channel: ChannelRecord | null | undefined,
+): ExternalAgentIdentity | null => {
+  const isExternal = isExternalAgentChannel(channel)
+  const productsQuery = useIntegratedProducts()
+  const product = isExternal
+    ? productsQuery.data?.find((entry) => entry.name === channel?.label)
+    : undefined
+  const manifestQuery = useIntegrationPluginManifest(product?.slug)
+
+  return useMemo(() => {
+    if (!isExternal || !product || !manifestQuery.data) {
+      return null
+    }
+    const manifest = manifestQuery.data
+    const chat = manifest.surfaces.find(
+      (surface): surface is ChatAssistantSurface => surface.type === 'chat_assistant',
+    )
+    return {
+      productSlug: product.slug,
+      name: chat?.label ?? product.name,
+      description: chat?.description ?? (product.summary || null),
+      iconGlyph: chat?.iconGlyph ?? null,
+      conversationStarters: manifest.conversationStarters ?? [],
+    }
+  }, [isExternal, product, manifestQuery.data])
+}
+
 // DeepSignal Signals digest (surface-registry plan §4). The route returns a
 // discriminated response: `{ status: 'ok', items }` or `{ status: 'needs_setup' }`
 // when the connector isn't linked for this user — the page renders the latter as
-// a "Connect DeepSignal" empty state rather than an error.
-export const useDeepSignalSignals = () => {
+// a "Connect DeepSignal" empty state rather than an error. `include` toggles
+// between the active-only triage view (default) and the full list (with resolved
+// signals); both variants cache under the shared prefix so an act invalidates all.
+export const useDeepSignalSignals = (include: 'active' | 'all' = 'active') => {
   const apiClient = useApiClient()
 
   return useQuery<DeepSignalSignalsResponse>({
-    queryKey: deepSignalSignalsKey,
-    queryFn: () => apiClient.get('/api/integrations/products/deepsignal/signals'),
+    queryKey: [...deepSignalSignalsKey, include],
+    queryFn: () =>
+      apiClient.get(`/api/integrations/products/deepsignal/signals?include=${include}`),
   })
 }
 

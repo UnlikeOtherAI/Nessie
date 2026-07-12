@@ -4,7 +4,10 @@ import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
-import { useSyncExternalAgentChannel } from '../facades/integrations/hooks'
+import {
+  useExternalAgentIdentity,
+  useSyncExternalAgentChannel,
+} from '../facades/integrations/hooks'
 import {
   isExternalAgentChannel,
   isPersonalAssistantChannel,
@@ -23,6 +26,7 @@ import { ChannelComposer } from '../components/features/channels/ChannelComposer
 import { ChannelAgentInfoDrawer } from '../components/features/channels/ChannelAgentInfoDrawer'
 import { ChannelHeader } from '../components/features/channels/ChannelHeader'
 import { ChannelMessageFeed } from '../components/features/channels/ChannelMessageFeed'
+import { ExternalAgentIntro } from '../components/features/channels/ExternalAgentIntro'
 import { ChannelSearchPanel } from '../components/features/channels/ChannelSearchPanel'
 import { ChannelTabBar } from '../components/features/channels/ChannelTabBar'
 import { ChannelTabPanels } from '../components/features/channels/ChannelTabPanels'
@@ -50,6 +54,9 @@ export const ChannelsPage = () => {
     channels.find((channel) => channel.id === channelId) ?? channels[0] ?? null
   const isPersonalAssistantActiveChannel = isPersonalAssistantChannel(activeChannel)
   const isExternalAgentActiveChannel = isExternalAgentChannel(activeChannel)
+  // Function-first identity + conversation starters for the active external
+  // agent, sourced from its plugin manifest (null for any other channel).
+  const externalAgentIdentity = useExternalAgentIdentity(activeChannel)
   const boundAgents = useMemo(
     () =>
       activeChannel
@@ -268,6 +275,8 @@ export const ChannelsPage = () => {
       <ChannelHeader
         activeChannel={activeChannel}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
+        isExternalAgentConversation={isExternalAgentActiveChannel}
+        externalAgentIdentity={externalAgentIdentity}
         channelUsers={channelUsers}
         boundAgents={boundAgents}
         callEligible={callEligible}
@@ -333,6 +342,14 @@ export const ChannelsPage = () => {
             isPersonalAssistantConversation={isPersonalAssistantConversation}
             isExternalAgentConversation={isExternalAgentActiveChannel}
             externalAgentDisplayName={activeChannel?.label}
+            emptyState={
+              isExternalAgentActiveChannel && externalAgentIdentity ? (
+                <ExternalAgentIntro
+                  identity={externalAgentIdentity}
+                  onSelectStarter={(prompt) => void sendText(prompt)}
+                />
+              ) : undefined
+            }
             renderContent={renderContent}
             editingMessageId={editingMessageId}
             editingContent={editingContent}

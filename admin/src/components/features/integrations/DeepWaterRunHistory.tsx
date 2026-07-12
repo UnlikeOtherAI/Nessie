@@ -65,6 +65,14 @@ const runTitle = (run: DeepWaterResearchRunRecord): string =>
 const knowledgeHref = (pageId: string): string =>
   `/knowledge-base?pageId=${encodeURIComponent(pageId)}`
 
+// A finished run with a drafted Knowledge page should read as a native
+// document, not an external list item — so its title links straight to the
+// page and the "Open document" action is primary. Runs still in flight,
+// failed, or predating the Knowledge draft (no knowledgePageId) degrade to
+// the chat/report links only.
+const hasNativeDocument = (run: DeepWaterResearchRunRecord): boolean =>
+  run.status === 'completed' && Boolean(run.knowledgePageId)
+
 export const DeepWaterRunHistory = ({
   loading,
   runs,
@@ -91,71 +99,83 @@ export const DeepWaterRunHistory = ({
       ) : runs.length === 0 ? (
         <div className="px-3 py-4 text-sm text-[var(--tx3)]">No Deep Water runs yet.</div>
       ) : (
-        runs.map((run) => (
-          <div className="border-t border-[var(--sep)] p-3 first:border-t-0" key={run.id}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={statusClass(run.status)}>{statusLabels[run.status]}</span>
-                  <span className="text-xs text-[var(--tx3)]">
-                    {formatRunDate(run.requestedAt)}
-                  </span>
+        runs.map((run) => {
+          const nativeDocument = hasNativeDocument(run)
+          return (
+            <div className="border-t border-[var(--sep)] p-3 first:border-t-0" key={run.id}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={statusClass(run.status)}>{statusLabels[run.status]}</span>
+                    <span className="text-xs text-[var(--tx3)]">
+                      {formatRunDate(run.requestedAt)}
+                    </span>
+                  </div>
+                  {nativeDocument && run.knowledgePageId ? (
+                    <Link
+                      className="mt-2 block truncate text-sm font-semibold text-[var(--tx)] hover:underline"
+                      to={knowledgeHref(run.knowledgePageId)}
+                    >
+                      {runTitle(run)}
+                    </Link>
+                  ) : (
+                    <div className="mt-2 truncate text-sm font-semibold text-[var(--tx)]">
+                      {runTitle(run)}
+                    </div>
+                  )}
+                  <div className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--tx2)]">
+                    {run.queryPreview}
+                  </div>
                 </div>
-                <div className="mt-2 truncate text-sm font-semibold text-[var(--tx)]">
-                  {runTitle(run)}
+                {nativeDocument && run.knowledgePageId ? (
+                  <Link
+                    className="admin-button admin-button-primary h-8 text-xs"
+                    to={knowledgeHref(run.knowledgePageId)}
+                  >
+                    Open document
+                  </Link>
+                ) : null}
+                {run.channelId ? (
+                  <Link
+                    className="admin-button admin-button-secondary h-8 text-xs"
+                    to={`/channels/${run.channelId}`}
+                  >
+                    Open chat
+                  </Link>
+                ) : null}
+                {run.reportUrl ? (
+                  <a
+                    className="admin-button admin-button-secondary h-8 text-xs"
+                    href={run.reportUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Open original report
+                  </a>
+                ) : null}
+              </div>
+              {run.statusDetail ? (
+                <div className="mt-2 text-xs leading-5 text-[var(--tx2)]">
+                  {run.statusDetail}
                 </div>
-                <div className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--tx2)]">
-                  {run.queryPreview}
+              ) : null}
+              <div className="mt-3 grid gap-2 text-xs text-[var(--tx2)] sm:grid-cols-4">
+                <div className="rounded bg-[var(--overlay)] px-2 py-1 capitalize">
+                  {modeLabel(run)}
+                </div>
+                <div className="rounded bg-[var(--overlay)] px-2 py-1">
+                  {destinationLabel(run)}
+                </div>
+                <div className="rounded bg-[var(--overlay)] px-2 py-1">
+                  {sourceLabel(run.sourceCount)}
+                </div>
+                <div className="rounded bg-[var(--overlay)] px-2 py-1">
+                  {formatCost(run)}
                 </div>
               </div>
-              {run.channelId ? (
-                <Link
-                  className="admin-button admin-button-secondary h-8 text-xs"
-                  to={`/channels/${run.channelId}`}
-                >
-                  Open chat
-                </Link>
-              ) : null}
-              {run.reportUrl ? (
-                <a
-                  className="admin-button admin-button-secondary h-8 text-xs"
-                  href={run.reportUrl}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Report
-                </a>
-              ) : null}
-              {run.knowledgePageId ? (
-                <Link
-                  className="admin-button admin-button-secondary h-8 text-xs"
-                  to={knowledgeHref(run.knowledgePageId)}
-                >
-                  Knowledge
-                </Link>
-              ) : null}
             </div>
-            {run.statusDetail ? (
-              <div className="mt-2 text-xs leading-5 text-[var(--tx2)]">
-                {run.statusDetail}
-              </div>
-            ) : null}
-            <div className="mt-3 grid gap-2 text-xs text-[var(--tx2)] sm:grid-cols-4">
-              <div className="rounded bg-[var(--overlay)] px-2 py-1 capitalize">
-                {modeLabel(run)}
-              </div>
-              <div className="rounded bg-[var(--overlay)] px-2 py-1">
-                {destinationLabel(run)}
-              </div>
-              <div className="rounded bg-[var(--overlay)] px-2 py-1">
-                {sourceLabel(run.sourceCount)}
-              </div>
-              <div className="rounded bg-[var(--overlay)] px-2 py-1">
-                {formatCost(run)}
-              </div>
-            </div>
-          </div>
-        ))
+          )
+        })
       )}
     </div>
   </section>

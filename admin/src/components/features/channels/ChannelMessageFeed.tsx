@@ -38,6 +38,9 @@ interface ChannelMessageFeedProps {
   // channel itself so a second external agent needs no code change here.
   isExternalAgentConversation?: boolean
   externalAgentDisplayName?: string
+  // Optional replacement for the default "No messages yet" card when the thread
+  // is empty — used to show the external-agent identity + conversation starters.
+  emptyState?: ReactNode
   renderContent: (text: string) => ReactNode
   editingMessageId: string | null
   editingContent: string
@@ -65,6 +68,7 @@ export const ChannelMessageFeed = ({
   isPersonalAssistantConversation,
   isExternalAgentConversation = false,
   externalAgentDisplayName,
+  emptyState,
   renderContent,
   editingMessageId,
   editingContent,
@@ -135,11 +139,13 @@ export const ChannelMessageFeed = ({
       {feedItems.length === 0 &&
       pendingMessages.length === 0 &&
       optimisticMessages.length === 0 ? (
-        <div className="p-5">
-          <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
-            No messages yet. Send the first message to start this thread.
+        emptyState ?? (
+          <div className="p-5">
+            <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
+              No messages yet. Send the first message to start this thread.
+            </div>
           </div>
-        </div>
+        )
       ) : null}
 
       {visibleFeedItems.map((item, index) => {
@@ -184,6 +190,7 @@ export const ChannelMessageFeed = ({
             editingMessageId={editingMessageId}
             getPresence={getPresence}
             isDedicatedAgentConversation={isDedicatedAgentConversation}
+            isExternalAgentConversation={isExternalAgentConversation}
             key={item.message.id}
             lastPointerDownAt={lastPointerDownAt}
             meAvatar={meAvatar}
@@ -295,7 +302,11 @@ export const ChannelMessageFeed = ({
               </div>
               <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
                 <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
-                  {entry.content ? renderContent(entry.content) : '... thinking ...'}
+                  {entry.content
+                    ? renderContent(entry.content)
+                    : isDedicatedAgentConversation
+                      ? `${pendingDisplayName} is thinking…`
+                      : '... thinking ...'}
                   <span className="streaming-dot" />
                 </p>
               </div>
