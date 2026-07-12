@@ -8,6 +8,11 @@ import {
 import { listDeepWaterResearchRuns } from '@nessie/runtime'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
+import {
+  DEEP_WATER_PRODUCT_SLUG,
+  ensureDeepWaterTeamInstance,
+  removeDeepWaterTeamInstance,
+} from '../../services/deepwater-activation.js'
 import { getIntegrationPluginManifest } from '../../services/integration-plugin-manifests.js'
 import { listIntegratedProducts, setProductTeamEnablement } from '../../services/integrations.js'
 import type { RouteDeps } from '../types.js'
@@ -108,6 +113,23 @@ export const registerIntegrationProductRoutes = (
     if (!enablement) {
       sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
       return reply
+    }
+
+    // Enabling DeepWater provisions a team-scoped, tool-projecting MCP instance
+    // so `mcp_research_*` becomes grantable to any agent (PA or shared);
+    // disabling tears it down. Other products are unaffected.
+    if (params.productSlug === DEEP_WATER_PRODUCT_SLUG) {
+      if (body.enabled) {
+        await ensureDeepWaterTeamInstance(prisma, actorContext, {
+          organizationId: actorContext.tenant.organizationId,
+          teamId,
+        })
+      } else {
+        await removeDeepWaterTeamInstance(prisma, {
+          organizationId: actorContext.tenant.organizationId,
+          teamId,
+        })
+      }
     }
 
     const products = await listIntegratedProducts(prisma, {

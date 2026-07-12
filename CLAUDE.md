@@ -136,6 +136,18 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
 - **Context-safe toolsets**: above `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) exposed MCP tools, agent runs get three meta tools (`mcp_find_tools` → `mcp_load_tools` → call directly, `mcp_drop_tools` to free) over a live tool list instead of every schema inlined — see `docs/external-tool-integration.md` §5.
 - **External-agent products** (e.g. DeepSignal): a first-party product can be surfaced as a per-user DM channel whose bound agent has `executionMode = external_mcp` — turns are proxied straight to the product's MCP endpoint under the user's own token with **no Nessie inference**, reply + cards rendered verbatim. The worker driver and the API share one `@nessie/mcp-manage` "connect + call one tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, next to `probeConnection`). History hydration (`POST /api/channels/:id/external-sync`, idempotent on `metadata.external.turnId`) and a per-org HMAC-verified insight webhook (`POST /api/integrations/deepsignal/events`; secret set via `PUT /api/integrations/products/:slug/webhook-secret`, stored encrypted) keep the product as source of truth. The webhook is **delivery-shaped, not one-card-per-event**: insights coalesce into a single rolling "You have N new signals" digest message per user (updated in place within `NESSIE_SIGNAL_DIGEST_WINDOW_MS`, default ~1h; per-insight ids retained for idempotency + counts-by-kind), and fresh proactive digests are budgeted per user per rolling window (`NESSIE_SIGNAL_BUDGET_MAX`, default 6 / `NESSIE_SIGNAL_BUDGET_WINDOW_MS`, default 24h — sane heuristics, not law); over budget an insight is still recorded on the digest but the channel interruption (realtime `message.new`) is suppressed. DeepSignal also exposes a **Signals** page — a triaged Overview/Inbox: `GET /api/integrations/products/deepsignal/signals?include=active|all` (insight digest, grouped by kind with an attention tally + mission detail drawer) + `POST .../signals/:insightId/act` (done|snooze|mute|reopen) run over the user's user-scoped instance via the shared `resolveUserScopedProductTransport`/`callInstanceTool` seam, fail-closed to `{ status: 'needs_setup' }` when not linked. See `docs/plans/2026-07-09-deepsignal-integration.md`, `docs/plans/2026-07-10-deep-integration-surface-registry.md` + `docs/external-tool-integration.md` §2.
 
+- **DeepWater as an agent tool**: enabling DeepWater for a team (owner-only
+  `team-enablement` toggle) provisions a **team-scoped, tool-projecting**
+  `McpServerInstance` from the `deep-water` catalog entry and projects the
+  plugin manifest's `research_*` tools into `ToolRegistryEntry` as `active`
+  (surfaced as `mcp_research_*`); disabling removes it. A team-scoped install
+  reaches every agent run in the team, so the tools are **grantable to any agent
+  (PA or shared) via per-agent toolPolicy** (default off). First-party
+  team-enable stands in for the manual install + admin-approve gate; per-user
+  OAuth still resolves at dispatch. `deep_water_run_update` is no longer
+  PA-only — any granted shared agent can write back the durable Nessie run
+  record.
+
 User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The
 cloud API and worker reject stdio process execution for catalog/instance data,
 and HTTP/SSE/OAuth URLs are checked by the shared SSRF guard before save or use.

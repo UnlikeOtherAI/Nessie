@@ -138,6 +138,20 @@ test('team and channel scopes follow the run context', async () => {
   ])
 })
 
+test('team-scoped DeepWater tools reach a shared agent and honor per-agent policy', async () => {
+  // A team-scoped DeepWater instance projects research_create; it must reach a
+  // shared agent run inside that team, gated only by the per-agent tool policy.
+  const rows: RowSeed[] = [
+    { id: 'dw', toolName: 'research_create', scopeType: 'team', scopeId: 'team-1' },
+  ]
+  assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), ['research_create'])
+  // A per-agent deny hides it from that shared agent.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { dw: false } }),
+    [],
+  )
+})
+
 test('an explicit per-agent policy verdict overrides scope defaults both ways', async () => {
   const rows: RowSeed[] = [
     { id: 'allow-me', toolName: 'far_tool', scopeType: 'channel', scopeId: 'channel-9' },

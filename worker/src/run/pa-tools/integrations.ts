@@ -46,10 +46,6 @@ export const runDeepWaterRunUpdateTool = async (
   context: BuiltinToolRuntimeContext,
   args: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  if (context.agentKind !== 'personal_assistant') {
-    throw new Error('deep_water_run_update is only available to the Personal Assistant.')
-  }
-
   const runId = nullableString(args.runId)
   if (!runId) {
     throw new Error('runId is required.')
