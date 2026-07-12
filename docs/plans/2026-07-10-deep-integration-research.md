@@ -3,10 +3,18 @@
 Status: Research synthesis (2026-07-10). Feeds `docs/plans/2026-07-10-deep-integration-surface-registry.md`.
 
 > **Method & confidence.** Multi-source fan-out (Slack, Microsoft, VS Code, Atlassian, the
-> MCP project, ambient-agent UX writing). The adversarial triple-verify pass was cut short by
-> a mid-run API quota outage, so claims here are **primary-source-backed but not machine-verified**;
-> confidence is my own, from source quality + domain knowledge. Re-running the verify pass is a
-> follow-up. One claim was actively refuted and dropped (see §7).
+> MCP project, ambient-agent UX writing). The workflow's 3-vote agent verification was cut short
+> by a quota outage, so verification was **re-done frugally by direct source fetch** (6 targeted
+> primary-source reads, no agent fan-out). Result: the load-bearing claims **CONFIRMED** against
+> primary sources — Slack agent-design (§2), VS Code 38 contribution points (§1), MCP Apps
+> SEP-1865 mechanics (§5), and the ambient-agent Overview/resolution-flows/deliver-via-existing-
+> tools patterns (§3). **Two corrections from verification** (applied below): the specific
+> notification *numbers* ("3–5/day", "15–30 min") were **not in the cited source** — the
+> qualitative "batch / be strategic / don't over-notify" is supported, the figures are not; and
+> Slack's structured activity blocks are real ("plan blocks", "task updates") but the specific
+> "Thinking Steps / Timeline / collapsed-by-default" naming was **not confirmed** on the
+> agent-design page. One earlier claim (VS Code "fully declarative, never imperative") was
+> refuted (see §7).
 
 ## The one-line answer
 
@@ -65,12 +73,14 @@ not yet following:
   prompts** on first contact — the discovery mechanism. We show none today. [Slack; MS Learn]
 - **Status + streaming**: show a status indicator the instant the user sends, stream long
   replies, and **name tools in plain language** ("Looking up your calendar"). [Slack]
-- **Thinking steps** (the big miss): Slack ships a structured activity model — **Task Card**
-  (one tool call), **Plan Block** (grouping), **Timeline vs Plan** display modes, **URL Sources**
-  — **collapsed by default** so it doesn't overwhelm, expandable on demand; the stated rationale
-  is that *surfacing reasoning builds trust*. M365's run view shows steps + an **activity map** +
-  **links to the records touched**. We already map DeepSignal `activities` → cards; we should
-  render them as **collapsed, expandable plan/timeline** inline in the turn, not flat cards. [Slack: Thinking Steps; MS Learn: agent run view]
+- **Thinking steps** (the big miss): Slack's agent-design guidance references structured
+  activity rendering — **"plan blocks"** and **"task updates"** — for surfacing what the agent is
+  doing (the finer "Thinking Steps / Timeline / collapsed-by-default" feature naming was *not*
+  confirmed on the agent-design page and may be newer/blog material — treat the specific block
+  taxonomy as indicative, not gospel). M365's run view shows steps + an **activity map** + **links
+  to the records touched**. We already map DeepSignal `activities` → cards; we should render them
+  as a **structured, collapsible plan/timeline** inline in the turn, not flat cards — the general
+  pattern (surface reasoning, collapsed by default, expandable) is sound. [Slack: Agent design — CONFIRMED; MS Learn: agent run view]
 - **Handoff**: M365 uses a declarative `worker_agents` list so a primary agent delegates to
   others. Nessie's PA should be able to **hand off to DeepSignal** (and back) rather than the two
   being unrelated DMs. [MS Learn: declarative agents]
@@ -80,11 +90,14 @@ not yet following:
 This is where "decision intelligence you shouldn't miss" lives or dies. The ambient-agent UX
 literature is blunt:
 
-- **Hard ceiling ≈ 3–5 unsolicited notifications/day** across *all* sources before disengagement
-  and uninstall; ~half of users who disable push eventually churn. Measure **notifications acted
-  on (weighted by importance)**, never notifications sent. [ambient-agent UX]
-- **Batch, don't stream**: don't interrupt in real time unless the user can take an
-  outcome-changing action in the next 15–30 min; one interrupted task costs ~23 min of recovery. [ambient-agent UX]
+- **Be strategic, don't bombard** — over-notification causes alert fatigue and churn; measure
+  **notifications acted on (weighted by importance)**, not notifications sent. *(Verified
+  qualitatively; the specific "3–5/day ceiling" and "23-min recovery" figures circulating in
+  practitioner writing were NOT in the cited source — use as loose heuristics, don't quote as
+  fact.)* [ambient-agent UX — CONFIRMED qualitative; numbers UNVERIFIED]
+- **Batch over real-time interrupts** — reserve interruptions for genuinely time-sensitive,
+  actionable items; deliver the rest as a pulled digest. *(The "only interrupt if action needed
+  in 15–30 min" rule is a reasonable heuristic but was not stated in the cited source.)* [ambient-agent UX — direction CONFIRMED; threshold UNVERIFIED]
 - **Synthesize**: an LLM should merge related alerts into **one** natural-language summary
   answering *what happened / likely impact / next steps*; prioritize by **confidence × severity**
   calibrated on outcomes, not surface features. [ambient-agent UX]
