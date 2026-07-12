@@ -128,8 +128,16 @@ rather than a hard-coded ladder.
 - **Slice B — DeepSignal surfaces** *(pending, after A)*: Signals page + backend signals
   route (insight_digest/insight_act over the user's MCP instance) + the chat-assistant link
   live under the PA.
-- **Slice C — DeepWater Research in Documents** *(pending, after A)*: Research documents view
-  reusing the run-history component + service.
+- **Slice C — DeepWater Research in Documents** *(done, 2026-07-12)*: `DeepWaterResearchView`
+  (`admin/src/components/features/knowledge/DeepWaterResearchView.tsx`) registered into
+  `product-documents-registry` under the `deep-water-research` view key, so the generic
+  `ProductDocumentsView` host renders it when the pinned Documents entry is selected — no
+  shell/sidebar/router change. It reuses the presentational `DeepWaterRunHistory` (imported
+  directly, single implementation) fed by `useDeepWaterResearchRuns()`, wrapped in a
+  `KnowledgePane` titled "Research" with a "New research" deep-link to `/integrations` (where
+  the existing `DeepWaterResearchPanel` launch flow lives). Loading, empty ("No researches
+  yet"), and not-connected states handled. `/knowledge-base?view=deep-water-research`
+  deep-links straight into it via Slice A's `selectProductView`.
 - **Slice D — Verify & ship** *(pending)*: build/kelpie the new surfaces, docs, merge to main.
 
 ## Open Questions
