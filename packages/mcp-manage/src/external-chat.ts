@@ -183,7 +183,12 @@ const activityToCard = (productSlug: string, raw: unknown): IntegrationUiCard | 
     // plan/timeline for external-agent turns.
     role: 'activity' as const,
     title,
-    status: mapStatus(firstString(raw, ['status', 'visibleStatus', 'state']), 'running'),
+    // These cards are mapped only when persisting an already-finished turn (the
+    // MCP tool call has returned in full — there is no incremental streaming into
+    // Nessie). So a step the product left status-less is done, not running: a
+    // 'running' default would pulse "running" forever on historical turns. An
+    // explicit in-flight status the product does send is still honoured.
+    status: mapStatus(firstString(raw, ['status', 'visibleStatus', 'state']), 'completed'),
     summary: firstString(raw, ['summary', 'detail', 'description', 'message']) ?? undefined,
     fields: mapFields(raw.fields),
     actions: mapActions(raw.actions),
