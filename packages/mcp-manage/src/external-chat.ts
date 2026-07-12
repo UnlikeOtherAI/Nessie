@@ -179,6 +179,9 @@ const activityToCard = (productSlug: string, raw: unknown): IntegrationUiCard | 
   const candidate = {
     kind: 'integration' as const,
     productSlug,
+    // A narrated reasoning step — the client folds these into the collapsed
+    // plan/timeline for external-agent turns.
+    role: 'activity' as const,
     title,
     status: mapStatus(firstString(raw, ['status', 'visibleStatus', 'state']), 'running'),
     summary: firstString(raw, ['summary', 'detail', 'description', 'message']) ?? undefined,
@@ -196,6 +199,8 @@ const cardToCard = (productSlug: string, raw: unknown): IntegrationUiCard | null
   const candidate = {
     kind: 'integration' as const,
     productSlug,
+    // A result card — rendered flat, below the activity timeline.
+    role: 'result' as const,
     title,
     status: mapStatus(firstString(raw, ['status', 'state']), 'completed'),
     summary: firstString(raw, ['summary', 'body', 'description', 'detail']) ?? undefined,
