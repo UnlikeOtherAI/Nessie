@@ -18,6 +18,7 @@ import {
   DEEPSIGNAL_SLUG,
   handleDeepSignalInsightSurfaced,
 } from '../services/deepsignal-webhook.js'
+import type { SignalDigestOptions } from '../services/deepsignal-digest.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -54,6 +55,23 @@ const isAdminOrOwner = (roles: string[] | undefined): boolean =>
 
 const firstHeader = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value
+
+/** Positive-number env override, else undefined (service default applies). */
+const envPositive = (name: string): number | undefined => {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : undefined
+}
+
+/**
+ * Delivery-shaping options for the proactive digest, from env. Absent vars leave
+ * the service's heuristic defaults (coalesce ~1h, budget ~6 fresh digests / 24h)
+ * in force — deliberate, overridable defaults, not hard rules.
+ */
+const digestOptionsFromEnv = (): SignalDigestOptions => ({
+  coalesceWindowMs: envPositive('NESSIE_SIGNAL_DIGEST_WINDOW_MS'),
+  budgetWindowMs: envPositive('NESSIE_SIGNAL_BUDGET_WINDOW_MS'),
+  budgetMax: envPositive('NESSIE_SIGNAL_BUDGET_MAX'),
+})
 
 export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -185,6 +203,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
         prisma,
         organizationId,
         payload as Record<string, unknown>,
+        digestOptionsFromEnv(),
       )
 
       await publishInsightDeliveries(realtimeHub, buildChannelRealtimeScopes, organizationId, result)
@@ -198,7 +217,11 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
   )
 }
 
-/** Best-effort live notification for each posted insight message. */
+/**
+ * Best-effort live notification, only for a *freshly posted* digest message.
+ * Coalesced/suppressed insights update an existing message in place, so they must
+ * not re-emit `message.new` — that is the whole point of batching over interrupts.
+ */
 const publishInsightDeliveries = async (
   realtimeHub: RouteDeps['realtimeHub'],
   buildChannelRealtimeScopes: RouteDeps['buildChannelRealtimeScopes'],
@@ -206,6 +229,7 @@ const publishInsightDeliveries = async (
   result: Awaited<ReturnType<typeof handleDeepSignalInsightSurfaced>>,
 ): Promise<void> => {
   for (const delivery of result.deliveries) {
+    if (delivery.mode !== 'posted') continue
     try {
       await realtimeHub.publishWs(
         buildChannelRealtimeScopes({
@@ -218,7 +242,7 @@ const publishInsightDeliveries = async (
             agentId: delivery.agentId ? parseAgentId(delivery.agentId) : undefined,
             authorUserId: undefined,
             channelId: parseChannelId(delivery.channelId),
-            contentPreview: 'New insight surfaced',
+            contentPreview: 'New signals from DeepSignal',
             messageId: delivery.messageId,
             role: 'assistant',
             threadId: parseThreadId(delivery.threadId),
