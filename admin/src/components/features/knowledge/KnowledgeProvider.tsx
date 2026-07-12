@@ -43,6 +43,11 @@ type KnowledgeContextValue = {
   selectedSpaceId?: string
   selectedSpace: KnowledgeSpaceRecord | null
   selectSpace: (spaceId: string) => void
+  // A product-contributed Documents view (e.g. DeepWater's "Research") pinned in
+  // the Knowledge sidebar. When set the workspace renders that product view
+  // instead of a space's pages; selecting any space clears it.
+  activeProductView?: string
+  selectProductView: (view: string) => void
   createSpace: (
     name: string,
     memberAgentIds?: string[],
@@ -111,6 +116,7 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   const [editor, setEditor] = useState<KnowledgeEditorState>(null)
   const [historyPageId, setHistoryPageId] = useState<string | undefined>()
   const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false)
+  const [activeProductView, setActiveProductView] = useState<string | undefined>()
 
   const pagesQuery = useKnowledgePages(selectedSpaceId)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
@@ -187,6 +193,16 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
 
   const selectSpace = (spaceId: string) => {
     setSelectedSpaceId(spaceId)
+    setPagePath([])
+    setOpenPageId(undefined)
+    setEditor(null)
+    setHistoryPageId(undefined)
+    setSpaceSettingsOpen(false)
+    setActiveProductView(undefined)
+  }
+
+  const selectProductView = (view: string) => {
+    setActiveProductView(view)
     setPagePath([])
     setOpenPageId(undefined)
     setEditor(null)
@@ -319,6 +335,8 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     selectedSpaceId,
     selectedSpace,
     selectSpace,
+    activeProductView,
+    selectProductView,
     createSpace,
     createSpacePending: createSpaceMutation.isPending,
     spaceSettingsOpen,

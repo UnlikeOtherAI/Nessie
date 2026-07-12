@@ -6,7 +6,7 @@ import { agentGradient } from '../../lib/avatar';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { renderUnreadCount } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
-import type { SidebarAgentDm, SidebarPerson } from './types';
+import type { SidebarAgentDm, SidebarPerson, SidebarProductAssistant } from './types';
 
 type SidebarDmSectionProps = {
   activeDmChannelId?: string;
@@ -23,6 +23,7 @@ type SidebarDmSectionProps = {
   personalAssistantUnreadCount: number;
   sidebarAgentDms: SidebarAgentDm[];
   sidebarPeople: SidebarPerson[];
+  sidebarProductAssistants: SidebarProductAssistant[];
   starredUserIds: Set<string>;
   toggleDmCollapsed: () => void;
   unreadCountByChannelId: Map<string, number>;
@@ -43,6 +44,7 @@ export const SidebarDmSection = ({
   personalAssistantUnreadCount,
   sidebarAgentDms,
   sidebarPeople,
+  sidebarProductAssistants,
   starredUserIds,
   toggleDmCollapsed,
   unreadCountByChannelId,
@@ -72,6 +74,26 @@ export const SidebarDmSection = ({
         onClick={onOpenPersonalAssistant}
         unreadCount={personalAssistantUnreadCount}
       />
+      {sidebarProductAssistants.map((assistant) => {
+        const unreadCount = unreadCountByChannelId.get(assistant.dmChannelId) ?? 0;
+        return (
+          <button
+            key={assistant.productSlug}
+            className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${currentChannelId === assistant.dmChannelId ? 'active' : ''}`}
+            onClick={() => onNavigateAgentDm(assistant.dmChannelId)}
+            type="button"
+          >
+            <span
+              className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px] text-[var(--on-accent)]"
+              style={{ background: agentGradient }}
+            >
+              {(assistant.iconGlyph ?? assistant.label.slice(0, 1)).toUpperCase()}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{assistant.label}</span>
+            {renderUnreadCount(unreadCount)}
+          </button>
+        );
+      })}
       {sidebarAgentDms.map((agent) => {
         const unreadCount = unreadCountByChannelId.get(agent.dmChannelId) ?? 0;
         return (

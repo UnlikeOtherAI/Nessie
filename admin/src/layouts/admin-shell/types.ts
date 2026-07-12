@@ -25,6 +25,15 @@ export type SidebarAgentDm = {
   id: string
   label: string
 }
+// A product-declared chat assistant (e.g. DeepSignal) pinned under the Personal
+// Assistant. Derived from the surface registry joined to the resolved
+// external-agent channel; `productSlug` keeps it traceable to its manifest.
+export type SidebarProductAssistant = {
+  dmChannelId: string
+  productSlug: string
+  label: string
+  iconGlyph?: string
+}
 export type VisibleStarredEntry =
   | { type: 'agent'; agent: AgentRecord }
   | { type: 'channel'; channel: ChannelRecord }

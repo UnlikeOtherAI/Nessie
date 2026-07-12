@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAgentRealtime, useAgents } from '../../facades/agents/hooks';
 import { useChannels, useOpenDm } from '../../facades/channels/hooks';
 import { useFavorites, useSetFavorite } from '../../facades/favorites/hooks';
+import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces';
 import {
-  isExternalAgentChannel,
   isPersonalAssistantChannel,
   isUserDmChannel,
   usePersonalAssistant,
@@ -13,10 +13,10 @@ import {
 import { useProjects, useTeams } from '../../facades/projects/hooks';
 import { useUsers } from '../../facades/users/hooks';
 import type { AgentRecord } from '../../lib/api-client';
-import { getDmStyle } from '../../lib/avatar';
 import { parseChannelIdFromPath, parseChannelProjectIdFromPath } from '../../lib/channel-route';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { matchesAdminRoute } from './nav-items';
+import { useSidebarDms } from './useSidebarDms';
 import { useSidebarTree } from './useSidebarTree';
 import { useStarredItems } from './useStarredItems';
 import { useVisibleStarredEntries } from './useVisibleStarredEntries';
@@ -24,9 +24,7 @@ import {
   type CreateChannelTarget,
   type PreferenceStarredItem,
   type RenameProjectTarget,
-  type SidebarAgentDm,
   type SidebarMenu,
-  type SidebarPerson,
   type StarredItem,
 } from './types';
 
@@ -53,6 +51,13 @@ export const useAdminShell = () => {
   const isIntegrationsRoute = location.pathname.startsWith('/integrations');
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
   const isAdminRoute = matchesAdminRoute(location.pathname);
+  const productSurfaces = useProductSurfaces();
+  // A live product `nav_page` route (e.g. DeepSignal's /signals). These pages
+  // host their own full-width content and take no channels/DM secondary nav.
+  const isProductPageRoute = productSurfaces.navPages.some(
+    (page) => location.pathname === page.route
+      || location.pathname.startsWith(`${page.route}/`),
+  );
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const currentChannelsProjectId = parseChannelProjectIdFromPath(location.pathname);
   const personalAssistantChannel = useMemo(
@@ -295,75 +300,13 @@ export const useAdminShell = () => {
     void logout().then(() => navigate('/login', { replace: true }));
   }, [logout, navigate]);
 
-  const sidebarPeople = useMemo<SidebarPerson[]>(() => {
-    if (!me) {
-      return [];
-    }
-
-    const currentUser = users.find((u) => u.id === me.user.id);
-    const people = [
-      {
-        id: me.user.id,
-        label: me.user.displayName,
-        avatarUrl: currentUser?.avatarUrl ?? me.user.avatarUrl ?? null,
-        avatarAttachmentId: currentUser?.avatarAttachmentId ?? me.user.avatarAttachmentId ?? null,
-        gravatarUrl: currentUser?.gravatarUrl ?? me.user.gravatarUrl ?? null,
-        channelIds: currentUser?.channelIds ?? [],
-      },
-      ...users
-        .filter((u) => u.id !== me.user.id)
-        .map((user) => ({
-          id: user.id,
-          label: user.displayName,
-          avatarUrl: user.avatarUrl,
-          avatarAttachmentId: user.avatarAttachmentId,
-          gravatarUrl: user.gravatarUrl,
-          channelIds: user.channelIds,
-        })),
-    ];
-
-    return people.slice(0, 4).map((person, index) => ({
-      id: person.id,
-      label: person.label,
-      style: getDmStyle(index),
-      avatarUrl: person.avatarUrl,
-      avatarAttachmentId: person.avatarAttachmentId,
-      gravatarUrl: person.gravatarUrl,
-      dmChannelId: person.id === me.user.id
-        ? undefined
-        : channels.find(
-          (c) => isUserDmChannel(c) && person.channelIds.includes(c.id),
-        )?.id,
-    }));
-  }, [me, users, channels]);
-
-  const sidebarAgentDms = useMemo<SidebarAgentDm[]>(
-    () =>
-      channels
-        .filter((channel) => channel.type === 'dm' && !isPersonalAssistantChannel(channel))
-        .flatMap((channel) => {
-          const agent = agents.find((candidate) => candidate.channelIds.includes(channel.id));
-          if (agent) {
-            return [{
-              dmChannelId: channel.id,
-              id: agent.id,
-              label: agent.name,
-            }];
-          }
-          // External agents (DeepSignal, ...) bind a system-managed `Agent`
-          // row that the general agent list excludes, so it never resolves
-          // above — fall back to the channel's own label, keyed by channel id.
-          if (isExternalAgentChannel(channel)) {
-            return [{
-              dmChannelId: channel.id,
-              id: channel.id,
-              label: channel.label,
-            }];
-          }
-          return [];
-        }),
-    [agents, channels],
-  );
+  const { sidebarAgentDms, sidebarPeople, sidebarProductAssistants } = useSidebarDms({
+    agents,
+    channels,
+    chatAssistants: productSurfaces.chatAssistants,
+    me,
+    users,
+  });
 
   const visibleStarredEntries = useVisibleStarredEntries({
     agentById,
@@ -437,6 +380,7 @@ export const useAdminShell = () => {
     isFeedbackRoute,
     isIntegrationsRoute,
     isKnowledgeRoute,
+    isProductPageRoute,
     isProjectsRoute,
     isOwner,
     isSuperAdmin,
@@ -473,6 +417,7 @@ export const useAdminShell = () => {
     sidebarMenu,
     sidebarAgentDms,
     sidebarPeople,
+    sidebarProductAssistants,
     starredChannelIds,
     starredCollapsed,
     starredProjectIds,

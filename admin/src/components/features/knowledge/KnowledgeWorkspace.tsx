@@ -22,6 +22,7 @@ import { FileVersionUploadDialog } from './FileVersionUploadDialog'
 import { KnowledgeFilesystemBrowser } from './KnowledgeFilesystemBrowser'
 import { useKnowledge } from './KnowledgeProvider'
 import { KnowledgePane } from './KnowledgePane'
+import { ProductDocumentsView } from './ProductDocumentsView'
 import { isAgentDraft } from './page-status'
 import { StorageUsageMeter } from './StorageUsageMeter'
 import {
@@ -39,6 +40,7 @@ const VIEW_MODE_COOKIE = 'knowledgeViewMode'
 
 export const KnowledgeWorkspace = () => {
   const {
+    activeProductView,
     selectedSpace,
     selectedSpaceId,
     pages,
@@ -209,6 +211,12 @@ export const KnowledgeWorkspace = () => {
       uploading={fileVersionUpload.isPending}
     />
   ) : null
+
+  // A product Documents view (e.g. DeepWater Research) is selected in the
+  // sidebar — it owns the whole main area instead of a space's pages.
+  if (activeProductView) {
+    return <ProductDocumentsView view={activeProductView} />
+  }
 
   // Full-width editor (create or edit) — takes the whole main area. Editing waits
   // for the on-demand full body so the editor never initialises from an empty

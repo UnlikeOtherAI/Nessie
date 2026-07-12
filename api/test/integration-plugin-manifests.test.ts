@@ -68,3 +68,28 @@ test('first-party integration manifests cover the sibling products', () => {
     true,
   )
 })
+
+test('deepsignal and deep-water declare surface-registry surfaces', () => {
+  const deepSignal = getIntegrationPluginManifest('deepsignal')
+  const chat = deepSignal?.surfaces.find((surface) => surface.type === 'chat_assistant')
+  assert.ok(chat, 'deepsignal declares a chat_assistant surface')
+  assert.equal(chat?.type === 'chat_assistant' ? chat.channelKind : null, 'external_agent')
+  assert.equal(chat?.type === 'chat_assistant' ? chat.productSlug : null, 'deepsignal')
+  assert.equal(chat?.requires.linked, true)
+  assert.equal(chat?.requires.capability, 'external_agent')
+
+  const signals = deepSignal?.surfaces.find((surface) => surface.type === 'nav_page')
+  assert.ok(signals, 'deepsignal declares a Signals nav_page')
+  assert.equal(signals?.type === 'nav_page' ? signals.route : null, '/signals')
+  assert.equal(signals?.requires.linked, true)
+
+  const deepWater = getIntegrationPluginManifest('deep-water')
+  const research = deepWater?.surfaces.find((surface) => surface.type === 'documents_section')
+  assert.ok(research, 'deep-water declares a Research documents_section')
+  assert.equal(research?.type === 'documents_section' ? research.view : null, 'deep-water-research')
+  assert.equal(research?.requires.connectorActive, true)
+
+  // Products without declared surfaces stay empty (additive/optional).
+  assert.deepEqual(getIntegrationPluginManifest('deeptest')?.surfaces, [])
+  assert.deepEqual(getIntegrationPluginManifest('buildme')?.surfaces, [])
+})

@@ -100,10 +100,31 @@ rather than a hard-coded ladder.
 
 ## Execution Plan
 
-- **Slice A — Registry foundation** *(pending)*: schema `surfaces`, both manifests populated,
-  `useProductSurfaces`, and the three generic shell render points (chat-under-PA, rail+route,
-  Documents sidebar) wired to read the registry. Integrations page switched to registry-driven
-  "where this appears".
+- **Slice A — Registry foundation** *(done, 2026-07-12)*: additive optional `surfaces`
+  discriminated union on `IntegrationPluginManifestSchema`
+  (`packages/schemas/src/integrations.ts`); `deepsignal` (chat_assistant + Signals nav_page)
+  and `deep-water` (Research documents_section, gated on `connectorActive`) manifests
+  populated; `useProductSurfaces` (`admin/src/facades/integrations/useProductSurfaces.ts`) as
+  the single read seam (joins products + per-slug manifests via `useQueries`, gates on
+  `requires`, groups by type); and the three generic shell render points wired to it:
+  - **Chat under PA** — `SidebarDmSection` renders resolved `chat_assistant` surfaces as
+    pinned entries right after the PA; `useAdminShell` resolves each to its external-agent
+    channel (label match) and de-dupes it out of `sidebarAgentDms`. A linked product whose
+    channel isn't bootstrapped yet is simply hidden (activation bootstraps the channel).
+  - **Left rail + route** — `SidebarRail` appends active `nav_page` surfaces; `router.tsx`
+    routes their paths (e.g. `/signals`) to the generic `ProductPageHost`, which renders a
+    concrete page from `product-page-registry` or a gated placeholder. `useAdminShell`
+    exposes `isProductPageRoute` so `AdminShellLayout` gives these pages no secondary nav.
+  - **Documents** — `KnowledgeProvider` gains `activeProductView`/`selectProductView`;
+    `KnowledgeSidebarNav` renders `documents_section` surfaces as pinned entries;
+    `KnowledgeWorkspace` branches to the generic `ProductDocumentsView` host
+    (`product-documents-registry` + placeholder). `/knowledge-base?view=<view>` deep-links in.
+
+  Integrations page: `ManifestPanel` (inert badges) removed; `ProductSurfacesPanel` renders a
+  registry-driven "Where this appears" section — live surfaces as working links for active
+  products, "unlocks on activation" hints otherwise. Existing operational panels
+  (DeepWaterResearchPanel etc.) are unchanged. Concrete Signals page / Research view are
+  slices B/C: register a component in the respective registry — no shell/router change needed.
 - **Slice B — DeepSignal surfaces** *(pending, after A)*: Signals page + backend signals
   route (insight_digest/insight_act over the user's MCP instance) + the chat-assistant link
   live under the PA.

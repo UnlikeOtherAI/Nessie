@@ -1,12 +1,22 @@
 import { useState } from 'react'
-import { faUser } from '@fortawesome/free-solid-svg-icons'
+import { faLayerGroup, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
 import { useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
+import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces'
 
 export const KnowledgeSidebarNav = () => {
-  const { spaces, myDocsSpaceId, selectedSpaceId, selectSpace, createSpace, createSpacePending } =
-    useKnowledge()
+  const {
+    spaces,
+    myDocsSpaceId,
+    selectedSpaceId,
+    selectSpace,
+    activeProductView,
+    selectProductView,
+    createSpace,
+    createSpacePending,
+  } = useKnowledge()
+  const { documentsSections } = useProductSurfaces()
   const [collapsed, setCollapsed] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -34,7 +44,10 @@ export const KnowledgeSidebarNav = () => {
               </span>
             </div>
             <button
-              className={['admin-sb-item', myDocsSpace.id === selectedSpaceId ? 'active' : ''].join(' ')}
+              className={[
+                'admin-sb-item',
+                !activeProductView && myDocsSpace.id === selectedSpaceId ? 'active' : '',
+              ].join(' ')}
               onClick={() => selectSpace(myDocsSpace.id)}
               type="button"
             >
@@ -45,6 +58,29 @@ export const KnowledgeSidebarNav = () => {
               />
               <span className="min-w-0 flex-1 truncate font-medium">{myDocsSpace.name}</span>
             </button>
+          </div>
+        ) : null}
+
+        {documentsSections.length > 0 ? (
+          <div className="border-b border-[color:var(--sep)] pb-1">
+            {documentsSections.map((section) => (
+              <button
+                className={[
+                  'admin-sb-item',
+                  activeProductView === section.view ? 'active' : '',
+                ].join(' ')}
+                key={section.productSlug + section.view}
+                onClick={() => selectProductView(section.view)}
+                type="button"
+              >
+                <FontAwesomeIcon
+                  className="h-3.5 w-3.5 flex-shrink-0 text-[color:var(--accent)]"
+                  fixedWidth
+                  icon={faLayerGroup}
+                />
+                <span className="min-w-0 flex-1 truncate font-medium">{section.label}</span>
+              </button>
+            ))}
           </div>
         ) : null}
 
@@ -80,7 +116,10 @@ export const KnowledgeSidebarNav = () => {
           ) : (
             otherSpaces.map((space) => (
               <button
-                className={['admin-sb-item', space.id === selectedSpaceId ? 'active' : ''].join(' ')}
+                className={[
+                  'admin-sb-item',
+                  !activeProductView && space.id === selectedSpaceId ? 'active' : '',
+                ].join(' ')}
                 key={space.id}
                 onClick={() => selectSpace(space.id)}
                 type="button"
