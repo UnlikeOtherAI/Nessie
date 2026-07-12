@@ -10,6 +10,8 @@ test('Deep Water run update is grantable to any agent (not PA-only)', () => {
   assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.id, 'deep_water_run_update')
   // Not PA-only: a granted shared agent may write the durable run record back.
   assert.notEqual(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.personalAssistantOnly, true)
+  // Default off: exposure requires an explicit per-agent grant.
+  assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.requiresExplicitGrant, true)
   assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.safe, true)
   assert.deepEqual(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.required, [
     'runId',

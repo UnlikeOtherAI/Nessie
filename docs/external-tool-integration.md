@@ -388,33 +388,53 @@ tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
 ### First-Party Team-Enabled Products (DeepWater)
 
 DeepWater is the inverse of the DeepSignal pattern: instead of proxying turns to
-an external agent, its `research_*` tools are exposed as an **ordinary toolset**
-that any permitted agent can call. Enabling DeepWater for a team (owner-only
+an external agent, its `research_*` tools are exposed as a **grantable toolset**
+that any *permitted* agent can call. Enabling DeepWater for a team (owner-only
 `PATCH /api/integrations/products/deep-water/team-enablement`) provisions a
 **team-scoped** tool-projecting `McpServerInstance` from the `deep-water`
 catalog entry (`api/src/services/deepwater-activation.ts`,
-`ensureDeepWaterTeamInstance`) and projects the plugin manifest's declared
+`ensureDeepWaterTeamInstance`), resolves the DeepWater MCP endpoint from the
+manifest-declared **`DEEP_WATER_MCP_URL`** env var, installs an `{ transport:
+'http', url }` transport, and projects the plugin manifest's declared
 `research_*` tools into `ToolRegistryEntry`; disabling removes the instance and
 its tool rows.
 
-- **Team scope reaches every agent.** A team-scoped install surfaces to every
-  agent run in the team — personal assistant and shared agents alike (see
-  `scopeMatchesRun` in `worker/src/run/mcp-toolset.ts`) — so `mcp_research_*` is
-  **grantable to any permitted agent** through its per-agent `toolPolicy`. The
-  grant is the gate and defaults **off** per agent.
+- **Default OFF — explicit per-agent grant required.** The projected DeepWater
+  rows are flagged `requiresExplicitGrant` (metadata) and the
+  `deep_water_run_update` builtin sets the same flag on its
+  `BuiltinToolDefinition`. Team scope alone does **not** expose them: an agent
+  (personal assistant or shared) sees them ONLY when its per-agent `toolPolicy`
+  carries an explicit allow (`toolPolicy[key] === true`); an absent/inherited
+  verdict is a denial. This is the "any agent can use DeepWater only as long as
+  it allows it" gate — see `isExposed` (`worker/src/run/mcp-toolset.ts`) and
+  `authorizeToolCall` (`worker/src/run/tool-policy.ts`). **Other connectors are
+  unchanged** — they remain exposed by install scope unless a policy denies them;
+  only `requiresExplicitGrant`-flagged tools default off. The admin ToolPicker
+  renders both DeepWater surfaces off-by-default and writes the explicit allow.
+- **Fail loud on missing endpoint.** When `DEEP_WATER_MCP_URL` is unset the
+  enable route returns `DEEP_WATER_MCP_URL_UNSET` (503) instead of creating a
+  dead instance whose tools silently drop. Concurrent double-enable is caught
+  (`DUPLICATE_SCOPE` → re-fetch), and teardown finds the instance by its own
+  catalog-entry **name** so a renamed/unpublished entry can't leave research
+  exposed after disable.
 - **Projected tools are `active`, not `pending_review`.** DeepWater is a
   first-party entry the team's owner explicitly enabled, so that enable stands
   in for the manual install + admin-approve review that shared-scope projections
-  otherwise defer. (A `pending_review` row never loads in `buildMcpToolset`, so
-  it could not be granted at all — active is required for the tools to be
-  usable.)
+  otherwise defer. A re-enable of a **manually-probed** install keeps its probed
+  schemas/endpoint (no manifest-stub clobber); stubs are only projected on first
+  creation.
 - **Deterministic contract, per-user auth.** DeepWater is OAuth2 + hosted, so
   the tool contract comes from the plugin manifest rather than a per-user
   network probe at enable time; each user still authorises DeepWater with their
   own token, resolved at dispatch through the ordinary credential chain.
 - `deep_water_run_update` (the builtin that writes the durable
-  `product_integration_runs` record) is **no longer PA-only** — a granted shared
-  agent that calls the DeepWater MCP tools writes the run record back too.
+  `product_integration_runs` record) is **not PA-only** — any *granted* agent
+  (PA or shared) writes the run record back. Its tenancy is taken strictly from
+  the run context: the update is scoped to the caller's **team** and the
+  **thread** the run is attached to (no unattached-run escape), and any
+  `knowledgePageId` is validated to belong to the org before it is stored — so a
+  prompt-injected `runId`/`knowledgePageId` cannot mutate another run or corrupt
+  billing.
 
 ### MCP Server Lifecycle
 

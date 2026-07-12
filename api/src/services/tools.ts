@@ -1,6 +1,13 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseOrganizationId } from '@nessie/schemas'
 import { SYSTEM_TOOL_DEFINITIONS } from '@nessie/runtime'
+
+// Builtin ids whose exposure requires an explicit per-agent grant (default off).
+// The admin tool catalog reads this to render them off-by-default and to write
+// an explicit allow when the operator enables them — mirroring the worker.
+const EXPLICIT_GRANT_TOOL_IDS = new Set(
+  SYSTEM_TOOL_DEFINITIONS.filter((tool) => tool.requiresExplicitGrant).map((tool) => tool.id),
+)
 import type {
   ToolDescriptor,
   ToolRegistryEntry,
@@ -53,6 +60,7 @@ const toToolDescriptor = (entry: ToolRegistryEntry): ToolDescriptor => ({
   builtin: entry.builtin,
   enabled: entry.enabled,
   handlerKind: entry.handlerKind,
+  requiresExplicitGrant: EXPLICIT_GRANT_TOOL_IDS.has(entry.toolId) || undefined,
 })
 
 export const ensureBuiltinToolsRegistered = async (

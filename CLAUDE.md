@@ -138,15 +138,23 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
 
 - **DeepWater as an agent tool**: enabling DeepWater for a team (owner-only
   `team-enablement` toggle) provisions a **team-scoped, tool-projecting**
-  `McpServerInstance` from the `deep-water` catalog entry and projects the
-  plugin manifest's `research_*` tools into `ToolRegistryEntry` as `active`
-  (surfaced as `mcp_research_*`); disabling removes it. A team-scoped install
-  reaches every agent run in the team, so the tools are **grantable to any agent
-  (PA or shared) via per-agent toolPolicy** (default off). First-party
-  team-enable stands in for the manual install + admin-approve gate; per-user
-  OAuth still resolves at dispatch. `deep_water_run_update` is no longer
-  PA-only — any granted shared agent can write back the durable Nessie run
-  record.
+  `McpServerInstance` from the `deep-water` catalog entry, resolves the DeepWater
+  MCP endpoint from **`DEEP_WATER_MCP_URL`** (enable fails loudly with
+  `DEEP_WATER_MCP_URL_UNSET` when unset — no dead instance), installs an HTTP
+  transport, and projects the plugin manifest's `research_*` tools into
+  `ToolRegistryEntry` as `active` (surfaced as `mcp_research_*`); disabling
+  removes it (teardown keyed on the instance's own catalog-entry name, robust to
+  a renamed entry). **Default OFF, explicit per-agent grant required:** the
+  projected DeepWater tools and the `deep_water_run_update` builtin are flagged
+  `requiresExplicitGrant`, so team scope alone never exposes them — an agent (PA
+  or shared) sees them ONLY when its `toolPolicy` carries an explicit allow
+  (`=== true`); an absent/inherited verdict is a denial. This is unchanged for
+  other connectors (scope still exposes them). First-party team-enable stands in
+  for the manual install + admin-approve gate; per-user OAuth resolves at
+  dispatch. `deep_water_run_update` is not PA-only — any *granted* agent can
+  write back the durable Nessie run record (tenancy taken strictly from the run
+  context: same team + same thread, with `knowledgePageId` validated against the
+  org). A re-enable never clobbers a manually-probed install's schemas.
 
 User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The
 cloud API and worker reject stdio process execution for catalog/instance data,

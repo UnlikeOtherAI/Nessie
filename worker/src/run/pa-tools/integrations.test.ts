@@ -51,12 +51,15 @@ const makeContext = (
   overrides: {
     agentKind?: 'personal_assistant' | 'shared'
     runRow?: ReturnType<typeof makeDeepWaterRunRow>
+    knowledgePage?: { id: string } | null
   } = {},
 ) => {
   const queries: unknown[] = []
   const ledgerEvents: unknown[] = []
   const resultUpdates: unknown[] = []
   const row = overrides.runRow ?? makeDeepWaterRunRow()
+  const knowledgePageRow =
+    overrides.knowledgePage === undefined ? { id: PAGE_ID } : overrides.knowledgePage
   const tx = {
     $executeRaw: async (query: unknown) => {
       resultUpdates.push(query)
@@ -79,6 +82,9 @@ const makeContext = (
       return [row]
     },
     $transaction: async <T>(fn: (client: typeof tx) => Promise<T>) => fn(tx),
+    knowledgePage: {
+      findFirst: async () => knowledgePageRow,
+    },
   }
 
   const context = {
@@ -193,6 +199,21 @@ test('deep_water_run_update is available to a granted shared agent', async () =>
   assert.equal(queries.length, 2)
   assert.equal(ledgerEvents.length, 1)
   assert.equal(resultUpdates.length, 1)
+})
+
+test('deep_water_run_update rejects a knowledgePageId outside the organization', async () => {
+  const { context, queries } = makeContext({ knowledgePage: null })
+
+  await assert.rejects(
+    () => runDeepWaterRunUpdateTool(context, {
+      knowledgePageId: PAGE_ID,
+      runId: RUN_ID,
+      status: 'completed',
+    }),
+    /knowledgePageId does not reference a Knowledge page/,
+  )
+  // Rejected before any run-record write.
+  assert.equal(queries.length, 0)
 })
 
 test('deep_water_run_update rejects unsupported status values', async () => {
