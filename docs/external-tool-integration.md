@@ -393,40 +393,55 @@ that any *permitted* agent can call. Enabling DeepWater for a team (owner-only
 `PATCH /api/integrations/products/deep-water/team-enablement`) provisions a
 **team-scoped** tool-projecting `McpServerInstance` from the `deep-water`
 catalog entry (`api/src/services/deepwater-activation.ts`,
-`ensureDeepWaterTeamInstance`), resolves the DeepWater MCP endpoint from the
-manifest-declared **`DEEP_WATER_MCP_URL`** env var, installs an `{ transport:
-'http', url }` transport, and projects the plugin manifest's declared
-`research_*` tools into `ToolRegistryEntry`; disabling removes the instance and
-its tool rows.
+`ensureDeepWaterTeamInstance`), resolves the Ledger-only MCP adapter from the
+manifest-declared **`LEDGER_DEEPWATER_MCP_URL`** env var (canonical hosted
+endpoint `https://ledger.unlikeotherai.com/v1/mcp/deepwater`), installs an
+`{ transport: 'http', url }` bearer transport, and projects `research_start`,
+`research_status`, `research_report`, `research_list`, and `research_cancel`
+into `ToolRegistryEntry`; disabling removes the instance and its tool rows.
+There is deliberately no direct-provider fallback.
 
 - **Default OFF — explicit per-agent grant required.** The projected DeepWater
   rows are flagged `requiresExplicitGrant` (metadata) and the
   `deep_water_run_update` builtin sets the same flag on its
   `BuiltinToolDefinition`. Team scope alone does **not** expose them: an agent
   (personal assistant or shared) sees them ONLY when its per-agent `toolPolicy`
-  carries an explicit allow (`toolPolicy[key] === true`); an absent/inherited
-  verdict is a denial. This is the "any agent can use DeepWater only as long as
-  it allows it" gate — see `isExposed` (`worker/src/run/mcp-toolset.ts`) and
+  carries an explicit allow (`toolPolicy[key] === true`) **and** the
+  team-scoped instance reaches that run. A grant is an additional gate, never a
+  way around tenancy; an absent/inherited verdict is a denial. This is the "any
+  agent can use DeepWater only as long as it allows it" gate — see `isExposed`
+  (`worker/src/run/mcp-toolset.ts`) and
   `authorizeToolCall` (`worker/src/run/tool-policy.ts`). **Other connectors are
   unchanged** — they remain exposed by install scope unless a policy denies them;
   only `requiresExplicitGrant`-flagged tools default off. The admin ToolPicker
   renders both DeepWater surfaces off-by-default and writes the explicit allow.
-- **Fail loud on missing endpoint.** When `DEEP_WATER_MCP_URL` is unset the
-  enable route returns `DEEP_WATER_MCP_URL_UNSET` (503) instead of creating a
-  dead instance whose tools silently drop. Concurrent double-enable is caught
-  (`DUPLICATE_SCOPE` → re-fetch), and teardown finds the instance by its own
-  catalog-entry **name** so a renamed/unpublished entry can't leave research
-  exposed after disable.
+- **Fail loud and transition atomically.** When
+  `LEDGER_DEEPWATER_MCP_URL` is unset the enable route returns
+  `LEDGER_DEEPWATER_MCP_URL_UNSET` (503) instead of creating a dead or
+  direct-provider instance. A missing linked first-party public catalog returns
+  `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` (503), never `enabled=true` without a
+  connector. Every org/team enable or disable acquires a PostgreSQL
+  transaction-scoped advisory lock, serializing opposite transitions across
+  API processes; connector rows and the enablement row mutate in that same
+  transaction and roll back together. Teardown finds the instance through the
+  first-party product's linked public catalog entry so a rename cannot orphan
+  it and a private same-name entry cannot be deleted.
 - **Projected tools are `active`, not `pending_review`.** DeepWater is a
   first-party entry the team's owner explicitly enabled, so that enable stands
   in for the manual install + admin-approve review that shared-scope projections
-  otherwise defer. A re-enable of a **manually-probed** install keeps its probed
-  schemas/endpoint (no manifest-stub clobber); stubs are only projected on first
-  creation.
-- **Deterministic contract, per-user auth.** DeepWater is OAuth2 + hosted, so
-  the tool contract comes from the plugin manifest rather than a per-user
-  network probe at enable time; each user still authorises DeepWater with their
-  own token, resolved at dispatch through the ordinary credential chain.
+  otherwise defer. Re-enable preserves richer probe schemas only when the
+  discovered tool-name set exactly matches the current Ledger contract; a
+  legacy direct-provider contract is removed, reprojected, and must be
+  explicitly re-granted.
+- **Deterministic contract, per-user Ledger auth.** The team instance has
+  `authMethod=bearer` and no default credential. Each user stores a dedicated
+  Ledger ProxyToken through the existing-instance **Store personal credential**
+  password form; `POST /api/mcp/instances/:id/secret` encrypts it and places it
+  as that user's override (`shared:false`). The UI clears plaintext before the
+  request and never reads it back. The normal credential chain then resolves the
+  same user override for their PA and their effective-user shared-agent runs.
+  Ledger uses that token to own jobs, enforce budget/network policy, audit, and
+  book the rate-card charge.
 - `deep_water_run_update` (the builtin that writes the durable
   `product_integration_runs` record) is **not PA-only** — any *granted* agent
   (PA or shared) writes the run record back. Its tenancy is taken strictly from
@@ -434,7 +449,17 @@ its tool rows.
   **thread** the run is attached to (no unattached-run escape), and any
   `knowledgePageId` is validated to belong to the org before it is stored — so a
   prompt-injected `runId`/`knowledgePageId` cannot mutate another run or corrupt
-  billing.
+  billing. Ledger terminal MCP responses expose the immutable booked rate-card
+  `cost: { amount, currency }`; the handoff copies those exact values when
+  present and otherwise leaves Nessie's mirrored cost empty. This booked charge
+  is not a provider-invoice actual and complex runs may reconcile higher
+  upstream without changing the value Nessie mirrors. Nessie never estimates
+  cost or treats its cost-free MCP dispatch telemetry as the booked charge.
+- **Long-running jobs do not busy-poll.** The launch handoff starts the Ledger
+  job, persists its id + `running` state, optionally reads status once, tells the
+  user it is running, and ends the bounded agent turn. A later user/status turn
+  performs one status read and fetches `research_report` only after completion;
+  autonomous polling remains future completion-wrapper work.
 
 ### MCP Server Lifecycle
 

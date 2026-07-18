@@ -128,8 +128,11 @@ export const useSetInstanceSecret = () => {
         secret: input.secret,
         shared: input.shared,
       }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['mcp-instances'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['mcp-instances', variables.instanceId, 'credentials'],
+      })
     },
   })
 }

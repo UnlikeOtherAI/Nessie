@@ -1,15 +1,14 @@
-import type { PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import type { McpToolDescriptor } from '@nessie/mcp-client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   createInstance,
   projectMcpToolDescriptors,
-  McpInstanceError,
-  MCP_INSTANCE_ERROR_CODES,
   type McpInstanceRow,
 } from '@nessie/mcp-manage'
 
 import { getIntegrationPluginManifest } from './integration-plugin-manifests.js'
+import { setProductTeamEnablement } from './integrations.js'
 
 /**
  * DeepWater team activation.
@@ -24,67 +23,120 @@ import { getIntegrationPluginManifest } from './integration-plugin-manifests.js'
  * see `worker/src/run/mcp-toolset.ts`). "Any agent can use DeepWater only as
  * long as it allows it": exposure requires an explicit grant, never scope alone.
  *
- * DeepWater is OAuth2 + first-party hosted: the shared MCP tool contract is the
- * plugin manifest (`integration-plugin-manifests.ts`), not a live per-user
- * network probe, and each user still authorises DeepWater with their own token
- * at dispatch. Enable is therefore a deterministic provision — we resolve the
- * DeepWater MCP endpoint from the manifest's `urlEnv`, install the instance with
- * a usable HTTP transport, project the manifest's declared tools, and mark the
- * instance + its projected tools `active` (the owner's explicit team-enable IS
- * the admin review that shared scopes otherwise defer as `pending_review`).
+ * DeepWater traffic goes through Ledger's first-party MCP adapter. The shared
+ * tool contract is the plugin manifest (`integration-plugin-manifests.ts`), not
+ * a live provider probe. Enable is therefore a deterministic provision: resolve
+ * the Ledger MCP endpoint from the manifest and install a bearer-authenticated
+ * HTTP transport with no shared credential. Each caller supplies a dedicated
+ * Ledger ProxyToken through the normal encrypted per-user credential override,
+ * preserving token-owned job isolation and spend attribution for PA and shared
+ * agent calls alike. Ledger owns the upstream credential, job budget, and
+ * immutable booked rate-card charge. That charge is not an upstream
+ * provider-invoice actual; complex runs may reconcile higher.
  */
 
 export const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
+type DeepWaterDb = PrismaClient | Prisma.TransactionClient
+type DeepWaterScope = { organizationId: string; teamId: string }
 
 /**
- * Raised when DeepWater is enabled but the MCP endpoint env var is unset. We
- * fail loudly rather than create a dead instance whose tools silently drop; the
- * enable route maps this to a `DEEP_WATER_MCP_URL_UNSET` API error.
+ * Raised when DeepWater is enabled but the Ledger MCP endpoint env var is
+ * unset. We fail loudly rather than create a dead instance whose tools silently
+ * drop; the enable route maps this to a
+ * `LEDGER_DEEPWATER_MCP_URL_UNSET` API error.
  */
-export class DeepWaterMcpUrlUnsetError extends Error {
-  readonly code = 'DEEP_WATER_MCP_URL_UNSET'
+export class LedgerDeepWaterMcpUrlUnsetError extends Error {
+  readonly code = 'LEDGER_DEEPWATER_MCP_URL_UNSET'
 
   constructor(public readonly envVar: string) {
     super(
-      `DeepWater MCP endpoint is not configured: set ${envVar} to the DeepWater `
-      + 'MCP server URL before enabling DeepWater for a team.',
+      `Ledger DeepWater MCP endpoint is not configured: set ${envVar} to Ledger's `
+      + 'DeepWater MCP adapter URL before enabling DeepWater for a team.',
     )
-    this.name = 'DeepWaterMcpUrlUnsetError'
+    this.name = 'LedgerDeepWaterMcpUrlUnsetError'
   }
 }
 
-const DEFAULT_DEEP_WATER_URL_ENV = 'DEEP_WATER_MCP_URL'
+export class LedgerDeepWaterCatalogUnavailableError extends Error {
+  readonly code = 'LEDGER_DEEPWATER_CATALOG_UNAVAILABLE'
 
-/** Env var name the manifest declares for the DeepWater MCP endpoint. */
-const deepWaterUrlEnvVar = (): string => {
+  constructor() {
+    super(
+      'The first-party public DeepWater catalog entry is not linked and published. '
+      + 'Repair the integration catalog before enabling DeepWater.',
+    )
+    this.name = 'LedgerDeepWaterCatalogUnavailableError'
+  }
+}
+
+export class LedgerDeepWaterEnablementPersistenceError extends Error {
+  readonly code = 'LEDGER_DEEPWATER_ENABLEMENT_NOT_PERSISTED'
+
+  constructor() {
+    super('DeepWater enablement could not be persisted for this team.')
+    this.name = 'LedgerDeepWaterEnablementPersistenceError'
+  }
+}
+
+const LEDGER_DEEP_WATER_URL_ENV = 'LEDGER_DEEPWATER_MCP_URL'
+
+/** Environment variable name declared by the DeepWater manifest transport. */
+const deepWaterTransportUrlEnv = (): string => {
   const manifest = getIntegrationPluginManifest(DEEP_WATER_PRODUCT_SLUG)
   const transport = manifest?.mcp?.catalogTemplate?.transport as
     | { urlEnv?: unknown }
     | undefined
   return typeof transport?.urlEnv === 'string' && transport.urlEnv.length > 0
     ? transport.urlEnv
-    : DEFAULT_DEEP_WATER_URL_ENV
+    : LEDGER_DEEP_WATER_URL_ENV
 }
 
 /**
- * Resolve the DeepWater MCP endpoint from the manifest-declared env var. Throws
- * {@link DeepWaterMcpUrlUnsetError} when unset so enable fails loudly instead of
- * provisioning an instance with no usable transport.
+ * Resolve the Ledger MCP endpoint. There is deliberately no direct-provider
+ * fallback: an unset Ledger endpoint makes team enablement fail closed.
  */
-const resolveDeepWaterMcpUrl = (): string => {
-  const envVar = deepWaterUrlEnvVar()
+const resolveDeepWaterLedgerUrl = (): string => {
+  const envVar = deepWaterTransportUrlEnv()
   const url = process.env[envVar]?.trim()
   if (!url) {
-    throw new DeepWaterMcpUrlUnsetError(envVar)
+    throw new LedgerDeepWaterMcpUrlUnsetError(envVar)
   }
   return url
 }
 
-const loadPublishedCatalogEntryId = async (
+const deepWaterTransitionLockKey = (input: DeepWaterScope): string =>
+  `${input.organizationId}:${input.teamId}:${DEEP_WATER_PRODUCT_SLUG}`
+
+/**
+ * PostgreSQL transaction-scoped advisory locking serializes opposite
+ * enable/disable requests across API processes. All transition reads and writes
+ * use the locked transaction client, so the lock does not rely on process-local
+ * memory and cannot be bypassed by a second Nessie replica.
+ */
+export const runWithDeepWaterTransitionLock = <T>(
   prisma: PrismaClient,
+  input: DeepWaterScope,
+  action: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> =>
+  prisma.$transaction(async (tx) => {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${deepWaterTransitionLockKey(input)}, 0)
+      )
+    `)
+    return action(tx)
+  })
+
+const loadPublishedCatalogEntryId = async (
+  prisma: DeepWaterDb,
 ): Promise<string | null> => {
   const entry = await prisma.mcpCatalogEntry.findFirst({
-    where: { name: DEEP_WATER_PRODUCT_SLUG, visibility: 'public', status: 'published' },
+    where: {
+      name: DEEP_WATER_PRODUCT_SLUG,
+      visibility: 'public',
+      status: 'published',
+      integratedProducts: { some: { slug: DEEP_WATER_PRODUCT_SLUG } },
+    },
     select: { id: true },
   })
   return entry?.id ?? null
@@ -97,12 +149,12 @@ const manifestToolDescriptors = (): McpToolDescriptor[] => {
     name: tool.name,
     title: tool.label,
     description: tool.description,
-    inputSchema: {},
+    inputSchema: tool.inputSchema ?? {},
   }))
 }
 
 const findTeamInstance = async (
-  prisma: PrismaClient,
+  prisma: DeepWaterDb,
   input: { organizationId: string; teamId: string; catalogEntryId: string },
 ): Promise<McpInstanceRow | null> =>
   prisma.mcpServerInstance.findFirst({
@@ -115,129 +167,213 @@ const findTeamInstance = async (
   })
 
 /**
- * A real, manually-installed DeepWater instance has been probed: it carries
- * discovered tools or has advanced to `active`. Re-enabling one must NOT clobber
- * its probed schemas with manifest stubs — we only project stubs the first time
- * we create the instance.
+ * A previously probed Ledger adapter may carry richer schemas than the
+ * deterministic manifest. Preserve those schemas only when its tool-name set
+ * exactly matches the current Ledger contract. Legacy direct-provider contracts
+ * are replaced so old tools can never be dispatched to the Ledger endpoint.
  */
-const isProbedInstall = (instance: McpInstanceRow): boolean =>
-  instance.lifecycleState === 'active'
-  || (Array.isArray(instance.discoveredTools) && instance.discoveredTools.length > 0)
+const hasCurrentLedgerToolContract = (
+  instance: McpInstanceRow,
+  descriptors: McpToolDescriptor[],
+): boolean => {
+  if (!Array.isArray(instance.discoveredTools)) return false
+  const discoveredNames = instance.discoveredTools
+    .map((tool) =>
+      tool && typeof tool === 'object' && typeof (tool as { name?: unknown }).name === 'string'
+        ? (tool as { name: string }).name
+        : null)
+    .filter((name): name is string => name !== null)
+    .sort()
+  const manifestNames = descriptors.map((descriptor) => descriptor.name).sort()
+  return discoveredNames.length === manifestNames.length
+    && discoveredNames.every((name, index) => name === manifestNames[index])
+}
 
 /**
  * Idempotently ensure a team-scoped DeepWater instance whose manifest tools are
- * projected, `active`, and flagged `requiresExplicitGrant`. Returns the
- * instance, or null when the DeepWater catalog entry is absent (a self-hosted
- * instance that never seeded it). Throws {@link DeepWaterMcpUrlUnsetError} when
- * the DeepWater MCP endpoint env var is unset.
+ * projected, `active`, and flagged `requiresExplicitGrant`. Missing first-party
+ * catalog linkage and a missing Ledger endpoint both fail loudly; enablement is
+ * never persisted without a callable connector.
  */
-export const ensureDeepWaterTeamInstance = async (
-  prisma: PrismaClient,
+const ensureDeepWaterTeamInstanceInTransaction = async (
+  tx: Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
-  input: { organizationId: string; teamId: string },
-): Promise<McpInstanceRow | null> => {
-  const catalogEntryId = await loadPublishedCatalogEntryId(prisma)
+  input: DeepWaterScope,
+): Promise<McpInstanceRow> => {
+  const catalogEntryId = await loadPublishedCatalogEntryId(tx)
   if (!catalogEntryId) {
-    console.warn(
-      `[deepwater] enable skipped for team ${input.teamId}: no published `
-      + `"${DEEP_WATER_PRODUCT_SLUG}" catalog entry in org ${input.organizationId}`,
-    )
-    return null
+    throw new LedgerDeepWaterCatalogUnavailableError()
   }
 
-  const url = resolveDeepWaterMcpUrl()
-  const existing = await findTeamInstance(prisma, { ...input, catalogEntryId })
+  const ledgerUrl = resolveDeepWaterLedgerUrl()
+  const existing = await findTeamInstance(tx, { ...input, catalogEntryId })
 
   let instance = existing
   if (!instance) {
-    try {
-      instance = await createInstance(prisma, actorContext, {
-        catalogEntryId,
-        scopeType: 'team',
-        scopeId: input.teamId,
-        transportConfig: { transport: 'http', url },
-      })
-    } catch (error) {
-      // Concurrent double-enable: the unique (catalogEntry, scope) constraint
-      // fired between our lookup and create. Re-fetch the row the winner wrote.
-      if (
-        error instanceof McpInstanceError
-        && error.code === MCP_INSTANCE_ERROR_CODES.DUPLICATE_SCOPE
-      ) {
-        instance = await findTeamInstance(prisma, { ...input, catalogEntryId })
-      }
-      if (!instance) throw error
-    }
+    // createInstance performs the normal catalog, scope, lock, and SSRF checks.
+    // The cast is structural: Prisma TransactionClient exposes every delegate
+    // used by that service, while intentionally omitting connection lifecycle.
+    instance = await createInstance(tx as unknown as PrismaClient, actorContext, {
+      catalogEntryId,
+      scopeType: 'team',
+      scopeId: input.teamId,
+      transportConfig: { transport: 'http', url: ledgerUrl },
+    })
   }
 
   const provisioned = instance
-  const probed = Boolean(existing) && isProbedInstall(provisioned)
   const descriptors = manifestToolDescriptors()
+  const preserveProbedSchemas =
+    Boolean(existing) && hasCurrentLedgerToolContract(provisioned, descriptors)
 
-  return prisma.$transaction(async (tx) => {
-    if (probed) {
-      // Real probed install: keep its discovered schemas and endpoint intact.
-      // Team-enable only (re)asserts the active lifecycle.
-      await tx.mcpServerInstance.update({
-        where: { id: provisioned.id },
-        data: { lifecycleState: 'active' },
-      })
-    } else {
-      // First provision (or a never-probed stub): install the resolved HTTP
-      // transport and project the manifest's declared tools as stubs.
-      await tx.mcpServerInstance.update({
-        where: { id: provisioned.id },
-        data: {
-          transportConfig: { transport: 'http', url },
-          discoveredTools: descriptors as unknown as object,
-          lifecycleState: 'active',
-          healthFailureCount: 0,
-          healthLastCheckedAt: new Date(),
-          lastError: null,
-        },
-      })
-      await projectMcpToolDescriptors(tx, {
-        organizationId: input.organizationId,
-        instance: { id: provisioned.id, scopeType: 'team', scopeId: input.teamId },
-        descriptors,
-      })
-    }
-    // First-party team-enable is the review: flip the projected (shared-scope,
-    // so `pending_review` by default) tools to `active` and flag them
-    // `requiresExplicitGrant` so exposure needs an explicit per-agent allow.
-    await tx.toolRegistryEntry.updateMany({
-      where: { mcpInstanceId: provisioned.id },
-      data: { status: 'active', metadata: { requiresExplicitGrant: true } },
+  if (preserveProbedSchemas) {
+    // Keep a current Ledger adapter's richer discovered schemas, but always
+    // enforce the configured Ledger endpoint and clear any legacy shared
+    // credential. Callers authenticate with encrypted per-user overrides.
+    await tx.mcpServerInstance.update({
+      where: { id: provisioned.id },
+      data: {
+        credentialRef: null,
+        transportConfig: { transport: 'http', url: ledgerUrl },
+        lifecycleState: 'active',
+        healthFailureCount: 0,
+        // Team enable has no caller ProxyToken, so it cannot truthfully probe
+        // Ledger. Active here means the deterministic contract is projected.
+        healthLastCheckedAt: null,
+        lastError: null,
+      },
     })
-    return tx.mcpServerInstance.findUniqueOrThrow({ where: { id: provisioned.id } })
+  } else {
+    // First provision or legacy direct-provider contract: replace every old
+    // projection before installing Ledger's deterministic tool contract.
+    // Registry ids intentionally change, so explicit grants must be renewed
+    // for the new tools instead of silently inheriting authority.
+    await tx.toolRegistryEntry.deleteMany({
+      where: { mcpInstanceId: provisioned.id },
+    })
+    await tx.mcpServerInstance.update({
+      where: { id: provisioned.id },
+      data: {
+        credentialRef: null,
+        transportConfig: { transport: 'http', url: ledgerUrl },
+        discoveredTools: descriptors as unknown as object,
+        lifecycleState: 'active',
+        healthFailureCount: 0,
+        // Per-user health is established later with the caller's ProxyToken.
+        healthLastCheckedAt: null,
+        lastError: null,
+      },
+    })
+    await projectMcpToolDescriptors(tx, {
+      organizationId: input.organizationId,
+      instance: { id: provisioned.id, scopeType: 'team', scopeId: input.teamId },
+      descriptors,
+    })
+  }
+  // First-party team-enable is the review: flip the projected (shared-scope,
+  // so `pending_review` by default) tools to `active` and flag them
+  // `requiresExplicitGrant` so exposure needs an explicit per-agent allow.
+  await tx.toolRegistryEntry.updateMany({
+    where: { mcpInstanceId: provisioned.id },
+    data: { status: 'active', metadata: { requiresExplicitGrant: true } },
   })
+  return tx.mcpServerInstance.findUniqueOrThrow({ where: { id: provisioned.id } })
 }
+
+export const ensureDeepWaterTeamInstance = (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: DeepWaterScope,
+): Promise<McpInstanceRow> =>
+  runWithDeepWaterTransitionLock(prisma, input, (tx) =>
+    ensureDeepWaterTeamInstanceInTransaction(tx, actorContext, input))
 
 /**
  * Remove the team-scoped DeepWater instance and its projected tools when a team
  * disables DeepWater. Idempotent — a no-op when nothing is installed. Teardown
- * is keyed on the instance's own catalog-entry NAME (not the currently-published
- * entry id), so a renamed/unpublished catalog entry can never leave an active
- * instance + tool rows exposing research after disable.
+ * is keyed on the public catalog entry linked from the first-party integrated
+ * product (not a name collision), so a renamed/unpublished catalog entry can
+ * never leave an active instance + tool rows exposing research after disable,
+ * while a private user-authored connector named `deep-water` is never selected.
  */
-export const removeDeepWaterTeamInstance = async (
-  prisma: PrismaClient,
-  input: { organizationId: string; teamId: string },
+const removeDeepWaterTeamInstanceInTransaction = async (
+  tx: Prisma.TransactionClient,
+  input: DeepWaterScope,
 ): Promise<{ instanceId: string | null }> => {
-  const instance = await prisma.mcpServerInstance.findFirst({
+  const instance = await tx.mcpServerInstance.findFirst({
     where: {
       organizationId: input.organizationId,
       scopeType: 'team',
       scopeId: input.teamId,
-      catalogEntry: { name: DEEP_WATER_PRODUCT_SLUG },
+      catalogEntry: {
+        visibility: 'public',
+        integratedProducts: { some: { slug: DEEP_WATER_PRODUCT_SLUG } },
+      },
     },
     select: { id: true },
   })
   if (!instance) return { instanceId: null }
 
-  await prisma.$transaction([
-    prisma.toolRegistryEntry.deleteMany({ where: { mcpInstanceId: instance.id } }),
-    prisma.mcpServerInstance.delete({ where: { id: instance.id } }),
-  ])
+  await tx.toolRegistryEntry.deleteMany({ where: { mcpInstanceId: instance.id } })
+  await tx.mcpServerInstance.delete({ where: { id: instance.id } })
   return { instanceId: instance.id }
 }
+
+export const removeDeepWaterTeamInstance = (
+  prisma: PrismaClient,
+  input: DeepWaterScope,
+): Promise<{ instanceId: string | null }> =>
+  runWithDeepWaterTransitionLock(prisma, input, (tx) =>
+    removeDeepWaterTeamInstanceInTransaction(tx, input))
+
+/**
+ * Apply the connector side before its matching product flag. The caller runs
+ * this inside one serialized database transaction, so any effect or persistence
+ * error rolls the entire transition back.
+ */
+type DeepWaterEnablementEffects<T> = {
+  persist: () => Promise<T | null>
+  provision: () => Promise<void>
+  teardown: () => Promise<void>
+}
+
+export const runDeepWaterEnablementTransition = async <T>(
+  enabled: boolean,
+  effects: DeepWaterEnablementEffects<T>,
+): Promise<T | null> => {
+  if (enabled) await effects.provision()
+  else await effects.teardown()
+  return effects.persist()
+}
+
+export const setDeepWaterTeamEnablement = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: {
+    enabled: boolean
+    organizationId: string
+    teamId: string
+    userId: string
+  },
+): Promise<NonNullable<Awaited<ReturnType<typeof setProductTeamEnablement>>>> =>
+  runWithDeepWaterTransitionLock(prisma, input, async (tx) => {
+    const persisted = await runDeepWaterEnablementTransition(input.enabled, {
+      provision: async () => {
+        await ensureDeepWaterTeamInstanceInTransaction(tx, actorContext, input)
+      },
+      teardown: async () => {
+        await removeDeepWaterTeamInstanceInTransaction(tx, input)
+      },
+      persist: () => setProductTeamEnablement(tx, {
+        enabled: input.enabled,
+        organizationId: input.organizationId,
+        productSlug: DEEP_WATER_PRODUCT_SLUG,
+        teamId: input.teamId,
+        userId: input.userId,
+      }),
+    })
+    if (!persisted) {
+      throw new LedgerDeepWaterEnablementPersistenceError()
+    }
+    return persisted
+  })

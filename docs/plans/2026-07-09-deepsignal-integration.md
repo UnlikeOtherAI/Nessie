@@ -202,15 +202,18 @@ Today every chat path runs `runExecutionAgentLoop → runInferenceGraph`; MCP is
 
 ### 7. DeepWater boundary (parallel integration — do not overlap)
 
-DeepWater (deep research) is being integrated into Nessie **directly** as its own ESC product
-by a separate effort. DeepSignal also *consumes* DeepWater internally, but only ever holds
-**report references (ids)** — it never embeds report content. Boundary rules:
+DeepWater (deep research) is integrated into Nessie as its own ESC product, but every Nessie
+research call goes through **Ledger's DeepWater MCP adapter** for token-owned isolation,
+budget enforcement, audit, and booked rate-card charge accounting. DeepSignal also
+*consumes* DeepWater internally, but
+only ever holds **report references (ids)** — it never embeds report content. Boundary rules:
 
 - Research initiated **by DeepSignal** (autonomously or in its chat) stays on DeepSignal's
   org key, billing, and audit; Nessie just renders the reference card, deep-linking into the
   DeepWater report (dedupe key = DeepWater report id).
-- Research initiated **in Nessie** uses Nessie's own DeepWater integration, untouched by this
-  plan. No shared code, no shared credentials, no double-billing.
+- Research initiated **in Nessie** uses a caller-specific Ledger ProxyToken through Nessie's
+  team-scoped DeepWater connector, untouched by this plan. No shared credentials and no
+  double-billing.
 
 ## Execution Plan
 

@@ -7,7 +7,6 @@ import { buildAuthorizedTransport } from '@nessie/mcp-manage'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import {
-  DeepWaterMcpUrlUnsetError,
   ensureDeepWaterTeamInstance,
   removeDeepWaterTeamInstance,
 } from '../src/services/deepwater-activation.js'
@@ -15,18 +14,20 @@ import {
 /**
  * Team-scoped DeepWater activation: enabling for a team creates a team-scoped
  * tool-projecting instance with a usable HTTP transport (resolved from
- * DEEP_WATER_MCP_URL) whose `research_*` tools land in `ToolRegistryEntry` as
- * active, explicit-grant rows; disabling removes it. Uses an in-memory Prisma
- * fake — no MCP traffic (DeepWater tools come from the plugin manifest, not a
- * probe). The endpoint is an IP literal so the SSRF guard passes without DNS.
+ * LEDGER_DEEPWATER_MCP_URL) whose Ledger `research_*` tools land in
+ * `ToolRegistryEntry` as active, explicit-grant rows; disabling removes it.
+ * Uses an in-memory Prisma fake — no MCP traffic (tools come from the plugin
+ * manifest, not a probe). The endpoint is an IP literal so the SSRF guard
+ * passes without DNS.
  */
 
-const DEEP_WATER_URL = 'https://8.8.8.8/mcp'
-process.env.DEEP_WATER_MCP_URL = DEEP_WATER_URL
+const DEEP_WATER_URL = 'https://8.8.8.8/v1/mcp/deepwater'
+process.env.LEDGER_DEEPWATER_MCP_URL = DEEP_WATER_URL
 
 type CatalogEntry = {
   id: string
   name: string
+  integratedProductSlugs: string[]
   visibility: string
   status: string
   authMethod: string
@@ -43,6 +44,7 @@ type Instance = {
   catalogEntryId: string
   scopeType: string
   scopeId: string
+  credentialRef: string | null
   lifecycleState: string
   transportConfig: unknown
   discoveredTools: unknown
@@ -63,26 +65,33 @@ type RegistryEntry = {
 
 const DEEP_WATER_CATALOG_ID = randomUUID()
 
+type CatalogWhere = {
+  id?: string
+  name?: string
+  status?: string
+  visibility?: string
+  integratedProducts?: { some: { slug: string } }
+}
+
 const makeFake = (seed: {
   organizationId: string
   teamId: string
-  withCatalog?: boolean
+  seedCatalogEntries?: CatalogEntry[]
   seedInstances?: Instance[]
   seedRegistry?: RegistryEntry[]
 }) => {
-  const catalogEntries: CatalogEntry[] = seed.withCatalog === false
-    ? []
-    : [
+  const catalogEntries: CatalogEntry[] = seed.seedCatalogEntries ?? [
         {
           id: DEEP_WATER_CATALOG_ID,
           name: 'deep-water',
+          integratedProductSlugs: ['deep-water'],
           visibility: 'public',
           status: 'published',
-          authMethod: 'oauth2',
-          authConfig: { method: 'oauth2' },
+          authMethod: 'bearer',
+          authConfig: { method: 'bearer' },
           // Manifest default carries `urlEnv` (no url) — parses to a skip in the
           // SSRF guard; the instance transportConfig supplies the real url.
-          defaultTransportConfig: { urlEnv: 'DEEP_WATER_MCP_URL' },
+          defaultTransportConfig: { urlEnv: 'LEDGER_DEEPWATER_MCP_URL' },
           locked: false,
           label: 'Deep Water',
           ownerUserId: null,
@@ -91,21 +100,28 @@ const makeFake = (seed: {
       ]
   const instances: Instance[] = seed.seedInstances ? [...seed.seedInstances] : []
   const registry: RegistryEntry[] = seed.seedRegistry ? [...seed.seedRegistry] : []
+  const catalogMatches = (entry: CatalogEntry, where: CatalogWhere): boolean =>
+    (where.id === undefined || entry.id === where.id)
+    && (where.name === undefined || entry.name === where.name)
+    && (where.status === undefined || entry.status === where.status)
+    && (where.visibility === undefined || entry.visibility === where.visibility)
+    && (
+      where.integratedProducts === undefined
+      || entry.integratedProductSlugs.includes(where.integratedProducts.some.slug)
+    )
 
   const self = {
+    catalogEntries,
     instances,
     registry,
     $transaction: async (arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (tx: unknown) => Promise<unknown>)(self)
         : Promise.all(arg as Promise<unknown>[]),
+    $executeRaw: async () => 0,
     mcpCatalogEntry: {
-      findFirst: async (args: { where: { id?: string; name?: string } }) => {
-        if (args.where.id !== undefined) {
-          return catalogEntries.find((e) => e.id === args.where.id) ?? null
-        }
-        return catalogEntries.find((e) => e.name === args.where.name) ?? null
-      },
+      findFirst: async (args: { where: CatalogWhere }) =>
+        catalogEntries.find((entry) => catalogMatches(entry, args.where)) ?? null,
       findMany: async () => [],
     },
     team: {
@@ -119,7 +135,7 @@ const makeFake = (seed: {
           catalogEntryId?: string
           scopeType: string
           scopeId: string
-          catalogEntry?: { name: string }
+          catalogEntry?: CatalogWhere
         }
       }) =>
         instances.find((i) => {
@@ -129,9 +145,9 @@ const makeFake = (seed: {
           if (args.where.catalogEntryId !== undefined) {
             return i.catalogEntryId === args.where.catalogEntryId
           }
-          if (args.where.catalogEntry?.name !== undefined) {
+          if (args.where.catalogEntry !== undefined) {
             const entry = catalogEntries.find((e) => e.id === i.catalogEntryId)
-            return entry?.name === args.where.catalogEntry.name
+            if (!entry || !catalogMatches(entry, args.where.catalogEntry)) return false
           }
           return true
         }) ?? null,
@@ -147,6 +163,7 @@ const makeFake = (seed: {
           catalogEntryId: args.data.catalogEntryId as string,
           scopeType: args.data.scopeType as string,
           scopeId: args.data.scopeId as string,
+          credentialRef: (args.data.credentialRef as string | null | undefined) ?? null,
           lifecycleState: (args.data.lifecycleState as string) ?? 'pending_setup',
           transportConfig: args.data.transportConfig ?? {},
           discoveredTools: args.data.discoveredTools ?? [],
@@ -159,6 +176,9 @@ const makeFake = (seed: {
         if (!row) return null
         if (typeof args.data.lifecycleState === 'string') {
           row.lifecycleState = args.data.lifecycleState
+        }
+        if ('credentialRef' in args.data) {
+          row.credentialRef = args.data.credentialRef as string | null
         }
         if (args.data.transportConfig !== undefined) row.transportConfig = args.data.transportConfig
         if (args.data.discoveredTools !== undefined) row.discoveredTools = args.data.discoveredTools
@@ -234,25 +254,41 @@ test('enabling DeepWater creates a team-scoped instance with a usable transport 
   assert.equal(fake.instances[0]?.scopeType, 'team')
   assert.equal(fake.instances[0]?.scopeId, seed.teamId)
   assert.equal(fake.instances[0]?.lifecycleState, 'active')
+  assert.equal(fake.instances[0]?.credentialRef, null)
 
   // F2: the instance carries a resolvable HTTP transport, and a full transport
-  // builds from catalog default + instance config without dropping tools.
+  // builds from catalog default + instance config with a caller's encrypted
+  // Ledger ProxyToken resolved as a bearer header.
   assert.deepEqual(fake.instances[0]?.transportConfig, { transport: 'http', url: DEEP_WATER_URL })
   const transport = buildAuthorizedTransport({
-    catalogDefaultTransportConfig: { urlEnv: 'DEEP_WATER_MCP_URL' },
+    catalogDefaultTransportConfig: { urlEnv: 'LEDGER_DEEPWATER_MCP_URL' },
     instanceTransportConfig: fake.instances[0]?.transportConfig,
-    authConfig: { method: 'oauth2' },
-    secret: null,
+    authConfig: { method: 'bearer' },
+    secret: 'lk_test_proxy_token',
   })
   assert.equal(transport.transport, 'http')
   assert.equal((transport as { url: string }).url, DEEP_WATER_URL)
+  assert.equal(
+    transport.transport === 'http' ? transport.headers?.Authorization : null,
+    'Bearer lk_test_proxy_token',
+  )
 
-  // The manifest's six research tools are projected, all active, and flagged as
-  // requiring an explicit per-agent grant.
+  // The manifest's five Ledger tools carry useful schemas, are active, and
+  // require an explicit per-agent grant.
   const toolNames = fake.registry.map((r) => r.toolId.split(':').pop())
-  assert.ok(toolNames.includes('research_create'))
-  assert.ok(toolNames.includes('research_get'))
-  assert.equal(fake.registry.length, 6)
+  assert.deepEqual(toolNames.sort(), [
+    'research_cancel',
+    'research_list',
+    'research_report',
+    'research_start',
+    'research_status',
+  ])
+  assert.deepEqual(
+    (fake.registry.find((entry) => entry.toolId.endsWith(':research_start'))
+      ?.inputSchema as { required?: string[] }).required,
+    ['query'],
+  )
+  assert.equal(fake.registry.length, 5)
   assert.ok(fake.registry.every((r) => r.status === 'active'))
   assert.ok(fake.registry.every((r) =>
     (r.metadata as { requiresExplicitGrant?: boolean })?.requiresExplicitGrant === true))
@@ -267,13 +303,20 @@ test('enabling DeepWater twice is idempotent (no duplicate instance)', async () 
   await ensureDeepWaterTeamInstance(asPrisma(fake), ownerContext(seed.organizationId), seed)
 
   assert.equal(fake.instances.length, 1)
-  assert.equal(fake.registry.length, 6)
+  assert.equal(fake.registry.length, 5)
 })
 
-test('re-enable does not clobber a manually-probed instance schema', async () => {
+test('re-enable preserves a current Ledger probe schema but enforces its endpoint and per-user auth', async () => {
   const seed = { organizationId: randomUUID(), teamId: randomUUID() }
   const instanceId = randomUUID()
   const probedSchema = { type: 'object', properties: { q: { type: 'string' } } }
+  const ledgerTools = [
+    'research_start',
+    'research_status',
+    'research_report',
+    'research_list',
+    'research_cancel',
+  ]
   const fake = makeFake({
     ...seed,
     seedInstances: [
@@ -283,9 +326,65 @@ test('re-enable does not clobber a manually-probed instance schema', async () =>
         catalogEntryId: DEEP_WATER_CATALOG_ID,
         scopeType: 'team',
         scopeId: seed.teamId,
+        credentialRef: 'legacy-shared-secret',
         lifecycleState: 'active',
-        transportConfig: { transport: 'http', url: 'https://self-hosted.example.org/mcp' },
-        discoveredTools: [{ name: 'research_create', inputSchema: probedSchema }],
+        transportConfig: { transport: 'http', url: 'https://legacy.example.org/mcp' },
+        discoveredTools: ledgerTools.map((name) => ({
+          name,
+          inputSchema: name === 'research_start' ? probedSchema : { type: 'object' },
+        })),
+      },
+    ],
+    seedRegistry: ledgerTools.map((name) => ({
+        id: randomUUID(),
+        organizationId: seed.organizationId,
+        scopeKey: `mcp:${seed.organizationId}:team:${seed.teamId}`,
+        toolId: `mcp:${instanceId}:${name}`,
+        label: name,
+        description: 'probed',
+        inputSchema: name === 'research_start' ? probedSchema : { type: 'object' },
+        outputSchema: null,
+        status: 'active',
+        metadata: {},
+        mcpInstanceId: instanceId,
+      })),
+  })
+
+  await ensureDeepWaterTeamInstance(asPrisma(fake), ownerContext(seed.organizationId), seed)
+
+  // No manifest schema overwrites the current adapter probe, but routing and
+  // auth are pinned to Ledger.
+  assert.equal(fake.registry.length, 5)
+  assert.deepEqual(
+    fake.registry.find((entry) => entry.toolId.endsWith(':research_start'))?.inputSchema,
+    probedSchema,
+  )
+  assert.deepEqual(fake.instances[0]?.transportConfig, {
+    transport: 'http',
+    url: DEEP_WATER_URL,
+  })
+  assert.equal(fake.instances[0]?.credentialRef, null)
+  assert.ok(fake.registry.every((entry) => entry.status === 'active'))
+  assert.ok(fake.registry.every((entry) =>
+    (entry.metadata as { requiresExplicitGrant?: boolean })?.requiresExplicitGrant === true))
+})
+
+test('re-enable replaces a legacy direct-provider tool contract', async () => {
+  const seed = { organizationId: randomUUID(), teamId: randomUUID() }
+  const instanceId = randomUUID()
+  const fake = makeFake({
+    ...seed,
+    seedInstances: [
+      {
+        id: instanceId,
+        organizationId: seed.organizationId,
+        catalogEntryId: DEEP_WATER_CATALOG_ID,
+        scopeType: 'team',
+        scopeId: seed.teamId,
+        credentialRef: 'legacy-oauth-secret',
+        lifecycleState: 'active',
+        transportConfig: { transport: 'http', url: 'https://legacy.example.org/mcp' },
+        discoveredTools: [{ name: 'research_create', inputSchema: {} }],
       },
     ],
     seedRegistry: [
@@ -295,11 +394,11 @@ test('re-enable does not clobber a manually-probed instance schema', async () =>
         scopeKey: `mcp:${seed.organizationId}:team:${seed.teamId}`,
         toolId: `mcp:${instanceId}:research_create`,
         label: 'Create research',
-        description: 'probed',
-        inputSchema: probedSchema,
+        description: 'legacy',
+        inputSchema: {},
         outputSchema: null,
         status: 'active',
-        metadata: {},
+        metadata: { requiresExplicitGrant: true },
         mcpInstanceId: instanceId,
       },
     ],
@@ -307,19 +406,13 @@ test('re-enable does not clobber a manually-probed instance schema', async () =>
 
   await ensureDeepWaterTeamInstance(asPrisma(fake), ownerContext(seed.organizationId), seed)
 
-  // No manifest stubs written over the probed schema; the custom endpoint stays.
-  assert.equal(fake.registry.length, 1)
-  assert.deepEqual(fake.registry[0]?.inputSchema, probedSchema)
+  assert.equal(fake.registry.some((entry) => entry.toolId.endsWith(':research_create')), false)
+  assert.equal(fake.registry.length, 5)
+  assert.equal(fake.instances[0]?.credentialRef, null)
   assert.deepEqual(fake.instances[0]?.transportConfig, {
     transport: 'http',
-    url: 'https://self-hosted.example.org/mcp',
+    url: DEEP_WATER_URL,
   })
-  // But the row is still flagged explicit-grant + active.
-  assert.equal(fake.registry[0]?.status, 'active')
-  assert.equal(
-    (fake.registry[0]?.metadata as { requiresExplicitGrant?: boolean })?.requiresExplicitGrant,
-    true,
-  )
 })
 
 test('disabling DeepWater removes the instance and its projected tools', async () => {
@@ -334,30 +427,37 @@ test('disabling DeepWater removes the instance and its projected tools', async (
   assert.equal(fake.registry.length, 0)
 })
 
-test('activation is a no-op when the DeepWater catalog entry is absent', async () => {
-  const seed = { organizationId: randomUUID(), teamId: randomUUID(), withCatalog: false }
-  const fake = makeFake(seed)
-
-  const instance = await ensureDeepWaterTeamInstance(asPrisma(fake), ownerContext(seed.organizationId), seed)
-
-  assert.equal(instance, null)
-  assert.equal(fake.instances.length, 0)
-  assert.equal(fake.registry.length, 0)
-})
-
-test('enable fails loudly when DEEP_WATER_MCP_URL is unset', async () => {
+test('disabling DeepWater never removes a private same-name connector', async () => {
   const seed = { organizationId: randomUUID(), teamId: randomUUID() }
   const fake = makeFake(seed)
-  const previous = process.env.DEEP_WATER_MCP_URL
-  delete process.env.DEEP_WATER_MCP_URL
-  try {
-    await assert.rejects(
-      ensureDeepWaterTeamInstance(asPrisma(fake), ownerContext(seed.organizationId), seed),
-      (error: unknown) =>
-        error instanceof DeepWaterMcpUrlUnsetError && error.code === 'DEEP_WATER_MCP_URL_UNSET',
-    )
-    assert.equal(fake.instances.length, 0)
-  } finally {
-    process.env.DEEP_WATER_MCP_URL = previous
-  }
+  await ensureDeepWaterTeamInstance(asPrisma(fake), ownerContext(seed.organizationId), seed)
+
+  const publicInstance = fake.instances[0]!
+  const privateCatalogId = randomUUID()
+  const privateInstanceId = randomUUID()
+  fake.catalogEntries.unshift({
+    ...fake.catalogEntries[0]!,
+    id: privateCatalogId,
+    integratedProductSlugs: [],
+    visibility: 'private',
+    ownerUserId: randomUUID(),
+    organizationId: seed.organizationId,
+  })
+  fake.instances.unshift({
+    ...publicInstance,
+    id: privateInstanceId,
+    catalogEntryId: privateCatalogId,
+  })
+  fake.registry.unshift(...fake.registry.map((entry) => ({
+    ...entry,
+    id: randomUUID(),
+    toolId: entry.toolId.replace(publicInstance.id, privateInstanceId),
+    mcpInstanceId: privateInstanceId,
+  })))
+
+  const result = await removeDeepWaterTeamInstance(asPrisma(fake), seed)
+
+  assert.equal(result.instanceId, publicInstance.id)
+  assert.deepEqual(fake.instances.map((row) => row.id), [privateInstanceId])
+  assert.ok(fake.registry.every((row) => row.mcpInstanceId === privateInstanceId))
 })

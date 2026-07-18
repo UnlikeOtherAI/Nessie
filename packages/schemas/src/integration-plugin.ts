@@ -128,6 +128,7 @@ export const IntegrationPluginManifestSchema = z.object({
       name: NonEmptyStringSchema,
       label: NonEmptyStringSchema,
       description: NonEmptyStringSchema,
+      inputSchema: z.record(z.string(), z.unknown()).optional(),
       privacyTier: IntegrationPluginPrivacyTierSchema,
       status: IntegrationPluginSurfaceStatusSchema,
     })),

@@ -104,9 +104,9 @@ const rowRequiresExplicitGrant = (metadata: unknown): boolean =>
  * Exposure rule for one registry entry.
  *
  * - Rows flagged `requiresExplicitGrant` are OFF by default: they surface ONLY
- *   when the per-agent policy carries an explicit allow (`=== true`). Scope
- *   never exposes them on its own — this is the "default off, per-agent allow"
- *   gate for DeepWater's team-scoped research tools.
+ *   when the per-agent policy carries an explicit allow (`=== true`) AND the
+ *   instance's install scope reaches the run. The explicit grant is an
+ *   additional gate, never a way around tenancy.
  * - For every other row an explicit verdict wins (true exposes, false hides);
  *   otherwise the instance's install scope decides. This is what makes an
  *   admin's org-scope install available to the whole org, and a member's
@@ -121,7 +121,9 @@ const isExposed = (
   requiresExplicitGrant: boolean,
 ): boolean => {
   const verdict = toolPolicy?.[registryEntryId]
-  if (requiresExplicitGrant) return verdict === true
+  if (requiresExplicitGrant) {
+    return verdict === true && scopeMatchesRun(instance.scopeType, instance.scopeId, ctx)
+  }
   if (verdict === true) return true
   if (verdict === false) return false
   return scopeMatchesRun(instance.scopeType, instance.scopeId, ctx)
