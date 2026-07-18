@@ -240,8 +240,9 @@ Claims:
 
 - the refresh token is an opaque 256-bit value; only its SHA-256 hash is stored (table `refresh_tokens`), never the raw value
 - TTL default 30 days, configurable via `NESSIE_AUTH_REFRESH_TOKEN_TTL`
-- **rotation:** each `POST /api/auth/refresh` revokes the presented token and issues a successor in the same `family_id`, returning a fresh access token + a new refresh cookie. The original login provider is preserved across refresh; org/role membership is re-resolved each time
-- **reuse detection:** presenting an already-revoked token (token theft) revokes the entire family, forcing re-login
+- **rotation:** each `POST /api/auth/refresh` atomically consumes the presented token and issues a deterministic HMAC-derived successor in the same `family_id`, returning a fresh access token + a new refresh cookie. Only hashes are stored; the server can reconstruct a successor only from the predecessor cookie and its auth secret. The original login provider is preserved across refresh; org/role membership is re-resolved each time
+- **lost-response/concurrency grace:** for 60 seconds after rotation, replaying a just-consumed predecessor reissues the current verified live descendant. This makes overlapping WebView lifecycles and lost HTTP responses idempotent without creating multiple live successors
+- **reuse detection:** presenting an already-revoked token after that 60-second grace, or presenting a token whose replacement chain is missing, cyclic, cross-family, or does not match the derived token hash, revokes the entire family and forces re-login
 - **revocation:** `DELETE /api/auth/session` (logout) is now **public** and cookie-driven — it revokes the token family server-side and clears the cookie, so a session can be killed even after the access token has expired. The access JWT itself remains stateless (verified by signature + `exp`)
 - cookie attributes: `HttpOnly`, `SameSite=None; Secure` in hosted/self-hosted (admin and API are different subdomains), `SameSite=Lax` over http in local (same origin via the Vite proxy)
 

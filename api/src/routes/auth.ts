@@ -31,12 +31,11 @@ import { loadSessionUserByEmail } from '../services/users.js'
 import { resolveUoaWorkspaceContext } from '../services/workspace-context.js'
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../lib/refresh-cookie.js'
 import {
+  consumeRefreshToken,
   issueRefreshToken,
   listUserSessions,
   revokeRefreshTokenByRaw,
   revokeUserSession,
-  rotateRefreshToken,
-  validateRefreshToken,
 } from '../services/refresh-token.js'
 import type { RouteDeps } from './types.js'
 
@@ -535,14 +534,19 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    const validated = await validateRefreshToken(prisma, rawToken)
-    if (!validated.ok) {
+    const consumed = await consumeRefreshToken(prisma, {
+      authSecret,
+      rawToken,
+      ttlSeconds: config.auth.refreshTokenTtlSeconds,
+      userAgent: request.headers['user-agent'] ?? null,
+    })
+    if (!consumed.ok) {
       clearRefreshCookie(reply, config)
       sendApiError(reply, 401, 'REFRESH_INVALID', 'Refresh token is invalid or expired')
       return reply
     }
 
-    const user = await prisma.user.findUnique({ where: { id: validated.userId } })
+    const user = await prisma.user.findUnique({ where: { id: consumed.userId } })
     if (!user) {
       clearRefreshCookie(reply, config)
       sendApiError(reply, 401, 'USER_NOT_FOUND', 'User no longer exists')
@@ -550,16 +554,16 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     }
 
     const session = await buildLocalSession(
-      validated.userId,
+      consumed.userId,
       [],
       {
-        providerId: validated.providerId,
-        providerType: validated.providerType as SessionTokenClaims['providerType'],
+        providerId: consumed.providerId,
+        providerType: consumed.providerType as SessionTokenClaims['providerType'],
       },
       // Preserve the login's session id across the rotation chain so the
       // access token's sid stays stable (accurate session list + current-device
       // flag, coherent session-scoped state).
-      validated.sessionId,
+      consumed.sessionId,
     )
     const verification = verifySessionToken(session.token, authSecret)
     if (!verification.ok) {
@@ -567,17 +571,11 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    const rotated = await rotateRefreshToken(prisma, {
-      previousId: validated.recordId,
-      familyId: validated.familyId,
-      userId: validated.userId,
-      sessionId: session.sessionId,
-      providerId: validated.providerId,
-      providerType: validated.providerType,
-      ttlSeconds: config.auth.refreshTokenTtlSeconds,
-      userAgent: request.headers['user-agent'] ?? null,
-    })
-    setRefreshCookie(reply, rotated.rawToken, config, config.auth.refreshTokenTtlSeconds)
+    const remainingTtlSeconds = Math.max(
+      1,
+      Math.ceil((consumed.expiresAt.getTime() - Date.now()) / 1000),
+    )
+    setRefreshCookie(reply, consumed.rawToken, config, remainingTtlSeconds)
 
     return createApiResponse({
       token: session.token,

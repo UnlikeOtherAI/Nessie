@@ -677,8 +677,9 @@ model User {
 // Rotating refresh tokens for the short-lived access JWT. Only the SHA-256 hash
 // of the opaque token is stored (never the raw value). Each login starts a
 // `familyId` chain; on every refresh the presented token is revoked and a
-// successor is issued in the same family. Presenting an already-revoked token
-// (reuse) revokes the whole family — the standard theft-detection guard.
+// deterministic HMAC successor is issued in the same family. A just-replaced
+// token can replay that same live successor during a 60-second response-loss
+// grace period; reuse after the grace period revokes the whole family.
 model RefreshToken {
   id           String    @id @default(uuid()) @db.Uuid
   userId       String    @map("user_id") @db.Uuid
