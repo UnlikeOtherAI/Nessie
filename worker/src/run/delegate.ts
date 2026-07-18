@@ -115,7 +115,7 @@ export const runDelegate = async (
       onTextDelta: async () => undefined,
       onBudgetExhausted: async () => undefined,
     },
-    executeTool: async (toolName, toolArgs) => {
+    executeTool: async (toolName, toolArgs, toolCallId) => {
       if (toolName === 'delegate') {
         return {
           inputSummary: summarizeToolInput(toolArgs),
@@ -124,7 +124,7 @@ export const runDelegate = async (
         }
       }
       if (mcpExposedNames.has(toolName)) {
-        return mcpView.dispatch(toolName, toolArgs)
+        return mcpView.dispatch(toolName, toolArgs, toolCallId)
       }
       if (ctx.allowedBuiltinIds.has(toolName)) {
         return ctx.executeBuiltinTool(toolName, toolArgs)

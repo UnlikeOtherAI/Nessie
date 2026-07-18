@@ -2,6 +2,15 @@ import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
+export {
+  currentStorageUsageBytes,
+  recordStorageStored,
+} from './storage-usage-ledger.js'
+export type {
+  StorageStoreOperation,
+  StorageUsageScope,
+} from './storage-usage-ledger.js'
+
 // Shared usage-ledger writers. Every billable interaction is recorded once,
 // here, with full attribution (who / where-from / how-much). Two ledgers:
 //   - token_ledger_events    — AI/LLM invocations (tokens + cost)
@@ -17,6 +26,7 @@ export type LedgerActorType = 'user' | 'agent' | 'service' | 'system'
 // only hard requirements; everything else is present when known.
 export type LedgerAttribution = {
   organizationId: string
+  userId?: string | null
   projectId?: string | null
   teamId?: string | null
   channelId?: string | null
@@ -25,6 +35,8 @@ export type LedgerAttribution = {
   taskId?: string | null
   runId?: string | null
   agentId?: string | null
+  agentKind?: 'personal_assistant' | 'shared' | null
+  systemComponent?: string | null
   actorId: string
   actorType?: LedgerActorType | null
   requestId?: string | null
@@ -233,17 +245,30 @@ const resolveProviderModelIds = async (
  */
 export const attributionFromActorContext = (
   actorContext: AuthorizedActionContext,
-  extra: { agentId?: string | null; runId?: string | null } = {},
+  extra: {
+    agentId?: string | null
+    agentKind?: 'personal_assistant' | 'shared' | null
+    runId?: string | null
+    systemComponent?: string | null
+  } = {},
 ): LedgerAttribution => ({
   organizationId: actorContext.tenant.organizationId,
+  userId:
+    actorContext.actionContext.effectiveUserId
+    ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null),
   projectId: actorContext.tenant.projectId ?? null,
-  teamId: actorContext.tenant.teamId ?? null,
+  teamId:
+    actorContext.tenant.teamId
+    ?? actorContext.actionContext.teamId
+    ?? null,
   channelId: actorContext.actionContext.channelId ?? null,
   threadId: actorContext.actionContext.threadId ?? null,
   sessionId: actorContext.actionContext.sessionId ?? null,
   taskId: actorContext.actionContext.taskId ?? null,
   runId: extra.runId ?? null,
   agentId: extra.agentId ?? actorContext.actionContext.agentId ?? null,
+  agentKind: extra.agentKind ?? null,
+  systemComponent: extra.systemComponent ?? null,
   actorId: actorContext.actor.actorId,
   actorType: actorContext.actor.actorType,
   requestId: actorContext.actionContext.requestId,
@@ -281,6 +306,7 @@ export const recordInferenceUsage = async (
       return {
         inferenceInvocationId: invocation.invocationId,
         organizationId: attribution.organizationId,
+        userId: attribution.userId ?? null,
         projectId: attribution.projectId ?? null,
         teamId: attribution.teamId ?? null,
         channelId: attribution.channelId ?? null,
@@ -318,6 +344,9 @@ export const recordInferenceUsage = async (
         metadata: {
           invocationId: invocation.invocationId,
           latencyMs: invocation.latencyMs,
+          ...(attribution.systemComponent
+            ? { systemComponent: attribution.systemComponent }
+            : {}),
           ...(invocation.metadata ?? {}),
         } as Prisma.InputJsonValue,
       }
@@ -395,6 +424,7 @@ export const recordConnectorUsage = async (
   await prisma.connectorUsageEvent.create({
     data: {
       organizationId: attribution.organizationId,
+      userId: attribution.userId ?? null,
       projectId: attribution.projectId ?? null,
       teamId: attribution.teamId ?? null,
       channelId: attribution.channelId ?? null,
@@ -418,7 +448,14 @@ export const recordConnectorUsage = async (
       success: event.success ?? null,
       latencyMs: event.latencyMs ?? null,
       occurredAt: new Date(),
-      metadata: (event.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+      metadata: (
+        attribution.systemComponent
+          ? {
+              ...(event.metadata ?? {}),
+              systemComponent: attribution.systemComponent,
+            }
+          : event.metadata ?? undefined
+      ) as Prisma.InputJsonValue | undefined,
     },
   })
 }
@@ -449,81 +486,4 @@ export const recordStorageTransferUsage = async (
       metadata: input.metadata ?? null,
     },
   })
-}
-
-// ─── Stored-bytes ledger ────────────────────────────────────────────────────
-// Distinct from the transfer ledger above (bytes moved) — this tracks bytes
-// AT REST. Each stored file emits a positive delta and each deletion a negative
-// one, so current usage for any scope is just SUM(delta_bytes) filtered by that
-// scope. Written exclusively by the FileService (@nessie/runtime).
-
-export type StorageUsageScope = {
-  organizationId: string
-  projectId?: string | null
-  teamId?: string | null
-  spaceId?: string | null
-  uploaderId?: string | null
-}
-
-export type StorageStoreOperation = 'store' | 'delete'
-
-export const recordStorageStored = async (
-  prisma: PrismaClient,
-  input: {
-    attribution: LedgerAttribution
-    scope: StorageUsageScope
-    // Signed byte delta. BigInt end-to-end so the +store / -delete round-trip
-    // is exact for the full BigInt sizeBytes range (no Number precision loss).
-    deltaBytes: bigint
-    operation: StorageStoreOperation
-    attachmentId?: string | null
-    metadata?: Record<string, unknown> | null
-  },
-): Promise<void> => {
-  const { attribution, scope } = input
-  await prisma.storageUsageEvent.create({
-    data: {
-      organizationId: scope.organizationId,
-      projectId: scope.projectId ?? null,
-      teamId: scope.teamId ?? null,
-      spaceId: scope.spaceId ?? null,
-      uploaderId: scope.uploaderId ?? null,
-      attachmentId: input.attachmentId ?? null,
-      deltaBytes: input.deltaBytes,
-      operation: input.operation,
-      actorId: attribution.actorId,
-      actorType: attribution.actorType ?? null,
-      requestId: attribution.requestId ?? null,
-      correlationId: attribution.correlationId ?? null,
-      occurredAt: new Date(),
-      metadata: (input.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
-    },
-  })
-}
-
-/** Sum of stored bytes for a scope (organizationId required; other dims filter). */
-export const currentStorageUsageBytes = async (
-  prisma: PrismaClient,
-  scope: StorageUsageScope,
-): Promise<bigint> => {
-  const where: Prisma.StorageUsageEventWhereInput = {
-    organizationId: scope.organizationId,
-  }
-  if (scope.projectId) {
-    where.projectId = scope.projectId
-  }
-  if (scope.teamId) {
-    where.teamId = scope.teamId
-  }
-  if (scope.spaceId) {
-    where.spaceId = scope.spaceId
-  }
-  if (scope.uploaderId) {
-    where.uploaderId = scope.uploaderId
-  }
-  const result = await prisma.storageUsageEvent.aggregate({
-    _sum: { deltaBytes: true },
-    where,
-  })
-  return result._sum.deltaBytes ?? 0n
 }

@@ -418,9 +418,12 @@ There is deliberately no direct-provider fallback.
 - **Fail loud and transition atomically.** When
   `LEDGER_DEEPWATER_MCP_URL` is unset the enable route returns
   `LEDGER_DEEPWATER_MCP_URL_UNSET` (503) instead of creating a dead or
-  direct-provider instance. A missing linked first-party public catalog returns
-  `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` (503), never `enabled=true` without a
-  connector. Every org/team enable or disable acquires a PostgreSQL
+  direct-provider instance. Missing `LEDGER_PROXY_TOKEN` or UOA signing/client
+  settings return `LEDGER_PROXY_TOKEN_UNSET` or
+  `LEDGER_IDENTITY_UNCONFIGURED`; a missing linked first-party public catalog
+  returns `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` (all 503). Nessie never
+  persists `enabled=true` without a callable, attributable connector. Every
+  org/team enable or disable acquires a PostgreSQL
   transaction-scoped advisory lock, serializing opposite transitions across
   API processes; connector rows and the enablement row mutate in that same
   transaction and roll back together. Teardown finds the instance through the
@@ -433,15 +436,61 @@ There is deliberately no direct-provider fallback.
   discovered tool-name set exactly matches the current Ledger contract; a
   legacy direct-provider contract is removed, reprojected, and must be
   explicitly re-granted.
-- **Deterministic contract, per-user Ledger auth.** The team instance has
-  `authMethod=bearer` and no default credential. Each user stores a dedicated
-  Ledger ProxyToken through the existing-instance **Store personal credential**
-  password form; `POST /api/mcp/instances/:id/secret` encrypts it and places it
-  as that user's override (`shared:false`). The UI clears plaintext before the
-  request and never reads it back. The normal credential chain then resolves the
-  same user override for their PA and their effective-user shared-agent runs.
-  Ledger uses that token to own jobs, enforce budget/network policy, audit, and
-  book the rate-card charge.
+- **Deterministic contract, signed delegated identity.** The team instance has
+  `authMethod=bearer` and resolves Nessie's shared `LEDGER_PROXY_TOKEN`. That
+  service credential authenticates the calling application only; it never
+  defines research ownership. Every DeepWater dispatch adds two independent,
+  short-lived signed headers:
+  `X-Nessie-Context` is an RS256 JWT with the originating
+  org/project/team/user/channel/thread/task/run/agent/request envelope. Its
+  user/org/team/agent/run fields are always non-null; named system work derives
+  stable UUID agent/run values from a persisted user/team origin and fails
+  before provider dispatch when that origin cannot be recovered.
+  `X-UOA-Delegation` is a five-minute RS256 access token obtained from UOA's
+  token-exchange endpoint for the linked `ProductAccountLink.uoaSub`. The
+  exchange assertion uses Nessie's existing UOA config-JWT key and domain-hash
+  bearer credential, has a maximum 60-second lifetime, and targets Ledger as
+  its resource. The stable UOA subject is required; `active` UOA org/team is
+  included only when the SSO account actually has a selected workspace and is
+  otherwise omitted. Nessie's signed local organization/team remain the
+  authoritative research and spend scope, so the two ID namespaces are never
+  compared or substituted. Ledger verifies both assertions before assigning a
+  job to the UOA subject. DeepWater's product identity mode is `uoa_sso` even
+  though its MCP transport uses the shared Ledger bearer, ensuring first login
+  creates the per-user account link. A missing UOA link fails DeepWater closed.
+  The generic secret REST route and
+  PA `connector_set_secret` refuse managed DeepWater instances, the Connectors
+  UI replaces normal catalog lifecycle/install/credential/probe controls with
+  an Integrations-managed notice, and migration removes old per-user overrides
+  so none can shadow the service token. The PA
+  `connector_test` tool likewise explains that the instance is
+  integration-managed instead of sending a probe without the required
+  per-user signed identity.
+- **Research retries preserve provider idempotency.** Each DeepWater dispatch
+  forwards the model provider's stable `tool_call_id` in the signed context.
+  `research_start` rejects a missing ID, and retrying the same logical tool call
+  reuses the same value instead of generating a new research job.
+- **All Nessie inference uses the same Ledger chokepoint.** In hosted
+  production, `NESSIE_MODEL_BASE_URL` is
+  `https://ledger.unlikeotherai.com/v1/openai` and
+  `NESSIE_MODEL_API_KEY` is a Ledger ProxyToken. This is the configured
+  chokepoint, not a forced provider: the runtime rewrites the final path to
+  Ledger's generic `/v1/:serviceId/*` adapter for the actual OpenAI, Kimi,
+  MiniMax, or custom stage. The shared model client and
+  agentic inference paths attach a fresh `X-Nessie-Context` and, when the
+  effective user is UOA-linked, `X-UOA-Delegation` to chat, streaming, raw
+  designer, and embedding calls. Provider-record URLs cannot override the
+  deployment-wide base URL. Nessie's local token and connector ledgers also
+  persist `user_id` separately from `actor_id`, because an agent is often the
+  actor while a human is the effective caller. Every Ledger request requires
+  non-null user/org/team/agent/run fields. Knowledge embedding/extraction jobs
+  persist that origin in their queue payload; for a teamless project space the
+  API carries the authenticated request's active team rather than guessing from
+  project membership. Each Fastify request owns a separate async context rooted
+  at `onRequest`, so interleaved uploads cannot borrow another request's user or
+  team. A request with no real team returns
+  `KNOWLEDGE_INFERENCE_ORIGIN_REQUIRED`, and malformed legacy jobs fail
+  validation before storage or model access.
 - `deep_water_run_update` (the builtin that writes the durable
   `product_integration_runs` record) is **not PA-only** — any *granted* agent
   (PA or shared) writes the run record back. Its tenancy is taken strictly from
@@ -451,7 +500,9 @@ There is deliberately no direct-provider fallback.
   prompt-injected `runId`/`knowledgePageId` cannot mutate another run or corrupt
   billing. Ledger terminal MCP responses expose the immutable booked rate-card
   `cost: { amount, currency }`; the handoff copies those exact values when
-  present and otherwise leaves Nessie's mirrored cost empty. This booked charge
+  present and otherwise leaves Nessie's mirrored cost empty. Reconciliation
+  always books it to the run's immutable launch `requestedByUserId`, even when
+  a different granted agent or user submits the terminal update. This booked charge
   is not a provider-invoice actual and complex runs may reconcile higher
   upstream without changing the value Nessie mirrors. Nessie never estimates
   cost or treats its cost-free MCP dispatch telemetry as the booked charge.

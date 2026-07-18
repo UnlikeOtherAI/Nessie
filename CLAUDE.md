@@ -154,16 +154,28 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   (`=== true`) and the instance scope reaches the run; a grant never bypasses
   tenancy, and an absent/inherited verdict is a denial. This is unchanged for
   other connectors (scope still exposes them). First-party team-enable stands in
-  for the manual install + admin-approve gate. The shared instance carries no
-  default token: each caller stores a dedicated Ledger ProxyToken through the
-  encrypted existing-instance credential form, and the per-user override
-  resolves at dispatch for both PA and shared runs. Ledger owns job isolation,
-  budget enforcement, audit, and rate-card charge booking. `deep_water_run_update`
+  for the manual install + admin-approve gate. The shared instance resolves
+  `LEDGER_PROXY_TOKEN`; personal DeepWater overrides are forbidden. Every
+  dispatch also carries a fresh RS256 `X-Nessie-Context` (non-null
+  user/org/team/agent/run)
+  and the linked user's short-lived `X-UOA-Delegation`, obtained through UOA
+  token exchange. Ledger therefore authenticates Nessie independently from the
+  human whose research and spend it owns. Setting
+  `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` applies the
+  same signed attribution to all model and embedding calls; runtime routing
+  rewrites the final path to Ledger's `/v1/:serviceId/*` adapter for the
+  selected OpenAI, Kimi, MiniMax, or custom provider. User-triggered background
+  jobs persist their user/team origin and named system agent/run, and fail
+  before model dispatch if it is unavailable. DeepWater research launch
+  retries reuse the provider's stable `tool_call_id`. Ledger owns job isolation,
+  budget enforcement, audit, and rate-card charge booking.
+  `deep_water_run_update`
   is not PA-only — any *granted* agent can write back the durable Nessie run
   record (same team + thread; `knowledgePageId` validated against the org) and
   mirrors Ledger's terminal amount and currency exactly as the immutable booked
-  rate-card charge. It is not a provider-invoice actual and complex runs may
-  reconcile higher upstream. Each org/team transition is cross-process
+  rate-card charge assigned to the launch run's `requestedByUserId`, never the
+  user who delivers a later update. It is not a provider-invoice actual and
+  complex runs may reconcile higher upstream. Each org/team transition is cross-process
   serialized with a PostgreSQL transaction-scoped advisory lock; connector
   rows and the enablement toggle mutate in one transaction and roll back
   together. A missing linked first-party catalog fails enablement with

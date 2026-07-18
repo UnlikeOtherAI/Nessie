@@ -40,7 +40,11 @@ const resolveQueryEmbedding = async (
   try {
     return await context.modelClient.embed(query, {
       model: KNOWLEDGE_EMBEDDING_MODEL,
-      usage: attributionFromActorContext(context.actorContext),
+      usage: attributionFromActorContext(context.actorContext, {
+        agentId: context.agentId,
+        agentKind: context.agentKind,
+        runId: context.run.id,
+      }),
     })
   } catch (error) {
     console.warn('kb_search: query embedding failed, degrading to lexical-only', error)

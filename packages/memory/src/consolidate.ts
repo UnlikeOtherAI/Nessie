@@ -288,6 +288,15 @@ export const consolidateRunMemories = async (
     config,
   )
   const candidates = selectConsolidationCandidates(run, messages)
+  const originatingUserId = lastMessageByRole(messages, 'user')?.user_id
+  if (!originatingUserId || !run.team_id) {
+    return {
+      candidateCount: candidates.length,
+      captured: [],
+      duplicateCount: 0,
+      skippedReason: 'missing_ledger_attribution',
+    }
+  }
   const captured: ConsolidatedRunMemory[] = []
   let duplicateCount = 0
 
@@ -311,9 +320,15 @@ export const consolidateRunMemories = async (
         organizationId: run.organization_id,
         ownerId: run.agent_id,
         ownerType: 'agent',
+        userId: originatingUserId,
         projectId: run.project_id ?? undefined,
-        teamId: run.team_id ?? undefined,
+        teamId: run.team_id,
         threadId: run.thread_id,
+        runId: input.runId,
+        agentId: run.agent_id,
+        actorId: run.agent_id,
+        actorType: 'agent',
+        requestId: `memory-consolidation:${input.runId}`,
         visibility: 'channel',
       },
       config,

@@ -71,7 +71,7 @@ export const runKbDraftWriteTool = async (
   assertValidLabels(input.labels)
 
   const organizationId = String(context.channel.organizationId)
-  const provider = createWorkerKnowledgeProvider(context.prisma)
+  const provider = createWorkerKnowledgeProvider(context)
   const principal = buildSpaceViewerPrincipal(context)
   const author = resolveAuthor(context)
 
@@ -166,7 +166,7 @@ export const runKbFileTool = async (
   assertValidLabels(input.labels)
 
   const organizationId = String(context.channel.organizationId)
-  const provider = createWorkerKnowledgeProvider(context.prisma)
+  const provider = createWorkerKnowledgeProvider(context)
   const principal = buildSpaceViewerPrincipal(context)
 
   const page = await provider.getPage(organizationId, input.pageId)
@@ -239,7 +239,7 @@ export const runKbPublishRequestTool = async (
   input: { pageId: string; reason?: string },
 ): Promise<ToolExecutionResult> => {
   const organizationId = String(context.channel.organizationId)
-  const provider = createWorkerKnowledgeProvider(context.prisma)
+  const provider = createWorkerKnowledgeProvider(context)
   const principal = buildSpaceViewerPrincipal(context)
 
   const page = await provider.getPage(organizationId, input.pageId)

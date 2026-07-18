@@ -7,6 +7,7 @@ const ORG_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d401'
 const RUN_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d801'
 const TEAM_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d501'
 const USER_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d301'
+const UPDATER_USER_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d302'
 const CONNECTOR_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d701'
 const CHANNEL_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d812'
 const THREAD_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d814'
@@ -90,7 +91,7 @@ const makeContext = (
   const context = {
     actorContext: {
       actionContext: {},
-      actor: { actorId: USER_ID, actorType: 'user' },
+      actor: { actorId: UPDATER_USER_ID, actorType: 'user' },
       tenant: {
         organizationId: ORG_ID,
         projectId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d902',
@@ -154,6 +155,10 @@ test('deep_water_run_update writes terminal status projection', async () => {
     (ledgerEvents[0] as { data: { costAmount: number; operation: string; unitType: string } })
       .data.unitType,
     'sources',
+  )
+  assert.equal(
+    (ledgerEvents[0] as { data: { userId: string | null } }).data.userId,
+    USER_ID,
   )
 })
 

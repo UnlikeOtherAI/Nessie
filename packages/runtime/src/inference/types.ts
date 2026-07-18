@@ -7,6 +7,8 @@ export type ModelProviderConfig = {
   baseUrl?: string
   modelName?: string
   provider: ModelProviderName
+  /** Ledger adapter id; defaults to provider for built-in connectors. */
+  serviceId?: string
 }
 
 export type ProviderHealthStatus =
@@ -117,6 +119,7 @@ export type ProviderInvocationRequest = {
   messages: ProviderMessage[]
   maxOutputTokens?: number
   metadata?: Record<string, unknown>
+  requestHeaders?: Record<string, string>
   model: string
   // Stable key grouping requests that share a prefix (system prompt + tools), so
   // providers route them to the same prompt cache for higher hit rates.
@@ -149,6 +152,7 @@ export type ProviderEmbeddingRequest = {
   correlationId?: string
   input: string
   metadata?: Record<string, unknown>
+  requestHeaders?: Record<string, string>
   model?: string
 }
 
@@ -162,6 +166,7 @@ export type ProviderEmbeddingBatchRequest = {
   correlationId?: string
   input: string[]
   metadata?: Record<string, unknown>
+  requestHeaders?: Record<string, string>
   model?: string
 }
 
@@ -183,7 +188,10 @@ export interface ProviderConnector {
   close(): void
   embed?(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResult>
   embedBatch?(request: ProviderEmbeddingBatchRequest): Promise<ProviderEmbeddingBatchResult>
-  fetchCompletion(body: Record<string, unknown>): Promise<Response>
+  fetchCompletion(
+    body: Record<string, unknown>,
+    requestHeaders?: Record<string, string>,
+  ): Promise<Response>
   getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot>
   getProviderMeta(): Promise<{
     displayName: string
@@ -227,6 +235,7 @@ export type InferenceRequest = {
   model?: string
   promptCacheKey?: string
   requestId?: string
+  requestHeaders?: Record<string, string>
   responseFormat?: JsonObjectResponseFormat
   temperature?: number
   tools?: ToolSchemaDescriptor[]
@@ -256,6 +265,7 @@ export type InferenceEmbedRequest = {
   metadata?: Record<string, unknown>
   model?: string
   requestId?: string
+  requestHeaders?: Record<string, string>
 }
 
 export interface InferenceService {
@@ -269,7 +279,10 @@ export interface InferenceService {
     input: string[],
     request?: InferenceEmbedRequest,
   ): Promise<ProviderEmbeddingBatchResult>
-  fetchCompletion(body: Record<string, unknown>): Promise<Response>
+  fetchCompletion(
+    body: Record<string, unknown>,
+    requestHeaders?: Record<string, string>,
+  ): Promise<Response>
   getCapabilities(model?: string): Promise<CapabilityResolution>
   run(request: InferenceRequest): Promise<InferenceResult>
   stream?(

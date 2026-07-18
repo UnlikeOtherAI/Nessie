@@ -131,10 +131,26 @@ export type ExecutionEnvironmentTerminateJobPayload = z.infer<
 // Idempotency key: kb-embed:<pageId>:<versionId>.
 export const KNOWLEDGE_EMBED_TOPIC = 'knowledge.embed'
 
+export const KnowledgeInferenceOriginSchema = z.object({
+  userId: z.string().uuid(),
+  teamId: z.string().uuid(),
+  agentId: z.string().uuid(),
+  runId: z.string().uuid(),
+  actorId: NonEmptyStringSchema,
+  actorType: z.enum(['user', 'agent', 'service', 'system']),
+  requestId: NonEmptyStringSchema,
+  correlationId: NonEmptyStringSchema.optional(),
+  systemComponent: NonEmptyStringSchema.optional(),
+})
+export type KnowledgeInferenceOrigin = z.infer<
+  typeof KnowledgeInferenceOriginSchema
+>
+
 export const KnowledgeEmbedJobPayloadSchema = z.object({
   organizationId: z.string().uuid(),
   pageId: z.string().uuid(),
   versionId: z.string().uuid(),
+  origin: KnowledgeInferenceOriginSchema,
 })
 export type KnowledgeEmbedJobPayload = z.infer<typeof KnowledgeEmbedJobPayloadSchema>
 
@@ -161,6 +177,7 @@ export const KnowledgeExtractJobPayloadSchema = z.object({
   pageId: z.string().uuid(),
   versionId: z.string().uuid(),
   attachmentId: z.string().uuid(),
+  origin: KnowledgeInferenceOriginSchema,
 })
 export type KnowledgeExtractJobPayload = z.infer<typeof KnowledgeExtractJobPayloadSchema>
 

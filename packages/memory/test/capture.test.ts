@@ -77,6 +77,7 @@ test('captureThought scopes duplicate detection to the resolved audience', async
 
 test('captureThought writes canonical audience fields for private user memory', async () => {
   const queries: { params: unknown[] | undefined; sql: string }[] = []
+  const usageCalls: unknown[] = []
 
   const pool = createPoolStub((sql, params) => {
     queries.push({ params, sql })
@@ -107,17 +108,57 @@ test('captureThought writes canonical audience fields for private user memory', 
     {
       content: 'I prefer to keep release notes short unless there is a migration.',
       organizationId: '33333333-3333-3333-3333-333333333333',
+      projectId: '55555555-5555-5555-5555-555555555555',
+      teamId: '66666666-6666-6666-6666-666666666666',
+      channelId: '77777777-7777-7777-7777-777777777777',
+      threadId: '88888888-8888-8888-8888-888888888888',
+      runId: '99999999-9999-9999-9999-999999999999',
+      agentId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      agentKind: 'personal_assistant',
       ownerId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
       ownerType: 'user',
+      userId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      requestId: 'request-1',
+      correlationId: 'correlation-1',
       visibility: 'private',
     },
     {
-      modelClient: createModelClientStub(),
+      modelClient: {
+        chatJson: async (_messages, options) => {
+          usageCalls.push(options?.usage)
+          return {}
+        },
+        embed: async (_text, options) => {
+          usageCalls.push(options?.usage)
+          return [0.1, 0.2, 0.3]
+        },
+      },
       pool,
     },
   )
 
   assert.equal(result.isDuplicate, false)
+  assert.equal(usageCalls.length, 3)
+  for (const usage of usageCalls) {
+    assert.deepEqual(usage, {
+      organizationId: '33333333-3333-3333-3333-333333333333',
+      userId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      projectId: '55555555-5555-5555-5555-555555555555',
+      teamId: '66666666-6666-6666-6666-666666666666',
+      channelId: '77777777-7777-7777-7777-777777777777',
+      threadId: '88888888-8888-8888-8888-888888888888',
+      sessionId: null,
+      taskId: null,
+      runId: '99999999-9999-9999-9999-999999999999',
+      actorId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      actorType: 'user',
+      agentId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      agentKind: 'personal_assistant',
+      requestId: 'request-1',
+      correlationId: 'correlation-1',
+      systemComponent: 'memory-capture',
+    })
+  }
   assert.ok(
     queries.some(
       (query) =>

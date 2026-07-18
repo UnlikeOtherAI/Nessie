@@ -75,6 +75,15 @@ export const registerThoughtRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       visibility: captureAudience.audience.visibility,
       sensitivityTier: body.sensitivityTier,
       importance: body.importance,
+      sessionId: actorContext.actionContext.sessionId,
+      taskId: actorContext.actionContext.taskId,
+      runId: undefined,
+      agentId: actorContext.actionContext.agentId,
+      actorId: actorContext.actor.actorId,
+      actorType: actorContext.actor.actorType,
+      requestId: actorContext.actionContext.requestId,
+      correlationId: actorContext.actionContext.correlationId,
+      systemComponent: 'memory-capture',
     })
 
     return reply.code(201).send(createApiResponse(result))
@@ -117,6 +126,19 @@ export const registerThoughtRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         sessionId: actorContext.actionContext.sessionId,
         channelId:
           actorContext.actionContext.channelId ?? actorContext.tenant.channelId,
+        projectId: actorContext.tenant.projectId ?? null,
+        teamId:
+          actorContext.tenant.teamId
+          ?? actorContext.actionContext.teamId
+          ?? null,
+        threadId: actorContext.actionContext.threadId ?? null,
+        taskId: actorContext.actionContext.taskId ?? null,
+        agentId: actorContext.actionContext.agentId ?? null,
+        actorId: actorContext.actor.actorId,
+        actorType: actorContext.actor.actorType,
+        requestId: actorContext.actionContext.requestId,
+        correlationId: actorContext.actionContext.correlationId ?? null,
+        systemComponent: 'memory-search',
       })
       return createApiResponse(results)
     } catch (err) {

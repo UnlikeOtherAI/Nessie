@@ -1,6 +1,9 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { Prisma } from '@prisma/client'
-import { isKnowledgeConflictError } from '@nessie/knowledge'
+import {
+  isKnowledgeConflictError,
+  KnowledgeInferenceOriginError,
+} from '@nessie/knowledge'
 import { sendApiError } from '../lib/api.js'
 
 type KnowledgeMutationErrorInput = {
@@ -23,6 +26,15 @@ export const sendKnowledgeMutationError = (
   error: unknown,
   input: KnowledgeMutationErrorInput,
 ) => {
+  if (error instanceof KnowledgeInferenceOriginError) {
+    request.log.warn({ err: error }, 'Knowledge inference origin is unavailable')
+    return sendApiError(
+      reply,
+      400,
+      error.code,
+      'Knowledge indexing requires an originating user and active team context',
+    )
+  }
   if (isKnowledgeConflictError(error)) {
     request.log.warn({ err: error }, 'Knowledge base mutation conflict')
     return sendApiError(reply, 409, 'KNOWLEDGE_MUTATION_CONFLICT', error.message)

@@ -37,6 +37,7 @@ export type McpToolsetView = {
   dispatch: (
     exposedName: string,
     args: Record<string, unknown>,
+    toolCallId?: string,
   ) => Promise<AgenticToolResult>
 }
 
@@ -231,7 +232,11 @@ export const buildDeferredView = (
       : 'No loaded tools to drop.'
   }
 
-  const dispatch: McpToolsetView['dispatch'] = async (exposedName, args) => {
+  const dispatch: McpToolsetView['dispatch'] = async (
+    exposedName,
+    args,
+    toolCallId,
+  ) => {
     if (exposedName === 'mcp_find_tools') {
       const query = String(args['query'] ?? '')
       return { inputSummary: `query="${truncate(query, 80)}"`, output: findTools(query), success: true }
@@ -246,7 +251,7 @@ export const buildDeferredView = (
     }
     // Real tools dispatch whether or not their schema is currently loaded —
     // a model that remembers a name from mcp_find_tools shouldn't be blocked.
-    return baseDispatch(exposedName, args)
+    return baseDispatch(exposedName, args, toolCallId)
   }
 
   return { descriptors, handledNames, dispatch }

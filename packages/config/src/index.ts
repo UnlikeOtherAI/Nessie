@@ -39,6 +39,7 @@ export type ModelProvider = z.infer<typeof ModelProviderSchema>
 export const ModelConfigSchema = z.object({
   provider: ModelProviderSchema,
   apiKey: z.string().min(1).optional(),
+  baseUrl: z.string().url().optional(),
   maxTokens: z.number().int().positive().default(2048),
   modelName: z.string().min(1).optional(),
   temperature: z.number().min(0).max(2).default(0.2),
@@ -165,6 +166,7 @@ export const ConfigEnvMap = {
   NESSIE_QUEUE_PROJECT_ID: 'queue.projectId',
   NESSIE_MODEL_PROVIDER: 'model.provider',
   NESSIE_MODEL_API_KEY: 'model.apiKey',
+  NESSIE_MODEL_BASE_URL: 'model.baseUrl',
   NESSIE_MODEL_MAX_TOKENS: 'model.maxTokens',
   NESSIE_MODEL_NAME: 'model.modelName',
   NESSIE_MODEL_BACKENDS: 'model.backends',

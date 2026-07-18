@@ -40,6 +40,7 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       channelId: query['channelId'],
       runId: query['runId'],
       agentId: query['agentId'],
+      userId: query['userId'],
       actorId: query['actorId'],
       provider: query['provider'],
       model: query['model'],
@@ -60,6 +61,7 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const summary = await getConnectorUsageSummary(prisma, actorContext.tenant.organizationId, {
       connectorType: query['connectorType'],
       agentId: query['agentId'],
+      userId: query['userId'],
       channelId: query['channelId'],
       connectorId: query['connectorId'],
       from: query['from'],

@@ -88,6 +88,14 @@ test('executeRunMemoryConsolidationJob runs bounded consolidation capture', asyn
             role: 'assistant',
             user_id: null,
           },
+          {
+            agent_id: null,
+            content: 'Keep the rollout invite-only while capacity is limited.',
+            created_at: '2026-05-31T09:59:00.000Z',
+            id: '88888888-8888-8888-8888-888888888888',
+            role: 'user',
+            user_id: '77777777-7777-7777-7777-777777777777',
+          },
         ],
       }
     }

@@ -10,9 +10,9 @@ import type { McpServerInstanceRecord } from '../../../facades/mcp-instances/hoo
 
 type InstanceListProps = {
   instances: McpServerInstanceRecord[]
-  onCredentials: (instance: McpServerInstanceRecord) => void
+  onCredentials?: (instance: McpServerInstanceRecord) => void
   onSelect: (instance: McpServerInstanceRecord) => void
-  onTest: (instance: McpServerInstanceRecord) => void
+  onTest?: (instance: McpServerInstanceRecord) => void
   selectedId?: string
   testingId?: string
 }
@@ -84,28 +84,32 @@ export const InstanceList = ({
             </StatusPill>
           </button>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              className={[
-                'admin-button rounded-md border border-[color:var(--sep)]',
-                'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
-                'disabled:cursor-not-allowed disabled:opacity-40',
-              ].join(' ')}
-              disabled={testingId === instance.id}
-              onClick={() => onTest(instance)}
-              type="button"
-            >
-              {testingId === instance.id ? 'Probing…' : 'Test & discover'}
-            </button>
-            <button
-              className={[
-                'admin-button rounded-md border border-[color:var(--sep)]',
-                'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
-              ].join(' ')}
-              onClick={() => onCredentials(instance)}
-              type="button"
-            >
-              Credentials
-            </button>
+            {onTest ? (
+              <button
+                className={[
+                  'admin-button rounded-md border border-[color:var(--sep)]',
+                  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
+                  'disabled:cursor-not-allowed disabled:opacity-40',
+                ].join(' ')}
+                disabled={testingId === instance.id}
+                onClick={() => onTest(instance)}
+                type="button"
+              >
+                {testingId === instance.id ? 'Probing…' : 'Test & discover'}
+              </button>
+            ) : null}
+            {onCredentials ? (
+              <button
+                className={[
+                  'admin-button rounded-md border border-[color:var(--sep)]',
+                  'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
+                ].join(' ')}
+                onClick={() => onCredentials(instance)}
+                type="button"
+              >
+                Credentials
+              </button>
+            ) : null}
           </div>
         </div>
       ))}

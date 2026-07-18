@@ -38,9 +38,10 @@ test('runAgenticLoop executes tool calls and feeds tool results into the next tu
       },
       onBudgetExhausted: async () => {},
     },
-    executeTool: async (toolName, args) => {
+    executeTool: async (toolName, args, toolCallId) => {
       assert.equal(toolName, 'document_read')
       assert.deepEqual(args, { query: 'docs/provider-system-and-frontend-architecture.md' })
+      assert.equal(toolCallId, 'call_1')
       return {
         inputSummary: 'document query',
         output: 'Architecture guidance',

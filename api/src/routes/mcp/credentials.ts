@@ -3,7 +3,11 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
-import { getInstance, MCP_INSTANCE_ERROR_CODES } from '@nessie/mcp-manage'
+import {
+  getInstance,
+  isManagedDeepWaterInstance,
+  MCP_INSTANCE_ERROR_CODES,
+} from '@nessie/mcp-manage'
 import {
   deleteOverride,
   listOverrides,
@@ -68,6 +72,21 @@ export const registerMcpCredentialRoutes = (
     )
     if (!instance) {
       sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
+      return reply
+    }
+    if (
+      await isManagedDeepWaterInstance(
+        prisma,
+        actorContext.tenant.organizationId,
+        instanceId,
+      )
+    ) {
+      sendApiError(
+        reply,
+        409,
+        'DEEP_WATER_MANAGED_CREDENTIAL',
+        'Deep Water uses Nessie-managed Ledger authentication and does not accept credential overrides.',
+      )
       return reply
     }
 

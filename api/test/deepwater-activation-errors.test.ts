@@ -8,6 +8,8 @@ import {
   ensureDeepWaterTeamInstance,
   LedgerDeepWaterCatalogUnavailableError,
   LedgerDeepWaterMcpUrlUnsetError,
+  LedgerIdentityConfigurationUnsetError,
+  LedgerProxyTokenUnsetError,
 } from '../src/services/deepwater-activation.js'
 
 const scope = {
@@ -59,5 +61,49 @@ test('enable fails loudly when LEDGER_DEEPWATER_MCP_URL is unset', async () => {
   } finally {
     if (previous === undefined) delete process.env.LEDGER_DEEPWATER_MCP_URL
     else process.env.LEDGER_DEEPWATER_MCP_URL = previous
+  }
+})
+
+test('enable fails loudly when LEDGER_PROXY_TOKEN is unset', async () => {
+  const previousUrl = process.env.LEDGER_DEEPWATER_MCP_URL
+  const previousToken = process.env.LEDGER_PROXY_TOKEN
+  process.env.LEDGER_DEEPWATER_MCP_URL = 'https://ledger.example.com/deepwater'
+  delete process.env.LEDGER_PROXY_TOKEN
+  try {
+    await assert.rejects(
+      ensureDeepWaterTeamInstance(fakePrisma('deep-water-catalog'), actorContext, scope),
+      (error: unknown) =>
+        error instanceof LedgerProxyTokenUnsetError
+        && error.code === 'LEDGER_PROXY_TOKEN_UNSET',
+    )
+  } finally {
+    if (previousUrl === undefined) delete process.env.LEDGER_DEEPWATER_MCP_URL
+    else process.env.LEDGER_DEEPWATER_MCP_URL = previousUrl
+    if (previousToken === undefined) delete process.env.LEDGER_PROXY_TOKEN
+    else process.env.LEDGER_PROXY_TOKEN = previousToken
+  }
+})
+
+test('enable fails loudly when signed Ledger identity is unconfigured', async () => {
+  const previousUrl = process.env.LEDGER_DEEPWATER_MCP_URL
+  const previousToken = process.env.LEDGER_PROXY_TOKEN
+  const previousDomain = process.env.UOA_DOMAIN
+  process.env.LEDGER_DEEPWATER_MCP_URL = 'https://ledger.example.com/deepwater'
+  process.env.LEDGER_PROXY_TOKEN = 'service-token'
+  delete process.env.UOA_DOMAIN
+  try {
+    await assert.rejects(
+      ensureDeepWaterTeamInstance(fakePrisma('deep-water-catalog'), actorContext, scope),
+      (error: unknown) =>
+        error instanceof LedgerIdentityConfigurationUnsetError
+        && error.code === 'LEDGER_IDENTITY_UNCONFIGURED',
+    )
+  } finally {
+    if (previousUrl === undefined) delete process.env.LEDGER_DEEPWATER_MCP_URL
+    else process.env.LEDGER_DEEPWATER_MCP_URL = previousUrl
+    if (previousToken === undefined) delete process.env.LEDGER_PROXY_TOKEN
+    else process.env.LEDGER_PROXY_TOKEN = previousToken
+    if (previousDomain === undefined) delete process.env.UOA_DOMAIN
+    else process.env.UOA_DOMAIN = previousDomain
   }
 })

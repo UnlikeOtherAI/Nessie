@@ -153,9 +153,23 @@ export const retrieveRelevantMemories = async (
         includeReasoning: false,
         limit: MAX_MEMORY_RESULTS,
         organizationId: context.channel.organizationId,
+        projectId: payload.actorContext.tenant.projectId ?? null,
         query: prompt,
         runningAgentId: context.agent.id,
         sessionId: payload.actorContext.actionContext.sessionId,
+        teamId:
+          payload.actorContext.tenant.teamId
+          ?? payload.actorContext.actionContext.teamId
+          ?? null,
+        threadId: context.run.threadId,
+        taskId: context.task.id,
+        runId: context.run.id,
+        agentId: context.agent.id,
+        agentKind: context.agent.agentKind,
+        actorId: payload.actorContext.actor.actorId,
+        actorType: payload.actorContext.actor.actorType,
+        requestId: payload.actorContext.actionContext.requestId,
+        correlationId: payload.actorContext.actionContext.correlationId ?? null,
         userId: effectiveUserId ?? null,
       },
       deps.searchConfig,

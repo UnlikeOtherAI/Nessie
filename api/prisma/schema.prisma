@@ -2343,6 +2343,7 @@ model TokenLedgerEvent {
   /// a crash a no-op instead of double-counting cost. Nullable for legacy rows.
   inferenceInvocationId String?            @unique @map("inference_invocation_id")
   organizationId        String             @map("organization_id") @db.Uuid
+  userId                String?            @map("user_id") @db.Uuid
   projectId             String?            @map("project_id") @db.Uuid
   teamId                String?            @map("team_id") @db.Uuid
   channelId             String?            @map("channel_id") @db.Uuid
@@ -2383,6 +2384,7 @@ model TokenLedgerEvent {
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, provider, model, occurredAt(sort: Desc)])
   @@index([organizationId, agentId, occurredAt(sort: Desc)])
+  @@index([organizationId, userId, occurredAt(sort: Desc)])
   @@index([organizationId, actorId, occurredAt(sort: Desc)])
   @@index([organizationId, projectId, occurredAt(sort: Desc)])
   @@index([organizationId, teamId, occurredAt(sort: Desc)])
@@ -2488,6 +2490,7 @@ model ConnectorUsageEvent {
   id             String         @id @default(uuid()) @db.Uuid
   occurredAt     DateTime       @map("occurred_at") @db.Timestamptz(6)
   organizationId String         @map("organization_id") @db.Uuid
+  userId         String?        @map("user_id") @db.Uuid
   projectId      String?        @map("project_id") @db.Uuid
   teamId         String?        @map("team_id") @db.Uuid
   channelId      String?        @map("channel_id") @db.Uuid
@@ -2515,6 +2518,7 @@ model ConnectorUsageEvent {
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, connectorType, occurredAt(sort: Desc)])
   @@index([organizationId, agentId, occurredAt(sort: Desc)])
+  @@index([organizationId, userId, occurredAt(sort: Desc)])
   @@index([organizationId, channelId, occurredAt(sort: Desc)])
   @@index([organizationId, connectorId, occurredAt(sort: Desc)])
   @@index([organizationId, runId, occurredAt(sort: Desc)])

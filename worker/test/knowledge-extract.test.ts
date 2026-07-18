@@ -39,6 +39,16 @@ const VERSION_ID = '66666666-6666-6666-6666-666666666666'
 
 const PAYLOAD = {
   organizationId: PAGE.organizationId,
+  origin: {
+    actorId: '77777777-7777-4777-8777-777777777777',
+    actorType: 'user' as const,
+    agentId: '88888888-8888-4888-8888-888888888888',
+    requestId: 'knowledge-file-request-1',
+    runId: '99999999-9999-4999-8999-999999999999',
+    systemComponent: 'knowledge-file-indexer',
+    teamId: '33333333-3333-3333-3333-333333333333',
+    userId: '77777777-7777-4777-8777-777777777777',
+  },
   pageId: PAGE.id,
   versionId: VERSION_ID,
   attachmentId: ATTACHMENT_ID,

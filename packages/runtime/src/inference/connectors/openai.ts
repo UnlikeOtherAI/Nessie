@@ -52,10 +52,11 @@ export const createOpenAiLikeConnector = (
 
   const invokeRequest = async (
     body: Record<string, unknown>,
+    requestHeaders?: Record<string, string>,
   ): Promise<Response> => {
     const response = await fetch(`${baseUrl}/chat/completions`, {
       body: JSON.stringify(body),
-      headers,
+      headers: { ...requestHeaders, ...headers },
       method: 'POST',
     })
 
@@ -122,7 +123,7 @@ export const createOpenAiLikeConnector = (
             input: request.input.slice(0, 8000),
             model,
           }),
-          headers,
+          headers: { ...request.requestHeaders, ...headers },
           method: 'POST',
         })
 
@@ -176,7 +177,7 @@ export const createOpenAiLikeConnector = (
             input: request.input.map((text) => text.slice(0, 8000)),
             model,
           }),
-          headers,
+          headers: { ...request.requestHeaders, ...headers },
           method: 'POST',
         })
 
@@ -229,8 +230,11 @@ export const createOpenAiLikeConnector = (
       }
     },
 
-    async fetchCompletion(body: Record<string, unknown>): Promise<Response> {
-      return invokeRequest(body)
+    async fetchCompletion(
+      body: Record<string, unknown>,
+      requestHeaders?: Record<string, string>,
+    ): Promise<Response> {
+      return invokeRequest(body, requestHeaders)
     },
 
     async getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot> {
@@ -272,7 +276,7 @@ export const createOpenAiLikeConnector = (
           temperature: resolveOpenAiTemperature(model, request.temperature),
           tool_choice: request.toolChoice,
           tools,
-        })
+        }, request.requestHeaders)
 
         const json = (await response.json()) as OpenAiChatResponse
         const outputText = json.choices?.[0]?.message?.content ?? ''
@@ -336,7 +340,7 @@ export const createOpenAiLikeConnector = (
           temperature: resolveOpenAiTemperature(model, request.temperature),
           tool_choice: request.toolChoice,
           tools,
-        })
+        }, request.requestHeaders)
 
         const stream = collectChatStream(response)
         let next = await stream.next()

@@ -4,6 +4,7 @@ import type {
   ProviderMessage,
 } from './inference/types.js'
 import type { LedgerAttribution, LedgerInvocation } from './ledger.js'
+import { completeLedgerAttribution } from './ledger-attribution.js'
 import { ModelUsageTracker } from './usage.js'
 
 export type { ModelProviderConfig, ModelProviderName } from './inference/types.js'
@@ -32,6 +33,10 @@ export type EmbedOptions = {
   usage?: LedgerAttribution
 }
 
+export type FetchCompletionOptions = {
+  usage?: LedgerAttribution
+}
+
 // Persists billable invocations to the token ledger. Wired by api/worker at
 // construction so the shared model client attributes usage exactly like the
 // worker agentic loop does.
@@ -43,6 +48,10 @@ export type ModelUsageSink = (
 export type CreateModelClientOptions = {
   tracker?: ModelUsageTracker
   recordUsage?: ModelUsageSink
+  systemComponent?: string
+  requestHeaders?: (
+    attribution: LedgerAttribution,
+  ) => Promise<Record<string, string>>
 }
 
 export interface ModelClient {
@@ -54,7 +63,10 @@ export interface ModelClient {
     messages: ModelMessage[],
     options?: ModelOptions,
   ): AsyncGenerator<string, void, undefined>
-  fetchCompletion(body: Record<string, unknown>): Promise<Response>
+  fetchCompletion(
+    body: Record<string, unknown>,
+    options?: FetchCompletionOptions,
+  ): Promise<Response>
   close(): void
   readonly usage: ModelUsageTracker
 }
@@ -93,7 +105,30 @@ export const createModelClient = (
 ): ModelClient => {
   const usageTracker = options.tracker ?? new ModelUsageTracker()
   const recordUsage = options.recordUsage
+  const requestHeaders = options.requestHeaders
+  const systemComponent = options.systemComponent
   const inferenceService = createInferenceService(config)
+
+  const resolveAttribution = (
+    attribution: LedgerAttribution | undefined,
+  ): LedgerAttribution | undefined => {
+    if (!requestHeaders) {
+      return attribution
+    }
+    if (!attribution) {
+      throw new Error(
+        'Ledger-routed model calls require explicit usage attribution.',
+      )
+    }
+    return completeLedgerAttribution(attribution, systemComponent)
+  }
+
+  const resolveHeaders = (
+    attribution: LedgerAttribution | undefined,
+  ): Promise<Record<string, string> | undefined> =>
+    requestHeaders && attribution
+      ? requestHeaders(attribution)
+      : Promise.resolve(undefined)
 
   // Persist invocations to the durable ledger when the caller supplied
   // attribution and a sink is wired. A ledger failure must never break the model
@@ -113,19 +148,22 @@ export const createModelClient = (
   }
 
   const chat: ModelClient['chat'] = async (messages, options) => {
+    const attribution = resolveAttribution(options?.usage)
+    const headers = await resolveHeaders(attribution)
     const result = await inferenceService.run({
       maxOutputTokens: options?.maxTokens,
       messages: toProviderMessages(messages),
       model: options?.model,
       promptCacheKey: options?.promptCacheKey,
       responseFormat: options?.responseFormat,
+      requestHeaders: headers,
       temperature: options?.temperature,
     })
 
     for (const invocation of result.invocations) {
       recordUsageFromModel(usageTracker, invocation.model, invocation.usage)
     }
-    await ledger(result.invocations, options?.usage)
+    await ledger(result.invocations, attribution)
 
     return result.outputText
   }
@@ -142,8 +180,11 @@ export const createModelClient = (
   }
 
   const embed: ModelClient['embed'] = async (text, options) => {
+    const attribution = resolveAttribution(options?.usage)
+    const headers = await resolveHeaders(attribution)
     const result = await inferenceService.embed(text, {
       model: options?.model,
+      requestHeaders: headers,
     })
 
     recordUsageFromModel(
@@ -151,14 +192,17 @@ export const createModelClient = (
       result.invocation.model,
       result.invocation.usage,
     )
-    await ledger([result.invocation], options?.usage)
+    await ledger([result.invocation], attribution)
 
     return result.embedding
   }
 
   const embedMany: ModelClient['embedMany'] = async (texts, options) => {
+    const attribution = resolveAttribution(options?.usage)
+    const headers = await resolveHeaders(attribution)
     const result = await inferenceService.embedBatch(texts, {
       model: options?.model,
+      requestHeaders: headers,
     })
 
     recordUsageFromModel(
@@ -166,18 +210,21 @@ export const createModelClient = (
       result.invocation.model,
       result.invocation.usage,
     )
-    await ledger([result.invocation], options?.usage)
+    await ledger([result.invocation], attribution)
 
     return result.embeddings
   }
 
   const stream: ModelClient['stream'] = async function* (messages, options) {
+    const attribution = resolveAttribution(options?.usage)
+    const headers = await resolveHeaders(attribution)
     const source = inferenceService.stream?.({
       maxOutputTokens: options?.maxTokens,
       messages: toProviderMessages(messages),
       model: options?.model,
       promptCacheKey: options?.promptCacheKey,
       responseFormat: options?.responseFormat,
+      requestHeaders: headers,
       temperature: options?.temperature,
     })
 
@@ -200,7 +247,7 @@ export const createModelClient = (
     for (const invocation of next.value.invocations) {
       recordUsageFromModel(usageTracker, invocation.model, invocation.usage)
     }
-    await ledger(next.value.invocations, options?.usage)
+    await ledger(next.value.invocations, attribution)
   }
 
   return {
@@ -211,7 +258,13 @@ export const createModelClient = (
     },
     embed,
     embedMany,
-    fetchCompletion: (body) => inferenceService.fetchCompletion(body),
+    fetchCompletion: async (body, fetchOptions) => {
+      const attribution = resolveAttribution(fetchOptions?.usage)
+      return inferenceService.fetchCompletion(
+        body,
+        await resolveHeaders(attribution),
+      )
+    },
     stream,
     usage: usageTracker,
   }

@@ -21,6 +21,10 @@ import type {
 } from '@nessie/schemas'
 import { sendApiError } from '../lib/api.js'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
+import {
+  enterKnowledgeInferenceActorContext,
+  requireApiKnowledgeInferenceOrigin,
+} from '../services/knowledge-inference-origin.js'
 import { checkPolicy } from '../services/policy.js'
 import type { RouteDeps } from './types.js'
 
@@ -119,9 +123,14 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     // Enqueued inside the save transaction: the job becomes visible only when
     // the version + chunk rows commit, and a failed enqueue rolls the save back.
     onVersionChunksReplaced: async (tx, event) => {
+      const origin = await requireApiKnowledgeInferenceOrigin(
+        tx,
+        event,
+        'knowledge-indexer',
+      )
       await enqueueQueueJob(tx, {
         idempotencyKey: `kb-embed:${event.pageId}:${event.versionId}`,
-        payload: event,
+        payload: { ...event, origin },
         topic: KNOWLEDGE_EMBED_TOPIC,
       })
     },
@@ -131,6 +140,10 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
   // 'service') is a bypass viewer — there is no third first-class principal
   // kind in the knowledge base's access model.
   const buildViewer = (actorContext: AuthorizedActionContext): Promise<SpaceViewer> => {
+    // The provider's transactional version hook runs later in the same request
+    // chain. Preserve the authenticated team/user here so a project-scoped,
+    // teamless space still produces an attributable durable embedding job.
+    enterKnowledgeInferenceActorContext(actorContext)
     const { actorType, actorId } = actorContext.actor
     const principal: SpaceViewerPrincipal =
       actorType === 'user' || actorType === 'agent'

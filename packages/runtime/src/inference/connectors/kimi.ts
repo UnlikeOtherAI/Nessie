@@ -21,6 +21,7 @@ import {
   usageFromAnthropic,
 } from './kimi-anthropic-protocol.js'
 import { createBaseSnapshot } from './model-capabilities.js'
+import { isLedgerEndpoint } from '../../ledger-identity.js'
 
 const DEFAULT_KIMI_MODEL = 'kimi-for-coding'
 const DEFAULT_KIMI_BASE_URL = 'https://api.kimi.com/coding'
@@ -33,21 +34,30 @@ export const createKimiConnector = (
   }
 
   const baseUrl = config.baseUrl ?? DEFAULT_KIMI_BASE_URL
-  const headers = {
-    'Content-Type': 'application/json',
-    'x-api-key': config.apiKey,
-    'anthropic-version': '2023-06-01',
-  }
+  const ledgerRouted = isLedgerEndpoint(baseUrl)
+  const headers: Record<string, string> = ledgerRouted
+    ? {
+        Authorization: `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      }
+    : {
+        'Content-Type': 'application/json',
+        'x-api-key': config.apiKey,
+        'anthropic-version': '2023-06-01',
+      }
 
   const resolveChatModel = (model?: string): string =>
     model ?? config.modelName ?? DEFAULT_KIMI_MODEL
 
   const invokeRequest = async (
     body: Record<string, unknown>,
+    requestHeaders?: Record<string, string>,
   ): Promise<Response> => {
-    const response = await fetch(`${baseUrl}/v1/messages`, {
+    const path = ledgerRouted ? '/messages' : '/v1/messages'
+    const response = await fetch(`${baseUrl}${path}`, {
       body: JSON.stringify(body),
-      headers,
+      headers: { ...requestHeaders, ...headers },
       method: 'POST',
     })
 
@@ -74,8 +84,11 @@ export const createKimiConnector = (
       // Stateless HTTP connector.
     },
 
-    async fetchCompletion(body: Record<string, unknown>): Promise<Response> {
-      return invokeRequest(body)
+    async fetchCompletion(
+      body: Record<string, unknown>,
+      requestHeaders?: Record<string, string>,
+    ): Promise<Response> {
+      return invokeRequest(body, requestHeaders)
     },
 
     async getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot> {
@@ -114,7 +127,7 @@ export const createKimiConnector = (
           model,
           system: payload.system,
           temperature: request.temperature,
-        })
+        }, request.requestHeaders)
 
         const parsed = (await response.json()) as AnthropicMessagesResponse
         const rawText = (parsed.content ?? [])
@@ -178,7 +191,7 @@ export const createKimiConnector = (
           stream: true,
           system: payload.system,
           temperature: request.temperature,
-        })
+        }, request.requestHeaders)
 
         const stream = collectAnthropicStream(response)
         let next = await stream.next()

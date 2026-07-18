@@ -33,6 +33,7 @@ type DeepWaterUsageLedgerRow = {
   id: string
   organization_id: string
   team_id: string
+  requested_by_user_id: string
   connector_id: string | null
   channel_id: string | null
   thread_id: string | null
@@ -271,6 +272,7 @@ export const reconcileDeepWaterResearchRunUsage = async (
         "id",
         "organization_id",
         "team_id",
+        "requested_by_user_id",
         "connector_id",
         "channel_id",
         "thread_id",
@@ -329,6 +331,10 @@ export const reconcileDeepWaterResearchRunUsage = async (
         occurredAt,
         operation: `research.${row.status}`,
         organizationId: row.organization_id,
+        // The launch owner is immutable. A different granted agent/user may
+        // deliver the terminal update, but may never take ownership of the
+        // mirrored rate-card charge.
+        userId: row.requested_by_user_id,
         projectId: input.attribution.projectId ?? null,
         requestId: input.attribution.requestId ?? null,
         runId: input.attribution.runId ?? null,

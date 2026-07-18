@@ -27,6 +27,7 @@ export type CatalogView = 'store' | 'mine' | 'queue' | 'all'
 export type McpCatalogEntryRecord = {
   id: string
   organizationId: string | null
+  managedByIntegration: boolean
   name: string
   label: string
   description: string

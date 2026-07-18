@@ -211,9 +211,10 @@ only ever holds **report references (ids)** — it never embeds report content. 
 - Research initiated **by DeepSignal** (autonomously or in its chat) stays on DeepSignal's
   org key, billing, and audit; Nessie just renders the reference card, deep-linking into the
   DeepWater report (dedupe key = DeepWater report id).
-- Research initiated **in Nessie** uses a caller-specific Ledger ProxyToken through Nessie's
-  team-scoped DeepWater connector, untouched by this plan. No shared credentials and no
-  double-billing.
+- Research initiated **in Nessie** uses Nessie's service ProxyToken through the team-scoped
+  connector plus a signed UOA delegation and Nessie org/team/user/agent/run context. Ledger
+  binds ownership and spend to the verified delegated subject rather than the transport
+  token. There is no double-billing.
 
 ## Execution Plan
 

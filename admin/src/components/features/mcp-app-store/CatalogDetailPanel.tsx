@@ -14,6 +14,7 @@ type CatalogDetailPanelProps = {
   /** Owner or org admin — may lock/unlock and install despite a lock. */
   isElevated: boolean
   isMine: boolean
+  managedByIntegration?: boolean
   busy: boolean
   onPublish: () => void
   onDeprecate: () => void
@@ -47,6 +48,7 @@ export const CatalogDetailPanel = ({
   isOwner,
   isElevated,
   isMine,
+  managedByIntegration = false,
   busy,
   onPublish,
   onDeprecate,
@@ -110,8 +112,18 @@ export const CatalogDetailPanel = ({
           </div>
         ) : null}
 
+        {managedByIntegration ? (
+          <div
+            className="mt-3 rounded-md border border-[color:var(--sep)] bg-[var(--overlay-weak)] px-3 py-2 text-xs text-[color:var(--tx2)]"
+            data-testid="catalog-managed-note"
+          >
+            Manage DeepWater from Integrations. Nessie supplies your SSO identity
+            automatically; no personal Ledger credential is needed.
+          </div>
+        ) : null}
+
         <div className="mt-4 flex flex-wrap gap-2">
-          {entry.status === 'published' ? (
+          {entry.status === 'published' && !managedByIntegration ? (
             <button
               className={primaryButton}
               data-testid="catalog-install"
@@ -123,7 +135,7 @@ export const CatalogDetailPanel = ({
             </button>
           ) : null}
 
-          {isElevated ? (
+          {isElevated && !managedByIntegration ? (
             <button
               className={ghostButton}
               data-testid="catalog-lock-toggle"
@@ -182,7 +194,7 @@ export const CatalogDetailPanel = ({
             </>
           ) : null}
 
-          {canManage && entry.status === 'published' ? (
+          {canManage && entry.status === 'published' && !managedByIntegration ? (
             <button
               className={ghostButton}
               disabled={busy}
@@ -193,7 +205,7 @@ export const CatalogDetailPanel = ({
             </button>
           ) : null}
 
-          {canManage ? (
+          {canManage && !managedByIntegration ? (
             <button
               className={dangerButton}
               data-testid="catalog-delete"

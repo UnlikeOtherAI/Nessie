@@ -169,13 +169,20 @@ const makeContext = (
     agentKind: 'shared',
     actorContext: {
       actor: { actorId: 'agent-1', actorType: 'agent', roles: [] },
-      actionContext: {},
-      tenant: { organizationId: 'org-1' },
+      actionContext: {
+        requestId: 'request-1',
+      },
+      tenant: { organizationId: 'org-1', teamId: 'team-1' },
     },
     channel: { id: 'channel-1', organizationId: 'org-1', systemChannelType: null },
     prisma,
     realtimeTransport: {} as BuiltinToolRuntimeContext['realtimeTransport'],
-    run: { id: 'run-1', messageId: 'message-1', threadId: 'thread-1' },
+    run: {
+      id: 'run-1',
+      messageId: 'message-1',
+      originatingUserId: 'user-1',
+      threadId: 'thread-1',
+    },
     ...overrides,
   }) as unknown as BuiltinToolRuntimeContext
 

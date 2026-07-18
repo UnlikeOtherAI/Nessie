@@ -99,3 +99,36 @@ test('embedBatch throws when the provider returns a different embedding count', 
     },
   )
 })
+
+test('forwards signed attribution headers without allowing auth overrides', async () => {
+  let sentHeaders = new Headers()
+  await withFetchStub(
+    (_url, init) => {
+      sentHeaders = new Headers(init?.headers)
+      return new Response(
+        JSON.stringify({
+          data: [{ index: 0, embedding: [0.1] }],
+          model: 'text-embedding-3-small',
+        }),
+      )
+    },
+    async () => {
+      const connector = createOpenAiLikeConnector('openai', {
+        apiKey: 'service-token',
+        provider: 'openai',
+      })
+      await connector.embed!({
+        input: 'hello',
+        requestHeaders: {
+          Authorization: 'Bearer attacker',
+          'Content-Type': 'text/plain',
+          'X-Nessie-Context': 'signed-context',
+        },
+        requestId: 'req-headers',
+      })
+    },
+  )
+  assert.equal(sentHeaders.get('authorization'), 'Bearer service-token')
+  assert.equal(sentHeaders.get('content-type'), 'application/json')
+  assert.equal(sentHeaders.get('x-nessie-context'), 'signed-context')
+})

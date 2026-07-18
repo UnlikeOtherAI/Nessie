@@ -1,6 +1,8 @@
 import { loadConfig } from '@nessie/config'
 import {
+  attributionFromActorContext,
   BUILTIN_TOOL_DEFINITIONS,
+  isLedgerEndpoint,
   type InferenceResult,
   type InvocationRecord,
   type ProviderMessage,
@@ -95,6 +97,19 @@ export const runExecutionAgentLoop = async (
     tools: ToolSchemaDescriptor[],
     callbacks: InferenceCallbacks,
   ): Promise<InferenceResult> => {
+    const ledgerRouted = isLedgerEndpoint(runtimeModelConfig.baseUrl)
+    if (ledgerRouted && !deps.ledgerIdentity) {
+      throw new Error('Ledger identity service is unavailable for routed inference.')
+    }
+    const requestHeaders = ledgerRouted
+      ? await deps.ledgerIdentity?.requestHeaders(
+        attributionFromActorContext(payload.actorContext, {
+          agentId: context.agent.id,
+          agentKind: context.agent.agentKind,
+          runId: context.run.id,
+        }),
+      )
+      : undefined
     const mpr = await runInferenceGraph(deps.prisma, {
       actorContext: payload.actorContext,
       agent: {
@@ -108,6 +123,7 @@ export const runExecutionAgentLoop = async (
       onVisibleReasoningDelta: callbacks.onVisibleReasoningDelta,
       onVisibleTextDelta: callbacks.onVisibleTextDelta,
       organizationId: context.channel.organizationId,
+      requestHeaders,
       toolChoice: 'auto',
       tools,
     })
@@ -157,6 +173,13 @@ export const runExecutionAgentLoop = async (
     run: {
       id: context.run.id,
       messageId: payload.messageId,
+      originatingUserId:
+        toolActorContext.actionContext.effectiveUserId
+        ?? (
+          toolActorContext.actor.actorType === 'user'
+            ? toolActorContext.actor.actorId
+            : null
+        ),
       threadId: context.run.threadId,
     },
   })
@@ -231,7 +254,7 @@ export const runExecutionAgentLoop = async (
         console.warn(`[worker] Agentic loop budget exhausted: ${reason} for run ${context.run.id}`)
       },
     },
-    executeTool: async (toolName, args) => {
+    executeTool: async (toolName, args, toolCallId) => {
       const toolActorContext = buildToolActorContext(payload.actorContext, context, toolName)
       if (toolName === 'delegate') {
         const result = await runDelegate(args, {
@@ -249,7 +272,7 @@ export const runExecutionAgentLoop = async (
         }
       }
       if (mcpExposedNames.has(toolName)) {
-        return mcpView.dispatch(toolName, args)
+        return mcpView.dispatch(toolName, args, toolCallId)
       }
       const registryDecision = authorizeToolCall(
         toolName,

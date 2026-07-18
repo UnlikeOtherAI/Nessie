@@ -27,6 +27,7 @@ import {
   submitForReview,
 } from '@nessie/mcp-manage'
 
+import { presentCatalogEntries, presentCatalogEntry } from './catalog-response.js'
 import { JsonRecordSchema, sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
 /**
@@ -114,7 +115,7 @@ export const registerMcpCatalogRoutes = (
       view,
       status: statusParsed?.success ? statusParsed.data : undefined,
     })
-    return createApiResponse(entries)
+    return createApiResponse(await presentCatalogEntries(prisma, entries))
   })
 
   // Any signed-in user can author a connector; it starts private + draft, owned
@@ -128,7 +129,9 @@ export const registerMcpCatalogRoutes = (
 
     try {
       const entry = await createCatalogEntry(prisma, actorContext, body)
-      return reply.code(201).send(createApiResponse(entry))
+      return reply.code(201).send(
+        createApiResponse(await presentCatalogEntry(prisma, entry)),
+      )
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -142,7 +145,7 @@ export const registerMcpCatalogRoutes = (
     const { catalogEntryId } = request.params as { catalogEntryId: string }
     const entry = await getAccessibleCatalogEntry(prisma, actorContext, catalogEntryId)
     if (!entry) return notFound(reply)
-    return createApiResponse(entry)
+    return createApiResponse(await presentCatalogEntry(prisma, entry))
   })
 
   app.patch('/api/mcp/catalog/:catalogEntryId', async (request, reply) => {
@@ -156,7 +159,7 @@ export const registerMcpCatalogRoutes = (
     try {
       const entry = await updateCatalogEntry(prisma, actorContext, catalogEntryId, body)
       if (!entry) return notFound(reply)
-      return createApiResponse(entry)
+      return createApiResponse(await presentCatalogEntry(prisma, entry))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -187,7 +190,7 @@ export const registerMcpCatalogRoutes = (
     try {
       const entry = await publishCatalogEntry(prisma, actorContext, catalogEntryId)
       if (!entry) return notFound(reply)
-      return createApiResponse(entry)
+      return createApiResponse(await presentCatalogEntry(prisma, entry))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -203,7 +206,7 @@ export const registerMcpCatalogRoutes = (
     try {
       const entry = await setCatalogEntryLocked(prisma, actorContext, catalogEntryId, true)
       if (!entry) return notFound(reply)
-      return createApiResponse(entry)
+      return createApiResponse(await presentCatalogEntry(prisma, entry))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -218,7 +221,7 @@ export const registerMcpCatalogRoutes = (
     try {
       const entry = await setCatalogEntryLocked(prisma, actorContext, catalogEntryId, false)
       if (!entry) return notFound(reply)
-      return createApiResponse(entry)
+      return createApiResponse(await presentCatalogEntry(prisma, entry))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -233,7 +236,7 @@ export const registerMcpCatalogRoutes = (
     try {
       const entry = await deprecateCatalogEntry(prisma, actorContext, catalogEntryId)
       if (!entry) return notFound(reply)
-      return createApiResponse(entry)
+      return createApiResponse(await presentCatalogEntry(prisma, entry))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -250,7 +253,7 @@ export const registerMcpCatalogRoutes = (
     try {
       const entry = await submitForReview(prisma, actorContext, catalogEntryId)
       if (!entry) return notFound(reply)
-      return createApiResponse(entry)
+      return createApiResponse(await presentCatalogEntry(prisma, entry))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -267,7 +270,7 @@ export const registerMcpCatalogRoutes = (
     try {
       const entry = await approveSubmission(prisma, actorContext, catalogEntryId)
       if (!entry) return notFound(reply)
-      return createApiResponse(entry)
+      return createApiResponse(await presentCatalogEntry(prisma, entry))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -291,7 +294,7 @@ export const registerMcpCatalogRoutes = (
         body.reason,
       )
       if (!entry) return notFound(reply)
-      return createApiResponse(entry)
+      return createApiResponse(await presentCatalogEntry(prisma, entry))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error

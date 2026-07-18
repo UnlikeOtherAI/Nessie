@@ -61,6 +61,12 @@ export type { ChunkKnowledgePageBodyOptions, KnowledgePageChunkDraft } from './c
 export { replaceKnowledgePageVersionChunks } from './native-chunks.js'
 export type { ChunkablePage } from './native-chunks.js'
 export {
+  KnowledgeInferenceOriginError,
+  requirePersistedKnowledgeOrigin,
+  resolvePersistedKnowledgeOrigin,
+} from './inference-origin.js'
+export type { PersistedKnowledgeOriginInput } from './inference-origin.js'
+export {
   htmlToPlainText,
   computeAnchor,
   relocateAnchor,

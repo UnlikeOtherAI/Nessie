@@ -2,9 +2,11 @@ import { pathToFileURL } from 'node:url'
 import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
 import {
   createFileService,
+  createLedgerIdentityServiceFromEnv,
   createModelClient,
   createPgPool,
   getStorage,
+  isLedgerEndpoint,
   PgQueueProvider,
   PgRealtimeTransport,
   recordInferenceUsage,
@@ -98,6 +100,17 @@ export const startWorker = async (
   // The shared model client (orchestrator engagement, memory capture/search/
   // consolidation) bills through the same token ledger as the agentic loop when
   // a call supplies attribution.
+  const ledgerIdentity = createLedgerIdentityServiceFromEnv(prisma)
+  if (isLedgerEndpoint(config.model.baseUrl) && !ledgerIdentity) {
+    throw new Error(
+      'Ledger-routed inference requires configured UOA signing and client credentials.',
+    )
+  }
+  if (isLedgerEndpoint(config.model.baseUrl) && !config.model.apiKey) {
+    throw new Error(
+      'Ledger-routed inference requires NESSIE_MODEL_API_KEY; direct-provider keys are not accepted.',
+    )
+  }
   const modelClient = createModelClient(config.model, {
     recordUsage: async (invocations, attribution) => {
       try {
@@ -106,6 +119,11 @@ export const startWorker = async (
         console.error('[worker.ledger] token usage write failed', err)
       }
     },
+    requestHeaders:
+      isLedgerEndpoint(config.model.baseUrl) && ledgerIdentity
+        ? (attribution) => ledgerIdentity.requestHeaders(attribution)
+        : undefined,
+    systemComponent: 'worker-model-service',
   })
   // MCP credential plumbing shared by the agentic MCP toolset and the
   // personal assistant's connector tools: encrypts assistant-collected
@@ -130,6 +148,7 @@ export const startWorker = async (
       const payload = RunExecuteJobPayloadSchema.parse(job.payload)
       await executeRunJob(
         {
+          ledgerIdentity,
           mcpSecrets,
           modelClient,
           prisma,

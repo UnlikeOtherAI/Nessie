@@ -12,6 +12,7 @@ import {
   nowIso,
   providerError,
 } from './connector-invocations.js'
+import { isLedgerEndpoint } from '../../ledger-identity.js'
 import { createBaseSnapshot } from './model-capabilities.js'
 import { collectChatStream } from './openai-chat-protocol.js'
 
@@ -85,6 +86,7 @@ export const createMiniMaxConnector = (
   }
 
   const baseUrl = config.baseUrl ?? 'https://api.minimax.io/v1'
+  const ledgerRouted = isLedgerEndpoint(baseUrl)
   const headers = {
     Authorization: `Bearer ${config.apiKey}`,
     'Content-Type': 'application/json',
@@ -95,10 +97,14 @@ export const createMiniMaxConnector = (
 
   const invokeRequest = async (
     body: Record<string, unknown>,
+    requestHeaders?: Record<string, string>,
   ): Promise<Response> => {
-    const response = await fetch(`${baseUrl}/text/chatcompletion_v2`, {
+    const path = ledgerRouted
+      ? '/chat/completions'
+      : '/text/chatcompletion_v2'
+    const response = await fetch(`${baseUrl}${path}`, {
       body: JSON.stringify(body),
-      headers,
+      headers: { ...requestHeaders, ...headers },
       method: 'POST',
     })
 
@@ -125,8 +131,11 @@ export const createMiniMaxConnector = (
       // Stateless HTTP connector.
     },
 
-    async fetchCompletion(body: Record<string, unknown>): Promise<Response> {
-      return invokeRequest(body)
+    async fetchCompletion(
+      body: Record<string, unknown>,
+      requestHeaders?: Record<string, string>,
+    ): Promise<Response> {
+      return invokeRequest(body, requestHeaders)
     },
 
     async getModelCapabilities(model: string): Promise<ModelCapabilitySnapshot> {
@@ -162,7 +171,7 @@ export const createMiniMaxConnector = (
           model,
           stream: true,
           temperature: request.temperature,
-        })
+        }, request.requestHeaders)
 
         const stream = collectChatStream(response)
         let next = await stream.next()
@@ -217,7 +226,7 @@ export const createMiniMaxConnector = (
           model,
           stream: true,
           temperature: request.temperature,
-        })
+        }, request.requestHeaders)
 
         const stream = collectChatStream(response)
         let next = await stream.next()

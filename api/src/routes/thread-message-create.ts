@@ -1,0 +1,232 @@
+import type { FastifyInstance } from 'fastify'
+
+import { captureUserMessageMemory } from '@nessie/memory'
+import {
+  CHAT_MESSAGE_MAX_CHARS,
+  parseChannelId,
+  parseThreadId,
+  parseUserId,
+  withActionContext,
+} from '@nessie/schemas'
+import {
+  CreateThreadMessageBodySchema,
+  ThreadMessageRecordSchema,
+} from '../contracts.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { enqueueOrchestrateDecide, enqueuePushDispatch } from '../queue/pgqueue.js'
+import {
+  createThreadMessage,
+  findThreadForUser,
+  mapMessageRecord,
+} from '../services/messages.js'
+import type { RouteDeps } from './types.js'
+
+export const registerCreateThreadMessageRoute = (
+  app: FastifyInstance,
+  deps: RouteDeps,
+): void => {
+  const {
+    prisma,
+    realtimeHub,
+    requireActorContext,
+    buildChannelRealtimeScopes,
+    isPersonalAssistantChannelType,
+    messageMemoryCaptureConfig,
+  } = deps
+
+  app.post('/api/threads/:threadId/messages', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    // Guard oversized chat bodies before Zod validation so the client can
+    // distinguish "too large, offer file upload" from generic validation.
+    const rawContent =
+      typeof request.body === 'object'
+      && request.body !== null
+      && 'content' in request.body
+      && typeof (request.body as { content: unknown }).content === 'string'
+        ? (request.body as { content: string }).content
+        : null
+    if (rawContent !== null && rawContent.length > CHAT_MESSAGE_MAX_CHARS) {
+      reply.status(413).send({
+        error: {
+          code: 'MESSAGE_TOO_LARGE',
+          message:
+            `Message is ${rawContent.length} characters; the chat limit is ${CHAT_MESSAGE_MAX_CHARS}.`
+            + ' Send as a file instead.',
+          limit: CHAT_MESSAGE_MAX_CHARS,
+          length: rawContent.length,
+        },
+      })
+      return reply
+    }
+
+    const body = parseInput(CreateThreadMessageBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { threadId } = request.params as { threadId: string }
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
+    if (!thread) {
+      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+
+    const result = await createThreadMessage(prisma, {
+      content: body.content,
+      threadId: thread.id,
+      userId: actorContext.actor.actorId,
+    })
+
+    if (result.kind === 'thread_not_found') {
+      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+
+    // Link pre-uploaded attachments within the actor's organization.
+    if (body.attachmentIds && body.attachmentIds.length > 0) {
+      await prisma.attachment.updateMany({
+        where: {
+          id: { in: body.attachmentIds },
+          organizationId: actorContext.tenant.organizationId,
+          messageId: null,
+        },
+        data: { messageId: result.message.id },
+      })
+    }
+
+    if (messageMemoryCaptureConfig) {
+      // Fire-and-forget: memory capture must never delay message posting.
+      void captureUserMessageMemory(
+        {
+          channelId: thread.channel.id,
+          content: result.message.content,
+          memoryOrigin:
+            thread.channel.systemChannelType === 'personal_assistant'
+              ? 'personal_assistant_dm'
+              : 'user_authored_workspace_message',
+          messageId: result.message.id,
+          organizationId: actorContext.tenant.organizationId,
+          projectId: actorContext.tenant.projectId,
+          teamId:
+            actorContext.tenant.teamId
+            ?? actorContext.actionContext.teamId,
+          sourceAudience: thread.channel.type === 'dm' ? 'dm' : 'channel',
+          threadId: thread.id,
+          userId: actorContext.actor.actorId,
+          sessionId: actorContext.actionContext.sessionId,
+          taskId: actorContext.actionContext.taskId,
+          agentId: actorContext.actionContext.agentId,
+          actorId: actorContext.actor.actorId,
+          actorType: actorContext.actor.actorType,
+          requestId: actorContext.actionContext.requestId,
+          correlationId: actorContext.actionContext.correlationId,
+          systemComponent: 'memory-capture',
+        },
+        messageMemoryCaptureConfig,
+      ).catch((error) =>
+        request.log.error(
+          { err: error, messageId: result.message.id },
+          'capture_user_message_memory_failed',
+        ),
+      )
+    }
+
+    await realtimeHub.publishWs(
+      buildChannelRealtimeScopes({
+        channelId: thread.channel.id,
+        organizationId: actorContext.tenant.organizationId,
+        systemChannelType: thread.channel.systemChannelType,
+      }),
+      {
+        data: {
+          agentId: undefined,
+          authorUserId: parseUserId(actorContext.actor.actorId),
+          channelId: parseChannelId(thread.channel.id),
+          contentPreview: result.message.content.slice(0, 200),
+          messageId: result.message.id,
+          role: result.message.role,
+          threadId: parseThreadId(thread.id),
+        },
+        event: 'message.new',
+      },
+    )
+
+    try {
+      const mentions =
+        result.message.metadata
+        && typeof result.message.metadata === 'object'
+        && !Array.isArray(result.message.metadata)
+          ? (result.message.metadata as { mentions?: { userIds?: unknown } }).mentions
+          : undefined
+      const mentionUserIds =
+        mentions && Array.isArray(mentions.userIds)
+          ? mentions.userIds.filter((id): id is string => typeof id === 'string')
+          : []
+      await enqueuePushDispatch(
+        prisma,
+        {
+          messageId: result.message.id,
+          authorUserId: actorContext.actor.actorId,
+          channelId: thread.channel.id,
+          threadId: thread.id,
+          organizationId: actorContext.tenant.organizationId,
+          contentSnippet: result.message.content.slice(0, 140),
+          mentionUserIds,
+        },
+        `push:${result.message.id}`,
+      )
+    } catch (error) {
+      app.log.error(
+        { err: error, messageId: result.message.id },
+        '[push] failed to enqueue dispatch job — recipients will not be notified',
+      )
+    }
+
+    if (result.channelAgents.length > 0) {
+      const orchestrationActorContext = isPersonalAssistantChannelType(
+        thread.channel.systemChannelType,
+      )
+        ? withActionContext(actorContext, {
+            effectiveUserId: parseUserId(actorContext.actor.actorId),
+          })
+        : actorContext
+
+      try {
+        await enqueueOrchestrateDecide(
+          prisma,
+          {
+            actorContext: orchestrationActorContext,
+            channelAgents: result.channelAgents,
+            channelId: parseChannelId(thread.channel.id),
+            content: body.content,
+            messageId: result.message.id,
+            role: result.message.role,
+            threadId: parseThreadId(thread.id),
+          },
+          `orchestrate:${result.message.id}`,
+        )
+      } catch (error) {
+        app.log.error(
+          { err: error, messageId: result.message.id },
+          '[orchestrate] failed to enqueue decide job — agent will not respond',
+        )
+      }
+    }
+
+    return reply.code(201).send(
+      createApiResponse({
+        message: ThreadMessageRecordSchema.parse(mapMessageRecord(result.message)),
+        pendingAgentInvites: result.pendingAgentInvites,
+      }),
+    )
+  })
+}

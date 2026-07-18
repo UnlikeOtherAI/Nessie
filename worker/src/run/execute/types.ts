@@ -1,9 +1,15 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
-import type { ModelClient, PgRealtimeTransport, QueueProvider } from '@nessie/runtime'
+import type {
+  LedgerIdentityService,
+  ModelClient,
+  PgRealtimeTransport,
+  QueueProvider,
+} from '@nessie/runtime'
 
 export type ExecutionDependencies = {
+  ledgerIdentity?: LedgerIdentityService | null
   /**
    * MCP credential plumbing: `store` encrypts assistant-collected secrets into
    * Postgres, `resolver` turns any credentialRef (pg-stored or env-var) into

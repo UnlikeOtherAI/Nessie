@@ -19,6 +19,16 @@ export type CaptureThoughtInput = {
   channelId?: string
   threadId?: string
   userId?: string
+  sessionId?: string
+  taskId?: string
+  runId?: string
+  agentId?: string
+  agentKind?: 'personal_assistant' | 'shared'
+  actorId?: string
+  actorType?: 'user' | 'agent' | 'service' | 'system'
+  requestId?: string
+  correlationId?: string
+  systemComponent?: string
   visibility?: 'private' | 'channel' | 'team' | 'project' | 'organization'
   sensitivityTier?: 'normal' | 'sensitive' | 'restricted'
   memoryType?: ThoughtMemoryType
@@ -177,13 +187,26 @@ const resolveAudience = (
 // every caller.
 const buildCaptureAttribution = (input: CaptureThoughtInput): LedgerAttribution => ({
   organizationId: input.organizationId,
+  userId:
+    input.userId
+    ?? (input.ownerType === 'user' ? input.ownerId : null),
   projectId: input.projectId ?? null,
   teamId: input.teamId ?? null,
   channelId: input.channelId ?? null,
   threadId: input.threadId ?? null,
-  actorId: input.ownerId,
-  actorType: input.ownerType,
-  agentId: input.privateToAgentId ?? (input.ownerType === 'agent' ? input.ownerId : null),
+  sessionId: input.sessionId ?? null,
+  taskId: input.taskId ?? null,
+  runId: input.runId ?? null,
+  actorId: input.actorId ?? input.ownerId,
+  actorType: input.actorType ?? input.ownerType,
+  agentId:
+    input.agentId
+    ?? input.privateToAgentId
+    ?? (input.ownerType === 'agent' ? input.ownerId : null),
+  agentKind: input.agentKind ?? null,
+  requestId: input.requestId ?? null,
+  correlationId: input.correlationId ?? null,
+  systemComponent: input.systemComponent ?? 'memory-capture',
 })
 
 export const captureThought = async (

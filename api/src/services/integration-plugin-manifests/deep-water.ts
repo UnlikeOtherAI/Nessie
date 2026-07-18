@@ -11,7 +11,7 @@ export const deepWaterIntegrationPluginManifest = {
   manifestRef: 'first-party/deep-water',
   productSlug: 'deep-water',
   name: 'Deep Water',
-  version: '0.1.0',
+  version: '0.2.0',
   vendor: 'UnlikeOtherAI',
   install: [
     {
@@ -19,14 +19,7 @@ export const deepWaterIntegrationPluginManifest = {
       availability: 'hosted',
       label: 'Ledger-metered research',
       requiredForAgentUse: true,
-      setup: 'Bind the Ledger DeepWater MCP adapter to the active team/workspace.',
-    },
-    {
-      mode: 'api_key',
-      availability: 'both',
-      label: 'Per-user Ledger ProxyToken',
-      requiredForAgentUse: true,
-      setup: 'Each caller stores a dedicated Ledger-issued ProxyToken as their encrypted credential override; that token owns and meters their research jobs.',
+      setup: 'Bind the Ledger adapter and shared service token; signed SSO identity is delegated automatically on every call.',
     },
   ],
   mcp: {
@@ -111,7 +104,7 @@ export const deepWaterIntegrationPluginManifest = {
       {
         name: 'research_list',
         label: 'List research',
-        description: 'List research jobs owned by the configured Ledger ProxyToken.',
+        description: 'List research jobs owned by the delegated UOA user through Ledger.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -194,6 +187,6 @@ export const deepWaterIntegrationPluginManifest = {
   usage: {
     ledger: 'connector_usage_events',
     connectorType: 'mcp',
-    costFields: ['ledgerResearchJobId', 'proxyTokenId', 'depth'],
+    costFields: ['ledgerResearchJobId', 'userId', 'teamId', 'depth'],
   },
 } satisfies IntegrationPluginManifest

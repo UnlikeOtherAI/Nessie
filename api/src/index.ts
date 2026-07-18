@@ -22,9 +22,11 @@ import websocket from '@fastify/websocket'
 import Fastify from 'fastify'
 import {
   createFileService,
+  createLedgerIdentityServiceFromEnv,
   createModelClient,
   createPgPool,
   getStorage,
+  isLedgerEndpoint,
   ModelUsageTracker,
   recordInferenceUsage,
 } from '@nessie/runtime'
@@ -34,6 +36,7 @@ import { seedDefaultPolicies } from './services/policy.js'
 import { sweepExpiredApprovals } from './services/approvals.js'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 import { createThoughtService } from './services/thoughts.js'
+import { runKnowledgeInferenceRequestContext } from './services/knowledge-inference-origin.js'
 import {
   createCorsOriginChecker,
   createFastifyTrustProxyConfig,
@@ -153,16 +156,23 @@ export const buildApp = async () => {
   )
 
   // Create a single shared model client for all LLM calls (orchestrator, designer, memory)
-  const modelApiKey =
-    process.env.OPENAI_API_KEY
-    ?? process.env.OPENAI_CHAT_API_KEY
-    ?? config.model.apiKey
-    ?? ''
+  const modelApiKey = isLedgerEndpoint(config.model.baseUrl)
+    ? config.model.apiKey ?? ''
+    : config.model.apiKey
+      ?? process.env.OPENAI_API_KEY
+      ?? process.env.OPENAI_CHAT_API_KEY
+      ?? ''
   if (modelApiKey) {
+    const ledgerIdentity = createLedgerIdentityServiceFromEnv(prisma)
+    if (isLedgerEndpoint(config.model.baseUrl) && !ledgerIdentity) {
+      throw new Error(
+        'Ledger-routed inference requires configured UOA signing and client credentials.',
+      )
+    }
     sharedModelClient = createModelClient(
       {
+        ...config.model,
         apiKey: modelApiKey,
-        provider: (config.model.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi',
       },
       {
         tracker: apiUsageTracker,
@@ -176,9 +186,19 @@ export const buildApp = async () => {
             app.log.warn({ err }, 'ledger: token usage write failed')
           }
         },
+        requestHeaders:
+          isLedgerEndpoint(config.model.baseUrl) && ledgerIdentity
+            ? (attribution) => ledgerIdentity.requestHeaders(attribution)
+            : undefined,
+        systemComponent: 'api-model-service',
       },
     )
   } else {
+    if (isLedgerEndpoint(config.model.baseUrl)) {
+      throw new Error(
+        'Ledger-routed inference requires NESSIE_MODEL_API_KEY; direct-provider keys are not accepted.',
+      )
+    }
     app.log.warn('No model API key configured — orchestrator, designer, and memory will fail')
   }
 
@@ -269,6 +289,13 @@ export const buildApp = async () => {
   }
 
   app.decorateRequest('actorContext', null)
+
+  // Root every Fastify request in its own async context before authentication.
+  // Knowledge routes fill in the authenticated actor later; transactional
+  // provider hooks then inherit it without concurrent requests sharing state.
+  app.addHook('onRequest', (_request, _reply, done) => {
+    runKnowledgeInferenceRequestContext(done)
+  })
 
   app.addHook('onClose', async () => {
     await realtimeHub.close()

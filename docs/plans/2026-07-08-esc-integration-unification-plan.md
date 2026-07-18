@@ -243,9 +243,11 @@ Current Nessie slice:
   reaches **every** agent run inside the team — personal assistant and shared
   agents alike — so the tools are grantable to any permitted agent through its
   per-agent tool policy (default off). Deep Water now routes exclusively through
-  Ledger's bearer-authenticated MCP adapter. Each caller stores a dedicated
-  Ledger ProxyToken as an encrypted per-user override, so Ledger owns the
-  research job, budget enforcement, audit, and booked rate-card charge while the
+  Ledger's bearer-authenticated MCP adapter. Nessie's shared ProxyToken
+  authenticates the service, while a signed UOA delegation plus Nessie
+  org/team/user/agent/run context assigns the job and spend to the verified
+  caller. Personal credential overrides are forbidden. Ledger owns research
+  isolation, budget enforcement, audit, and booked rate-card charge while the
   deterministic tool contract still comes from the plugin manifest. `POST
   /api/integrations/products/deep-water/research-launch` creates or loads the
   user's Personal Assistant DM, posts a server-built launch message carrying a

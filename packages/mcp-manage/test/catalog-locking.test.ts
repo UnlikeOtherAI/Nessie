@@ -136,6 +136,44 @@ test('createInstance lets owners/admins install a locked connector', async () =>
   assert.equal(created.length, 1)
 })
 
+test('createInstance reserves first-party DeepWater for managed provisioning', async () => {
+  const deepWaterEntry = {
+    ...lockedEntry,
+    id: 'deep-water-entry',
+    name: 'deep-water',
+    label: 'Deep Water',
+    locked: false,
+    defaultTransportConfig: {
+      transport: 'http',
+      url: 'https://ledger.unlikeotherai.com/v1/mcp/deepwater',
+    },
+    integratedProducts: [{ slug: 'deep-water' }],
+  } as unknown as McpCatalogEntryRow
+  const { prisma, created } = makePrisma({
+    entry: deepWaterEntry,
+    lockedEntries: [],
+  })
+
+  await assert.rejects(
+    createInstance(prisma, actor(MEMBER, []), {
+      catalogEntryId: deepWaterEntry.id,
+      scopeType: 'user',
+      scopeId: MEMBER,
+    }),
+    (error: unknown) =>
+      error instanceof McpInstanceError
+      && error.code === MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
+  )
+  const provisioned = await createInstance(prisma, actor(MEMBER, []), {
+    catalogEntryId: deepWaterEntry.id,
+    scopeType: 'user',
+    scopeId: MEMBER,
+    managedProvision: true,
+  })
+  assert.equal(provisioned.id, 'new-instance')
+  assert.equal(created.length, 1)
+})
+
 test('findApplicableLock matches the same endpoint registered under another entry', async () => {
   const { prisma } = makePrisma({})
   const lock = await findApplicableLock(

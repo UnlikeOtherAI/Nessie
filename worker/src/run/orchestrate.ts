@@ -108,7 +108,9 @@ export const executeOrchestrateDecideJob = async (
     agents: channelAgents satisfies OrchestratorAgent[],
     content,
     recentMessages,
-    usage: attributionFromActorContext(actorContext),
+    usage: attributionFromActorContext(actorContext, {
+      systemComponent: 'orchestrator',
+    }),
   })
 
   if (decisions.length === 0) {

@@ -3,6 +3,7 @@ import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
 import {
   KNOWLEDGE_EMBEDDING_DIMS,
   KNOWLEDGE_EMBEDDING_MODEL,
+  KnowledgeInferenceOriginSchema,
   type KnowledgeEmbedJobPayload,
 } from '@nessie/schemas'
 
@@ -17,12 +18,6 @@ import {
 // step makes a retry cheap since previously-written vectors are never redone.
 
 const EMBED_BATCH_SIZE = 64
-
-// Background job — no end user or agent drives this call, so ledger
-// attribution uses a fixed system actor. Mirrors the 'public'/'system'
-// sentinel pattern used for other unauthenticated system-triggered billing
-// (see api/src/routes/organizations.ts brand-logo download).
-const SYSTEM_ACTOR_ID = 'knowledge-embed-worker'
 
 type KnowledgeEmbedDeps = {
   modelClient: ModelClient
@@ -144,6 +139,9 @@ export const executeKnowledgeEmbedJob = async (
   deps: KnowledgeEmbedDeps,
   payload: KnowledgeEmbedJobPayload,
 ): Promise<void> => {
+  // Validate before touching storage or the model seam so a legacy/malformed
+  // queue payload can never escape as an unattributed Ledger request.
+  const origin = KnowledgeInferenceOriginSchema.parse(payload.origin)
   const page = await deps.prisma.knowledgePage.findFirst({
     where: {
       id: payload.pageId,
@@ -171,12 +169,18 @@ export const executeKnowledgeEmbedJob = async (
   if (pending.length > 0) {
     const attribution: LedgerAttribution = {
       organizationId: payload.organizationId,
+      userId: origin.userId,
       projectId: page.projectId,
-      teamId: page.teamId,
+      teamId: page.teamId ?? origin.teamId,
       channelId: page.channelId,
       threadId: page.threadId,
-      actorId: SYSTEM_ACTOR_ID,
-      actorType: 'system',
+      runId: origin.runId,
+      agentId: origin.agentId,
+      actorId: origin.actorId,
+      actorType: origin.actorType,
+      requestId: origin.requestId,
+      correlationId: origin.correlationId ?? null,
+      systemComponent: origin.systemComponent ?? null,
     }
 
     await embedPendingChunks(deps, payload, pending, attribution)

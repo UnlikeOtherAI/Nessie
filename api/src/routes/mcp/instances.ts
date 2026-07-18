@@ -5,6 +5,8 @@ import {
   getInstance,
   healthcheckInstance,
   isOwnerRole,
+  isManagedDeepWaterCatalogEntry,
+  isManagedDeepWaterInstance,
   listInstances,
   listInstancesVisibleToUser,
   MCP_INSTANCE_ERROR_CODES,
@@ -160,6 +162,15 @@ export const registerMcpInstanceRoutes = (
     if (!(await canManage(actorContext, body.scopeType, body.scopeId))) {
       return denyScope(reply)
     }
+    if (await isManagedDeepWaterCatalogEntry(prisma, body.catalogEntryId)) {
+      sendApiError(
+        reply,
+        409,
+        'DEEP_WATER_MANAGED_CONNECTOR',
+        'DeepWater is provisioned from Integrations and uses Nessie SSO automatically.',
+      )
+      return reply
+    }
 
     try {
       const instance = await createInstance(prisma, actorContext, body)
@@ -283,6 +294,21 @@ export const registerMcpInstanceRoutes = (
     )
     if (!instance) {
       sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
+      return reply
+    }
+    if (
+      await isManagedDeepWaterInstance(
+        prisma,
+        actorContext.tenant.organizationId,
+        instance.id,
+      )
+    ) {
+      sendApiError(
+        reply,
+        409,
+        'DEEP_WATER_MANAGED_CREDENTIAL',
+        'DeepWater uses Nessie SSO and its managed Ledger service credential.',
+      )
       return reply
     }
     const access = await accessFor(actorContext)

@@ -4,7 +4,12 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
-import { buildMcpToolset, type McpToolPolicy } from './mcp-toolset.js'
+import {
+  addDeepWaterIdentityHeaders,
+  buildMcpToolset,
+  isManagedDeepWaterCatalog,
+  type McpToolPolicy,
+} from './mcp-toolset.js'
 
 /**
  * Scope-exposure rules for the MCP toolset: which instances' tools a given
@@ -13,6 +18,10 @@ import { buildMcpToolset, type McpToolPolicy } from './mcp-toolset.js'
  */
 
 type RowSeed = {
+  catalogName?: string
+  catalogVisibility?: string
+  integratedProductSlugs?: string[]
+  credentialRef?: string | null
   id: string
   toolName: string
   scopeType: string
@@ -38,11 +47,17 @@ const makePrisma = (rows: RowSeed[]): PrismaClient => {
           metadata: row.requiresExplicitGrant ? { requiresExplicitGrant: true } : {},
           mcpInstanceId: `inst-${row.id}`,
           mcpInstance: {
-            credentialRef: null,
+            credentialRef: row.credentialRef ?? null,
             scopeType: row.scopeType,
             scopeId: row.scopeId,
             transportConfig: {},
             catalogEntry: {
+              label: row.catalogName ?? 'Example',
+              name: row.catalogName ?? 'example',
+              visibility: row.catalogVisibility ?? 'private',
+              integratedProducts: (row.integratedProductSlugs ?? []).map(
+                (slug) => ({ slug }),
+              ),
               authConfig: { method: 'none' },
               defaultTransportConfig: {
                 transport: 'http',
@@ -195,6 +210,144 @@ test('an explicit grant never lets a personal assistant cross a team boundary', 
       toolPolicy: { dw: true },
     }),
     [],
+  )
+})
+
+test('managed DeepWater resolves only the shared service credential ref', async () => {
+  const resolvedRefs: string[] = []
+  const toolset = await buildMcpToolset(
+    makePrisma([
+      {
+        catalogName: 'deep-water',
+        catalogVisibility: 'public',
+        integratedProductSlugs: ['deep-water'],
+        credentialRef: 'LEDGER_PROXY_TOKEN',
+        id: 'dw',
+        toolName: 'research_start',
+        scopeType: 'team',
+        scopeId: 'team-1',
+        requiresExplicitGrant: true,
+      },
+    ]),
+    'org-1',
+    { dw: true },
+    actorContext(),
+    {
+      agentId: 'agent-1',
+      agentKind: 'personal_assistant',
+      channelId: 'channel-1',
+    },
+    {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      userId: 'user-1',
+      actorId: 'agent-1',
+    },
+    {
+      secretResolver: {
+        resolve: async (ref) => {
+          resolvedRefs.push(ref)
+          return 'service-token'
+        },
+      },
+    },
+  )
+  assert.deepEqual(resolvedRefs, ['LEDGER_PROXY_TOKEN'])
+  assert.deepEqual(
+    toolset.entries.map((entry) => entry.originalToolName),
+    ['research_start'],
+  )
+})
+
+test('private same-name catalogs are not treated as managed DeepWater', () => {
+  assert.equal(
+    isManagedDeepWaterCatalog({
+      integratedProducts: [],
+      name: 'deep-water',
+      visibility: 'private',
+    }),
+    false,
+  )
+  assert.equal(
+    isManagedDeepWaterCatalog({
+      integratedProducts: [{ slug: 'deep-water' }],
+      name: 'deep-water',
+      visibility: 'public',
+    }),
+    true,
+  )
+})
+
+test('DeepWater keeps service auth and adds fresh required identity headers', async () => {
+  const calls: unknown[] = []
+  const transport = await addDeepWaterIdentityHeaders(
+    {
+      transport: 'http',
+      url: 'https://ledger.unlikeotherai.com/v1/mcp/deepwater',
+      headers: { Authorization: 'Bearer service-token', 'X-Existing': 'yes' },
+    },
+    {
+      requestHeaders: async (input, options) => {
+        calls.push({ input, options })
+        return {
+          'X-Nessie-Context': 'nessie-context',
+          'X-UOA-Delegation': 'uoa-delegation',
+        }
+      },
+    },
+    {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      userId: 'user-1',
+      actorId: 'agent-1',
+    },
+    '00000000-0000-4000-8000-000000000004',
+  )
+  assert.deepEqual(calls, [{
+    input: {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      userId: 'user-1',
+      actorId: 'agent-1',
+    },
+    options: {
+      requireUoaIdentity: true,
+      toolCallId: '00000000-0000-4000-8000-000000000004',
+    },
+  }])
+  assert.deepEqual(
+    transport.transport === 'http' ? transport.headers : null,
+    {
+      Authorization: 'Bearer service-token',
+      'X-Existing': 'yes',
+      'X-Nessie-Context': 'nessie-context',
+      'X-UOA-Delegation': 'uoa-delegation',
+    },
+  )
+})
+
+test('DeepWater rejects dispatch identity without a stable provider tool-call id', async () => {
+  await assert.rejects(
+    addDeepWaterIdentityHeaders(
+      {
+        transport: 'http',
+        url: 'https://ledger.unlikeotherai.com/v1/mcp/deepwater',
+        headers: { Authorization: 'Bearer service-token' },
+      },
+      {
+        requestHeaders: async () => ({}),
+      },
+      {
+        organizationId: 'org-1',
+        teamId: 'team-1',
+        userId: 'user-1',
+        agentId: 'agent-1',
+        runId: 'run-1',
+        actorId: 'agent-1',
+      },
+      '',
+    ),
+    /LEDGER_TOOL_CALL_ID_REQUIRED/,
   )
 })
 

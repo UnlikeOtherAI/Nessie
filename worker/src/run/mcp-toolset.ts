@@ -4,7 +4,11 @@ import {
   EnvSecretResolver,
   type SecretResolver,
 } from '@nessie/mcp-manage'
-import { recordConnectorUsage, type LedgerAttribution } from '@nessie/runtime'
+import {
+  recordConnectorUsage,
+  type LedgerAttribution,
+  type LedgerIdentityService,
+} from '@nessie/runtime'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext, McpTransportConfig } from '@nessie/schemas'
 import {
@@ -44,6 +48,9 @@ type RegistryRow = {
     transportConfig: unknown
     catalogEntry: {
       label: string
+      name: string
+      visibility: string
+      integratedProducts: Array<{ slug: string }>
       authConfig: unknown
       defaultTransportConfig: unknown
     }
@@ -52,6 +59,15 @@ type RegistryRow = {
 
 const stringRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+
+export const isManagedDeepWaterCatalog = (catalog: {
+  integratedProducts: Array<{ slug: string }>
+  name: string
+  visibility: string
+}): boolean =>
+  catalog.name === 'deep-water'
+  && catalog.visibility === 'public'
+  && catalog.integratedProducts.some((product) => product.slug === 'deep-water')
 
 type RunScopeContext = {
   agentKind: 'personal_assistant' | 'shared'
@@ -181,7 +197,11 @@ export type McpToolset = {
    */
   createView: () => McpToolsetView
   /** Direct dispatch of a real MCP tool by exposed name (views wrap this). */
-  dispatch: (exposedName: string, args: Record<string, unknown>) => Promise<AgenticToolResult>
+  dispatch: (
+    exposedName: string,
+    args: Record<string, unknown>,
+    toolCallId?: string,
+  ) => Promise<AgenticToolResult>
 }
 
 const resolveInlineToolLimit = (override?: number): number => {
@@ -191,6 +211,34 @@ const resolveInlineToolLimit = (override?: number): number => {
 }
 
 const defaultSecretResolver = new EnvSecretResolver()
+
+export const addDeepWaterIdentityHeaders = async (
+  transport: McpTransportConfig,
+  ledgerIdentity: LedgerIdentityService | null | undefined,
+  attribution: LedgerAttribution,
+  toolCallId: string,
+): Promise<McpTransportConfig> => {
+  if (!ledgerIdentity) {
+    throw new Error('LEDGER_IDENTITY_UNCONFIGURED')
+  }
+  if (
+    transport.transport === 'stdio'
+    || !transport.headers?.Authorization
+  ) {
+    throw new Error('LEDGER_PROXY_TOKEN_UNSET')
+  }
+  if (!toolCallId.trim()) {
+    throw new Error('LEDGER_TOOL_CALL_ID_REQUIRED')
+  }
+  const identityHeaders = await ledgerIdentity.requestHeaders(
+    attribution,
+    { requireUoaIdentity: true, toolCallId },
+  )
+  return {
+    ...transport,
+    headers: { ...(transport.headers ?? {}), ...identityHeaders },
+  }
+}
 
 export const buildMcpToolset = async (
   prisma: PrismaClient,
@@ -205,7 +253,11 @@ export const buildMcpToolset = async (
   // Attribution for connector usage billing — every dispatched MCP tool call
   // writes a connector_usage_events row keyed to the run's org/agent/channel/run.
   attribution: LedgerAttribution,
-  options: { secretResolver?: SecretResolver; inlineToolLimit?: number } = {},
+  options: {
+    ledgerIdentity?: LedgerIdentityService | null
+    secretResolver?: SecretResolver
+    inlineToolLimit?: number
+  } = {},
 ): Promise<McpToolset> => {
   const secretResolver = options.secretResolver ?? defaultSecretResolver
   const rows = (await prisma.toolRegistryEntry.findMany({
@@ -231,7 +283,14 @@ export const buildMcpToolset = async (
           scopeId: true,
           transportConfig: true,
           catalogEntry: {
-            select: { label: true, authConfig: true, defaultTransportConfig: true },
+            select: {
+              label: true,
+              name: true,
+              visibility: true,
+              integratedProducts: { select: { slug: true } },
+              authConfig: true,
+              defaultTransportConfig: true,
+            },
           },
         },
       },
@@ -242,6 +301,7 @@ export const buildMcpToolset = async (
 
   const entries: McpToolEntry[] = []
   type TransportTarget = {
+    deepWater: boolean
     transport: McpTransportConfig
     originalToolName: string
     instanceId: string
@@ -274,14 +334,17 @@ export const buildMcpToolset = async (
     }
     usedNames.add(exposedName)
 
-    const credentialRef = await resolveCredentialRef(prisma, row.mcpInstanceId, {
-      userId: runScope.effectiveUserId,
-      agentId: runtimeContext.agentId,
-      channelId: runtimeContext.channelId,
-      teamId: runScope.teamId,
-      projectId: runScope.projectId,
-      organizationId,
-    })
+    const deepWater = isManagedDeepWaterCatalog(row.mcpInstance.catalogEntry)
+    const credentialRef = deepWater
+      ? row.mcpInstance.credentialRef
+      : await resolveCredentialRef(prisma, row.mcpInstanceId, {
+        userId: runScope.effectiveUserId,
+        agentId: runtimeContext.agentId,
+        channelId: runtimeContext.channelId,
+        teamId: runScope.teamId,
+        projectId: runScope.projectId,
+        organizationId,
+      })
     const secret = credentialRef ? await secretResolver.resolve(credentialRef) : null
 
     let transport: McpTransportConfig
@@ -309,6 +372,7 @@ export const buildMcpToolset = async (
       connectorLabel: row.mcpInstance.catalogEntry.label,
     })
     transportByExposedName.set(exposedName, {
+      deepWater,
       transport,
       originalToolName,
       instanceId: row.mcpInstanceId,
@@ -340,6 +404,7 @@ export const buildMcpToolset = async (
   const dispatch = async (
     exposedName: string,
     args: Record<string, unknown>,
+    toolCallId?: string,
   ): Promise<AgenticToolResult> => {
     const inputSummary = summarizeToolInput(args)
     const target = transportByExposedName.get(exposedName)
@@ -348,8 +413,20 @@ export const buildMcpToolset = async (
     }
     const startedAt = Date.now()
     try {
+      let transport = target.transport
+      if (target.deepWater) {
+        if (!toolCallId) {
+          throw new Error('LEDGER_TOOL_CALL_ID_REQUIRED')
+        }
+        transport = await addDeepWaterIdentityHeaders(
+          transport,
+          options.ledgerIdentity,
+          attribution,
+          toolCallId,
+        )
+      }
       const result = await dispatchTool({
-        spec: { transport: 'mcp', connection: target.transport, toolName: target.originalToolName },
+        spec: { transport: 'mcp', connection: transport, toolName: target.originalToolName },
         args,
         secret: null,
       })

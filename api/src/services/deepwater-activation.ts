@@ -6,6 +6,7 @@ import {
   projectMcpToolDescriptors,
   type McpInstanceRow,
 } from '@nessie/mcp-manage'
+import { loadLedgerIdentitySettings } from '@nessie/runtime'
 
 import { getIntegrationPluginManifest } from './integration-plugin-manifests.js'
 import { setProductTeamEnablement } from './integrations.js'
@@ -27,12 +28,11 @@ import { setProductTeamEnablement } from './integrations.js'
  * tool contract is the plugin manifest (`integration-plugin-manifests.ts`), not
  * a live provider probe. Enable is therefore a deterministic provision: resolve
  * the Ledger MCP endpoint from the manifest and install a bearer-authenticated
- * HTTP transport with no shared credential. Each caller supplies a dedicated
- * Ledger ProxyToken through the normal encrypted per-user credential override,
- * preserving token-owned job isolation and spend attribution for PA and shared
- * agent calls alike. Ledger owns the upstream credential, job budget, and
- * immutable booked rate-card charge. That charge is not an upstream
- * provider-invoice actual; complex runs may reconcile higher.
+ * HTTP transport authenticated by Nessie's shared Ledger ProxyToken. The
+ * originating SSO user and Nessie org/team/agent/run are sent independently as
+ * signed per-call identity headers, so a shared transport credential cannot
+ * collapse ownership or spend attribution. Ledger owns the upstream credential,
+ * job budget, and immutable booked rate-card charge.
  */
 
 export const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
@@ -69,6 +69,30 @@ export class LedgerDeepWaterCatalogUnavailableError extends Error {
   }
 }
 
+export class LedgerProxyTokenUnsetError extends Error {
+  readonly code = 'LEDGER_PROXY_TOKEN_UNSET'
+
+  constructor() {
+    super(
+      'Ledger service authentication is not configured: set LEDGER_PROXY_TOKEN '
+      + 'before enabling DeepWater.',
+    )
+    this.name = 'LedgerProxyTokenUnsetError'
+  }
+}
+
+export class LedgerIdentityConfigurationUnsetError extends Error {
+  readonly code = 'LEDGER_IDENTITY_UNCONFIGURED'
+
+  constructor() {
+    super(
+      'Signed Ledger caller identity is not configured. Complete the UOA domain, '
+      + 'config URL, signing key, key id, and client secret settings first.',
+    )
+    this.name = 'LedgerIdentityConfigurationUnsetError'
+  }
+}
+
 export class LedgerDeepWaterEnablementPersistenceError extends Error {
   readonly code = 'LEDGER_DEEPWATER_ENABLEMENT_NOT_PERSISTED'
 
@@ -79,6 +103,7 @@ export class LedgerDeepWaterEnablementPersistenceError extends Error {
 }
 
 const LEDGER_DEEP_WATER_URL_ENV = 'LEDGER_DEEPWATER_MCP_URL'
+export const LEDGER_PROXY_TOKEN_ENV = 'LEDGER_PROXY_TOKEN'
 
 /** Environment variable name declared by the DeepWater manifest transport. */
 const deepWaterTransportUrlEnv = (): string => {
@@ -102,6 +127,15 @@ const resolveDeepWaterLedgerUrl = (): string => {
     throw new LedgerDeepWaterMcpUrlUnsetError(envVar)
   }
   return url
+}
+
+const assertLedgerServiceConfigured = (): void => {
+  if (!process.env[LEDGER_PROXY_TOKEN_ENV]?.trim()) {
+    throw new LedgerProxyTokenUnsetError()
+  }
+  if (!loadLedgerIdentitySettings()) {
+    throw new LedgerIdentityConfigurationUnsetError()
+  }
 }
 
 const deepWaterTransitionLockKey = (input: DeepWaterScope): string =>
@@ -206,6 +240,7 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
   }
 
   const ledgerUrl = resolveDeepWaterLedgerUrl()
+  assertLedgerServiceConfigured()
   const existing = await findTeamInstance(tx, { ...input, catalogEntryId })
 
   let instance = existing
@@ -215,6 +250,8 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
     // used by that service, while intentionally omitting connection lifecycle.
     instance = await createInstance(tx as unknown as PrismaClient, actorContext, {
       catalogEntryId,
+      credentialRef: LEDGER_PROXY_TOKEN_ENV,
+      managedProvision: true,
       scopeType: 'team',
       scopeId: input.teamId,
       transportConfig: { transport: 'http', url: ledgerUrl },
@@ -228,17 +265,15 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
 
   if (preserveProbedSchemas) {
     // Keep a current Ledger adapter's richer discovered schemas, but always
-    // enforce the configured Ledger endpoint and clear any legacy shared
-    // credential. Callers authenticate with encrypted per-user overrides.
+    // enforce the configured Ledger endpoint and service credential.
     await tx.mcpServerInstance.update({
       where: { id: provisioned.id },
       data: {
-        credentialRef: null,
+        credentialRef: LEDGER_PROXY_TOKEN_ENV,
         transportConfig: { transport: 'http', url: ledgerUrl },
         lifecycleState: 'active',
         healthFailureCount: 0,
-        // Team enable has no caller ProxyToken, so it cannot truthfully probe
-        // Ledger. Active here means the deterministic contract is projected.
+        // Active here means the deterministic Ledger contract is projected.
         healthLastCheckedAt: null,
         lastError: null,
       },
@@ -254,12 +289,11 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
     await tx.mcpServerInstance.update({
       where: { id: provisioned.id },
       data: {
-        credentialRef: null,
+        credentialRef: LEDGER_PROXY_TOKEN_ENV,
         transportConfig: { transport: 'http', url: ledgerUrl },
         discoveredTools: descriptors as unknown as object,
         lifecycleState: 'active',
         healthFailureCount: 0,
-        // Per-user health is established later with the caller's ProxyToken.
         healthLastCheckedAt: null,
         lastError: null,
       },

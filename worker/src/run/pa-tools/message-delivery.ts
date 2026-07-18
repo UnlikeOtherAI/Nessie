@@ -68,9 +68,22 @@ export const runSendMessageTool = async (
         memoryOrigin: 'user_authored_workspace_message',
         messageId: message.id,
         organizationId: context.channel.organizationId,
+        projectId: context.actorContext.tenant.projectId,
+        teamId:
+          context.actorContext.tenant.teamId
+          ?? context.actorContext.actionContext.teamId,
         sourceAudience: destination.channelType === 'dm' ? 'dm' : 'channel',
         threadId: destination.threadId,
         userId,
+        sessionId: context.actorContext.actionContext.sessionId,
+        taskId: context.actorContext.actionContext.taskId,
+        runId: context.run.id,
+        agentId: context.agentId,
+        agentKind: context.agentKind,
+        actorId: context.actorContext.actor.actorId,
+        actorType: context.actorContext.actor.actorType,
+        requestId: context.actorContext.actionContext.requestId,
+        correlationId: context.actorContext.actionContext.correlationId,
       },
       context.memoryCaptureConfig,
     )

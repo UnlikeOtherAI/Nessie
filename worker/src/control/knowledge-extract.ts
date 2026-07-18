@@ -216,6 +216,7 @@ export const executeKnowledgeExtractJob = async (
       idempotencyKey: `kb-embed:${payload.pageId}:${payload.versionId}`,
       payload: {
         organizationId: payload.organizationId,
+        origin: payload.origin,
         pageId: payload.pageId,
         versionId: payload.versionId,
       },

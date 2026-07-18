@@ -122,6 +122,7 @@ export const McpAppStorePage = () => {
       ?? catalogEntries[0],
     [catalogEntries, selectedCatalogId],
   )
+  const selectedCatalogManaged = selectedCatalog?.managedByIntegration === true
   const instancesForSelected = useMemo(
     () =>
       (instancesQuery.data ?? []).filter(
@@ -163,6 +164,7 @@ export const McpAppStorePage = () => {
       || !selectedCatalog
       || selectedCatalog.id !== catalogEntryIdParam
       || selectedCatalog.status !== 'published'
+      || selectedCatalog.managedByIntegration
     ) {
       return
     }
@@ -280,6 +282,7 @@ export const McpAppStorePage = () => {
           isElevated={isElevated}
           isMine={selectedCatalog.ownerUserId === currentUserId}
           isOwner={isOwner}
+          managedByIntegration={selectedCatalogManaged}
           onLockToggle={() =>
             void (selectedCatalog.locked
               ? unlockCatalog.mutateAsync(selectedCatalog.id)
@@ -300,9 +303,17 @@ export const McpAppStorePage = () => {
       <ColumnBrowserColumn key={`instances-${selectedCatalog.id}`} title="Installed scopes">
         <InstanceList
           instances={instancesForSelected}
-          onCredentials={(instance) => setCredentialsTarget(instance)}
+          onCredentials={
+            selectedCatalogManaged
+              ? undefined
+              : (instance) => setCredentialsTarget(instance)
+          }
           onSelect={() => undefined}
-          onTest={(instance) => testInstance.mutate(instance.id)}
+          onTest={
+            selectedCatalogManaged
+              ? undefined
+              : (instance) => testInstance.mutate(instance.id)
+          }
           testingId={
             testInstance.isPending && testInstance.variables
               ? testInstance.variables
@@ -393,7 +404,7 @@ export const McpAppStorePage = () => {
         />
       ) : null}
 
-      {credentialsTarget ? (
+      {credentialsTarget && !selectedCatalogManaged ? (
         <CredentialsDialog
           instance={credentialsTarget}
           oauth2={selectedCatalog?.authMethod === 'oauth2'}

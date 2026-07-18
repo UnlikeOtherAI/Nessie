@@ -76,6 +76,7 @@ export type LoopResult = {
 type ExecuteToolFn = (
   toolName: string,
   args: Record<string, unknown>,
+  toolCallId: string,
 ) => Promise<{
   connectorUsage?: ConnectorUsage
   output: string
@@ -321,7 +322,7 @@ export const runAgenticLoop = async (input: {
 
         try {
           const toolResult = await withTimeout(
-            executeTool(tc.toolName, tc.arguments),
+            executeTool(tc.toolName, tc.arguments, tc.toolCallId),
             budget.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
             tc.toolName,
           )
