@@ -12,13 +12,11 @@ import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import TabView from 'react-native-bottom-tabs'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { captureScreen } from 'react-native-view-shot'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 
 import { ADMIN_URL } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
-import { useShake } from './src/lib/use-shake'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 import {
   DEFAULT_TOOLBAR_STATE,
@@ -26,6 +24,7 @@ import {
   type ToolbarAction,
   type ToolbarState,
 } from './src/components/IpadNativeToolbar'
+import { IpadNativeTabBar } from './src/components/IpadNativeTabBar'
 
 // Deep-link callback the OS browser redirects to after external sign-in. Must
 // match the admin's externalAuthRedirectUri and the API's allow-listed URL.
@@ -87,7 +86,6 @@ const Shell = (): React.JSX.Element => {
   // Changing the loaded URL forces WKWebView to fetch a fresh index.html instead of
   // a cached (possibly stale, asset-404ing) one that boots to a blank white screen.
   const [reloadNonce, setReloadNonce] = useState(0)
-  const capturing = useRef(false)
   const backgroundedAt = useRef<number | null>(null)
   const adminBooted = useRef(false)
   const bootRetries = useRef(0)
@@ -205,29 +203,6 @@ const Shell = (): React.JSX.Element => {
     }
   }
 
-  // Shake to file feedback: capture the current screen and hand it to the admin
-  // feedback composer, which previews and attaches it.
-  const onShake = async (): Promise<void> => {
-    if (capturing.current) return
-    capturing.current = true
-    try {
-      const uri = await captureScreen({ format: 'png', quality: 0.9, result: 'data-uri' })
-      const payload = JSON.stringify(uri)
-      runScript(
-        `window.__nessieNavigate && window.__nessieNavigate('/feedback');` +
-          `window.__nessieShakeScreenshot && window.__nessieShakeScreenshot(${payload});`,
-      )
-    } catch {
-      // Capture can fail transiently (e.g. mid-transition); ignore and let the
-      // next shake try again.
-    } finally {
-      capturing.current = false
-    }
-  }
-  useShake(() => {
-    void onShake()
-  })
-
   const onMessage = (event: WebViewMessageEvent): void => {
     let msg: {
       type?: string
@@ -303,7 +278,9 @@ const Shell = (): React.JSX.Element => {
   const showBar = currentPath != null && !isAuthGateRoute(currentPath)
 
   // Inset the WebView for the status bar (Android draws edge-to-edge) and for the
-  // native tab bar when it's shown (top on iPad, bottom elsewhere).
+  // native tab bar when it's shown (top on iPad, bottom elsewhere). The iPhone
+  // WebView stays edge to edge; INJECTED gives its page content the top safe-area
+  // padding so each column background still reaches behind the status bar.
   const topInset = IS_IPAD && showBar ? insets.top + IPAD_TAB_BAR_HEIGHT : IS_ANDROID ? insets.top : 0
   const bottomInset =
     showBar && !IS_IPAD ? TAB_BAR_BASE_HEIGHT + insets.bottom : IS_ANDROID ? insets.bottom : 0
@@ -318,7 +295,7 @@ const Shell = (): React.JSX.Element => {
     <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={isDark(bg) ? 'light' : 'dark'} />
 
-      {showBar && (
+      {showBar && !IS_IPAD ? (
         <View style={StyleSheet.absoluteFill}>
           <TabView
             getIcon={({ route, focused }) => {
@@ -338,7 +315,7 @@ const Shell = (): React.JSX.Element => {
             translucent
           />
         </View>
-      )}
+      ) : null}
 
       <View style={webviewLayerStyle}>
         <WebView
@@ -372,6 +349,17 @@ const Shell = (): React.JSX.Element => {
           style={[styles.fill, { backgroundColor: bg }]}
         />
       </View>
+
+      {showBar && IS_IPAD ? (
+        <IpadNativeTabBar
+          activeIndex={index}
+          activeTintColor={accent}
+          dark={isDark(bg)}
+          inactiveTintColor={inactive}
+          onIndexChange={onIndexChange}
+          top={insets.top + 4}
+        />
+      ) : null}
 
       {showBar && IS_IPAD ? (
         <IpadNativeToolbar

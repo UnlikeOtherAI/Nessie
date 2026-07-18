@@ -91,20 +91,21 @@ the app was built against the admin web origin instead of the API origin.
 
 The mobile app is a **WebView shell around the admin web UI** wrapped in native
 chrome, mirroring the desktop app. `mobile/App.tsx` renders **one persistent**
-`react-native-webview` that loads the admin, sitting under a **native bottom tab
-bar** (`react-native-bottom-tabs`; iOS 26 Liquid-Glass on iPhone/iPad, Material
-on Android) with five tabs — Channels · Projects · Knowledge · Admin · Search.
+`react-native-webview` that loads the admin, sitting above a **native bottom tab
+bar** (`react-native-bottom-tabs`; iOS 26 Liquid Glass on iPhone, Material on
+Android) with five tabs — Channels · Projects · Knowledge · Admin · Search.
 Agents now live **under Admin** (the Admin section's nav lists Agents/Activity/
 Designer/Workflows/Triggers/Tools), and **Search** is the trailing tab (iOS 26
 separated search role) backed by a global `/search` page. The bar is hidden on
 the login / bootstrap screens. On iPhone and Android the bar sits at the bottom;
-on iPad (iPadOS 26) the native tab bar renders at the **top**, so `App.tsx`
-insets the WebView accordingly (`IS_IPAD`). The iPad native tab bar shows icons
-in both portrait and landscape, with Back, Forward, Recent Channels, and Help
-buttons overlaid on the trailing side of that same native row. Tapping **Search**
-opens the full `/search` page on iPhone and Android; on iPad it opens the native
-search overlay from the separated Search item. The URL split lives in
-`mobile/src/config.ts`:
+on iPad (iPadOS 26) `IpadNativeTabBar` renders the same destinations in a
+lightweight native **top** row, so `App.tsx` insets the WebView accordingly
+(`IS_IPAD`). The iPad deliberately does not mount `react-native-bottom-tabs`:
+its empty tab scenes can cover the sibling WKWebView with a black controller
+surface after login. Back, Forward, Recent Channels, and Help buttons sit on the
+trailing side of the iPad row. Tapping **Search** opens the full `/search` page
+on iPhone and Android; on iPad it opens the native search overlay. The URL split
+lives in `mobile/src/config.ts`:
 
 - **dev** → `http://<YOUR-MAC-LAN-IP>:5455` (the admin Vite dev server; edits
   hot-reload on the device, and the admin's `/api` calls are proxied to the API)
@@ -113,7 +114,7 @@ search overlay from the separated Search item. The URL split lives in
 Update the dev branch of `ADMIN_URL` to your Mac's LAN IP before building. The
 old native app (login/channels screens) is archived at `archive/mobile-native`.
 
-**Navigation bridge.** The tab bar does not host separate WebViews — it drives
+**Navigation bridge.** Neither tab surface hosts separate WebViews — each drives
 the single WebView via the postMessage bridge. Tapping a tab calls
 `window.__nessieNavigate(path)` in the SPA; the SPA reports route changes back as
 `{ type: 'nessie:route', path }` so the selected tab resyncs. On the web side
@@ -123,23 +124,30 @@ the admin hides its own left rail and bottom tab bar. Phone-sized native layouts
 also hide the admin top bar entirely; the iPad native layout hides that web top
 bar too and exposes its remaining controls through `window.__nessieToolbarAction`
 from `admin/src/layouts/admin-shell/NativeIPadToolbarBridge.tsx`, while global
-search opens from the native Search tab overlay. The per-section secondary sidebar
-(channel list, admin sub-pages, …) opens from a **top-left hamburger** as a
-slide-in drawer. Mobile *web* (a phone browser, no native shell) gets an
-equivalent web-rendered bottom tab bar instead — and, like the native phone
-layout, hides the admin top bar entirely whenever that bottom tab bar is shown
-(`hideTopBar` in `AdminShellLayout.tsx`). Global search is reached from the bottom
-bar's **Search** tab, and each page renders its own mobile header (hamburger +
-title) for drawer access.
+search opens from the native Search tab overlay. Because that web top bar is
+absent on iPhone, `mobile/src/lib/webview-inject.ts` applies the top safe-area
+inset to the admin columns' content while leaving their backgrounds edge to
+edge; iPad and Android reserve their top inset in the native frame. The
+per-section secondary sidebar (channel list, admin sub-pages, …) opens from a
+**top-left hamburger** as a slide-in drawer. Mobile *web* (a phone browser, no
+native shell) gets an equivalent web-rendered bottom tab bar instead — and, like
+the native phone layout, hides the admin top bar entirely whenever that bottom
+tab bar is shown (`hideTopBar` in `AdminShellLayout.tsx`). Global search is
+reached from the bottom bar's **Search** tab, and each page renders its own
+mobile header (hamburger + title) for drawer access.
 
-**Shake to feedback.** Shaking the device (iOS/iPad/Android, via `expo-sensors`)
-captures a screenshot (`react-native-view-shot`), navigates the WebView to
-`/feedback`, and hands the screenshot to the admin feedback composer
-(`window.__nessieShakeScreenshot`), which previews and attaches it. Feedback is
-therefore not a tab in the native app.
+The login route is its own full-height touch-scroll container because the page
+root remains fixed for the authenticated shell. On phone widths it presents the
+sign-in panel before the welcome panel, keeping hosted SSO visible without an
+initial scroll; desktop keeps the two-column welcome/sign-in order.
 
-`react-native-webview`, `react-native-bottom-tabs`, `expo-sensors`, and
-`react-native-view-shot` are native modules, so **Expo Go cannot host the app** —
+**Feedback without motion access.** The mobile shell does not subscribe to
+accelerometer data, so iOS/iPadOS does not ask for the broad “Motion & Fitness
+Activity” permission at launch. Feedback remains available through Help and
+Feedback on iPad and the admin Feedback section on every form factor.
+
+`react-native-webview` and `react-native-bottom-tabs` are native modules, so
+**Expo Go cannot host the app** —
 you need a prebuilt build (`npx expo prebuild` regenerates `mobile/ios` /
 `mobile/android` with autolinking). Building for a physical device requires Apple
 Developer signing.

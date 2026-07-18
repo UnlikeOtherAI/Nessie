@@ -206,9 +206,10 @@ larger phases.
   results across channels/people/projects/messages/knowledge, reusing
   `useGlobalSearch`; `⌘K`/`Ctrl-K` to focus), a persisted Text/Semantic mode
   toggle for memory search, a workspace badge, and a help shortcut. Shared across
-  web, the iPad WebView shell (clears the status bar via
-  `env(safe-area-inset-top)`), and the Tauri desktop app, where it doubles as
-  the window title bar (traffic-light gap + drag region).
+  web and the Tauri desktop app, where it doubles as the window title bar
+  (traffic-light gap + drag region). Native mobile shells replace it with native
+  navigation; the iPhone WebView applies `env(safe-area-inset-top)` to page
+  content so its mobile headers stay clear of the status bar.
 - **Chat author identity (implemented 2026-06-12)**: thread messages now embed the
   real `author` (`displayName` + avatar sources), so every message renders the
   actual sender's name and avatar via `UserAvatar` (profile picture when one

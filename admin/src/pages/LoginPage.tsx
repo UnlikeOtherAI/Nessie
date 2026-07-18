@@ -310,17 +310,18 @@ export const LoginPage = () => {
 
   return (
     <main
-      className="relative flex h-[100dvh] flex-col overflow-y-auto px-6"
+      className="relative flex h-[100dvh] min-h-0 touch-pan-y flex-col overflow-y-scroll overscroll-y-contain px-6"
       style={{
         // Clear the device status bar / home indicator in the mobile WebView
         // (viewport-fit=cover is injected by the native shell). env() is 0 on
         // web/desktop, so this is a no-op there.
+        WebkitOverflowScrolling: 'touch',
         paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2.5rem)',
         paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)',
       }}
     >
-      <div className="mx-auto grid max-w-6xl items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="glass-panel flex flex-col gap-8 self-stretch rounded-[2rem] p-8 md:p-10">
+      <div className="mx-auto grid w-full max-w-6xl items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+        <section className="glass-panel order-2 flex flex-col gap-8 self-stretch rounded-[2rem] p-8 md:p-10 lg:order-1">
           <img
             alt="Workspace logo"
             className="h-[88px] w-[88px] rounded-[1.5rem] object-cover shadow-[0_20px_40px_var(--scrim)]"
@@ -344,7 +345,7 @@ export const LoginPage = () => {
           </div>
         </section>
 
-        <section className="glass-panel self-start rounded-[2rem] p-8 md:p-10">
+        <section className="glass-panel order-1 self-start rounded-[2rem] p-8 md:p-10 lg:order-2">
           <h2 className="text-2xl font-semibold text-[color:var(--tx)]">Sign in</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Continue with single sign-on to access your workspace.
