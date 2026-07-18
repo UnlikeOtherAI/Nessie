@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from 'react'
@@ -52,6 +53,10 @@ const authApi = createAuthSessionApi(getBaseUrl())
 export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const [sessionState, setSessionState] = useState<AuthSessionState>('loading')
   const [token, setToken] = useState<string | null>(() => loadStoredToken())
+  // Session restoration is one lifecycle, not a side effect of token changes:
+  // keep its callback stable while still reading the latest login/logout token.
+  const tokenRef = useRef(token)
+  tokenRef.current = token
   const [me, setMe] = useState<MeResponse | null>(null)
   const [bootstrapState, setBootstrapState] = useState<BootstrapModeResponse | null>(null)
 
@@ -87,7 +92,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const refreshSession = useCallback(async (): Promise<void> => {
     setSessionState((current) => current === 'authenticated' ? current : 'loading')
-    const snapshot = await authApi.fetchSession(token)
+    const snapshot = await authApi.fetchSession(tokenRef.current)
 
     if (snapshot.kind === 'unauthenticated') {
       // The access token may simply have expired — try the refresh cookie before
@@ -106,7 +111,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setBootstrapState(null)
     setMe(snapshot.me)
     setSessionState('authenticated')
-  }, [refreshAccessToken, token])
+  }, [refreshAccessToken])
 
   // A network outage, rate limit, or server error during restore is not a
   // logout. Keep the bearer token in localStorage and retry until the API is

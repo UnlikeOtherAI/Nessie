@@ -26,6 +26,22 @@ const withMockFetch = async (
 }
 
 test('refresh returns null only for an explicit 401', async (t) => {
+  await t.test('200 returns the renewed session', async () => {
+    await withMockFetch(
+      async (_input, init) => {
+        assert.equal(init?.method, 'POST')
+        assert.equal(init?.credentials, 'include')
+        return Response.json({ data: sessionPayload('renewed-token') })
+      },
+      async () => {
+        assert.deepEqual(
+          await createAuthSessionApi('https://api.example.test').refresh(),
+          sessionPayload('renewed-token'),
+        )
+      },
+    )
+  })
+
   await t.test('401 is an unauthenticated result', async () => {
     await withMockFetch(
       async (_input, init) => {
