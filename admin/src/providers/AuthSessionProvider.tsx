@@ -4,14 +4,13 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type PropsWithChildren,
 } from 'react'
 import type { MeResponse } from '@nessie/schemas'
 import {
+  createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
-  type AuthProviderDescriptor,
   type AuthSessionState,
   type BootstrapInput,
   type BootstrapModeResponse,
@@ -33,7 +32,6 @@ type AuthSessionContextValue = {
   login: (input: LoginInput) => Promise<void>
   logout: () => Promise<void>
   me: MeResponse | null
-  providers: AuthProviderDescriptor[]
   refreshAccessToken: () => Promise<string | null>
   refreshSession: () => Promise<void>
   sessionState: AuthSessionState
@@ -42,6 +40,10 @@ type AuthSessionContextValue = {
 }
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null)
+
+const RETRY_DELAYS_MS = [1_000, 2_500, 5_000, 10_000, 30_000] as const
+const retryDelay = (attempt: number): number =>
+  RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? 30_000
 
 // Admin (web) supplies the Vite-resolved base URL; @nessie/client-core stays
 // env-agnostic. localStorage is the web TokenStore backing.
@@ -52,8 +54,6 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const [token, setToken] = useState<string | null>(() => loadStoredToken())
   const [me, setMe] = useState<MeResponse | null>(null)
   const [bootstrapState, setBootstrapState] = useState<BootstrapModeResponse | null>(null)
-  const [providers, setProviders] = useState<AuthProviderDescriptor[]>([])
-  const pendingRefresh = useRef<Promise<string | null> | null>(null)
 
   const applySession = useCallback((payload: { me: MeResponse; token: string }): void => {
     storeToken(payload.token)
@@ -71,48 +71,28 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setSessionState('unauthenticated')
   }, [])
 
-  // Single-flight access-token renewal from the refresh cookie. Concurrent 401s
-  // share one in-flight request so the refresh token rotates exactly once.
-  const refreshAccessToken = useCallback((): Promise<string | null> => {
-    if (pendingRefresh.current) {
-      return pendingRefresh.current
-    }
-    const run = (async (): Promise<string | null> => {
-      try {
-        const payload = await authApi.refresh()
-        if (payload) {
-          applySession(payload)
-          return payload.token
-        }
-      } catch {
-        // fall through to the signed-out state below
-      }
-      clearSession()
-      return null
-    })()
-    pendingRefresh.current = run
-    void run.finally(() => {
-      pendingRefresh.current = null
-    })
-    return run
-  }, [applySession, clearSession])
+  // Startup restore and every API 401 share this exact coordinator. A refresh
+  // cookie is single-use, so no other path may call authApi.refresh directly.
+  // Only an explicit refresh 401 clears credentials; transient errors reject,
+  // leaving the stored token intact for the retry effects below.
+  const refreshAccessToken = useMemo(
+    () =>
+      createAccessTokenRefreshCoordinator({
+        applySession,
+        clearSession,
+        refresh: authApi.refresh,
+      }),
+    [applySession, clearSession],
+  )
 
-  const refreshSession = async (): Promise<void> => {
-    setSessionState('loading')
-
-    setProviders(await authApi.fetchProviders())
-
+  const refreshSession = useCallback(async (): Promise<void> => {
+    setSessionState((current) => current === 'authenticated' ? current : 'loading')
     const snapshot = await authApi.fetchSession(token)
 
     if (snapshot.kind === 'unauthenticated') {
       // The access token may simply have expired — try the refresh cookie before
       // giving up, so a returning user with a live refresh token stays signed in.
-      const renewed = await authApi.refresh()
-      if (renewed) {
-        applySession(renewed)
-        return
-      }
-      clearSession()
+      await refreshAccessToken()
       return
     }
 
@@ -126,17 +106,50 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setBootstrapState(null)
     setMe(snapshot.me)
     setSessionState('authenticated')
-  }
+  }, [refreshAccessToken, token])
 
+  // A network outage, rate limit, or server error during restore is not a
+  // logout. Keep the bearer token in localStorage and retry until the API is
+  // reachable. An explicit refresh 401 resolves normally after clearSession,
+  // so it does not enter this retry loop.
   useEffect(() => {
-    void refreshSession().catch(() => {
-      setSessionState('unauthenticated')
-      setMe(null)
-      setBootstrapState(null)
-      setToken(null)
-      clearStoredToken()
-    })
-  }, [])
+    let cancelled = false
+    let restoring = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let attempt = 0
+
+    const restoreSession = async (): Promise<void> => {
+      if (cancelled || restoring) return
+      restoring = true
+      try {
+        await refreshSession()
+        attempt = 0
+      } catch {
+        if (cancelled) return
+        const delay = retryDelay(attempt)
+        attempt += 1
+        retryTimer = setTimeout(() => void restoreSession(), delay)
+      } finally {
+        restoring = false
+      }
+    }
+
+    const retryWhenOnline = (): void => {
+      if (retryTimer) {
+        clearTimeout(retryTimer)
+        retryTimer = null
+      }
+      void restoreSession()
+    }
+
+    window.addEventListener('online', retryWhenOnline)
+    void restoreSession()
+    return () => {
+      cancelled = true
+      window.removeEventListener('online', retryWhenOnline)
+      if (retryTimer) clearTimeout(retryTimer)
+    }
+  }, [refreshSession])
 
   const applyMeResponse = (nextMe: MeResponse): void => {
     setMe(nextMe)
@@ -174,14 +187,13 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       login,
       logout,
       me,
-      providers,
       refreshAccessToken,
       refreshSession,
       sessionState,
       switchContext,
       token,
     }),
-    [bootstrapState, me, providers, refreshAccessToken, sessionState, token],
+    [bootstrapState, me, refreshAccessToken, refreshSession, sessionState, token],
   )
 
   return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>

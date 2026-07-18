@@ -127,7 +127,9 @@ export {
 
 // Framework-neutral auth/session flows (token exchange, session shape).
 export {
+  createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
+  type AccessTokenRefreshCoordinator,
   type AuthSessionApi,
   type AuthSessionState,
   type BootstrapInput,

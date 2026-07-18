@@ -9,6 +9,7 @@ import {
 } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
+import { useAuthSession } from '../providers/AuthSessionProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
@@ -26,22 +27,7 @@ import { useAdminShell } from './admin-shell/useAdminShell';
 export type { AdminShellOutletContext } from './admin-shell/types';
 
 export const AdminShellLayout = () => {
-  const shell = useAdminShell();
-  const { me, sessionState } = shell;
-  const mobileLayout = useMobileLayout();
-  // Phones get the hamburger drawer; tablets (iPad) keep the secondary sidebar
-  // pinned even though they are "mobile" (their native tab bar replaces the rail).
-  const phoneLayout = usePhoneLayout();
-  const nativeShell = isReactNativeWebView();
-  const nativeIPadApp = useNativeIPadApp();
-  // The web tab bar is only for mobile *web*; the native app draws its own
-  // native glass tab bar around the WebView.
-  const showWebTabBar = mobileLayout && !nativeShell;
-  // Whenever a bottom tab bar is present — the web tab bar on mobile web, or the
-  // native app's own tab bar on phone/iPad — drop the entire top bar. Navigation
-  // lives in the bottom bar (which carries its own Search tab) and each page
-  // supplies its own mobile header (hamburger + title).
-  const hideTopBar = showWebTabBar || (nativeShell && (phoneLayout || nativeIPadApp));
+  const { me, sessionState } = useAuthSession();
 
   if (sessionState === 'bootstrap') {
     return <Navigate to="/bootstrap" replace />;
@@ -63,6 +49,29 @@ export const AdminShellLayout = () => {
   if (sessionState !== 'authenticated' || !me) {
     return <Navigate to="/login" replace />;
   }
+
+  return <AuthenticatedAdminShellLayout />;
+};
+
+// Keep authenticated data hooks out of the loading tree. In particular,
+// useAdminShell starts several API queries; mounting it while an expired access
+// token is being restored can create competing refresh-token rotations.
+const AuthenticatedAdminShellLayout = () => {
+  const shell = useAdminShell();
+  const mobileLayout = useMobileLayout();
+  // Phones get the hamburger drawer; tablets (iPad) keep the secondary sidebar
+  // pinned even though they are "mobile" (their native tab bar replaces the rail).
+  const phoneLayout = usePhoneLayout();
+  const nativeShell = isReactNativeWebView();
+  const nativeIPadApp = useNativeIPadApp();
+  // The web tab bar is only for mobile *web*; the native app draws its own
+  // native glass tab bar around the WebView.
+  const showWebTabBar = mobileLayout && !nativeShell;
+  // Whenever a bottom tab bar is present — the web tab bar on mobile web, or the
+  // native app's own tab bar on phone/iPad — drop the entire top bar. Navigation
+  // lives in the bottom bar (which carries its own Search tab) and each page
+  // supplies its own mobile header (hamburger + title).
+  const hideTopBar = showWebTabBar || (nativeShell && (phoneLayout || nativeIPadApp));
 
   const mainContent = (
     <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">

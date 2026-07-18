@@ -235,11 +235,21 @@ Claims:
 - issued by `POST /api/auth/session` (login), `POST /api/auth/bootstrap` (first user), `GET /api/auth/dev-login`, `POST /api/auth/switch-context`, and `POST /api/auth/refresh`
 - sent by the client as `Authorization: Bearer <token>` header on every request
 - alongside the access token, every minting route sets a **rotating refresh token** in an httpOnly cookie (`nessie_refresh`, scoped to `/api/auth`); the client silently renews via `POST /api/auth/refresh` when the access token 401s or on app start
+- app startup and API 401 recovery use one in-process single-flight coordinator,
+  because a rotating refresh cookie may be consumed only once. Authenticated
+  data queries mount only after session restoration completes
+- only an explicit `401` from `POST /api/auth/refresh` proves that the saved
+  session is no longer renewable and clears client credentials. Network errors,
+  rate limits, and server failures preserve the stored access token and retry
+  restoration with bounded backoff. Provider discovery belongs to the login
+  query, retries independently, and never participates in session state
 
 #### Refresh tokens (rotating, server-tracked)
 
 - the refresh token is an opaque 256-bit value; only its SHA-256 hash is stored (table `refresh_tokens`), never the raw value
-- TTL default 30 days, configurable via `NESSIE_AUTH_REFRESH_TOKEN_TTL`
+- TTL default 30 days, configurable via `NESSIE_AUTH_REFRESH_TOKEN_TTL`; every
+  successful rotation renews that window, so an active session can continue
+  without a fixed absolute expiry
 - **rotation:** each `POST /api/auth/refresh` atomically consumes the presented token and issues a deterministic HMAC-derived successor in the same `family_id`, returning a fresh access token + a new refresh cookie. Only hashes are stored; the server can reconstruct a successor only from the predecessor cookie and its auth secret. The original login provider is preserved across refresh; org/role membership is re-resolved each time
 - **lost-response/concurrency grace:** for 60 seconds after rotation, replaying a just-consumed predecessor reissues the current verified live descendant. This makes overlapping WebView lifecycles and lost HTTP responses idempotent without creating multiple live successors
 - **reuse detection:** presenting an already-revoked token after that 60-second grace, or presenting a token whose replacement chain is missing, cyclic, cross-family, or does not match the derived token hash, revokes the entire family and forces re-login

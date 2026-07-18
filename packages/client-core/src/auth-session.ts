@@ -36,6 +36,50 @@ export type SessionPayload = {
   token: string
 }
 
+export type AccessTokenRefreshCoordinator = () => Promise<string | null>
+
+/**
+ * Coordinate every access-token renewal in one process. Refresh-token rotation
+ * is single-use, so startup restoration and concurrent API 401s must share the
+ * same request. A null payload is an explicit authentication rejection; thrown
+ * errors are transient and deliberately leave the current session untouched.
+ */
+export const createAccessTokenRefreshCoordinator = (input: {
+  applySession: (payload: SessionPayload) => void
+  clearSession: () => void
+  refresh: () => Promise<SessionPayload | null>
+}): AccessTokenRefreshCoordinator => {
+  let pending: Promise<string | null> | null = null
+
+  return (): Promise<string | null> => {
+    if (pending) {
+      return pending
+    }
+
+    const run = (async (): Promise<string | null> => {
+      const payload = await input.refresh()
+      if (payload === null) {
+        input.clearSession()
+        return null
+      }
+
+      input.applySession(payload)
+      return payload.token
+    })()
+    pending = run
+
+    const clearPending = (): void => {
+      if (pending === run) {
+        pending = null
+      }
+    }
+    // Supply both handlers instead of `finally`: the promise returned by
+    // `finally` would itself reject and can become an unhandled rejection.
+    void run.then(clearPending, clearPending)
+    return run
+  }
+}
+
 // Re-scope the session to another workspace the user already belongs to. The
 // server re-validates membership of the full org/project/team triple.
 export type SwitchContextInput = {
@@ -93,7 +137,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
       credentials: 'include',
     })
     if (!response.ok) {
-      return []
+      throw new Error(await parseApiError(response))
     }
     return parseResponse<AuthProviderDescriptor[]>(response)
   }
@@ -164,9 +208,12 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
       const response = await fetch(`${resolvedBaseUrl}/api/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
-      }).catch(() => null)
-      if (!response || !response.ok) {
+      })
+      if (response.status === 401) {
         return null
+      }
+      if (!response.ok) {
+        throw new Error(await parseApiError(response))
       }
       return parseResponse<SessionPayload>(response)
     },
