@@ -45,6 +45,32 @@ type DeepWaterUsageLedgerRow = {
   source_count: number | null
 }
 
+type DeepWaterImmutableRunState = {
+  cost_amount: Prisma.Decimal | number | string | null
+  cost_currency: string | null
+  external_run_id: string | null
+  status: ProductIntegrationRunStatus
+}
+
+export type DeepWaterResearchRunConflictField =
+  | 'bookedCost'
+  | 'externalRunId'
+  | 'terminalStatus'
+
+export class DeepWaterResearchRunConflictError extends Error {
+  readonly code = 'DEEP_WATER_RUN_IMMUTABLE_CONFLICT'
+
+  constructor(public readonly field: DeepWaterResearchRunConflictField) {
+    const label = {
+      bookedCost: 'booked cost',
+      externalRunId: 'external run id',
+      terminalStatus: 'terminal status',
+    }[field]
+    super(`Deep Water run ${label} is immutable; conflicting update rejected.`)
+    this.name = 'DeepWaterResearchRunConflictError'
+  }
+}
+
 export type DeepWaterResearchRunUpdateInput = {
   completedAt?: Date | null
   costAmount?: number | null
@@ -163,10 +189,12 @@ export const markDeepWaterResearchRunFailed = async (
         '{"stage":"personal_assistant_handoff"}'::jsonb,
         true
       ),
+      "completed_at" = COALESCE("completed_at", CURRENT_TIMESTAMP),
       "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = CAST(${input.runId} AS uuid)
       AND "organization_id" = CAST(${input.organizationId} AS uuid)
       AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+      AND "status" NOT IN ('completed', 'failed', 'warning')
   `)
 }
 
@@ -185,6 +213,62 @@ const buildDeepWaterResultPatch = (
     result.statusDetail = input.statusDetail?.trim() || null
   }
   return result as Prisma.InputJsonObject
+}
+
+const costsEqualAtStoragePrecision = (
+  stored: Prisma.Decimal | number | string,
+  incoming: number,
+): boolean => {
+  try {
+    return new Prisma.Decimal(stored.toString()).equals(
+      new Prisma.Decimal(incoming).toDecimalPlaces(6),
+    )
+  } catch {
+    return false
+  }
+}
+
+const assertImmutableDeepWaterUpdate = (
+  current: DeepWaterImmutableRunState,
+  input: {
+    costAmount: number | null
+    costCurrency: string | null
+    externalRunId: string | null
+    status: ProductIntegrationRunStatus | null
+  },
+): void => {
+  if (
+    current.external_run_id
+    && input.externalRunId
+    && current.external_run_id !== input.externalRunId
+  ) {
+    throw new DeepWaterResearchRunConflictError('externalRunId')
+  }
+
+  if (
+    TERMINAL_STATUSES.includes(current.status)
+    && input.status
+    && current.status !== input.status
+  ) {
+    throw new DeepWaterResearchRunConflictError('terminalStatus')
+  }
+
+  if ((input.costAmount === null) !== (input.costCurrency === null)) {
+    throw new Error('Deep Water booked cost amount and currency must be provided together.')
+  }
+  if (
+    current.cost_amount !== null
+    && input.costAmount !== null
+    && (
+      !costsEqualAtStoragePrecision(current.cost_amount, input.costAmount)
+      || (
+        current.cost_currency !== null
+        && current.cost_currency !== input.costCurrency
+      )
+    )
+  ) {
+    throw new DeepWaterResearchRunConflictError('bookedCost')
+  }
 }
 
 export const updateDeepWaterResearchRun = async (
@@ -218,48 +302,80 @@ export const updateDeepWaterResearchRun = async (
     input.completedAt !== undefined
     || (status ? TERMINAL_STATUSES.includes(status) : false)
 
-  const rows = await prisma.$queryRaw<DeepWaterRunRow[]>(Prisma.sql`
-    UPDATE "product_integration_runs"
-    SET
-      "external_run_id" = CASE
-        WHEN ${externalRunId} IS NULL THEN "external_run_id"
-        ELSE ${externalRunId}
-      END,
-      "status" = CASE
-        WHEN ${status} IS NULL THEN "status"
-        ELSE CAST(${status} AS "ProductIntegrationRunStatus")
-      END,
-      "result_json" = COALESCE("result_json", '{}'::jsonb) || CAST(${resultPatchJson} AS jsonb),
-      "cost_amount" = CASE
-        WHEN ${costAmount} IS NULL THEN "cost_amount"
-        ELSE CAST(${costAmount} AS DECIMAL(18, 6))
-      END,
-      "cost_currency" = CASE
-        WHEN ${costCurrency} IS NULL THEN "cost_currency"
-        ELSE ${costCurrency}
-      END,
-      "source_count" = CASE
-        WHEN ${sourceCount} IS NULL THEN "source_count"
-        ELSE ${sourceCount}
-      END,
-      "knowledge_page_id" = CASE
-        WHEN ${knowledgePageId} IS NULL THEN "knowledge_page_id"
-        ELSE CAST(${knowledgePageId} AS uuid)
-      END,
-      "completed_at" = CASE
-        WHEN ${shouldComplete} THEN COALESCE(${completedAt}, "completed_at", CURRENT_TIMESTAMP)
-        ELSE "completed_at"
-      END,
-      "updated_at" = CURRENT_TIMESTAMP
-    WHERE "id" = CAST(${input.runId} AS uuid)
-      AND "organization_id" = CAST(${input.organizationId} AS uuid)
-      AND "team_id" = CAST(${teamId} AS uuid)
-      AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
-      AND "thread_id" = CAST(${threadId} AS uuid)
-    RETURNING ${deepWaterRunReturning}
-  `)
+  return prisma.$transaction(async (tx) => {
+    // Serialize all writers for this exact tenant/thread run. Under PostgreSQL's
+    // READ COMMITTED default, a concurrent waiter sees the committed winner
+    // after acquiring this lock and therefore validates against the durable
+    // terminal/external-id/cost values rather than a stale snapshot.
+    const stateRows = await tx.$queryRaw<DeepWaterImmutableRunState[]>(Prisma.sql`
+      SELECT
+        "external_run_id",
+        "status"::text AS "status",
+        "cost_amount",
+        "cost_currency"
+      FROM "product_integration_runs"
+      WHERE "id" = CAST(${input.runId} AS uuid)
+        AND "organization_id" = CAST(${input.organizationId} AS uuid)
+        AND "team_id" = CAST(${teamId} AS uuid)
+        AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+        AND "thread_id" = CAST(${threadId} AS uuid)
+      FOR UPDATE
+    `)
+    const current = stateRows[0]
+    if (!current) {
+      throw new Error('Deep Water run was not returned by the database')
+    }
+    assertImmutableDeepWaterUpdate(current, {
+      costAmount,
+      costCurrency,
+      externalRunId,
+      status,
+    })
 
-  return mapDeepWaterRunRow(requireDeepWaterRunRow(rows[0]))
+    const rows = await tx.$queryRaw<DeepWaterRunRow[]>(Prisma.sql`
+      UPDATE "product_integration_runs"
+      SET
+        "external_run_id" = CASE
+          WHEN "external_run_id" IS NULL THEN ${externalRunId}
+          ELSE "external_run_id"
+        END,
+        "status" = CASE
+          WHEN ${status} IS NULL THEN "status"
+          ELSE CAST(${status} AS "ProductIntegrationRunStatus")
+        END,
+        "result_json" = COALESCE("result_json", '{}'::jsonb) || CAST(${resultPatchJson} AS jsonb),
+        "cost_amount" = CASE
+          WHEN ${costAmount} IS NULL OR "cost_amount" IS NOT NULL THEN "cost_amount"
+          ELSE CAST(${costAmount} AS DECIMAL(18, 6))
+        END,
+        "cost_currency" = CASE
+          WHEN ${costAmount} IS NULL THEN "cost_currency"
+          WHEN "cost_amount" IS NULL OR "cost_currency" IS NULL THEN ${costCurrency}
+          ELSE "cost_currency"
+        END,
+        "source_count" = CASE
+          WHEN ${sourceCount} IS NULL THEN "source_count"
+          ELSE ${sourceCount}
+        END,
+        "knowledge_page_id" = CASE
+          WHEN ${knowledgePageId} IS NULL THEN "knowledge_page_id"
+          ELSE CAST(${knowledgePageId} AS uuid)
+        END,
+        "completed_at" = CASE
+          WHEN ${shouldComplete} THEN COALESCE("completed_at", ${completedAt}, CURRENT_TIMESTAMP)
+          ELSE "completed_at"
+        END,
+        "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = CAST(${input.runId} AS uuid)
+        AND "organization_id" = CAST(${input.organizationId} AS uuid)
+        AND "team_id" = CAST(${teamId} AS uuid)
+        AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+        AND "thread_id" = CAST(${threadId} AS uuid)
+      RETURNING ${deepWaterRunReturning}
+    `)
+
+    return mapDeepWaterRunRow(requireDeepWaterRunRow(rows[0]))
+  })
 }
 
 export const reconcileDeepWaterResearchRunUsage = async (

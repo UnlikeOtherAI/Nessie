@@ -50,6 +50,7 @@ const makeDeepWaterRunRow = () => ({
 
 const makeContext = (
   overrides: {
+    actionContextTeamOnly?: boolean
     agentKind?: 'personal_assistant' | 'shared'
     runRow?: ReturnType<typeof makeDeepWaterRunRow>
     knowledgePage?: { id: string } | null
@@ -90,12 +91,12 @@ const makeContext = (
 
   const context = {
     actorContext: {
-      actionContext: {},
+      actionContext: overrides.actionContextTeamOnly ? { teamId: TEAM_ID } : {},
       actor: { actorId: UPDATER_USER_ID, actorType: 'user' },
       tenant: {
         organizationId: ORG_ID,
         projectId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d902',
-        teamId: TEAM_ID,
+        ...(overrides.actionContextTeamOnly ? {} : { teamId: TEAM_ID }),
       },
     },
     agentId: 'agent-1',
@@ -133,7 +134,7 @@ test('deep_water_run_update writes terminal status projection', async () => {
   assert.match(result.outputPreview, /18 sources/)
   assert.match(result.outputPreview, /4\.25 USD/)
   assert.match(result.outputPreview, /usage ledger recorded/)
-  assert.equal(queries.length, 2)
+  assert.equal(queries.length, 3)
   assert.equal(ledgerEvents.length, 1)
   assert.equal(resultUpdates.length, 1)
   assert.deepEqual(
@@ -201,9 +202,25 @@ test('deep_water_run_update is available to a granted shared agent', async () =>
 
   assert.equal(result.toolName, 'deep_water_run_update')
   assert.match(result.outputPreview, /status=completed/)
-  assert.equal(queries.length, 2)
+  assert.equal(queries.length, 3)
   assert.equal(ledgerEvents.length, 1)
   assert.equal(resultUpdates.length, 1)
+})
+
+test('deep_water_run_update accepts a team carried only in the action context', async () => {
+  const { context, ledgerEvents, queries } = makeContext({ actionContextTeamOnly: true })
+
+  const result = await runDeepWaterRunUpdateTool(context, {
+    currency: 'USD',
+    runId: RUN_ID,
+    status: 'completed',
+    totalCost: 4.25,
+  })
+
+  assert.equal(result.toolName, 'deep_water_run_update')
+  assert.match(result.outputPreview, /status=completed/)
+  assert.equal(queries.length, 3)
+  assert.equal(ledgerEvents.length, 1)
 })
 
 test('deep_water_run_update rejects a knowledgePageId outside the organization', async () => {

@@ -505,7 +505,10 @@ There is deliberately no direct-provider fallback.
   prompt-injected `runId`/`knowledgePageId` cannot mutate another run or corrupt
   billing. Ledger terminal MCP responses expose the immutable booked rate-card
   `cost: { amount, currency }`; the handoff copies those exact values when
-  present and otherwise leaves Nessie's mirrored cost empty. Reconciliation
+  present and otherwise leaves Nessie's mirrored cost empty. Updates take a
+  PostgreSQL row lock: identical delivery retries are accepted, while replacing
+  an established external run id or booked cost, or moving a terminal run to a
+  different status, returns an explicit immutable-conflict error. Reconciliation
   always books it to the run's immutable launch `requestedByUserId`, even when
   a different granted agent or user submits the terminal update. This booked charge
   is not a provider-invoice actual and complex runs may reconcile higher
