@@ -25,8 +25,8 @@ const nullableString = (value: unknown): string | undefined => {
 }
 
 const nullableNonNegativeNumber = (value: unknown): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
-  return Math.max(0, value)
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined
+  return value
 }
 
 const nullableNonNegativeInteger = (value: unknown): number | undefined => {
@@ -58,9 +58,19 @@ export const runDeepWaterRunUpdateTool = async (
   if (!teamId) {
     throw new Error('Deep Water run updates require a team context.')
   }
+  const costAmount = nullableNonNegativeNumber(args.totalCost)
+  const costCurrency = nullableString(args.currency)
+  if (args.totalCost !== undefined && costAmount === undefined) {
+    throw new Error('totalCost must be a non-negative finite number.')
+  }
+  if ((costAmount === undefined) !== (costCurrency === undefined)) {
+    throw new Error(
+      'totalCost and currency must be copied together from Ledger cost.amount and cost.currency.',
+    )
+  }
   const update: DeepWaterResearchRunUpdateInput = {
-    costAmount: nullableNonNegativeNumber(args.totalCost),
-    costCurrency: nullableString(args.currency),
+    costAmount,
+    costCurrency,
     externalRunId: nullableString(args.externalRunId),
     knowledgePageId: nullableString(args.knowledgePageId),
     organizationId: String(context.channel.organizationId),

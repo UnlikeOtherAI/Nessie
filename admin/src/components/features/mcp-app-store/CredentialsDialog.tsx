@@ -6,14 +6,19 @@ import {
   useDeleteInstanceCredential,
   type McpServerInstanceRecord,
 } from '../../../facades/mcp-instances/hooks'
-import { useStartInstanceOAuth } from '../../../facades/mcp-library/hooks'
+import {
+  useSetInstanceSecret,
+  useStartInstanceOAuth,
+} from '../../../facades/mcp-library/hooks'
 
 /**
  * Per-server credential modal. The user enters a `credentialRef` (which the
  * runtime secret resolver dereferences — never plaintext per plan D7) keyed by
  * principal type + principal ID. For oauth2 servers we also surface a
  * "Connect" button that starts the OAuth flow (static or dynamic) and opens
- * the provider's sign-in page in a new tab.
+ * the provider's sign-in page in a new tab. A separate password field stores a
+ * raw token through the encrypted `/secret` boundary as the current user's
+ * override; plaintext is cleared before the request and never read back.
  */
 
 type CredentialsDialogProps = {
@@ -119,12 +124,43 @@ export const CredentialsDialog = ({
   const { data: overrides = [] } = useInstanceCredentials(instance.id)
   const upsert = useUpsertInstanceCredential()
   const remove = useDeleteInstanceCredential()
+  const setSecret = useSetInstanceSecret()
 
   const [principalType, setPrincipalType] =
     useState<McpCredentialPrincipalType>('user')
   const [principalId, setPrincipalId] = useState('')
   const [credentialRef, setCredentialRef] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [secret, setSecretValue] = useState('')
+  const [secretError, setSecretError] = useState<string | null>(null)
+  const [secretSaved, setSecretSaved] = useState(false)
+
+  const storePersonalSecret = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSecretError(null)
+    setSecretSaved(false)
+    const plaintext = secret.trim()
+    if (!plaintext) {
+      setSecretError('Paste a token or API key to store.')
+      return
+    }
+    // Remove plaintext from React state and the DOM before any network wait.
+    // The mutation response contains placement only; the secret is never read
+    // back into the browser.
+    setSecretValue('')
+    try {
+      await setSecret.mutateAsync({
+        instanceId: instance.id,
+        secret: plaintext,
+        shared: false,
+      })
+      setSecretSaved(true)
+    } catch (caught) {
+      setSecretError(
+        caught instanceof Error ? caught.message : 'Failed to store credential',
+      )
+    }
+  }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -165,7 +201,8 @@ export const CredentialsDialog = ({
     >
       <div
         className={[
-          'admin-card w-full max-w-xl rounded-xl border border-[color:var(--sep)]',
+          'admin-card max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto',
+          'rounded-xl border border-[color:var(--sep)]',
           'bg-[color:var(--main)] p-6 text-[color:var(--tx)]',
         ].join(' ')}
       >
@@ -198,6 +235,57 @@ export const CredentialsDialog = ({
             {startOAuth.isPending ? 'Starting…' : 'Connect via OAuth2'}
           </button>
         )}
+
+        <form
+          className="mt-4 grid gap-3 border-t border-[color:var(--sep)] pt-4"
+          onSubmit={(event) => void storePersonalSecret(event)}
+        >
+          <div>
+            <div className={labelClass}>Store personal credential</div>
+            <p className="mt-1 text-sm text-[color:var(--tx3)]">
+              Stored encrypted as your override for this connector. The value is
+              sent once, never displayed, and is not shared with other users.
+            </p>
+          </div>
+          <label className={labelClass}>
+            Token or API key
+            <input
+              autoComplete="new-password"
+              className={inputClass}
+              name="instanceSecret"
+              onChange={(event) => {
+                setSecretValue(event.target.value)
+                setSecretSaved(false)
+              }}
+              placeholder="Paste credential"
+              type="password"
+              value={secret}
+            />
+          </label>
+          {secretError ? (
+            <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]">
+              {secretError}
+            </div>
+          ) : null}
+          {secretSaved ? (
+            <div className="rounded-md border border-[var(--success-border)] bg-[var(--success-soft)] px-3 py-2 text-sm text-[var(--success-text)]">
+              Personal credential stored securely.
+            </div>
+          ) : null}
+          <div className="flex justify-end">
+            <button
+              className={[
+                'admin-button admin-button-primary rounded-md',
+                'px-4 py-2 text-sm font-semibold',
+                'disabled:cursor-not-allowed disabled:opacity-40',
+              ].join(' ')}
+              disabled={setSecret.isPending}
+              type="submit"
+            >
+              {setSecret.isPending ? 'Storing…' : 'Store securely'}
+            </button>
+          </div>
+        </form>
 
         <form
           className="mt-4 grid gap-3 border-t border-[color:var(--sep)] pt-4"

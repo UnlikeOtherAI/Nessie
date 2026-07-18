@@ -88,13 +88,17 @@ const exposedNames = async (
     toolPolicy?: McpToolPolicy
     effectiveUserId?: string | null
     channelId?: string
+    teamId?: string | null
   } = {},
 ): Promise<string[]> => {
   const toolset = await buildMcpToolset(
     makePrisma(rows),
     'org-1',
     options.toolPolicy ?? null,
-    actorContext({ effectiveUserId: options.effectiveUserId }),
+    actorContext({
+      effectiveUserId: options.effectiveUserId,
+      teamId: options.teamId,
+    }),
     {
       agentId: 'agent-1',
       agentKind: options.agentKind ?? 'personal_assistant',
@@ -141,13 +145,13 @@ test('team and channel scopes follow the run context', async () => {
 })
 
 test('explicit-grant DeepWater tools are OFF by default and need an explicit allow', async () => {
-  // A team-scoped DeepWater instance projects research_create flagged
+  // A team-scoped, Ledger-backed DeepWater instance projects research_start flagged
   // requiresExplicitGrant: team scope alone must NOT expose it — only an
   // explicit per-agent allow does, for PA or shared agents alike.
   const rows: RowSeed[] = [
     {
       id: 'dw',
-      toolName: 'research_create',
+      toolName: 'research_start',
       scopeType: 'team',
       scopeId: 'team-1',
       requiresExplicitGrant: true,
@@ -160,16 +164,36 @@ test('explicit-grant DeepWater tools are OFF by default and need an explicit all
   // Exposed ONLY with an explicit allow (shared agent).
   assert.deepEqual(
     await exposedNames(rows, { agentKind: 'shared', toolPolicy: { dw: true } }),
-    ['research_create'],
+    ['research_start'],
   )
   // Exposed with an explicit allow (personal assistant) too.
   assert.deepEqual(
     await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { dw: true } }),
-    ['research_create'],
+    ['research_start'],
   )
   // An explicit deny still hides it.
   assert.deepEqual(
     await exposedNames(rows, { agentKind: 'shared', toolPolicy: { dw: false } }),
+    [],
+  )
+})
+
+test('an explicit grant never lets a personal assistant cross a team boundary', async () => {
+  const rows: RowSeed[] = [
+    {
+      id: 'dw',
+      toolName: 'research_start',
+      scopeType: 'team',
+      scopeId: 'team-1',
+      requiresExplicitGrant: true,
+    },
+  ]
+  assert.deepEqual(
+    await exposedNames(rows, {
+      agentKind: 'personal_assistant',
+      teamId: 'team-2',
+      toolPolicy: { dw: true },
+    }),
     [],
   )
 })

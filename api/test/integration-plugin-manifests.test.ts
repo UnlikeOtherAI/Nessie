@@ -13,7 +13,26 @@ test('first-party integration manifests cover the sibling products', () => {
   )
 
   const deepWater = getIntegrationPluginManifest('deep-water')
-  assert.equal(deepWater?.mcp.catalogTemplate?.authMethod, 'oauth2')
+  assert.equal(deepWater?.mcp.catalogTemplate?.authMethod, 'bearer')
+  assert.equal(
+    deepWater?.mcp.catalogTemplate?.transport.urlEnv,
+    'LEDGER_DEEPWATER_MCP_URL',
+  )
+  assert.deepEqual(
+    deepWater?.mcp.tools.map((tool) => tool.name),
+    [
+      'research_start',
+      'research_status',
+      'research_report',
+      'research_list',
+      'research_cancel',
+    ],
+  )
+  assert.deepEqual(
+    (deepWater?.mcp.tools.find((tool) => tool.name === 'research_start')
+      ?.inputSchema as { required?: string[] } | undefined)?.required,
+    ['query'],
+  )
   assert.equal(deepWater?.install.some((entry) => entry.requiredForAgentUse), true)
 
   const deepTest = getIntegrationPluginManifest('deeptest')

@@ -10,9 +10,10 @@ import { listDeepWaterResearchRuns } from '@nessie/runtime'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
   DEEP_WATER_PRODUCT_SLUG,
-  DeepWaterMcpUrlUnsetError,
-  ensureDeepWaterTeamInstance,
-  removeDeepWaterTeamInstance,
+  LedgerDeepWaterCatalogUnavailableError,
+  LedgerDeepWaterEnablementPersistenceError,
+  LedgerDeepWaterMcpUrlUnsetError,
+  setDeepWaterTeamEnablement,
 } from '../../services/deepwater-activation.js'
 import { getIntegrationPluginManifest } from '../../services/integration-plugin-manifests.js'
 import { listIntegratedProducts, setProductTeamEnablement } from '../../services/integrations.js'
@@ -104,45 +105,48 @@ export const registerIntegrationProductRoutes = (
       return reply
     }
 
-    // Enabling DeepWater provisions a team-scoped, tool-projecting MCP instance
-    // so `mcp_research_*` becomes grantable to any agent (PA or shared). Provision
-    // BEFORE persisting the enablement flag so a fail-loud provisioning error
-    // (e.g. DEEP_WATER_MCP_URL unset) can't leave the toggle reading enabled with
-    // no instance behind it. Disabling tears the instance down after the flag is
-    // cleared. Other products are unaffected.
+    // DeepWater serializes each org/team transition with a PostgreSQL
+    // transaction-scoped advisory lock. Connector state and the display toggle
+    // mutate in that one transaction, so either both commit or both roll back.
+    // Other products persist directly.
     const isDeepWater = params.productSlug === DEEP_WATER_PRODUCT_SLUG
-    if (isDeepWater && body.enabled) {
+    let enablement
+    if (isDeepWater) {
       try {
-        await ensureDeepWaterTeamInstance(prisma, actorContext, {
+        enablement = await setDeepWaterTeamEnablement(prisma, actorContext, {
+          enabled: body.enabled,
           organizationId: actorContext.tenant.organizationId,
           teamId,
+          userId: actorContext.actor.actorId,
         })
       } catch (error) {
-        if (error instanceof DeepWaterMcpUrlUnsetError) {
+        if (error instanceof LedgerDeepWaterMcpUrlUnsetError) {
           sendApiError(reply, 503, error.code, error.message)
+          return reply
+        }
+        if (error instanceof LedgerDeepWaterCatalogUnavailableError) {
+          sendApiError(reply, 503, error.code, error.message)
+          return reply
+        }
+        if (error instanceof LedgerDeepWaterEnablementPersistenceError) {
+          sendApiError(reply, 404, error.code, error.message)
           return reply
         }
         throw error
       }
+    } else {
+      enablement = await setProductTeamEnablement(prisma, {
+        enabled: body.enabled,
+        organizationId: actorContext.tenant.organizationId,
+        productSlug: params.productSlug,
+        teamId,
+        userId: actorContext.actor.actorId,
+      })
     }
 
-    const enablement = await setProductTeamEnablement(prisma, {
-      enabled: body.enabled,
-      organizationId: actorContext.tenant.organizationId,
-      productSlug: params.productSlug,
-      teamId,
-      userId: actorContext.actor.actorId,
-    })
     if (!enablement) {
       sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
       return reply
-    }
-
-    if (isDeepWater && !body.enabled) {
-      await removeDeepWaterTeamInstance(prisma, {
-        organizationId: actorContext.tenant.organizationId,
-        teamId,
-      })
     }
 
     const products = await listIntegratedProducts(prisma, {

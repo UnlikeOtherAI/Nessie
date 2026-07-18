@@ -10,8 +10,8 @@ export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   // explicit allow verdict — an absent/inherited policy does NOT expose it.
   requiresExplicitGrant: true,
   description:
-    'Update Nessie\'s durable Deep Water run record after calling the approved Deep Water MCP tools. ' +
-    'Use this with the Nessie runId from the launch card; record the external Deep Water run id, status, source count, cost, report URL, and Knowledge draft page when available.',
+    'Update Nessie\'s durable Deep Water run record after calling the approved Ledger MCP tools. ' +
+    'Use this with the Nessie runId from the launch card; record the Ledger research job id, status, source count, exact immutable Ledger-booked terminal rate-card charge, report URL, and Knowledge draft page when available.',
   parameters: {
     type: 'object',
     properties: {
@@ -26,7 +26,7 @@ export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
       },
       externalRunId: {
         type: 'string',
-        description: 'Deep Water research/run id returned by mcp_research_create or mcp_research_get.',
+        description: 'Ledger research job id returned by mcp_research_start or mcp_research_status.',
       },
       sourceCount: {
         type: 'integer',
@@ -36,11 +36,11 @@ export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
       totalCost: {
         type: 'number',
         minimum: 0,
-        description: 'Total Deep Water cost or usage charge for the run.',
+        description: 'Optional immutable rate-card charge booked by Ledger. Copy it exactly; it is not a final provider-invoice actual and complex runs may reconcile higher upstream.',
       },
       currency: {
         type: 'string',
-        description: 'ISO currency code for totalCost, default USD when omitted.',
+        description: 'Currency returned with Ledger cost.amount for the booked rate-card charge. Omit when Ledger returned no cost.',
       },
       reportUrl: {
         type: 'string',

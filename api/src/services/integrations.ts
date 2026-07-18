@@ -149,7 +149,7 @@ const teamEnablementMetadata = (): Prisma.InputJsonObject => ({
 })
 
 export const setProductTeamEnablement = async (
-  prisma: PrismaClient,
+  prisma: Pick<PrismaClient, '$queryRaw'>,
   input: ProductOwner & { enabled: boolean; productSlug: string },
 ): Promise<ProductTeamEnablementRow | null> => {
   if (!input.teamId) {

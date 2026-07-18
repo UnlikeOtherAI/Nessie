@@ -65,7 +65,7 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
     usageSummary: {
       currency: 'USD',
       failureCount: 1,
-      lastOperation: 'research_create',
+      lastOperation: 'research_start',
       lastUsedAt: '2026-07-08T12:04:00.000Z',
       monthStart: '2026-07-01T00:00:00.000Z',
       successCount: 7,
@@ -81,7 +81,7 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
   assert.equal(parsed.mcpInstallation?.lifecycleState, 'active')
   assert.equal(parsed.mcpInstallation?.toolCount, 5)
   assert.equal(parsed.usageSummary.totalCalls, 8)
-  assert.equal(parsed.usageSummary.lastOperation, 'research_create')
+  assert.equal(parsed.usageSummary.lastOperation, 'research_start')
 })
 
 test('SetProductTeamEnablementRequestSchema requires a boolean enabled flag', () => {

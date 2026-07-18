@@ -225,3 +225,40 @@ test('deep_water_run_update rejects unsupported status values', async () => {
   )
   assert.equal(queries.length, 0)
 })
+
+test('deep_water_run_update requires the Ledger cost amount and currency together', async () => {
+  const { context, queries } = makeContext()
+
+  await assert.rejects(
+    () => runDeepWaterRunUpdateTool(context, {
+      runId: RUN_ID,
+      status: 'completed',
+      totalCost: 4.25,
+    }),
+    /totalCost and currency must be copied together/,
+  )
+  await assert.rejects(
+    () => runDeepWaterRunUpdateTool(context, {
+      currency: 'USD',
+      runId: RUN_ID,
+      status: 'completed',
+    }),
+    /totalCost and currency must be copied together/,
+  )
+  assert.equal(queries.length, 0)
+})
+
+test('deep_water_run_update rejects a transformed negative Ledger amount', async () => {
+  const { context, queries } = makeContext()
+
+  await assert.rejects(
+    () => runDeepWaterRunUpdateTool(context, {
+      currency: 'USD',
+      runId: RUN_ID,
+      status: 'completed',
+      totalCost: -1,
+    }),
+    /totalCost must be a non-negative finite number/,
+  )
+  assert.equal(queries.length, 0)
+})
