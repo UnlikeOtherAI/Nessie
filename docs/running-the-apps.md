@@ -141,6 +141,15 @@ root remains fixed for the authenticated shell. On phone widths it presents the
 sign-in panel before the welcome panel, keeping hosted SSO visible without an
 initial scroll; desktop keeps the two-column welcome/sign-in order.
 
+**Lifecycle and session persistence.** Moving the native app to the background
+and foreground again preserves the existing WebView instead of navigating or
+remounting it on a timer. This keeps the current route, DOM storage, and WebKit
+cookie store intact so a normal app switch does not restart session bootstrap or
+race refresh-token rotation. Recovery remains event-driven: iOS reloads only
+after WebKit reports that its content process terminated, Android remounts after
+its render process is gone, and the capped boot watchdog retries genuinely
+blank or failed page loads.
+
 **Feedback without motion access.** The mobile shell does not subscribe to
 accelerometer data, so iOS/iPadOS does not ask for the broad “Motion & Fitness
 Activity” permission at launch. Feedback remains available through Help and

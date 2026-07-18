@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  AppState,
-  type AppStateStatus,
   type ImageSourcePropType,
   Platform,
   StyleSheet,
@@ -49,12 +47,6 @@ const DEFAULT_ACTIVE_TINT = '#7c3aed'
 const DEFAULT_INACTIVE_TINT = '#8a8f98'
 const ANDROID_ICON_SIZE = 26
 
-// iOS reclaims the WKWebView content process while the app is backgrounded, so a
-// long background (e.g. overnight) foregrounds to a blank white screen. After this
-// much time in the background, reload on foreground so the workspace is always
-// present and up to date when brought back. Shorter backgrounds keep their state.
-const RELOAD_AFTER_BACKGROUND_MS = 30_000
-
 // If the admin never reports itself mounted (it posts a `nessie:route` message on
 // boot) within this window after a load finishes, the WebView is blank/white —
 // reload it with a cache-bust. WKWebView can serve a stale cached index.html (e.g.
@@ -86,7 +78,6 @@ const Shell = (): React.JSX.Element => {
   // Changing the loaded URL forces WKWebView to fetch a fresh index.html instead of
   // a cached (possibly stale, asset-404ing) one that boots to a blank white screen.
   const [reloadNonce, setReloadNonce] = useState(0)
-  const backgroundedAt = useRef<number | null>(null)
   const adminBooted = useRef(false)
   const bootRetries = useRef(0)
   const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -124,25 +115,6 @@ const Shell = (): React.JSX.Element => {
       if (bootTimer.current) clearTimeout(bootTimer.current)
     }
   }, [])
-
-  // Keep the WebView populated and fresh across app backgrounding. iOS can reclaim
-  // the WKWebView content process while backgrounded (blank screen on return), so
-  // reload once enough time has passed in the background. onContentProcessDid
-  // Terminate / onRenderProcessGone below handle an outright process loss.
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next === 'active') {
-        const since = backgroundedAt.current
-        backgroundedAt.current = null
-        if (since != null && Date.now() - since >= RELOAD_AFTER_BACKGROUND_MS) {
-          loadFreshWebView()
-        }
-      } else if (next === 'background') {
-        backgroundedAt.current = backgroundedAt.current ?? Date.now()
-      }
-    })
-    return () => subscription.remove()
-  }, [loadFreshWebView])
 
   // Android tab icons are Material glyphs rendered to image sources (SF Symbols
   // are iOS-only); re-render them whenever the theme tints change.
