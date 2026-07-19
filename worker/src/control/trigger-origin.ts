@@ -4,6 +4,7 @@ import {
   extractTriggerLaunchOrigin,
   isJsonRecord,
 } from '@nessie/runtime'
+import type { AgentTriggerType } from '@nessie/schemas'
 
 export type TriggerExecutionOrigin = {
   organizationId: string
@@ -32,14 +33,17 @@ export const resolveTriggerExecutionOrigin = (input: {
   }
   channelOrganizationId: string
   config: unknown
+  triggerType: AgentTriggerType
 }): TriggerExecutionOrigin => {
   const config = isJsonRecord(input.config) ? input.config : null
   const hasCreatedByUserId =
     config !== null && Object.hasOwn(config, 'createdByUserId')
+  const hasLaunchOrigin =
+    config !== null && Object.hasOwn(config, 'launchOrigin')
   const createdByUserId = extractTriggerEffectiveUserId(config)
   const launchOrigin = extractTriggerLaunchOrigin(config)
 
-  if (hasCreatedByUserId || launchOrigin) {
+  if (hasCreatedByUserId || hasLaunchOrigin) {
     if (!createdByUserId || !launchOrigin) {
       throw new TriggerLaunchOriginError(
         'its saved user or launch origin is missing or malformed',
@@ -68,6 +72,17 @@ export const resolveTriggerExecutionOrigin = (input: {
       teamId: launchOrigin.teamId,
       userId: launchOrigin.userId,
     }
+  }
+
+  const trustedAutonomousSchedule =
+    config?.['createdViaTool'] === true
+  if (
+    (input.triggerType === 'scheduled' || input.triggerType === 'interval')
+    && !trustedAutonomousSchedule
+  ) {
+    throw new TriggerLaunchOriginError(
+      'this legacy user-facing schedule has no authenticated launch origin',
+    )
   }
 
   const organizationId =

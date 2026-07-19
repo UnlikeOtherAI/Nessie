@@ -352,6 +352,7 @@ export const queueTriggerRun = async (
       agent: input.trigger.agent,
       channelOrganizationId: thread.channel.organizationId,
       config: input.trigger.config,
+      triggerType: input.trigger.type,
     })
     await assertTriggerExecutionOriginTenant(prisma, executionOrigin)
 

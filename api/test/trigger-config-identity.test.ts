@@ -46,6 +46,7 @@ test('generic trigger creation strips caller-supplied launch identity', () => {
   assert.deepEqual(
     stripServerOwnedTriggerConfig({
       createdByUserId: launchOrigin.userId,
+      createdViaTool: true,
       launchOrigin,
       prompt: 'safe prompt',
     }),
@@ -58,17 +59,20 @@ test('generic trigger updates preserve server-owned launch identity', () => {
     mergeTriggerConfigPreservingIdentity(
       {
         createdByUserId: launchOrigin.userId,
+        createdViaTool: true,
         launchOrigin,
         prompt: 'before',
       },
       {
         createdByUserId: '00000000-0000-4000-8000-00000000000f',
+        createdViaTool: false,
         launchOrigin: { ...launchOrigin, teamId: 'forged-team' },
         prompt: 'after',
       },
     ),
     {
       createdByUserId: launchOrigin.userId,
+      createdViaTool: true,
       launchOrigin,
       prompt: 'after',
     },
@@ -79,7 +83,11 @@ test('createAgentTrigger cannot persist forged launch identity', async () => {
   let persistedConfig: unknown
   const prisma = {
     agent: {
-      findUnique: async () => ({ agentKind: 'shared', id: AGENT_ID }),
+      findUnique: async () => ({
+        agentKind: 'shared',
+        id: AGENT_ID,
+        organizationId: launchOrigin.organizationId,
+      }),
     },
     agentBinding: {
       findFirst: async () => ({ id: 'binding' }),
@@ -93,20 +101,79 @@ test('createAgentTrigger cannot persist forged launch identity', async () => {
         return triggerRecord(persistedConfig)
       },
     },
+    team: {
+      findFirst: async () => ({ id: launchOrigin.teamId }),
+    },
   } as unknown as PrismaClient
 
   const created = await createAgentTrigger(prisma, AGENT_ID, {
     config: {
       createdByUserId: launchOrigin.userId,
+      createdViaTool: true,
       interval_minutes: 60,
       launchOrigin,
     },
     targetThreadId: THREAD_ID,
     type: 'interval',
-  })
+  }, { launchOrigin })
 
   assert.ok(created)
-  assert.deepEqual(persistedConfig, { interval_minutes: 60 })
+  assert.deepEqual(persistedConfig, {
+    createdByUserId: launchOrigin.userId,
+    interval_minutes: 60,
+    launchOrigin,
+  })
+})
+
+test('createAgentTrigger rejects a scheduled trigger without trusted origin', async () => {
+  let writes = 0
+  const prisma = {
+    agentTrigger: {
+      create: async () => {
+        writes += 1
+        return triggerRecord({})
+      },
+    },
+  } as unknown as PrismaClient
+
+  const created = await createAgentTrigger(prisma, AGENT_ID, {
+    config: { interval_minutes: 60 },
+    targetThreadId: THREAD_ID,
+    type: 'interval',
+  })
+
+  assert.equal(created, null)
+  assert.equal(writes, 0)
+})
+
+test('createAgentTrigger rejects malformed trusted user or team identity', async () => {
+  let writes = 0
+  const prisma = {
+    agentTrigger: {
+      create: async () => {
+        writes += 1
+        return triggerRecord({})
+      },
+    },
+  } as unknown as PrismaClient
+
+  for (const invalidOrigin of [
+    { ...launchOrigin, teamId: undefined },
+    { ...launchOrigin, userId: undefined },
+  ]) {
+    const created = await createAgentTrigger(
+      prisma,
+      AGENT_ID,
+      {
+        config: { interval_minutes: 60 },
+        targetThreadId: THREAD_ID,
+        type: 'interval',
+      },
+      { launchOrigin: invalidOrigin } as never,
+    )
+    assert.equal(created, null)
+  }
+  assert.equal(writes, 0)
 })
 
 test('updateAgentTrigger cannot overwrite persisted launch identity', async () => {

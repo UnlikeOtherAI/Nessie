@@ -133,6 +133,12 @@ the trigger/tool/agent machinery:
   minutes. An "Use earlier step output" panel lists upstream steps as
   ready-to-paste `{{steps.<id>.output}}` binding tokens. Raw JSON remains
   under an "Advanced" disclosure.
+- **Authenticated scheduled-trigger provenance**: the agent
+  `TriggerEditorDialog` POST cannot supply identity fields itself. The API
+  strips `createdByUserId`, `launchOrigin`, and `createdViaTool`, then stamps
+  the authenticated org/project/team/user after verifying current team
+  membership. Existing REST schedules without that server-owned origin must be
+  cancelled and recreated; the scheduler rejects them before run enqueue.
 - Template trigger nodes materialise into real installation triggers at
   install time (verified live: scheduled trigger created with correct
   next-run).

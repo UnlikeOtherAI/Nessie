@@ -1,5 +1,6 @@
 const SERVER_OWNED_TRIGGER_CONFIG_KEYS = new Set([
   'createdByUserId',
+  'createdViaTool',
   'launchOrigin',
 ])
 

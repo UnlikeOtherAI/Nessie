@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { parseUserId } from '@nessie/schemas'
 
 import {
   AgentTriggerDeliveryRecordSchema,
@@ -78,7 +79,38 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const trigger = await createAgentTrigger(prisma, agentId, body)
+    const isScheduled = body.type === 'scheduled' || body.type === 'interval'
+    if (isScheduled && !requireUserActor(actorContext, reply)) {
+      return reply
+    }
+    const teamId =
+      actorContext.tenant.teamId ?? actorContext.actionContext.teamId
+    if (isScheduled && !teamId) {
+      sendApiError(
+        reply,
+        400,
+        'TRIGGER_LAUNCH_ORIGIN_REQUIRED',
+        'Scheduled triggers require an authenticated user with an active team.',
+      )
+      return reply
+    }
+    const launchOrigin = isScheduled
+      ? {
+          organizationId: actorContext.tenant.organizationId,
+          ...(actorContext.tenant.projectId
+            ? { projectId: actorContext.tenant.projectId }
+            : {}),
+          teamId: teamId!,
+          userId: parseUserId(actorContext.actor.actorId),
+        }
+      : undefined
+
+    const trigger = await createAgentTrigger(
+      prisma,
+      agentId,
+      body,
+      launchOrigin ? { launchOrigin } : {},
+    )
     if (!trigger) {
       sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
       return reply

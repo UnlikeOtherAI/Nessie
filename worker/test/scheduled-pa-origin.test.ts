@@ -112,6 +112,9 @@ const createTriggerHarness = (
     },
   }
   const prisma = {
+    agentBinding: {
+      findFirst: async () => ({ id: 'binding' }),
+    },
     agentTriggerDelivery: {
       findFirst: async () => null,
       upsert: async (args: { create: Record<string, unknown> }) => {
@@ -161,17 +164,23 @@ const createTriggerHarness = (
 const fireSchedule = async (
   harness: TriggerPrismaHarness,
   config: Record<string, unknown>,
+  agent: {
+    agentKind: 'personal_assistant' | 'shared'
+    organizationId: string | null
+    projectId: string | null
+    teamId: string | null
+  } = {
+    agentKind: 'personal_assistant',
+    organizationId: null,
+    projectId: null,
+    teamId: null,
+  },
 ): Promise<void> => queueTriggerRun(harness.prisma, {
   dedupeKey: 'scheduled:one',
   payload: { scheduledFor: '2026-07-19T10:00:00.000Z' },
   source: 'scheduler',
   trigger: {
-    agent: {
-      agentKind: 'personal_assistant',
-      organizationId: null,
-      projectId: null,
-      teamId: null,
-    },
+    agent,
     agentId: PA_AGENT_ID,
     config,
     id: TRIGGER_ID,
@@ -249,4 +258,69 @@ test('revoked team member fails before a scheduled PA run is enqueued', async ()
   assert.equal(harness.transactionCount, 0)
   assert.equal(harness.queuePayloads.length, 0)
   assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+})
+
+test('legacy REST schedule without an origin fails before run enqueue', async () => {
+  const harness = createTriggerHarness()
+  await assert.rejects(
+    fireSchedule(
+      harness,
+      { interval_minutes: 60 },
+      {
+        agentKind: 'shared',
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        teamId: TEAM_ID,
+      },
+    ),
+    /legacy user-facing schedule.*Cancel and recreate/,
+  )
+  assert.equal(harness.transactionCount, 0)
+  assert.equal(harness.queuePayloads.length, 0)
+  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+})
+
+test('trusted autonomous schedule_task marker retains agent scope', async () => {
+  const harness = createTriggerHarness()
+  await fireSchedule(
+    harness,
+    { createdViaTool: true, interval_minutes: 60 },
+    {
+      agentKind: 'shared',
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      teamId: TEAM_ID,
+    },
+  )
+
+  const payload = RunExecuteJobPayloadSchema.parse(harness.queuePayloads[0])
+  assert.equal(payload.actorContext.actionContext.effectiveUserId, undefined)
+  assert.deepEqual(payload.actorContext.tenant, {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    teamId: TEAM_ID,
+  })
+})
+
+test('malformed launch identity cannot fall back to autonomous scope', async () => {
+  const harness = createTriggerHarness()
+  await assert.rejects(
+    fireSchedule(
+      harness,
+      {
+        createdViaTool: true,
+        interval_minutes: 60,
+        launchOrigin: { teamId: TEAM_ID },
+      },
+      {
+        agentKind: 'shared',
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        teamId: TEAM_ID,
+      },
+    ),
+    /launch origin is missing or malformed/,
+  )
+  assert.equal(harness.transactionCount, 0)
+  assert.equal(harness.queuePayloads.length, 0)
 })
