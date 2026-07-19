@@ -179,6 +179,42 @@ test('activation rejects stale enablement metadata from a previous SSO workspace
   assert.equal(fake.instances.length, 0)
 })
 
+test('activation rejects a user removed from the selected Nessie team', async () => {
+  const seed = buildSeed()
+  const userId = randomUUID()
+  const fake = makeExternalAgentPrismaFake({
+    ...seed,
+    accountLinks: [linkedAccount(seed, userId)],
+    teamEnablements: [{
+      teamId: seed.teamId,
+      productSlug: 'deepsignal',
+      enabled: true,
+    }],
+  })
+  const findTeam = fake.team.findFirst
+  let checkedMembership = false
+  fake.team.findFirst = (async (args: Parameters<typeof findTeam>[0]) => {
+    const where = args.where as typeof args.where & {
+      members?: { some: { userId: string } }
+    }
+    checkedMembership = where.members?.some.userId === userId
+    return checkedMembership ? null : findTeam(args)
+  }) as typeof findTeam
+
+  await assert.rejects(
+    activateExternalAgentProduct(
+      asPrisma(fake),
+      'deepsignal',
+      buildCtx(seed, userId),
+    ),
+    (error: unknown) =>
+      error instanceof ExternalAgentActivationError
+      && error.code === 'EXTERNAL_AGENT_TEAM_NOT_ENABLED',
+  )
+  assert.equal(checkedMembership, true)
+  assert.equal(fake.instances.length, 0)
+})
+
 test('activation rejects the obsolete per-user OAuth catalog contract', async () => {
   const seed = buildSeed()
   const userId = randomUUID()

@@ -404,7 +404,8 @@ three independent proofs:
 
 The current Nessie team's `externalOrgId`/`externalWorkspaceId` must exactly
 match the link's active UOA org/team on activation and on every outbound call,
-and the team's DeepSignal enablement is re-read before dispatch. Conversation
+the effective user must still be a current member of that local team, and the
+team's DeepSignal enablement is re-read before dispatch. Conversation
 DM keys include the active external workspace
 (`extagent:deepsignal:${orgId}:${userId}:${uoaTeamId}`), so switching teams
 creates a distinct channel/thread/conversation. Legacy team-less channels and

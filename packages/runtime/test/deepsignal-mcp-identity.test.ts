@@ -386,6 +386,37 @@ test('blocks disabled or mismatched originating teams before UOA exchange', asyn
       && error.code === 'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED',
   )
 
+  let checkedMembership = false
+  const removedMember = createDeepSignalMcpIdentityServiceFromEnv(
+    {
+      ...linkedPrisma(),
+      team: {
+        findFirst: async (args: {
+          where: { members?: { some: { userId: string } } }
+        }) => {
+          checkedMembership =
+            args.where.members?.some.userId === attribution.userId
+          return null
+        },
+      },
+    } as never,
+    env(),
+    {
+      fetchImpl: (async () => {
+        exchanges += 1
+        throw new Error('must not exchange')
+      }) as typeof fetch,
+    },
+  )
+  assert.ok(removedMember)
+  await assert.rejects(
+    removedMember.requestHeaders(attribution, request),
+    (error: unknown) =>
+      error instanceof DeepSignalMcpIdentityError
+      && error.code === 'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED',
+  )
+  assert.equal(checkedMembership, true)
+
   const legacyChannel = createDeepSignalMcpIdentityServiceFromEnv(
     {
       ...linkedPrisma(),

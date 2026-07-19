@@ -267,6 +267,15 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
           'DeepSignal calls require an originating enabled Nessie team.',
         )
       }
+      const userId =
+        attribution.userId
+        ?? (attribution.actorType === 'user' ? attribution.actorId : null)
+      if (!userId) {
+        throw new DeepSignalMcpIdentityError(
+          'DEEPSIGNAL_MCP_PROVENANCE_REQUIRED',
+          'DeepSignal calls require an originating Nessie user.',
+        )
+      }
       const [enablement, team] = await Promise.all([
         prisma.productTeamEnablement.findUnique({
           where: {
@@ -285,6 +294,7 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
         prisma.team.findFirst({
           where: {
             id: attribution.teamId,
+            members: { some: { userId } },
             project: { organizationId: attribution.organizationId },
           },
           select: {
@@ -308,9 +318,6 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
         )
       }
       if (attribution.channelId) {
-        const userId =
-          attribution.userId
-          ?? (attribution.actorType === 'user' ? attribution.actorId : null)
         const channel = await prisma.channel.findFirst({
           where: {
             id: attribution.channelId,
@@ -319,7 +326,7 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
           select: { dmKey: true },
         })
         const expectedDmKey =
-          userId && team?.externalWorkspaceId
+          team?.externalWorkspaceId
             ? `extagent:${DEEPSIGNAL_PRODUCT_SLUG}:${attribution.organizationId}:${userId}:${team.externalWorkspaceId}`
             : null
         if (!expectedDmKey || channel?.dmKey !== expectedDmKey) {

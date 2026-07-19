@@ -148,6 +148,7 @@ const assertLinkedSsoIdentity = async (
     prisma.team.findFirst({
       where: {
         id: input.teamId,
+        members: { some: { userId: input.userId } },
         project: { organizationId: input.organizationId },
       },
       select: {
