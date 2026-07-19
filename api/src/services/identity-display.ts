@@ -15,6 +15,28 @@ export type ExternalAuthIdentity = {
   workspace?: ExternalAuthWorkspace
 }
 
+export type ExternalWorkspaceSelection = {
+  organizationId: string | null
+  teamId: string | null
+}
+
+/**
+ * Resolve the workspace selected by UOA.
+ *
+ * UOA can omit `active` when its `workspace_selection: "auto"` flow skips the
+ * chooser for a user with exactly one active team. That sole team is still the
+ * selected workspace and must be projected consistently into the Nessie
+ * session, team binding, and every product account link.
+ */
+export const resolveExternalWorkspaceSelection = (
+  workspace?: ExternalAuthWorkspace,
+): ExternalWorkspaceSelection => ({
+  organizationId: workspace?.activeOrgId ?? workspace?.orgId ?? null,
+  teamId:
+    workspace?.activeTeamId
+    ?? (workspace?.teamIds.length === 1 ? workspace.teamIds[0] ?? null : null),
+})
+
 const EMAIL_LIKE_DISPLAY_NAME = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 // Derive a human-friendly display name from an email's local part, e.g.

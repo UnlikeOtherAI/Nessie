@@ -70,8 +70,13 @@ project** would leak agents/policies across workspaces (both scope by project).
   materialiser of a workspace owns that team.
 - **`routes/auth.ts`** — the SSO branch delegates to `resolveUoaWorkspaceContext`
   and builds the session from the resolved workspace context instead of
-  `organizationMembers[0]`. No `identity.workspace` (chooser off / single team) →
-  falls back to the user's existing/default team, so non-UOA OIDC is unchanged.
+  `organizationMembers[0]`. UOA may omit `active` when `auto` skips the chooser
+  for a sole active team; that sole `org.teams[]` entry is the selected
+  workspace. The same centralized selection rule drives session routing, the
+  `Team.external*` binding, and every `ProductAccountLink.active*` projection so
+  delegated billing cannot lose tenancy. No resolvable workspace (chooser off,
+  no team, or multiple teams without `active`) falls back to the user's
+  existing/default team, so non-UOA OIDC is unchanged.
 - **`services/uoa-auth.ts`** — the config JWT now advertises
   `login_flow: { workspace_selection: "auto", email_code_enabled: true }` so UOA
   shows the chooser and issues the `active` claim.
@@ -87,8 +92,9 @@ project** would leak agents/policies across workspaces (both scope by project).
   "add a workspace" re-scopes the session).
 
 ## Security / compatibility
-- Non-UOA providers and single-workspace users are unaffected (the workspace
-  branch is a no-op without `identity.workspace`).
+- Non-UOA providers are unaffected. Single-workspace UOA users are routed and
+  projected from their sole active membership even when UOA auto-skips the
+  chooser and omits `active`.
 - `switch-context` still authorises membership server-side; `team_hint`/UI is a
   shortcut, never a trust boundary.
 - Additive migration; existing installs keep their default org/team.

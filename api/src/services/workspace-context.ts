@@ -1,7 +1,10 @@
 import type { MemberRole, PrismaClient } from '@prisma/client'
 
 import { defaultColumnCreateData } from './board.js'
-import type { ExternalAuthWorkspace } from './identity-display.js'
+import {
+  resolveExternalWorkspaceSelection,
+  type ExternalAuthWorkspace,
+} from './identity-display.js'
 import { seedDefaultPolicies } from './policy.js'
 import { seedBootstrapRecords } from '../db/seed.js'
 
@@ -37,23 +40,6 @@ const mapUoaTeamRole = (role: string | undefined): MemberRole => {
       return 'member'
   }
 }
-
-// Which UOA workspace this session is for: the explicitly selected `active` team,
-// or the sole team when the user belongs to exactly one (no chooser needed).
-// Undefined means "no workspace selection" — the caller falls back to the user's
-// existing/default team so non-UOA and single-team logins are unchanged.
-const selectedWorkspaceId = (workspace?: ExternalAuthWorkspace): string | undefined => {
-  if (workspace?.activeTeamId) {
-    return workspace.activeTeamId
-  }
-  if (workspace && workspace.teamIds.length === 1) {
-    return workspace.teamIds[0]
-  }
-  return undefined
-}
-
-const workspaceExternalOrgId = (workspace?: ExternalAuthWorkspace): string | null =>
-  workspace?.activeOrgId ?? workspace?.orgId ?? null
 
 // A friendly-enough placeholder name; the UOA access token carries workspace ids
 // only, so owners rename via team settings (see the plan doc's follow-ups).
@@ -195,7 +181,7 @@ const resolveWorkspaceTarget = async (
   const created = await createWorkspaceEnvironment(prisma, {
     organizationId,
     workspaceId,
-    externalOrgId: workspaceExternalOrgId(workspace),
+    externalOrgId: resolveExternalWorkspaceSelection(workspace).organizationId,
   })
   return { projectId: created.projectId, teamId: created.teamId, channelId: created.channelId, teamRole: 'owner' }
 }
@@ -281,7 +267,8 @@ export const resolveUoaWorkspaceContext = async (
   const organizationId = sharedOrg.id
 
   // 2. Resolve the target environment (workspace team, or default team).
-  const workspaceId = selectedWorkspaceId(input.workspace)
+  const workspaceId =
+    resolveExternalWorkspaceSelection(input.workspace).teamId ?? undefined
   const target = workspaceId
     ? await resolveWorkspaceTarget(prisma, organizationId, workspaceId, input.workspace)
     : await resolveDefaultTarget(prisma, organizationId, user?.id)
