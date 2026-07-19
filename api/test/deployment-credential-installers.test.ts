@@ -9,18 +9,30 @@ const installerSource = new URL(
   '../../infrastructure/compose/set-ledger-app-key.sh',
   import.meta.url,
 )
+const billingInstallerSource = new URL(
+  '../../infrastructure/compose/set-ledger-billing-reader-key.sh',
+  import.meta.url,
+)
+const deepSignalInstallerSource = new URL(
+  '../../infrastructure/compose/set-deepsignal-app-key.sh',
+  import.meta.url,
+)
 const workflowSource = new URL(
   '../../.github/workflows/deploy.yml',
   import.meta.url,
 )
 
 const appKey = `lk_${'n'.repeat(32)}`
+const deepSignalAppKey = `dsk_${'s'.repeat(32)}`
 
-const makeInstallerFixture = (initialEnv = '') => {
+const makeInstallerFixture = (
+  initialEnv = '',
+  source = installerSource,
+) => {
   const directory = mkdtempSync(join(tmpdir(), 'nessie-ledger-key-'))
   const installer = join(directory, 'set-ledger-app-key.sh')
   const envFile = join(directory, '.env')
-  cpSync(installerSource, installer)
+  cpSync(source, installer)
   execFileSync('chmod', ['700', installer])
   if (initialEnv) {
     execFileSync('bash', ['-c', 'umask 077; printf %s \"$1\" > .env', '_', initialEnv], {
@@ -86,6 +98,52 @@ test('Ledger installer rejects malformed or cross-principal key reuse', () => {
     assert.notEqual(reusedResult.status, 0)
     assert.match(reusedResult.stderr, new RegExp(reusedValue.name, 'u'))
     assert.doesNotMatch(reusedResult.stderr, new RegExp(appKey, 'u'))
+  }
+})
+
+test('credential installers preserve an unterminated unrelated setting', () => {
+  const cases = [
+    {
+      source: installerSource,
+      key: appKey,
+      expected: [
+        'PRESERVE_ME=yes',
+        `LEDGER_PROXY_TOKEN=${appKey}`,
+        `NESSIE_MODEL_API_KEY=${appKey}`,
+        '',
+      ].join('\n'),
+    },
+    {
+      source: billingInstallerSource,
+      key: appKey,
+      expected: [
+        'PRESERVE_ME=yes',
+        `LEDGER_BILLING_READ_APP_KEY_NESSIE=${appKey}`,
+        '',
+      ].join('\n'),
+    },
+    {
+      source: deepSignalInstallerSource,
+      key: deepSignalAppKey,
+      expected: [
+        'PRESERVE_ME=yes',
+        `DEEPSIGNAL_MCP_APP_KEY=${deepSignalAppKey}`,
+        '',
+      ].join('\n'),
+    },
+  ]
+
+  for (const installerCase of cases) {
+    const fixture = makeInstallerFixture(
+      'PRESERVE_ME=yes',
+      installerCase.source,
+    )
+    const result = runInstaller(fixture.installer, installerCase.key)
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(
+      readFileSync(fixture.envFile, 'utf8'),
+      installerCase.expected,
+    )
   }
 })
 

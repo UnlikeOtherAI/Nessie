@@ -43,6 +43,9 @@ if [[ -f "$ENV_FILE" ]]; then
     -e "/^${KEY_NAMES[1]}=/d" \
     "$ENV_FILE" > "$temp_file"
 fi
+if [[ -s "$temp_file" && -n "$(tail -c 1 "$temp_file")" ]]; then
+  printf '\n' >> "$temp_file"
+fi
 printf '%s=%s\n' "${KEY_NAMES[0]}" "$app_key" >> "$temp_file"
 printf '%s=%s\n' "${KEY_NAMES[1]}" "$app_key" >> "$temp_file"
 chmod 600 "$temp_file"
