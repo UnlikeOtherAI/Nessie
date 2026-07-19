@@ -72,7 +72,14 @@ Verified against `api/prisma/schema.prisma`, the migrations, and worker code.
   (recall ledger: `wasInjected`/`wasReferenced`/`userSignal`) all exist.
 - `packages/memory` (capture/extract/search/scopes/recalls/lifecycle) is operational.
 - **Phase A update**: agent replies are no longer captured wholesale. Completed runs enqueue
-  `memory.run.consolidate`, which emits a bounded set of typed episodic/semantic memories.
+  `memory.run.consolidate`, which emits a bounded set of typed episodic/semantic memories. The
+  queue payload freezes the authenticated launch org/project/team/user plus the source
+  agent/channel/thread/task. Its model calls use a stable named `memory-consolidation` system
+  agent/run and operation ID; the PA channel's internal team remains only the memory-storage
+  scope. The consumer rederives and verifies the system actor/agent/run identity from that
+  source, omits unbound interactive correlation data, validates the source locator, and rejects
+  legacy or mismatched payloads before database-dependent model dispatch instead of guessing
+  identity from message history.
 - **Still designed-but-not-built** (per `docs/memory-pipeline-design.md`): `thought_artifacts`
   (artifact-linked reasons / "why does X exist?"), `recall_training_signals`, reranker,
   decay/consolidation scheduling, and contradiction pipeline.

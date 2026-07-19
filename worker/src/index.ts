@@ -49,7 +49,6 @@ import { executeRunJob } from './run/execute.js'
 import {
   executeRunMemoryConsolidationJob,
   MEMORY_CONSOLIDATION_TOPIC,
-  RunMemoryConsolidateJobPayloadSchema,
 } from './run/memory-consolidation.js'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 
@@ -227,7 +226,6 @@ export const startWorker = async (
   queueProvider.subscribe(
     MEMORY_CONSOLIDATION_TOPIC,
     async (job) => {
-      const payload = RunMemoryConsolidateJobPayloadSchema.parse(job.payload)
       await executeRunMemoryConsolidationJob(
         {
           captureConfig: {
@@ -235,7 +233,7 @@ export const startWorker = async (
             pool,
           },
         },
-        payload,
+        job.payload,
       )
     },
     { signal: abortController.signal },

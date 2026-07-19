@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { buildTriggerPrompt, extractTriggerEffectiveUserId } from '@nessie/runtime'
+import { buildTriggerPrompt } from '@nessie/runtime'
 import {
   type AgentTriggerType,
   parseAgentId,
@@ -17,6 +17,11 @@ import {
 } from '@nessie/schemas'
 import { enqueueQueueJob, enqueueRunExecution } from '../queue.js'
 import { recordDeliveryFailure } from './trigger-delivery-retry.js'
+import {
+  assertTriggerExecutionOriginTenant,
+  resolveTriggerExecutionOrigin,
+  TriggerLaunchOriginError,
+} from './trigger-origin.js'
 
 // Shared "fire a run from a trigger" primitives used by both the scheduler sweep
 // and event dispatch. Kept separate from the scheduling/claim logic so the two
@@ -334,27 +339,6 @@ export const queueTriggerRun = async (
     }
   }
 
-  // The scheduled run acts as the user who created it (config.createdByUserId).
-  // Authorization for the target channel was checked at creation time; re-verify
-  // here so a user later removed from a private channel can't keep the run acting
-  // as them. If they've lost access, fall back to an autonomous (no-user) run.
-  // The personal assistant is exempt: it reaches every channel as its owner, so
-  // it keeps acting as the owner regardless of that user's channel membership.
-  let effectiveUserId = extractTriggerEffectiveUserId(input.trigger.config)
-  if (
-    !isPersonalAssistantTrigger
-    && effectiveUserId
-    && thread.channel.visibility !== 'public'
-  ) {
-    const membership = await prisma.channelMember.findFirst({
-      where: { channelId: input.trigger.targetChannelId, userId: effectiveUserId },
-      select: { userId: true },
-    })
-    if (!membership) {
-      effectiveUserId = null
-    }
-  }
-
   const content = buildTriggerPrompt({
     config: input.trigger.config,
     payload: input.payload,
@@ -364,6 +348,36 @@ export const queueTriggerRun = async (
 
   const normalizedPayload = normalizePayload(input.payload)
   try {
+    const executionOrigin = resolveTriggerExecutionOrigin({
+      agent: input.trigger.agent,
+      channelOrganizationId: thread.channel.organizationId,
+      config: input.trigger.config,
+      triggerType: input.trigger.type,
+    })
+    await assertTriggerExecutionOriginTenant(prisma, executionOrigin)
+
+    // Shared agents must still be usable by the saved user at fire time. Losing
+    // that authorization fails closed; it must never silently erase the user
+    // while retaining their immutable billing team.
+    if (
+      !isPersonalAssistantTrigger
+      && executionOrigin.userId
+      && thread.channel.visibility !== 'public'
+    ) {
+      const membership = await prisma.channelMember.findFirst({
+        where: {
+          channelId: input.trigger.targetChannelId,
+          userId: executionOrigin.userId,
+        },
+        select: { userId: true },
+      })
+      if (!membership) {
+        throw new TriggerLaunchOriginError(
+          'its saved user no longer has access to the target channel',
+        )
+      }
+    }
+
     await prisma.$transaction(async (tx) => {
       const delivery = await upsertDelivery(tx, {
         dedupeKey: input.dedupeKey,
@@ -408,7 +422,7 @@ export const queueTriggerRun = async (
       const task = await tx.task.create({
         data: {
           agentId: input.trigger.agentId,
-          organizationId: input.trigger.agent.organizationId ?? thread.channel.organizationId,
+          organizationId: executionOrigin.organizationId,
           purpose: content.slice(0, 200),
           runId: run.id,
           status: 'inbox',
@@ -422,13 +436,12 @@ export const queueTriggerRun = async (
           actorContext: buildActorContext({
             agentId: input.trigger.agentId,
             channelId: input.trigger.targetChannelId,
-            effectiveUserId,
-            organizationId:
-              input.trigger.agent.organizationId ?? thread.channel.organizationId,
-            projectId: input.trigger.agent.projectId,
+            effectiveUserId: executionOrigin.userId,
+            organizationId: executionOrigin.organizationId,
+            projectId: executionOrigin.projectId,
             source: input.source,
             taskId: task.id,
-            teamId: input.trigger.agent.teamId,
+            teamId: executionOrigin.teamId,
             threadId: input.trigger.targetThreadId,
           }),
           agentId: parseAgentId(input.trigger.agentId),
@@ -474,6 +487,12 @@ export const queueTriggerRun = async (
       source: input.source,
       triggerId: input.trigger.id,
     })
+    if (error instanceof TriggerLaunchOriginError) {
+      await prisma.agentTrigger.update({
+        where: { id: input.trigger.id },
+        data: { status: 'error' },
+      })
+    }
     throw error
   }
 }

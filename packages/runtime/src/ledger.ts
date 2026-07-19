@@ -35,8 +35,9 @@ export type LedgerAttribution = {
   taskId?: string | null
   runId?: string | null
   agentId?: string | null
-  agentKind?: 'personal_assistant' | 'shared' | null
+  agentKind?: 'personal_assistant' | 'shared' | 'system' | null
   systemComponent?: string | null
+  toolCallId?: string | null
   actorId: string
   actorType?: LedgerActorType | null
   requestId?: string | null
@@ -247,7 +248,7 @@ export const attributionFromActorContext = (
   actorContext: AuthorizedActionContext,
   extra: {
     agentId?: string | null
-    agentKind?: 'personal_assistant' | 'shared' | null
+    agentKind?: 'personal_assistant' | 'shared' | 'system' | null
     runId?: string | null
     systemComponent?: string | null
   } = {},
@@ -266,7 +267,11 @@ export const attributionFromActorContext = (
   sessionId: actorContext.actionContext.sessionId ?? null,
   taskId: actorContext.actionContext.taskId ?? null,
   runId: extra.runId ?? null,
-  agentId: extra.agentId ?? actorContext.actionContext.agentId ?? null,
+  // Only named system work may clear the authenticated action-context agent.
+  agentId:
+    extra.agentId === null && extra.systemComponent?.trim()
+      ? null
+      : extra.agentId ?? actorContext.actionContext.agentId ?? null,
   agentKind: extra.agentKind ?? null,
   systemComponent: extra.systemComponent ?? null,
   actorId: actorContext.actor.actorId,
@@ -346,6 +351,12 @@ export const recordInferenceUsage = async (
           latencyMs: invocation.latencyMs,
           ...(attribution.systemComponent
             ? { systemComponent: attribution.systemComponent }
+            : {}),
+          ...(attribution.agentKind
+            ? { agentKind: attribution.agentKind }
+            : {}),
+          ...(attribution.toolCallId
+            ? { toolCallId: attribution.toolCallId }
             : {}),
           ...(invocation.metadata ?? {}),
         } as Prisma.InputJsonValue,

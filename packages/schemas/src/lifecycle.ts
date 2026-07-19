@@ -1,5 +1,12 @@
 import { z } from 'zod'
 
+import {
+  OrganizationIdSchema,
+  ProjectIdSchema,
+  TeamIdSchema,
+  UserIdSchema,
+} from './ids.js'
+
 export const AgentStatusSchema = z.enum([
   'idle',
   'thinking',
@@ -33,6 +40,20 @@ export const AgentTriggerTypeSchema = z.enum([
   'interval',
 ])
 export type AgentTriggerType = z.infer<typeof AgentTriggerTypeSchema>
+
+/**
+ * Authenticated tenant selected when a user creates a scheduled task. PA and
+ * other system-owned agents are deliberately not a source of this identity.
+ */
+export const ScheduledTriggerLaunchOriginSchema = z.object({
+  organizationId: OrganizationIdSchema,
+  projectId: ProjectIdSchema.optional(),
+  teamId: TeamIdSchema,
+  userId: UserIdSchema,
+})
+export type ScheduledTriggerLaunchOrigin = z.infer<
+  typeof ScheduledTriggerLaunchOriginSchema
+>
 
 export const RunStatusSchema = z.enum([
   'pending',

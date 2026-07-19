@@ -1,5 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
+import {
+  ScheduledTriggerLaunchOriginSchema,
+  type ScheduledTriggerLaunchOrigin,
+} from '@nessie/schemas'
 import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
@@ -17,6 +21,10 @@ import {
   SCHEDULER_TRIGGER_TYPES,
   type WorkflowTriggerPrismaLike,
 } from './trigger-shared.js'
+import {
+  mergeTriggerConfigPreservingIdentity,
+  stripServerOwnedTriggerConfig,
+} from './trigger-config-identity.js'
 
 export const listAgentTriggers = async (
   prisma: PrismaClient,
@@ -133,10 +141,32 @@ export const createAgentTrigger = async (
     targetThreadId?: string
     type: AgentTriggerType
   },
+  trusted: {
+    launchOrigin?: ScheduledTriggerLaunchOrigin
+  } = {},
 ): Promise<AgentTriggerRecord | null> => {
+  const clientConfig = stripServerOwnedTriggerConfig(input.config)
+  const isScheduled = SCHEDULER_TRIGGER_TYPES.includes(input.type)
+  const parsedLaunchOrigin = isScheduled
+    ? ScheduledTriggerLaunchOriginSchema.safeParse(trusted.launchOrigin)
+    : null
+  if (parsedLaunchOrigin && !parsedLaunchOrigin.success) {
+    return null
+  }
+  const launchOrigin = parsedLaunchOrigin?.success
+    ? parsedLaunchOrigin.data
+    : undefined
   const normalizedConfig = input.type === 'webhook'
-    ? ensureWebhookConfig(input.config)
-    : (input.config ?? {})
+    ? ensureWebhookConfig(clientConfig)
+    : {
+        ...clientConfig,
+        ...(launchOrigin
+          ? {
+              createdByUserId: launchOrigin.userId,
+              launchOrigin,
+            }
+          : {}),
+      }
 
   const normalizedNextRunAt = normalizeNextRunAt({
     config: normalizedConfig,
@@ -152,11 +182,34 @@ export const createAgentTrigger = async (
     select: {
       id: true,
       agentKind: true,
+      organizationId: true,
     },
   })
 
   if (!agent || agent.agentKind === 'personal_assistant') {
     return null
+  }
+  if (isScheduled) {
+    if (!launchOrigin) {
+      return null
+    }
+    if (agent.organizationId !== launchOrigin.organizationId) {
+      return null
+    }
+    const launchTeam = await prisma.team.findFirst({
+      where: {
+        id: launchOrigin.teamId,
+        ...(launchOrigin.projectId
+          ? { projectId: launchOrigin.projectId }
+          : {}),
+        members: { some: { userId: launchOrigin.userId } },
+        project: { organizationId: launchOrigin.organizationId },
+      },
+      select: { id: true },
+    })
+    if (!launchTeam) {
+      return null
+    }
   }
 
   const target = await resolveExecutionTarget(prisma, agentId, {
@@ -197,9 +250,10 @@ export const createWorkflowTrigger = async (
     type: AgentTriggerType
   },
 ): Promise<AgentTriggerRecord | null> => {
+  const clientConfig = stripServerOwnedTriggerConfig(input.config)
   const normalizedConfig = input.type === 'webhook'
-    ? ensureWebhookConfig(input.config)
-    : (input.config ?? {})
+    ? ensureWebhookConfig(clientConfig)
+    : clientConfig
 
   const normalizedNextRunAt = normalizeNextRunAt({
     config: normalizedConfig,
@@ -309,10 +363,7 @@ export const updateAgentTrigger = async (
   const nextConfig =
     input.config === undefined
       ? existing.config
-      : {
-          ...(isJsonRecord(existing.config) ? existing.config : {}),
-          ...input.config,
-        }
+      : mergeTriggerConfigPreservingIdentity(existing.config, input.config)
   const normalizedConfig =
     existing.type === 'webhook' ? ensureWebhookConfig(nextConfig) : nextConfig
   const shouldPersistConfig =

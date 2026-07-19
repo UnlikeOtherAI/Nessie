@@ -248,6 +248,14 @@ export const runScheduleTaskTool = async (
   const instructions = requireString(input.instructions, 'instructions')
   const parsed = parseSchedule(input.schedule)
   const userId = resolveEffectiveUserId(context)
+  const launchTeamId =
+    context.actorContext.tenant.teamId
+    ?? context.actorContext.actionContext.teamId
+  if (userId && !launchTeamId) {
+    throw new Error(
+      'schedule_task requires an active team so future runs keep the original billing scope.',
+    )
+  }
   const name =
     typeof input.name === 'string' && input.name.trim().length > 0
       ? input.name.trim()
@@ -292,7 +300,19 @@ export const runScheduleTaskTool = async (
     ...parsed.config,
     prompt: instructions,
     createdViaTool: true,
-    ...(userId ? { createdByUserId: userId } : {}),
+    ...(userId
+      ? {
+          createdByUserId: userId,
+          launchOrigin: {
+            organizationId: context.actorContext.tenant.organizationId,
+            ...(context.actorContext.tenant.projectId
+              ? { projectId: context.actorContext.tenant.projectId }
+              : {}),
+            teamId: launchTeamId!,
+            userId,
+          },
+        }
+      : {}),
   }
 
   const nextRunAt = computeInitialScheduleRunAt({

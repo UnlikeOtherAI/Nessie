@@ -656,10 +656,22 @@ There is deliberately no direct-provider fallback.
   user/org/team/agent/run fields. Knowledge embedding/extraction jobs persist
   that origin in their queue payload; for a teamless project space the API
   carries the authenticated request's active team rather than guessing from
-  project membership. Each Fastify request owns a separate async context rooted
-  at `onRequest`, so interleaved uploads cannot borrow another request's user or
-  team. A request with no real team returns
-  `KNOWLEDGE_INFERENCE_ORIGIN_REQUIRED`, and malformed legacy jobs fail
+  project membership. Post-run memory consolidation follows the same rule: its
+  queue payload freezes the launch org/project/team/user and source
+  agent/channel/thread/task, then derives stable, distinct
+  `memory-consolidation` system agent/run UUIDs and a source-run-bound operation
+  ID. Queue consumers rederive those UUIDs from the immutable source and require
+  exact system actor/agent/run matches before database or model access; arbitrary
+  queue UUIDs are never accepted as signed identity. Background consolidation
+  deliberately omits the interactive correlation ID rather than trusting an
+  unbound queue value. The PA system channel's team/project scope only controls
+  where the memory is stored; it never replaces the launch team billed by
+  Ledger. The consumer validates the persisted source locator before reading
+  message history, and never infers the billed user from a thread participant.
+  Each Fastify request
+  owns a separate async context rooted at `onRequest`, so interleaved uploads
+  cannot borrow another request's user or team. A request with no real team
+  returns `KNOWLEDGE_INFERENCE_ORIGIN_REQUIRED`, and malformed legacy jobs fail
   validation before storage or model access.
 - `deep_water_run_update` (the builtin that writes the durable
   `product_integration_runs` record) is **not PA-only** — any *granted* agent

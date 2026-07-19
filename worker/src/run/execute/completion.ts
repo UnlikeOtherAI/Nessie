@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { markRecallsReferenced } from '@nessie/memory'
-import { parseAgentId, parseRunId, parseTaskId } from '@nessie/schemas'
+import { parseAgentId, parseRunId } from '@nessie/schemas'
 import type { InvocationRecord } from '@nessie/runtime'
 import { persistInvocationLedgerEvents } from '../inference.js'
 import { enqueueRunMemoryConsolidation } from '../memory-consolidation.js'
@@ -91,10 +91,7 @@ export const completeRunExecution = async (
   // Memory consolidation is best-effort: a failure to enqueue it must never
   // turn an already-completed run into a failed one (the outer catch would).
   try {
-    await enqueueRunMemoryConsolidation(deps.prisma, {
-      runId: parseRunId(context.run.id),
-      taskId: parseTaskId(context.task.id),
-    })
+    await enqueueRunMemoryConsolidation(deps.prisma, payload)
   } catch (consolidationError) {
     console.error(
       '[worker.memory] failed to enqueue run memory consolidation for run',
