@@ -316,8 +316,9 @@ MVP policy should be explicit:
 > organization/project/team/user launch origin. The scheduler restores that
 > exact scope for the primary run instead of reading the PA agent (which is
 > intentionally teamless), the target channel, or current membership. Before
-> enqueue it verifies the team still belongs to that organization/project and
-> the saved user is still a team member. The authenticated agent-trigger REST
+> enqueue it verifies the saved user's organization membership is still active,
+> the team still belongs to that organization/project, and the saved user is
+> still a team member. The authenticated agent-trigger REST
 > create path used by `TriggerEditorDialog` also requires an active user/team
 > and stamps that same server-owned origin; its service verifies the agent
 > organization and the user's exact team/project/organization membership. The

@@ -102,25 +102,41 @@ export const resolveTriggerExecutionOrigin = (input: {
 }
 
 export const assertTriggerExecutionOriginTenant = async (
-  prisma: Pick<PrismaClient, 'team'>,
+  prisma: Pick<PrismaClient, 'organizationMember' | 'team'>,
   origin: TriggerExecutionOrigin,
 ): Promise<void> => {
-  if (!origin.teamId) {
-    return
-  }
+  const [organizationMember, team] = await Promise.all([
+    origin.userId
+      ? prisma.organizationMember.findFirst({
+          where: {
+            deactivatedAt: null,
+            organizationId: origin.organizationId,
+            userId: origin.userId,
+          },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    origin.teamId
+      ? prisma.team.findFirst({
+          where: {
+            id: origin.teamId,
+            ...(origin.projectId ? { projectId: origin.projectId } : {}),
+            ...(origin.userId
+              ? { members: { some: { userId: origin.userId } } }
+              : {}),
+            project: { organizationId: origin.organizationId },
+          },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+  ])
 
-  const team = await prisma.team.findFirst({
-    where: {
-      id: origin.teamId,
-      ...(origin.projectId ? { projectId: origin.projectId } : {}),
-      ...(origin.userId
-        ? { members: { some: { userId: origin.userId } } }
-        : {}),
-      project: { organizationId: origin.organizationId },
-    },
-    select: { id: true },
-  })
-  if (!team) {
+  if (origin.userId && !organizationMember) {
+    throw new TriggerLaunchOriginError(
+      'its saved user is no longer an active member of its saved organization',
+    )
+  }
+  if (origin.teamId && !team) {
     throw new TriggerLaunchOriginError(
       'its saved team does not belong to its saved organization and project, '
       + 'or its saved user is no longer a member',

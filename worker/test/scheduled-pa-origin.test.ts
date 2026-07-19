@@ -68,6 +68,7 @@ const createSchedule = async (): Promise<Record<string, unknown>> => {
 
 type TriggerPrismaHarness = {
   failedDeliveries: Array<Record<string, unknown>>
+  organizationMemberQueries: Array<Record<string, unknown>>
   queuePayloads: unknown[]
   teamQueries: Array<Record<string, unknown>>
   transactionCount: number
@@ -77,8 +78,10 @@ type TriggerPrismaHarness = {
 
 const createTriggerHarness = (
   teamScopeValid = true,
+  organizationMemberActive = true,
 ): TriggerPrismaHarness => {
   const failedDeliveries: Array<Record<string, unknown>> = []
+  const organizationMemberQueries: Array<Record<string, unknown>> = []
   const queuePayloads: unknown[] = []
   const triggerUpdates: Array<Record<string, unknown>> = []
   const teamQueries: Array<Record<string, unknown>> = []
@@ -128,6 +131,12 @@ const createTriggerHarness = (
         return {}
       },
     },
+    organizationMember: {
+      findFirst: async (args: { where: Record<string, unknown> }) => {
+        organizationMemberQueries.push(args.where)
+        return organizationMemberActive ? { id: 'organization-member' } : null
+      },
+    },
     team: {
       findFirst: async (args: { where: Record<string, unknown> }) => {
         teamQueries.push(args.where)
@@ -154,6 +163,7 @@ const createTriggerHarness = (
     get transactionCount() {
       return transactionCount
     },
+    organizationMemberQueries,
     queuePayloads,
     teamQueries,
     triggerUpdates,
@@ -260,6 +270,33 @@ test('revoked team member fails before a scheduled PA run is enqueued', async ()
   assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
 })
 
+test('deactivated organization member fails before run enqueue', async () => {
+  const config = await createSchedule()
+  const harness = createTriggerHarness(true, false)
+
+  await assert.rejects(
+    fireSchedule(harness, config),
+    /no longer an active member of its saved organization/,
+  )
+  assert.deepEqual(harness.organizationMemberQueries, [{
+    deactivatedAt: null,
+    organizationId: ORGANIZATION_ID,
+    userId: USER_ID,
+  }])
+  assert.deepEqual(harness.teamQueries[0]?.['members'], {
+    some: { userId: USER_ID },
+  })
+  assert.equal(harness.transactionCount, 0)
+  assert.equal(harness.queuePayloads.length, 0)
+  assert.equal(harness.failedDeliveries.length, 1)
+  assert.equal(harness.failedDeliveries[0]?.['status'], 'failed')
+  assert.match(
+    String(harness.failedDeliveries[0]?.['errorMessage']),
+    /no longer an active member of its saved organization/,
+  )
+  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+})
+
 test('legacy REST schedule without an origin fails before run enqueue', async () => {
   const harness = createTriggerHarness()
   await assert.rejects(
@@ -295,6 +332,9 @@ test('trusted autonomous schedule_task marker retains agent scope', async () => 
 
   const payload = RunExecuteJobPayloadSchema.parse(harness.queuePayloads[0])
   assert.equal(payload.actorContext.actionContext.effectiveUserId, undefined)
+  assert.equal(harness.organizationMemberQueries.length, 0)
+  assert.equal(harness.transactionCount, 1)
+  assert.equal(harness.queuePayloads.length, 1)
   assert.deepEqual(payload.actorContext.tenant, {
     organizationId: ORGANIZATION_ID,
     projectId: PROJECT_ID,

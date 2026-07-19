@@ -37,6 +37,7 @@ const actorContext: AuthorizedActionContext = {
 
 type Harness = {
   app: ReturnType<typeof Fastify>
+  getOrganizationMemberQueries: () => Array<Record<string, unknown>>
   getPersistedConfig: () => Record<string, unknown> | null
   getQueuePayloads: () => unknown[]
   getTeamQueries: () => Array<Record<string, unknown>>
@@ -50,6 +51,7 @@ const createHarness = (
   let persistedConfig: Record<string, unknown> | null = null
   let writes = 0
   const queuePayloads: unknown[] = []
+  const organizationMemberQueries: Array<Record<string, unknown>> = []
   const teamQueries: Array<Record<string, unknown>> = []
   const now = new Date('2026-07-19T10:00:00.000Z')
 
@@ -122,6 +124,12 @@ const createHarness = (
     channelMember: {
       findFirst: async () => ({ userId: USER_ID }),
     },
+    organizationMember: {
+      findFirst: async (args: { where: Record<string, unknown> }) => {
+        organizationMemberQueries.push(args.where)
+        return { id: 'organization-member' }
+      },
+    },
     team: {
       findFirst: async (args: { where: Record<string, unknown> }) => {
         teamQueries.push(args.where)
@@ -168,6 +176,7 @@ const createHarness = (
 
   return {
     app,
+    getOrganizationMemberQueries: () => organizationMemberQueries,
     getPersistedConfig: () => persistedConfig,
     getQueuePayloads: () => queuePayloads,
     getTeamQueries: () => teamQueries,
@@ -240,6 +249,11 @@ test('REST schedule creation stamps trusted scope through run.execute', async ()
       harness.getQueuePayloads()[0],
     )
     assert.equal(payload.actorContext.actionContext.effectiveUserId, USER_ID)
+    assert.deepEqual(harness.getOrganizationMemberQueries(), [{
+      deactivatedAt: null,
+      organizationId: ORGANIZATION_ID,
+      userId: USER_ID,
+    }])
     assert.deepEqual(payload.actorContext.tenant, {
       organizationId: ORGANIZATION_ID,
       projectId: PROJECT_ID,
