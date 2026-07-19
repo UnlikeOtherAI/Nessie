@@ -13,6 +13,14 @@ test('Deep Water run update is grantable to any agent (not PA-only)', () => {
   // Default off: exposure requires an explicit per-agent grant.
   assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.requiresExplicitGrant, true)
   assert.equal(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.safe, true)
+  assert.match(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.description,
+    /exact full Nessie runId from the server-built launch message/,
+  )
+  assert.match(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.properties.runId?.description ?? '',
+    /Exact full Nessie product_integration_runs UUID from the server-built Deep Water launch message/,
+  )
   assert.deepEqual(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.required, [
     'runId',
     'status',

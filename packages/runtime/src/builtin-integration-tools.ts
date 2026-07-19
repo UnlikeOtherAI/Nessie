@@ -13,13 +13,13 @@ export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   requiresExplicitGrant: true,
   description:
     'Update Nessie\'s durable Deep Water run record after calling the approved Ledger MCP tools. ' +
-    'Use this with the Nessie runId from the launch card; record the Ledger research job id, status, source count, exact immutable Ledger-booked terminal rate-card charge, report URL, and Knowledge draft page when available.',
+    'Use the exact full Nessie runId from the server-built launch message, never the abbreviated value on its launch card; record the Ledger research job id, status, source count, exact immutable Ledger-booked terminal rate-card charge, report URL, and Knowledge draft page when available.',
   parameters: {
     type: 'object',
     properties: {
       runId: {
         type: 'string',
-        description: 'Nessie product_integration_runs id from the Deep Water launch card.',
+        description: 'Exact full Nessie product_integration_runs UUID from the server-built Deep Water launch message; do not use the abbreviated launch-card display.',
       },
       status: {
         type: 'string',

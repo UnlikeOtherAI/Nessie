@@ -17,6 +17,7 @@ const ledgerResearchRecency = (
 
 export const buildDeepWaterLaunchMessage = (
   input: DeepWaterLaunchInput,
+  context: { runId: string },
 ): string => {
   const title = input.title?.trim()
   const depth = ledgerResearchDepth(input.depth)
@@ -38,6 +39,9 @@ export const buildDeepWaterLaunchMessage = (
     'Query:',
     input.query,
     '',
+    'Nessie durable research run id (use this exact full UUID for every deep_water_run_update call):',
+    context.runId,
+    '',
     'Ledger MCP arguments:',
     `Depth: ${depth}`,
     `Recency: ${recency}`,
@@ -52,7 +56,7 @@ export const buildDeepWaterLaunchMessage = (
     `Searches per pillar: ${input.searchesPerPillar}`,
     '',
     'Call mcp_research_start with query, context, the Ledger depth above, and the Ledger recency above.',
-    'After mcp_research_start returns its Ledger research job id, call deep_water_run_update with the Nessie run id, externalRunId set to that Ledger id, and status=running.',
+    'After mcp_research_start returns its Ledger research job id, call deep_water_run_update with runId set to the exact full Nessie durable research run id above, externalRunId set to that Ledger id, and status=running.',
     'You may call mcp_research_status once to confirm the job was accepted. Do not busy-poll, wait for completion, or consume this bounded agent run checking a long-running job.',
     'Tell the user the research is running, include the Ledger research job id, and end this turn.',
     'On a later user status request or follow-up turn, call mcp_research_status once with { id }. If it is still running, report progress and stop. Map Ledger status complete to Nessie status completed; map failed, cancelled, or timed_out to failed.',
