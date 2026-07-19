@@ -85,7 +85,8 @@ export const registerMcpCredentialRoutes = (
         reply,
         409,
         'DEEP_WATER_MANAGED_CREDENTIAL',
-        'Deep Water uses Nessie-managed Ledger authentication and does not accept credential overrides.',
+        'Deep Water uses Nessie\'s dedicated Ledger app API key and signed SSO '
+        + 'caller identity; it does not accept credential overrides.',
       )
       return reply
     }

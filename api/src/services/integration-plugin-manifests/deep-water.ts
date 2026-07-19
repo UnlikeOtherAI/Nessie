@@ -11,7 +11,7 @@ export const deepWaterIntegrationPluginManifest = {
   manifestRef: 'first-party/deep-water',
   productSlug: 'deep-water',
   name: 'Deep Water',
-  version: '0.2.0',
+  version: '0.2.1',
   vendor: 'UnlikeOtherAI',
   install: [
     {
@@ -19,7 +19,10 @@ export const deepWaterIntegrationPluginManifest = {
       availability: 'hosted',
       label: 'Ledger-metered research',
       requiredForAgentUse: true,
-      setup: 'Bind the Ledger adapter and shared service token; signed SSO identity is delegated automatically on every call.',
+      setup:
+        'Bind the Ledger adapter with Nessie\'s dedicated Ledger app API key; '
+        + 'signed SSO identity is delegated independently on every call. '
+        + 'Keep webhook signing secrets separate.',
     },
   ],
   mcp: {

@@ -11,7 +11,7 @@ const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
  * DeepWater is provisioned by the first-party integration, not configured as a
  * normal user-authored connector. This identity check is shared by the REST
  * and personal-assistant credential surfaces so neither can create a personal
- * override that shadows Nessie's Ledger service token.
+ * override that shadows Nessie's product-bound Ledger app API key.
  */
 export const isManagedDeepWaterInstance = async (
   prisma: PrismaClient,

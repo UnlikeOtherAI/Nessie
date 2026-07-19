@@ -29,7 +29,13 @@ type RowSeed = {
   requiresExplicitGrant?: boolean
 }
 
-const makePrisma = (rows: RowSeed[]): PrismaClient => {
+const makePrisma = (
+  rows: RowSeed[],
+  options: {
+    credentialOverrideRef?: string
+    onCredentialOverrideLookup?: () => void
+  } = {},
+): PrismaClient => {
   return {
     toolRegistryEntry: {
       findMany: async () =>
@@ -74,7 +80,12 @@ const makePrisma = (rows: RowSeed[]): PrismaClient => {
       }),
     },
     mcpServerCredentialOverride: {
-      findUnique: async () => null,
+      findUnique: async () => {
+        options.onCredentialOverrideLookup?.()
+        return options.credentialOverrideRef
+          ? { credentialRef: options.credentialOverrideRef }
+          : null
+      },
     },
   } as unknown as PrismaClient
 }
@@ -213,22 +224,31 @@ test('an explicit grant never lets a personal assistant cross a team boundary', 
   )
 })
 
-test('managed DeepWater resolves only the shared service credential ref', async () => {
+test('managed DeepWater resolves only Nessie\'s product-bound Ledger app API key', async () => {
   const resolvedRefs: string[] = []
+  let overrideLookups = 0
   const toolset = await buildMcpToolset(
-    makePrisma([
+    makePrisma(
+      [
+        {
+          catalogName: 'deep-water',
+          catalogVisibility: 'public',
+          integratedProductSlugs: ['deep-water'],
+          credentialRef: 'LEDGER_PROXY_TOKEN',
+          id: 'dw',
+          toolName: 'research_start',
+          scopeType: 'team',
+          scopeId: 'team-1',
+          requiresExplicitGrant: true,
+        },
+      ],
       {
-        catalogName: 'deep-water',
-        catalogVisibility: 'public',
-        integratedProductSlugs: ['deep-water'],
-        credentialRef: 'LEDGER_PROXY_TOKEN',
-        id: 'dw',
-        toolName: 'research_start',
-        scopeType: 'team',
-        scopeId: 'team-1',
-        requiresExplicitGrant: true,
+        credentialOverrideRef: 'direct-provider-user-key',
+        onCredentialOverrideLookup: () => {
+          overrideLookups += 1
+        },
       },
-    ]),
+    ),
     'org-1',
     { dw: true },
     actorContext(),
@@ -247,12 +267,13 @@ test('managed DeepWater resolves only the shared service credential ref', async 
       secretResolver: {
         resolve: async (ref) => {
           resolvedRefs.push(ref)
-          return 'service-token'
+          return 'nessie-ledger-app-api-key'
         },
       },
     },
   )
   assert.deepEqual(resolvedRefs, ['LEDGER_PROXY_TOKEN'])
+  assert.equal(overrideLookups, 0)
   assert.deepEqual(
     toolset.entries.map((entry) => entry.originalToolName),
     ['research_start'],
@@ -278,13 +299,16 @@ test('private same-name catalogs are not treated as managed DeepWater', () => {
   )
 })
 
-test('DeepWater keeps service auth and adds fresh required identity headers', async () => {
+test('DeepWater keeps the product app key separate from signed caller identity', async () => {
   const calls: unknown[] = []
   const transport = await addDeepWaterIdentityHeaders(
     {
       transport: 'http',
       url: 'https://ledger.unlikeotherai.com/v1/mcp/deepwater',
-      headers: { Authorization: 'Bearer service-token', 'X-Existing': 'yes' },
+      headers: {
+        Authorization: 'Bearer nessie-ledger-app-api-key',
+        'X-Existing': 'yes',
+      },
     },
     {
       requestHeaders: async (input, options) => {
@@ -318,7 +342,7 @@ test('DeepWater keeps service auth and adds fresh required identity headers', as
   assert.deepEqual(
     transport.transport === 'http' ? transport.headers : null,
     {
-      Authorization: 'Bearer service-token',
+      Authorization: 'Bearer nessie-ledger-app-api-key',
       'X-Existing': 'yes',
       'X-Nessie-Context': 'nessie-context',
       'X-UOA-Delegation': 'uoa-delegation',
@@ -332,7 +356,7 @@ test('DeepWater rejects dispatch identity without a stable provider tool-call id
       {
         transport: 'http',
         url: 'https://ledger.unlikeotherai.com/v1/mcp/deepwater',
-        headers: { Authorization: 'Bearer service-token' },
+        headers: { Authorization: 'Bearer nessie-ledger-app-api-key' },
       },
       {
         requestHeaders: async () => ({}),

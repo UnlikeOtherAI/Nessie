@@ -34,6 +34,11 @@ test('first-party integration manifests cover the sibling products', () => {
     ['query'],
   )
   assert.equal(deepWater?.install.some((entry) => entry.requiredForAgentUse), true)
+  const deepWaterSetup = deepWater?.install[0]?.setup ?? ''
+  assert.match(deepWaterSetup, /dedicated Ledger app API key/)
+  assert.match(deepWaterSetup, /signed SSO identity is delegated independently/)
+  assert.match(deepWaterSetup, /webhook signing secrets separate/)
+  assert.doesNotMatch(deepWaterSetup, /shared service (token|credential)/)
 
   const deepTest = getIntegrationPluginManifest('deeptest')
   assert.equal(deepTest?.mcp.tools[0]?.privacyTier, 'local_only')

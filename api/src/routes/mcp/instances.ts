@@ -307,7 +307,8 @@ export const registerMcpInstanceRoutes = (
         reply,
         409,
         'DEEP_WATER_MANAGED_CREDENTIAL',
-        'DeepWater uses Nessie SSO and its managed Ledger service credential.',
+        'DeepWater uses signed Nessie SSO identity and Nessie\'s dedicated '
+        + 'Ledger app API key; personal credentials are not accepted.',
       )
       return reply
     }
