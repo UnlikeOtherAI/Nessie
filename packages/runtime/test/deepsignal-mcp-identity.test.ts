@@ -1,116 +1,23 @@
 import assert from 'node:assert/strict'
-import crypto from 'node:crypto'
 import test from 'node:test'
 
 import {
   createDeepSignalMcpIdentityServiceFromEnv,
   DeepSignalMcpIdentityError,
 } from '../src/deepsignal-mcp-identity.js'
-import type { LedgerAttribution } from '../src/ledger.js'
 import {
   deriveSecretKey,
   encryptWithKey,
 } from '../src/secret-crypto.js'
-
-const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 })
-const privateKeyPem = keys.privateKey.export({
-  format: 'pem',
-  type: 'pkcs8',
-}).toString()
-const appKey = `dsk_${'n'.repeat(32)}`
-
-const env = (
-  overrides: NodeJS.ProcessEnv = {},
-): NodeJS.ProcessEnv => ({
-  DEEPSIGNAL_MCP_APP_KEY: appKey,
-  NESSIE_MODE: 'selfHosted',
-  UOA_BASE_URL: 'https://authentication.unlikeotherai.com',
-  UOA_CLIENT_SECRET: 'uoa-client-secret',
-  UOA_CONFIG_JWT_KID: 'nessie-test',
-  UOA_CONFIG_JWT_PRIVATE_KEY_B64:
-    Buffer.from(privateKeyPem).toString('base64'),
-  UOA_CONFIG_URL: 'https://api.nessie.works/api/auth/sso/config',
-  UOA_DOMAIN: 'api.nessie.works',
-  ...overrides,
-})
-
-const attribution: LedgerAttribution = {
-  actorId: '00000000-0000-4000-8000-000000000009',
-  actorType: 'user',
-  agentId: '00000000-0000-4000-8000-000000000008',
-  agentKind: 'shared',
-  channelId: '00000000-0000-4000-8000-000000000004',
-  correlationId: 'correlation-1',
-  organizationId: '00000000-0000-4000-8000-000000000001',
-  projectId: '00000000-0000-4000-8000-000000000002',
-  requestId: 'request-1',
-  runId: '00000000-0000-4000-8000-000000000007',
-  teamId: '00000000-0000-4000-8000-000000000003',
-  threadId: '00000000-0000-4000-8000-000000000005',
-  userId: '00000000-0000-4000-8000-000000000009',
-}
-
-const claimsOf = (token: string): Record<string, unknown> => {
-  const payload = token.split('.')[1]
-  assert.ok(payload)
-  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as
-    Record<string, unknown>
-}
-
-const verifyNessieSignature = (token: string): boolean => {
-  const [header, payload, signature] = token.split('.')
-  assert.ok(header && payload && signature)
-  return crypto.verify(
-    'RSA-SHA256',
-    Buffer.from(`${header}.${payload}`),
-    keys.publicKey,
-    Buffer.from(signature, 'base64url'),
-  )
-}
-
-const delegationToken = (): string => {
-  const payload = Buffer.from(JSON.stringify({ exp: 2_000_000_300 }))
-    .toString('base64url')
-  return `header.${payload}.signature`
-}
-
-const linkedPrisma = (onLookup?: (productSlug: string) => void) => ({
-  channel: {
-    findFirst: async () => ({
-      dmKey:
-        `extagent:deepsignal:${attribution.organizationId}:${attribution.userId}:uoa-team`,
-    }),
-  },
-  productAccountLink: {
-    findUnique: async (args: {
-      where: {
-        organizationId_userId_productSlug: { productSlug: string }
-      }
-    }) => {
-      onLookup?.(
-        args.where.organizationId_userId_productSlug.productSlug,
-      )
-      return {
-        activeOrgId: 'uoa-org',
-        activeTeamId: 'uoa-team',
-        status: 'linked',
-        uoaSub: 'uoa-user',
-      }
-    },
-  },
-  productTeamEnablement: {
-    findUnique: async () => ({ enabled: true }),
-  },
-  productWebhookSecret: {
-    findMany: async () => [],
-  },
-  team: {
-    findFirst: async () => ({
-      externalOrgId: 'uoa-org',
-      externalWorkspaceId: 'uoa-team',
-    }),
-  },
-})
+import {
+  appKey,
+  attribution,
+  claimsOf,
+  delegationToken,
+  env,
+  linkedPrisma,
+  verifyNessieSignature,
+} from './deepsignal-mcp-identity-fixture.js'
 
 test('hosted modes fail at startup without a valid dedicated dsk key', () => {
   assert.throws(
@@ -335,7 +242,11 @@ test('fails before exchange when active UOA workspace or provenance is absent', 
       }),
     },
     productTeamEnablement: {
-      findUnique: async () => ({ enabled: true }),
+      findUnique: async () => ({
+        enabled: true,
+        externalOrgId: 'uoa-org',
+        externalTeamId: 'uoa-team',
+      }),
     },
     productWebhookSecret: {
       findMany: async () => [],
@@ -386,7 +297,11 @@ test('blocks disabled or mismatched originating teams before UOA exchange', asyn
     {
       ...linkedPrisma(),
       productTeamEnablement: {
-        findUnique: async () => ({ enabled: false }),
+        findUnique: async () => ({
+          enabled: false,
+          externalOrgId: 'uoa-org',
+          externalTeamId: 'uoa-team',
+        }),
       },
     } as never,
     env(),
@@ -414,6 +329,13 @@ test('blocks disabled or mismatched originating teams before UOA exchange', asyn
           externalWorkspaceId: 'other-team',
         }),
       },
+      productTeamEnablement: {
+        findUnique: async () => ({
+          enabled: true,
+          externalOrgId: 'other-org',
+          externalTeamId: 'other-team',
+        }),
+      },
       channel: {
         findFirst: async () => ({
           dmKey:
@@ -435,6 +357,33 @@ test('blocks disabled or mismatched originating teams before UOA exchange', asyn
     (error: unknown) =>
       error instanceof DeepSignalMcpIdentityError
       && error.code === 'DEEPSIGNAL_MCP_UOA_IDENTITY_REQUIRED',
+  )
+
+  const staleEnablement = createDeepSignalMcpIdentityServiceFromEnv(
+    {
+      ...linkedPrisma(),
+      productTeamEnablement: {
+        findUnique: async () => ({
+          enabled: true,
+          externalOrgId: 'uoa-org',
+          externalTeamId: 'previous-uoa-team',
+        }),
+      },
+    } as never,
+    env(),
+    {
+      fetchImpl: (async () => {
+        exchanges += 1
+        throw new Error('must not exchange')
+      }) as typeof fetch,
+    },
+  )
+  assert.ok(staleEnablement)
+  await assert.rejects(
+    staleEnablement.requestHeaders(attribution, request),
+    (error: unknown) =>
+      error instanceof DeepSignalMcpIdentityError
+      && error.code === 'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED',
   )
 
   const legacyChannel = createDeepSignalMcpIdentityServiceFromEnv(

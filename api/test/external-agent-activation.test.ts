@@ -150,6 +150,35 @@ test('activation rejects an SSO workspace that does not match the selected Nessi
   assert.equal(fake.instances.length, 0)
 })
 
+test('activation rejects stale enablement metadata from a previous SSO workspace', async () => {
+  const seed = buildSeed()
+  const userId = randomUUID()
+  const fake = makeExternalAgentPrismaFake({
+    ...seed,
+    accountLinks: [linkedAccount(seed, userId)],
+    teamEnablements: [{
+      teamId: seed.teamId,
+      productSlug: 'deepsignal',
+      enabled: true,
+      externalOrgId: 'uoa-org',
+      externalTeamId: 'previous-uoa-team',
+    }],
+  })
+
+  await assert.rejects(
+    activateExternalAgentProduct(
+      asPrisma(fake),
+      'deepsignal',
+      buildCtx(seed, userId),
+    ),
+    (error: unknown) =>
+      error instanceof ExternalAgentActivationError
+      && error.code === 'EXTERNAL_AGENT_TEAM_NOT_ENABLED',
+  )
+  assert.equal(fake.channelsById.size, 0)
+  assert.equal(fake.instances.length, 0)
+})
+
 test('activation rejects the obsolete per-user OAuth catalog contract', async () => {
   const seed = buildSeed()
   const userId = randomUUID()

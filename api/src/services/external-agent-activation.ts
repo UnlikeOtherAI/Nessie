@@ -87,7 +87,7 @@ const requireTeamId = (teamId: string | null): string => {
 const assertTeamEnabled = async (
   prisma: PrismaClient,
   input: { organizationId: string; teamId: string; productSlug: string },
-): Promise<void> => {
+): Promise<{ externalOrgId: string; externalTeamId: string }> => {
   const enablement = await prisma.productTeamEnablement.findUnique({
     where: {
       organizationId_teamId_productSlug: {
@@ -96,13 +96,25 @@ const assertTeamEnabled = async (
         productSlug: input.productSlug,
       },
     },
-    select: { enabled: true },
+    select: {
+      enabled: true,
+      externalOrgId: true,
+      externalTeamId: true,
+    },
   })
-  if (!enablement?.enabled) {
+  if (
+    !enablement?.enabled
+    || !enablement.externalOrgId
+    || !enablement.externalTeamId
+  ) {
     throw new ExternalAgentActivationError(
       EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.TEAM_NOT_ENABLED,
-      `${input.productSlug} is not enabled for your team`,
+      `${input.productSlug} is not enabled for your current SSO team`,
     )
+  }
+  return {
+    externalOrgId: enablement.externalOrgId,
+    externalTeamId: enablement.externalTeamId,
   }
 }
 
@@ -113,6 +125,8 @@ const assertLinkedSsoIdentity = async (
     teamId: string
     userId: string
     productSlug: string
+    externalOrgId: string
+    externalTeamId: string
   },
 ): Promise<{ workspaceId: string }> => {
   const [link, team] = await Promise.all([
@@ -143,12 +157,21 @@ const assertLinkedSsoIdentity = async (
     }),
   ])
   if (
+    !team?.externalOrgId
+    || !team.externalWorkspaceId
+    || input.externalOrgId !== team.externalOrgId
+    || input.externalTeamId !== team.externalWorkspaceId
+  ) {
+    throw new ExternalAgentActivationError(
+      EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.TEAM_NOT_ENABLED,
+      `${input.productSlug} enablement does not match the selected SSO team`,
+    )
+  }
+  if (
     link?.status !== 'linked'
     || !link.uoaSub
     || !link.activeOrgId
     || !link.activeTeamId
-    || !team?.externalOrgId
-    || !team.externalWorkspaceId
     || link.activeOrgId !== team.externalOrgId
     || link.activeTeamId !== team.externalWorkspaceId
   ) {
@@ -258,7 +281,7 @@ export const activateExternalAgentProduct = async (
 ): Promise<ExternalAgentActivationResult> => {
   const product = resolveProduct(productSlug)
   const teamId = requireTeamId(ctx.teamId)
-  await assertTeamEnabled(prisma, {
+  const enabledWorkspace = await assertTeamEnabled(prisma, {
     organizationId: ctx.organizationId,
     teamId,
     productSlug: product.slug,
@@ -268,6 +291,8 @@ export const activateExternalAgentProduct = async (
     teamId,
     userId: ctx.userId,
     productSlug: product.slug,
+    externalOrgId: enabledWorkspace.externalOrgId,
+    externalTeamId: enabledWorkspace.externalTeamId,
   })
 
   const catalogEntry = await loadFirstPartyCatalogEntry(prisma, product.slug)

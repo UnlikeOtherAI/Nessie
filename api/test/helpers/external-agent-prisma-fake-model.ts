@@ -98,5 +98,30 @@ export type ExternalAgentFakeSeed = {
     teamId: string
     productSlug: string
     enabled: boolean
+    externalOrgId?: string | null
+    externalTeamId?: string | null
   }>
 }
+
+export const makeTeamEnablementMap = (
+  seed: ExternalAgentFakeSeed,
+): Map<
+  string,
+  { enabled: boolean; externalOrgId: string | null; externalTeamId: string | null }
+> =>
+  new Map(
+    (seed.teamEnablements ?? []).map((enablement) => [
+      `${enablement.teamId}:${enablement.productSlug}`,
+      {
+        enabled: enablement.enabled,
+        externalOrgId:
+          enablement.externalOrgId === undefined
+            ? seed.externalOrgId ?? 'uoa-org'
+            : enablement.externalOrgId,
+        externalTeamId:
+          enablement.externalTeamId === undefined
+            ? seed.externalWorkspaceId ?? 'uoa-team'
+            : enablement.externalTeamId,
+      },
+    ]),
+  )

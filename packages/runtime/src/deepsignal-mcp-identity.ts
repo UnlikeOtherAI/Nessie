@@ -276,20 +276,35 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
               productSlug: DEEPSIGNAL_PRODUCT_SLUG,
             },
           },
-          select: { enabled: true },
+          select: {
+            enabled: true,
+            externalOrgId: true,
+            externalTeamId: true,
+          },
         }),
         prisma.team.findFirst({
           where: {
             id: attribution.teamId,
             project: { organizationId: attribution.organizationId },
           },
-          select: { externalWorkspaceId: true },
+          select: {
+            externalOrgId: true,
+            externalWorkspaceId: true,
+          },
         }),
       ])
-      if (!enablement?.enabled) {
+      if (
+        !enablement?.enabled
+        || !enablement.externalOrgId
+        || !enablement.externalTeamId
+        || !team?.externalOrgId
+        || !team.externalWorkspaceId
+        || enablement.externalOrgId !== team.externalOrgId
+        || enablement.externalTeamId !== team.externalWorkspaceId
+      ) {
         throw new DeepSignalMcpIdentityError(
           'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED',
-          'DeepSignal is not enabled for the originating Nessie team.',
+          'DeepSignal is not enabled for the originating Nessie/SSO team mapping.',
         )
       }
       if (attribution.channelId) {

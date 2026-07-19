@@ -14,7 +14,10 @@ import type {
   Team,
   Thread,
 } from './external-agent-prisma-fake-model.js'
-import { matchesChannelUpdateMany } from './external-agent-prisma-fake-model.js'
+import {
+  makeTeamEnablementMap,
+  matchesChannelUpdateMany,
+} from './external-agent-prisma-fake-model.js'
 
 /**
  * Purpose-built in-memory Prisma fake covering exactly the operations the
@@ -52,9 +55,7 @@ export const makeExternalAgentPrismaFake = (
   const accountLinks: AccountLink[] = [...(seed.accountLinks ?? [])]
   const credentialOverrides: Array<{ instanceId: string }> = []
   const toolRegistryEntries: Array<{ id: string; mcpInstanceId: string }> = []
-  const enablements = new Map<string, boolean>(
-    (seed.teamEnablements ?? []).map((e) => [`${e.teamId}:${e.productSlug}`, e.enabled]),
-  )
+  const enablements = makeTeamEnablementMap(seed)
 
   const self = {
     teams,
@@ -263,8 +264,7 @@ export const makeExternalAgentPrismaFake = (
         }
       }) => {
         const key = args.where.organizationId_teamId_productSlug
-        const enabled = enablements.get(`${key.teamId}:${key.productSlug}`)
-        return enabled === undefined ? null : { enabled }
+        return enablements.get(`${key.teamId}:${key.productSlug}`) ?? null
       },
     },
     mcpCatalogEntry: {
