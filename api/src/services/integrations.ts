@@ -1,6 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { IntegratedProductResponse } from '@nessie/schemas'
-import type { ExternalAuthWorkspace } from './identity-display.js'
+import {
+  resolveExternalWorkspaceSelection,
+  type ExternalAuthWorkspace,
+} from './identity-display.js'
 import {
   mapProductRow,
   type IntegratedProductRow,
@@ -51,8 +54,10 @@ export const syncUoaProductAccountLinks = async (
   const now = new Date()
   const metadata = uoaLinkMetadata(input.workspace)
   const externalAccountId = input.externalSubject ?? input.email
-  const activeOrgId = input.workspace?.activeOrgId ?? input.workspace?.orgId ?? null
-  const activeTeamId = input.workspace?.activeTeamId ?? null
+  const {
+    organizationId: activeOrgId,
+    teamId: activeTeamId,
+  } = resolveExternalWorkspaceSelection(input.workspace)
   const metadataJson = JSON.stringify(metadata)
   const uoaSub = input.externalSubject ?? null
 

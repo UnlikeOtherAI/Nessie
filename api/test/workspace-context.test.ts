@@ -290,6 +290,27 @@ test('auto-provisions a new team bound to the selected UOA workspace', async () 
   assert.equal(state.channelMembers.length, 1)
 })
 
+test('auto-provisions the sole UOA team when the chooser omits active', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+  const soleWorkspace: ExternalAuthWorkspace = {
+    orgId: 'uoa-org-only',
+    orgRole: 'owner',
+    teamIds: ['ws-only'],
+    teamRoles: { 'ws-only': 'owner' },
+  }
+
+  const ctx = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('a@x.com', soleWorkspace),
+  )
+
+  assert.ok(ctx)
+  const team = state.teams.find((item) => item.id === ctx!.teamId)
+  assert.equal(team?.externalWorkspaceId, 'ws-only')
+  assert.equal(team?.externalOrgId, 'uoa-org-only')
+})
+
 test('two different workspaces resolve to two different Nessie teams (isolated environments)', async () => {
   const orgId = randomUUID()
   const { client, state } = makeFake({ organizationId: orgId })

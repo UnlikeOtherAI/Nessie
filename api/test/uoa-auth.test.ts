@@ -9,6 +9,7 @@ import {
   loadUoaSettings,
   resolveUoaIdentityFromAccessToken,
 } from '../src/services/uoa-auth.js'
+import { resolveExternalWorkspaceSelection } from '../src/services/identity-display.js'
 
 const testPrivateKeyPem = String(
   generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
@@ -186,6 +187,35 @@ test('resolveUoaIdentityFromAccessToken decodes UOA workspace claims', () => {
       'team-active': 'owner',
       'team-other': 'member',
     },
+  })
+})
+
+test('sole-team UOA sessions resolve the same workspace without an active claim', () => {
+  const identity = resolveUoaIdentityFromAccessToken(jwtForClaims({
+    email: 'ada.lovelace@example.com',
+    org: {
+      org_id: 'org-only',
+      org_role: 'owner',
+      team_roles: { 'team-only': 'owner' },
+      teams: ['team-only'],
+    },
+    sub: 'uoa-user-123',
+  }))
+
+  assert.deepEqual(resolveExternalWorkspaceSelection(identity.workspace), {
+    organizationId: 'org-only',
+    teamId: 'team-only',
+  })
+})
+
+test('multi-team UOA sessions require an explicit active team', () => {
+  assert.deepEqual(resolveExternalWorkspaceSelection({
+    orgId: 'org-many',
+    teamIds: ['team-one', 'team-two'],
+    teamRoles: {},
+  }), {
+    organizationId: 'org-many',
+    teamId: null,
   })
 })
 

@@ -466,9 +466,11 @@ There is deliberately no direct-provider fallback.
   token-exchange endpoint for the linked `ProductAccountLink.uoaSub`. The
   exchange assertion uses Nessie's existing UOA config-JWT key and domain-hash
   bearer credential, has a maximum 60-second lifetime, and targets Ledger as
-  its resource. The stable UOA subject is required; `active` UOA org/team is
-  included only when the SSO account actually has a selected workspace and is
-  otherwise omitted. Nessie's signed local organization/team remain the
+  its resource. The stable UOA subject is required. The selected UOA org/team
+  comes from `active` or, when UOA auto-skips its chooser, the sole active team
+  membership; the centralized resolution is projected into both the Nessie
+  workspace and every product account link. Multiple teams without `active`
+  remain ambiguous and fail closed. Nessie's signed local organization/team remain the
   authoritative research and spend scope, so the two ID namespaces are never
   compared or substituted. Ledger verifies both assertions before assigning a
   job to the UOA subject. DeepWater's product identity mode is `uoa_sso` even
