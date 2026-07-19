@@ -13,8 +13,8 @@ import {
   LedgerDeepWaterCatalogUnavailableError,
   LedgerDeepWaterEnablementPersistenceError,
   LedgerDeepWaterMcpUrlUnsetError,
+  LedgerAppApiKeyUnsetError,
   LedgerIdentityConfigurationUnsetError,
-  LedgerProxyTokenUnsetError,
   setDeepWaterTeamEnablement,
 } from '../../services/deepwater-activation.js'
 import { getIntegrationPluginManifest } from '../../services/integration-plugin-manifests.js'
@@ -127,7 +127,7 @@ export const registerIntegrationProductRoutes = (
           return reply
         }
         if (
-          error instanceof LedgerProxyTokenUnsetError
+          error instanceof LedgerAppApiKeyUnsetError
           || error instanceof LedgerIdentityConfigurationUnsetError
         ) {
           sendApiError(reply, 503, error.code, error.message)

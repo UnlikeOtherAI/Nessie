@@ -22,7 +22,6 @@ test('DeepWater catalog is migrated to the Ledger bearer MCP adapter', () => {
 test('DeepWater product setup no longer advertises direct OAuth', () => {
   assert.match(migrationSql, /UPDATE "integrated_products"/)
   assert.match(migrationSql, /"auth_mode" = 'api_key'::"IntegratedProductAuthMode"/)
-  assert.match(migrationSql, /dedicated Ledger ProxyToken/)
   assert.match(migrationSql, /booked rate-card charges/)
 })
 

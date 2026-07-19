@@ -8,7 +8,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import {
   ensureDeepWaterTeamInstance,
-  LEDGER_PROXY_TOKEN_ENV,
+  NESSIE_LEDGER_APP_API_KEY_ENV,
   removeDeepWaterTeamInstance,
 } from '../src/services/deepwater-activation.js'
 
@@ -24,7 +24,7 @@ import {
 
 const DEEP_WATER_URL = 'https://8.8.8.8/v1/mcp/deepwater'
 process.env.LEDGER_DEEPWATER_MCP_URL = DEEP_WATER_URL
-process.env.LEDGER_PROXY_TOKEN = 'ledger-service-token'
+process.env.LEDGER_PROXY_TOKEN = 'nessie-ledger-app-api-key'
 process.env.UOA_DOMAIN = 'api.nessie.works'
 process.env.UOA_CONFIG_URL = 'https://api.nessie.works/api/auth/sso/config'
 process.env.UOA_CONFIG_JWT_KID = 'nessie-test'
@@ -261,11 +261,11 @@ test('enabling DeepWater creates a team-scoped instance with a usable transport 
   assert.equal(fake.instances[0]?.scopeType, 'team')
   assert.equal(fake.instances[0]?.scopeId, seed.teamId)
   assert.equal(fake.instances[0]?.lifecycleState, 'active')
-  assert.equal(fake.instances[0]?.credentialRef, LEDGER_PROXY_TOKEN_ENV)
+  assert.equal(fake.instances[0]?.credentialRef, NESSIE_LEDGER_APP_API_KEY_ENV)
 
   // F2: the instance carries a resolvable HTTP transport, and a full transport
-  // builds from catalog default + instance config with Nessie's shared
-  // Ledger ProxyToken resolved as a bearer header.
+  // builds from catalog default + instance config with Nessie's dedicated,
+  // product-bound Ledger app API key resolved as a bearer header.
   assert.deepEqual(fake.instances[0]?.transportConfig, { transport: 'http', url: DEEP_WATER_URL })
   const transport = buildAuthorizedTransport({
     catalogDefaultTransportConfig: { urlEnv: 'LEDGER_DEEPWATER_MCP_URL' },
@@ -313,7 +313,7 @@ test('enabling DeepWater twice is idempotent (no duplicate instance)', async () 
   assert.equal(fake.registry.length, 5)
 })
 
-test('re-enable preserves a current Ledger probe schema but enforces its endpoint and service auth', async () => {
+test('re-enable preserves a current probe schema but enforces the Ledger app key', async () => {
   const seed = { organizationId: randomUUID(), teamId: randomUUID() }
   const instanceId = randomUUID()
   const probedSchema = { type: 'object', properties: { q: { type: 'string' } } }
@@ -333,7 +333,7 @@ test('re-enable preserves a current Ledger probe schema but enforces its endpoin
         catalogEntryId: DEEP_WATER_CATALOG_ID,
         scopeType: 'team',
         scopeId: seed.teamId,
-        credentialRef: 'legacy-shared-secret',
+        credentialRef: 'legacy-direct-provider-key',
         lifecycleState: 'active',
         transportConfig: { transport: 'http', url: 'https://legacy.example.org/mcp' },
         discoveredTools: ledgerTools.map((name) => ({
@@ -370,7 +370,7 @@ test('re-enable preserves a current Ledger probe schema but enforces its endpoin
     transport: 'http',
     url: DEEP_WATER_URL,
   })
-  assert.equal(fake.instances[0]?.credentialRef, LEDGER_PROXY_TOKEN_ENV)
+  assert.equal(fake.instances[0]?.credentialRef, NESSIE_LEDGER_APP_API_KEY_ENV)
   assert.ok(fake.registry.every((entry) => entry.status === 'active'))
   assert.ok(fake.registry.every((entry) =>
     (entry.metadata as { requiresExplicitGrant?: boolean })?.requiresExplicitGrant === true))
@@ -415,7 +415,7 @@ test('re-enable replaces a legacy direct-provider tool contract', async () => {
 
   assert.equal(fake.registry.some((entry) => entry.toolId.endsWith(':research_create')), false)
   assert.equal(fake.registry.length, 5)
-  assert.equal(fake.instances[0]?.credentialRef, LEDGER_PROXY_TOKEN_ENV)
+  assert.equal(fake.instances[0]?.credentialRef, NESSIE_LEDGER_APP_API_KEY_ENV)
   assert.deepEqual(fake.instances[0]?.transportConfig, {
     transport: 'http',
     url: DEEP_WATER_URL,

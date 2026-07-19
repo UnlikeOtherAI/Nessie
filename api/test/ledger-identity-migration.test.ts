@@ -25,7 +25,7 @@ test('adds first-class effective-user attribution to both local usage ledgers', 
   )
 })
 
-test('moves managed DeepWater instances to the shared Ledger service token', () => {
+test('pins managed DeepWater instances to the Nessie Ledger app-key ref', () => {
   assert.match(migrationSql, /DELETE FROM "mcp_server_credential_overrides"/)
   assert.match(migrationSql, /"credential_ref" = 'LEDGER_PROXY_TOKEN'/)
   assert.match(migrationSql, /signed Nessie and UOA headers/)

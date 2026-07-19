@@ -73,9 +73,9 @@ export const resolveStageApiKey = (input: {
   modelConfig: ModelConfig
   runtimeProvider: RunnableProvider | null
 }): string => {
-  // A Ledger base URL is a deployment chokepoint. Its ProxyToken is not an
-  // interchangeable provider credential, so never forward an org binding or a
-  // stale direct-provider environment secret to Ledger.
+  // A Ledger base URL is a deployment chokepoint. Nessie's product-bound Ledger
+  // app API key is not an interchangeable provider credential, so never forward
+  // an org binding or a stale direct-provider environment secret to Ledger.
   if (isLedgerEndpoint(input.baseUrl ?? input.modelConfig.baseUrl)) {
     return input.modelConfig.apiKey ?? ''
   }

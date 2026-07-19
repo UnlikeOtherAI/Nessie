@@ -6,10 +6,10 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import {
   ensureDeepWaterTeamInstance,
+  LedgerAppApiKeyUnsetError,
   LedgerDeepWaterCatalogUnavailableError,
   LedgerDeepWaterMcpUrlUnsetError,
   LedgerIdentityConfigurationUnsetError,
-  LedgerProxyTokenUnsetError,
 } from '../src/services/deepwater-activation.js'
 
 const scope = {
@@ -64,7 +64,7 @@ test('enable fails loudly when LEDGER_DEEPWATER_MCP_URL is unset', async () => {
   }
 })
 
-test('enable fails loudly when LEDGER_PROXY_TOKEN is unset', async () => {
+test('enable fails loudly when Nessie\'s Ledger app API key is unset', async () => {
   const previousUrl = process.env.LEDGER_DEEPWATER_MCP_URL
   const previousToken = process.env.LEDGER_PROXY_TOKEN
   process.env.LEDGER_DEEPWATER_MCP_URL = 'https://ledger.example.com/deepwater'
@@ -73,7 +73,7 @@ test('enable fails loudly when LEDGER_PROXY_TOKEN is unset', async () => {
     await assert.rejects(
       ensureDeepWaterTeamInstance(fakePrisma('deep-water-catalog'), actorContext, scope),
       (error: unknown) =>
-        error instanceof LedgerProxyTokenUnsetError
+        error instanceof LedgerAppApiKeyUnsetError
         && error.code === 'LEDGER_PROXY_TOKEN_UNSET',
     )
   } finally {
@@ -89,7 +89,7 @@ test('enable fails loudly when signed Ledger identity is unconfigured', async ()
   const previousToken = process.env.LEDGER_PROXY_TOKEN
   const previousDomain = process.env.UOA_DOMAIN
   process.env.LEDGER_DEEPWATER_MCP_URL = 'https://ledger.example.com/deepwater'
-  process.env.LEDGER_PROXY_TOKEN = 'service-token'
+  process.env.LEDGER_PROXY_TOKEN = 'nessie-ledger-app-api-key'
   delete process.env.UOA_DOMAIN
   try {
     await assert.rejects(

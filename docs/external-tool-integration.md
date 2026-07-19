@@ -352,9 +352,23 @@ Operational rules:
 Some first-party products (e.g. **DeepSignal**) are surfaced not as a *toolset
 inside* an agent run but as a **peer conversation** — a per-user DM channel whose
 bound agent has `executionMode = external_mcp`. Nessie runs **no inference** for
-these turns: each message is proxied directly to the product's MCP endpoint under
-the acting user's own UOA token, and the reply + activity/generative cards are
-rendered verbatim. Full design: `docs/plans/2026-07-09-deepsignal-integration.md`.
+these turns. The currently implemented transport proxies each message directly
+to the product's MCP endpoint under the acting user's own UOA token, and the
+reply + activity/generative cards are rendered verbatim.
+
+That OAuth-only application transport is **transitional and superseded as the
+target architecture**. DeepSignal must authenticate Nessie with DeepSignal's
+own product-bound app API key and receive independently signed UOA
+user/organization/team context on each request. The user token can remain part
+of end-user authorization during migration, but it is not the app-to-app
+credential. DeepSignal's webhook signing secret stays a separate callback
+credential and must never be reused as the request key. Implementation seams
+are `api/src/services/integration-plugin-manifests.ts`,
+`api/src/services/external-agent-activation.ts`,
+`api/src/services/external-agent-instance.ts`,
+`api/src/services/deepsignal-signals.ts`, and
+`worker/src/run/external-conversation.ts`. Full design:
+`docs/plans/2026-07-09-deepsignal-integration.md`.
 
 The connector plumbing is the ordinary MCP path — a first-party catalog entry, a
 user-scoped `McpServerInstance`, dynamic OAuth, the encrypted secret store, and
@@ -436,10 +450,12 @@ There is deliberately no direct-provider fallback.
   discovered tool-name set exactly matches the current Ledger contract; a
   legacy direct-provider contract is removed, reprojected, and must be
   explicitly re-granted.
-- **Deterministic contract, signed delegated identity.** The team instance has
-  `authMethod=bearer` and resolves Nessie's shared `LEDGER_PROXY_TOKEN`. That
-  service credential authenticates the calling application only; it never
-  defines research ownership. Every DeepWater dispatch adds two independent,
+- **Deterministic contract, app authentication, signed delegated identity.**
+  The team instance has `authMethod=bearer` and resolves
+  `LEDGER_PROXY_TOKEN`, which is Nessie's dedicated, product-bound Ledger app
+  API key. It authenticates Nessie as the calling application only; it never
+  defines research ownership and must not be reused by DeepWater, DeepSignal,
+  DeepTest, or another product. Every DeepWater dispatch adds two independent,
   short-lived signed headers:
   `X-Nessie-Context` is an RS256 JWT with the originating
   org/project/team/user/channel/thread/task/run/agent/request envelope. Its
@@ -456,8 +472,10 @@ There is deliberately no direct-provider fallback.
   authoritative research and spend scope, so the two ID namespaces are never
   compared or substituted. Ledger verifies both assertions before assigning a
   job to the UOA subject. DeepWater's product identity mode is `uoa_sso` even
-  though its MCP transport uses the shared Ledger bearer, ensuring first login
+  though its MCP transport uses Nessie's app API key, ensuring first login
   creates the per-user account link. A missing UOA link fails DeepWater closed.
+  Webhook callback signing secrets are separate per-app credentials and are
+  never accepted as the outbound Ledger app API key.
   The generic secret REST route and PA `connector_set_secret` refuse managed
   DeepWater instances. Generic instance test, refresh, healthcheck, and delete
   operations fail with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`; PA probe and
@@ -466,7 +484,7 @@ There is deliberately no direct-provider fallback.
   the product toggle enabled and pointing at nothing. The Connectors UI replaces
   normal catalog lifecycle/install/credential/probe controls with an
   Integrations-managed notice, and migration removes old per-user overrides so
-  none can shadow the service token.
+  none can shadow the product-bound app API key.
 - **Research retries preserve provider idempotency.** Each DeepWater dispatch
   forwards the model provider's stable `tool_call_id` in the signed context.
   `research_start` rejects a missing ID, and retrying the same logical tool call
@@ -474,7 +492,8 @@ There is deliberately no direct-provider fallback.
 - **All Nessie inference uses the same Ledger chokepoint.** In hosted
   production, `NESSIE_MODEL_BASE_URL` is
   `https://ledger.unlikeotherai.com/v1/openai` and
-  `NESSIE_MODEL_API_KEY` is a Ledger ProxyToken. This is the configured
+  `NESSIE_MODEL_API_KEY` contains Nessie's product-bound Ledger app API key.
+  This is the configured
   chokepoint, not a forced provider: the runtime rewrites the final path to
   Ledger's generic `/v1/:serviceId/*` adapter for the actual OpenAI, Kimi,
   MiniMax, or custom stage. The shared model client and

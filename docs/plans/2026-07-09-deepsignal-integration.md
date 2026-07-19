@@ -81,8 +81,20 @@ Phases 2+ here.
 
 ### 2. Identity — one SSO, per-user tokens (no partner mapping)
 
-Both products trust UOA, so the user's `sub`, team, and org are identical on both sides.
-The connection is authorized per user with standard OAuth against UOA:
+Both products trust UOA, so the user's `sub`, team, and org are identical on
+both sides.
+
+> **Superseded target:** the OAuth-only transport below describes the currently
+> implemented compatibility path, not the final app-to-app authentication
+> contract. DeepSignal must authenticate Nessie with DeepSignal's own
+> product-bound app API key. Each request must also carry independently signed
+> UOA actor/organization/team context. The OAuth token may remain during
+> migration for end-user authorization, but it is not the application
+> credential. The webhook signing secret remains a separate per-app callback
+> credential and must never be reused as the request key.
+
+The current compatibility connection is authorized per user with standard OAuth
+against UOA:
 
 - The DeepSignal MCP endpoint publishes **RFC 9728 protected-resource metadata** naming UOA
   as its authorization server; UOA publishes **RFC 8414 AS metadata** (+ RFC 7591 DCR or a
@@ -91,9 +103,10 @@ The connection is authorized per user with standard OAuth against UOA:
   "Sign in" → UOA consent (one click — the user already has a UOA session) → per-user token
   placement in the encrypted secret store → automatic refresh at probe/dispatch. No new auth
   code paths in Nessie.
-- Every MCP request therefore carries a UOA access token **minted for that Nessie user with
-  audience DeepSignal**; DeepSignal resolves it to the same `Principal` its own console
-  would use. Nessie never impersonates users and holds no shared service credential for chat.
+- Every MCP request therefore currently carries a UOA access token **minted for
+  that Nessie user with audience DeepSignal**; DeepSignal resolves it to the
+  same `Principal` its own console would use. This user authorization does not
+  satisfy the superseding product-bound app-key requirement.
 - `ProductAccountLink` (`organizationId, userId, productSlug='deepsignal'`, `uoaSub`,
   `status`) records link state for the Integrations UI, kept in sync by the existing
   `syncUoaProductAccountLinks` flow.
@@ -211,10 +224,11 @@ only ever holds **report references (ids)** — it never embeds report content. 
 - Research initiated **by DeepSignal** (autonomously or in its chat) stays on DeepSignal's
   org key, billing, and audit; Nessie just renders the reference card, deep-linking into the
   DeepWater report (dedupe key = DeepWater report id).
-- Research initiated **in Nessie** uses Nessie's service ProxyToken through the team-scoped
-  connector plus a signed UOA delegation and Nessie org/team/user/agent/run context. Ledger
-  binds ownership and spend to the verified delegated subject rather than the transport
-  token. There is no double-billing.
+- Research initiated **in Nessie** uses Nessie's dedicated, product-bound
+  Ledger app API key through the team-scoped connector plus a signed UOA
+  delegation and Nessie org/team/user/agent/run context. Ledger binds ownership
+  and spend to the verified delegated subject rather than the transport key.
+  There is no double-billing.
 
 ## Execution Plan
 

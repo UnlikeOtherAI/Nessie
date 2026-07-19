@@ -28,11 +28,12 @@ import { setProductTeamEnablement } from './integrations.js'
  * tool contract is the plugin manifest (`integration-plugin-manifests.ts`), not
  * a live provider probe. Enable is therefore a deterministic provision: resolve
  * the Ledger MCP endpoint from the manifest and install a bearer-authenticated
- * HTTP transport authenticated by Nessie's shared Ledger ProxyToken. The
- * originating SSO user and Nessie org/team/agent/run are sent independently as
- * signed per-call identity headers, so a shared transport credential cannot
- * collapse ownership or spend attribution. Ledger owns the upstream credential,
- * job budget, and immutable booked rate-card charge.
+ * HTTP transport authenticated by Nessie's dedicated, product-bound Ledger app
+ * API key. The originating SSO user and Nessie org/team/agent/run are sent
+ * independently as signed per-call identity headers, so transport
+ * authentication cannot collapse ownership or spend attribution. Ledger owns
+ * the upstream provider credential, job budget, and immutable booked rate-card
+ * charge.
  */
 
 export const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
@@ -69,15 +70,15 @@ export class LedgerDeepWaterCatalogUnavailableError extends Error {
   }
 }
 
-export class LedgerProxyTokenUnsetError extends Error {
+export class LedgerAppApiKeyUnsetError extends Error {
   readonly code = 'LEDGER_PROXY_TOKEN_UNSET'
 
   constructor() {
     super(
-      'Ledger service authentication is not configured: set LEDGER_PROXY_TOKEN '
-      + 'before enabling DeepWater.',
+      'Nessie\'s product-bound Ledger app API key is not configured: set '
+      + 'LEDGER_PROXY_TOKEN before enabling DeepWater.',
     )
-    this.name = 'LedgerProxyTokenUnsetError'
+    this.name = 'LedgerAppApiKeyUnsetError'
   }
 }
 
@@ -103,7 +104,7 @@ export class LedgerDeepWaterEnablementPersistenceError extends Error {
 }
 
 const LEDGER_DEEP_WATER_URL_ENV = 'LEDGER_DEEPWATER_MCP_URL'
-export const LEDGER_PROXY_TOKEN_ENV = 'LEDGER_PROXY_TOKEN'
+export const NESSIE_LEDGER_APP_API_KEY_ENV = 'LEDGER_PROXY_TOKEN'
 
 /** Environment variable name declared by the DeepWater manifest transport. */
 const deepWaterTransportUrlEnv = (): string => {
@@ -129,9 +130,9 @@ const resolveDeepWaterLedgerUrl = (): string => {
   return url
 }
 
-const assertLedgerServiceConfigured = (): void => {
-  if (!process.env[LEDGER_PROXY_TOKEN_ENV]?.trim()) {
-    throw new LedgerProxyTokenUnsetError()
+const assertLedgerConnectionConfigured = (): void => {
+  if (!process.env[NESSIE_LEDGER_APP_API_KEY_ENV]?.trim()) {
+    throw new LedgerAppApiKeyUnsetError()
   }
   if (!loadLedgerIdentitySettings()) {
     throw new LedgerIdentityConfigurationUnsetError()
@@ -240,7 +241,7 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
   }
 
   const ledgerUrl = resolveDeepWaterLedgerUrl()
-  assertLedgerServiceConfigured()
+  assertLedgerConnectionConfigured()
   const existing = await findTeamInstance(tx, { ...input, catalogEntryId })
 
   let instance = existing
@@ -250,7 +251,7 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
     // used by that service, while intentionally omitting connection lifecycle.
     instance = await createInstance(tx as unknown as PrismaClient, actorContext, {
       catalogEntryId,
-      credentialRef: LEDGER_PROXY_TOKEN_ENV,
+      credentialRef: NESSIE_LEDGER_APP_API_KEY_ENV,
       managedProvision: true,
       scopeType: 'team',
       scopeId: input.teamId,
@@ -265,11 +266,11 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
 
   if (preserveProbedSchemas) {
     // Keep a current Ledger adapter's richer discovered schemas, but always
-    // enforce the configured Ledger endpoint and service credential.
+    // enforce the configured Ledger endpoint and Nessie's product-bound app key.
     await tx.mcpServerInstance.update({
       where: { id: provisioned.id },
       data: {
-        credentialRef: LEDGER_PROXY_TOKEN_ENV,
+        credentialRef: NESSIE_LEDGER_APP_API_KEY_ENV,
         transportConfig: { transport: 'http', url: ledgerUrl },
         lifecycleState: 'active',
         healthFailureCount: 0,
@@ -289,7 +290,7 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
     await tx.mcpServerInstance.update({
       where: { id: provisioned.id },
       data: {
-        credentialRef: LEDGER_PROXY_TOKEN_ENV,
+        credentialRef: NESSIE_LEDGER_APP_API_KEY_ENV,
         transportConfig: { transport: 'http', url: ledgerUrl },
         discoveredTools: descriptors as unknown as object,
         lifecycleState: 'active',

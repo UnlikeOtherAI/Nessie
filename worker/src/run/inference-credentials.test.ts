@@ -5,7 +5,7 @@ import type { ModelConfig, ModelProvider } from '@nessie/config'
 import { resolveStageApiKey } from './inference.js'
 
 const ledgerConfig = (provider: ModelProvider): ModelConfig => ({
-  apiKey: 'ledger-proxy-token',
+  apiKey: 'nessie-ledger-app-api-key',
   baseUrl: 'https://ledger.unlikeotherai.com/v1',
   backends: [],
   maxTokens: 2048,
@@ -33,7 +33,7 @@ test('Ledger routing never forwards provider bindings or direct-provider keys', 
           modelConfig: ledgerConfig(provider),
           runtimeProvider: provider,
         }),
-        'ledger-proxy-token',
+        'nessie-ledger-app-api-key',
       )
     }
   } finally {
@@ -51,7 +51,7 @@ test('Ledger routing never forwards provider bindings or direct-provider keys', 
   }
 })
 
-test('Ledger routing fails closed when its ProxyToken is absent', () => {
+test('Ledger routing fails closed when Nessie\'s app API key is absent', () => {
   assert.equal(
     resolveStageApiKey({
       authSecretRef: null,
@@ -77,7 +77,7 @@ test('provider-record Ledger routing never substitutes its bound direct key', ()
         },
         runtimeProvider: 'kimi',
       }),
-      'ledger-proxy-token',
+      'nessie-ledger-app-api-key',
     )
   } finally {
     if (previous === undefined) {

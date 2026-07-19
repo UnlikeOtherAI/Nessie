@@ -301,8 +301,8 @@ export const runConnectorSetSecretTool = async (
     return {
       inputSummary,
       outputPreview:
-        'DeepWater uses your UnlikeOtherAI SSO identity and a managed Ledger '
-        + 'service credential; no personal secret is needed.',
+        'DeepWater uses your signed UnlikeOtherAI SSO identity and Nessie\'s '
+        + 'dedicated Ledger app API key; no personal secret is accepted.',
       toolName: 'connector_set_secret',
     }
   }
