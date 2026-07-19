@@ -24,9 +24,11 @@ export const buildDeepWaterLaunchMessage = (
   const destination =
     input.artifactDestination === 'knowledge_draft'
       ? [
-          'Before drafting, call kb_list with no arguments and select an accessible writable spaceId returned by that call.',
+          'Only after the terminal run update succeeds, call kb_list with no arguments and select an accessible writable spaceId returned by that call.',
           'Call kb_draft_write with that exact spaceId; never invent, guess, or reuse an unlisted spaceId.',
-          'Draft the completed report and source summary into Knowledge, then request publication.',
+          'Keep the Knowledge tool call bounded: draft a concise completed-report summary, source summary, and Ledger research job id instead of copying an unbounded report through model-generated tool arguments.',
+          'Request publication for the agent-authored draft.',
+          'After a Knowledge page is created, call deep_water_run_update again with the same Nessie run id, Ledger externalRunId, completed status, and knowledgePageId. This second update only attaches the page; it must not transform or replace the booked charge.',
         ].join(' ')
       : 'Summarize the result in this chat without creating a Knowledge draft.'
 
@@ -54,7 +56,9 @@ export const buildDeepWaterLaunchMessage = (
     'You may call mcp_research_status once to confirm the job was accepted. Do not busy-poll, wait for completion, or consume this bounded agent run checking a long-running job.',
     'Tell the user the research is running, include the Ledger research job id, and end this turn.',
     'On a later user status request or follow-up turn, call mcp_research_status once with { id }. If it is still running, report progress and stop. Map Ledger status complete to Nessie status completed; map failed, cancelled, or timed_out to failed.',
-    'Only when that later status response is complete, call mcp_research_report with { id } to read the report and references, then call deep_water_run_update with completed status, sourceCount, statusDetail, and knowledgePageId if you drafted a Knowledge page.',
+    'Only when that later status response is complete, call mcp_research_report with { id } to read the report and references.',
+    'Immediately after resolving the terminal status, source count, status detail, and exact Ledger cost, call deep_water_run_update with the terminal status and accounting fields. This update is mandatory and must succeed before any optional Knowledge drafting starts.',
+    'If the Ledger status is failed, cancelled, or timed_out, call deep_water_run_update with failed status and the terminal status detail before ending the turn.',
     'If a terminal Ledger response includes cost, copy cost.amount exactly to totalCost and cost.currency exactly to currency. This is Ledger\'s immutable booked rate-card charge, not an upstream provider-invoice actual; complex runs may reconcile to a higher provider amount without changing the booked charge mirrored here. If cost is absent, omit both fields. Never estimate cost or present the booked charge as final provider invoice actuals.',
     'Never invent usage fields, reuse another user\'s job id, or bypass Ledger by calling the upstream provider directly.',
     'When reporting back, include the Nessie run id, Ledger research job id, status, source count, and native Knowledge link when one was created.',

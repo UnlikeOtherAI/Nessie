@@ -39,6 +39,14 @@ test('DeepWater handoff maps legacy launcher controls to Ledger MCP contract', (
   assert.match(message, /accessible writable spaceId returned by that call/)
   assert.match(message, /kb_draft_write with that exact spaceId/)
   assert.match(message, /never invent, guess, or reuse an unlisted spaceId/)
+  assert.match(message, /terminal status and accounting fields/)
+  assert.match(message, /mandatory and must succeed before any optional Knowledge drafting/)
+  assert.match(message, /concise completed-report summary/)
+  assert.match(message, /instead of copying an unbounded report/)
+  assert.match(message, /deep_water_run_update again/)
+  assert.ok(
+    message.indexOf('mandatory and must succeed') < message.indexOf('Only after the terminal run update succeeds'),
+  )
   assert.doesNotMatch(message, /poll .* until .*terminal/i)
 })
 
