@@ -21,6 +21,11 @@ export {
   type ConsolidationThreadMessage,
 } from './consolidate.js'
 export {
+  deriveMemoryConsolidationInferenceOrigin,
+  MemoryConsolidationIdentityError,
+  parseAndVerifyMemoryConsolidationJobPayload,
+} from './consolidation-origin.js'
+export {
   captureUserMessageMemory,
   type UserMessageMemoryOrigin,
 } from './user-message-memory.js'

@@ -17,6 +17,10 @@ import {
   SCHEDULER_TRIGGER_TYPES,
   type WorkflowTriggerPrismaLike,
 } from './trigger-shared.js'
+import {
+  mergeTriggerConfigPreservingIdentity,
+  stripServerOwnedTriggerConfig,
+} from './trigger-config-identity.js'
 
 export const listAgentTriggers = async (
   prisma: PrismaClient,
@@ -134,9 +138,10 @@ export const createAgentTrigger = async (
     type: AgentTriggerType
   },
 ): Promise<AgentTriggerRecord | null> => {
+  const clientConfig = stripServerOwnedTriggerConfig(input.config)
   const normalizedConfig = input.type === 'webhook'
-    ? ensureWebhookConfig(input.config)
-    : (input.config ?? {})
+    ? ensureWebhookConfig(clientConfig)
+    : clientConfig
 
   const normalizedNextRunAt = normalizeNextRunAt({
     config: normalizedConfig,
@@ -197,9 +202,10 @@ export const createWorkflowTrigger = async (
     type: AgentTriggerType
   },
 ): Promise<AgentTriggerRecord | null> => {
+  const clientConfig = stripServerOwnedTriggerConfig(input.config)
   const normalizedConfig = input.type === 'webhook'
-    ? ensureWebhookConfig(input.config)
-    : (input.config ?? {})
+    ? ensureWebhookConfig(clientConfig)
+    : clientConfig
 
   const normalizedNextRunAt = normalizeNextRunAt({
     config: normalizedConfig,
@@ -309,10 +315,7 @@ export const updateAgentTrigger = async (
   const nextConfig =
     input.config === undefined
       ? existing.config
-      : {
-          ...(isJsonRecord(existing.config) ? existing.config : {}),
-          ...input.config,
-        }
+      : mergeTriggerConfigPreservingIdentity(existing.config, input.config)
   const normalizedConfig =
     existing.type === 'webhook' ? ensureWebhookConfig(nextConfig) : nextConfig
   const shouldPersistConfig =

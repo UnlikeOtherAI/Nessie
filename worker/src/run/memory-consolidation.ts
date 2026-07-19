@@ -1,77 +1,55 @@
 import type { PrismaClient } from '@prisma/client'
-import { consolidateRunMemories, type CaptureConfig } from '@nessie/memory'
+import {
+  consolidateRunMemories,
+  deriveMemoryConsolidationInferenceOrigin,
+  parseAndVerifyMemoryConsolidationJobPayload,
+  type CaptureConfig,
+} from '@nessie/memory'
 import {
   attributionFromActorContext,
-  completeLedgerAttribution,
+  LedgerAttributionError,
 } from '@nessie/runtime'
 import {
-  RunMemoryConsolidateJobPayloadSchema,
+  MemoryConsolidationSourceSchema,
   type RunExecuteJobPayload,
   type RunMemoryConsolidateJobPayload,
 } from '@nessie/schemas'
 import { enqueueQueueJob } from '../queue.js'
 
 const TOPIC = 'memory.run.consolidate'
-const SYSTEM_COMPONENT = 'memory-consolidation'
 
 export const MEMORY_CONSOLIDATION_TOPIC = TOPIC
 
 export const buildRunMemoryConsolidationJobPayload = (
   source: RunExecuteJobPayload,
 ): RunMemoryConsolidateJobPayload => {
-  const requestId = `${SYSTEM_COMPONENT}:${source.runId}`
-  const attribution = completeLedgerAttribution({
-    ...attributionFromActorContext(source.actorContext, {
-      agentId: null,
-      agentKind: 'system',
-      runId: null,
-      systemComponent: SYSTEM_COMPONENT,
-    }),
-    agentId: null,
-    agentKind: 'system',
-    requestId,
-    runId: null,
+  const launch = attributionFromActorContext(source.actorContext)
+  const missing = [
+    !launch.userId ? 'user_id' : null,
+    !launch.teamId ? 'team_id' : null,
+  ].filter((field): field is string => field !== null)
+  if (missing.length > 0) {
+    throw new LedgerAttributionError(missing)
+  }
+  const immutableSource = MemoryConsolidationSourceSchema.parse({
+    agentId: source.agentId,
+    channelId: launch.channelId,
+    organizationId: launch.organizationId,
+    ...(launch.projectId ? { projectId: launch.projectId } : {}),
     taskId: source.taskId,
+    teamId: launch.teamId,
     threadId: source.threadId,
-    toolCallId: `${requestId}:capture`,
+    userId: launch.userId,
+  })
+  const origin = deriveMemoryConsolidationInferenceOrigin({
+    runId: source.runId,
+    source: immutableSource,
   })
 
-  return RunMemoryConsolidateJobPayloadSchema.parse({
-    origin: {
-      actorId: attribution.agentId,
-      actorType: 'system',
-      agentId: attribution.agentId,
-      agentKind: 'system',
-      organizationId: attribution.organizationId,
-      userId: attribution.userId,
-      teamId: attribution.teamId,
-      ...(attribution.projectId
-        ? { projectId: attribution.projectId }
-        : {}),
-      channelId: attribution.channelId,
-      threadId: source.threadId,
-      taskId: source.taskId,
-      runId: attribution.runId,
-      requestId,
-      ...(attribution.correlationId
-        ? { correlationId: attribution.correlationId }
-        : {}),
-      systemComponent: SYSTEM_COMPONENT,
-      toolCallId: attribution.toolCallId,
-    },
+  return parseAndVerifyMemoryConsolidationJobPayload({
+    origin,
     runId: source.runId,
-    source: {
-      agentId: source.agentId,
-      organizationId: attribution.organizationId,
-      userId: attribution.userId,
-      teamId: attribution.teamId,
-      ...(attribution.projectId
-        ? { projectId: attribution.projectId }
-        : {}),
-      channelId: attribution.channelId,
-      threadId: source.threadId,
-      taskId: source.taskId,
-    },
+    source: immutableSource,
     taskId: source.taskId,
   })
 }
@@ -93,7 +71,7 @@ export const executeRunMemoryConsolidationJob = async (
   deps: { captureConfig: CaptureConfig },
   payload: unknown,
 ): Promise<void> => {
-  const parsed = RunMemoryConsolidateJobPayloadSchema.parse(payload)
+  const parsed = parseAndVerifyMemoryConsolidationJobPayload(payload)
   const result = await consolidateRunMemories(parsed, deps.captureConfig)
   if (result.skippedReason) {
     console.warn(

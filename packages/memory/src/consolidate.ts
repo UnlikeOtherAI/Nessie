@@ -1,7 +1,4 @@
-import {
-  RunMemoryConsolidateJobPayloadSchema,
-  type RunMemoryConsolidateJobPayload,
-} from '@nessie/schemas'
+import type { RunMemoryConsolidateJobPayload } from '@nessie/schemas'
 
 import type {
   CaptureConfig,
@@ -10,6 +7,7 @@ import type {
   ThoughtMemoryType,
 } from './capture.js'
 import { captureThought } from './capture.js'
+import { parseAndVerifyMemoryConsolidationJobPayload } from './consolidation-origin.js'
 
 const DEFAULT_THREAD_TAIL_LIMIT = 12
 const MAX_SEMANTIC_MEMORIES = 4
@@ -278,7 +276,7 @@ export const consolidateRunMemories = async (
   input: ConsolidateRunMemoriesInput,
   config: CaptureConfig,
 ): Promise<ConsolidateRunMemoriesOutput> => {
-  const payload = RunMemoryConsolidateJobPayloadSchema.parse(input)
+  const payload = parseAndVerifyMemoryConsolidationJobPayload(input)
   const { origin, source } = payload
   const run = await loadRunContext(payload, config)
   if (!run) {

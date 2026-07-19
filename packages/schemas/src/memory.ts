@@ -139,7 +139,6 @@ export const MemoryConsolidationInferenceOriginSchema = z.object({
   taskId: TaskIdSchema,
   runId: RunIdSchema,
   requestId: NonEmptyStringSchema,
-  correlationId: NonEmptyStringSchema.optional(),
   systemComponent: z.literal('memory-consolidation'),
   toolCallId: NonEmptyStringSchema,
 })
@@ -174,6 +173,14 @@ export const RunMemoryConsolidateJobPayloadSchema = z
     source: MemoryConsolidationSourceSchema,
   })
   .superRefine((payload, context) => {
+    if (payload.origin.actorId !== payload.origin.agentId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Memory consolidation system actorId must match its agentId',
+        path: ['origin', 'actorId'],
+      })
+    }
+
     const requestId = `memory-consolidation:${payload.runId}`
     if (payload.origin.requestId !== requestId) {
       context.addIssue({

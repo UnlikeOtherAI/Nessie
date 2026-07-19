@@ -22,7 +22,6 @@ import {
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
-  RunMemoryConsolidateJobPayloadSchema,
   TriggerEventDispatchJobPayloadSchema,
   WorkflowRunExecuteJobPayloadSchema,
 } from '@nessie/schemas'
@@ -227,7 +226,6 @@ export const startWorker = async (
   queueProvider.subscribe(
     MEMORY_CONSOLIDATION_TOPIC,
     async (job) => {
-      const payload = RunMemoryConsolidateJobPayloadSchema.parse(job.payload)
       await executeRunMemoryConsolidationJob(
         {
           captureConfig: {
@@ -235,7 +233,7 @@ export const startWorker = async (
             pool,
           },
         },
-        payload,
+        job.payload,
       )
     },
     { signal: abortController.signal },

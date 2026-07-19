@@ -24,7 +24,6 @@ const payload = {
     taskId: TASK_ID,
     runId: 'e59b3d88-7a3e-512a-a1a3-cc1680abe674',
     requestId,
-    correlationId: 'launch-correlation',
     systemComponent: 'memory-consolidation',
     toolCallId: `${requestId}:capture`,
   },
@@ -54,6 +53,14 @@ test('rejects legacy memory-consolidation payloads without origin', () => {
   )
 })
 
+test('drops unbound interactive correlation from background consolidation', () => {
+  const parsed = RunMemoryConsolidateJobPayloadSchema.parse({
+    ...payload,
+    origin: { ...payload.origin, correlationId: 'caller-controlled' },
+  })
+  assert.equal('correlationId' in parsed.origin, false)
+})
+
 test('binds memory-consolidation identity keys to the source run and task', () => {
   for (const invalidPayload of [
     {
@@ -63,6 +70,13 @@ test('binds memory-consolidation identity keys to the source run and task', () =
     {
       ...payload,
       origin: { ...payload.origin, toolCallId: `${requestId}:other-operation` },
+    },
+    {
+      ...payload,
+      origin: {
+        ...payload.origin,
+        actorId: '00000000-0000-4000-8000-00000000000a',
+      },
     },
     {
       ...payload,

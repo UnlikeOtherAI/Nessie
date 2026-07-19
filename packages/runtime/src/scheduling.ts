@@ -1,5 +1,9 @@
 import { CronExpressionParser } from 'cron-parser'
-import type { AgentTriggerType } from '@nessie/schemas'
+import {
+  ScheduledTriggerLaunchOriginSchema,
+  type AgentTriggerType,
+  type ScheduledTriggerLaunchOrigin,
+} from '@nessie/schemas'
 
 // Single source of truth for schedule config parsing + next-run math, shared by
 // the API trigger service and the worker scheduler so the two can never drift.
@@ -165,6 +169,22 @@ export const extractTriggerEffectiveUserId = (config: unknown): string | null =>
   return typeof userId === 'string' && UUID_PATTERN.test(userId.trim())
     ? userId.trim()
     : null
+}
+
+/**
+ * The immutable authenticated tenancy selected when a user creates a schedule.
+ * Legacy configs deliberately return null: their original team cannot be
+ * recovered safely from a system-owned agent or the eventual target channel.
+ */
+export const extractTriggerLaunchOrigin = (
+  config: unknown,
+): ScheduledTriggerLaunchOrigin | null => {
+  if (!isJsonRecord(config)) {
+    return null
+  }
+
+  const parsed = ScheduledTriggerLaunchOriginSchema.safeParse(config['launchOrigin'])
+  return parsed.success ? parsed.data : null
 }
 
 /**

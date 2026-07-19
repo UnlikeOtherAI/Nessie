@@ -99,7 +99,6 @@ test('builds a deterministic system origin from the authenticated launch', () =>
     taskId: TASK_ID,
     runId: SYSTEM_RUN_ID,
     requestId: `memory-consolidation:${SOURCE_RUN_ID}`,
-    correlationId: 'launch-correlation',
     systemComponent: 'memory-consolidation',
     toolCallId: `memory-consolidation:${SOURCE_RUN_ID}:capture`,
   })
@@ -245,6 +244,55 @@ test('consumer rejects a legacy payload before database or model access', async 
     ),
     /origin/,
   )
+
+  assert.equal(databaseCalls, 0)
+  assert.equal(modelCalls, 0)
+})
+
+test('consumer rejects forged system UUIDs before database or model access', async () => {
+  const valid = buildRunMemoryConsolidationJobPayload(sourcePayload)
+  const replacementId = '00000000-0000-4000-8000-00000000000f'
+  let databaseCalls = 0
+  let modelCalls = 0
+  const pool = createPoolStub(() => {
+    databaseCalls += 1
+    return { rows: [] }
+  })
+
+  const forgedOrigins = [
+    { ...valid.origin, actorId: replacementId },
+    { ...valid.origin, agentId: replacementId },
+    {
+      ...valid.origin,
+      actorId: replacementId,
+      agentId: replacementId,
+    },
+    { ...valid.origin, runId: replacementId },
+  ]
+  for (const origin of forgedOrigins) {
+    const forged = { ...valid, origin }
+    await assert.rejects(
+      executeRunMemoryConsolidationJob(
+        {
+          captureConfig: {
+            modelClient: {
+              chatJson: async () => {
+                modelCalls += 1
+                return {}
+              },
+              embed: async () => {
+                modelCalls += 1
+                return []
+              },
+            },
+            pool,
+          },
+        },
+        forged,
+      ),
+      /system actorId|system identity/,
+    )
+  }
 
   assert.equal(databaseCalls, 0)
   assert.equal(modelCalls, 0)

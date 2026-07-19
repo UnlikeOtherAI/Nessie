@@ -94,7 +94,10 @@ const makeFakePrisma = (overrides: {
 
 const makeContext = (
   prisma: FakePrisma,
-  overrides: { agentKind?: 'personal_assistant' | 'shared' } = {},
+  overrides: {
+    agentKind?: 'personal_assistant' | 'shared'
+    teamId?: string | null
+  } = {},
 ): BuiltinToolRuntimeContext =>
   ({
     agentId: 'agent-1',
@@ -102,7 +105,13 @@ const makeContext = (
     actorContext: {
       actor: { actorId: 'user-1', actorType: 'user', roles: [] },
       actionContext: {},
-      tenant: { organizationId: 'org-1' },
+      tenant: {
+        organizationId: 'org-1',
+        projectId: 'project-1',
+        ...(overrides.teamId === null
+          ? {}
+          : { teamId: overrides.teamId ?? 'team-1' }),
+      },
     },
     channel: { id: 'channel-1', organizationId: 'org-1', systemChannelType: null },
     prisma: prisma as unknown as BuiltinToolRuntimeContext['prisma'],
@@ -170,10 +179,28 @@ test('schedule_task one-off into the current conversation creates a trigger', as
   assert.equal(config.prompt, 'Research the James Webb telescope and summarise here')
   assert.equal(config.createdViaTool, true)
   assert.equal(config.createdByUserId, 'user-1')
+  assert.deepEqual(config.launchOrigin, {
+    organizationId: 'org-1',
+    projectId: 'project-1',
+    teamId: 'team-1',
+    userId: 'user-1',
+  })
   // No channel lookup or binding check for the current conversation.
   assert.equal(prisma.calls['channel.findFirst'], undefined)
   assert.equal(prisma.calls['channel.findMany'], undefined)
   assert.equal(prisma.calls['agentBinding.findFirst'], undefined)
+})
+
+test('schedule_task refuses user-owned work without an active billing team', async () => {
+  const prisma = makeFakePrisma()
+  await assert.rejects(
+    runScheduleTaskTool(makeContext(prisma, { teamId: null }), {
+      instructions: 'No ambiguous billing scope',
+      schedule: { kind: 'once', at: FUTURE_ISO },
+    }),
+    /requires an active team/,
+  )
+  assert.equal(prisma.calls['agentTrigger.create'], undefined)
 })
 
 test('schedule_task recurring stores cron config', async () => {

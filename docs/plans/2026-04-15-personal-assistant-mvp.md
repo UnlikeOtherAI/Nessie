@@ -312,7 +312,16 @@ MVP policy should be explicit:
 > so it drives the run but is excluded from both the channel feed
 > (`listThreadMessages`) and model context (`loadConversation`); shared agents
 > keep their visible `role = user` kickoff. PA replies **inside the PA DM** stay
-> assistant-authored.
+> assistant-authored. Schedule creation also freezes the authenticated
+> organization/project/team/user launch origin. The scheduler restores that
+> exact scope for the primary run instead of reading the PA agent (which is
+> intentionally teamless), the target channel, or current membership. Before
+> enqueue it verifies the team still belongs to that organization/project and
+> the saved user is still a team member. The generic trigger API strips
+> caller-supplied launch-identity keys and preserves server-owned values on
+> edits. Legacy user-owned schedules without a trustworthy frozen origin, or
+> schedules whose team authorization was revoked, fail before run/provider
+> dispatch and enter `error`; the user must cancel and recreate them.
 
 ### `Agent` execution policy
 
