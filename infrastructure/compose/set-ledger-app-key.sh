@@ -18,6 +18,10 @@ if [[ -f "$ENV_FILE" ]]; then
     fi
     normalized_value="${value#"${value%%[![:space:]]*}"}"
     normalized_value="${normalized_value%"${normalized_value##*[![:space:]]}"}"
+    if [[ "$normalized_value" == *[[:space:]]#* ]]; then
+      normalized_value="${normalized_value%%[[:space:]]#*}"
+      normalized_value="${normalized_value%"${normalized_value##*[![:space:]]}"}"
+    fi
     if [[ ${#normalized_value} -ge 2 ]]; then
       first_character="${normalized_value:0:1}"
       last_character="${normalized_value: -1}"

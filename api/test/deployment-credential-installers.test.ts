@@ -90,6 +90,14 @@ test('Ledger installer rejects malformed or cross-principal key reuse', () => {
       env: `UOA_CLIENT_SECRET="${appKey}"\n`,
       name: 'UOA_CLIENT_SECRET',
     },
+    {
+      env: `LEDGER_BILLING_READ_APP_KEY_NESSIE=${appKey} # reader\n`,
+      name: 'LEDGER_BILLING_READ_APP_KEY_NESSIE',
+    },
+    {
+      env: `DEEPSIGNAL_MCP_APP_KEY='${appKey}' # connector\n`,
+      name: 'DEEPSIGNAL_MCP_APP_KEY',
+    },
   ]
 
   for (const reusedValue of reusedValues) {
