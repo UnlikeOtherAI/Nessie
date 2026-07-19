@@ -361,8 +361,11 @@ Current Deep Water launcher slice:
   `thesis|dissertation` to `heavy`, maps every non-`any` launcher recency to
   `recent`, and carries chapter/output/language/search/section controls inside
   the optional context string rather than sending unsupported top-level args.
-- The launch message asks the PA to import the completed report as a Knowledge
-  draft and request publication when `artifactDestination=knowledge_draft`.
+- When `artifactDestination=knowledge_draft`, the launch message requires the
+  PA to call `kb_list` without arguments, select an accessible writable
+  `spaceId` returned by that call, and pass that exact id to `kb_draft_write`
+  before requesting publication. It explicitly forbids guessed, invented, or
+  unlisted space ids.
 - ESC now shows recent Deep Water launch records from Nessie's durable
   `product_integration_runs` projection, including status, launch options,
   PA chat destination, report link, Knowledge draft link, status detail, and

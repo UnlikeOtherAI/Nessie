@@ -23,7 +23,11 @@ export const buildDeepWaterLaunchMessage = (
   const recency = ledgerResearchRecency(input.recency)
   const destination =
     input.artifactDestination === 'knowledge_draft'
-      ? 'Draft the completed report and source summary into Knowledge, then request publication.'
+      ? [
+          'Before drafting, call kb_list with no arguments and select an accessible writable spaceId returned by that call.',
+          'Call kb_draft_write with that exact spaceId; never invent, guess, or reuse an unlisted spaceId.',
+          'Draft the completed report and source summary into Knowledge, then request publication.',
+        ].join(' ')
       : 'Summarize the result in this chat without creating a Knowledge draft.'
 
   return [

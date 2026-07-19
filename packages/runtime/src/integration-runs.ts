@@ -336,33 +336,35 @@ export const updateDeepWaterResearchRun = async (
       UPDATE "product_integration_runs"
       SET
         "external_run_id" = CASE
-          WHEN "external_run_id" IS NULL THEN ${externalRunId}
+          WHEN "external_run_id" IS NULL THEN CAST(${externalRunId} AS text)
           ELSE "external_run_id"
         END,
         "status" = CASE
-          WHEN ${status} IS NULL THEN "status"
+          WHEN CAST(${status} AS "ProductIntegrationRunStatus") IS NULL THEN "status"
           ELSE CAST(${status} AS "ProductIntegrationRunStatus")
         END,
         "result_json" = COALESCE("result_json", '{}'::jsonb) || CAST(${resultPatchJson} AS jsonb),
         "cost_amount" = CASE
-          WHEN ${costAmount} IS NULL OR "cost_amount" IS NOT NULL THEN "cost_amount"
+          WHEN CAST(${costAmount} AS DECIMAL(18, 6)) IS NULL OR "cost_amount" IS NOT NULL
+            THEN "cost_amount"
           ELSE CAST(${costAmount} AS DECIMAL(18, 6))
         END,
         "cost_currency" = CASE
-          WHEN ${costAmount} IS NULL THEN "cost_currency"
-          WHEN "cost_amount" IS NULL OR "cost_currency" IS NULL THEN ${costCurrency}
+          WHEN CAST(${costAmount} AS DECIMAL(18, 6)) IS NULL THEN "cost_currency"
+          WHEN "cost_amount" IS NULL OR "cost_currency" IS NULL THEN CAST(${costCurrency} AS text)
           ELSE "cost_currency"
         END,
         "source_count" = CASE
-          WHEN ${sourceCount} IS NULL THEN "source_count"
-          ELSE ${sourceCount}
+          WHEN CAST(${sourceCount} AS integer) IS NULL THEN "source_count"
+          ELSE CAST(${sourceCount} AS integer)
         END,
         "knowledge_page_id" = CASE
-          WHEN ${knowledgePageId} IS NULL THEN "knowledge_page_id"
+          WHEN CAST(${knowledgePageId} AS uuid) IS NULL THEN "knowledge_page_id"
           ELSE CAST(${knowledgePageId} AS uuid)
         END,
         "completed_at" = CASE
-          WHEN ${shouldComplete} THEN COALESCE("completed_at", ${completedAt}, CURRENT_TIMESTAMP)
+          WHEN CAST(${shouldComplete} AS boolean)
+            THEN COALESCE("completed_at", CAST(${completedAt} AS timestamp), CURRENT_TIMESTAMP)
           ELSE "completed_at"
         END,
         "updated_at" = CURRENT_TIMESTAMP

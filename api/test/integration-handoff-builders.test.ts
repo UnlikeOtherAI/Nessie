@@ -35,6 +35,10 @@ test('DeepWater handoff maps legacy launcher controls to Ledger MCP contract', (
   assert.match(message, /Do not call Deep Water directly/)
   assert.match(message, /Do not busy-poll/)
   assert.match(message, /end this turn/)
+  assert.match(message, /call kb_list with no arguments/)
+  assert.match(message, /accessible writable spaceId returned by that call/)
+  assert.match(message, /kb_draft_write with that exact spaceId/)
+  assert.match(message, /never invent, guess, or reuse an unlisted spaceId/)
   assert.doesNotMatch(message, /poll .* until .*terminal/i)
 })
 
@@ -54,4 +58,6 @@ test('DeepWater handoff keeps supported Ledger depth and unrestricted recency', 
 
   assert.match(message, /Depth: deep/)
   assert.match(message, /Recency: any/)
+  assert.doesNotMatch(message, /kb_list/)
+  assert.doesNotMatch(message, /kb_draft_write/)
 })

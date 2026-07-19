@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
+import { Pool } from 'pg'
 
 import {
   DeepWaterResearchRunConflictError,
@@ -17,6 +19,7 @@ const CONNECTOR_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d701'
 const CHANNEL_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d812'
 const THREAD_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d814'
 const MESSAGE_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d813'
+const runIfDatabase = process.env.DATABASE_URL ? test : test.skip
 
 type RunState = {
   cost_amount: string | null
@@ -101,6 +104,105 @@ const makePrisma = (state: RunState) => {
   }
 }
 
+runIfDatabase(
+  'PostgreSQL accepts nullable parameters for running and terminal updates',
+  async () => {
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+    const prisma = new PrismaClient()
+    const ids = {
+      channel: randomUUID(),
+      organization: randomUUID(),
+      project: randomUUID(),
+      run: randomUUID(),
+      team: randomUUID(),
+      thread: randomUUID(),
+    }
+    const externalRunId = `rs_${ids.run.replaceAll('-', '')}`
+
+    try {
+      await pool.query(
+        `INSERT INTO organizations (id, name, created_at, updated_at)
+         VALUES ($1, 'Deep Water SQL Regression', now(), now())`,
+        [ids.organization],
+      )
+      await pool.query(
+        `INSERT INTO projects (id, name, organization_id, created_at, updated_at)
+         VALUES ($1, 'Deep Water SQL Regression', $2, now(), now())`,
+        [ids.project, ids.organization],
+      )
+      await pool.query(
+        `INSERT INTO teams (id, name, project_id, created_at, updated_at)
+         VALUES ($1, 'Deep Water SQL Regression', $2, now(), now())`,
+        [ids.team, ids.project],
+      )
+      await pool.query(
+        `INSERT INTO channels (
+           id, label, slug, organization_id, project_id, team_id, created_at, updated_at
+         )
+         VALUES ($1, 'Deep Water SQL Regression', $2, $3, $4, $5, now(), now())`,
+        [
+          ids.channel,
+          `deep-water-sql-${ids.channel}`,
+          ids.organization,
+          ids.project,
+          ids.team,
+        ],
+      )
+      await pool.query(
+        `INSERT INTO threads (id, channel_id, created_at, updated_at)
+         VALUES ($1, $2, now(), now())`,
+        [ids.thread, ids.channel],
+      )
+      await pool.query(
+        `INSERT INTO product_integration_runs (
+           id, organization_id, team_id, product_slug, thread_id, status,
+           cost_currency, created_at, updated_at
+         )
+         VALUES ($1, $2, $3, 'deep-water', $4, 'queued', 'USD', now(), now())`,
+        [ids.run, ids.organization, ids.team, ids.thread],
+      )
+
+      const running = await updateDeepWaterResearchRun(prisma, {
+        externalRunId,
+        organizationId: ids.organization,
+        runId: ids.run,
+        status: 'running',
+        teamId: ids.team,
+        threadId: ids.thread,
+      })
+
+      assert.equal(running.externalRunId, externalRunId)
+      assert.equal(running.status, 'running')
+      assert.equal(running.totalCost, null)
+
+      const completedAt = new Date('2026-07-19T01:30:00.000Z')
+      const completed = await updateDeepWaterResearchRun(prisma, {
+        completedAt,
+        costAmount: 1,
+        costCurrency: 'USD',
+        externalRunId,
+        organizationId: ids.organization,
+        runId: ids.run,
+        sourceCount: 21,
+        status: 'completed',
+        teamId: ids.team,
+        threadId: ids.thread,
+      })
+
+      assert.equal(completed.externalRunId, externalRunId)
+      assert.equal(completed.status, 'completed')
+      assert.equal(completed.totalCost, 1)
+      assert.equal(completed.currency, 'USD')
+      assert.equal(completed.sourceCount, 21)
+      assert.equal(completed.completedAt, completedAt.toISOString())
+    } finally {
+      await prisma.$disconnect()
+      await pool.query('DELETE FROM organizations WHERE id = $1', [ids.organization])
+      await pool.end()
+    }
+  },
+)
+
 test('an identical terminal update is idempotent under a row lock', async () => {
   const fixture = makePrisma({
     cost_amount: '4.250000',
@@ -123,7 +225,7 @@ test('an identical terminal update is idempotent under a row lock', async () => 
   assert.match(fixture.queries[0] ?? '', /FOR UPDATE/)
   assert.match(
     fixture.queries[1] ?? '',
-    /COALESCE\("completed_at", \?, CURRENT_TIMESTAMP\)/,
+    /COALESCE\(\s*"completed_at",\s+CAST\(\? AS timestamp\),\s+CURRENT_TIMESTAMP\s*\)/,
   )
 })
 
@@ -232,7 +334,7 @@ test('the first booked charge replaces the pre-booking currency placeholder', as
   assert.equal(fixture.updateCount(), 1)
   assert.match(
     fixture.queries[1] ?? '',
-    /WHEN "cost_amount" IS NULL OR "cost_currency" IS NULL THEN \?/,
+    /WHEN "cost_amount" IS NULL OR "cost_currency" IS NULL\s+THEN CAST\(\? AS text\)/,
   )
 })
 
