@@ -176,12 +176,20 @@ docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
 `infrastructure/compose/redeploy.sh` over SSH. The workflow authenticates with
 the `DEPLOY_SSH_KEY` repo secret (a dedicated key in the host's
 `~/.ssh/authorized_keys`); host/user come from the `DEPLOY_HOST` / `DEPLOY_USER`
-secrets. It rsyncs with `--delete` so files removed from the repo don't linger
+secrets. The dedicated `LEDGER_BILLING_READ_APP_KEY_NESSIE` Actions secret is
+sent only over SSH standard input to
+`infrastructure/compose/set-ledger-billing-reader-key.sh`, which validates it
+and atomically replaces that one entry in the host-only Compose `.env`. It is
+never placed in the synced tree, command arguments, or workflow output. The
+workflow fails closed when the dedicated key is missing or malformed; inference
+keys and other products' keys are not substitutes.
+
+The workflow rsyncs with `--delete` so files removed from the repo don't linger
 on the host and get compiled into the image (a stale `api/src` copy left by the
 mcp-manage extraction broke every build until this was added). rsync never
 deletes excluded paths, so `infrastructure/compose/.env` (and any `.env`) is
-preserved, and the Postgres/MinIO data live in named Docker volumes outside the
-synced tree, so host-only state is never touched.
+preserved apart from that explicit single-key update, and the Postgres/MinIO
+data live in named Docker volumes outside the synced tree.
 
 **Manual:** from the dev machine `rsync` the tree to `/srv/nessie`, then on the
 host run `infrastructure/compose/redeploy.sh` (rebuilds images, applies new
