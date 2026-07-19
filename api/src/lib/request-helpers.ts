@@ -261,6 +261,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     (await prisma.agent.count({
       where: {
         id: agentId,
+        organizationId,
         systemManaged: false,
         bindings: {
           some: {
@@ -284,19 +285,8 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         await prisma.agent.count({
           where: {
             id: agentId,
+            organizationId: actorContext.tenant.organizationId,
             systemManaged: false,
-            OR: [
-              { organizationId: actorContext.tenant.organizationId },
-              {
-                bindings: {
-                  some: {
-                    channel: {
-                      organizationId: actorContext.tenant.organizationId,
-                    },
-                  },
-                },
-              },
-            ],
           },
         })
       ) > 0

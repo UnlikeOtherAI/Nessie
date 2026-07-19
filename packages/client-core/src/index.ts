@@ -70,6 +70,8 @@ export type {
   DeepSignalSignalStatus,
   DeepSignalSignalsResponse,
   DeepWaterResearchDepth,
+  DeepWaterAgentAccessResponse,
+  DeepWaterAgentAccessTarget,
   DeepWaterResearchLaunchRequest,
   DeepWaterResearchRunRecord,
   FeedbackRecord,
@@ -97,6 +99,7 @@ export type {
   ProductTeamEnablementRecord,
   ProductUsageSummaryRecord,
   SetProductTeamEnablementRequest,
+  SetDeepWaterAgentAccessRequest,
   ToolCallEntry,
   UpdateOrganizationLogoRequest,
 } from '@nessie/schemas'

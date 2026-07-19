@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import type {
   ToolGrantSource,
   ToolGrantState,
@@ -13,6 +13,10 @@ import {
   toPrismaToolGrantSource,
   toPrismaToolRegistrySource,
 } from '@nessie/mcp-manage'
+import {
+  registryEntryPolicyKey,
+  registryEntryRequiresExplicitPolicy,
+} from './agent-tool-policy.js'
 
 /**
  * Tool grant service.
@@ -73,6 +77,9 @@ export type ToolRegistryRow = {
   createdBy: string
   enabled: boolean
   builtin: boolean
+  managedProductSlug: string | null
+  policyKey: string
+  requiresExplicitGrant: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -83,9 +90,40 @@ export type ToolListFilters = {
   scopeKey?: string
 }
 
-type PrismaToolRegistryRow = Awaited<
-  ReturnType<PrismaClient['toolRegistryEntry']['findFirst']>
->
+type PrismaToolRegistryRow = Prisma.ToolRegistryEntryGetPayload<{
+  include: {
+    mcpInstance: {
+      select: {
+        catalogEntry: {
+          select: {
+            integratedProducts: { select: { slug: true } }
+            name: true
+            organizationId: true
+            visibility: true
+          }
+        }
+      }
+    }
+  }
+}>
+
+const resolveManagedProductSlug = (
+  row: NonNullable<PrismaToolRegistryRow>,
+): string | null => {
+  const catalog = row.mcpInstance?.catalogEntry
+  if (
+    !catalog
+    || catalog.organizationId !== null
+    || catalog.visibility !== 'public'
+  ) {
+    return null
+  }
+  return catalog.integratedProducts.some(
+    (product) => product.slug === catalog.name,
+  )
+    ? catalog.name
+    : null
+}
 
 const toToolRegistryRow = (row: NonNullable<PrismaToolRegistryRow>): ToolRegistryRow => ({
   id: row.id,
@@ -107,6 +145,9 @@ const toToolRegistryRow = (row: NonNullable<PrismaToolRegistryRow>): ToolRegistr
   createdBy: row.createdBy,
   enabled: row.enabled,
   builtin: row.builtin,
+  managedProductSlug: resolveManagedProductSlug(row),
+  policyKey: registryEntryPolicyKey(row),
+  requiresExplicitGrant: registryEntryRequiresExplicitPolicy(row),
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 })
@@ -117,6 +158,20 @@ export const listToolRegistry = async (
   filters: ToolListFilters = {},
 ): Promise<ToolRegistryRow[]> => {
   const rows = await prisma.toolRegistryEntry.findMany({
+    include: {
+      mcpInstance: {
+        select: {
+          catalogEntry: {
+            select: {
+              integratedProducts: { select: { slug: true } },
+              name: true,
+              organizationId: true,
+              visibility: true,
+            },
+          },
+        },
+      },
+    },
     where: {
       OR: [{ organizationId: null }, { organizationId }],
       ...(filters.status ? { status: filters.status } : {}),

@@ -1,9 +1,11 @@
 import type { DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
+import { Link } from 'react-router-dom'
 import type { AgentDesignerActions, AgentFormState } from './useAgentDesigner'
 import { ToolPicker } from './ToolPicker'
 
 type AgentDesignerFormProps = {
   actions: AgentDesignerActions
+  canManageExplicitTools: boolean
   parentAgentName?: string
   state: AgentFormState
   toolGroups: DesignerToolGroup[]
@@ -57,6 +59,7 @@ const fieldLabelClass = [
 
 export const AgentDesignerForm = ({
   actions,
+  canManageExplicitTools,
   parentAgentName,
   state,
   toolGroups,
@@ -202,6 +205,17 @@ export const AgentDesignerForm = ({
         <p className="text-xs text-[color:var(--tx3)]">
           Built-in tools are on by default; connector (MCP) tools must be
           switched on per agent.
+        </p>
+        <p className="text-xs text-[color:var(--tx3)]">
+          Explicit-grant tools are protected from Agent Designer edits.{' '}
+          {canManageExplicitTools ? (
+            <>
+              Manage them in <Link className="underline" to="/agents/tools">Tools</Link>
+              {' '}or <Link className="underline" to="/integrations">Integrations</Link>.
+            </>
+          ) : (
+            'An organization owner manages them in Tools or Integrations.'
+          )}
         </p>
         <ToolPicker
           groups={toolGroups}

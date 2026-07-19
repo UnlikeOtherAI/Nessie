@@ -103,6 +103,25 @@ export class LedgerDeepWaterEnablementPersistenceError extends Error {
   }
 }
 
+export class LedgerDeepWaterActiveRunsError extends Error {
+  readonly code = 'LEDGER_DEEPWATER_ACTIVE_RUNS'
+
+  constructor(public readonly run: {
+    channelId: string | null
+    externalRunId: string | null
+    id: string
+    status: string
+  }) {
+    super(
+      `Deep Water run ${run.id} is still ${run.status}`
+      + (run.channelId
+        ? `; open /channels/${run.channelId}, ask the Personal Assistant to call research_cancel, and retry after the run becomes terminal.`
+        : '; it has no attached chat, so the connector is retained until an explicit run recovery is performed.'),
+    )
+    this.name = 'LedgerDeepWaterActiveRunsError'
+  }
+}
+
 const LEDGER_DEEP_WATER_URL_ENV = 'LEDGER_DEEPWATER_MCP_URL'
 export const NESSIE_LEDGER_APP_API_KEY_ENV = 'LEDGER_PROXY_TOKEN'
 
@@ -349,6 +368,25 @@ const removeDeepWaterTeamInstanceInTransaction = async (
     select: { id: true },
   })
   if (!instance) return { instanceId: null }
+
+  const activeRun = await tx.productIntegrationRun.findFirst({
+    where: {
+      connectorId: instance.id,
+      organizationId: input.organizationId,
+      productSlug: DEEP_WATER_PRODUCT_SLUG,
+      status: { in: ['queued', 'running', 'needs_setup'] },
+      teamId: input.teamId,
+    },
+    select: {
+      channelId: true,
+      externalRunId: true,
+      id: true,
+      status: true,
+    },
+  })
+  if (activeRun) {
+    throw new LedgerDeepWaterActiveRunsError(activeRun)
+  }
 
   await tx.toolRegistryEntry.deleteMany({ where: { mcpInstanceId: instance.id } })
   await tx.mcpServerInstance.delete({ where: { id: instance.id } })

@@ -11,6 +11,8 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { updateAgentAvatar } from '../services/agent-avatars.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import {
+  AGENT_MANAGEMENT_ERROR_CODES,
+  AgentManagementError,
   bindAgentToChannel,
   cloneAgentRecord,
   createAgentRecord,
@@ -24,7 +26,36 @@ import {
   updateAgentRecord,
 } from '../services/agents.js'
 import { checkPolicy } from '../services/policy.js'
+import {
+  AGENT_TOOL_POLICY_ERROR_CODES,
+  AgentToolPolicyError,
+} from '../services/agent-tool-policy.js'
 import type { RouteDeps } from './types.js'
+
+const sendProtectedPolicyError = (reply: Parameters<typeof sendApiError>[0], error: unknown) => {
+  if (
+    error instanceof AgentToolPolicyError
+    && error.code === AGENT_TOOL_POLICY_ERROR_CODES.PROTECTED_INPUT
+  ) {
+    sendApiError(reply, 400, error.code, error.message)
+    return true
+  }
+  return false
+}
+
+const sendAgentManagementError = (
+  reply: Parameters<typeof sendApiError>[0],
+  error: unknown,
+): boolean => {
+  if (
+    error instanceof AgentManagementError
+    && error.code === AGENT_MANAGEMENT_ERROR_CODES.PARENT_NOT_FOUND
+  ) {
+    sendApiError(reply, 404, error.code, error.message)
+    return true
+  }
+  return false
+}
 
 export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -63,18 +94,25 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    const agent = await createAgentRecord(prisma, {
-      model: body.model,
-      name: body.name,
-      organizationId: actorContext.tenant.organizationId,
-      parentAgentId: body.parentAgentId,
-      projectId: actorContext.tenant.projectId,
-      provider: body.provider,
-      role: body.role ?? 'assistant',
-      systemPrompt: body.systemPrompt,
-      teamId: actorContext.tenant.teamId,
-      toolPolicy: body.toolPolicy,
-    })
+    let agent
+    try {
+      agent = await createAgentRecord(prisma, {
+        model: body.model,
+        name: body.name,
+        organizationId: actorContext.tenant.organizationId,
+        parentAgentId: body.parentAgentId,
+        projectId: actorContext.tenant.projectId,
+        provider: body.provider,
+        role: body.role ?? 'assistant',
+        systemPrompt: body.systemPrompt,
+        teamId: actorContext.tenant.teamId,
+        toolPolicy: body.toolPolicy,
+      })
+    } catch (error) {
+      if (sendProtectedPolicyError(reply, error)) return reply
+      if (sendAgentManagementError(reply, error)) return reply
+      throw error
+    }
 
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(agent)))
   })
@@ -91,11 +129,17 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     const { agentId } = request.params as { agentId: string }
-    const existingAgent = await prisma.agent.findUnique({
-      where: { id: agentId },
+    const existingAgent = await prisma.agent.findFirst({
+      where: {
+        id: agentId,
+        organizationId: actorContext.tenant.organizationId,
+      },
       select: { systemManaged: true },
     })
-    if (!existingAgent) {
+    if (
+      !existingAgent
+      || !(await isAgentAccessibleToActor(actorContext, agentId))
+    ) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
@@ -103,7 +147,16 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    const agent = await updateAgentRecord(prisma, agentId, body)
+    let agent
+    try {
+      agent = await updateAgentRecord(prisma, agentId, {
+        ...body,
+        organizationId: actorContext.tenant.organizationId,
+      })
+    } catch (error) {
+      if (sendProtectedPolicyError(reply, error)) return reply
+      throw error
+    }
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
@@ -211,7 +264,11 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    const agent = await bindAgentToChannel(prisma, agentId, body.channelId)
+    const agent = await bindAgentToChannel(prisma, {
+      agentId,
+      channelId: body.channelId,
+      organizationId: actorContext.tenant.organizationId,
+    })
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
@@ -256,7 +313,11 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    await unbindAgentFromChannel(prisma, agentId, channelId)
+    await unbindAgentFromChannel(prisma, {
+      agentId,
+      channelId,
+      organizationId: actorContext.tenant.organizationId,
+    })
     return reply.code(204).send()
   })
 
@@ -272,7 +333,11 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    const cloned = await cloneAgentRecord(prisma, agentId)
+    const cloned = await cloneAgentRecord(
+      prisma,
+      agentId,
+      actorContext.tenant.organizationId,
+    )
     if (!cloned) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
@@ -356,7 +421,13 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    return createApiResponse(await loadAgentChildren(prisma, agentId))
+    return createApiResponse(
+      await loadAgentChildren(
+        prisma,
+        agentId,
+        actorContext.tenant.organizationId,
+      ),
+    )
   })
 
   app.get('/api/agents/:agentId/runs/:runId/tools', async (request, reply) => {

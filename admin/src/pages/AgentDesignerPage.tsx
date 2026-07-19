@@ -199,6 +199,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
             {editingAgent ? <AgentAvatarPanel agent={editingAgent} /> : null}
             <AgentDesignerForm
               actions={actions}
+              canManageExplicitTools={isOwner}
               parentAgentName={parentAgent?.name}
               state={state}
               toolGroups={toolCatalog.groups}

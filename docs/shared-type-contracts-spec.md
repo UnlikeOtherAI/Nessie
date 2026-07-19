@@ -394,6 +394,10 @@ Rules:
 - `avatarAttachmentId` is a custom uploaded image served through attachments
 - clients resolve the attachment when present and fall back to the generated agent glyph when absent or not yet loaded
 - avatar uploads must use an attachment visible to the acting user in the same organization
+- generic shared agents always belong to the active organization; list,
+  hierarchy/status/activity/realtime reads, parents, and channel bind/unbind
+  writes require that exact organization, while system/global agents use
+  dedicated bootstrap paths
 
 ## 5.4) Favourite record contract
 

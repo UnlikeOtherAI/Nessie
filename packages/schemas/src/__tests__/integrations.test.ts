@@ -7,10 +7,12 @@ import {
 } from '../integration-plugin.js'
 import {
   BuildMeProjectHandoffRequestSchema,
+  DeepWaterAgentAccessResponseSchema,
   DeepWaterResearchRunRecordSchema,
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
   IntegratedProductResponseSchema,
+  SetDeepWaterAgentAccessRequestSchema,
   SetProductTeamEnablementRequestSchema,
 } from '../integrations.js'
 
@@ -89,6 +91,52 @@ test('SetProductTeamEnablementRequestSchema requires a boolean enabled flag', ()
     enabled: false,
   })
   assert.equal(SetProductTeamEnablementRequestSchema.safeParse({ enabled: 'yes' }).success, false)
+})
+
+test('Deep Water agent access requires typed bundle targets and exact counts', () => {
+  const response = DeepWaterAgentAccessResponseSchema.parse({
+    configured: true,
+    personalAssistant: {
+      agentId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d901',
+      agentKind: 'personal_assistant',
+      enabled: true,
+      grantedToolCount: 6,
+      name: 'Personal Assistant',
+      revocableGrantCount: 6,
+      requiredToolCount: 6,
+      role: 'assistant',
+    },
+    requiredToolCount: 6,
+    sharedAgents: [],
+  })
+  assert.equal(response.personalAssistant?.enabled, true)
+  assert.equal(response.personalAssistant?.grantedToolCount, 6)
+
+  assert.deepEqual(
+    SetDeepWaterAgentAccessRequestSchema.parse({
+      enabled: true,
+      target: 'personal_assistant',
+    }),
+    {
+      enabled: true,
+      target: 'personal_assistant',
+    },
+  )
+  assert.equal(
+    SetDeepWaterAgentAccessRequestSchema.safeParse({
+      enabled: true,
+      target: 'agent',
+    }).success,
+    false,
+  )
+  assert.equal(
+    SetDeepWaterAgentAccessRequestSchema.safeParse({
+      enabled: true,
+      extra: 'replace-policy',
+      target: 'personal_assistant',
+    }).success,
+    false,
+  )
 })
 
 test('DeepWaterResearchLaunchRequestSchema keeps launcher controls MCP-safe', () => {

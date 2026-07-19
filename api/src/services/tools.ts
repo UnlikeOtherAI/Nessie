@@ -64,7 +64,7 @@ const toToolDescriptor = (entry: ToolRegistryEntry): ToolDescriptor => ({
 })
 
 export const ensureBuiltinToolsRegistered = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   organizationId: string,
 ): Promise<void> => {
   await Promise.all(

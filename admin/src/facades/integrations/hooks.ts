@@ -8,31 +8,58 @@ import type {
   DeepSignalSignalActResponse,
   DeepSignalSignalsResponse,
   DeepTestReviewHandoffRequest,
+  DeepWaterAgentAccessResponse,
   DeepWaterResearchLaunchRequest,
   DeepWaterResearchRunRecord,
   IntegratedProductResponse,
   IntegrationPluginManifest,
+  SetDeepWaterAgentAccessRequest,
   SetProductTeamEnablementRequest,
   ThreadMessageRecord,
   ThreadRecord,
 } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
+import {
+  deepSignalSignalsKey,
+  deepSignalSignalsKeyPrefix,
+  deepWaterAgentAccessKey,
+  deepWaterAgentAccessKeyPrefix,
+  deepWaterResearchRunsKey,
+  deepWaterResearchRunsKeyPrefix,
+  integratedProductsKey,
+  integratedProductsKeyPrefix,
+  mcpToolRegistryKeyPrefix,
+  toolPolicyTargetsKeyPrefix,
+  type IntegrationQueryScope,
+} from '../integration-query-keys'
 import { isExternalAgentChannel } from '../personal-assistant/hooks'
 
-export const integratedProductsKey = ['integrations', 'products'] as const
-export const deepWaterResearchRunsKey =
-  ['integrations', 'products', 'deep-water', 'research-runs'] as const
-export const deepSignalSignalsKey =
-  ['integrations', 'products', 'deepsignal', 'signals'] as const
 export const integrationManifestKey = (productSlug?: string) =>
   ['integrations', 'manifest', productSlug ?? 'none'] as const
 
+const useIntegrationQueryScope = (): IntegrationQueryScope | null => {
+  const { me } = useAuthSession()
+  return me
+    ? {
+        isOwner: me.user.roleIds.includes('owner'),
+        organizationId: me.context.organizationId,
+        teamId: me.context.teamId,
+        userId: me.user.id,
+      }
+    : null
+}
+
 export const useIntegratedProducts = () => {
   const apiClient = useApiClient()
+  const scope = useIntegrationQueryScope()
 
   return useQuery<IntegratedProductResponse[]>({
-    queryKey: integratedProductsKey,
+    queryKey: scope
+      ? integratedProductsKey(scope)
+      : [...integratedProductsKeyPrefix, 'signed-out'],
     queryFn: () => apiClient.get('/api/integrations/products'),
+    enabled: scope !== null,
   })
 }
 
@@ -95,11 +122,15 @@ export const useExternalAgentIdentity = (
 // signals); both variants cache under the shared prefix so an act invalidates all.
 export const useDeepSignalSignals = (include: 'active' | 'all' = 'active') => {
   const apiClient = useApiClient()
+  const scope = useIntegrationQueryScope()
 
   return useQuery<DeepSignalSignalsResponse>({
-    queryKey: [...deepSignalSignalsKey, include],
+    queryKey: scope
+      ? deepSignalSignalsKey(scope, include)
+      : [...deepSignalSignalsKeyPrefix, 'signed-out', include],
     queryFn: () =>
       apiClient.get(`/api/integrations/products/deepsignal/signals?include=${include}`),
+    enabled: scope !== null,
   })
 }
 
@@ -120,17 +151,58 @@ export const useActOnSignal = () => {
         { action: input.action },
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: deepSignalSignalsKey })
+      void queryClient.invalidateQueries({
+        queryKey: deepSignalSignalsKeyPrefix,
+      })
     },
   })
 }
 
 export const useDeepWaterResearchRuns = () => {
   const apiClient = useApiClient()
+  const scope = useIntegrationQueryScope()
 
   return useQuery<DeepWaterResearchRunRecord[]>({
-    queryKey: deepWaterResearchRunsKey,
+    queryKey: scope
+      ? deepWaterResearchRunsKey(scope)
+      : [...deepWaterResearchRunsKeyPrefix, 'signed-out'],
     queryFn: () => apiClient.get('/api/integrations/products/deep-water/research-runs'),
+    enabled: scope !== null,
+  })
+}
+
+export const useDeepWaterAgentAccess = (enabled = true) => {
+  const apiClient = useApiClient()
+  const scope = useIntegrationQueryScope()
+
+  return useQuery<DeepWaterAgentAccessResponse>({
+    queryKey: scope
+      ? deepWaterAgentAccessKey(scope)
+      : [...deepWaterAgentAccessKeyPrefix, 'signed-out'],
+    queryFn: () =>
+      apiClient.get('/api/integrations/products/deep-water/agent-access'),
+    enabled: enabled && scope !== null,
+  })
+}
+
+export const useSetDeepWaterAgentAccess = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: SetDeepWaterAgentAccessRequest) =>
+      apiClient.patch<DeepWaterAgentAccessResponse>(
+        '/api/integrations/products/deep-water/agent-access',
+        input,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: deepWaterAgentAccessKeyPrefix,
+      })
+      void queryClient.invalidateQueries({
+        queryKey: toolPolicyTargetsKeyPrefix,
+      })
+    },
   })
 }
 
@@ -161,7 +233,9 @@ export const useActivateExternalAgentProduct = () => {
         `/api/integrations/products/${productSlug}/activate`,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({
+        queryKey: integratedProductsKeyPrefix,
+      })
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
   })
@@ -177,7 +251,9 @@ export const useDeactivateExternalAgentProduct = () => {
         `/api/integrations/products/${productSlug}/deactivate`,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({
+        queryKey: integratedProductsKeyPrefix,
+      })
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
   })
@@ -221,10 +297,20 @@ export const useSetProductTeamEnablement = () => {
         { enabled: input.enabled },
       ),
     onSuccess: (product) => {
-      queryClient.setQueryData<IntegratedProductResponse[]>(
-        integratedProductsKey,
-        (current) => current?.map((item) => (item.slug === product.slug ? product : item)),
-      )
+      void queryClient.invalidateQueries({
+        queryKey: integratedProductsKeyPrefix,
+      })
+      if (product.slug === 'deep-water') {
+        void queryClient.invalidateQueries({
+          queryKey: deepWaterAgentAccessKeyPrefix,
+        })
+        void queryClient.invalidateQueries({
+          queryKey: toolPolicyTargetsKeyPrefix,
+        })
+        void queryClient.invalidateQueries({
+          queryKey: mcpToolRegistryKeyPrefix,
+        })
+      }
     },
   })
 }
@@ -253,15 +339,12 @@ export const useLaunchDeepWaterResearch = () => {
         input,
       ),
     onSuccess: (response) => {
-      queryClient.setQueryData<DeepWaterResearchRunRecord[]>(
-        deepWaterResearchRunsKey,
-        (current) => {
-          const withoutRun = current?.filter((run) => run.id !== response.run.id) ?? []
-          return [response.run, ...withoutRun].slice(0, 10)
-        },
-      )
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
-      void queryClient.invalidateQueries({ queryKey: deepWaterResearchRunsKey })
+      void queryClient.invalidateQueries({
+        queryKey: integratedProductsKeyPrefix,
+      })
+      void queryClient.invalidateQueries({
+        queryKey: deepWaterResearchRunsKeyPrefix,
+      })
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
       void queryClient.invalidateQueries({
         queryKey: ['threads', response.thread.id, 'messages'],
@@ -281,7 +364,9 @@ export const usePrepareDeepTestReview = () => {
         input,
       ),
     onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({
+        queryKey: integratedProductsKeyPrefix,
+      })
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
       void queryClient.invalidateQueries({
         queryKey: ['threads', response.thread.id, 'messages'],
@@ -301,7 +386,9 @@ export const usePrepareBuildMeProjectHandoff = () => {
         input,
       ),
     onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: integratedProductsKey })
+      void queryClient.invalidateQueries({
+        queryKey: integratedProductsKeyPrefix,
+      })
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
       void queryClient.invalidateQueries({
         queryKey: ['threads', response.thread.id, 'messages'],

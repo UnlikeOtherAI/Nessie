@@ -84,7 +84,12 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
 
   const options = useMemo<DesignerToolOption[]>(() => {
     const builtin: DesignerToolOption[] = (builtinQuery.data ?? [])
-      .filter((tool) => tool.builtin !== false && tool.enabled !== false)
+      .filter(
+        (tool) =>
+          tool.builtin !== false
+          && tool.enabled !== false
+          && tool.requiresExplicitGrant !== true,
+      )
       .map((tool) => ({
         key: tool.id,
         label: tool.label,
@@ -97,9 +102,15 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
         group: groupForBuiltin(tool.id),
       }))
 
-    const connectors: DesignerToolOption[] = (registryQuery.data ?? [])
+    const connectors: DesignerToolOption[] = (
+      includeConnectors ? registryQuery.data ?? [] : []
+    )
       .filter(
-        (tool) => !tool.builtin && tool.enabled && tool.status === 'active',
+        (tool) =>
+          !tool.builtin
+          && tool.enabled
+          && tool.status === 'active'
+          && !tool.requiresExplicitGrant,
       )
       .map((tool) => ({
         key: tool.id,
@@ -112,7 +123,7 @@ export const useDesignerToolCatalog = (includeConnectors: boolean) => {
       }))
 
     return [...builtin, ...connectors]
-  }, [builtinQuery.data, registryQuery.data])
+  }, [builtinQuery.data, includeConnectors, registryQuery.data])
 
   const groups = useMemo<DesignerToolGroup[]>(() => {
     const byName = new Map<string, DesignerToolOption[]>()

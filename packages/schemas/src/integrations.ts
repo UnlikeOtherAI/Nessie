@@ -261,6 +261,42 @@ export const SetProductTeamEnablementRequestSchema = z.object({
 export type SetProductTeamEnablementRequest =
   z.infer<typeof SetProductTeamEnablementRequestSchema>
 
+export const DeepWaterAgentAccessTargetSchema = z.object({
+  agentId: z.string().uuid(),
+  agentKind: z.enum(['personal_assistant', 'shared']),
+  enabled: z.boolean(),
+  grantedToolCount: z.number().int().nonnegative(),
+  name: NonEmptyStringSchema,
+  revocableGrantCount: z.number().int().nonnegative(),
+  requiredToolCount: z.number().int().positive(),
+  role: NonEmptyStringSchema,
+})
+export type DeepWaterAgentAccessTarget =
+  z.infer<typeof DeepWaterAgentAccessTargetSchema>
+
+export const DeepWaterAgentAccessResponseSchema = z.object({
+  configured: z.boolean(),
+  personalAssistant: DeepWaterAgentAccessTargetSchema.nullable(),
+  requiredToolCount: z.number().int().positive(),
+  sharedAgents: z.array(DeepWaterAgentAccessTargetSchema),
+})
+export type DeepWaterAgentAccessResponse =
+  z.infer<typeof DeepWaterAgentAccessResponseSchema>
+
+export const SetDeepWaterAgentAccessRequestSchema = z.discriminatedUnion('target', [
+  z.object({
+    enabled: z.boolean(),
+    target: z.literal('personal_assistant'),
+  }).strict(),
+  z.object({
+    agentId: z.string().uuid(),
+    enabled: z.boolean(),
+    target: z.literal('agent'),
+  }).strict(),
+])
+export type SetDeepWaterAgentAccessRequest =
+  z.infer<typeof SetDeepWaterAgentAccessRequestSchema>
+
 export const DeepWaterResearchDepthSchema = z.enum([
   'light',
   'standard',

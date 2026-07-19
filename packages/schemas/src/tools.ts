@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   McpServerInstanceIdSchema,
 } from './mcp.js'
+import { AgentIdSchema } from './ids.js'
 
 /**
  * Tool registry contracts for the MCP universal connector (Slice B).
@@ -84,6 +85,35 @@ export type ToolGrantState = z.infer<typeof ToolGrantStateSchema>
 
 export const ToolGrantSourceSchema = z.enum(['role', 'agent-override'])
 export type ToolGrantSource = z.infer<typeof ToolGrantSourceSchema>
+
+// ─── Per-agent tool-policy mutation ────────────────────────────────────────
+
+/**
+ * Minimal owner-facing agent projection for targeted tool-policy edits.
+ *
+ * This is deliberately separate from `GET /api/agents`: the ordinary agent
+ * list excludes the organization-wide, system-managed Personal Assistant so
+ * its private DM bindings and activity never leak into shared agent surfaces.
+ * The tool-policy surface needs only identity + policy state.
+ */
+export const AgentToolPolicyTargetSchema = z.object({
+  id: AgentIdSchema,
+  agentKind: z.enum(['personal_assistant', 'shared']),
+  name: z.string().min(1),
+  role: z.string().min(1),
+  toolPolicy: z.record(z.string(), z.boolean()),
+})
+export type AgentToolPolicyTarget = z.infer<typeof AgentToolPolicyTargetSchema>
+
+/**
+ * Mutates one registry entry in one agent's policy. `enabled=false` revokes an
+ * explicit allow without replacing the rest of the JSON policy.
+ */
+export const SetAgentToolPolicyEntryRequestSchema = z.object({
+  enabled: z.boolean(),
+}).strict()
+export type SetAgentToolPolicyEntryRequest =
+  z.infer<typeof SetAgentToolPolicyEntryRequestSchema>
 
 // ─── Transport config (per ToolRegistryEntry.transport) ─────────────────────
 

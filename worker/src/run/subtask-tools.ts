@@ -8,6 +8,7 @@ import {
   parseThreadId,
   withActionContext,
 } from '@nessie/schemas'
+import { stripProtectedExplicitToolPolicy } from '@nessie/runtime'
 import { enqueueRunExecution } from '../queue.js'
 import { appendDelegationStep } from './plans.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from './tool-types.js'
@@ -68,6 +69,12 @@ export const runSpawnSubtaskTool = async (
   if (!parentAgent) {
     throw new Error('Parent agent not found.')
   }
+  const childToolPolicy = parentAgent.toolPolicy
+    ? await stripProtectedExplicitToolPolicy(
+      context.prisma,
+      parentAgent.toolPolicy,
+    )
+    : undefined
 
   const plan = await context.prisma.plan.findFirst({
     where: { runId: context.run.id },
@@ -92,7 +99,7 @@ export const runSpawnSubtaskTool = async (
           parentSystemPrompt: parentAgent.systemPrompt,
           role,
         }),
-        toolPolicy: (parentAgent.toolPolicy ?? undefined) as Prisma.InputJsonValue | undefined,
+        toolPolicy: childToolPolicy as Prisma.InputJsonValue | undefined,
       },
       select: { id: true, name: true },
     })

@@ -67,6 +67,49 @@ Root app layout:
   `POST .../signals/:insightId/act`, and
   `POST /api/integrations/deepsignal/events`.
 
+### 2.0a Live first-party DeepWater grant boundary
+
+- Team enablement installs the five Ledger-backed `research_*` projections;
+  `deep_water_run_update` is the sixth required registry entry. All six remain
+  default-off for every agent until that agent's exact `toolPolicy` key is
+  `true`; install scope and tenancy are still required after a grant.
+- Owners manage individual explicit entries on `/agents/tools` through
+  `GET /api/mcp/tools/policy-targets` and targeted per-entry `PATCH` requests.
+  This minimal target list includes the Personal Assistant without widening the
+  normal `/api/agents` response or exposing private assistant bindings/activity.
+  Each write merges one key under a database lock, preserving all unrelated
+  allow and deny entries. DeepWater projections lock team transition first and
+  re-read the current projection before taking the agent lock.
+- `GET/PATCH /api/integrations/products/deep-water/agent-access` reports and
+  changes the complete six-entry bundle for the Personal Assistant or shared
+  agents. The launcher disables research until its PA has 6/6 and the launch
+  API repeats the check under team-then-policy locks before persisting a run.
+  The updater counts only while its registry entry is enabled and active, so a
+  stale policy allow cannot authorize a launch the worker cannot finish.
+- Generic agent create/edit cannot write protected grants or server provenance;
+  stale edits preserve current protected values, while clones and spawned
+  subtask children strip them. PA bootstrap config cannot inject them, generic
+  agent responses redact provenance markers, and Agent Designer directs owners
+  to Tools/Integrations. Generic shared-agent creation, listing, parent
+  selection, hierarchy/status/activity/realtime reads, and channel binding are
+  scoped to the exact active organization.
+  The updater cannot be switched off individually while a DeepWater
+  bundle/projection depends on it. Its row remains known to cleanup while
+  disabled, so revocation clears the old allow before a later registry re-enable.
+- Disabling the team integration returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a
+  run is queued, running, or awaiting setup. Cancel/recover it or wait for a
+  terminal result before retrying. Admin integration caches are scoped by
+  user/org/team/privilege, including DeepSignal signal digests.
+  Mutation completions invalidate those scoped families instead of writing a
+  response through mutable render scope, so switching workspace mid-request
+  cannot place the old response in the new workspace cache.
+  Bundle or individual lifecycle revocation also returns 409 for those
+  nonterminal states; no force-revoke path can strand Ledger work. Handoff
+  message, run attachment, and durable enqueue commit atomically; realtime is
+  post-commit/non-fatal. Ambiguous null-id work still blocks disable because
+  Ledger dispatch may be in flight. Agent access remains visible after disable
+  so retained bundle provenance can be revoked.
+
 ### 2.1 Server bootstrap (`src/index.ts`)
 
 > **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5454) + `worker/` + `admin/` (port 5455), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.

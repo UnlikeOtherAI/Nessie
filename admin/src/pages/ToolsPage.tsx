@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type {
   ToolRegistryEntryStatus,
   ToolRegistrySource,
@@ -6,11 +7,15 @@ import type {
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import { ToolAgentAccessPanel } from '../components/features/workflow-tools/ToolAgentAccessPanel'
+import { ExplicitToolAgentAccessPanel } from '../components/features/workflow-tools/ExplicitToolAgentAccessPanel'
 import { ToolDetailDrawer } from '../components/features/workflow-tools/ToolDetailDrawer'
 import { ToolFilterBar } from '../components/features/workflow-tools/ToolFilterBar'
 import { ToolList } from '../components/features/workflow-tools/ToolList'
 import { useAgents } from '../facades/agents/hooks'
-import { useMcpToolRegistry } from '../facades/tool-grants/hooks'
+import {
+  useAgentToolPolicyTargets,
+  useMcpToolRegistry,
+} from '../facades/tool-grants/hooks'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -28,15 +33,20 @@ export const ToolsPage = () => {
   const { me } = useAuthSession()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const [searchParams] = useSearchParams()
+  const deepWaterInstanceId = searchParams.get('deepWaterInstance')
 
   const [source, setSource] = useState<ToolRegistrySource | undefined>()
   const [status, setStatus] = useState<ToolRegistryEntryStatus | undefined>()
   const [tag, setTag] = useState<string | undefined>()
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get('search') ?? '',
+  )
   const [selectedToolId, setSelectedToolId] = useState<string | undefined>()
 
   const toolsQuery = useMcpToolRegistry({ source, status }, isOwner)
   const agentsQuery = useAgents()
+  const policyTargetsQuery = useAgentToolPolicyTargets(isOwner)
 
   const allTools = useMemo(() => toolsQuery.data ?? [], [toolsQuery.data])
   const tagOptions = useMemo(() => {
@@ -52,6 +62,18 @@ export const ToolsPage = () => {
   const filteredTools = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     return allTools.filter((tool) => {
+      if (
+        deepWaterInstanceId
+        && !(
+          tool.toolId === 'deep_water_run_update'
+          || (
+            tool.managedProductSlug === 'deep-water'
+            && tool.mcpInstanceId === deepWaterInstanceId
+          )
+        )
+      ) {
+        return false
+      }
       if (tag && !tool.tags.includes(tag)) return false
       if (!query) return true
       return (
@@ -60,7 +82,7 @@ export const ToolsPage = () => {
         tool.description.toLowerCase().includes(query)
       )
     })
-  }, [allTools, searchQuery, tag])
+  }, [allTools, deepWaterInstanceId, searchQuery, tag])
 
   const sortedTools = useMemo(
     () =>
@@ -75,6 +97,17 @@ export const ToolsPage = () => {
       sortedTools.find((tool) => tool.id === selectedToolId)
       ?? sortedTools[0],
     [sortedTools, selectedToolId],
+  )
+  const deepWaterDependencyPolicyKeys = useMemo(
+    () =>
+      allTools
+        .filter(
+          (tool) =>
+            tool.managedProductSlug === 'deep-water'
+            && tool.mcpInstanceId !== null,
+        )
+        .map((tool) => tool.policyKey),
+    [allTools],
   )
 
   if (!isOwner) {
@@ -140,25 +173,42 @@ export const ToolsPage = () => {
           <section>
             <h3 className="text-sm font-semibold text-[color:var(--tx)]">Agent access</h3>
             <p className="mt-1 text-xs text-[color:var(--tx3)]">
-              Switch a row on to grant this tool to that agent; switch it off to
-              revoke. A denied grant is read-only and always wins.
+              {selectedTool.requiresExplicitGrant
+                ? 'This tool is off by default. Switch a row on to write the exact per-agent allow; switch it off to revoke only that allow.'
+                : 'Switch a row on to grant this tool to that agent; switch it off to revoke. A denied grant is read-only and always wins.'}
             </p>
             <div className="mt-3">
-              {agentsQuery.isLoading ? (
+              {(selectedTool.requiresExplicitGrant
+                ? policyTargetsQuery.isLoading
+                : agentsQuery.isLoading) ? (
                 <div className="py-6 text-center text-sm text-[color:var(--tx3)]">
                   Loading agents…
                 </div>
-              ) : agentsQuery.isError ? (
+              ) : (selectedTool.requiresExplicitGrant
+                ? policyTargetsQuery.isError
+                : agentsQuery.isError) ? (
                 <div className="py-6 text-center text-sm text-[color:var(--danger-text)]">
                   Failed to load agents.{' '}
                   <button
                     className="underline"
-                    onClick={() => void agentsQuery.refetch()}
+                    onClick={() => {
+                      if (selectedTool.requiresExplicitGrant) {
+                        void policyTargetsQuery.refetch()
+                      } else {
+                        void agentsQuery.refetch()
+                      }
+                    }}
                     type="button"
                   >
                     Retry
                   </button>
                 </div>
+              ) : selectedTool.requiresExplicitGrant ? (
+                <ExplicitToolAgentAccessPanel
+                  deepWaterDependencyPolicyKeys={deepWaterDependencyPolicyKeys}
+                  targets={policyTargetsQuery.data ?? []}
+                  tool={selectedTool}
+                />
               ) : (
                 <ToolAgentAccessPanel agents={agentsQuery.data ?? []} tool={selectedTool} />
               )}

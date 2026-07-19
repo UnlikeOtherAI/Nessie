@@ -4,6 +4,8 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import type {
+  AgentToolPolicyTarget,
+  SetAgentToolPolicyEntryRequest,
   ToolGrantSource,
   ToolGrantState,
   ToolRegistryEntryStatus,
@@ -11,6 +13,14 @@ import type {
   ToolRegistryTransport,
 } from '@nessie/schemas'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
+import {
+  deepWaterAgentAccessKeyPrefix,
+  mcpToolRegistryKey,
+  mcpToolRegistryKeyPrefix,
+  toolPolicyTargetsKey,
+  toolPolicyTargetsKeyPrefix,
+} from '../integration-query-keys'
 
 /**
  * Domain facade for the tool registry surface (`/api/mcp/tools`) and its grant
@@ -42,6 +52,9 @@ export type McpToolRegistryRecord = {
   createdBy: string
   enabled: boolean
   builtin: boolean
+  managedProductSlug: string | null
+  policyKey: string
+  requiresExplicitGrant: boolean
   createdAt: string
   updatedAt: string
   grants: ToolGrantRecord[]
@@ -65,8 +78,6 @@ export type ToolRegistryFilters = {
   scopeKey?: string
 }
 
-const TOOL_REGISTRY_KEY = ['mcp-tools'] as const
-
 const buildSearch = (filters: ToolRegistryFilters): string => {
   const params = new URLSearchParams()
   if (filters.status) params.set('status', filters.status)
@@ -81,17 +92,69 @@ export const useMcpToolRegistry = (
   enabled = true,
 ) => {
   const apiClient = useApiClient()
+  const { me } = useAuthSession()
   const search = buildSearch(filters)
+  const scope = me
+    ? {
+        isOwner: me.user.roleIds.includes('owner'),
+        organizationId: me.context.organizationId,
+        teamId: me.context.teamId,
+        userId: me.user.id,
+      }
+    : null
 
   return useQuery<McpToolRegistryRecord[]>({
-    queryKey: [
-      ...TOOL_REGISTRY_KEY,
-      filters.status ?? null,
-      filters.source ?? null,
-      filters.scopeKey ?? null,
-    ],
+    queryKey: scope
+      ? mcpToolRegistryKey(scope, enabled, filters)
+      : [...mcpToolRegistryKeyPrefix, 'signed-out'],
     queryFn: () => apiClient.get(`/api/mcp/tools${search}`),
-    enabled,
+    enabled: enabled && scope !== null,
+  })
+}
+
+export const useAgentToolPolicyTargets = (enabled = true) => {
+  const apiClient = useApiClient()
+  const { me } = useAuthSession()
+  const scope = me
+    ? {
+        isOwner: me.user.roleIds.includes('owner'),
+        organizationId: me.context.organizationId,
+        userId: me.user.id,
+      }
+    : null
+
+  return useQuery<AgentToolPolicyTarget[]>({
+    queryKey: scope
+      ? toolPolicyTargetsKey(scope)
+      : [...toolPolicyTargetsKeyPrefix, 'signed-out'],
+    queryFn: () => apiClient.get('/api/mcp/tools/policy-targets'),
+    enabled: enabled && scope !== null,
+  })
+}
+
+export const useSetAgentToolPolicyEntry = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (
+      input: SetAgentToolPolicyEntryRequest & {
+        agentId: string
+        toolRegistryEntryId: string
+      },
+    ) =>
+      apiClient.patch<AgentToolPolicyTarget>(
+        `/api/mcp/tools/${input.toolRegistryEntryId}/policy-targets/${input.agentId}`,
+        { enabled: input.enabled },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: toolPolicyTargetsKeyPrefix,
+      })
+      void queryClient.invalidateQueries({
+        queryKey: deepWaterAgentAccessKeyPrefix,
+      })
+    },
   })
 }
 
@@ -116,7 +179,9 @@ export const useCreateToolGrant = () => {
       )
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: TOOL_REGISTRY_KEY })
+      void queryClient.invalidateQueries({
+        queryKey: mcpToolRegistryKeyPrefix,
+      })
     },
   })
 }
@@ -131,7 +196,9 @@ export const useDeleteToolGrant = () => {
         `/api/mcp/tools/${input.toolRegistryEntryId}/grants/${input.grantId}`,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: TOOL_REGISTRY_KEY })
+      void queryClient.invalidateQueries({
+        queryKey: mcpToolRegistryKeyPrefix,
+      })
     },
   })
 }

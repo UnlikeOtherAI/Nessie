@@ -1,13 +1,17 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type {
+  DeepWaterAgentAccessTarget,
   DeepWaterResearchDepth,
   IntegratedProductResponse,
 } from '../../../lib/api-client'
 import {
+  useDeepWaterAgentAccess,
   useDeepWaterResearchRuns,
   useLaunchDeepWaterResearch,
+  useSetDeepWaterAgentAccess,
 } from '../../../facades/integrations/hooks'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { DeepWaterRunHistory } from './DeepWaterRunHistory'
 
 const depthOptions: Array<{ label: string; value: DeepWaterResearchDepth }> = [
@@ -37,12 +41,19 @@ const money = (amount: number, currency: string): string =>
 const boundedInt = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, Math.trunc(Number.isFinite(value) ? value : min)))
 
+const accessTargetLabel = (target: DeepWaterAgentAccessTarget): string =>
+  target.agentKind === 'personal_assistant'
+    ? 'Personal Assistant'
+    : target.name
+
 export const DeepWaterResearchPanel = ({
   product,
 }: {
   product: IntegratedProductResponse
 }) => {
   const navigate = useNavigate()
+  const { me } = useAuthSession()
+  const isOwner = me?.user.roleIds.includes('owner') ?? false
   const launch = useLaunchDeepWaterResearch()
   const runsQuery = useDeepWaterResearchRuns()
   const [title, setTitle] = useState('')
@@ -58,7 +69,13 @@ export const DeepWaterResearchPanel = ({
   const [artifactDestination, setArtifactDestination] = useState('knowledge_draft')
   const teamReady = product.teamEnablement?.enabled === true
   const connectorReady = product.mcpInstallation?.lifecycleState === 'active'
-  const ready = teamReady && connectorReady
+  // Keep this readable after disable: server-side bundle provenance may still
+  // need an explicit Revoke all even though the connector no longer launches.
+  const accessQuery = useDeepWaterAgentAccess()
+  const setAgentAccess = useSetDeepWaterAgentAccess()
+  const personalAssistantReady =
+    accessQuery.data?.personalAssistant?.enabled === true
+  const ready = teamReady && connectorReady && personalAssistantReady
   const canSubmit = ready && query.trim().length > 0 && !launch.isPending
   const lastUsed = product.usageSummary.lastUsedAt
     ? new Date(product.usageSummary.lastUsedAt).toLocaleString()
@@ -82,6 +99,31 @@ export const DeepWaterResearchPanel = ({
     navigate(`/channels/${response.channel.id}`)
   }
 
+  const changeAccess = (
+    target: DeepWaterAgentAccessTarget | null,
+    enabled: boolean,
+  ) => {
+    if (target?.agentKind === 'shared') {
+      setAgentAccess.mutate({
+        agentId: target.agentId,
+        enabled,
+        target: 'agent',
+      })
+      return
+    }
+    setAgentAccess.mutate({
+      enabled,
+      target: 'personal_assistant',
+    })
+  }
+
+  const accessTargets = [
+    ...(accessQuery.data?.personalAssistant
+      ? [accessQuery.data.personalAssistant]
+      : []),
+    ...(accessQuery.data?.sharedAgents ?? []),
+  ]
+
   return (
     <section className="border-t border-[var(--sep)] pt-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -96,6 +138,11 @@ export const DeepWaterResearchPanel = ({
             </span>
             <span className={readinessClass(product.accountLink?.status === 'linked')}>
               {product.accountLink?.status === 'linked' ? 'Account linked' : 'Account pending'}
+            </span>
+            <span className={readinessClass(personalAssistantReady)}>
+              {personalAssistantReady
+                ? 'Personal Assistant granted'
+                : 'Agent grant required'}
             </span>
           </div>
         </div>
@@ -112,6 +159,137 @@ export const DeepWaterResearchPanel = ({
         loading={runsQuery.isLoading}
         runs={runsQuery.data ?? []}
       />
+
+      <section className="mt-4 rounded border border-[var(--sep)] p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-semibold text-[var(--tx)]">
+              Agent access
+            </h4>
+            <p className="mt-1 text-xs leading-5 text-[var(--tx3)]">
+              All six Deep Water entries must be explicitly granted. Team scope
+              and user tenancy are still checked on every call.
+            </p>
+            {!teamReady || !connectorReady ? (
+              <p className="mt-1 text-xs leading-5 text-[var(--warning-text)]">
+                Launch is unavailable, but retained agent grants remain visible
+                here so they can be revoked safely.
+              </p>
+            ) : null}
+          </div>
+          {isOwner ? (
+            <Link
+              className="admin-button admin-button-secondary text-xs"
+              to={`/agents/tools?deepWaterInstance=${product.mcpInstallation?.id ?? ''}`}
+            >
+              Manage individual tools
+            </Link>
+          ) : null}
+        </div>
+
+        {accessQuery.isLoading ? (
+          <div className="mt-3 text-xs text-[var(--tx3)]">
+            Checking agent access…
+          </div>
+        ) : accessQuery.isError ? (
+          <div className="mt-3 text-xs text-[var(--danger-text)]">
+            Could not check agent access.{' '}
+            <button
+              className="underline"
+              onClick={() => void accessQuery.refetch()}
+              type="button"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 divide-y divide-[var(--sep)] overflow-hidden rounded border border-[var(--sep)]">
+            {accessTargets.map((target) => {
+              const canRevoke = target.revocableGrantCount > 0
+              const pending =
+                setAgentAccess.isPending
+                && (
+                  setAgentAccess.variables?.target === 'personal_assistant'
+                    ? target.agentKind === 'personal_assistant'
+                    : setAgentAccess.variables?.agentId === target.agentId
+                )
+              return (
+                <div
+                  className="flex items-center justify-between gap-3 px-3 py-2"
+                  key={target.agentId}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-[var(--tx)]">
+                      {accessTargetLabel(target)}
+                    </div>
+                    <div className="text-xs text-[var(--tx3)]">
+                      {target.grantedToolCount}/{target.requiredToolCount} tools granted
+                    </div>
+                  </div>
+                  {isOwner ? (
+                    <button
+                      className={[
+                        'admin-button text-xs',
+                        canRevoke
+                          ? 'admin-button-secondary'
+                          : 'admin-button-primary',
+                      ].join(' ')}
+                      disabled={
+                        pending
+                        || (!canRevoke
+                          && accessQuery.data?.configured !== true)
+                      }
+                      onClick={() => changeAccess(target, !canRevoke)}
+                      type="button"
+                    >
+                      {pending
+                        ? 'Saving…'
+                        : canRevoke
+                          ? 'Revoke all'
+                          : 'Grant all'}
+                    </button>
+                  ) : null}
+                </div>
+              )
+            })}
+            {!accessQuery.data?.personalAssistant && isOwner ? (
+              <div className="flex items-center justify-between gap-3 px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium text-[var(--tx)]">
+                    Personal Assistant
+                  </div>
+                  <div className="text-xs text-[var(--tx3)]">
+                    Set up and grant all six tools
+                  </div>
+                </div>
+                <button
+                  className="admin-button admin-button-primary text-xs"
+                  disabled={
+                    setAgentAccess.isPending
+                    || accessQuery.data?.configured !== true
+                  }
+                  onClick={() => changeAccess(null, true)}
+                  type="button"
+                >
+                  {setAgentAccess.isPending ? 'Saving…' : 'Set up & grant'}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
+        {!isOwner && !personalAssistantReady ? (
+          <p className="mt-2 text-xs text-[var(--tx3)]">
+            An organization owner must grant Deep Water to the Personal Assistant.
+          </p>
+        ) : null}
+        {setAgentAccess.isError ? (
+          <p className="mt-2 text-xs text-[var(--danger-text)]">
+            {setAgentAccess.error instanceof Error
+              ? setAgentAccess.error.message
+              : 'Could not change agent access.'}
+          </p>
+        ) : null}
+      </section>
 
       <div className="mt-4 grid gap-3">
         <label className="grid gap-1 text-sm">

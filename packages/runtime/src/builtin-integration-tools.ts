@@ -1,7 +1,9 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
+export const DEEP_WATER_RUN_UPDATE_TOOL_ID = 'deep_water_run_update'
+
 export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
-  id: 'deep_water_run_update',
+  id: DEEP_WATER_RUN_UPDATE_TOOL_ID,
   label: 'Deep Water Run Update',
   // Default OFF for every agent; grantable to any agent (personal assistant or
   // shared) through an explicit per-agent tool policy allow. A granted agent

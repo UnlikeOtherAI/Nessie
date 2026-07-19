@@ -494,8 +494,76 @@ There is deliberately no direct-provider fallback.
   (`worker/src/run/mcp-toolset.ts`) and
   `authorizeToolCall` (`worker/src/run/tool-policy.ts`). **Other connectors are
   unchanged** — they remain exposed by install scope unless a policy denies them;
-  only `requiresExplicitGrant`-flagged tools default off. The admin ToolPicker
-  renders both DeepWater surfaces off-by-default and writes the explicit allow.
+  only `requiresExplicitGrant`-flagged tools default off. The owner Tools and
+  Integrations surfaces render DeepWater off-by-default and write explicit
+  allows through the targeted
+  `PATCH /api/mcp/tools/:toolRegistryEntryId/policy-targets/:agentId` route.
+  That mutation merges only the selected policy key, so a grant/revoke cannot
+  replace unrelated `true` or `false` verdicts. Canonical DeepWater projections
+  take the team transition lock, re-read the exact projection generation, then
+  take the per-agent PostgreSQL advisory lock; a concurrent disable/re-enable
+  therefore cannot persist a stale registry id. `GET
+  /api/mcp/tools/policy-targets` is an owner-only,
+  organization-scoped minimal projection that includes ordinary shared agents
+  plus the system-managed Personal Assistant without widening `/api/agents` or
+  exposing its private DM bindings/activity.
+  Generic agent create/PUT is not an alternate grant writer: it rejects every
+  `requiresExplicitGrant` key and DeepWater provenance marker, and a PUT made
+  from a stale ordinary-tool snapshot preserves protected values from the
+  freshly locked row. Clones and delegated subtask children remove those values
+  because a grant belongs to one exact agent; Personal Assistant bootstrap
+  config cannot inject them. Server provenance markers are also redacted from
+  generic agent responses even though the locked database row retains them.
+  Agent Designer hides the protected switches and links owners to
+  Tools/Integrations.
+- **The launcher has a six-entry readiness gate.** The five team projections
+  plus `deep_water_run_update` are managed as one explicit bundle by
+  `GET/PATCH /api/integrations/products/deep-water/agent-access`. Owners can
+  grant or revoke all six for the Personal Assistant or a shared agent; the
+  individual switches remain available at `/agents/tools`. The Personal
+  Assistant grant action bootstraps it first when necessary. The research
+  launcher shows the exact granted count, disables **Run research** until the
+  PA has all six, and the API independently returns
+  `DEEP_WATER_PERSONAL_ASSISTANT_ACCESS_REQUIRED` before creating a durable run
+  if a caller bypasses the UI. The updater counts toward readiness only when
+  its registry row is enabled and active, exactly matching worker exposure; a
+  retained policy allow on a disabled builtin cannot authorize a launch.
+  Members can read only PA readiness; the
+  organization-wide shared-agent list and every mutation remain owner-only.
+  Bundle grant/revoke takes the team transition lock, re-resolves the current
+  projection generation, then takes the agent-policy lock. Bundle grants carry
+  server-only team provenance. Revoking one team removes
+  every still-linked current-team projection (including a partial or drifted
+  set) but preserves the org-wide updater while another team bundle or a manual
+  updater grant needs it. Accordingly, the updater's individual OFF control is
+  disabled and explained until its dependent projections/bundles are revoked.
+  Readiness callability and cleanup identity are separate: the canonical updater
+  row is always loaded for revocation, even while disabled/inactive, so a later
+  registry re-enable cannot silently revive an agent's old protected allow.
+  Bundle and individual lifecycle-tool revocation return 409 while any linked
+  run is `queued`, `running`, or `needs_setup`; there is no force override that
+  can strand a billable Ledger job. The error points to the PA channel and
+  `research_cancel` when attached, otherwise to explicit operator recovery.
+  The Integrations link filters Tools by both the exact provisioned instance and
+  its first-party `deep-water` product binding, never by a caller-controlled
+  name alone.
+- **Launch authorization is one serialized boundary.** The launch transaction
+  takes the org/team transition lock, resolves the exact first-party active
+  instance, then takes the PA policy lock. It repeats the 6/6 check and inserts
+  the durable run before releasing either lock, so a concurrent disable or
+  revoke cannot create an unauthorized or orphaned launch. Disable returns
+  `LEDGER_DEEPWATER_ACTIVE_RUNS` (409) while a run for that connector is
+  `queued`, `running`, or `needs_setup`. Operators/users must cancel or recover
+  interrupted work, or wait for a terminal state, then retry disable.
+  PA message creation, durable-run attachment, and orchestration enqueue commit
+  in one transaction; if attachment or enqueue fails, all three roll back and
+  the previously inserted run can be marked failed without leaving a queue job
+  that might call Ledger. Realtime publication happens after commit and is
+  non-fatal. Ambiguous work remains blocking even when
+  `externalRunId` is null: a worker may already be inside the idempotent
+  `research_start`, so guessing “unaccepted” could orphan billable Ledger work.
+  The 409 points to an attached chat where PA can invoke `research_cancel`;
+  an interrupted run without a chat requires explicit operator recovery.
 - **Fail loud and transition atomically.** When
   `LEDGER_DEEPWATER_MCP_URL` is unset the enable route returns
   `LEDGER_DEEPWATER_MCP_URL_UNSET` (503) instead of creating a dead or
@@ -510,6 +578,15 @@ There is deliberately no direct-provider fallback.
   transaction and roll back together. Teardown finds the instance through the
   first-party product's linked public catalog entry so a rename cannot orphan
   it and a private same-name entry cannot be deleted.
+- **Client integration data is identity scoped.** Integrated-product state,
+  DeepWater readiness/runs, DeepSignal digests, registry rows, and policy
+  targets use cache keys containing the signed-in user, organization, team, and
+  owner/member privilege where applicable. Team switches and targeted grants
+  invalidate every affected surface, preventing a tenant/team switch from
+  reusing privileged or stale readiness data.
+  Agent-access data continues loading when the integration is disabled, so a
+  fresh page still shows retained bundle provenance and its **Revoke all**
+  action; disabling launch never creates a circular cleanup dead end.
 - **Projected tools are `active`, not `pending_review`.** DeepWater is a
   first-party entry the team's owner explicitly enabled, so that enable stands
   in for the manual install + admin-approve review that shared-scope projections

@@ -9,6 +9,14 @@
 - Rebuild the worker (`pnpm --filter @nessie/worker build`) after every turn where worker code changed: in local mode the API runs the worker embedded from its built `dist`, so source edits don't take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 - `pnpm --filter @nessie/admin build` is for production/CI bundles only, not the dev loop.
 - Root `pnpm build`, `make build`, and production Dockerfiles are lint-gated. Do not replace them with raw build commands unless the replacement keeps an equivalent lint gate. Partial Docker build contexts must copy the root build/lint config files they invoke, including `eslint.config.js`.
+- Root `pnpm build` and `pnpm typecheck` generate the Prisma client once, run
+  Turbo with `@nessie/cli` excluded, then compile/typecheck the CLI through its
+  prepared task. This keeps every generator outside the concurrent phase:
+  concurrent generators can temporarily erase Prisma exports while sibling
+  packages compile. The standalone `@nessie/cli` build/typecheck stays
+  self-contained and may generate before its own compilation. CI must call the
+  lint-gated root build; container flows that call Turbo directly must generate
+  once in an earlier serialized step.
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 
@@ -142,10 +150,49 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   logical retries. The projected tools and `deep_water_run_update` are flagged
   `requiresExplicitGrant`, so an agent sees them ONLY when its `toolPolicy`
   explicitly allows them (`=== true`) **and** the team-scoped instance reaches
-  the run; grants never bypass tenancy, and absent/inherited denies. Each
+  the run; grants never bypass tenancy, and absent/inherited denies. Owners use
+  the targeted `/api/mcp/tools/.../policy-targets/...` mutation (one locked
+  policy-key merge, never a full-policy replacement); canonical DeepWater rows
+  take the team-transition lock, re-read their projection generation, then take
+  the agent lock. Its minimal target list
+  includes the Personal Assistant without exposing PA bindings/activity through
+  `/api/agents`. The DeepWater launcher and
+  `/api/integrations/products/deep-water/agent-access` manage/read the five MCP
+  projections plus `deep_water_run_update` as an exact six-entry bundle. Launch
+  stays disabled and the API rejects before run creation until the PA has 6/6;
+  the updater counts only while its registry row is enabled and active, matching
+  worker exposure, so a disabled builtin cannot authorize billable work;
+  the final enablement/instance/policy reads and run insert are linearized under
+  the team lock then agent-policy lock. Owners can also grant/revoke the bundle
+  for shared agents. Generic agent create/PUT cannot write explicit-grant keys
+  or DeepWater provenance markers; a locked PUT preserves them from the current
+  row; clones and spawned subtask children strip them, PA bootstrap config
+  cannot inject them, generic responses redact the server provenance markers,
+  and Agent Designer omits their switches. Generic shared-agent create, list,
+  parent selection, hierarchy/status/activity/realtime reads, and channel
+  binding are exact-organization operations;
+  system/global agents remain confined to dedicated bootstraps. Bundle
+  provenance keeps the org-wide updater while any team/manual grant needs it;
+  its individual OFF switch is disabled until those dependencies are revoked,
+  while partial/drifted team projections and a disabled updater remain
+  revocable. Registry callability and cleanup identity are separate: a disabled
+  updater cannot satisfy readiness, but its protected allow is still removed by
+  bundle revocation. Bundle and
+  individual lifecycle revocation return 409 during queued/running/needs_setup
+  work; there is no force override. Each
   org/team enable or disable is cross-process serialized by a PostgreSQL
   transaction-scoped advisory lock; connector rows and the product toggle
   mutate in the same transaction and roll back together on failure. Disable
+  returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a queued, running, or
+  `needs_setup` research run still references the connector; cancel or recover
+  the run, or let it reach a terminal state, before retrying disable.
+  PA message, run attachment, and durable enqueue commit atomically; rollback
+  leaves no queue job, while realtime publication is post-commit/non-fatal.
+  Even a
+  null external id remains a conservative blocker because Ledger dispatch may
+  be in flight; the error links an attached chat where PA can call
+  `research_cancel`, while unattached interrupted work requires explicit
+  recovery. Disable
   targets only the instance linked from the first-party public product, so
   private same-name catalogs are untouched. `deep_water_run_update` is not
   PA-only, takes tenancy strictly from the run context (same team + thread;

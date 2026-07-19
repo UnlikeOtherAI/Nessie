@@ -65,6 +65,13 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   [docs/running-the-apps.md](docs/running-the-apps.md).
 - Rebuild the worker after every turn where worker code changed: `pnpm --filter @nessie/worker build`. In local mode the API runs the worker **embedded from its built `dist`** (`import('@nessie/worker')`), so worker source edits do not take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
 - Root `pnpm build`, `make build`, and the production Dockerfiles are lint-gated. Keep lint in those build paths instead of replacing them with raw `turbo build` or package build calls. Partial Docker build contexts must copy the root build/lint config files they invoke, including `eslint.config.js`.
+- Root `pnpm build` and `pnpm typecheck` serialize one Prisma client generation,
+  exclude `@nessie/cli` from Turbo, then compile/typecheck the CLI through its
+  prepared task. That keeps every generator outside the concurrent phase:
+  concurrent generators can temporarily remove Prisma exports while sibling
+  packages compile. The standalone CLI build/typecheck remains self-contained
+  and may generate before its own compilation. CI calls the lint-gated root
+  build; direct Turbo container flows generate once in an earlier step.
 
 ## Production deployment
 
@@ -158,7 +165,43 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   `requiresExplicitGrant`, so team scope alone never exposes them — an agent (PA
   or shared) sees them ONLY when its `toolPolicy` carries an explicit allow
   (`=== true`) and the instance scope reaches the run; a grant never bypasses
-  tenancy, and an absent/inherited verdict is a denial. This is unchanged for
+  tenancy, and an absent/inherited verdict is a denial. Owners write these
+  verdicts through the targeted `/api/mcp/tools/.../policy-targets/...` route,
+  which merges one key under a per-agent database lock and preserves unrelated
+  allow/deny entries. Canonical DeepWater rows take the team-transition lock,
+  re-read the projection generation, then take the agent lock. Its minimal
+  owner-only target list includes the
+  system-managed Personal Assistant without widening `/api/agents` or exposing
+  private PA bindings/activity. The DeepWater launcher manages the five MCP
+  projections plus `deep_water_run_update` as a six-entry bundle through
+  `/api/integrations/products/deep-water/agent-access`; it disables launch, and
+  the API rejects before run creation, until the PA has all six. The updater
+  satisfies readiness only while its registry row is enabled and active,
+  matching worker exposure. Owners can use
+  the same bundle action for shared agents or manage individual entries at
+  `/agents/tools`. Generic agent create/PUT rejects protected keys and
+  provenance markers, a locked stale PUT carries existing protected state
+  forward; clones and spawned subtask children strip it, PA bootstrap config
+  cannot inject it, generic responses redact server provenance, and Agent
+  Designer does not expose protected switches. Generic shared-agent create,
+  list, parent selection, hierarchy/status/activity/realtime reads, and channel
+  binding require the same organization;
+  system/global exceptions stay in dedicated bootstraps. Bundle provenance keeps the
+  shared updater while any team or manual
+  grant depends on it; the updater's individual OFF control is disabled until
+  those dependencies are revoked. A disabled updater does not satisfy
+  readiness, but remains part of cleanup identity so bundle revocation clears
+  its protected allow before later re-enable. Bundle and individual lifecycle revocation
+  return 409 for queued/running/needs_setup work, with no force override. The
+  launch transaction takes the team lock,
+  then policy lock, then performs the final 6/6 read and durable run insert.
+  Disable returns `LEDGER_DEEPWATER_ACTIVE_RUNS` for queued, running, or
+  `needs_setup` research; cancel/recover the run or wait for a terminal state
+  before retrying. PA message creation, run attachment, and durable enqueue are
+  atomic; realtime publication is post-commit/non-fatal. Ambiguous
+  null-external-id work stays blocking to avoid deleting the
+  connector during an in-flight, billable `research_start`; attached-run errors
+  point to the chat where PA can call `research_cancel`. This is unchanged for
   other connectors (scope still exposes them). First-party team-enable stands in
   for the manual install + admin-approve gate. The managed instance resolves
   `LEDGER_PROXY_TOKEN` as Nessie's one deployment-wide, product-bound Ledger app

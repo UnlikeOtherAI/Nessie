@@ -18,6 +18,10 @@ import {
   type SecretStore,
 } from '@nessie/mcp-manage'
 import { ToolGrantError, TOOL_GRANT_ERROR_CODES } from '../../services/tool-grants.js'
+import {
+  AGENT_TOOL_POLICY_ERROR_CODES,
+  AgentToolPolicyError,
+} from '../../services/agent-tool-policy.js'
 
 /**
  * Shared types + helpers for the per-topic MCP sub-registrars.
@@ -84,6 +88,18 @@ export const JsonRecordSchema = z.record(z.string(), z.unknown())
  * re-throw to surface as a 500 via the Fastify error handler).
  */
 export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
+  if (error instanceof AgentToolPolicyError) {
+    const status =
+      error.code === AGENT_TOOL_POLICY_ERROR_CODES.AGENT_NOT_FOUND
+        || error.code === AGENT_TOOL_POLICY_ERROR_CODES.TOOL_NOT_FOUND
+        ? 404
+        : error.code === AGENT_TOOL_POLICY_ERROR_CODES.ACTIVE_RUNS
+          || error.code === AGENT_TOOL_POLICY_ERROR_CODES.DEPENDENCY_REQUIRED
+          ? 409
+        : 400
+    sendApiError(reply, status, error.code, error.message)
+    return true
+  }
   if (error instanceof McpCatalogError) {
     const status =
       error.code === MCP_CATALOG_ERROR_CODES.NOT_FOUND

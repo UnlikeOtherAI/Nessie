@@ -10,8 +10,9 @@
     "dev:mcp-fixture": "pnpm --filter @nessie/mcp-client start:fixture",
     "lint": "node scripts/lint-markdown-structure.mjs && turbo run lint",
     "lint:markdown-structure": "node scripts/lint-markdown-structure.mjs",
-    "typecheck": "turbo run typecheck",
-    "build": "pnpm lint && turbo run build",
+    "prisma:generate": "pnpm --filter @nessie/api prisma:generate",
+    "typecheck": "pnpm prisma:generate && turbo run typecheck --filter=!@nessie/cli && pnpm --filter @nessie/cli typecheck:prepared",
+    "build": "pnpm lint && pnpm prisma:generate && turbo run build --filter=!@nessie/cli && pnpm --filter @nessie/cli build:prepared",
     "test": "turbo run test",
     "macos:project": "xcodegen generate --spec macos/project.yml",
     "macos:build": "pnpm macos:project && xcodebuild -project macos/Nessie.xcodeproj -scheme Nessie -configuration Debug -destination 'platform=macOS' build"

@@ -2,15 +2,21 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import type { PrismaClient } from '@prisma/client'
 import { buildAuthorizedTransport } from '@nessie/mcp-manage'
-import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import {
   ensureDeepWaterTeamInstance,
+  LedgerDeepWaterActiveRunsError,
   NESSIE_LEDGER_APP_API_KEY_ENV,
   removeDeepWaterTeamInstance,
 } from '../src/services/deepwater-activation.js'
+import {
+  asDeepWaterActivationPrisma as asPrisma,
+  DEEP_WATER_CATALOG_ID,
+  deepWaterOwnerContext as ownerContext,
+  makeDeepWaterActivationFake as makeFake,
+  type DeepWaterActiveRunFixture as ActiveRun,
+} from './deepwater-activation-fixture.js'
 
 /**
  * Team-scoped DeepWater activation: enabling for a team creates a team-scoped
@@ -30,225 +36,6 @@ process.env.UOA_CONFIG_URL = 'https://api.nessie.works/api/auth/sso/config'
 process.env.UOA_CONFIG_JWT_KID = 'nessie-test'
 process.env.UOA_CONFIG_JWT_PRIVATE_KEY_B64 = Buffer.from('private-key').toString('base64')
 process.env.UOA_CLIENT_SECRET = 'uoa-client-secret'
-
-type CatalogEntry = {
-  id: string
-  name: string
-  integratedProductSlugs: string[]
-  visibility: string
-  status: string
-  authMethod: string
-  authConfig: unknown
-  defaultTransportConfig: unknown
-  locked: boolean
-  label: string
-  ownerUserId: string | null
-  organizationId: string | null
-}
-type Instance = {
-  id: string
-  organizationId: string
-  catalogEntryId: string
-  scopeType: string
-  scopeId: string
-  credentialRef: string | null
-  lifecycleState: string
-  transportConfig: unknown
-  discoveredTools: unknown
-}
-type RegistryEntry = {
-  id: string
-  organizationId: string
-  scopeKey: string
-  toolId: string
-  label: string
-  description: string
-  inputSchema: unknown
-  outputSchema: unknown
-  status: string
-  metadata: unknown
-  mcpInstanceId: string
-}
-
-const DEEP_WATER_CATALOG_ID = randomUUID()
-
-type CatalogWhere = {
-  id?: string
-  name?: string
-  status?: string
-  visibility?: string
-  integratedProducts?: { some: { slug: string } }
-}
-
-const makeFake = (seed: {
-  organizationId: string
-  teamId: string
-  seedCatalogEntries?: CatalogEntry[]
-  seedInstances?: Instance[]
-  seedRegistry?: RegistryEntry[]
-}) => {
-  const catalogEntries: CatalogEntry[] = seed.seedCatalogEntries ?? [
-        {
-          id: DEEP_WATER_CATALOG_ID,
-          name: 'deep-water',
-          integratedProductSlugs: ['deep-water'],
-          visibility: 'public',
-          status: 'published',
-          authMethod: 'bearer',
-          authConfig: { method: 'bearer' },
-          // Manifest default carries `urlEnv` (no url) — parses to a skip in the
-          // SSRF guard; the instance transportConfig supplies the real url.
-          defaultTransportConfig: { urlEnv: 'LEDGER_DEEPWATER_MCP_URL' },
-          locked: false,
-          label: 'Deep Water',
-          ownerUserId: null,
-          organizationId: null,
-        },
-      ]
-  const instances: Instance[] = seed.seedInstances ? [...seed.seedInstances] : []
-  const registry: RegistryEntry[] = seed.seedRegistry ? [...seed.seedRegistry] : []
-  const catalogMatches = (entry: CatalogEntry, where: CatalogWhere): boolean =>
-    (where.id === undefined || entry.id === where.id)
-    && (where.name === undefined || entry.name === where.name)
-    && (where.status === undefined || entry.status === where.status)
-    && (where.visibility === undefined || entry.visibility === where.visibility)
-    && (
-      where.integratedProducts === undefined
-      || entry.integratedProductSlugs.includes(where.integratedProducts.some.slug)
-    )
-
-  const self = {
-    catalogEntries,
-    instances,
-    registry,
-    $transaction: async (arg: unknown) =>
-      typeof arg === 'function'
-        ? (arg as (tx: unknown) => Promise<unknown>)(self)
-        : Promise.all(arg as Promise<unknown>[]),
-    $executeRaw: async () => 0,
-    mcpCatalogEntry: {
-      findFirst: async (args: { where: CatalogWhere }) =>
-        catalogEntries.find((entry) => catalogMatches(entry, args.where)) ?? null,
-      findMany: async () => [],
-    },
-    team: {
-      findFirst: async (args: { where: { id: string } }) =>
-        args.where.id === seed.teamId ? { id: seed.teamId } : null,
-    },
-    mcpServerInstance: {
-      findFirst: async (args: {
-        where: {
-          organizationId: string
-          catalogEntryId?: string
-          scopeType: string
-          scopeId: string
-          catalogEntry?: CatalogWhere
-        }
-      }) =>
-        instances.find((i) => {
-          if (i.organizationId !== args.where.organizationId) return false
-          if (i.scopeType !== args.where.scopeType) return false
-          if (i.scopeId !== args.where.scopeId) return false
-          if (args.where.catalogEntryId !== undefined) {
-            return i.catalogEntryId === args.where.catalogEntryId
-          }
-          if (args.where.catalogEntry !== undefined) {
-            const entry = catalogEntries.find((e) => e.id === i.catalogEntryId)
-            if (!entry || !catalogMatches(entry, args.where.catalogEntry)) return false
-          }
-          return true
-        }) ?? null,
-      findUniqueOrThrow: async (args: { where: { id: string } }) => {
-        const row = instances.find((i) => i.id === args.where.id)
-        if (!row) throw new Error('instance not found')
-        return row
-      },
-      create: async (args: { data: Record<string, unknown> }) => {
-        const row: Instance = {
-          id: randomUUID(),
-          organizationId: args.data.organizationId as string,
-          catalogEntryId: args.data.catalogEntryId as string,
-          scopeType: args.data.scopeType as string,
-          scopeId: args.data.scopeId as string,
-          credentialRef: (args.data.credentialRef as string | null | undefined) ?? null,
-          lifecycleState: (args.data.lifecycleState as string) ?? 'pending_setup',
-          transportConfig: args.data.transportConfig ?? {},
-          discoveredTools: args.data.discoveredTools ?? [],
-        }
-        instances.push(row)
-        return row
-      },
-      update: async (args: { where: { id: string }; data: Record<string, unknown> }) => {
-        const row = instances.find((i) => i.id === args.where.id)
-        if (!row) return null
-        if (typeof args.data.lifecycleState === 'string') {
-          row.lifecycleState = args.data.lifecycleState
-        }
-        if ('credentialRef' in args.data) {
-          row.credentialRef = args.data.credentialRef as string | null
-        }
-        if (args.data.transportConfig !== undefined) row.transportConfig = args.data.transportConfig
-        if (args.data.discoveredTools !== undefined) row.discoveredTools = args.data.discoveredTools
-        return row
-      },
-      delete: async (args: { where: { id: string } }) => {
-        const idx = instances.findIndex((i) => i.id === args.where.id)
-        if (idx >= 0) instances.splice(idx, 1)
-        return { id: args.where.id }
-      },
-    },
-    toolRegistryEntry: {
-      findMany: async (args: { where: { mcpInstanceId: string } }) =>
-        registry.filter((r) => r.mcpInstanceId === args.where.mcpInstanceId),
-      upsert: async (args: {
-        where: { organizationId_scopeKey_toolId: { toolId: string } }
-        create: RegistryEntry
-        update: { status?: string }
-      }) => {
-        const toolId = args.where.organizationId_scopeKey_toolId.toolId
-        const existing = registry.find((r) => r.toolId === toolId)
-        if (existing) {
-          if (args.update.status) existing.status = args.update.status
-          return existing
-        }
-        const row: RegistryEntry = { ...args.create, id: randomUUID() }
-        registry.push(row)
-        return row
-      },
-      updateMany: async (args: {
-        where: { mcpInstanceId: string }
-        data: { status?: string; metadata?: unknown }
-      }) => {
-        let count = 0
-        for (const r of registry) {
-          if (r.mcpInstanceId === args.where.mcpInstanceId) {
-            if (args.data.status) r.status = args.data.status
-            if (args.data.metadata !== undefined) r.metadata = args.data.metadata
-            count += 1
-          }
-        }
-        return { count }
-      },
-      deleteMany: async (args: { where: { mcpInstanceId: string } }) => {
-        for (let i = registry.length - 1; i >= 0; i -= 1) {
-          if (registry[i]!.mcpInstanceId === args.where.mcpInstanceId) registry.splice(i, 1)
-        }
-        return { count: 0 }
-      },
-    },
-  }
-  return self
-}
-
-const asPrisma = (fake: ReturnType<typeof makeFake>): PrismaClient =>
-  fake as unknown as PrismaClient
-
-const ownerContext = (organizationId: string): AuthorizedActionContext =>
-  ({
-    tenant: { organizationId },
-    actor: { actorId: randomUUID(), actorType: 'user', roles: ['owner'] },
-    actionContext: {},
-  }) as unknown as AuthorizedActionContext
 
 test('enabling DeepWater creates a team-scoped instance with a usable transport and explicit-grant tools', async () => {
   const seed = { organizationId: randomUUID(), teamId: randomUUID() }
@@ -432,6 +219,89 @@ test('disabling DeepWater removes the instance and its projected tools', async (
   assert.ok(result.instanceId)
   assert.equal(fake.instances.length, 0)
   assert.equal(fake.registry.length, 0)
+})
+
+test('disabling DeepWater refuses to orphan an active research run', async () => {
+  const seed = {
+    activeRun: true,
+    organizationId: randomUUID(),
+    teamId: randomUUID(),
+  }
+  const fake = makeFake(seed)
+
+  await ensureDeepWaterTeamInstance(
+    asPrisma(fake),
+    ownerContext(seed.organizationId),
+    seed,
+  )
+  await assert.rejects(
+    () => removeDeepWaterTeamInstance(asPrisma(fake), seed),
+    LedgerDeepWaterActiveRunsError,
+  )
+  assert.equal(fake.instances.length, 1)
+  assert.equal(fake.registry.length, 5)
+})
+
+test('disable cannot race a queued null-id dispatch into a billable orphan', async () => {
+  const run: ActiveRun = {
+    channelId: null,
+    externalRunId: null,
+    id: randomUUID(),
+    result: {},
+    status: 'queued',
+    updatedAt: new Date(Date.now() - 16 * 60 * 1000),
+  }
+  const seed = {
+    activeRuns: [run],
+    organizationId: randomUUID(),
+    teamId: randomUUID(),
+  }
+  const fake = makeFake(seed)
+
+  await ensureDeepWaterTeamInstance(
+    asPrisma(fake),
+    ownerContext(seed.organizationId),
+    seed,
+  )
+  await assert.rejects(
+    () => removeDeepWaterTeamInstance(asPrisma(fake), seed),
+    LedgerDeepWaterActiveRunsError,
+  )
+
+  assert.equal(run.status, 'queued')
+  assert.equal(fake.instances.length, 1)
+  assert.equal(fake.registry.length, 5)
+})
+
+test('setup-blocked and stale null-id running work remain conservative blockers', async () => {
+  for (const status of ['needs_setup', 'running'] as const) {
+    const run: ActiveRun = {
+      channelId: randomUUID(),
+      externalRunId: null,
+      id: randomUUID(),
+      result: {},
+      status,
+      updatedAt: new Date(0),
+    }
+    const seed = {
+      activeRuns: [run],
+      organizationId: randomUUID(),
+      teamId: randomUUID(),
+    }
+    const fake = makeFake(seed)
+
+    await ensureDeepWaterTeamInstance(
+      asPrisma(fake),
+      ownerContext(seed.organizationId),
+      seed,
+    )
+    await assert.rejects(
+      () => removeDeepWaterTeamInstance(asPrisma(fake), seed),
+      LedgerDeepWaterActiveRunsError,
+    )
+    assert.equal(fake.instances.length, 1)
+    assert.equal(run.status, status)
+  }
 })
 
 test('disabling DeepWater never removes a private same-name connector', async () => {

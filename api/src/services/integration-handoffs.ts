@@ -42,10 +42,20 @@ type IntegrationHandoffDeps = {
   loadPersonalAssistantState: PersonalAssistantStateLoader
   prisma: PrismaClient
   realtimeHub: Awaited<ReturnType<typeof createRealtimeHub>>
+  ensureBootstrap?: typeof ensurePersonalAssistantBootstrap
+  enqueue?: typeof enqueueOrchestrateDecide
 }
 
 export type PersonalAssistantIntegrationHandoffInput = {
   actorContext: UserActorContext
+  beforeEnqueue?: (
+    tx: Prisma.TransactionClient,
+    context: {
+      channelId: string
+      messageId: string
+      threadId: string
+    },
+  ) => Promise<void>
   content: string
   idempotencyKey?: string
   metadata: Record<string, unknown> | ((context: { channelId: string }) => Record<string, unknown>)
@@ -58,7 +68,7 @@ export const createPersonalAssistantIntegrationHandoff = async (
 ) => {
   const { actorContext, content, teamId } = input
 
-  await ensurePersonalAssistantBootstrap(deps.prisma, {
+  await (deps.ensureBootstrap ?? ensurePersonalAssistantBootstrap)(deps.prisma, {
     organizationId: actorContext.tenant.organizationId,
     teamId,
     userId: actorContext.actor.actorId,
@@ -67,6 +77,8 @@ export const createPersonalAssistantIntegrationHandoff = async (
   if (!paState?.agent || !paState.channel || !paState.thread) {
     throw new Error('Personal Assistant is unavailable')
   }
+  const channelState = paState.channel
+  const threadState = paState.thread
 
   const agent = await deps.prisma.agent.findUnique({
     where: { id: paState.agent.id },
@@ -77,65 +89,81 @@ export const createPersonalAssistantIntegrationHandoff = async (
   }
   const resolvedMetadata =
     typeof input.metadata === 'function'
-      ? input.metadata({ channelId: paState.channel.id })
+      ? input.metadata({ channelId: channelState.id })
       : input.metadata
-
-  const message = await deps.prisma.message.create({
-    data: {
-      content,
-      metadata: resolvedMetadata as Prisma.InputJsonValue,
-      role: 'user',
-      threadId: paState.thread.id,
-      userId: actorContext.actor.actorId,
-    },
-    include: messageInclude,
-  })
-
-  await deps.realtimeHub.publishWs(
-    deps.buildChannelRealtimeScopes({
-      channelId: paState.channel.id,
-      organizationId: actorContext.tenant.organizationId,
-      systemChannelType: paState.channel.systemChannelType,
-    }),
-    {
-      data: {
-        agentId: undefined,
-        authorUserId: parseUserId(actorContext.actor.actorId),
-        channelId: parseChannelId(paState.channel.id),
-        contentPreview: content.slice(0, 200),
-        messageId: message.id,
-        role: message.role,
-        threadId: parseThreadId(paState.thread.id),
-      },
-      event: 'message.new',
-    },
-  )
-
   const orchestrationActorContext = deps.isPersonalAssistantChannelType(
-    paState.channel.systemChannelType,
+    channelState.systemChannelType,
   )
     ? withActionContext(actorContext, {
         effectiveUserId: parseUserId(actorContext.actor.actorId),
       })
     : actorContext
+  const channel = ChannelRecordSchema.parse(channelState)
+  const thread = ThreadRecordSchema.parse(threadState)
+  const committed = await deps.prisma.$transaction(async (tx) => {
+    const message = await tx.message.create({
+      data: {
+        content,
+        metadata: resolvedMetadata as Prisma.InputJsonValue,
+        role: 'user',
+        threadId: threadState.id,
+        userId: actorContext.actor.actorId,
+      },
+      include: messageInclude,
+    })
+    const messageRecord = mapMessageRecord(message)
 
-  await enqueueOrchestrateDecide(
-    deps.prisma,
-    {
-      actorContext: orchestrationActorContext,
-      channelAgents: [agent],
-      channelId: parseChannelId(paState.channel.id),
-      content,
+    await input.beforeEnqueue?.(tx, {
+      channelId: channelState.id,
       messageId: message.id,
-      role: message.role,
-      threadId: parseThreadId(paState.thread.id),
-    },
-    input.idempotencyKey ?? `orchestrate:${message.id}`,
-  )
+      threadId: threadState.id,
+    })
+    await (deps.enqueue ?? enqueueOrchestrateDecide)(
+      tx,
+      {
+        actorContext: orchestrationActorContext,
+        channelAgents: [agent],
+        channelId: parseChannelId(channelState.id),
+        content,
+        messageId: message.id,
+        role: message.role,
+        threadId: parseThreadId(threadState.id),
+      },
+      input.idempotencyKey ?? `orchestrate:${message.id}`,
+    )
+    return { message, messageRecord }
+  })
+
+  try {
+    await deps.realtimeHub.publishWs(
+      deps.buildChannelRealtimeScopes({
+        channelId: channelState.id,
+        organizationId: actorContext.tenant.organizationId,
+        systemChannelType: channelState.systemChannelType,
+      }),
+      {
+        data: {
+          agentId: undefined,
+          authorUserId: parseUserId(actorContext.actor.actorId),
+          channelId: parseChannelId(channelState.id),
+          contentPreview: content.slice(0, 200),
+          messageId: committed.message.id,
+          role: committed.message.role,
+          threadId: parseThreadId(threadState.id),
+        },
+        event: 'message.new',
+      },
+    )
+  } catch (error) {
+    console.error(
+      '[integration-handoff] Durable handoff committed but realtime publish failed:',
+      error,
+    )
+  }
 
   return {
-    channel: ChannelRecordSchema.parse(paState.channel),
-    message: mapMessageRecord(message),
-    thread: ThreadRecordSchema.parse(paState.thread),
+    channel,
+    message: committed.messageRecord,
+    thread,
   }
 }
