@@ -4,6 +4,7 @@ import test from 'node:test'
 import { buildDeepWaterLaunchMessage } from '../src/routes/integrations/handoff-builders.js'
 
 test('DeepWater handoff maps legacy launcher controls to Ledger MCP contract', () => {
+  const runId = '018f8b91-7c5a-7e6d-8f90-123456789abc'
   const message = buildDeepWaterLaunchMessage({
     artifactDestination: 'knowledge_draft',
     chapterDepth: 'exhaustive',
@@ -16,9 +17,12 @@ test('DeepWater handoff maps legacy launcher controls to Ledger MCP contract', (
     searchesPerPillar: 7,
     sections: 12,
     title: 'Evidence review',
-  })
+  }, { runId })
 
   assert.match(message, /approved Ledger MCP connector/)
+  assert.match(message, /exact full UUID for every deep_water_run_update call/)
+  assert.match(message, new RegExp(runId))
+  assert.match(message, /runId set to the exact full Nessie durable research run id above/)
   assert.match(message, /Depth: heavy/)
   assert.match(message, /Recency: recent/)
   assert.match(message, /mcp_research_start/)
@@ -62,7 +66,7 @@ test('DeepWater handoff keeps supported Ledger depth and unrestricted recency', 
     searchQuality: 'standard',
     searchesPerPillar: 4,
     sections: 8,
-  })
+  }, { runId: '018f8b91-7c5a-7e6d-8f90-abcdef012345' })
 
   assert.match(message, /Depth: deep/)
   assert.match(message, /Recency: any/)

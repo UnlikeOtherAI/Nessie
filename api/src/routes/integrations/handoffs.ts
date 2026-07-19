@@ -126,7 +126,7 @@ export const registerIntegrationHandoffRoutes = (
             },
           )
         },
-        content: buildDeepWaterLaunchMessage(body),
+        content: buildDeepWaterLaunchMessage(body, { runId: run.id }),
         metadata: ({ channelId }) => buildDeepWaterLaunchMetadata(body, {
           channelId,
           connectorId,

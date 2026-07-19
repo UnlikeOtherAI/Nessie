@@ -668,7 +668,10 @@ There is deliberately no direct-provider fallback.
   **thread** the run is attached to (no unattached-run escape), and any
   `knowledgePageId` is validated to belong to the org before it is stored — so a
   prompt-injected `runId`/`knowledgePageId` cannot mutate another run or corrupt
-  billing. Ledger terminal MCP responses expose the immutable booked rate-card
+  billing. The server-built launch message gives the PA the durable run's exact
+  full UUID for every write-back; the launch card may abbreviate that UUID for
+  display only and is never the write-back authority. Ledger terminal MCP
+  responses expose the immutable booked rate-card
   `cost: { amount, currency }`; the handoff copies those exact values when
   present and otherwise leaves Nessie's mirrored cost empty. Updates take a
   PostgreSQL row lock: identical delivery retries are accepted, while replacing
