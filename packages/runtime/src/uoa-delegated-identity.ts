@@ -210,7 +210,7 @@ const buildNessieContext = (
     actor_id: attribution.actorId,
     request_id: attribution.requestId ?? null,
     correlation_id: attribution.correlationId ?? null,
-    tool_call_id: options.toolCallId ?? null,
+    tool_call_id: options.toolCallId ?? attribution.toolCallId ?? null,
     iat: nowSeconds,
     exp: nowSeconds + CONTEXT_TTL_SECONDS,
     jti: randomUUID(),

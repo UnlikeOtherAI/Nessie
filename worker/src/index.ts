@@ -22,6 +22,7 @@ import {
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
+  RunMemoryConsolidateJobPayloadSchema,
   TriggerEventDispatchJobPayloadSchema,
   WorkflowRunExecuteJobPayloadSchema,
 } from '@nessie/schemas'
@@ -49,7 +50,6 @@ import { executeRunJob } from './run/execute.js'
 import {
   executeRunMemoryConsolidationJob,
   MEMORY_CONSOLIDATION_TOPIC,
-  RunMemoryConsolidateJobPayloadSchema,
 } from './run/memory-consolidation.js'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 

@@ -209,6 +209,7 @@ test('fails closed before signing when required Ledger attribution is absent', a
 
 test('system completion produces stable named agent/run UUIDs', () => {
   const partial: LedgerAttribution = {
+    agentKind: 'system',
     organizationId: attribution.organizationId,
     userId: attribution.userId,
     teamId: attribution.teamId,
@@ -216,19 +217,46 @@ test('system completion produces stable named agent/run UUIDs', () => {
     actorType: 'user',
     requestId: 'request-system-1',
     systemComponent: 'knowledge-summary',
+    toolCallId: 'knowledge-summary:request-system-1',
   }
   const first = completeLedgerAttribution(partial)
   const second = completeLedgerAttribution(partial)
 
-  assert.match(first.agentId, /^[0-9a-f-]{36}$/)
-  assert.match(first.runId, /^[0-9a-f-]{36}$/)
+  assert.equal(first.agentId, '4f663a34-4b0e-5d1d-aaef-1711bff9a37c')
+  assert.equal(first.runId, '67bb4365-ee60-5e6c-b314-efae2de758d3')
   assert.equal(first.agentId, second.agentId)
   assert.equal(first.runId, second.runId)
+  assert.equal(first.agentKind, 'system')
   assert.equal(first.systemComponent, 'knowledge-summary')
+  assert.equal(first.toolCallId, 'knowledge-summary:request-system-1')
+
+  const changedRequest = completeLedgerAttribution({
+    ...partial,
+    requestId: 'request-system-2',
+  })
+  const changedComponent = completeLedgerAttribution({
+    ...partial,
+    systemComponent: 'memory-consolidation',
+  })
+  const changedTeam = completeLedgerAttribution({
+    ...partial,
+    teamId: '00000000-0000-4000-8000-00000000000a',
+  })
+  const changedUser = completeLedgerAttribution({
+    ...partial,
+    userId: '00000000-0000-4000-8000-00000000000b',
+  })
+
+  assert.equal(changedRequest.agentId, first.agentId)
+  assert.notEqual(changedRequest.runId, first.runId)
+  assert.notEqual(changedComponent.agentId, first.agentId)
+  assert.notEqual(changedComponent.runId, first.runId)
+  assert.notEqual(changedTeam.runId, first.runId)
+  assert.notEqual(changedUser.runId, first.runId)
 })
 
-test('actor attribution falls back to action-context team', () => {
-  const resolved = attributionFromActorContext({
+test('actor attribution only clears the action agent for named system work', () => {
+  const actorContext = {
     actor: {
       actorId: attribution.userId!,
       actorType: 'user',
@@ -237,12 +265,47 @@ test('actor attribution falls back to action-context team', () => {
       organizationId: attribution.organizationId,
     },
     actionContext: {
+      agentId: attribution.agentId!,
       requestId: 'request-team-fallback',
       teamId: attribution.teamId!,
     },
-  } as never)
+  } as never
+  const ordinary = attributionFromActorContext(actorContext)
+  const unlabelledNull = attributionFromActorContext(actorContext, {
+    agentId: null,
+  })
+  const system = attributionFromActorContext(actorContext, {
+    agentId: null,
+    agentKind: 'system',
+    systemComponent: 'memory-consolidation',
+  })
 
-  assert.equal(resolved.teamId, attribution.teamId)
+  assert.equal(ordinary.teamId, attribution.teamId)
+  assert.equal(ordinary.agentId, attribution.agentId)
+  assert.equal(unlabelledNull.agentId, attribution.agentId)
+  assert.equal(system.agentId, null)
+  assert.equal(system.agentKind, 'system')
+})
+
+test('uses attribution tool-call identity when no explicit override is supplied', async () => {
+  const service = createLedgerIdentityService({
+    prisma: {
+      productAccountLink: { findUnique: async () => null },
+    } as never,
+    settings,
+    now: () => 2_000_000_000_000,
+  })
+
+  const headers = await service.requestHeaders({
+    ...attribution,
+    toolCallId: 'memory-consolidation:source-run:capture',
+  })
+  const context = headers['X-Nessie-Context']
+  assert.ok(context)
+  assert.equal(
+    decodeClaims(context).tool_call_id,
+    'memory-consolidation:source-run:capture',
+  )
 })
 
 test('omits absent active workspace claims while still delegating the stable UOA user', async () => {

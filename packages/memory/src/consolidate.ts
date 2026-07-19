@@ -1,3 +1,8 @@
+import {
+  RunMemoryConsolidateJobPayloadSchema,
+  type RunMemoryConsolidateJobPayload,
+} from '@nessie/schemas'
+
 import type {
   CaptureConfig,
   CapturedThought,
@@ -20,6 +25,7 @@ export type ConsolidationRunContext = {
   task_purpose: string | null
   task_status: string
   task_title: string | null
+  task_project_id: string | null
   team_id: string | null
   thread_id: string
 }
@@ -41,9 +47,7 @@ export type ConsolidationMemoryCandidate = {
   sourceMessageIds: string[]
 }
 
-export type ConsolidateRunMemoriesInput = {
-  runId: string
-  taskId: string
+export type ConsolidateRunMemoriesInput = RunMemoryConsolidateJobPayload & {
   threadTailLimit?: number
 }
 
@@ -229,6 +233,7 @@ const loadRunContext = async (
        task.status::text AS task_status,
        task.title AS task_title,
        task.purpose AS task_purpose,
+       task.project_id AS task_project_id,
        channel.id AS channel_id,
        channel.organization_id,
        channel.team_id,
@@ -273,13 +278,66 @@ export const consolidateRunMemories = async (
   input: ConsolidateRunMemoriesInput,
   config: CaptureConfig,
 ): Promise<ConsolidateRunMemoriesOutput> => {
-  const run = await loadRunContext(input, config)
+  const payload = RunMemoryConsolidateJobPayloadSchema.parse(input)
+  const { origin, source } = payload
+  const run = await loadRunContext(payload, config)
   if (!run) {
     return { candidateCount: 0, captured: [], duplicateCount: 0, skippedReason: 'missing_run' }
   }
 
   if (run.run_status !== 'completed') {
     return { candidateCount: 0, captured: [], duplicateCount: 0, skippedReason: 'run_not_completed' }
+  }
+  if (run.organization_id !== source.organizationId) {
+    return {
+      candidateCount: 0,
+      captured: [],
+      duplicateCount: 0,
+      skippedReason: 'source_organization_mismatch',
+    }
+  }
+  if (run.agent_id !== source.agentId) {
+    return {
+      candidateCount: 0,
+      captured: [],
+      duplicateCount: 0,
+      skippedReason: 'source_agent_mismatch',
+    }
+  }
+  if (run.thread_id !== source.threadId) {
+    return {
+      candidateCount: 0,
+      captured: [],
+      duplicateCount: 0,
+      skippedReason: 'source_thread_mismatch',
+    }
+  }
+  if (run.channel_id !== source.channelId) {
+    return {
+      candidateCount: 0,
+      captured: [],
+      duplicateCount: 0,
+      skippedReason: 'source_channel_mismatch',
+    }
+  }
+  if (
+    run.task_project_id
+    && run.task_project_id !== source.projectId
+  ) {
+    return {
+      candidateCount: 0,
+      captured: [],
+      duplicateCount: 0,
+      skippedReason: 'source_project_mismatch',
+    }
+  }
+  if (!run.team_id) {
+    return {
+      candidateCount: 0,
+      captured: [],
+      duplicateCount: 0,
+      skippedReason: 'missing_memory_scope',
+    }
   }
 
   const messages = await loadThreadTail(
@@ -288,15 +346,6 @@ export const consolidateRunMemories = async (
     config,
   )
   const candidates = selectConsolidationCandidates(run, messages)
-  const originatingUserId = lastMessageByRole(messages, 'user')?.user_id
-  if (!originatingUserId || !run.team_id) {
-    return {
-      candidateCount: candidates.length,
-      captured: [],
-      duplicateCount: 0,
-      skippedReason: 'missing_ledger_attribution',
-    }
-  }
   const captured: ConsolidatedRunMemory[] = []
   let duplicateCount = 0
 
@@ -313,22 +362,17 @@ export const consolidateRunMemories = async (
         metadata: {
           memory_origin: 'post_run_consolidation',
           source_message_ids: candidate.sourceMessageIds,
-          source_run_id: input.runId,
-          source_task_id: input.taskId,
+          source_run_id: payload.runId,
+          source_task_id: payload.taskId,
           source_thread_id: run.thread_id,
         },
+        inferenceAttribution: origin,
         organizationId: run.organization_id,
         ownerId: run.agent_id,
         ownerType: 'agent',
-        userId: originatingUserId,
         projectId: run.project_id ?? undefined,
         teamId: run.team_id,
         threadId: run.thread_id,
-        runId: input.runId,
-        agentId: run.agent_id,
-        actorId: run.agent_id,
-        actorType: 'agent',
-        requestId: `memory-consolidation:${input.runId}`,
         visibility: 'channel',
       },
       config,
