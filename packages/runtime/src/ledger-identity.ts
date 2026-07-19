@@ -6,6 +6,7 @@ import type { LedgerAttribution } from './ledger.js'
 import { completeLedgerAttribution } from './ledger-attribution.js'
 
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
+const NESSIE_PRODUCT = 'nessie'
 const TOKEN_EXCHANGE_GRANT = 'urn:ietf:params:oauth:grant-type:token-exchange'
 const JWT_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:jwt'
 const DEFAULT_AUTH_BASE_URL = 'https://authentication.unlikeotherai.com'
@@ -34,8 +35,15 @@ export type LedgerIdentitySettings = {
 }
 
 export type LedgerIdentityHeadersOptions = {
+  delegationScope?: 'ai.invoke' | 'billing.read'
   requireUoaIdentity?: boolean
   toolCallId?: string | null
+}
+
+export type LedgerUoaIdentity = {
+  organizationId: string | null
+  subject: string
+  teamId: string | null
 }
 
 export type LedgerIdentityService = {
@@ -196,10 +204,10 @@ const buildSubjectAssertion = (
     jti: randomUUID(),
   })
 
-const loadIdentityLink = async (
+export const loadLedgerUoaIdentity = async (
   prisma: LedgerIdentityPrisma,
   attribution: LedgerAttribution,
-): Promise<IdentityLink | null> => {
+): Promise<LedgerUoaIdentity | null> => {
   const userId = resolveUserId(attribution)
   if (!userId) return null
   const link = await prisma.productAccountLink.findUnique({
@@ -217,19 +225,29 @@ const loadIdentityLink = async (
       uoaSub: true,
     },
   })
-  return link?.status === 'linked' ? link : null
+  if (link?.status !== 'linked' || !link.uoaSub) {
+    return null
+  }
+  return {
+    organizationId: link.activeOrgId,
+    subject: link.uoaSub,
+    teamId: link.activeTeamId,
+  }
 }
 
 const delegationCacheKey = (
   attribution: LedgerAttribution,
-  link: IdentityLink & { uoaSub: string },
+  identity: LedgerUoaIdentity,
+  scope: LedgerIdentityHeadersOptions['delegationScope'],
 ): string =>
   [
+    NESSIE_PRODUCT,
+    scope,
     attribution.organizationId,
     resolveUserId(attribution),
-    link.uoaSub,
-    link.activeOrgId,
-    link.activeTeamId,
+    identity.subject,
+    identity.organizationId,
+    identity.teamId,
   ].join(':')
 
 export const createLedgerIdentityService = (input: {
@@ -244,16 +262,22 @@ export const createLedgerIdentityService = (input: {
 
   const exchangeDelegation = async (
     attribution: LedgerAttribution,
-    link: IdentityLink & { uoaSub: string },
+    identity: LedgerUoaIdentity,
+    scope: NonNullable<LedgerIdentityHeadersOptions['delegationScope']>,
     nowSeconds: number,
   ): Promise<string> => {
-    const cacheKey = delegationCacheKey(attribution, link)
+    const cacheKey = delegationCacheKey(attribution, identity, scope)
     const cached = cache.get(cacheKey)
     if (cached && cached.expiresAt - DELEGATION_CACHE_SKEW_SECONDS > nowSeconds) {
       return cached.token
     }
 
-    const subjectToken = buildSubjectAssertion(input.settings, link, nowSeconds)
+    const subjectToken = buildSubjectAssertion(input.settings, {
+      activeOrgId: identity.organizationId,
+      activeTeamId: identity.teamId,
+      status: 'linked',
+      uoaSub: identity.subject,
+    }, nowSeconds)
     const clientHash = crypto
       .createHash('sha256')
       .update(input.settings.sourceDomain + input.settings.clientSecret)
@@ -268,6 +292,8 @@ export const createLedgerIdentityService = (input: {
       },
       body: JSON.stringify({
         grant_type: TOKEN_EXCHANGE_GRANT,
+        product: NESSIE_PRODUCT,
+        scope,
         subject_token_type: JWT_TOKEN_TYPE,
         resource: input.settings.ledgerAudience,
         subject_token: subjectToken,
@@ -303,13 +329,14 @@ export const createLedgerIdentityService = (input: {
     async requestHeaders(attribution, options = {}) {
       const completeAttribution = completeLedgerAttribution(attribution)
       const nowSeconds = Math.floor(now() / 1000)
-      const link = await loadIdentityLink(input.prisma, completeAttribution)
-      const linkedIdentity =
-        link?.uoaSub ? (link as IdentityLink & { uoaSub: string }) : null
-      if (options.requireUoaIdentity && !linkedIdentity) {
+      const identity = await loadLedgerUoaIdentity(
+        input.prisma,
+        completeAttribution,
+      )
+      if (options.requireUoaIdentity && !identity) {
         throw new LedgerIdentityError(
           'LEDGER_UOA_IDENTITY_REQUIRED',
-          'DeepWater requires a linked UnlikeOtherAI SSO identity for the originating user.',
+          'Ledger requires a linked UnlikeOtherAI SSO identity for the originating user.',
         )
       }
 
@@ -317,15 +344,23 @@ export const createLedgerIdentityService = (input: {
         'X-Nessie-Context': buildNessieContext(
           input.settings,
           completeAttribution,
-          link,
+          identity
+            ? {
+                activeOrgId: identity.organizationId,
+                activeTeamId: identity.teamId,
+                status: 'linked',
+                uoaSub: identity.subject,
+              }
+            : null,
           nowSeconds,
           options,
         ),
       }
-      if (linkedIdentity) {
+      if (identity) {
         headers['X-UOA-Delegation'] = await exchangeDelegation(
           completeAttribution,
-          linkedIdentity,
+          identity,
+          options.delegationScope ?? 'ai.invoke',
           nowSeconds,
         )
       }

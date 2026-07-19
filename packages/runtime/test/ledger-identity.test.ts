@@ -120,6 +120,8 @@ test('signs Nessie context and exchanges a cached UOA delegation', async () => {
       + '?config_url=https%3A%2F%2Fapi.nessie.works%2Fapi%2Fauth%2Fsso%2Fconfig',
   )
   assert.equal(exchange.body.grant_type, 'urn:ietf:params:oauth:grant-type:token-exchange')
+  assert.equal(exchange.body.product, 'nessie')
+  assert.equal(exchange.body.scope, 'ai.invoke')
   assert.equal(exchange.body.subject_token_type, 'urn:ietf:params:oauth:token-type:jwt')
   assert.equal(exchange.body.resource, settings.ledgerAudience)
   assert.equal('client_id' in exchange.body, false)
@@ -298,6 +300,47 @@ test('does not delegate a revoked product link', async () => {
       error instanceof LedgerIdentityError
       && error.code === 'LEDGER_UOA_IDENTITY_REQUIRED',
   )
+})
+
+test('requests and caches the exact billing.read delegation separately', async () => {
+  const scopes: unknown[] = []
+  const service = createLedgerIdentityService({
+    prisma: {
+      productAccountLink: {
+        findUnique: async () => ({
+          activeOrgId: 'uoa-org',
+          activeTeamId: 'uoa-team',
+          status: 'linked',
+          uoaSub: 'uoa-user',
+        }),
+      },
+    } as never,
+    settings,
+    fetchImpl: (async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+      scopes.push(body.scope)
+      return new Response(JSON.stringify({
+        access_token: delegationToken(),
+        expires_in: 300,
+      }))
+    }) as typeof fetch,
+    now: () => 2_000_000_000_000,
+  })
+
+  await service.requestHeaders(attribution, {
+    delegationScope: 'billing.read',
+    requireUoaIdentity: true,
+  })
+  await service.requestHeaders(attribution, {
+    delegationScope: 'billing.read',
+    requireUoaIdentity: true,
+  })
+  await service.requestHeaders(attribution, {
+    delegationScope: 'ai.invoke',
+    requireUoaIdentity: true,
+  })
+
+  assert.deepEqual(scopes, ['billing.read', 'ai.invoke'])
 })
 
 test('loads existing UOA signing settings without introducing a client id', () => {

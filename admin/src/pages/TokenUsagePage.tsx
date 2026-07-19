@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { LedgerBillingUsagePanel } from '../components/features/billing/LedgerBillingUsagePanel'
 import { BudgetManager } from '../components/features/budgets/BudgetManager'
 import {
   PricingManager,
@@ -94,6 +95,8 @@ export const TokenUsagePage = () => {
   const [groupBy, setGroupBy] = useState('model')
   const [connectorGroupBy, setConnectorGroupBy] = useState('connectorType')
   const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const canReadBilling =
+    isOwner || (me?.user.roleIds.includes('admin') ?? false)
 
   const { data: summary } = useQuery<TokenSummary>({
     queryKey: ['token-summary', groupBy],
@@ -129,10 +132,10 @@ export const TokenUsagePage = () => {
   const costTrackingInactive =
     (pricingProfiles?.length ?? 0) === 0 && (summary?.totalTokens ?? 0) > 0
 
-  if (!isOwner || !me) {
+  if (!canReadBilling || !me) {
     return (
       <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
-        Owner access required
+        Owner or admin access required
       </section>
     )
   }
@@ -141,22 +144,35 @@ export const TokenUsagePage = () => {
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
         <MobileMenuButton />
-        <div className={sectionTitle}>Token Usage</div>
-        <select
-          className="admin-input ml-auto w-36"
-          onChange={(e) => setGroupBy(e.target.value)}
-          value={groupBy}
-        >
-          <option value="model">By Model</option>
-          <option value="provider">By Provider</option>
-          <option value="agentId">By Agent</option>
-          <option value="actorId">By User</option>
-          <option value="channelId">By Channel</option>
-          <option value="runId">By Run</option>
-        </select>
+        <div className={sectionTitle}>Usage &amp; Billing</div>
+        {isOwner && (
+          <select
+            className="admin-input ml-auto w-36"
+            onChange={(e) => setGroupBy(e.target.value)}
+            value={groupBy}
+          >
+            <option value="model">By Model</option>
+            <option value="provider">By Provider</option>
+            <option value="agentId">By Agent</option>
+            <option value="actorId">By User</option>
+            <option value="channelId">By Channel</option>
+            <option value="runId">By Run</option>
+          </select>
+        )}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <LedgerBillingUsagePanel />
+        {isOwner && (
+          <>
+            <div className="my-8 border-t border-[color:var(--sep)] pt-6">
+              <div className={sectionTitle}>Operational telemetry</div>
+              <p className="mt-1 text-sm text-[color:var(--tx2)]">
+                Nessie&apos;s internal token, connector, file, budget, and model
+                pricing telemetry supports operations. It is not the customer
+                invoice; canonical tariffs and rated charges come from Ledger above.
+              </p>
+            </div>
         {costTrackingInactive && (
           <div className="admin-card mb-4 border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
             Cost tracking is inactive — {formatTokens(summary?.totalTokens ?? 0)} tokens recorded but
@@ -319,6 +335,8 @@ export const TokenUsagePage = () => {
               </div>
             ))}
           </div>
+        )}
+          </>
         )}
       </div>
     </section>

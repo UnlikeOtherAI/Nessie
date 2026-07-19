@@ -42,6 +42,7 @@ export const useAdminShell = () => {
   const { data: agents = [] } = useAgents();
   const { data: favorites = [] } = useFavorites();
   const setFavorite = useSetFavorite();
+  const isAdmin = me?.user.roleIds.includes('admin') ?? false;
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const isSuperAdmin = me?.user.superAdmin ?? false;
   const { data: users = [] } = useUsers(isOwner);
@@ -383,6 +384,7 @@ export const useAdminShell = () => {
     isProductPageRoute,
     isProjectsRoute,
     isOwner,
+    isAdmin,
     isSuperAdmin,
     logoutAndRedirect,
     me,
