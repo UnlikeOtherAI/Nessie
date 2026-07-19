@@ -227,7 +227,50 @@ Every pricing override change must emit an audit event to the audit trail (see [
 
 The `GET /api/ledger/tokens/pricing/{profileId}/audit` endpoint queries the audit trail filtered by `resourceType=pricing` and `resourceId={profileId}`.
 
-## 10) Cross-links
+## 10) Customer billing aggregate
+
+The local Nessie token/connector/file ledgers above are operational telemetry;
+they are not the invoice authority. Customer-rated usage is read from Ledger:
+
+```http
+GET /api/ledger/billing/usage?month=2026-07&groupBy=service
+Authorization: Bearer <Nessie session>
+```
+
+The API accepts `groupBy=service|team|user`, requires an active-team owner or
+admin, and verifies that the Nessie team maps exactly to the UOA organization
+and team selected at SSO. It then calls Ledger server-to-server with:
+
+- `LEDGER_BILLING_READ_APP_KEY_NESSIE`, a dedicated read-only key bound to the
+  `nessie` product and carrying no provider grants;
+- a fresh confidential UOA delegation whose exact scope is `billing.read`;
+- the signed UOA organization/team as the query scope.
+
+The billing key is never sent to the browser and must not equal or fall back to
+the Nessie inference key (`LEDGER_PROXY_TOKEN` / `NESSIE_MODEL_API_KEY`).
+Nessie's app key identifies the calling application only. UOA delegation
+identifies the user/organization/team, while agent/run/tool provenance remains
+a separate signed context on metered calls. Other applications must use their
+own product-bound keys; webhook secrets are not app keys.
+
+The schema-v4 response is content-free and preserves distinct views:
+
+- raw provider usage in its real unit (`tokens`, `searches`, `researches`, and
+  future service meters);
+- billable equivalent units after the visible tariff multiplier;
+- raw provider estimated/actual cost, billing base, added value, and customer
+  charge without collapsing those amounts;
+- per-currency customer totals and observed monthly subscription/tariff terms;
+- an opaque immutable Ledger snapshot cursor.
+
+The UI never adds unlike units together or describes searches/researches as
+tokens. `service` and `user` groupings provide team-level and per-user views;
+the `team` grouping explicitly echoes the one active signed team. Switching to
+another team requires a matching UOA SSO workspace rather than widening a
+delegation. Upstream auth failures surface as billing errors, not Nessie 401s,
+so they cannot trigger session-refresh/logout loops.
+
+## 11) Cross-links
 
 - [functionality.md](./functionality.md)
 - [organization-governance-spec.md](./organization-governance-spec.md)
