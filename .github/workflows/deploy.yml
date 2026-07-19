@@ -55,6 +55,15 @@ jobs:
             -e "ssh -i ~/.ssh/id_ed25519" \
             ./ "$DEPLOY_USER@$DEPLOY_HOST:/srv/nessie/"
 
+      - name: Configure Nessie Ledger billing reader key
+        env:
+          LEDGER_BILLING_READ_APP_KEY_NESSIE: ${{ secrets.LEDGER_BILLING_READ_APP_KEY_NESSIE }}
+        run: |
+          test -n "$LEDGER_BILLING_READ_APP_KEY_NESSIE"
+          printf '%s\n' "$LEDGER_BILLING_READ_APP_KEY_NESSIE" |
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              'cd /srv/nessie && bash infrastructure/compose/set-ledger-billing-reader-key.sh'
+
       - name: Rebuild & redeploy
         run: |
           ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
