@@ -137,12 +137,11 @@ export const useDeepWaterResearchRuns = () => {
 // Response shapes for the external-agent activation endpoints
 // (`api/src/routes/integrations/external-agent.ts`). These aren't part of
 // `@nessie/schemas` yet — they're validated at the route boundary — so they're
-// typed locally here rather than widening the shared client-core surface for two
-// fields.
+// typed locally here rather than widening the shared client-core surface for
+// this small response.
 export type ActivateExternalAgentProductResponse = {
   channelId: string
   instanceId: string
-  authorizeUrl?: string
 }
 
 export type DeactivateExternalAgentProductResponse = {
@@ -150,10 +149,8 @@ export type DeactivateExternalAgentProductResponse = {
   instanceId: string | null
 }
 
-// Per-user activation is idempotent on the backend: calling it again after a
-// fresh OAuth sign-in resolves the now-active instance and flips the account
-// link to `linked` without reopening the provider tab, so the same mutation
-// both starts and confirms sign-in.
+// Per-user activation is idempotent on the backend and reuses the UOA identity
+// already linked by Nessie's own SSO session.
 export const useActivateExternalAgentProduct = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

@@ -2,6 +2,7 @@ import { pathToFileURL } from 'node:url'
 import { deriveRuntimeCapabilities, loadConfig } from '@nessie/config'
 import {
   createFileService,
+  createDeepSignalMcpIdentityServiceFromEnv,
   createLedgerIdentityServiceFromEnv,
   createModelClient,
   createPgPool,
@@ -101,6 +102,9 @@ export const startWorker = async (
   // consolidation) bills through the same token ledger as the agentic loop when
   // a call supplies attribution.
   const ledgerIdentity = createLedgerIdentityServiceFromEnv(prisma)
+  const deepSignalMcpIdentity =
+    createDeepSignalMcpIdentityServiceFromEnv(prisma)
+  await deepSignalMcpIdentity?.validateStoredCredentialSeparation()
   if (isLedgerEndpoint(config.model.baseUrl) && !ledgerIdentity) {
     throw new Error(
       'Ledger-routed inference requires configured UOA signing and client credentials.',
@@ -148,6 +152,7 @@ export const startWorker = async (
       const payload = RunExecuteJobPayloadSchema.parse(job.payload)
       await executeRunJob(
         {
+          deepSignalMcpIdentity,
           ledgerIdentity,
           mcpSecrets,
           modelClient,

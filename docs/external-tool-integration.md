@@ -352,29 +352,52 @@ Operational rules:
 Some first-party products (e.g. **DeepSignal**) are surfaced not as a *toolset
 inside* an agent run but as a **peer conversation** — a per-user DM channel whose
 bound agent has `executionMode = external_mcp`. Nessie runs **no inference** for
-these turns. The currently implemented transport proxies each message directly
-to the product's MCP endpoint under the acting user's own UOA token, and the
-reply + activity/generative cards are rendered verbatim.
+these turns. Each message is proxied directly to the product's MCP endpoint and
+the reply + activity/generative cards are rendered verbatim.
 
-That OAuth-only application transport is **transitional and superseded as the
-target architecture**. DeepSignal must authenticate Nessie with DeepSignal's
-own product-bound app API key and receive independently signed UOA
-user/organization/team context on each request. The user token can remain part
-of end-user authorization during migration, but it is not the app-to-app
-credential. DeepSignal's webhook signing secret stays a separate callback
-credential and must never be reused as the request key. Implementation seams
-are `api/src/services/integration-plugin-manifests.ts`,
+DeepSignal authenticates Nessie with a single DeepSignal-issued, Nessie-only
+`dsk_` application key resolved from `DEEPSIGNAL_MCP_APP_KEY`. Activation
+requires an already linked UOA subject with an active organization/team and
+provisions a system-managed **user-scoped** instance pinned to that exact env
+reference. Only the public catalog entry linked from the canonical
+`IntegratedProduct.slug=deepsignal` row can back that instance, and outbound
+identity signing is pinned to `https://api.deepsignal.live`; same-name catalogs
+and alternate origins fail closed. The plaintext key never enters Postgres or
+the browser. Every
+initial/follow-up chat, history read, insight digest, and action call carries
+three independent proofs:
+
+1. `Authorization: Bearer <dsk_...>` authenticates the Nessie application.
+2. `X-UOA-Delegation` is an exact `ai.invoke` token exchange for
+   `product=nessie`, resource `https://api.deepsignal.live`, and the linked
+   subject's active UOA organization/team.
+3. A fresh, maximum-five-minute RS256 `X-Nessie-Context` binds that subject to
+   Nessie's local user/org/team/agent/run plus request and stable tool-call ids.
+
+No user OAuth token, per-user override, or generic connector credential may
+replace the dsk bearer. Startup rejects equality with any configured
+secret-bearing environment credential, including decoded DB/Redis URL userinfo
+and plural key/token lists, and with any encrypted per-org DeepSignal webhook
+HMAC secret. Pre-existing identity headers are rejected case-insensitively
+before fresh values are attached. Missing hosted/self-hosted app-key or UOA
+signer configuration fails process startup; incomplete request provenance fails
+before network dispatch.
+Implementation seams are `packages/runtime/src/deepsignal-mcp-identity.ts`,
+`api/src/services/integration-plugin-manifests.ts`,
 `api/src/services/external-agent-activation.ts`,
 `api/src/services/external-agent-instance.ts`,
 `api/src/services/deepsignal-signals.ts`, and
 `worker/src/run/external-conversation.ts`. Full design:
 `docs/plans/2026-07-09-deepsignal-integration.md`.
 
-The connector plumbing is the ordinary MCP path — a first-party catalog entry, a
-user-scoped `McpServerInstance`, dynamic OAuth, the encrypted secret store, and
-the SSRF guard all apply unchanged. What differs is execution + two extra
-surfaces, both of which reuse the shared `@nessie/mcp-manage` "connect + call one
-tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
+The connector still reuses the shared MCP transport builder, secret resolver,
+SSRF guard, and one-shot caller, but its lifecycle is integration-owned.
+Generic install, probe/test/refresh/healthcheck/delete, OAuth completion, and
+secret-write paths reject the linked first-party instance. The activation
+toggle is its only lifecycle path. Ordinary non-managed connectors keep the
+existing dynamic OAuth and encrypted-secret flows unchanged. Chat, history, and
+Signals all reuse the shared `@nessie/mcp-manage` "connect + call one tool" seam
+(`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
 `probeConnection`):
 
 - **History hydration** — `POST /api/channels/:channelId/external-sync` pulls the
@@ -387,8 +410,9 @@ tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, alongside
   timing-safe). The per-org signing secret is set by an admin/owner via
   `PUT /api/integrations/products/:productSlug/webhook-secret` (stored encrypted in
   `product_webhook_secrets`); DeepSignal returns that secret once at webhook
-  registration and the admin pastes it. On `insight.surfaced` the receiver posts one
-  idempotent agent-authored insight card into each linked recipient's channel.
+  registration and the admin pastes it. On `insight.surfaced` the receiver
+  coalesces idempotent events into a budgeted rolling digest per linked
+  recipient rather than posting one card per event.
 - **Signals digest** — `GET /api/integrations/products/deepsignal/signals`
   (optional `?include=active|all`) reads the user's insight digest via the
   `insight_digest` tool, and `POST .../signals/:insightId/act`

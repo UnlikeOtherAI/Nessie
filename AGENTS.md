@@ -62,11 +62,26 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) to protect agent context.
   External-agent products (e.g. DeepSignal) run as a per-user DM channel with
   `Agent.executionMode = external_mcp` — turns proxy straight to the product's
-  MCP endpoint with **no Nessie inference**. DeepSignal's implemented
-  OAuth-only transport is transitional; the target requires DeepSignal's own
-  product-bound app API key plus independently signed UOA actor/org/team
-  context, while its webhook signing secret remains separate. The worker driver
-  + API history hydration share the `@nessie/mcp-manage`
+  MCP endpoint with **no Nessie inference**. DeepSignal uses a system-managed,
+  user-scoped instance pinned to the single deployment reference
+  `DEEPSIGNAL_MCP_APP_KEY`; the resolved value is a DeepSignal-issued,
+  Nessie-only `dsk_` bearer. Resolution is limited to the canonical public
+  catalog linked from the `deepsignal` integrated-product row, and signing is
+  pinned to `https://api.deepsignal.live`; a same-name catalog or changed
+  origin cannot receive the key. Every chat (initial and follow-up), history,
+  digest, and action request also carries an exact `ai.invoke`
+  `X-UOA-Delegation` for
+  the linked user/active UOA org/team plus a fresh RS256 `X-Nessie-Context`
+  containing non-null user/org/team/agent/run/request/tool-call provenance.
+  The app key, delegated user, and signed provenance are independent proofs:
+  no per-user OAuth or generic credential fallback is accepted. Generic OAuth
+  remains available for ordinary connectors. DeepSignal's app key is distinct
+  from every configured secret-bearing environment credential and every
+  encrypted per-org webhook signing secret; API/worker startup verifies both.
+  Pre-existing identity headers are rejected case-insensitively before fresh
+  identity is attached. Managed instances reject generic lifecycle and secret
+  writes. The worker driver + API
+  history hydration share the `@nessie/mcp-manage`
   `resolveInstanceMcpTransport`/`callInstanceTool` seam, and a per-org
   HMAC-verified webhook (`/api/integrations/deepsignal/events`) delivers
   proactive insights as a **coalesced, budgeted rolling digest** (one "N new
@@ -85,7 +100,8 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `LEDGER_DEEPWATER_MCP_URL_UNSET` when unset or
   `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` when the linked first-party catalog is
   missing), installs a bearer HTTP transport using `LEDGER_PROXY_TOKEN` as
-  Nessie's dedicated, product-bound Ledger app API key, and projects
+  Nessie's one deployment-wide, product-bound Ledger app API key (never a
+  per-user credential), and projects
   `research_start`, `research_status`, `research_report`, `research_list`, and
   `research_cancel` as active `mcp_research_*` tools. Each sibling product must
   use its own app API key; app keys are never reused as webhook signing secrets.

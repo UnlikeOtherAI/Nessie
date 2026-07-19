@@ -16,13 +16,15 @@ const INSTANCE_ID = '11111111-1111-4111-8111-111111111111'
 const CATALOG_ID = '22222222-2222-4222-8222-222222222222'
 const ORGANIZATION_ID = '33333333-3333-4333-8333-333333333333'
 
-const managedCatalog = {
-  integratedProducts: [{ slug: 'deep-water' }],
-  name: 'deep-water',
+const managedCatalog = (slug: 'deep-water' | 'deepsignal') => ({
+  integratedProducts: [{ slug }],
+  name: slug,
   visibility: 'public',
-}
+})
 
-const createPrisma = (managed = true) => {
+const createPrisma = (
+  managedSlug: 'deep-water' | 'deepsignal' | null = 'deep-water',
+) => {
   const mutations = {
     delete: 0,
     transaction: 0,
@@ -30,7 +32,8 @@ const createPrisma = (managed = true) => {
   }
   const prisma = {
     mcpCatalogEntry: {
-      findFirst: async () => managed ? managedCatalog : null,
+      findFirst: async () =>
+        managedSlug ? managedCatalog(managedSlug) : null,
     },
     mcpServerInstance: {
       delete: async () => {
@@ -82,8 +85,31 @@ test('managed DeepWater rejects every generic lifecycle operation before mutatio
   }
 })
 
+test('managed DeepSignal rejects every generic lifecycle operation before mutation', async () => {
+  const operations = [
+    (prisma: PrismaClient) =>
+      testInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+    (prisma: PrismaClient) =>
+      refreshInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+    (prisma: PrismaClient) =>
+      healthcheckInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+    (prisma: PrismaClient) =>
+      deleteInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+  ]
+
+  for (const operation of operations) {
+    const { mutations, prisma } = createPrisma('deepsignal')
+    await assert.rejects(operation(prisma), isManagedError)
+    assert.deepEqual(mutations, {
+      delete: 0,
+      transaction: 0,
+      update: 0,
+    })
+  }
+})
+
 test('a private same-name connector remains user-managed', async () => {
-  const { mutations, prisma } = createPrisma(false)
+  const { mutations, prisma } = createPrisma(null)
 
   assert.equal(
     await deleteInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),

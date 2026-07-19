@@ -5,6 +5,8 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 
 import {
+  MCP_OAUTH_ERROR_CODES,
+  McpOAuthError,
   completeOAuth,
   createInMemoryStateStore,
   startOAuth,
@@ -63,6 +65,7 @@ type PrismaCapture = {
 const makePrisma = (options: {
   instance?: McpInstanceRow
   existingClient?: { clientId: string; clientSecretRef: string | null; redirectUris: string[] } | null
+  managedCatalog?: boolean
 }): { prisma: PrismaClient; capture: PrismaCapture } => {
   const capture: PrismaCapture = {
     clientUpserts: [],
@@ -78,7 +81,15 @@ const makePrisma = (options: {
       },
     },
     mcpCatalogEntry: {
-      findFirst: async () => dynamicCatalogEntry,
+      findFirst: async () =>
+        options.managedCatalog
+          ? {
+              ...dynamicCatalogEntry,
+              integratedProducts: [{ slug: 'deepsignal' }],
+              name: 'deepsignal',
+              visibility: 'public',
+            }
+          : dynamicCatalogEntry,
     },
     mcpOAuthClient: {
       findUnique: async () => options.existingClient ?? null,
@@ -201,6 +212,33 @@ test('startOAuth dynamic mode reuses an existing registered client for the same 
   })
   const url = new URL(result.authorizationUrl)
   assert.equal(url.searchParams.get('client_id'), 'existing-client')
+  assert.equal(capture.clientUpserts.length, 0)
+})
+
+test('startOAuth refuses a managed first-party product before discovery', async () => {
+  const { prisma, capture } = makePrisma({ managedCatalog: true })
+  let discovered = false
+
+  await assert.rejects(
+    startOAuth({
+      prisma,
+      store: createInMemoryStateStore(),
+      instanceId: 'instance-1',
+      actorContext,
+      callbackUrl: 'https://api.example/api/mcp/oauth/callback',
+      discovery: {
+        fetchImpl: (async () => {
+          discovered = true
+          throw new Error('managed OAuth must not reach discovery')
+        }) as typeof fetch,
+      },
+    }),
+    (error: unknown) =>
+      error instanceof McpOAuthError
+      && error.code === MCP_OAUTH_ERROR_CODES.NOT_OAUTH2,
+  )
+
+  assert.equal(discovered, false)
   assert.equal(capture.clientUpserts.length, 0)
 })
 

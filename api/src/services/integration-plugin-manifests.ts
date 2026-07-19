@@ -124,11 +124,14 @@ const rawManifests = [
     vendor: 'UnlikeOtherAI',
     install: [
       {
-        mode: 'remote_mcp_oauth',
+        mode: 'hosted_preinstall',
         availability: 'both',
         label: 'Per-user external agent',
         requiredForAgentUse: true,
-        setup: 'Activate DeepSignal for yourself and sign in with your account so each turn is proxied to DeepSignal over MCP under your own identity.',
+        setup:
+          'Activate DeepSignal using your linked Nessie SSO identity. '
+          + 'Nessie authenticates with its dedicated DeepSignal app key and '
+          + 'delegates your active organization/team on every request.',
       },
     ],
     mcp: {
@@ -136,9 +139,9 @@ const rawManifests = [
         name: 'deepsignal',
         label: 'DeepSignal',
         protocol: 'http',
-        authMethod: 'oauth2',
+        authMethod: 'bearer',
         transport: { transport: 'http', url: 'https://api.deepsignal.live/mcp' },
-        auth: { method: 'oauth2' },
+        auth: { method: 'bearer' },
       },
       toolBundleRef: 'first-party/deepsignal-tools',
       tools: [

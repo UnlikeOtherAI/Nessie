@@ -176,13 +176,14 @@ docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
 `infrastructure/compose/redeploy.sh` over SSH. The workflow authenticates with
 the `DEPLOY_SSH_KEY` repo secret (a dedicated key in the host's
 `~/.ssh/authorized_keys`); host/user come from the `DEPLOY_HOST` / `DEPLOY_USER`
-secrets. The dedicated `LEDGER_BILLING_READ_APP_KEY_NESSIE` Actions secret is
-sent only over SSH standard input to
-`infrastructure/compose/set-ledger-billing-reader-key.sh`, which validates it
-and atomically replaces that one entry in the host-only Compose `.env`. It is
-never placed in the synced tree, command arguments, or workflow output. The
-workflow fails closed when the dedicated key is missing or malformed; inference
-keys and other products' keys are not substitutes.
+secrets. The dedicated `LEDGER_BILLING_READ_APP_KEY_NESSIE` and
+`DEEPSIGNAL_MCP_APP_KEY` Actions secrets are sent only over SSH standard input
+to `infrastructure/compose/set-ledger-billing-reader-key.sh` and
+`set-deepsignal-app-key.sh`. Each validator atomically replaces only its own
+entry in the host-only Compose `.env`; neither secret enters the synced tree,
+command arguments, or workflow output. The workflow fails closed when either
+dedicated key is missing or malformed. Ledger, model, UOA, session, webhook,
+and sibling-product keys are not DeepSignal substitutes.
 
 The workflow rsyncs with `--delete` so files removed from the repo don't linger
 on the host and get compiled into the image (a stale `api/src` copy left by the
@@ -325,6 +326,7 @@ production settings:
 | Public API origin | `NESSIE_API_PUBLIC_URL` | `https://api.nessie.works` in production. Used to mint OAuth redirect URIs outside an HTTP request (personal-assistant `connector_authorize`); defaults to `http://localhost:<port>` |
 | Ledger routing | `LEDGER_PUBLIC_URL`, `LEDGER_PROXY_TOKEN`, `LEDGER_DEEPWATER_MCP_URL`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | `LEDGER_PUBLIC_URL=https://ledger.unlikeotherai.com`; DeepWater uses `https://ledger.unlikeotherai.com/v1/mcp/deepwater`; configure inference with `https://ledger.unlikeotherai.com/v1/openai`, which Nessie rewrites per request to Ledger's `/v1/:serviceId/*` route for OpenAI, Kimi, MiniMax, or a custom adapter. `LEDGER_PROXY_TOKEN` is Nessie's dedicated, product-bound Ledger app API key; `NESSIE_MODEL_API_KEY` is configured with that same Nessie key for the Ledger model transport. Never reuse another product's app key or a webhook signing secret. Every request carries signed non-null user/org/team/agent/run attribution; linked SSO users also carry UOA delegation. The deployment-wide model URL wins; when it is absent and an approved organization provider record resolves to Ledger, Nessie signs after route resolution and fails before fetch if signing identity is unavailable. User-triggered background jobs persist origin and fail before provider dispatch if it cannot be resolved. DeepWater enablement fails closed when its adapter URL, Nessie app API key, UOA signing/client settings, or first-party catalog is absent. Integration-managed instances reject generic test, refresh, healthcheck, secret, and delete operations; the Integrations toggle is their sole lifecycle path. Personal DeepWater credentials are unsupported. |
 | Ledger billing reader | `LEDGER_BILLING_READ_APP_KEY_NESSIE` | Nessie's dedicated, product-bound, read-only Ledger app key (`billingProduct=nessie`, `billingReadEnabled=true`, no provider grants). It must be different from `LEDGER_PROXY_TOKEN` and `NESSIE_MODEL_API_KEY`; Nessie has no fallback between them. The API exchanges a fresh UOA delegation for exact `billing.read` scope and proxies the content-free team/user aggregate to the browser without exposing either credential. |
+| DeepSignal MCP boundary | `DEEPSIGNAL_MCP_APP_KEY` | DeepSignal-issued, Nessie-only `dsk_` application key. Required at API and worker startup in hosted/self-hosted modes and installed into the production host `.env` from the same-named GitHub Actions secret. It must differ from every configured secret-bearing environment credential (Ledger/model/billing, UOA signing/client, auth/session, DB, storage, email/admin, provider, push, or webhook credentials) and every encrypted per-org DeepSignal webhook signing secret; API and worker startup validate both boundaries. The user-scoped managed instance stores only this env reference; each outbound chat/history/digest/action request adds exact `ai.invoke` UOA delegation and fresh signed Nessie provenance independently. There is no OAuth or personal-credential fallback. |
 | Auth secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions, bootstrap tokens, and encrypts MCP OAuth secrets |
 | Session TTLs | `NESSIE_AUTH_TOKEN_TTL`, `NESSIE_AUTH_REFRESH_TOKEN_TTL` | optional, seconds; access JWT default 1800 (30 min), rotating refresh cookie default 2592000 (30 days). See [auth spec](deployment-modes-and-auth-spec.md) |
 | Model | `NESSIE_MODEL_PROVIDER`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | Hosted production routes OpenAI-compatible chat and `text-embedding-3-small` embeddings through Ledger; direct provider keys are not used by Nessie. |

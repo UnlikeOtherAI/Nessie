@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
   getInstance,
-  isManagedDeepWaterInstance,
+  isManagedIntegrationInstance,
   MCP_INSTANCE_ERROR_CODES,
 } from '@nessie/mcp-manage'
 import {
@@ -75,7 +75,7 @@ export const registerMcpCredentialRoutes = (
       return reply
     }
     if (
-      await isManagedDeepWaterInstance(
+      await isManagedIntegrationInstance(
         prisma,
         actorContext.tenant.organizationId,
         instanceId,
@@ -84,9 +84,9 @@ export const registerMcpCredentialRoutes = (
       sendApiError(
         reply,
         409,
-        'DEEP_WATER_MANAGED_CREDENTIAL',
-        'Deep Water uses Nessie\'s dedicated Ledger app API key and signed SSO '
-        + 'caller identity; it does not accept credential overrides.',
+        'INTEGRATION_MANAGED_CREDENTIAL',
+        'This first-party connector uses its dedicated app API key and signed '
+        + 'SSO caller identity; it does not accept credential overrides.',
       )
       return reply
     }

@@ -2,7 +2,7 @@ import {
   canManageInstanceScope,
   discoverMcpEndpoint,
   listInstancesVisibleToUser,
-  isManagedDeepWaterInstance,
+  isManagedIntegrationInstance,
   searchMcpLibrary,
   storeInstanceSecret,
   type McpInstanceRow,
@@ -247,7 +247,7 @@ export const runConnectorTestTool = async (
     }
   }
   if (
-    await isManagedDeepWaterInstance(
+    await isManagedIntegrationInstance(
       context.prisma,
       ctx.organizationId,
       loaded.instance.id,
@@ -256,9 +256,9 @@ export const runConnectorTestTool = async (
     return {
       inputSummary: `instanceId=${input.instanceId}`,
       outputPreview:
-        'DeepWater is provisioned and monitored by the Integrations service. '
-        + 'Its connection requires signed per-user identity, so use a granted '
-        + 'DeepWater research tool to verify access instead of probing it here.',
+        'This first-party connector is provisioned and monitored by Integrations. '
+        + 'Its connection requires signed per-user identity, so verify it through '
+        + 'the product surface instead of probing it here.',
       toolName: 'connector_test',
     }
   }
@@ -292,7 +292,7 @@ export const runConnectorSetSecretTool = async (
     return { inputSummary, outputPreview: 'Connector instance not found.', toolName: 'connector_set_secret' }
   }
   if (
-    await isManagedDeepWaterInstance(
+    await isManagedIntegrationInstance(
       context.prisma,
       ctx.organizationId,
       instance.id,
@@ -301,8 +301,8 @@ export const runConnectorSetSecretTool = async (
     return {
       inputSummary,
       outputPreview:
-        'DeepWater uses your signed UnlikeOtherAI SSO identity and Nessie\'s '
-        + 'dedicated Ledger app API key; no personal secret is accepted.',
+        'This first-party connector uses your signed UnlikeOtherAI SSO identity '
+        + 'and its dedicated app API key; no personal secret is accepted.',
       toolName: 'connector_set_secret',
     }
   }
@@ -353,7 +353,7 @@ export const runConnectorUninstallTool = async (
     }
   }
   if (
-    await isManagedDeepWaterInstance(
+    await isManagedIntegrationInstance(
       context.prisma,
       ctx.organizationId,
       loaded.instance.id,
@@ -362,8 +362,8 @@ export const runConnectorUninstallTool = async (
     return {
       inputSummary: `instanceId=${input.instanceId}`,
       outputPreview:
-        'DeepWater lifecycle is managed from Integrations. '
-        + 'Use the team enablement toggle to disable it.',
+        'This first-party connector lifecycle is managed from Integrations. '
+        + 'Use its product controls to deactivate it.',
       toolName: 'connector_uninstall',
     }
   }

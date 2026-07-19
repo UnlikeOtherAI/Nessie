@@ -43,6 +43,30 @@ Root app layout:
 
 ## 2) Process startup and runtime surface
 
+### 2.0 Live first-party DeepSignal boundary (`api/` + `worker/`)
+
+- Per-user activation creates one integration-managed `external_mcp` DM and a
+  user-scoped instance pinned to the deployment secret reference
+  `DEEPSIGNAL_MCP_APP_KEY`; generic install/OAuth/lifecycle/secret paths cannot
+  mutate it. Only the canonical product-linked public catalog can back the
+  instance, and outbound app-key requests are pinned to
+  `https://api.deepsignal.live`.
+- Initial and follow-up chat, history hydration, Signals digest, and Signals
+  actions retain the DeepSignal-issued `dsk_` bearer and independently add
+  exact-scope UOA delegation plus fresh signed user/org/team/agent/run/request/
+  tool-call provenance. Missing hosted configuration, incomplete identity, or
+  a stale generic credential, stale identity header, or cross-role key reuse
+  fails closed without Nessie inference.
+- Activation reuses the user's existing linked UOA subject and active workspace;
+  there is no secondary DeepSignal OAuth tab. The webhook HMAC secret is a
+  separate per-org credential and cannot reuse an app key.
+- The live routes are
+  `POST /api/integrations/products/deepsignal/activate`,
+  `POST .../deactivate`, `POST /api/channels/:channelId/external-sync`,
+  `GET /api/integrations/products/deepsignal/signals`,
+  `POST .../signals/:insightId/act`, and
+  `POST /api/integrations/deepsignal/events`.
+
 ### 2.1 Server bootstrap (`src/index.ts`)
 
 > **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5454) + `worker/` + `admin/` (port 5455), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.

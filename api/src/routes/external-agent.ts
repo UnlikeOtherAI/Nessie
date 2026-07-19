@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { createMcpSecretResolver } from '@nessie/mcp-manage'
+import { attributionFromActorContext } from '@nessie/runtime'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -11,6 +12,7 @@ import {
   syncExternalAgentChannel,
 } from '../services/external-agent-sync.js'
 import {
+  ProductWebhookSecretError,
   resolveSignedWebhookOrg,
   setProductWebhookSecret,
 } from '../services/product-webhook-secret.js'
@@ -45,6 +47,8 @@ const syncErrorStatus = (code: string): number => {
       return 400
     case EXTERNAL_AGENT_SYNC_ERROR_CODES.UPSTREAM_UNAVAILABLE:
       return 502
+    case EXTERNAL_AGENT_SYNC_ERROR_CODES.IDENTITY_UNAVAILABLE:
+      return 503
     default:
       return 400
   }
@@ -88,6 +92,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
     authSecret,
     isJsonContentType,
     realtimeHub,
+    deepSignalMcpIdentity,
     buildChannelRealtimeScopes,
     getChannelIfMember,
   } = deps
@@ -130,7 +135,14 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
       const result = await syncExternalAgentChannel(
         prisma,
         channel,
-        { organizationId: actorContext.tenant.organizationId, userId: actorContext.actor.actorId },
+        {
+          attribution: attributionFromActorContext(actorContext, {
+            systemComponent: 'api-deepsignal-history-sync',
+          }),
+          deepSignalIdentity: deepSignalMcpIdentity,
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        },
         secretResolver,
       )
       return createApiResponse(result)
@@ -158,11 +170,19 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
     const body = parseInput(WebhookSecretBodySchema, request.body, reply)
     if (!body) return reply
 
-    await setProductWebhookSecret(prisma, authSecret ?? '', {
-      organizationId: actorContext.tenant.organizationId,
-      productSlug: params.productSlug,
-      secret: body.secret,
-    })
+    try {
+      await setProductWebhookSecret(prisma, authSecret ?? '', {
+        organizationId: actorContext.tenant.organizationId,
+        productSlug: params.productSlug,
+        secret: body.secret,
+      })
+    } catch (error) {
+      if (error instanceof ProductWebhookSecretError) {
+        sendApiError(reply, 400, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
     return createApiResponse({ ok: true })
   })
 

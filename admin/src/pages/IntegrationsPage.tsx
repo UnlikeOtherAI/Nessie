@@ -61,12 +61,12 @@ const surfacePlans: Record<string, SurfacePlan> = {
     nextStep: 'Define and ship the BuildMe board API before native board rendering.',
   },
   deepsignal: {
-    nativePage: 'Per-user private DeepSignal channel; an insight digest page is planned.',
+    nativePage: 'Per-user private DeepSignal channel plus a live insight digest page.',
     chatCards: 'Conversation activity and insight cards rendered from message metadata.',
-    controls: 'Activate for me (per-user sign-in + private channel) and deactivate.',
-    agentAccess: 'DeepSignal MCP chat, history, and insight tools, called under your own UOA token.',
+    controls: 'Activate for me using your existing Nessie SSO identity, or deactivate.',
+    agentAccess: 'DeepSignal MCP chat, history, and insight tools use Nessie’s app key plus delegated UOA identity.',
     artifacts: 'DeepWater research references deep-link out; DeepSignal owns the report content.',
-    nextStep: 'Ship the worker driver that proxies channel turns to DeepSignal over MCP.',
+    nextStep: 'Configure the DeepSignal-issued Nessie app key and activate team access.',
   },
 }
 

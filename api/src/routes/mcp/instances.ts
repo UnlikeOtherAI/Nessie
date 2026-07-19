@@ -5,8 +5,8 @@ import {
   getInstance,
   healthcheckInstance,
   isOwnerRole,
-  isManagedDeepWaterCatalogEntry,
-  isManagedDeepWaterInstance,
+  isManagedIntegrationCatalogEntry,
+  isManagedIntegrationInstance,
   listInstances,
   listInstancesVisibleToUser,
   MCP_INSTANCE_ERROR_CODES,
@@ -162,12 +162,12 @@ export const registerMcpInstanceRoutes = (
     if (!(await canManage(actorContext, body.scopeType, body.scopeId))) {
       return denyScope(reply)
     }
-    if (await isManagedDeepWaterCatalogEntry(prisma, body.catalogEntryId)) {
+    if (await isManagedIntegrationCatalogEntry(prisma, body.catalogEntryId)) {
       sendApiError(
         reply,
         409,
         MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
-        'DeepWater is provisioned from Integrations and uses Nessie SSO automatically.',
+        'This first-party connector is provisioned from Integrations and uses Nessie SSO.',
       )
       return reply
     }
@@ -297,7 +297,7 @@ export const registerMcpInstanceRoutes = (
       return reply
     }
     if (
-      await isManagedDeepWaterInstance(
+      await isManagedIntegrationInstance(
         prisma,
         actorContext.tenant.organizationId,
         instance.id,
@@ -306,9 +306,9 @@ export const registerMcpInstanceRoutes = (
       sendApiError(
         reply,
         409,
-        'DEEP_WATER_MANAGED_CREDENTIAL',
-        'DeepWater uses signed Nessie SSO identity and Nessie\'s dedicated '
-        + 'Ledger app API key; personal credentials are not accepted.',
+        'INTEGRATION_MANAGED_CREDENTIAL',
+        'This first-party connector uses signed Nessie SSO identity and its '
+        + 'dedicated app API key; personal credentials are not accepted.',
       )
       return reply
     }

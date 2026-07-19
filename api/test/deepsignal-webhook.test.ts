@@ -5,6 +5,7 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 
 import {
+  ProductWebhookSecretError,
   resolveSignedWebhookOrg,
   setProductWebhookSecret,
 } from '../src/services/product-webhook-secret.js'
@@ -90,6 +91,34 @@ test('webhook signature: valid HMAC resolves the signing org, tampered body is r
     signatureHeader: 'sha256=not-hex',
   })
   assert.equal(garbage, null)
+})
+
+test('webhook signing secret cannot reuse the DeepSignal application key', async () => {
+  const prior = process.env.DEEPSIGNAL_MCP_APP_KEY
+  const appKey = `dsk_${'n'.repeat(32)}`
+  process.env.DEEPSIGNAL_MCP_APP_KEY = appKey
+  try {
+    await assert.rejects(
+      setProductWebhookSecret(
+        makeSecretFake() as unknown as PrismaClient,
+        AUTH_SECRET,
+        {
+          organizationId: ORG,
+          productSlug: 'deepsignal',
+          secret: appKey,
+        },
+      ),
+      (error: unknown) =>
+        error instanceof ProductWebhookSecretError
+        && error.code === 'PRODUCT_WEBHOOK_SECRET_REUSES_APP_CREDENTIAL',
+    )
+  } finally {
+    if (prior === undefined) {
+      delete process.env.DEEPSIGNAL_MCP_APP_KEY
+    } else {
+      process.env.DEEPSIGNAL_MCP_APP_KEY = prior
+    }
+  }
 })
 
 // ─── Insight fan-out + idempotency ──────────────────────────────────────────

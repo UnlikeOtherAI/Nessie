@@ -241,8 +241,8 @@ export const CURATED_MCP_LIBRARY: McpLibraryEntry[] = [
     sourceUrl: 'https://deepsignal.live',
     url: 'https://api.deepsignal.live/mcp',
     transport: 'http',
-    authMethod: 'oauth2',
-    authHint: 'Sign in with your DeepSignal account when prompted.',
+    authMethod: 'bearer',
+    authHint: 'Provisioned by Nessie Integrations with its dedicated DeepSignal application key.',
   },
   {
     source: 'curated',

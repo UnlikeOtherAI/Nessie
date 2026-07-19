@@ -2,6 +2,7 @@ import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
 import type {
+  DeepSignalMcpIdentityService,
   LedgerIdentityService,
   ModelClient,
   PgRealtimeTransport,
@@ -9,6 +10,7 @@ import type {
 } from '@nessie/runtime'
 
 export type ExecutionDependencies = {
+  deepSignalMcpIdentity?: DeepSignalMcpIdentityService | null
   ledgerIdentity?: LedgerIdentityService | null
   /**
    * MCP credential plumbing: `store` encrypts assistant-collected secrets into

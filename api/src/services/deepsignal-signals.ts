@@ -1,5 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
 import { callInstanceTool, type SecretResolver } from '@nessie/mcp-manage'
+import {
+  DEEPSIGNAL_MCP_CREDENTIAL_REF,
+  type DeepSignalMcpIdentityService,
+  type LedgerAttribution,
+} from '@nessie/runtime'
 import type {
   DeepSignalSignalAction,
   DeepSignalSignalActResponse,
@@ -9,6 +14,7 @@ import type {
   DeepSignalSignalStatus,
 } from '@nessie/schemas'
 
+import { callDeepSignalMcpTool } from './deepsignal-mcp-call.js'
 import { resolveUserScopedProductTransport } from './external-agent-instance.js'
 import { asArray, extractList, firstString, isRecord, readToolJson } from './mcp-tool-json.js'
 
@@ -28,6 +34,8 @@ const DIGEST_TOOL = 'insight_digest'
 const ACT_TOOL = 'insight_act'
 
 export type DeepSignalSignalsContext = {
+  attribution: LedgerAttribution
+  deepSignalIdentity: DeepSignalMcpIdentityService | null
   organizationId: string
   userId: string
   /** MCP tool caller seam (defaults to the shared one-shot dispatcher). */
@@ -122,15 +130,31 @@ export const listDeepSignalSignals = async (
   secretResolver: SecretResolver,
   include: DeepSignalDigestInclude = 'active',
 ): Promise<DeepSignalSignalsResponse> => {
-  const callTool = ctx.callTool ?? callInstanceTool
   const transport = await resolveUserScopedProductTransport(
     prisma,
-    { organizationId: ctx.organizationId, userId: ctx.userId, slug: DEEPSIGNAL_SLUG },
+    {
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      slug: DEEPSIGNAL_SLUG,
+      managedCredentialRef: DEEPSIGNAL_MCP_CREDENTIAL_REF,
+    },
     secretResolver,
   )
-  if (!transport) return { status: 'needs_setup' }
+  if (!transport || !ctx.deepSignalIdentity) return { status: 'needs_setup' }
 
-  const result = await callTool({ transport, toolName: DIGEST_TOOL, args: { include } })
+  const result = await callDeepSignalMcpTool(
+    transport,
+    {
+      attribution: {
+        ...ctx.attribution,
+        systemComponent: 'api-deepsignal-signals',
+      },
+      identityService: ctx.deepSignalIdentity,
+      callTool: ctx.callTool,
+    },
+    DIGEST_TOOL,
+    { include },
+  )
   return { status: 'ok', items: parseSignals(readToolJson(result)) }
 }
 
@@ -145,19 +169,31 @@ export const actOnDeepSignalSignal = async (
   insightId: string,
   action: DeepSignalSignalAction,
 ): Promise<DeepSignalSignalActResponse> => {
-  const callTool = ctx.callTool ?? callInstanceTool
   const transport = await resolveUserScopedProductTransport(
     prisma,
-    { organizationId: ctx.organizationId, userId: ctx.userId, slug: DEEPSIGNAL_SLUG },
+    {
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      slug: DEEPSIGNAL_SLUG,
+      managedCredentialRef: DEEPSIGNAL_MCP_CREDENTIAL_REF,
+    },
     secretResolver,
   )
-  if (!transport) return { status: 'needs_setup' }
+  if (!transport || !ctx.deepSignalIdentity) return { status: 'needs_setup' }
 
-  const result = await callTool({
+  const result = await callDeepSignalMcpTool(
     transport,
-    toolName: ACT_TOOL,
-    args: { insightId, action },
-  })
+    {
+      attribution: {
+        ...ctx.attribution,
+        systemComponent: 'api-deepsignal-signal-action',
+      },
+      identityService: ctx.deepSignalIdentity,
+      callTool: ctx.callTool,
+    },
+    ACT_TOOL,
+    { insightId, action },
+  )
   const payload = readToolJson(result)
   const item = parseSignal(isRecord(payload) ? (payload.insight ?? payload) : payload)
   return { status: 'ok', item }

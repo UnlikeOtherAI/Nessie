@@ -21,7 +21,7 @@ import {
 } from './mcp-instance-errors.js'
 import {
   assertCatalogLifecycleIsUserManaged,
-  isManagedDeepWaterCatalogEntry,
+  isManagedIntegrationCatalogEntry,
 } from './managed-products.js'
 
 export {
@@ -308,11 +308,11 @@ export const createInstance = async (
   }
   if (
     !input.managedProvision
-    && await isManagedDeepWaterCatalogEntry(prisma, input.catalogEntryId)
+    && await isManagedIntegrationCatalogEntry(prisma, input.catalogEntryId)
   ) {
     throw new McpInstanceError(
       MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
-      'DeepWater is provisioned from Integrations and uses Nessie SSO automatically.',
+      'This first-party connector is provisioned from Integrations and uses Nessie SSO.',
     )
   }
 

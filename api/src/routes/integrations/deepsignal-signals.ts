@@ -5,6 +5,7 @@ import {
   DeepSignalSignalActResponseSchema,
   DeepSignalSignalsResponseSchema,
 } from '@nessie/schemas'
+import { attributionFromActorContext } from '@nessie/runtime'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
@@ -33,7 +34,13 @@ export const registerDeepSignalSignalsRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { prisma, requireActorContext, requireUserActor, authSecret } = deps
+  const {
+    prisma,
+    requireActorContext,
+    requireUserActor,
+    authSecret,
+    deepSignalMcpIdentity,
+  } = deps
   const secretResolver = createMcpSecretResolver(prisma, authSecret ?? '')
 
   app.get('/api/integrations/products/deepsignal/signals', async (request, reply) => {
@@ -48,6 +55,10 @@ export const registerDeepSignalSignalsRoutes = (
       const result = await listDeepSignalSignals(
         prisma,
         {
+          attribution: attributionFromActorContext(actorContext, {
+            systemComponent: 'api-deepsignal-signals',
+          }),
+          deepSignalIdentity: deepSignalMcpIdentity,
           organizationId: actorContext.tenant.organizationId,
           userId: actorContext.actor.actorId,
         },
@@ -79,6 +90,10 @@ export const registerDeepSignalSignalsRoutes = (
         const result = await actOnDeepSignalSignal(
           prisma,
           {
+            attribution: attributionFromActorContext(actorContext, {
+              systemComponent: 'api-deepsignal-signal-action',
+            }),
+            deepSignalIdentity: deepSignalMcpIdentity,
             organizationId: actorContext.tenant.organizationId,
             userId: actorContext.actor.actorId,
           },

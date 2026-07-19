@@ -25,6 +25,7 @@ export const resolveUserScopedProductTransport = async (
     userId: string
     slug: string
     channelId?: string | null
+    managedCredentialRef?: string
   },
   secretResolver: SecretResolver,
 ): Promise<McpTransportConfig | null> => {
@@ -33,11 +34,23 @@ export const resolveUserScopedProductTransport = async (
       organizationId: ctx.organizationId,
       scopeType: 'user',
       scopeId: ctx.userId,
-      catalogEntry: { name: ctx.slug, visibility: 'public' },
+      catalogEntry: {
+        name: ctx.slug,
+        visibility: 'public',
+        ...(ctx.managedCredentialRef
+          ? { integratedProducts: { some: { slug: ctx.slug } } }
+          : {}),
+      },
     },
-    select: { id: true },
+    select: { credentialRef: true, id: true },
   })
   if (!instance) return null
+  if (
+    ctx.managedCredentialRef
+    && instance.credentialRef !== ctx.managedCredentialRef
+  ) {
+    return null
+  }
 
   const resolved = await resolveInstanceMcpTransport(
     prisma,
@@ -50,6 +63,12 @@ export const resolveUserScopedProductTransport = async (
     secretResolver,
   )
   if (!resolved) return null
+  if (
+    ctx.managedCredentialRef
+    && (resolved.authMethod !== 'bearer' || resolved.lifecycleState !== 'active')
+  ) {
+    return null
+  }
   if (resolved.authMethod === 'oauth2' && resolved.lifecycleState !== 'active') {
     return null
   }

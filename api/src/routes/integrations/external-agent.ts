@@ -1,9 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify'
-import {
-  createPgOAuthStateStore,
-  createPgSecretStore,
-  startOAuth,
-} from '@nessie/mcp-manage'
+import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
@@ -14,14 +9,12 @@ import {
   EXTERNAL_AGENT_ACTIVATION_ERROR_CODES,
   type ExternalAgentActivationContext,
 } from '../../services/external-agent-activation.js'
-import { buildOAuthCallbackUrl } from '../mcp/oauth.js'
 import type { RouteDeps } from '../types.js'
 import { ProductSlugParamsSchema } from './route-schemas.js'
 
 const ExternalAgentActivationResponseSchema = z.object({
   channelId: z.string().min(1),
   instanceId: z.string().uuid(),
-  authorizeUrl: z.string().url().optional(),
 })
 
 const ExternalAgentDeactivationResponseSchema = z.object({
@@ -36,6 +29,10 @@ const activationErrorStatus = (code: string): number => {
       return 404
     case EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.TEAM_NOT_ENABLED:
       return 403
+    case EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.CATALOG_CONTRACT_INVALID:
+      return 503
+    case EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.SSO_LINK_REQUIRED:
+      return 409
     default:
       return 400
   }
@@ -43,39 +40,24 @@ const activationErrorStatus = (code: string): number => {
 
 /**
  * External-agent product activation (DeepSignal integration plan §5). Turning a
- * catalog product "on" provisions its external-agent channel and, when the
- * upstream needs a sign-in, kicks off the shared MCP OAuth flow so authorization
- * runs through the same encrypted store, pg-backed state, and
- * `/api/mcp/oauth/callback` as every other connector.
+ * catalog product "on" provisions its external-agent channel after confirming
+ * the caller's UOA link. DeepSignal's app key is process configuration, while
+ * signed user/workspace context is minted per request. Generic connector OAuth
+ * continues to use the ordinary MCP routes.
  */
 export const registerExternalAgentProductRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { prisma, requireActorContext, requireUserActor, authSecret } = deps
-
-  const oauthSecretStore = createPgSecretStore(prisma, authSecret ?? '')
-  const oauthStateStore = createPgOAuthStateStore(prisma)
+  const { prisma, requireActorContext, requireUserActor } = deps
 
   const buildActivationContext = (
-    request: FastifyRequest,
     actorContext: ExternalAgentActivationContext['actorContext'],
   ): ExternalAgentActivationContext => ({
     actorContext,
     organizationId: actorContext.tenant.organizationId,
     userId: actorContext.actor.actorId,
     teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId ?? null,
-    startInstanceOAuth: async (instanceId) => {
-      const result = await startOAuth({
-        prisma,
-        store: oauthStateStore,
-        secretStore: oauthSecretStore,
-        instanceId,
-        actorContext,
-        callbackUrl: buildOAuthCallbackUrl(request),
-      })
-      return result.authorizationUrl
-    },
   })
 
   app.post('/api/integrations/products/:productSlug/activate', async (request, reply) => {
@@ -90,7 +72,7 @@ export const registerExternalAgentProductRoutes = (
       const result = await activateExternalAgentProduct(
         prisma,
         params.productSlug,
-        buildActivationContext(request, actorContext),
+        buildActivationContext(actorContext),
       )
       return createApiResponse(ExternalAgentActivationResponseSchema.parse(result))
     } catch (error) {

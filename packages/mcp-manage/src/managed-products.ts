@@ -6,6 +6,24 @@ import {
 } from './mcp-instance-errors.js'
 
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
+const MANAGED_PRODUCT_SLUGS = [DEEP_WATER_PRODUCT_SLUG, 'deepsignal'] as const
+
+type ManagedCatalog = {
+  integratedProducts?: Array<{ slug: string }>
+  name: string
+  visibility: string
+}
+
+const isManagedCatalog = (catalog: ManagedCatalog | null | undefined): boolean =>
+  Boolean(
+    catalog
+    && catalog.visibility === 'public'
+    && MANAGED_PRODUCT_SLUGS.some(
+      (slug) =>
+        catalog.name === slug
+        && catalog.integratedProducts?.some((product) => product.slug === slug),
+    ),
+  )
 
 /**
  * DeepWater is provisioned by the first-party integration, not configured as a
@@ -48,6 +66,41 @@ export const isManagedDeepWaterInstance = async (
     ) === true
 }
 
+/**
+ * First-party connector instances whose app credential and lifecycle are owned
+ * by Integrations. Users may activate/deactivate them through the product
+ * surface but may not replace the product-bound application credential.
+ */
+export const isManagedIntegrationInstance = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  instanceId: string,
+): Promise<boolean> => {
+  const instance = await prisma.mcpServerInstance.findFirst({
+    where: {
+      id: instanceId,
+      organizationId,
+      catalogEntry: {
+        name: { in: [...MANAGED_PRODUCT_SLUGS] },
+        visibility: 'public',
+        integratedProducts: {
+          some: { slug: { in: [...MANAGED_PRODUCT_SLUGS] } },
+        },
+      },
+    },
+    select: {
+      catalogEntry: {
+        select: {
+          name: true,
+          visibility: true,
+          integratedProducts: { select: { slug: true } },
+        },
+      },
+    },
+  })
+  return isManagedCatalog(instance?.catalogEntry)
+}
+
 export const isManagedDeepWaterCatalogEntry = async (
   prisma: PrismaClient,
   catalogEntryId: string,
@@ -74,6 +127,28 @@ export const isManagedDeepWaterCatalogEntry = async (
     ) === true
 }
 
+export const isManagedIntegrationCatalogEntry = async (
+  prisma: PrismaClient,
+  catalogEntryId: string,
+): Promise<boolean> => {
+  const entry = await prisma.mcpCatalogEntry.findFirst({
+    where: {
+      id: catalogEntryId,
+      name: { in: [...MANAGED_PRODUCT_SLUGS] },
+      visibility: 'public',
+      integratedProducts: {
+        some: { slug: { in: [...MANAGED_PRODUCT_SLUGS] } },
+      },
+    },
+    select: {
+      name: true,
+      visibility: true,
+      integratedProducts: { select: { slug: true } },
+    },
+  })
+  return isManagedCatalog(entry)
+}
+
 /**
  * Generic MCP lifecycle operations cannot safely probe or remove the
  * integration-owned DeepWater instance. Its transport needs signed Nessie
@@ -85,10 +160,10 @@ export const assertCatalogLifecycleIsUserManaged = async (
   prisma: PrismaClient,
   catalogEntryId: string,
 ): Promise<void> => {
-  if (!(await isManagedDeepWaterCatalogEntry(prisma, catalogEntryId))) return
+  if (!(await isManagedIntegrationCatalogEntry(prisma, catalogEntryId))) return
 
   throw new McpInstanceError(
     MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
-    'DeepWater lifecycle is managed from Integrations; use the team enablement toggle.',
+    'This first-party connector lifecycle is managed from Integrations.',
   )
 }

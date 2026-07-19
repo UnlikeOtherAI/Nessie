@@ -22,6 +22,7 @@ import websocket from '@fastify/websocket'
 import Fastify from 'fastify'
 import {
   createFileService,
+  createDeepSignalMcpIdentityServiceFromEnv,
   createLedgerIdentityServiceFromEnv,
   createModelClient,
   createPgPool,
@@ -326,6 +327,9 @@ export const buildApp = async () => {
     storage: getStorage(config.storage),
     maxUploadBytes: config.storage.maxUploadBytes,
   })
+  const deepSignalMcpIdentity =
+    createDeepSignalMcpIdentityServiceFromEnv(prisma)
+  await deepSignalMcpIdentity?.validateStoredCredentialSeparation()
 
   const deps: RouteDeps = {
     ...serverContext,
@@ -333,6 +337,7 @@ export const buildApp = async () => {
     sharedModelClient,
     messageMemoryCaptureConfig,
     thoughtService,
+    deepSignalMcpIdentity,
     fileService,
   }
 

@@ -64,6 +64,15 @@ jobs:
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-ledger-billing-reader-key.sh'
 
+      - name: Configure Nessie DeepSignal application key
+        env:
+          DEEPSIGNAL_MCP_APP_KEY: ${{ secrets.DEEPSIGNAL_MCP_APP_KEY }}
+        run: |
+          test -n "$DEEPSIGNAL_MCP_APP_KEY"
+          printf '%s\n' "$DEEPSIGNAL_MCP_APP_KEY" |
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              'cd /srv/nessie && bash infrastructure/compose/set-deepsignal-app-key.sh'
+
       - name: Rebuild & redeploy
         run: |
           ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \

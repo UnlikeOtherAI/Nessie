@@ -69,12 +69,12 @@ test('first-party integration manifests cover the sibling products', () => {
   )
 
   const deepSignal = getIntegrationPluginManifest('deepsignal')
-  assert.equal(deepSignal?.mcp.catalogTemplate?.authMethod, 'oauth2')
+  assert.equal(deepSignal?.mcp.catalogTemplate?.authMethod, 'bearer')
   assert.equal(
     deepSignal?.mcp.catalogTemplate?.transport.url,
     'https://api.deepsignal.live/mcp',
   )
-  assert.equal(deepSignal?.install[0]?.mode, 'remote_mcp_oauth')
+  assert.equal(deepSignal?.install[0]?.mode, 'hosted_preinstall')
   assert.equal(deepSignal?.install.some((entry) => entry.requiredForAgentUse), true)
   assert.deepEqual(
     deepSignal?.mcp.tools.map((tool) => tool.name),
