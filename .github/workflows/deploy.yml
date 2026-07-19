@@ -64,6 +64,15 @@ jobs:
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-ledger-billing-reader-key.sh'
 
+      - name: Configure Nessie Ledger application key
+        env:
+          LEDGER_PROXY_TOKEN: ${{ secrets.LEDGER_PROXY_TOKEN }}
+        run: |
+          test -n "$LEDGER_PROXY_TOKEN"
+          printf '%s\n' "$LEDGER_PROXY_TOKEN" |
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              'cd /srv/nessie && bash infrastructure/compose/set-ledger-app-key.sh'
+
       - name: Configure Nessie DeepSignal application key
         env:
           DEEPSIGNAL_MCP_APP_KEY: ${{ secrets.DEEPSIGNAL_MCP_APP_KEY }}

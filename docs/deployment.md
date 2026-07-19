@@ -176,14 +176,18 @@ docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
 `infrastructure/compose/redeploy.sh` over SSH. The workflow authenticates with
 the `DEPLOY_SSH_KEY` repo secret (a dedicated key in the host's
 `~/.ssh/authorized_keys`); host/user come from the `DEPLOY_HOST` / `DEPLOY_USER`
-secrets. The dedicated `LEDGER_BILLING_READ_APP_KEY_NESSIE` and
-`DEEPSIGNAL_MCP_APP_KEY` Actions secrets are sent only over SSH standard input
-to `infrastructure/compose/set-ledger-billing-reader-key.sh` and
-`set-deepsignal-app-key.sh`. Each validator atomically replaces only its own
-entry in the host-only Compose `.env`; neither secret enters the synced tree,
-command arguments, or workflow output. The workflow fails closed when either
-dedicated key is missing or malformed. Ledger, model, UOA, session, webhook,
-and sibling-product keys are not DeepSignal substitutes.
+secrets. The dedicated `LEDGER_PROXY_TOKEN`,
+`LEDGER_BILLING_READ_APP_KEY_NESSIE`, and `DEEPSIGNAL_MCP_APP_KEY` Actions
+secrets are sent only over SSH standard input to the matching
+`infrastructure/compose/set-*-app-key.sh` validator. Each validator atomically
+updates the host-only Compose `.env`; neither secret enters the synced tree,
+command arguments, or workflow output. `set-ledger-app-key.sh` writes the same
+Nessie-specific caller credential to `LEDGER_PROXY_TOKEN` and
+`NESSIE_MODEL_API_KEY`, rejects equality with every other configured
+environment value, and never accepts a sibling app's key. The workflow fails
+closed when any dedicated key is missing or malformed. The Ledger billing
+reader, DeepSignal caller, UOA, session, webhook, and sibling-product keys are
+separate principals, not fallbacks.
 
 The workflow rsyncs with `--delete` so files removed from the repo don't linger
 on the host and get compiled into the image (a stale `api/src` copy left by the
