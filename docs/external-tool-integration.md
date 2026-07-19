@@ -458,14 +458,15 @@ There is deliberately no direct-provider fallback.
   job to the UOA subject. DeepWater's product identity mode is `uoa_sso` even
   though its MCP transport uses the shared Ledger bearer, ensuring first login
   creates the per-user account link. A missing UOA link fails DeepWater closed.
-  The generic secret REST route and
-  PA `connector_set_secret` refuse managed DeepWater instances, the Connectors
-  UI replaces normal catalog lifecycle/install/credential/probe controls with
-  an Integrations-managed notice, and migration removes old per-user overrides
-  so none can shadow the service token. The PA
-  `connector_test` tool likewise explains that the instance is
-  integration-managed instead of sending a probe without the required
-  per-user signed identity.
+  The generic secret REST route and PA `connector_set_secret` refuse managed
+  DeepWater instances. Generic instance test, refresh, healthcheck, and delete
+  operations fail with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`; PA probe and
+  uninstall operations explain the same ownership rule. The Integrations team
+  toggle is the sole lifecycle path, so deleting an instance can never leave
+  the product toggle enabled and pointing at nothing. The Connectors UI replaces
+  normal catalog lifecycle/install/credential/probe controls with an
+  Integrations-managed notice, and migration removes old per-user overrides so
+  none can shadow the service token.
 - **Research retries preserve provider idempotency.** Each DeepWater dispatch
   forwards the model provider's stable `tool_call_id` in the signed context.
   `research_start` rejects a missing ID, and retrying the same logical tool call
@@ -479,13 +480,17 @@ There is deliberately no direct-provider fallback.
   MiniMax, or custom stage. The shared model client and
   agentic inference paths attach a fresh `X-Nessie-Context` and, when the
   effective user is UOA-linked, `X-UOA-Delegation` to chat, streaming, raw
-  designer, and embedding calls. Provider-record URLs cannot override the
-  deployment-wide base URL. Nessie's local token and connector ledgers also
-  persist `user_id` separately from `actor_id`, because an agent is often the
-  actor while a human is the effective caller. Every Ledger request requires
-  non-null user/org/team/agent/run fields. Knowledge embedding/extraction jobs
-  persist that origin in their queue payload; for a teamless project space the
-  API carries the authenticated request's active team rather than guessing from
+  designer, and embedding calls. A deployment-wide base URL still wins over a
+  provider-record URL. When no deployment-wide base is configured, routing
+  resolves the approved organization provider record first and then decides
+  whether to sign: an effective Ledger URL receives the same complete
+  attribution, and missing signing identity fails before the network request.
+  Nessie's local token and connector ledgers also persist `user_id` separately
+  from `actor_id`, because an agent is often the actor while a human is the
+  effective caller. Every Ledger request requires non-null
+  user/org/team/agent/run fields. Knowledge embedding/extraction jobs persist
+  that origin in their queue payload; for a teamless project space the API
+  carries the authenticated request's active team rather than guessing from
   project membership. Each Fastify request owns a separate async context rooted
   at `onRequest`, so interleaved uploads cannot borrow another request's user or
   team. A request with no real team returns

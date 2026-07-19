@@ -17,6 +17,7 @@ import {
 import type { McpInstanceRow } from './mcp-instances.js'
 import { projectMcpToolDescriptors } from './mcp-tool-registry-projection.js'
 import type { SecretResolver } from './secret-resolver.js'
+import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
 
 /**
  * Probe options shared by test, refresh, and healthcheck operations.
@@ -78,6 +79,7 @@ export const healthcheckInstance = async (
       `MCP server instance ${id} not found`,
     )
   }
+  await assertCatalogLifecycleIsUserManaged(prisma, instance.catalogEntryId)
   const catalogEntry = await getCatalogEntry(prisma, organizationId, instance.catalogEntryId)
   if (!catalogEntry) {
     throw new McpInstanceError(
@@ -149,6 +151,7 @@ export const testInstance = async (
       `MCP server instance ${id} not found`,
     )
   }
+  await assertCatalogLifecycleIsUserManaged(prisma, instance.catalogEntryId)
 
   const catalogEntry = await getCatalogEntry(prisma, organizationId, instance.catalogEntryId)
   if (!catalogEntry) {

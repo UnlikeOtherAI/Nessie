@@ -2,7 +2,6 @@ import { loadConfig } from '@nessie/config'
 import {
   attributionFromActorContext,
   BUILTIN_TOOL_DEFINITIONS,
-  isLedgerEndpoint,
   type InferenceResult,
   type InvocationRecord,
   type ProviderMessage,
@@ -17,6 +16,7 @@ import {
 import { DEFAULT_BUDGET, runAgenticLoop, type LoopResult } from '../agentic-loop.js'
 import { runDelegate } from '../delegate.js'
 import { runInferenceGraph } from '../inference.js'
+import { createProviderRequestHeadersResolver } from '../inference-identity.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import { authorizeToolCall } from '../tool-policy.js'
 import { summarizeToolInput } from '../tool-util.js'
@@ -71,6 +71,14 @@ export const runExecutionAgentLoop = async (
   const mcpView = input.mcpToolset.createView()
   const mcpExposedNames = mcpView.handledNames
   const mainToolDefs = [...input.toolDefs, ...mcpView.descriptors]
+  const requestHeadersForProvider = createProviderRequestHeadersResolver({
+    attribution: attributionFromActorContext(payload.actorContext, {
+      agentId: context.agent.id,
+      agentKind: context.agent.agentKind,
+      runId: context.run.id,
+    }),
+    ledgerIdentity: deps.ledgerIdentity,
+  })
 
   const mainInferenceCallbacks: InferenceCallbacks = {
     onVisibleReasoningDelta: async (chunk) => {
@@ -97,19 +105,6 @@ export const runExecutionAgentLoop = async (
     tools: ToolSchemaDescriptor[],
     callbacks: InferenceCallbacks,
   ): Promise<InferenceResult> => {
-    const ledgerRouted = isLedgerEndpoint(runtimeModelConfig.baseUrl)
-    if (ledgerRouted && !deps.ledgerIdentity) {
-      throw new Error('Ledger identity service is unavailable for routed inference.')
-    }
-    const requestHeaders = ledgerRouted
-      ? await deps.ledgerIdentity?.requestHeaders(
-        attributionFromActorContext(payload.actorContext, {
-          agentId: context.agent.id,
-          agentKind: context.agent.agentKind,
-          runId: context.run.id,
-        }),
-      )
-      : undefined
     const mpr = await runInferenceGraph(deps.prisma, {
       actorContext: payload.actorContext,
       agent: {
@@ -123,7 +118,7 @@ export const runExecutionAgentLoop = async (
       onVisibleReasoningDelta: callbacks.onVisibleReasoningDelta,
       onVisibleTextDelta: callbacks.onVisibleTextDelta,
       organizationId: context.channel.organizationId,
-      requestHeaders,
+      requestHeadersForProvider,
       toolChoice: 'auto',
       tools,
     })

@@ -352,6 +352,21 @@ export const runConnectorUninstallTool = async (
       toolName: 'connector_uninstall',
     }
   }
+  if (
+    await isManagedDeepWaterInstance(
+      context.prisma,
+      ctx.organizationId,
+      loaded.instance.id,
+    )
+  ) {
+    return {
+      inputSummary: `instanceId=${input.instanceId}`,
+      outputPreview:
+        'DeepWater lifecycle is managed from Integrations. '
+        + 'Use the team enablement toggle to disable it.',
+      toolName: 'connector_uninstall',
+    }
+  }
   // Registered tools cascade via the registry's mcpInstanceId FK (SetNull) —
   // sweep them explicitly so stale entries don't linger as orphans.
   await context.prisma.$transaction([

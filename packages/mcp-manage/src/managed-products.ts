@@ -1,5 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
 
+import {
+  MCP_INSTANCE_ERROR_CODES,
+  McpInstanceError,
+} from './mcp-instance-errors.js'
+
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
 
 /**
@@ -67,4 +72,23 @@ export const isManagedDeepWaterCatalogEntry = async (
     && entry.integratedProducts?.some(
       (product) => product.slug === DEEP_WATER_PRODUCT_SLUG,
     ) === true
+}
+
+/**
+ * Generic MCP lifecycle operations cannot safely probe or remove the
+ * integration-owned DeepWater instance. Its transport needs signed Nessie
+ * identity, and its row must stay transactionally aligned with the product
+ * enablement toggle. The Integrations transition is therefore its sole
+ * lifecycle owner.
+ */
+export const assertCatalogLifecycleIsUserManaged = async (
+  prisma: PrismaClient,
+  catalogEntryId: string,
+): Promise<void> => {
+  if (!(await isManagedDeepWaterCatalogEntry(prisma, catalogEntryId))) return
+
+  throw new McpInstanceError(
+    MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
+    'DeepWater lifecycle is managed from Integrations; use the team enablement toggle.',
+  )
 }

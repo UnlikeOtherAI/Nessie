@@ -15,6 +15,7 @@ import type {
   RoutingMode,
 } from '@nessie/schemas'
 import { resolveModelName, resolveRuntimeProvider } from './inference-provider.js'
+import type { ProviderRequestHeadersResolver } from './inference-identity.js'
 import { executeStage } from './inference-stage.js'
 
 export { resolveStageApiKey } from './inference-provider.js'
@@ -33,7 +34,7 @@ type RunInferenceGraphInput = {
   onVisibleReasoningDelta?: (delta: string) => Promise<void>
   onVisibleTextDelta?: (delta: string) => Promise<void>
   organizationId: string
-  requestHeaders?: Record<string, string>
+  requestHeadersForProvider?: ProviderRequestHeadersResolver
   tools?: ToolSchemaDescriptor[]
   toolChoice?: 'auto' | 'none' | 'required'
 }
@@ -108,7 +109,7 @@ const executeSingleMode = async (
     organizationId: string
     route: ResolvedRoute
     routeSource: 'direct' | 'routing-profile'
-    requestHeaders?: Record<string, string>
+    requestHeadersForProvider?: ProviderRequestHeadersResolver
     tools?: ToolSchemaDescriptor[]
     toolChoice?: 'auto' | 'none' | 'required'
   },
@@ -140,7 +141,7 @@ const executeSingleMode = async (
     organizationId: input.organizationId,
     profileId: input.route.profileId,
     routeSource: input.routeSource,
-    requestHeaders: input.requestHeaders,
+    requestHeadersForProvider: input.requestHeadersForProvider,
     stage,
     stageIndex: 0,
     stream: input.route.streamLive,
@@ -200,7 +201,7 @@ export const runInferenceGraph = async (
     organizationId: input.organizationId,
     route,
     routeSource: 'direct',
-    requestHeaders: input.requestHeaders,
+    requestHeadersForProvider: input.requestHeadersForProvider,
     toolChoice: input.toolChoice,
     tools: input.tools,
   })

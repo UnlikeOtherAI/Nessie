@@ -110,6 +110,7 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
         : error.code === MCP_INSTANCE_ERROR_CODES.LOCKED
           ? 403
           : error.code === MCP_INSTANCE_ERROR_CODES.DUPLICATE_SCOPE
+              || error.code === MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION
           ? 409
           : error.code === MCP_INSTANCE_ERROR_CODES.PROBE_FAILED
             ? 502

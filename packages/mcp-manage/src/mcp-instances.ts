@@ -19,7 +19,10 @@ import {
   MCP_INSTANCE_ERROR_CODES,
   McpInstanceError,
 } from './mcp-instance-errors.js'
-import { isManagedDeepWaterCatalogEntry } from './managed-products.js'
+import {
+  assertCatalogLifecycleIsUserManaged,
+  isManagedDeepWaterCatalogEntry,
+} from './managed-products.js'
 
 export {
   MCP_INSTANCE_ERROR_CODES,
@@ -372,6 +375,7 @@ export const deleteInstance = async (
 ): Promise<boolean> => {
   const existing = await getInstance(prisma, organizationId, id)
   if (!existing) return false
+  await assertCatalogLifecycleIsUserManaged(prisma, existing.catalogEntryId)
   await prisma.mcpServerInstance.delete({ where: { id } })
   return true
 }

@@ -147,6 +147,11 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   `ToolRegistryEntry` as `active` (surfaced as `mcp_research_*`); disabling
   removes the instance linked from the first-party public product before
   persisting `enabled=false` (robust to renames and private same-name entries).
+  Generic instance test, refresh, healthcheck, and delete operations reject
+  this integration-managed instance with
+  `MCP_INSTANCE_MANAGED_BY_INTEGRATION`; generic secret writes are also
+  rejected, and PA probe/uninstall tools direct callers to the Integrations
+  toggle, which is its sole lifecycle path.
   **Default OFF, explicit per-agent grant required:** the
   projected DeepWater tools and the `deep_water_run_update` builtin are flagged
   `requiresExplicitGrant`, so team scope alone never exposes them — an agent (PA
@@ -164,9 +169,12 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` applies the
   same signed attribution to all model and embedding calls; runtime routing
   rewrites the final path to Ledger's `/v1/:serviceId/*` adapter for the
-  selected OpenAI, Kimi, MiniMax, or custom provider. User-triggered background
-  jobs persist their user/team origin and named system agent/run, and fail
-  before model dispatch if it is unavailable. DeepWater research launch
+  selected OpenAI, Kimi, MiniMax, or custom provider. When the deployment-wide
+  URL is absent, signing is decided after resolving the effective organization
+  provider-record URL, so a Ledger route still receives complete attribution
+  and fails before fetch when signing identity is unavailable. User-triggered
+  background jobs persist their user/team origin and named system agent/run, and
+  fail before model dispatch if it is unavailable. DeepWater research launch
   retries reuse the provider's stable `tool_call_id`. Ledger owns job isolation,
   budget enforcement, audit, and rate-card charge booking.
   `deep_water_run_update`

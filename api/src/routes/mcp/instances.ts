@@ -166,7 +166,7 @@ export const registerMcpInstanceRoutes = (
       sendApiError(
         reply,
         409,
-        'DEEP_WATER_MANAGED_CONNECTOR',
+        MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
         'DeepWater is provisioned from Integrations and uses Nessie SSO automatically.',
       )
       return reply
@@ -347,15 +347,20 @@ export const registerMcpInstanceRoutes = (
 
     const { instanceId } = request.params as { instanceId: string }
     if (!(await loadManageable(actorContext, instanceId, reply))) return reply
-    const deleted = await deleteInstance(
-      prisma,
-      actorContext.tenant.organizationId,
-      instanceId,
-    )
-    if (!deleted) {
-      sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
-      return reply
+    try {
+      const deleted = await deleteInstance(
+        prisma,
+        actorContext.tenant.organizationId,
+        instanceId,
+      )
+      if (!deleted) {
+        sendApiError(reply, 404, MCP_INSTANCE_ERROR_CODES.NOT_FOUND, 'Instance not found')
+        return reply
+      }
+      return reply.code(204).send()
+    } catch (error) {
+      if (sendMcpError(reply, error)) return reply
+      throw error
     }
-    return reply.code(204).send()
   })
 }

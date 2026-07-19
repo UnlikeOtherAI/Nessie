@@ -22,6 +22,7 @@ import {
   resolveStageProviderConfig,
   type ResolvedProviderConfig,
 } from './inference-provider.js'
+import type { ProviderRequestHeadersResolver } from './inference-identity.js'
 
 // Stable cache key from the request's cacheable prefix (model + tool set + the
 // system anchor message). Identical whenever the prefix is identical, so the
@@ -143,7 +144,7 @@ export const executeStage = async (
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     profileId?: string
-    requestHeaders?: Record<string, string>
+    requestHeadersForProvider?: ProviderRequestHeadersResolver
     routeSource: 'direct' | 'routing-profile'
     stage: RouteStage
     stageIndex: number
@@ -176,6 +177,8 @@ export const executeStage = async (
       requestedModel: input.stage.model,
       routeSource: input.routeSource,
     })
+    const requestHeaders =
+      await input.requestHeadersForProvider?.(providerConfig)
 
     const runtimeProvider =
       resolveRuntimeProvider(providerConfig.providerKey)
@@ -204,7 +207,7 @@ export const executeStage = async (
         model: providerConfig.model,
         promptCacheKey,
         requestId,
-        requestHeaders: input.requestHeaders,
+        requestHeaders,
         temperature: input.modelConfig.temperature,
         tools: input.tools,
         toolChoice: input.toolChoice,
@@ -239,7 +242,7 @@ export const executeStage = async (
         model: providerConfig.model,
         promptCacheKey,
         requestId,
-        requestHeaders: input.requestHeaders,
+        requestHeaders,
         temperature: input.modelConfig.temperature,
         tools: input.tools,
         toolChoice: input.toolChoice,
