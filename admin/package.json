@@ -8,7 +8,8 @@
     "predev": "lsof -ti :5455 | xargs kill -9 2>/dev/null || true",
     "dev": "vite",
     "preview": "vite preview",
-    "lint": "eslint src --max-warnings 0",
+    "lint": "eslint src test --max-warnings 0",
+    "test": "node --test --import tsx 'test/**/*.test.ts'",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

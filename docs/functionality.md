@@ -108,7 +108,9 @@ Root app layout:
   message, run attachment, and durable enqueue commit atomically; realtime is
   post-commit/non-fatal. Ambiguous null-id work still blocks disable because
   Ledger dispatch may be in flight. Agent access remains visible after disable
-  so retained bundle provenance can be revoked.
+  so retained bundle provenance can be revoked. Its individual-tools link stays
+  in exact DeepWater mode after teardown: with no current instance it shows
+  only the canonical updater, never the full registry.
 
 ### 2.1 Server bootstrap (`src/index.ts`)
 

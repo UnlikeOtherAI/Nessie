@@ -13,6 +13,10 @@ import { ToolFilterBar } from '../components/features/workflow-tools/ToolFilterB
 import { ToolList } from '../components/features/workflow-tools/ToolList'
 import { useAgents } from '../facades/agents/hooks'
 import {
+  matchesDeepWaterInstanceFilter,
+  readDeepWaterInstanceFilter,
+} from '../facades/deep-water-tool-filter'
+import {
   useAgentToolPolicyTargets,
   useMcpToolRegistry,
 } from '../facades/tool-grants/hooks'
@@ -34,7 +38,7 @@ export const ToolsPage = () => {
   const isMobile = useMediaQuery('(max-width: 767px)')
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const [searchParams] = useSearchParams()
-  const deepWaterInstanceId = searchParams.get('deepWaterInstance')
+  const deepWaterInstanceId = readDeepWaterInstanceFilter(searchParams)
 
   const [source, setSource] = useState<ToolRegistrySource | undefined>()
   const [status, setStatus] = useState<ToolRegistryEntryStatus | undefined>()
@@ -62,16 +66,7 @@ export const ToolsPage = () => {
   const filteredTools = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     return allTools.filter((tool) => {
-      if (
-        deepWaterInstanceId
-        && !(
-          tool.toolId === 'deep_water_run_update'
-          || (
-            tool.managedProductSlug === 'deep-water'
-            && tool.mcpInstanceId === deepWaterInstanceId
-          )
-        )
-      ) {
+      if (!matchesDeepWaterInstanceFilter(tool, deepWaterInstanceId)) {
         return false
       }
       if (tag && !tool.tags.includes(tag)) return false
