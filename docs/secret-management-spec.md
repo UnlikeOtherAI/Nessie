@@ -41,6 +41,16 @@ Secrets have one home scope plus optional additional bindings. `agent`, `thread`
 4. Tool or agent stores only the reference in configuration, not the raw value.
 5. Runtime components resolve secrets from the store when required and immediately redact them after use.
 
+For MCP connectors, the browser and public REST surface do not receive even the
+opaque reference: instance creation omits `credentialRef`, secret/override
+writes accept plaintext once, and list/detail responses return metadata without
+the internal reference. This prevents a caller from naming an environment
+variable and turning connector probe/test into an environment-secret oracle.
+Only integration provisioning may attach an exact operator-allowlisted
+environment reference; user-authored credentials must be `secret_*` values
+minted by the encrypted store. Catalog responses also redact a legacy static
+OAuth `clientSecret`; it is never returned after creation.
+
 If a secret is scoped narrower than the actor’s existing privilege, normal privilege is insufficient without explicit binding.
 
 ## 4) Data model (target)

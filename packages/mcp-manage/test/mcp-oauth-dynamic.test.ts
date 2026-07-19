@@ -87,6 +87,7 @@ const makePrisma = (options: {
               ...dynamicCatalogEntry,
               integratedProducts: [{ slug: 'deepsignal' }],
               name: 'deepsignal',
+              organizationId: null,
               visibility: 'public',
             }
           : dynamicCatalogEntry,

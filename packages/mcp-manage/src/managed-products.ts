@@ -6,22 +6,39 @@ import {
 } from './mcp-instance-errors.js'
 
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
-const MANAGED_PRODUCT_SLUGS = [DEEP_WATER_PRODUCT_SLUG, 'deepsignal'] as const
+export const MANAGED_PRODUCT_SLUGS = [
+  DEEP_WATER_PRODUCT_SLUG,
+  'deepsignal',
+] as const
 
 type ManagedCatalog = {
   integratedProducts?: Array<{ slug: string }>
   name: string
+  organizationId: string | null
   visibility: string
 }
 
-const isManagedCatalog = (catalog: ManagedCatalog | null | undefined): boolean =>
+export const isManagedIntegrationCatalogRecord = (
+  catalog: Pick<ManagedCatalog, 'name' | 'organizationId' | 'visibility'>,
+  linkedProductSlugs: readonly string[],
+): boolean =>
   Boolean(
     catalog
+    && catalog.organizationId === null
     && catalog.visibility === 'public'
     && MANAGED_PRODUCT_SLUGS.some(
       (slug) =>
         catalog.name === slug
-        && catalog.integratedProducts?.some((product) => product.slug === slug),
+        && linkedProductSlugs.includes(slug),
+    ),
+  )
+
+const isManagedCatalog = (catalog: ManagedCatalog | null | undefined): boolean =>
+  Boolean(
+    catalog
+    && isManagedIntegrationCatalogRecord(
+      catalog,
+      catalog.integratedProducts?.map((product) => product.slug) ?? [],
     ),
   )
 
@@ -42,6 +59,7 @@ export const isManagedDeepWaterInstance = async (
       organizationId,
       catalogEntry: {
         name: DEEP_WATER_PRODUCT_SLUG,
+        organizationId: null,
         visibility: 'public',
         integratedProducts: {
           some: { slug: DEEP_WATER_PRODUCT_SLUG },
@@ -52,6 +70,7 @@ export const isManagedDeepWaterInstance = async (
       catalogEntry: {
         select: {
           name: true,
+          organizationId: true,
           visibility: true,
           integratedProducts: { select: { slug: true } },
         },
@@ -59,11 +78,7 @@ export const isManagedDeepWaterInstance = async (
     },
   })
   const catalog = instance?.catalogEntry
-  return catalog?.name === DEEP_WATER_PRODUCT_SLUG
-    && catalog.visibility === 'public'
-    && catalog.integratedProducts?.some(
-      (product) => product.slug === DEEP_WATER_PRODUCT_SLUG,
-    ) === true
+  return isManagedCatalog(catalog)
 }
 
 /**
@@ -82,6 +97,7 @@ export const isManagedIntegrationInstance = async (
       organizationId,
       catalogEntry: {
         name: { in: [...MANAGED_PRODUCT_SLUGS] },
+        organizationId: null,
         visibility: 'public',
         integratedProducts: {
           some: { slug: { in: [...MANAGED_PRODUCT_SLUGS] } },
@@ -92,6 +108,7 @@ export const isManagedIntegrationInstance = async (
       catalogEntry: {
         select: {
           name: true,
+          organizationId: true,
           visibility: true,
           integratedProducts: { select: { slug: true } },
         },
@@ -109,6 +126,7 @@ export const isManagedDeepWaterCatalogEntry = async (
     where: {
       id: catalogEntryId,
       name: DEEP_WATER_PRODUCT_SLUG,
+      organizationId: null,
       visibility: 'public',
       integratedProducts: {
         some: { slug: DEEP_WATER_PRODUCT_SLUG },
@@ -116,15 +134,12 @@ export const isManagedDeepWaterCatalogEntry = async (
     },
     select: {
       name: true,
+      organizationId: true,
       visibility: true,
       integratedProducts: { select: { slug: true } },
     },
   })
-  return entry?.name === DEEP_WATER_PRODUCT_SLUG
-    && entry.visibility === 'public'
-    && entry.integratedProducts?.some(
-      (product) => product.slug === DEEP_WATER_PRODUCT_SLUG,
-    ) === true
+  return isManagedCatalog(entry)
 }
 
 export const isManagedIntegrationCatalogEntry = async (
@@ -135,6 +150,7 @@ export const isManagedIntegrationCatalogEntry = async (
     where: {
       id: catalogEntryId,
       name: { in: [...MANAGED_PRODUCT_SLUGS] },
+      organizationId: null,
       visibility: 'public',
       integratedProducts: {
         some: { slug: { in: [...MANAGED_PRODUCT_SLUGS] } },
@@ -142,6 +158,7 @@ export const isManagedIntegrationCatalogEntry = async (
     },
     select: {
       name: true,
+      organizationId: true,
       visibility: true,
       integratedProducts: { select: { slug: true } },
     },
@@ -150,11 +167,10 @@ export const isManagedIntegrationCatalogEntry = async (
 }
 
 /**
- * Generic MCP lifecycle operations cannot safely probe or remove the
- * integration-owned DeepWater instance. Its transport needs signed Nessie
- * identity, and its row must stay transactionally aligned with the product
- * enablement toggle. The Integrations transition is therefore its sole
- * lifecycle owner.
+ * Generic MCP catalog/instance lifecycle operations cannot safely mutate a
+ * first-party product connector. Its transport uses product-bound identity,
+ * and its rows must stay aligned with Integrations state. The Integrations
+ * transition is therefore its sole lifecycle owner.
  */
 export const assertCatalogLifecycleIsUserManaged = async (
   prisma: PrismaClient,

@@ -34,6 +34,7 @@ import {
 } from '../facades/mcp-instances/hooks'
 import {
   useMcpLibrary,
+  useSetInstanceSecret,
   type McpLibraryEntryRecord,
 } from '../facades/mcp-library/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -93,6 +94,7 @@ export const McpAppStorePage = () => {
   const lockCatalog = useLockCatalogEntry()
   const unlockCatalog = useUnlockCatalogEntry()
   const createInstance = useCreateInstance()
+  const setInstanceSecret = useSetInstanceSecret()
   const testInstance = useTestInstance()
 
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -174,21 +176,27 @@ export const McpAppStorePage = () => {
   }, [action, catalogEntryIdParam, selectedCatalog])
 
   const handleInstall = async (input: {
-    credentialRef?: string | null
+    secret?: string
     scopeType: string
     scopeId: string
     transportConfig?: Record<string, unknown>
   }) => {
     if (!installCandidate) return
-    await createInstance.mutateAsync({
+    const instance = await createInstance.mutateAsync({
       catalogEntryId: installCandidate.id,
-      credentialRef: input.credentialRef,
       scopeType: input.scopeType as Parameters<
         typeof createInstance.mutateAsync
       >[0]['scopeType'],
       scopeId: input.scopeId,
       transportConfig: input.transportConfig,
     })
+    if (input.secret) {
+      await setInstanceSecret.mutateAsync({
+        instanceId: instance.id,
+        secret: input.secret,
+        shared: input.scopeType !== 'user',
+      })
+    }
     setInstallTarget(null)
   }
 

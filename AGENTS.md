@@ -57,7 +57,10 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   discovery, RFC 7591 client registration, PKCE, pg-backed state, auto-refresh);
   static client configs remain supported. Owners/admins can lock catalog
   entries against member self-service (install-time gate, endpoint-match
-  aware). Toolset assembly defers MCP schemas behind
+  aware). Public connector APIs never accept or return caller-chosen
+  `credentialRef` values: plaintext is submitted once to the encrypted store,
+  and only server-minted `secret_*` refs are persisted. Exact environment refs
+  are reserved for first-party provisioning. Toolset assembly defers MCP schemas behind
   `mcp_find_tools`/`mcp_load_tools`/`mcp_drop_tools` above
   `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) to protect agent context.
   External-agent products (e.g. DeepSignal) run as a per-user DM channel with
@@ -79,8 +82,12 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   from every configured secret-bearing environment credential and every
   encrypted per-org webhook signing secret; API/worker startup verifies both.
   Pre-existing identity headers are rejected case-insensitively before fresh
-  identity is attached. Managed instances reject generic lifecycle and secret
-  writes. The worker driver + API
+  identity is attached. The active link org/team must exactly match the
+  selected team's external UOA mapping; enablement is rechecked for every call,
+  and DM keys include the UOA team so conversations cannot cross a team switch.
+  Legacy team-less channels fail closed. Managed instances reject generic
+  lifecycle and secret writes, and their global product-linked catalog entries
+  reject every generic catalog mutation. The worker driver + API
   history hydration share the `@nessie/mcp-manage`
   `resolveInstanceMcpTransport`/`callInstanceTool` seam, and a per-org
   HMAC-verified webhook (`/api/integrations/deepsignal/events`) delivers

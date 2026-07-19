@@ -19,7 +19,11 @@ export const DEEPSIGNAL_MCP_ORIGIN = 'https://api.deepsignal.live'
 
 type DeepSignalIdentityPrisma = Pick<
   PrismaClient,
-  'productAccountLink' | 'productWebhookSecret'
+  | 'channel'
+  | 'productAccountLink'
+  | 'productTeamEnablement'
+  | 'productWebhookSecret'
+  | 'team'
 >
 
 export type DeepSignalMcpIdentityService = {
@@ -40,6 +44,8 @@ export class DeepSignalMcpIdentityError extends Error {
       | 'DEEPSIGNAL_MCP_IDENTITY_UNCONFIGURED'
       | 'DEEPSIGNAL_MCP_ORIGIN_INVALID'
       | 'DEEPSIGNAL_MCP_PROVENANCE_REQUIRED'
+      | 'DEEPSIGNAL_MCP_CHANNEL_WORKSPACE_MISMATCH'
+      | 'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED'
       | 'DEEPSIGNAL_MCP_UOA_IDENTITY_REQUIRED'
       | 'DEEPSIGNAL_MCP_UOA_EXCHANGE_FAILED'
       | 'DEEPSIGNAL_MCP_WEBHOOK_SECRET_CHECK_FAILED',
@@ -254,6 +260,59 @@ export const createDeepSignalMcpIdentityServiceFromEnv = (
           'DEEPSIGNAL_MCP_ORIGIN_INVALID',
           `DeepSignal MCP credentials are pinned to ${DEEPSIGNAL_MCP_ORIGIN}.`,
         )
+      }
+      if (!attribution.teamId) {
+        throw new DeepSignalMcpIdentityError(
+          'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED',
+          'DeepSignal calls require an originating enabled Nessie team.',
+        )
+      }
+      const [enablement, team] = await Promise.all([
+        prisma.productTeamEnablement.findUnique({
+          where: {
+            organizationId_teamId_productSlug: {
+              organizationId: attribution.organizationId,
+              teamId: attribution.teamId,
+              productSlug: DEEPSIGNAL_PRODUCT_SLUG,
+            },
+          },
+          select: { enabled: true },
+        }),
+        prisma.team.findFirst({
+          where: {
+            id: attribution.teamId,
+            project: { organizationId: attribution.organizationId },
+          },
+          select: { externalWorkspaceId: true },
+        }),
+      ])
+      if (!enablement?.enabled) {
+        throw new DeepSignalMcpIdentityError(
+          'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED',
+          'DeepSignal is not enabled for the originating Nessie team.',
+        )
+      }
+      if (attribution.channelId) {
+        const userId =
+          attribution.userId
+          ?? (attribution.actorType === 'user' ? attribution.actorId : null)
+        const channel = await prisma.channel.findFirst({
+          where: {
+            id: attribution.channelId,
+            organizationId: attribution.organizationId,
+          },
+          select: { dmKey: true },
+        })
+        const expectedDmKey =
+          userId && team?.externalWorkspaceId
+            ? `extagent:${DEEPSIGNAL_PRODUCT_SLUG}:${attribution.organizationId}:${userId}:${team.externalWorkspaceId}`
+            : null
+        if (!expectedDmKey || channel?.dmKey !== expectedDmKey) {
+          throw new DeepSignalMcpIdentityError(
+            'DEEPSIGNAL_MCP_CHANNEL_WORKSPACE_MISMATCH',
+            'The DeepSignal conversation channel does not belong to the originating SSO workspace.',
+          )
+        }
       }
       try {
         return await delegated.requestHeaders(attribution, {

@@ -126,14 +126,9 @@ test('searchMcpLibrary dedups registry entries that match curated endpoints', as
   assert.equal(matching[0]?.source, 'curated')
 })
 
-test('curated library identifies the managed DeepSignal app-key endpoint', () => {
+test('managed DeepSignal is integration-only and absent from generic install library', () => {
   const deepSignal = CURATED_MCP_LIBRARY.find((entry) => entry.key === 'deepsignal')
-  assert.ok(deepSignal)
-  assert.equal(deepSignal.source, 'curated')
-  assert.equal(deepSignal.url, 'https://api.deepsignal.live/mcp')
-  assert.equal(deepSignal.transport, 'http')
-  assert.equal(deepSignal.authMethod, 'bearer')
-  assert.match(deepSignal.authHint, /dedicated DeepSignal application key/)
+  assert.equal(deepSignal, undefined)
 })
 
 test('curated library only lists remote transports with expressible auth', () => {

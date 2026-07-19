@@ -12,9 +12,10 @@ import {
 } from '../../../facades/mcp-library/hooks'
 
 /**
- * Per-server credential modal. The user enters a `credentialRef` (which the
- * runtime secret resolver dereferences — never plaintext per plan D7) keyed by
- * principal type + principal ID. For oauth2 servers we also surface a
+ * Per-server credential modal. Raw API keys and tokens cross the encrypted
+ * secret-store boundary once and are attached to a principal by an opaque,
+ * server-minted reference that is never exposed to the browser. For oauth2
+ * servers we also surface a
  * "Connect" button that starts the OAuth flow (static or dynamic) and opens
  * the provider's sign-in page in a new tab. A separate password field stores a
  * raw token through the encrypted `/secret` boundary as the current user's
@@ -53,7 +54,6 @@ const ghostBtn = [
 ].join(' ')
 
 type OverrideRowProps = {
-  credentialRef: string
   disabled: boolean
   onRemove: () => void
   principalId: string
@@ -61,19 +61,15 @@ type OverrideRowProps = {
 }
 
 /**
- * Renders a single saved credential override. The `credentialRef` is treated
- * as sensitive (revealing it leaks naming patterns and which keys exist) and
- * is masked by default with a per-row reveal toggle.
+ * Renders a single saved credential override without exposing its internal
+ * encrypted-store reference.
  */
 const OverrideRow = ({
-  credentialRef,
   disabled,
   onRemove,
   principalId,
   principalType,
-}: OverrideRowProps) => {
-  const [revealed, setRevealed] = useState(false)
-  return (
+}: OverrideRowProps) => (
     <div
       className={[
         'flex items-center justify-between gap-3 rounded-md',
@@ -84,25 +80,7 @@ const OverrideRow = ({
         <div className="truncate text-[var(--tx)]">
           {principalType}:{principalId.slice(0, 8)}…
         </div>
-        <div className="flex items-center gap-2 text-xs text-[color:var(--tx3)]">
-          <span className="truncate font-mono">
-            {revealed ? credentialRef : '••••••••'}
-          </span>
-          <button
-            aria-label={
-              revealed ? 'Hide credential reference' : 'Show credential reference'
-            }
-            aria-pressed={revealed}
-            className={ghostBtn}
-            onClick={() => setRevealed((prev) => !prev)}
-            title={
-              revealed ? 'Hide credential reference' : 'Show credential reference'
-            }
-            type="button"
-          >
-            {revealed ? 'Hide' : 'Show'}
-          </button>
-        </div>
+        <div className="text-xs text-[color:var(--tx3)]">Stored encrypted</div>
       </div>
       <button
         className={ghostBtn}
@@ -114,7 +92,6 @@ const OverrideRow = ({
       </button>
     </div>
   )
-}
 
 export const CredentialsDialog = ({
   instance,
@@ -129,7 +106,7 @@ export const CredentialsDialog = ({
   const [principalType, setPrincipalType] =
     useState<McpCredentialPrincipalType>('user')
   const [principalId, setPrincipalId] = useState('')
-  const [credentialRef, setCredentialRef] = useState('')
+  const [overrideSecret, setOverrideSecret] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [secret, setSecretValue] = useState('')
   const [secretError, setSecretError] = useState<string | null>(null)
@@ -165,20 +142,20 @@ export const CredentialsDialog = ({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
-    if (!principalId.trim() || !credentialRef.trim()) {
-      setError('Principal ID and credential ref are required')
+    if (!principalId.trim() || !overrideSecret.trim()) {
+      setError('Principal ID and credential are required')
       return
     }
     const payload = {
       instanceId: instance.id,
       principalType,
       principalId: principalId.trim(),
-      credentialRef: credentialRef.trim(),
+      secret: overrideSecret.trim(),
     }
     // Clear sensitive state BEFORE the request so closing the dialog mid-flight
     // leaves no secret in React state or the DOM.
     setPrincipalId('')
-    setCredentialRef('')
+    setOverrideSecret('')
     try {
       await upsert.mutateAsync(payload)
     } catch (caught) {
@@ -320,15 +297,15 @@ export const CredentialsDialog = ({
               />
             </label>
             <label className={labelClass}>
-              Credential ref
+              API key or token
               <input
                 autoComplete="new-password"
                 className={inputClass}
-                name="credentialRef"
-                onChange={(event) => setCredentialRef(event.target.value)}
-                placeholder="secret://orgs/.../tokens/me"
+                name="overrideSecret"
+                onChange={(event) => setOverrideSecret(event.target.value)}
+                placeholder="Paste credential"
                 type="password"
-                value={credentialRef}
+                value={overrideSecret}
               />
             </label>
           </div>
@@ -362,12 +339,7 @@ export const CredentialsDialog = ({
             ) : (
               overrides.map((override) => (
                 <OverrideRow
-                  // Include `updatedAt` so an edit to an existing override
-                  // remounts the row and forces it back to the masked state —
-                  // keying on `id` alone preserved `revealed=true` across the
-                  // post-upsert refetch (regression vs. #31 masking intent).
                   key={`${override.id}-${override.updatedAt}`}
-                  credentialRef={override.credentialRef}
                   disabled={remove.isPending}
                   onRemove={() =>
                     remove.mutate({

@@ -20,7 +20,7 @@ type IdentityLink = {
   uoaSub: string | null
 }
 
-type UoaIdentityPrisma = Pick<PrismaClient, 'productAccountLink'>
+type UoaIdentityPrisma = Pick<PrismaClient, 'productAccountLink' | 'team'>
 
 export type UoaDelegatedIdentitySettings = {
   authBaseUrl: string
@@ -136,6 +136,36 @@ const decodeJwtExpiry = (token: string, fallback: number): number => {
 const resolveUserId = (attribution: LedgerAttribution): string | null =>
   attribution.userId
   ?? (attribution.actorType === 'user' ? attribution.actorId : null)
+
+const activeWorkspaceMatchesAttribution = async (
+  prisma: UoaIdentityPrisma,
+  attribution: LedgerAttribution,
+  identity: UoaProductIdentity | null,
+): Promise<boolean> => {
+  if (
+    !identity?.organizationId
+    || !identity.teamId
+    || !attribution.teamId
+  ) {
+    return false
+  }
+  const team = await prisma.team.findFirst({
+    where: {
+      id: attribution.teamId,
+      project: { organizationId: attribution.organizationId },
+    },
+    select: {
+      externalOrgId: true,
+      externalWorkspaceId: true,
+    },
+  })
+  return Boolean(
+    team?.externalOrgId
+    && team.externalWorkspaceId
+    && team.externalOrgId === identity.organizationId
+    && team.externalWorkspaceId === identity.teamId,
+  )
+}
 
 const contextSubject = (
   attribution: LedgerAttribution,
@@ -353,11 +383,15 @@ export const createUoaDelegatedIdentityService = (input: {
       }
       if (
         options.requireActiveWorkspace
-        && (!identity?.organizationId || !identity.teamId)
+        && !(await activeWorkspaceMatchesAttribution(
+          input.prisma,
+          completeAttribution,
+          identity,
+        ))
       ) {
         throw new UoaDelegatedIdentityError(
           'UOA_ACTIVE_WORKSPACE_REQUIRED',
-          `An active UnlikeOtherAI organization and team are required for ${options.accountLinkProductSlug}.`,
+          `The active UnlikeOtherAI organization/team must match the originating Nessie team for ${options.accountLinkProductSlug}.`,
         )
       }
 

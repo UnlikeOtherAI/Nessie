@@ -22,7 +22,6 @@ export type McpServerInstanceRecord = {
   organizationId: string
   scopeType: McpServerScopeType
   scopeId: string
-  credentialRef: string | null
   transportConfig: Record<string, unknown>
   discoveredTools: Array<Record<string, unknown>>
   lifecycleState: McpServerLifecycleState
@@ -38,7 +37,6 @@ export type McpCredentialOverrideRecord = {
   instanceId: string
   principalType: McpCredentialPrincipalType
   principalId: string
-  credentialRef: string
   createdAt: string
   updatedAt: string
 }
@@ -47,7 +45,6 @@ export type CreateInstanceInput = {
   catalogEntryId: string
   scopeType: McpServerScopeType
   scopeId: string
-  credentialRef?: string | null
   transportConfig?: Record<string, unknown>
 }
 
@@ -55,7 +52,7 @@ export type UpsertCredentialOverrideInput = {
   instanceId: string
   principalType: McpCredentialPrincipalType
   principalId: string
-  credentialRef: string
+  secret: string
 }
 
 const INSTANCE_QUERY_KEY = ['mcp-instances'] as const
@@ -157,7 +154,7 @@ export const useUpsertInstanceCredential = () => {
         {
           principalType: input.principalType,
           principalId: input.principalId,
-          credentialRef: input.credentialRef,
+          secret: input.secret,
         },
       ),
     onSuccess: (_data, variables) => {

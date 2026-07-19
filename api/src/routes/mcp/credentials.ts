@@ -28,8 +28,16 @@ import { sendMcpError, type McpSubRegistrarContext } from './shared.js'
 const UpsertOverrideBodySchema = z.object({
   principalType: McpCredentialPrincipalTypeSchema,
   principalId: z.string().uuid(),
-  credentialRef: z.string().min(1),
-})
+  secret: z.string().trim().min(1).max(8192),
+}).strict()
+
+const publicOverride = <T extends { credentialRef: string }>(
+  override: T,
+): Omit<T, 'credentialRef'> => {
+  const safe = { ...override } as Record<string, unknown>
+  delete safe.credentialRef
+  return safe as Omit<T, 'credentialRef'>
+}
 
 export const registerMcpCredentialRoutes = (
   app: FastifyInstance,
@@ -53,7 +61,7 @@ export const registerMcpCredentialRoutes = (
       return reply
     }
     const overrides = await listOverrides(prisma, instanceId)
-    return createApiResponse(overrides)
+    return createApiResponse(overrides.map(publicOverride))
   })
 
   app.put('/api/mcp/instances/:instanceId/credentials', async (request, reply) => {
@@ -92,13 +100,16 @@ export const registerMcpCredentialRoutes = (
     }
 
     try {
+      const credentialRef = await ctx.mcpSecretStore.put({
+        accessToken: body.secret,
+      })
       const override = await upsertOverride(prisma, {
         instanceId,
         principalType: body.principalType,
         principalId: body.principalId,
-        credentialRef: body.credentialRef,
+        credentialRef,
       })
-      return createApiResponse(override)
+      return createApiResponse(publicOverride(override))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error

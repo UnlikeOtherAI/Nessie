@@ -120,6 +120,36 @@ test('activation requires a currently linked UOA subject and active workspace', 
   assert.equal(fake.channelsById.size, 0)
 })
 
+test('activation rejects an SSO workspace that does not match the selected Nessie team', async () => {
+  const seed = buildSeed()
+  const userId = randomUUID()
+  const fake = makeExternalAgentPrismaFake({
+    ...seed,
+    accountLinks: [{
+      ...linkedAccount(seed, userId),
+      activeTeamId: 'different-uoa-team',
+    }],
+    teamEnablements: [{
+      teamId: seed.teamId,
+      productSlug: 'deepsignal',
+      enabled: true,
+    }],
+  })
+
+  await assert.rejects(
+    activateExternalAgentProduct(
+      asPrisma(fake),
+      'deepsignal',
+      buildCtx(seed, userId),
+    ),
+    (error: unknown) =>
+      error instanceof ExternalAgentActivationError
+      && error.code === 'EXTERNAL_AGENT_SSO_LINK_REQUIRED',
+  )
+  assert.equal(fake.channelsById.size, 0)
+  assert.equal(fake.instances.length, 0)
+})
+
 test('activation rejects the obsolete per-user OAuth catalog contract', async () => {
   const seed = buildSeed()
   const userId = randomUUID()

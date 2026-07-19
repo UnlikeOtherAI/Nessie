@@ -75,6 +75,12 @@ const delegationToken = (): string => {
 }
 
 const linkedPrisma = (onLookup?: (productSlug: string) => void) => ({
+  channel: {
+    findFirst: async () => ({
+      dmKey:
+        `extagent:deepsignal:${attribution.organizationId}:${attribution.userId}:uoa-team`,
+    }),
+  },
   productAccountLink: {
     findUnique: async (args: {
       where: {
@@ -92,8 +98,17 @@ const linkedPrisma = (onLookup?: (productSlug: string) => void) => ({
       }
     },
   },
+  productTeamEnablement: {
+    findUnique: async () => ({ enabled: true }),
+  },
   productWebhookSecret: {
     findMany: async () => [],
+  },
+  team: {
+    findFirst: async () => ({
+      externalOrgId: 'uoa-org',
+      externalWorkspaceId: 'uoa-team',
+    }),
   },
 })
 
@@ -310,12 +325,25 @@ test('mints exact DeepSignal delegation and fresh signed request provenance', as
 
 test('fails before exchange when active UOA workspace or provenance is absent', async () => {
   const noWorkspace = {
+    channel: linkedPrisma().channel,
     productAccountLink: {
       findUnique: async () => ({
         activeOrgId: null,
         activeTeamId: null,
         status: 'linked',
         uoaSub: 'uoa-user',
+      }),
+    },
+    productTeamEnablement: {
+      findUnique: async () => ({ enabled: true }),
+    },
+    productWebhookSecret: {
+      findMany: async () => [],
+    },
+    team: {
+      findFirst: async () => ({
+        externalOrgId: 'uoa-org',
+        externalWorkspaceId: 'uoa-team',
       }),
     },
   }
@@ -346,6 +374,95 @@ test('fails before exchange when active UOA workspace or provenance is absent', 
       error instanceof DeepSignalMcpIdentityError
       && error.code === 'DEEPSIGNAL_MCP_PROVENANCE_REQUIRED',
   )
+})
+
+test('blocks disabled or mismatched originating teams before UOA exchange', async () => {
+  let exchanges = 0
+  const request = {
+    audience: 'https://api.deepsignal.live',
+    toolCallId: 'request-1:chat',
+  }
+  const disabled = createDeepSignalMcpIdentityServiceFromEnv(
+    {
+      ...linkedPrisma(),
+      productTeamEnablement: {
+        findUnique: async () => ({ enabled: false }),
+      },
+    } as never,
+    env(),
+    {
+      fetchImpl: (async () => {
+        exchanges += 1
+        throw new Error('must not exchange')
+      }) as typeof fetch,
+    },
+  )
+  assert.ok(disabled)
+  await assert.rejects(
+    disabled.requestHeaders(attribution, request),
+    (error: unknown) =>
+      error instanceof DeepSignalMcpIdentityError
+      && error.code === 'DEEPSIGNAL_MCP_TEAM_NOT_ENABLED',
+  )
+
+  const mismatched = createDeepSignalMcpIdentityServiceFromEnv(
+    {
+      ...linkedPrisma(),
+      team: {
+        findFirst: async () => ({
+          externalOrgId: 'other-org',
+          externalWorkspaceId: 'other-team',
+        }),
+      },
+      channel: {
+        findFirst: async () => ({
+          dmKey:
+            `extagent:deepsignal:${attribution.organizationId}:${attribution.userId}:other-team`,
+        }),
+      },
+    } as never,
+    env(),
+    {
+      fetchImpl: (async () => {
+        exchanges += 1
+        throw new Error('must not exchange')
+      }) as typeof fetch,
+    },
+  )
+  assert.ok(mismatched)
+  await assert.rejects(
+    mismatched.requestHeaders(attribution, request),
+    (error: unknown) =>
+      error instanceof DeepSignalMcpIdentityError
+      && error.code === 'DEEPSIGNAL_MCP_UOA_IDENTITY_REQUIRED',
+  )
+
+  const legacyChannel = createDeepSignalMcpIdentityServiceFromEnv(
+    {
+      ...linkedPrisma(),
+      channel: {
+        findFirst: async () => ({
+          dmKey:
+            `extagent:deepsignal:${attribution.organizationId}:${attribution.userId}`,
+        }),
+      },
+    } as never,
+    env(),
+    {
+      fetchImpl: (async () => {
+        exchanges += 1
+        throw new Error('must not exchange')
+      }) as typeof fetch,
+    },
+  )
+  assert.ok(legacyChannel)
+  await assert.rejects(
+    legacyChannel.requestHeaders(attribution, request),
+    (error: unknown) =>
+      error instanceof DeepSignalMcpIdentityError
+      && error.code === 'DEEPSIGNAL_MCP_CHANNEL_WORKSPACE_MISMATCH',
+  )
+  assert.equal(exchanges, 0)
 })
 
 test('refuses to sign a DeepSignal app-key call for any other origin', async () => {

@@ -10,6 +10,7 @@ import {
   MCP_CATALOG_ERROR_CODES,
   type McpCatalogEntryRow,
 } from './mcp-catalog.js'
+import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
 
 /**
  * Public-store review flow for the MCP App Store.
@@ -44,6 +45,7 @@ export const submitForReview = async (
 ): Promise<McpCatalogEntryRow | null> => {
   const existing = await getAccessibleCatalogEntry(prisma, actorContext, id)
   if (!existing) return null
+  await assertCatalogLifecycleIsUserManaged(prisma, id)
   if (!canManageEntry(actorContext, existing)) {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.FORBIDDEN,
@@ -95,6 +97,7 @@ export const approveSubmission = async (
   requireSuperuser(actorContext)
   const existing = await getAccessibleCatalogEntry(prisma, actorContext, id)
   if (!existing) return null
+  await assertCatalogLifecycleIsUserManaged(prisma, id)
   if (existing.status === 'published') return existing
   if (existing.status !== 'pending_approval') {
     throw new McpCatalogError(
@@ -138,6 +141,7 @@ export const rejectSubmission = async (
   requireSuperuser(actorContext)
   const existing = await getAccessibleCatalogEntry(prisma, actorContext, id)
   if (!existing) return null
+  await assertCatalogLifecycleIsUserManaged(prisma, id)
   if (existing.status !== 'pending_approval') {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.INVALID_TRANSITION,

@@ -24,12 +24,14 @@ test('external-agent bootstrap is idempotent across repeated calls', async () =>
     product,
     teamId: seed.teamId,
     userId,
+    workspaceId: 'uoa-team',
   })
   const second = await ensureExternalAgentBootstrap(prisma, {
     organizationId: seed.organizationId,
     product,
     teamId: seed.teamId,
     userId,
+    workspaceId: 'uoa-team',
   })
 
   assert.equal(first.agentId, second.agentId)
@@ -55,4 +57,37 @@ test('external-agent bootstrap is idempotent across repeated calls', async () =>
   assert.equal(fake.channelMembers[0]?.role, 'owner')
   const [channel] = [...fake.channelsById.values()]
   assert.equal(channel?.systemChannelType, 'external_agent')
+})
+
+test('different UOA workspaces use distinct channels and conversations', async () => {
+  const seed = {
+    organizationId: randomUUID(),
+    projectId: randomUUID(),
+    teamId: randomUUID(),
+  }
+  const userId = randomUUID()
+  const fake = makeExternalAgentPrismaFake(seed)
+  const prisma = asPrisma(fake)
+  const product = EXTERNAL_AGENT_PRODUCTS.deepsignal!
+
+  const first = await ensureExternalAgentBootstrap(prisma, {
+    organizationId: seed.organizationId,
+    product,
+    teamId: seed.teamId,
+    userId,
+    workspaceId: 'uoa-team-a',
+  })
+  const second = await ensureExternalAgentBootstrap(prisma, {
+    organizationId: seed.organizationId,
+    product,
+    teamId: seed.teamId,
+    userId,
+    workspaceId: 'uoa-team-b',
+  })
+
+  assert.notEqual(first.channelId, second.channelId)
+  assert.notEqual(first.threadId, second.threadId)
+  assert.equal(first.agentId, second.agentId)
+  assert.equal(fake.channelsById.size, 2)
+  assert.equal(fake.threads.length, 2)
 })

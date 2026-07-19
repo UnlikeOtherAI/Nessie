@@ -13,6 +13,8 @@ import {
   assertMcpAuthUrlsSafe,
   assertUserAuthoredMcpTransportSafe,
 } from './mcp-security.js'
+import { findApplicableLock } from './mcp-catalog-endpoint-lock.js'
+import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
 
 /**
  * MCP App Store catalog service.
@@ -216,48 +218,6 @@ const assertCatalogSecurity = async (
 }
 
 /**
- * Build the `where` clause that scopes a listing to what `actorContext` may
- * see. Superusers (`owner` role) see everything; everyone else sees the public
- * store plus their own entries.
- */
-const listWhere = (
-  actorContext: AuthorizedActionContext,
-  view: CatalogView,
-): Record<string, unknown> => {
-  const ownerUserId = actorContext.actor.actorId
-  switch (view) {
-    case 'store':
-      return { visibility: 'public', status: 'published' }
-    case 'mine':
-      return { ownerUserId }
-    case 'queue':
-      return { status: 'pending_approval', visibility: 'public' }
-    case 'all':
-      return {}
-  }
-}
-
-export const listCatalogEntries = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  filters: { view?: CatalogView; status?: McpCatalogStatus } = {},
-): Promise<McpCatalogEntryRow[]> => {
-  const view = filters.view ?? 'store'
-  const where = listWhere(actorContext, view)
-  // A caller-supplied status sub-filter only narrows the management views
-  // ('mine', 'all'). 'store' and 'queue' pin status (published /
-  // pending_approval) so a status param can never widen them — otherwise
-  // `?view=store&status=pending_approval` would leak the public review queue.
-  if (filters.status && (view === 'mine' || view === 'all')) {
-    where.status = filters.status
-  }
-  return prisma.mcpCatalogEntry.findMany({
-    where,
-    orderBy: [{ status: 'asc' }, { label: 'asc' }],
-  })
-}
-
-/**
  * Org-scoped by-id read for internal, post-install operations (OAuth handshake,
  * instance probe/health) where access was already established at install time
  * and the organization is trusted. Matches system-wide (`null` org) and
@@ -320,6 +280,7 @@ const requireManageable = async (
       'You do not have permission to modify this catalog entry',
     )
   }
+  await assertCatalogLifecycleIsUserManaged(prisma, id)
   return entry
 }
 
@@ -524,74 +485,4 @@ export const deprecateCatalogEntry = async (
     where: { id },
     data: { status: 'deprecated' },
   })
-}
-
-// ─── Admin locking ───────────────────────────────────────────────────────────
-
-/**
- * Lock/unlock an entry for member self-service (owner or org admin only).
- * A locked entry cannot be installed by members — and its endpoint URL cannot
- * be re-registered by them under a different name — but already-installed
- * instances keep working until removed. Idempotent.
- */
-export const setCatalogEntryLocked = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  id: string,
-  locked: boolean,
-): Promise<McpCatalogEntryRow | null> => {
-  if (!isAdminRole(actorContext)) {
-    throw new McpCatalogError(
-      MCP_CATALOG_ERROR_CODES.FORBIDDEN,
-      'Only organisation owners/admins can lock or unlock connectors',
-    )
-  }
-  const existing = await getAccessibleCatalogEntry(prisma, actorContext, id)
-  if (!existing) return null
-  if (existing.locked === locked) return existing
-  return prisma.mcpCatalogEntry.update({
-    where: { id },
-    data: {
-      locked,
-      lockedAt: locked ? new Date() : null,
-      lockedBy: locked ? actorContext.actor.actorId : null,
-    },
-  })
-}
-
-const endpointUrlOf = (entry: { defaultTransportConfig: unknown }): string | null => {
-  const config = entry.defaultTransportConfig
-  if (config && typeof config === 'object' && !Array.isArray(config)) {
-    const url = (config as Record<string, unknown>).url
-    if (typeof url === 'string' && url.length > 0) return url.replace(/\/+$/, '')
-  }
-  return null
-}
-
-/**
- * The lock that applies to installing/re-registering an endpoint, if any:
- * the entry's own lock, or a lock on any org/global entry pointing at the
- * same endpoint URL (so members cannot bypass a lock by importing the same
- * server under a fresh name).
- */
-export const findApplicableLock = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  entry: Pick<McpCatalogEntryRow, 'locked' | 'label' | 'defaultTransportConfig'> | null,
-  endpointUrl?: string | null,
-): Promise<{ label: string } | null> => {
-  if (entry?.locked) return { label: entry.label }
-  const url = endpointUrl?.replace(/\/+$/, '') ?? (entry ? endpointUrlOf(entry) : null)
-  if (!url) return null
-  const lockedEntries = await prisma.mcpCatalogEntry.findMany({
-    where: {
-      locked: true,
-      OR: [{ organizationId }, { organizationId: null }],
-    },
-    select: { label: true, defaultTransportConfig: true },
-  })
-  for (const candidate of lockedEntries) {
-    if (endpointUrlOf(candidate) === url) return { label: candidate.label }
-  }
-  return null
 }

@@ -15,7 +15,7 @@ type InstallScopeDialogProps = {
   catalogEntry: McpCatalogEntryRecord
   onCancel: () => void
   onConfirm: (input: {
-    credentialRef?: string | null
+    secret?: string
     scopeType: McpServerScopeType
     scopeId: string
     transportConfig?: Record<string, unknown>
@@ -71,7 +71,7 @@ export const InstallScopeDialog = ({
   const initialEndpoint = transportUrlFrom(catalogEntry.defaultTransportConfig)
   const needsEndpoint = protocolNeedsEndpoint(catalogEntry.protocol)
   const [endpointUrl, setEndpointUrl] = useState(initialEndpoint)
-  const [credentialRef, setCredentialRef] = useState('')
+  const [secret, setSecret] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -111,8 +111,10 @@ export const InstallScopeDialog = ({
       }
     }
     try {
+      const plaintext = secret.trim()
+      setSecret('')
       await onConfirm({
-        credentialRef: credentialRef.trim() || null,
+        secret: plaintext || undefined,
         scopeType,
         scopeId: scopeId.trim(),
         transportConfig: needsEndpoint
@@ -194,14 +196,14 @@ export const InstallScopeDialog = ({
           ) : null}
           {catalogEntry.authMethod !== 'none' ? (
             <label className={labelClass}>
-              Credential ref
+              API key or token
               <input
                 autoComplete="new-password"
                 className={inputClass}
-                onChange={(event) => setCredentialRef(event.target.value)}
-                placeholder="DEEP_AGENT_CRAWL_BEARER_TOKEN"
+                onChange={(event) => setSecret(event.target.value)}
+                placeholder="Paste credential"
                 type="password"
-                value={credentialRef}
+                value={secret}
               />
             </label>
           ) : null}

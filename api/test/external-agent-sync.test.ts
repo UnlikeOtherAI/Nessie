@@ -18,7 +18,10 @@ import { syncExternalAgentChannel } from '../src/services/external-agent-sync.js
  */
 const ORG = '00000000-0000-4000-8000-0000000000a1'
 const USER = '00000000-0000-4000-8000-0000000000b2'
-const CHANNEL = { id: '00000000-0000-4000-8000-0000000000c3', dmKey: `extagent:deepsignal:${ORG}:${USER}` }
+const CHANNEL = {
+  id: '00000000-0000-4000-8000-0000000000c3',
+  dmKey: `extagent:deepsignal:${ORG}:${USER}:uoa-team`,
+}
 const APP_KEY = `dsk_${'n'.repeat(32)}`
 
 const attribution: LedgerAttribution = {

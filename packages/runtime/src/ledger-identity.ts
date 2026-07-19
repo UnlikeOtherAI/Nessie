@@ -13,7 +13,7 @@ import {
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
 const DEFAULT_LEDGER_AUDIENCE = 'https://ledger.unlikeotherai.com'
 
-type LedgerIdentityPrisma = Pick<PrismaClient, 'productAccountLink'>
+type LedgerIdentityPrisma = Pick<PrismaClient, 'productAccountLink' | 'team'>
 
 export type LedgerIdentitySettings = UoaDelegatedIdentitySettings & {
   ledgerAudience: string

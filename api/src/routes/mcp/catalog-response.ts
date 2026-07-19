@@ -1,20 +1,26 @@
 import type { PrismaClient } from '@prisma/client'
-import type { McpCatalogEntryRow } from '@nessie/mcp-manage'
+import {
+  isManagedIntegrationCatalogRecord,
+  type McpCatalogEntryRow,
+} from '@nessie/mcp-manage'
 
-const DEEP_WATER_SLUG = 'deep-water'
-
-export type McpCatalogApiEntry = McpCatalogEntryRow & {
+export type McpCatalogApiEntry = Omit<McpCatalogEntryRow, 'authConfig'> & {
+  authConfig: unknown
   managedByIntegration: boolean
 }
 
-export const isManagedDeepWaterCatalogRecord = (
-  entry: Pick<McpCatalogEntryRow, 'name' | 'organizationId' | 'visibility'>,
-  linkedProductSlugs: readonly string[],
-): boolean =>
-  entry.name === DEEP_WATER_SLUG
-  && entry.organizationId === null
-  && entry.visibility === 'public'
-  && linkedProductSlugs.includes(DEEP_WATER_SLUG)
+export const redactCatalogAuthConfig = (authConfig: unknown): unknown => {
+  if (
+    !authConfig
+    || typeof authConfig !== 'object'
+    || Array.isArray(authConfig)
+  ) {
+    return authConfig
+  }
+  const safe = { ...authConfig } as Record<string, unknown>
+  delete safe.clientSecret
+  return safe
+}
 
 export const presentCatalogEntries = async (
   prisma: PrismaClient,
@@ -43,7 +49,8 @@ export const presentCatalogEntries = async (
 
   return entries.map((entry) => ({
     ...entry,
-    managedByIntegration: isManagedDeepWaterCatalogRecord(
+    authConfig: redactCatalogAuthConfig(entry.authConfig),
+    managedByIntegration: isManagedIntegrationCatalogRecord(
       entry,
       slugsByCatalogId.get(entry.id) ?? [],
     ),

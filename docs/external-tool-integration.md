@@ -287,25 +287,52 @@ makes a connector available to the whole team/org" — and everyone manages
 their own `user` scope. Instance listing for non-owners returns their own
 installs plus shared-scope installs they can reach.
 
+**Credential-reference boundary.** Public instance creation never accepts a
+`credentialRef`, and instance/override responses never return one. The UI or PA
+submits a raw token once to the encrypted `SecretStore`; the server mints an
+opaque `secret_*` reference and attaches it internally. Per-principal override
+writes follow the same rule (`secret`, not `credentialRef`). Environment-backed
+references are reserved for the exact first-party values provisioned by
+integration code (`DEEPSIGNAL_MCP_APP_KEY` and `LEDGER_PROXY_TOKEN`); arbitrary
+environment names are rejected before lookup or network access.
+
 ### Self-Hosted MCP Servers
 
 Organizations can connect MCP servers not in the marketplace:
 
 ```
-POST /api/mcp-servers
+POST /api/mcp/catalog
 {
-  "name": "Internal Analytics DB",
+  "name": "internal-analytics-db",
+  "label": "Internal Analytics DB",
   "protocol": "http",
-  "endpoint": "https://mcp.company.example/analytics",
-  "auth_method": "bearer",
-  "credential_ref": "secret_analytics_token_xyz",
-  "scope_type": "project",
-  "scope_id": "project-uuid-123"
+  "authMethod": "bearer",
+  "authConfig": { "method": "bearer" },
+  "defaultTransportConfig": {
+    "transport": "http",
+    "url": "https://mcp.company.example/analytics"
+  }
+}
+
+POST /api/mcp/instances
+{
+  "catalogEntryId": "catalog-entry-uuid",
+  "scopeType": "project",
+  "scopeId": "project-uuid-123"
+}
+
+POST /api/mcp/instances/:instanceId/secret
+{
+  "secret": "<token>",
+  "shared": true
 }
 ```
 
-Same flow as marketplace install, but no catalog_id. The endpoint must be
-public-routable and pass SSRF validation. For internal-only hosts, on-prem
+The credential is then submitted once through
+`POST /api/mcp/instances/:instanceId/secret`; its opaque reference remains
+server-side. Unlike a marketplace install, this flow first creates a private
+catalog entry rather than selecting an existing public one. The endpoint must
+be public-routable and pass SSRF validation. For internal-only hosts, on-prem
 networks, or local subprocesses, register a Remote MCP Server instead. The
 system still discovers tools, creates registry entries, and requires approval.
 
@@ -324,8 +351,7 @@ Connector shape:
   "name": "deep-agent-crawl",
   "protocol": "sse",
   "endpoint": "https://deep-agent.example.com/mcp/sse",
-  "auth_method": "bearer",
-  "credential_ref": "DEEP_AGENT_CRAWL_BEARER_TOKEN"
+  "auth_method": "bearer"
 }
 ```
 
@@ -362,8 +388,10 @@ provisions a system-managed **user-scoped** instance pinned to that exact env
 reference. Only the public catalog entry linked from the canonical
 `IntegratedProduct.slug=deepsignal` row can back that instance, and outbound
 identity signing is pinned to `https://api.deepsignal.live`; same-name catalogs
-and alternate origins fail closed. The plaintext key never enters Postgres or
-the browser. Every
+and alternate origins fail closed. That global first-party catalog is immutable
+through generic update/delete/publish/deprecate/review/lock controls and is not
+listed in the generic connector library. The plaintext key never enters
+Postgres or the browser. Every
 initial/follow-up chat, history read, insight digest, and action call carries
 three independent proofs:
 
@@ -373,6 +401,15 @@ three independent proofs:
    subject's active UOA organization/team.
 3. A fresh, maximum-five-minute RS256 `X-Nessie-Context` binds that subject to
    Nessie's local user/org/team/agent/run plus request and stable tool-call ids.
+
+The current Nessie team's `externalOrgId`/`externalWorkspaceId` must exactly
+match the link's active UOA org/team on activation and on every outbound call,
+and the team's DeepSignal enablement is re-read before dispatch. Conversation
+DM keys include the active external workspace
+(`extagent:deepsignal:${orgId}:${userId}:${uoaTeamId}`), so switching teams
+creates a distinct channel/thread/conversation. Legacy team-less channels and
+channel/workspace mismatches are archived or rejected before DeepSignal is
+called. Webhook fan-out selects that same workspace-keyed channel.
 
 No user OAuth token, per-user override, or generic connector credential may
 replace the dsk bearer. Startup rejects equality with any configured
@@ -411,8 +448,13 @@ Signals all reuse the shared `@nessie/mcp-manage` "connect + call one tool" seam
   `PUT /api/integrations/products/:productSlug/webhook-secret` (stored encrypted in
   `product_webhook_secrets`); DeepSignal returns that secret once at webhook
   registration and the admin pastes it. On `insight.surfaced` the receiver
-  coalesces idempotent events into a budgeted rolling digest per linked
-  recipient rather than posting one card per event.
+  resolves the signed payload's `teamId` through the exact enabled
+  `ProductTeamEnablement.externalTeamId` and the matching Nessie
+  `Team.externalWorkspaceId`/`externalOrgId`. It then selects only linked,
+  active members whose UOA link is active in that same external organization
+  and team. Unknown, disabled, mismatched, or team-less payloads deliver
+  nothing. Accepted events are coalesced into a budgeted rolling digest per
+  linked recipient rather than posting one card per event.
 - **Signals digest** — `GET /api/integrations/products/deepsignal/signals`
   (optional `?include=active|all`) reads the user's insight digest via the
   `insight_digest` tool, and `POST .../signals/:insightId/act`

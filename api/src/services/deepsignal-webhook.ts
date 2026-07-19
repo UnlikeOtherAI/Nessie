@@ -8,6 +8,7 @@ import {
   type InsightSummary,
   type SignalDigestOptions,
 } from './deepsignal-digest.js'
+import { externalAgentDmKey } from './external-agent.js'
 
 /**
  * DeepSignal proactive-insight fan-out (integration plan §6, delivery shaping
@@ -81,31 +82,99 @@ const resolveInsightId = (payload: Record<string, unknown>): string | null => {
   return firstString(payload, ['insightId', 'insight_id']) ?? firstString(brief, ['insightId', 'insight_id'])
 }
 
+type EnabledExternalTeam = {
+  externalOrgId: string
+  externalTeamId: string
+  teamId: string
+}
+
+const resolveEnabledExternalTeam = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  payload: Record<string, unknown>,
+): Promise<EnabledExternalTeam | null> => {
+  const externalTeamId = firstString(payload, ['teamId'])
+  if (!externalTeamId) return null
+
+  const enablement = await prisma.productTeamEnablement.findFirst({
+    where: {
+      enabled: true,
+      externalTeamId,
+      organizationId,
+      productSlug: DEEPSIGNAL_SLUG,
+    },
+    select: {
+      externalOrgId: true,
+      externalTeamId: true,
+      teamId: true,
+      team: {
+        select: {
+          externalOrgId: true,
+          externalWorkspaceId: true,
+        },
+      },
+    },
+  })
+  if (
+    !enablement?.externalOrgId
+    || !enablement.externalTeamId
+    || enablement.externalTeamId !== externalTeamId
+    || enablement.team.externalOrgId !== enablement.externalOrgId
+    || enablement.team.externalWorkspaceId !== enablement.externalTeamId
+  ) {
+    return null
+  }
+
+  return {
+    externalOrgId: enablement.externalOrgId,
+    externalTeamId: enablement.externalTeamId,
+    teamId: enablement.teamId,
+  }
+}
+
 const resolveRecipientUserIds = async (
   prisma: PrismaClient,
   organizationId: string,
+  team: EnabledExternalTeam,
   subs: string[],
-): Promise<string[]> => {
+): Promise<Array<{ activeTeamId: string; userId: string }>> => {
   const links = await prisma.productAccountLink.findMany({
     where: {
+      activeOrgId: team.externalOrgId,
+      activeTeamId: team.externalTeamId,
       organizationId,
       productSlug: DEEPSIGNAL_SLUG,
       status: 'linked',
       ...(subs.length > 0 ? { uoaSub: { in: subs } } : {}),
+      user: {
+        organizationMembers: {
+          some: { deactivatedAt: null, organizationId },
+        },
+        teamMembers: {
+          some: { teamId: team.teamId },
+        },
+      },
     },
-    select: { userId: true },
+    select: { activeTeamId: true, userId: true },
   })
-  return links.map((link) => link.userId)
+  return links.flatMap((link) =>
+    link.activeTeamId ? [{ activeTeamId: link.activeTeamId, userId: link.userId }] : [],
+  )
 }
 
 const deliverToUser = async (
   prisma: PrismaClient,
   organizationId: string,
-  userId: string,
+  recipient: { activeTeamId: string; userId: string },
   insight: InsightSummary,
   options: SignalDigestOptions,
 ): Promise<InsightDelivery | null> => {
-  const dmKey = `extagent:${DEEPSIGNAL_SLUG}:${organizationId}:${userId}`
+  const dmKey = externalAgentDmKey(
+    DEEPSIGNAL_SLUG,
+    organizationId,
+    recipient.userId,
+    recipient.activeTeamId,
+  )
   const channel = await prisma.channel.findUnique({
     where: { dmKey },
     select: { id: true, archivedAt: true },
@@ -127,9 +196,10 @@ const deliverToUser = async (
 
 /**
  * Handle one verified `insight.surfaced` event for a resolved org. Resolves
- * recipients (payload UOA subs when present, else every `linked` DeepSignal user
- * in the org) and folds the insight into each recipient's rolling digest,
- * coalesced + budgeted. Returns the insight id + what was delivered.
+ * the payload's external team through an exact enabled Nessie/UOA workspace,
+ * selects only linked active members of that workspace (narrowed by payload UOA
+ * subs when present), and folds the insight into each recipient's rolling
+ * digest, coalesced + budgeted. Returns the insight id + what was delivered.
  */
 export const handleDeepSignalInsightSurfaced = async (
   prisma: PrismaClient,
@@ -140,8 +210,16 @@ export const handleDeepSignalInsightSurfaced = async (
   const insightId = resolveInsightId(payload)
   if (!insightId) return { insightId: null, deliveries: [] }
 
-  const userIds = await resolveRecipientUserIds(prisma, organizationId, externalSubs(payload))
-  if (userIds.length === 0) return { insightId, deliveries: [] }
+  const team = await resolveEnabledExternalTeam(prisma, organizationId, payload)
+  if (!team) return { insightId, deliveries: [] }
+
+  const recipients = await resolveRecipientUserIds(
+    prisma,
+    organizationId,
+    team,
+    externalSubs(payload),
+  )
+  if (recipients.length === 0) return { insightId, deliveries: [] }
 
   const insight: InsightSummary = {
     insightId,
@@ -150,8 +228,14 @@ export const handleDeepSignalInsightSurfaced = async (
   }
 
   const deliveries: InsightDelivery[] = []
-  for (const userId of userIds) {
-    const delivery = await deliverToUser(prisma, organizationId, userId, insight, options)
+  for (const recipient of recipients) {
+    const delivery = await deliverToUser(
+      prisma,
+      organizationId,
+      recipient,
+      insight,
+      options,
+    )
     if (delivery) deliveries.push(delivery)
   }
   return { insightId, deliveries }

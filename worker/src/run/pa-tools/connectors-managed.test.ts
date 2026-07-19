@@ -27,6 +27,7 @@ const createContext = (managed: boolean) => {
           ? {
               integratedProducts: [{ slug: 'deep-water' }],
               name: 'deep-water',
+              organizationId: null,
               visibility: 'public',
             }
           : null,

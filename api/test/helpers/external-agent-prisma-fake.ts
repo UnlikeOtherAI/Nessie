@@ -8,11 +8,13 @@ import type {
   AgentBinding,
   Channel,
   ChannelMember,
+  ChannelUpdateManyArgs,
   ExternalAgentFakeSeed,
   Instance,
   Team,
   Thread,
 } from './external-agent-prisma-fake-model.js'
+import { matchesChannelUpdateMany } from './external-agent-prisma-fake-model.js'
 
 /**
  * Purpose-built in-memory Prisma fake covering exactly the operations the
@@ -30,6 +32,8 @@ export const makeExternalAgentPrismaFake = (
       seed.teamId,
       {
         id: seed.teamId,
+        externalOrgId: seed.externalOrgId ?? 'uoa-org',
+        externalWorkspaceId: seed.externalWorkspaceId ?? 'uoa-team',
         name: 'Seed Team',
         projectId: seed.projectId,
         systemManaged: false,
@@ -89,7 +93,11 @@ export const makeExternalAgentPrismaFake = (
         }
         const seedTeam = teams.get(args.where.id ?? '')
         return seedTeam && seedTeam.organizationId === orgId
-          ? { projectId: seedTeam.projectId }
+          ? {
+              externalOrgId: seedTeam.externalOrgId,
+              externalWorkspaceId: seedTeam.externalWorkspaceId,
+              projectId: seedTeam.projectId,
+            }
           : null
       },
       findUnique: async (args: { where: { id: string } }) => {
@@ -103,6 +111,8 @@ export const makeExternalAgentPrismaFake = (
         const id = randomUUID()
         teams.set(id, {
           id,
+          externalOrgId: null,
+          externalWorkspaceId: null,
           name: args.data.name,
           projectId: args.data.projectId,
           systemManaged: args.data.systemManaged,
@@ -170,12 +180,27 @@ export const makeExternalAgentPrismaFake = (
         const channel = channelsByKey.get(args.where.dmKey)
         return channel ? { id: channel.id, archivedAt: channel.archivedAt } : null
       },
+      findMany: async (args: {
+        where: { dmKey: { startsWith: string } }
+      }) =>
+        [...channelsByKey.values()]
+          .filter((channel) => channel.dmKey.startsWith(args.where.dmKey.startsWith))
+          .map((channel) => ({ id: channel.id, archivedAt: channel.archivedAt })),
       update: async (args: { where: { id: string }; data: { archivedAt?: Date } }) => {
         const channel = channelsById.get(args.where.id)
         if (channel && args.data.archivedAt !== undefined) {
           channel.archivedAt = args.data.archivedAt
         }
         return { id: args.where.id }
+      },
+      updateMany: async (args: ChannelUpdateManyArgs) => {
+        let count = 0
+        for (const channel of channelsById.values()) {
+          if (!matchesChannelUpdateMany(channel, args.where)) continue
+          channel.archivedAt = args.data.archivedAt
+          count += 1
+        }
+        return { count }
       },
     },
     channelMember: {
@@ -247,6 +272,7 @@ export const makeExternalAgentPrismaFake = (
         where: {
           id?: string
           name?: string
+          organizationId?: string | null
           visibility?: string
           status?: string
           integratedProducts?: { some: { slug: string } }
@@ -257,6 +283,10 @@ export const makeExternalAgentPrismaFake = (
           (e) =>
             (args.where.id === undefined || e.id === args.where.id)
             && (args.where.name === undefined || e.name === args.where.name)
+            && (
+              args.where.organizationId === undefined
+              || (e.organizationId ?? null) === args.where.organizationId
+            )
             && (
               args.where.visibility === undefined
               || e.visibility === args.where.visibility

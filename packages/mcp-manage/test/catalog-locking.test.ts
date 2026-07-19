@@ -141,11 +141,12 @@ test('createInstance reserves first-party DeepWater for managed provisioning', a
     ...lockedEntry,
     id: 'deep-water-entry',
     name: 'deep-water',
+    organizationId: null,
     label: 'Deep Water',
     locked: false,
     defaultTransportConfig: {
       transport: 'http',
-      url: 'https://ledger.unlikeotherai.com/v1/mcp/deepwater',
+      url: 'https://example.com/v1/mcp/deepwater',
     },
     integratedProducts: [{ slug: 'deep-water' }],
   } as unknown as McpCatalogEntryRow

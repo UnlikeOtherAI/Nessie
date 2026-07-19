@@ -1,4 +1,6 @@
 export type Team = {
+  externalOrgId: string | null
+  externalWorkspaceId: string | null
   id: string
   name: string
   projectId: string
@@ -25,6 +27,23 @@ export type Channel = {
   archivedAt: Date | null
 }
 
+export type ChannelUpdateManyArgs = {
+  where: {
+    archivedAt?: null
+    dmKey?: string
+    id?: { in: string[] }
+  }
+  data: { archivedAt: Date }
+}
+
+export const matchesChannelUpdateMany = (
+  channel: Channel,
+  where: ChannelUpdateManyArgs['where'],
+): boolean =>
+  (where.id === undefined || where.id.in.includes(channel.id))
+  && (where.dmKey === undefined || channel.dmKey === where.dmKey)
+  && (where.archivedAt !== null || channel.archivedAt === null)
+
 export type ChannelMember = {
   channelId: string
   userId: string
@@ -42,6 +61,7 @@ export type CatalogEntry = {
   authMethod: string
   integratedProductSlugs?: string[]
   defaultTransportConfig?: unknown
+  organizationId?: string | null
 }
 
 export type Instance = {
@@ -66,6 +86,8 @@ export type AccountLink = {
 }
 
 export type ExternalAgentFakeSeed = {
+  externalOrgId?: string
+  externalWorkspaceId?: string
   organizationId: string
   projectId: string
   teamId: string

@@ -6,11 +6,11 @@ import {
 } from '@nessie/schemas'
 
 import {
-  findApplicableLock,
   getAccessibleCatalogEntry,
   isAdminRole,
   isAdminUser,
 } from './mcp-catalog.js'
+import { findApplicableLock } from './mcp-catalog-endpoint-lock.js'
 import {
   McpSecurityError,
   assertUserAuthoredMcpTransportSafe,
@@ -23,6 +23,7 @@ import {
   assertCatalogLifecycleIsUserManaged,
   isManagedIntegrationCatalogEntry,
 } from './managed-products.js'
+import { isOperatorEnvSecretRef } from './secret-resolver.js'
 
 export {
   MCP_INSTANCE_ERROR_CODES,
@@ -313,6 +314,18 @@ export const createInstance = async (
     throw new McpInstanceError(
       MCP_INSTANCE_ERROR_CODES.MANAGED_BY_INTEGRATION,
       'This first-party connector is provisioned from Integrations and uses Nessie SSO.',
+    )
+  }
+  if (
+    input.credentialRef
+    && (
+      !input.managedProvision
+      || !isOperatorEnvSecretRef(input.credentialRef)
+    )
+  ) {
+    throw new McpInstanceError(
+      MCP_INSTANCE_ERROR_CODES.CREDENTIAL_REF_FORBIDDEN,
+      'Connector credentials must be stored through the encrypted secret endpoint.',
     )
   }
 

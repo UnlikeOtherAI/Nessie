@@ -117,8 +117,9 @@ export const CatalogDetailPanel = ({
             className="mt-3 rounded-md border border-[color:var(--sep)] bg-[var(--overlay-weak)] px-3 py-2 text-xs text-[color:var(--tx2)]"
             data-testid="catalog-managed-note"
           >
-            Manage DeepWater from Integrations. Nessie supplies your SSO identity
-            automatically; no personal Ledger credential is needed.
+            {entry.name === 'deep-water'
+              ? 'Manage Deep Water from Integrations. Nessie supplies your SSO identity automatically; no personal Ledger credential is needed.'
+              : `Manage ${entry.label} from Integrations. Nessie supplies your SSO identity and its dedicated app API key automatically; no personal connector credential is needed.`}
           </div>
         ) : null}
 

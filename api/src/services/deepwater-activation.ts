@@ -168,6 +168,7 @@ const loadPublishedCatalogEntryId = async (
   const entry = await prisma.mcpCatalogEntry.findFirst({
     where: {
       name: DEEP_WATER_PRODUCT_SLUG,
+      organizationId: null,
       visibility: 'public',
       status: 'published',
       integratedProducts: { some: { slug: DEEP_WATER_PRODUCT_SLUG } },

@@ -18,6 +18,7 @@ import type { McpCredentialPrincipalType } from '@nessie/schemas'
 export const MCP_CREDENTIAL_ERROR_CODES = {
   INSTANCE_NOT_FOUND: 'MCP_CREDENTIAL_INSTANCE_NOT_FOUND',
   OVERRIDE_NOT_FOUND: 'MCP_CREDENTIAL_OVERRIDE_NOT_FOUND',
+  CREDENTIAL_REF_FORBIDDEN: 'MCP_CREDENTIAL_REF_FORBIDDEN',
 } as const
 
 export class McpCredentialError extends Error {
@@ -84,6 +85,12 @@ export const upsertOverride = async (
   prisma: PrismaClient,
   input: UpsertOverrideInput,
 ): Promise<McpCredentialOverrideRow> => {
+  if (!input.credentialRef.startsWith('secret_')) {
+    throw new McpCredentialError(
+      MCP_CREDENTIAL_ERROR_CODES.CREDENTIAL_REF_FORBIDDEN,
+      'Credential overrides must use an opaque reference minted by the encrypted secret store',
+    )
+  }
   return prisma.mcpServerCredentialOverride.upsert({
     where: {
       instanceId_principalType_principalId: {

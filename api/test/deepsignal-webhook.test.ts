@@ -10,9 +10,24 @@ import {
   setProductWebhookSecret,
 } from '../src/services/product-webhook-secret.js'
 import { handleDeepSignalInsightSurfaced } from '../src/services/deepsignal-webhook.js'
+import {
+  LOCAL_TEAM_A,
+  LOCAL_TEAM_B,
+  ORG,
+  UOA_ORG,
+  UOA_TEAM_A,
+  UOA_TEAM_B,
+  USER_A,
+  USER_B,
+  asPrisma,
+  digestInsights,
+  insightPayload,
+  makeInsightFake,
+  messageInsightIds,
+  type Link,
+} from './helpers/deepsignal-webhook-fake.js'
 
 const AUTH_SECRET = 'test-auth-secret-000000000000000000'
-const ORG = '00000000-0000-4000-8000-0000000000a1'
 const OTHER_ORG = '00000000-0000-4000-8000-0000000000a2'
 
 // ─── Webhook signing secret store (HMAC accept/reject) ──────────────────────
@@ -123,147 +138,6 @@ test('webhook signing secret cannot reuse the DeepSignal application key', async
 
 // ─── Insight fan-out + idempotency ──────────────────────────────────────────
 
-type Link = { organizationId: string; userId: string; productSlug: string; status: string; uoaSub: string | null }
-type StoredMessage = {
-  id: string
-  threadId: string
-  role: string
-  agentId: string | null
-  content: string
-  createdAt: Date
-  deletedAt: Date | null
-  metadata: Record<string, unknown>
-}
-
-const messageInsightIds = (message: StoredMessage): string[] =>
-  ((message.metadata.external as { insights?: Array<{ insightId: string }> })?.insights ?? []).map(
-    (entry) => entry.insightId,
-  )
-
-const USER_A = '00000000-0000-4000-8000-0000000000b1'
-const USER_B = '00000000-0000-4000-8000-0000000000b2'
-
-const digestInsights = (message: StoredMessage): Array<{ insightId: string; kind: string | null }> =>
-  ((message.metadata.external as { insights?: Array<{ insightId: string; kind: string | null }> })
-    ?.insights ?? [])
-
-// Prisma fake for the digest delivery path: a `messages` array with findMany
-// (Json path + createdAt window), create, and in-place update. `clock` is the
-// simulated wall time each created row is stamped with, advanced by the test.
-const makeInsightFake = (links: Link[]) => {
-  const messages: StoredMessage[] = []
-  const state = { clock: new Date('2026-07-12T00:00:00.000Z') }
-  const channels = new Map<string, { id: string; archivedAt: Date | null }>()
-  for (const link of links) {
-    channels.set(`extagent:deepsignal:${link.organizationId}:${link.userId}`, {
-      id: `chan-${link.userId}`,
-      archivedAt: null,
-    })
-  }
-  const client = {
-    messages,
-    state,
-    productAccountLink: {
-      findMany: async (args: {
-        where: { organizationId: string; productSlug: string; status: string; uoaSub?: { in: string[] } }
-      }) =>
-        links
-          .filter(
-            (l) =>
-              l.organizationId === args.where.organizationId &&
-              l.productSlug === args.where.productSlug &&
-              l.status === args.where.status &&
-              (!args.where.uoaSub || args.where.uoaSub.in.includes(l.uoaSub ?? '')),
-          )
-          .map((l) => ({ userId: l.userId })),
-    },
-    channel: {
-      findUnique: async (args: { where: { dmKey: string } }) => channels.get(args.where.dmKey) ?? null,
-    },
-    thread: {
-      findFirst: async (args: { where: { channelId: string } }) => ({ id: `thread-${args.where.channelId}` }),
-      create: async (args: { data: { channelId: string } }) => ({ id: `thread-${args.data.channelId}` }),
-    },
-    agentBinding: {
-      findFirst: async () => ({ agentId: 'agent-ds' }),
-    },
-    $executeRaw: async () => 0,
-    message: {
-      // Unbounded dedupe: `metadata.external.insights[*].insightId` containment,
-      // no time bound, non-deleted only.
-      findFirst: async (args: {
-        where: {
-          threadId: string
-          deletedAt: null
-          metadata: { array_contains: Array<{ insightId: string }> }
-        }
-      }) => {
-        const target = args.where.metadata.array_contains[0]!.insightId
-        const match = messages.find(
-          (m) =>
-            m.threadId === args.where.threadId &&
-            m.deletedAt === null &&
-            messageInsightIds(m).includes(target),
-        )
-        return match ? { id: match.id } : null
-      },
-      findMany: async (args: {
-        where: { threadId: string; deletedAt: null; createdAt: { gte: Date }; metadata: { equals: string } }
-        orderBy: { createdAt: 'desc' }
-      }) =>
-        messages
-          .filter(
-            (m) =>
-              m.threadId === args.where.threadId &&
-              m.deletedAt === null &&
-              m.createdAt.getTime() >= args.where.createdAt.gte.getTime() &&
-              (m.metadata.external as { kind?: string })?.kind === args.where.metadata.equals,
-          )
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
-      create: async (args: { data: Omit<StoredMessage, 'id' | 'createdAt' | 'deletedAt'> }) => {
-        const row: StoredMessage = {
-          ...args.data,
-          id: `msg-${messages.length + 1}`,
-          createdAt: state.clock,
-          deletedAt: null,
-        }
-        messages.push(row)
-        return { id: row.id }
-      },
-      update: async (args: { where: { id: string }; data: Partial<StoredMessage> }) => {
-        const row = messages.find((m) => m.id === args.where.id)!
-        Object.assign(row, args.data)
-        return { id: row.id }
-      },
-    },
-  }
-  // Interactive transaction: the fake is its own transaction client. Attached via
-  // Object.assign (not the literal) so the closure over `client` isn't a
-  // self-reference in the initializer.
-  return Object.assign(client, {
-    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
-  })
-}
-
-type InsightFake = ReturnType<typeof makeInsightFake>
-const asPrisma = (fake: InsightFake): PrismaClient => fake as unknown as PrismaClient
-
-const insightPayload = (insightId: string, extra: Record<string, unknown> = {}) => ({
-  event: 'insight.surfaced',
-  teamId: 'team-ds',
-  insightId,
-  actions: ['done', 'snooze', 'mute', 'reopen'],
-  brief: {
-    insightId,
-    whatChanged: 'Supplier risk detected',
-    whyItMatters: 'A key supplier may miss delivery',
-    recommendedAction: 'Contact procurement',
-    kind: 'risk',
-    band: 'high',
-  },
-  ...extra,
-})
-
 test('insight fan-out coalesces multiple insights into one rolling digest per user', async () => {
   const fake = makeInsightFake([
     { organizationId: ORG, userId: USER_A, productSlug: 'deepsignal', status: 'linked', uoaSub: 'sub-a' },
@@ -368,12 +242,170 @@ test('insight fan-out targets only the named recipient subs when present', async
     { now: fake.state.clock },
   )
   assert.equal(result.deliveries.length, 1)
-  assert.equal(result.deliveries[0]?.channelId, `chan-${USER_B}`)
+  assert.equal(result.deliveries[0]?.channelId, `chan-${USER_B}-${UOA_TEAM_A}`)
 
   // The digest card links to the Signals inbox, not a per-insight external link.
   const cards = fake.messages[0]!.metadata.uiCards as Array<{ actions?: Array<{ label: string; href: string }> }>
   assert.equal(cards[0]?.actions?.[0]?.label, 'View signals')
   assert.equal(cards[0]?.actions?.[0]?.href, '/signals')
+})
+
+test('insight fan-out stays inside the exact enabled external workspace', async () => {
+  const fake = makeInsightFake(
+    [
+      {
+        activeOrgId: UOA_ORG,
+        activeTeamId: UOA_TEAM_A,
+        memberTeamIds: [LOCAL_TEAM_A],
+        organizationId: ORG,
+        userId: USER_A,
+        productSlug: 'deepsignal',
+        status: 'linked',
+        uoaSub: 'sub-a',
+      },
+      {
+        activeOrgId: UOA_ORG,
+        activeTeamId: UOA_TEAM_B,
+        memberTeamIds: [LOCAL_TEAM_B],
+        organizationId: ORG,
+        userId: USER_B,
+        productSlug: 'deepsignal',
+        status: 'linked',
+        uoaSub: 'sub-b',
+      },
+    ],
+    [
+      {
+        enabled: true,
+        externalOrgId: UOA_ORG,
+        externalTeamId: UOA_TEAM_A,
+        organizationId: ORG,
+        productSlug: 'deepsignal',
+        teamId: LOCAL_TEAM_A,
+      },
+      {
+        enabled: true,
+        externalOrgId: UOA_ORG,
+        externalTeamId: UOA_TEAM_B,
+        organizationId: ORG,
+        productSlug: 'deepsignal',
+        teamId: LOCAL_TEAM_B,
+      },
+    ],
+  )
+
+  const teamA = await handleDeepSignalInsightSurfaced(
+    asPrisma(fake),
+    ORG,
+    insightPayload('ins-team-a'),
+    { now: fake.state.clock },
+  )
+  assert.deepEqual(
+    teamA.deliveries.map((delivery) => delivery.channelId),
+    [`chan-${USER_A}-${UOA_TEAM_A}`],
+  )
+
+  const teamB = await handleDeepSignalInsightSurfaced(
+    asPrisma(fake),
+    ORG,
+    insightPayload('ins-team-b', { teamId: UOA_TEAM_B }),
+    { now: fake.state.clock },
+  )
+  assert.deepEqual(
+    teamB.deliveries.map((delivery) => delivery.channelId),
+    [`chan-${USER_B}-${UOA_TEAM_B}`],
+  )
+})
+
+test('insight fan-out rejects unknown, disabled, and inconsistently mapped teams', async () => {
+  const link: Link = {
+    activeOrgId: UOA_ORG,
+    activeTeamId: UOA_TEAM_A,
+    memberTeamIds: [LOCAL_TEAM_A],
+    organizationId: ORG,
+    userId: USER_A,
+    productSlug: 'deepsignal',
+    status: 'linked',
+    uoaSub: 'sub-a',
+  }
+  const disabled = makeInsightFake([link], [
+    {
+      enabled: false,
+      externalOrgId: UOA_ORG,
+      externalTeamId: UOA_TEAM_A,
+      organizationId: ORG,
+      productSlug: 'deepsignal',
+      teamId: LOCAL_TEAM_A,
+    },
+  ])
+  const disabledResult = await handleDeepSignalInsightSurfaced(
+    asPrisma(disabled),
+    ORG,
+    insightPayload('ins-disabled'),
+    { now: disabled.state.clock },
+  )
+  assert.equal(disabledResult.deliveries.length, 0)
+
+  const unknown = makeInsightFake([link])
+  const unknownResult = await handleDeepSignalInsightSurfaced(
+    asPrisma(unknown),
+    ORG,
+    insightPayload('ins-unknown', { teamId: 'not-an-enabled-workspace' }),
+    { now: unknown.state.clock },
+  )
+  assert.equal(unknownResult.deliveries.length, 0)
+
+  const inconsistent = makeInsightFake([link], [
+    {
+      enabled: true,
+      externalOrgId: UOA_ORG,
+      externalTeamId: UOA_TEAM_A,
+      organizationId: ORG,
+      productSlug: 'deepsignal',
+      teamExternalOrgId: 'different-uoa-org',
+      teamId: LOCAL_TEAM_A,
+    },
+  ])
+  const inconsistentResult = await handleDeepSignalInsightSurfaced(
+    asPrisma(inconsistent),
+    ORG,
+    insightPayload('ins-inconsistent'),
+    { now: inconsistent.state.clock },
+  )
+  assert.equal(inconsistentResult.deliveries.length, 0)
+})
+
+test('insight fan-out skips links outside the exact active team membership', async () => {
+  const fake = makeInsightFake([
+    {
+      activeOrgId: UOA_ORG,
+      activeTeamId: UOA_TEAM_A,
+      memberTeamIds: [LOCAL_TEAM_B],
+      organizationId: ORG,
+      userId: USER_A,
+      productSlug: 'deepsignal',
+      status: 'linked',
+      uoaSub: 'sub-a',
+    },
+    {
+      activeOrgId: UOA_ORG,
+      activeTeamId: UOA_TEAM_B,
+      memberTeamIds: [LOCAL_TEAM_A, LOCAL_TEAM_B],
+      organizationId: ORG,
+      userId: USER_B,
+      productSlug: 'deepsignal',
+      status: 'linked',
+      uoaSub: 'sub-b',
+    },
+  ])
+
+  const result = await handleDeepSignalInsightSurfaced(
+    asPrisma(fake),
+    ORG,
+    insightPayload('ins-no-cross-team'),
+    { now: fake.state.clock },
+  )
+  assert.equal(result.deliveries.length, 0)
 })
 
 test('dedupe is unbounded: a replay past the budget window is still a no-op', async () => {

@@ -108,34 +108,56 @@ const assertTeamEnabled = async (
 
 const assertLinkedSsoIdentity = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string; productSlug: string },
-): Promise<void> => {
-  const link = await prisma.productAccountLink.findUnique({
-    where: {
-      organizationId_userId_productSlug: {
-        organizationId: input.organizationId,
-        userId: input.userId,
-        productSlug: input.productSlug,
+  input: {
+    organizationId: string
+    teamId: string
+    userId: string
+    productSlug: string
+  },
+): Promise<{ workspaceId: string }> => {
+  const [link, team] = await Promise.all([
+    prisma.productAccountLink.findUnique({
+      where: {
+        organizationId_userId_productSlug: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+          productSlug: input.productSlug,
+        },
       },
-    },
-    select: {
-      activeOrgId: true,
-      activeTeamId: true,
-      status: true,
-      uoaSub: true,
-    },
-  })
+      select: {
+        activeOrgId: true,
+        activeTeamId: true,
+        status: true,
+        uoaSub: true,
+      },
+    }),
+    prisma.team.findFirst({
+      where: {
+        id: input.teamId,
+        project: { organizationId: input.organizationId },
+      },
+      select: {
+        externalOrgId: true,
+        externalWorkspaceId: true,
+      },
+    }),
+  ])
   if (
     link?.status !== 'linked'
     || !link.uoaSub
     || !link.activeOrgId
     || !link.activeTeamId
+    || !team?.externalOrgId
+    || !team.externalWorkspaceId
+    || link.activeOrgId !== team.externalOrgId
+    || link.activeTeamId !== team.externalWorkspaceId
   ) {
     throw new ExternalAgentActivationError(
       EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.SSO_LINK_REQUIRED,
       'Sign in to Nessie with UnlikeOtherAI SSO and select an active organization/team first.',
     )
   }
+  return { workspaceId: link.activeTeamId }
 }
 
 type CatalogEntry = {
@@ -151,6 +173,7 @@ const loadFirstPartyCatalogEntry = async (
   const entry = await prisma.mcpCatalogEntry.findFirst({
     where: {
       name: productSlug,
+      organizationId: null,
       visibility: 'public',
       status: 'published',
       integratedProducts: { some: { slug: productSlug } },
@@ -240,8 +263,9 @@ export const activateExternalAgentProduct = async (
     teamId,
     productSlug: product.slug,
   })
-  await assertLinkedSsoIdentity(prisma, {
+  const ssoIdentity = await assertLinkedSsoIdentity(prisma, {
     organizationId: ctx.organizationId,
+    teamId,
     userId: ctx.userId,
     productSlug: product.slug,
   })
@@ -261,6 +285,7 @@ export const activateExternalAgentProduct = async (
     product,
     teamId,
     userId: ctx.userId,
+    workspaceId: ssoIdentity.workspaceId,
   })
 
   return {
@@ -308,20 +333,26 @@ export const deactivateExternalAgentProduct = async (
     data: { status: 'revoked', lastVerifiedAt: new Date() },
   })
 
-  const dmKey = `extagent:${product.slug}:${ctx.organizationId}:${ctx.userId}`
-  const channel = await prisma.channel.findUnique({
-    where: { dmKey },
+  const channels = await prisma.channel.findMany({
+    where: {
+      dmKey: {
+        startsWith: `extagent:${product.slug}:${ctx.organizationId}:${ctx.userId}`,
+      },
+    },
     select: { id: true, archivedAt: true },
   })
-  if (channel && !channel.archivedAt) {
-    await prisma.channel.update({
-      where: { id: channel.id },
+  const liveChannelIds = channels
+    .filter((channel) => !channel.archivedAt)
+    .map((channel) => channel.id)
+  if (liveChannelIds.length > 0) {
+    await prisma.channel.updateMany({
+      where: { id: { in: liveChannelIds } },
       data: { archivedAt: new Date() },
     })
   }
 
   return {
-    channelId: channel?.id ?? null,
+    channelId: channels[0]?.id ?? null,
     instanceId: instance?.id ?? null,
   }
 }

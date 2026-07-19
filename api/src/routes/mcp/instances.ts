@@ -46,14 +46,21 @@ const CreateInstanceBodySchema = z.object({
   catalogEntryId: z.string().uuid(),
   scopeType: McpServerScopeTypeSchema,
   scopeId: z.string().uuid(),
-  credentialRef: z.string().nullable().optional(),
   transportConfig: JsonRecordSchema.optional(),
-})
+}).strict()
 
 const SetSecretBodySchema = z.object({
-  secret: z.string().min(1).max(8192),
+  secret: z.string().trim().min(1).max(8192),
   shared: z.boolean().optional(),
-})
+}).strict()
+
+const publicInstance = <T extends { credentialRef: string | null }>(
+  instance: T,
+): Omit<T, 'credentialRef'> => {
+  const safe = { ...instance } as Record<string, unknown>
+  delete safe.credentialRef
+  return safe as Omit<T, 'credentialRef'>
+}
 
 const FORBIDDEN_SCOPE = {
   code: 'MCP_INSTANCE_FORBIDDEN',
@@ -150,7 +157,7 @@ export const registerMcpInstanceRoutes = (
             (!scopeType || instance.scopeType === scopeType)
             && (!query.scopeId || instance.scopeId === query.scopeId),
         )
-    return createApiResponse(instances)
+    return createApiResponse(instances.map(publicInstance))
   })
 
   app.post('/api/mcp/instances', async (request, reply) => {
@@ -174,7 +181,7 @@ export const registerMcpInstanceRoutes = (
 
     try {
       const instance = await createInstance(prisma, actorContext, body)
-      return reply.code(201).send(createApiResponse(instance))
+      return reply.code(201).send(createApiResponse(publicInstance(instance)))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -207,7 +214,7 @@ export const registerMcpInstanceRoutes = (
         return denyScope(reply)
       }
     }
-    return createApiResponse(instance)
+    return createApiResponse(publicInstance(instance))
   })
 
   app.post('/api/mcp/instances/:instanceId/test', async (request, reply) => {
@@ -223,7 +230,7 @@ export const registerMcpInstanceRoutes = (
         instanceId,
         { secretResolver: ctx.secretResolver, probeUserId: actorContext.actor.actorId },
       )
-      return createApiResponse(instance)
+      return createApiResponse(publicInstance(instance))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
@@ -244,7 +251,7 @@ export const registerMcpInstanceRoutes = (
         instanceId,
         { secretResolver: ctx.secretResolver, probeUserId: actorContext.actor.actorId },
       )
-      return createApiResponse(instance)
+      return createApiResponse(publicInstance(instance))
     } catch (error) {
       if (sendMcpError(reply, error)) return reply
       throw error
