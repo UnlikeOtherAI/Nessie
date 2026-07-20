@@ -175,7 +175,6 @@ test('DeepWaterResearchRunRecordSchema accepts durable Deep Water run projection
     completedAt: null,
     connectorId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d803',
     createdAt: '2026-07-10T10:30:00.000Z',
-    currency: null,
     depth: 'deep',
     externalRunId: null,
     knowledgePageId: null,
@@ -194,7 +193,6 @@ test('DeepWaterResearchRunRecordSchema accepts durable Deep Water run projection
     teamId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d501',
     threadId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d805',
     title: 'Geothermal risk map',
-    totalCost: 4.25,
     updatedAt: '2026-07-10T10:30:00.000Z',
   })
 

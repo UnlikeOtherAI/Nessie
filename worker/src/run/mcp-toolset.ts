@@ -254,8 +254,9 @@ export const buildMcpToolset = async (
     agentKind: 'personal_assistant' | 'shared'
     channelId: string
   },
-  // Attribution for connector usage billing — every dispatched MCP tool call
-  // writes a connector_usage_events row keyed to the run's org/agent/channel/run.
+  // Attribution for operational connector telemetry — every dispatched MCP
+  // tool call writes a cost-free row keyed to its org/agent/channel/run. Ledger
+  // owns raw provider metering and UOA alone supplies customer billing.
   attribution: LedgerAttribution,
   options: {
     deepWaterHandoffGuard?: DeepWaterHandoffGuard

@@ -128,7 +128,7 @@ const dispatchTurn = async (
         latencyMs: Date.now() - startedAt,
       },
     }).catch(() => {
-      // best-effort billing capture
+      // Best-effort operational usage capture.
     })
 
   let result: ToolDispatchResult

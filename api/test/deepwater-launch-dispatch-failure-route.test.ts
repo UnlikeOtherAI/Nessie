@@ -47,8 +47,6 @@ test('enqueue collision rolls back the PA handoff and fails the exact DeepWater 
     channel_id: null,
     completed_at: null,
     connector_id: connectorId,
-    cost_amount: null,
-    cost_currency: 'USD',
     created_at: now,
     external_run_id: null,
     id: durableRunId,

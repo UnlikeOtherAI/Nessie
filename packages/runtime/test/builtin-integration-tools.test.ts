@@ -33,6 +33,15 @@ test('Deep Water run update is grantable to any agent (not PA-only)', () => {
     DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.properties.sourceCount,
     undefined,
   )
+  assert.equal(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.properties.totalCost,
+    undefined,
+  )
+  assert.equal(
+    DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.parameters.properties.currency,
+    undefined,
+  )
+  assert.match(DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION.description, /UOA/)
 })
 
 test('builtin registry includes the Deep Water run update tool', () => {

@@ -22,8 +22,6 @@ const MESSAGE_ID = '8f3a5a00-0e64-4d10-a517-0d0b69c1d813'
 const runIfDatabase = process.env.DATABASE_URL ? test : test.skip
 
 type RunState = {
-  cost_amount: string | null
-  cost_currency: string | null
   external_run_id: string | null
   result_json?: Record<string, unknown>
   status: 'queued' | 'running' | 'needs_setup' | 'completed' | 'failed' | 'warning'
@@ -50,8 +48,6 @@ const makeRunRow = (state: RunState) => ({
     searchQuality: 'premium',
   },
   result_json: state.result_json ?? {},
-  cost_amount: state.cost_amount,
-  cost_currency: state.cost_currency,
   source_count: 18,
   knowledge_page_id: null,
   requested_at: '2026-07-10T10:30:00.000Z',
@@ -111,8 +107,6 @@ const makePrisma = (state: RunState) => {
 test('agent-authored updates cannot set report metadata or forge its provenance', async () => {
   const trustedUrl = 'https://ledger.example/v1/research/rs_ticket/report'
   const fixture = makePrisma({
-    cost_amount: null,
-    cost_currency: 'USD',
     external_run_id: 'rs_ticket',
     result_json: {
       reportUrl: trustedUrl,
@@ -126,6 +120,7 @@ test('agent-authored updates cannot set report metadata or forge its provenance'
     result: {
       reportUrl: 'https://attacker.example/fake-report',
       reportUrlSource: 'ledger_research_start',
+      legacyDispatchEvidence: true,
       retainedDetail: 'safe internal detail',
       sourceCount: 999,
       sourceCountSource: 'ledger_research_report',
@@ -137,6 +132,7 @@ test('agent-authored updates cannot set report metadata or forge its provenance'
   assert.doesNotMatch(serialized, /attacker\.example/)
   assert.doesNotMatch(serialized, /reportUrlSource/)
   assert.doesNotMatch(serialized, /sourceCountSource/)
+  assert.doesNotMatch(serialized, /legacyDispatchEvidence/)
   assert.doesNotMatch(serialized, /999/)
   assert.match(serialized, /safe internal detail/)
   assert.equal(fixture.updateCount(), 1)
@@ -194,9 +190,9 @@ runIfDatabase(
       await pool.query(
         `INSERT INTO product_integration_runs (
            id, organization_id, team_id, product_slug, thread_id, status,
-           cost_currency, created_at, updated_at
+           created_at, updated_at
          )
-         VALUES ($1, $2, $3, 'deep-water', $4, 'queued', 'USD', now(), now())`,
+         VALUES ($1, $2, $3, 'deep-water', $4, 'queued', now(), now())`,
         [ids.run, ids.organization, ids.team, ids.thread],
       )
 
@@ -211,13 +207,10 @@ runIfDatabase(
 
       assert.equal(running.externalRunId, externalRunId)
       assert.equal(running.status, 'running')
-      assert.equal(running.totalCost, null)
 
       const completedAt = new Date('2026-07-19T01:30:00.000Z')
       const completed = await updateDeepWaterResearchRun(prisma, {
         completedAt,
-        costAmount: 1,
-        costCurrency: 'USD',
         externalRunId,
         organizationId: ids.organization,
         runId: ids.run,
@@ -228,8 +221,6 @@ runIfDatabase(
 
       assert.equal(completed.externalRunId, externalRunId)
       assert.equal(completed.status, 'completed')
-      assert.equal(completed.totalCost, 1)
-      assert.equal(completed.currency, 'USD')
       assert.equal(completed.sourceCount, null)
       assert.equal(completed.completedAt, completedAt.toISOString())
     } finally {
@@ -242,21 +233,16 @@ runIfDatabase(
 
 test('an identical terminal update is idempotent under a row lock', async () => {
   const fixture = makePrisma({
-    cost_amount: '4.250000',
-    cost_currency: 'USD',
     external_run_id: 'dw-run-123',
     status: 'completed',
   })
 
   const result = await updateDeepWaterResearchRun(fixture.prisma, updateInput({
-    costAmount: 4.2500004,
-    costCurrency: 'USD',
     externalRunId: 'dw-run-123',
     status: 'completed',
   }))
 
   assert.equal(result.status, 'completed')
-  assert.equal(result.totalCost, 4.25)
   assert.equal(fixture.updateCount(), 1)
   assert.equal(fixture.queries.length, 2)
   assert.match(fixture.queries[0] ?? '', /FOR UPDATE/)
@@ -271,8 +257,6 @@ const conflictScenarios = [
     field: 'terminalStatus',
     name: 'terminal status regression',
     state: {
-      cost_amount: '4.250000',
-      cost_currency: 'USD',
       external_run_id: 'dw-run-123',
       status: 'completed',
     } satisfies RunState,
@@ -282,8 +266,6 @@ const conflictScenarios = [
     field: 'terminalStatus',
     name: 'terminal outcome replacement',
     state: {
-      cost_amount: '4.250000',
-      cost_currency: 'USD',
       external_run_id: 'dw-run-123',
       status: 'completed',
     } satisfies RunState,
@@ -293,8 +275,6 @@ const conflictScenarios = [
     field: 'terminalStatus',
     name: 'completed start ticket projected as failed',
     state: {
-      cost_amount: null,
-      cost_currency: 'USD',
       external_run_id: 'dw-run-123',
       result_json: { startTicketStatus: 'complete' },
       status: 'running',
@@ -305,8 +285,6 @@ const conflictScenarios = [
     field: 'terminalStatus',
     name: 'failed start ticket projected as completed',
     state: {
-      cost_amount: null,
-      cost_currency: 'USD',
       external_run_id: 'dw-run-123',
       result_json: { startTicketStatus: 'failed' },
       status: 'running',
@@ -317,42 +295,10 @@ const conflictScenarios = [
     field: 'externalRunId',
     name: 'external run id replacement',
     state: {
-      cost_amount: null,
-      cost_currency: 'USD',
       external_run_id: 'dw-run-123',
       status: 'running',
     } satisfies RunState,
     update: { externalRunId: 'dw-run-456' } satisfies Partial<DeepWaterResearchRunUpdateInput>,
-  },
-  {
-    field: 'bookedCost',
-    name: 'booked amount replacement',
-    state: {
-      cost_amount: '4.250000',
-      cost_currency: 'USD',
-      external_run_id: 'dw-run-123',
-      status: 'completed',
-    } satisfies RunState,
-    update: {
-      costAmount: 5,
-      costCurrency: 'USD',
-      status: 'completed',
-    } satisfies Partial<DeepWaterResearchRunUpdateInput>,
-  },
-  {
-    field: 'bookedCost',
-    name: 'booked currency replacement',
-    state: {
-      cost_amount: '4.250000',
-      cost_currency: 'USD',
-      external_run_id: 'dw-run-123',
-      status: 'completed',
-    } satisfies RunState,
-    update: {
-      costAmount: 4.25,
-      costCurrency: 'EUR',
-      status: 'completed',
-    } satisfies Partial<DeepWaterResearchRunUpdateInput>,
   },
 ] as const
 
@@ -377,32 +323,8 @@ for (const scenario of conflictScenarios) {
   })
 }
 
-test('the first booked charge replaces the pre-booking currency placeholder', async () => {
-  const state: RunState = {
-    cost_amount: null,
-    cost_currency: 'USD',
-    external_run_id: 'dw-run-123',
-    status: 'running',
-  }
-  const fixture = makePrisma(state)
-
-  await updateDeepWaterResearchRun(fixture.prisma, updateInput({
-    costAmount: 4.25,
-    costCurrency: 'EUR',
-    status: 'completed',
-  }))
-
-  assert.equal(fixture.updateCount(), 1)
-  assert.match(
-    fixture.queries[1] ?? '',
-    /WHEN "cost_amount" IS NULL OR "cost_currency" IS NULL\s+THEN CAST\(\? AS text\)/,
-  )
-})
-
 test('concurrent conflicting terminal updates serialize and only one wins', async () => {
   let state: RunState = {
-    cost_amount: null,
-    cost_currency: 'USD',
     external_run_id: null,
     status: 'running',
   }
@@ -418,8 +340,6 @@ test('concurrent conflicting terminal updates serialize and only one wins', asyn
       if (text.includes('UPDATE "product_integration_runs"')) {
         updateCount += 1
         state = {
-          cost_amount: '4.250000',
-          cost_currency: 'USD',
           external_run_id: 'dw-run-123',
           status: 'completed',
         }
@@ -440,15 +360,11 @@ test('concurrent conflicting terminal updates serialize and only one wins', asyn
 
   const [winner, conflict] = await Promise.allSettled([
     updateDeepWaterResearchRun(prisma, updateInput({
-      costAmount: 4.25,
-      costCurrency: 'USD',
       externalRunId: 'dw-run-123',
       status: 'completed',
     })),
     updateDeepWaterResearchRun(prisma, updateInput({
-      costAmount: 5,
-      costCurrency: 'USD',
-      externalRunId: 'dw-run-123',
+      externalRunId: 'dw-run-456',
       status: 'completed',
     })),
   ])
@@ -458,7 +374,7 @@ test('concurrent conflicting terminal updates serialize and only one wins', asyn
   assert.ok(
     conflict.status === 'rejected'
     && conflict.reason instanceof DeepWaterResearchRunConflictError
-    && conflict.reason.field === 'bookedCost',
+    && conflict.reason.field === 'externalRunId',
   )
   assert.equal(updateCount, 1)
   assert.equal(lockQueries.length, 2)

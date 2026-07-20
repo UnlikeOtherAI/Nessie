@@ -11,7 +11,6 @@ import {
 } from './deepwater-run-update-guards.js'
 import {
   DEEP_WATER_PRODUCT_SLUG,
-  DEFAULT_CURRENCY,
   TERMINAL_STATUSES,
   TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE,
   compactPreview,
@@ -19,8 +18,6 @@ import {
   deepWaterRunReturning,
   mapDeepWaterRunRow,
   requireDeepWaterRunRow,
-  toNullableCost,
-  toNullableNumber,
   toRecord,
   type DeepWaterRunRow,
 } from './integration-runs-mapping.js'
@@ -49,15 +46,11 @@ type DeepWaterUsageLedgerRow = {
   external_run_id: string | null
   status: ProductIntegrationRunStatus
   result_json: unknown
-  cost_amount: Prisma.Decimal | number | string | null
-  cost_currency: string | null
   source_count: number | null
 }
 
 export type DeepWaterResearchRunUpdateInput = {
   completedAt?: Date | null
-  costAmount?: number | null
-  costCurrency?: string | null
   externalRunId?: string | null
   knowledgePageId?: string | null
   organizationId: string
@@ -79,7 +72,6 @@ export type DeepWaterResearchRunUsageReconciliationResult =
       recorded: false
       reason:
         | 'already_recorded'
-        | 'missing_cost'
         | 'non_terminal_status'
         | 'run_not_found'
     }
@@ -107,7 +99,6 @@ export const createDeepWaterResearchRun = async (
       "query_preview",
       "input_json",
       "result_json",
-      "cost_currency",
       "updated_at"
     )
     VALUES (
@@ -121,7 +112,6 @@ export const createDeepWaterResearchRun = async (
       ${compactPreview(input.input.query)},
       CAST(${inputJson} AS jsonb),
       '{}'::jsonb,
-      ${DEFAULT_CURRENCY},
       CURRENT_TIMESTAMP
     )
     RETURNING ${deepWaterRunReturning}
@@ -194,6 +184,7 @@ const buildDeepWaterResultPatch = (
   delete result.reportUrlSource
   delete result.sourceCount
   delete result.sourceCountSource
+  delete result.legacyDispatchEvidence
   if (input.statusDetail !== undefined) {
     result.statusDetail = input.statusDetail?.trim() || null
   }
@@ -205,8 +196,6 @@ export const updateDeepWaterResearchRun = async (
   input: DeepWaterResearchRunUpdateInput,
 ): Promise<DeepWaterResearchRunRecord> => {
   const resultPatchJson = JSON.stringify(buildDeepWaterResultPatch(input))
-  const costAmount = toNullableCost(input.costAmount)
-  const costCurrency = input.costCurrency?.trim() || null
   const externalRunId = input.externalRunId?.trim() || null
   const knowledgePageId = input.knowledgePageId?.trim() || null
   const status = input.status ?? null
@@ -234,13 +223,11 @@ export const updateDeepWaterResearchRun = async (
     // Serialize all writers for this exact tenant/thread run. Under PostgreSQL's
     // READ COMMITTED default, a concurrent waiter sees the committed winner
     // after acquiring this lock and therefore validates against the durable
-    // terminal/external-id/cost values rather than a stale snapshot.
+    // terminal/external-id values rather than a stale snapshot.
     const stateRows = await tx.$queryRaw<DeepWaterImmutableRunState[]>(Prisma.sql`
       SELECT
         "external_run_id",
         "status"::text AS "status",
-        "cost_amount",
-        "cost_currency",
         "result_json"
       FROM "product_integration_runs"
       WHERE "id" = CAST(${input.runId} AS uuid)
@@ -255,8 +242,6 @@ export const updateDeepWaterResearchRun = async (
       throw new Error('Deep Water run was not returned by the database')
     }
     assertImmutableDeepWaterUpdate(current, {
-      costAmount,
-      costCurrency,
       externalRunId,
       status,
     })
@@ -273,16 +258,6 @@ export const updateDeepWaterResearchRun = async (
           ELSE CAST(${status} AS "ProductIntegrationRunStatus")
         END,
         "result_json" = COALESCE("result_json", '{}'::jsonb) || CAST(${resultPatchJson} AS jsonb),
-        "cost_amount" = CASE
-          WHEN CAST(${costAmount} AS DECIMAL(18, 6)) IS NULL OR "cost_amount" IS NOT NULL
-            THEN "cost_amount"
-          ELSE CAST(${costAmount} AS DECIMAL(18, 6))
-        END,
-        "cost_currency" = CASE
-          WHEN CAST(${costAmount} AS DECIMAL(18, 6)) IS NULL THEN "cost_currency"
-          WHEN "cost_amount" IS NULL OR "cost_currency" IS NULL THEN CAST(${costCurrency} AS text)
-          ELSE "cost_currency"
-        END,
         "knowledge_page_id" = CASE
           WHEN CAST(${knowledgePageId} AS uuid) IS NULL THEN "knowledge_page_id"
           ELSE CAST(${knowledgePageId} AS uuid)
@@ -322,8 +297,6 @@ export const reconcileDeepWaterResearchRunUsage = async (
         "external_run_id",
         "status",
         "result_json",
-        "cost_amount",
-        "cost_currency",
         "source_count"
       FROM "product_integration_runs"
       WHERE "id" = CAST(${input.runId} AS uuid)
@@ -337,11 +310,6 @@ export const reconcileDeepWaterResearchRunUsage = async (
     }
     if (!TERMINAL_STATUSES.includes(row.status)) {
       return { recorded: false, reason: 'non_terminal_status' }
-    }
-
-    const costAmount = toNullableNumber(row.cost_amount)
-    if (costAmount === null) {
-      return { recorded: false, reason: 'missing_cost' }
     }
 
     const result = toRecord(row.result_json)
@@ -365,11 +333,11 @@ export const reconcileDeepWaterResearchRunUsage = async (
         connectorId: row.connector_id,
         connectorType: 'mcp',
         correlationId,
-        costAmount,
-        costCurrency: row.cost_currency ?? DEFAULT_CURRENCY,
         latencyMs: null,
         metadata: {
+          commercialAuthority: 'uoa',
           externalRunId: row.external_run_id,
+          metering: 'operational_only',
           productIntegrationRunId: row.id,
           productSlug: DEEP_WATER_PRODUCT_SLUG,
           source: 'deep_water_run_update',
@@ -379,8 +347,8 @@ export const reconcileDeepWaterResearchRunUsage = async (
         operation: `research.${row.status}`,
         organizationId: row.organization_id,
         // The launch owner is immutable. A different granted agent/user may
-        // deliver the terminal update, but may never take ownership of the
-        // mirrored rate-card charge.
+        // deliver the terminal update, but may never take ownership of its
+        // operational call/source telemetry.
         userId: row.requested_by_user_id,
         projectId: input.attribution.projectId ?? null,
         requestId: input.attribution.requestId ?? null,

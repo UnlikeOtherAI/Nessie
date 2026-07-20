@@ -238,7 +238,16 @@ export const getConnectorUsageSummary = async (
     `SELECT
        COALESCE(SUM(calls), 0) as total_calls,
        COALESCE(SUM(units), 0) as total_units,
-       COALESCE(SUM(cost_amount), 0) as total_cost
+       COALESCE(SUM(
+         CASE
+           WHEN metadata->>'productSlug' = 'deep-water'
+             OR metadata->>'product_slug' = 'deep-water'
+             OR metadata->>'product' = 'deep-water'
+             OR metadata->>'source' = 'deep_water_run_update'
+             THEN 0
+           ELSE cost_amount
+         END
+       ), 0) as total_cost
      FROM connector_usage_events
      WHERE ${whereClause}`,
     ...params,
@@ -265,7 +274,16 @@ export const getConnectorUsageSummary = async (
          ${groupByColumn} as key,
          COALESCE(SUM(calls), 0) as calls,
          COALESCE(SUM(units), 0) as units,
-         COALESCE(SUM(cost_amount), 0) as cost
+         COALESCE(SUM(
+           CASE
+             WHEN metadata->>'productSlug' = 'deep-water'
+               OR metadata->>'product_slug' = 'deep-water'
+               OR metadata->>'product' = 'deep-water'
+               OR metadata->>'source' = 'deep_water_run_update'
+               THEN 0
+             ELSE cost_amount
+           END
+         ), 0) as cost
        FROM connector_usage_events
        WHERE ${whereClause}
        GROUP BY ${groupByColumn}

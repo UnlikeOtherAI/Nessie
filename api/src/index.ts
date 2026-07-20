@@ -178,9 +178,10 @@ export const buildApp = async () => {
       },
       {
         tracker: apiUsageTracker,
-        // Persist every billable call (designer, orchestrator, memory, thoughts)
-        // that supplies attribution to the shared token ledger. Log (never throw)
-        // on failure so a dropped cost event is visible rather than silent.
+        // Persist operational usage for every metered call (designer,
+        // orchestrator, memory, thoughts) that supplies attribution. This local
+        // ledger is not customer billing; UOA rates Ledger's raw records. Log
+        // (never throw) so a dropped event remains visible.
         recordUsage: async (invocations, attribution) => {
           try {
             await recordInferenceUsage(prisma, { attribution, invocations })

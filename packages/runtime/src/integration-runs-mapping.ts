@@ -28,8 +28,6 @@ export type DeepWaterRunRow = {
   query_preview: string
   input_json: unknown
   result_json: unknown
-  cost_amount: Prisma.Decimal | number | string | null
-  cost_currency: string | null
   source_count: number | null
   knowledge_page_id: string | null
   requested_at: Date | string
@@ -39,7 +37,6 @@ export type DeepWaterRunRow = {
 }
 
 export const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
-export const DEFAULT_CURRENCY = 'USD'
 export const TRUSTED_DEEP_WATER_REPORT_URL_SOURCE = 'ledger_research_start'
 export const TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE = 'ledger_research_report'
 export const TERMINAL_STATUSES: ProductIntegrationRunStatus[] = [
@@ -60,20 +57,6 @@ export const toRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
-
-export const toNullableNumber = (
-  value: Prisma.Decimal | number | string | null,
-): number | null => {
-  if (value === null) return null
-  const numeric = typeof value === 'number' ? value : Number(value.toString())
-  return Number.isFinite(numeric) ? numeric : null
-}
-
-export const toNullableCost = (value: number | null | undefined): number | null => {
-  if (value === undefined || value === null) return null
-  if (!Number.isFinite(value)) return null
-  return Math.max(0, value)
-}
 
 const pickString = <T extends string>(
   value: unknown,
@@ -117,7 +100,6 @@ export const mapDeepWaterRunRow = (row: DeepWaterRunRow): DeepWaterResearchRunRe
     completedAt: toNullableIsoString(row.completed_at),
     connectorId: row.connector_id,
     createdAt: toIsoString(row.created_at),
-    currency: row.cost_currency ?? DEFAULT_CURRENCY,
     depth: pickString(
       input.depth,
       ['light', 'standard', 'deep', 'heavy', 'thesis', 'dissertation'] as const,
@@ -146,7 +128,6 @@ export const mapDeepWaterRunRow = (row: DeepWaterRunRow): DeepWaterResearchRunRe
     teamId: row.team_id,
     threadId: row.thread_id,
     title: row.title,
-    totalCost: toNullableNumber(row.cost_amount),
     updatedAt: toIsoString(row.updated_at),
   })
 }
@@ -174,8 +155,6 @@ export const deepWaterRunReturning = Prisma.sql`
   "query_preview",
   "input_json",
   "result_json",
-  "cost_amount",
-  "cost_currency",
   "source_count",
   "knowledge_page_id"::text AS "knowledge_page_id",
   "requested_at",

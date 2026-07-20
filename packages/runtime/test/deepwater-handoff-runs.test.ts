@@ -28,7 +28,6 @@ const row = (overrides: Record<string, unknown> = {}) => ({
     transport: 'http',
     url: 'https://ledger.example/v1/mcp/deepwater',
   },
-  cost_amount: null,
   external_run_id: null,
   id: '8f3a5a00-0e64-4d10-a517-0d0b69c1d801',
   knowledge_page_id: null,
@@ -55,7 +54,7 @@ test('handoff lookup rejects ambiguity', async () => {
 test('handoff lookup preserves provider evidence as failure-ineligible', async () => {
   for (const rows of [
     [row({ external_run_id: 'rs_existing' })],
-    [row({ cost_amount: '1.00' })],
+    [row({ result_json: { legacyDispatchEvidence: true } })],
     [row({ knowledge_page_id: '8f3a5a00-0e64-4d10-a517-0d0b69c1d901' })],
     [row({ result_json: { reportUrl: null } })],
     [row({ result_json: { reportUrl: 'https://ledger.example/report' } })],
@@ -190,7 +189,7 @@ test('start claim permits only the first exact clean queued transition', async (
   assert.match(text, /"status" = 'running'/)
   assert.match(text, /"status" = 'queued'/)
   assert.match(text, /"external_run_id" IS NULL/)
-  assert.match(text, /"cost_amount" IS NULL/)
+  assert.match(text, /legacyDispatchEvidence/)
   assert.match(text, /"knowledge_page_id" IS NULL/)
   assert.match(text, /startToolCallId/)
   assert.match(text, /startArguments/)
@@ -379,12 +378,11 @@ test('failure transition is exact, correlated, and accepts late recovery state',
   assert.match(text, /"status" IN \('running', 'needs_setup'\)/)
   assert.match(text, /startToolCallId/)
   assert.match(text, /"external_run_id" IS NULL/)
-  assert.match(text, /"cost_amount" IS NULL/)
+  assert.match(text, /legacyDispatchEvidence/)
   assert.match(text, /"source_count" IS NULL/)
   assert.match(text, /"knowledge_page_id" IS NULL/)
   assert.match(text, /NOT \(COALESCE\("result_json"/)
   assert.doesNotMatch(text, /"external_run_id"\s*=/)
-  assert.doesNotMatch(text, /"cost_amount"\s*=/)
   assert.doesNotMatch(text, /"knowledge_page_id"\s*=/)
   assert.ok(
     (queries[0] as { values?: readonly unknown[] }).values?.includes(

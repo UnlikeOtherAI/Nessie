@@ -542,7 +542,7 @@ There is deliberately no direct-provider fallback.
   registry re-enable cannot silently revive an agent's old protected allow.
   Bundle and individual lifecycle-tool revocation return 409 while any linked
   run is `queued`, `running`, or `needs_setup`; there is no force override that
-  can strand a billable Ledger job. The error points to the PA channel and
+  can strand an accepted Ledger job. The error points to the PA channel and
   `research_cancel` when attached, otherwise to explicit operator recovery.
   The Integrations link filters Tools by both the exact provisioned instance and
   its first-party `deep-water` product binding, never by a caller-controlled
@@ -569,7 +569,7 @@ There is deliberately no direct-provider fallback.
   Realtime publication happens after commit and is non-fatal. Ambiguous work
   remains blocking even when `externalRunId` is null: a worker may already be
   inside the idempotent
-  `research_start`, so guessing “unaccepted” could orphan billable Ledger work.
+  `research_start`, so guessing “unaccepted” could orphan accepted Ledger work.
   The 409 points to an attached chat where PA can invoke `research_cancel`;
   an interrupted run without a chat requires explicit operator recovery.
 - **Fail loud and transition atomically.** When
@@ -623,7 +623,7 @@ There is deliberately no direct-provider fallback.
   membership; the centralized resolution is projected into both the Nessie
   workspace and every product account link. Multiple teams without `active`
   remain ambiguous and fail closed. Nessie's signed local organization/team remain the
-  authoritative research and spend scope, so the two ID namespaces are never
+  authoritative research and raw-usage scope, so the two ID namespaces are never
   compared or substituted. Ledger verifies both assertions before assigning a
   job to the UOA subject. DeepWater's product identity mode is `uoa_sso` even
   though its MCP transport uses Nessie's app API key, ensuring first login
@@ -673,7 +673,7 @@ There is deliberately no direct-provider fallback.
   queue UUIDs are never accepted as signed identity. Background consolidation
   deliberately omits the interactive correlation ID rather than trusting an
   unbound queue value. The PA system channel's team/project scope only controls
-  where the memory is stored; it never replaces the launch team billed by
+  where the memory is stored; it never replaces the launch team attributed by
   Ledger. The consumer validates the persisted source locator before reading
   message history, and never infers the billed user from a thread participant.
   Each Fastify request
@@ -688,12 +688,12 @@ There is deliberately no direct-provider fallback.
   **thread** the run is attached to (no unattached-run escape), and any
   `knowledgePageId` is validated to belong to the org before it is stored — so a
   prompt-injected `runId`/`knowledgePageId` cannot mutate another run or corrupt
-  billing. The server-built launch message gives the PA the durable run's exact
+  usage attribution. The server-built launch message gives the PA the durable run's exact
   full UUID for every write-back; the launch card may abbreviate that UUID for
-  display only and is never the write-back authority. Ledger terminal MCP
-  responses expose the immutable booked rate-card
-  `cost: { amount, currency }`; the handoff copies those exact values when
-  present and otherwise leaves Nessie's mirrored cost empty. The external
+  display only and is never the write-back authority. Ledger's DeepWater REST
+  and MCP status, report, and list responses intentionally expose no cost,
+  price, charge, tariff, or currency. The handoff rejects those fields, and UOA
+  alone supplies customer-commercial amounts. The external
   report URL is captured only from the authenticated Ledger `research_start`
   structured response after its origin and exact research-job path are
   validated, then persisted atomically with that ticket. Source count is
@@ -707,21 +707,25 @@ There is deliberately no direct-provider fallback.
   report call. Deployment migration
   `20260720150000_deepwater_report_metadata_provenance` clears historical
   connector-usage units without that provenance and backfills only
-  already-trusted counts. A terminal run remains readable after team disable
+  already-trusted counts. Migration
+  `20260720234500_retire_deepwater_local_cost_mirror` clears every historical
+  DeepWater amount/currency from Product runs and connector events, preserves
+  only a cost-free server-only dispatch-recovery marker, drops the obsolete
+  Product-run cost columns, and installs a database trigger that rejects future
+  DeepWater connector-event cost writes. A terminal run remains readable after team disable
   removes its managed connector; accepting a fresh start still requires a valid
   configured Ledger origin.
   Updates take a PostgreSQL row lock: identical delivery retries are accepted,
   while replacing
-  an established external run id or booked cost, or moving a terminal run to a
+  an established external run id, or moving a terminal run to a
   different status, returns an explicit immutable-conflict error. A terminal
   status captured on the start ticket is enforced under that same lock:
   `complete` can project only to `completed`, while `failed`, `cancelled`, and
-  `timed_out` can project only to `failed`. Reconciliation
-  always books it to the run's immutable launch `requestedByUserId`, even when
-  a different granted agent or user submits the terminal update. This booked charge
-  is not a provider-invoice actual and complex runs may reconcile higher
-  upstream without changing the value Nessie mirrors. Nessie never estimates
-  cost or treats its cost-free MCP dispatch telemetry as the booked charge.
+  `timed_out` can project only to `failed`. Operational reconciliation always
+  attributes the call and authenticated source units to the run's immutable
+  launch `requestedByUserId`, even when a different granted agent or user
+  submits the terminal update. Nessie never estimates, mirrors, aggregates, or
+  renders a DeepWater amount; UOA rates Ledger's raw metering independently.
 - **Long-running jobs do not busy-poll.** The launch handoff starts the Ledger
   job, persists its id + `running` state, optionally reads status once, tells the
   user it is running, and ends the bounded agent turn. For the exact
@@ -773,7 +777,7 @@ There is deliberately no direct-provider fallback.
   terminal reconciliation. Fatal tool calls emit their paired sanitized end
   event before propagation, and every started same-batch tool wrapper settles
   before the queue attempt is released. Rows with
-  external/accounting/report/Knowledge evidence are never erased or falsely
+  external/dispatch/report/Knowledge evidence are never erased or falsely
   failed, and ordinary DeepWater calls not attached to a product launch are
   unchanged. A later
   user/status turn performs one status read and fetches `research_report` only after completion;

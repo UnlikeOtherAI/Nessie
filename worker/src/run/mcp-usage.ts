@@ -25,6 +25,6 @@ export const recordMcpConnectorUsage = async (
       latencyMs: input.latencyMs,
     },
   }).catch(() => {
-    // Best-effort billing capture must not break connector dispatch.
+    // Best-effort operational telemetry must not break connector dispatch.
   })
 }

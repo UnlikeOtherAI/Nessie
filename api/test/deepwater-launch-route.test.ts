@@ -113,8 +113,6 @@ test('research-launch persists and enqueues the exact full created durable run i
     channel_id: null,
     completed_at: null,
     connector_id: connectorId,
-    cost_amount: null,
-    cost_currency: 'USD',
     created_at: now,
     external_run_id: null,
     id: durableRunId,
