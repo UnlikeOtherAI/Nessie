@@ -17,10 +17,6 @@ const installerSource = new URL(
   '../../infrastructure/compose/set-ledger-app-key.sh',
   import.meta.url,
 )
-const billingInstallerSource = new URL(
-  '../../infrastructure/compose/set-ledger-billing-reader-key.sh',
-  import.meta.url,
-)
 const deepSignalInstallerSource = new URL(
   '../../infrastructure/compose/set-deepsignal-app-key.sh',
   import.meta.url,
@@ -91,11 +87,12 @@ const runUoaBillingValidator = (
   },
 })
 
-test('Ledger installer atomically pins both Nessie routes to its app key', () => {
+test('Ledger installer pins active routes and retires the old reader key', () => {
   const fixture = makeInstallerFixture([
     'PRESERVE_ME=yes',
     'LEDGER_PROXY_TOKEN=lk_obsolete_proxy_key_value',
     'NESSIE_MODEL_API_KEY=lk_obsolete_model_key_value',
+    `LEDGER_BILLING_READ_APP_KEY_NESSIE=lk_${'r'.repeat(32)}`,
     '',
   ].join('\n'))
 
@@ -161,15 +158,6 @@ test('credential installers preserve an unterminated unrelated setting', () => {
         'PRESERVE_ME=yes',
         `LEDGER_PROXY_TOKEN=${appKey}`,
         `NESSIE_MODEL_API_KEY=${appKey}`,
-        '',
-      ].join('\n'),
-    },
-    {
-      source: billingInstallerSource,
-      key: appKey,
-      expected: [
-        'PRESERVE_ME=yes',
-        `LEDGER_BILLING_READ_APP_KEY_NESSIE=${appKey}`,
         '',
       ].join('\n'),
     },
@@ -290,6 +278,10 @@ test('deployment supplies the dedicated Nessie Ledger key over SSH stdin', () =>
   assert.match(
     workflow,
     /bash infrastructure\/compose\/set-ledger-app-key\.sh/u,
+  )
+  assert.doesNotMatch(
+    workflow,
+    /LEDGER_BILLING_READ_APP_KEY_NESSIE/u,
   )
   assert.match(
     workflow,

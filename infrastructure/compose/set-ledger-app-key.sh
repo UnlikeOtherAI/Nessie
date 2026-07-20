@@ -2,6 +2,7 @@
 set -euo pipefail
 
 KEY_NAMES=("LEDGER_PROXY_TOKEN" "NESSIE_MODEL_API_KEY")
+RETIRED_KEY_NAME="LEDGER_BILLING_READ_APP_KEY_NESSIE"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 
@@ -45,6 +46,7 @@ if [[ -f "$ENV_FILE" ]]; then
   sed \
     -e "/^${KEY_NAMES[0]}=/d" \
     -e "/^${KEY_NAMES[1]}=/d" \
+    -e "/^${RETIRED_KEY_NAME}=/d" \
     "$ENV_FILE" > "$temp_file"
 fi
 if [[ -s "$temp_file" && -n "$(tail -c 1 "$temp_file")" ]]; then
