@@ -250,6 +250,74 @@ const readJson = async (response: Response): Promise<unknown> => {
   }
 }
 
+const requestBilling = async (
+  settings: BillingSettings,
+  subject: UoaBillingSubject,
+  path: string,
+  body: Readonly<Record<string, unknown>>,
+  deps: UoaBillingClientDeps,
+): Promise<Response> => {
+  const nowSeconds = deps.now?.() ?? Math.floor(Date.now() / 1000)
+  const actor = signBillingActor(
+    settings,
+    subject,
+    nowSeconds,
+    deps.randomId?.() ?? randomUUID(),
+  )
+  let response: Response
+  try {
+    response = await (deps.fetchImpl ?? fetch)(
+      billingUrl(settings, path),
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Cache-Control': 'no-store',
+          'Content-Type': 'application/json',
+          'X-UOA-Actor': actor,
+          'X-UOA-App-Key': settings.appKey,
+        },
+        body: JSON.stringify(body),
+      },
+    )
+  } catch (error) {
+    if (error instanceof UoaBillingError) throw error
+    throw new UoaBillingError(
+      'UOA_BILLING_UPSTREAM_REJECTED',
+      'UnlikeOtherAI billing is temporarily unavailable.',
+      502,
+    )
+  }
+  if (!response.ok) {
+    const forbidden = response.status === 401 || response.status === 403
+    const safeStatus = forbidden
+      ? 403
+      : [400, 404, 409, 410, 422, 503].includes(response.status)
+        ? response.status
+        : 502
+    throw new UoaBillingError(
+      forbidden
+        ? 'UOA_BILLING_FORBIDDEN'
+        : 'UOA_BILLING_UPSTREAM_REJECTED',
+      forbidden
+        ? 'UnlikeOtherAI rejected this billing action.'
+        : `UnlikeOtherAI billing rejected the request with status ${response.status}.`,
+      safeStatus,
+    )
+  }
+  return response
+}
+
+const clientForSubject = (
+  settings: BillingSettings,
+  subject: UoaBillingSubject,
+  deps: UoaBillingClientDeps,
+): UoaBillingClient => ({
+  subject,
+  post: async (path, body) =>
+    readJson(await requestBilling(settings, subject, path, body, deps)),
+})
+
 export const createUoaBillingClient = async (
   prisma: BillingWorkspacePrisma,
   actorContext: AuthorizedActionContext,
@@ -268,59 +336,34 @@ export const createUoaBillingClient = async (
     teamId: workspace.identity.teamId,
     userId: workspace.identity.subject,
   }
-  return {
-    subject,
-    post: async (path, body) => {
-      const nowSeconds = deps.now?.() ?? Math.floor(Date.now() / 1000)
-      const actor = signBillingActor(
-        settings,
-        subject,
-        nowSeconds,
-        deps.randomId?.() ?? randomUUID(),
-      )
-      let response: Response
-      try {
-        response = await (deps.fetchImpl ?? fetch)(
-          billingUrl(settings, path),
-          {
-            method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              'Cache-Control': 'no-store',
-              'Content-Type': 'application/json',
-              'X-UOA-Actor': actor,
-              'X-UOA-App-Key': settings.appKey,
-            },
-            body: JSON.stringify(body),
-          },
-        )
-      } catch (error) {
-        if (error instanceof UoaBillingError) throw error
-        throw new UoaBillingError(
-          'UOA_BILLING_UPSTREAM_REJECTED',
-          'UnlikeOtherAI billing is temporarily unavailable.',
-          502,
-        )
-      }
-      if (!response.ok) {
-        const forbidden = response.status === 401 || response.status === 403
-        const safeStatus = forbidden
-          ? 403
-          : [400, 404, 409, 410, 422, 503].includes(response.status)
-            ? response.status
-            : 502
-        throw new UoaBillingError(
-          forbidden
-            ? 'UOA_BILLING_FORBIDDEN'
-            : 'UOA_BILLING_UPSTREAM_REJECTED',
-          forbidden
-            ? 'UnlikeOtherAI rejected this billing action.'
-            : `UnlikeOtherAI billing rejected the request with status ${response.status}.`,
-          safeStatus,
-        )
-      }
-      return readJson(response)
-    },
-  }
+  return clientForSubject(settings, subject, deps)
 }
 
+export const confirmUoaDirectServiceAccess = async (
+  subject: UoaBillingSubject,
+  deps: UoaBillingClientDeps = {},
+): Promise<void> => {
+  const settings = loadBillingSettings(deps.env ?? process.env)
+  const response = await requestBilling(
+    settings,
+    subject,
+    '/billing/v1/service-access/confirm',
+    {
+      product: NESSIE_PRODUCT,
+      organisation_id: subject.organizationId,
+      team_id: subject.teamId,
+      user_id: subject.userId,
+    },
+    deps,
+  )
+  if (
+    response.status !== 204
+    || !response.headers.get('cache-control')?.toLowerCase().includes('no-store')
+  ) {
+    throw new UoaBillingError(
+      'UOA_BILLING_RESPONSE_INVALID',
+      'UnlikeOtherAI returned an invalid service-access confirmation.',
+      502,
+    )
+  }
+}

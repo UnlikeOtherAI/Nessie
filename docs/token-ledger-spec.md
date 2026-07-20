@@ -272,6 +272,15 @@ request and whose lifetime is 45 seconds. This key is distinct from Nessie's
 Ledger execution key and from every sibling product key.
 UOA independently re-checks membership and billing-manager authority.
 
+After a direct Nessie SSO token exchange has resolved and synchronized the
+linked UOA workspace, the API calls UOA
+`POST /billing/v1/service-access/confirm` with the exact
+`nessie`/user/organization/team subject before issuing the local session. UOA
+must return `204` with `Cache-Control: no-store`; otherwise login fails closed.
+This seam is never called by connector, agent, DeepWater, workflow, or
+background execution, so indirect usage cannot be mistaken for direct product
+access during cancellation planning.
+
 The version-1 statement is the complete customer view model: UOA supplies
 display-ready money, plan and markup copy, commercial lines, totals,
 per-service/per-user usage, access classifications, action labels, and disabled

@@ -288,6 +288,11 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   token, UOA idempotency key, and selected UOA choice; UOA locks and revalidates
   team-wide direct access before confirming. Nessie stores no tariff, Stripe
   customer, subscription, invoice, Price, statement, or cancellation state.
+  A successful direct Nessie SSO exchange confirms `nessie` access through
+  UOA's exact `/billing/v1/service-access/confirm` seam before Nessie issues its
+  local session; the call is bound to the linked user/org/team and fails login
+  closed unless UOA returns `204` with `no-store`. Connector, DeepWater, agent,
+  and other indirect execution paths never create this direct-access evidence.
 - Builtin `web_search` is a Ledger-only Serper route. Ordinary agent, delegated
   sub-agent, and workflow calls all post to
   `${LEDGER_PUBLIC_URL}/v1/serper/search` with Nessie's product-bound

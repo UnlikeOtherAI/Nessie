@@ -312,6 +312,11 @@ Cancellation confirmation carries only UOA's opaque token, idempotency key, and
 selected UOA choice. UOA alone evaluates and revalidates team-wide direct
 access and indirect Ledger use. Nessie never stores commercial tariff, Stripe
 customer/subscription/invoice, statement, or cancellation state.
+A successful direct Nessie SSO exchange records exact `nessie` access through
+UOA before any local session is returned. The confirmation is subject-bound,
+requires UOA's `204`/`no-store` response, and fails login closed; indirect
+connector, DeepWater, agent, and background execution never records direct
+product access.
 
 Builtin `web_search` is also Ledger-only. Agent, delegated sub-agent, and
 workflow calls use `${LEDGER_PUBLIC_URL}/v1/serper/search` with Nessie's

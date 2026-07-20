@@ -24,11 +24,13 @@ import {
 } from '../services/auth.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import { buildExternalAuthAuthorizeUrl, exchangeExternalAuthCode } from '../services/external-auth.js'
+import { resolveExternalWorkspaceSelection } from '../services/identity-display.js'
 import { syncUoaProductAccountLinks } from '../services/integrations.js'
 import { seedDefaultPolicies } from '../services/policy.js'
 import { buildConfigJwt, buildPublicJwks, isUoaConfigured, loadUoaSettings } from '../services/uoa-auth.js'
 import { loadSessionUserByEmail } from '../services/users.js'
 import { resolveUoaWorkspaceContext } from '../services/workspace-context.js'
+import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js'
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../lib/refresh-cookie.js'
 import {
   consumeRefreshToken,
@@ -395,6 +397,23 @@ export const registerAuthRoutes = (app: FastifyInstance, deps: RouteDeps): void 
             organizationId: context.organizationId,
             userId: context.userId,
             workspace: identity.workspace,
+          })
+          const externalWorkspace = resolveExternalWorkspaceSelection(
+            identity.workspace,
+          )
+          if (
+            !identity.externalSubject
+            || !externalWorkspace.organizationId
+            || !externalWorkspace.teamId
+          ) {
+            throw new Error(
+              'UnlikeOtherAI did not return an exact user, organization, and team.',
+            )
+          }
+          await confirmUoaDirectServiceAccess({
+            organizationId: externalWorkspace.organizationId,
+            teamId: externalWorkspace.teamId,
+            userId: identity.externalSubject,
           })
         }
 
