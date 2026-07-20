@@ -73,6 +73,19 @@ jobs:
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-ledger-app-key.sh'
 
+      - name: Configure Nessie UOA billing credentials
+        env:
+          UOA_BILLING_APP_KEY_NESSIE: ${{ secrets.UOA_BILLING_APP_KEY_NESSIE }}
+          UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE: ${{ secrets.UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE }}
+        run: |
+          test -n "$UOA_BILLING_APP_KEY_NESSIE"
+          test -n "$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE"
+          printf '%s\n%s\n' \
+            "$UOA_BILLING_APP_KEY_NESSIE" \
+            "$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE" |
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              'cd /srv/nessie && bash infrastructure/compose/set-uoa-billing-credentials.sh'
+
       - name: Configure Nessie DeepSignal application key
         env:
           DEEPSIGNAL_MCP_APP_KEY: ${{ secrets.DEEPSIGNAL_MCP_APP_KEY }}

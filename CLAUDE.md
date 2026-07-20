@@ -290,6 +290,16 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   Re-enable preserves richer probed schemas only for the current Ledger
   tool-name contract; legacy direct-provider projections are replaced.
 
+Customer tariffs and Stripe lifecycle stay in UOA. Nessie uses its dedicated
+Ledger billing-reader key only for immutable rated usage; subscription summary,
+Checkout, Portal, and cancellation instead use the separate Nessie-only
+`UOA_BILLING_APP_KEY_NESSIE` and a fresh 45-second actor assertion signed by
+`UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`. The main-branch deploy installs those
+two secrets atomically. Requests must bind the exact linked UOA user/org/team,
+and Checkout/Portal returns are server-pinned to `NESSIE_ADMIN_PUBLIC_URL`.
+Nessie never stores commercial tariff or Stripe customer/subscription/invoice
+state.
+
 User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The
 cloud API and worker reject stdio process execution for catalog/instance data,
 and HTTP/SSE/OAuth URLs are checked by the shared SSRF guard before save or use.

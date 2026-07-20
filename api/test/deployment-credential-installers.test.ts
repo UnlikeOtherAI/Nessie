@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
+import { generateKeyPairSync } from 'node:crypto'
 import { cpSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,6 +18,10 @@ const deepSignalInstallerSource = new URL(
   '../../infrastructure/compose/set-deepsignal-app-key.sh',
   import.meta.url,
 )
+const uoaBillingInstallerSource = new URL(
+  '../../infrastructure/compose/set-uoa-billing-credentials.sh',
+  import.meta.url,
+)
 const workflowSource = new URL(
   '../../.github/workflows/deploy.yml',
   import.meta.url,
@@ -24,6 +29,16 @@ const workflowSource = new URL(
 
 const appKey = `lk_${'n'.repeat(32)}`
 const deepSignalAppKey = `dsk_${'s'.repeat(32)}`
+const uoaBillingAppKey = `uoa_app_${'b'.repeat(32)}`
+const { privateKey: uoaBillingTestPrivateKey } = generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+})
+const uoaBillingActorKey = JSON.stringify({
+  ...uoaBillingTestPrivateKey.export({ format: 'jwk' }),
+  kid: 'nessie-billing-test',
+  alg: 'RS256',
+  use: 'sig',
+})
 
 const makeInstallerFixture = (
   initialEnv = '',
@@ -155,6 +170,47 @@ test('credential installers preserve an unterminated unrelated setting', () => {
   }
 })
 
+test('UOA billing installer atomically installs both independent credentials', () => {
+  const fixture = makeInstallerFixture(
+    'PRESERVE_ME=yes',
+    uoaBillingInstallerSource,
+  )
+  const result = runInstaller(
+    fixture.installer,
+    `${uoaBillingAppKey}\n${uoaBillingActorKey}`,
+  )
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(
+    readFileSync(fixture.envFile, 'utf8'),
+    [
+      'PRESERVE_ME=yes',
+      `UOA_BILLING_APP_KEY_NESSIE=${uoaBillingAppKey}`,
+      `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE=${uoaBillingActorKey}`,
+      '',
+    ].join('\n'),
+  )
+  assert.equal(statSync(fixture.envFile).mode & 0o777, 0o600)
+})
+
+test('UOA billing installer rejects either malformed secret without printing it', () => {
+  const malformedAppKey = makeInstallerFixture('', uoaBillingInstallerSource)
+  const appKeyResult = runInstaller(
+    malformedAppKey.installer,
+    `invalid-uoa-key\n${uoaBillingActorKey}`,
+  )
+  assert.notEqual(appKeyResult.status, 0)
+  assert.doesNotMatch(appKeyResult.stderr, /invalid-uoa-key/u)
+
+  const malformedActor = makeInstallerFixture('', uoaBillingInstallerSource)
+  const actorResult = runInstaller(
+    malformedActor.installer,
+    `${uoaBillingAppKey}\nprivate-actor-material`,
+  )
+  assert.notEqual(actorResult.status, 0)
+  assert.doesNotMatch(actorResult.stderr, /private-actor-material/u)
+})
+
 test('deployment supplies the dedicated Nessie Ledger key over SSH stdin', () => {
   const workflow = readFileSync(workflowSource, 'utf8')
   assert.match(
@@ -164,5 +220,17 @@ test('deployment supplies the dedicated Nessie Ledger key over SSH stdin', () =>
   assert.match(
     workflow,
     /bash infrastructure\/compose\/set-ledger-app-key\.sh/u,
+  )
+  assert.match(
+    workflow,
+    /UOA_BILLING_APP_KEY_NESSIE: \$\{\{ secrets\.UOA_BILLING_APP_KEY_NESSIE \}\}/u,
+  )
+  assert.match(
+    workflow,
+    /UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE: \$\{\{ secrets\.UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE \}\}/u,
+  )
+  assert.match(
+    workflow,
+    /bash infrastructure\/compose\/set-uoa-billing-credentials\.sh/u,
   )
 })

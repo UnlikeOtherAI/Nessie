@@ -262,6 +262,18 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   reconcile higher upstream. Re-enable preserves richer probed schemas only
   when tool names exactly match the current Ledger contract; legacy
   direct-provider projections are replaced and must be explicitly re-granted.
+- Customer tariffs and Stripe lifecycle remain authoritative in UOA. Nessie
+  reads rated usage from Ledger with `LEDGER_BILLING_READ_APP_KEY_NESSIE`, but
+  subscription summary, Checkout, Portal, and cancel actions use a different,
+  Nessie-only `UOA_BILLING_APP_KEY_NESSIE` plus a fresh 45-second RS256 actor
+  assertion signed by `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`. Both secrets are
+  installed together by the main-branch deployment workflow; neither may be
+  reused by Ledger or a sibling product. Every action resolves the exact linked
+  UOA user/org/team, rejects local workspace drift, and lets UOA independently
+  recheck billing-manager membership. Browser-supplied return URLs are
+  forbidden: the API pins Checkout and Portal returns to
+  `NESSIE_ADMIN_PUBLIC_URL`. Nessie stores no tariff, Stripe customer,
+  subscription, invoice, Price, or meter state.
 - deep.agent crawl web scanning is an MCP connector template: install a Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, then approve/grant the discovered tools. The crawl library implementation belongs behind the deep.agent service boundary; do not embed Crawl4AI's Python package in the API/worker or expose an unauthenticated crawler to the public internet.
 
 ## File storage & accounting — single chokepoint
