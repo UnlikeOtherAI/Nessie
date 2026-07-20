@@ -197,8 +197,11 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   then policy lock, then performs the final 6/6 read and durable run insert.
   Disable returns `LEDGER_DEEPWATER_ACTIVE_RUNS` for queued, running, or
   `needs_setup` research; cancel/recover the run or wait for a terminal state
-  before retrying. PA message creation, run attachment, and durable enqueue are
-  atomic; realtime publication is post-commit/non-fatal. Ambiguous
+  before retrying. PA message creation, run attachment, PA run/task creation,
+  and direct `run.execute` enqueue are atomic; product handoffs bypass chat
+  engagement decisions while ordinary chat remains unchanged. Duplicate
+  enqueue conflicts roll back the duplicate unit, and realtime publication is
+  post-commit/non-fatal. Ambiguous
   null-external-id work stays blocking to avoid deleting the
   connector during an in-flight, billable `research_start`; attached-run errors
   point to the chat where PA can call `research_cancel`. This is unchanged for

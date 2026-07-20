@@ -555,12 +555,20 @@ There is deliberately no direct-provider fallback.
   `LEDGER_DEEPWATER_ACTIVE_RUNS` (409) while a run for that connector is
   `queued`, `running`, or `needs_setup`. Operators/users must cancel or recover
   interrupted work, or wait for a terminal state, then retry disable.
-  PA message creation, durable-run attachment, and orchestration enqueue commit
-  in one transaction; if attachment or enqueue fails, all three roll back and
-  the previously inserted run can be marked failed without leaving a queue job
-  that might call Ledger. Realtime publication happens after commit and is
-  non-fatal. Ambiguous work remains blocking even when
-  `externalRunId` is null: a worker may already be inside the idempotent
+  PA message creation, durable-run attachment, PA run/task creation, and the
+  `run.execute` enqueue commit in one transaction. Product handoffs never pass
+  through model-based chat engagement, so task text such as Swift's
+  `@MainActor` cannot be mistaken for an unresolved agent mention and suppress
+  the launch. The message-and-agent queue key protects one dispatch unit from a
+  duplicate queue insertion; it does not make a repeated HTTP launch request
+  idempotent. A queue-key collision is an error that rolls back that
+  message/run/task unit. If attachment or enqueue fails, the whole unit rolls
+  back and the previously inserted product run is marked failed without
+  leaving a queue job that might call Ledger.
+  Ordinary channel and PA chat messages continue through `orchestrate.decide`.
+  Realtime publication happens after commit and is non-fatal. Ambiguous work
+  remains blocking even when `externalRunId` is null: a worker may already be
+  inside the idempotent
   `research_start`, so guessing “unaccepted” could orphan billable Ledger work.
   The 409 points to an attached chat where PA can invoke `research_cancel`;
   an interrupted run without a chat requires explicit operator recovery.

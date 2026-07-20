@@ -254,10 +254,13 @@ Current Nessie slice:
   deterministic tool contract still comes from the plugin manifest. `POST
   /api/integrations/products/deep-water/research-launch` creates or loads the
   user's Personal Assistant DM, posts a server-built launch message carrying a
-  `deep_research` `uiCards` card, and enqueues the PA so it can call the
-  approved Ledger MCP tools (`mcp_research_start`, then
+  `deep_research` `uiCards` card, creates one PA run/task, and enqueues
+  `run.execute` in the same transaction so it can call the approved Ledger MCP
+  tools (`mcp_research_start`, then
   `mcp_research_status` and `mcp_research_report`). This gives the UI a real
-  launch path without bypassing MCP approval/grants or Ledger accounting. Nessie
+  launch path without a model engagement decision interpreting research text
+  as chat mentions, and without bypassing MCP approval/grants or Ledger
+  accounting. Ordinary chat remains on model-based engagement. Nessie
   now also creates a durable
   `product_integration_runs` projection for each Deep Water launch and exposes
   recent active-team runs through `GET

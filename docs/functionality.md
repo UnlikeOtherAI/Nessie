@@ -105,12 +105,15 @@ Root app layout:
   cannot place the old response in the new workspace cache.
   Bundle or individual lifecycle revocation also returns 409 for those
   nonterminal states; no force-revoke path can strand Ledger work. Handoff
-  message, run attachment, and durable enqueue commit atomically; realtime is
-  post-commit/non-fatal. Ambiguous null-id work still blocks disable because
-  Ledger dispatch may be in flight. Agent access remains visible after disable
-  so retained bundle provenance can be revoked. Its individual-tools link stays
-  in exact DeepWater mode after teardown: with no current instance it shows
-  only the canonical updater, never the full registry.
+  message, run attachment, PA run/task, and direct `run.execute` enqueue commit
+  atomically; product handoffs bypass chat engagement decisions while ordinary
+  chat routing is unchanged. Duplicate enqueue conflicts roll back the
+  duplicate unit, and realtime is post-commit/non-fatal. Ambiguous null-id work
+  still blocks disable because Ledger dispatch may be in flight. Agent access
+  remains visible after disable so retained bundle provenance can be revoked.
+  Its individual-tools link stays in exact DeepWater mode after teardown: with
+  no current instance it shows only the canonical updater, never the full
+  registry.
 
 ### 2.1 Server bootstrap (`src/index.ts`)
 

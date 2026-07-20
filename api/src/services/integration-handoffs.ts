@@ -1,6 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  parseAgentId,
   parseChannelId,
+  parseRunId,
+  parseTaskId,
   parseThreadId,
   parseUserId,
   withActionContext,
@@ -10,7 +13,7 @@ import {
 
 import type { createRealtimeHub } from '../realtime/hub.js'
 import { ChannelRecordSchema, ThreadRecordSchema } from '../contracts.js'
-import { enqueueOrchestrateDecide } from '../queue/pgqueue.js'
+import { enqueueRunExecution } from '../queue/pgqueue.js'
 import { mapMessageRecord, messageInclude } from './messages.js'
 import { ensurePersonalAssistantBootstrap } from './personal-assistant.js'
 
@@ -43,7 +46,7 @@ type IntegrationHandoffDeps = {
   prisma: PrismaClient
   realtimeHub: Awaited<ReturnType<typeof createRealtimeHub>>
   ensureBootstrap?: typeof ensurePersonalAssistantBootstrap
-  enqueue?: typeof enqueueOrchestrateDecide
+  enqueue?: typeof enqueueRunExecution
 }
 
 export type PersonalAssistantIntegrationHandoffInput = {
@@ -57,7 +60,6 @@ export type PersonalAssistantIntegrationHandoffInput = {
     },
   ) => Promise<void>
   content: string
-  idempotencyKey?: string
   metadata: Record<string, unknown> | ((context: { channelId: string }) => Record<string, unknown>)
   teamId: string
 }
@@ -82,7 +84,7 @@ export const createPersonalAssistantIntegrationHandoff = async (
 
   const agent = await deps.prisma.agent.findUnique({
     where: { id: paState.agent.id },
-    select: { id: true, name: true, role: true, systemPrompt: true },
+    select: { id: true },
   })
   if (!agent) {
     throw new Error('Personal Assistant agent is unavailable')
@@ -91,7 +93,7 @@ export const createPersonalAssistantIntegrationHandoff = async (
     typeof input.metadata === 'function'
       ? input.metadata({ channelId: channelState.id })
       : input.metadata
-  const orchestrationActorContext = deps.isPersonalAssistantChannelType(
+  const dispatchActorContext = deps.isPersonalAssistantChannelType(
     channelState.systemChannelType,
   )
     ? withActionContext(actorContext, {
@@ -118,19 +120,46 @@ export const createPersonalAssistantIntegrationHandoff = async (
       messageId: message.id,
       threadId: threadState.id,
     })
-    await (deps.enqueue ?? enqueueOrchestrateDecide)(
+
+    const run = await tx.run.create({
+      data: {
+        agentId: agent.id,
+        status: 'pending',
+        threadId: threadState.id,
+      },
+      select: { agentId: true, id: true, threadId: true },
+    })
+    const task = await tx.task.create({
+      data: {
+        agentId: agent.id,
+        organizationId: actorContext.tenant.organizationId,
+        purpose: content.slice(0, 200),
+        runId: run.id,
+        status: 'inbox',
+      },
+      select: { id: true },
+    })
+    const queued = await (deps.enqueue ?? enqueueRunExecution)(
       tx,
       {
-        actorContext: orchestrationActorContext,
-        channelAgents: [agent],
-        channelId: parseChannelId(channelState.id),
-        content,
+        actorContext: withActionContext(dispatchActorContext, {
+          agentId: parseAgentId(run.agentId),
+          channelId: parseChannelId(channelState.id),
+          taskId: parseTaskId(task.id),
+          threadId: parseThreadId(run.threadId),
+        }),
+        agentId: parseAgentId(run.agentId),
+        interactive: true,
         messageId: message.id,
-        role: message.role,
-        threadId: parseThreadId(threadState.id),
+        runId: parseRunId(run.id),
+        taskId: parseTaskId(task.id),
+        threadId: parseThreadId(run.threadId),
       },
-      input.idempotencyKey ?? `orchestrate:${message.id}`,
+      `run:${message.id}:${agent.id}`,
     )
+    if (!queued) {
+      throw new Error('Personal Assistant integration handoff is already dispatched')
+    }
     return { message, messageRecord }
   })
 

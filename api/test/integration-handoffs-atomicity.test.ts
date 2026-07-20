@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
+import type { RunExecuteJobPayload } from '@nessie/schemas'
 
 import { createPersonalAssistantIntegrationHandoff } from '../src/services/integration-handoffs.js'
 
@@ -13,6 +14,8 @@ const agentId = '00000000-0000-4000-8000-000000000005'
 const channelId = '00000000-0000-4000-8000-000000000006'
 const threadId = '00000000-0000-4000-8000-000000000007'
 const messageId = '00000000-0000-4000-8000-000000000008'
+const runId = '00000000-0000-4000-8000-000000000009'
+const taskId = '00000000-0000-4000-8000-000000000010'
 
 const actorContext = {
   actionContext: { requestId: 'handoff-atomicity' },
@@ -22,17 +25,20 @@ const actorContext = {
 
 type HarnessOptions = {
   enqueueFails?: boolean
+  enqueueReturnsFalse?: boolean
   realtimeFails?: boolean
 }
 
 const createHarness = (options: HarnessOptions = {}) => {
   const attempts: string[] = []
-  const messages: string[] = []
   const attachments: string[] = []
-  const queue: string[] = []
+  const messages: string[] = []
+  const queue: Array<{ key: string | undefined; payload: RunExecuteJobPayload }> = []
+  const runs: string[] = []
+  const tasks: string[] = []
   const message = {
     agentId: null,
-    content: 'Research safely',
+    content: 'Migrate @MainActor safely',
     createdAt: new Date('2026-07-19T10:00:00.000Z'),
     deletedAt: null,
     editedAt: null,
@@ -58,6 +64,20 @@ const createHarness = (options: HarnessOptions = {}) => {
         return message
       },
     },
+    run: {
+      create: async () => {
+        attempts.push('run')
+        runs.push(runId)
+        return { agentId, id: runId, threadId }
+      },
+    },
+    task: {
+      create: async () => {
+        attempts.push('task')
+        tasks.push(taskId)
+        return { id: taskId }
+      },
+    },
   }
   const prisma = {
     $transaction: async <T>(action: (client: typeof tx) => Promise<T>) => {
@@ -65,6 +85,8 @@ const createHarness = (options: HarnessOptions = {}) => {
         attachments: attachments.length,
         messages: messages.length,
         queue: queue.length,
+        runs: runs.length,
+        tasks: tasks.length,
       }
       try {
         return await action(tx)
@@ -72,24 +94,28 @@ const createHarness = (options: HarnessOptions = {}) => {
         attachments.splice(snapshot.attachments)
         messages.splice(snapshot.messages)
         queue.splice(snapshot.queue)
+        runs.splice(snapshot.runs)
+        tasks.splice(snapshot.tasks)
         throw error
       }
     },
     agent: {
-      findUnique: async () => ({
-        id: agentId,
-        name: 'Personal Assistant',
-        role: 'assistant',
-        systemPrompt: 'Help',
-      }),
+      findUnique: async () => ({ id: agentId }),
     },
   } as unknown as PrismaClient
   const deps = {
     buildChannelRealtimeScopes: () => [],
-    enqueue: async () => {
+    enqueue: async (
+      _tx: unknown,
+      payload: RunExecuteJobPayload,
+      key?: string,
+    ) => {
       attempts.push('enqueue')
       if (options.enqueueFails) throw new Error('queue failed')
-      queue.push(messageId)
+      if (options.enqueueReturnsFalse || queue.some((job) => job.key === key)) {
+        return false
+      }
+      queue.push({ key, payload })
       return true
     },
     ensureBootstrap: async () => ({ agentId, channelId, threadId }),
@@ -102,6 +128,7 @@ const createHarness = (options: HarnessOptions = {}) => {
         archivedAt: null,
         createdAt: '2026-07-19T10:00:00.000Z',
         defaultThreadId: threadId,
+        description: null,
         dmUserId: userId,
         id: channelId,
         label: 'Personal Assistant',
@@ -114,7 +141,6 @@ const createHarness = (options: HarnessOptions = {}) => {
         teamId,
         teamName: 'Team',
         topic: null,
-        description: null,
         type: 'dm',
         unreadCount: 0,
         updatedAt: '2026-07-19T10:00:00.000Z',
@@ -137,22 +163,32 @@ const createHarness = (options: HarnessOptions = {}) => {
     },
   }
 
-  const handoff = (beforeEnqueue: (context: { messageId: string }) => Promise<void>) =>
+  const handoff = (
+    beforeEnqueue: (context: { messageId: string }) => Promise<void>,
+  ) =>
     createPersonalAssistantIntegrationHandoff(
       deps as never,
       {
         actorContext,
         beforeEnqueue: async (_tx, context) => beforeEnqueue(context),
-        content: 'Research safely',
+        content: message.content,
         metadata: {},
         teamId,
       },
     )
 
-  return { attachments, attempts, handoff, messages, queue }
+  return {
+    attachments,
+    attempts,
+    handoff,
+    messages,
+    queue,
+    runs,
+    tasks,
+  }
 }
 
-test('attachment failure rolls back the message before durable enqueue', async () => {
+test('attachment failure rolls back the message before run dispatch', async () => {
   const harness = createHarness()
 
   await assert.rejects(
@@ -166,10 +202,12 @@ test('attachment failure rolls back the message before durable enqueue', async (
   assert.deepEqual(harness.attempts, ['message', 'attach'])
   assert.deepEqual(harness.messages, [])
   assert.deepEqual(harness.attachments, [])
+  assert.deepEqual(harness.runs, [])
+  assert.deepEqual(harness.tasks, [])
   assert.deepEqual(harness.queue, [])
 })
 
-test('enqueue failure rolls back both run attachment and message', async () => {
+test('enqueue failure rolls back attachment, message, run, and task', async () => {
   const harness = createHarness({ enqueueFails: true })
 
   await assert.rejects(
@@ -180,13 +218,68 @@ test('enqueue failure rolls back both run attachment and message', async () => {
     /queue failed/,
   )
 
-  assert.deepEqual(harness.attempts, ['message', 'attach', 'enqueue'])
+  assert.deepEqual(
+    harness.attempts,
+    ['message', 'attach', 'run', 'task', 'enqueue'],
+  )
   assert.deepEqual(harness.messages, [])
   assert.deepEqual(harness.attachments, [])
+  assert.deepEqual(harness.runs, [])
+  assert.deepEqual(harness.tasks, [])
   assert.deepEqual(harness.queue, [])
 })
 
-test('realtime failure is non-fatal after message, attachment, and queue commit', async () => {
+test('a duplicate enqueue cannot commit an orphaned PA run', async () => {
+  const harness = createHarness({ enqueueReturnsFalse: true })
+
+  await assert.rejects(
+    harness.handoff(async ({ messageId: attachedMessageId }) => {
+      harness.attempts.push('attach')
+      harness.attachments.push(attachedMessageId)
+    }),
+    /already dispatched/,
+  )
+
+  assert.deepEqual(harness.messages, [])
+  assert.deepEqual(harness.attachments, [])
+  assert.deepEqual(harness.runs, [])
+  assert.deepEqual(harness.tasks, [])
+  assert.deepEqual(harness.queue, [])
+})
+
+test('@-prefixed research text dispatches directly without engagement decisions', async () => {
+  const harness = createHarness()
+
+  await harness.handoff(async ({ messageId: attachedMessageId }) => {
+    harness.attempts.push('attach')
+    harness.attachments.push(attachedMessageId)
+  })
+
+  assert.deepEqual(harness.runs, [runId])
+  assert.deepEqual(harness.tasks, [taskId])
+  assert.equal(harness.queue.length, 1)
+  assert.deepEqual(harness.queue[0]?.payload, {
+    actorContext: {
+      ...actorContext,
+      actionContext: {
+        ...actorContext.actionContext,
+        agentId,
+        channelId,
+        effectiveUserId: userId,
+        taskId,
+        threadId,
+      },
+    },
+    agentId,
+    interactive: true,
+    messageId,
+    runId,
+    taskId,
+    threadId,
+  })
+})
+
+test('realtime failure is non-fatal after the durable run dispatch commits', async () => {
   const harness = createHarness({ realtimeFails: true })
   const originalConsoleError = console.error
   console.error = () => undefined
@@ -200,11 +293,13 @@ test('realtime failure is non-fatal after message, attachment, and queue commit'
     assert.equal(result.message.id, messageId)
     assert.deepEqual(
       harness.attempts,
-      ['message', 'attach', 'enqueue', 'realtime'],
+      ['message', 'attach', 'run', 'task', 'enqueue', 'realtime'],
     )
     assert.deepEqual(harness.messages, [messageId])
     assert.deepEqual(harness.attachments, [messageId])
-    assert.deepEqual(harness.queue, [messageId])
+    assert.deepEqual(harness.runs, [runId])
+    assert.deepEqual(harness.tasks, [taskId])
+    assert.equal(harness.queue.length, 1)
   } finally {
     console.error = originalConsoleError
   }

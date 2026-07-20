@@ -186,8 +186,11 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a queued, running, or
   `needs_setup` research run still references the connector; cancel or recover
   the run, or let it reach a terminal state, before retrying disable.
-  PA message, run attachment, and durable enqueue commit atomically; rollback
-  leaves no queue job, while realtime publication is post-commit/non-fatal.
+  PA message, run attachment, PA run/task, and direct `run.execute` enqueue
+  commit atomically; product handoffs bypass chat engagement decisions while
+  ordinary chat keeps its existing orchestration path. Duplicate enqueue
+  conflicts roll back the duplicate unit, and realtime publication is
+  post-commit/non-fatal.
   Even a
   null external id remains a conservative blocker because Ledger dispatch may
   be in flight; the error links an attached chat where PA can call

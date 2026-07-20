@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import type {
+  AuthorizedActionContext,
+  RunExecuteJobPayload,
+} from '@nessie/schemas'
 import Fastify from 'fastify'
 
 import { registerIntegrationHandoffRoutes } from '../src/routes/integrations/handoffs.js'
@@ -20,6 +23,8 @@ const threadId = '00000000-0000-4000-8000-000000000008'
 const messageId = '00000000-0000-4000-8000-000000000009'
 const durableRunId = '11111111-1111-4111-8111-111111111111'
 const wrongFreshRunId = '22222222-2222-4222-8222-222222222222'
+const paRunId = '33333333-3333-4333-8333-333333333333'
+const paTaskId = '44444444-4444-4444-8444-444444444444'
 const projectedEntries =
   (getIntegrationPluginManifest('deep-water')?.mcp?.tools ?? [])
     .map((tool, index) => ({
@@ -123,7 +128,7 @@ test('research-launch persists and enqueues the exact full created durable run i
     message_id: null,
     organization_id: organizationId,
     product_slug: 'deep-water',
-    query_preview: 'Trace the durable run identity.',
+    query_preview: 'Trace Swift @MainActor migration.',
     requested_at: now,
     requested_by_user_id: userId,
     result_json: {},
@@ -144,8 +149,8 @@ test('research-launch persists and enqueues the exact full created durable run i
   let rawQueryCalls = 0
   let persistedContent = ''
   let persistedMetadata: Record<string, unknown> = {}
-  let enqueuedContent = ''
-  let enqueuedMessageId = ''
+  let enqueuedPayload: RunExecuteJobPayload | undefined
+  let enqueuedKey = ''
   const tx = {
     $executeRaw: async () => 0,
     $queryRaw: async (query: { values?: unknown[] }) => {
@@ -200,6 +205,16 @@ test('research-launch persists and enqueues the exact full created durable run i
     productTeamEnablement: {
       findUnique: async () => ({ enabled: true }),
     },
+    run: {
+      create: async () => ({
+        agentId,
+        id: paRunId,
+        threadId,
+      }),
+    },
+    task: {
+      create: async () => ({ id: paTaskId }),
+    },
     toolRegistryEntry: {
       findFirst: async () => ({
         enabled: true,
@@ -218,9 +233,13 @@ test('research-launch persists and enqueues the exact full created durable run i
   const app = Fastify({ logger: false })
   registerIntegrationHandoffRoutes(app, {
     buildChannelRealtimeScopes: () => [],
-    enqueue: async (_tx: unknown, input: { content: string; messageId: string }) => {
-      enqueuedContent = input.content
-      enqueuedMessageId = input.messageId
+    enqueue: async (
+      _tx: unknown,
+      payload: RunExecuteJobPayload,
+      idempotencyKey?: string,
+    ) => {
+      enqueuedPayload = payload
+      enqueuedKey = idempotencyKey ?? ''
       return true
     },
     ensureBootstrap: async () => ({ agentId, channelId, threadId }),
@@ -268,13 +287,28 @@ test('research-launch persists and enqueues the exact full created durable run i
   try {
     const response = await app.inject({
       method: 'POST',
-      payload: { query: 'Trace the durable run identity.' },
+      payload: { query: 'Trace Swift @MainActor migration.' },
       url: '/api/integrations/products/deep-water/research-launch',
     })
 
     assert.equal(response.statusCode, 202)
-    assert.equal(persistedContent, enqueuedContent)
-    assert.equal(enqueuedMessageId, messageId)
+    assert.equal(enqueuedPayload?.messageId, messageId)
+    assert.equal(enqueuedPayload?.runId, paRunId)
+    assert.equal(enqueuedPayload?.taskId, paTaskId)
+    assert.equal(enqueuedPayload?.agentId, agentId)
+    assert.equal(enqueuedPayload?.interactive, true)
+    assert.equal(enqueuedKey, `run:${messageId}:${agentId}`)
+    assert.deepEqual(enqueuedPayload?.actorContext, {
+      ...actorContext,
+      actionContext: {
+        ...actorContext.actionContext,
+        agentId,
+        channelId,
+        effectiveUserId: userId,
+        taskId: paTaskId,
+        threadId,
+      },
+    })
 
     const lines = persistedContent.split('\n')
     const runLabelIndex = lines.indexOf(
