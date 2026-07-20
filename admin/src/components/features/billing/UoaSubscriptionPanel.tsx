@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type {
   UoaBillingCheckoutResponse,
   UoaBillingPortalResponse,
@@ -26,7 +26,6 @@ const formatDate = (value: string | null): string =>
 
 export const UoaSubscriptionPanel = () => {
   const apiClient = useApiClient()
-  const queryClient = useQueryClient()
   const summary = useQuery<UoaBillingSubscriptionSummary>({
     queryKey: ['uoa-billing-subscription'],
     queryFn: () => apiClient.get('/api/billing/subscription'),
@@ -45,20 +44,9 @@ export const UoaSubscriptionPanel = () => {
       apiClient.post<UoaBillingPortalResponse>('/api/billing/portal'),
     onSuccess: (response) => window.location.assign(response.portal_url),
   })
-  const cancel = useMutation({
-    mutationFn: () =>
-      apiClient.post<UoaBillingSubscriptionSummary>(
-        '/api/billing/subscription/cancel',
-      ),
-    onSuccess: (response) => {
-      queryClient.setQueryData(['uoa-billing-subscription'], response)
-    },
-  })
-
   const data = summary.data
-  const actionError =
-    checkout.error?.message ?? portal.error?.message ?? cancel.error?.message
-  const pending = checkout.isPending || portal.isPending || cancel.isPending
+  const actionError = checkout.error?.message ?? portal.error?.message
+  const pending = checkout.isPending || portal.isPending
   const canStart =
     data?.can_manage
     && data.stripe_collection_enabled
@@ -181,28 +169,15 @@ export const UoaSubscriptionPanel = () => {
                   {portal.isPending ? 'Opening Stripe…' : 'Manage in Stripe'}
                 </button>
               )}
-              {data.can_manage
-                && data.stripe_collection_enabled
-                && data.subscription
-                && !data.subscription.cancel_at_period_end && (
-                <button
-                  className="admin-button admin-button-secondary"
-                  disabled={pending}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        'Cancel this subscription at the end of its current billing period?',
-                      )
-                    ) {
-                      cancel.mutate()
-                    }
-                  }}
-                  type="button"
-                >
-                  {cancel.isPending ? 'Scheduling…' : 'Cancel at period end'}
-                </button>
-              )}
             </div>
+            {data.can_manage
+              && data.subscription
+              && !data.subscription.cancel_at_period_end && (
+              <div className="mt-3 text-xs text-[color:var(--tx3)]">
+                Cancellation options are shown only after the shared SSO checks
+                direct access to this and related services.
+              </div>
+            )}
             {!data.can_manage && (
               <div className="mt-4 text-sm text-[color:var(--tx2)]">
                 An organization or team billing manager must change this

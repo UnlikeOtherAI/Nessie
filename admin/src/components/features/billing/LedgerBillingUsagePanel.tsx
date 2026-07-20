@@ -12,10 +12,6 @@ type ProductDimensions = Pick<
   Breakdown,
   'billingProduct' | 'callerProduct' | 'originProduct'
 >
-type CollectionTerms = Pick<
-  Breakdown,
-  'collectionMode' | 'paymentCollectionEnabled' | 'stripeCollectible'
->
 
 const sectionTitle =
   'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
@@ -25,60 +21,12 @@ const currentUtcMonth = (): string => new Date().toISOString().slice(0, 7)
 const formatInteger = (value: number): string =>
   new Intl.NumberFormat('en-US').format(value)
 
-const formatDecimal = (value: string | null): string =>
-  value === null
-    ? 'Not recorded'
-    : (() => {
-        const [integer = '0', fraction] = value.split('.')
-        const groupedInteger = new Intl.NumberFormat('en-US', {
-          maximumFractionDigits: 0,
-        }).format(BigInt(integer))
-        return fraction ? `${groupedInteger}.${fraction}` : groupedInteger
-      })()
-
-const sumExactDecimals = (values: string[]): string | null => {
-  if (values.length === 0) return null
-  const scale = Math.max(
-    ...values.map((value) => value.split('.')[1]?.length ?? 0),
-  )
-  const sum = values.reduce((total, value) => {
-    const [integer = '0', fraction = ''] = value.split('.')
-    const negative = integer.startsWith('-')
-    const unsignedInteger = negative ? integer.slice(1) : integer
-    const scaled = BigInt(
-      `${unsignedInteger}${fraction.padEnd(scale, '0')}`,
-    )
-    return total + (negative ? -scaled : scaled)
-  }, 0n)
-  const negative = sum < 0n
-  const digits = (negative ? -sum : sum).toString().padStart(scale + 1, '0')
-  const integer = scale === 0 ? digits : digits.slice(0, -scale)
-  const fraction = scale === 0
-    ? ''
-    : digits.slice(-scale).replace(/0+$/, '')
-  return `${negative ? '-' : ''}${integer}${fraction ? `.${fraction}` : ''}`
-}
-
-const formatMoney = (
+const formatProviderCost = (
   value: string | null,
   currency: string | null,
 ): string => {
   if (value === null || !currency) return 'Not recorded'
-  return new Intl.NumberFormat('en-US', {
-    currency,
-    style: 'currency',
-  }).format(Number(value))
-}
-
-const formatMinorMoney = (
-  amountMinor: string | null,
-  currency: string | null,
-): string => {
-  if (amountMinor === null || !currency) return 'No monthly fee'
-  return new Intl.NumberFormat('en-US', {
-    currency,
-    style: 'currency',
-  }).format(Number(amountMinor) / 100)
+  return `${currency.toUpperCase()} ${value}`
 }
 
 const titleCase = (value: string): string =>
@@ -86,20 +34,6 @@ const titleCase = (value: string): string =>
     .replaceAll('-', ' ')
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
-
-const totalRawUnits = (row: Breakdown): number =>
-  row.rawProviderUsage.unitsIn
-  + row.rawProviderUsage.unitsCachedIn
-  + row.rawProviderUsage.unitsOut
-
-const totalBillableUnits = (row: Breakdown): string | null => {
-  const values = [
-    row.customerBillableUnits.unitsIn,
-    row.customerBillableUnits.unitsCachedIn,
-    row.customerBillableUnits.unitsOut,
-  ].filter((value): value is string => value !== null)
-  return sumExactDecimals(values)
-}
 
 const scopeLabel = (
   data: NessieBillingUsageView,
@@ -119,14 +53,6 @@ const productPath = (row: ProductDimensions): string =>
     `caller ${productLabel(row.callerProduct)}`,
     `origin ${productLabel(row.originProduct)}`,
   ].join(' · ')
-
-const collectionLabel = (terms: CollectionTerms): string => {
-  if (terms.stripeCollectible) return 'Stripe invoice eligible'
-  if (terms.collectionMode === 'manual') return 'Manual collection'
-  if (terms.collectionMode === 'none') return 'No payment collection'
-  if (terms.paymentCollectionEnabled) return 'Payment collection enabled'
-  return 'Not collected'
-}
 
 const AmountCell = ({
   label,
@@ -153,7 +79,7 @@ const UsageBreakdown = ({
   if (data.breakdown.length === 0) {
     return (
       <div className="admin-card p-5 text-sm text-[color:var(--tx2)]">
-        No Ledger-rated usage was recorded for this team in the selected month.
+        No Ledger metering was recorded for this team in the selected month.
       </div>
     )
   }
@@ -169,10 +95,6 @@ const UsageBreakdown = ({
             row.billingProduct,
             row.callerProduct,
             row.originProduct,
-            row.tariffId,
-            row.tariffVersion,
-            row.assignmentId,
-            row.ratingStatus,
             index,
           ].join(':')}
         >
@@ -187,7 +109,7 @@ const UsageBreakdown = ({
                 )}
               </div>
               <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                {productPath(row)} · {formatInteger(row.calls)} calls · {titleCase(row.ratingStatus)}
+                {productPath(row)} · {formatInteger(row.calls)} calls
               </div>
             </div>
             <div className="rounded-full border border-[color:var(--sep)] px-2 py-1 text-xs text-[color:var(--tx2)]">
@@ -195,125 +117,35 @@ const UsageBreakdown = ({
             </div>
           </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <AmountCell
-              label="Raw provider usage"
-              value={`${formatInteger(totalRawUnits(row))} ${row.usageUnit}`}
+              label="Provider input"
+              value={`${formatInteger(row.rawProviderUsage.unitsIn)} ${row.usageUnit}`}
             />
             <AmountCell
-              label="Billable usage"
-              value={`${formatDecimal(totalBillableUnits(row))} · ${row.customerBillableUnitLabel}`}
+              label="Provider cached input"
+              value={`${formatInteger(row.rawProviderUsage.unitsCachedIn)} ${row.usageUnit}`}
             />
             <AmountCell
-              label="Raw provider estimated"
-              value={formatMoney(row.rawProviderEstimatedCost, row.rawProviderCurrency)}
+              label="Provider output"
+              value={`${formatInteger(row.rawProviderUsage.unitsOut)} ${row.usageUnit}`}
             />
             <AmountCell
-              label="Raw provider actual"
-              value={formatMoney(row.rawProviderActualCost, row.rawProviderCurrency)}
+              label="Provider estimated cost"
+              value={formatProviderCost(
+                row.rawProviderEstimatedCost,
+                row.rawProviderCurrency,
+              )}
             />
             <AmountCell
-              label="Billing base"
-              value={formatMoney(row.billingBaseAmount, row.billingBaseCurrency)}
+              label="Provider actual cost"
+              value={formatProviderCost(
+                row.rawProviderActualCost,
+                row.rawProviderCurrency,
+              )}
             />
-            <AmountCell
-              label="Added value"
-              value={formatMoney(row.billingMarkupAmount, row.billingBaseCurrency)}
-            />
-            <AmountCell
-              label="Rated customer charge"
-              value={formatMoney(row.customerCharge, row.customerChargeCurrency)}
-            />
-            <AmountCell label="Collection" value={collectionLabel(row)} />
           </div>
         </article>
-      ))}
-    </div>
-  )
-}
-
-const TariffSummary = ({ data }: { data: NessieBillingUsageView }) => {
-  if (data.monthlyComponents.length === 0) {
-    return (
-      <div className="admin-card p-4 text-sm text-[color:var(--tx2)]">
-        No tariff snapshot has been observed for this month yet.
-      </div>
-    )
-  }
-
-  return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      {data.monthlyComponents.map((component, index) => (
-        <div
-          className="admin-card p-4"
-          key={[
-            component.tariffId,
-            component.assignmentId,
-            component.callerProduct,
-            component.originProduct,
-            index,
-          ].join(':')}
-        >
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <div className="font-semibold text-[color:var(--tx)]">
-                {component.tariffKey
-                  ? titleCase(component.tariffKey)
-                  : 'Custom tariff'}
-                {component.tariffVersion !== null
-                  ? ` v${component.tariffVersion}`
-                  : ''}
-              </div>
-              <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                {component.assignmentScope
-                  ? `${titleCase(component.assignmentScope)} assignment`
-                  : 'Assignment unavailable'}
-                {' · '}{formatInteger(component.observedCalls)} observed calls
-              </div>
-              <div className="mt-1 text-xs text-[color:var(--tx3)]">
-                {productPath(component)}
-              </div>
-            </div>
-            <div className="text-right text-sm font-semibold text-[color:var(--tx)]">
-              {formatMinorMoney(component.amountMinor, component.currency)}
-              <div className="text-[10px] font-normal uppercase tracking-wider text-[color:var(--tx3)]">
-                monthly
-              </div>
-            </div>
-          </div>
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <dt className="text-[color:var(--tx3)]">Billable usage</dt>
-              <dd className="font-medium text-[color:var(--tx)]">
-                {component.usageMultiplierBps === null
-                  ? 'Not configured'
-                  : `${component.usageMultiplierBps / 100}% of raw units`}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[color:var(--tx3)]">Added value</dt>
-              <dd className="font-medium text-[color:var(--tx)]">
-                {component.markupPercent === null
-                  ? 'Not configured'
-                  : `${component.markupPercent}%`}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[color:var(--tx3)]">Collection</dt>
-              <dd className="font-medium text-[color:var(--tx)]">
-                {component.collectionMode
-                  ? titleCase(component.collectionMode)
-                  : 'Not configured'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[color:var(--tx3)]">Payments</dt>
-              <dd className="font-medium text-[color:var(--tx)]">
-                {collectionLabel(component)}
-              </dd>
-            </div>
-          </dl>
-        </div>
       ))}
     </div>
   )
@@ -338,14 +170,14 @@ export const LedgerBillingUsagePanel = () => {
     <section>
       <div className="flex flex-wrap items-start gap-3">
         <div>
-          <div className={sectionTitle}>Customer billing</div>
+          <div className={sectionTitle}>Usage transparency</div>
           <h2 className="mt-1 text-lg font-semibold text-[color:var(--tx)]">
-            Ledger-rated usage
+            Ledger metering
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx2)]">
-            Raw provider usage remains unchanged. Billable units show the tariff
-            multiplier; charges show provider cost, billing base, and added value
-            separately.
+            Ledger records immutable provider and API usage with its service,
+            caller, and origin. Commercial charges, subscriptions, and
+            statements come only from the shared SSO.
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -387,7 +219,7 @@ export const LedgerBillingUsagePanel = () => {
       )}
       {usage.isLoading && (
         <div className="admin-card mt-4 p-5 text-sm text-[color:var(--tx2)]">
-          Loading Ledger billing usage…
+          Loading Ledger metering…
         </div>
       )}
       {data && (
@@ -409,48 +241,20 @@ export const LedgerBillingUsagePanel = () => {
               </div>
             </div>
             <div className="admin-card p-4">
-              <div className={sectionTitle}>Customer charges</div>
-              {data.totals.customerCharges.length === 0
-                ? (
-                    <div className="mt-2 text-sm text-[color:var(--tx2)]">
-                      No rated charge
-                    </div>
-                  )
-                : data.totals.customerCharges.map((charge) => (
-                    <div
-                      className="mt-3"
-                      key={[
-                        charge.billingProduct,
-                        charge.callerProduct,
-                        charge.originProduct,
-                        charge.tariffId,
-                        charge.tariffVersion,
-                        charge.assignmentId,
-                        charge.currency,
-                      ].join(':')}
-                    >
-                      <div className="text-lg font-bold text-[color:var(--tx)]">
-                        {formatMoney(charge.amount, charge.currency)}
-                      </div>
-                      <div className="text-xs font-normal text-[color:var(--tx2)]">
-                        {productPath(charge)} · {collectionLabel(charge)}
-                      </div>
-                    </div>
-                  ))}
+              <div className={sectionTitle}>Authority</div>
+              <div className="mt-2 font-semibold text-[color:var(--tx)]">
+                Metering only
+              </div>
+              <div className="mt-1 text-xs text-[color:var(--tx2)]">
+                Customer billing is calculated and displayed by UOA.
+              </div>
             </div>
           </div>
 
           <div className="mt-5">
-            <div className={sectionTitle}>Usage and charges</div>
+            <div className={sectionTitle}>Provider and API usage</div>
             <div className="mt-2">
               <UsageBreakdown data={data} />
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <div className={sectionTitle}>Tariff terms observed this month</div>
-            <div className="mt-2">
-              <TariffSummary data={data} />
             </div>
           </div>
 

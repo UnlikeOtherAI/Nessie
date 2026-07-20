@@ -262,16 +262,22 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   reconcile higher upstream. Re-enable preserves richer probed schemas only
   when tool names exactly match the current Ledger contract; legacy
   direct-provider projections are replaced and must be explicitly re-granted.
-- Customer tariffs and Stripe lifecycle remain authoritative in UOA. Nessie
-  reads rated usage from Ledger with `LEDGER_BILLING_READ_APP_KEY_NESSIE`, but
-  subscription summary, Checkout, Portal, and cancel actions use a different,
+- Customer tariffs, statements, subscriptions, adjustments, and Stripe
+  lifecycle remain authoritative in UOA. Nessie reads only immutable raw
+  metering and provider-cost attribution from Ledger with
+  `LEDGER_BILLING_READ_APP_KEY_NESSIE`; it must ignore Ledger-rated/commercial
+  fields. Subscription summary, Checkout, and Portal use a different,
   Nessie-only `UOA_BILLING_APP_KEY_NESSIE` plus a fresh 45-second RS256 actor
   assertion signed by `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`. Both secrets are
   cryptographically validated on the Actions runner, then installed together by
   a dependency-free host script in the main-branch deployment workflow; neither
   may be reused by Ledger or a sibling product. Every action resolves the exact
   linked UOA user/org/team, rejects local workspace drift, and lets UOA
-  independently recheck billing-manager membership. Browser-supplied return
+  independently recheck billing-manager membership. Direct cancellation is
+  forbidden until UOA's versioned preview/confirm contract supplies the exact
+  display model and opaque action token after evaluating direct service
+  entitlements and indirect Ledger usage; Nessie only renders and relays that
+  contract. Browser-supplied return
   URLs are forbidden: the API pins Checkout and Portal returns to
   `NESSIE_ADMIN_PUBLIC_URL`. Nessie stores no tariff, Stripe customer,
   subscription, invoice, Price, or meter state.

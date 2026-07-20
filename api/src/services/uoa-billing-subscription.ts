@@ -212,7 +212,7 @@ const signBillingActor = (
   return `${signingInput}.${signature}`
 }
 
-type BillingAction = 'cancel' | 'checkout' | 'portal' | 'summary'
+type BillingAction = 'checkout' | 'portal' | 'summary'
 type BillingSubject = {
   organizationId: string
   teamId: string
@@ -244,11 +244,6 @@ const actionRequest = (
       return {
         body: { ...body, return_url: `${settings.adminUrl}/tokens` },
         path: '/billing/v1/stripe/portal-session',
-      }
-    case 'cancel':
-      return {
-        body,
-        path: '/billing/v1/stripe/subscription/cancel',
       }
     case 'summary':
       return {
@@ -430,18 +425,4 @@ export const createUoaBillingPortal = async (
     )
   }
   return result.data
-}
-
-export const cancelUoaBillingSubscription = async (
-  prisma: BillingSubscriptionPrisma,
-  actorContext: AuthorizedActionContext,
-  deps?: Parameters<typeof executeBillingAction>[3],
-): Promise<UoaBillingSubscriptionSummary> => {
-  const response = await executeBillingAction(
-    prisma,
-    actorContext,
-    'cancel',
-    deps,
-  )
-  return validateSummary(response.data, response.subject)
 }

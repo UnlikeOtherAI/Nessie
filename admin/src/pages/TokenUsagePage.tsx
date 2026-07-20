@@ -172,7 +172,8 @@ export const TokenUsagePage = () => {
               <p className="mt-1 text-sm text-[color:var(--tx2)]">
                 Nessie&apos;s internal token, connector, file, budget, and model
                 pricing telemetry supports operations. It is not the customer
-                invoice; canonical tariffs and rated charges come from Ledger above.
+                invoice; canonical tariffs, statements, and charges come from
+                UOA above.
               </p>
             </div>
         {costTrackingInactive && (

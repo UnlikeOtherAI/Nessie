@@ -2,7 +2,6 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import {
-  cancelUoaBillingSubscription,
   createUoaBillingCheckout,
   createUoaBillingPortal,
   getUoaBillingSubscription,
@@ -76,22 +75,6 @@ export const registerBillingRoutes = (
       reply.header('Cache-Control', 'private, no-store')
       return createApiResponse(
         await createUoaBillingPortal(prisma, actorContext),
-      )
-    } catch (error) {
-      const response = sendBillingError(reply, error)
-      if (response) return response
-      throw error
-    }
-  })
-
-  app.post('/api/billing/subscription/cancel', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
-    try {
-      reply.header('Cache-Control', 'private, no-store')
-      return createApiResponse(
-        await cancelUoaBillingSubscription(prisma, actorContext),
       )
     } catch (error) {
       const response = sendBillingError(reply, error)
