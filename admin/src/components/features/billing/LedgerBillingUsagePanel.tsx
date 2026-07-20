@@ -8,6 +8,14 @@ import { useState } from 'react'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 
 type Breakdown = LedgerBillingBreakdown
+type ProductDimensions = Pick<
+  Breakdown,
+  'billingProduct' | 'callerProduct' | 'originProduct'
+>
+type CollectionTerms = Pick<
+  Breakdown,
+  'collectionMode' | 'paymentCollectionEnabled' | 'stripeCollectible'
+>
 
 const sectionTitle =
   'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
@@ -102,14 +110,22 @@ const scopeLabel = (
   return data.display.dimensionLabels[row.dimension] ?? row.dimension
 }
 
-const productPath = (row: Breakdown): string => {
-  const billing = row.billingProduct
-    ? titleCase(row.billingProduct)
-    : 'Unrated'
-  if (!row.callerProduct || row.callerProduct === row.billingProduct) {
-    return billing
-  }
-  return `${billing} · initiated by ${titleCase(row.callerProduct)}`
+const productLabel = (value: string | null): string =>
+  value ? titleCase(value) : 'Unattributed'
+
+const productPath = (row: ProductDimensions): string =>
+  [
+    `Billed as ${productLabel(row.billingProduct)}`,
+    `caller ${productLabel(row.callerProduct)}`,
+    `origin ${productLabel(row.originProduct)}`,
+  ].join(' · ')
+
+const collectionLabel = (terms: CollectionTerms): string => {
+  if (terms.stripeCollectible) return 'Stripe invoice eligible'
+  if (terms.collectionMode === 'manual') return 'Manual collection'
+  if (terms.collectionMode === 'none') return 'No payment collection'
+  if (terms.paymentCollectionEnabled) return 'Payment collection enabled'
+  return 'Not collected'
 }
 
 const AmountCell = ({
@@ -152,6 +168,10 @@ const UsageBreakdown = ({
             row.serviceId,
             row.billingProduct,
             row.callerProduct,
+            row.originProduct,
+            row.tariffId,
+            row.tariffVersion,
+            row.assignmentId,
             row.ratingStatus,
             index,
           ].join(':')}
@@ -201,9 +221,10 @@ const UsageBreakdown = ({
               value={formatMoney(row.billingMarkupAmount, row.billingBaseCurrency)}
             />
             <AmountCell
-              label="Customer charge"
+              label="Rated customer charge"
               value={formatMoney(row.customerCharge, row.customerChargeCurrency)}
             />
+            <AmountCell label="Collection" value={collectionLabel(row)} />
           </div>
         </article>
       ))}
@@ -229,6 +250,7 @@ const TariffSummary = ({ data }: { data: NessieBillingUsageView }) => {
             component.tariffId,
             component.assignmentId,
             component.callerProduct,
+            component.originProduct,
             index,
           ].join(':')}
         >
@@ -247,6 +269,9 @@ const TariffSummary = ({ data }: { data: NessieBillingUsageView }) => {
                   ? `${titleCase(component.assignmentScope)} assignment`
                   : 'Assignment unavailable'}
                 {' · '}{formatInteger(component.observedCalls)} observed calls
+              </div>
+              <div className="mt-1 text-xs text-[color:var(--tx3)]">
+                {productPath(component)}
               </div>
             </div>
             <div className="text-right text-sm font-semibold text-[color:var(--tx)]">
@@ -284,9 +309,7 @@ const TariffSummary = ({ data }: { data: NessieBillingUsageView }) => {
             <div>
               <dt className="text-[color:var(--tx3)]">Payments</dt>
               <dd className="font-medium text-[color:var(--tx)]">
-                {component.paymentCollectionEnabled
-                  ? 'Enabled'
-                  : 'Disabled / custom'}
+                {collectionLabel(component)}
               </dd>
             </div>
           </dl>
@@ -395,13 +418,23 @@ export const LedgerBillingUsagePanel = () => {
                   )
                 : data.totals.customerCharges.map((charge) => (
                     <div
-                      className="mt-2 text-lg font-bold text-[color:var(--tx)]"
-                      key={`${charge.billingProduct}:${charge.callerProduct}:${charge.currency}`}
+                      className="mt-3"
+                      key={[
+                        charge.billingProduct,
+                        charge.callerProduct,
+                        charge.originProduct,
+                        charge.tariffId,
+                        charge.tariffVersion,
+                        charge.assignmentId,
+                        charge.currency,
+                      ].join(':')}
                     >
-                      {formatMoney(charge.amount, charge.currency)}
-                      <span className="ml-2 text-xs font-normal text-[color:var(--tx2)]">
-                        {titleCase(charge.billingProduct ?? 'unrated')}
-                      </span>
+                      <div className="text-lg font-bold text-[color:var(--tx)]">
+                        {formatMoney(charge.amount, charge.currency)}
+                      </div>
+                      <div className="text-xs font-normal text-[color:var(--tx2)]">
+                        {productPath(charge)} · {collectionLabel(charge)}
+                      </div>
                     </div>
                   ))}
             </div>

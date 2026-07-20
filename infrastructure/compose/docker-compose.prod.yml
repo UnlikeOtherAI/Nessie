@@ -95,6 +95,8 @@ services:
       # Public origin for OAuth redirect URIs minted outside an HTTP request
       # (the worker's personal assistant connector_authorize flow).
       NESSIE_API_PUBLIC_URL: https://api.nessie.works
+      NESSIE_ADMIN_PUBLIC_URL: https://app.nessie.works
+      UOA_BASE_URL: https://authentication.unlikeotherai.com
       DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_CONFIG_PATH: /app/nessie.config.json

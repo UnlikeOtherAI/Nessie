@@ -260,8 +260,21 @@ The schema-v4 response is content-free and preserves distinct views:
 - billable equivalent units after the visible tariff multiplier;
 - raw provider estimated/actual cost, billing base, added value, and customer
   charge without collapsing those amounts;
+- independent billing, immediate-caller, and durable-origin product dimensions,
+  so a DeepWater call initiated through Nessie remains attributable to both
+  products without double-counting it;
 - per-currency customer totals and observed monthly subscription/tariff terms;
+- immutable tariff/version/assignment and collection metadata on every money
+  row, including an explicit `stripeCollectible` boolean that is true only for
+  Stripe collection with payments enabled;
 - an opaque immutable Ledger snapshot cursor.
+
+The parser follows Ledger's additive CC0 schema-v4 contract: all required
+commercial and attribution fields are validated, while unknown future
+properties are preserved rather than making older open-source clients reject a
+compatible response. The UI labels a calculated customer charge separately
+from its collection route and never implies a manual, free, or no-payment
+tariff will be invoiced by Stripe.
 
 The UI never adds unlike units together or describes searches/researches as
 tokens. `service` and `user` groupings provide team-level and per-user views;
@@ -269,6 +282,32 @@ the `team` grouping explicitly echoes the one active signed team. Switching to
 another team requires a matching UOA SSO workspace rather than widening a
 delegation. Upstream auth failures surface as billing errors, not Nessie 401s,
 so they cannot trigger session-refresh/logout loops.
+
+### 10.1 SSO-owned tariff and Stripe lifecycle
+
+Nessie does not create, edit, copy, or cache commercial tariffs and does not
+hold Stripe customer, subscription, invoice, Price, or meter state. UOA remains
+the authority. Active-team owners/admins use these Nessie proxy endpoints:
+
+- `GET /api/billing/subscription`;
+- `POST /api/billing/checkout`;
+- `POST /api/billing/portal`;
+- `POST /api/billing/subscription/cancel`.
+
+The API first resolves the same exact linked UOA user/organization/team used by
+the Ledger billing view and rejects local/UOA workspace drift. It then calls
+UOA with Nessie's dedicated `UOA_BILLING_APP_KEY_NESSIE` and a fresh RS256
+`X-UOA-Actor` whose subject, product, organization, and team exactly match the
+request and whose lifetime is 45 seconds. This key is distinct from Nessie's
+Ledger inference and billing-reader keys and from every sibling product key.
+UOA independently re-checks membership and billing-manager authority.
+
+Checkout success/cancel and Portal return URLs are selected by the server from
+`NESSIE_ADMIN_PUBLIC_URL`; browsers cannot submit an arbitrary redirect. The
+browser receives only content-free tariff/subscription fields and a short-lived
+Stripe-hosted URL. Tariff markup, billable-equivalent units, monthly price,
+collection mode, payment state, and raw-usage preservation remain visibly
+separate in the UI.
 
 ## 11) Cross-links
 

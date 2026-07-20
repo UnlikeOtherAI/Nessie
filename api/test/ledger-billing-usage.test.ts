@@ -41,6 +41,7 @@ const responseBody = {
     usageByService: [{
       billingProduct: 'deepwater',
       callerProduct: 'nessie',
+      originProduct: 'nessie',
       serviceId: 'deepwater',
       usageUnit: 'researches',
       customerBillableUnitLabel: 'billable research-equivalent units',
@@ -54,13 +55,35 @@ const responseBody = {
       },
     }],
     amounts: [],
-    customerCharges: [],
+    customerCharges: [{
+      billingProduct: 'deepwater',
+      callerProduct: 'nessie',
+      originProduct: 'nessie',
+      tariffId: 'tariff-deepwater-team',
+      tariffVersion: 3,
+      assignmentScope: 'team',
+      assignmentId: 'assignment-team',
+      collectionMode: 'stripe',
+      paymentCollectionEnabled: true,
+      stripeCollectible: true,
+      currency: 'USD',
+      amount: '1.25',
+      calls: 1,
+    }],
   },
   groupBy: 'user',
   breakdown: [{
     dimension: 'uoa-user',
     billingProduct: 'deepwater',
     callerProduct: 'nessie',
+    originProduct: 'nessie',
+    tariffId: 'tariff-deepwater-team',
+    tariffVersion: 3,
+    assignmentScope: 'team',
+    assignmentId: 'assignment-team',
+    collectionMode: 'stripe',
+    paymentCollectionEnabled: true,
+    stripeCollectible: true,
     serviceId: 'deepwater',
     usageUnit: 'researches',
     customerBillableUnitLabel: 'billable research-equivalent units',
@@ -81,12 +104,34 @@ const responseBody = {
     customerChargeCurrency: 'USD',
     customerCharge: '1.25',
   }],
-  monthlyComponents: [],
+  monthlyComponents: [{
+    billingProduct: 'deepwater',
+    callerProduct: 'nessie',
+    originProduct: 'nessie',
+    tariffId: 'tariff-deepwater-team',
+    tariffKey: 'deepwater-team-125',
+    tariffVersion: 3,
+    tariffMode: 'markup',
+    markupBps: 2500,
+    markupPercent: '25',
+    usageMultiplierBps: 12500,
+    assignmentScope: 'team',
+    assignmentId: 'assignment-team',
+    amountMinor: '2000',
+    currency: 'USD',
+    usageBillingEnabled: true,
+    collectionMode: 'stripe',
+    paymentCollectionEnabled: true,
+    stripeCollectible: true,
+    observedCalls: 1,
+    additiveFutureField: 'preserved',
+  }],
   snapshot: {
     cursor: 'bus_test',
     capturedAt: '2026-07-19T00:00:00.000Z',
     immutable: true,
   },
+  additiveFutureTopLevel: 'preserved',
 }
 
 const prisma = (overrides: {
@@ -167,6 +212,11 @@ test('uses only the dedicated Nessie reader key and preserves raw/rated usage', 
   assert.equal(requestedHeaders.get('authorization'), null)
   assert.equal(result.breakdown[0]?.rawProviderUsage.unitsIn, 1)
   assert.equal(result.breakdown[0]?.customerBillableUnits.unitsIn, '1.25')
+  assert.equal(result.breakdown[0]?.originProduct, 'nessie')
+  assert.equal(result.breakdown[0]?.stripeCollectible, true)
+  assert.equal(result.totals.customerCharges[0]?.collectionMode, 'stripe')
+  assert.equal(result.monthlyComponents[0]?.additiveFutureField, 'preserved')
+  assert.equal(result.additiveFutureTopLevel, 'preserved')
   assert.equal(result.display.dimensionLabels['uoa-user'], 'Ada Lovelace')
 })
 

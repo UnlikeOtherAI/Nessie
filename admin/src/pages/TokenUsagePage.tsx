@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { LedgerBillingUsagePanel } from '../components/features/billing/LedgerBillingUsagePanel'
+import { UoaSubscriptionPanel } from '../components/features/billing/UoaSubscriptionPanel'
 import { BudgetManager } from '../components/features/budgets/BudgetManager'
 import {
   PricingManager,
@@ -162,6 +163,7 @@ export const TokenUsagePage = () => {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <UoaSubscriptionPanel />
         <LedgerBillingUsagePanel />
         {isOwner && (
           <>

@@ -79,6 +79,7 @@ import { registerPlatformPushRoutes } from './routes/platform-push.js'
 import { registerPlanRoutes } from './routes/plans.js'
 import { registerPolicyRoutes } from './routes/policy.js'
 import { registerBoardRoutes } from './routes/board.js'
+import { registerBillingRoutes } from './routes/billing.js'
 import { registerIterationRoutes } from './routes/iterations.js'
 import { registerPresenceRoutes } from './routes/presence.js'
 import { registerProjectRoutes } from './routes/projects.js'
@@ -387,6 +388,7 @@ export const buildApp = async () => {
   registerKnowledgeSummaryRoutes(app, deps)
   registerKnowledgeTaskRoutes(app, deps)
   registerTaskRoutes(app, deps)
+  registerBillingRoutes(app, deps)
   registerLedgerRoutes(app, deps)
 
   // ─── Inference control plane routes ─────────────────────────────────────
