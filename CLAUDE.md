@@ -294,11 +294,12 @@ Customer tariffs and Stripe lifecycle stay in UOA. Nessie uses its dedicated
 Ledger billing-reader key only for immutable rated usage; subscription summary,
 Checkout, Portal, and cancellation instead use the separate Nessie-only
 `UOA_BILLING_APP_KEY_NESSIE` and a fresh 45-second actor assertion signed by
-`UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`. The main-branch deploy installs those
-two secrets atomically. Requests must bind the exact linked UOA user/org/team,
-and Checkout/Portal returns are server-pinned to `NESSIE_ADMIN_PUBLIC_URL`.
-Nessie never stores commercial tariff or Stripe customer/subscription/invoice
-state.
+`UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`. The main-branch deploy validates those
+credentials on the Actions runner and installs them atomically through a
+dependency-free host script. Requests must bind the exact linked UOA
+user/org/team, and Checkout/Portal returns are server-pinned to
+`NESSIE_ADMIN_PUBLIC_URL`. Nessie never stores commercial tariff or Stripe
+customer/subscription/invoice state.
 
 User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The
 cloud API and worker reject stdio process execution for catalog/instance data,

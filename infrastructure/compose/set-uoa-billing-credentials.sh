@@ -12,25 +12,14 @@ if [[ ! "$app_key" =~ ^uoa_app_[A-Za-z0-9_-]{16,}$ ]]; then
   echo "Refusing to install an invalid Nessie UOA billing app key" >&2
   exit 1
 fi
-if ! ACTOR_PRIVATE_JWK="$actor_private_jwk" node -e '
-  try {
-    const { createPrivateKey } = require("node:crypto");
-    const key = JSON.parse(process.env.ACTOR_PRIVATE_JWK ?? "");
-    const valid = key.kty === "RSA"
-      && typeof key.kid === "string" && key.kid.length > 0
-      && typeof key.n === "string" && key.n.length > 0
-      && typeof key.e === "string" && key.e.length > 0
-      && typeof key.d === "string" && key.d.length > 0
-      && (key.alg === undefined || key.alg === "RS256")
-      && (key.use === undefined || key.use === "sig");
-    if (!valid) process.exit(1);
-    createPrivateKey({ format: "jwk", key });
-    process.exit(0);
-  } catch {
-    process.exit(1);
-  }
-'; then
+if ((${#actor_private_jwk} < 512 || ${#actor_private_jwk} > 16384)) \
+  || [[ "${actor_private_jwk:0:1}" != "{" ]] \
+  || [[ "${actor_private_jwk: -1}" != "}" ]]; then
   echo "Refusing to install an invalid Nessie UOA billing actor key" >&2
+  exit 1
+fi
+if IFS= read -r _unexpected_input; then
+  echo "Refusing to install multiline Nessie UOA billing credentials" >&2
   exit 1
 fi
 
