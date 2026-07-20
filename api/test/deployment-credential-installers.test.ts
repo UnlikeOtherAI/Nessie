@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { generateKeyPairSync } from 'node:crypto'
-import { cpSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 const installerSource = new URL(
   '../../infrastructure/compose/set-ledger-app-key.sh',
@@ -22,6 +29,10 @@ const uoaBillingInstallerSource = new URL(
   '../../infrastructure/compose/set-uoa-billing-credentials.sh',
   import.meta.url,
 )
+const uoaBillingValidatorSource = fileURLToPath(new URL(
+  '../../infrastructure/compose/validate-uoa-billing-credentials.mjs',
+  import.meta.url,
+))
 const workflowSource = new URL(
   '../../.github/workflows/deploy.yml',
   import.meta.url,
@@ -57,11 +68,28 @@ const makeInstallerFixture = (
   return { directory, envFile, installer }
 }
 
-const runInstaller = (installer: string, appKeyInput: string) =>
+const runInstaller = (
+  installer: string,
+  appKeyInput: string,
+  env: NodeJS.ProcessEnv = process.env,
+) =>
   spawnSync('bash', [installer], {
     encoding: 'utf8',
+    env,
     input: `${appKeyInput}\n`,
   })
+
+const runUoaBillingValidator = (
+  appKeyInput: string,
+  actorKeyInput: string,
+) => spawnSync(process.execPath, [uoaBillingValidatorSource], {
+  encoding: 'utf8',
+  env: {
+    ...process.env,
+    UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE: actorKeyInput,
+    UOA_BILLING_APP_KEY_NESSIE: appKeyInput,
+  },
+})
 
 test('Ledger installer atomically pins both Nessie routes to its app key', () => {
   const fixture = makeInstallerFixture([
@@ -175,9 +203,19 @@ test('UOA billing installer atomically installs both independent credentials', (
     'PRESERVE_ME=yes',
     uoaBillingInstallerSource,
   )
+  const nodeBlockerDirectory = mkdtempSync(
+    join(tmpdir(), 'nessie-no-host-node-'),
+  )
+  const nodeBlocker = join(nodeBlockerDirectory, 'node')
+  writeFileSync(nodeBlocker, '#!/usr/bin/env bash\nexit 97\n')
+  execFileSync('chmod', ['700', nodeBlocker])
   const result = runInstaller(
     fixture.installer,
     `${uoaBillingAppKey}\n${uoaBillingActorKey}`,
+    {
+      ...process.env,
+      PATH: `${nodeBlockerDirectory}:${process.env.PATH ?? ''}`,
+    },
   )
 
   assert.equal(result.status, 0, result.stderr)
@@ -191,6 +229,38 @@ test('UOA billing installer atomically installs both independent credentials', (
     ].join('\n'),
   )
   assert.equal(statSync(fixture.envFile).mode & 0o777, 0o600)
+})
+
+test('deployment-side UOA billing validation requires usable independent credentials', () => {
+  const validResult = runUoaBillingValidator(
+    uoaBillingAppKey,
+    uoaBillingActorKey,
+  )
+  assert.equal(validResult.status, 0, validResult.stderr)
+
+  const malformedAppKey = 'invalid-uoa-app-key'
+  const appKeyResult = runUoaBillingValidator(
+    malformedAppKey,
+    uoaBillingActorKey,
+  )
+  assert.notEqual(appKeyResult.status, 0)
+  assert.doesNotMatch(appKeyResult.stderr, new RegExp(malformedAppKey, 'u'))
+
+  const malformedActor = JSON.stringify({
+    alg: 'RS256',
+    d: 'not-private-key-material',
+    e: 'AQAB',
+    kid: 'invalid',
+    kty: 'RSA',
+    n: 'not-a-modulus',
+    use: 'sig',
+  })
+  const actorResult = runUoaBillingValidator(
+    uoaBillingAppKey,
+    malformedActor,
+  )
+  assert.notEqual(actorResult.status, 0)
+  assert.doesNotMatch(actorResult.stderr, /not-private-key-material/u)
 })
 
 test('UOA billing installer rejects either malformed secret without printing it', () => {
@@ -229,6 +299,14 @@ test('deployment supplies the dedicated Nessie Ledger key over SSH stdin', () =>
     workflow,
     /UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE: \$\{\{ secrets\.UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE \}\}/u,
   )
+  const validationPosition = workflow.indexOf(
+    'node infrastructure/compose/validate-uoa-billing-credentials.mjs',
+  )
+  const installationPosition = workflow.indexOf(
+    'bash infrastructure/compose/set-uoa-billing-credentials.sh',
+  )
+  assert.ok(validationPosition >= 0)
+  assert.ok(validationPosition < installationPosition)
   assert.match(
     workflow,
     /bash infrastructure\/compose\/set-uoa-billing-credentials\.sh/u,

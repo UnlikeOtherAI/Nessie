@@ -80,6 +80,7 @@ jobs:
         run: |
           test -n "$UOA_BILLING_APP_KEY_NESSIE"
           test -n "$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE"
+          node infrastructure/compose/validate-uoa-billing-credentials.mjs
           printf '%s\n%s\n' \
             "$UOA_BILLING_APP_KEY_NESSIE" \
             "$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE" |
