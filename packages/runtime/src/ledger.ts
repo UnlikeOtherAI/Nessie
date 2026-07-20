@@ -11,9 +11,9 @@ export type {
   StorageUsageScope,
 } from './storage-usage-ledger.js'
 
-// Shared usage-ledger writers. Every billable interaction is recorded once,
-// here, with full attribution (who / where-from / how-much). Two ledgers:
-//   - token_ledger_events    — AI/LLM invocations (tokens + cost)
+// Shared operational usage writers. Each metered interaction is attributed for
+// diagnostics/local budgets; UOA is the sole commercial authority. Two ledgers:
+//   - token_ledger_events    — AI/LLM invocations (tokens + internal estimates)
 //   - connector_usage_events — non-AI third-party connectors (calls + units)
 // Both are written from the same flat LedgerAttribution so any call site (the
 // worker agentic loop, the shared model client, the tool dispatcher) attributes
@@ -22,7 +22,7 @@ export type {
 
 export type LedgerActorType = 'user' | 'agent' | 'service' | 'system'
 
-// The who/where-from of a billable interaction. organizationId + actorId are the
+// The who/where-from of a metered interaction. organizationId + actorId are the
 // only hard requirements; everything else is present when known.
 export type LedgerAttribution = {
   organizationId: string

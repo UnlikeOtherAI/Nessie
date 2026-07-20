@@ -363,14 +363,20 @@ export const listIntegratedProducts = async (
         CAST(${monthStart} AS timestamptz) AS month_start,
         COALESCE(SUM(cue.calls), 0) AS total_calls,
         COALESCE(SUM(cue.units), 0) AS total_units,
-        COALESCE(SUM(cue.cost_amount), 0) AS total_cost,
-        COALESCE(
-          (
-            ARRAY_AGG(cue.cost_currency ORDER BY cue.occurred_at DESC)
-            FILTER (WHERE cue.cost_currency IS NOT NULL)
-          )[1],
-          'USD'
-        ) AS currency,
+        CASE
+          WHEN p.slug = 'deep-water' THEN 0
+          ELSE COALESCE(SUM(cue.cost_amount), 0)
+        END AS total_cost,
+        CASE
+          WHEN p.slug = 'deep-water' THEN 'USD'
+          ELSE COALESCE(
+            (
+              ARRAY_AGG(cue.cost_currency ORDER BY cue.occurred_at DESC)
+              FILTER (WHERE cue.cost_currency IS NOT NULL)
+            )[1],
+            'USD'
+          )
+        END AS currency,
         MAX(cue.occurred_at) AS last_used_at,
         (
           ARRAY_AGG(cue.operation ORDER BY cue.occurred_at DESC)

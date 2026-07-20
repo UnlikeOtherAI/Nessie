@@ -40,8 +40,6 @@ const makeDeepWaterRunRow = () => ({
     sourceCountSource: 'ledger_research_report',
     statusDetail: 'Report ready for review.',
   },
-  cost_amount: '4.25',
-  cost_currency: 'USD',
   source_count: 18,
   knowledge_page_id: PAGE_ID,
   requested_at: '2026-07-10T10:30:00.000Z',
@@ -122,7 +120,6 @@ test('deep_water_run_update writes terminal status projection', async () => {
   const { context, ledgerEvents, queries, resultUpdates } = makeContext()
 
   const result = await runDeepWaterRunUpdateTool(context, {
-    currency: 'USD',
     externalRunId: 'dw-run-123',
     knowledgePageId: PAGE_ID,
     reportUrl: 'https://deepwater.example/reports/dw-run-123',
@@ -130,14 +127,12 @@ test('deep_water_run_update writes terminal status projection', async () => {
     sourceCount: 999,
     status: 'completed',
     statusDetail: 'Report ready for review.',
-    totalCost: 4.25,
   })
 
   assert.equal(result.toolName, 'deep_water_run_update')
   assert.match(result.outputPreview, /status=completed/)
   assert.match(result.outputPreview, /18 sources/)
-  assert.match(result.outputPreview, /4\.25 USD/)
-  assert.match(result.outputPreview, /usage ledger recorded/)
+  assert.match(result.outputPreview, /operational telemetry recorded/)
   assert.equal(queries.length, 3)
   assert.equal(ledgerEvents.length, 1)
   assert.equal(resultUpdates.length, 1)
@@ -147,17 +142,25 @@ test('deep_water_run_update writes terminal status projection', async () => {
     'deep-water',
   )
   assert.equal(
-    (ledgerEvents[0] as { data: { costAmount: number; operation: string; unitType: string } })
-      .data.costAmount,
-    4.25,
+    Object.hasOwn((ledgerEvents[0] as { data: Record<string, unknown> }).data, 'costAmount'),
+    false,
   )
   assert.equal(
-    (ledgerEvents[0] as { data: { costAmount: number; operation: string; unitType: string } })
+    Object.hasOwn((ledgerEvents[0] as { data: Record<string, unknown> }).data, 'costCurrency'),
+    false,
+  )
+  assert.equal(
+    (ledgerEvents[0] as { data: { metadata: { commercialAuthority: string } } })
+      .data.metadata.commercialAuthority,
+    'uoa',
+  )
+  assert.equal(
+    (ledgerEvents[0] as { data: { operation: string; unitType: string } })
       .data.operation,
     'research.completed',
   )
   assert.equal(
-    (ledgerEvents[0] as { data: { costAmount: number; operation: string; unitType: string } })
+    (ledgerEvents[0] as { data: { operation: string; unitType: string } })
       .data.unitType,
     'sources',
   )
@@ -178,10 +181,8 @@ test('deep_water_run_update never meters an untrusted legacy source count', asyn
   const { context, ledgerEvents } = makeContext({ runRow })
 
   const result = await runDeepWaterRunUpdateTool(context, {
-    currency: 'USD',
     runId: RUN_ID,
     status: 'completed',
-    totalCost: 4.25,
   })
 
   assert.match(result.outputPreview, /sources pending/)
@@ -211,15 +212,13 @@ test('deep_water_run_update does not double-record an already ledgered run', asy
   const { context, ledgerEvents, resultUpdates } = makeContext({ runRow })
 
   const result = await runDeepWaterRunUpdateTool(context, {
-    currency: 'USD',
     runId: RUN_ID,
     sourceCount: 18,
     status: 'completed',
-    totalCost: 4.25,
   })
 
   assert.equal(result.toolName, 'deep_water_run_update')
-  assert.doesNotMatch(result.outputPreview, /usage ledger recorded/)
+  assert.doesNotMatch(result.outputPreview, /operational telemetry recorded/)
   assert.equal(ledgerEvents.length, 0)
   assert.equal(resultUpdates.length, 0)
 })
@@ -228,11 +227,9 @@ test('deep_water_run_update is available to a granted shared agent', async () =>
   const { context, ledgerEvents, queries, resultUpdates } = makeContext({ agentKind: 'shared' })
 
   const result = await runDeepWaterRunUpdateTool(context, {
-    currency: 'USD',
     runId: RUN_ID,
     sourceCount: 18,
     status: 'completed',
-    totalCost: 4.25,
   })
 
   assert.equal(result.toolName, 'deep_water_run_update')
@@ -246,10 +243,8 @@ test('deep_water_run_update accepts a team carried only in the action context', 
   const { context, ledgerEvents, queries } = makeContext({ actionContextTeamOnly: true })
 
   const result = await runDeepWaterRunUpdateTool(context, {
-    currency: 'USD',
     runId: RUN_ID,
     status: 'completed',
-    totalCost: 4.25,
   })
 
   assert.equal(result.toolName, 'deep_water_run_update')
@@ -283,39 +278,22 @@ test('deep_water_run_update rejects unsupported status values', async () => {
   assert.equal(queries.length, 0)
 })
 
-test('deep_water_run_update requires the Ledger cost amount and currency together', async () => {
+test('deep_water_run_update rejects legacy commercial amount fields', async () => {
   const { context, queries } = makeContext()
 
-  await assert.rejects(
-    () => runDeepWaterRunUpdateTool(context, {
-      runId: RUN_ID,
-      status: 'completed',
-      totalCost: 4.25,
-    }),
-    /totalCost and currency must be copied together/,
-  )
-  await assert.rejects(
-    () => runDeepWaterRunUpdateTool(context, {
-      currency: 'USD',
-      runId: RUN_ID,
-      status: 'completed',
-    }),
-    /totalCost and currency must be copied together/,
-  )
-  assert.equal(queries.length, 0)
-})
-
-test('deep_water_run_update rejects a transformed negative Ledger amount', async () => {
-  const { context, queries } = makeContext()
-
-  await assert.rejects(
-    () => runDeepWaterRunUpdateTool(context, {
-      currency: 'USD',
-      runId: RUN_ID,
-      status: 'completed',
-      totalCost: -1,
-    }),
-    /totalCost must be a non-negative finite number/,
-  )
+  for (const field of [
+    { cost: { amount: 4.25, currency: 'USD' } },
+    { currency: 'USD' },
+    { totalCost: 4.25 },
+  ]) {
+    await assert.rejects(
+      () => runDeepWaterRunUpdateTool(context, {
+        ...field,
+        runId: RUN_ID,
+        status: 'completed',
+      }),
+      /do not accept commercial amounts; UOA is authoritative/,
+    )
+  }
   assert.equal(queries.length, 0)
 })

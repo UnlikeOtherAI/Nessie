@@ -246,11 +246,11 @@ Current Nessie slice:
   Ledger's bearer-authenticated MCP adapter. `LEDGER_PROXY_TOKEN` is Nessie's
   dedicated, product-bound Ledger app API key; it authenticates Nessie as the
   calling app, while a signed UOA delegation plus Nessie
-  org/team/user/agent/run context assigns the job and spend to the verified
+  org/team/user/agent/run context assigns the job and raw usage to the verified
   caller. Each sibling product must use its own app API key, and webhook signing
   secrets remain separate callback credentials. Personal credential overrides
   are forbidden. Ledger owns research
-  isolation, budget enforcement, audit, and booked rate-card charge while the
+  isolation, budget enforcement, audit, and raw usage metering while the
   deterministic tool contract still comes from the plugin manifest. `POST
   /api/integrations/products/deep-water/research-launch` creates or loads the
   user's Personal Assistant DM, posts a server-built launch message carrying a
@@ -266,7 +266,7 @@ Current Nessie slice:
   recent active-team runs through `GET
   /api/integrations/products/deep-water/research-runs`. Any granted agent —
   personal assistant or shared — can call the `deep_water_run_update` builtin
-  after Deep Water MCP calls to project external run id, status, cost, and
+  after Deep Water MCP calls to project external run id, status, and
   Knowledge draft page id into that durable record. The guarded worker captures
   report URL and source count directly from authenticated Ledger start/report
   responses, so the agent cannot invent or replace either field.
@@ -299,17 +299,18 @@ Current Nessie slice:
   definitive rejection may settle correlated `needs_setup`. Missing, duplicate,
   malformed, omitted-start, or otherwise unresolved handoff state fails closed;
   final retry exhaustion moves exact clean candidates to `needs_setup` while
-  preserving rows with external/accounting/report/Knowledge evidence. A late
+  preserving rows with external/dispatch/report/Knowledge evidence. A late
   validated ticket can still attach after final recovery, clear the stale
   recovery detail, preserve its exact Ledger status, and keep the Product run
   `running` until mandatory terminal reconciliation, avoiding orphaned or
-  prematurely unblocked paid work. Fatal tools retain paired end events and all started same-batch
+  prematurely unblocked provider work. Fatal tools retain paired end events and all started same-batch
   wrappers settle before retry. Ordinary DeepWater calls outside product launch
   handoffs are unchanged.
-  Terminal write-back now reconciles an authoritative Ledger
-  `cost: { amount, currency }` into `connector_usage_events` exactly once when
-  returned; it leaves Nessie's mirror empty rather than estimating when Ledger
-  omits cost. Autonomous polling and Knowledge import jobs remain Phase 2 work.
+  Terminal write-back records one cost-free operational
+  `connector_usage_events` row with authenticated source units. Ledger's
+  DeepWater contract exposes no commercial amount; UOA rates raw metering and
+  supplies the customer statement. Autonomous polling and Knowledge import jobs
+  remain Phase 2 work.
 - DeepTest now has a privacy-safe ESC handoff panel gated by team enablement and
   an active shared MCP connector. `POST
   /api/integrations/products/deeptest/security-handoff` accepts only controlled
@@ -406,7 +407,7 @@ Current Deep Water launcher slice:
   `recent`, and carries chapter/output/language/search/section controls inside
   the optional context string rather than sending unsupported top-level args.
 - When `artifactDestination=knowledge_draft`, the launch message requires the
-  PA to persist the terminal Ledger status and accounting first. Only after
+  PA to persist the terminal Ledger status first. Only after
   that mandatory write-back succeeds may it call `kb_list` without arguments,
   select an accessible writable `spaceId` returned by that call, and pass that
   exact id to `kb_draft_write` before requesting publication. It explicitly
@@ -417,26 +418,23 @@ Current Deep Water launcher slice:
   is delegated through the owning user, so the PA can submit its own draft for
   human review without gaining permission to submit a human-authored draft.
   Once the page exists, a second idempotent run update attaches its page id
-  without changing the already-booked terminal charge.
+  without changing terminal state.
 - ESC now shows recent Deep Water launch records from Nessie's durable
   `product_integration_runs` projection, including status, launch options,
   PA chat destination, report link, Knowledge draft link, status detail, and
   provenance-marked report/source fields after the guarded worker captures
-  Ledger responses, plus cost fields when a granted agent writes back the exact
-  terminal charge. Cost is copied only from Ledger's terminal booked rate-card
-  charge; this is not a provider-invoice actual and complex runs may reconcile
-  higher upstream.
-- Automatic progress polling, cost reconciliation, and import without PA
+  Ledger responses. DeepWater amounts are absent; UOA alone renders commercial
+  totals through the customer statement.
+- Automatic progress polling and import without PA
   mediation still belong to the Phase 2 completion wrapper. The current
   completion path combines guarded worker capture during approved MCP calls
-  with explicit granted-agent bookkeeping for status/cost/Knowledge; it is not
+  with explicit granted-agent bookkeeping for status/Knowledge; it is not
   an independent background worker. The launch handoff starts the Ledger job,
   persists `running`, optionally checks status once, and ends the bounded agent
   turn; a later user/status turn checks once more and fetches the report only
   after completion. It never busy-polls a roughly 20-minute job. Terminal
-  granted-agent write-back mirrors the immutable Ledger-booked terminal
-  rate-card charge into Nessie's connector usage ledger with an
-  idempotent per-run marker.
+  granted-agent write-back records cost-free operational call/source telemetry
+  with an idempotent per-run marker.
 - ESC renders DeepTest controls for review depth, runner boundary, and
   share-safe/external-link report handoff. It intentionally has no text field for
   target URLs, repo paths, source, PR diffs, findings, prompts, or raw reports.
@@ -595,16 +593,18 @@ Use the existing ledgers:
 
 - model/provider calls stay in `token_ledger_events`;
 - product/API operations stay in `connector_usage_events`;
-- Deep Water imported job cost should become connector usage rows through the
-  existing connector enum (`mcp`, `http`, or `other`) plus a product slug /
-  connector id in metadata, not a new enum value per product;
+- Deep Water connector rows contain operational calls and authenticated source
+  units only. They carry no cost, price, charge, tariff, or currency; UOA rates
+  Ledger's raw metering and supplies customer totals;
 - DeepTest content-free metering should remain content-free and should not
   include target labels, URLs, repo names, findings, prompts, or reports.
 
 The ESC product detail page should show:
 
-- month-to-date calls/spend for that product; **implemented from
-  `connector_usage_events` for selected MCP instances and product-tagged rows**
+- month-to-date operational calls for that product; **implemented from
+  `connector_usage_events` for selected MCP instances and product-tagged rows**;
+- customer-commercial totals from UOA's shared statement protocol, never a
+  product-side calculation;
 - current health;
 - recent job/review history;
 - which agents can use it.
@@ -781,18 +781,18 @@ Acceptance:
 - Add credential setup and tool approval flow.
 - Add a Deep Water run wrapper in Nessie jobs/runs. **Initial durable launch
   projection is implemented in `product_integration_runs`; granted-agent
-  write-back can update status/cost/Knowledge fields, while the guarded worker
+  write-back can update status/Knowledge fields, while the guarded worker
   captures report URL and source count from authenticated Ledger responses;
   autonomous polling/completion reconciliation remains pending.**
 - Add result import into Knowledge and FileService-backed attachments.
-- Add connector usage ledger rows for job cost.
-  **Implemented for terminal granted-agent write-back with Ledger-reported
-  cost; autonomous background reconciliation remains pending.**
-- Add UI panels for research history, report link, sources, and spend.
-  **Recent launch history, report links, Knowledge draft links, source counts,
-  and the booked rate-card charge projection are implemented; the guarded
-  worker supplies trusted report metadata and granted-agent write-back supplies
-  terminal status/cost/Knowledge metadata. Source review remains pending.**
+- Add connector usage ledger rows for operational job telemetry.
+  **Implemented for terminal granted-agent write-back without commercial
+  amount fields; autonomous background reconciliation remains pending.**
+- Add UI panels for research history, report link, and sources.
+  **Recent launch history, report links, Knowledge draft links, and source
+  counts are implemented; the guarded worker supplies trusted report metadata
+  and granted-agent write-back supplies terminal status/Knowledge metadata.
+  UOA's customer statement is the only commercial surface.**
 
 ### Phase 3: DeepTest Link-Out And MCP
 
@@ -857,8 +857,8 @@ Acceptance:
 - Each product has an installable plugin path for open-source Nessie.
 - Every agent-callable product action is available through approved MCP/tool
   registry grants.
-- Deep Water research can be launched from Nessie, monitored, costed, and saved
-  into Nessie Knowledge.
+- Deep Water research can be launched from Nessie, monitored, and saved into
+  Nessie Knowledge, while UOA supplies its customer-commercial totals.
 - DeepTest can be launched or called without violating its local/privacy
   contract.
 - BuildMe can be linked out, and later its project board can be paired as an

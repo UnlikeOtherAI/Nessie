@@ -37,12 +37,12 @@ type SurfacePlan = {
 
 const surfacePlans: Record<string, SurfacePlan> = {
   'deep-water': {
-    nativePage: 'Research workspace with runs, source review, spend, and Knowledge import.',
-    chatCards: 'Progress, result, source, and cost cards rendered from message metadata.',
+    nativePage: 'Research workspace with runs, source review, and Knowledge import.',
+    chatCards: 'Progress, result, and source cards rendered from message metadata.',
     controls: 'Depth, chapter detail, search quality, recency, output language, and artifact destination.',
     agentAccess: 'Approved MCP tools for create, poll, list, and research scoping conversations.',
     artifacts: 'Reports and evidence land in Knowledge; file blobs go through FileService.',
-    nextStep: 'Install and approve the OAuth MCP connector, then add the native run wrapper.',
+    nextStep: 'Configure the dedicated Ledger app key, enable the team, and grant the approved tools.',
   },
   deeptest: {
     nativePage: 'Link-out plus local runner status, safe report history, and review profile state.',

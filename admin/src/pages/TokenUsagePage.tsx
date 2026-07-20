@@ -171,14 +171,15 @@ export const TokenUsagePage = () => {
                 Nessie&apos;s internal token, connector, file, budget, and model
                 pricing telemetry supports operations. It is not the customer
                 invoice; canonical tariffs, statements, and charges come from
-                UOA above.
+                UOA above. Deep Water commercial amounts are never ingested or
+                included in these local operational totals.
               </p>
             </div>
         {costTrackingInactive && (
           <div className="admin-card mb-4 border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
             Cost tracking is inactive — {formatTokens(summary?.totalTokens ?? 0)} tokens recorded but
-            no model pricing is configured, so every cost shows $0. Add rates under
-            <span className="font-semibold"> Model pricing</span> below to see spend.
+            no model pricing is configured, so every internal estimate shows $0. Add rates under
+            <span className="font-semibold"> Model pricing</span> below to see operational estimates.
           </div>
         )}
         <div className="grid gap-4 lg:grid-cols-3">

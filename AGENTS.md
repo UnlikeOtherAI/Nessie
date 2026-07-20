@@ -137,8 +137,8 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   integration-managed instance with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`;
   generic secret writes are also rejected, and PA probe/uninstall tools direct
   callers to the Integrations toggle, which is its sole lifecycle path. Ledger
-  owns job isolation, budget enforcement, audit, and rate-card charge booking
-  for both PA and shared-agent calls.
+  owns job isolation, budget enforcement, audit, and raw usage metering for
+  both PA and shared-agent calls; UOA alone rates that usage commercially.
   `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` is the
   deployment-wide inference chokepoint; runtime routing rewrites it to Ledger's
   `/v1/:serviceId/*` adapter for the actual OpenAI, Kimi, MiniMax, or custom
@@ -161,7 +161,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   projections plus `deep_water_run_update` as an exact six-entry bundle. Launch
   stays disabled and the API rejects before run creation until the PA has 6/6;
   the updater counts only while its registry row is enabled and active, matching
-  worker exposure, so a disabled builtin cannot authorize billable work;
+  worker exposure, so a disabled builtin cannot authorize metered work;
   the final enablement/instance/policy reads and run insert are linearized under
   the team lock then agent-policy lock. Owners can also grant/revoke the bundle
   for shared agents. Generic agent create/PUT cannot write explicit-grant keys
@@ -222,11 +222,11 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   exact correlated `needs_setup` row to `failed`.
   Missing or duplicate exact handoff rows fail closed before inference;
   on retry exhaustion every clean exact candidate moves to `needs_setup`, while
-  rows carrying external/accounting/report/Knowledge evidence are preserved. A
+  rows carrying external/dispatch/report/Knowledge evidence are preserved. A
   validated ticket that arrives after final-attempt recovery still attaches
   atomically, clears the stale recovery detail, preserves its exact Ledger
   status, and keeps the Product run `running` until mandatory terminal
-  reconciliation, so accepted paid work is neither orphaned nor prematurely
+  reconciliation, so accepted provider work is neither orphaned nor prematurely
   unblocked by the timeout race. Fatal
   tool calls still emit their paired sanitized end event, and every started
   same-batch tool wrapper settles before the queue attempt is released.
@@ -244,10 +244,11 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   recovery. Disable
   targets only the instance linked from the first-party public product, so
   private same-name catalogs are untouched. `deep_water_run_update` is not
-  PA-only, takes tenancy strictly from the run context (same team + thread;
-  Knowledge page validated against the org), and copies Ledger's terminal
-  `{ amount, currency }` exactly as the immutable booked rate-card charge
-  assigned to the launch run's immutable `requestedByUserId`, never the updater.
+  PA-only and takes tenancy strictly from the run context (same team + thread;
+  Knowledge page validated against the org). It never accepts a cost, price,
+  charge, tariff, or currency: Ledger's DeepWater REST/MCP status, report, and
+  list contracts expose no commercial amount, and UOA is the sole commercial
+  authority.
   The external report URL is persisted only from Ledger's authenticated
   `research_start` structured response after its origin and exact job path are
   validated; source count is persisted only from the authenticated
@@ -255,11 +256,19 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   before they are exposed, and agent-authored run updates cannot set, replace,
   or mark either value as trusted. Source persistence atomically repairs an
   already-created exact per-run connector usage event, making same-batch
-  report/update order irrelevant.
+  report/update order irrelevant. That event records operational calls and
+  authenticated source units against the launch run's immutable
+  `requestedByUserId`; it has no cost fields and is excluded from every local
+  cost aggregate. Migration
+  `20260720234500_retire_deepwater_local_cost_mirror` erases historical local
+  amounts, converts only their existence into a cost-free server-only dispatch
+  recovery marker, drops the obsolete Product-run cost columns, and installs a
+  database trigger rejecting future DeepWater connector-event cost writes.
+  Product run APIs and UI expose no DeepWater cost; customer totals
+  come only from UOA's statement.
   The locked write also enforces a terminal start ticket's exact Product status
   mapping (`complete` → `completed`; negative terminal outcomes → `failed`).
-  That mirrored charge is not a provider-invoice actual and complex runs may
-  reconcile higher upstream. Re-enable preserves richer probed schemas only
+  Re-enable preserves richer probed schemas only
   when tool names exactly match the current Ledger contract; legacy
   direct-provider projections are replaced and must be explicitly re-granted.
 - Customer tariffs, statements, subscriptions, adjustments, and Stripe

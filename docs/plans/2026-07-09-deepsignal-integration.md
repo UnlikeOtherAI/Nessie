@@ -233,7 +233,8 @@ Today every chat path runs `runExecutionAgentLoop → runInferenceGraph`; MCP is
 
 DeepWater (deep research) is integrated into Nessie as its own ESC product, but every Nessie
 research call goes through **Ledger's DeepWater MCP adapter** for token-owned isolation,
-budget enforcement, audit, and booked rate-card charge accounting. DeepSignal also
+budget enforcement, audit, and raw usage metering. UOA alone rates the usage
+and supplies customer statements. DeepSignal also
 *consumes* DeepWater internally, but
 only ever holds **report references (ids)** — it never embeds report content. Boundary rules:
 
@@ -243,7 +244,7 @@ only ever holds **report references (ids)** — it never embeds report content. 
 - Research initiated **in Nessie** uses Nessie's dedicated, product-bound
   Ledger app API key through the team-scoped connector plus a signed UOA
   delegation and Nessie org/team/user/agent/run context. Ledger binds ownership
-  and spend to the verified delegated subject rather than the transport key.
+  and raw usage to the verified delegated subject rather than the transport key.
   There is no double-billing.
 
 ## Execution Plan

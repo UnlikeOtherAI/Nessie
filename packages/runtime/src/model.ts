@@ -143,7 +143,7 @@ export const createModelClient = (
     try {
       await recordUsage(invocations, attribution)
     } catch {
-      // best-effort billing capture; do not fail the originating call
+      // Best-effort operational usage capture; do not fail the originating call.
     }
   }
 

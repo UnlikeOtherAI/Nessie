@@ -31,13 +31,6 @@ const readinessClass = (ready: boolean): string =>
       : 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
   ].join(' ')
 
-const money = (amount: number, currency: string): string =>
-  new Intl.NumberFormat(undefined, {
-    currency,
-    maximumFractionDigits: 2,
-    style: 'currency',
-  }).format(amount)
-
 const boundedInt = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, Math.trunc(Number.isFinite(value) ? value : min)))
 
@@ -54,6 +47,8 @@ export const DeepWaterResearchPanel = ({
   const navigate = useNavigate()
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const canReadBilling =
+    isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const launch = useLaunchDeepWaterResearch()
   const runsQuery = useDeepWaterResearchRuns()
   const [title, setTitle] = useState('')
@@ -147,11 +142,19 @@ export const DeepWaterResearchPanel = ({
           </div>
         </div>
         <div className="rounded border border-[var(--sep)] px-3 py-2 text-right">
-          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Month to date</div>
-          <div className="mt-1 text-sm font-semibold text-[var(--tx)]">
-            {money(product.usageSummary.totalCost, product.usageSummary.currency)}
+          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">
+            Month-to-date activity
           </div>
-          <div className="text-xs text-[var(--tx3)]">{product.usageSummary.totalCalls} calls</div>
+          <div className="mt-1 text-sm font-semibold text-[var(--tx)]">
+            {product.usageSummary.totalCalls} calls
+          </div>
+          {canReadBilling ? (
+            <Link className="text-xs text-[var(--tx3)] underline" to="/tokens">
+              Customer totals from UOA
+            </Link>
+          ) : (
+            <div className="text-xs text-[var(--tx3)]">Customer totals managed by UOA</div>
+          )}
         </div>
       </div>
 

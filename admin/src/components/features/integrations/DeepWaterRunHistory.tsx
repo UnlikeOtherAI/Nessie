@@ -33,19 +33,6 @@ const formatRunDate = (value: string): string =>
     month: 'short',
   }).format(new Date(value))
 
-const formatCost = (run: DeepWaterResearchRunRecord): string => {
-  if (run.totalCost === null) return 'Cost pending'
-  try {
-    return new Intl.NumberFormat(undefined, {
-      currency: run.currency ?? 'USD',
-      maximumFractionDigits: 2,
-      style: 'currency',
-    }).format(run.totalCost)
-  } catch {
-    return `${run.totalCost.toFixed(2)} ${run.currency ?? 'USD'}`
-  }
-}
-
 const sourceLabel = (value: number | null): string =>
   value === null ? 'Sources pending' : `${value} sources`
 
@@ -159,7 +146,7 @@ export const DeepWaterRunHistory = ({
                   {run.statusDetail}
                 </div>
               ) : null}
-              <div className="mt-3 grid gap-2 text-xs text-[var(--tx2)] sm:grid-cols-4">
+              <div className="mt-3 grid gap-2 text-xs text-[var(--tx2)] sm:grid-cols-3">
                 <div className="rounded bg-[var(--overlay)] px-2 py-1 capitalize">
                   {modeLabel(run)}
                 </div>
@@ -168,9 +155,6 @@ export const DeepWaterRunHistory = ({
                 </div>
                 <div className="rounded bg-[var(--overlay)] px-2 py-1">
                   {sourceLabel(run.sourceCount)}
-                </div>
-                <div className="rounded bg-[var(--overlay)] px-2 py-1">
-                  {formatCost(run)}
                 </div>
               </div>
             </div>

@@ -133,7 +133,6 @@ export const DeepWaterResearchRunRecordSchema = z.object({
   completedAt: TimestampSchema.nullable(),
   connectorId: z.string().uuid().nullable(),
   createdAt: TimestampSchema,
-  currency: NonEmptyStringSchema.nullable(),
   depth: z.enum([
     'light',
     'standard',
@@ -159,7 +158,6 @@ export const DeepWaterResearchRunRecordSchema = z.object({
   teamId: z.string().uuid(),
   threadId: z.string().uuid().nullable(),
   title: z.string().nullable(),
-  totalCost: z.number().nonnegative().nullable(),
   updatedAt: TimestampSchema,
 })
 export type DeepWaterResearchRunRecord =

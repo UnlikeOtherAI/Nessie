@@ -2,7 +2,7 @@ import type { IntegrationPluginManifest } from '@nessie/schemas'
 
 /**
  * DeepWater's first-party product contract is isolated because Ledger routing,
- * schemas, credential ownership, and booked-charge semantics form one cohesive boundary
+ * schemas, credential ownership, and raw-metering semantics form one cohesive boundary
  * that evolves independently from the other sibling products.
  */
 export const deepWaterIntegrationPluginManifest = {
@@ -42,7 +42,7 @@ export const deepWaterIntegrationPluginManifest = {
       {
         name: 'research_start',
         label: 'Start research',
-        description: 'Start a Ledger-owned, spend-metered Deep Water research job.',
+        description: 'Start a Ledger-owned, raw-usage-metered Deep Water research job.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -190,6 +190,8 @@ export const deepWaterIntegrationPluginManifest = {
   usage: {
     ledger: 'connector_usage_events',
     connectorType: 'mcp',
-    costFields: ['ledgerResearchJobId', 'userId', 'teamId', 'depth'],
+    // Nessie's row is operational call/source telemetry only. Ledger sends raw
+    // usage to UOA, which is the sole commercial authority.
+    costFields: [],
   },
 } satisfies IntegrationPluginManifest

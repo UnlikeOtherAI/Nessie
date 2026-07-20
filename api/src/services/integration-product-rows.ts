@@ -196,7 +196,10 @@ export const mapProductRow = (row: IntegratedProductRow): IntegratedProductRespo
       monthStart: toIsoString(row.product_usage_month_start),
       successCount: Number(row.product_usage_success_count ?? 0),
       totalCalls: Number(row.product_usage_total_calls ?? 0),
-      totalCost: Number(row.product_usage_total_cost ?? 0),
+      totalCost:
+        row.slug === 'deep-water'
+          ? 0
+          : Number(row.product_usage_total_cost ?? 0),
       totalUnits: Number(row.product_usage_total_units ?? 0),
     },
   })

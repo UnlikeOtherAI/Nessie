@@ -10,6 +10,10 @@ const migrationPath = resolve(
 )
 
 const migrationSql = readFileSync(migrationPath, 'utf8')
+const retirementSql = readFileSync(resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../prisma/migrations/20260720234500_retire_deepwater_local_cost_mirror/migration.sql',
+), 'utf8')
 
 test('DeepWater catalog is migrated to the Ledger bearer MCP adapter', () => {
   assert.match(migrationSql, /'bearer'::"McpCatalogAuthMethod"/)
@@ -22,7 +26,7 @@ test('DeepWater catalog is migrated to the Ledger bearer MCP adapter', () => {
 test('DeepWater product setup no longer advertises direct OAuth', () => {
   assert.match(migrationSql, /UPDATE "integrated_products"/)
   assert.match(migrationSql, /"auth_mode" = 'api_key'::"IntegratedProductAuthMode"/)
-  assert.match(migrationSql, /booked rate-card charges/)
+  assert.match(retirementSql, /Customer totals come only from UOA/)
 })
 
 test('legacy direct instances fail closed until the team is re-enabled', () => {

@@ -833,8 +833,6 @@ model ProductIntegrationRun {
   queryPreview      String                      @default("") @map("query_preview")
   input             Json                        @default("{}") @map("input_json")
   result            Json                        @default("{}") @map("result_json")
-  costAmount        Decimal?                    @map("cost_amount") @db.Decimal(18, 6)
-  costCurrency      String?                     @map("cost_currency")
   sourceCount       Int?                        @map("source_count")
   knowledgePageId   String?                     @map("knowledge_page_id") @db.Uuid
   requestedAt       DateTime                    @default(now()) @map("requested_at")

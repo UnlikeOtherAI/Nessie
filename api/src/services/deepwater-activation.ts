@@ -31,9 +31,9 @@ import { setProductTeamEnablement } from './integrations.js'
  * HTTP transport authenticated by Nessie's dedicated, product-bound Ledger app
  * API key. The originating SSO user and Nessie org/team/agent/run are sent
  * independently as signed per-call identity headers, so transport
- * authentication cannot collapse ownership or spend attribution. Ledger owns
- * the upstream provider credential, job budget, and immutable booked rate-card
- * charge.
+ * authentication cannot collapse ownership or usage attribution. Ledger owns
+ * the upstream provider credential, job budget, and raw metering. UOA alone
+ * supplies customer-commercial amounts.
  */
 
 export const DEEP_WATER_PRODUCT_SLUG = 'deep-water'

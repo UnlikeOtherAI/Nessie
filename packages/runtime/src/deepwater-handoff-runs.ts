@@ -47,7 +47,6 @@ export type DeepWaterHandoffRunLocator = {
 
 type DeepWaterHandoffRunRow = {
   connector_transport_config: unknown
-  cost_amount: Prisma.Decimal | number | string | null
   external_run_id: string | null
   id: string
   knowledge_page_id: string | null
@@ -71,10 +70,10 @@ const isFailureEligibleHandoff = (row: DeepWaterHandoffRunRow): boolean => {
   const result = toRecord(row.result_json)
   return (row.status === 'queued' || row.status === 'running')
     && row.external_run_id === null
-    && row.cost_amount === null
     && row.source_count === null
     && row.knowledge_page_id === null
     && !Object.hasOwn(result, 'reportUrl')
+    && !Object.hasOwn(result, 'legacyDispatchEvidence')
 }
 
 const START_TICKET_STATUSES = new Set<DeepWaterStartTicketStatus>([
@@ -95,7 +94,7 @@ const startTicketStatusFromResult = (
 
 /**
  * Resolve only an unambiguous DeepWater run attached to the current handoff
- * message and execution tenancy. Existing external/accounting/report/Knowledge
+ * message and execution tenancy. Existing external/dispatch/report/Knowledge
  * evidence makes a row ineligible for start-failure enforcement.
  */
 export const findDeepWaterHandoffRun = async (
@@ -107,7 +106,6 @@ export const findDeepWaterHandoffRun = async (
       "id",
       "status",
       "external_run_id",
-      "cost_amount",
       "source_count",
       "knowledge_page_id",
       "result_json",
@@ -193,10 +191,10 @@ export const claimDeepWaterHandoffStart = async (
       AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
       AND "status" = 'queued'
       AND "external_run_id" IS NULL
-      AND "cost_amount" IS NULL
       AND "source_count" IS NULL
       AND "knowledge_page_id" IS NULL
       AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'reportUrl')
+      AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'legacyDispatchEvidence')
       AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'startToolCallId')
       AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'startArguments')
     RETURNING "id"
@@ -209,7 +207,7 @@ export const claimDeepWaterHandoffStart = async (
  * A final-attempt timeout may move the row to `needs_setup` while the
  * uncancelled transport promise is still settling. If that late response
  * contains a valid ticket, revive the Product run to `running` and attach the
- * ticket rather than orphaning accepted paid work. The now-stale recovery
+ * ticket rather than orphaning accepted provider work. The now-stale recovery
  * detail is cleared in that same update.
  */
 export const persistDeepWaterHandoffTicket = async (
@@ -353,10 +351,10 @@ export const markDeepWaterHandoffRecoveryNeeded = async (
       AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
       AND "status" IN ('queued', 'running')
       AND "external_run_id" IS NULL
-      AND "cost_amount" IS NULL
       AND "source_count" IS NULL
       AND "knowledge_page_id" IS NULL
       AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'reportUrl')
+      AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'legacyDispatchEvidence')
     RETURNING "id"
   `)
   return rows.length === 1
@@ -390,10 +388,10 @@ export const markAmbiguousDeepWaterHandoffRecoveryNeeded = async (
       AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
       AND "status" IN ('queued', 'running')
       AND "external_run_id" IS NULL
-      AND "cost_amount" IS NULL
       AND "source_count" IS NULL
       AND "knowledge_page_id" IS NULL
       AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'reportUrl')
+      AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'legacyDispatchEvidence')
     RETURNING "id"
   `)
   return rows.length
@@ -403,7 +401,7 @@ export const markAmbiguousDeepWaterHandoffRecoveryNeeded = async (
  * Atomically fail one exact handoff after a definitive no-job outcome. A
  * pre-dispatch caller may settle only an uncorrelated queued row; a delayed
  * Ledger rejection may also settle running/needs_setup with the exact saved
- * tool-call correlation. Existing external/accounting/report evidence remains
+ * tool-call correlation. Existing external/dispatch/report evidence remains
  * untouchable.
  */
 export const failDeepWaterHandoffStart = async (
@@ -447,10 +445,10 @@ export const failDeepWaterHandoffStart = async (
         )
       )
       AND "external_run_id" IS NULL
-      AND "cost_amount" IS NULL
       AND "source_count" IS NULL
       AND "knowledge_page_id" IS NULL
       AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'reportUrl')
+      AND NOT (COALESCE("result_json", '{}'::jsonb) ? 'legacyDispatchEvidence')
     RETURNING "id"
   `)
   return rows.length === 1

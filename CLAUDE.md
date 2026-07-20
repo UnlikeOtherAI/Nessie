@@ -227,7 +227,7 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   exact late definitive rejection may settle correlated `needs_setup`.
   Missing/duplicate attachment state and an
   omitted required start fail closed; exhausted clean candidates become
-  `needs_setup`, while rows with external/accounting/report/Knowledge evidence
+  `needs_setup`, while rows with external/dispatch/report/Knowledge evidence
   are preserved. A validated ticket that settles after final recovery still
   attaches, clears the stale recovery detail, preserves its exact Ledger status,
   and keeps the Product run `running` until mandatory terminal reconciliation,
@@ -241,7 +241,7 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   enqueue conflicts roll back the duplicate unit, and realtime publication is
   post-commit/non-fatal. Ambiguous
   null-external-id work stays blocking to avoid deleting the
-  connector during an in-flight, billable `research_start`; attached-run errors
+  connector during an in-flight, metered `research_start`; attached-run errors
   point to the chat where PA can call `research_cancel`. This is unchanged for
   other connectors (scope still exposes them). First-party team-enable stands in
   for the manual install + admin-approve gate. The managed instance resolves
@@ -254,7 +254,7 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   user/org/team/agent/run)
   and the linked user's short-lived `X-UOA-Delegation`, obtained through UOA
   token exchange. Ledger therefore authenticates Nessie independently from the
-  human whose research and spend it owns. Setting
+  human whose research and raw usage it attributes. Setting
   `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` applies the
   same signed attribution to all model and embedding calls; runtime routing
   rewrites the final path to Ledger's `/v1/:serviceId/*` adapter for the
@@ -265,24 +265,28 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   background jobs persist their user/team origin and named system agent/run, and
   fail before model dispatch if it is unavailable. DeepWater research launch
   retries reuse the provider's stable `tool_call_id`. Ledger owns job isolation,
-  budget enforcement, audit, and rate-card charge booking.
+  budget enforcement, audit, and raw usage metering; UOA alone rates that usage.
   `deep_water_run_update`
   is not PA-only — any *granted* agent can write back the durable Nessie run
-  record (same team + thread; `knowledgePageId` validated against the org) and
-  mirrors Ledger's terminal amount and currency exactly as the immutable booked
-  rate-card charge assigned to the launch run's `requestedByUserId`, never the
-  user who delivers a later update. Nessie persists the external report URL
+  record (same team + thread; `knowledgePageId` validated against the org).
+  It never accepts or persists cost, price, charge, tariff, or currency fields;
+  Ledger's DeepWater REST/MCP contract exposes none, and UOA alone supplies
+  customer-commercial amounts. Nessie persists the external report URL
   only from Ledger's authenticated `research_start` structured response after
   validating its origin and exact job path, and persists source count only from
   the authenticated `research_report` references array. Both require
   server-only provenance before they are exposed; agent-authored run updates
   cannot set, replace, or mark either value as trusted. Source persistence also
   repairs the exact per-run connector usage event atomically, so same-batch
-  report/update order cannot lose usage units. The same locked write
+  report/update order cannot lose usage units. The event is operational and
+  cost-free, remains attributed to the immutable launch user, and is excluded
+  from local cost totals. Historical local values are erased, reduced to a
+  cost-free dispatch-recovery marker; the obsolete Product-run cost columns are
+  dropped, and a database trigger rejects future DeepWater connector-event
+  amounts. The same locked write
   rejects a Product status that contradicts a terminal start ticket (`complete`
-  maps to `completed`; failed/cancelled/timed_out map to `failed`). It is not a
-  provider-invoice actual and complex runs may reconcile higher upstream. Each
-  org/team transition is cross-process
+  maps to `completed`; failed/cancelled/timed_out map to `failed`). Each org/team
+  transition is cross-process
   serialized with a PostgreSQL transaction-scoped advisory lock; connector
   rows and the enablement toggle mutate in one transaction and roll back
   together. A missing linked first-party catalog fails enablement with
