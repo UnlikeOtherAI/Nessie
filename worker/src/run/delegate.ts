@@ -138,6 +138,7 @@ export const runDelegate = async (
     initialMessages: buildInitialMessages(task, hint),
     runInference: (messages) =>
       ctx.runInference(messages, [...mcpView.descriptors, ...ctx.builtinDescriptors]),
+    toolTimeoutError: ctx.mcpToolset.timeoutErrorFor,
     tools,
   })
 

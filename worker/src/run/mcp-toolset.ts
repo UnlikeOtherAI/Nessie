@@ -5,7 +5,6 @@ import {
   type SecretResolver,
 } from '@nessie/mcp-manage'
 import {
-  recordConnectorUsage,
   type LedgerAttribution,
   type LedgerIdentityService,
 } from '@nessie/runtime'
@@ -17,20 +16,18 @@ import {
   DEFAULT_INLINE_TOOL_LIMIT,
   type McpToolsetView,
 } from './mcp-toolset-deferred.js'
+import type { DeepWaterHandoffGuard } from './deepwater-handoff-guard.js'
+import {
+  createMcpToolNameAllocator,
+  MANAGED_DEEP_WATER_TOOL_NAMES,
+} from './mcp-tool-names.js'
+import { recordMcpConnectorUsage } from './mcp-usage.js'
+import { isFatalToolExecutionError } from './tool-execution-errors.js'
 import { dispatchTool } from './tool-dispatch.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
 export type McpToolPolicy = Record<string, boolean> | null
-
-const EXPOSE_NAME_PREFIX = 'mcp_'
-
-const sanitizeName = (raw: string): string => {
-  const cleaned = raw.replace(/[^A-Za-z0-9_]/g, '_').slice(0, 60)
-  return cleaned.length > 0 ? cleaned : 'tool'
-}
-
-const exposedNameFor = (toolName: string): string => `${EXPOSE_NAME_PREFIX}${sanitizeName(toolName)}`
 
 type RegistryRow = {
   id: string
@@ -68,6 +65,12 @@ export const isManagedDeepWaterCatalog = (catalog: {
   catalog.name === 'deep-water'
   && catalog.visibility === 'public'
   && catalog.integratedProducts.some((product) => product.slug === 'deep-water')
+
+const isManagedDeepWaterRow = (row: RegistryRow): boolean =>
+  Boolean(
+    row.mcpInstance
+    && isManagedDeepWaterCatalog(row.mcpInstance.catalogEntry),
+  )
 
 type RunScopeContext = {
   agentKind: 'personal_assistant' | 'shared'
@@ -202,6 +205,7 @@ export type McpToolset = {
     args: Record<string, unknown>,
     toolCallId?: string,
   ) => Promise<AgenticToolResult>
+  timeoutErrorFor: (exposedName: string) => Error | null
 }
 
 const resolveInlineToolLimit = (override?: number): number => {
@@ -254,6 +258,7 @@ export const buildMcpToolset = async (
   // writes a connector_usage_events row keyed to the run's org/agent/channel/run.
   attribution: LedgerAttribution,
   options: {
+    deepWaterHandoffGuard?: DeepWaterHandoffGuard
     ledgerIdentity?: LedgerIdentityService | null
     secretResolver?: SecretResolver
     inlineToolLimit?: number
@@ -307,9 +312,15 @@ export const buildMcpToolset = async (
     instanceId: string
   }
   const transportByExposedName = new Map<string, TransportTarget>()
-  const usedNames = new Set<string>()
+  const managedToolNames = rows.some(isManagedDeepWaterRow)
+    ? MANAGED_DEEP_WATER_TOOL_NAMES
+    : new Set<string>()
+  const orderedRows = [...rows].sort((left, right) =>
+    Number(isManagedDeepWaterRow(right)) - Number(isManagedDeepWaterRow(left)),
+  )
+  const allocateExposedName = createMcpToolNameAllocator(managedToolNames)
 
-  for (const row of rows) {
+  for (const row of orderedRows) {
     if (!row.mcpInstanceId || !row.mcpInstance) continue
     if (
       !isExposed(
@@ -325,16 +336,10 @@ export const buildMcpToolset = async (
 
     const originalToolName = extractOriginalToolName(row)
     if (!originalToolName) continue
-
-    let exposedName = exposedNameFor(originalToolName)
-    let suffix = 2
-    while (usedNames.has(exposedName)) {
-      exposedName = `${exposedNameFor(originalToolName)}_${suffix}`
-      suffix += 1
-    }
-    usedNames.add(exposedName)
-
     const deepWater = isManagedDeepWaterCatalog(row.mcpInstance.catalogEntry)
+
+    const exposedName = allocateExposedName(originalToolName, deepWater)
+
     const credentialRef = deepWater
       ? row.mcpInstance.credentialRef
       : await resolveCredentialRef(prisma, row.mcpInstanceId, {
@@ -379,28 +384,6 @@ export const buildMcpToolset = async (
     })
   }
 
-  // Record one connector_usage_events row per MCP tool call. Best-effort: a
-  // ledger failure must never break the tool dispatch.
-  const recordMcpUsage = async (
-    target: TransportTarget,
-    success: boolean,
-    latencyMs: number,
-  ): Promise<void> => {
-    await recordConnectorUsage(prisma, {
-      attribution,
-      event: {
-        connectorType: 'mcp',
-        connectorId: target.instanceId,
-        target: target.originalToolName,
-        operation: target.originalToolName,
-        success,
-        latencyMs,
-      },
-    }).catch(() => {
-      // best-effort billing capture
-    })
-  }
-
   const dispatch = async (
     exposedName: string,
     args: Record<string, unknown>,
@@ -412,32 +395,73 @@ export const buildMcpToolset = async (
       return { inputSummary, output: `Unknown MCP tool: ${exposedName}`, success: false }
     }
     const startedAt = Date.now()
+    let transportInvoked = false
     try {
-      let transport = target.transport
-      if (target.deepWater) {
-        if (!toolCallId) {
-          throw new Error('LEDGER_TOOL_CALL_ID_REQUIRED')
+      const dispatchTarget = async (
+        stableToolCallId = toolCallId ?? '',
+        stableArgs = args,
+      ) => {
+        let transport = target.transport
+        if (target.deepWater) {
+          if (!stableToolCallId) {
+            throw new Error('LEDGER_TOOL_CALL_ID_REQUIRED')
+          }
+          transport = await addDeepWaterIdentityHeaders(
+            transport,
+            options.ledgerIdentity,
+            attribution,
+            stableToolCallId,
+          )
         }
-        transport = await addDeepWaterIdentityHeaders(
-          transport,
-          options.ledgerIdentity,
-          attribution,
-          toolCallId,
-        )
+        transportInvoked = true
+        return dispatchTool({
+          spec: { transport: 'mcp', connection: transport, toolName: target.originalToolName },
+          args: stableArgs,
+          secret: null,
+        })
       }
-      const result = await dispatchTool({
-        spec: { transport: 'mcp', connection: transport, toolName: target.originalToolName },
-        args,
-        secret: null,
-      })
-      await recordMcpUsage(target, result.success, Date.now() - startedAt)
+      const guarded = target.deepWater && options.deepWaterHandoffGuard
+        ? await options.deepWaterHandoffGuard.dispatchDeepWater(
+            target.originalToolName,
+            toolCallId,
+            args,
+            dispatchTarget,
+          )
+        : {
+            deliveryToken: null,
+            result: await dispatchTarget(toolCallId, args),
+            transportInvoked: true,
+          }
+      const { deliveryToken, result } = guarded
+      if (transportInvoked) {
+        await recordMcpConnectorUsage(prisma, attribution, {
+          connectorId: target.instanceId,
+          latencyMs: Date.now() - startedAt,
+          operation: target.originalToolName,
+          success: result.success,
+        })
+      }
       return {
+        ...(target.deepWater && deliveryToken && options.deepWaterHandoffGuard
+          ? {
+              acknowledgeDelivery: () =>
+                options.deepWaterHandoffGuard?.markDelivered(deliveryToken),
+            }
+          : {}),
         inputSummary,
         output: result.output,
         success: result.success,
       }
     } catch (error) {
-      await recordMcpUsage(target, false, Date.now() - startedAt)
+      if (transportInvoked) {
+        await recordMcpConnectorUsage(prisma, attribution, {
+          connectorId: target.instanceId,
+          latencyMs: Date.now() - startedAt,
+          operation: target.originalToolName,
+          success: false,
+        })
+      }
+      if (isFatalToolExecutionError(error)) throw error
       const message = error instanceof Error ? error.message : String(error)
       return { inputSummary, output: `MCP dispatch error: ${message}`, success: false }
     }
@@ -456,5 +480,11 @@ export const buildMcpToolset = async (
         ? buildDeferredView(entries, dispatch)
         : buildInlineView(entries, dispatch),
     dispatch,
+    timeoutErrorFor: (exposedName) => {
+      const target = transportByExposedName.get(exposedName)
+      return target?.deepWater
+        ? options.deepWaterHandoffGuard?.timeoutErrorFor(target.originalToolName) ?? null
+        : null
+    },
   }
 }

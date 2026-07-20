@@ -186,6 +186,52 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a queued, running, or
   `needs_setup` research run still references the connector; cancel or recover
   the run, or let it reach a terminal state, before retrying disable.
+  The worker enables handoff enforcement only from server-authored message
+  metadata `integrationLaunch.{productSlug,runId}` for `deep-water`; ordinary
+  messages remain unguarded. The durable run lookup requires that exact run id,
+  message, organization, team, and thread, and a missing/mismatched row fails
+  closed. For that exact Product run, the worker atomically binds the first
+  `research_start` provider tool-call id and exact arguments before transport.
+  A still-clean Product run moves to `failed` only for a validated Ledger-local
+  pre-start rejection (`invalid_request` 400/401, `budget_exceeded` 402, or
+  `forbidden` 403), or for Nessie's own budget block while the row remains
+  truly queued, uncorrelated, and undispatched. Conflicts, upstream rejections,
+  5xx, malformed errors or malformed
+  successful tickets, throws, timeouts, uncertain claims, and uncertain ticket
+  persistence are fatal ambiguity: the Nessie run stays `running` while the
+  queue retries, using the exact persisted id and arguments. A validated
+  matching `rs_...` `id`/`job_id` plus exact Ledger status is persisted before
+  success is returned; a retry then replays that ticket and status locally
+  without another Ledger call. Managed DeepWater owns the canonical five
+  `mcp_research_*` names even when private connectors collide or the grant is
+  absent, so the server-authored prompt can never dispatch a foreign connector.
+  Same-batch status/report/cancel calls are pinned
+  to that persisted id; `research_list` and delegation stay blocked for the
+  launch turn so result delivery cannot be hidden inside a timed-out sub-agent.
+  Run-update/Knowledge calls remain blocked until exact start-result delivery
+  and remain blocked for an abandoned timed-out attempt.
+  The start result is acknowledged with its invocation-specific delivery token
+  only after connector telemetry and tool-end recording settle and its tool
+  message is incorporated; timeouts during definitive-failure persistence or
+  pending result delivery therefore stay fatal and retry-safe.
+  Ordinary setup, inference, and callback failures are promoted to that fatal
+  path while the handoff remains unresolved. A budget block may fail only a
+  truly uncorrelated queued Product row before terminalizing the Nessie run;
+  correlated running work remains recovery-safe, and a terminal claim race
+  quarantines a still-clean row. A late definitive rejection may move only the
+  exact correlated `needs_setup` row to `failed`.
+  Missing or duplicate exact handoff rows fail closed before inference;
+  on retry exhaustion every clean exact candidate moves to `needs_setup`, while
+  rows carrying external/accounting/report/Knowledge evidence are preserved. A
+  validated ticket that arrives after final-attempt recovery still attaches
+  atomically, clears the stale recovery detail, preserves its exact Ledger
+  status, and keeps the Product run `running` until mandatory terminal
+  reconciliation, so accepted paid work is neither orphaned nor prematurely
+  unblocked by the timeout race. Fatal
+  tool calls still emit their paired sanitized end event, and every started
+  same-batch tool wrapper settles before the queue attempt is released.
+  Completion also fails fatally if the model omits the required start. Ordinary
+  DeepWater calls are unchanged.
   PA message, run attachment, PA run/task, and direct `run.execute` enqueue
   commit atomically; product handoffs bypass chat engagement decisions while
   ordinary chat keeps its existing orchestration path. Duplicate enqueue
@@ -202,6 +248,8 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   Knowledge page validated against the org), and copies Ledger's terminal
   `{ amount, currency }` exactly as the immutable booked rate-card charge
   assigned to the launch run's immutable `requestedByUserId`, never the updater.
+  The locked write also enforces a terminal start ticket's exact Product status
+  mapping (`complete` → `completed`; negative terminal outcomes → `failed`).
   That mirrored charge is not a provider-invoice actual and complex runs may
   reconcile higher upstream. Re-enable preserves richer probed schemas only
   when tool names exactly match the current Ledger contract; legacy

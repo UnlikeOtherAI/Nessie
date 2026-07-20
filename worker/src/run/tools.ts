@@ -76,6 +76,7 @@ export {
 } from './workflow-builtin-tools.js'
 
 export type AgenticToolResult = {
+  acknowledgeDelivery?: () => void
   connectorUsage?: ToolExecutionUsage
   inputSummary: string
   output: string

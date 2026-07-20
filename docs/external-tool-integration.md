@@ -696,7 +696,10 @@ There is deliberately no direct-provider fallback.
   present and otherwise leaves Nessie's mirrored cost empty. Updates take a
   PostgreSQL row lock: identical delivery retries are accepted, while replacing
   an established external run id or booked cost, or moving a terminal run to a
-  different status, returns an explicit immutable-conflict error. Reconciliation
+  different status, returns an explicit immutable-conflict error. A terminal
+  status captured on the start ticket is enforced under that same lock:
+  `complete` can project only to `completed`, while `failed`, `cancelled`, and
+  `timed_out` can project only to `failed`. Reconciliation
   always books it to the run's immutable launch `requestedByUserId`, even when
   a different granted agent or user submits the terminal update. This booked charge
   is not a provider-invoice actual and complex runs may reconcile higher
@@ -704,8 +707,59 @@ There is deliberately no direct-provider fallback.
   cost or treats its cost-free MCP dispatch telemetry as the booked charge.
 - **Long-running jobs do not busy-poll.** The launch handoff starts the Ledger
   job, persists its id + `running` state, optionally reads status once, tells the
-  user it is running, and ends the bounded agent turn. A later user/status turn
-  performs one status read and fetches `research_report` only after completion;
+  user it is running, and ends the bounded agent turn. For the exact
+  `product_integration_runs` row attached to the current launch message, the
+  worker first validates the server-authored
+  `integrationLaunch: { productSlug: 'deep-water', runId }` message marker.
+  Ordinary messages without that marker are unguarded; marked messages query by
+  the exact durable run id, message, organization, team, and thread, and fail
+  closed when any field does not match. The
+  worker atomically claims the queued row as `running` and stores the provider's
+  first tool-call id plus exact arguments before transport. A still-clean row
+  moves to `failed` only for a validated Ledger-local pre-start rejection
+  (`invalid_request` 400/401, `budget_exceeded` 402, or `forbidden` 403), or for
+  Nessie's own budget block while it remains truly queued, uncorrelated, and
+  undispatched; this writes only a generic sanitized status detail. Conflicts,
+  upstream rejections, 5xx, malformed errors or malformed
+  successful tickets, throws, timeouts, uncertain claim responses, and
+  uncertain ticket writes are ambiguous and abort the Nessie run for queue
+  retry without marking the Product run failed. Recovery dispatches the same
+  logical start with the exact persisted id and arguments. Ledger success must
+  contain matching structured `id` and `job_id` values in the `rs_...`
+  namespace plus one exact supported status. The external id and status are
+  persisted synchronously before success reaches the model. If execution dies
+  after that persistence, the retry returns the stored ticket and status
+  locally without another network call. Managed DeepWater reserves the
+  canonical five `mcp_research_*` exposed names against private connector
+  collisions. Same-batch status/report/cancel calls
+  are pinned to the persisted id, while `research_list` and delegation remain
+  blocked for the launch turn. `deep_water_run_update` and Knowledge writes remain blocked
+  until exact start-result delivery; a timeout latches the abandoned attempt so late
+  same-batch promises cannot escape that gate. The invocation-specific start
+  result is acknowledged only after connector telemetry, tool-end recording,
+  and tool-message incorporation, so a timeout during definitive-failure
+  persistence or post-ticket delivery remains fatal.
+  Ordinary setup, inference, and callback failures are promoted to the same
+  retry path while unresolved. Budget blocking may settle only a truly
+  uncorrelated queued Product row before the Nessie run becomes terminal;
+  correlated running work remains recovery-safe. A late definitive rejection
+  may settle an exact correlated `needs_setup` row.
+  The run cannot complete while its attached handoff remains unattempted,
+  recoverable, or ambiguous. Non-final fatal outcomes leave the Nessie run
+  `running` and nack the queue job; final exhaustion moves every exact clean
+  candidate to `needs_setup` before terminalizing the Nessie run. Duplicate
+  exact attachments and malformed persisted external ids fail closed before
+  inference. Because an outer timeout cannot cancel a transport promise that is
+  already in flight, a validated ticket that settles after final recovery is
+  still attached atomically, clears the stale recovery detail, preserves its
+  exact Ledger status, and keeps the Product run `running` until mandatory
+  terminal reconciliation. Fatal tool calls emit their paired sanitized end
+  event before propagation, and every started same-batch tool wrapper settles
+  before the queue attempt is released. Rows with
+  external/accounting/report/Knowledge evidence are never erased or falsely
+  failed, and ordinary DeepWater calls not attached to a product launch are
+  unchanged. A later
+  user/status turn performs one status read and fetches `research_report` only after completion;
   autonomous polling remains future completion-wrapper work.
 
 ### MCP Server Lifecycle

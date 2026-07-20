@@ -6,6 +6,10 @@ import {
 } from '@nessie/schemas'
 import type { LedgerAttribution } from './ledger.js'
 import {
+  assertImmutableDeepWaterUpdate,
+  type DeepWaterImmutableRunState,
+} from './deepwater-run-update-guards.js'
+import {
   DEEP_WATER_PRODUCT_SLUG,
   DEFAULT_CURRENCY,
   TERMINAL_STATUSES,
@@ -20,6 +24,11 @@ import {
   toRecord,
   type DeepWaterRunRow,
 } from './integration-runs-mapping.js'
+
+export {
+  DeepWaterResearchRunConflictError,
+  type DeepWaterResearchRunConflictField,
+} from './deepwater-run-update-guards.js'
 
 type DeepWaterLaunchOwner = {
   connectorId: string
@@ -43,32 +52,6 @@ type DeepWaterUsageLedgerRow = {
   cost_amount: Prisma.Decimal | number | string | null
   cost_currency: string | null
   source_count: number | null
-}
-
-type DeepWaterImmutableRunState = {
-  cost_amount: Prisma.Decimal | number | string | null
-  cost_currency: string | null
-  external_run_id: string | null
-  status: ProductIntegrationRunStatus
-}
-
-export type DeepWaterResearchRunConflictField =
-  | 'bookedCost'
-  | 'externalRunId'
-  | 'terminalStatus'
-
-export class DeepWaterResearchRunConflictError extends Error {
-  readonly code = 'DEEP_WATER_RUN_IMMUTABLE_CONFLICT'
-
-  constructor(public readonly field: DeepWaterResearchRunConflictField) {
-    const label = {
-      bookedCost: 'booked cost',
-      externalRunId: 'external run id',
-      terminalStatus: 'terminal status',
-    }[field]
-    super(`Deep Water run ${label} is immutable; conflicting update rejected.`)
-    this.name = 'DeepWaterResearchRunConflictError'
-  }
 }
 
 export type DeepWaterResearchRunUpdateInput = {
@@ -215,62 +198,6 @@ const buildDeepWaterResultPatch = (
   return result as Prisma.InputJsonObject
 }
 
-const costsEqualAtStoragePrecision = (
-  stored: Prisma.Decimal | number | string,
-  incoming: number,
-): boolean => {
-  try {
-    return new Prisma.Decimal(stored.toString()).equals(
-      new Prisma.Decimal(incoming).toDecimalPlaces(6),
-    )
-  } catch {
-    return false
-  }
-}
-
-const assertImmutableDeepWaterUpdate = (
-  current: DeepWaterImmutableRunState,
-  input: {
-    costAmount: number | null
-    costCurrency: string | null
-    externalRunId: string | null
-    status: ProductIntegrationRunStatus | null
-  },
-): void => {
-  if (
-    current.external_run_id
-    && input.externalRunId
-    && current.external_run_id !== input.externalRunId
-  ) {
-    throw new DeepWaterResearchRunConflictError('externalRunId')
-  }
-
-  if (
-    TERMINAL_STATUSES.includes(current.status)
-    && input.status
-    && current.status !== input.status
-  ) {
-    throw new DeepWaterResearchRunConflictError('terminalStatus')
-  }
-
-  if ((input.costAmount === null) !== (input.costCurrency === null)) {
-    throw new Error('Deep Water booked cost amount and currency must be provided together.')
-  }
-  if (
-    current.cost_amount !== null
-    && input.costAmount !== null
-    && (
-      !costsEqualAtStoragePrecision(current.cost_amount, input.costAmount)
-      || (
-        current.cost_currency !== null
-        && current.cost_currency !== input.costCurrency
-      )
-    )
-  ) {
-    throw new DeepWaterResearchRunConflictError('bookedCost')
-  }
-}
-
 export const updateDeepWaterResearchRun = async (
   prisma: PrismaClient,
   input: DeepWaterResearchRunUpdateInput,
@@ -312,7 +239,8 @@ export const updateDeepWaterResearchRun = async (
         "external_run_id",
         "status"::text AS "status",
         "cost_amount",
-        "cost_currency"
+        "cost_currency",
+        "result_json"
       FROM "product_integration_runs"
       WHERE "id" = CAST(${input.runId} AS uuid)
         AND "organization_id" = CAST(${input.organizationId} AS uuid)

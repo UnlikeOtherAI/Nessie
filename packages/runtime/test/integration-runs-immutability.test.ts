@@ -25,6 +25,7 @@ type RunState = {
   cost_amount: string | null
   cost_currency: string | null
   external_run_id: string | null
+  result_json?: Record<string, unknown>
   status: 'queued' | 'running' | 'needs_setup' | 'completed' | 'failed' | 'warning'
 }
 
@@ -48,7 +49,7 @@ const makeRunRow = (state: RunState) => ({
     outputTier: 'full',
     searchQuality: 'premium',
   },
-  result_json: {},
+  result_json: state.result_json ?? {},
   cost_amount: state.cost_amount,
   cost_currency: state.cost_currency,
   source_count: 18,
@@ -251,6 +252,30 @@ const conflictScenarios = [
       status: 'completed',
     } satisfies RunState,
     update: { status: 'failed' } satisfies Partial<DeepWaterResearchRunUpdateInput>,
+  },
+  {
+    field: 'terminalStatus',
+    name: 'completed start ticket projected as failed',
+    state: {
+      cost_amount: null,
+      cost_currency: 'USD',
+      external_run_id: 'dw-run-123',
+      result_json: { startTicketStatus: 'complete' },
+      status: 'running',
+    } satisfies RunState,
+    update: { status: 'failed' } satisfies Partial<DeepWaterResearchRunUpdateInput>,
+  },
+  {
+    field: 'terminalStatus',
+    name: 'failed start ticket projected as completed',
+    state: {
+      cost_amount: null,
+      cost_currency: 'USD',
+      external_run_id: 'dw-run-123',
+      result_json: { startTicketStatus: 'failed' },
+      status: 'running',
+    } satisfies RunState,
+    update: { status: 'completed' } satisfies Partial<DeepWaterResearchRunUpdateInput>,
   },
   {
     field: 'externalRunId',

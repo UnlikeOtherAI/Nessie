@@ -268,6 +268,42 @@ Current Nessie slice:
   personal assistant or shared — can call the `deep_water_run_update` builtin
   after Deep Water MCP calls to project external run id, status, source count,
   cost, report URL, and Knowledge draft page id into that durable record.
+  At the worker dispatch boundary, server-authored DeepWater message metadata
+  identifies the exact durable run id; the lookup also requires the message,
+  organization, team, and thread. Messages without the marker are unguarded,
+  while an invalid marker or missing/mismatched row fails closed. The exact run
+  atomically stores the first `research_start` provider tool-call id and exact
+  arguments before transport. A still-clean Product run moves to `failed` only
+  for a validated Ledger-local pre-start rejection (`invalid_request` 400/401,
+  `budget_exceeded` 402, or `forbidden` 403), or for Nessie's own budget block
+  while the row remains truly queued, uncorrelated, and undispatched. Conflicts,
+  upstream rejections, 5xx, malformed
+  errors or malformed successful tickets, throws, timeouts, and uncertain claim
+  or ticket writes abort the Nessie run for queue retry; the retry reuses the
+  exact saved id and arguments. A matching structured `rs_...` `id`/`job_id`
+  ticket plus exact Ledger status is persisted before success is returned and
+  can be replayed locally after a crash. Managed DeepWater reserves the
+  canonical five `mcp_research_*` names against private connector collisions.
+  Same-batch status/report/cancel calls
+  are pinned to that ticket, while `research_list` and delegation stay blocked
+  for the launch turn. Run-update/Knowledge calls stay gated until exact result delivery and
+  throughout an abandoned timeout attempt. The invocation-specific delivery
+  token is acknowledged only after connector telemetry, tool-end recording,
+  and message incorporation, keeping failure-persistence and post-ticket
+  delivery timeouts fatal. Ordinary
+  setup/inference/callback failures are promoted while unresolved. A budget
+  block settles only an uncorrelated queued Product row before the Nessie run
+  becomes terminal; correlated work stays recovery-safe, and an exact late
+  definitive rejection may settle correlated `needs_setup`. Missing, duplicate,
+  malformed, omitted-start, or otherwise unresolved handoff state fails closed;
+  final retry exhaustion moves exact clean candidates to `needs_setup` while
+  preserving rows with external/accounting/report/Knowledge evidence. A late
+  validated ticket can still attach after final recovery, clear the stale
+  recovery detail, preserve its exact Ledger status, and keep the Product run
+  `running` until mandatory terminal reconciliation, avoiding orphaned or
+  prematurely unblocked paid work. Fatal tools retain paired end events and all started same-batch
+  wrappers settle before retry. Ordinary DeepWater calls outside product launch
+  handoffs are unchanged.
   Terminal write-back now reconciles an authoritative Ledger
   `cost: { amount, currency }` into `connector_usage_events` exactly once when
   returned; it leaves Nessie's mirror empty rather than estimating when Ledger

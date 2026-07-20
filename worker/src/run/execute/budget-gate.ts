@@ -5,10 +5,49 @@ import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.j
 import { publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
 
+type BudgetBlockOptions = {
+  beforeBlockedRunTerminalization?: () => Promise<void>
+}
+
+export const terminalizeBudgetBlockedRun = async (
+  deps: ExecutionDependencies,
+  context: RunContext,
+  reason: string,
+  options: BudgetBlockOptions,
+): Promise<void> => {
+  await options.beforeBlockedRunTerminalization?.()
+  const notice = `⚠️ ${reason} — this request was not run.`
+  const blockMessage = await deps.prisma.message.create({
+    data: {
+      agentId: context.agent.id,
+      content: notice,
+      role: 'assistant',
+      threadId: context.run.threadId,
+    },
+  })
+  await publishMessageCreated(deps.realtimeTransport, context, {
+    content: blockMessage.content,
+    messageId: blockMessage.id,
+    role: blockMessage.role,
+  })
+  await updateRunStatus(deps.prisma, context.run.id, 'failed')
+  await updateTaskStatus(deps.prisma, context.task.id, 'failed')
+  await setAgentStatus(deps.prisma, context.agent.id, 'idle')
+  await publishRunUpdated(deps.realtimeTransport, context, 'failed')
+  await publishTaskUpdated(
+    deps.realtimeTransport,
+    buildScopes(context),
+    context.task.id,
+    'failed',
+  )
+  console.warn(`[worker] run ${context.run.id} blocked by budget: ${reason}`)
+}
+
 export const applyBudgetGate = async (
   deps: ExecutionDependencies,
   context: RunContext,
   payload: RunExecuteJobPayload,
+  options: BudgetBlockOptions = {},
 ): Promise<
   | { blocked: true }
   | { blocked: false; modelOverride: BudgetModelOverride | null }
@@ -37,31 +76,7 @@ export const applyBudgetGate = async (
     )
   }
   if (budgetDecision.action === 'block') {
-    const notice = `⚠️ ${budgetDecision.reason} — this request was not run.`
-    const blockMessage = await deps.prisma.message.create({
-      data: {
-        agentId: context.agent.id,
-        content: notice,
-        role: 'assistant',
-        threadId: context.run.threadId,
-      },
-    })
-    await publishMessageCreated(deps.realtimeTransport, context, {
-      content: blockMessage.content,
-      messageId: blockMessage.id,
-      role: blockMessage.role,
-    })
-    await updateRunStatus(deps.prisma, context.run.id, 'failed')
-    await updateTaskStatus(deps.prisma, context.task.id, 'failed')
-    await setAgentStatus(deps.prisma, context.agent.id, 'idle')
-    await publishRunUpdated(deps.realtimeTransport, context, 'failed')
-    await publishTaskUpdated(
-      deps.realtimeTransport,
-      buildScopes(context),
-      context.task.id,
-      'failed',
-    )
-    console.warn(`[worker] run ${context.run.id} blocked by budget: ${budgetDecision.reason}`)
+    await terminalizeBudgetBlockedRun(deps, context, budgetDecision.reason, options)
     return { blocked: true }
   }
 

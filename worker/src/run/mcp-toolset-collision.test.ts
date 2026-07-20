@@ -1,0 +1,162 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import type { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext } from '@nessie/schemas'
+
+import type { DeepWaterHandoffGuard } from './deepwater-handoff-guard.js'
+import { buildMcpToolset } from './mcp-toolset.js'
+
+const registryRow = (input: {
+  id: string
+  managed: boolean
+  toolName: string
+}) => ({
+  id: input.id,
+  toolId: `mcp:inst-${input.id}:${input.toolName}`,
+  label: 'Research start',
+  description: '',
+  inputSchema: { type: 'object' },
+  transportConfig: {
+    transport: 'mcp',
+    serverId: `inst-${input.id}`,
+    toolName: input.toolName,
+  },
+  metadata: input.managed ? { requiresExplicitGrant: true } : {},
+  mcpInstanceId: `inst-${input.id}`,
+  mcpInstance: {
+    credentialRef: null,
+    scopeType: input.managed ? 'team' : 'organization',
+    scopeId: input.managed ? 'team-1' : 'org-1',
+    transportConfig: {},
+    catalogEntry: {
+      label: input.managed ? 'Deep Water' : 'Private research',
+      name: input.managed ? 'deep-water' : 'private-research',
+      visibility: input.managed ? 'public' : 'private',
+      integratedProducts: input.managed ? [{ slug: 'deep-water' }] : [],
+      authConfig: { method: 'none' },
+      defaultTransportConfig: {
+        transport: 'http',
+        url: 'https://mcp.example.com/mcp',
+      },
+    },
+  },
+})
+
+const prisma = {
+  toolRegistryEntry: {
+    // Deliberately return the private collision first.
+    findMany: async () => [
+      registryRow({ id: 'private', managed: false, toolName: 'research_start' }),
+      registryRow({ id: 'private-status', managed: false, toolName: 'research_status' }),
+      registryRow({ id: 'private-punctuation', managed: false, toolName: 'research-start' }),
+      registryRow({ id: 'managed', managed: true, toolName: 'research_start' }),
+    ],
+  },
+  mcpServerCredentialOverride: {
+    findUnique: async () => null,
+  },
+  mcpServerInstance: {
+    findUnique: async () => ({ credentialRef: null, id: 'inst-private' }),
+  },
+} as unknown as PrismaClient
+
+const actorContext = {
+  actor: { actorType: 'agent', actorId: 'agent-1', roles: [] },
+  tenant: {
+    organizationId: 'org-1',
+    projectId: null,
+    teamId: 'team-1',
+  },
+  actionContext: { effectiveUserId: 'user-1' },
+} as unknown as AuthorizedActionContext
+
+const build = (
+  toolPolicy: Record<string, boolean> | null,
+  deepWaterHandoffGuard?: DeepWaterHandoffGuard,
+) =>
+  buildMcpToolset(
+    prisma,
+    'org-1',
+    toolPolicy,
+    actorContext,
+    {
+      agentId: 'agent-1',
+      agentKind: 'personal_assistant',
+      channelId: 'channel-1',
+    },
+    { actorId: 'agent-1', organizationId: 'org-1' },
+    { deepWaterHandoffGuard },
+  )
+
+test('managed DeepWater owns the canonical exposed name despite row order', async () => {
+  const toolset = await build({ managed: true })
+  assert.deepEqual(
+    toolset.entries.map((entry) => ({
+      exposedName: entry.exposedName,
+      instanceId: entry.instanceId,
+    })),
+    [
+      {
+        exposedName: 'mcp_research_start',
+        instanceId: 'inst-managed',
+      },
+      {
+        exposedName: 'mcp_research_start_2',
+        instanceId: 'inst-private',
+      },
+      {
+        exposedName: 'mcp_research_status_2',
+        instanceId: 'inst-private-status',
+      },
+      {
+        exposedName: 'mcp_research_start_3',
+        instanceId: 'inst-private-punctuation',
+      },
+    ],
+  )
+})
+
+test('private collision cannot take the reserved name when DeepWater is ungranted', async () => {
+  const toolset = await build(null)
+  assert.deepEqual(
+    toolset.entries.map((entry) => entry.exposedName),
+    ['mcp_research_start_2', 'mcp_research_status_2', 'mcp_research_start_3'],
+  )
+})
+
+test('managed start delivery is acknowledged only by the owning loop', async () => {
+  const deliveryToken = Symbol('start-delivery')
+  let acknowledgements = 0
+  const toolset = await build(
+    { managed: true },
+    {
+      assertCompletion: () => undefined,
+      dispatchDeepWater: async () => ({
+        deliveryToken,
+        result: {
+          output: '{"id":"rs_ticket"}',
+          raw: null,
+          success: true,
+        },
+        transportInvoked: false,
+      }),
+      markDelivered: (token) => {
+        assert.equal(token, deliveryToken)
+        acknowledgements += 1
+      },
+      suppressBuiltin: async () => false,
+      timeoutErrorFor: () => null,
+    },
+  )
+
+  const result = await toolset.dispatch(
+    'mcp_research_start',
+    { query: 'test' },
+    'tool-call-1',
+  )
+  assert.equal(acknowledgements, 0)
+  assert.ok(result.acknowledgeDelivery)
+  result.acknowledgeDelivery()
+  assert.equal(acknowledgements, 1)
+})

@@ -2,6 +2,11 @@ import { markRecallsInjected } from '@nessie/memory'
 import {
   attributionFromActorContext,
   BUILTIN_TOOL_DEFINITIONS,
+  failDeepWaterHandoffStart,
+  findDeepWaterHandoffRun,
+  markAmbiguousDeepWaterHandoffRecoveryNeeded,
+  markDeepWaterHandoffRecoveryNeeded,
+  type DeepWaterHandoffRunLocator,
 } from '@nessie/runtime'
 import {
   parseAgentId,
@@ -10,8 +15,21 @@ import {
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
 import { buildMcpToolset } from '../mcp-toolset.js'
+import {
+  createDeepWaterHandoffGuard,
+  DeepWaterHandoffFatalError,
+  type DeepWaterHandoffGuard,
+  DeepWaterHandoffInvariantError,
+} from '../deepwater-handoff-guard.js'
+import { promoteUnresolvedDeepWaterHandoffError } from '../deepwater-handoff-failure.js'
+import { resolveDeepWaterHandoffMarker } from '../deepwater-handoff-metadata.js'
 import { ensureRunPlanContext, markRunPlanStarted } from '../plans.js'
 import { resolveAgentTools } from '../tool-policy.js'
+import {
+  isFinalQueueAttempt,
+  shouldRetryRunWithoutTerminalizing,
+  type QueueAttempt,
+} from '../tool-execution-errors.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import { applyBudgetGate } from './budget-gate.js'
 import { completeRunExecution } from './completion.js'
@@ -34,6 +52,7 @@ import type { ExecutionDependencies, RunPlanContext } from './types.js'
 export const executeRunJob = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
+  queueAttempt: QueueAttempt,
 ): Promise<void> => {
   // Idempotency guard: skip if this run already reached a terminal state.
   //
@@ -63,7 +82,7 @@ export const executeRunJob = async (
 
   const message = await deps.prisma.message.findUnique({
     where: { id: payload.messageId },
-    select: { content: true },
+    select: { content: true, metadata: true },
   })
 
   if (!message) {
@@ -71,22 +90,72 @@ export const executeRunJob = async (
   }
 
   const prompt = payload.promptOverride?.trim() || message.content
+  const handoffMarker = resolveDeepWaterHandoffMarker(message.metadata)
 
   // External-agent turns bypass the inference loop entirely: the driver proxies
   // the message to the external product over MCP and owns its own run
   // lifecycle. Nessie runs no inference for these runs (plan §5).
-  if (context.agent.executionMode === 'external_mcp') {
+  if (
+    context.agent.executionMode === 'external_mcp'
+    && handoffMarker.kind === 'none'
+  ) {
     await runExternalConversation(deps, payload, context, prompt)
     return
   }
 
   let streamStarted = false
   let planContext: RunPlanContext | null = null
+  let deepWaterHandoffGuard: DeepWaterHandoffGuard | null = null
+  const handoffTeamId =
+    payload.actorContext.tenant.teamId ?? payload.actorContext.actionContext.teamId ?? null
+  let handoffLocator: DeepWaterHandoffRunLocator | null = null
+  if (handoffMarker.kind === 'found' && handoffTeamId) {
+    handoffLocator = {
+      messageId: payload.messageId,
+      organizationId: context.channel.organizationId,
+      runId: handoffMarker.runId,
+      teamId: handoffTeamId,
+      threadId: context.run.threadId,
+    }
+  }
 
   try {
+    if (
+      handoffMarker.kind === 'invalid'
+      || (handoffMarker.kind === 'found' && !handoffLocator)
+    ) {
+      throw new DeepWaterHandoffInvariantError(
+        handoffMarker.kind === 'found' ? handoffMarker.runId : null,
+      )
+    }
+    deepWaterHandoffGuard = await createDeepWaterHandoffGuard({
+      locator: handoffLocator,
+      prisma: deps.prisma,
+    })
+    if (context.agent.executionMode === 'external_mcp') {
+      throw new DeepWaterHandoffInvariantError(handoffLocator?.runId ?? null)
+    }
     await validateRunActorContext(deps.prisma, payload.actorContext, context)
 
-    const budgetGate = await applyBudgetGate(deps, context, payload)
+    const budgetGate = await applyBudgetGate(deps, context, payload, {
+      ...(handoffLocator
+        ? {
+            beforeBlockedRunTerminalization: async () => {
+              const failed = await failDeepWaterHandoffStart(deps.prisma, {
+                ...handoffLocator,
+                runId: handoffLocator.runId,
+              })
+              if (failed) return
+              const lookup = await findDeepWaterHandoffRun(
+                deps.prisma,
+                handoffLocator,
+              )
+              if (lookup.kind === 'found' && lookup.run.status === 'failed') return
+              throw new DeepWaterHandoffInvariantError(handoffLocator.runId)
+            },
+          }
+        : {}),
+    })
     if (budgetGate.blocked) {
       return
     }
@@ -103,6 +172,12 @@ export const executeRunJob = async (
 
     const claimed = await claimRunForExecution(deps.prisma, context.run.id)
     if (!claimed) {
+      if (handoffLocator) {
+        await markDeepWaterHandoffRecoveryNeeded(deps.prisma, {
+          ...handoffLocator,
+          runId: handoffLocator.runId,
+        })
+      }
       console.log(`[worker] run ${context.run.id} already claimed or terminal; skipping`)
       return
     }
@@ -152,6 +227,7 @@ export const executeRunJob = async (
         runId: context.run.id,
       }),
       {
+        deepWaterHandoffGuard,
         ledgerIdentity: deps.ledgerIdentity,
         secretResolver: deps.mcpSecrets?.resolver,
       },
@@ -186,11 +262,13 @@ export const executeRunJob = async (
       allowedToolIds,
       budgetModelOverride: budgetGate.modelOverride,
       initialMessages,
+      deepWaterHandoffGuard,
       mcpToolset,
       resolvedToolIds,
       toolDefs,
       toolPolicy,
     })
+    deepWaterHandoffGuard.assertCompletion()
 
     const responseText = stripLeadingSectionTag(loopResult.finalText)
 
@@ -201,7 +279,29 @@ export const executeRunJob = async (
       responseText,
       toolCallsUsed: loopResult.toolCallsUsed,
     })
-  } catch (error) {
+  } catch (caughtError) {
+    const error = promoteUnresolvedDeepWaterHandoffError(
+      caughtError,
+      deepWaterHandoffGuard,
+    )
+    if (shouldRetryRunWithoutTerminalizing(error, queueAttempt)) throw error
+    if (
+      isFinalQueueAttempt(queueAttempt)
+      && error instanceof DeepWaterHandoffFatalError
+      && handoffLocator
+    ) {
+      if (error.handoffRunId) {
+        await markDeepWaterHandoffRecoveryNeeded(deps.prisma, {
+          ...handoffLocator,
+          runId: error.handoffRunId,
+        })
+      } else {
+        await markAmbiguousDeepWaterHandoffRecoveryNeeded(
+          deps.prisma,
+          handoffLocator,
+        )
+      }
+    }
     await handleRunExecutionFailure(deps, payload, context, {
       error,
       planContext,

@@ -197,7 +197,45 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   then policy lock, then performs the final 6/6 read and durable run insert.
   Disable returns `LEDGER_DEEPWATER_ACTIVE_RUNS` for queued, running, or
   `needs_setup` research; cancel/recover the run or wait for a terminal state
-  before retrying. PA message creation, run attachment, PA run/task creation,
+  before retrying. Handoff enforcement is activated only by server-authored
+  DeepWater message metadata `integrationLaunch.{productSlug,runId}`; ordinary
+  messages remain unguarded. The lookup requires that exact durable run id plus
+  message/org/team/thread, and missing or mismatched state fails closed. For
+  that exact Product run, the worker binds the first `research_start` provider
+  tool-call id and exact arguments before transport. A still-clean Product run
+  moves to `failed` only for a validated Ledger-local pre-start rejection
+  (`invalid_request` 400/401, `budget_exceeded` 402, or `forbidden` 403), or for
+  Nessie's own budget block while it remains truly queued, uncorrelated, and
+  undispatched. Conflicts, upstream rejections, 5xx, malformed errors or malformed
+  successful tickets, throws, timeouts, and uncertain claim or
+  ticket-persistence outcomes abort the Nessie run for queue retry without
+  terminalizing it; recovery reuses the exact saved correlation and arguments.
+  A validated matching `rs_...` ticket and exact Ledger status are persisted
+  before success is returned, and a retry can replay both locally without
+  transport. The managed integration reserves the canonical five
+  `mcp_research_*` names against private connector collisions. Same-batch
+  status/report/cancel calls are pinned to that id, while
+  `research_list` and delegation remain blocked for the launch turn. Run-update and
+  Knowledge calls stay blocked until exact start-result delivery and throughout an abandoned
+  timeout attempt. Result delivery uses an invocation-specific token
+  acknowledged only after connector telemetry, tool-end recording, and tool
+  message incorporation; failure-persistence and post-ticket/pre-delivery
+  timeouts therefore remain fatal. Ordinary
+  setup/inference/callback failures are promoted while unresolved. Budget
+  blocking settles only a truly uncorrelated queued Product row before
+  terminalizing the Nessie run; correlated work remains recovery-safe, and an
+  exact late definitive rejection may settle correlated `needs_setup`.
+  Missing/duplicate attachment state and an
+  omitted required start fail closed; exhausted clean candidates become
+  `needs_setup`, while rows with external/accounting/report/Knowledge evidence
+  are preserved. A validated ticket that settles after final recovery still
+  attaches, clears the stale recovery detail, preserves its exact Ledger status,
+  and keeps the Product run `running` until mandatory terminal reconciliation,
+  preventing accepted work from being orphaned or prematurely unblocked. Fatal tools
+  retain paired sanitized end events, and the worker awaits every started
+  same-batch tool wrapper before retry. Ordinary DeepWater calls remain
+  unchanged. PA message creation,
+  run attachment, PA run/task creation,
   and direct `run.execute` enqueue are atomic; product handoffs bypass chat
   engagement decisions while ordinary chat remains unchanged. Duplicate
   enqueue conflicts roll back the duplicate unit, and realtime publication is
@@ -233,7 +271,9 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   record (same team + thread; `knowledgePageId` validated against the org) and
   mirrors Ledger's terminal amount and currency exactly as the immutable booked
   rate-card charge assigned to the launch run's `requestedByUserId`, never the
-  user who delivers a later update. It is not a provider-invoice actual and
+  user who delivers a later update. The same locked write rejects a Product
+  status that contradicts a terminal start ticket (`complete` maps to
+  `completed`; failed/cancelled/timed_out map to `failed`). It is not a provider-invoice actual and
   complex runs may reconcile higher upstream. Each org/team transition is cross-process
   serialized with a PostgreSQL transaction-scoped advisory lock; connector
   rows and the enablement toggle mutate in one transaction and roll back

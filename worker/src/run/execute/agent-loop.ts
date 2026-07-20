@@ -2,6 +2,7 @@ import { loadConfig } from '@nessie/config'
 import {
   attributionFromActorContext,
   BUILTIN_TOOL_DEFINITIONS,
+  DEEP_WATER_START_FAILURE_DETAIL,
   type InferenceResult,
   type InvocationRecord,
   type ProviderMessage,
@@ -18,6 +19,7 @@ import { runDelegate } from '../delegate.js'
 import { runInferenceGraph } from '../inference.js'
 import { createProviderRequestHeadersResolver } from '../inference-identity.js'
 import type { McpToolset } from '../mcp-toolset.js'
+import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { authorizeToolCall } from '../tool-policy.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
@@ -51,6 +53,7 @@ export const runExecutionAgentLoop = async (
   input: {
     allowedToolIds: Set<string>
     budgetModelOverride: BudgetModelOverride | null
+    deepWaterHandoffGuard: DeepWaterHandoffGuard
     initialMessages: ProviderMessage[]
     mcpToolset: McpToolset
     resolvedToolIds: Set<string>
@@ -179,6 +182,21 @@ export const runExecutionAgentLoop = async (
     },
   })
 
+  const executeGuardedBuiltin = async (
+    toolName: string,
+    args: Record<string, unknown>,
+    toolActorContext: ReturnType<typeof buildToolActorContext>,
+  ) => {
+    if (await input.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
+      return {
+        inputSummary: summarizeToolInput(args),
+        output: DEEP_WATER_START_FAILURE_DETAIL,
+        success: false,
+      }
+    }
+    return executeBuiltinTool(toolName, args, buildBuiltinCtx(toolActorContext))
+  }
+
   const loopResult = await runAgenticLoop({
     budget: DEFAULT_BUDGET,
     callbacks: {
@@ -251,11 +269,18 @@ export const runExecutionAgentLoop = async (
     },
     executeTool: async (toolName, args, toolCallId) => {
       const toolActorContext = buildToolActorContext(payload.actorContext, context, toolName)
+      if (await input.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
+        return {
+          inputSummary: summarizeToolInput(args),
+          output: DEEP_WATER_START_FAILURE_DETAIL,
+          success: false,
+        }
+      }
       if (toolName === 'delegate') {
         const result = await runDelegate(args, {
           mcpToolset: input.mcpToolset,
           runInference: runSubAgentInference,
-          executeBuiltinTool: (n, a) => executeBuiltinTool(n, a, buildBuiltinCtx(toolActorContext)),
+          executeBuiltinTool: (n, a) => executeGuardedBuiltin(n, a, toolActorContext),
           builtinDescriptors: subAgentBuiltinDescriptors,
           allowedBuiltinIds: subAgentBuiltinIds,
         })
@@ -341,6 +366,7 @@ export const runExecutionAgentLoop = async (
     initialMessages: input.initialMessages,
     runInference: (messages) =>
       runMainInference(messages, [...input.toolDefs, ...mcpView.descriptors]),
+    toolTimeoutError: input.mcpToolset.timeoutErrorFor,
     tools: mainToolDefs,
   })
 

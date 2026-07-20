@@ -18,6 +18,7 @@ import {
   trimConversationToFit,
 } from './context-management.js'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
+import { isFatalToolExecutionError } from './tool-execution-errors.js'
 import { summarizeToolInput } from './tool-util.js'
 
 export type BudgetLimits = {
@@ -78,6 +79,7 @@ type ExecuteToolFn = (
   args: Record<string, unknown>,
   toolCallId: string,
 ) => Promise<{
+  acknowledgeDelivery?: () => void
   connectorUsage?: ConnectorUsage
   output: string
   success: boolean
@@ -91,11 +93,14 @@ const withTimeout = async <T>(
   promise: Promise<T>,
   timeoutMs: number,
   label: string,
+  timeoutError?: () => Error | null,
 ): Promise<T> => {
   let timer: ReturnType<typeof setTimeout>
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+      () => reject(
+        timeoutError?.() ?? new Error(`${label} timed out after ${timeoutMs}ms`),
+      ),
       timeoutMs,
     )
   })
@@ -186,6 +191,7 @@ export const runAgenticLoop = async (input: {
   executeTool: ExecuteToolFn
   initialMessages: ProviderMessage[]
   runInference: (messages: ProviderMessage[]) => Promise<InferenceResult>
+  toolTimeoutError?: (toolName: string) => Error | null
   tools: ToolSchemaDescriptor[]
 }): Promise<LoopResult> => {
   const { budget, callbacks, executeTool, initialMessages } = input
@@ -290,7 +296,7 @@ export const runAgenticLoop = async (input: {
 
     let loopDetected = false
 
-    const toolResults = await Promise.all(
+    const toolOutcomes = await Promise.allSettled(
       result.toolCalls.map(async (tc: ProviderToolCall) => {
         const sig = makeToolCallSignature(tc.toolName, tc.arguments)
         const count = (signatureCounts.get(sig) ?? 0) + 1
@@ -325,6 +331,7 @@ export const runAgenticLoop = async (input: {
             executeTool(tc.toolName, tc.arguments, tc.toolCallId),
             budget.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
             tc.toolName,
+            () => input.toolTimeoutError?.(tc.toolName) ?? null,
           )
           const durationMs = Date.now() - startedAt.getTime()
           if (toolResult.success) {
@@ -343,17 +350,25 @@ export const runAgenticLoop = async (input: {
           )
           return { ...toolResult, toolCallId: tc.toolCallId, toolName: tc.toolName }
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Tool execution failed'
+          const fatal = isFatalToolExecutionError(error)
+          const errorMsg = fatal
+            ? 'Tool execution could not be confirmed; retrying safely.'
+            : error instanceof Error ? error.message : 'Tool execution failed'
           circuitBreaker.recordError(tc.toolName)
           const durationMs = Date.now() - startedAt.getTime()
-          await callbacks.onToolCallEnd(
-            tc.toolName,
-            errorMsg,
-            durationMs,
-            false,
-            summarizeToolInput(tc.arguments),
-            startedAt,
-          )
+          try {
+            await callbacks.onToolCallEnd(
+              tc.toolName,
+              errorMsg,
+              durationMs,
+              false,
+              summarizeToolInput(tc.arguments),
+              startedAt,
+            )
+          } catch (callbackError) {
+            if (!fatal) throw callbackError
+          }
+          if (fatal) throw error
           return {
             output: errorMsg,
             success: false,
@@ -364,6 +379,17 @@ export const runAgenticLoop = async (input: {
         }
       }),
     )
+    const rejectedTool = toolOutcomes.find(
+      (outcome): outcome is PromiseRejectedResult =>
+        outcome.status === 'rejected' && isFatalToolExecutionError(outcome.reason),
+    ) ?? toolOutcomes.find(
+      (outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected',
+    )
+    if (rejectedTool) throw rejectedTool.reason
+    const toolResults = toolOutcomes.map((outcome) => {
+      if (outcome.status === 'rejected') throw outcome.reason
+      return outcome.value
+    })
 
     toolCallsUsed += toolResults.length
 
@@ -373,6 +399,7 @@ export const runAgenticLoop = async (input: {
         role: 'tool',
         toolCallId: tr.toolCallId,
       })
+      tr.acknowledgeDelivery?.()
     }
 
     if (loopDetected) {

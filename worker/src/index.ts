@@ -164,6 +164,7 @@ export const startWorker = async (
           },
         },
         payload,
+        { attempt: job.attempt, maxAttempts: job.maxAttempts },
       )
     },
     {

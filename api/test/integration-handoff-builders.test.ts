@@ -26,6 +26,24 @@ test('DeepWater handoff maps legacy launcher controls to Ledger MCP contract', (
   assert.match(message, /Depth: heavy/)
   assert.match(message, /Recency: recent/)
   assert.match(message, /mcp_research_start/)
+  assert.match(message, /Do not use delegate/)
+  assert.match(message, /binds the first mcp_research_start tool-call id and exact arguments/)
+  assert.match(message, /permits only that logical start/)
+  assert.match(message, /validated Ledger-local invalid-request, permission, or budget rejection is recorded failed automatically/)
+  assert.match(message, /successful response without matching usable Ledger id, job_id, and supported status fields is ambiguous/)
+  assert.match(message, /do not retry it yourself or call dependent tools/)
+  assert.match(message, /retries with the exact saved id and arguments/)
+  assert.match(message, /moves exhausted ambiguity to needs_setup/)
+  assert.match(message, /replay an already-persisted Ledger ticket/)
+  assert.match(message, /with its exact status/)
+  assert.match(message, /If status is complete, failed, cancelled, or timed_out/)
+  assert.match(message, /never overwrite it with running/)
+  assert.match(message, /including after a terminal replay/)
+  assert.match(message, /research was rejected/)
+  assert.match(
+    message,
+    /stop without calling deep_water_run_update, status, report, or Knowledge tools/,
+  )
   assert.match(message, /mcp_research_status/)
   assert.match(message, /mcp_research_report/)
   assert.doesNotMatch(message, /mcp_research_create/)
@@ -48,6 +66,11 @@ test('DeepWater handoff maps legacy launcher controls to Ledger MCP contract', (
   assert.match(message, /concise completed-report summary/)
   assert.match(message, /instead of copying an unbounded report/)
   assert.match(message, /deep_water_run_update again/)
+  assert.ok(
+    message.indexOf('Nessie durably binds')
+      < message.indexOf('After mcp_research_start returns'),
+  )
+  assert.doesNotMatch(message, /do not retry it in this turn/)
   assert.ok(
     message.indexOf('mandatory and must succeed') < message.indexOf('Only after the terminal run update succeeds'),
   )

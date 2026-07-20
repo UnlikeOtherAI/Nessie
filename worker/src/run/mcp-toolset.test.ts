@@ -4,18 +4,13 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
+import { DeepWaterHandoffInvariantError } from './deepwater-handoff-guard.js'
 import {
   addDeepWaterIdentityHeaders,
   buildMcpToolset,
   isManagedDeepWaterCatalog,
   type McpToolPolicy,
 } from './mcp-toolset.js'
-
-/**
- * Scope-exposure rules for the MCP toolset: which instances' tools a given
- * run can see. Uses a mocked Prisma — no MCP traffic is exchanged (dispatch is
- * not invoked).
- */
 
 type RowSeed = {
   catalogName?: string
@@ -33,6 +28,7 @@ const makePrisma = (
   rows: RowSeed[],
   options: {
     credentialOverrideRef?: string
+    onConnectorUsage?: () => void
     onCredentialOverrideLookup?: () => void
   } = {},
 ): PrismaClient => {
@@ -85,6 +81,12 @@ const makePrisma = (
         return options.credentialOverrideRef
           ? { credentialRef: options.credentialOverrideRef }
           : null
+      },
+    },
+    connectorUsageEvent: {
+      create: async () => {
+        options.onConnectorUsage?.()
+        return {}
       },
     },
   } as unknown as PrismaClient
@@ -171,9 +173,6 @@ test('team and channel scopes follow the run context', async () => {
 })
 
 test('explicit-grant DeepWater tools are OFF by default and need an explicit allow', async () => {
-  // A team-scoped, Ledger-backed DeepWater instance projects research_start flagged
-  // requiresExplicitGrant: team scope alone must NOT expose it — only an
-  // explicit per-agent allow does, for PA or shared agents alike.
   const rows: RowSeed[] = [
     {
       id: 'dw',
@@ -183,9 +182,7 @@ test('explicit-grant DeepWater tools are OFF by default and need an explicit all
       requiresExplicitGrant: true,
     },
   ]
-  // Default off: a shared agent in-team with no policy does NOT see it.
   assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), [])
-  // Default off: an in-team PA with no grant does NOT see it either.
   assert.deepEqual(await exposedNames(rows, { agentKind: 'personal_assistant' }), [])
   // Exposed ONLY with an explicit allow (shared agent).
   assert.deepEqual(
@@ -375,6 +372,89 @@ test('DeepWater rejects dispatch identity without a stable provider tool-call id
   )
 })
 
+test('suppressed handoff calls do not record connector usage without a transport dispatch', async () => {
+  let usageEvents = 0
+  const toolset = await buildMcpToolset(
+    makePrisma(
+      [{
+        catalogName: 'deep-water',
+        catalogVisibility: 'public',
+        integratedProductSlugs: ['deep-water'],
+        id: 'dw',
+        toolName: 'research_status',
+        scopeType: 'team',
+        scopeId: 'team-1',
+        requiresExplicitGrant: true,
+      }],
+      { onConnectorUsage: () => { usageEvents += 1 } },
+    ),
+    'org-1',
+    { dw: true },
+    actorContext(),
+    { agentId: 'agent-1', agentKind: 'personal_assistant', channelId: 'channel-1' },
+    { organizationId: 'org-1', actorId: 'agent-1' },
+    {
+      deepWaterHandoffGuard: {
+        assertCompletion: () => undefined,
+        dispatchDeepWater: async () => ({
+          deliveryToken: null,
+          result: { output: 'suppressed', raw: null, success: false },
+          transportInvoked: false,
+        }),
+        markDelivered: () => undefined,
+        suppressBuiltin: async () => false,
+        timeoutErrorFor: () => null,
+      },
+    },
+  )
+
+  const result = await toolset.dispatch('mcp_research_status', { id: 'rs_ticket' }, 'call-2')
+  assert.equal(result.success, false)
+  assert.equal(result.output, 'suppressed')
+  assert.equal(usageEvents, 0)
+})
+
+test('pre-transport fatal handoff errors do not record connector usage', async () => {
+  let usageEvents = 0
+  const toolset = await buildMcpToolset(
+    makePrisma(
+      [{
+        catalogName: 'deep-water',
+        catalogVisibility: 'public',
+        integratedProductSlugs: ['deep-water'],
+        id: 'dw',
+        toolName: 'research_start',
+        scopeType: 'team',
+        scopeId: 'team-1',
+        requiresExplicitGrant: true,
+      }],
+      { onConnectorUsage: () => { usageEvents += 1 } },
+    ),
+    'org-1',
+    { dw: true },
+    actorContext(),
+    { agentId: 'agent-1', agentKind: 'personal_assistant', channelId: 'channel-1' },
+    { organizationId: 'org-1', actorId: 'agent-1' },
+    {
+      deepWaterHandoffGuard: {
+        assertCompletion: () => undefined,
+        dispatchDeepWater: async () => {
+          throw new DeepWaterHandoffInvariantError('handoff-run-1')
+        },
+        markDelivered: () => undefined,
+        suppressBuiltin: async () => false,
+        timeoutErrorFor: () => null,
+      },
+    },
+  )
+
+  await assert.rejects(
+    toolset.dispatch('mcp_research_start', { query: 'test' }, 'call-1'),
+    DeepWaterHandoffInvariantError,
+  )
+  assert.equal(usageEvents, 0)
+})
+
 test('an explicit per-agent policy verdict overrides scope defaults both ways', async () => {
   const rows: RowSeed[] = [
     { id: 'allow-me', toolName: 'far_tool', scopeType: 'channel', scopeId: 'channel-9' },
@@ -404,7 +484,6 @@ test('toolset picks deferred mode above the inline limit', async () => {
       { organizationId: 'org-1', actorId: 'agent-1' },
       { inlineToolLimit },
     )
-
   const inline = await buildWith(10)
   assert.equal(inline.mode, 'inline')
   const inlineView = inline.createView()
