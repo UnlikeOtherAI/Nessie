@@ -291,19 +291,27 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   tool-name contract; legacy direct-provider projections are replaced.
 
 Customer tariffs, statements, subscriptions, adjustments, and Stripe lifecycle
-stay in UOA. Nessie uses its dedicated Ledger reader key only for immutable raw
-metering and provider-cost attribution and ignores every Ledger commercial
-field. Subscription summary, Checkout, and Portal instead use the separate Nessie-only
+stay in UOA. Ledger's raw reporting API is UOA-only; Nessie has no billing
+reader key, legacy Ledger billing route, or parallel customer raw-metering UI.
+Its Ledger product key is used only to execute and attribute Nessie's paid
+inference, DeepWater, Serper, and other metered calls. UOA reads Ledger and
+authors the service/team/user breakdown. The canonical UOA customer statement,
+Checkout, Portal, and cancellation
+preview/confirm instead use the separate Nessie-only
 `UOA_BILLING_APP_KEY_NESSIE` and a fresh 45-second actor assertion signed by
 `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`. The main-branch deploy validates those
 credentials on the Actions runner and installs them atomically through a
-dependency-free host script. Requests must bind the exact linked UOA
-user/org/team, and Checkout/Portal returns are server-pinned to
-`NESSIE_ADMIN_PUBLIC_URL`. Nessie never stores commercial tariff or Stripe
-customer/subscription/invoice state. Direct cancellation remains unavailable
-until UOA supplies a versioned preview/confirm view model and opaque action
-token after checking direct entitlements and indirect Ledger use; Nessie must
-only render and relay that UOA decision.
+dependency-free host script. Requests bind the exact linked UOA user/org/team.
+Nessie renders UOA's public version-1 display model without tariff math: exact
+plan/markup copy, service and user usage, commercial lines, totals, action
+labels, disabled reasons, and cancellation choices all come from UOA. For every
+hosted or cancellation-preview action, the API re-fetches the statement,
+validates the frozen action id/path and subject, then proxies the UOA-produced
+body unchanged; browsers cannot supply action bodies or return URLs.
+Cancellation confirmation carries only UOA's opaque token, idempotency key, and
+selected UOA choice. UOA alone evaluates and revalidates team-wide direct
+access and indirect Ledger use. Nessie never stores commercial tariff, Stripe
+customer/subscription/invoice, statement, or cancellation state.
 
 Builtin `web_search` is also Ledger-only. Agent, delegated sub-agent, and
 workflow calls use `${LEDGER_PUBLIC_URL}/v1/serper/search` with Nessie's

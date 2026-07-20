@@ -230,30 +230,11 @@ The `GET /api/ledger/tokens/pricing/{profileId}/audit` endpoint queries the audi
 ## 10) Customer usage metering
 
 The local Nessie token/connector/file ledgers above are operational telemetry;
-they are not the invoice authority. Immutable provider/API usage is read from
-Ledger:
-
-```http
-GET /api/ledger/billing/usage?month=2026-07&groupBy=service
-Authorization: Bearer <Nessie session>
-```
-
-The API accepts `groupBy=service|team|user`, requires an active-team owner or
-admin, and verifies that the Nessie team maps exactly to the UOA organization
-and team selected at SSO. It then calls Ledger server-to-server with:
-
-- `LEDGER_BILLING_READ_APP_KEY_NESSIE`, a dedicated read-only key bound to the
-  `nessie` product and carrying no provider grants;
-- a fresh confidential UOA delegation whose exact scope is `billing.read`;
-- the signed UOA organization/team as the query scope.
-
-The metering key is never sent to the browser and must not equal or fall back
-to the Nessie inference key (`LEDGER_PROXY_TOKEN` /
-`NESSIE_MODEL_API_KEY`). Nessie's app key identifies the calling application
-only. UOA delegation identifies the user/organization/team, while
-agent/run/tool provenance remains a separate signed context on metered calls.
-Other applications must use their own product-bound keys; webhook secrets are
-not app keys.
+they are not the invoice authority or a customer billing source. Ledger's
+versioned raw-metering reader is restricted to UOA's dedicated billing-service
+principal. Nessie has no Ledger billing-reader credential, customer metering
+route, or parallel raw-metering panel. It never consumes the deprecated Ledger
+schema-v4 billing response.
 
 Nessie's builtin web search follows the same metering boundary. Agent,
 delegated sub-agent, and workflow `web_search` calls use the Nessie app key
@@ -263,66 +244,57 @@ user/org/team/agent/run/tool-call provenance. Workflow jobs first bind the
 queued actor context to the durable workflow actor and installation scope.
 There is no direct `google.serper.dev` or `SERPER_API_KEY` fallback. The
 corresponding Nessie `ConnectorUsageEvent` remains useful operational telemetry
-but is not an invoice input and must never be rated locally.
-
-During migration, the adapter accepts Ledger's additive schema-v4 response but
-uses only its raw metering fields:
-
-- raw provider usage in its real unit (`tokens`, `searches`, `researches`, and
-  future service meters);
-- raw provider estimated/actual cost with exact currency and decimal values;
-- independent billing, immediate-caller, and durable-origin product dimensions,
-  so a DeepWater call initiated through Nessie remains attributable to both
-  products without double-counting it;
-- an opaque immutable Ledger snapshot cursor.
-
-Nessie ignores Ledger's legacy billable units, billing base, markup, customer
-charge, tariff, subscription, collection, and Stripe fields. Ledger is the
-metering authority only. UOA owns rating and every commercial billing result.
-The compatibility adapter will move to Ledger's raw-only metering endpoint when
-that versioned contract is available.
-
-The UI never adds unlike units together or describes searches/researches as
-tokens, and it performs no tariff or customer-charge calculation. `service`
-and `user` groupings provide team-level and per-user transparency; the `team`
-grouping explicitly echoes the one active signed team. Switching to another
-team requires a matching UOA SSO workspace rather than widening a delegation.
-Upstream auth failures surface as usage errors, not Nessie 401s, so they cannot
-trigger session-refresh/logout loops.
+but is not an invoice input and must never be rated locally. UOA queries
+Ledger's strict raw contract for the signed billing period, product,
+organization, and team, then produces the canonical statement below. That
+statement is Nessie's only customer service/team/user usage and billing view.
 
 ### 10.1 SSO-owned commercial billing
 
 Nessie does not create, edit, copy, cache, or calculate commercial tariffs and
 does not hold Stripe customer, subscription, invoice, Price, statement,
 adjustment, entitlement, or cancellation-intent state. UOA remains the sole
-commercial authority. Active-team owners/admins currently use these Nessie
-proxy endpoints:
+commercial authority and publishes the open protocol at
+`GET /schemas/billing-statement-v1.json`. Active-team owners/admins use these
+Nessie proxy endpoints:
 
-- `GET /api/billing/subscription`;
-- `POST /api/billing/checkout`;
-- `POST /api/billing/portal`.
+- `GET /api/billing/statement`;
+- `POST /api/billing/actions/upgrade`;
+- `POST /api/billing/actions/portal`;
+- `POST /api/billing/cancellation/preview`;
+- `POST /api/billing/cancellation/confirm`.
 
-The API first resolves the same exact linked UOA user/organization/team used by
-the Ledger metering view and rejects local/UOA workspace drift. It then calls
-UOA with Nessie's dedicated `UOA_BILLING_APP_KEY_NESSIE` and a fresh RS256
+The API resolves the exact linked UOA user/organization/team and rejects
+local/UOA workspace drift. It then calls UOA with Nessie's dedicated
+`UOA_BILLING_APP_KEY_NESSIE` and a fresh RS256
 `X-UOA-Actor` whose subject, product, organization, and team exactly match the
 request and whose lifetime is 45 seconds. This key is distinct from Nessie's
-Ledger inference and metering-reader keys and from every sibling product key.
+Ledger execution key and from every sibling product key.
 UOA independently re-checks membership and billing-manager authority.
 
-Nessie's old direct cancellation proxy is disabled. Cancellation will return
-only when Nessie consumes UOA's versioned billing-surface protocol: UOA
-previews the choice from direct service entitlements and Ledger's indirect-use
-graph, returns the exact display-ready dialog plus an opaque short-lived action
-token, and locks/revalidates that decision on confirmation. Nessie will render
-and relay that model without inferring related products or cancellation scope.
+The version-1 statement is the complete customer view model: UOA supplies
+display-ready money, plan and markup copy, commercial lines, totals,
+per-service/per-user usage, access classifications, action labels, and disabled
+reasons. Nessie displays those fields and never derives tariff or customer
+charges. It may arrange rows, but does not sum, multiply, re-rate, rename money,
+or decide action availability.
 
-Checkout success/cancel and Portal return URLs are selected by the server from
-`NESSIE_ADMIN_PUBLIC_URL`; browsers cannot submit an arbitrary redirect. The
-browser receives only content-free UOA-authored display fields and short-lived
-hosted-action URLs. The final shared view model must provide display-ready
-money, percentage, line-item, access, and action labels so Nessie does not
-recreate commercial logic in an open-source client.
+Cancellation is preview then confirm. UOA evaluates direct service access
+across every user in the exact organization/team, relates only subscriptions
+on the same account, distinguishes indirect Ledger use, and returns the exact
+dialog copy and choices. A team that only used DeepWater through Nessie receives
+no fabricated DeepWater cancellation choice; a team with any direct DeepWater
+access receives UOA's cross-service choice. The preview token is opaque,
+short-lived, single-use, subject-bound, and backed by locked state
+revalidation/idempotency in UOA. Nessie relays only that token, the
+UOA-generated idempotency key, and the selected UOA choice.
+
+For Checkout, Portal, and cancellation preview, Nessie's API re-fetches the
+canonical statement, permits only each frozen action-id/path pair, checks the
+exact subject, and forwards UOA's server-produced request body unchanged.
+Browser-supplied action bodies and return URLs are ignored or rejected. The
+browser receives no UOA app key or actor assertion, and the API accepts no
+arbitrary upstream path.
 
 ## 11) Cross-links
 

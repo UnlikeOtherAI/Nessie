@@ -45,7 +45,6 @@ test('hosted modes fail at startup without a valid dedicated dsk key', () => {
 test('DeepSignal rejects reuse of every configured secret-bearing credential', () => {
   const reservedNames = [
     'LEDGER_PROXY_TOKEN',
-    'LEDGER_BILLING_READ_APP_KEY_NESSIE',
     'NESSIE_MODEL_API_KEY',
     'UOA_CLIENT_SECRET',
     'NESSIE_AUTH_SECRET',

@@ -7,10 +7,6 @@ import {
   setBudgetConfig,
 } from '@nessie/runtime'
 import {
-  LedgerBillingGroupBySchema,
-  LedgerBillingMonthSchema,
-} from '@nessie/schemas'
-import {
   BudgetScopeIdSchema,
   BudgetScopeTypeSchema,
   BudgetStatusResponseSchema,
@@ -27,77 +23,10 @@ import {
   getTokenUsageSummary,
   listPricingProfiles,
 } from '../services/token-ledger.js'
-import {
-  getLedgerBillingUsage,
-  LedgerBillingUsageError,
-} from '../services/ledger-billing-usage.js'
 import type { RouteDeps } from './types.js'
-
-const billingUsageStatus = (error: LedgerBillingUsageError): number => {
-  switch (error.code) {
-    case 'LEDGER_BILLING_SSO_REQUIRED':
-      return 403
-    case 'LEDGER_BILLING_CONTEXT_MISMATCH':
-      return 409
-    case 'LEDGER_BILLING_UNCONFIGURED':
-      return 503
-    case 'LEDGER_BILLING_RESPONSE_INVALID':
-    case 'LEDGER_BILLING_UPSTREAM_REJECTED':
-      return 502
-  }
-}
 
 export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireOwner } = deps
-
-  app.get('/api/ledger/billing/usage', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (
-      !actorContext.actor.roles?.some((role) =>
-        role === 'owner' || role === 'admin'
-      )
-    ) {
-      sendApiError(reply, 403, 'FORBIDDEN', 'Owner or admin access required')
-      return reply
-    }
-
-    const query = request.query as Record<string, unknown>
-    const month = LedgerBillingMonthSchema.safeParse(query['month'])
-    const groupBy = LedgerBillingGroupBySchema.safeParse(
-      query['groupBy'] ?? 'service',
-    )
-    if (!month.success || !groupBy.success) {
-      sendApiError(
-        reply,
-        400,
-        'VALIDATION_ERROR',
-        'month (YYYY-MM) and groupBy (service, team, or user) are required',
-        'query',
-      )
-      return reply
-    }
-
-    try {
-      return createApiResponse(
-        await getLedgerBillingUsage(prisma, actorContext, {
-          groupBy: groupBy.data,
-          month: month.data,
-        }),
-      )
-    } catch (error) {
-      if (error instanceof LedgerBillingUsageError) {
-        sendApiError(
-          reply,
-          billingUsageStatus(error),
-          error.code,
-          error.message,
-        )
-        return reply
-      }
-      throw error
-    }
-  })
 
   app.get('/api/ledger/tokens/summary', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

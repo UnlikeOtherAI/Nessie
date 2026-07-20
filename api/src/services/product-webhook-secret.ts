@@ -43,7 +43,6 @@ const assertWebhookSecretIsIndependent = (
   const reservedNames = [
     DEEPSIGNAL_MCP_CREDENTIAL_REF,
     'LEDGER_PROXY_TOKEN',
-    'LEDGER_BILLING_READ_APP_KEY_NESSIE',
     'NESSIE_MODEL_API_KEY',
     'UOA_CLIENT_SECRET',
     'NESSIE_AUTH_SECRET',
