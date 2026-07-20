@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import type { LedgerIdentityService } from '@nessie/runtime'
 import {
   parseChannelId,
   parseOrganizationId,
@@ -471,15 +472,82 @@ const markWorkflowRunFinished = async (
 }
 
 export const executeWorkflowRun = async (
-  prisma: PrismaClient,
-  workflowRunId: string,
+  execution: {
+    actorContext: AuthorizedActionContext
+    ledgerIdentity: LedgerIdentityService | null
+    prisma: PrismaClient
+    workflowRunId: string
+  },
 ): Promise<void> => {
+  const {
+    ledgerIdentity,
+    prisma,
+    workflowRunId,
+  } = execution
   const workflow = await loadWorkflowGraph(prisma, workflowRunId)
   if (!workflow) {
     return
   }
   if (workflow.run.status === 'completed' || workflow.run.status === 'failed' || workflow.run.status === 'cancelled') {
     return
+  }
+
+  const claimedTenant = execution.actorContext.tenant
+  const durableActorType = parseWorkflowStartedByActorType(
+    workflow.run.startedByActorType,
+  )
+  const identityMismatch =
+    execution.actorContext.actor.actorId !== workflow.run.startedByActorId
+    || execution.actorContext.actor.actorType !== durableActorType
+  const scopeMismatch =
+    claimedTenant.organizationId !== workflow.run.organizationId
+    || Boolean(
+      claimedTenant.teamId
+      && workflow.installation.teamId
+      && claimedTenant.teamId !== workflow.installation.teamId,
+    )
+    || Boolean(
+      claimedTenant.projectId
+      && workflow.installation.projectId
+      && claimedTenant.projectId !== workflow.installation.projectId,
+    )
+    || Boolean(
+      claimedTenant.channelId
+      && workflow.installation.channelId
+      && claimedTenant.channelId !== workflow.installation.channelId,
+    )
+  if (identityMismatch || scopeMismatch) {
+    await markWorkflowRunFinished(prisma, workflow, {
+      workflowRunId,
+      success: false,
+      summary: identityMismatch
+        ? 'Workflow execution actor does not match its durable origin.'
+        : 'Workflow execution scope does not match its durable installation.',
+    })
+    return
+  }
+
+  const actorContext: AuthorizedActionContext = {
+    ...execution.actorContext,
+    tenant: {
+      ...claimedTenant,
+      organizationId: parseOrganizationId(workflow.run.organizationId),
+      ...(workflow.installation.projectId
+        ? { projectId: parseProjectId(workflow.installation.projectId) }
+        : {}),
+      ...(workflow.installation.teamId
+        ? { teamId: parseTeamId(workflow.installation.teamId) }
+        : {}),
+      ...(workflow.installation.channelId
+        ? { channelId: parseChannelId(workflow.installation.channelId) }
+        : {}),
+    },
+    actionContext: {
+      ...execution.actorContext.actionContext,
+      ...(workflow.installation.channelId
+        ? { channelId: parseChannelId(workflow.installation.channelId) }
+        : {}),
+    },
   }
 
   await ensureWorkflowStepRuns(prisma, {
@@ -604,6 +672,8 @@ export const executeWorkflowRun = async (
 
       try {
         const toolContext: WorkflowBuiltinToolRuntimeContext = {
+          actorContext,
+          ledgerIdentity,
           organizationId: workflow.run.organizationId,
           prisma,
           workflowInstallationId: workflow.installation.id,

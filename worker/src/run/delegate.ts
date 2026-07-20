@@ -37,7 +37,11 @@ export type DelegateExecuteContext = {
   /** Bound to call runInferenceGraph with sub-agent-specific tools each turn. */
   runInference: DelegateRunner
   /** Builtin tool executor for non-MCP tools (excluding `delegate` to prevent recursion). */
-  executeBuiltinTool: (toolName: string, args: Record<string, unknown>) => Promise<AgenticToolResult>
+  executeBuiltinTool: (
+    toolName: string,
+    args: Record<string, unknown>,
+    toolCallId: string,
+  ) => Promise<AgenticToolResult>
   /** Builtin descriptors the sub-agent is allowed to call (already filtered to exclude `delegate`). */
   builtinDescriptors: ToolSchemaDescriptor[]
   /** Builtin tool IDs the sub-agent is allowed to call (excluding `delegate`). */
@@ -127,7 +131,7 @@ export const runDelegate = async (
         return mcpView.dispatch(toolName, toolArgs, toolCallId)
       }
       if (ctx.allowedBuiltinIds.has(toolName)) {
-        return ctx.executeBuiltinTool(toolName, toolArgs)
+        return ctx.executeBuiltinTool(toolName, toolArgs, toolCallId)
       }
       return {
         inputSummary: summarizeToolInput(toolArgs),

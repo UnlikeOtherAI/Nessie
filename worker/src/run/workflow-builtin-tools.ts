@@ -1,6 +1,14 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { UrlSafetyError, WORKFLOW_TOOL_IDS } from '@nessie/runtime'
-import { parseOrganizationId } from '@nessie/schemas'
+import {
+  attributionFromActorContext,
+  UrlSafetyError,
+  WORKFLOW_TOOL_IDS,
+  type LedgerIdentityService,
+} from '@nessie/runtime'
+import {
+  parseOrganizationId,
+  type AuthorizedActionContext,
+} from '@nessie/schemas'
 import { collectWebFetchResult, collectWebSearchResults, coercePage } from './content-tools.js'
 import { HttpFetchError } from './builtin-handlers/index.js'
 import { hashJsonValue, summarizeToolInput } from './tool-util.js'
@@ -13,6 +21,8 @@ type WorkflowToolExecutionResult = {
 }
 
 export type WorkflowBuiltinToolRuntimeContext = {
+  actorContext: AuthorizedActionContext
+  ledgerIdentity: LedgerIdentityService | null
   organizationId: string
   prisma: PrismaClient
   workflowInstallationId: string
@@ -50,7 +60,26 @@ export const executeWorkflowBuiltinTool = async (
         return workflowToolFailure(inputSummary, 'Workflow web_search requires query.')
       }
 
-      const result = await collectWebSearchResults(query, coercePage(args.page))
+      const actionAgentId = context.actorContext.actionContext.agentId
+      const actorAgentId =
+        context.actorContext.actor.actorType === 'agent'
+          ? context.actorContext.actor.actorId
+          : undefined
+      const attributedAgentId = actionAgentId ?? actorAgentId
+      const result = await collectWebSearchResults(
+        query,
+        coercePage(args.page),
+        {
+          attribution: attributionFromActorContext(context.actorContext, {
+            agentId: attributedAgentId,
+            agentKind: attributedAgentId ? 'shared' : 'system',
+            runId: context.workflowRunId,
+            systemComponent: 'workflow.web-search',
+          }),
+          ledgerIdentity: context.ledgerIdentity,
+          toolCallId: context.workflowStepRunId,
+        },
+      )
       return {
         inputSummary,
         output: {

@@ -281,6 +281,16 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   URLs are forbidden: the API pins Checkout and Portal returns to
   `NESSIE_ADMIN_PUBLIC_URL`. Nessie stores no tariff, Stripe customer,
   subscription, invoice, Price, or meter state.
+- Builtin `web_search` is a Ledger-only Serper route. Ordinary agent, delegated
+  sub-agent, and workflow calls all post to
+  `${LEDGER_PUBLIC_URL}/v1/serper/search` with Nessie's product-bound
+  `LEDGER_PROXY_TOKEN`, a fresh signed `X-Nessie-Context`, optional linked-user
+  `X-UOA-Delegation`, and a stable tool-call id. The context must contain exact
+  user/org/team/agent/run provenance; workflow queue identity is checked
+  against its durable actor and installation scope before signing. Direct
+  `google.serper.dev` calls and `SERPER_API_KEY` fallbacks are forbidden.
+  Nessie's local connector rows are operational telemetry only; Ledger is the
+  raw usage/cost source and UOA is the sole commercial authority.
 - deep.agent crawl web scanning is an MCP connector template: install a Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, then approve/grant the discovered tools. The crawl library implementation belongs behind the deep.agent service boundary; do not embed Crawl4AI's Python package in the API/worker or expose an unauthenticated crawler to the public internet.
 
 ## File storage & accounting — single chokepoint

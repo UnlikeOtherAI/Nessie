@@ -8,10 +8,11 @@ import { parseAgentId, parseRunId, type AuthorizedActionContext } from '@nessie/
 import { buildScopes } from './scopes.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
-// Builtin tools that reach an external/third-party service. Each call is billed
-// to the connector usage ledger (sibling to the AI token ledger) so non-AI
-// third-party usage is attributable per org/channel/agent/run. Tools not listed
-// here are internal (messaging, files, scheduling) and are not connector usage.
+// Builtin tools that reach an external/third-party service. Each call is copied
+// to Nessie's operational connector telemetry for local diagnostics and
+// budgets. It is never commercial/invoice authority: Ledger records raw
+// provider usage at the outbound chokepoint and UOA alone rates it. Tools not
+// listed here are internal (messaging, files, scheduling).
 const CONNECTOR_TYPE_BY_TOOL: Record<string, ConnectorType> = {
   web_search: 'web_search',
   web_fetch: 'web_fetch',
@@ -64,8 +65,8 @@ export const recordToolEnd = async (
         latencyMs: input.durationMs,
       },
     }).catch((err) => {
-      // Best-effort billing capture; never break the run on a ledger failure —
-      // but log it so a dropped connector cost event is visible, not silent.
+      // Best-effort operational capture; never break the run when the local
+      // telemetry write fails, but keep the loss visible.
       console.error('[worker.ledger] connector usage write failed', err)
     })
   }

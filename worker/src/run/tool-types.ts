@@ -1,7 +1,12 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { CaptureConfig } from '@nessie/memory'
-import type { ConnectorUsage, ModelClient, PgRealtimeTransport } from '@nessie/runtime'
+import type {
+  ConnectorUsage,
+  LedgerIdentityService,
+  ModelClient,
+  PgRealtimeTransport,
+} from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 
 export type ToolExecutionUsage = Omit<ConnectorUsage, 'latencyMs' | 'success'>
@@ -22,6 +27,7 @@ export type BuiltinToolRuntimeContext = {
     organizationId: RunExecuteJobPayload['actorContext']['tenant']['organizationId']
     systemChannelType?: ChannelSystemType | null
   }
+  ledgerIdentity: LedgerIdentityService | null
   // MCP credential plumbing for the connector management tools: the store
   // encrypts user-provided secrets into Postgres, the resolver resolves any
   // credentialRef for probes. Optional so existing test fixtures that build a
@@ -46,4 +52,5 @@ export type BuiltinToolRuntimeContext = {
     originatingUserId?: string | null
     threadId: string
   }
+  toolCallId: string | null
 }

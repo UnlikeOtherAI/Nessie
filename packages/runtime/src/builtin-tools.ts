@@ -34,7 +34,7 @@ const WEB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'web_search',
   label: 'Web Search',
   description:
-    'Search the public web (Google results via serper.dev) for up-to-date ' +
+    'Search the public web through Ledger-metered Serper results for up-to-date ' +
     'outside information. Returns top results with titles, URLs, and snippets, ' +
     'plus a direct answer when one is available.',
   parameters: {

@@ -305,6 +305,15 @@ until UOA supplies a versioned preview/confirm view model and opaque action
 token after checking direct entitlements and indirect Ledger use; Nessie must
 only render and relay that UOA decision.
 
+Builtin `web_search` is also Ledger-only. Agent, delegated sub-agent, and
+workflow calls use `${LEDGER_PUBLIC_URL}/v1/serper/search` with Nessie's
+product-bound `LEDGER_PROXY_TOKEN`, a fresh signed `X-Nessie-Context`, optional
+linked-user `X-UOA-Delegation`, and the stable provider/workflow tool-call id.
+Workflow queue identity must match its durable actor and installation scope
+before signing. Direct `google.serper.dev` calls and `SERPER_API_KEY` fallbacks
+are forbidden. Local connector rows are operational telemetry only; Ledger is
+the raw usage/cost source and UOA is the commercial authority.
+
 User-authored MCP connectors are limited to HTTP/SSE remote endpoints. The
 cloud API and worker reject stdio process execution for catalog/instance data,
 and HTTP/SSE/OAuth URLs are checked by the shared SSRF guard before save or use.

@@ -255,6 +255,16 @@ agent/run/tool provenance remains a separate signed context on metered calls.
 Other applications must use their own product-bound keys; webhook secrets are
 not app keys.
 
+Nessie's builtin web search follows the same metering boundary. Agent,
+delegated sub-agent, and workflow `web_search` calls use the Nessie app key
+against Ledger's `/v1/serper/search`; Ledger alone injects the Serper credential
+and records the raw search unit/provider cost. Every call carries signed
+user/org/team/agent/run/tool-call provenance. Workflow jobs first bind the
+queued actor context to the durable workflow actor and installation scope.
+There is no direct `google.serper.dev` or `SERPER_API_KEY` fallback. The
+corresponding Nessie `ConnectorUsageEvent` remains useful operational telemetry
+but is not an invoice input and must never be rated locally.
+
 During migration, the adapter accepts Ledger's additive schema-v4 response but
 uses only its raw metering fields:
 

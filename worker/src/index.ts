@@ -273,7 +273,12 @@ export const startWorker = async (
     'workflow.run.execute',
     async (job) => {
       const payload = WorkflowRunExecuteJobPayloadSchema.parse(job.payload)
-      await executeWorkflowRun(prisma, payload.workflowRunId)
+      await executeWorkflowRun({
+        actorContext: payload.actorContext,
+        ledgerIdentity,
+        prisma,
+        workflowRunId: payload.workflowRunId,
+      })
     },
     {
       signal: abortController.signal,

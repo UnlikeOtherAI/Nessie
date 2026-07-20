@@ -236,7 +236,7 @@ export const executeBuiltinTool = async (
       )
     case 'web_search':
       return wrapTool(inputSummary, () =>
-        runWebSearchTool(String(args.query ?? ''), coercePage(args.page)),
+        runWebSearchTool(context, String(args.query ?? ''), coercePage(args.page)),
       )
     case 'web_fetch':
       return wrapTool(inputSummary, () => runWebFetchTool(String(args.url ?? '')))

@@ -151,7 +151,10 @@ export const runExecutionAgentLoop = async (
   const runSubAgentInference = (messages: ProviderMessage[], tools: ToolSchemaDescriptor[]) =>
     runInferenceWithCallbacks(messages, tools, silentInferenceCallbacks)
 
-  const buildBuiltinCtx = (toolActorContext: ReturnType<typeof buildToolActorContext>) => ({
+  const buildBuiltinCtx = (
+    toolActorContext: ReturnType<typeof buildToolActorContext>,
+    toolCallId: string,
+  ) => ({
     agentId: context.agent.id,
     agentKind: context.agent.agentKind,
     actorContext: toolActorContext,
@@ -160,6 +163,7 @@ export const runExecutionAgentLoop = async (
       organizationId: parseOrganizationId(context.channel.organizationId),
       systemChannelType: context.channel.systemChannelType,
     },
+    ledgerIdentity: deps.ledgerIdentity ?? null,
     mcpSecrets: deps.mcpSecrets,
     memoryCaptureConfig: {
       modelClient: deps.modelClient,
@@ -180,12 +184,14 @@ export const runExecutionAgentLoop = async (
         ),
       threadId: context.run.threadId,
     },
+    toolCallId,
   })
 
   const executeGuardedBuiltin = async (
     toolName: string,
     args: Record<string, unknown>,
     toolActorContext: ReturnType<typeof buildToolActorContext>,
+    toolCallId: string,
   ) => {
     if (await input.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
       return {
@@ -194,7 +200,11 @@ export const runExecutionAgentLoop = async (
         success: false,
       }
     }
-    return executeBuiltinTool(toolName, args, buildBuiltinCtx(toolActorContext))
+    return executeBuiltinTool(
+      toolName,
+      args,
+      buildBuiltinCtx(toolActorContext, toolCallId),
+    )
   }
 
   const loopResult = await runAgenticLoop({
@@ -280,7 +290,8 @@ export const runExecutionAgentLoop = async (
         const result = await runDelegate(args, {
           mcpToolset: input.mcpToolset,
           runInference: runSubAgentInference,
-          executeBuiltinTool: (n, a) => executeGuardedBuiltin(n, a, toolActorContext),
+          executeBuiltinTool: (n, a, id) =>
+            executeGuardedBuiltin(n, a, toolActorContext, id),
           builtinDescriptors: subAgentBuiltinDescriptors,
           allowedBuiltinIds: subAgentBuiltinIds,
         })
@@ -361,7 +372,11 @@ export const runExecutionAgentLoop = async (
           reason: policyDecision.reason,
         })
       }
-      return executeBuiltinTool(toolName, args, buildBuiltinCtx(toolActorContext))
+      return executeBuiltinTool(
+        toolName,
+        args,
+        buildBuiltinCtx(toolActorContext, toolCallId),
+      )
     },
     initialMessages: input.initialMessages,
     runInference: (messages) =>

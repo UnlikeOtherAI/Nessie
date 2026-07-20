@@ -71,6 +71,13 @@ call sites simply pass no `usage` and behave as today (safe incremental rollout)
   `connector_usage_events` from API attachment routes, public brand-logo
   delivery, and worker attachment tools. **Remaining:** push connectors. A live
   DB write of both ledgers was confirmed via a smoke test.
+- **2026-07-20 authority correction.** The local rows above are operational
+  telemetry, not customer billing input. `web_search` now dispatches only
+  through Ledger's product-bound Serper adapter with signed
+  user/org/team/agent/run/tool-call provenance for ordinary agents, delegated
+  sub-agents, and workflows. Ledger owns raw units/provider cost and UOA owns
+  every commercial result; Nessie has no direct Serper credential or rating
+  fallback.
 - **Phase 3 — PARTIAL.** Reporting: token summary now supports `runId`/`channel`
   grouping; `GET /api/ledger/connectors/summary` (owner-only) added. Admin Token
   Usage page (`/tokens`) shows Connector Usage and File Usage sections. File

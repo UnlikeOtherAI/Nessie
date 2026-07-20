@@ -1,13 +1,21 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { HttpFetchError, runWebSearch } from './builtin-handlers/index.js'
+import { attributionFromActorContext } from '@nessie/runtime'
+import {
+  HttpFetchError,
+  runWebSearch,
+  type WebSearchOptions,
+} from './builtin-handlers/index.js'
 import { assertSafeUrl, UrlSafetyError } from './builtin-handlers/url-safety.js'
 import { hashJsonValue, MAX_TOOL_RESULT_CHARS, truncate } from './tool-util.js'
-import type { ToolExecutionResult } from './tool-types.js'
+import type {
+  BuiltinToolRuntimeContext,
+  ToolExecutionResult,
+} from './tool-types.js'
 
 // Read-only "content" tools the agent uses to bring in outside information:
-// web search (serper.dev), web fetch (a single URL), and project document read.
+// Ledger-metered web search, web fetch (a single URL), and project document read.
 
 const MAX_FETCH_RESPONSE_BYTES = 512_000
 const FETCH_TIMEOUT_MS = 15_000
@@ -70,7 +78,8 @@ export const coercePage = (value: unknown): number | undefined => {
 
 export const collectWebSearchResults = async (
   query: string,
-  page?: number,
+  page: number | undefined,
+  context: Omit<WebSearchOptions, 'count' | 'page'>,
 ): Promise<{
   query: string
   page: number
@@ -83,7 +92,10 @@ export const collectWebSearchResults = async (
     .replace(/\s+/g, ' ')
     .trim() || query.trim()
 
-  return runWebSearch(normalizedQuery, { page })
+  return runWebSearch(normalizedQuery, {
+    ...context,
+    page,
+  })
 }
 
 const readResponseText = async (
@@ -257,10 +269,19 @@ export const runWebFetchTool = async (prompt: string): Promise<ToolExecutionResu
 }
 
 export const runWebSearchTool = async (
+  context: BuiltinToolRuntimeContext,
   prompt: string,
   page?: number,
 ): Promise<ToolExecutionResult> => {
-  const result = await collectWebSearchResults(prompt, page)
+  const result = await collectWebSearchResults(prompt, page, {
+    attribution: attributionFromActorContext(context.actorContext, {
+      agentId: context.agentId,
+      agentKind: context.agentKind,
+      runId: context.run.id,
+    }),
+    ledgerIdentity: context.ledgerIdentity,
+    toolCallId: context.toolCallId ?? '',
+  })
 
   return {
     inputSummary: result.page > 1 ? `${result.query} (page ${result.page})` : result.query,
