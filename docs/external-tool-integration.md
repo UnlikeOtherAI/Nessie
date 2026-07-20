@@ -693,8 +693,25 @@ There is deliberately no direct-provider fallback.
   display only and is never the write-back authority. Ledger terminal MCP
   responses expose the immutable booked rate-card
   `cost: { amount, currency }`; the handoff copies those exact values when
-  present and otherwise leaves Nessie's mirrored cost empty. Updates take a
-  PostgreSQL row lock: identical delivery retries are accepted, while replacing
+  present and otherwise leaves Nessie's mirrored cost empty. The external
+  report URL is captured only from the authenticated Ledger `research_start`
+  structured response after its origin and exact research-job path are
+  validated, then persisted atomically with that ticket. Source count is
+  captured only from the authenticated `research_report` references array
+  before the result is returned to the agent. Both fields require server-only
+  provenance markers before API mapping exposes them. Legacy or agent-authored
+  values therefore stay hidden, and `deep_water_run_update` cannot supply,
+  replace, or mark either value as trusted. Source persistence also repairs the
+  exact per-run connector-usage event atomically, so a same-batch terminal
+  update cannot permanently record empty units by winning a race with the
+  report call. Deployment migration
+  `20260720150000_deepwater_report_metadata_provenance` clears historical
+  connector-usage units without that provenance and backfills only
+  already-trusted counts. A terminal run remains readable after team disable
+  removes its managed connector; accepting a fresh start still requires a valid
+  configured Ledger origin.
+  Updates take a PostgreSQL row lock: identical delivery retries are accepted,
+  while replacing
   an established external run id or booked cost, or moving a terminal run to a
   different status, returns an explicit immutable-conflict error. A terminal
   status captured on the start ticket is enforced under that same lock:

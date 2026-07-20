@@ -10,14 +10,40 @@ const DEEP_WATER_TICKET_STATUSES = new Set<DeepWaterStartTicketStatus>([
   'cancelled',
   'timed_out',
 ])
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/
 
 export type LedgerResearchTicket = {
   id: string
+  reportUrl: string | null
   status: DeepWaterStartTicketStatus
 }
 
 export const isLedgerResearchTicketId = (value: string): boolean =>
   LEDGER_RESEARCH_TICKET_PATTERN.test(value)
+
+const trustedReportUrl = (
+  value: unknown,
+  ledgerOrigin: string,
+  researchId: string,
+): string | null => {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed || CONTROL_CHARACTER_PATTERN.test(trimmed)) return null
+  try {
+    const parsed = new URL(trimmed)
+    const expectedPath = `/v1/research/${encodeURIComponent(researchId)}/report`
+    return (
+      parsed.origin === ledgerOrigin
+      && parsed.pathname === expectedPath
+      && parsed.search === ''
+      && parsed.hash === ''
+      && parsed.username === ''
+      && parsed.password === ''
+    ) ? parsed.toString() : null
+  } catch {
+    return null
+  }
+}
 
 export const persistedTicketResult = (
   externalRunId: string,
@@ -33,6 +59,7 @@ export const persistedTicketResult = (
 
 export const ledgerResearchTicket = (
   result: ToolDispatchResult,
+  ledgerOrigin: string,
 ): LedgerResearchTicket | null => {
   if (!result.success || !result.raw || typeof result.raw !== 'object') return null
   const structured = (result.raw as { structuredContent?: unknown }).structuredContent
@@ -48,8 +75,24 @@ export const ledgerResearchTicket = (
   }
   return typeof record.status === 'string'
     && DEEP_WATER_TICKET_STATUSES.has(record.status as DeepWaterStartTicketStatus)
-    ? { id: record.id, status: record.status as DeepWaterStartTicketStatus }
+    ? {
+        id: record.id,
+        reportUrl: trustedReportUrl(record.report_url, ledgerOrigin, record.id),
+        status: record.status as DeepWaterStartTicketStatus,
+      }
     : null
+}
+
+export const ledgerResearchReportSourceCount = (
+  result: ToolDispatchResult,
+): number | null => {
+  if (!result.success || !result.raw || typeof result.raw !== 'object') return null
+  const structured = (result.raw as { structuredContent?: unknown }).structuredContent
+  if (!structured || typeof structured !== 'object' || Array.isArray(structured)) {
+    return null
+  }
+  const references = (structured as Record<string, unknown>).references
+  return Array.isArray(references) ? references.length : null
 }
 
 /**

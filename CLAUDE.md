@@ -271,10 +271,18 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   record (same team + thread; `knowledgePageId` validated against the org) and
   mirrors Ledger's terminal amount and currency exactly as the immutable booked
   rate-card charge assigned to the launch run's `requestedByUserId`, never the
-  user who delivers a later update. The same locked write rejects a Product
-  status that contradicts a terminal start ticket (`complete` maps to
-  `completed`; failed/cancelled/timed_out map to `failed`). It is not a provider-invoice actual and
-  complex runs may reconcile higher upstream. Each org/team transition is cross-process
+  user who delivers a later update. Nessie persists the external report URL
+  only from Ledger's authenticated `research_start` structured response after
+  validating its origin and exact job path, and persists source count only from
+  the authenticated `research_report` references array. Both require
+  server-only provenance before they are exposed; agent-authored run updates
+  cannot set, replace, or mark either value as trusted. Source persistence also
+  repairs the exact per-run connector usage event atomically, so same-batch
+  report/update order cannot lose usage units. The same locked write
+  rejects a Product status that contradicts a terminal start ticket (`complete`
+  maps to `completed`; failed/cancelled/timed_out map to `failed`). It is not a
+  provider-invoice actual and complex runs may reconcile higher upstream. Each
+  org/team transition is cross-process
   serialized with a PostgreSQL transaction-scoped advisory lock; connector
   rows and the enablement toggle mutate in one transaction and roll back
   together. A missing linked first-party catalog fails enablement with

@@ -316,6 +316,124 @@ test('same-batch follow-ups are pinned to the new ticket and list stays blocked'
   assert.doesNotThrow(() => guard.assertCompletion())
 })
 
+test('report references are persisted before the authenticated result is returned', async () => {
+  const persisted: Array<{ externalRunId: string; runId: string; sourceCount: number }> = []
+  const { calls, repository } = makeRepository({
+    findRun: async () => found(handoffRun({
+      externalRunId: 'rs_persisted',
+      failureEligible: false,
+      startEligible: false,
+      startTicketStatus: 'running',
+      startToolCallId: 'stable-call',
+      status: 'running',
+    })),
+    persistReportSources: async (runId, externalRunId, sourceCount) => {
+      persisted.push({ externalRunId, runId, sourceCount })
+      return true
+    },
+  })
+  const guard = await createDeepWaterHandoffGuardForTest(repository)
+  const replay = await guard.dispatchDeepWater(
+    'research_start',
+    'new-call',
+    START_ARGS,
+    async () => { throw new Error('ticket must replay locally') },
+  )
+  assert.ok(replay.deliveryToken)
+  guard.markDelivered(replay.deliveryToken)
+
+  const report = await guard.dispatchDeepWater(
+    'research_report',
+    'report-call',
+    { id: 'rs_injected' },
+    async (_callId, args) => {
+      assert.deepEqual(args, { id: 'rs_persisted' })
+      return ticketResult({
+        references: [{ url: 'https://one.example' }, { url: 'https://two.example' }],
+        report_markdown: '# Report',
+      })
+    },
+  )
+
+  assert.equal(report.result.success, true)
+  assert.equal(calls.report, 1)
+  assert.deepEqual(persisted, [{
+    externalRunId: 'rs_persisted',
+    runId: 'handoff-run-1',
+    sourceCount: 2,
+  }])
+})
+
+test('a successful report without references fails closed', async () => {
+  const { repository } = makeRepository({
+    findRun: async () => found(handoffRun({
+      externalRunId: 'rs_persisted',
+      failureEligible: false,
+      startEligible: false,
+      startTicketStatus: 'running',
+      startToolCallId: 'stable-call',
+      status: 'running',
+    })),
+  })
+  const guard = await createDeepWaterHandoffGuardForTest(repository)
+  const replay = await guard.dispatchDeepWater(
+    'research_start',
+    'new-call',
+    START_ARGS,
+    async () => { throw new Error('ticket must replay locally') },
+  )
+  assert.ok(replay.deliveryToken)
+  guard.markDelivered(replay.deliveryToken)
+
+  await assert.rejects(
+    guard.dispatchDeepWater(
+      'research_report',
+      'report-call',
+      { id: 'rs_persisted' },
+      async () => ticketResult({ report_markdown: '# Missing references' }),
+    ),
+    DeepWaterHandoffInvariantError,
+  )
+})
+
+test('report evidence persistence uncertainty fails closed', async () => {
+  for (const persistReportSources of [
+    async () => false,
+    async () => { throw new Error('database response lost') },
+  ]) {
+    const { repository } = makeRepository({
+      findRun: async () => found(handoffRun({
+        externalRunId: 'rs_persisted',
+        failureEligible: false,
+        startEligible: false,
+        startTicketStatus: 'running',
+        startToolCallId: 'stable-call',
+        status: 'running',
+      })),
+      persistReportSources,
+    })
+    const guard = await createDeepWaterHandoffGuardForTest(repository)
+    const replay = await guard.dispatchDeepWater(
+      'research_start',
+      'new-call',
+      START_ARGS,
+      async () => { throw new Error('ticket must replay locally') },
+    )
+    assert.ok(replay.deliveryToken)
+    guard.markDelivered(replay.deliveryToken)
+
+    await assert.rejects(
+      guard.dispatchDeepWater(
+        'research_report',
+        'report-call',
+        { id: 'rs_persisted' },
+        async () => ticketResult({ references: [], report_markdown: '# Report' }),
+      ),
+      DeepWaterHandoffInvariantError,
+    )
+  }
+})
+
 test('malformed persisted external id fails closed', async () => {
   const { repository } = makeRepository({
     findRun: async () => found(handoffRun({

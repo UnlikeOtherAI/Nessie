@@ -13,13 +13,13 @@ import {
   DEEP_WATER_PRODUCT_SLUG,
   DEFAULT_CURRENCY,
   TERMINAL_STATUSES,
+  TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE,
   compactPreview,
   deepWaterInputJson,
   deepWaterRunReturning,
   mapDeepWaterRunRow,
   requireDeepWaterRunRow,
   toNullableCost,
-  toNullableInteger,
   toNullableNumber,
   toRecord,
   type DeepWaterRunRow,
@@ -61,10 +61,8 @@ export type DeepWaterResearchRunUpdateInput = {
   externalRunId?: string | null
   knowledgePageId?: string | null
   organizationId: string
-  reportUrl?: string | null
   result?: Record<string, unknown>
   runId: string
-  sourceCount?: number | null
   status?: ProductIntegrationRunStatus
   statusDetail?: string | null
   // Tenancy comes strictly from the calling run context, never from args. A
@@ -189,9 +187,13 @@ const buildDeepWaterResultPatch = (
   input: DeepWaterResearchRunUpdateInput,
 ): Prisma.InputJsonObject => {
   const result: Record<string, unknown> = { ...(input.result ?? {}) }
-  if (input.reportUrl !== undefined) {
-    result.reportUrl = input.reportUrl?.trim() || null
-  }
+  // Report metadata and its provenance are persisted only from authenticated
+  // Ledger responses. Never let a generic or agent-authored run update replace
+  // the trusted values or forge the markers that make them externally visible.
+  delete result.reportUrl
+  delete result.reportUrlSource
+  delete result.sourceCount
+  delete result.sourceCountSource
   if (input.statusDetail !== undefined) {
     result.statusDetail = input.statusDetail?.trim() || null
   }
@@ -207,7 +209,6 @@ export const updateDeepWaterResearchRun = async (
   const costCurrency = input.costCurrency?.trim() || null
   const externalRunId = input.externalRunId?.trim() || null
   const knowledgePageId = input.knowledgePageId?.trim() || null
-  const sourceCount = toNullableInteger(input.sourceCount)
   const status = input.status ?? null
   const teamId = input.teamId
   const threadId = input.threadId
@@ -282,10 +283,6 @@ export const updateDeepWaterResearchRun = async (
           WHEN "cost_amount" IS NULL OR "cost_currency" IS NULL THEN CAST(${costCurrency} AS text)
           ELSE "cost_currency"
         END,
-        "source_count" = CASE
-          WHEN CAST(${sourceCount} AS integer) IS NULL THEN "source_count"
-          ELSE CAST(${sourceCount} AS integer)
-        END,
         "knowledge_page_id" = CASE
           WHEN CAST(${knowledgePageId} AS uuid) IS NULL THEN "knowledge_page_id"
           ELSE CAST(${knowledgePageId} AS uuid)
@@ -351,6 +348,10 @@ export const reconcileDeepWaterResearchRunUsage = async (
     if (hasUsageLedgerRecorded(result)) {
       return { recorded: false, reason: 'already_recorded' }
     }
+    const sourceCount =
+      result.sourceCountSource === TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE
+        ? row.source_count
+        : null
 
     const occurredAt = new Date()
     const correlationId = `${DEEP_WATER_PRODUCT_SLUG}:${row.id}`
@@ -389,8 +390,8 @@ export const reconcileDeepWaterResearchRunUsage = async (
         taskId: input.attribution.taskId ?? null,
         teamId: row.team_id,
         threadId: row.thread_id ?? input.attribution.threadId ?? null,
-        units: row.source_count,
-        unitType: row.source_count === null ? null : 'sources',
+        units: sourceCount,
+        unitType: sourceCount === null ? null : 'sources',
       },
     })
 

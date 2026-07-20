@@ -266,8 +266,10 @@ Current Nessie slice:
   recent active-team runs through `GET
   /api/integrations/products/deep-water/research-runs`. Any granted agent —
   personal assistant or shared — can call the `deep_water_run_update` builtin
-  after Deep Water MCP calls to project external run id, status, source count,
-  cost, report URL, and Knowledge draft page id into that durable record.
+  after Deep Water MCP calls to project external run id, status, cost, and
+  Knowledge draft page id into that durable record. The guarded worker captures
+  report URL and source count directly from authenticated Ledger start/report
+  responses, so the agent cannot invent or replace either field.
   At the worker dispatch boundary, server-authored DeepWater message metadata
   identifies the exact durable run id; the lookup also requires the message,
   organization, team, and thread. Messages without the marker are unguarded,
@@ -419,18 +421,21 @@ Current Deep Water launcher slice:
 - ESC now shows recent Deep Water launch records from Nessie's durable
   `product_integration_runs` projection, including status, launch options,
   PA chat destination, report link, Knowledge draft link, status detail, and
-  source/cost fields when the PA writes them back. Cost is copied only from
-  Ledger's terminal booked rate-card charge; this is not a provider-invoice
-  actual and complex runs may reconcile higher upstream.
+  provenance-marked report/source fields after the guarded worker captures
+  Ledger responses, plus cost fields when a granted agent writes back the exact
+  terminal charge. Cost is copied only from Ledger's terminal booked rate-card
+  charge; this is not a provider-invoice actual and complex runs may reconcile
+  higher upstream.
 - Automatic progress polling, cost reconciliation, and import without PA
   mediation still belong to the Phase 2 completion wrapper. The current
-  write-back path is explicit PA bookkeeping around the approved MCP flow, not
+  completion path combines guarded worker capture during approved MCP calls
+  with explicit granted-agent bookkeeping for status/cost/Knowledge; it is not
   an independent background worker. The launch handoff starts the Ledger job,
   persists `running`, optionally checks status once, and ends the bounded agent
   turn; a later user/status turn checks once more and fetches the report only
-  after completion. It never busy-polls a roughly 20-minute job. Terminal PA
-  write-back mirrors the immutable Ledger-booked terminal rate-card charge into
-  Nessie's connector usage ledger with an
+  after completion. It never busy-polls a roughly 20-minute job. Terminal
+  granted-agent write-back mirrors the immutable Ledger-booked terminal
+  rate-card charge into Nessie's connector usage ledger with an
   idempotent per-run marker.
 - ESC renders DeepTest controls for review depth, runner boundary, and
   share-safe/external-link report handoff. It intentionally has no text field for
@@ -775,17 +780,19 @@ Acceptance:
   installations.**
 - Add credential setup and tool approval flow.
 - Add a Deep Water run wrapper in Nessie jobs/runs. **Initial durable launch
-  projection is implemented in `product_integration_runs`; PA write-back can
-  now update status/cost/source/report fields; autonomous polling/completion
-  reconciliation remains pending.**
+  projection is implemented in `product_integration_runs`; granted-agent
+  write-back can update status/cost/Knowledge fields, while the guarded worker
+  captures report URL and source count from authenticated Ledger responses;
+  autonomous polling/completion reconciliation remains pending.**
 - Add result import into Knowledge and FileService-backed attachments.
 - Add connector usage ledger rows for job cost.
-  **Implemented for terminal PA write-back with reported cost; autonomous
-  background reconciliation remains pending.**
+  **Implemented for terminal granted-agent write-back with Ledger-reported
+  cost; autonomous background reconciliation remains pending.**
 - Add UI panels for research history, report link, sources, and spend.
   **Recent launch history, report links, Knowledge draft links, source counts,
-  and the booked rate-card charge projection are implemented when the PA writes them back;
-  source review remains pending.**
+  and the booked rate-card charge projection are implemented; the guarded
+  worker supplies trusted report metadata and granted-agent write-back supplies
+  terminal status/cost/Knowledge metadata. Source review remains pending.**
 
 ### Phase 3: DeepTest Link-Out And MCP
 

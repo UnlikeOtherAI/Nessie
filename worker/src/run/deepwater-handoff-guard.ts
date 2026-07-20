@@ -1,25 +1,24 @@
 import type { PrismaClient } from '@prisma/client'
 import {
-  claimDeepWaterHandoffStart,
   DEEP_WATER_START_FAILURE_DETAIL,
-  failDeepWaterHandoffStart,
-  findDeepWaterHandoffRun,
-  persistDeepWaterHandoffTicket,
   type DeepWaterHandoffLookup,
   type DeepWaterHandoffRun,
   type DeepWaterHandoffRunLocator,
   type DeepWaterStartTicketStatus,
 } from '@nessie/runtime'
-
 import { FatalToolExecutionError } from './tool-execution-errors.js'
+import {
+  createDeepWaterHandoffRepository,
+  type DeepWaterHandoffRepository,
+} from './deepwater-handoff-repository.js'
 import {
   isDefinitiveLedgerStartRejection,
   isLedgerResearchTicketId,
+  ledgerResearchReportSourceCount,
   ledgerResearchTicket,
   persistedTicketResult,
 } from './deepwater-handoff-ticket.js'
 import type { ToolDispatchResult } from './tool-dispatch.js'
-
 const DEEP_WATER_START_TOOL = 'research_start'
 const DEEP_WATER_LIST_TOOL = 'research_list'
 const DEEP_WATER_TICKET_TOOLS = new Set([
@@ -49,22 +48,7 @@ export class DeepWaterHandoffAmbiguousStartError extends DeepWaterHandoffFatalEr
     super(AMBIGUOUS_START_MESSAGE, handoffRunId)
   }
 }
-
-export type DeepWaterHandoffRepository = {
-  claimStart: (
-    runId: string,
-    toolCallId: string,
-    args: Record<string, unknown>,
-  ) => Promise<boolean>
-  failStart: (runId: string, toolCallId: string) => Promise<boolean>
-  findRun: () => Promise<DeepWaterHandoffLookup>
-  persistTicket: (
-    runId: string,
-    toolCallId: string,
-    externalRunId: string,
-    ticketStatus: DeepWaterStartTicketStatus,
-  ) => Promise<boolean>
-}
+export type { DeepWaterHandoffRepository } from './deepwater-handoff-repository.js'
 
 type StartState =
   | 'unattempted'
@@ -75,7 +59,6 @@ type StartState =
   | 'settled'
   | 'failed'
   | 'ambiguous'
-
 const blockedResult = (): ToolDispatchResult => ({
   output: DEEP_WATER_START_FAILURE_DETAIL,
   raw: null,
@@ -269,18 +252,40 @@ const createGuard = (
           return blockedDispatchResult()
         }
         await waitForStart()
-        return persistedExternalRunId
-          && !attemptAbandoned
-          && (startState === 'succeeded' || startState === 'ticket_persisted')
-          ? {
-              deliveryToken: null,
-              result: await dispatch(
-                currentToolCallId ?? '',
-                { id: persistedExternalRunId },
-              ),
-              transportInvoked: true,
-            }
-          : blockedDispatchResult()
+        if (
+          !persistedExternalRunId
+          || attemptAbandoned
+          || (startState !== 'succeeded' && startState !== 'ticket_persisted')
+        ) {
+          return blockedDispatchResult()
+        }
+        const result = await dispatch(
+          currentToolCallId ?? '',
+          { id: persistedExternalRunId },
+        )
+        if (originalToolName === 'research_report' && result.success) {
+          const sourceCount = ledgerResearchReportSourceCount(result)
+          if (sourceCount === null) {
+            startState = 'ambiguous'
+            throw new DeepWaterHandoffInvariantError(run.id)
+          }
+          let persisted = false
+          try {
+            persisted = await repository.persistReportSources(
+              run.id,
+              persistedExternalRunId,
+              sourceCount,
+            )
+          } catch {
+            startState = 'ambiguous'
+            throw new DeepWaterHandoffInvariantError(run.id)
+          }
+          if (!persisted) {
+            startState = 'ambiguous'
+            throw new DeepWaterHandoffInvariantError(run.id)
+          }
+        }
+        return { deliveryToken: null, result, transportInvoked: true }
       }
       if (startState === 'ticket_persisted' && persistedExternalRunId) {
         startState = 'succeeded'
@@ -359,7 +364,11 @@ const createGuard = (
             transportInvoked: true,
           }
         }
-        const ticket = ledgerResearchTicket(result)
+        if (run.ledgerOrigin === null) {
+          startState = 'ambiguous'
+          throw new DeepWaterHandoffInvariantError(run.id)
+        }
+        const ticket = ledgerResearchTicket(result, run.ledgerOrigin)
         if (!ticket) {
           startState = 'ambiguous'
           throw new DeepWaterHandoffAmbiguousStartError(run.id)
@@ -372,6 +381,7 @@ const createGuard = (
             stableStartToolCallId,
             ticket.id,
             ticket.status,
+            ticket.reportUrl,
           )
         } catch {
           startState = 'ambiguous'
@@ -452,34 +462,14 @@ export const createDeepWaterHandoffGuard = async (input: {
         claimStart: async () => false,
         failStart: async () => false,
         findRun: async () => ({ kind: 'none' }),
+        persistReportSources: async () => false,
         persistTicket: async () => false,
       },
       null,
     )
   }
   const locator = input.locator
-  const repository: DeepWaterHandoffRepository = {
-    claimStart: (runId, toolCallId, args) => claimDeepWaterHandoffStart(input.prisma, {
-      ...locator,
-      args,
-      runId,
-      toolCallId,
-    }),
-    failStart: (runId, toolCallId) => failDeepWaterHandoffStart(input.prisma, {
-      ...locator,
-      runId,
-      toolCallId,
-    }),
-    findRun: () => findDeepWaterHandoffRun(input.prisma, locator),
-    persistTicket: (runId, toolCallId, externalRunId, ticketStatus) =>
-      persistDeepWaterHandoffTicket(input.prisma, {
-        ...locator,
-        externalRunId,
-        runId,
-        ticketStatus,
-        toolCallId,
-      }),
-  }
+  const repository = createDeepWaterHandoffRepository(input.prisma, locator)
   try {
     return guardFromLookup(repository, await repository.findRun(), locator.runId)
   } catch (error) {

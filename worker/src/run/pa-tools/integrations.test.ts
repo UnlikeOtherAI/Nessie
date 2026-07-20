@@ -36,6 +36,8 @@ const makeDeepWaterRunRow = () => ({
   },
   result_json: {
     reportUrl: 'https://deepwater.example/reports/dw-run-123',
+    reportUrlSource: 'ledger_research_start',
+    sourceCountSource: 'ledger_research_report',
     statusDetail: 'Report ready for review.',
   },
   cost_amount: '4.25',
@@ -52,7 +54,9 @@ const makeContext = (
   overrides: {
     actionContextTeamOnly?: boolean
     agentKind?: 'personal_assistant' | 'shared'
-    runRow?: ReturnType<typeof makeDeepWaterRunRow>
+    runRow?: Omit<ReturnType<typeof makeDeepWaterRunRow>, 'result_json'> & {
+      result_json: Record<string, unknown>
+    }
     knowledgePage?: { id: string } | null
   } = {},
 ) => {
@@ -123,7 +127,7 @@ test('deep_water_run_update writes terminal status projection', async () => {
     knowledgePageId: PAGE_ID,
     reportUrl: 'https://deepwater.example/reports/dw-run-123',
     runId: RUN_ID,
-    sourceCount: 18,
+    sourceCount: 999,
     status: 'completed',
     statusDetail: 'Report ready for review.',
     totalCost: 4.25,
@@ -163,11 +167,42 @@ test('deep_water_run_update writes terminal status projection', async () => {
   )
 })
 
+test('deep_water_run_update never meters an untrusted legacy source count', async () => {
+  const runRow = {
+    ...makeDeepWaterRunRow(),
+    result_json: {
+      reportUrl: 'https://deepwater.example/reports/dw-run-123',
+      statusDetail: 'Legacy metadata without server provenance.',
+    },
+  }
+  const { context, ledgerEvents } = makeContext({ runRow })
+
+  const result = await runDeepWaterRunUpdateTool(context, {
+    currency: 'USD',
+    runId: RUN_ID,
+    status: 'completed',
+    totalCost: 4.25,
+  })
+
+  assert.match(result.outputPreview, /sources pending/)
+  assert.equal(ledgerEvents.length, 1)
+  assert.equal(
+    (ledgerEvents[0] as { data: { units: number | null } }).data.units,
+    null,
+  )
+  assert.equal(
+    (ledgerEvents[0] as { data: { unitType: string | null } }).data.unitType,
+    null,
+  )
+})
+
 test('deep_water_run_update does not double-record an already ledgered run', async () => {
   const runRow = {
     ...makeDeepWaterRunRow(),
     result_json: {
       reportUrl: 'https://deepwater.example/reports/dw-run-123',
+      reportUrlSource: 'ledger_research_start',
+      sourceCountSource: 'ledger_research_report',
       statusDetail: 'Report ready for review.',
       usageLedgerCorrelationId: `deep-water:${RUN_ID}`,
       usageLedgerRecordedAt: '2026-07-10T10:46:00.000Z',

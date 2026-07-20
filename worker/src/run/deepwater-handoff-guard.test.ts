@@ -120,16 +120,31 @@ test('validated ticket is durably persisted before successful pass-through', asy
       events.push('claim')
       return true
     },
-    persistTicket: async (_runId, toolCallId, externalRunId, ticketStatus) => {
+    persistTicket: async (
+      _runId,
+      toolCallId,
+      externalRunId,
+      ticketStatus,
+      reportUrl,
+    ) => {
       assert.equal(toolCallId, 'tool-call-1')
       assert.equal(externalRunId, 'rs_ticket-123')
       assert.equal(ticketStatus, 'running')
+      assert.equal(
+        reportUrl,
+        'https://ledger.example/v1/research/rs_ticket-123/report',
+      )
       events.push('persist')
       return true
     },
   })
   const guard = await createDeepWaterHandoffGuardForTest(repository)
-  const expected = runningTicket('rs_ticket-123')
+  const expected = ticketResult({
+    id: 'rs_ticket-123',
+    job_id: 'rs_ticket-123',
+    report_url: 'https://ledger.example/v1/research/rs_ticket-123/report',
+    status: 'running',
+  })
   const result = await guard.dispatchDeepWater(
     'research_start',
     'tool-call-1',

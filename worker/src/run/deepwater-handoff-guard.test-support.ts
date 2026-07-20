@@ -38,6 +38,7 @@ export const handoffRun = (
   externalRunId: null,
   failureEligible: true,
   id: 'handoff-run-1',
+  ledgerOrigin: 'https://ledger.example',
   startArguments: null,
   startEligible: true,
   startTicketStatus: null,
@@ -57,9 +58,10 @@ export const makeRepository = (options: {
   claimStart?: DeepWaterHandoffRepository['claimStart']
   failStart?: DeepWaterHandoffRepository['failStart']
   findRun?: DeepWaterHandoffRepository['findRun']
+  persistReportSources?: DeepWaterHandoffRepository['persistReportSources']
   persistTicket?: DeepWaterHandoffRepository['persistTicket']
 } = {}) => {
-  const calls = { claim: 0, fail: 0, find: 0, persist: 0 }
+  const calls = { claim: 0, fail: 0, find: 0, persist: 0, report: 0 }
   const repository: DeepWaterHandoffRepository = {
     claimStart: async (...args) => {
       calls.claim += 1
@@ -72,6 +74,12 @@ export const makeRepository = (options: {
     findRun: async () => {
       calls.find += 1
       return options.findRun ? options.findRun() : found()
+    },
+    persistReportSources: async (...args) => {
+      calls.report += 1
+      return options.persistReportSources
+        ? options.persistReportSources(...args)
+        : true
     },
     persistTicket: async (...args) => {
       calls.persist += 1

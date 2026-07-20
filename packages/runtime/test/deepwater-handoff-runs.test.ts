@@ -11,6 +11,7 @@ import {
   findDeepWaterHandoffRun,
   markAmbiguousDeepWaterHandoffRecoveryNeeded,
   markDeepWaterHandoffRecoveryNeeded,
+  persistDeepWaterHandoffReportSources,
   persistDeepWaterHandoffTicket,
 } from '../src/deepwater-handoff-runs.js'
 
@@ -23,6 +24,10 @@ const locator = {
 }
 
 const row = (overrides: Record<string, unknown> = {}) => ({
+  connector_transport_config: {
+    transport: 'http',
+    url: 'https://ledger.example/v1/mcp/deepwater',
+  },
   cost_amount: null,
   external_run_id: null,
   id: '8f3a5a00-0e64-4d10-a517-0d0b69c1d801',
@@ -64,6 +69,7 @@ test('handoff lookup preserves provider evidence as failure-ineligible', async (
         externalRunId,
         failureEligible: false,
         id: row().id,
+        ledgerOrigin: 'https://ledger.example',
         startArguments: null,
         startEligible: false,
         startTicketStatus: null,
@@ -89,6 +95,7 @@ test('handoff lookup returns one exact clean attached run', async () => {
       externalRunId: null,
       failureEligible: true,
       id: row().id,
+      ledgerOrigin: 'https://ledger.example',
       startArguments: null,
       startEligible: true,
       startTicketStatus: null,
@@ -108,6 +115,33 @@ test('handoff lookup returns one exact clean attached run', async () => {
   )
 })
 
+test('terminal lookup tolerates a connector removed after completion', async () => {
+  const prisma = {
+    $queryRaw: async () => [row({
+      connector_transport_config: null,
+      status: 'completed',
+    })],
+  } as unknown as PrismaClient
+
+  const lookup = await findDeepWaterHandoffRun(prisma, locator)
+  assert.equal(lookup.kind, 'found')
+  if (lookup.kind === 'found') {
+    assert.equal(lookup.run.ledgerOrigin, null)
+    assert.equal(lookup.run.startEligible, false)
+  }
+})
+
+test('fresh lookup fails closed without a connector transport origin', async () => {
+  const prisma = {
+    $queryRaw: async () => [row({ connector_transport_config: null })],
+  } as unknown as PrismaClient
+
+  await assert.rejects(
+    findDeepWaterHandoffRun(prisma, locator),
+    /connector transport URL is missing/,
+  )
+})
+
 test('handoff lookup exposes exact correlation and arguments for crash recovery', async () => {
   const startArguments = { query: 'Original query', depth: 'deep' }
   const prisma = {
@@ -123,6 +157,7 @@ test('handoff lookup exposes exact correlation and arguments for crash recovery'
       externalRunId: null,
       failureEligible: true,
       id: row().id,
+      ledgerOrigin: 'https://ledger.example',
       startArguments,
       startEligible: false,
       startTicketStatus: null,
@@ -169,38 +204,82 @@ test('start claim permits only the first exact clean queued transition', async (
   )
 })
 
-test('validated ticket persistence accepts late final-recovery tickets exactly once', async () => {
+test('validated ticket persistence adds provenance and atomic replay guards', async () => {
   const queries: unknown[] = []
-  let delivery = 0
   const prisma = {
     $queryRaw: async (query: unknown) => {
       queries.push(query)
-      delivery += 1
-      return delivery === 1 ? [{ id: row().id }] : []
+      return [{ id: row().id }]
     },
   } as unknown as PrismaClient
   const input = {
     ...locator,
     externalRunId: 'rs_ticket-123',
+    reportUrl: 'https://ledger.example/v1/research/rs_ticket-123/report',
     runId: row().id as string,
     ticketStatus: 'running' as const,
     toolCallId: 'stable-call',
   }
 
   assert.equal(await persistDeepWaterHandoffTicket(prisma, input), true)
-  assert.equal(await persistDeepWaterHandoffTicket(prisma, input), false)
   const text = sqlText(queries[0])
   assert.match(text, /"external_run_id" =/)
   assert.match(text, /"status" = 'running'/)
   assert.match(text, /"status" IN \('running', 'needs_setup'\)/)
   assert.match(text, /WHEN "status" = 'needs_setup'/)
   assert.match(text, /- 'statusDetail'/)
-  assert.match(text, /startTicketStatus/)
+  assert.match(text, /result_json/)
+  assert.match(text, /reportUrlSource/)
+  assert.match(text, /reportUrlSource.*<>/s)
   assert.match(text, /startToolCallId/)
   const values = (queries[0] as { values?: readonly unknown[] }).values ?? []
   assert.ok(values.includes('rs_ticket-123'))
-  assert.ok(values.includes('running'))
+  assert.ok(values.includes(JSON.stringify({
+    reportUrl: 'https://ledger.example/v1/research/rs_ticket-123/report',
+    reportUrlSource: 'ledger_research_start',
+    startTicketStatus: 'running',
+  })))
   assert.ok(values.includes('stable-call'))
+})
+
+test('report evidence persistence replaces untrusted data and rejects trusted conflicts', async () => {
+  const queries: unknown[] = []
+  const tx = {
+    $executeRaw: async (input: unknown) => {
+      queries.push(input)
+      return 1
+    },
+    $queryRaw: async (input: unknown) => {
+      queries.push(input)
+      return [{ id: row().id }]
+    },
+  }
+  const prisma = {
+    $transaction: async <T>(operation: (client: typeof tx) => Promise<T>): Promise<T> =>
+      operation(tx),
+  } as unknown as PrismaClient
+
+  assert.equal(await persistDeepWaterHandoffReportSources(prisma, {
+    ...locator,
+    externalRunId: 'rs_ticket-123',
+    runId: row().id as string,
+    sourceCount: 14,
+  }), true)
+
+  const updateText = sqlText(queries[0])
+  const repairText = sqlText(queries[1])
+  const values = (queries[0] as { values?: readonly unknown[] }).values ?? []
+  assert.match(updateText, /"source_count" =/)
+  assert.match(updateText, /sourceCountSource/)
+  assert.match(updateText, /sourceCountSource.*<>/s)
+  assert.match(updateText, /"source_count" = .*sourceCountSource/s)
+  assert.match(repairText, /UPDATE "connector_usage_events"/)
+  assert.match(repairText, /"correlation_id"/)
+  assert.match(repairText, /"unit_type" = 'sources'/)
+  assert.ok(values.includes(14))
+  assert.ok(values.includes(JSON.stringify({
+    sourceCountSource: 'ledger_research_report',
+  })))
 })
 
 test('terminal replay ticket preserves status while keeping reconciliation active', async () => {
@@ -215,13 +294,14 @@ test('terminal replay ticket preserves status while keeping reconciliation activ
   assert.equal(await persistDeepWaterHandoffTicket(prisma, {
     ...locator,
     externalRunId: 'rs_terminal',
+    reportUrl: null,
     runId: row().id as string,
     ticketStatus: 'failed',
     toolCallId: 'stable-call',
   }), true)
 
   const values = (query as { values?: readonly unknown[] }).values ?? []
-  assert.ok(values.includes('failed'))
+  assert.ok(values.includes(JSON.stringify({ startTicketStatus: 'failed' })))
   assert.match(sqlText(query), /"status" = 'running'/)
   assert.doesNotMatch(sqlText(query), /"completed_at" =/)
 })

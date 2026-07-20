@@ -13,7 +13,7 @@ export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   requiresExplicitGrant: true,
   description:
     'Update Nessie\'s durable Deep Water run record after calling the approved Ledger MCP tools. ' +
-    'Use the exact full Nessie runId from the server-built launch message, never the abbreviated value on its launch card; record the Ledger research job id, status, source count, exact immutable Ledger-booked terminal rate-card charge, report URL, and Knowledge draft page when available.',
+    'Use the exact full Nessie runId from the server-built launch message, never the abbreviated value on its launch card; record the Ledger research job id, status, exact immutable Ledger-booked terminal rate-card charge, and Knowledge draft page when available. Nessie records the validated report URL and source count from Ledger\'s authenticated responses.',
   parameters: {
     type: 'object',
     properties: {
@@ -30,11 +30,6 @@ export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
         type: 'string',
         description: 'Ledger research job id returned by mcp_research_start or mcp_research_status.',
       },
-      sourceCount: {
-        type: 'integer',
-        minimum: 0,
-        description: 'Number of sources/evidence items reported by Deep Water.',
-      },
       totalCost: {
         type: 'number',
         minimum: 0,
@@ -43,10 +38,6 @@ export const DEEP_WATER_RUN_UPDATE_TOOL_DEFINITION: BuiltinToolDefinition = {
       currency: {
         type: 'string',
         description: 'Currency returned with Ledger cost.amount for the booked rate-card charge. Omit when Ledger returned no cost.',
-      },
-      reportUrl: {
-        type: 'string',
-        description: 'Public or authenticated Deep Water report URL, if returned.',
       },
       knowledgePageId: {
         type: 'string',

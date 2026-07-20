@@ -248,6 +248,14 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   Knowledge page validated against the org), and copies Ledger's terminal
   `{ amount, currency }` exactly as the immutable booked rate-card charge
   assigned to the launch run's immutable `requestedByUserId`, never the updater.
+  The external report URL is persisted only from Ledger's authenticated
+  `research_start` structured response after its origin and exact job path are
+  validated; source count is persisted only from the authenticated
+  `research_report` references array. Both carry server-only provenance markers
+  before they are exposed, and agent-authored run updates cannot set, replace,
+  or mark either value as trusted. Source persistence atomically repairs an
+  already-created exact per-run connector usage event, making same-batch
+  report/update order irrelevant.
   The locked write also enforces a terminal start ticket's exact Product status
   mapping (`complete` → `completed`; negative terminal outcomes → `failed`).
   That mirrored charge is not a provider-invoice actual and complex runs may

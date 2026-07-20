@@ -40,6 +40,8 @@ export type DeepWaterRunRow = {
 
 export const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
 export const DEFAULT_CURRENCY = 'USD'
+export const TRUSTED_DEEP_WATER_REPORT_URL_SOURCE = 'ledger_research_start'
+export const TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE = 'ledger_research_report'
 export const TERMINAL_STATUSES: ProductIntegrationRunStatus[] = [
   'completed',
   'failed',
@@ -65,12 +67,6 @@ export const toNullableNumber = (
   if (value === null) return null
   const numeric = typeof value === 'number' ? value : Number(value.toString())
   return Number.isFinite(numeric) ? numeric : null
-}
-
-export const toNullableInteger = (value: number | null | undefined): number | null => {
-  if (value === undefined || value === null) return null
-  if (!Number.isFinite(value)) return null
-  return Math.max(0, Math.trunc(value))
 }
 
 export const toNullableCost = (value: number | null | undefined): number | null => {
@@ -134,11 +130,17 @@ export const mapDeepWaterRunRow = (row: DeepWaterRunRow): DeepWaterResearchRunRe
     outputTier: pickString(input.outputTier, ['summary', 'full'] as const, 'full'),
     productSlug: DEEP_WATER_PRODUCT_SLUG,
     queryPreview: row.query_preview,
-    reportUrl: pickNullableString(result.reportUrl),
+    reportUrl:
+      result.reportUrlSource === TRUSTED_DEEP_WATER_REPORT_URL_SOURCE
+        ? pickNullableString(result.reportUrl)
+        : null,
     requestedAt: toIsoString(row.requested_at),
     requestedByUserId: row.requested_by_user_id,
     searchQuality: pickString(input.searchQuality, ['standard', 'premium'] as const, 'standard'),
-    sourceCount: row.source_count,
+    sourceCount:
+      result.sourceCountSource === TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE
+        ? row.source_count
+        : null,
     status: row.status,
     statusDetail: pickNullableString(result.statusDetail),
     teamId: row.team_id,

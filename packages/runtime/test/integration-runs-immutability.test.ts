@@ -79,11 +79,13 @@ const sqlText = (query: unknown): string =>
   ((query as { strings?: readonly string[] }).strings ?? []).join('?')
 
 const makePrisma = (state: RunState) => {
+  const boundValues: unknown[] = []
   const queries: string[] = []
   let updateCount = 0
   const tx = {
     $queryRaw: async (query: unknown) => {
       const text = sqlText(query)
+      boundValues.push(...((query as { values?: readonly unknown[] }).values ?? []))
       queries.push(text)
       if (text.includes('FOR UPDATE')) return [state]
       if (text.includes('UPDATE "product_integration_runs"')) {
@@ -99,11 +101,46 @@ const makePrisma = (state: RunState) => {
     knowledgePage: { findFirst: async () => null },
   } as unknown as PrismaClient
   return {
+    boundValues,
     prisma,
     queries,
     updateCount: () => updateCount,
   }
 }
+
+test('agent-authored updates cannot set report metadata or forge its provenance', async () => {
+  const trustedUrl = 'https://ledger.example/v1/research/rs_ticket/report'
+  const fixture = makePrisma({
+    cost_amount: null,
+    cost_currency: 'USD',
+    external_run_id: 'rs_ticket',
+    result_json: {
+      reportUrl: trustedUrl,
+      reportUrlSource: 'ledger_research_start',
+      sourceCountSource: 'ledger_research_report',
+    },
+    status: 'running',
+  })
+
+  await updateDeepWaterResearchRun(fixture.prisma, updateInput({
+    result: {
+      reportUrl: 'https://attacker.example/fake-report',
+      reportUrlSource: 'ledger_research_start',
+      retainedDetail: 'safe internal detail',
+      sourceCount: 999,
+      sourceCountSource: 'ledger_research_report',
+    },
+    status: 'running',
+  }))
+
+  const serialized = fixture.boundValues.map(String).join('\n')
+  assert.doesNotMatch(serialized, /attacker\.example/)
+  assert.doesNotMatch(serialized, /reportUrlSource/)
+  assert.doesNotMatch(serialized, /sourceCountSource/)
+  assert.doesNotMatch(serialized, /999/)
+  assert.match(serialized, /safe internal detail/)
+  assert.equal(fixture.updateCount(), 1)
+})
 
 runIfDatabase(
   'PostgreSQL accepts nullable parameters for running and terminal updates',
@@ -184,7 +221,6 @@ runIfDatabase(
         externalRunId,
         organizationId: ids.organization,
         runId: ids.run,
-        sourceCount: 21,
         status: 'completed',
         teamId: ids.team,
         threadId: ids.thread,
@@ -194,7 +230,7 @@ runIfDatabase(
       assert.equal(completed.status, 'completed')
       assert.equal(completed.totalCost, 1)
       assert.equal(completed.currency, 'USD')
-      assert.equal(completed.sourceCount, 21)
+      assert.equal(completed.sourceCount, null)
       assert.equal(completed.completedAt, completedAt.toISOString())
     } finally {
       await prisma.$disconnect()

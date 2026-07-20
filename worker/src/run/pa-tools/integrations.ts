@@ -29,11 +29,6 @@ const nullableNonNegativeNumber = (value: unknown): number | undefined => {
   return value
 }
 
-const nullableNonNegativeInteger = (value: unknown): number | undefined => {
-  const numeric = nullableNonNegativeNumber(value)
-  return numeric === undefined ? undefined : Math.trunc(numeric)
-}
-
 const parseStatus = (value: unknown): ProductIntegrationRunStatus => {
   const parsed = ProductIntegrationRunStatusSchema.safeParse(value)
   if (!parsed.success || !RUN_UPDATE_STATUSES.has(parsed.data)) {
@@ -76,9 +71,7 @@ export const runDeepWaterRunUpdateTool = async (
     externalRunId: nullableString(args.externalRunId),
     knowledgePageId: nullableString(args.knowledgePageId),
     organizationId: String(context.channel.organizationId),
-    reportUrl: nullableString(args.reportUrl),
     runId,
-    sourceCount: nullableNonNegativeInteger(args.sourceCount),
     status,
     statusDetail: nullableString(args.statusDetail),
     teamId: String(teamId),

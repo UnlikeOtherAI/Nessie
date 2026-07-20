@@ -1,7 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { ProductIntegrationRunStatus } from '@nessie/schemas'
 
-import { DEEP_WATER_PRODUCT_SLUG, toRecord } from './integration-runs-mapping.js'
+import {
+  DEEP_WATER_PRODUCT_SLUG,
+  toRecord,
+  TRUSTED_DEEP_WATER_REPORT_URL_SOURCE,
+  TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE,
+} from './integration-runs-mapping.js'
 
 export const DEEP_WATER_START_FAILURE_DETAIL =
   'Deep Water research could not be started.'
@@ -19,6 +24,7 @@ export type DeepWaterHandoffRun = {
   externalRunId: string | null
   failureEligible: boolean
   id: string
+  ledgerOrigin: string | null
   startArguments: Record<string, unknown> | null
   startEligible: boolean
   startTicketStatus: DeepWaterStartTicketStatus | null
@@ -40,6 +46,7 @@ export type DeepWaterHandoffRunLocator = {
 }
 
 type DeepWaterHandoffRunRow = {
+  connector_transport_config: unknown
   cost_amount: Prisma.Decimal | number | string | null
   external_run_id: string | null
   id: string
@@ -47,6 +54,17 @@ type DeepWaterHandoffRunRow = {
   result_json: unknown
   source_count: number | null
   status: ProductIntegrationRunStatus
+}
+
+const ledgerOriginFromTransport = (value: unknown): string | null => {
+  const url = toRecord(value).url
+  if (url === undefined) return null
+  if (typeof url !== 'string') throw new Error('Deep Water connector transport URL is invalid')
+  const parsed = new URL(url)
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('Deep Water connector transport URL must use HTTP(S)')
+  }
+  return parsed.origin
 }
 
 const isFailureEligibleHandoff = (row: DeepWaterHandoffRunRow): boolean => {
@@ -92,7 +110,12 @@ export const findDeepWaterHandoffRun = async (
       "cost_amount",
       "source_count",
       "knowledge_page_id",
-      "result_json"
+      "result_json",
+      (
+        SELECT "transport_config"
+        FROM "mcp_server_instances"
+        WHERE "mcp_server_instances"."id" = "product_integration_runs"."connector_id"
+      ) AS "connector_transport_config"
     FROM "product_integration_runs"
     WHERE "id" = CAST(${locator.runId} AS uuid)
       AND "message_id" = CAST(${locator.messageId} AS uuid)
@@ -116,12 +139,17 @@ export const findDeepWaterHandoffRun = async (
     ? result.startArguments as Record<string, unknown>
     : null
   const failureEligible = isFailureEligibleHandoff(rows[0])
+  const ledgerOrigin = ledgerOriginFromTransport(rows[0].connector_transport_config)
+  if (failureEligible && ledgerOrigin === null) {
+    throw new Error('Deep Water connector transport URL is missing')
+  }
   return {
     kind: 'found',
     run: {
       externalRunId: rows[0].external_run_id,
       failureEligible,
       id: rows[0].id,
+      ledgerOrigin,
       startArguments,
       startEligible: rows[0].status === 'queued' && failureEligible,
       startTicketStatus: startTicketStatusFromResult(result),
@@ -188,26 +216,33 @@ export const persistDeepWaterHandoffTicket = async (
   prisma: PrismaClient,
   locator: DeepWaterHandoffRunLocator & {
     externalRunId: string
+    reportUrl: string | null
     runId: string
     ticketStatus: DeepWaterStartTicketStatus
     toolCallId: string
   },
 ): Promise<boolean> => {
+  const ticketPatch = JSON.stringify({
+    ...(locator.reportUrl === null
+      ? {}
+      : {
+          reportUrl: locator.reportUrl,
+          reportUrlSource: TRUSTED_DEEP_WATER_REPORT_URL_SOURCE,
+        }),
+    startTicketStatus: locator.ticketStatus,
+  })
   const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     UPDATE "product_integration_runs"
     SET
       "status" = 'running'::"ProductIntegrationRunStatus",
       "external_run_id" = ${locator.externalRunId},
-      "result_json" = jsonb_set(
+      "result_json" = (
         CASE
           WHEN "status" = 'needs_setup'
             THEN COALESCE("result_json", '{}'::jsonb) - 'statusDetail'
           ELSE COALESCE("result_json", '{}'::jsonb)
-        END,
-        '{startTicketStatus}',
-        to_jsonb(${locator.ticketStatus}::text),
-        true
-      ),
+        END
+      ) || CAST(${ticketPatch} AS jsonb),
       "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = CAST(${locator.runId} AS uuid)
       AND "message_id" = CAST(${locator.messageId} AS uuid)
@@ -218,9 +253,80 @@ export const persistDeepWaterHandoffTicket = async (
       AND "status" IN ('running', 'needs_setup')
       AND ("external_run_id" IS NULL OR "external_run_id" = ${locator.externalRunId})
       AND COALESCE("result_json" ->> 'startToolCallId', '') = ${locator.toolCallId}
+      AND (
+        CAST(${locator.reportUrl} AS text) IS NULL
+        OR COALESCE("result_json" ->> 'reportUrlSource', '')
+          <> ${TRUSTED_DEEP_WATER_REPORT_URL_SOURCE}
+        OR (
+          "result_json" ->> 'reportUrl' = ${locator.reportUrl}
+          AND "result_json" ->> 'reportUrlSource' = ${TRUSTED_DEEP_WATER_REPORT_URL_SOURCE}
+        )
+      )
     RETURNING "id"
   `)
   return rows.length === 1
+}
+
+/** Persist evidence count only from Ledger's authenticated report response. */
+export const persistDeepWaterHandoffReportSources = async (
+  prisma: PrismaClient,
+  locator: DeepWaterHandoffRunLocator & {
+    externalRunId: string
+    runId: string
+    sourceCount: number
+  },
+): Promise<boolean> => {
+  if (!Number.isSafeInteger(locator.sourceCount) || locator.sourceCount < 0) {
+    throw new Error('Deep Water report source count must be a non-negative integer')
+  }
+  const sourcePatch = JSON.stringify({
+    sourceCountSource: TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE,
+  })
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      UPDATE "product_integration_runs"
+      SET
+        "source_count" = ${locator.sourceCount},
+        "result_json" = COALESCE("result_json", '{}'::jsonb)
+          || CAST(${sourcePatch} AS jsonb),
+        "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = CAST(${locator.runId} AS uuid)
+        AND "message_id" = CAST(${locator.messageId} AS uuid)
+        AND "organization_id" = CAST(${locator.organizationId} AS uuid)
+        AND "team_id" = CAST(${locator.teamId} AS uuid)
+        AND "thread_id" = CAST(${locator.threadId} AS uuid)
+        AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+        AND "external_run_id" = ${locator.externalRunId}
+        AND (
+          COALESCE("result_json" ->> 'sourceCountSource', '')
+            <> ${TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE}
+          OR (
+            "source_count" = ${locator.sourceCount}
+            AND "result_json" ->> 'sourceCountSource'
+              = ${TRUSTED_DEEP_WATER_SOURCE_COUNT_SOURCE}
+          )
+        )
+      RETURNING "id"
+    `)
+    if (rows.length !== 1) return false
+
+    // A separate READ COMMITTED statement is intentional. If terminal usage
+    // reconciliation held the Product row lock first, this fresh snapshot sees
+    // the event it inserted before releasing that lock. If this transaction
+    // wins first, reconciliation reads the trusted count after we commit.
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE "connector_usage_events"
+      SET
+        "units" = ${locator.sourceCount},
+        "unit_type" = 'sources'
+      WHERE "organization_id" = CAST(${locator.organizationId} AS uuid)
+        AND "team_id" IS NOT DISTINCT FROM CAST(${locator.teamId} AS uuid)
+        AND "correlation_id" = ${`${DEEP_WATER_PRODUCT_SLUG}:${locator.runId}`}
+        AND "connector_type" = 'mcp'::"ConnectorType"
+        AND "target" = ${DEEP_WATER_PRODUCT_SLUG}
+    `)
+    return true
+  })
 }
 
 /** Move one exhausted unresolved start into an explicit recovery state. */
