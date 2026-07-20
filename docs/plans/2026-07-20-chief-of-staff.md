@@ -284,12 +284,14 @@ Intervention capabilities, in order of ambition:
   live outside normal channels (dedicated eval thread), never ping humans,
   and are excluded from the CoS's own observation ingestion (no
   self-observation feedback loops).
-- **Per-agent budget tiers.** The agentic loop is a native multi-step
-  tool-calling loop (read a doc, then another…), but capped at 12
-  iterations / 20 tool calls / 90 s per run — fine for chat, cramped for
-  "audit this agent's last 50 runs". Caps should become per-agent-kind
-  tiers so CoS analysis/rehearsal runs get more headroom; `delegate`
-  sub-agents stay tight.
+- **Harness v2 (unbounded runs).** CoS analysis/rehearsal work needs runs
+  that last as long as the task requires. This is now specified
+  platform-wide in
+  [2026-07-20-agent-harness-v2.md](2026-07-20-agent-harness-v2.md):
+  hard iteration/tool/wallclock caps are removed in favour of model-driven
+  termination, economic checkpoints, auto-compaction, and durable goals —
+  the CoS is a primary beneficiary and its long analysis runs depend on
+  that spec landing first.
 - **Agent↔agent multi-turn conversation** is a *gap*: mailbox dispatch is
   one-shot, results return only via shared threads, and agent replies never
   re-trigger orchestration (by design, to prevent loops). If probes need
@@ -368,3 +370,12 @@ conversation (only budgeted one-shot probes/dispatches until proven needed).
 - Shape of a future bounded agent↔agent conversation primitive
   (correlation-threaded, max-turns, loop-guarded) if one-shot probes prove
   insufficient.
+- **Delivery vehicle — deep.agent (directional).** Current direction: build
+  the CoS's heavy analysis brain as a scripted deep.agent-hosted service
+  behind the existing first-party integration pattern (DeepSignal/DeepWater
+  style: managed instance, Ledger-attributed calls, signed
+  `X-Nessie-Context`), with Nessie owning the observation store, opportunity
+  queue, delivery surfaces, and enablement. Needs validation of deep.agent's
+  scripting/hosting surface before the pipeline design in §3.3 is committed
+  to either side of that boundary; the hard rules in §2 apply identically
+  either way.
