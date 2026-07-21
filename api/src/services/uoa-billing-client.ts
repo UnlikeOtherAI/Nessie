@@ -57,8 +57,21 @@ export type UoaBillingClient = {
     path: string,
     body: Readonly<Record<string, unknown>>,
   ) => Promise<unknown>
+  postNoContent: (
+    path: string,
+    body: Readonly<Record<string, unknown>>,
+  ) => Promise<void>
   subject: UoaBillingSubject
 }
+
+export const createUoaBillingSubjectBody = (
+  subject: UoaBillingSubject,
+): Record<string, string> => ({
+  product: NESSIE_PRODUCT,
+  organisation_id: subject.organizationId,
+  team_id: subject.teamId,
+  user_id: subject.userId,
+})
 
 export class UoaBillingError extends Error {
   constructor(
@@ -77,6 +90,14 @@ export class UoaBillingError extends Error {
     super(message)
     this.name = 'UoaBillingError'
   }
+}
+
+export const invalidUoaBillingResponse = (description: string): never => {
+  throw new UoaBillingError(
+    'UOA_BILLING_RESPONSE_INVALID',
+    `UnlikeOtherAI billing returned ${description}.`,
+    502,
+  )
 }
 
 const envValue = (
@@ -319,6 +340,22 @@ const clientForSubject = (
   subject,
   post: async (path, body) =>
     readJson(await requestBilling(settings, subject, path, body, deps)),
+  postNoContent: async (path, body) => {
+    const response = await requestBilling(settings, subject, path, body, deps)
+    const cacheDirectives = response.headers
+      .get('cache-control')
+      ?.toLowerCase()
+      .split(',')
+      .map((directive) => directive.trim())
+      ?? []
+    if (response.status !== 204 || !cacheDirectives.includes('no-store')) {
+      throw new UoaBillingError(
+        'UOA_BILLING_RESPONSE_INVALID',
+        'UnlikeOtherAI billing returned an invalid no-content response.',
+        502,
+      )
+    }
+  },
 })
 
 export const createUoaBillingClient = async (

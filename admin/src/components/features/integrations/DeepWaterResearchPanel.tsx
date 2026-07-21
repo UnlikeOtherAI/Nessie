@@ -47,8 +47,6 @@ export const DeepWaterResearchPanel = ({
   const navigate = useNavigate()
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
-  const canReadBilling =
-    isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const launch = useLaunchDeepWaterResearch()
   const runsQuery = useDeepWaterResearchRuns()
   const [title, setTitle] = useState('')
@@ -148,13 +146,9 @@ export const DeepWaterResearchPanel = ({
           <div className="mt-1 text-sm font-semibold text-[var(--tx)]">
             {product.usageSummary.totalCalls} calls
           </div>
-          {canReadBilling ? (
-            <Link className="text-xs text-[var(--tx3)] underline" to="/tokens">
-              Customer totals from UOA
-            </Link>
-          ) : (
-            <div className="text-xs text-[var(--tx3)]">Customer totals managed by UOA</div>
-          )}
+          <Link className="text-xs text-[var(--tx3)] underline" to="/tokens">
+            Team credits and customer totals
+          </Link>
         </div>
       </div>
 

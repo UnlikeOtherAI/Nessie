@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+import { UoaBillingCreditsPanel } from '../components/features/billing/UoaBillingCreditsPanel'
+import { UoaBillingRecurringAddonsPanel } from '../components/features/billing/UoaBillingRecurringAddonsPanel'
 import { UoaBillingStatementPanel } from '../components/features/billing/UoaBillingStatementPanel'
 import { BudgetManager } from '../components/features/budgets/BudgetManager'
 import {
@@ -12,7 +14,11 @@ import {
   getUoaBillingCheckoutReturnNotice,
   readUoaBillingCheckoutReturn,
 } from '../facades/billing/checkout-return'
-import { billingStatementKey } from '../facades/billing/hooks'
+import {
+  billingCreditsKey,
+  billingRecurringAddonsKey,
+  billingStatementKey,
+} from '../facades/billing/hooks'
 import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -104,7 +110,7 @@ export const TokenUsagePage = () => {
   const [groupBy, setGroupBy] = useState('model')
   const [connectorGroupBy, setConnectorGroupBy] = useState('connectorType')
   const isOwner = me?.user.roleIds.includes('owner') ?? false
-  const canReadBilling =
+  const canReadStatement =
     isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const checkoutReturn = readUoaBillingCheckoutReturn(location.search)
   const checkoutNotice = checkoutReturn
@@ -113,19 +119,24 @@ export const TokenUsagePage = () => {
 
   useEffect(() => {
     if (
-      !canReadBilling
-      || !checkoutReturn
+      !checkoutReturn
       || refreshedCheckoutLocation.current === location.key
     ) {
       return
     }
     refreshedCheckoutLocation.current = location.key
-    void queryClient.refetchQueries({
-      exact: true,
-      queryKey: billingStatementKey,
-      type: 'all',
-    })
-  }, [canReadBilling, checkoutReturn, location.key, queryClient])
+    for (const queryKey of [
+      billingCreditsKey,
+      billingRecurringAddonsKey,
+      ...(canReadStatement ? [billingStatementKey] : []),
+    ]) {
+      void queryClient.refetchQueries({
+        exact: true,
+        queryKey,
+        type: 'all',
+      })
+    }
+  }, [canReadStatement, checkoutReturn, location.key, queryClient])
 
   const { data: summary } = useQuery<TokenSummary>({
     queryKey: ['token-summary', groupBy],
@@ -161,10 +172,10 @@ export const TokenUsagePage = () => {
   const costTrackingInactive =
     (pricingProfiles?.length ?? 0) === 0 && (summary?.totalTokens ?? 0) > 0
 
-  if (!canReadBilling || !me) {
+  if (!me) {
     return (
       <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
-        Owner or admin access required
+        Sign in to view team credits
       </section>
     )
   }
@@ -205,7 +216,9 @@ export const TokenUsagePage = () => {
             </p>
           </div>
         )}
-        <UoaBillingStatementPanel />
+        <UoaBillingCreditsPanel />
+        <UoaBillingRecurringAddonsPanel />
+        {canReadStatement && <UoaBillingStatementPanel />}
         {isOwner && (
           <>
             <div className="my-8 border-t border-[color:var(--sep)] pt-6">

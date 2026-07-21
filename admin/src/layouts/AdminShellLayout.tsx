@@ -147,7 +147,6 @@ const AuthenticatedAdminShellLayout = () => {
     <ProjectsSidebarNav isOwner={shell.isOwner} pathname={shell.pathname} />
   ) : shell.isAdminRoute ? (
     <AdminSidebarNav
-      canReadBilling={shell.isOwner || shell.isAdmin}
       isOwner={shell.isOwner}
       isSuperAdmin={shell.isSuperAdmin}
       pathname={shell.pathname}

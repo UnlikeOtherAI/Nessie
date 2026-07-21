@@ -75,5 +75,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Verified @unlikeotherai/billing-statement-protocol against UOA commit 205547b34bf01d5d665245cf622a193198997608.",
+  "Verified @unlikeotherai/billing-statement-protocol against UOA commit f767f2b8db73443ae31da719c9effafd3aa4ee25.",
 );

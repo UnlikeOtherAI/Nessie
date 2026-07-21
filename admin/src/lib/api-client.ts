@@ -6,7 +6,7 @@ export type { ApiClient }
 // single web-specific seam; @nessie/client-core stays env-agnostic and has the
 // base URL injected by the host (here).
 export const getBaseUrl = (): string => {
-  const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
+  const configuredBaseUrl = import.meta.env?.VITE_API_BASE_URL?.trim()
   return configuredBaseUrl ? configuredBaseUrl.replace(/\/$/, '') : ''
 }
 

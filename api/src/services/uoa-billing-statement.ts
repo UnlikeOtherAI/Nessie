@@ -12,9 +12,11 @@ import type {
   BillingStatementAction,
   BillingStatementV2,
 } from '@unlikeotherai/billing-statement-protocol'
+import { requireUoaFrozenAction } from './uoa-billing-action.js'
 import {
+  createUoaBillingSubjectBody,
   createUoaBillingClient,
-  UoaBillingError,
+  invalidUoaBillingResponse,
   type UoaBillingClient,
   type UoaBillingClientDeps,
   type UoaBillingSubject,
@@ -25,6 +27,7 @@ import {
   parseBillingHostedRedirectResponse,
   parseBillingStatementV2,
 } from './uoa-billing-protocol.js'
+import { assertStripeRedirectUrl } from './uoa-billing-redirect.js'
 
 const NESSIE_PRODUCT = 'nessie'
 const STATEMENT_PATH = '/billing/v2/customer-statement'
@@ -50,23 +53,6 @@ type BillingStatementPrisma = Pick<
 >
 type HostedActionId = 'portal' | 'upgrade'
 
-const subjectBody = (
-  subject: UoaBillingSubject,
-): Record<string, string> => ({
-  product: NESSIE_PRODUCT,
-  organisation_id: subject.organizationId,
-  team_id: subject.teamId,
-  user_id: subject.userId,
-})
-
-const invalidResponse = (description: string): never => {
-  throw new UoaBillingError(
-    'UOA_BILLING_RESPONSE_INVALID',
-    `UnlikeOtherAI billing returned ${description}.`,
-    502,
-  )
-}
-
 const parseStatement = (
   value: unknown,
   subject: UoaBillingSubject,
@@ -89,7 +75,7 @@ const parseStatement = (
     || snapshot.group_by !== 'user'
     || snapshot.cursor !== snapshot.id
   ) {
-    return invalidResponse('an invalid canonical statement')
+    return invalidUoaBillingResponse('an invalid canonical statement')
   }
   return statement
 }
@@ -98,7 +84,7 @@ const loadStatement = async (
   client: UoaBillingClient,
   billingMonth?: string,
 ): Promise<BillingStatementV2> => {
-  const body: Record<string, string> = subjectBody(client.subject)
+  const body: Record<string, string> = createUoaBillingSubjectBody(client.subject)
   if (billingMonth) body.billing_month = billingMonth
   return parseStatement(
     await client.post(STATEMENT_PATH, body),
@@ -113,55 +99,14 @@ const actionFor = (
   subject: UoaBillingSubject,
 ): BillingStatementAction => {
   const matches = statement.actions.filter((action) => action.id === id)
-  const action = matches[0]
   const expected = ACTION_CONTRACT[id]
-  const expectedBody = subjectBody(subject)
-  if (
-    matches.length !== 1
-    || !action
-    || action.kind !== expected.kind
-    || action.request.method !== 'POST'
-    || action.request.path !== expected.path
-    || Object.entries(expectedBody).some(
-      ([key, value]) => action.request.body[key] !== value,
-    )
-  ) {
-    throw new UoaBillingError(
-      'UOA_BILLING_ACTION_INVALID',
-      'UnlikeOtherAI returned an invalid billing action.',
-      502,
-    )
-  }
-  if (!action.enabled) {
-    throw new UoaBillingError(
-      'UOA_BILLING_ACTION_UNAVAILABLE',
-      action.disabled_reason ?? 'This billing action is unavailable.',
-      409,
-    )
-  }
-  return action
-}
-
-const assertStripeRedirect = (
-  value: string,
-  action: HostedActionId,
-): string => {
-  try {
-    const url = new URL(value)
-    const expectedHost =
-      action === 'upgrade' ? 'checkout.stripe.com' : 'billing.stripe.com'
-    if (
-      url.protocol !== 'https:'
-      || url.hostname !== expectedHost
-      || url.username
-      || url.password
-    ) {
-      throw new Error('invalid')
-    }
-    return url.toString()
-  } catch {
-    return invalidResponse('an invalid Stripe redirect')
-  }
+  return requireUoaFrozenAction(matches, {
+    body: createUoaBillingSubjectBody(subject),
+    bodyMatch: 'contains',
+    id,
+    kind: expected.kind,
+    path: expected.path,
+  })
 }
 
 export const getUoaBillingStatement = async (
@@ -190,20 +135,30 @@ export const executeUoaBillingHostedAction = async (
   const response = await client.post(action.request.path, action.request.body)
   if (id === 'upgrade') {
     const parsed = UoaBillingCheckoutResponseSchema.safeParse(response)
-    if (!parsed.success) return invalidResponse('an invalid Checkout response')
+    if (!parsed.success) {
+      return invalidUoaBillingResponse('an invalid Checkout response')
+    }
     const result = {
-      redirect_url: assertStripeRedirect(parsed.data.checkout_url, id),
+      redirect_url: assertStripeRedirectUrl(
+        parsed.data.checkout_url,
+        ['checkout.stripe.com'],
+      ),
     }
     return parseBillingHostedRedirectResponse(result)
-      ?? invalidResponse('an invalid hosted redirect response')
+      ?? invalidUoaBillingResponse('an invalid hosted redirect response')
   }
   const parsed = UoaBillingPortalResponseSchema.safeParse(response)
-  if (!parsed.success) return invalidResponse('an invalid portal response')
+  if (!parsed.success) {
+    return invalidUoaBillingResponse('an invalid portal response')
+  }
   const result = {
-    redirect_url: assertStripeRedirect(parsed.data.portal_url, id),
+    redirect_url: assertStripeRedirectUrl(
+      parsed.data.portal_url,
+      ['billing.stripe.com'],
+    ),
   }
   return parseBillingHostedRedirectResponse(result)
-    ?? invalidResponse('an invalid hosted redirect response')
+    ?? invalidUoaBillingResponse('an invalid hosted redirect response')
 }
 
 export const createUoaBillingCancellationPreview = async (
@@ -220,7 +175,9 @@ export const createUoaBillingCancellationPreview = async (
   const preview = parseBillingCancellationPreviewV1(
     await client.post(action.request.path, action.request.body),
   )
-  if (!preview) return invalidResponse('an invalid cancellation preview')
+  if (!preview) {
+    return invalidUoaBillingResponse('an invalid cancellation preview')
+  }
   if (
     preview.choice_required
       !== preview.confirm_action.selection_required
@@ -229,7 +186,7 @@ export const createUoaBillingCancellationPreview = async (
     || (!preview.choice_required
       && preview.confirm_action.default_selection !== 'current_service')
   ) {
-    return invalidResponse('an inconsistent cancellation preview')
+    return invalidUoaBillingResponse('an inconsistent cancellation preview')
   }
   return preview
 }
@@ -243,14 +200,14 @@ export const confirmUoaBillingCancellation = async (
   const client = await createUoaBillingClient(prisma, actorContext, deps)
   const confirmation = parseBillingCancellationConfirmationV1(
     await client.post(CONFIRM_CANCELLATION_PATH, {
-      ...subjectBody(client.subject),
+      ...createUoaBillingSubjectBody(client.subject),
       preview_token: request.preview_token,
       idempotency_key: request.idempotency_key,
       selection: request.selection,
     }),
   )
   if (!confirmation) {
-    return invalidResponse('an invalid cancellation confirmation')
+    return invalidUoaBillingResponse('an invalid cancellation confirmation')
   }
   return confirmation
 }

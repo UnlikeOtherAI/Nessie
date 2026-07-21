@@ -97,3 +97,72 @@ test('the canonical statement is restricted to billing managers', async () => {
   }
 })
 
+test('active team members can request shared credits and add-on status', async () => {
+  const app = makeApp('member')
+  try {
+    for (const url of [
+      '/api/billing/credits',
+      '/api/billing/recurring-addons',
+    ]) {
+      const response = await app.inject({ method: 'GET', url })
+      assert.notEqual(response.statusCode, 403, url)
+    }
+  } finally {
+    await app.close()
+  }
+})
+
+test('funding mutations remain restricted to billing managers', async () => {
+  const app = makeApp('member')
+  try {
+    for (const request of [
+      {
+        method: 'POST' as const,
+        url: '/api/billing/credits/top-ups/offer-example',
+      },
+      {
+        method: 'POST' as const,
+        url: '/api/billing/credits/auto-top-up/options/option-example/setup',
+      },
+      {
+        method: 'POST' as const,
+        url: '/api/billing/credits/auto-top-up/disable',
+      },
+      {
+        method: 'POST' as const,
+        url: '/api/billing/recurring-addons/offers/privacy/subscribe',
+      },
+    ]) {
+      const response = await app.inject(request)
+      assert.equal(response.statusCode, 403, request.url)
+    }
+  } finally {
+    await app.close()
+  }
+})
+
+test('browser cannot submit a funding action body or billing subject', async () => {
+  const app = makeApp('owner')
+  try {
+    const topUp = await app.inject({
+      method: 'POST',
+      payload: { offer_id: 'other', organisation_id: 'other-org' },
+      url: '/api/billing/credits/top-ups/offer-example',
+    })
+    assert.equal(topUp.statusCode, 400)
+
+    const cancellation = await app.inject({
+      method: 'POST',
+      payload: {
+        choice: 'cancel_addon',
+        idempotency_key: 'i'.repeat(32),
+        preview_token: 'p'.repeat(48),
+        subscription_id: 'forged-subscription',
+      },
+      url: '/api/billing/recurring-addons/cancellation/confirm',
+    })
+    assert.equal(cancellation.statusCode, 400)
+  } finally {
+    await app.close()
+  }
+})

@@ -299,8 +299,8 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   Re-enable preserves richer probed schemas only for the current Ledger
   tool-name contract; legacy direct-provider projections are replaced.
 
-Customer tariffs, statements, subscriptions, adjustments, and Stripe lifecycle
-stay in UOA. Ledger's raw reporting API is UOA-only; Nessie has no billing
+Customer tariffs, statements, credits, top-ups, subscriptions, adjustments,
+and Stripe lifecycle stay in UOA. Ledger's raw reporting API is UOA-only; Nessie has no billing
 reader key, legacy Ledger billing route, or parallel customer raw-metering UI.
 Its Ledger product key is used only to execute and attribute Nessie's paid
 inference, DeepWater, Serper, and other metered calls. UOA reads Ledger and
@@ -311,7 +311,7 @@ preview/confirm instead use the separate Nessie-only
 `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`. The main-branch deploy validates those
 credentials on the Actions runner and installs them atomically through a
 dependency-free host script. Requests bind the exact linked UOA user/org/team.
-Nessie renders UOA's public version-1 display model without tariff math: exact
+Nessie renders UOA's public display models without tariff math: exact
 plan/markup copy, service and user usage, commercial lines, totals, action
 labels, disabled reasons, and cancellation choices all come from UOA. For every
 hosted or cancellation-preview action, the API re-fetches the statement,
@@ -320,16 +320,26 @@ body unchanged; browsers cannot supply action bodies or return URLs.
 Cancellation confirmation carries only UOA's opaque token, idempotency key, and
 selected UOA choice. UOA alone evaluates and revalidates team-wide direct
 access and indirect Ledger use. Nessie never stores commercial tariff, Stripe
-customer/subscription/invoice, statement, or cancellation state.
+customer/subscription/invoice, credit balance, top-up policy, payment consent,
+add-on, statement, or cancellation state. Every active exact-team member may
+read the same UOA-owned team credit account. Remaining credits are the headline,
+followed by pending/added/used credits, connected-service usage, recent activity,
+and automatic top-up state. UOA fixes 1,000 credits to US$1 and returns all
+amounts ready to display; Nessie never derives credits from tokens, provider
+cost, money, or raw Ledger units. Managers receive named-user/payment detail
+and frozen funding/add-on actions; members receive a privacy-safe read-only
+projection containing their usage plus anonymous other-member and unattributed
+totals. Every funding/add-on action is re-fetched, exact-path/body checked, and
+relayed unchanged.
 A successful direct Nessie SSO exchange records exact `nessie` access through
 UOA before any local session is returned. The confirmation is subject-bound,
 requires UOA's `204`/`no-store` response, and fails login closed; indirect
 connector, DeepWater, agent, and background execution never records direct
 product access.
 The model and action contract come directly from the public MIT-licensed
-`@unlikeotherai/billing-statement-protocol` 1.1.0 package, vendored
+`@unlikeotherai/billing-statement-protocol` 1.2.0 package, vendored
 byte-for-byte from UOA commit
-`205547b34bf01d5d665245cf622a193198997608`. Root lint verifies its complete
+`f767f2b8db73443ae31da719c9effafd3aa4ee25`. Root lint verifies its complete
 SHA-256 manifest; the API compiles its exported JSON Schemas and the admin
 imports its exported types, so Nessie owns no parallel billing contract.
 Statement V2 renders UOA's exact connected-service team/origin/user portfolio
