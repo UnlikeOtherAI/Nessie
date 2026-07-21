@@ -356,6 +356,16 @@ importers:
         specifier: ^20.19.24
         version: 20.19.39
 
+  packages/comms-slack:
+    dependencies:
+      '@nessie/comms-connect':
+        specifier: workspace:*
+        version: link:../comms-connect
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
   packages/config:
     dependencies:
       zod:
