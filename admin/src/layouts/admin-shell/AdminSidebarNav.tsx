@@ -162,6 +162,24 @@ const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/settings/connections',
+        label: 'Connected accounts',
+        icon: icon(
+          <>
+            <path
+              d="M9 12a3 3 0 013-3h2a3 3 0 010 6h-1"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M15 12a3 3 0 01-3 3h-2a3 3 0 010-6h1"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </>,
+        ),
+      },
+      {
         path: '/settings/statuses',
         label: 'Statuses',
         icon: icon(

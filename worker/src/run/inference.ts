@@ -11,6 +11,7 @@ import type {
   InvocationRecord,
   MultiProviderFailure,
   MultiProviderResult,
+  ProviderReasoningEffort,
   RouteStage,
   RoutingMode,
 } from '@nessie/schemas'
@@ -34,6 +35,7 @@ type RunInferenceGraphInput = {
   onVisibleReasoningDelta?: (delta: string) => Promise<void>
   onVisibleTextDelta?: (delta: string) => Promise<void>
   organizationId: string
+  reasoningEffort?: ProviderReasoningEffort
   requestHeadersForProvider?: ProviderRequestHeadersResolver
   tools?: ToolSchemaDescriptor[]
   toolChoice?: 'auto' | 'none' | 'required'
@@ -107,6 +109,7 @@ const executeSingleMode = async (
     onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
+    reasoningEffort?: ProviderReasoningEffort
     route: ResolvedRoute
     routeSource: 'direct' | 'routing-profile'
     requestHeadersForProvider?: ProviderRequestHeadersResolver
@@ -140,6 +143,7 @@ const executeSingleMode = async (
     onVisibleTextDelta: input.onVisibleTextDelta,
     organizationId: input.organizationId,
     profileId: input.route.profileId,
+    reasoningEffort: input.reasoningEffort,
     routeSource: input.routeSource,
     requestHeadersForProvider: input.requestHeadersForProvider,
     stage,
@@ -199,6 +203,7 @@ export const runInferenceGraph = async (
     onVisibleReasoningDelta: input.onVisibleReasoningDelta,
     onVisibleTextDelta: input.onVisibleTextDelta,
     organizationId: input.organizationId,
+    reasoningEffort: input.reasoningEffort,
     route,
     routeSource: 'direct',
     requestHeadersForProvider: input.requestHeadersForProvider,

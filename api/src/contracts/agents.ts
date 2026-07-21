@@ -1,4 +1,5 @@
 import {
+  AgentEffortSchema,
   AgentIdSchema,
   AgentStatusSchema,
   ChannelIdSchema,
@@ -28,6 +29,7 @@ export const AgentRecordSchema = z.object({
   parentAgentId: AgentIdSchema.nullish(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  effort: AgentEffortSchema.optional(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   avatarAttachmentId: z.string().uuid().nullish(),
   routingProfileId: z.string().uuid().optional(),
@@ -46,6 +48,7 @@ export const CreateAgentBodySchema = z.object({
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  effort: AgentEffortSchema.optional(),
 })
 
 export const UpdateAgentBodySchema = z.object({
@@ -55,6 +58,7 @@ export const UpdateAgentBodySchema = z.object({
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  effort: AgentEffortSchema.optional(),
 })
 
 export const UpdateAgentAvatarBodySchema = z.object({

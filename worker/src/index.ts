@@ -13,6 +13,14 @@ import {
   recordInferenceUsage,
 } from '@nessie/runtime'
 import {
+  COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
+  COMMS_SYNC_INCREMENTAL_TOPIC,
+  COMMS_SYNC_INITIAL_TOPIC,
+  COMMS_WEBHOOK_PROCESS_TOPIC,
+  CommsSubscriptionsRenewJobPayloadSchema,
+  CommsSyncIncrementalJobPayloadSchema,
+  CommsSyncInitialJobPayloadSchema,
+  CommsWebhookProcessJobPayloadSchema,
   ExecutionEnvironmentAllocateJobPayloadSchema,
   ExecutionEnvironmentTerminateJobPayloadSchema,
   KNOWLEDGE_EMBED_TOPIC,
@@ -53,6 +61,14 @@ import {
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 
 import { executeOrchestrateDecideJob } from './run/orchestrate.js'
+import {
+  executeCommsIncrementalSyncJob,
+  executeCommsInitialSyncJob,
+  renewCommsSubscriptions,
+} from './control/comms-sync.js'
+import { processCommsWebhookJob } from './control/comms-webhook.js'
+import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
+import { enqueueCommsSubscriptionsRenew } from './queue.js'
 
 const config = loadConfig()
 if (!process.env.DATABASE_URL) {
@@ -310,6 +326,61 @@ export const startWorker = async (
     },
   )
 
+  // Individual Communications Connector sync pipeline. Provider adapters plug
+  // into the shared @nessie/comms-connect registry later; these handlers load a
+  // connection, resolve its connector (typed error when none is registered),
+  // run the sync phase, and persist normalized events idempotently.
+  const commsSyncDeps = {
+    prisma,
+    encryptionSecret: config.auth.secret ?? '',
+  }
+
+  // Register the communications connector adapters into the shared registry so
+  // sync/renewal jobs can resolve a connector; unset providers stay unregistered
+  // and their jobs park cleanly on ConnectorNotRegisteredError.
+  const commsProviders = registerCommsConnectorsFromEnv(process.env)
+  console.log(
+    `[worker] comms connectors registered: ${
+      commsProviders.length > 0 ? commsProviders.join(', ') : 'none'
+    }`,
+  )
+
+  queueProvider.subscribe(
+    COMMS_SYNC_INITIAL_TOPIC,
+    async (job) => {
+      const payload = CommsSyncInitialJobPayloadSchema.parse(job.payload)
+      await executeCommsInitialSyncJob(commsSyncDeps, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    COMMS_SYNC_INCREMENTAL_TOPIC,
+    async (job) => {
+      const payload = CommsSyncIncrementalJobPayloadSchema.parse(job.payload)
+      await executeCommsIncrementalSyncJob(commsSyncDeps, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
+    async (job) => {
+      const payload = CommsSubscriptionsRenewJobPayloadSchema.parse(job.payload)
+      await renewCommsSubscriptions(commsSyncDeps, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    COMMS_WEBHOOK_PROCESS_TOPIC,
+    async (job) => {
+      const payload = CommsWebhookProcessJobPayloadSchema.parse(job.payload)
+      await processCommsWebhookJob({ prisma }, payload)
+    },
+    { signal: abortController.signal },
+  )
+
   await registerExecutionRunners(prisma, {
     labelPrefix: runnerLabelPrefix,
   })
@@ -403,6 +474,27 @@ export const startWorker = async (
     }
   }, 15_000)
 
+  // Enqueue the communications subscription-renewal sweep on a fixed cadence.
+  // The idempotency key is bucketed to the interval so multiple worker replicas
+  // ticking together enqueue at most one sweep per window.
+  const COMMS_RENEW_INTERVAL_MS = 5 * 60 * 1000
+  const commsRenewInterval = setInterval(async () => {
+    if (abortController.signal.aborted) {
+      return
+    }
+
+    try {
+      const bucket = Math.floor(Date.now() / COMMS_RENEW_INTERVAL_MS)
+      await enqueueCommsSubscriptionsRenew(
+        prisma,
+        {},
+        `comms-subscriptions-renew:${bucket}`,
+      )
+    } catch (error) {
+      console.error('[worker.comms-renew] enqueue failed', error)
+    }
+  }, COMMS_RENEW_INTERVAL_MS)
+
   console.log(
     JSON.stringify(
       {
@@ -424,6 +516,7 @@ export const startWorker = async (
     clearInterval(mailboxSweepInterval)
     clearInterval(runnerHeartbeatInterval)
     clearInterval(executionLeaseSweepInterval)
+    clearInterval(commsRenewInterval)
     modelClient.close()
     await realtimeTransport.close()
     await pool.end()

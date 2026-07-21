@@ -35,6 +35,17 @@ enum AgentDelegationMode {
   act_as_requesting_user
 }
 
+// How much work an agent may spend per run. Scales the worker agentic-loop
+// budget and the provider `reasoning_effort`. `medium` is the default;
+// `xhigh` is effectively unbounded (governed only by scope Budgets + the
+// loop's repeated-call detection).
+enum AgentEffort {
+  low
+  medium
+  high
+  xhigh
+}
+
 // How an agent's turns are executed. `inference` (the default for every
 // existing agent) runs Nessie's own agentic loop; `external_mcp` proxies each
 // turn directly to an external product over MCP with no Nessie inference.
@@ -1251,6 +1262,7 @@ model Agent {
   surfacePolicy                 AgentSurfacePolicy             @default(shared) @map("surface_policy")
   delegationMode                AgentDelegationMode            @default(none) @map("delegation_mode")
   executionMode                 AgentExecutionMode             @default(inference) @map("execution_mode")
+  effort                        AgentEffort                    @default(medium)
   systemPrompt                  String?                        @map("system_prompt")
   toolPolicy                    Json?                          @map("tool_policy")
   provider                      String?                        @map("provider")
@@ -3271,4 +3283,236 @@ model PushDelivery {
   @@index([organizationId, createdAt])
   @@index([userId])
   @@map("push_deliveries")
+}
+
+// ─── Individual Communications Connectors ───────────────────────────────────
+// Per-user connections to Slack / Google (Gmail) / Microsoft (Teams+Outlook).
+// The connector layer only authenticates, retrieves, syncs, and normalizes into
+// one shared event model — it holds no business intelligence. Tokens live in a
+// separate credential table (never shipped to the browser); ingestion is
+// idempotent on the deterministic canonical key
+// `provider:tenantId:conversationId:messageId` with explicit edit-versioning;
+// sync jobs resume from stored cursors. Connections are per-user, never
+// per-workspace. See docs/plans/2026-07-21-individual-communications-connector.md.
+
+enum CommsProvider {
+  slack
+  google
+  microsoft
+}
+
+enum CommsConnectionStatus {
+  active
+  needs_reauthorization
+  disconnected
+  error
+}
+
+enum CommsSyncPhase {
+  history
+  incremental
+  reconciliation
+}
+
+enum CommsSyncStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+enum CommsSubscriptionStatus {
+  active
+  expired
+  failed
+}
+
+/// A single user's authenticated connection to one external communications
+/// provider tenant. Scoped to the organization AND the owning user — a
+/// connection is never shared across a workspace. The unique key makes
+/// re-connecting the same provider account idempotent.
+model CommsConnection {
+  id                     String                @id @default(uuid()) @db.Uuid
+  organizationId         String                @map("organization_id") @db.Uuid
+  ownerUserId            String                @map("owner_user_id") @db.Uuid
+  provider               CommsProvider
+  externalTenantId       String                @map("external_tenant_id")
+  externalUserId         String                @map("external_user_id")
+  status                 CommsConnectionStatus @default(active)
+  grantedScopes          Json                  @default("[]") @map("granted_scopes")
+  initialSyncCompletedAt DateTime?             @map("initial_sync_completed_at")
+  lastSuccessfulSyncAt   DateTime?             @map("last_successful_sync_at")
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  credential    CommsConnectionCredential?
+  resources     CommsResource[]
+  syncJobs      CommsSyncJob[]
+  events        CommsEvent[]
+  subscriptions CommsSubscription[]
+
+  @@unique([organizationId, ownerUserId, provider, externalTenantId, externalUserId])
+  @@index([organizationId, ownerUserId])
+  @@index([status])
+  @@map("comms_connections")
+}
+
+/// Encrypted OAuth token bundle for a connection, isolated in its own table so
+/// token material never sits alongside connection metadata or normalized event
+/// data. Ciphertext is produced with the shared `@nessie/runtime` AES-256-GCM
+/// secret-crypto primitives (packed iv/authTag/ciphertext), never sent to the
+/// browser. `keyVersion` supports future key rotation; `scopeHash` lets a
+/// re-auth detect a scope change without decrypting.
+model CommsConnectionCredential {
+  id                     String    @id @default(uuid()) @db.Uuid
+  connectionId           String    @unique @map("connection_id") @db.Uuid
+  accessTokenCiphertext  String    @map("access_token_ciphertext")
+  refreshTokenCiphertext String?   @map("refresh_token_ciphertext")
+  expiresAt              DateTime? @map("expires_at")
+  keyVersion             Int       @default(1) @map("key_version")
+  scopeHash              String    @map("scope_hash")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  connection CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@map("comms_connection_credentials")
+}
+
+/// Single-use, short-lived OAuth authorization state bound to the initiating
+/// user + provider + organization. `payload` carries the PKCE verifier and
+/// redirect parameters the callback needs. Consumed on first read and expired
+/// by TTL, mirroring `mcp_oauth_states`.
+model CommsOAuthState {
+  token          String        @id
+  organizationId String        @map("organization_id") @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  provider       CommsProvider
+  payload        Json
+  expiresAt      DateTime      @map("expires_at")
+  consumedAt     DateTime?     @map("consumed_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  @@index([organizationId, userId, provider])
+  @@index([expiresAt])
+  @@map("comms_oauth_states")
+}
+
+/// A syncable resource inside a connection: a Slack channel/DM, a Teams chat or
+/// channel, a Gmail label, an Outlook folder, etc. `resourceType` is a free
+/// string so providers can name their own container kinds. Unique per external
+/// id within the connection.
+model CommsResource {
+  id            String          @id @default(uuid()) @db.Uuid
+  connectionId  String          @map("connection_id") @db.Uuid
+  resourceType  String          @map("resource_type")
+  externalId    String          @map("external_id")
+  name          String?
+  visibility    String?
+  userHasAccess Boolean         @default(true) @map("user_has_access")
+  syncEnabled   Boolean         @default(true) @map("sync_enabled")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  connection    CommsConnection     @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  syncJobs      CommsSyncJob[]
+  subscriptions CommsSubscription[]
+
+  @@unique([connectionId, externalId])
+  @@index([connectionId, syncEnabled])
+  @@map("comms_resources")
+}
+
+/// A resumable sync job for a connection (optionally scoped to one resource).
+/// `cursor` is the provider pagination/delta token; a failed job resumes from
+/// it rather than restarting. `oldest`/`newestImportedAt` bound the imported
+/// window for history back-fill and incremental catch-up.
+model CommsSyncJob {
+  id               String          @id @default(uuid()) @db.Uuid
+  connectionId     String          @map("connection_id") @db.Uuid
+  resourceId       String?         @map("resource_id") @db.Uuid
+  phase            CommsSyncPhase
+  cursor           String?
+  oldestImportedAt DateTime?       @map("oldest_imported_at")
+  newestImportedAt DateTime?       @map("newest_imported_at")
+  status           CommsSyncStatus @default(pending)
+  retryCount       Int             @default(0) @map("retry_count")
+  lastError        String?         @map("last_error")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  connection CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  resource   CommsResource?  @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+
+  @@index([connectionId, status])
+  @@index([resourceId])
+  @@map("comms_sync_jobs")
+}
+
+/// The normalized event store: every imported message/thread/email in one
+/// provider-agnostic shape. `canonicalMessageId` is the deterministic key
+/// (`provider:tenantId:conversationId:messageId`); edits create a new `version`
+/// of the same canonical id rather than mutating in place, so the unique key is
+/// (connectionId, canonicalMessageId, version). Deletes flip `isDeleted`.
+model CommsEvent {
+  id                 String        @id @default(uuid()) @db.Uuid
+  organizationId     String        @map("organization_id") @db.Uuid
+  connectionId       String        @map("connection_id") @db.Uuid
+  canonicalMessageId String        @map("canonical_message_id")
+  version            Int           @default(1)
+  isDeleted          Boolean       @default(false) @map("is_deleted")
+  editedAt           DateTime?     @map("edited_at")
+  provider           CommsProvider
+  externalTenantId   String        @map("external_tenant_id")
+  conversationId     String        @map("conversation_id")
+  threadId           String?       @map("thread_id")
+  messageId          String        @map("message_id")
+  eventType          String        @map("event_type")
+  occurredAt         DateTime      @map("occurred_at")
+  senderExternalId   String?       @map("sender_external_id")
+  senderDisplayName  String?       @map("sender_display_name")
+  senderEmail        String?       @map("sender_email")
+  participants       Json          @default("[]")
+  subject            String?
+  contentText        String?       @map("content_text")
+  contentHtml        String?       @map("content_html")
+  attachments        Json          @default("[]")
+  mentions           Json          @default("[]")
+  reactions          Json          @default("[]")
+  visibility         String
+  sourceUrl          String?       @map("source_url")
+  rawPayloadRef      String?       @map("raw_payload_ref")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  connection CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, canonicalMessageId, version])
+  @@index([organizationId, connectionId, occurredAt])
+  @@index([connectionId, conversationId, occurredAt])
+  @@map("comms_events")
+}
+
+/// A provider webhook/watch subscription that must be renewed before it
+/// expires (Microsoft Graph subscriptions, Gmail watch, Slack Events). The
+/// renewal sweep queries by `status` + `expiresAt`. `clientState` is the
+/// provider-echoed validation token.
+model CommsSubscription {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  connectionId          String                  @map("connection_id") @db.Uuid
+  resourceId            String?                 @map("resource_id") @db.Uuid
+  provider              CommsProvider
+  externalSubscriptionId String                 @map("external_subscription_id")
+  clientState           String?                 @map("client_state")
+  expiresAt             DateTime                @map("expires_at")
+  status                CommsSubscriptionStatus @default(active)
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+
+  connection CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  resource   CommsResource?  @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+
+  @@unique([connectionId, externalSubscriptionId])
+  @@index([status, expiresAt])
+  @@map("comms_subscriptions")
 }

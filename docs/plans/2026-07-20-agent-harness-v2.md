@@ -163,6 +163,44 @@ ignores all of it and reads `Agent.model` or the env default. Wire it up:
 - Difficulty-based auto-escalation (start swift, escalate on failure) is
   explicitly **deferred** — task-kind routing first, evidence later.
 
+### 3.5.1 Effort levels (implemented)
+
+Shipped ahead of the tier work: a per-agent **effort** setting, modeled on
+OpenAI Codex's reasoning-effort levels, with four levels — `low | medium |
+high | xhigh` (default `medium`). It is an ordinary `Agent` column
+(`AgentEffort` Prisma enum, `Agent.effort @default(medium)`), **not** entangled
+with the DeepWater protected-toolPolicy machinery. The shared enum + mappings
+live in `@nessie/schemas` (`AgentEffortSchema`, `reasoningEffortForAgentEffort`);
+the budget table lives in `worker/src/run/agentic-loop.ts` (`EFFORT_BUDGETS` /
+`budgetForEffort`). Effort controls two things per run:
+
+1. **Run budget scaling** — replaces the single `DEFAULT_BUDGET` constant with an
+   effort-keyed table selected in `worker/src/run/execute/agent-loop.ts`:
+
+   | Level | Iterations | Tool calls | Wallclock | Tokens | Cost | Tool timeout |
+   |---|---|---|---|---|---|---|
+   | low | 8 | 12 | 60 s | 30 000 | 25¢ | 75 s |
+   | medium (default) | 12 | 20 | 90 s | 50 000 | 50¢ | 75 s |
+   | high | 36 | 60 | 600 s | 200 000 | 500¢ | 75 s |
+   | xhigh | 10 000 | 20 000 | 4 h | MAX_SAFE_INTEGER | MAX_SAFE_INTEGER | 75 s |
+
+   `xhigh` is effectively unbounded: the org/team `Budget` gate
+   (`packages/runtime/src/budget.ts`) and the loop's existing repeated-tool-call
+   detection remain the only governors. `toolTimeoutMs` is 75 s for every level.
+
+2. **Provider `reasoning_effort`** — plumbed end-to-end through the inference
+   path (`inference.ts` → `inference-stage.ts` → runtime `service.ts` →
+   `openai-chat-protocol`/`openai.ts`). The value is added to OpenAI-compatible
+   chat request bodies only when set; other providers ignore it. Mapping clamps
+   `low→low, medium→medium, high→high, xhigh→high` (providers reject unknown
+   values). Embeddings are untouched.
+
+**Inheritance:** `cloneAgentRecord` and `spawn_subtask` children copy the
+parent's effort. The ephemeral `delegate` sub-agent keeps its own tight
+`SUB_AGENT_BUDGET` (unchanged), but its inference inherits the agent's
+reasoning effort. Surfaced in the admin Agent Designer as an "Effort" selector
+(Ultra = `xhigh`).
+
 ### 3.6 Steering and resilience
 
 - **Pending-input queue:** a user message arriving while that thread's run

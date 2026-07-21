@@ -17,6 +17,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nessie/comms-connect": "workspace:*",
+    "@nessie/comms-providers": "workspace:*",
     "@nessie/config": "workspace:*",
     "@nessie/db": "workspace:*",
     "@nessie/knowledge": "workspace:*",

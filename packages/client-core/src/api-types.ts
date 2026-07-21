@@ -97,6 +97,7 @@ export type AgentRecord = {
   currentRunId?: string
   currentToolName?: string
   currentToolStartedAt?: string
+  effort?: 'low' | 'medium' | 'high' | 'xhigh'
   id: string
   lastActivityAt: string
   model?: string

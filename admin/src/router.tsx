@@ -28,6 +28,7 @@ import { PolicyPage } from './pages/PolicyPage'
 import { ProjectsIndexPage } from './pages/ProjectsIndexPage'
 import { ProjectView } from './pages/project/ProjectView'
 import { AppearancePage } from './pages/settings/AppearancePage'
+import { ConnectionsPage } from './pages/settings/ConnectionsPage'
 import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
@@ -219,6 +220,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/notifications',
         element: <NotificationsPage />,
+      },
+      {
+        path: '/settings/connections',
+        element: <ConnectionsPage />,
       },
       {
         path: '/settings/appearance',

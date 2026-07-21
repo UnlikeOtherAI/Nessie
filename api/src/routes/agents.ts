@@ -97,6 +97,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     let agent
     try {
       agent = await createAgentRecord(prisma, {
+        effort: body.effort,
         model: body.model,
         name: body.name,
         organizationId: actorContext.tenant.organizationId,

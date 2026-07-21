@@ -36,7 +36,12 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - Node/TypeScript (strict mode), Fastify, Prisma + PostgreSQL
 - Multi-tenancy: Organisation → Project → Team → Channel schema with `organization_id` scoping on all child tables
 - RBAC policy engine with deny-overrides; OIDC SSO with PKCE
-- Agentic loop: max 12 iterations / 20 tool calls / 90 s / cost cap per run
+- Agentic loop: run budget is per-agent effort-scaled (`Agent.effort` =
+  low/medium/high/xhigh; medium = 12 iterations / 20 tool calls / 90 s / cost
+  cap, the historical default). `xhigh` is effectively unbounded — governed
+  only by the scope `Budget` gate and the loop's repeated-call detection. See
+  `worker/src/run/agentic-loop.ts` (`EFFORT_BUDGETS`) and
+  `docs/plans/2026-07-20-agent-harness-v2.md` §3.5.1.
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 
@@ -367,6 +372,28 @@ public internet.
 > **Legacy JSON-RPC MCP server removed.** The old `GET /mcp` / `POST /mcp` JSON-RPC server (`src/mcp/server.ts`) that exposed `send_message`, `invoke_tool`, `tools/list`, and 37 tools existed only in the legacy `src/` tree, which is being deleted. There is no JSON-RPC `/mcp` endpoint on the live `api/` server.
 
 See [docs/functionality.md](docs/functionality.md) for the authoritative API surface description. Section §7 describes the removed legacy MCP server for historical reference.
+
+## Individual Communications Connector
+
+- Per-user OAuth connections to external communications providers (Slack + Gmail
+  live; Microsoft/Teams planned) normalize provider messages into a single
+  `CommsEvent` store via the provider-agnostic `@nessie/comms-connect` core plus
+  one adapter package per provider (`@nessie/comms-slack`, `@nessie/comms-google`).
+- The registry is empty until wired: `@nessie/comms-providers`
+  (`registerCommsConnectorsFromEnv`) builds + registers each adapter from
+  `NESSIE_COMMS_*` env at API **and** worker startup; an unset provider simply
+  does not register and its jobs park on `ConnectorNotRegisteredError`. Env names
+  match the API OAuth-start source of truth (`api/src/routes/comms/oauth-config.ts`).
+- OAuth token bundles are encrypted at rest (shared AES-GCM secret-crypto) in a
+  **separate** `CommsConnectionCredential` table, never returned to the browser.
+- Import is resumable + checkpointed `CommsSyncJob`s plus webhook/watch ingestion,
+  all through the worker queue. An expired provider cursor (`SyncCursorExpiredError`)
+  triggers a bounded history re-sync; a rejected credential (`needsReauthorization`)
+  moves the connection to `needs_reauthorization` and fails the job without retry.
+- Chat-first: the `comms_connect_card` PA tool drives connect; `/settings/connections`
+  is the secondary UI. The connector layer holds **no** reasoning logic (the
+  Chief-of-Staff boundary). Authoritative spec:
+  [docs/plans/2026-07-21-individual-communications-connector.md](docs/plans/2026-07-21-individual-communications-connector.md).
 
 ## MDNS
 

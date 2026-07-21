@@ -56,6 +56,9 @@ import { registerChannelRoutes } from './routes/channels.js'
 import { registerDesignerRoutes } from './routes/designer.js'
 import { registerDeviceRoutes } from './routes/devices.js'
 import { registerWebPushRoutes } from './routes/web-push.js'
+import { registerCommsConnectionRoutes } from './routes/comms-connections.js'
+import { registerCommsWebhookRoutes } from './routes/comms-webhooks.js'
+import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import { registerEventRoutes } from './routes/events.js'
 import { registerExecutionEnvironmentRoutes } from './routes/execution-environments.js'
 import { registerFavoriteRoutes } from './routes/favorites.js'
@@ -333,6 +336,15 @@ export const buildApp = async () => {
     createDeepSignalMcpIdentityServiceFromEnv(prisma)
   await deepSignalMcpIdentity?.validateStoredCredentialSeparation()
 
+  // Wire the Individual Communications Connector adapters into the shared
+  // registry so the OAuth callback (`connect`) and disconnect paths resolve.
+  const commsProviders = registerCommsConnectorsFromEnv(process.env)
+  console.log(
+    `[api] comms connectors registered: ${
+      commsProviders.length > 0 ? commsProviders.join(', ') : 'none'
+    }`,
+  )
+
   const deps: RouteDeps = {
     ...serverContext,
     realtimeHub,
@@ -359,6 +371,8 @@ export const buildApp = async () => {
   registerUploadRoutes(app, deps)
   registerDeviceRoutes(app, deps)
   registerWebPushRoutes(app, deps)
+  registerCommsConnectionRoutes(app, deps)
+  registerCommsWebhookRoutes(app, deps)
   registerCapabilityRoutes(app, deps)
   registerUserRoutes(app, deps)
   registerStatusRoutes(app, deps)

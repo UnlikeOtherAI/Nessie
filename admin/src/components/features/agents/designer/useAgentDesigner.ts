@@ -1,6 +1,9 @@
 import { useCallback, useReducer } from 'react'
 
+export type AgentEffortValue = 'low' | 'medium' | 'high' | 'xhigh'
+
 export type AgentFormState = {
+  effort: AgentEffortValue
   model: string
   name: string
   provider: string
@@ -14,6 +17,7 @@ export type AgentDesignerAction =
   | { chunk: string; type: 'append_system_prompt' }
   | { field: string; type: 'clear_streaming' }
   | { field: string; type: 'set_streaming' }
+  | { effort: AgentEffortValue; type: 'set_effort' }
   | { model: string; type: 'set_model' }
   | { name: string; type: 'set_name' }
   | { prompt: string; type: 'set_system_prompt' }
@@ -25,6 +29,7 @@ export type AgentDesignerAction =
 // to the tool kind's default (builtin on, connector off) — the same semantics
 // the worker applies to `Agent.toolPolicy`.
 const DEFAULT_STATE: AgentFormState = {
+  effort: 'medium',
   model: 'gpt-5',
   name: '',
   provider: 'openai',
@@ -48,6 +53,8 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       return { ...state, provider: action.provider }
     case 'set_model':
       return { ...state, model: action.model }
+    case 'set_effort':
+      return { ...state, effort: action.effort }
     case 'toggle_tool':
       return { ...state, tools: { ...state.tools, [action.toolId]: action.enabled } }
     case 'set_streaming':
@@ -62,6 +69,7 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
 export type AgentDesignerActions = {
   applyToolCall: (name: string, args: Record<string, unknown>) => void
   dispatch: React.Dispatch<AgentDesignerAction>
+  setEffort: (effort: AgentEffortValue) => void
   setModel: (model: string) => void
   setName: (name: string) => void
   setProvider: (provider: string) => void
@@ -87,6 +95,10 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
     [],
   )
   const setModel = useCallback((model: string) => dispatch({ type: 'set_model', model }), [])
+  const setEffort = useCallback(
+    (effort: AgentEffortValue) => dispatch({ type: 'set_effort', effort }),
+    [],
+  )
   const toggleTool = useCallback(
     (toolId: string, enabled: boolean) => dispatch({ type: 'toggle_tool', toolId, enabled }),
     [],
@@ -136,6 +148,7 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
   const actions: AgentDesignerActions = {
     applyToolCall,
     dispatch,
+    setEffort,
     setModel,
     setName,
     setProvider,

@@ -1,4 +1,4 @@
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import type { AuthorizedActionContext, ProviderReasoningEffort } from '@nessie/schemas'
 
 export type ModelProviderName = 'openai' | 'minimax' | 'kimi' | 'openai-compatible'
 
@@ -124,6 +124,9 @@ export type ProviderInvocationRequest = {
   // Stable key grouping requests that share a prefix (system prompt + tools), so
   // providers route them to the same prompt cache for higher hit rates.
   promptCacheKey?: string
+  // Only sent to the provider when set; OpenAI-compatible connectors add it to
+  // the request body as `reasoning_effort`. Other providers ignore it.
+  reasoningEffort?: ProviderReasoningEffort
   responseFormat?: JsonObjectResponseFormat
   temperature?: number
   tools?: ToolSchemaDescriptor[]
@@ -234,6 +237,7 @@ export type InferenceRequest = {
   metadata?: Record<string, unknown>
   model?: string
   promptCacheKey?: string
+  reasoningEffort?: ProviderReasoningEffort
   requestId?: string
   requestHeaders?: Record<string, string>
   responseFormat?: JsonObjectResponseFormat

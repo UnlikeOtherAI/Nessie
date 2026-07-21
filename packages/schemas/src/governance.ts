@@ -254,6 +254,9 @@ export const AuditActionSchema = z.enum([
   'push.credential.uploaded',
   'push.credential.deleted',
   'push.credential.tested',
+  'comms.connection.created',
+  'comms.connection.disconnected',
+  'comms.connection.data_deleted',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

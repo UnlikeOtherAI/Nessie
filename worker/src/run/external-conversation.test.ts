@@ -202,6 +202,7 @@ const makeHarness = (opts: HarnessOptions = {}) => {
   const context: RunContext = {
     agent: {
       agentKind: 'shared',
+      effort: 'medium',
       executionMode: 'external_mcp',
       id: AGENT,
       name: 'DeepSignal',

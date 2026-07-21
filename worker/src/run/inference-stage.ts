@@ -13,6 +13,7 @@ import type {
   CandidateOutput,
   InvocationRecord,
   OperationType,
+  ProviderReasoningEffort,
   RouteStage,
   RoutingMode,
   StepMetadataStep,
@@ -144,6 +145,7 @@ export const executeStage = async (
     onVisibleTextDelta?: (delta: string) => Promise<void>
     organizationId: string
     profileId?: string
+    reasoningEffort?: ProviderReasoningEffort
     requestHeadersForProvider?: ProviderRequestHeadersResolver
     routeSource: 'direct' | 'routing-profile'
     stage: RouteStage
@@ -206,6 +208,7 @@ export const executeStage = async (
         messages,
         model: providerConfig.model,
         promptCacheKey,
+        reasoningEffort: input.reasoningEffort,
         requestId,
         requestHeaders,
         temperature: input.modelConfig.temperature,
@@ -241,6 +244,7 @@ export const executeStage = async (
         messages,
         model: providerConfig.model,
         promptCacheKey,
+        reasoningEffort: input.reasoningEffort,
         requestId,
         requestHeaders,
         temperature: input.modelConfig.temperature,

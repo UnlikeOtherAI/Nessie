@@ -58,6 +58,7 @@ export const runSpawnSubtaskTool = async (
   const parentAgent = await context.prisma.agent.findUnique({
     where: { id: context.agentId },
     select: {
+      effort: true,
       id: true,
       model: true,
       name: true,
@@ -86,6 +87,7 @@ export const runSpawnSubtaskTool = async (
       data: {
         agentKind: 'shared',
         delegationMode: 'none',
+        effort: parentAgent.effort,
         model: parentAgent.model,
         name: `${parentAgent.name} ${role} ${randomUUID().slice(0, 8)}`,
         organizationId: context.channel.organizationId,
