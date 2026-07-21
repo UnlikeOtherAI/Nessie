@@ -322,6 +322,17 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   Nessie's local connector rows are operational telemetry only; Ledger is the
   raw usage/cost source and UOA is the sole commercial authority.
 - deep.agent crawl web scanning is an MCP connector template: install a Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, then approve/grant the discovered tools. The crawl library implementation belongs behind the deep.agent service boundary; do not embed Crawl4AI's Python package in the API/worker or expose an unauthenticated crawler to the public internet.
+- The Individual Communications Connector wires per-user OAuth connections
+  (Slack + Gmail live, Microsoft planned) into a normalized `CommsEvent` store
+  through the provider-agnostic `@nessie/comms-connect` core and one adapter
+  package per provider. Adapters register into the shared registry only via
+  `@nessie/comms-providers` (`registerCommsConnectorsFromEnv`), called at API
+  and worker startup from `NESSIE_COMMS_*` env; unset providers stay
+  unregistered and their jobs park on `ConnectorNotRegisteredError`. Token
+  bundles are encrypted in a separate table (never returned to the browser),
+  sync is resumable + checkpointed with webhook ingestion through the worker
+  queue, and the connector layer carries **no** reasoning logic (Chief-of-Staff
+  boundary). Spec: `docs/plans/2026-07-21-individual-communications-connector.md`.
 
 ## File storage & accounting — single chokepoint
 

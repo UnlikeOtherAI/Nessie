@@ -67,6 +67,7 @@ import {
   renewCommsSubscriptions,
 } from './control/comms-sync.js'
 import { processCommsWebhookJob } from './control/comms-webhook.js'
+import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import { enqueueCommsSubscriptionsRenew } from './queue.js'
 
 const config = loadConfig()
@@ -333,6 +334,16 @@ export const startWorker = async (
     prisma,
     encryptionSecret: config.auth.secret ?? '',
   }
+
+  // Register the communications connector adapters into the shared registry so
+  // sync/renewal jobs can resolve a connector; unset providers stay unregistered
+  // and their jobs park cleanly on ConnectorNotRegisteredError.
+  const commsProviders = registerCommsConnectorsFromEnv(process.env)
+  console.log(
+    `[worker] comms connectors registered: ${
+      commsProviders.length > 0 ? commsProviders.join(', ') : 'none'
+    }`,
+  )
 
   queueProvider.subscribe(
     COMMS_SYNC_INITIAL_TOPIC,

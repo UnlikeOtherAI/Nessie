@@ -358,6 +358,28 @@ public internet.
 
 See [docs/functionality.md](docs/functionality.md) for the authoritative API surface description. Section §7 describes the removed legacy MCP server for historical reference.
 
+## Individual Communications Connector
+
+- Per-user OAuth connections to external communications providers (Slack + Gmail
+  live; Microsoft/Teams planned) normalize provider messages into a single
+  `CommsEvent` store via the provider-agnostic `@nessie/comms-connect` core plus
+  one adapter package per provider (`@nessie/comms-slack`, `@nessie/comms-google`).
+- The registry is empty until wired: `@nessie/comms-providers`
+  (`registerCommsConnectorsFromEnv`) builds + registers each adapter from
+  `NESSIE_COMMS_*` env at API **and** worker startup; an unset provider simply
+  does not register and its jobs park on `ConnectorNotRegisteredError`. Env names
+  match the API OAuth-start source of truth (`api/src/routes/comms/oauth-config.ts`).
+- OAuth token bundles are encrypted at rest (shared AES-GCM secret-crypto) in a
+  **separate** `CommsConnectionCredential` table, never returned to the browser.
+- Import is resumable + checkpointed `CommsSyncJob`s plus webhook/watch ingestion,
+  all through the worker queue. An expired provider cursor (`SyncCursorExpiredError`)
+  triggers a bounded history re-sync; a rejected credential (`needsReauthorization`)
+  moves the connection to `needs_reauthorization` and fails the job without retry.
+- Chat-first: the `comms_connect_card` PA tool drives connect; `/settings/connections`
+  is the secondary UI. The connector layer holds **no** reasoning logic (the
+  Chief-of-Staff boundary). Authoritative spec:
+  [docs/plans/2026-07-21-individual-communications-connector.md](docs/plans/2026-07-21-individual-communications-connector.md).
+
 ## MDNS
 
 The backend registers `_nessie._tcp` on port 4317 via Bonjour/mDNS on launch. This feature is part of the legacy `src/` runtime; the new `api/` server does not yet register mDNS. Clients on the same network can discover the legacy server automatically without hardcoded IPs.

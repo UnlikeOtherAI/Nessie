@@ -2,7 +2,9 @@ import type { PrismaClient } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
 import {
   ConnectorNotRegisteredError,
+  needsReauthorization,
   resolveConnector,
+  SyncCursorExpiredError,
   type CommsProviderId,
   type SyncCheckpoint,
 } from '@nessie/comms-connect'
@@ -36,7 +38,41 @@ const MAX_PAGES_PER_RUN = 100
 
 const DEFAULT_RENEW_WINDOW_MS = 60 * 60 * 1000
 
+/**
+ * Overlap subtracted from `lastSuccessfulSyncAt` when seeding the bounded
+ * re-sync window after a cursor expiry, so nothing near the boundary is missed.
+ */
+const CURSOR_RESYNC_OVERLAP_MS = 24 * 60 * 60 * 1000
+
 type SyncPhase = 'history' | 'incremental'
+
+/**
+ * Recover from an expired provider cursor: drop the dead cursor, move the job
+ * back into a bounded `history` back-fill seeded from the last successful sync
+ * (minus a 1-day overlap when known), and mark it `pending` so the next run
+ * resumes it instead of retrying the stale token forever.
+ */
+const resetJobForBoundedResync = async (
+  prisma: PrismaClient,
+  jobId: string,
+  lastSuccessfulSyncAt: Date | null,
+  error: SyncCursorExpiredError,
+): Promise<void> => {
+  const seededOldest = lastSuccessfulSyncAt
+    ? new Date(lastSuccessfulSyncAt.getTime() - CURSOR_RESYNC_OVERLAP_MS)
+    : null
+  await prisma.commsSyncJob.update({
+    where: { id: jobId },
+    data: {
+      phase: 'history',
+      cursor: null,
+      status: 'pending',
+      oldestImportedAt: seededOldest,
+      newestImportedAt: null,
+      lastError: error.message,
+    },
+  })
+}
 
 const loadConnection = (prisma: PrismaClient, connectionId: string) =>
   prisma.commsConnection.findUnique({
@@ -191,6 +227,43 @@ const runSyncPhase = async (
       },
     })
   } catch (error) {
+    // An expired provider cursor will never succeed on retry against the same
+    // stale token: reset the job to a bounded re-sync and stop (no rethrow, so
+    // the queue does not retry the dead cursor).
+    if (error instanceof SyncCursorExpiredError) {
+      await resetJobForBoundedResync(
+        prisma,
+        job.id,
+        connection.lastSuccessfulSyncAt,
+        error,
+      )
+      console.warn(
+        `[comms-sync] cursor expired for connection ${connection.id} — `
+          + `job ${job.id} reset for bounded re-sync`,
+      )
+      return
+    }
+    // A credential the provider rejected cannot be salvaged by retrying with the
+    // same dead token: park the connection for re-authorization, fail the job,
+    // and do not rethrow.
+    if (needsReauthorization(error)) {
+      await prisma.commsConnection.update({
+        where: { id: connection.id },
+        data: { status: 'needs_reauthorization' },
+      })
+      await prisma.commsSyncJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'failed',
+          lastError: 'credential rejected by provider; reauthorization required',
+        },
+      })
+      console.warn(
+        `[comms-sync] connection ${connection.id} needs reauthorization — `
+          + `job ${job.id} failed`,
+      )
+      return
+    }
     // Persist the failure but rethrow so the queue retries; the stored cursor
     // makes the retry resume rather than restart.
     await prisma.commsSyncJob.update({

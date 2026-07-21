@@ -7,6 +7,8 @@
  * No token material is ever placed in a message or property here.
  */
 
+import { SyncCursorExpiredError } from '@nessie/comms-connect'
+
 /** A Gmail/OAuth HTTP failure, tagged retryable vs fatal. */
 export class GmailApiError extends Error {
   readonly status: number
@@ -38,7 +40,7 @@ export class GmailApiError extends Error {
  * resync (re-seed the baseline `historyId` and back-fill the recent window)
  * rather than silently dropping the missed messages.
  */
-export class GmailHistoryExpiredError extends Error {
+export class GmailHistoryExpiredError extends SyncCursorExpiredError {
   readonly emailAddress: string
 
   readonly staleHistoryId: string
@@ -59,6 +61,8 @@ export class GmailHistoryExpiredError extends Error {
  * `needs_reauthorization`; retrying will not help.
  */
 export class GmailReauthorizationRequiredError extends Error {
+  readonly needsReauthorization = true
+
   constructor(reason?: string) {
     super(
       '[comms-google] credential can no longer be refreshed; reauthorization required'
