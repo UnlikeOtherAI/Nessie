@@ -70,6 +70,7 @@ const invalidResponse = (description: string): never => {
 const parseStatement = (
   value: unknown,
   subject: UoaBillingSubject,
+  billingMonth?: string,
 ): BillingStatementV2 => {
   const statement = parseBillingStatementV2(value)
   const snapshot = statement?.pinned_inputs.ledger_snapshots[0]
@@ -79,6 +80,9 @@ const parseStatement = (
     || statement.subject.user_id !== subject.userId
     || statement.subject.organisation_id !== subject.organizationId
     || statement.subject.team_id !== subject.teamId
+    || (billingMonth !== undefined && statement.period.key !== billingMonth)
+    || statement.plan.tariff_id !== statement.pinned_inputs.tariff.id
+    || statement.plan.version !== statement.pinned_inputs.tariff.version
     || statement.connected_service_usage.statement_product !== NESSIE_PRODUCT
     || !snapshot
     || snapshot.contract !== 'metering-portfolio-v1'
@@ -99,6 +103,7 @@ const loadStatement = async (
   return parseStatement(
     await client.post(STATEMENT_PATH, body),
     client.subject,
+    billingMonth,
   )
 }
 

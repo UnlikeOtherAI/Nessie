@@ -365,9 +365,30 @@ test('rejects path drift, workspace drift, and cross-tenant statements', async (
   )
 })
 
-test('rejects portfolio product and exact snapshot drift', async () => {
+test('rejects period, tariff, portfolio product, and exact snapshot drift', async () => {
   const snapshot = statement.pinned_inputs.ledger_snapshots[0]
   const invalidStatements = [
+    {
+      ...statement,
+      period: {
+        ...statement.period,
+        key: '2026-06',
+      },
+    },
+    {
+      ...statement,
+      plan: {
+        ...statement.plan,
+        tariff_id: 'tariff_other',
+      },
+    },
+    {
+      ...statement,
+      plan: {
+        ...statement.plan,
+        version: statement.plan.version + 1,
+      },
+    },
     {
       ...statement,
       connected_service_usage: {
@@ -403,7 +424,7 @@ test('rejects portfolio product and exact snapshot drift', async () => {
       getUoaBillingStatement(
         prisma() as never,
         actorContext as never,
-        undefined,
+        '2026-07',
         {
           env,
           fetchImpl: (async () =>
