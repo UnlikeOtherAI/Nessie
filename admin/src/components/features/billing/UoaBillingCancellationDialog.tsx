@@ -4,19 +4,19 @@ import {
   useState,
 } from 'react'
 import type {
-  UoaBillingCancellationConfirmationV1,
-  UoaBillingCancellationPreviewV1,
-  UoaBillingCancellationSelection,
-} from '@nessie/schemas'
+  BillingCancellationConfirmationV1,
+  BillingCancellationPreviewV1,
+  BillingCancellationSelection,
+} from '@unlikeotherai/billing-statement-protocol'
 import { useModalA11y } from '../../shared/useModalA11y'
 
 type UoaBillingCancellationDialogProps = {
-  confirmation: UoaBillingCancellationConfirmationV1 | null
+  confirmation: BillingCancellationConfirmationV1 | null
   error: string | null
   onClose: () => void
-  onConfirm: (selection: UoaBillingCancellationSelection | null) => void
+  onConfirm: (selection: BillingCancellationSelection | null) => void
   pending: boolean
-  preview: UoaBillingCancellationPreviewV1 | null
+  preview: BillingCancellationPreviewV1 | null
 }
 
 const CloseButton = ({
@@ -64,7 +64,7 @@ export const UoaBillingCancellationDialog = ({
   const dialogRef = useRef<HTMLDivElement | null>(null)
   useModalA11y(dialogRef, onClose)
   const [selection, setSelection] =
-    useState<UoaBillingCancellationSelection | null>(null)
+    useState<BillingCancellationSelection | null>(null)
 
   useEffect(() => {
     setSelection(preview?.confirm_action.default_selection ?? null)

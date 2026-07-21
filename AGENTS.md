@@ -287,7 +287,13 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   may be reused by Ledger or a sibling product. Every request resolves the exact
   linked UOA user/org/team, rejects local workspace drift, and lets UOA
   independently recheck billing-manager membership. The public
-  `/schemas/billing-statement-v1.json` protocol is display-ready: Nessie renders
+  protocol is consumed from the MIT-licensed
+  `@unlikeotherai/billing-statement-protocol` version 1 package, vendored
+  byte-for-byte from UOA commit
+  `25a7d43a8201be54852cd36fcd6becad823b1ef9` and protected by a root SHA-256
+  verification gate. API validation uses its exported JSON Schemas and the
+  admin imports its exported view-model types; local editable copies are
+  forbidden. `/schemas/billing-statement-v1.json` is display-ready: Nessie renders
   its plan, markup, line items, per-service/per-user usage, totals, disabled
   reasons, and exact action/cancellation copy without rating or cancellation
   reasoning. For actions the API re-fetches the statement, accepts only the

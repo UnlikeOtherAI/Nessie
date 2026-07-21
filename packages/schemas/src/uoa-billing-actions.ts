@@ -39,13 +39,3 @@ export const UoaBillingPortalResponseSchema = z
     portal_url: z.string().url(),
   })
   .strict()
-
-export const UoaBillingRedirectResponseSchema = z
-  .object({
-    redirect_url: z.string().url(),
-  })
-  .strict()
-export type UoaBillingRedirectResponse = z.infer<
-  typeof UoaBillingRedirectResponseSchema
->
-

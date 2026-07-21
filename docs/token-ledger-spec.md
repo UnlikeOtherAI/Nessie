@@ -272,6 +272,14 @@ request and whose lifetime is 45 seconds. This key is distinct from Nessie's
 Ledger execution key and from every sibling product key.
 UOA independently re-checks membership and billing-manager authority.
 
+The consumer contract is the public MIT-licensed
+`@unlikeotherai/billing-statement-protocol` version 1 package authored by UOA.
+Nessie vendors that package byte-for-byte from UOA commit
+`25a7d43a8201be54852cd36fcd6becad823b1ef9`; the root lint gate verifies its
+complete SHA-256 manifest. API responses and requests are validated with the
+package's exported JSON Schemas, while the admin imports its exported view-model
+types. Nessie must not keep an independently editable schema or type copy.
+
 After a direct Nessie SSO token exchange has resolved and synchronized the
 linked UOA workspace, the API calls UOA
 `POST /billing/v1/service-access/confirm` with the exact

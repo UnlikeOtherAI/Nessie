@@ -26,6 +26,7 @@
     "@tanstack/react-query": "^5.96.2",
     "@tauri-apps/plugin-deep-link": "^2.4.9",
     "@tauri-apps/plugin-opener": "^2.5.4",
+    "@unlikeotherai/billing-statement-protocol": "workspace:*",
     "@tiptap/extension-placeholder": "^3.26.0",
     "@tiptap/pm": "^3.26.0",
     "@tiptap/react": "^3.26.0",

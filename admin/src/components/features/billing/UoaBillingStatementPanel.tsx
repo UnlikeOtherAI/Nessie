@@ -3,11 +3,11 @@ import {
   useState,
 } from 'react'
 import type {
-  UoaBillingCancellationConfirmationV1,
-  UoaBillingCancellationPreviewV1,
-  UoaBillingCancellationSelection,
-  UoaBillingStatementAction,
-} from '@nessie/schemas'
+  BillingCancellationConfirmationV1,
+  BillingCancellationPreviewV1,
+  BillingCancellationSelection,
+  BillingStatementAction,
+} from '@unlikeotherai/billing-statement-protocol'
 import {
   useUoaBillingCancellationConfirm,
   useUoaBillingCancellationPreview,
@@ -44,7 +44,7 @@ const SummaryCard = ({
 )
 
 const actionButtonClass = (
-  action: UoaBillingStatementAction,
+  action: BillingStatementAction,
 ): string =>
   action.id === 'upgrade'
     ? 'admin-button admin-button-primary'
@@ -56,9 +56,9 @@ export const UoaBillingStatementPanel = () => {
   const previewAction = useUoaBillingCancellationPreview()
   const confirmAction = useUoaBillingCancellationConfirm()
   const [preview, setPreview] =
-    useState<UoaBillingCancellationPreviewV1 | null>(null)
+    useState<BillingCancellationPreviewV1 | null>(null)
   const [confirmation, setConfirmation] =
-    useState<UoaBillingCancellationConfirmationV1 | null>(null)
+    useState<BillingCancellationConfirmationV1 | null>(null)
   const confirmationPending = confirmAction.isPending
   const resetConfirmation = confirmAction.reset
 
@@ -69,7 +69,7 @@ export const UoaBillingStatementPanel = () => {
     resetConfirmation()
   }, [confirmationPending, resetConfirmation])
 
-  const runAction = async (action: UoaBillingStatementAction) => {
+  const runAction = async (action: BillingStatementAction) => {
     if (!action.enabled) return
     if (action.id === 'cancel') {
       const result = await previewAction.mutateAsync()
@@ -82,7 +82,7 @@ export const UoaBillingStatementPanel = () => {
   }
 
   const confirmCancellation = async (
-    selection: UoaBillingCancellationSelection | null,
+    selection: BillingCancellationSelection | null,
   ) => {
     if (!preview) return
     const result = await confirmAction.mutateAsync({

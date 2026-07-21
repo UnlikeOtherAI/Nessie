@@ -115,6 +115,21 @@ Root app layout:
   no current instance it shows only the canonical updater, never the full
   registry.
 
+### 2.0b Live SSO-authored billing interface
+
+- UOA supplies the complete display-ready statement and customer-action model;
+  Nessie only checks the active linked workspace, validates the shared public
+  protocol, renders it, and proxies its frozen actions.
+- API validation and admin view-model types come directly from the public
+  MIT-licensed `@unlikeotherai/billing-statement-protocol` version 1 workspace
+  vendored byte-for-byte from UOA commit
+  `25a7d43a8201be54852cd36fcd6becad823b1ef9`. Root lint verifies the pinned
+  SHA-256 manifest, preventing a Nessie-specific billing contract fork.
+- Upgrade, portal, cancellation preview, and cancellation confirmation stay on
+  Nessie's own pages but carry only UOA-authored paths, bodies, display copy,
+  choices, and opaque tokens. No tariff, total, access, or cancellation decision
+  is calculated locally.
+
 ### 2.1 Server bootstrap (`src/index.ts`)
 
 > **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5454) + `worker/` + `admin/` (port 5455), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.

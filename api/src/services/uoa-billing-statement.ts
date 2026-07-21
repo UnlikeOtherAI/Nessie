@@ -1,18 +1,17 @@
 import type { PrismaClient } from '@prisma/client'
 import {
-  UoaBillingCancellationConfirmationV1Schema,
-  UoaBillingCancellationPreviewV1Schema,
   UoaBillingCheckoutResponseSchema,
   UoaBillingPortalResponseSchema,
-  UoaBillingStatementV1Schema,
   type AuthorizedActionContext,
-  type UoaBillingCancellationConfirmRequest,
-  type UoaBillingCancellationConfirmationV1,
-  type UoaBillingCancellationPreviewV1,
-  type UoaBillingRedirectResponse,
-  type UoaBillingStatementAction,
-  type UoaBillingStatementV1,
 } from '@nessie/schemas'
+import type {
+  BillingCancellationConfirmationV1,
+  BillingCancellationConfirmRequest,
+  BillingCancellationPreviewV1,
+  BillingHostedRedirectResponse,
+  BillingStatementAction,
+  BillingStatementV1,
+} from '@unlikeotherai/billing-statement-protocol'
 import {
   createUoaBillingClient,
   UoaBillingError,
@@ -20,6 +19,12 @@ import {
   type UoaBillingClientDeps,
   type UoaBillingSubject,
 } from './uoa-billing-client.js'
+import {
+  parseBillingCancellationConfirmationV1,
+  parseBillingCancellationPreviewV1,
+  parseBillingHostedRedirectResponse,
+  parseBillingStatementV1,
+} from './uoa-billing-protocol.js'
 
 const NESSIE_PRODUCT = 'nessie'
 const STATEMENT_PATH = '/billing/v1/customer-statement'
@@ -65,27 +70,27 @@ const invalidResponse = (description: string): never => {
 const parseStatement = (
   value: unknown,
   subject: UoaBillingSubject,
-): UoaBillingStatementV1 => {
-  const parsed = UoaBillingStatementV1Schema.safeParse(value)
+): BillingStatementV1 => {
+  const statement = parseBillingStatementV1(value)
   if (
-    !parsed.success
-    || parsed.data.product.identifier !== NESSIE_PRODUCT
-    || parsed.data.subject.user_id !== subject.userId
-    || parsed.data.subject.organisation_id !== subject.organizationId
-    || parsed.data.subject.team_id !== subject.teamId
-    || new Set(parsed.data.pinned_inputs.ledger_snapshots.map(
+    !statement
+    || statement.product.identifier !== NESSIE_PRODUCT
+    || statement.subject.user_id !== subject.userId
+    || statement.subject.organisation_id !== subject.organizationId
+    || statement.subject.team_id !== subject.teamId
+    || new Set(statement.pinned_inputs.ledger_snapshots.map(
       (snapshot) => snapshot.group_by,
     )).size !== 2
   ) {
     return invalidResponse('an invalid canonical statement')
   }
-  return parsed.data
+  return statement
 }
 
 const loadStatement = async (
   client: UoaBillingClient,
   billingMonth?: string,
-): Promise<UoaBillingStatementV1> => {
+): Promise<BillingStatementV1> => {
   const body: Record<string, string> = subjectBody(client.subject)
   if (billingMonth) body.billing_month = billingMonth
   return parseStatement(
@@ -95,10 +100,10 @@ const loadStatement = async (
 }
 
 const actionFor = (
-  statement: UoaBillingStatementV1,
+  statement: BillingStatementV1,
   id: keyof typeof ACTION_CONTRACT,
   subject: UoaBillingSubject,
-): UoaBillingStatementAction => {
+): BillingStatementAction => {
   const matches = statement.actions.filter((action) => action.id === id)
   const action = matches[0]
   const expected = ACTION_CONTRACT[id]
@@ -156,7 +161,7 @@ export const getUoaBillingStatement = async (
   actorContext: AuthorizedActionContext,
   billingMonth?: string,
   deps?: UoaBillingClientDeps,
-): Promise<UoaBillingStatementV1> =>
+): Promise<BillingStatementV1> =>
   loadStatement(
     await createUoaBillingClient(prisma, actorContext, deps),
     billingMonth,
@@ -167,7 +172,7 @@ export const executeUoaBillingHostedAction = async (
   actorContext: AuthorizedActionContext,
   id: HostedActionId,
   deps?: UoaBillingClientDeps,
-): Promise<UoaBillingRedirectResponse> => {
+): Promise<BillingHostedRedirectResponse> => {
   const client = await createUoaBillingClient(prisma, actorContext, deps)
   const action = actionFor(
     await loadStatement(client),
@@ -178,53 +183,57 @@ export const executeUoaBillingHostedAction = async (
   if (id === 'upgrade') {
     const parsed = UoaBillingCheckoutResponseSchema.safeParse(response)
     if (!parsed.success) return invalidResponse('an invalid Checkout response')
-    return {
+    const result = {
       redirect_url: assertStripeRedirect(parsed.data.checkout_url, id),
     }
+    return parseBillingHostedRedirectResponse(result)
+      ?? invalidResponse('an invalid hosted redirect response')
   }
   const parsed = UoaBillingPortalResponseSchema.safeParse(response)
   if (!parsed.success) return invalidResponse('an invalid portal response')
-  return {
+  const result = {
     redirect_url: assertStripeRedirect(parsed.data.portal_url, id),
   }
+  return parseBillingHostedRedirectResponse(result)
+    ?? invalidResponse('an invalid hosted redirect response')
 }
 
 export const createUoaBillingCancellationPreview = async (
   prisma: BillingStatementPrisma,
   actorContext: AuthorizedActionContext,
   deps?: UoaBillingClientDeps,
-): Promise<UoaBillingCancellationPreviewV1> => {
+): Promise<BillingCancellationPreviewV1> => {
   const client = await createUoaBillingClient(prisma, actorContext, deps)
   const action = actionFor(
     await loadStatement(client),
     'cancel',
     client.subject,
   )
-  const parsed = UoaBillingCancellationPreviewV1Schema.safeParse(
+  const preview = parseBillingCancellationPreviewV1(
     await client.post(action.request.path, action.request.body),
   )
-  if (!parsed.success) return invalidResponse('an invalid cancellation preview')
+  if (!preview) return invalidResponse('an invalid cancellation preview')
   if (
-    parsed.data.choice_required
-      !== parsed.data.confirm_action.selection_required
-    || (parsed.data.choice_required
-      && parsed.data.confirm_action.default_selection !== null)
-    || (!parsed.data.choice_required
-      && parsed.data.confirm_action.default_selection !== 'current_service')
+    preview.choice_required
+      !== preview.confirm_action.selection_required
+    || (preview.choice_required
+      && preview.confirm_action.default_selection !== null)
+    || (!preview.choice_required
+      && preview.confirm_action.default_selection !== 'current_service')
   ) {
     return invalidResponse('an inconsistent cancellation preview')
   }
-  return parsed.data
+  return preview
 }
 
 export const confirmUoaBillingCancellation = async (
   prisma: BillingStatementPrisma,
   actorContext: AuthorizedActionContext,
-  request: UoaBillingCancellationConfirmRequest,
+  request: BillingCancellationConfirmRequest,
   deps?: UoaBillingClientDeps,
-): Promise<UoaBillingCancellationConfirmationV1> => {
+): Promise<BillingCancellationConfirmationV1> => {
   const client = await createUoaBillingClient(prisma, actorContext, deps)
-  const parsed = UoaBillingCancellationConfirmationV1Schema.safeParse(
+  const confirmation = parseBillingCancellationConfirmationV1(
     await client.post(CONFIRM_CANCELLATION_PATH, {
       ...subjectBody(client.subject),
       preview_token: request.preview_token,
@@ -232,9 +241,8 @@ export const confirmUoaBillingCancellation = async (
       selection: request.selection,
     }),
   )
-  if (!parsed.success) {
+  if (!confirmation) {
     return invalidResponse('an invalid cancellation confirmation')
   }
-  return parsed.data
+  return confirmation
 }
-

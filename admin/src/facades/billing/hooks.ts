@@ -4,19 +4,19 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import type {
-  UoaBillingCancellationConfirmRequest,
-  UoaBillingCancellationConfirmationV1,
-  UoaBillingCancellationPreviewV1,
-  UoaBillingRedirectResponse,
-  UoaBillingStatementV1,
-} from '@nessie/schemas'
+  BillingCancellationConfirmRequest,
+  BillingCancellationConfirmationV1,
+  BillingCancellationPreviewV1,
+  BillingHostedRedirectResponse,
+  BillingStatementV1,
+} from '@unlikeotherai/billing-statement-protocol'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const billingStatementKey = ['uoa-billing-statement'] as const
 
 export const useUoaBillingStatement = () => {
   const apiClient = useApiClient()
-  return useQuery<UoaBillingStatementV1>({
+  return useQuery<BillingStatementV1>({
     queryKey: billingStatementKey,
     queryFn: () => apiClient.get('/api/billing/statement'),
     refetchOnWindowFocus: false,
@@ -28,7 +28,7 @@ export const useUoaBillingStatement = () => {
 export const useUoaBillingHostedAction = () => {
   const apiClient = useApiClient()
   return useMutation<
-    UoaBillingRedirectResponse,
+    BillingHostedRedirectResponse,
     unknown,
     'portal' | 'upgrade'
   >({
@@ -39,7 +39,7 @@ export const useUoaBillingHostedAction = () => {
 
 export const useUoaBillingCancellationPreview = () => {
   const apiClient = useApiClient()
-  return useMutation<UoaBillingCancellationPreviewV1>({
+  return useMutation<BillingCancellationPreviewV1>({
     mutationFn: () =>
       apiClient.post('/api/billing/cancellation/preview'),
   })
@@ -49,9 +49,9 @@ export const useUoaBillingCancellationConfirm = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation<
-    UoaBillingCancellationConfirmationV1,
+    BillingCancellationConfirmationV1,
     unknown,
-    UoaBillingCancellationConfirmRequest
+    BillingCancellationConfirmRequest
   >({
     mutationFn: (request) =>
       apiClient.post('/api/billing/cancellation/confirm', request),
@@ -60,4 +60,3 @@ export const useUoaBillingCancellationConfirm = () => {
     },
   })
 }
-

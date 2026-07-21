@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
-import { UoaBillingCancellationConfirmRequestSchema } from '@nessie/schemas'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { UoaBillingError } from '../services/uoa-billing-client.js'
+import { parseBillingCancellationConfirmRequest } from '../services/uoa-billing-protocol.js'
 import {
   confirmUoaBillingCancellation,
   createUoaBillingCancellationPreview,
@@ -120,12 +120,16 @@ export const registerBillingRoutes = (
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
-    const body = parseInput(
-      UoaBillingCancellationConfirmRequestSchema,
-      request.body,
-      reply,
-    )
-    if (!body) return reply
+    const body = parseBillingCancellationConfirmRequest(request.body)
+    if (!body) {
+      sendApiError(
+        reply,
+        400,
+        'VALIDATION_ERROR',
+        'Invalid billing cancellation confirmation',
+      )
+      return reply
+    }
     try {
       reply.header('Cache-Control', 'private, no-store')
       return createApiResponse(

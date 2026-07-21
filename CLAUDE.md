@@ -321,6 +321,12 @@ UOA before any local session is returned. The confirmation is subject-bound,
 requires UOA's `204`/`no-store` response, and fails login closed; indirect
 connector, DeepWater, agent, and background execution never records direct
 product access.
+The model and action contract come directly from the public MIT-licensed
+`@unlikeotherai/billing-statement-protocol` version 1 package, vendored
+byte-for-byte from UOA commit
+`25a7d43a8201be54852cd36fcd6becad823b1ef9`. Root lint verifies its complete
+SHA-256 manifest; the API compiles its exported JSON Schemas and the admin
+imports its exported types, so Nessie owns no parallel billing contract.
 
 Builtin `web_search` is also Ledger-only. Agent, delegated sub-agent, and
 workflow calls use `${LEDGER_PUBLIC_URL}/v1/serper/search` with Nessie's

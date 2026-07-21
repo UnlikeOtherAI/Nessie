@@ -1,4 +1,4 @@
-import type { UoaBillingStatementV1 } from '@nessie/schemas'
+import type { BillingStatementV1 } from '@unlikeotherai/billing-statement-protocol'
 
 const sectionTitle =
   'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
@@ -12,7 +12,7 @@ const EmptyLine = ({ children }: { children: string }) => (
 export const UoaBillingStatementDetails = ({
   statement,
 }: {
-  statement: UoaBillingStatementV1
+  statement: BillingStatementV1
 }) => {
   const serviceNames = new Map(
     statement.services.map((service) => [
