@@ -142,6 +142,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.2.0
         version: 11.2.0
+      '@nessie/comms-connect':
+        specifier: workspace:*
+        version: link:../packages/comms-connect
       '@nessie/config':
         specifier: workspace:*
         version: link:../packages/config

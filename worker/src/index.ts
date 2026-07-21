@@ -16,9 +16,11 @@ import {
   COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
   COMMS_SYNC_INCREMENTAL_TOPIC,
   COMMS_SYNC_INITIAL_TOPIC,
+  COMMS_WEBHOOK_PROCESS_TOPIC,
   CommsSubscriptionsRenewJobPayloadSchema,
   CommsSyncIncrementalJobPayloadSchema,
   CommsSyncInitialJobPayloadSchema,
+  CommsWebhookProcessJobPayloadSchema,
   ExecutionEnvironmentAllocateJobPayloadSchema,
   ExecutionEnvironmentTerminateJobPayloadSchema,
   KNOWLEDGE_EMBED_TOPIC,
@@ -64,6 +66,7 @@ import {
   executeCommsInitialSyncJob,
   renewCommsSubscriptions,
 } from './control/comms-sync.js'
+import { processCommsWebhookJob } from './control/comms-webhook.js'
 import { enqueueCommsSubscriptionsRenew } from './queue.js'
 
 const config = loadConfig()
@@ -354,6 +357,15 @@ export const startWorker = async (
     async (job) => {
       const payload = CommsSubscriptionsRenewJobPayloadSchema.parse(job.payload)
       await renewCommsSubscriptions(commsSyncDeps, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    COMMS_WEBHOOK_PROCESS_TOPIC,
+    async (job) => {
+      const payload = CommsWebhookProcessJobPayloadSchema.parse(job.payload)
+      await processCommsWebhookJob({ prisma }, payload)
     },
     { signal: abortController.signal },
   )

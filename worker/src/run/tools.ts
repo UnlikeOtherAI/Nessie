@@ -9,6 +9,7 @@ import {
   runChannelJoinTool,
   runChannelListTool,
   runChannelUpdateTool,
+  runCommsConnectCardTool,
   runConnectorAuthorizeTool,
   runConnectorDiscoverTool,
   runConnectorInstallTool,
@@ -482,6 +483,8 @@ export const executeBuiltinTool = async (
       )
     case 'deep_water_run_update':
       return wrapTool(inputSummary, () => runDeepWaterRunUpdateTool(context, args))
+    case 'comms_connect_card':
+      return wrapTool(inputSummary, () => runCommsConnectCardTool(context, args))
     case 'kb_publish_request':
       return wrapTool(inputSummary, () =>
         runKbPublishRequestTool(context, {

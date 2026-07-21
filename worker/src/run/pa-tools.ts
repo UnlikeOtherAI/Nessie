@@ -9,6 +9,7 @@ export {
   runAttachmentUploadTool,
 } from './pa-tools/attachments.js'
 export { isDelegatingPersonalAssistant } from './pa-tools/access.js'
+export { runCommsConnectCardTool } from './pa-tools/comms-card.js'
 export {
   runChannelArchiveTool,
   runChannelFindTool,
