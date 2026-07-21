@@ -8,6 +8,7 @@ import { ChannelMessageActions } from './ChannelMessageActions'
 import type { ResolveReactorName } from './ReactionPills'
 import { formatClock, getDisplayName, type MessageUserIdentity } from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
+import { CommsConnectCard } from './CommsConnectCard'
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -284,6 +285,9 @@ export const ChannelMessageRow = ({
               }
               metadata={message.metadata}
             />
+          ) : null}
+          {!isEditingMessage ? (
+            <CommsConnectCard metadata={message.metadata} />
           ) : null}
           <MessageAttachments messageId={message.id} />
           {!isEditingMessage ? (
