@@ -145,6 +145,16 @@ Signal catalog:
   status-chasing), organizational problems (unclear ownership, duplicated
   work), collaboration problems (same issue in multiple places, experts
   interrupted repetitively).
+- Conversation mining is not limited to native Nessie channels. Each user's own
+  **Slack / Microsoft Teams / Gmail / Outlook** history flows in through the
+  **Individual Communications Connector**
+  ([docs/plans/2026-07-21-individual-communications-connector.md](2026-07-21-individual-communications-connector.md)):
+  a per-user connector layer authenticates, back-fills history, receives
+  continuous updates, and normalizes everything into one shared `CommsEvent`
+  model. Those normalized events are an **observation source input** to this
+  mining pass — the connector stays strictly auth/retrieval/sync/normalization
+  and holds no CoS reasoning, so the extraction pipeline treats an imported
+  external message exactly like a native one.
 
 ### 3.4 Data model (sketch)
 

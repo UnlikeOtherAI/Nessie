@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
-import type { RunExecuteJobPayload } from '@nessie/schemas'
+import {
+  COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
+  type CommsSubscriptionsRenewJobPayload,
+  type RunExecuteJobPayload,
+} from '@nessie/schemas'
 
 export const enqueueQueueJob = async (
   prisma: Pick<PrismaClient, '$executeRaw'>,
@@ -75,5 +79,22 @@ export const enqueueRunExecution = async (
     idempotencyKey,
     payload,
     topic: 'run.execute',
+  })
+}
+
+/**
+ * Enqueue the communications subscription-renewal sweep. The caller supplies a
+ * window-bucketed idempotency key so multiple worker replicas ticking their
+ * interval do not stack duplicate sweeps for the same window.
+ */
+export const enqueueCommsSubscriptionsRenew = async (
+  prisma: Pick<PrismaClient, '$executeRaw'>,
+  payload: CommsSubscriptionsRenewJobPayload,
+  idempotencyKey?: string,
+): Promise<boolean> => {
+  return enqueueQueueJob(prisma, {
+    idempotencyKey,
+    payload,
+    topic: COMMS_SUBSCRIPTIONS_RENEW_TOPIC,
   })
 }

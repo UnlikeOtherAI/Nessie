@@ -739,6 +739,28 @@ At the end of phase 5, an organization should be able to:
 
 Phase 5 is not complete until the mandatory end-of-phase review gate in section `1.1` passes for all affected roots, hosted/self-hosted deployment paths, and enterprise control surfaces.
 
+## 2.1) Individual Communications Connector phases
+
+A cross-cutting workstream (independent of the Phase 1–5 platform milestones)
+that lets each user connect their own Slack / Google / Microsoft account so
+their external communications flow into the shared `CommsEvent` model as a
+Chief-of-Staff observation source. The connector layer is strictly
+auth/retrieval/sync/normalization — no business intelligence. Foundation
+(Prisma models, the `@nessie/comms-connect` provider-agnostic core, and the
+worker sync/renewal pipeline) lands first; provider adapters, OAuth routes, and
+UI build on it. See
+[plans/2026-07-21-individual-communications-connector.md](./plans/2026-07-21-individual-communications-connector.md).
+
+- **Phase 1 — Gmail + Slack (personal):** per-user OAuth connect, history
+  back-fill, incremental sync, and webhook/watch ingestion for a single user's
+  Gmail and Slack.
+- **Phase 2 — Microsoft Graph:** Teams chats/channels and Outlook mail/folders
+  via Microsoft Graph, including Graph subscription renewal.
+- **Phase 3 — enterprise admin:** org-admin-scoped installs, tenant-wide
+  consent, and per-workspace governance over which resources sync.
+- **Phase 4 — additional systems:** further communication and collaboration
+  sources normalized into the same event model.
+
 ## 3) MVP definition
 
 For this roadmap, the MVP is Phase 1 plus the minimum hosted packaging needed to demo it credibly.
