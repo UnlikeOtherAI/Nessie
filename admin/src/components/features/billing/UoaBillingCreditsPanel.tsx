@@ -256,7 +256,7 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
         <div className="mt-3 grid gap-2">
           {credits.funding_policy.offers.map((offer) => (
             <button
-              className="admin-button admin-button-primary justify-between"
+              className="admin-button admin-button-primary"
               disabled={!offer.action.enabled || pending}
               key={offer.id}
               onClick={() => {
@@ -270,7 +270,6 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
               type="button"
             >
               <span>{offer.action.label}</span>
-              <span>{offer.credits_received.display}</span>
             </button>
           ))}
         </div>

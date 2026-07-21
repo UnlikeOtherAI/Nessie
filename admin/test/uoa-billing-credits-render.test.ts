@@ -134,6 +134,12 @@ test('manager view leads with remaining credits and exposes UOA actions', () => 
   assert.ok(markup.includes(
     manager.funding_policy.offers[0]?.action.label ?? '',
   ))
+  const firstOffer = manager.funding_policy.offers[0]
+  if (firstOffer) {
+    assert.ok(!markup.includes(
+      `${firstOffer.action.label}</span><span>${firstOffer.credits_received.display}`,
+    ))
+  }
 })
 
 test('member view preserves team transparency without names or money actions', () => {
