@@ -271,7 +271,8 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   Re-enable preserves richer probed schemas only
   when tool names exactly match the current Ledger contract; legacy
   direct-provider projections are replaced and must be explicitly re-granted.
-- Customer tariffs, statements, subscriptions, adjustments, and Stripe
+- Customer tariffs, statements, credits, top-ups, subscriptions, adjustments,
+  and Stripe
   lifecycle remain authoritative in UOA. Ledger's raw reporting endpoint is
   UOA-only: Nessie must not hold a metering-reader key, call Ledger's legacy
   billing route, or expose a parallel raw-billing panel. Nessie's product-bound
@@ -288,9 +289,9 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   linked UOA user/org/team, rejects local workspace drift, and lets UOA
   independently recheck billing-manager membership. The public
   protocol is consumed from the MIT-licensed
-  `@unlikeotherai/billing-statement-protocol` 1.1.0 package, vendored
+  `@unlikeotherai/billing-statement-protocol` 1.2.0 package, vendored
   byte-for-byte from UOA commit
-  `205547b34bf01d5d665245cf622a193198997608` and protected by a root SHA-256
+  `f767f2b8db73443ae31da719c9effafd3aa4ee25` and protected by a root SHA-256
   verification gate. API validation uses its exported JSON Schemas and the
   admin imports its exported view-model types; local editable copies are
   forbidden. `/schemas/billing-statement-v2.json` is display-ready: Nessie
@@ -305,7 +306,18 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   are forbidden. Cancellation relays only UOA's opaque short-lived preview
   token, UOA idempotency key, and selected UOA choice; UOA locks and revalidates
   team-wide direct access before confirming. Nessie stores no tariff, Stripe
-  customer, subscription, invoice, Price, statement, or cancellation state.
+  customer, subscription, invoice, Price, credit balance, top-up policy,
+  payment consent, recurring add-on, statement, or cancellation state. Every
+  active exact-team member may read the same UOA-owned team credit account.
+  The display leads with remaining credits, then pending/added/used credits,
+  connected-service usage, recent activity, and automatic top-up status. UOA
+  fixes 1,000 credits to US$1 and returns display-ready values; Nessie never
+  converts tokens, raw Ledger units, provider cost, or money into credits.
+  Billing managers receive named-user/payment detail and frozen top-up,
+  automatic-top-up, and recurring-add-on actions. Ordinary members receive a
+  privacy-safe read-only projection with their own usage plus anonymous
+  other-member and unattributed totals. Every mutation re-fetches the UOA view,
+  validates the exact frozen action, and relays it unchanged.
   A successful direct Nessie SSO exchange confirms `nessie` access through
   UOA's exact `/billing/v1/service-access/confirm` seam before Nessie issues its
   local session; the call is bound to the linked user/org/team and fails login

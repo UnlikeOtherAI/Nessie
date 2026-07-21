@@ -115,29 +115,45 @@ Root app layout:
   no current instance it shows only the canonical updater, never the full
   registry.
 
-### 2.0b Live SSO-authored billing interface
+### 2.0b Live SSO-authored billing and credits interface
 
-- UOA supplies the complete display-ready statement and customer-action model;
-  Nessie only checks the active linked workspace, validates the shared public
-  protocol, renders it, and proxies its frozen actions.
+- UOA supplies the complete display-ready statement, shared-team credits,
+  recurring add-ons, and customer-action models. Nessie only checks the active
+  linked workspace, validates the shared public protocol, renders it, and
+  proxies its frozen actions.
 - API validation and admin view-model types come directly from the public
-  MIT-licensed `@unlikeotherai/billing-statement-protocol` 1.1.0 workspace
+  MIT-licensed `@unlikeotherai/billing-statement-protocol` 1.2.0 workspace
   vendored byte-for-byte from UOA commit
-  `205547b34bf01d5d665245cf622a193198997608`. Root lint verifies the pinned
+  `f767f2b8db73443ae31da719c9effafd3aa4ee25`. Root lint verifies the pinned
   SHA-256 manifest, preventing a Nessie-specific billing contract fork.
 - The statement uses protocol V2 and one exact Ledger
   `metering-portfolio-v1` `group_by=user` snapshot. UOA supplies the complete
   connected-service totals, origins, per-user shares, and display copy from
   that same snapshot; Nessie performs no cross-service aggregation or share
   calculation. The frozen customer-action protocol remains V1.
+- Every active team member can read the same selected-team credit balance.
+  The headline is remaining credits, followed by pending, added, and used
+  credits for the current period, a connected-service breakdown, recent credit
+  activity, and automatic top-up status. UOA fixes the conversion at 1,000
+  credits per US$1 and returns every amount and label ready to display; Nessie
+  never converts money, tokens, provider cost, or raw Ledger units into credits.
+  Billing managers receive named user and payment-management detail. Ordinary
+  members receive their own usage plus anonymous other-member and unattributed
+  totals, with no payment method details or mutation actions.
+- Manual top-ups, automatic top-up setup/update/disable/recovery, and recurring
+  add-on subscribe/cancel actions are manager-only frozen UOA actions. Products
+  do not persist a balance, payment method, consent, subscription, add-on, or
+  top-up state. The same UOA team credit account is therefore visible from
+  Nessie and every other connected product without a product-local balance.
 - Upgrade, portal, cancellation preview, and cancellation confirmation stay on
   Nessie's own pages but carry only UOA-authored paths, bodies, display copy,
   choices, and opaque tokens. No tariff, total, access, or cancellation decision
   is calculated locally.
 - Exact UOA Checkout return markers on `/` preserve their full query while
   routing to Usage & Billing. That page displays a neutral notice and refetches
-  UOA's canonical statement; invalid or duplicate markers retain the normal
-  Channels landing behavior and cause no billing action.
+  UOA's canonical statement, credits, and recurring add-ons; invalid or
+  duplicate markers retain the normal Channels landing behavior and cause no
+  billing action.
 
 ### 2.1 Server bootstrap (`src/index.ts`)
 
@@ -702,7 +718,7 @@ Parity matrix:
 | project safety | `POST /projects/{projectId}/safety/preflight`, `.../degrade`, `.../restore`, `.../archive`, `.../restore`, `.../delete` | `project.safety.preflight`, `project.safety.degrade`, `project.safety.restore`, `project.archive`, `project.delete` | `/project safety` | governance + project-state policy | yes | yes | blocked |
 | step-up verification | `POST /verification/challenges/*`, `GET/POST /verification/factors*` | `verification.challenge.start`, `verification.challenge.verify`, `verification.challenge.resend`, `verification.challenge.cancel`, `verification.factor.enroll`, `verification.factor.verify`, `verification.factor.revoke`, `verification.factor.list` | `/verify`, `/verify enroll` | high-risk action policy | conditional | yes | blocked |
 | language + translation | `GET/PATCH /orgs/{orgId}/language`, `GET/PATCH /users/{userId}/language`, `PATCH /threads/{threadId}/language`, `PATCH /sessions/{sessionId}/language`, `POST /translation/preview` | `translation.org.get`, `translation.org.update`, `translation.user.get`, `translation.user.update`, `translation.thread.update`, `translation.session.update`, `translation.preview` | `/language set`, `/translate preview` | org/user/thread/session policy | org default change: yes | yes | blocked |
-| customer commercial billing surface | `GET /api/billing/statement`, `POST /api/billing/actions/upgrade`, `POST /api/billing/actions/portal`, `POST /api/billing/cancellation/preview`, `POST /api/billing/cancellation/confirm`; direct SSO exchange internally calls UOA `/billing/v1/service-access/confirm` | N/A | Usage & billing | active-team owner/admin; exact UOA workspace and UOA membership re-check | UOA-authored upgrade, portal, cancellation preview/confirm: yes | yes | implemented (Nessie has no tariff, rating, payment, statement, or cancellation-decision state. A dedicated UOA app key plus fresh 45-second RS256 actor assertion fetches UOA's V2 display-ready statement. The UI renders exact plan/markup, commercial lines/totals, and the UOA-authored connected-service team/origin/user portfolio from one pinned Ledger snapshot. Nessie performs no billing or share calculations. Frozen V1 actions are fixed-allowlisted and proxied with UOA's exact body/token/idempotency key/choice; UOA alone checks direct access and indirect Ledger use. Direct-access evidence is recorded only after a successful direct Nessie SSO exchange and before local session issuance; UOA confirmation failure blocks login, while connector/agent/DeepWater paths never record it.) |
+| customer commercial billing and credits surface | `GET /api/billing/credits`, `GET /api/billing/recurring-addons`, manager-only credit top-up/automatic-top-up and recurring-add-on mutation routes, `GET /api/billing/statement`, `POST /api/billing/actions/upgrade`, `POST /api/billing/actions/portal`, `POST /api/billing/cancellation/preview`, `POST /api/billing/cancellation/confirm`; direct SSO exchange internally calls UOA `/billing/v1/service-access/confirm` | N/A | Usage & billing | credit/add-on reads: every active-team member; statement and mutations: active-team owner/admin; exact UOA workspace and UOA membership/manager re-check | every commercial mutation is a frozen UOA action: yes | yes | implemented (Nessie has no tariff, rating, credit balance, payment, top-up, add-on, statement, or cancellation-decision state. A dedicated UOA app key plus fresh 45-second RS256 actor assertion fetches UOA's display-ready models. The UI puts remaining credits first, then pending/added/used credits, service/user usage, recent activity, and automatic top-up state; 1,000 credits equal US$1. Managers receive payment controls and named-user detail, while members receive a privacy-safe read-only projection. The same selected-team balance is shared across products. Nessie performs no billing, credit conversion, aggregation, or share calculations. Frozen actions are fixed-allowlisted and proxied with UOA's exact body/token/idempotency key/choice; UOA alone checks authority, direct access, and indirect Ledger use. Direct-access evidence is recorded only after a successful direct Nessie SSO exchange and before local session issuance; UOA confirmation failure blocks login, while connector/agent/DeepWater paths never record it.) |
 | builtin web search metering | Ledger `POST /v1/serper/search` | `web_search` | Agent and workflow tool execution | agent tool grant/policy; exact signed user/org/team/agent/run/tool-call provenance | no | yes | implemented (Nessie's product-bound Ledger key authenticates the app; Ledger injects Serper credentials and owns raw search metering. Agent, delegated sub-agent, and workflow paths fail closed without signing identity and have no direct Serper-key fallback. Nessie connector rows are operational telemetry only.) |
 | token, connector, and file usage ledger + pricing | `GET /api/ledger/tokens/summary`, `GET /api/ledger/connectors/summary`, `GET /api/ledger/files/summary`, `GET/POST /api/ledger/tokens/pricing`, `DELETE /api/ledger/tokens/pricing/{profileId}`, `GET /api/ledger/tokens/monthly-estimate` | `ledger.tokens.summary.get`, `ledger.connectors.summary.get`, `ledger.files.summary.get`, `ledger.tokens.pricing.list`, `ledger.tokens.pricing.upsert`, `ledger.tokens.pricing.delete`, `ledger.tokens.monthly_estimate.get` | `/ledger tokens`, `/ledger pricing` | owner policy; pricing override is owner-only | pricing override: yes | yes | implemented-partial (REST admin surface; file summary reports current stored bytes plus upload/download transfer bytes) |
 | knowledge base | `POST /knowledge-base/*` | `knowledge_base.link`, `knowledge_base.search`, `knowledge_base.read`, `knowledge_base.search_summary`, `knowledge_base.reindex`, `knowledge_base.projects.share` | `/knowledge search` | project/team/channel policy | read: no; write/share: yes | yes | blocked |

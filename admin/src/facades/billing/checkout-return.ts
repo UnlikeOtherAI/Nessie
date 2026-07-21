@@ -44,6 +44,6 @@ export const getUoaBillingCheckoutReturnNotice = (
   title: 'Billing checkout',
   message:
     checkoutReturn === 'checkout_cancelled'
-      ? 'You are back from checkout. We are refreshing the customer statement below; no billing change is assumed.'
-      : 'You are back from checkout. We are refreshing the customer statement below so it can show any confirmed changes.',
+      ? 'You are back from checkout. We are refreshing your team credits and billing details; no billing change is assumed.'
+      : 'You are back from checkout. We are refreshing your team credits and billing details so they can show confirmed changes.',
 })

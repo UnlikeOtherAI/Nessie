@@ -4,7 +4,6 @@ import type { ReactNode } from 'react';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
 
 type AdminSidebarNavProps = {
-  canReadBilling: boolean;
   pathname: string;
   isOwner: boolean;
   isSuperAdmin: boolean;
@@ -14,7 +13,6 @@ type AdminNavItem = {
   path: string;
   label: string;
   icon: ReactNode;
-  billingReaderOnly?: boolean;
   ownerOnly?: boolean;
   exact?: boolean;
 };
@@ -258,7 +256,6 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/tokens',
         label: 'Usage & billing',
-        billingReaderOnly: true,
         icon: icon(
           <>
             <circle cx="12" cy="12" r="8" />
@@ -314,7 +311,6 @@ const ADMIN_NAV: AdminNavGroup[] = [
 const adminNavCookieName = (id: AdminNavGroupId) => `adminNavCollapsed-${id}`;
 
 type AdminNavSectionProps = {
-  canReadBilling: boolean;
   group: AdminNavGroup;
   isCollapsed: boolean;
   isOwner: boolean;
@@ -323,7 +319,6 @@ type AdminNavSectionProps = {
 };
 
 const AdminNavSection = ({
-  canReadBilling,
   group,
   isCollapsed,
   isOwner,
@@ -342,8 +337,7 @@ const AdminNavSection = ({
       {group.items
         .filter(
           (item) =>
-            (!item.ownerOnly || isOwner)
-            && (!item.billingReaderOnly || canReadBilling),
+            !item.ownerOnly || isOwner,
         )
         .map((item) => {
           const isActive = item.exact
@@ -365,7 +359,6 @@ const AdminNavSection = ({
 };
 
 export const AdminSidebarNav = ({
-  canReadBilling,
   pathname,
   isOwner,
   isSuperAdmin,
@@ -395,7 +388,6 @@ export const AdminSidebarNav = ({
       <nav className="min-h-0 flex-1 overflow-y-auto py-1">
         {visibleGroups.map((group) => (
           <AdminNavSection
-            canReadBilling={canReadBilling}
             group={group}
             isCollapsed={collapsedSections[group.id] ?? false}
             isOwner={isOwner}

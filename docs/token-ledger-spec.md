@@ -252,9 +252,10 @@ statement is Nessie's only customer service/team/user usage and billing view.
 ### 10.1 SSO-owned commercial billing
 
 Nessie does not create, edit, copy, cache, or calculate commercial tariffs and
-does not hold Stripe customer, subscription, invoice, Price, statement,
-adjustment, entitlement, or cancellation-intent state. UOA remains the sole
-commercial authority and publishes the open protocol at
+does not hold Stripe customer, subscription, invoice, Price, credit balance,
+top-up policy, payment consent, recurring add-on, statement, adjustment,
+entitlement, or cancellation-intent state. UOA remains the sole commercial
+authority and publishes the open protocol at
 `GET /schemas/billing-statement-v2.json`. Active-team owners/admins use these
 Nessie proxy endpoints:
 
@@ -263,6 +264,31 @@ Nessie proxy endpoints:
 - `POST /api/billing/actions/portal`;
 - `POST /api/billing/cancellation/preview`;
 - `POST /api/billing/cancellation/confirm`.
+
+Every active exact-team member may also read UOA's customer-safe funding
+projections through:
+
+- `GET /api/billing/credits`;
+- `GET /api/billing/recurring-addons`.
+
+The credit view always leads with the selected team's remaining credits and
+then shows pending, added, and consumed credits for the current period,
+connected-service consumption, recent activity, and automatic top-up status.
+UOA fixes 1,000 credits to US$1 and supplies display-ready credit and money
+values. Nessie never reads raw Ledger billing data or converts tokens, provider
+cost, or money into credits. The account belongs to the UOA team, not Nessie,
+so a customer sees the same balance through every connected product.
+
+UOA discriminates the response by viewer authority. A billing manager receives
+the full per-user breakdown, payment-method display, consent record, funding
+offers, and frozen top-up/automatic-top-up actions. An ordinary member receives
+only their own usage plus anonymous other-team-member and unattributed totals,
+payment-method status without details, and no mutation action. Recurring add-on
+offers and active states are readable by the team, while subscribe and cancel
+remain manager-only frozen actions. The corresponding Nessie mutation routes
+accept only local action references or UOA's opaque cancellation confirmation;
+they re-fetch the projection and relay the exact UOA-authored action. Nessie
+stores no credit balance, top-up policy, payment consent, or add-on state.
 
 The API resolves the exact linked UOA user/organization/team and rejects
 local/UOA workspace drift. It then calls UOA with Nessie's dedicated
@@ -273,9 +299,9 @@ Ledger execution key and from every sibling product key.
 UOA independently re-checks membership and billing-manager authority.
 
 The consumer contract is the public MIT-licensed
-`@unlikeotherai/billing-statement-protocol` 1.1.0 package authored by UOA.
+`@unlikeotherai/billing-statement-protocol` 1.2.0 package authored by UOA.
 Nessie vendors that package byte-for-byte from UOA commit
-`205547b34bf01d5d665245cf622a193198997608`; the root lint gate verifies its
+`f767f2b8db73443ae31da719c9effafd3aa4ee25`; the root lint gate verifies its
 complete SHA-256 manifest. API responses and requests are validated with the
 package's exported JSON Schemas, while the admin imports its exported view-model
 types. Nessie must not keep an independently editable schema or type copy.
@@ -325,10 +351,11 @@ UOA pins Stripe Checkout returns to Nessie's root route with exactly one
 `uoa_billing=checkout_complete` or `uoa_billing=checkout_cancelled` query
 parameter. The root route preserves the complete query while redirecting those
 two values to `/tokens`. The Usage & Billing page shows a neutral return notice
-and explicitly refetches the canonical UOA statement; that statement, rather
-than the query value, remains the authority for any confirmed change. Missing,
-duplicate, or unknown `uoa_billing` values follow the ordinary `/channels`
-landing path and do not show a notice or trigger a billing refetch.
+and explicitly refetches the canonical UOA statement, credits, and recurring
+add-ons; those projections, rather than the query value, remain the authority
+for any confirmed change. Missing, duplicate, or unknown `uoa_billing` values
+follow the ordinary `/channels` landing path and do not show a notice or trigger
+a billing refetch.
 
 ## 11) Cross-links
 
