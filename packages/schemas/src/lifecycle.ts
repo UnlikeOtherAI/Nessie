@@ -23,6 +23,24 @@ export type AgentKind = z.infer<typeof AgentKindSchema>
 export const AgentSurfacePolicySchema = z.enum(['shared', 'dm_only'])
 export type AgentSurfacePolicy = z.infer<typeof AgentSurfacePolicySchema>
 
+// How much work an agent may put into each run. Scales the agentic-loop run
+// budget (iterations / tool calls / wallclock / tokens / cost) and the
+// provider `reasoning_effort`. Modeled on OpenAI Codex's reasoning-effort
+// levels. `xhigh` is effectively unbounded: the org/team `Budget` gate and the
+// loop's repeated-call detection are its only governors.
+export const AgentEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh'])
+export type AgentEffort = z.infer<typeof AgentEffortSchema>
+
+export const DEFAULT_AGENT_EFFORT: AgentEffort = 'medium'
+
+// OpenAI-compatible providers accept only `low | medium | high` for
+// `reasoning_effort` and reject unknown values, so `xhigh` clamps to `high`.
+export type ProviderReasoningEffort = 'low' | 'medium' | 'high'
+
+export const reasoningEffortForAgentEffort = (
+  effort: AgentEffort,
+): ProviderReasoningEffort => (effort === 'xhigh' ? 'high' : effort)
+
 export const AgentDelegationModeSchema = z.enum([
   'none',
   'act_as_requesting_user',

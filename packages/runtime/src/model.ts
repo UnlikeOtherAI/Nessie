@@ -1,3 +1,4 @@
+import type { ProviderReasoningEffort } from '@nessie/schemas'
 import { createInferenceService } from './inference/service.js'
 import type {
   ModelProviderConfig,
@@ -25,6 +26,8 @@ export type ModelOptions = {
   responseFormat?: { type: 'json_object' }
   // Stable key so repeated calls sharing a prefix hit the same prompt cache.
   promptCacheKey?: string
+  // Sent to OpenAI-compatible providers as `reasoning_effort` when set.
+  reasoningEffort?: ProviderReasoningEffort
   usage?: LedgerAttribution
 }
 
@@ -155,6 +158,7 @@ export const createModelClient = (
       messages: toProviderMessages(messages),
       model: options?.model,
       promptCacheKey: options?.promptCacheKey,
+      reasoningEffort: options?.reasoningEffort,
       responseFormat: options?.responseFormat,
       requestHeaders: headers,
       temperature: options?.temperature,
@@ -223,6 +227,7 @@ export const createModelClient = (
       messages: toProviderMessages(messages),
       model: options?.model,
       promptCacheKey: options?.promptCacheKey,
+      reasoningEffort: options?.reasoningEffort,
       responseFormat: options?.responseFormat,
       requestHeaders: headers,
       temperature: options?.temperature,

@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client'
+import type { AgentEffort } from '@nessie/schemas'
 import {
   parseAgentId,
   parseChannelId,
@@ -69,6 +70,7 @@ export const mapAgentRecord = (agent: {
   }>
   provider: string | null
   model: string | null
+  effort: AgentEffort
   agentKind: 'personal_assistant' | 'shared'
   systemManaged: boolean
   surfacePolicy: 'dm_only' | 'shared'
@@ -117,6 +119,7 @@ export const mapAgentRecord = (agent: {
       : undefined,
     provider: agent.provider ?? undefined,
     model: agent.model ?? undefined,
+    effort: agent.effort,
     toolPolicy: toToolPolicyRecord(agent.toolPolicy),
     avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
     createdAt: agent.createdAt.toISOString(),

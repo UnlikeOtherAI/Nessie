@@ -1,6 +1,10 @@
 import type { DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
 import { Link } from 'react-router-dom'
-import type { AgentDesignerActions, AgentFormState } from './useAgentDesigner'
+import type {
+  AgentDesignerActions,
+  AgentEffortValue,
+  AgentFormState,
+} from './useAgentDesigner'
 import { ToolPicker } from './ToolPicker'
 
 type AgentDesignerFormProps = {
@@ -56,6 +60,17 @@ const fieldLabelClass = [
   'text-xs font-semibold uppercase',
   'tracking-[0.16em] text-[color:var(--tx3)]',
 ].join(' ')
+
+const EFFORTS: { hint: string; label: string; value: string }[] = [
+  { value: 'low', label: 'Low', hint: 'quick, cheap responses' },
+  { value: 'medium', label: 'Medium', hint: 'balanced — default' },
+  { value: 'high', label: 'High', hint: 'thorough multi-step work' },
+  {
+    value: 'xhigh',
+    label: 'Ultra',
+    hint: 'maximum effort, effectively unlimited token usage — governed only by team/org budgets',
+  },
+]
 
 export const AgentDesignerForm = ({
   actions,
@@ -176,6 +191,25 @@ export const AgentDesignerForm = ({
             />
           )}
         </div>
+      </div>
+
+      {/* Effort */}
+      <div className="grid gap-1.5">
+        <label className={fieldLabelClass} htmlFor="agent-effort">
+          Effort
+        </label>
+        <select
+          className="admin-input"
+          id="agent-effort"
+          onChange={(e) => actions.setEffort(e.target.value as AgentEffortValue)}
+          value={state.effort}
+        >
+          {EFFORTS.map((e) => (
+            <option key={e.value} value={e.value}>
+              {`${e.label} — ${e.hint}`}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* System prompt */}

@@ -8,6 +8,7 @@ export const useCreateAgent = () => {
 
   return useMutation({
     mutationFn: (input: {
+      effort?: 'low' | 'medium' | 'high' | 'xhigh'
       model?: string
       name: string
       parentAgentId?: string
@@ -30,6 +31,7 @@ export const useUpdateAgent = () => {
   return useMutation({
     mutationFn: (input: {
       agentId: string
+      effort?: 'low' | 'medium' | 'high' | 'xhigh'
       model?: string
       name?: string
       provider?: string

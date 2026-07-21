@@ -65,6 +65,7 @@ export const loadRunContext = async (
       agent: {
         select: {
           agentKind: true,
+          effort: true,
           executionMode: true,
           id: true,
           model: true,

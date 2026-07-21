@@ -17,6 +17,7 @@ import {
   estimateToolSchemaTokens,
   trimConversationToFit,
 } from './context-management.js'
+import type { AgentEffort } from '@nessie/schemas'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
 import { summarizeToolInput } from './tool-util.js'
@@ -30,14 +31,49 @@ export type BudgetLimits = {
   toolTimeoutMs?: number
 }
 
-export const DEFAULT_BUDGET: BudgetLimits = {
-  maxIterations: 12,
-  maxToolCalls: 20,
-  maxWallclockMs: 90_000,
-  maxTokens: 50_000,
-  maxCostCents: 50,
-  toolTimeoutMs: 75_000,
+const TOOL_TIMEOUT_MS = 75_000
+
+// Per-agent run budget, scaled by the agent's effort level (see AgentEffort).
+// `medium` is the historical default. `xhigh` is effectively unbounded: the
+// org/team `Budget` gate and the loop's repeated-tool-call detection remain the
+// only governors. `toolTimeoutMs` is identical across levels.
+export const EFFORT_BUDGETS: Record<AgentEffort, BudgetLimits> = {
+  low: {
+    maxIterations: 8,
+    maxToolCalls: 12,
+    maxWallclockMs: 60_000,
+    maxTokens: 30_000,
+    maxCostCents: 25,
+    toolTimeoutMs: TOOL_TIMEOUT_MS,
+  },
+  medium: {
+    maxIterations: 12,
+    maxToolCalls: 20,
+    maxWallclockMs: 90_000,
+    maxTokens: 50_000,
+    maxCostCents: 50,
+    toolTimeoutMs: TOOL_TIMEOUT_MS,
+  },
+  high: {
+    maxIterations: 36,
+    maxToolCalls: 60,
+    maxWallclockMs: 600_000,
+    maxTokens: 200_000,
+    maxCostCents: 500,
+    toolTimeoutMs: TOOL_TIMEOUT_MS,
+  },
+  xhigh: {
+    maxIterations: 10_000,
+    maxToolCalls: 20_000,
+    maxWallclockMs: 4 * 60 * 60 * 1_000,
+    maxTokens: Number.MAX_SAFE_INTEGER,
+    maxCostCents: Number.MAX_SAFE_INTEGER,
+    toolTimeoutMs: TOOL_TIMEOUT_MS,
+  },
 }
+
+export const budgetForEffort = (effort: AgentEffort): BudgetLimits =>
+  EFFORT_BUDGETS[effort]
 
 type BudgetExhaustionReason =
   | 'cost'

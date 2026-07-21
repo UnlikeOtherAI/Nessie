@@ -63,6 +63,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
   const initialState = useMemo<Partial<AgentFormState> | undefined>(() => {
     if (!editingAgent) return undefined
     return {
+      effort: editingAgent.effort ?? 'medium',
       name: editingAgent.name,
       role: editingAgent.role,
       provider: editingAgent.provider ?? 'openai',
@@ -119,6 +120,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
     if (isEditMode && editingAgent) {
       await updateAgent.mutateAsync({
         agentId: editingAgent.id,
+        effort: state.effort,
         name: state.name.trim(),
         role: state.role.trim() || 'assistant',
         systemPrompt: state.systemPrompt.trim() || undefined,
@@ -128,6 +130,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
       })
     } else {
       await createAgent.mutateAsync({
+        effort: state.effort,
         name: state.name.trim(),
         role: state.role.trim() || 'assistant',
         systemPrompt: state.systemPrompt.trim() || undefined,

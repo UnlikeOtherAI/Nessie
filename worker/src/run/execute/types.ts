@@ -1,4 +1,5 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
+import type { AgentEffort } from '@nessie/schemas'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
 import type {
@@ -35,6 +36,7 @@ export type ExecutionDependencies = {
 export type RunContext = {
   agent: {
     agentKind: 'personal_assistant' | 'shared'
+    effort: AgentEffort
     executionMode: 'inference' | 'external_mcp'
     id: string
     name: string
