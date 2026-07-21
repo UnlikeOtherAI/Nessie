@@ -288,15 +288,18 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   linked UOA user/org/team, rejects local workspace drift, and lets UOA
   independently recheck billing-manager membership. The public
   protocol is consumed from the MIT-licensed
-  `@unlikeotherai/billing-statement-protocol` version 1 package, vendored
+  `@unlikeotherai/billing-statement-protocol` 1.1.0 package, vendored
   byte-for-byte from UOA commit
-  `25a7d43a8201be54852cd36fcd6becad823b1ef9` and protected by a root SHA-256
+  `205547b34bf01d5d665245cf622a193198997608` and protected by a root SHA-256
   verification gate. API validation uses its exported JSON Schemas and the
   admin imports its exported view-model types; local editable copies are
-  forbidden. `/schemas/billing-statement-v1.json` is display-ready: Nessie renders
-  its plan, markup, line items, per-service/per-user usage, totals, disabled
-  reasons, and exact action/cancellation copy without rating or cancellation
-  reasoning. For actions the API re-fetches the statement, accepts only the
+  forbidden. `/schemas/billing-statement-v2.json` is display-ready: Nessie
+  renders its plan, markup, line items, totals, and the complete
+  connected-service team/origin/user portfolio from one exact Ledger
+  `metering-portfolio-v1` `group_by=user` snapshot without rating, aggregation,
+  share calculation, or cancellation reasoning. Frozen customer actions remain
+  on the version-1 action contract. For actions the API re-fetches the statement,
+  accepts only the
   frozen action-id/path pair, verifies its subject, and forwards UOA's
   server-produced body unchanged. Browser-supplied action bodies and return URLs
   are forbidden. Cancellation relays only UOA's opaque short-lived preview

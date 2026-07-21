@@ -255,7 +255,7 @@ Nessie does not create, edit, copy, cache, or calculate commercial tariffs and
 does not hold Stripe customer, subscription, invoice, Price, statement,
 adjustment, entitlement, or cancellation-intent state. UOA remains the sole
 commercial authority and publishes the open protocol at
-`GET /schemas/billing-statement-v1.json`. Active-team owners/admins use these
+`GET /schemas/billing-statement-v2.json`. Active-team owners/admins use these
 Nessie proxy endpoints:
 
 - `GET /api/billing/statement`;
@@ -273,9 +273,9 @@ Ledger execution key and from every sibling product key.
 UOA independently re-checks membership and billing-manager authority.
 
 The consumer contract is the public MIT-licensed
-`@unlikeotherai/billing-statement-protocol` version 1 package authored by UOA.
+`@unlikeotherai/billing-statement-protocol` 1.1.0 package authored by UOA.
 Nessie vendors that package byte-for-byte from UOA commit
-`25a7d43a8201be54852cd36fcd6becad823b1ef9`; the root lint gate verifies its
+`205547b34bf01d5d665245cf622a193198997608`; the root lint gate verifies its
 complete SHA-256 manifest. API responses and requests are validated with the
 package's exported JSON Schemas, while the admin imports its exported view-model
 types. Nessie must not keep an independently editable schema or type copy.
@@ -289,12 +289,19 @@ This seam is never called by connector, agent, DeepWater, workflow, or
 background execution, so indirect usage cannot be mistaken for direct product
 access during cancellation planning.
 
-The version-1 statement is the complete customer view model: UOA supplies
+The version-2 statement is the complete customer view model: UOA supplies
 display-ready money, plan and markup copy, commercial lines, totals,
 per-service/per-user usage, access classifications, action labels, and disabled
 reasons. Nessie displays those fields and never derives tariff or customer
 charges. It may arrange rows, but does not sum, multiply, re-rate, rename money,
-or decide action availability.
+or decide action availability. Its `connected_service_usage` is derived by UOA
+from the same single, exact Ledger `metering-portfolio-v1` `group_by=user`
+snapshot used for rating. It includes every connected service's team total,
+origin products, per-user usage, raw provider cost, and UOA-authored share
+copy. Nessie validates the snapshot identity and renders those display fields
+verbatim; it does not aggregate services or calculate percentages. Customer
+actions and cancellation payloads remain on the frozen version-1 action
+contract.
 
 Cancellation is preview then confirm. UOA evaluates direct service access
 across every user in the exact organization/team, relates only subscriptions

@@ -8,7 +8,7 @@ import type {
   BillingCancellationConfirmationV1,
   BillingCancellationPreviewV1,
   BillingHostedRedirectResponse,
-  BillingStatementV1,
+  BillingStatementV2,
 } from '@unlikeotherai/billing-statement-protocol'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -16,7 +16,7 @@ export const billingStatementKey = ['uoa-billing-statement'] as const
 
 export const useUoaBillingStatement = () => {
   const apiClient = useApiClient()
-  return useQuery<BillingStatementV1>({
+  return useQuery<BillingStatementV2>({
     queryKey: billingStatementKey,
     queryFn: () => apiClient.get('/api/billing/statement'),
     refetchOnWindowFocus: false,
