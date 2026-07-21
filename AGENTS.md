@@ -291,7 +291,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   protocol is consumed from the MIT-licensed
   `@unlikeotherai/billing-statement-protocol` 1.2.0 package, vendored
   byte-for-byte from UOA commit
-  `675ff2349029eeb56deadcac6aaf1fd7ed6f5fbd` and protected by a root SHA-256
+  `272e4d95846788f752d1e623d5f69f7c961f1dc5` and protected by a root SHA-256
   verification gate. API validation uses its exported JSON Schemas and the
   admin imports its exported view-model types; local editable copies are
   forbidden. `/schemas/billing-statement-v2.json` is display-ready: Nessie

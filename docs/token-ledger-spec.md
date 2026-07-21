@@ -303,7 +303,7 @@ UOA independently re-checks membership and billing-manager authority.
 The consumer contract is the public MIT-licensed
 `@unlikeotherai/billing-statement-protocol` 1.2.0 package authored by UOA.
 Nessie vendors that package byte-for-byte from UOA commit
-`675ff2349029eeb56deadcac6aaf1fd7ed6f5fbd`; the root lint gate verifies its
+`272e4d95846788f752d1e623d5f69f7c961f1dc5`; the root lint gate verifies its
 complete SHA-256 manifest. API responses and requests are validated with the
 package's exported JSON Schemas, while the admin imports its exported view-model
 types. Nessie must not keep an independently editable schema or type copy.

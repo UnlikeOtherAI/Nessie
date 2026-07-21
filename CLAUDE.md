@@ -339,7 +339,7 @@ product access.
 The model and action contract come directly from the public MIT-licensed
 `@unlikeotherai/billing-statement-protocol` 1.2.0 package, vendored
 byte-for-byte from UOA commit
-`675ff2349029eeb56deadcac6aaf1fd7ed6f5fbd`. Root lint verifies its complete
+`272e4d95846788f752d1e623d5f69f7c961f1dc5`. Root lint verifies its complete
 SHA-256 manifest; the API compiles its exported JSON Schemas and the admin
 imports its exported types, so Nessie owns no parallel billing contract.
 Statement V2 renders UOA's exact connected-service team/origin/user portfolio
