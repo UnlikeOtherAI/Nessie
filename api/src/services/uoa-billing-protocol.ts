@@ -5,19 +5,19 @@ import {
   billingCancellationConfirmRequestJsonSchema,
   billingCancellationPreviewV1JsonSchema,
   billingHostedRedirectResponseJsonSchema,
-  billingStatementV1JsonSchema,
+  billingStatementV2JsonSchema,
   type BillingCancellationConfirmationV1,
   type BillingCancellationConfirmRequest,
   type BillingCancellationPreviewV1,
   type BillingHostedRedirectResponse,
-  type BillingStatementV1,
+  type BillingStatementV2,
 } from '@unlikeotherai/billing-statement-protocol'
 
 const ajv = new Ajv2020.default({ allErrors: true, strict: true })
 addFormats.default(ajv)
 
-const statementValidator = ajv.compile<BillingStatementV1>(
-  billingStatementV1JsonSchema,
+const statementValidator = ajv.compile<BillingStatementV2>(
+  billingStatementV2JsonSchema,
 )
 const hostedRedirectValidator = ajv.compile<BillingHostedRedirectResponse>(
   billingHostedRedirectResponseJsonSchema,
@@ -39,9 +39,9 @@ const parseWith = <T>(
   value: unknown,
 ): T | null => (validator(value) ? value : null)
 
-export const parseBillingStatementV1 = (
+export const parseBillingStatementV2 = (
   value: unknown,
-): BillingStatementV1 | null => parseWith(statementValidator, value)
+): BillingStatementV2 | null => parseWith(statementValidator, value)
 
 export const parseBillingHostedRedirectResponse = (
   value: unknown,

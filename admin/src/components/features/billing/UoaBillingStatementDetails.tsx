@@ -1,4 +1,9 @@
-import type { BillingStatementV1 } from '@unlikeotherai/billing-statement-protocol'
+import type {
+  BillingConnectedServiceUsage,
+  BillingPortfolioOrigin,
+  BillingPortfolioUser,
+  BillingStatementV2,
+} from '@unlikeotherai/billing-statement-protocol'
 
 const sectionTitle =
   'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
@@ -9,10 +14,139 @@ const EmptyLine = ({ children }: { children: string }) => (
   </div>
 )
 
+const PortfolioOrigin = ({
+  origin,
+}: {
+  origin: BillingPortfolioOrigin
+}) => (
+  <div className="rounded-lg bg-[color:var(--overlay-weak)] p-3">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <div className="text-sm font-semibold text-[color:var(--tx)]">
+          {origin.display_name}
+        </div>
+        <div className="mt-1 text-xs text-[color:var(--tx2)]">
+          {origin.call_share.display}
+        </div>
+      </div>
+      {origin.is_statement_product && (
+        <span className="rounded-full border border-[color:var(--sep)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--tx3)]">
+          This app
+        </span>
+      )}
+    </div>
+    <div className="mt-2 grid gap-1 text-xs text-[color:var(--tx2)]">
+      {origin.usage.map((usage) => (
+        <div key={usage.usage_unit}>{usage.display}</div>
+      ))}
+      {origin.provider_costs.map((cost) => (
+        <div key={cost.currency}>{cost.display}</div>
+      ))}
+    </div>
+  </div>
+)
+
+const PortfolioUser = ({ user }: { user: BillingPortfolioUser }) => (
+  <div className="rounded-lg bg-[color:var(--overlay-weak)] p-3">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <div className="text-sm font-semibold text-[color:var(--tx)]">
+          {user.display_name}
+        </div>
+        {user.email && (
+          <div className="mt-0.5 text-xs text-[color:var(--tx2)]">
+            {user.email}
+          </div>
+        )}
+      </div>
+      <div className="text-right text-xs text-[color:var(--tx2)]">
+        <div>{user.call_share.display}</div>
+        <div className="mt-0.5">{user.calls} calls</div>
+      </div>
+    </div>
+    <div className="mt-2 grid gap-1 text-xs text-[color:var(--tx2)]">
+      {user.usage.map((usage) => (
+        <div key={usage.usage_unit}>{usage.display}</div>
+      ))}
+      {user.provider_costs.map((cost) => (
+        <div key={cost.currency}>{cost.display}</div>
+      ))}
+    </div>
+  </div>
+)
+
+const ConnectedServiceUsage = ({
+  service,
+}: {
+  service: BillingConnectedServiceUsage
+}) => (
+  <div className="rounded-lg border border-[color:var(--sep)] p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div className="text-base font-semibold text-[color:var(--tx)]">
+          {service.title}
+        </div>
+        <div className="mt-1 max-w-3xl text-xs text-[color:var(--tx2)]">
+          {service.description}
+        </div>
+      </div>
+      <span className="rounded-full border border-[color:var(--sep)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--tx3)]">
+        {service.access} · {service.direct_user_count} direct users
+      </span>
+    </div>
+
+    <div className="mt-3 grid gap-2 text-xs text-[color:var(--tx2)] sm:grid-cols-2 xl:grid-cols-3">
+      <div className="rounded-lg bg-[color:var(--overlay-weak)] p-3">
+        {service.totals.calls} calls across this team
+      </div>
+      {service.totals.usage.map((usage) => (
+        <div
+          className="rounded-lg bg-[color:var(--overlay-weak)] p-3"
+          key={usage.usage_unit}
+        >
+          {usage.display}
+        </div>
+      ))}
+      {service.totals.provider_costs.map((cost) => (
+        <div
+          className="rounded-lg bg-[color:var(--overlay-weak)] p-3"
+          key={cost.currency}
+        >
+          {cost.display}
+        </div>
+      ))}
+    </div>
+
+    <div className="mt-4">
+      <div className={sectionTitle}>Where usage originated</div>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {service.origins.map((origin) => (
+          <PortfolioOrigin
+            key={origin.product ?? origin.display_name}
+            origin={origin}
+          />
+        ))}
+      </div>
+    </div>
+
+    <div className="mt-4">
+      <div className={sectionTitle}>Team members</div>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {service.users.map((user) => (
+          <PortfolioUser
+            key={user.user_id ?? user.display_name}
+            user={user}
+          />
+        ))}
+      </div>
+    </div>
+  </div>
+)
+
 export const UoaBillingStatementDetails = ({
   statement,
 }: {
-  statement: BillingStatementV1
+  statement: BillingStatementV2
 }) => {
   const serviceNames = new Map(
     statement.services.map((service) => [
@@ -51,7 +185,7 @@ export const UoaBillingStatementDetails = ({
       </div>
 
       <div className="mt-6">
-        <div className={sectionTitle}>Connected services</div>
+        <div className={sectionTitle}>Access evidence</div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {statement.services.length === 0 && (
             <EmptyLine>No connected service activity in this period.</EmptyLine>
@@ -73,6 +207,26 @@ export const UoaBillingStatementDetails = ({
                 {service.direct_user_count} direct team users
               </div>
             </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className={sectionTitle}>
+          {statement.connected_service_usage.title}
+        </div>
+        <div className="mt-1 max-w-4xl text-sm text-[color:var(--tx2)]">
+          {statement.connected_service_usage.description}
+        </div>
+        <div className="mt-3 grid gap-3">
+          {statement.connected_service_usage.services.length === 0 && (
+            <EmptyLine>No connected service activity in this period.</EmptyLine>
+          )}
+          {statement.connected_service_usage.services.map((service) => (
+            <ConnectedServiceUsage
+              key={service.billing_product}
+              service={service}
+            />
           ))}
         </div>
       </div>

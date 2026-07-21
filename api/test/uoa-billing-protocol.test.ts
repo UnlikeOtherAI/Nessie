@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 
 import {
   billingConsumerActionV1ConformanceFixtures,
-  billingStatementV1ConformanceFixture,
+  billingStatementV2ConformanceFixture,
 } from '@unlikeotherai/billing-statement-protocol'
 
 import {
@@ -11,14 +11,14 @@ import {
   parseBillingCancellationConfirmRequest,
   parseBillingCancellationPreviewV1,
   parseBillingHostedRedirectResponse,
-  parseBillingStatementV1,
+  parseBillingStatementV2,
 } from '../src/services/uoa-billing-protocol.js'
 
 describe('public UOA billing protocol consumer', () => {
   it('accepts the public package fixtures at every Nessie API boundary', () => {
     assert.deepEqual(
-      parseBillingStatementV1(billingStatementV1ConformanceFixture),
-      billingStatementV1ConformanceFixture,
+      parseBillingStatementV2(billingStatementV2ConformanceFixture),
+      billingStatementV2ConformanceFixture,
     )
     assert.deepEqual(
       parseBillingHostedRedirectResponse(
@@ -48,8 +48,8 @@ describe('public UOA billing protocol consumer', () => {
 
   it('rejects product-added fields instead of widening the public contract', () => {
     assert.equal(
-      parseBillingStatementV1({
-        ...billingStatementV1ConformanceFixture,
+      parseBillingStatementV2({
+        ...billingStatementV2ConformanceFixture,
         locally_rated_total: '$99.00',
       }),
       null,

@@ -55,7 +55,7 @@ test('binds the canonical statement to Nessie, the team, and a signed actor', as
   )
 
   assert.equal(result.statement_id, 'bst_nessie_july')
-  assert.equal(requestUrl, 'https://uoa.example/billing/v1/customer-statement')
+  assert.equal(requestUrl, 'https://uoa.example/billing/v2/customer-statement')
   assert.equal(
     requestHeaders.get('x-uoa-app-key'),
     env[NESSIE_UOA_BILLING_APP_KEY_ENV],
@@ -148,7 +148,7 @@ test('proxies only the frozen enabled action and preserves its UOA body', async 
           body: JSON.parse(String(init?.body)) as unknown,
           path,
         })
-        if (path === '/billing/v1/customer-statement') {
+        if (path === '/billing/v2/customer-statement') {
           return new Response(JSON.stringify(statement))
         }
         return new Response(JSON.stringify({
@@ -165,7 +165,7 @@ test('proxies only the frozen enabled action and preserves its UOA body', async 
     redirect_url: 'https://checkout.stripe.com/c/pay/test',
   })
   assert.deepEqual(requests, [
-    { body: subjectBody, path: '/billing/v1/customer-statement' },
+    { body: subjectBody, path: '/billing/v2/customer-statement' },
     {
       body: actionBody,
       path: '/billing/v1/stripe/checkout-session',
@@ -252,7 +252,7 @@ test('renders cancellation choices from UOA and sends only opaque confirmation',
       fetchImpl: (async (input) => {
         const path = new URL(input.toString()).pathname
         return new Response(JSON.stringify(
-          path === '/billing/v1/customer-statement'
+          path === '/billing/v2/customer-statement'
             ? cancellable
             : preview,
         ))
@@ -363,6 +363,58 @@ test('rejects path drift, workspace drift, and cross-tenant statements', async (
       error instanceof UoaBillingError
       && error.code === 'UOA_BILLING_RESPONSE_INVALID',
   )
+})
+
+test('rejects portfolio product and exact snapshot drift', async () => {
+  const snapshot = statement.pinned_inputs.ledger_snapshots[0]
+  const invalidStatements = [
+    {
+      ...statement,
+      connected_service_usage: {
+        ...statement.connected_service_usage,
+        statement_product: 'deepwater',
+      },
+    },
+    {
+      ...statement,
+      pinned_inputs: {
+        ...statement.pinned_inputs,
+        ledger_snapshots: [{
+          ...snapshot,
+          cursor: `mup_${'2'.repeat(32)}`,
+        }],
+      },
+    },
+    {
+      ...statement,
+      pinned_inputs: {
+        ...statement.pinned_inputs,
+        ledger_snapshots: [{
+          ...snapshot,
+          contract: 'metering-usage-v1',
+          group_by: 'service',
+        }],
+      },
+    },
+  ]
+
+  for (const invalidStatement of invalidStatements) {
+    await assert.rejects(
+      getUoaBillingStatement(
+        prisma() as never,
+        actorContext as never,
+        undefined,
+        {
+          env,
+          fetchImpl: (async () =>
+            new Response(JSON.stringify(invalidStatement))) as typeof fetch,
+        },
+      ),
+      (error: unknown) =>
+        error instanceof UoaBillingError
+        && error.code === 'UOA_BILLING_RESPONSE_INVALID',
+    )
+  }
 })
 
 test('requires deployment-owned UOA billing credentials', async () => {

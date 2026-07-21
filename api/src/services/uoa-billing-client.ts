@@ -222,8 +222,11 @@ const mapWorkspaceError = (error: BillingWorkspaceError): never => {
 
 const billingUrl = (settings: BillingSettings, path: string): URL => {
   const url = new URL(path, `${settings.baseUrl}/`)
+  const allowedPath =
+    path.startsWith('/billing/v1/')
+    || path === '/billing/v2/customer-statement'
   if (
-    !path.startsWith('/billing/v1/')
+    !allowedPath
     || url.origin !== settings.baseUrl
     || url.pathname !== path
     || url.search

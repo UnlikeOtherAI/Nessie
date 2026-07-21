@@ -10,7 +10,7 @@ import type {
   BillingCancellationPreviewV1,
   BillingHostedRedirectResponse,
   BillingStatementAction,
-  BillingStatementV1,
+  BillingStatementV2,
 } from '@unlikeotherai/billing-statement-protocol'
 import {
   createUoaBillingClient,
@@ -23,11 +23,11 @@ import {
   parseBillingCancellationConfirmationV1,
   parseBillingCancellationPreviewV1,
   parseBillingHostedRedirectResponse,
-  parseBillingStatementV1,
+  parseBillingStatementV2,
 } from './uoa-billing-protocol.js'
 
 const NESSIE_PRODUCT = 'nessie'
-const STATEMENT_PATH = '/billing/v1/customer-statement'
+const STATEMENT_PATH = '/billing/v2/customer-statement'
 const CONFIRM_CANCELLATION_PATH = '/billing/v1/cancellation/confirm'
 const ACTION_CONTRACT = {
   upgrade: {
@@ -70,17 +70,20 @@ const invalidResponse = (description: string): never => {
 const parseStatement = (
   value: unknown,
   subject: UoaBillingSubject,
-): BillingStatementV1 => {
-  const statement = parseBillingStatementV1(value)
+): BillingStatementV2 => {
+  const statement = parseBillingStatementV2(value)
+  const snapshot = statement?.pinned_inputs.ledger_snapshots[0]
   if (
     !statement
     || statement.product.identifier !== NESSIE_PRODUCT
     || statement.subject.user_id !== subject.userId
     || statement.subject.organisation_id !== subject.organizationId
     || statement.subject.team_id !== subject.teamId
-    || new Set(statement.pinned_inputs.ledger_snapshots.map(
-      (snapshot) => snapshot.group_by,
-    )).size !== 2
+    || statement.connected_service_usage.statement_product !== NESSIE_PRODUCT
+    || !snapshot
+    || snapshot.contract !== 'metering-portfolio-v1'
+    || snapshot.group_by !== 'user'
+    || snapshot.cursor !== snapshot.id
   ) {
     return invalidResponse('an invalid canonical statement')
   }
@@ -90,7 +93,7 @@ const parseStatement = (
 const loadStatement = async (
   client: UoaBillingClient,
   billingMonth?: string,
-): Promise<BillingStatementV1> => {
+): Promise<BillingStatementV2> => {
   const body: Record<string, string> = subjectBody(client.subject)
   if (billingMonth) body.billing_month = billingMonth
   return parseStatement(
@@ -100,7 +103,7 @@ const loadStatement = async (
 }
 
 const actionFor = (
-  statement: BillingStatementV1,
+  statement: BillingStatementV2,
   id: keyof typeof ACTION_CONTRACT,
   subject: UoaBillingSubject,
 ): BillingStatementAction => {
@@ -161,7 +164,7 @@ export const getUoaBillingStatement = async (
   actorContext: AuthorizedActionContext,
   billingMonth?: string,
   deps?: UoaBillingClientDeps,
-): Promise<BillingStatementV1> =>
+): Promise<BillingStatementV2> =>
   loadStatement(
     await createUoaBillingClient(prisma, actorContext, deps),
     billingMonth,
