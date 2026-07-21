@@ -20,7 +20,7 @@ integrations). Each phase is independently shippable. Worktree-per-task is manda
 - Minimum complexity. No premature abstraction. Each schema change is additive
   (nullable columns / new tables); no destructive migrations.
 - Every phase: migration + `prisma:migrate:deploy`, rebuild worker/admin where
-  touched, kelpie-verify any UI, update `docs/functionality.md` for contract changes.
+  touched, Playwright-verify any UI, update `docs/functionality.md` for contract changes.
 
 ## Current foundations (already present — build on these)
 
@@ -268,6 +268,6 @@ larger phases.
 
 - Migration applied via `pnpm --filter @nessie/api prisma:migrate:deploy`.
 - Worker rebuilt (`pnpm --filter @nessie/worker build`) if worker touched; admin
-  rebuilt + kelpie-verified at `http://localhost:5555` if UI touched.
+  rebuilt + Playwright-verified at `http://localhost:5555` if UI touched.
 - `docs/functionality.md` updated for any contract change; this plan checked off.
 - Lint + tests green. Merge to `main` from worktree, then clean up the worktree.

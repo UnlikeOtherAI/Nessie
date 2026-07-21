@@ -40,9 +40,9 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 
 ## Verification
 
-- Every UI change must be visually verified using kelpie before considering the work complete.
-- Run `kelpie "http://localhost:5455/<path>"` to screenshot the affected page and confirm the feature renders correctly.
-- Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched. Always run Playwright headless unless the user explicitly requests otherwise.
+- Every UI change must be visually verified using Playwright before considering the work complete.
+- Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:5455/<path>`, screenshot the affected page, and confirm the feature renders correctly.
+- Always run Playwright headless unless the user explicitly requests otherwise.
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
 
 ## Architecture

@@ -1,18 +1,33 @@
-import { useCommsConnections } from '../../facades/connections/hooks'
+import {
+  useCommsConnections,
+  useStartCommsConnection,
+} from '../../facades/connections/hooks'
+import type { CommsProvider } from '../../lib/api-client'
 import { SettingsPanel } from './settings-shared'
 import { ConnectionCard } from './connections/ConnectionCard'
+
+const CONNECTABLE: { provider: CommsProvider; label: string }[] = [
+  { provider: 'slack', label: 'Connect Slack' },
+  { provider: 'google', label: 'Connect Gmail' },
+]
 
 /**
  * "Connected accounts" — the user's Individual Communications Connector control
  * surface. Lists the caller's own Slack / Gmail / Microsoft connections with
  * identity, workspace, granted permissions, imported-history status, last sync,
  * a health pill, per-resource include toggles, and Resync / Disconnect / Delete
- * imported data controls. New connections are started from chat (the Chief of
- * Staff posts a connect card), so the empty state points there.
+ * imported data controls. Chat (the Chief of Staff connect card) is the primary
+ * connect surface; the buttons here are the secondary path.
  */
 export const ConnectionsPage = () => {
   const connections = useCommsConnections()
+  const start = useStartCommsConnection()
   const rows = connections.data?.connections ?? []
+
+  const onConnect = async (provider: CommsProvider) => {
+    const result = await start.mutateAsync(provider)
+    window.open(result.authorizeUrl, '_blank', 'noopener,noreferrer')
+  }
 
   return (
     <SettingsPanel eyebrow="Account" title="Connected accounts">
@@ -35,14 +50,42 @@ export const ConnectionsPage = () => {
               No connected accounts yet
             </div>
             <p className="mx-auto mt-1 max-w-md text-sm text-[color:var(--tx3)]">
-              Ask your Chief of Staff in chat to connect an account — it will post
-              a card with a one-click Connect button for Slack and Gmail.
+              Connect an account below, or ask your Chief of Staff in chat — it
+              will post a card with a one-click Connect button.
             </p>
+            <div className="mt-4 flex justify-center gap-2">
+              {CONNECTABLE.map((entry) => (
+                <button
+                  className="admin-button-primary px-3 py-1.5 text-sm"
+                  disabled={start.isPending}
+                  key={entry.provider}
+                  onClick={() => void onConnect(entry.provider)}
+                  type="button"
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
           </section>
         ) : (
-          rows.map((connection) => (
-            <ConnectionCard connection={connection} key={connection.id} />
-          ))
+          <>
+            {rows.map((connection) => (
+              <ConnectionCard connection={connection} key={connection.id} />
+            ))}
+            <div className="flex gap-2">
+              {CONNECTABLE.map((entry) => (
+                <button
+                  className="admin-button-secondary px-3 py-1.5 text-sm"
+                  disabled={start.isPending}
+                  key={entry.provider}
+                  onClick={() => void onConnect(entry.provider)}
+                  type="button"
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </SettingsPanel>

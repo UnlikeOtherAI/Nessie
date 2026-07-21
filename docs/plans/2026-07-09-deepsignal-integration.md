@@ -290,7 +290,7 @@ only ever holds **report references (ids)** — it never embeds report content. 
   pending wording derived from the channel's own name, mirroring the Personal Assistant
   special-casing so a second external agent needs no code change), and the sidebar DM list
   (`useAdminShell.ts` `sidebarAgentDms`) surfaces the channel by its label since the
-  system-managed `Agent` row is excluded from the general agent list. Kelpie visual
+  system-managed `Agent` row is excluded from the general agent list. Playwright visual
   verification is still owed once a dev stack is available (not possible in the remote
   implementation environment).
 - **Phase 3 — History & proactive delivery** *(backend + admin hook implemented)*:

@@ -368,7 +368,7 @@ paths, which this design does.
 
 ## 9. Rollout phases
 
-Each phase is independently shippable and verified (kelpie on 5455) before the
+Each phase is independently shippable and verified (Playwright on 5455) before the
 next starts.
 
 1. **Retrieval core** — ✅ **shipped (2026-07-06).** `knowledge.embed` job +

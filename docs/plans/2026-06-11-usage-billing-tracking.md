@@ -85,8 +85,8 @@ call sites simply pass no `usage` and behave as today (safe incremental rollout)
   transfer totals from `GET /api/ledger/files/summary`. **Verification note:**
   the admin change is build- and lint-verified
   and the new endpoint is live (returns 401, not 404), but an authenticated
-  visual screenshot is still pending — kelpie renders the local dev SPA blank in
-  this environment (see kelpie issue #79) and the Playwright MCP browser was
+  visual screenshot is still pending — Playwright renders the local dev SPA blank in
+  this environment (a since-retired screenshot tool issue) and the Playwright MCP browser was
   locked by a concurrent session. **Remaining:** optional agent/channel budget
   scopes.
 

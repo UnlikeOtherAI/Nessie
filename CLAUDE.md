@@ -123,16 +123,16 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 ## Ports — NON-NEGOTIABLE
 
 - **API**: `5454` (local dev) — always. Do not kill or restart without restarting on the same port.
-- **Admin**: `5455` (local dev) — always. Kelpie verification MUST use `http://localhost:5455`.
+- **Admin**: `5455` (local dev) — always. UI verification MUST use `http://localhost:5455`.
 - Never use any other port for these services in local dev.
 - Moved from 5554/5555 on 2026-06-11 because an Android emulator (`gpteen_api34`) squats on 5554/5555 — see the emulator-port-conflict memory.
 - **Production is unchanged:** the API container's internal port stays `5554`, pinned via `NESSIE_API_PORT` in `infrastructure/compose/docker-compose.prod.yml` (behind the shared Caddy proxy). Only local dev moved.
 
 ## Verification
 
-- Every UI/frontend change must be verified using kelpie before the work is considered done.
-- Run `kelpie "http://localhost:5455/<path>"` to screenshot the affected page and confirm correct rendering.
-- Use Playwright (`mcp__plugin_playwright`) only as a fallback if kelpie cannot be launched. Always run Playwright headless unless the user explicitly requests otherwise.
+- Every UI/frontend change must be verified using Playwright before the work is considered done.
+- Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:5455/<path>`, screenshot the affected page, and confirm correct rendering.
+- Always run Playwright headless unless the user explicitly requests otherwise.
 
 ## MCP Integration
 

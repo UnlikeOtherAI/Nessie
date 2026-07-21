@@ -153,7 +153,7 @@ partition; keep `tsc --noEmit` + `eslint --max-warnings 0` + `vite build` green.
   `styles.css` only).
 - No Tailwind named-color utilities remain in `admin/src/**.tsx`.
 - Switching `data-theme` between nebula/midnight/daylight re-themes the whole UI
-  with no orphaned colors (verified with kelpie screenshots of each theme on a
+  with no orphaned colors (verified with Playwright screenshots of each theme on a
   few representative pages).
 - Typecheck + lint + build green; default theme is visually identical to today.
 
@@ -163,7 +163,7 @@ Done across 5 parallel worktrees, merged to `main` (held from prod until the
 review pass clears). Verified: admin `tsc --noEmit` + `eslint --max-warnings 0`
 + `vite build` all green; audit greps return **0** raw hex in `.tsx`, **0** raw
 hex in `.css` outside `styles.css`, **0** Tailwind named-color utilities in
-`.tsx`. Kelpie screenshots confirm all three themes render: nebula (default,
+`.tsx`. Playwright screenshots confirm all three themes render: nebula (default,
 unchanged), midnight (neutral slate/blue dark), daylight (light content).
 
 - Tokens + theme blocks: `admin/src/styles.css` (`:root` = nebula, plus
@@ -191,8 +191,8 @@ union + `THEMES` list in `ThemeProvider.tsx`, and add the matching UOA palette
 id to `SsoThemeSchema` / `UOA_SIGN_IN_THEMES`. No component edits — that's the
 point.
 
-**Open items for review:** (a) the live in-app switch was not kelpie-verified
-(kelpie's synthetic events don't drive a controlled radio; each theme's
+**Open items for review:** (a) the live in-app switch was not Playwright-verified
+(Playwright's synthetic events don't drive a controlled radio; each theme's
 *rendering* was verified by forcing the initial theme) — the
 controlled-radio→`onChange`→`setTheme` path is standard React; confirm with a
 real click. (b) `--executing`/`--thinking` legacy tokens vs the new `--success`
@@ -243,6 +243,6 @@ tokenized `::selection`.
   because the IdP page can't read our CSS vars.
 
 **Verified**: admin/api `tsc` + `eslint --max-warnings 0` + `vite build`, web +
-mobile `tsc`/build, desktop `cargo check` — all green. Kelpie: 11 cards +
+mobile `tsc`/build, desktop `cargo check` — all green. Playwright: 11 cards +
 swatches render; daylight, sandstone, and high-contrast render correctly; server
 theme hydrates on reload.

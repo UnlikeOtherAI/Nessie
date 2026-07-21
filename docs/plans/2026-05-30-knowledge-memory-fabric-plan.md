@@ -270,7 +270,7 @@ content, no embeddings yet.
 - Define the `KnowledgeProvider` TypeScript interface + capability flags in `packages/knowledge`;
   native store as the first reference provider.
 - Admin `features/knowledge` surface: page tree + version-diff viewer (React 19 + Tailwind v4 +
-  react-query); kelpie-verify at `localhost:5555`.
+  react-query); Playwright-verify at `localhost:5555`.
 
 ### Phase C — KB access governance + semantic recall *(Phase B)*
 **Goal:** make the KB restriction-aware, approval-gated, and semantically searchable through the

@@ -72,11 +72,11 @@ Previously `Task` had only `organizationId`. Added:
 - Backend verified live against the dev API (5554): `POST /api/tasks` with `projectId`
   returns the task with `projectId` set; `GET /api/tasks?project=<id>` filters; the new
   `in_progress → inbox` transition returns 200 (previously 409).
-- Live UI screenshots were **blocked** by a kelpie `navigate` bug (returns
+- Live UI screenshots were **blocked** by a Playwright `navigate` bug (returns
   `success:true` but the tab never leaves the Start Page, both engines) — filed as
-  [UnlikeOtherAI/kelpie#78](https://github.com/UnlikeOtherAI/kelpie/issues/78). Playwright
+  a since-retired screenshot tool bug. Playwright
   MCP was not available in this session. UI correctness rests on the passing
-  build/typecheck/lint until kelpie is usable again.
+  build/typecheck/lint until Playwright is usable again.
 
 ## Update 2026-06-12 — ticket detail dialog, priority & deadline
 
@@ -135,9 +135,9 @@ crashes on every page. Unified to a **single React 19.2.4** via root
 ### Verification
 
 - `tsc --noEmit` + `eslint --max-warnings 0` (api + admin + worker) pass.
-- Live UI verified in **real Chromium via Playwright** (the kelpie macOS browser
+- Live UI verified in **real Chromium via Playwright** (the Playwright macOS browser
   spuriously throws the "Rendered more hooks" error even though real browsers
-  render fine — filed against kelpie): create dialog, edit dialog (pre-filled),
+  render fine — filed against Playwright): create dialog, edit dialog (pre-filled),
   and an **end-to-end create** with priority *High* + deadline *2026-06-25*
   renders a card with `High` and `Jun 25` chips, persisted through the API/DB.
 
@@ -187,9 +187,9 @@ Tightened the card header and added a long-form ticket body.
 ### Verification
 
 - `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
-- kelpie cannot render this admin (it spuriously throws the "Rendered more hooks"
+- Playwright cannot render this admin (it spuriously throws the "Rendered more hooks"
   crash in `useMediaQuery`/`AdminShellLayout`, unrelated to this code — filed
-  against kelpie). Confirmed live on the running dev board (merged to `main`,
+  against Playwright). Confirmed live on the running dev board (merged to `main`,
   user-reviewed); no automated screenshot captured.
 
 ## Update 2026-06-12 (2) — card v2, compact priority row, searchable assignee (people + agents)
@@ -235,7 +235,7 @@ Follow-up polish from live review.
 - `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
 - API verified end-to-end: `GET /api/tasks` returns 200 with the new `detail` and
   `assigneeAgentId` fields; dev-login token issues correctly.
-- Visual layer confirmed live on the running dev board by the user; kelpie is
+- Visual layer confirmed live on the running dev board by the user; Playwright is
   unusable for this admin and the Playwright MCP browser was busy this session.
 
 ## Update 2026-06-12 (3) — archive done work (Done-column action)
@@ -270,7 +270,7 @@ Completed work can now be tucked away without being cancelled.
 
 - `tsc --noEmit` + `eslint --max-warnings 0` (api + admin) pass.
 - `POST /api/tasks/archive-done` exercised against the dev API (see commit).
-- Visual layer to be confirmed live (kelpie broken; Playwright MCP busy).
+- Visual layer to be confirmed live (Playwright broken; Playwright MCP busy).
 
 ## Update 2026-06-12 (4) — phone board paging and drag-edge page switching
 

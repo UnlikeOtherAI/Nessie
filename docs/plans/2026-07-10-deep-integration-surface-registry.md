@@ -179,7 +179,7 @@ rather than a hard-coded ladder.
     (set by `packages/mcp-manage/src/external-chat.ts`: activities→`activity`, cards→`result`)
     lets `MessageUiCards` split activities into the timeline while result cards stay flat. No
     backend contract change beyond that one optional field.
-- **Slice D — Verify & ship** *(pending)*: build/kelpie the new surfaces, docs, merge to main.
+- **Slice D — Verify & ship** *(pending)*: build/Playwright the new surfaces, docs, merge to main.
 
 ## Open Questions
 

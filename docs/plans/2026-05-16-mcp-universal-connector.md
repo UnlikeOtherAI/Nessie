@@ -167,7 +167,7 @@ Two cron jobs drive this plan:
 4. For each `completed` task **not yet reviewed** (per `metadata.reviewed`): dispatch a `feature-dev:code-reviewer` agent in parallel.
 5. When a review passes, mark `metadata.reviewed=true` and run `pnpm --filter <root> lint typecheck build` for the affected root. Commit + push if green.
 6. When `feature-dev` agent reports completion, mark task `completed`.
-7. When Slice E (UI) tasks land: run an **E2E pass** with kelpie against `http://localhost:5555` (Playwright MCP, headless, as fallback). Drive the chat → catalog → install → grant → invoke flow. Capture screenshots. Attach to task metadata.
+7. When Slice E (UI) tasks land: run an **E2E pass** with Playwright against `http://localhost:5555` (Playwright MCP, headless, as fallback). Drive the chat → catalog → install → grant → invoke flow. Capture screenshots. Attach to task metadata.
 8. If everything is `completed && reviewed && e2e-passed`, write a short `## Outcome` block at the bottom of this file and stop dispatching.
 
 **Every 2.5 hours — liveness**
@@ -186,7 +186,7 @@ This work is **done** when:
 - `pnpm --filter @nessie/admin lint typecheck build` passes
 - `pnpm --filter @nessie/worker lint typecheck build` passes
 - `pnpm --filter @nessie/mcp-client test` passes
-- **E2E browser-driven smoke** (kelpie first, Playwright MCP fallback, **always headless** unless user requests otherwise):
+- **E2E browser-driven smoke** (Playwright first, Playwright MCP fallback, **always headless** unless user requests otherwise):
   - drive `http://localhost:5555` from the chat surface
   - admin adds a catalog entry through the **MCP App Store** admin page
   - install it at org scope with an API key auth config (custom header, custom prefix)
@@ -194,8 +194,8 @@ This work is **done** when:
   - grant the tool to an agent via the workflow tool picker
   - send a chat message that triggers the agent to call the tool
   - verify response renders and audit row written
-  - kelpie screenshots taken at each step (catalog → install → grant → invocation → audit)
-- Every Slice E UI change re-verified via kelpie before considering its task complete (per project `CLAUDE.md` Verification rule).
+  - Playwright screenshots taken at each step (catalog → install → grant → invocation → audit)
+- Every Slice E UI change re-verified via Playwright before considering its task complete (per project `CLAUDE.md` Verification rule).
 
 ## 11) Status log
 
@@ -268,7 +268,7 @@ Slice C builder in test-writing phase (transcript mtime 3s ago, 1.18 MB). Five n
 ### Event 2026-05-16T20:11Z — Slice C landed
 Slice C complete (commit `16c4579`). 22 new/modified files. Gates green: api typecheck/lint/build/test (26 tests), worker typecheck/lint/build/test (69 tests). Marked #1 completed. Wave-3 unlocked: #6 (Slice E UI), #8 (prisma drift), #16 (SSRF dedupe) all now claimable. Dispatched 4 agents in parallel (file-disjoint per §3 ownership):
 - **Slice C reviewer** (`feature-dev:code-reviewer`) — read-only audit of all 22 files, focus on 7-level credential chain, SSRF bypass via fetchImpl seam, secret-resolver trust boundary, dispatch ordering.
-- **Slice E builder** — `admin/src/features/workflows/tools/**`, `admin/src/features/admin/mcp-app-store/**`, `admin/src/api/{mcp,connectors,toolGrants}.ts`, App Store + Workflows>Tools UI surfaces, kelpie verification required.
+- **Slice E builder** — `admin/src/features/workflows/tools/**`, `admin/src/features/admin/mcp-app-store/**`, `admin/src/api/{mcp,connectors,toolGrants}.ts`, App Store + Workflows>Tools UI surfaces, Playwright verification required.
 - **#8 prisma drift** — `api/prisma/migrations/**` only, reconciliation migration so `prisma migrate diff --exit-code` returns 0.
 - **#16 SSRF dedupe** — `worker/src/run/tools.ts` + `worker/src/run/builtin-handlers/url-safety.ts`, consolidate `assertSafeFetchUrl` into the canonical home.
 
@@ -327,10 +327,10 @@ Six background agents alive after this tick's dispatch wave. Reviewer follow-ups
 Held #17 (conflicts with #19 on tool-dispatch.ts), #20+#21 (conflict on routes/mcp.ts), #18 (conflicts with #22 on mcp-instances.ts) — claim those once the active agents land. Still running from prior ticks: #6 (Slice E builder, `aa81518adf958254e`) and #8 (Prisma retry Option A, `a4f6233ea79ba1b60`). Total: 6 in flight, within the 8-agent cap.
 
 ### Event 2026-05-16T20:40Z — Slice E landed + #23 landed
-- **#6 Slice E (admin UI)** complete. Shipped `McpAppStorePage` + `WorkflowToolsPage` + 9 feature components + 4 facades + 4 shared `Tool*` pill upgrades + router wiring. Admin gates green (lint/typecheck/build). Builder needed to restart the 9.5h-stale API to pick up Slice C's new `/api/mcp/{catalog,instances,tools}` routes (now serving 401 on unauth, no 404). Browser verification via Playwright headless (kelpie is mobile-device-only and no device paired) — screenshots in `e2e/screenshots/2026-05-16-mcp-flow/` (`mcp-app-store.png`, `mcp-app-store-wizard-transport.png`, `workflows-tools.png`). All 3 pages render with 0 console errors; the workflow-tools page lists all 17 tools across all 23 agents in the grant matrix. Marked #6 completed. Builder flagged one limitation: `GET /api/mcp/tools` response has no `grants` field, so `AgentGrantMatrix` only reflects in-session state. Filed as task **#25** (api follow-up). Dispatched Slice E reviewer (`a00d50a14d921662d`) focused on owner-gating, secret handling, CSRF, race conditions, type contracts, file-length, and url-scheme validation.
+- **#6 Slice E (admin UI)** complete. Shipped `McpAppStorePage` + `WorkflowToolsPage` + 9 feature components + 4 facades + 4 shared `Tool*` pill upgrades + router wiring. Admin gates green (lint/typecheck/build). Builder needed to restart the 9.5h-stale API to pick up Slice C's new `/api/mcp/{catalog,instances,tools}` routes (now serving 401 on unauth, no 404). Browser verification via Playwright headless (the previous mobile-device screenshot tool was unavailable) — screenshots in `e2e/screenshots/2026-05-16-mcp-flow/` (`mcp-app-store.png`, `mcp-app-store-wizard-transport.png`, `workflows-tools.png`). All 3 pages render with 0 console errors; the workflow-tools page lists all 17 tools across all 23 agents in the grant matrix. Marked #6 completed. Builder flagged one limitation: `GET /api/mcp/tools` response has no `grants` field, so `AgentGrantMatrix` only reflects in-session state. Filed as task **#25** (api follow-up). Dispatched Slice E reviewer (`a00d50a14d921662d`) focused on owner-gating, secret handling, CSRF, race conditions, type contracts, file-length, and url-scheme validation.
 - **#23 (workflow web_fetch SSRF wrap)** complete (commit `7e72994`). Only one workflow SSRF-throwing call site found (`tools.ts:676`); now try/catches `HttpFetchError` and returns `workflowToolFailure` with the rejection message. Other workflow cases don't call `assertSafeUrl` or other SSRF-throwing primitives. New regression test `worker/test/workflow-tools.test.ts` (70 worker tests pass, up from 69). Gates green. Marked #23 completed. Sub-agent reported no TaskUpdate tool surfaced (their environment) — flipped manually.
 
-Three agents still in flight: #19 (`a450e76cfd1240b49`), #22 (`aba2deb60e158ca09`), #24 (`a6fbd7e7b09abab93`), plus the just-dispatched Slice E reviewer (`a00d50a14d921662d`) and the still-running #8 Prisma agent (`a4f6233ea79ba1b60`). Total 5 in flight. #3 (E2E kelpie) was originally blocked by #6; Slice E builder already produced 3 Playwright screenshots so #3's substantive verification is largely done — leaving #3 pending pending a deeper invoke-flow smoke (catalog → install → grant → tool call from agent) once the API CRUD endpoints for catalog entries are exercised end-to-end.
+Three agents still in flight: #19 (`a450e76cfd1240b49`), #22 (`aba2deb60e158ca09`), #24 (`a6fbd7e7b09abab93`), plus the just-dispatched Slice E reviewer (`a00d50a14d921662d`) and the still-running #8 Prisma agent (`a4f6233ea79ba1b60`). Total 5 in flight. #3 (E2E Playwright) was originally blocked by #6; Slice E builder already produced 3 Playwright screenshots so #3's substantive verification is largely done — leaving #3 pending pending a deeper invoke-flow smoke (catalog → install → grant → tool call from agent) once the API CRUD endpoints for catalog entries are exercised end-to-end.
 
 ### Event 2026-05-16T20:41Z — #24 landed (DNS injection seam)
 Commit `05c4bb7`. Owned files: `worker/src/run/builtin-handlers/{url-safety.ts,http-fetch.ts,http-fetch.test.ts}` only. `assertSafeUrl` now accepts an optional `resolveHost` resolver (default `dns.promises.lookup({all:true,verbatim:true})`); SSRF tests inject a fake. Existing call sites (`tools.ts::collectWebFetchResult`) unchanged (default path). 3 new tests: public hostname → private IP rejected; public→public allowed; DNS-rebinding rejected on redirect. Suite ran 648ms → 491ms (~24% faster, 69 → 73 tests). Marked #24 completed. Sub-agent again had no TaskUpdate tool surfaced — flipped manually.
@@ -345,7 +345,7 @@ Big landing wave. Four agents finished simultaneously:
 
 **Commit hygiene problem recurring:** `e4fb4ca` (#19's commit) swept up #8's WIP from a shared `.git/index` race. Reinforced explicit per-file `git add` + `git diff --cached --stat` verify in #28's prompt. Need to consider serialising agents that touch sibling directories.
 
-**Currently in flight:** #3 E2E kelpie (`a1a08a4b270fc7320`), #28 Slice E fixes (`a57afe7385314d8ed`). 2 agents.
+**Currently in flight:** #3 E2E Playwright (`a1a08a4b270fc7320`), #28 Slice E fixes (`a57afe7385314d8ed`). 2 agents.
 
 ### Event 2026-05-16T20:46Z — #17 landed (default NullSecretResolver)
 Commit `e44b94e`. Owned files only: `api/src/services/tool-dispatch.ts` (+9) and `api/test/tool-dispatch.test.ts` (+178). `NullSecretResolver` already existed at `secret-resolver.ts:22-26` so no class addition was needed. Agent noted there are zero callers of `planToolDispatch` in `api/src` today — the dispatcher is consumed by `worker/src/run/tool-dispatch.ts` (different process), so the route-side injection is not yet load-bearing. When an api-side caller is added (future invoke route) it MUST inject a concrete resolver — the default is now silent-null by design. 44/0 api tests. Marked #17 completed. Commit hygiene clean this time.
@@ -364,7 +364,7 @@ Dispatched #20 as agent `a621ab777949d59ff`. Prompt covers all 6 spec §6 routes
 
 ### Event 2026-05-16T20:55Z — #28 landed (Slice E security fixes) + #3 landed (E2E smoke)
 - **#28 (Slice E fixes)** complete (commit `6a051d0`). Closes CRITICAL owner-gate race + 4 HIGH: AgentGrantMatrix uncheck wired to deleteGrant.mutate (captures grant id from create POST; cross-session unchecks surface inline "Reload to see persisted grants before revoking" hint per BUG-1 limitation), CredentialsDialog credential ref → `type="password"` + autocomplete=new-password + state cleared sync before mutateAsync, AddServerWizard `PROTOCOLS` now includes `'ws'` with `wss://` placeholder, tool-grants/hooks.ts imports `ToolGrantSource` from `@nessie/schemas`. `useMcpCatalog`/`useMcpInstances` extended with `{ enabled?: boolean }` forwarded to useQuery (owner gate). Admin gates green (lint/typecheck/build). 4 post-fix Playwright screenshots in `e2e/screenshots/2026-05-16-mcp-flow/post-fix-*.png`. Commit hygiene clean (per-file `git add`). Marked #28 completed.
-- **#3 (E2E kelpie smoke)** complete (commit `ca3b1be`, landed in prior tick — agent finished reporting this tick). 10 acceptance screenshots in `e2e/screenshots/2026-05-16-mcp-flow/`. Kelpie unavailable (mobile-device-only); Playwright headless used. Wizard structure diverges from acceptance script (3 steps + separate Install scope modal) — documented in notes file, not a bug. Step 1 (`/login`+dev login) skipped (session already established). Owner gating verified via "OW" avatar in all 10 screenshots. Steps 2–6 pass; steps 7–8 (grant create + reload) FAIL due to BUG-1. Marked #3 completed.
+- **#3 (E2E Playwright smoke)** complete (commit `ca3b1be`, landed in prior tick — agent finished reporting this tick). 10 acceptance screenshots in `e2e/screenshots/2026-05-16-mcp-flow/`. The previous mobile-device screenshot tool was unavailable; Playwright headless used. Wizard structure diverges from acceptance script (3 steps + separate Install scope modal) — documented in notes file, not a bug. Step 1 (`/login`+dev login) skipped (session already established). Owner gating verified via "OW" avatar in all 10 screenshots. Steps 2–6 pass; steps 7–8 (grant create + reload) FAIL due to BUG-1. Marked #3 completed.
 
 **Two new bugs filed from #3:**
 - **#30** (HIGH) — admin `useCreateToolGrant` (`facades/tool-grants/hooks.ts:103-114`) strips `toolRegistryEntryId` into the URL, sends `{ state, config, roleId, agentId }` only. API `CreateGrantBodySchema` (`routes/mcp.ts:114-128`) REQUIRES `toolRegistryEntryId: z.string().uuid()` in body. Every grant POST → 400 VALIDATION_ERROR. Verified by direct fetch from browser context (#3) and by Read against current code. Handler at `routes/mcp.ts:518-540` reads `toolRegistryEntryId` from `request.params` — the body field is fully redundant/dead. Cleanest fix: drop from `CreateGrantBodySchema`. **#30 blocked on #20** (both touch `routes/mcp.ts`).
