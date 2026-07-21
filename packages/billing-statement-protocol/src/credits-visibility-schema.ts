@@ -35,12 +35,7 @@ export const billingCreditsManagerSummaryJsonSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: [
-          'service',
-          'credits_consumed',
-          'unattributed_credits_consumed',
-          'users',
-        ],
+        required: ['service', 'credits_consumed', 'unattributed_credits_consumed', 'users'],
         properties: {
           service: serviceSchema,
           credits_consumed: unsignedCredits,
@@ -104,6 +99,8 @@ const recentEntryBaseProperties = {
       'usage_settlement_correction',
       'refund',
       'dispute',
+      'refund_reversal',
+      'dispute_reversal',
       'adjustment',
     ],
   },
@@ -168,13 +165,7 @@ export const billingCreditsMemberRecentEntriesJsonSchema = {
     properties: {
       ...recentEntryBaseProperties,
       attribution: {
-        enum: [
-          'viewer',
-          'other_team_members',
-          'unattributed',
-          'system',
-          'team_aggregate',
-        ],
+        enum: ['viewer', 'other_team_members', 'unattributed', 'system', 'team_aggregate'],
       },
     },
   },
@@ -224,16 +215,12 @@ export const billingCreditsManagerConsentJsonSchema = {
   },
 } as const;
 
-export const billingCreditsMemberConsentJsonSchema = {
+export const billingCreditsMemberAutomaticTopUpJsonSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['status', 'version', 'consented_at'],
+  required: ['payment_method'],
   properties: {
-    status: { enum: ['missing', 'current', 'outdated'] },
-    version: { type: ['string', 'null'] },
-    consented_at: {
-      anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
-    },
+    payment_method: billingCreditsMemberPaymentMethodJsonSchema,
   },
 } as const;
 
@@ -265,6 +252,10 @@ export const billingCreditsVisibilityDiscriminatorJsonSchema = {
           },
         },
         credit_summary: billingCreditsManagerSummaryJsonSchema,
+        pending_credits: {
+          type: 'object',
+          properties: { payment_amount: { type: 'object' } },
+        },
         funding_policy: {
           type: 'object',
           properties: {
@@ -308,25 +299,12 @@ export const billingCreditsVisibilityDiscriminatorJsonSchema = {
           },
         },
         credit_summary: billingCreditsMemberSummaryJsonSchema,
-        funding_policy: {
+        pending_credits: {
           type: 'object',
-          properties: {
-            offers: {
-              type: 'array',
-              items: { type: 'object', properties: { action: { type: 'null' } } },
-            },
-          },
+          properties: { payment_amount: { type: 'null' } },
         },
-        automatic_top_up: {
-          type: 'object',
-          properties: {
-            payment_method: billingCreditsMemberPaymentMethodJsonSchema,
-            consent: billingCreditsMemberConsentJsonSchema,
-            options: optionActionVisibility({ type: 'null' }),
-            disable_action: { type: 'null' },
-            recover_action: { type: 'null' },
-          },
-        },
+        funding_policy: { type: 'null' },
+        automatic_top_up: billingCreditsMemberAutomaticTopUpJsonSchema,
         recent_entries: billingCreditsMemberRecentEntriesJsonSchema,
       },
     },

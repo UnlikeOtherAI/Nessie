@@ -2,6 +2,8 @@ import type { ExactMoney } from './types.js';
 import type { BillingSubjectRequest } from './funding-schema-primitives.js';
 
 export const BILLING_CREDITS_SCHEMA_VERSION = 1 as const;
+// BillingCreditsV1 has not been released yet. This remains the coordinated V1
+// contract consumed by UOA and its four launch consumers.
 export const BILLING_CREDITS_PROTOCOL_VERSION = '1.0.0' as const;
 export const BILLING_CREDITS_SCHEMA_PATH = '/schemas/billing-credits-v1.json' as const;
 export const BILLING_CREDITS_EXAMPLE_PATH = '/schemas/billing-credits-v1.example.json' as const;
@@ -85,7 +87,7 @@ export type BillingCreditsAutoTopUpRecoverAction = BillingCreditsActionBase & {
   };
 };
 
-type BillingCreditsCommonV1 = {
+type BillingCreditsCommonV1<PendingPayment> = {
   schema_version: typeof BILLING_CREDITS_SCHEMA_VERSION;
   credit_account_id: string;
   generated_at: string;
@@ -115,7 +117,7 @@ type BillingCreditsCommonV1 = {
   };
   pending_credits: {
     top_up_count: number;
-    payment_amount: BillingCreditsPaymentMoney;
+    payment_amount: PendingPayment;
     credits_received: BillingCreditAmount;
     label: string;
     description: string;
@@ -185,21 +187,8 @@ type BillingCreditsManagerAutomaticTopUp = BillingCreditsAutomaticTopUpBase & {
   recover_action: BillingCreditsAutoTopUpRecoverAction | null;
 };
 
-type BillingCreditsMemberAutomaticTopUp = BillingCreditsAutomaticTopUpBase & {
+type BillingCreditsMemberAutomaticTopUp = {
   payment_method: { status: 'missing' | 'ready' | 'requires_action' | 'expired' };
-  consent: {
-    status: 'missing' | 'current' | 'outdated';
-    version: string | null;
-    consented_at: string | null;
-  };
-  options: Array<
-    BillingCreditsAutoTopUpOptionBase & {
-      setup_action: null;
-      update_action: null;
-    }
-  >;
-  disable_action: null;
-  recover_action: null;
 };
 
 type BillingCreditsSummaryBase = {
@@ -219,6 +208,8 @@ type BillingCreditsRecentEntryBase = {
     | 'usage_settlement_correction'
     | 'refund'
     | 'dispute'
+    | 'refund_reversal'
+    | 'dispute_reversal'
     | 'adjustment';
   direction: 'credit' | 'debit';
   label: string;
@@ -227,7 +218,7 @@ type BillingCreditsRecentEntryBase = {
   credit_balance_after: BillingCreditAmount;
 };
 
-export type BillingCreditsManagerV1 = BillingCreditsCommonV1 & {
+export type BillingCreditsManagerV1 = BillingCreditsCommonV1<BillingCreditsPaymentMoney> & {
   viewer: {
     role: 'billing_manager';
     usage_visibility: 'full_team';
@@ -256,7 +247,7 @@ export type BillingCreditsManagerV1 = BillingCreditsCommonV1 & {
   >;
 };
 
-export type BillingCreditsMemberV1 = BillingCreditsCommonV1 & {
+export type BillingCreditsMemberV1 = BillingCreditsCommonV1<null> & {
   viewer: {
     role: 'member';
     usage_visibility: 'own_plus_team_aggregate';
@@ -266,7 +257,7 @@ export type BillingCreditsMemberV1 = BillingCreditsCommonV1 & {
     can_top_up: false;
     can_manage_automatic_top_up: false;
   };
-  funding_policy: BillingCreditsFundingPolicy<null>;
+  funding_policy: null;
   automatic_top_up: BillingCreditsMemberAutomaticTopUp;
   credit_summary: BillingCreditsSummaryBase & {
     consumed_breakdown: Array<{
@@ -279,12 +270,7 @@ export type BillingCreditsMemberV1 = BillingCreditsCommonV1 & {
   };
   recent_entries: Array<
     BillingCreditsRecentEntryBase & {
-      attribution:
-        | 'viewer'
-        | 'other_team_members'
-        | 'unattributed'
-        | 'system'
-        | 'team_aggregate';
+      attribution: 'viewer' | 'other_team_members' | 'unattributed' | 'system' | 'team_aggregate';
     }
   >;
 };

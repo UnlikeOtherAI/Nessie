@@ -1,4 +1,7 @@
-import { billingErrorEnvelopeJsonSchema, billingHostedRedirectResponseJsonSchema } from './action-schema.js';
+import {
+  billingErrorEnvelopeJsonSchema,
+  billingHostedRedirectResponseJsonSchema,
+} from './action-schema.js';
 import { billingCreditsV1ConformanceFixture } from './credits-conformance-fixture.js';
 import { billingCreditsV1JsonSchema } from './credits-schema.js';
 import {
@@ -37,7 +40,7 @@ const errorResponse = {
 function requestBody(selector: 'offer_id' | 'option_id' | null) {
   const schema = selector
     ? billingSubjectActionBodySchema(
-        { [selector]: { type: 'string', minLength: 1 } },
+        { [selector]: { type: 'string', minLength: 1, maxLength: 256 } },
         [selector],
       )
     : billingSubjectRequestJsonSchema;

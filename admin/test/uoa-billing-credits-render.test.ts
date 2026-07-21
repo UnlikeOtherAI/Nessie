@@ -67,30 +67,15 @@ const member = {
       }),
     ),
   },
-  funding_policy: {
-    ...manager.funding_policy,
-    offers: manager.funding_policy.offers.map((offer) => ({
-      ...offer,
-      action: null,
-    })),
+  pending_credits: {
+    ...manager.pending_credits,
+    payment_amount: null,
   },
+  funding_policy: null,
   automatic_top_up: {
-    ...manager.automatic_top_up,
     payment_method: {
       status: manager.automatic_top_up.payment_method.status,
     },
-    consent: {
-      status: manager.automatic_top_up.consent.status,
-      version: manager.automatic_top_up.consent.version,
-      consented_at: manager.automatic_top_up.consent.consented_at,
-    },
-    options: manager.automatic_top_up.options.map((option) => ({
-      ...option,
-      setup_action: null,
-      update_action: null,
-    })),
-    disable_action: null,
-    recover_action: null,
   },
   recent_entries: manager.recent_entries.map(({ attribution, ...entry }) => ({
     ...entry,
@@ -160,6 +145,16 @@ test('member view preserves team transparency without names or money actions', (
   assert.match(markup, /Remaining credits/)
   assert.match(markup, /Your usage \+ team totals/)
   assert.match(markup, /other members/)
+  assert.match(markup, /Automatic top-up/)
+  assert.match(
+    markup,
+    new RegExp(`Payment method status: ${member.automatic_top_up.payment_method.status}`),
+  )
+  assert.match(markup, /managed by billing managers/)
   assert.doesNotMatch(markup, /Automatic top-up options/)
+  assert.doesNotMatch(markup, /Threshold:/)
+  assert.doesNotMatch(markup, /Monthly cap:/)
+  assert.doesNotMatch(markup, /Charged this month:/)
+  assert.doesNotMatch(markup, new RegExp(manager.funding_policy.title))
   if (otherUser) assert.doesNotMatch(markup, new RegExp(otherUser.display_name))
 })

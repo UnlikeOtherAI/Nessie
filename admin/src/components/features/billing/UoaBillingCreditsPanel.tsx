@@ -136,7 +136,11 @@ const ServiceBreakdown = ({ credits }: { credits: BillingCreditsV1 }) =>
     ? <ManagerServiceBreakdown credits={credits} />
     : <MemberServiceBreakdown credits={credits} />
 
-const AutomaticTopUp = ({ credits }: { credits: BillingCreditsV1 }) => {
+const ManagerAutomaticTopUp = ({
+  credits,
+}: {
+  credits: BillingCreditsManagerV1
+}) => {
   const automatic = credits.automatic_top_up
   return (
     <div className="mt-5 rounded-lg border border-[color:var(--sep)] p-4">
@@ -165,6 +169,27 @@ const AutomaticTopUp = ({ credits }: { credits: BillingCreditsV1 }) => {
     </div>
   )
 }
+
+const MemberAutomaticTopUp = ({
+  credits,
+}: {
+  credits: BillingCreditsMemberV1
+}) => (
+  <div className="mt-5 rounded-lg border border-[color:var(--sep)] p-4">
+    <div className={sectionTitle}>Automatic top-up</div>
+    <div className="mt-2 text-sm font-semibold text-[color:var(--tx)]">
+      Payment method status: {credits.automatic_top_up.payment_method.status}
+    </div>
+    <p className="mt-1 text-xs text-[color:var(--tx2)]">
+      Detailed automatic top-up settings are managed by billing managers.
+    </p>
+  </div>
+)
+
+const AutomaticTopUp = ({ credits }: { credits: BillingCreditsV1 }) =>
+  isManagerCredits(credits)
+    ? <ManagerAutomaticTopUp credits={credits} />
+    : <MemberAutomaticTopUp credits={credits} />
 
 const RecentActivity = ({ credits }: { credits: BillingCreditsV1 }) => (
   <div className="mt-5">

@@ -124,7 +124,7 @@ Root app layout:
 - API validation and admin view-model types come directly from the public
   MIT-licensed `@unlikeotherai/billing-statement-protocol` 1.2.0 workspace
   vendored byte-for-byte from UOA commit
-  `f767f2b8db73443ae31da719c9effafd3aa4ee25`. Root lint verifies the pinned
+  `675ff2349029eeb56deadcac6aaf1fd7ed6f5fbd`. Root lint verifies the pinned
   SHA-256 manifest, preventing a Nessie-specific billing contract fork.
 - The statement uses protocol V2 and one exact Ledger
   `metering-portfolio-v1` `group_by=user` snapshot. UOA supplies the complete
@@ -139,7 +139,10 @@ Root app layout:
   never converts money, tokens, provider cost, or raw Ledger units into credits.
   Billing managers receive named user and payment-management detail. Ordinary
   members receive their own usage plus anonymous other-member and unattributed
-  totals, with no payment method details or mutation actions.
+  totals. Their pending-payment amount and funding policy are absent, and their
+  automatic top-up view contains only UOA's payment-method status plus a notice
+  that detailed settings are managed by billing managers; they receive no
+  payment details or mutation actions.
 - Manual top-ups, automatic top-up setup/update/disable/recovery, and recurring
   add-on subscribe/cancel actions are manager-only frozen UOA actions. Products
   do not persist a balance, payment method, consent, subscription, add-on, or

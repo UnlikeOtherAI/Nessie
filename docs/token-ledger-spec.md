@@ -282,8 +282,10 @@ so a customer sees the same balance through every connected product.
 UOA discriminates the response by viewer authority. A billing manager receives
 the full per-user breakdown, payment-method display, consent record, funding
 offers, and frozen top-up/automatic-top-up actions. An ordinary member receives
-only their own usage plus anonymous other-team-member and unattributed totals,
-payment-method status without details, and no mutation action. Recurring add-on
+only their own usage plus anonymous other-team-member and unattributed totals.
+Their pending-payment amount and funding policy are absent; automatic top-up
+contains only payment-method status without details and no mutation action.
+Recurring add-on
 offers and active states are readable by the team, while subscribe and cancel
 remain manager-only frozen actions. The corresponding Nessie mutation routes
 accept only local action references or UOA's opaque cancellation confirmation;
@@ -301,7 +303,7 @@ UOA independently re-checks membership and billing-manager authority.
 The consumer contract is the public MIT-licensed
 `@unlikeotherai/billing-statement-protocol` 1.2.0 package authored by UOA.
 Nessie vendors that package byte-for-byte from UOA commit
-`f767f2b8db73443ae31da719c9effafd3aa4ee25`; the root lint gate verifies its
+`675ff2349029eeb56deadcac6aaf1fd7ed6f5fbd`; the root lint gate verifies its
 complete SHA-256 manifest. API responses and requests are validated with the
 package's exported JSON Schemas, while the admin imports its exported view-model
 types. Nessie must not keep an independently editable schema or type copy.
