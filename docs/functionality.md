@@ -134,6 +134,10 @@ Root app layout:
   Nessie's own pages but carry only UOA-authored paths, bodies, display copy,
   choices, and opaque tokens. No tariff, total, access, or cancellation decision
   is calculated locally.
+- Exact UOA Checkout return markers on `/` preserve their full query while
+  routing to Usage & Billing. That page displays a neutral notice and refetches
+  UOA's canonical statement; invalid or duplicate markers retain the normal
+  Channels landing behavior and cause no billing action.
 
 ### 2.1 Server bootstrap (`src/index.ts`)
 
