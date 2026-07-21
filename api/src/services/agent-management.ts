@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import type { AgentEffort } from '@nessie/schemas'
 
 import type { AgentRecord } from '../contracts.js'
 import {
@@ -114,6 +115,7 @@ export const createAgentRecord = async (
   prisma: PrismaClient,
   input: {
     agentKind?: 'personal_assistant' | 'shared'
+    effort?: AgentEffort
     model?: string
     name: string
     organizationId: string
@@ -168,6 +170,7 @@ export const createAgentRecord = async (
     data: {
       agentKind: 'shared',
       delegationMode: 'none',
+      effort: input.effort ?? 'medium',
       model: input.model,
       name: input.name,
       organizationId: input.organizationId,
@@ -216,6 +219,7 @@ export const updateAgentRecord = async (
   agentId: string,
   input: {
     agentKind?: 'personal_assistant' | 'shared'
+    effort?: AgentEffort
     model?: string
     name?: string
     provider?: string
@@ -259,6 +263,7 @@ export const updateAgentRecord = async (
       data: {
         agentKind: existing.agentKind,
         delegationMode: existing.delegationMode,
+        effort: input.effort ?? existing.effort,
         model: input.model ?? existing.model,
         name: existing.systemManaged
           ? existing.name
@@ -314,6 +319,7 @@ export const cloneAgentRecord = async (
     select: {
       agentKind: true,
       delegationMode: true,
+      effort: true,
       model: true,
       name: true,
       organizationId: true,
@@ -337,6 +343,7 @@ export const cloneAgentRecord = async (
     data: {
       agentKind: 'shared',
       delegationMode: 'none',
+      effort: source.effort,
       model: source.model,
       name: `${source.name} (copy)`,
       organizationId: source.organizationId,

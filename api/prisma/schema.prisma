@@ -35,6 +35,17 @@ enum AgentDelegationMode {
   act_as_requesting_user
 }
 
+// How much work an agent may spend per run. Scales the worker agentic-loop
+// budget and the provider `reasoning_effort`. `medium` is the default;
+// `xhigh` is effectively unbounded (governed only by scope Budgets + the
+// loop's repeated-call detection).
+enum AgentEffort {
+  low
+  medium
+  high
+  xhigh
+}
+
 // How an agent's turns are executed. `inference` (the default for every
 // existing agent) runs Nessie's own agentic loop; `external_mcp` proxies each
 // turn directly to an external product over MCP with no Nessie inference.
@@ -1251,6 +1262,7 @@ model Agent {
   surfacePolicy                 AgentSurfacePolicy             @default(shared) @map("surface_policy")
   delegationMode                AgentDelegationMode            @default(none) @map("delegation_mode")
   executionMode                 AgentExecutionMode             @default(inference) @map("execution_mode")
+  effort                        AgentEffort                    @default(medium)
   systemPrompt                  String?                        @map("system_prompt")
   toolPolicy                    Json?                          @map("tool_policy")
   provider                      String?                        @map("provider")

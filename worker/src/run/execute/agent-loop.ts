@@ -12,9 +12,10 @@ import {
   parseAgentId,
   parseOrganizationId,
   parseRunId,
+  reasoningEffortForAgentEffort,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
-import { DEFAULT_BUDGET, runAgenticLoop, type LoopResult } from '../agentic-loop.js'
+import { budgetForEffort, runAgenticLoop, type LoopResult } from '../agentic-loop.js'
 import { runDelegate } from '../delegate.js'
 import { runInferenceGraph } from '../inference.js'
 import { createProviderRequestHeadersResolver } from '../inference-identity.js'
@@ -63,6 +64,7 @@ export const runExecutionAgentLoop = async (
 ): Promise<LoopResult> => {
   let currentTurnStreamed = false
   const subAgentInvocations: InvocationRecord[] = []
+  const reasoningEffort = reasoningEffortForAgentEffort(context.agent.effort)
 
   const subAgentBuiltinDescriptors = input.toolDefs.filter((d) => d.toolName !== 'delegate')
   const subAgentBuiltinIds = new Set(
@@ -121,6 +123,7 @@ export const runExecutionAgentLoop = async (
       onVisibleReasoningDelta: callbacks.onVisibleReasoningDelta,
       onVisibleTextDelta: callbacks.onVisibleTextDelta,
       organizationId: context.channel.organizationId,
+      reasoningEffort,
       requestHeadersForProvider,
       toolChoice: 'auto',
       tools,
@@ -208,7 +211,7 @@ export const runExecutionAgentLoop = async (
   }
 
   const loopResult = await runAgenticLoop({
-    budget: DEFAULT_BUDGET,
+    budget: budgetForEffort(context.agent.effort),
     callbacks: {
       onIterationStart: async (iteration) => {
         await deps.realtimeTransport.publishWs(buildScopes(context), {

@@ -45,6 +45,7 @@ const buildProviderRequest = (
   requestHeaders: request.requestHeaders,
   model,
   promptCacheKey: request.promptCacheKey,
+  reasoningEffort: request.reasoningEffort,
   requestId,
   responseFormat: request.responseFormat,
   temperature: request.temperature,

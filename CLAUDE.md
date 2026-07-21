@@ -36,7 +36,12 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - Node/TypeScript (strict mode), Fastify, Prisma + PostgreSQL
 - Multi-tenancy: Organisation → Project → Team → Channel schema with `organization_id` scoping on all child tables
 - RBAC policy engine with deny-overrides; OIDC SSO with PKCE
-- Agentic loop: max 12 iterations / 20 tool calls / 90 s / cost cap per run
+- Agentic loop: run budget is per-agent effort-scaled (`Agent.effort` =
+  low/medium/high/xhigh; medium = 12 iterations / 20 tool calls / 90 s / cost
+  cap, the historical default). `xhigh` is effectively unbounded — governed
+  only by the scope `Budget` gate and the loop's repeated-call detection. See
+  `worker/src/run/agentic-loop.ts` (`EFFORT_BUDGETS`) and
+  `docs/plans/2026-07-20-agent-harness-v2.md` §3.5.1.
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 
