@@ -298,7 +298,8 @@ or decide action availability. Its `connected_service_usage` is derived by UOA
 from the same single, exact Ledger `metering-portfolio-v1` `group_by=user`
 snapshot used for rating. It includes every connected service's team total,
 origin products, per-user usage, raw provider cost, and UOA-authored share
-copy. Nessie validates the snapshot identity and renders those display fields
+copy. Nessie validates the requested billing month, exact plan-to-pinned-tariff
+identity/version, and snapshot identity before rendering those display fields
 verbatim; it does not aggregate services or calculate percentages. Customer
 actions and cancellation payloads remain on the frozen version-1 action
 contract.
