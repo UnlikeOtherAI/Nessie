@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { UoaBillingStatementPanel } from '../components/features/billing/UoaBillingStatementPanel'
 import { BudgetManager } from '../components/features/budgets/BudgetManager'
 import {
@@ -7,6 +8,11 @@ import {
   PRICING_PROFILES_KEY,
   type PricingProfile,
 } from '../components/features/budgets/PricingManager'
+import {
+  getUoaBillingCheckoutReturnNotice,
+  readUoaBillingCheckoutReturn,
+} from '../facades/billing/checkout-return'
+import { billingStatementKey } from '../facades/billing/hooks'
 import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -92,11 +98,34 @@ const formatBytes = (bytes: number): string => {
 export const TokenUsagePage = () => {
   const { me } = useAuthSession()
   const apiClient = useApiClient()
+  const location = useLocation()
+  const queryClient = useQueryClient()
+  const refreshedCheckoutLocation = useRef<string | null>(null)
   const [groupBy, setGroupBy] = useState('model')
   const [connectorGroupBy, setConnectorGroupBy] = useState('connectorType')
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const canReadBilling =
     isOwner || (me?.user.roleIds.includes('admin') ?? false)
+  const checkoutReturn = readUoaBillingCheckoutReturn(location.search)
+  const checkoutNotice = checkoutReturn
+    ? getUoaBillingCheckoutReturnNotice(checkoutReturn)
+    : null
+
+  useEffect(() => {
+    if (
+      !canReadBilling
+      || !checkoutReturn
+      || refreshedCheckoutLocation.current === location.key
+    ) {
+      return
+    }
+    refreshedCheckoutLocation.current = location.key
+    void queryClient.refetchQueries({
+      exact: true,
+      queryKey: billingStatementKey,
+      type: 'all',
+    })
+  }, [canReadBilling, checkoutReturn, location.key, queryClient])
 
   const { data: summary } = useQuery<TokenSummary>({
     queryKey: ['token-summary', groupBy],
@@ -162,6 +191,20 @@ export const TokenUsagePage = () => {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {checkoutNotice && (
+          <div
+            className="admin-card mb-4 border border-[color:var(--sep)] p-4"
+            data-testid="uoa-billing-checkout-return"
+            role="status"
+          >
+            <div className="font-semibold text-[color:var(--tx)]">
+              {checkoutNotice.title}
+            </div>
+            <p className="mt-1 text-sm text-[color:var(--tx2)]">
+              {checkoutNotice.message}
+            </p>
+          </div>
+        )}
         <UoaBillingStatementPanel />
         {isOwner && (
           <>

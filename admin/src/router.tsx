@@ -1,4 +1,9 @@
-import { Navigate, createBrowserRouter } from 'react-router-dom'
+import {
+  Navigate,
+  createBrowserRouter,
+  useLocation,
+} from 'react-router-dom'
+import { resolveRootLandingPath } from './facades/billing/checkout-return'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
 import { SearchPage } from './pages/SearchPage'
@@ -38,13 +43,18 @@ import { TriggersPage } from './pages/TriggersPage'
 import { WorkflowDesignerPage } from './pages/WorkflowDesignerPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 
+const RootRouteRedirect = () => {
+  const { search } = useLocation()
+  return <Navigate to={resolveRootLandingPath(search)} replace />
+}
+
 export const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
   {
     path: '/',
-    element: <Navigate to="/channels" replace />,
+    element: <RootRouteRedirect />,
   },
   {
     path: '/bootstrap',

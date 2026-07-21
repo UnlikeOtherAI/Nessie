@@ -321,6 +321,15 @@ Browser-supplied action bodies and return URLs are ignored or rejected. The
 browser receives no UOA app key or actor assertion, and the API accepts no
 arbitrary upstream path.
 
+UOA pins Stripe Checkout returns to Nessie's root route with exactly one
+`uoa_billing=checkout_complete` or `uoa_billing=checkout_cancelled` query
+parameter. The root route preserves the complete query while redirecting those
+two values to `/tokens`. The Usage & Billing page shows a neutral return notice
+and explicitly refetches the canonical UOA statement; that statement, rather
+than the query value, remains the authority for any confirmed change. Missing,
+duplicate, or unknown `uoa_billing` values follow the ordinary `/channels`
+landing path and do not show a notice or trigger a billing refetch.
+
 ## 11) Cross-links
 
 - [functionality.md](./functionality.md)
