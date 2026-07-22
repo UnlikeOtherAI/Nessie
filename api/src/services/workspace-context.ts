@@ -6,8 +6,10 @@ import {
   type ExternalAuthWorkspace,
 } from './identity-display.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
-import { seedDefaultPolicies } from './policy.js'
-import { seedBootstrapRecords } from '../db/seed.js'
+import {
+  lockBootstrapInitialization,
+  seedBootstrapRecordsInTransaction,
+} from '../db/seed.js'
 
 const CREATED_AT_ASC = { createdAt: 'asc' } as const
 
@@ -209,6 +211,41 @@ const ensureWorkspacePrincipal = async (
   }
 }, AUTH_LOCK_TRANSACTION_OPTIONS)
 
+const initializeSharedOrganization = async (
+  prisma: PrismaClient,
+  input: WorkspaceIdentityInput & { email: string },
+): Promise<{
+  sharedOrg: { id: string }
+  user: { id: string } | null
+} | null> => prisma.$transaction(async (transaction) => {
+  await lockBootstrapInitialization(transaction)
+  const [sharedOrg, user] = await Promise.all([
+    transaction.organization.findFirst({
+      orderBy: CREATED_AT_ASC,
+      select: { id: true },
+    }),
+    transaction.user.findUnique({
+      where: { email: input.email },
+      select: { id: true },
+    }),
+  ])
+  if (sharedOrg) {
+    return { sharedOrg, user }
+  }
+  if (user || (await transaction.user.count()) > 0) {
+    return null
+  }
+  const seeded = await seedBootstrapRecordsInTransaction(transaction, {
+    avatarUrl: input.avatarUrl,
+    displayName: input.displayName,
+    email: input.email,
+  })
+  return {
+    sharedOrg: { id: seeded.organizationId },
+    user: { id: seeded.user.id },
+  }
+}, AUTH_LOCK_TRANSACTION_OPTIONS)
+
 // Resolve the target team for the selected UOA workspace: an existing bound team
 // (join it), or a freshly provisioned one (the first person owns it).
 const resolveWorkspaceTarget = async (
@@ -330,22 +367,23 @@ export const resolveUoaWorkspaceContext = async (
   const email = input.email.trim().toLowerCase()
 
   // 1. Ensure the shared org exists (bootstrap the first user), and get the user.
-  let sharedOrg = await prisma.organization.findFirst({ orderBy: CREATED_AT_ASC })
+  let sharedOrg = await prisma.organization.findFirst({
+    orderBy: CREATED_AT_ASC,
+    select: { id: true },
+  })
   let user = await prisma.user.findUnique({ where: { email }, select: { id: true } })
 
   if (!sharedOrg) {
-    if (user || (await prisma.user.count()) > 0) {
+    const initialized = await initializeSharedOrganization(prisma, {
+      ...input,
+      email,
+    })
+    if (!initialized) {
       // Users exist but no organization — a corrupt/misconfigured instance.
       return null
     }
-    const seeded = await seedBootstrapRecords(prisma, {
-      avatarUrl: input.avatarUrl,
-      displayName: input.displayName,
-      email,
-    })
-    await seedDefaultPolicies(prisma, seeded.organizationId, seeded.user.id)
-    sharedOrg = await prisma.organization.findUnique({ where: { id: seeded.organizationId } })
-    user = { id: seeded.user.id }
+    sharedOrg = initialized.sharedOrg
+    user = initialized.user
   }
 
   if (!sharedOrg) {

@@ -19,7 +19,10 @@ import {
   BootstrapRequestSchema,
   SsoConfigQuerySchema,
 } from '../contracts.js'
-import { seedBootstrapRecords } from '../db/seed.js'
+import {
+  BootstrapAlreadyInitializedError,
+  seedBootstrapRecords,
+} from '../db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { clearRefreshCookie, readRefreshCookie } from '../lib/refresh-cookie.js'
 import {
@@ -29,7 +32,6 @@ import {
 } from '../services/auth.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import { buildExternalAuthAuthorizeUrl } from '../services/external-auth.js'
-import { seedDefaultPolicies } from '../services/policy.js'
 import { revokeRefreshTokenByRaw } from '../services/refresh-token.js'
 import {
   buildConfigJwt,
@@ -230,12 +232,19 @@ export const registerAuthCoreRoutes = (
       sendApiError(reply, 409, 'BOOTSTRAP_DISABLED', 'Bootstrap is no longer available')
       return reply
     }
-    const result = await seedBootstrapRecords(prisma, {
-      email: body.email,
-      displayName: body.displayName,
-      passwordHash: await hashPassword(body.password),
-    })
-    await seedDefaultPolicies(prisma, result.organizationId, result.user.id)
+    let result: Awaited<ReturnType<typeof seedBootstrapRecords>>
+    try {
+      result = await seedBootstrapRecords(prisma, {
+        email: body.email,
+        displayName: body.displayName,
+        passwordHash: await hashPassword(body.password),
+      })
+    } catch (error) {
+      if (!(error instanceof BootstrapAlreadyInitializedError)) throw error
+      clearBootstrapState()
+      sendApiError(reply, 409, 'BOOTSTRAP_DISABLED', 'Bootstrap is no longer available')
+      return reply
+    }
     clearBootstrapState()
     const session = await buildLocalSession(result.user.id, ['owner'])
     const verification = verifySessionToken(session.token, authSecret)

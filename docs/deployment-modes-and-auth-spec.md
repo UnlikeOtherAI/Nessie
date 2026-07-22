@@ -163,7 +163,7 @@ The system is in bootstrap mode when the `users` table is empty. No config flag 
    ```
 7. The API validates:
    - the token matches the generated token,
-   - no users exist yet (prevents race conditions),
+   - no users or organization exist yet (prevents race conditions),
    - the token has not expired (15 minute TTL from generation).
 8. On success, the API:
    - creates the owner user,
@@ -175,6 +175,15 @@ The system is in bootstrap mode when the `users` table is empty. No config flag 
    - clears the bootstrap token from memory.
 9. Returns `ApiResponse<{ token: string; me: MeResponse }>`.
 10. `/admin` stores the JWT, seeds `AuthSessionProvider`, and redirects to the main UI.
+
+Bootstrap initialization is serialized across API replicas with one
+transaction-scoped PostgreSQL advisory lock. After acquiring the lock, the API
+re-reads both the user and organization state and creates the initial user,
+workspace hierarchy, memberships, board columns, and default policies in the
+same transaction. A simultaneous local bootstrap loses that race with a `409
+BOOTSTRAP_DISABLED`; simultaneous first UOA callbacks reuse the committed
+organization and continue through the normal per-workspace and per-principal
+locks. No caller may observe a partially seeded workspace.
 
 #### Bootstrap mode detection from `/admin`
 
