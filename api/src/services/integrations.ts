@@ -9,6 +9,7 @@ import {
   type IntegratedProductRow,
   type ProductTeamEnablementRow,
 } from './integration-product-rows.js'
+import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 type ProductOwner = {
   organizationId: string
@@ -19,6 +20,7 @@ type ProductOwner = {
 type UoaProductAccountLinkSyncInput = ProductOwner & {
   email: string
   externalSubject: string | undefined
+  uoaTokenVersion: number | undefined
   workspace: ExternalAuthWorkspace | undefined
 }
 
@@ -41,35 +43,47 @@ export const syncUoaProductAccountLinks = async (
   prisma: PrismaClient,
   input: UoaProductAccountLinkSyncInput,
 ): Promise<void> => {
+  if (
+    !input.externalSubject
+    || input.uoaTokenVersion === undefined
+    || !Number.isSafeInteger(input.uoaTokenVersion)
+    || input.uoaTokenVersion < 0
+  ) {
+    throw new Error('UnlikeOtherAI account-link sync requires an exact credential epoch.')
+  }
   const products = await prisma.$queryRaw<ProductSlugRow[]>(Prisma.sql`
     SELECT "slug"
     FROM "integrated_products"
     WHERE "plugin_manifest_ref" LIKE ${`${FIRST_PARTY_PLUGIN_MANIFEST_PREFIX}%`}
       AND "auth_mode"::text IN ('uoa_sso', 'oauth_mcp', 'local_mcp')
+    ORDER BY "slug" ASC
   `)
-  if (products.length === 0) {
-    return
+  if (!products.some((product) => product.slug === 'nessie')) {
+    throw new Error(
+      'The first-party Nessie account-link product is not provisioned.',
+    )
   }
 
   const now = new Date()
   const metadata = uoaLinkMetadata(input.workspace)
-  const externalAccountId = input.externalSubject ?? input.email
+  const externalAccountId = input.externalSubject
   const {
     organizationId: activeOrgId,
     teamId: activeTeamId,
   } = resolveExternalWorkspaceSelection(input.workspace)
   const metadataJson = JSON.stringify(metadata)
-  const uoaSub = input.externalSubject ?? null
+  const uoaSub = input.externalSubject
 
-  await prisma.$transaction(
-    products.map((product) =>
-      prisma.$executeRaw(Prisma.sql`
+  await prisma.$transaction(async (tx) => {
+    for (const product of products) {
+      const updated = await tx.$executeRaw(Prisma.sql`
         INSERT INTO "product_account_links" (
           "id",
           "organization_id",
           "user_id",
           "product_slug",
           "uoa_sub",
+          "uoa_token_version",
           "external_account_id",
           "active_org_id",
           "active_team_id",
@@ -85,6 +99,7 @@ export const syncUoaProductAccountLinks = async (
           CAST(${input.userId} AS uuid),
           ${product.slug},
           ${uoaSub},
+          ${input.uoaTokenVersion ?? null},
           ${externalAccountId},
           ${activeOrgId},
           ${activeTeamId},
@@ -96,6 +111,7 @@ export const syncUoaProductAccountLinks = async (
         )
         ON CONFLICT ("organization_id", "user_id", "product_slug") DO UPDATE SET
           "uoa_sub" = EXCLUDED."uoa_sub",
+          "uoa_token_version" = EXCLUDED."uoa_token_version",
           "external_account_id" = EXCLUDED."external_account_id",
           "active_org_id" = EXCLUDED."active_org_id",
           "active_team_id" = EXCLUDED."active_team_id",
@@ -103,9 +119,23 @@ export const syncUoaProductAccountLinks = async (
           "last_verified_at" = EXCLUDED."last_verified_at",
           "metadata_json" = EXCLUDED."metadata_json",
           "updated_at" = CURRENT_TIMESTAMP
-      `),
-    ),
-  )
+        WHERE (
+          "product_account_links"."uoa_sub" IS NULL
+          OR "product_account_links"."uoa_sub" = EXCLUDED."uoa_sub"
+        )
+          AND (
+            "product_account_links"."uoa_token_version" IS NULL
+            OR "product_account_links"."uoa_token_version"
+              <= EXCLUDED."uoa_token_version"
+          )
+      `)
+      if (updated !== 1) {
+        throw new Error(
+          'UnlikeOtherAI account-link state advanced while this login was completing.',
+        )
+      }
+    }
+  }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 
 /**
@@ -157,23 +187,13 @@ export const setProductTeamEnablement = async (
   prisma: Pick<PrismaClient, '$queryRaw'>,
   input: ProductOwner & { enabled: boolean; productSlug: string },
 ): Promise<ProductTeamEnablementRow | null> => {
-  if (!input.teamId) {
+  if (!input.teamId || input.productSlug === 'nessie') {
     return null
   }
 
   const metadataJson = JSON.stringify(teamEnablementMetadata())
   const rows = await prisma.$queryRaw<ProductTeamEnablementRow[]>(Prisma.sql`
-    WITH account_link AS (
-      SELECT
-        "active_org_id",
-        "active_team_id"
-      FROM "product_account_links"
-      WHERE "organization_id" = CAST(${input.organizationId} AS uuid)
-        AND "user_id" = CAST(${input.userId} AS uuid)
-        AND "product_slug" = ${input.productSlug}
-      LIMIT 1
-    ),
-    upserted AS (
+    WITH upserted AS (
       INSERT INTO "product_team_enablements" (
         "id",
         "organization_id",
@@ -193,8 +213,8 @@ export const setProductTeamEnablement = async (
         CAST(${input.teamId} AS uuid),
         p."slug",
         ${input.enabled},
-        account_link."active_org_id",
-        account_link."active_team_id",
+        t."external_org_id",
+        t."external_workspace_id",
         CAST(${input.userId} AS uuid),
         CAST(${metadataJson} AS jsonb),
         CURRENT_TIMESTAMP,
@@ -205,12 +225,25 @@ export const setProductTeamEnablement = async (
       JOIN "projects" pr
         ON pr."id" = t."project_id"
         AND pr."organization_id" = CAST(${input.organizationId} AS uuid)
-      LEFT JOIN account_link ON TRUE
       WHERE p."slug" = ${input.productSlug}
+        AND p."slug" <> 'nessie'
+        AND (
+          ${!input.enabled}
+          OR (
+            t."external_org_id" IS NOT NULL
+            AND t."external_workspace_id" IS NOT NULL
+          )
+        )
       ON CONFLICT ("organization_id", "team_id", "product_slug") DO UPDATE SET
         "enabled" = EXCLUDED."enabled",
-        "external_org_id" = EXCLUDED."external_org_id",
-        "external_team_id" = EXCLUDED."external_team_id",
+        "external_org_id" = COALESCE(
+          EXCLUDED."external_org_id",
+          "product_team_enablements"."external_org_id"
+        ),
+        "external_team_id" = COALESCE(
+          EXCLUDED."external_team_id",
+          "product_team_enablements"."external_team_id"
+        ),
         "configured_by_user_id" = EXCLUDED."configured_by_user_id",
         "metadata_json" = EXCLUDED."metadata_json",
         "updated_at" = CURRENT_TIMESTAMP
@@ -347,6 +380,7 @@ export const listIntegratedProducts = async (
         msi.updated_at DESC
       LIMIT 1
     ) mcp_instance ON TRUE
+    WHERE p.slug <> 'nessie'
     ORDER BY p.sort_order ASC, p.name ASC
   `)
 

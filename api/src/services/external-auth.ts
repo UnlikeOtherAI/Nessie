@@ -5,7 +5,11 @@ import {
   resolveIdentityDisplayName,
   type ExternalAuthIdentity,
 } from './identity-display.js'
-import { buildUoaAuthorizeUrl, exchangeUoaCode } from './uoa-auth.js'
+import {
+  exchangeUoaSession,
+  type UoaSessionExchange,
+} from './uoa-session.js'
+import { buildUoaAuthorizeUrl } from './uoa-auth.js'
 
 type OidcDiscoveryDocument = {
   authorization_endpoint?: string
@@ -24,6 +28,11 @@ type UserInfoResponse = {
   picture?: string
   preferred_username?: string
   sub?: string
+}
+
+export type ExternalAuthExchangeResult = {
+  identity: ExternalAuthIdentity
+  uoaSession?: UoaSessionExchange
 }
 
 const normalizeIssuerUrl = (issuerUrl: string): string => issuerUrl.replace(/\/$/, '')
@@ -94,9 +103,10 @@ export const exchangeExternalAuthCode = async (
     redirectUri: string
     theme?: SsoTheme
   },
-): Promise<ExternalAuthIdentity> => {
+): Promise<ExternalAuthExchangeResult> => {
   if (provider.type === 'uoa') {
-    return exchangeUoaCode(input)
+    const uoaSession = await exchangeUoaSession(input)
+    return { identity: uoaSession.identity, uoaSession }
   }
 
   const discovery = await loadDiscoveryDocument(provider)
@@ -144,11 +154,13 @@ export const exchangeExternalAuthCode = async (
   }
 
   return {
-    avatarUrl: userInfo.picture,
-    displayName: resolveIdentityDisplayName(email, [
-      userInfo.name,
-      userInfo.preferred_username,
-    ]),
-    email,
+    identity: {
+      avatarUrl: userInfo.picture,
+      displayName: resolveIdentityDisplayName(email, [
+        userInfo.name,
+        userInfo.preferred_username,
+      ]),
+      email,
+    },
   }
 }

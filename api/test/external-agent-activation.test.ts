@@ -24,11 +24,20 @@ const buildSeed = () => ({
 const actorContextFor = (
   organizationId: string,
   userId: string,
+  teamId = 'uoa-team',
 ): AuthorizedActionContext =>
   ({
     tenant: { organizationId },
     actor: { actorId: userId, actorType: 'user' },
-    actionContext: { requestId: 'activation-request' },
+    actionContext: {
+      requestId: 'activation-request',
+      uoaIdentity: {
+        organizationId: 'uoa-org',
+        subject: 'uoa-user',
+        teamId,
+        tokenVersion: 7,
+      },
+    },
   }) as unknown as AuthorizedActionContext
 
 const buildCtx = (
@@ -51,6 +60,7 @@ const linkedAccount = (
   productSlug: 'deepsignal',
   status: 'linked',
   uoaSub: 'uoa-user',
+  uoaTokenVersion: 7,
   userId,
 })
 
@@ -91,7 +101,7 @@ test('activation is blocked before provisioning when the team is disabled', asyn
   assert.equal(fake.instances.length, 0)
 })
 
-test('activation requires a currently linked UOA subject and active workspace', async () => {
+test('activation requires a currently linked UOA subject and signed workspace', async () => {
   const seed = buildSeed()
   const userId = randomUUID()
   const fake = makeExternalAgentPrismaFake({
@@ -120,15 +130,12 @@ test('activation requires a currently linked UOA subject and active workspace', 
   assert.equal(fake.channelsById.size, 0)
 })
 
-test('activation rejects an SSO workspace that does not match the selected Nessie team', async () => {
+test('activation rejects a signed SSO workspace that does not match the selected Nessie team', async () => {
   const seed = buildSeed()
   const userId = randomUUID()
   const fake = makeExternalAgentPrismaFake({
     ...seed,
-    accountLinks: [{
-      ...linkedAccount(seed, userId),
-      activeTeamId: 'different-uoa-team',
-    }],
+    accountLinks: [linkedAccount(seed, userId)],
     teamEnablements: [{
       teamId: seed.teamId,
       productSlug: 'deepsignal',
@@ -140,7 +147,14 @@ test('activation rejects an SSO workspace that does not match the selected Nessi
     activateExternalAgentProduct(
       asPrisma(fake),
       'deepsignal',
-      buildCtx(seed, userId),
+      {
+        ...buildCtx(seed, userId),
+        actorContext: actorContextFor(
+          seed.organizationId,
+          userId,
+          'different-uoa-team',
+        ),
+      },
     ),
     (error: unknown) =>
       error instanceof ExternalAgentActivationError
@@ -252,14 +266,18 @@ test('activation rejects the obsolete per-user OAuth catalog contract', async ()
   )
 })
 
-test('activation idempotently pins the managed instance to the app-key ref', async () => {
+test('activation uses signed workspace and idempotently pins the managed app-key instance', async () => {
   const seed = buildSeed()
   const userId = randomUUID()
   const catalogId = randomUUID()
   const instanceId = randomUUID()
   const fake = makeExternalAgentPrismaFake({
     ...seed,
-    accountLinks: [linkedAccount(seed, userId)],
+    accountLinks: [{
+      ...linkedAccount(seed, userId),
+      activeOrgId: 'last-seen-other-org',
+      activeTeamId: 'last-seen-other-team',
+    }],
     catalogEntries: [{
       authMethod: 'bearer',
       defaultTransportConfig: {

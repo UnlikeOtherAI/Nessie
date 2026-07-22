@@ -163,7 +163,7 @@ The system is in bootstrap mode when the `users` table is empty. No config flag 
    ```
 7. The API validates:
    - the token matches the generated token,
-   - no users exist yet (prevents race conditions),
+   - no users or organization exist yet (prevents race conditions),
    - the token has not expired (15 minute TTL from generation).
 8. On success, the API:
    - creates the owner user,
@@ -175,6 +175,15 @@ The system is in bootstrap mode when the `users` table is empty. No config flag 
    - clears the bootstrap token from memory.
 9. Returns `ApiResponse<{ token: string; me: MeResponse }>`.
 10. `/admin` stores the JWT, seeds `AuthSessionProvider`, and redirects to the main UI.
+
+Bootstrap initialization is serialized across API replicas with one
+transaction-scoped PostgreSQL advisory lock. After acquiring the lock, the API
+re-reads both the user and organization state and creates the initial user,
+workspace hierarchy, memberships, board columns, and default policies in the
+same transaction. A simultaneous local bootstrap loses that race with a `409
+BOOTSTRAP_DISABLED`; simultaneous first UOA callbacks reuse the committed
+organization and continue through the normal per-workspace and per-principal
+locks. No caller may observe a partially seeded workspace.
 
 #### Bootstrap mode detection from `/admin`
 
@@ -251,9 +260,46 @@ Claims:
   successful rotation renews that window, so an active session can continue
   without a fixed absolute expiry
 - **rotation:** each `POST /api/auth/refresh` atomically consumes the presented token and issues a deterministic HMAC-derived successor in the same `family_id`, returning a fresh access token + a new refresh cookie. Only hashes are stored; the server can reconstruct a successor only from the predecessor cookie and its auth secret. The original login provider is preserved across refresh; org/role membership is re-resolved each time
-- **lost-response/concurrency grace:** for 60 seconds after rotation, replaying a just-consumed predecessor reissues the current verified live descendant. This makes overlapping WebView lifecycles and lost HTTP responses idempotent without creating multiple live successors
+- **lost-response/concurrency grace:** for 60 seconds after rotation, replaying a just-consumed predecessor reissues the current verified live descendant. The replay also places a 60-second rotation barrier on that descendant, so a concurrently held current cookie returns the same value even when its HTTP response is delivered after the predecessor response. This makes overlapping WebView lifecycles and lost HTTP responses idempotent without creating multiple live successors
+- **cross-replica serialization:** every family decision takes a PostgreSQL
+  transaction-scoped advisory lock. Security-sensitive issuance, password
+  change, deactivation, and user-wide revocation take a separate per-user lock
+  before sorted family locks. This fixed order prevents a second API replica
+  from issuing a session after revocation or racing logout past a rotation
 - **reuse detection:** presenting an already-revoked token after that 60-second grace, or presenting a token whose replacement chain is missing, cyclic, cross-family, or does not match the derived token hash, revokes the entire family and forces re-login
-- **revocation:** `DELETE /api/auth/session` (logout) is now **public** and cookie-driven — it revokes the token family server-side and clears the cookie, so a session can be killed even after the access token has expired. The access JWT itself remains stateless (verified by signature + `exp`)
+- **UOA renewal:** a new UOA login must return an opaque refresh credential and
+  nonnegative `tv`. Nessie encrypts the upstream credential with AES-256-GCM in
+  `uoa_session_credentials`, coupled to one local family and its current local
+  token; it never enters the browser. Each active local rotation uses one short
+  family-locked preflight, obtains UOA's exact-context replay-safe successor
+  **outside every database transaction**, validates the immutable
+  `{sub, org, team}` tuple and monotonic epoch, then uses a second short locked
+  compare-and-swap to atomically advance the stable product-link epoch,
+  encrypted credential, and deterministic Nessie successor. If an ancestor
+  replay installs the local cookie barrier while renewal is in flight, finalize
+  keeps that cookie and adopts the exact UOA successor in place; it never drops
+  an accepted upstream rotation. Concurrent calls may reach UOA with the same
+  credential, but identical finalizers converge, so SSO latency cannot pin the
+  database pool. A replay of the
+  local predecessor returns the already-committed local successor without a
+  second UOA call. Transient UOA/network failures preserve the family and return
+  `503`; definitive revocation, tuple drift, or malformed family proof returns
+  `401` and erases it. Legacy UOA families without encrypted proof reauthenticate.
+- **workspace binding:** refreshed UOA access sessions resolve the exact local
+  team mapped to the signed external org/team and require live user, project,
+  team, organization, and Nessie product-link membership. They never fall back
+  to the user's first membership. The one account link per user/product proves
+  stable subject/status/credential epoch only; its active org/team columns are
+  last-seen metadata and cannot invalidate a simultaneous family in another
+  team. The product link may mirror a newer epoch after a valid refresh, but it
+  never supplies session identity. Billing, delegated calls, activation, team
+  enablement, and webhook routing all derive workspace authority from the signed
+  family plus the exact Team mapping.
+- **revocation:** `DELETE /api/auth/session` (logout) is now **public** and cookie-driven — it revokes the token family server-side and clears the cookie, so a session can be killed even after the access token has expired. Password change, user deactivation, explicit session revocation, expiry, and reuse detection erase both matching local families and encrypted UOA credentials atomically. The access JWT itself remains stateless (verified by signature + `exp`); UOA sessions additionally carry immutable `uoaIdentity { subject, organizationId, teamId, tokenVersion }` proof
+- **credential retention:** startup and five-minute bounded sweeps take each
+  candidate's family lock, retain hash-only local token history, revoke any
+  remaining live row, and erase encrypted UOA state once either the upstream
+  credential or current local token has expired
 - cookie attributes: `HttpOnly`, `SameSite=None; Secure` in hosted/self-hosted (admin and API are different subdomains), `SameSite=Lax` over http in local (same origin via the Vite proxy)
 
 #### Active project/team
@@ -292,15 +338,36 @@ For SSO providers, the flow is:
 For the `uoa` provider, Nessie's config JWT enables UOA's workspace chooser
 (`login_flow.workspace_selection: "auto"`), so the user picks a **workspace**
 before returning; UOA then carries the selection in the access-token
-`active { orgId, teamId }` claim. On exchange, `POST /api/auth/session` routes
+`active { orgId, teamId }` claim plus the authentication epoch in `tv`. On
+exchange, `POST /api/auth/session` routes
 the session to that workspace instead of the first org's default team: the
 selected UOA workspace maps to a Nessie **Team** inside the one shared
 Organization (auto-provisioned — project + team + `#general` — on first entry;
 the first person owns it). Users switch between the workspaces they belong to via
 `POST /api/auth/switch-context` (surfaced by the sidebar workspace switcher).
+An existing UOA session may mint only the same externally bound local team;
+switching to another UOA workspace requires a new hosted UOA login. The signed
+session/family proof, rather than `ProductAccountLink`, is authoritative for
+billing actors and delegated calls.
+Before provisioning a local workspace, mutating product links, or issuing a
+Nessie session, login confirms exact direct `nessie` access through UOA using
+the signed `{sub, org, team, tv}` subject. Product-link upserts are one atomic,
+slug-ordered transaction: an existing subject cannot be replaced and an older
+epoch cannot overwrite a newer one. First-time workspace creation is likewise
+serialized by an advisory lock over the exact external organization/team, so
+simultaneous first logins converge on one project and team. A separate advisory
+lock over the normalized email serializes local user lookup/creation and every
+membership write after the workspace is validated, so concurrent device
+callbacks for the same principal converge without a unique-index failure or
+creating a user for an invalid team.
 Non-UOA OIDC providers and single-workspace users carry no `active` claim and
 land in their existing/default team, unchanged. See
 [docs/plans/2026-07-10-slack-workspace-login-nessie.md](plans/2026-07-10-slack-workspace-login-nessie.md).
+
+UOA billing may return `401` when the actor epoch has advanced. The API
+preserves that status, and the shared browser client performs exactly one
+single-flight cookie renewal and one request retry. A second `401` or a rejected
+refresh is terminal; transient refresh failures do not clear the local session.
 
 ### 4.3c Fastify auth middleware
 

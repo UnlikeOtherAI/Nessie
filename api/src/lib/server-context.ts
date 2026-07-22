@@ -13,19 +13,20 @@ import {
   isBootstrapTokenExpired,
   type BootstrapTokenState,
 } from '../auth/bootstrap.js'
-import {
-  issueSessionToken,
-  verifySessionToken,
-  type SessionTokenClaims,
-} from '../auth/session.js'
-import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
+import { verifySessionToken, type SessionTokenClaims } from '../auth/session.js'
 import { sendApiError } from './api.js'
 import {
-  LOCAL_AUTH_PROVIDER_ID,
   buildMeResponse,
   createActorContextFromClaims,
 } from '../services/auth.js'
+import { createSessionIssuers } from '../services/session-issuers.js'
+import { createRequestRateLimitChecker } from './rate-limit.js'
 import { createRequestHelpers } from './request-helpers.js'
+
+export {
+  createFastifyTrustProxyConfig,
+  getRateLimitClientId,
+} from './rate-limit.js'
 
 export type AppConfig = ReturnType<typeof loadConfig>
 
@@ -127,25 +128,6 @@ export const buildStreamCorsHeaders = (input: OriginPolicy): Record<string, stri
 
 const MEMBERSHIP_ROLES = ['owner', 'admin', 'member', 'viewer'] as const
 type MembershipRole = (typeof MEMBERSHIP_ROLES)[number]
-
-type RateLimitRule = {
-  keyPrefix: string
-  max: number
-  windowMs: number
-}
-
-type RateLimitBucket = {
-  count: number
-  resetAt: number
-}
-
-export const createFastifyTrustProxyConfig = (
-  trustedProxyHops: number,
-): false | number => trustedProxyHops > 0 ? trustedProxyHops : false
-
-export const getRateLimitClientId = (
-  request: Pick<FastifyRequest, 'ip'>,
-): string => request.ip
 
 /**
  * Server context: owns config, the shared Prisma client, auth secret + bootstrap
@@ -466,114 +448,13 @@ export const createServerContext = () => {
     return timingSafeEqual(leftBuffer, rightBuffer)
   }
 
-  const buildLocalSession = async (
-    userId: string,
-    roles: string[],
-    provider?: { providerId: string; providerType: SessionTokenClaims['providerType'] },
-    // Passed by /api/auth/refresh to keep the login's session id stable across
-    // its rotation chain; omitted on a fresh login so a new id is minted.
-    sessionId?: string,
-  ) => {
-    // Resolve user's actual memberships from DB instead of hardcoded bootstrap IDs
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        organizationMembers: { orderBy: { createdAt: 'asc' }, select: { organizationId: true, role: true } },
-        projectMembers: { orderBy: { createdAt: 'asc' }, select: { projectId: true } },
-        teamMembers: { orderBy: { createdAt: 'asc' }, select: { teamId: true } },
-      },
-    })
-
-    const orgId = user?.organizationMembers[0]?.organizationId ?? DEFAULT_BOOTSTRAP_RECORD_IDS.organizationId
-    const projId = user?.projectMembers[0]?.projectId ?? DEFAULT_BOOTSTRAP_RECORD_IDS.projectId
-    const teamId = user?.teamMembers[0]?.teamId ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId
-    const resolvedRoles = roles.length > 0 ? roles : [user?.organizationMembers[0]?.role ?? 'member']
-
-    return issueSessionToken(
-      {
-        sub: userId,
-        org: orgId,
-        proj: projId,
-        team: teamId,
-        roles: resolvedRoles,
-        providerId: provider?.providerId ?? LOCAL_AUTH_PROVIDER_ID,
-        providerType: provider?.providerType ?? DEFAULT_LOCAL_PROVIDER_TYPE,
-      },
-      authSecret,
-      config.auth.tokenTtlSeconds,
-      sessionId,
-    )
-  }
-
-  const buildSessionForUser = (input: {
-    organizationId: string
-    projectId: string
-    providerId: string
-    providerType: SessionTokenClaims['providerType']
-    roles: string[]
-    teamId: string
-    userId: string
-  }) =>
-    issueSessionToken(
-      {
-        sub: input.userId,
-        org: input.organizationId,
-        proj: input.projectId,
-        team: input.teamId,
-        roles: input.roles,
-        providerId: input.providerId,
-        providerType: input.providerType,
-      },
-      authSecret,
-      config.auth.tokenTtlSeconds,
-    )
-
-  const rateLimitBuckets = new Map<string, RateLimitBucket>()
-
-  const resolveRateLimitRule = (request: FastifyRequest): RateLimitRule | null => {
-    const method = request.method.toUpperCase()
-    const routePath = request.routeOptions.url ?? new URL(request.url, 'http://localhost').pathname
-
-    if (method === 'POST' && (routePath === '/api/auth/session' || routePath === '/api/auth/bootstrap')) {
-      return { keyPrefix: `${method}:${routePath}`, max: 10, windowMs: 10 * 60 * 1000 }
-    }
-
-    if (method === 'POST' && routePath === '/api/threads/:threadId/messages') {
-      return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
-    }
-
-    if (routePath.startsWith('/api/agents') && ['DELETE', 'PATCH', 'POST', 'PUT'].includes(method)) {
-      return { keyPrefix: `${method}:${routePath}`, max: 60, windowMs: 60 * 1000 }
-    }
-
-    return null
-  }
-
-  const checkRateLimit = (request: FastifyRequest): { retryAfterSeconds: number } | null => {
-    const rule = resolveRateLimitRule(request)
-    if (!rule) {
-      return null
-    }
-
-    const now = Date.now()
-    const key = `${rule.keyPrefix}:${getRateLimitClientId(request)}`
-    const existingBucket = rateLimitBuckets.get(key)
-    const bucket =
-      existingBucket && existingBucket.resetAt > now
-        ? existingBucket
-        : { count: 0, resetAt: now + rule.windowMs }
-
-    bucket.count += 1
-    rateLimitBuckets.set(key, bucket)
-
-    if (bucket.count <= rule.max) {
-      return null
-    }
-
-    return {
-      retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
-    }
-  }
+  const { buildLocalSession, buildSessionForUser } = createSessionIssuers({
+    authSecret,
+    defaultProviderType: DEFAULT_LOCAL_PROVIDER_TYPE,
+    prisma,
+    tokenTtlSeconds: config.auth.tokenTtlSeconds,
+  })
+  const checkRateLimit = createRequestRateLimitChecker()
 
   const requestHelpers = createRequestHelpers(prisma)
 

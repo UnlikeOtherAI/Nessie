@@ -317,6 +317,34 @@ test('insight fan-out stays inside the exact enabled external workspace', async 
   )
 })
 
+test('insight fan-out ignores last-seen link workspace for an activated team channel', async () => {
+  const fake = makeInsightFake([
+    {
+      activeOrgId: UOA_ORG,
+      activeTeamId: UOA_TEAM_B,
+      channelTeamIds: [UOA_TEAM_A],
+      memberTeamIds: [LOCAL_TEAM_A],
+      organizationId: ORG,
+      userId: USER_A,
+      productSlug: 'deepsignal',
+      status: 'linked',
+      uoaSub: 'sub-a',
+    },
+  ])
+
+  const result = await handleDeepSignalInsightSurfaced(
+    asPrisma(fake),
+    ORG,
+    insightPayload('ins-last-seen-other-team'),
+    { now: fake.state.clock },
+  )
+
+  assert.deepEqual(
+    result.deliveries.map((delivery) => delivery.channelId),
+    [`chan-${USER_A}-${UOA_TEAM_A}`],
+  )
+})
+
 test('insight fan-out rejects unknown, disabled, and inconsistently mapped teams', async () => {
   const link: Link = {
     activeOrgId: UOA_ORG,

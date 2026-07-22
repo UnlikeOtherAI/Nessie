@@ -466,6 +466,7 @@ export const makeExternalAgentPrismaFake = (
           accountLinks.push({
             activeOrgId: null,
             activeTeamId: null,
+            uoaTokenVersion: null,
             ...args.create,
           })
         }

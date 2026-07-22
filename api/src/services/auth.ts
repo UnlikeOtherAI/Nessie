@@ -79,6 +79,7 @@ export const createActorContextFromClaims = (
   actionContext: {
     requestId: crypto.randomUUID(),
     sessionId: claims.sid,
+    ...(claims.uoaIdentity ? { uoaIdentity: claims.uoaIdentity } : {}),
   },
 })
 

@@ -1,172 +1,47 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { PrismaClient } from '@prisma/client'
+import { decryptWithKey, deriveSecretKey } from '@nessie/runtime'
 
 import {
   consumeRefreshToken,
   hashRefreshToken,
   issueRefreshToken,
   REFRESH_TOKEN_REPLAY_GRACE_MS,
+  UoaRefreshBindingError,
 } from '../src/services/refresh-token.js'
+import {
+  AUTH_SECRET,
+  consume,
+  createRefreshFixture,
+  defaultUoaRefresh,
+  FakeRefreshTokenPrisma,
+  ORGANIZATION_ID,
+  SESSION_ID,
+  TTL_SECONDS,
+  UOA_IDENTITY,
+  USER_ID,
+  type RefreshCallback,
+} from './refresh-token-fixture.js'
 
-type StoredRefreshToken = {
-  id: string
-  userId: string
-  familyId: string
-  sessionId: string
-  providerId: string
-  providerType: string
-  tokenHash: string
-  expiresAt: Date
-  revokedAt: Date | null
-  replacedById: string | null
-  userAgent: string | null
-  createdAt: Date
-}
+const createFixture = createRefreshFixture
 
-type CreateInput = {
-  data: {
-    id?: string
-    userId: string
-    familyId: string
-    sessionId: string
-    providerId: string
-    providerType: string
-    tokenHash: string
-    expiresAt: Date
-    userAgent?: string
-  }
-  select?: { id?: boolean }
-}
-
-type UpdateManyInput = {
-  where: {
-    id?: string
-    familyId?: string
-    revokedAt?: null
-    replacedById?: null
-  }
-  data: {
-    revokedAt?: Date
-    replacedById?: string
-  }
-}
-
-const cloneToken = (token: StoredRefreshToken): StoredRefreshToken => ({ ...token })
-
-class FakeRefreshTokenPrisma {
-  readonly records = new Map<string, StoredRefreshToken>()
-  private nextId = 1
-
-  readonly refreshToken = {
-    create: async (input: CreateInput) => {
-      if (this.findByHash(input.data.tokenHash)) {
-        throw new Error('duplicate token hash')
-      }
-      const record: StoredRefreshToken = {
-        id: input.data.id ?? `token-${this.nextId++}`,
-        userId: input.data.userId,
-        familyId: input.data.familyId,
-        sessionId: input.data.sessionId,
-        providerId: input.data.providerId,
-        providerType: input.data.providerType,
-        tokenHash: input.data.tokenHash,
-        expiresAt: input.data.expiresAt,
-        revokedAt: null,
-        replacedById: null,
-        userAgent: input.data.userAgent ?? null,
-        createdAt: new Date(),
-      }
-      this.records.set(record.id, record)
-      return input.select ? { id: record.id } : cloneToken(record)
-    },
-    findUnique: async (input: { where: { id?: string; tokenHash?: string } }) => {
-      const record = input.where.id
-        ? this.records.get(input.where.id)
-        : input.where.tokenHash
-          ? this.findByHash(input.where.tokenHash)
-          : undefined
-      return record ? cloneToken(record) : null
-    },
-    updateMany: async (input: UpdateManyInput) => {
-      let count = 0
-      for (const record of this.records.values()) {
-        if (input.where.id && record.id !== input.where.id) continue
-        if (input.where.familyId && record.familyId !== input.where.familyId) continue
-        if ('revokedAt' in input.where && record.revokedAt !== input.where.revokedAt) continue
-        if ('replacedById' in input.where && record.replacedById !== input.where.replacedById) continue
-        if (input.data.revokedAt) record.revokedAt = input.data.revokedAt
-        if (input.data.replacedById) record.replacedById = input.data.replacedById
-        count += 1
-      }
-      return { count }
-    },
-  }
-
-  async $transaction<T>(operation: (tx: PrismaClient) => Promise<T>): Promise<T> {
-    const snapshot = new Map(
-      Array.from(this.records.entries()).map(([id, record]) => [id, cloneToken(record)]),
-    )
-    try {
-      return await operation(this as unknown as PrismaClient)
-    } catch (error) {
-      this.records.clear()
-      for (const [id, record] of snapshot) {
-        this.records.set(id, record)
-      }
-      throw error
-    }
-  }
-
-  findByHash(tokenHash: string): StoredRefreshToken | undefined {
-    return Array.from(this.records.values()).find((record) => record.tokenHash === tokenHash)
-  }
-
-  asClient(): PrismaClient {
-    return this as unknown as PrismaClient
-  }
-}
-
-const AUTH_SECRET = 'refresh-token-test-secret'
-const TTL_SECONDS = 60 * 60
-const USER_ID = '00000000-0000-4000-8000-000000000001'
-const SESSION_ID = '00000000-0000-4000-8000-000000000002'
-
-const createFixture = async () => {
-  const fake = new FakeRefreshTokenPrisma()
-  const initial = await issueRefreshToken(fake.asClient(), {
-    userId: USER_ID,
-    sessionId: SESSION_ID,
-    providerId: 'uoa',
-    providerType: 'uoa',
-    ttlSeconds: TTL_SECONDS,
-    userAgent: 'Nessie test',
-  })
-  return { fake, rawToken: initial.rawToken }
-}
-
-const consume = (
-  fake: FakeRefreshTokenPrisma,
-  rawToken: string,
-  now: Date,
-) => consumeRefreshToken(fake.asClient(), {
-  authSecret: AUTH_SECRET,
-  rawToken,
-  ttlSeconds: TTL_SECONDS,
-  userAgent: 'Nessie test',
-  now,
-})
-
-test('active refresh atomically rotates to one hash-only deterministic successor', async () => {
+test('active refresh rotates local and encrypted upstream credentials atomically', async () => {
   const { fake, rawToken } = await createFixture()
   const now = new Date()
+  let callbackRanOutsideTransaction = false
+  const refresh = defaultUoaRefresh(now)
 
-  const result = await consume(fake, rawToken, now)
+  const result = await consume(fake, rawToken, now, async (input) => {
+    callbackRanOutsideTransaction = fake.activeTransactions === 0
+    return refresh(input)
+  })
 
   assert.equal(result.ok, true)
+  assert.equal(callbackRanOutsideTransaction, true)
   if (!result.ok) return
   assert.equal(result.replayed, false)
+  assert.deepEqual(result.uoaIdentity, UOA_IDENTITY)
   assert.notEqual(result.rawToken, rawToken)
   assert.equal(fake.records.size, 2)
 
@@ -176,15 +51,35 @@ test('active refresh atomically rotates to one hash-only deterministic successor
   assert.equal(predecessor?.replacedById, successor?.id)
   assert.equal(successor?.revokedAt, null)
   assert.equal('rawToken' in (successor ?? {}), false)
+
+  const credential = fake.uoaCredentials.get(predecessor!.familyId)
+  assert.equal(credential?.lastLocalTokenId, successor?.id)
+  assert.equal(credential?.generation, 1)
+  assert.equal(credential?.refreshTokenHash, hashRefreshToken('uoa-refresh-1.next'))
+  assert.notEqual(credential?.refreshTokenCiphertext, 'uoa-refresh-1.next')
+  assert.equal(
+    decryptWithKey(deriveSecretKey(AUTH_SECRET), {
+      authTag: credential!.refreshTokenAuthTag,
+      ciphertext: credential!.refreshTokenCiphertext,
+      iv: credential!.refreshTokenIv,
+    }),
+    'uoa-refresh-1.next',
+  )
 })
 
-test('simultaneous refreshes converge on the same successor without revoking the family', async () => {
+test('simultaneous refreshes converge on the same local and UOA successor', async () => {
   const { fake, rawToken } = await createFixture()
   const now = new Date()
+  let upstreamCalls = 0
+  const refresh = defaultUoaRefresh(now)
+  const countedRefresh: RefreshCallback = async (input) => {
+    upstreamCalls += 1
+    return refresh(input)
+  }
 
   const [left, right] = await Promise.all([
-    consume(fake, rawToken, now),
-    consume(fake, rawToken, now),
+    consume(fake, rawToken, now, countedRefresh),
+    consume(fake, rawToken, now, countedRefresh),
   ])
 
   assert.equal(left.ok, true)
@@ -192,27 +87,194 @@ test('simultaneous refreshes converge on the same successor without revoking the
   if (!left.ok || !right.ok) return
   assert.equal(left.rawToken, right.rawToken)
   assert.deepEqual([left.replayed, right.replayed].sort(), [false, true])
+  // Concurrent callers may both reach UOA; its exact-context replay contract
+  // returns the same upstream successor and the local CAS persists it once.
+  assert.equal(upstreamCalls, 2)
   assert.equal(fake.records.size, 2)
+  assert.equal(fake.uoaCredentials.values().next().value?.generation, 1)
   assert.equal(
     Array.from(fake.records.values()).filter((record) => !record.revokedAt).length,
     1,
   )
 })
 
-test('same predecessor replay inside grace reissues its live successor', async () => {
+test('lost local commit retries the same replay-safe UOA rotation', async () => {
+  const { fake, rawToken } = await createFixture()
+  const now = new Date()
+  let upstreamCalls = 0
+  const refresh = defaultUoaRefresh(now)
+  let failCommit = true
+  const countedRefresh: RefreshCallback = async (input) => {
+    upstreamCalls += 1
+    const result = await refresh(input)
+    if (failCommit) {
+      failCommit = false
+      fake.failNextTransaction = true
+    }
+    return result
+  }
+
+  await assert.rejects(
+    consume(fake, rawToken, now, countedRefresh),
+    /simulated local commit failure/,
+  )
+  assert.equal(fake.findByHash(hashRefreshToken(rawToken))?.revokedAt, null)
+
+  const retry = await consume(fake, rawToken, now, countedRefresh)
+  assert.equal(retry.ok, true)
+  assert.equal(upstreamCalls, 2)
+})
+
+test('same predecessor replay inside grace never calls UOA again', async () => {
+  const { fake, rawToken } = await createFixture()
+  const now = new Date()
+  const rotated = await consume(fake, rawToken, now)
+  assert.equal(rotated.ok, true)
+  if (!rotated.ok) return
+  let upstreamCalls = 0
+
+  const replay = await consume(
+    fake,
+    rawToken,
+    new Date(now.getTime() + 1_000),
+    async () => {
+      upstreamCalls += 1
+      throw new Error('must not refresh upstream')
+    },
+  )
+
+  assert.equal(replay.ok, true)
+  if (!replay.ok) return
+  assert.equal(replay.replayed, true)
+  assert.deepEqual(replay.uoaIdentity, UOA_IDENTITY)
+  assert.equal(replay.rawToken, rotated.rawToken)
+  assert.equal(upstreamCalls, 0)
+})
+
+test('predecessor replay makes a concurrently held current cookie converge', async () => {
   const { fake, rawToken } = await createFixture()
   const now = new Date()
   const rotated = await consume(fake, rawToken, now)
   assert.equal(rotated.ok, true)
   if (!rotated.ok) return
 
-  const replay = await consume(fake, rawToken, new Date(now.getTime() + 1_000))
+  const predecessorResponse = await consume(
+    fake,
+    rawToken,
+    new Date(now.getTime() + 1_000),
+  )
+  let upstreamCalls = 0
+  const currentResponse = await consume(
+    fake,
+    rotated.rawToken,
+    new Date(now.getTime() + 2_000),
+    async () => {
+      upstreamCalls += 1
+      throw new Error('the replay barrier must return the current cookie')
+    },
+  )
 
+  assert.equal(predecessorResponse.ok, true)
+  assert.equal(currentResponse.ok, true)
+  if (!predecessorResponse.ok || !currentResponse.ok) return
+  assert.equal(predecessorResponse.rawToken, rotated.rawToken)
+  assert.equal(currentResponse.rawToken, rotated.rawToken)
+  assert.equal(upstreamCalls, 0)
+})
+
+test('ancestor replay adopts an in-flight UOA successor behind the local barrier', async () => {
+  const { fake, rawToken: ancestorRawToken } = await createFixture()
+  const now = new Date()
+  const first = await consume(fake, ancestorRawToken, now)
+  assert.equal(first.ok, true)
+  if (!first.ok) return
+
+  let releaseUpstream!: () => void
+  let markEntered!: () => void
+  const upstreamGate = new Promise<void>((resolve) => { releaseUpstream = resolve })
+  const entered = new Promise<void>((resolve) => { markEntered = resolve })
+  const refresh = defaultUoaRefresh(new Date(now.getTime() + 1_000))
+  const currentRotation = consume(
+    fake,
+    first.rawToken,
+    new Date(now.getTime() + 1_000),
+    async (input) => {
+      markEntered()
+      await upstreamGate
+      return refresh(input)
+    },
+  )
+  await entered
+
+  const ancestorReplay = await consume(
+    fake,
+    ancestorRawToken,
+    new Date(now.getTime() + 2_000),
+  )
+  releaseUpstream()
+  const current = await currentRotation
+
+  assert.equal(ancestorReplay.ok, true)
+  assert.equal(current.ok, true)
+  if (!ancestorReplay.ok || !current.ok) return
+  assert.equal(ancestorReplay.rawToken, first.rawToken)
+  assert.equal(current.rawToken, first.rawToken)
+  assert.equal(current.replayed, true)
+
+  const credential = fake.uoaCredentials.get(current.familyId)
+  const localCurrent = fake.findByHash(hashRefreshToken(first.rawToken))
+  assert.equal(credential?.generation, 2)
+  assert.equal(
+    credential?.refreshTokenHash,
+    hashRefreshToken('uoa-refresh-1.next.next'),
+  )
+  assert.equal(credential?.lastLocalTokenId, localCurrent?.id)
+
+  const afterBarrier = await consume(
+    fake,
+    first.rawToken,
+    new Date(now.getTime() + REFRESH_TOKEN_REPLAY_GRACE_MS + 3_000),
+  )
+  assert.equal(afterBarrier.ok, true)
+  if (afterBarrier.ok) assert.notEqual(afterBarrier.rawToken, first.rawToken)
+})
+
+test('slow upstream work starts the local replay grace at commit time', async () => {
+  const { fake, rawToken } = await createFixture()
+  const startedAt = new Date('2026-07-22T00:00:00.000Z')
+  const committedAt = new Date(
+    startedAt.getTime() + REFRESH_TOKEN_REPLAY_GRACE_MS - 1_000,
+  )
+  let clockReads = 0
+  const rotated = await consumeRefreshToken(fake.asClient(), {
+    authSecret: AUTH_SECRET,
+    advanceUoaSessionBinding: async () => undefined,
+    rawToken,
+    ttlSeconds: TTL_SECONDS,
+    clock: () => {
+      clockReads += 1
+      return clockReads === 1 ? startedAt : committedAt
+    },
+    refreshUoaSession: async (input) => ({
+      identity: input.expectedIdentity,
+      refreshToken: `${input.refreshToken}.next`,
+      refreshTokenExpiresAt: new Date(committedAt.getTime() + 86_400_000),
+    }),
+  })
+  assert.equal(rotated.ok, true)
+  if (!rotated.ok) return
+  assert.equal(
+    fake.findByHash(hashRefreshToken(rawToken))?.revokedAt?.getTime(),
+    committedAt.getTime(),
+  )
+
+  const replay = await consume(
+    fake,
+    rawToken,
+    new Date(committedAt.getTime() + 1_000),
+  )
   assert.equal(replay.ok, true)
-  if (!replay.ok) return
-  assert.equal(replay.replayed, true)
-  assert.equal(replay.rawToken, rotated.rawToken)
-  assert.equal(fake.findByHash(hashRefreshToken(rotated.rawToken))?.revokedAt, null)
+  if (replay.ok) assert.equal(replay.rawToken, rotated.rawToken)
 })
 
 test('grace replay follows verified replacements to the current live descendant', async () => {
@@ -231,10 +293,9 @@ test('grace replay follows verified replacements to the current live descendant'
   if (!replay.ok) return
   assert.equal(replay.replayed, true)
   assert.equal(replay.rawToken, second.rawToken)
-  assert.equal(fake.findByHash(hashRefreshToken(second.rawToken))?.revokedAt, null)
 })
 
-test('predecessor replay after grace revokes the current family', async () => {
+test('predecessor replay after grace revokes local and encrypted family state', async () => {
   const { fake, rawToken } = await createFixture()
   const now = new Date()
   const rotated = await consume(fake, rawToken, now)
@@ -249,6 +310,87 @@ test('predecessor replay after grace revokes the current family', async () => {
 
   assert.deepEqual(replay, { ok: false, reason: 'reuse' })
   assert.ok(Array.from(fake.records.values()).every((record) => record.revokedAt))
+  assert.equal(fake.uoaCredentials.size, 0)
+})
+
+test('expired local session erases its encrypted UOA credential', async () => {
+  const { fake, rawToken } = await createFixture()
+
+  const result = await consume(
+    fake,
+    rawToken,
+    new Date(Date.now() + (TTL_SECONDS + 1) * 1_000),
+  )
+
+  assert.deepEqual(result, { ok: false, reason: 'expired' })
+  assert.ok(Array.from(fake.records.values()).every((record) => record.revokedAt))
+  assert.equal(fake.uoaCredentials.size, 0)
+})
+
+test('transient UOA failure leaves the presented family active for retry', async () => {
+  const { fake, rawToken } = await createFixture()
+  const now = new Date()
+
+  await assert.rejects(
+    consume(fake, rawToken, now, async () => { throw new Error('temporary outage') }),
+    /temporary outage/,
+  )
+  assert.equal(fake.findByHash(hashRefreshToken(rawToken))?.revokedAt, null)
+  assert.equal(fake.uoaCredentials.size, 1)
+  assert.equal((await consume(fake, rawToken, now)).ok, true)
+})
+
+test('rejects a changed UOA binding before any local rotation', async () => {
+  const { fake, rawToken } = await createFixture()
+  const now = new Date()
+
+  await assert.rejects(
+    consume(fake, rawToken, now, async (input) => ({
+      identity: { ...input.expectedIdentity, teamId: 'different-team' },
+      refreshToken: `${input.refreshToken}.next`,
+      refreshTokenExpiresAt: new Date(now.getTime() + 60_000),
+    })),
+    UoaRefreshBindingError,
+  )
+  assert.equal(fake.findByHash(hashRefreshToken(rawToken))?.revokedAt, null)
+})
+
+test('rejects issuing a UOA family without its encrypted immutable proof', async () => {
+  const fake = new FakeRefreshTokenPrisma()
+  await assert.rejects(
+    issueRefreshToken(fake.asClient(), {
+      userId: USER_ID,
+      organizationId: ORGANIZATION_ID,
+      sessionId: SESSION_ID,
+      providerId: 'uoa',
+      providerType: 'uoa',
+      ttlSeconds: TTL_SECONDS,
+    }),
+    /UOA session does not match its provider/,
+  )
+  assert.equal(fake.records.size, 0)
+  assert.equal(fake.uoaCredentials.size, 0)
+})
+
+test('legacy UOA families without encrypted proof must sign in again', async () => {
+  const fake = new FakeRefreshTokenPrisma()
+  const rawToken = 'legacy-local-uoa-token'
+  await fake.refreshToken.create({
+    data: {
+      userId: USER_ID,
+      familyId: '00000000-0000-4000-8000-000000000003',
+      sessionId: SESSION_ID,
+      providerId: 'uoa',
+      providerType: 'uoa',
+      tokenHash: hashRefreshToken(rawToken),
+      expiresAt: new Date(Date.now() + 60_000),
+    },
+  })
+
+  await assert.rejects(
+    consume(fake, rawToken, new Date()),
+    /legacy UnlikeOtherAI session must sign in again/,
+  )
 })
 
 test('tampered replacement chain is rejected and revokes its family', async () => {
@@ -266,6 +408,7 @@ test('tampered replacement chain is rejected and revokes its family', async () =
 
   assert.deepEqual(replay, { ok: false, reason: 'reuse' })
   assert.ok(Array.from(fake.records.values()).every((record) => record.revokedAt))
+  assert.equal(fake.uoaCredentials.size, 0)
 })
 
 test('excessive replacement depth is treated as a tampered chain', async () => {
@@ -284,4 +427,5 @@ test('excessive replacement depth is treated as a tampered chain', async () => {
 
   assert.deepEqual(replay, { ok: false, reason: 'reuse' })
   assert.ok(Array.from(fake.records.values()).every((record) => record.revokedAt))
+  assert.equal(fake.uoaCredentials.size, 0)
 })

@@ -42,6 +42,7 @@ type BillingSettings = {
 export type UoaBillingSubject = {
   organizationId: string
   teamId: string
+  tokenVersion: number
   userId: string
 }
 
@@ -80,6 +81,7 @@ export class UoaBillingError extends Error {
       | 'UOA_BILLING_ACTION_UNAVAILABLE'
       | 'UOA_BILLING_CONTEXT_MISMATCH'
       | 'UOA_BILLING_FORBIDDEN'
+      | 'UOA_BILLING_REAUTH_REQUIRED'
       | 'UOA_BILLING_RESPONSE_INVALID'
       | 'UOA_BILLING_SSO_REQUIRED'
       | 'UOA_BILLING_UNCONFIGURED'
@@ -218,6 +220,7 @@ const signBillingActor = (
     product: NESSIE_PRODUCT,
     organisation_id: subject.organizationId,
     team_id: subject.teamId,
+    tv: subject.tokenVersion,
     iat: nowSeconds,
     exp: nowSeconds + BILLING_ACTOR_TTL_SECONDS,
     jti,
@@ -313,19 +316,26 @@ const requestBilling = async (
     )
   }
   if (!response.ok) {
-    const forbidden = response.status === 401 || response.status === 403
-    const safeStatus = forbidden
-      ? 403
-      : [400, 404, 409, 410, 422, 503].includes(response.status)
-        ? response.status
-        : 502
+    const reauthRequired = response.status === 401
+    const forbidden = response.status === 403
+    const relayedStatus = [400, 404, 409, 410, 422, 503].includes(
+      response.status,
+    )
+    let safeStatus = relayedStatus ? response.status : 502
+    let code: UoaBillingError['code'] = 'UOA_BILLING_UPSTREAM_REJECTED'
+    let message = `UnlikeOtherAI billing rejected the request with status ${response.status}.`
+    if (reauthRequired) {
+      safeStatus = 401
+      code = 'UOA_BILLING_REAUTH_REQUIRED'
+      message = 'UnlikeOtherAI requires this session to renew before billing can continue.'
+    } else if (forbidden) {
+      safeStatus = 403
+      code = 'UOA_BILLING_FORBIDDEN'
+      message = 'UnlikeOtherAI rejected this billing action.'
+    }
     throw new UoaBillingError(
-      forbidden
-        ? 'UOA_BILLING_FORBIDDEN'
-        : 'UOA_BILLING_UPSTREAM_REJECTED',
-      forbidden
-        ? 'UnlikeOtherAI rejected this billing action.'
-        : `UnlikeOtherAI billing rejected the request with status ${response.status}.`,
+      code,
+      message,
       safeStatus,
     )
   }
@@ -372,9 +382,10 @@ export const createUoaBillingClient = async (
     throw error
   }
   const subject = {
-    organizationId: workspace.identity.organizationId,
-    teamId: workspace.identity.teamId,
-    userId: workspace.identity.subject,
+    organizationId: workspace.sessionIdentity.organizationId,
+    teamId: workspace.sessionIdentity.teamId,
+    tokenVersion: workspace.sessionIdentity.tokenVersion,
+    userId: workspace.sessionIdentity.subject,
   }
   return clientForSubject(settings, subject, deps)
 }

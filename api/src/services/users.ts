@@ -3,6 +3,11 @@ import type { MemberRole, Prisma, PrismaClient, User } from '@prisma/client'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
 import type { UserRecord } from '../contracts.js'
 import { buildGravatarUrl } from '../lib/gravatar.js'
+import { revokeUserRefreshFamilies } from './refresh-session-management.js'
+import {
+  AUTH_LOCK_TRANSACTION_OPTIONS,
+  lockUserSessions,
+} from './user-session-lock.js'
 import { resolveActiveStatus, type StatusWithRelations } from './user-statuses.js'
 
 const mapUserRecord = (record: {
@@ -193,6 +198,7 @@ export const setOrganizationMemberDeactivated = async (
   input: { organizationId: string; userId: string; deactivated: boolean },
 ): Promise<void> => {
   await prisma.$transaction(async (transaction) => {
+    await lockUserSessions(transaction, input.userId)
     if (input.deactivated) {
       await assertNotLastOwner(transaction, input.organizationId, input.userId)
     }
@@ -204,12 +210,11 @@ export const setOrganizationMemberDeactivated = async (
     })
 
     if (input.deactivated) {
-      await transaction.refreshToken.updateMany({
-        where: { userId: input.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+      await revokeUserRefreshFamilies(transaction, {
+        userId: input.userId,
       })
     }
-  })
+  }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 
 export const createUserForOrganization = async (

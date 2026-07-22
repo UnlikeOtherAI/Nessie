@@ -140,7 +140,14 @@ is rejected at the identity adapter boundary before any resource logic runs.
 
 Refresh tokens are opaque and must be stored server-side (encrypted at rest
 in Postgres, never exposed to the browser). Refresh is performed via the
-same `/auth/token` endpoint with grant type `refresh_token`.
+same `/auth/token?config_url=<exact-issued-config-url>` endpoint with body
+`{"grant_type":"refresh_token","refresh_token":"<opaque>"}` and the same
+domain/client-secret hash bearer. A relying product binds the returned token to
+the original subject, active organization, active team, and nonnegative `tv`
+epoch. Rotation must be replay-safe for a lost success response: retrying the
+same predecessor in UOA's grace window returns the same successor. The product
+commits its own local successor only after validating that exact tuple and a
+nondecreasing epoch; transient failures preserve the predecessor for retry.
 
 ### 8. Logout / revocation
 

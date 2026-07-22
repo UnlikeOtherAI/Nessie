@@ -258,7 +258,16 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   dispatch also carries a fresh RS256 `X-Nessie-Context` (non-null
   user/org/team/agent/run)
   and the linked user's short-lived `X-UOA-Delegation`, obtained through UOA
-  token exchange. Ledger therefore authenticates Nessie independently from the
+  token exchange. New renewable UOA sessions require a nonnegative `tv`
+  authentication epoch and bind immutable `{sub, org, team, tv}` proof into the
+  Nessie access session and refresh family. UOA's opaque refresh credential is
+  AES-256-GCM encrypted server-side; the browser receives only Nessie's
+  unrelated rotating cookie. Delegation assertions/caches and billing
+  `X-UOA-Actor` use that session proof and require exact equality with the live
+  product-link mirror and selected team. PostgreSQL family/user locks serialize
+  rotation, replay, issuance, security revocation, and encrypted-credential
+  erasure across API replicas; first-workspace creation is exact-workspace
+  locked and product-link epochs cannot regress. Ledger therefore authenticates Nessie independently from the
   human whose research and raw usage it attributes. Setting
   `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` applies the
   same signed attribution to all model and embedding calls; runtime routing

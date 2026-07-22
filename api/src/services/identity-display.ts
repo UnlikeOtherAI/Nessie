@@ -12,6 +12,7 @@ export type ExternalAuthIdentity = {
   displayName: string
   email: string
   externalSubject?: string
+  uoaTokenVersion?: number
   workspace?: ExternalAuthWorkspace
 }
 

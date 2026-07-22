@@ -677,6 +677,7 @@ model User {
   statuses            UserStatus[]
   feedback            Feedback[]
   refreshTokens       RefreshToken[]
+  uoaSessionCredentials UoaSessionCredential[]
   productAccountLinks ProductAccountLink[]
   productTeamEnablements ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
@@ -702,13 +703,44 @@ model RefreshToken {
   expiresAt    DateTime  @map("expires_at")
   revokedAt    DateTime? @map("revoked_at")
   replacedById String?   @map("replaced_by_id") @db.Uuid
+  replayProtectedUntil DateTime? @map("replay_protected_until") @db.Timestamptz(6)
   userAgent    String?   @map("user_agent")
   createdAt    DateTime  @default(now()) @map("created_at")
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  uoaSessionCredential UoaSessionCredential? @relation("UoaSessionLocalToken")
 
   @@index([userId])
   @@index([familyId])
   @@map("refresh_tokens")
+}
+
+/// Server-side UOA refresh state bound to one Nessie refresh-token family.
+/// The opaque UOA credential is AES-256-GCM encrypted; its hash supports an
+/// exact compare-and-swap without persisting plaintext. `lastLocalTokenId`
+/// couples every upstream rotation to one deterministic local successor.
+model UoaSessionCredential {
+  familyId              String   @id @map("family_id") @db.Uuid
+  userId                String   @map("user_id") @db.Uuid
+  providerId            String   @map("provider_id")
+  subject               String   @map("subject")
+  organizationId        String   @map("organization_id")
+  teamId                 String   @map("team_id")
+  tokenVersion           Int      @map("token_version")
+  configUrl              String   @map("config_url")
+  refreshTokenHash       String   @unique @map("refresh_token_hash")
+  refreshTokenCiphertext String   @map("refresh_token_ciphertext")
+  refreshTokenIv         String   @map("refresh_token_iv")
+  refreshTokenAuthTag    String   @map("refresh_token_auth_tag")
+  refreshTokenExpiresAt  DateTime @map("refresh_token_expires_at") @db.Timestamptz(6)
+  lastLocalTokenId       String   @unique @map("last_local_token_id") @db.Uuid
+  generation             Int      @default(0)
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastLocalToken         RefreshToken @relation("UoaSessionLocalToken", fields: [lastLocalTokenId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("uoa_session_credentials")
 }
 
 model Organization {
@@ -787,6 +819,7 @@ model ProductAccountLink {
   userId            String                   @map("user_id") @db.Uuid
   productSlug       String                   @map("product_slug")
   uoaSub            String?                  @map("uoa_sub")
+  uoaTokenVersion   Int?                     @map("uoa_token_version")
   externalAccountId String?                  @map("external_account_id")
   activeOrgId       String?                  @map("active_org_id")
   activeTeamId      String?                  @map("active_team_id")

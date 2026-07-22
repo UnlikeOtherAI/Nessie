@@ -140,8 +140,6 @@ const resolveRecipientUserIds = async (
 ): Promise<Array<{ activeTeamId: string; userId: string }>> => {
   const links = await prisma.productAccountLink.findMany({
     where: {
-      activeOrgId: team.externalOrgId,
-      activeTeamId: team.externalTeamId,
       organizationId,
       productSlug: DEEPSIGNAL_SLUG,
       status: 'linked',
@@ -155,11 +153,12 @@ const resolveRecipientUserIds = async (
         },
       },
     },
-    select: { activeTeamId: true, userId: true },
+    select: { userId: true },
   })
-  return links.flatMap((link) =>
-    link.activeTeamId ? [{ activeTeamId: link.activeTeamId, userId: link.userId }] : [],
-  )
+  return links.map((link) => ({
+    activeTeamId: team.externalTeamId,
+    userId: link.userId,
+  }))
 }
 
 const deliverToUser = async (

@@ -363,7 +363,7 @@ export const listPolicyRules = async (
 }
 
 export const createPolicyRule = async (
-  prisma: PrismaClient,
+  prisma: Pick<PrismaClient, 'policyRule'>,
   input: {
     organizationId: string
     scope: PolicyScope
@@ -474,7 +474,7 @@ export const removePolicyBinding = async (
 // ─── Default seed policies ──────────────────────────────────────────────────
 
 const ensureAgentBindDefaultPolicies = async (
-  prisma: PrismaClient,
+  prisma: Pick<PrismaClient, 'policyRule'>,
   organizationId: string,
   createdBy: string,
 ): Promise<void> => {
@@ -529,7 +529,7 @@ const ensureAgentBindDefaultPolicies = async (
 // provider, not here. Idempotent so it also backfills existing organizations on
 // startup.
 const ensureKnowledgeDefaultPolicies = async (
-  prisma: PrismaClient,
+  prisma: Pick<PrismaClient, 'policyRule'>,
   organizationId: string,
   createdBy: string,
 ): Promise<void> => {
@@ -575,7 +575,7 @@ const ensureKnowledgeDefaultPolicies = async (
 }
 
 export const seedDefaultPolicies = async (
-  prisma: PrismaClient,
+  prisma: Pick<PrismaClient, 'policyRule'>,
   organizationId: string,
   createdBy: string,
 ) => {

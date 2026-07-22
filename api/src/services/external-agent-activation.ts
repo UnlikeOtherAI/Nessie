@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   McpTransportConfigSchema,
   type AuthorizedActionContext,
+  type UoaSessionIdentity,
 } from '@nessie/schemas'
 import { createInstance, type McpInstanceRow } from '@nessie/mcp-manage'
 import {
@@ -125,6 +126,7 @@ const assertLinkedSsoIdentity = async (
     teamId: string
     userId: string
     productSlug: string
+    sessionIdentity: UoaSessionIdentity | undefined
     externalOrgId: string
     externalTeamId: string
   },
@@ -139,10 +141,9 @@ const assertLinkedSsoIdentity = async (
         },
       },
       select: {
-        activeOrgId: true,
-        activeTeamId: true,
         status: true,
         uoaSub: true,
+        uoaTokenVersion: true,
       },
     }),
     prisma.team.findFirst({
@@ -171,17 +172,19 @@ const assertLinkedSsoIdentity = async (
   if (
     link?.status !== 'linked'
     || !link.uoaSub
-    || !link.activeOrgId
-    || !link.activeTeamId
-    || link.activeOrgId !== team.externalOrgId
-    || link.activeTeamId !== team.externalWorkspaceId
+    || !input.sessionIdentity
+    || input.sessionIdentity.tokenVersion === null
+    || link.uoaSub !== input.sessionIdentity.subject
+    || link.uoaTokenVersion !== input.sessionIdentity.tokenVersion
+    || input.sessionIdentity.organizationId !== team.externalOrgId
+    || input.sessionIdentity.teamId !== team.externalWorkspaceId
   ) {
     throw new ExternalAgentActivationError(
       EXTERNAL_AGENT_ACTIVATION_ERROR_CODES.SSO_LINK_REQUIRED,
       'Sign in to Nessie with UnlikeOtherAI SSO and select an active organization/team first.',
     )
   }
-  return { workspaceId: link.activeTeamId }
+  return { workspaceId: input.sessionIdentity.teamId }
 }
 
 type CatalogEntry = {
@@ -292,6 +295,7 @@ export const activateExternalAgentProduct = async (
     teamId,
     userId: ctx.userId,
     productSlug: product.slug,
+    sessionIdentity: ctx.actorContext.actionContext.uoaIdentity,
     externalOrgId: enabledWorkspace.externalOrgId,
     externalTeamId: enabledWorkspace.externalTeamId,
   })

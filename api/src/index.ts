@@ -34,7 +34,10 @@ import {
 import { sendApiError } from './lib/api.js'
 import { createRealtimeHub } from './realtime/hub.js'
 import { seedDefaultPolicies } from './services/policy.js'
-import { sweepExpiredApprovals } from './services/approvals.js'
+import {
+  runRefreshCredentialSweep,
+  startApiMaintenance,
+} from './services/api-maintenance.js'
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 import { createThoughtService } from './services/thoughts.js'
 import { runKnowledgeInferenceRequestContext } from './services/knowledge-inference-origin.js'
@@ -449,19 +452,9 @@ export const buildApp = async () => {
     encryptionSecret: authSecret ?? '',
   })
 
-  // ─── Phase 2: Approval sweep (periodic) ─────────────────────────────────
-
-  // Run approval expiry sweep every 60 seconds
-  const approvalSweepInterval = setInterval(async () => {
-    try {
-      await sweepExpiredApprovals(prisma)
-    } catch {
-      console.error('[approval-sweep] Failed to sweep expired approvals')
-    }
-  }, 60_000)
-
+  const stopApiMaintenance = startApiMaintenance(prisma)
   app.addHook('onClose', () => {
-    clearInterval(approvalSweepInterval)
+    stopApiMaintenance()
   })
 
   return app
@@ -469,6 +462,7 @@ export const buildApp = async () => {
 
 export const startApiServer = async () => {
   const app = await buildApp()
+  await runRefreshCredentialSweep(prisma, true)
   const initialBootstrapState = await resolveBootstrapState()
   if (initialBootstrapState) {
     logBootstrapUrl(initialBootstrapState)

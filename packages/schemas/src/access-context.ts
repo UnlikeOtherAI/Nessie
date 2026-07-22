@@ -36,6 +36,14 @@ export const TenantContextSchema = z.object({
 })
 export type TenantContext = z.infer<typeof TenantContextSchema>
 
+export const UoaSessionIdentitySchema = z.object({
+  subject: NonEmptyStringSchema,
+  organizationId: NonEmptyStringSchema,
+  teamId: NonEmptyStringSchema,
+  tokenVersion: z.number().int().nonnegative().nullable(),
+})
+export type UoaSessionIdentity = z.infer<typeof UoaSessionIdentitySchema>
+
 export const ActionContextSchema = z.object({
   teamId: TeamIdSchema.optional(),
   channelId: ChannelIdSchema.optional(),
@@ -48,6 +56,7 @@ export const ActionContextSchema = z.object({
   requestId: NonEmptyStringSchema,
   correlationId: NonEmptyStringSchema.optional(),
   purpose: z.string().optional(),
+  uoaIdentity: UoaSessionIdentitySchema.optional(),
 })
 export type ActionContext = z.infer<typeof ActionContextSchema>
 

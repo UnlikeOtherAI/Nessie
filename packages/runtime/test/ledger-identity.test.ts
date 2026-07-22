@@ -45,6 +45,12 @@ const attribution: LedgerAttribution = {
   actorType: 'agent',
   requestId: 'request-1',
   correlationId: 'correlation-1',
+  uoaIdentity: {
+    organizationId: 'uoa-org',
+    subject: 'uoa-user',
+    teamId: 'uoa-team',
+    tokenVersion: 7,
+  },
 }
 
 const decodeClaims = (token: string): Record<string, unknown> => {
@@ -65,21 +71,31 @@ const verifySignature = (token: string): boolean => {
   )
 }
 
-const delegationToken = (): string => {
-  const claims = Buffer.from(JSON.stringify({ exp: 2_000_000_300 }))
+const delegationToken = (tokenVersion: number | undefined = 7): string => {
+  const claims = Buffer.from(JSON.stringify({
+    exp: 2_000_000_300,
+    ...(tokenVersion === undefined ? {} : { tv: tokenVersion }),
+  }))
     .toString('base64url')
   return `header.${claims}.signature`
 }
 
-test('signs Nessie context and exchanges a cached UOA delegation', async () => {
+test('delegates from signed workspace despite different last-seen link metadata', async () => {
   const exchanges: Array<{ body: Record<string, unknown>; init: RequestInit; url: string }> = []
   const prisma = {
     productAccountLink: {
       findUnique: async () => ({
-        activeOrgId: 'uoa-org',
-        activeTeamId: 'uoa-team',
+        activeOrgId: 'last-seen-other-org',
+        activeTeamId: 'last-seen-other-team',
         status: 'linked',
         uoaSub: 'uoa-user',
+        uoaTokenVersion: 7,
+      }),
+    },
+    team: {
+      findFirst: async () => ({
+        externalOrgId: 'uoa-org',
+        externalWorkspaceId: 'uoa-team',
       }),
     },
   }
@@ -137,6 +153,7 @@ test('signs Nessie context and exchanges a cached UOA delegation', async () => {
     aud: 'https://authentication.unlikeotherai.com/auth/token',
     sub: 'uoa-user',
     source_domain: 'api.nessie.works',
+    tv: 7,
     active: { orgId: 'uoa-org', teamId: 'uoa-team' },
     iat: 2_000_000_000,
     exp: 2_000_000_060,
@@ -171,6 +188,52 @@ test('signs Nessie context and exchanges a cached UOA delegation', async () => {
     exp: 2_000_000_300,
     jti: decodeClaims(context).jti,
   })
+})
+
+test('separates delegation cache entries across UOA token versions', async () => {
+  let tokenVersion = 7
+  const assertions: Record<string, unknown>[] = []
+  const service = createLedgerIdentityService({
+    prisma: {
+      productAccountLink: {
+        findUnique: async () => ({
+          activeOrgId: 'uoa-org',
+          activeTeamId: 'uoa-team',
+          status: 'linked',
+          uoaSub: 'uoa-user',
+          uoaTokenVersion: tokenVersion,
+        }),
+      },
+      team: {
+        findFirst: async () => ({
+          externalOrgId: 'uoa-org',
+          externalWorkspaceId: 'uoa-team',
+        }),
+      },
+    } as never,
+    settings,
+    fetchImpl: (async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { subject_token: string }
+      assertions.push(decodeClaims(body.subject_token))
+      return new Response(JSON.stringify({
+        access_token: delegationToken(tokenVersion),
+        expires_in: 300,
+      }))
+    }) as typeof fetch,
+    now: () => 2_000_000_000_000,
+  })
+
+  await service.requestHeaders(attribution, { requireUoaIdentity: true })
+  tokenVersion = 8
+  await service.requestHeaders({
+    ...attribution,
+    uoaIdentity: {
+      ...attribution.uoaIdentity!,
+      tokenVersion: 8,
+    },
+  }, { requireUoaIdentity: true })
+
+  assert.deepEqual(assertions.map((claims) => claims.tv), [7, 8])
 })
 
 test('requires a linked SSO subject for DeepWater', async () => {
@@ -308,8 +371,7 @@ test('uses attribution tool-call identity when no explicit override is supplied'
   )
 })
 
-test('omits absent active workspace claims while still delegating the stable UOA user', async () => {
-  let assertionClaims: Record<string, unknown> | null = null
+test('rejects a legacy local session that has no immutable UOA proof', async () => {
   const service = createLedgerIdentityService({
     prisma: {
       productAccountLink: {
@@ -318,28 +380,50 @@ test('omits absent active workspace claims while still delegating the stable UOA
           activeTeamId: null,
           status: 'linked',
           uoaSub: 'uoa-user',
+          uoaTokenVersion: 7,
         }),
       },
     } as never,
     settings,
-    fetchImpl: (async (_input, init) => {
-      const body = JSON.parse(String(init?.body)) as { subject_token: string }
-      assertionClaims = decodeClaims(body.subject_token)
-      return new Response(JSON.stringify({
-        access_token: delegationToken(),
-        expires_in: 300,
-      }))
-    }) as typeof fetch,
     now: () => 2_000_000_000_000,
   })
 
-  const headers = await service.requestHeaders(
-    attribution,
-    { requireUoaIdentity: true },
+  await assert.rejects(
+    service.requestHeaders(
+      { ...attribution, uoaIdentity: undefined },
+      { requireUoaIdentity: true },
+    ),
+    (error: unknown) =>
+      error instanceof LedgerIdentityError
+      && error.code === 'LEDGER_UOA_IDENTITY_REQUIRED',
   )
-  assert.equal(headers['X-UOA-Delegation'], delegationToken())
-  assert.ok(assertionClaims)
-  assert.equal('active' in assertionClaims, false)
+})
+
+test('rejects a legacy UOA proof that has no credential epoch', async () => {
+  const service = createLedgerIdentityService({
+    prisma: {
+      productAccountLink: {
+        findUnique: async () => ({
+          activeOrgId: 'uoa-org',
+          activeTeamId: 'uoa-team',
+          status: 'linked',
+          uoaSub: 'uoa-user',
+          uoaTokenVersion: null,
+        }),
+      },
+    } as never,
+    settings,
+  })
+
+  await assert.rejects(
+    service.requestHeaders({
+      ...attribution,
+      uoaIdentity: { ...attribution.uoaIdentity!, tokenVersion: null },
+    }, { requireUoaIdentity: true }),
+    (error: unknown) =>
+      error instanceof LedgerIdentityError
+      && error.code === 'LEDGER_UOA_IDENTITY_REQUIRED',
+  )
 })
 
 test('does not delegate a revoked product link', async () => {
@@ -351,6 +435,13 @@ test('does not delegate a revoked product link', async () => {
           activeTeamId: 'uoa-team',
           status: 'revoked',
           uoaSub: 'uoa-user',
+          uoaTokenVersion: 7,
+        }),
+      },
+      team: {
+        findFirst: async () => ({
+          externalOrgId: 'uoa-org',
+          externalWorkspaceId: 'uoa-team',
         }),
       },
     } as never,
@@ -363,47 +454,6 @@ test('does not delegate a revoked product link', async () => {
       error instanceof LedgerIdentityError
       && error.code === 'LEDGER_UOA_IDENTITY_REQUIRED',
   )
-})
-
-test('requests and caches the exact billing.read delegation separately', async () => {
-  const scopes: unknown[] = []
-  const service = createLedgerIdentityService({
-    prisma: {
-      productAccountLink: {
-        findUnique: async () => ({
-          activeOrgId: 'uoa-org',
-          activeTeamId: 'uoa-team',
-          status: 'linked',
-          uoaSub: 'uoa-user',
-        }),
-      },
-    } as never,
-    settings,
-    fetchImpl: (async (_input, init) => {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
-      scopes.push(body.scope)
-      return new Response(JSON.stringify({
-        access_token: delegationToken(),
-        expires_in: 300,
-      }))
-    }) as typeof fetch,
-    now: () => 2_000_000_000_000,
-  })
-
-  await service.requestHeaders(attribution, {
-    delegationScope: 'billing.read',
-    requireUoaIdentity: true,
-  })
-  await service.requestHeaders(attribution, {
-    delegationScope: 'billing.read',
-    requireUoaIdentity: true,
-  })
-  await service.requestHeaders(attribution, {
-    delegationScope: 'ai.invoke',
-    requireUoaIdentity: true,
-  })
-
-  assert.deepEqual(scopes, ['billing.read', 'ai.invoke'])
 })
 
 test('loads existing UOA signing settings without introducing a client id', () => {

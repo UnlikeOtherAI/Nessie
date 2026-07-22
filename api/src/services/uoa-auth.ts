@@ -1,11 +1,6 @@
 import crypto from 'node:crypto'
 
 import type { SsoTheme } from '../contracts/auth.js'
-import {
-  resolveIdentityDisplayName,
-  type ExternalAuthIdentity,
-  type ExternalAuthWorkspace,
-} from './identity-display.js'
 
 /**
  * UnlikeOtherAuthenticator (UOA) integration — the config-JWT auto-onboarding
@@ -61,7 +56,7 @@ const DEFAULT_SSO_THEME = 'sandstone' satisfies SsoTheme
 // Mirrors the admin theme tokens for the hosted-login surface. UOA cannot read
 // Nessie's CSS variables, so the selected palette is passed through the config
 // JWT as concrete color values.
-const UOA_SIGN_IN_THEMES = {
+export const UOA_SIGN_IN_THEMES = {
   nebula: {
     colors: {
       primary: '#7c3aed',
@@ -197,7 +192,7 @@ const UOA_SIGN_IN_THEMES = {
 const resolveUoaSignInTheme = (theme?: SsoTheme): { colors: UoaSignInThemeColors } =>
   UOA_SIGN_IN_THEMES[theme ?? DEFAULT_SSO_THEME]
 
-const themedConfigUrl = (settings: UoaSettings, theme?: SsoTheme): string => {
+export const themedConfigUrl = (settings: UoaSettings, theme?: SsoTheme): string => {
   const configUrl = new URL(settings.configUrl)
   if (theme) {
     configUrl.searchParams.set('theme', theme)
@@ -262,7 +257,7 @@ const allowedRedirectUrls = (settings: UoaSettings): string[] => [
   DESKTOP_REDIRECT_URL,
 ]
 
-const ensureAllowedRedirectUrl = (settings: UoaSettings, redirectUri: string): void => {
+export const ensureAllowedRedirectUrl = (settings: UoaSettings, redirectUri: string): void => {
   if (!new Set(allowedRedirectUrls(settings)).has(redirectUri)) {
     throw new Error(`[uoa] redirect_url is not allowed: ${redirectUri}`)
   }
@@ -316,7 +311,7 @@ export const buildPublicJwks = (settings: UoaSettings): { keys: Record<string, u
 }
 
 /** SHA256(domain + clientSecret) hex — UOA's bearer credential for token exchange. */
-const clientHash = (settings: UoaSettings): string =>
+export const clientHash = (settings: UoaSettings): string =>
   crypto.createHash('sha256').update(settings.domain + settings.clientSecret).digest('hex')
 
 /**
@@ -338,144 +333,4 @@ export const buildUoaAuthorizeUrl = (input: {
   url.searchParams.set('code_challenge', input.codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
   return url.toString()
-}
-
-type UoaTokenResponse = { access_token?: string }
-
-const trimString = (value: unknown): string | undefined => {
-  if (typeof value !== 'string') {
-    return undefined
-  }
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : undefined
-}
-
-const stringArray = (value: unknown): string[] => {
-  if (!Array.isArray(value)) {
-    return []
-  }
-  return value
-    .map(trimString)
-    .filter((item): item is string => Boolean(item))
-}
-
-const stringRecord = (value: unknown): Record<string, string> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {}
-  }
-
-  const entries = Object.entries(value)
-    .map(([key, item]) => [trimString(key), trimString(item)] as const)
-    .filter((entry): entry is readonly [string, string] => Boolean(entry[0]) && Boolean(entry[1]))
-  return Object.fromEntries(entries)
-}
-
-const decodeJwtClaims = (token: string): Record<string, unknown> => {
-  const segment = token.split('.')[1]
-  if (!segment) {
-    throw new Error('[uoa] access token is not a JWT')
-  }
-  return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as Record<string, unknown>
-}
-
-const parseUoaWorkspace = (claims: Record<string, unknown>): ExternalAuthWorkspace | undefined => {
-  const orgClaim = claims.org
-  const activeClaim = claims.active
-  const org = orgClaim && typeof orgClaim === 'object' && !Array.isArray(orgClaim)
-    ? orgClaim as Record<string, unknown>
-    : undefined
-  const active = activeClaim && typeof activeClaim === 'object' && !Array.isArray(activeClaim)
-    ? activeClaim as Record<string, unknown>
-    : undefined
-
-  const workspace: ExternalAuthWorkspace = {
-    teamIds: stringArray(org?.teams),
-    teamRoles: stringRecord(org?.team_roles),
-  }
-  const activeOrgId = trimString(active?.orgId)
-  const activeTeamId = trimString(active?.teamId)
-  const orgId = trimString(org?.org_id)
-  const orgRole = trimString(org?.org_role)
-
-  if (activeOrgId) workspace.activeOrgId = activeOrgId
-  if (activeTeamId) workspace.activeTeamId = activeTeamId
-  if (orgId) workspace.orgId = orgId
-  if (orgRole) workspace.orgRole = orgRole
-
-  if (
-    !workspace.activeOrgId &&
-    !workspace.activeTeamId &&
-    !workspace.orgId &&
-    !workspace.orgRole &&
-    workspace.teamIds.length === 0 &&
-    Object.keys(workspace.teamRoles).length === 0
-  ) {
-    return undefined
-  }
-  return workspace
-}
-
-export const resolveUoaIdentityFromAccessToken = (accessToken: string): ExternalAuthIdentity => {
-  const claims = decodeJwtClaims(accessToken)
-  const email = trimString(claims.email)?.toLowerCase() ?? ''
-  if (!email) {
-    throw new Error('[uoa] access token did not carry an email claim')
-  }
-  const name = trimString(claims.name)
-  const preferredUsername = trimString(claims.preferred_username)
-
-  const identity: ExternalAuthIdentity = {
-    displayName: resolveIdentityDisplayName(email, [name, preferredUsername]),
-    email,
-  }
-  const externalSubject = trimString(claims.sub)
-  const workspace = parseUoaWorkspace(claims)
-  if (externalSubject) identity.externalSubject = externalSubject
-  if (workspace) identity.workspace = workspace
-  return identity
-}
-
-/**
- * Exchange the authorization code for tokens and resolve the user identity from
- * the access-token claims.
- */
-export const exchangeUoaCode = async (input: {
-  code: string
-  codeVerifier: string
-  redirectUri: string
-  theme?: SsoTheme
-}): Promise<ExternalAuthIdentity> => {
-  const settings = loadUoaSettings()
-  ensureAllowedRedirectUrl(settings, input.redirectUri)
-
-  if (!settings.clientSecret) {
-    throw new Error('[uoa] UOA_CLIENT_SECRET is not set — approve the integration and configure the secret')
-  }
-
-  const tokenUrl = new URL(`${settings.baseUrl}/auth/token`)
-  tokenUrl.searchParams.set('config_url', themedConfigUrl(settings, input.theme))
-
-  const response = await fetch(tokenUrl.toString(), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${clientHash(settings)}`,
-    },
-    body: JSON.stringify({
-      code: input.code,
-      redirect_url: input.redirectUri,
-      code_verifier: input.codeVerifier,
-    }),
-  })
-  if (!response.ok) {
-    throw new Error(`[uoa] token endpoint returned ${response.status}`)
-  }
-
-  const payload = (await response.json()) as UoaTokenResponse
-  if (!payload.access_token) {
-    throw new Error('[uoa] token response missing access_token')
-  }
-
-  return resolveUoaIdentityFromAccessToken(payload.access_token)
 }

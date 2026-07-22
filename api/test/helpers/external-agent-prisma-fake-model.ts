@@ -83,6 +83,7 @@ export type AccountLink = {
   uoaSub: string | null
   activeOrgId: string | null
   activeTeamId: string | null
+  uoaTokenVersion: number | null
 }
 
 export type ExternalAgentFakeSeed = {

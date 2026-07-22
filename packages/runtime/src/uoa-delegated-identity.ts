@@ -18,6 +18,7 @@ type IdentityLink = {
   activeTeamId: string | null
   status: string
   uoaSub: string | null
+  uoaTokenVersion: number | null
 }
 
 type UoaIdentityPrisma = Pick<PrismaClient, 'productAccountLink' | 'team'>
@@ -44,6 +45,7 @@ export type UoaProductIdentity = {
   organizationId: string | null
   subject: string
   teamId: string | null
+  tokenVersion: number
 }
 
 export type UoaDelegatedIdentityService = {
@@ -133,6 +135,36 @@ const decodeJwtExpiry = (token: string, fallback: number): number => {
   }
 }
 
+const decodeJwtTokenVersion = (token: string): number | undefined => {
+  const payload = token.split('.')[1]
+  if (!payload) {
+    throw new UoaDelegatedIdentityError(
+      'UOA_TOKEN_EXCHANGE_FAILED',
+      'UOA delegation exchange returned an invalid access token.',
+    )
+  }
+  try {
+    const claims = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    ) as { tv?: unknown }
+    if (claims.tv === undefined) return undefined
+    if (
+      typeof claims.tv !== 'number'
+      || !Number.isSafeInteger(claims.tv)
+      || claims.tv < 0
+    ) {
+      throw new Error('invalid token version')
+    }
+    return claims.tv
+  } catch (error) {
+    if (error instanceof UoaDelegatedIdentityError) throw error
+    throw new UoaDelegatedIdentityError(
+      'UOA_TOKEN_EXCHANGE_FAILED',
+      'UOA delegation exchange returned an invalid access token.',
+    )
+  }
+}
+
 const resolveUserId = (attribution: LedgerAttribution): string | null =>
   attribution.userId
   ?? (attribution.actorType === 'user' ? attribution.actorId : null)
@@ -218,7 +250,7 @@ const buildNessieContext = (
 
 const buildSubjectAssertion = (
   settings: UoaDelegatedIdentitySettings,
-  link: IdentityLink & { uoaSub: string },
+  link: IdentityLink & { uoaSub: string; uoaTokenVersion: number },
   nowSeconds: number,
 ): string =>
   signJwt(settings, {
@@ -226,6 +258,7 @@ const buildSubjectAssertion = (
     aud: `${settings.authBaseUrl}/auth/token`,
     sub: link.uoaSub,
     source_domain: settings.sourceDomain,
+    tv: link.uoaTokenVersion,
     ...(link.activeOrgId && link.activeTeamId
       ? {
           active: {
@@ -245,7 +278,8 @@ export const loadUoaProductIdentity = async (
   productSlug: string,
 ): Promise<UoaProductIdentity | null> => {
   const userId = resolveUserId(attribution)
-  if (!userId) return null
+  const sessionIdentity = attribution.uoaIdentity
+  if (!userId || !sessionIdentity) return null
   const link = await prisma.productAccountLink.findUnique({
     where: {
       organizationId_userId_productSlug: {
@@ -255,19 +289,24 @@ export const loadUoaProductIdentity = async (
       },
     },
     select: {
-      activeOrgId: true,
-      activeTeamId: true,
       status: true,
       uoaSub: true,
+      uoaTokenVersion: true,
     },
   })
-  if (link?.status !== 'linked' || !link.uoaSub) {
+  if (
+    link?.status !== 'linked'
+    || sessionIdentity.tokenVersion === null
+    || link.uoaSub !== sessionIdentity.subject
+    || (link.uoaTokenVersion ?? null) !== sessionIdentity.tokenVersion
+  ) {
     return null
   }
   return {
-    organizationId: link.activeOrgId,
-    subject: link.uoaSub,
-    teamId: link.activeTeamId,
+    organizationId: sessionIdentity.organizationId,
+    subject: sessionIdentity.subject,
+    teamId: sessionIdentity.teamId,
+    tokenVersion: sessionIdentity.tokenVersion,
   }
 }
 
@@ -287,6 +326,7 @@ const delegationCacheKey = (
     identity.subject,
     identity.organizationId,
     identity.teamId,
+    identity.tokenVersion,
   ].join(':')
 
 export const createUoaDelegatedIdentityService = (input: {
@@ -317,6 +357,7 @@ export const createUoaDelegatedIdentityService = (input: {
       activeTeamId: identity.teamId,
       status: 'linked',
       uoaSub: identity.subject,
+      uoaTokenVersion: identity.tokenVersion,
     }, nowSeconds)
     const clientHash = crypto
       .createHash('sha256')
@@ -355,6 +396,13 @@ export const createUoaDelegatedIdentityService = (input: {
         'UOA delegation exchange returned no access token.',
       )
     }
+    const returnedTokenVersion = decodeJwtTokenVersion(body.access_token)
+    if (returnedTokenVersion !== identity.tokenVersion) {
+      throw new UoaDelegatedIdentityError(
+        'UOA_TOKEN_EXCHANGE_FAILED',
+        'UOA delegation exchange returned an access token for a different credential epoch.',
+      )
+    }
     const fallbackExpiry =
       nowSeconds
       + (typeof body.expires_in === 'number' ? body.expires_in : CONTEXT_TTL_SECONDS)
@@ -370,24 +418,29 @@ export const createUoaDelegatedIdentityService = (input: {
       const completeAttribution = completeLedgerAttribution(attribution)
       const audience = normalizeAudience(options.audience)
       const nowSeconds = Math.floor(now() / 1000)
-      const identity = await loadUoaProductIdentity(
+      const linkedIdentity = await loadUoaProductIdentity(
         input.prisma,
         completeAttribution,
         options.accountLinkProductSlug,
       )
-      if (options.requireUoaIdentity && !identity) {
+      const workspaceMatches = linkedIdentity
+        ? await activeWorkspaceMatchesAttribution(
+          input.prisma,
+          completeAttribution,
+          linkedIdentity,
+        )
+        : false
+      const identity = workspaceMatches ? linkedIdentity : null
+      if (options.requireUoaIdentity && !linkedIdentity) {
         throw new UoaDelegatedIdentityError(
           'UOA_IDENTITY_REQUIRED',
           `A linked UnlikeOtherAI SSO identity is required for ${options.accountLinkProductSlug}.`,
         )
       }
       if (
-        options.requireActiveWorkspace
-        && !(await activeWorkspaceMatchesAttribution(
-          input.prisma,
-          completeAttribution,
-          identity,
-        ))
+        linkedIdentity
+        && !workspaceMatches
+        && (options.requireActiveWorkspace || options.requireUoaIdentity)
       ) {
         throw new UoaDelegatedIdentityError(
           'UOA_ACTIVE_WORKSPACE_REQUIRED',
@@ -401,6 +454,7 @@ export const createUoaDelegatedIdentityService = (input: {
             activeTeamId: identity.teamId,
             status: 'linked',
             uoaSub: identity.subject,
+            uoaTokenVersion: identity.tokenVersion,
           }
         : null
       const headers: Record<string, string> = {
