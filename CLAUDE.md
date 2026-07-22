@@ -331,6 +331,11 @@ and frozen funding/add-on actions; members receive a privacy-safe read-only
 projection containing their usage plus anonymous other-member and unattributed
 totals. Every funding/add-on action is re-fetched, exact-path/body checked, and
 relayed unchanged.
+`/tokens` is the customer Credits & Billing surface and contains only those
+UOA-authored models. Nessie's owner-only local token, pricing, estimate,
+projection, connector, file, and budget telemetry is isolated at `/ops/usage`
+and must never be rendered beside customer credits or statements. Integrated-
+product APIs do not query or return local usage summaries.
 A successful direct Nessie SSO exchange records exact `nessie` access through
 UOA before any local session is returned. The confirmation is subject-bound,
 requires UOA's `204`/`no-store` response, and fails login closed; indirect

@@ -237,8 +237,6 @@ export const listIntegratedProducts = async (
   prisma: PrismaClient,
   owner: ProductOwner,
 ): Promise<IntegratedProductResponse[]> => {
-  const now = new Date()
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
   const rows = await prisma.$queryRaw<IntegratedProductRow[]>(Prisma.sql`
     SELECT
       p.id::text AS id,
@@ -290,16 +288,7 @@ export const listIntegratedProducts = async (
       mcp_instance.last_error AS mcp_instance_last_error,
       mcp_instance.tool_count AS mcp_instance_tool_count,
       mcp_instance.created_at AS mcp_instance_created_at,
-      mcp_instance.updated_at AS mcp_instance_updated_at,
-      product_usage.month_start AS product_usage_month_start,
-      product_usage.total_calls AS product_usage_total_calls,
-      product_usage.total_units AS product_usage_total_units,
-      product_usage.total_cost AS product_usage_total_cost,
-      product_usage.currency AS product_usage_currency,
-      product_usage.last_used_at AS product_usage_last_used_at,
-      product_usage.last_operation AS product_usage_last_operation,
-      product_usage.success_count AS product_usage_success_count,
-      product_usage.failure_count AS product_usage_failure_count
+      mcp_instance.updated_at AS mcp_instance_updated_at
     FROM integrated_products p
     LEFT JOIN product_account_links pal
       ON pal.product_slug = p.slug
@@ -358,45 +347,6 @@ export const listIntegratedProducts = async (
         msi.updated_at DESC
       LIMIT 1
     ) mcp_instance ON TRUE
-    LEFT JOIN LATERAL (
-      SELECT
-        CAST(${monthStart} AS timestamptz) AS month_start,
-        COALESCE(SUM(cue.calls), 0) AS total_calls,
-        COALESCE(SUM(cue.units), 0) AS total_units,
-        CASE
-          WHEN p.slug = 'deep-water' THEN 0
-          ELSE COALESCE(SUM(cue.cost_amount), 0)
-        END AS total_cost,
-        CASE
-          WHEN p.slug = 'deep-water' THEN 'USD'
-          ELSE COALESCE(
-            (
-              ARRAY_AGG(cue.cost_currency ORDER BY cue.occurred_at DESC)
-              FILTER (WHERE cue.cost_currency IS NOT NULL)
-            )[1],
-            'USD'
-          )
-        END AS currency,
-        MAX(cue.occurred_at) AS last_used_at,
-        (
-          ARRAY_AGG(cue.operation ORDER BY cue.occurred_at DESC)
-          FILTER (WHERE cue.operation IS NOT NULL)
-        )[1] AS last_operation,
-        COALESCE(SUM(CASE WHEN cue.success IS TRUE THEN 1 ELSE 0 END), 0) AS success_count,
-        COALESCE(SUM(CASE WHEN cue.success IS FALSE THEN 1 ELSE 0 END), 0) AS failure_count
-      FROM connector_usage_events cue
-      WHERE cue.organization_id = CAST(${owner.organizationId} AS uuid)
-        AND cue.occurred_at >= CAST(${monthStart} AS timestamptz)
-        AND (
-          (
-            mcp_instance.id IS NOT NULL
-            AND cue.connector_id = mcp_instance.id
-          )
-          OR cue.metadata->>'productSlug' = p.slug
-          OR cue.metadata->>'product_slug' = p.slug
-          OR cue.metadata->>'product' = p.slug
-        )
-    ) product_usage ON TRUE
     ORDER BY p.sort_order ASC, p.name ASC
   `)
 

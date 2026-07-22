@@ -70,10 +70,6 @@ export const DeepWaterResearchPanel = ({
     accessQuery.data?.personalAssistant?.enabled === true
   const ready = teamReady && connectorReady && personalAssistantReady
   const canSubmit = ready && query.trim().length > 0 && !launch.isPending
-  const lastUsed = product.usageSummary.lastUsedAt
-    ? new Date(product.usageSummary.lastUsedAt).toLocaleString()
-    : 'No usage yet'
-
   const submit = async () => {
     if (!canSubmit) return
     const response = await launch.mutateAsync({
@@ -141,10 +137,7 @@ export const DeepWaterResearchPanel = ({
         </div>
         <div className="rounded border border-[var(--sep)] px-3 py-2 text-right">
           <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">
-            Month-to-date activity
-          </div>
-          <div className="mt-1 text-sm font-semibold text-[var(--tx)]">
-            {product.usageSummary.totalCalls} calls
+            Customer account
           </div>
           <Link className="text-xs text-[var(--tx3)] underline" to="/tokens">
             Team credits and customer totals
@@ -426,10 +419,7 @@ export const DeepWaterResearchPanel = ({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--sep)] pt-3">
-        <div className="text-xs text-[var(--tx3)]">
-          Last activity: {lastUsed}
-        </div>
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-[var(--sep)] pt-3">
         <button
           className="admin-button admin-button-primary"
           disabled={!canSubmit}

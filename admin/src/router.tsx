@@ -23,6 +23,7 @@ import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
 import { LoginPage } from './pages/LoginPage'
 import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { OperationalTelemetryPage } from './pages/OperationalTelemetryPage'
 import { OpsHealthPage } from './pages/OpsHealthPage'
 import { PolicyPage } from './pages/PolicyPage'
 import { ProjectsIndexPage } from './pages/ProjectsIndexPage'
@@ -260,6 +261,10 @@ export const router = createBrowserRouter([
       {
         path: '/ops',
         element: <OpsHealthPage />,
+      },
+      {
+        path: '/ops/usage',
+        element: <OperationalTelemetryPage />,
       },
       {
         path: '/search',

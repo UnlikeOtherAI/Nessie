@@ -185,7 +185,6 @@ export type {
   ProductMcpInstallationRecord,
   ProductTeamEnablementAuthority,
   ProductTeamEnablementRecord,
-  ProductUsageSummaryRecord,
   SetProductTeamEnablementRequest,
   ToolCallEntry,
 } from '@nessie/schemas'

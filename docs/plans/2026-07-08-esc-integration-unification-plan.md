@@ -226,12 +226,11 @@ Current Nessie slice:
   store opens its validated install dialog for that catalog entry. Install
   scope, credential refs, duplicate checks, probing, and tool approval stay in
   the existing MCP install path rather than being duplicated inside ESC.
-- `GET /api/integrations/products` also includes a month-to-date connector
-  usage summary for each product. For MCP-backed products, usage is read from
-  `connector_usage_events.connector_id = mcp_server_instances.id`; future native
-  wrappers can also tag rows with `metadata.productSlug`. ESC renders calls,
-  units, spend, last activity, and failures without introducing a second
-  accounting path.
+- **2026-07-21 correction:** `GET /api/integrations/products` no longer queries
+  or returns connector-usage summaries. Product setup pages contain no local
+  calls, units, spend, or failure totals. Nessie's local operational telemetry
+  is owner-only at `/ops/usage`; customer credits and service totals come only
+  from UOA at `/tokens`.
 - Deep Water now has a native ESC launcher gated by team enablement and an
   active shared MCP connector. **Enabling Deep Water for a team now provisions
   that connector automatically:** `PATCH
@@ -601,13 +600,14 @@ Use the existing ledgers:
 
 The ESC product detail page should show:
 
-- month-to-date operational calls for that product; **implemented from
-  `connector_usage_events` for selected MCP instances and product-tagged rows**;
-- customer-commercial totals from UOA's shared statement protocol, never a
-  product-side calculation;
 - current health;
 - recent job/review history;
 - which agents can use it.
+
+It must not show or receive a product usage summary. Owner-only operational
+calls, units, failures, and estimates are grouped on `/ops/usage`; every
+customer balance and connected-service total is rendered from UOA on `/tokens`,
+never from a product-side calculation.
 
 ## Product-Specific Integration Paths
 
@@ -768,7 +768,8 @@ Acceptance:
   beyond the file-size guardrail.**
 - Add health checks for link-only products and MCP-backed products. **MCP
   installation readiness is surfaced; active product health polling remains
-  pending. Month-to-date connector usage/cost is surfaced in ESC.**
+  pending. Product usage/cost is intentionally absent from ESC and belongs on
+  UOA's `/tokens` customer view or Nessie's owner-only `/ops/usage` view.**
 
 ### Phase 2: Deep Water Native Plugin
 
@@ -853,7 +854,8 @@ Acceptance:
 
 - One UOA login can carry a user across Nessie and the sibling products.
 - Nessie's left rail exposes Integrations/ESC.
-- Each sibling product is visible in ESC with status, launch, setup, and usage.
+- Each sibling product is visible in ESC with status, launch, and setup; usage
+  stays on the appropriate UOA customer or owner-only operational surface.
 - Each product has an installable plugin path for open-source Nessie.
 - Every agent-callable product action is available through approved MCP/tool
   registry grants.

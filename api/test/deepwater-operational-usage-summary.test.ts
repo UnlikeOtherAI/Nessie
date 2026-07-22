@@ -31,7 +31,7 @@ test('connector operational summaries exclude every DeepWater cost marker', asyn
   }
 })
 
-test('DeepWater product summaries force local cost to zero', async () => {
+test('product registry queries never read the local operational ledger', async () => {
   let query: unknown
   const prisma = {
     $queryRaw: async (statement: unknown) => {
@@ -47,6 +47,6 @@ test('DeepWater product summaries force local cost to zero', async () => {
   })
 
   const statement = ((query as { strings?: readonly string[] }).strings ?? []).join('?')
-  assert.match(statement, /WHEN p\.slug = 'deep-water' THEN 0/)
-  assert.match(statement, /WHEN p\.slug = 'deep-water' THEN 'USD'/)
+  assert.doesNotMatch(statement, /connector_usage_events/)
+  assert.doesNotMatch(statement, /product_usage/)
 })

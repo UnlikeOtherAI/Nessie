@@ -22,16 +22,6 @@ const readinessClass = (ready: boolean): string =>
       : 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
   ].join(' ')
 
-const formatCount = (value: number): string =>
-  new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
-
-const money = (amount: number, currency: string): string =>
-  new Intl.NumberFormat(undefined, {
-    currency,
-    maximumFractionDigits: 2,
-    style: 'currency',
-  }).format(amount)
-
 const PrivacyRow = ({ label, value }: { label: string; value: string }) => (
   <div className="rounded border border-[var(--sep)] px-3 py-2">
     <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">{label}</div>
@@ -81,15 +71,6 @@ export const DeepTestSecurityPanel = ({
             <span className={readinessClass(product.accountLink?.status === 'linked')}>
               {product.accountLink?.status === 'linked' ? 'Account linked' : 'Account pending'}
             </span>
-          </div>
-        </div>
-        <div className="rounded border border-[var(--sep)] px-3 py-2 text-right">
-          <div className="text-[11px] font-semibold uppercase text-[var(--tx3)]">Month to date</div>
-          <div className="mt-1 text-sm font-semibold text-[var(--tx)]">
-            {money(product.usageSummary.totalCost, product.usageSummary.currency)}
-          </div>
-          <div className="text-xs text-[var(--tx3)]">
-            {formatCount(product.usageSummary.totalCalls)} calls
           </div>
         </div>
       </div>

@@ -273,7 +273,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
       },
       {
         path: '/tokens',
-        label: 'Usage & billing',
+        label: 'Credits & billing',
         icon: icon(
           <>
             <circle cx="12" cy="12" r="8" />
@@ -294,8 +294,20 @@ const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/ops/usage',
+        label: 'Operational usage',
+        ownerOnly: true,
+        icon: icon(
+          <>
+            <path d="M4 19V9M10 19V5M16 19v-7M22 19V3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M2 19h22" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
         path: '/ops',
         label: 'Health',
+        exact: true,
         ownerOnly: true,
         icon: icon(
           <path d="M3 12h4l2 6 4-12 2 6h6" strokeLinecap="round" strokeLinejoin="round" />,

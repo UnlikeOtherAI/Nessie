@@ -12,10 +12,6 @@ import { DeepTestSecurityPanel } from '../components/features/integrations/DeepT
 import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
 import { ExternalAgentActivationSection } from '../components/features/integrations/ExternalAgentActivationSection'
 import { ProductSurfacesPanel } from '../components/features/integrations/ProductSurfacesPanel'
-import {
-  ProductOperationsSection,
-  productUsageBadgeLabel,
-} from '../components/features/integrations/ProductOperationsSection'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import {
@@ -188,9 +184,6 @@ const ProductRow = ({
             {teamAuthorityLabel(product)}
           </span>
           <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
-            {productUsageBadgeLabel(product)}
-          </span>
         </div>
       </div>
     </div>
@@ -352,7 +345,6 @@ const ProductDetail = ({
 
         <TeamAccessSection isOwner={isOwner} product={product} />
         <AgentConnectorSection product={product} />
-        <ProductOperationsSection product={product} />
         {product.slug === 'buildme' ? <BuildMeProjectPanel product={product} /> : null}
         {product.slug === 'deep-water' ? <DeepWaterResearchPanel product={product} /> : null}
         {product.slug === 'deeptest' ? <DeepTestSecurityPanel product={product} /> : null}

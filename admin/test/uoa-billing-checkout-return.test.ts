@@ -7,7 +7,7 @@ import {
   resolveRootLandingPath,
 } from '../src/facades/billing/checkout-return.js'
 
-test('root checkout returns preserve the complete query when routing to usage', () => {
+test('root checkout returns preserve the complete query when routing to credits', () => {
   const complete = '?source=a%2Fb&uoa_billing=checkout_complete&campaign=summer+sale'
   const cancelled = '?uoa_billing=checkout_cancelled&source=pricing'
 

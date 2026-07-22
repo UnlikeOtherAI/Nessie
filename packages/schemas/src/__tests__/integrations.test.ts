@@ -64,17 +64,6 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
       updatedAt: '2026-07-08T12:00:00.000Z',
     },
     updatedAt: '2026-07-08T12:00:00.000Z',
-    usageSummary: {
-      currency: 'USD',
-      failureCount: 1,
-      lastOperation: 'research_start',
-      lastUsedAt: '2026-07-08T12:04:00.000Z',
-      monthStart: '2026-07-01T00:00:00.000Z',
-      successCount: 7,
-      totalCalls: 8,
-      totalCost: 3.25,
-      totalUnits: 42,
-    },
   })
 
   assert.equal(parsed.teamEnablement?.enabled, true)
@@ -82,8 +71,7 @@ test('IntegratedProductResponseSchema accepts active team enablement state', () 
   assert.equal(parsed.teamEnablement?.externalTeamId, 'uoa-team-1')
   assert.equal(parsed.mcpInstallation?.lifecycleState, 'active')
   assert.equal(parsed.mcpInstallation?.toolCount, 5)
-  assert.equal(parsed.usageSummary.totalCalls, 8)
-  assert.equal(parsed.usageSummary.lastOperation, 'research_start')
+  assert.equal('usageSummary' in parsed, false)
 })
 
 test('SetProductTeamEnablementRequestSchema requires a boolean enabled flag', () => {

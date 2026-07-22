@@ -1,4 +1,3 @@
-import type { Prisma } from '@prisma/client'
 import {
   IntegratedProductResponseSchema,
   type IntegratedProductResponse,
@@ -70,15 +69,6 @@ export type IntegratedProductRow = {
   mcp_instance_tool_count: number | bigint | null
   mcp_instance_created_at: Date | string | null
   mcp_instance_updated_at: Date | string | null
-  product_usage_month_start: Date | string
-  product_usage_total_calls: number | bigint | null
-  product_usage_total_units: number | bigint | null
-  product_usage_total_cost: number | Prisma.Decimal | null
-  product_usage_currency: string | null
-  product_usage_last_used_at: Date | string | null
-  product_usage_last_operation: string | null
-  product_usage_success_count: number | bigint | null
-  product_usage_failure_count: number | bigint | null
 }
 
 const toIsoString = (value: Date | string): string =>
@@ -188,18 +178,4 @@ export const mapProductRow = (row: IntegratedProductRow): IntegratedProductRespo
         })
       : null,
     updatedAt: toIsoString(row.updated_at),
-    usageSummary: {
-      currency: row.product_usage_currency ?? 'USD',
-      failureCount: Number(row.product_usage_failure_count ?? 0),
-      lastOperation: row.product_usage_last_operation,
-      lastUsedAt: toNullableIsoString(row.product_usage_last_used_at),
-      monthStart: toIsoString(row.product_usage_month_start),
-      successCount: Number(row.product_usage_success_count ?? 0),
-      totalCalls: Number(row.product_usage_total_calls ?? 0),
-      totalCost:
-        row.slug === 'deep-water'
-          ? 0
-          : Number(row.product_usage_total_cost ?? 0),
-      totalUnits: Number(row.product_usage_total_units ?? 0),
-    },
   })

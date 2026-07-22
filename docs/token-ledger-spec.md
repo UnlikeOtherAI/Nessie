@@ -248,6 +248,12 @@ but is not an invoice input and must never be rated locally. UOA queries
 Ledger's strict raw contract for the signed billing period, product,
 organization, and team, then produces the canonical statement below. That
 statement is Nessie's only customer service/team/user usage and billing view.
+The owner-only `/ops/usage` page is the sole admin surface for Nessie's local
+token summaries, model-pricing overrides, estimates, projections, connector
+telemetry, file usage, and budgets. The customer `/tokens` route is labelled
+Credits & Billing and contains only UOA-authored credit, add-on, statement, and
+action view models. Local operational calculations are never rendered beside
+the customer balance or statement.
 
 ### 10.1 SSO-owned commercial billing
 
@@ -352,7 +358,7 @@ arbitrary upstream path.
 UOA pins Stripe Checkout returns to Nessie's root route with exactly one
 `uoa_billing=checkout_complete` or `uoa_billing=checkout_cancelled` query
 parameter. The root route preserves the complete query while redirecting those
-two values to `/tokens`. The Usage & Billing page shows a neutral return notice
+two values to `/tokens`. The Credits & Billing page shows a neutral return notice
 and explicitly refetches the canonical UOA statement, credits, and recurring
 add-ons; those projections, rather than the query value, remain the authority
 for any confirmed change. Missing, duplicate, or unknown `uoa_billing` values

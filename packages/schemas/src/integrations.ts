@@ -101,20 +101,6 @@ export const ProductMcpInstallationRecordSchema = z.object({
 export type ProductMcpInstallationRecord =
   z.infer<typeof ProductMcpInstallationRecordSchema>
 
-export const ProductUsageSummaryRecordSchema = z.object({
-  currency: NonEmptyStringSchema,
-  failureCount: z.number().int().nonnegative(),
-  lastOperation: z.string().nullable(),
-  lastUsedAt: TimestampSchema.nullable(),
-  monthStart: TimestampSchema,
-  successCount: z.number().int().nonnegative(),
-  totalCalls: z.number().int().nonnegative(),
-  totalCost: z.number().nonnegative(),
-  totalUnits: z.number().int().nonnegative(),
-})
-export type ProductUsageSummaryRecord =
-  z.infer<typeof ProductUsageSummaryRecordSchema>
-
 export const ProductIntegrationRunStatusSchema = z.enum([
   'queued',
   'running',
@@ -249,7 +235,6 @@ export const IntegratedProductResponseSchema = z.object({
   summary: z.string(),
   teamEnablement: ProductTeamEnablementRecordSchema.nullable(),
   updatedAt: TimestampSchema,
-  usageSummary: ProductUsageSummaryRecordSchema,
 })
 export type IntegratedProductResponse = z.infer<typeof IntegratedProductResponseSchema>
 

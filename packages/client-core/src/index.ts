@@ -109,7 +109,6 @@ export type {
   ProductMcpInstallationRecord,
   ProductTeamEnablementAuthority,
   ProductTeamEnablementRecord,
-  ProductUsageSummaryRecord,
   SetProductTeamEnablementRequest,
   SetDeepWaterAgentAccessRequest,
   ToolCallEntry,

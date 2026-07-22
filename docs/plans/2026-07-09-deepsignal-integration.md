@@ -180,8 +180,10 @@ Today every chat path runs `runExecutionAgentLoop → runInferenceGraph`; MCP is
     history sync (§6),
   and emits `stream.done`.
 - **No inference, no token-ledger model spend.** Each turn writes a `ConnectorUsageEvent`
-  (connector type `mcp`, product-tagged) so usage is visible in the ESC usage surface; cost
-  accounting for the model spend belongs to DeepSignal's side of the wall.
+  (connector type `mcp`, product-tagged) for owner-only operational telemetry at
+  `/ops/usage`; the public integration response and ESC product page expose no
+  local usage summary. Customer credits and cost accounting for model spend
+  belong to UOA and DeepSignal's side of the wall.
 - Failure modes are surfaced honestly in-channel: missing/wrong managed
   instance → `needs_setup`; rejected app key → failed administrator-repair card;
   DeepSignal unreachable → `failed` card with retry. There is never a user-login,
@@ -342,7 +344,8 @@ only ever holds **report references (ids)** — it never embeds report content. 
     same exact app-key/delegation/provenance call seam and reject stale generic
     credentials.
 - **Phase 4 — Streaming & polish** *(pending)*: MCP progress notifications → live activity
-  cards / incremental status; usage metering surfaced in ESC usage UI; admin lock/e2e tests;
+  cards / incremental status; preserve owner-only operational telemetry at
+  `/ops/usage` and UOA-only customer credits at `/tokens`; admin lock/e2e tests;
   update `CLAUDE.md`/`AGENTS.md` (MCP surface + new run mode) and `docs/functionality.md`.
 
 ## Non-Negotiable Boundaries
