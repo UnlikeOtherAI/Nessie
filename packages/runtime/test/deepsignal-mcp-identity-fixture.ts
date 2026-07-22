@@ -40,6 +40,12 @@ export const attribution: LedgerAttribution = {
   teamId: '00000000-0000-4000-8000-000000000003',
   threadId: '00000000-0000-4000-8000-000000000005',
   userId: '00000000-0000-4000-8000-000000000009',
+  uoaIdentity: {
+    organizationId: 'uoa-org',
+    subject: 'uoa-user',
+    teamId: 'uoa-team',
+    tokenVersion: 7,
+  },
 }
 
 export const claimsOf = (token: string): Record<string, unknown> => {
@@ -60,8 +66,11 @@ export const verifyNessieSignature = (token: string): boolean => {
   )
 }
 
-export const delegationToken = (): string => {
-  const payload = Buffer.from(JSON.stringify({ exp: 2_000_000_300 }))
+export const delegationToken = (tokenVersion: number | undefined = 7): string => {
+  const payload = Buffer.from(JSON.stringify({
+    exp: 2_000_000_300,
+    ...(tokenVersion === undefined ? {} : { tv: tokenVersion }),
+  }))
     .toString('base64url')
   return `header.${payload}.signature`
 }
@@ -89,6 +98,7 @@ export const linkedPrisma = (
         activeTeamId: 'uoa-team',
         status: 'linked',
         uoaSub: 'uoa-user',
+        uoaTokenVersion: 7,
       }
     },
   },

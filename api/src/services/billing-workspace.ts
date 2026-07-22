@@ -1,11 +1,12 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   attributionFromActorContext,
-  loadLedgerUoaIdentity,
   type LedgerAttribution,
-  type LedgerUoaIdentity,
 } from '@nessie/runtime'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import type {
+  AuthorizedActionContext,
+  UoaSessionIdentity,
+} from '@nessie/schemas'
 
 export type BillingWorkspacePrisma = Pick<
   PrismaClient,
@@ -14,10 +15,7 @@ export type BillingWorkspacePrisma = Pick<
 
 export type BillingWorkspace = {
   attribution: LedgerAttribution
-  identity: LedgerUoaIdentity & {
-    organizationId: string
-    teamId: string
-  }
+  sessionIdentity: UoaSessionIdentity & { tokenVersion: number }
   internalOrganizationId: string
   internalTeamId: string
   organizationName: string
@@ -45,17 +43,38 @@ export const resolveBillingWorkspace = async (
   const attribution = attributionFromActorContext(actorContext, {
     systemComponent: 'billing-dashboard',
   })
+  const sessionIdentity = actorContext.actionContext.uoaIdentity
   const internalTeamId =
     actorContext.tenant.teamId ?? actorContext.actionContext.teamId
-  if (!internalTeamId) {
+  if (
+    !internalTeamId
+    || actorContext.actor.actorType !== 'user'
+    || !sessionIdentity
+    || sessionIdentity.tokenVersion === null
+  ) {
     throw new BillingWorkspaceError(
       'BILLING_SSO_REQUIRED',
-      'Select a team before viewing billing.',
+      'Sign in with UnlikeOtherAI SSO and select a team before viewing billing.',
     )
   }
 
-  const [identity, team] = await Promise.all([
-    loadLedgerUoaIdentity(prisma, attribution),
+  const [identityLink, team] = await Promise.all([
+    prisma.productAccountLink.findUnique({
+      where: {
+        organizationId_userId_productSlug: {
+          organizationId: actorContext.tenant.organizationId,
+          productSlug: 'nessie',
+          userId: actorContext.actor.actorId,
+        },
+      },
+      select: {
+        activeOrgId: true,
+        activeTeamId: true,
+        status: true,
+        uoaSub: true,
+        uoaTokenVersion: true,
+      },
+    }),
     prisma.team.findFirst({
       where: {
         id: internalTeamId,
@@ -74,8 +93,10 @@ export const resolveBillingWorkspace = async (
     }),
   ])
   if (
-    !identity?.organizationId
-    || !identity.teamId
+    identityLink?.status !== 'linked'
+    || !identityLink.uoaSub
+    || !identityLink.activeOrgId
+    || !identityLink.activeTeamId
     || !team?.externalOrgId
     || !team.externalWorkspaceId
   ) {
@@ -85,8 +106,12 @@ export const resolveBillingWorkspace = async (
     )
   }
   if (
-    identity.organizationId !== team.externalOrgId
-    || identity.teamId !== team.externalWorkspaceId
+    identityLink.uoaSub !== sessionIdentity.subject
+    || identityLink.activeOrgId !== sessionIdentity.organizationId
+    || identityLink.activeTeamId !== sessionIdentity.teamId
+    || (identityLink.uoaTokenVersion ?? null) !== sessionIdentity.tokenVersion
+    || sessionIdentity.organizationId !== team.externalOrgId
+    || sessionIdentity.teamId !== team.externalWorkspaceId
   ) {
     throw new BillingWorkspaceError(
       'BILLING_CONTEXT_MISMATCH',
@@ -96,10 +121,9 @@ export const resolveBillingWorkspace = async (
 
   return {
     attribution,
-    identity: {
-      ...identity,
-      organizationId: identity.organizationId,
-      teamId: identity.teamId,
+    sessionIdentity: {
+      ...sessionIdentity,
+      tokenVersion: sessionIdentity.tokenVersion,
     },
     internalOrganizationId: actorContext.tenant.organizationId,
     internalTeamId,

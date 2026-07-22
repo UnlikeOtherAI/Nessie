@@ -9,6 +9,12 @@ export const actorContext = {
   actionContext: {
     correlationId: 'correlation-1',
     requestId: 'request-1',
+    uoaIdentity: {
+      organizationId: 'uoa-org',
+      subject: 'uoa-user',
+      teamId: 'uoa-team',
+      tokenVersion: 7,
+    },
   },
   actor: {
     actorId: '00000000-0000-4000-8000-000000000001',
@@ -43,6 +49,7 @@ export const env = {
 export const prisma = (overrides: {
   activeOrgId?: string
   externalOrgId?: string
+  uoaTokenVersion?: number | null
 } = {}) => ({
   productAccountLink: {
     findUnique: async () => ({
@@ -50,6 +57,9 @@ export const prisma = (overrides: {
       activeTeamId: 'uoa-team',
       status: 'linked',
       uoaSub: 'uoa-user',
+      uoaTokenVersion: Object.hasOwn(overrides, 'uoaTokenVersion')
+        ? overrides.uoaTokenVersion ?? null
+        : 7,
     }),
   },
   team: {

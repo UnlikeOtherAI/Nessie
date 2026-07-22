@@ -205,6 +205,7 @@ test('mints exact DeepSignal delegation and fresh signed request provenance', as
     orgId: 'uoa-org',
     teamId: 'uoa-team',
   })
+  assert.equal(claimsOf(subjectAssertion).tv, 7)
 
   const firstContext = first['X-Nessie-Context']
   const secondContext = second['X-Nessie-Context']

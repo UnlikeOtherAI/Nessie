@@ -9,6 +9,7 @@ import {
   type IntegratedProductRow,
   type ProductTeamEnablementRow,
 } from './integration-product-rows.js'
+import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 type ProductOwner = {
   organizationId: string
@@ -19,6 +20,7 @@ type ProductOwner = {
 type UoaProductAccountLinkSyncInput = ProductOwner & {
   email: string
   externalSubject: string | undefined
+  uoaTokenVersion: number | undefined
   workspace: ExternalAuthWorkspace | undefined
 }
 
@@ -41,35 +43,47 @@ export const syncUoaProductAccountLinks = async (
   prisma: PrismaClient,
   input: UoaProductAccountLinkSyncInput,
 ): Promise<void> => {
+  if (
+    !input.externalSubject
+    || input.uoaTokenVersion === undefined
+    || !Number.isSafeInteger(input.uoaTokenVersion)
+    || input.uoaTokenVersion < 0
+  ) {
+    throw new Error('UnlikeOtherAI account-link sync requires an exact credential epoch.')
+  }
   const products = await prisma.$queryRaw<ProductSlugRow[]>(Prisma.sql`
     SELECT "slug"
     FROM "integrated_products"
     WHERE "plugin_manifest_ref" LIKE ${`${FIRST_PARTY_PLUGIN_MANIFEST_PREFIX}%`}
       AND "auth_mode"::text IN ('uoa_sso', 'oauth_mcp', 'local_mcp')
+    ORDER BY "slug" ASC
   `)
-  if (products.length === 0) {
-    return
+  if (!products.some((product) => product.slug === 'nessie')) {
+    throw new Error(
+      'The first-party Nessie account-link product is not provisioned.',
+    )
   }
 
   const now = new Date()
   const metadata = uoaLinkMetadata(input.workspace)
-  const externalAccountId = input.externalSubject ?? input.email
+  const externalAccountId = input.externalSubject
   const {
     organizationId: activeOrgId,
     teamId: activeTeamId,
   } = resolveExternalWorkspaceSelection(input.workspace)
   const metadataJson = JSON.stringify(metadata)
-  const uoaSub = input.externalSubject ?? null
+  const uoaSub = input.externalSubject
 
-  await prisma.$transaction(
-    products.map((product) =>
-      prisma.$executeRaw(Prisma.sql`
+  await prisma.$transaction(async (tx) => {
+    for (const product of products) {
+      const updated = await tx.$executeRaw(Prisma.sql`
         INSERT INTO "product_account_links" (
           "id",
           "organization_id",
           "user_id",
           "product_slug",
           "uoa_sub",
+          "uoa_token_version",
           "external_account_id",
           "active_org_id",
           "active_team_id",
@@ -85,6 +99,7 @@ export const syncUoaProductAccountLinks = async (
           CAST(${input.userId} AS uuid),
           ${product.slug},
           ${uoaSub},
+          ${input.uoaTokenVersion ?? null},
           ${externalAccountId},
           ${activeOrgId},
           ${activeTeamId},
@@ -96,6 +111,7 @@ export const syncUoaProductAccountLinks = async (
         )
         ON CONFLICT ("organization_id", "user_id", "product_slug") DO UPDATE SET
           "uoa_sub" = EXCLUDED."uoa_sub",
+          "uoa_token_version" = EXCLUDED."uoa_token_version",
           "external_account_id" = EXCLUDED."external_account_id",
           "active_org_id" = EXCLUDED."active_org_id",
           "active_team_id" = EXCLUDED."active_team_id",
@@ -103,9 +119,23 @@ export const syncUoaProductAccountLinks = async (
           "last_verified_at" = EXCLUDED."last_verified_at",
           "metadata_json" = EXCLUDED."metadata_json",
           "updated_at" = CURRENT_TIMESTAMP
-      `),
-    ),
-  )
+        WHERE (
+          "product_account_links"."uoa_sub" IS NULL
+          OR "product_account_links"."uoa_sub" = EXCLUDED."uoa_sub"
+        )
+          AND (
+            "product_account_links"."uoa_token_version" IS NULL
+            OR "product_account_links"."uoa_token_version"
+              <= EXCLUDED."uoa_token_version"
+          )
+      `)
+      if (updated !== 1) {
+        throw new Error(
+          'UnlikeOtherAI account-link state advanced while this login was completing.',
+        )
+      }
+    }
+  }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 
 /**

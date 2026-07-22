@@ -1,6 +1,9 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import type {
+  AuthorizedActionContext,
+  UoaSessionIdentity,
+} from '@nessie/schemas'
 
 export {
   currentStorageUsageBytes,
@@ -10,6 +13,15 @@ export type {
   StorageStoreOperation,
   StorageUsageScope,
 } from './storage-usage-ledger.js'
+export {
+  recordConnectorUsage,
+  recordStorageTransferUsage,
+} from './connector-usage.js'
+export type {
+  ConnectorType,
+  ConnectorUsage,
+  StorageTransferOperation,
+} from './connector-usage.js'
 
 // Shared operational usage writers. Each metered interaction is attributed for
 // diagnostics/local budgets; UOA is the sole commercial authority. Two ledgers:
@@ -42,6 +54,10 @@ export type LedgerAttribution = {
   actorType?: LedgerActorType | null
   requestId?: string | null
   correlationId?: string | null
+  // Immutable external proof captured at the originating UOA login. Durable
+  // work copies this tuple; callers must never replace it with a newer mutable
+  // ProductAccountLink identity after the work/session was created.
+  uoaIdentity?: UoaSessionIdentity
 }
 
 // Structural subset of an inference InvocationRecord the writer needs. Both the
@@ -67,34 +83,6 @@ export type LedgerInvocation = {
   latencyMs: number
   metadata?: Record<string, unknown>
 }
-
-export type ConnectorType =
-  | 'mcp'
-  | 'http'
-  | 'web_search'
-  | 'web_fetch'
-  | 'storage'
-  | 'push'
-  | 'github'
-  | 'oauth'
-  | 'other'
-
-export type ConnectorUsage = {
-  connectorType: ConnectorType
-  connectorId?: string | null
-  target?: string | null
-  operation?: string | null
-  calls?: number
-  units?: number | null
-  unitType?: string | null
-  costAmount?: number | null
-  costCurrency?: string | null
-  success?: boolean | null
-  latencyMs?: number | null
-  metadata?: Record<string, unknown> | null
-}
-
-export type StorageTransferOperation = 'download' | 'upload'
 
 type PrismaOperationType =
   | 'chat'
@@ -278,6 +266,9 @@ export const attributionFromActorContext = (
   actorType: actorContext.actor.actorType,
   requestId: actorContext.actionContext.requestId,
   correlationId: actorContext.actionContext.correlationId ?? null,
+  ...(actorContext.actionContext.uoaIdentity
+    ? { uoaIdentity: actorContext.actionContext.uoaIdentity }
+    : {}),
 })
 
 /**
@@ -424,77 +415,4 @@ export const recomputeTokenLedgerCosts = async (
   }
 
   return { updatedEvents, pricedPairs, unpricedPairs }
-}
-
-/** Record one connector_usage_events row for a non-AI third-party connector call. */
-export const recordConnectorUsage = async (
-  prisma: PrismaClient,
-  input: { attribution: LedgerAttribution; event: ConnectorUsage },
-): Promise<void> => {
-  const { attribution, event } = input
-  await prisma.connectorUsageEvent.create({
-    data: {
-      organizationId: attribution.organizationId,
-      userId: attribution.userId ?? null,
-      projectId: attribution.projectId ?? null,
-      teamId: attribution.teamId ?? null,
-      channelId: attribution.channelId ?? null,
-      threadId: attribution.threadId ?? null,
-      taskId: attribution.taskId ?? null,
-      runId: attribution.runId ?? null,
-      agentId: attribution.agentId ?? null,
-      actorId: attribution.actorId,
-      actorType: attribution.actorType ?? null,
-      requestId: attribution.requestId ?? null,
-      correlationId: attribution.correlationId ?? null,
-      connectorType: event.connectorType,
-      connectorId: event.connectorId ?? null,
-      target: event.target ?? null,
-      operation: event.operation ?? null,
-      calls: event.calls ?? 1,
-      units: event.units ?? null,
-      unitType: event.unitType ?? null,
-      costAmount: event.costAmount ?? null,
-      costCurrency: event.costCurrency ?? null,
-      success: event.success ?? null,
-      latencyMs: event.latencyMs ?? null,
-      occurredAt: new Date(),
-      metadata: (
-        attribution.systemComponent
-          ? {
-              ...(event.metadata ?? {}),
-              systemComponent: attribution.systemComponent,
-            }
-          : event.metadata ?? undefined
-      ) as Prisma.InputJsonValue | undefined,
-    },
-  })
-}
-
-export const recordStorageTransferUsage = async (
-  prisma: PrismaClient,
-  input: {
-    attribution: LedgerAttribution
-    bytes: number
-    metadata?: Record<string, unknown>
-    operation: StorageTransferOperation
-    success?: boolean
-    target?: string
-    latencyMs?: number
-  },
-): Promise<void> => {
-  await recordConnectorUsage(prisma, {
-    attribution: input.attribution,
-    event: {
-      connectorType: 'storage',
-      target: input.target ?? 'attachment',
-      operation: input.operation,
-      calls: 1,
-      units: input.bytes,
-      unitType: 'bytes',
-      success: input.success ?? true,
-      latencyMs: input.latencyMs ?? null,
-      metadata: input.metadata ?? null,
-    },
-  })
 }

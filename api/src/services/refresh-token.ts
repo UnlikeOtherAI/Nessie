@@ -1,77 +1,35 @@
-import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 
-import type { PrismaClient } from '@prisma/client'
+import { type Prisma, type PrismaClient } from '@prisma/client'
+import {
+  decryptWithKey,
+  deriveSecretKey,
+  encryptWithKey,
+} from '@nessie/runtime'
+import {
+  UoaSessionIdentitySchema,
+  type UoaSessionIdentity,
+} from '@nessie/schemas'
+import {
+  deriveRefreshTokenSuccessor,
+  hashRefreshToken,
+} from './refresh-token-crypto.js'
+import {
+  lockRefreshFamily,
+  refreshTokenSelect,
+  resolveReplayDescendant,
+  revokeRefreshFamilyRows,
+  type RefreshTokenRecord,
+} from './refresh-token-family.js'
+import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
-// Opaque refresh tokens are random 256-bit values. Only their SHA-256 hash is
-// ever persisted; the raw value lives solely in the httpOnly cookie on the
-// client, exactly like a password hash.
-const generateRefreshTokenRaw = (): string => randomBytes(32).toString('base64url')
+export { hashRefreshToken } from './refresh-token-crypto.js'
+export {
+  issueRefreshToken,
+  RefreshTokenIssuanceError,
+} from './refresh-token-issuance.js'
 
-const SUCCESSOR_HMAC_DOMAIN = 'nessie.refresh-token.successor.v1\u0000'
-const MAX_REFRESH_REPLAY_CHAIN_DEPTH = 32
-
-// A refresh response can be lost, or two WebView lifecycles can briefly submit
-// the same cookie. During this narrow window the deterministic successor lets
-// both requests receive the same live token without persisting its plaintext.
-export const REFRESH_TOKEN_REPLAY_GRACE_MS = 60_000
-
-export const hashRefreshToken = (raw: string): string =>
-  createHash('sha256').update(raw).digest('hex')
-
-const deriveRefreshTokenSuccessor = (rawToken: string, authSecret: string): string =>
-  createHmac('sha256', authSecret)
-    .update(SUCCESSOR_HMAC_DOMAIN)
-    .update(rawToken)
-    .digest('base64url')
-
-const expiryFromNow = (ttlSeconds: number): Date =>
-  new Date(Date.now() + ttlSeconds * 1000)
-
-type IssueInput = {
-  userId: string
-  sessionId: string
-  providerId: string
-  providerType: string
-  ttlSeconds: number
-  familyId?: string
-  userAgent?: string | null
-}
-
-// Mint a refresh token and store its hash. Omitting `familyId` starts a new
-// rotation family (a fresh login); passing one continues an existing chain.
-export const issueRefreshToken = async (
-  prisma: PrismaClient,
-  input: IssueInput,
-): Promise<{ expiresAt: Date; rawToken: string }> => {
-  const rawToken = generateRefreshTokenRaw()
-  const expiresAt = expiryFromNow(input.ttlSeconds)
-  await prisma.refreshToken.create({
-    data: {
-      userId: input.userId,
-      sessionId: input.sessionId,
-      providerId: input.providerId,
-      providerType: input.providerType,
-      familyId: input.familyId ?? randomUUID(),
-      tokenHash: hashRefreshToken(rawToken),
-      expiresAt,
-      userAgent: input.userAgent ?? undefined,
-    },
-  })
-  return { rawToken, expiresAt }
-}
-
-type RefreshTokenRecord = {
-  id: string
-  userId: string
-  familyId: string
-  sessionId: string
-  providerId: string
-  providerType: string
-  tokenHash: string
-  revokedAt: Date | null
-  replacedById: string | null
-  expiresAt: Date
-}
+export { REFRESH_TOKEN_REPLAY_GRACE_MS } from './refresh-token-family.js'
 
 export type ConsumeRefreshTokenResult =
   | {
@@ -84,6 +42,7 @@ export type ConsumeRefreshTokenResult =
       userId: string
       providerId: string
       providerType: string
+      uoaIdentity?: UoaSessionIdentity
     }
   | { ok: false; reason: 'expired' | 'invalid' | 'reuse' }
 
@@ -91,121 +50,139 @@ type ConsumeInput = {
   authSecret: string
   rawToken: string
   ttlSeconds: number
+  refreshUoaSession?: (input: {
+    configUrl: string
+    expectedIdentity: UoaSessionIdentity
+    refreshToken: string
+    userId: string
+  }, transaction: Prisma.TransactionClient) => Promise<{
+    identity: UoaSessionIdentity
+    refreshToken: string
+    refreshTokenExpiresAt: Date
+  }>
   userAgent?: string | null
   now?: Date
+  clock?: () => Date
 }
 
-const refreshTokenSelect = {
-  id: true,
-  userId: true,
+type UoaCredentialRecord = {
+  familyId: string
+  userId: string
+  providerId: string
+  subject: string
+  organizationId: string
+  teamId: string
+  tokenVersion: number
+  configUrl: string
+  refreshTokenHash: string
+  refreshTokenCiphertext: string
+  refreshTokenIv: string
+  refreshTokenAuthTag: string
+  refreshTokenExpiresAt: Date
+  lastLocalTokenId: string
+  generation: number
+}
+
+export class UoaRefreshBindingError extends Error {
+  readonly definitive = true
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'UoaRefreshBindingError'
+  }
+}
+
+type RefreshCredentialStore = Pick<
+  Prisma.TransactionClient,
+  'uoaSessionCredential'
+>
+
+const uoaCredentialSelect = {
   familyId: true,
-  sessionId: true,
+  userId: true,
   providerId: true,
-  providerType: true,
-  tokenHash: true,
-  revokedAt: true,
-  replacedById: true,
-  expiresAt: true,
+  subject: true,
+  organizationId: true,
+  teamId: true,
+  tokenVersion: true,
+  configUrl: true,
+  refreshTokenHash: true,
+  refreshTokenCiphertext: true,
+  refreshTokenIv: true,
+  refreshTokenAuthTag: true,
+  refreshTokenExpiresAt: true,
+  lastLocalTokenId: true,
+  generation: true,
 } as const
 
-const sameRotationFamily = (left: RefreshTokenRecord, right: RefreshTokenRecord): boolean =>
-  left.familyId === right.familyId
-  && left.userId === right.userId
-  && left.sessionId === right.sessionId
-  && left.providerId === right.providerId
-  && left.providerType === right.providerType
+const identityFromCredential = (
+  credential: UoaCredentialRecord,
+): UoaSessionIdentity => {
+  const parsed = UoaSessionIdentitySchema.safeParse({
+    organizationId: credential.organizationId,
+    subject: credential.subject,
+    teamId: credential.teamId,
+    tokenVersion: credential.tokenVersion,
+  })
+  if (!parsed.success) {
+    throw new UoaRefreshBindingError(
+      'The stored UnlikeOtherAI session proof is invalid.',
+    )
+  }
+  return parsed.data
+}
 
-const successResult = (
+const loadBoundUoaCredential = async (
+  prisma: RefreshCredentialStore,
+  record: RefreshTokenRecord,
+): Promise<UoaCredentialRecord> => {
+  const credential = await prisma.uoaSessionCredential.findUnique({
+    where: { familyId: record.familyId },
+    select: uoaCredentialSelect,
+  }) as UoaCredentialRecord | null
+  if (
+    !credential
+    || credential.userId !== record.userId
+    || credential.providerId !== record.providerId
+    || credential.lastLocalTokenId !== record.id
+  ) {
+    throw new UoaRefreshBindingError(
+      'This legacy UnlikeOtherAI session must sign in again.',
+    )
+  }
+  identityFromCredential(credential)
+  return credential
+}
+
+const successResult = async (
+  prisma: RefreshCredentialStore,
   record: RefreshTokenRecord,
   rawToken: string,
   replayed: boolean,
-): ConsumeRefreshTokenResult => ({
-  ok: true,
-  expiresAt: record.expiresAt,
-  familyId: record.familyId,
-  rawToken,
-  replayed,
-  sessionId: record.sessionId,
-  userId: record.userId,
-  providerId: record.providerId,
-  providerType: record.providerType,
-})
-
-const rejectTokenReuse = async (
-  prisma: PrismaClient,
-  familyId: string,
 ): Promise<ConsumeRefreshTokenResult> => {
-  await revokeFamily(prisma, familyId)
-  return { ok: false, reason: 'reuse' }
-}
-
-// Follow the deterministic replacement chain to the current live descendant.
-// Every link is verified against both its database id and derived token hash so
-// a corrupt/cross-family pointer can never turn into a valid refresh token.
-const resolveReplayDescendant = async (
-  prisma: PrismaClient,
-  root: RefreshTokenRecord,
-  rootRawToken: string,
-  authSecret: string,
-  now: Date,
-): Promise<ConsumeRefreshTokenResult> => {
-  if (
-    !root.revokedAt
-    || now.getTime() - root.revokedAt.getTime() > REFRESH_TOKEN_REPLAY_GRACE_MS
-  ) {
-    return rejectTokenReuse(prisma, root.familyId)
+  const uoaIdentity = record.providerType === 'uoa'
+    ? identityFromCredential(await loadBoundUoaCredential(prisma, record))
+    : undefined
+  return {
+    ok: true,
+    expiresAt: record.expiresAt,
+    familyId: record.familyId,
+    rawToken,
+    replayed,
+    sessionId: record.sessionId,
+    userId: record.userId,
+    providerId: record.providerId,
+    providerType: record.providerType,
+    ...(uoaIdentity ? { uoaIdentity } : {}),
   }
-
-  let current = root
-  let currentRawToken = rootRawToken
-  const seen = new Set([root.id])
-  let depth = 0
-
-  while (current.revokedAt) {
-    if (
-      depth >= MAX_REFRESH_REPLAY_CHAIN_DEPTH
-      || !current.replacedById
-      || seen.has(current.replacedById)
-    ) {
-      return rejectTokenReuse(prisma, root.familyId)
-    }
-    depth += 1
-
-    const successorRawToken = deriveRefreshTokenSuccessor(currentRawToken, authSecret)
-    const successor = await prisma.refreshToken.findUnique({
-      where: { id: current.replacedById },
-      select: refreshTokenSelect,
-    }) as RefreshTokenRecord | null
-
-    if (
-      !successor
-      || successor.tokenHash !== hashRefreshToken(successorRawToken)
-      || !sameRotationFamily(root, successor)
-    ) {
-      return rejectTokenReuse(prisma, root.familyId)
-    }
-
-    seen.add(successor.id)
-    current = successor
-    currentRawToken = successorRawToken
-  }
-
-  if (current.replacedById) {
-    return rejectTokenReuse(prisma, root.familyId)
-  }
-  if (current.expiresAt.getTime() <= now.getTime()) {
-    return { ok: false, reason: 'expired' }
-  }
-
-  return successResult(current, currentRawToken, true)
 }
 
 // Revoke every still-live token in a family. Used on reuse detection and logout.
 export const revokeFamily = async (prisma: PrismaClient, familyId: string): Promise<void> => {
-  await prisma.refreshToken.updateMany({
-    where: { familyId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  })
+  await prisma.$transaction(async (tx) => {
+    await lockRefreshFamily(tx, familyId)
+    await revokeRefreshFamilyRows(tx, familyId, new Date())
+  }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 
 // Atomically consume an active refresh token and create its deterministic
@@ -216,32 +193,142 @@ export const consumeRefreshToken = async (
   prisma: PrismaClient,
   input: ConsumeInput,
 ): Promise<ConsumeRefreshTokenResult> => {
-  const now = input.now ?? new Date()
-  const presented = await prisma.refreshToken.findUnique({
-    where: { tokenHash: hashRefreshToken(input.rawToken) },
-    select: refreshTokenSelect,
-  }) as RefreshTokenRecord | null
-
-  if (!presented) {
+  const tokenHash = hashRefreshToken(input.rawToken)
+  const familyHint = await prisma.refreshToken.findUnique({
+    where: { tokenHash },
+    select: { familyId: true },
+  })
+  if (!familyHint) {
     return { ok: false, reason: 'invalid' }
   }
-  if (presented.revokedAt || presented.replacedById) {
-    return resolveReplayDescendant(prisma, presented, input.rawToken, input.authSecret, now)
-  }
-  if (presented.expiresAt.getTime() <= now.getTime()) {
-    return { ok: false, reason: 'expired' }
-  }
 
-  const successorId = randomUUID()
-  const successorRawToken = deriveRefreshTokenSuccessor(input.rawToken, input.authSecret)
-  const successorExpiresAt = new Date(now.getTime() + input.ttlSeconds * 1000)
-  const consumed = await prisma.$transaction(async (tx) => {
+  const readClock = (): Date => input.clock?.() ?? input.now ?? new Date()
+  return prisma.$transaction(async (tx) => {
+    await lockRefreshFamily(tx, familyHint.familyId)
+    const presented = await tx.refreshToken.findUnique({
+      where: { tokenHash },
+      select: refreshTokenSelect,
+    }) as RefreshTokenRecord | null
+    if (!presented || presented.familyId !== familyHint.familyId) {
+      return { ok: false, reason: 'invalid' }
+    }
+
+    const requestTime = readClock()
+    if (presented.revokedAt || presented.replacedById) {
+      const replay = await resolveReplayDescendant(tx, {
+        authSecret: input.authSecret,
+        now: requestTime,
+        root: presented,
+        rootRawToken: input.rawToken,
+      })
+      return replay.ok
+        ? successResult(tx, replay.record, replay.rawToken, true)
+        : replay
+    }
+    if (presented.expiresAt.getTime() <= requestTime.getTime()) {
+      await revokeRefreshFamilyRows(tx, presented.familyId, requestTime)
+      return { ok: false, reason: 'expired' }
+    }
+    if (
+      presented.replayProtectedUntil
+      && presented.replayProtectedUntil.getTime() > requestTime.getTime()
+    ) {
+      return successResult(tx, presented, input.rawToken, true)
+    }
+
+    let rotatedUoa: {
+      credential: UoaCredentialRecord
+      encrypted: ReturnType<typeof encryptWithKey>
+      identity: UoaSessionIdentity
+      refreshTokenExpiresAt: Date
+      refreshTokenHash: string
+    } | null = null
+    if (presented.providerType === 'uoa') {
+      if (!input.refreshUoaSession) {
+        throw new UoaRefreshBindingError(
+          'UnlikeOtherAI refresh is not configured for this session.',
+        )
+      }
+      const credential = await loadBoundUoaCredential(tx, presented)
+      if (credential.refreshTokenExpiresAt.getTime() <= requestTime.getTime()) {
+        throw new UoaRefreshBindingError(
+          'This UnlikeOtherAI session has expired. Sign in again.',
+        )
+      }
+      const key = deriveSecretKey(input.authSecret)
+      let upstreamRefreshToken: string
+      try {
+        upstreamRefreshToken = decryptWithKey(key, {
+          authTag: credential.refreshTokenAuthTag,
+          ciphertext: credential.refreshTokenCiphertext,
+          iv: credential.refreshTokenIv,
+        })
+      } catch {
+        throw new UoaRefreshBindingError(
+          'The stored UnlikeOtherAI session credential is invalid.',
+        )
+      }
+      if (hashRefreshToken(upstreamRefreshToken) !== credential.refreshTokenHash) {
+        throw new UoaRefreshBindingError(
+          'The stored UnlikeOtherAI session credential is invalid.',
+        )
+      }
+      const expectedIdentity = identityFromCredential(credential)
+      const refreshed = await input.refreshUoaSession({
+        configUrl: credential.configUrl,
+        expectedIdentity,
+        refreshToken: upstreamRefreshToken,
+        userId: presented.userId,
+      }, tx)
+      const commitTime = readClock()
+      const parsedIdentity = UoaSessionIdentitySchema.safeParse(refreshed.identity)
+      if (
+        !parsedIdentity.success
+        || parsedIdentity.data.tokenVersion === null
+        || parsedIdentity.data.subject !== expectedIdentity.subject
+        || parsedIdentity.data.organizationId !== expectedIdentity.organizationId
+        || parsedIdentity.data.teamId !== expectedIdentity.teamId
+        || expectedIdentity.tokenVersion === null
+        || parsedIdentity.data.tokenVersion < expectedIdentity.tokenVersion
+        || refreshed.refreshTokenExpiresAt.getTime() <= commitTime.getTime()
+      ) {
+        throw new UoaRefreshBindingError(
+          'UnlikeOtherAI returned a different session identity.',
+        )
+      }
+      const nextRefreshTokenHash = hashRefreshToken(refreshed.refreshToken)
+      if (nextRefreshTokenHash === credential.refreshTokenHash) {
+        throw new UoaRefreshBindingError(
+          'UnlikeOtherAI did not rotate the session credential.',
+        )
+      }
+      rotatedUoa = {
+        credential,
+        encrypted: encryptWithKey(key, refreshed.refreshToken),
+        identity: parsedIdentity.data,
+        refreshTokenExpiresAt: refreshed.refreshTokenExpiresAt,
+        refreshTokenHash: nextRefreshTokenHash,
+      }
+    }
+
+    // The decision clock is intentionally read after the upstream round trip.
+    // A slow successful UOA refresh must not consume the local response-loss
+    // grace period before its deterministic successor is committed.
+    const commitTime = readClock()
+    const successorId = randomUUID()
+    const successorRawToken = deriveRefreshTokenSuccessor(
+      input.rawToken,
+      input.authSecret,
+    )
+    const successorExpiresAt = new Date(
+      commitTime.getTime() + input.ttlSeconds * 1000,
+    )
     const claimed = await tx.refreshToken.updateMany({
       where: { id: presented.id, revokedAt: null, replacedById: null },
-      data: { revokedAt: now, replacedById: successorId },
+      data: { revokedAt: commitTime, replacedById: successorId },
     })
     if (claimed.count !== 1) {
-      return false
+      return { ok: false, reason: 'invalid' }
     }
     await tx.refreshToken.create({
       data: {
@@ -256,32 +343,50 @@ export const consumeRefreshToken = async (
         userAgent: input.userAgent ?? undefined,
       },
     })
-    return true
-  })
-
-  if (!consumed) {
-    const concurrent = await prisma.refreshToken.findUnique({
-      where: { tokenHash: presented.tokenHash },
-      select: refreshTokenSelect,
-    }) as RefreshTokenRecord | null
-    if (!concurrent) {
-      return { ok: false, reason: 'invalid' }
+    if (rotatedUoa) {
+      const updated = await tx.uoaSessionCredential.updateMany({
+        where: {
+          familyId: presented.familyId,
+          generation: rotatedUoa.credential.generation,
+          lastLocalTokenId: presented.id,
+          refreshTokenHash: rotatedUoa.credential.refreshTokenHash,
+        },
+        data: {
+          subject: rotatedUoa.identity.subject,
+          organizationId: rotatedUoa.identity.organizationId,
+          teamId: rotatedUoa.identity.teamId,
+          tokenVersion: rotatedUoa.identity.tokenVersion!,
+          refreshTokenHash: rotatedUoa.refreshTokenHash,
+          refreshTokenCiphertext: rotatedUoa.encrypted.ciphertext,
+          refreshTokenIv: rotatedUoa.encrypted.iv,
+          refreshTokenAuthTag: rotatedUoa.encrypted.authTag,
+          refreshTokenExpiresAt: rotatedUoa.refreshTokenExpiresAt,
+          lastLocalTokenId: successorId,
+          generation: { increment: 1 },
+        },
+      })
+      if (updated.count !== 1) {
+        throw new UoaRefreshBindingError(
+          'UnlikeOtherAI session rotation conflicted with another request.',
+        )
+      }
     }
-    return resolveReplayDescendant(prisma, concurrent, input.rawToken, input.authSecret, now)
-  }
 
-  return successResult(
-    {
-      ...presented,
-      id: successorId,
-      tokenHash: hashRefreshToken(successorRawToken),
-      revokedAt: null,
-      replacedById: null,
-      expiresAt: successorExpiresAt,
-    },
-    successorRawToken,
-    false,
-  )
+    return successResult(
+      tx,
+      {
+        ...presented,
+        id: successorId,
+        tokenHash: hashRefreshToken(successorRawToken),
+        revokedAt: null,
+        replacedById: null,
+        replayProtectedUntil: null,
+        expiresAt: successorExpiresAt,
+      },
+      successorRawToken,
+      false,
+    )
+  }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 
 // Logout: revoke the family of the presented token. Missing/unknown tokens are
@@ -297,92 +402,4 @@ export const revokeRefreshTokenByRaw = async (
   if (record) {
     await revokeFamily(prisma, record.familyId)
   }
-}
-
-export type UserSession = {
-  sessionId: string
-  userAgent: string | null
-  createdAt: Date
-  lastUsedAt: Date
-  expiresAt: Date
-}
-
-// Active sessions for a user: one entry per `sessionId` (stable across the
-// login's rotation chain). A session is active if any token in its chain is
-// still live (non-revoked, unexpired). `createdAt` is the login time (first
-// token in the chain), `lastUsedAt` the most recent rotation. Revoked
-// predecessors are scanned so the timestamps reflect the whole login, not just
-// the latest rotated token.
-type SessionAccumulator = UserSession & { active: boolean }
-
-export const listUserSessions = async (
-  prisma: PrismaClient,
-  userId: string,
-): Promise<UserSession[]> => {
-  const now = Date.now()
-  const tokens = await prisma.refreshToken.findMany({
-    where: { userId },
-    select: {
-      sessionId: true,
-      userAgent: true,
-      createdAt: true,
-      expiresAt: true,
-      revokedAt: true,
-    },
-    orderBy: { createdAt: 'asc' },
-  })
-
-  const bySession = new Map<string, SessionAccumulator>()
-  for (const token of tokens) {
-    const live = !token.revokedAt && token.expiresAt.getTime() > now
-    const existing = bySession.get(token.sessionId)
-    if (!existing) {
-      bySession.set(token.sessionId, {
-        sessionId: token.sessionId,
-        userAgent: token.userAgent,
-        createdAt: token.createdAt,
-        lastUsedAt: token.createdAt,
-        expiresAt: token.expiresAt,
-        active: live,
-      })
-      continue
-    }
-    // Tokens are ascending, so this one is later in the chain.
-    existing.lastUsedAt = token.createdAt
-    existing.expiresAt = token.expiresAt
-    if (token.userAgent) {
-      existing.userAgent = token.userAgent
-    }
-    if (live) {
-      existing.active = true
-    }
-  }
-
-  return Array.from(bySession.values())
-    .filter((entry) => entry.active)
-    .map(
-      (entry): UserSession => ({
-        sessionId: entry.sessionId,
-        userAgent: entry.userAgent,
-        createdAt: entry.createdAt,
-        lastUsedAt: entry.lastUsedAt,
-        expiresAt: entry.expiresAt,
-      }),
-    )
-    .sort((left, right) => right.lastUsedAt.getTime() - left.lastUsedAt.getTime())
-}
-
-// Revoke a single session (all its live refresh tokens), scoped by `userId` so a
-// caller can only revoke their own sessions. Returns the number of tokens
-// revoked (0 when the session isn't theirs or is already gone).
-export const revokeUserSession = async (
-  prisma: PrismaClient,
-  userId: string,
-  sessionId: string,
-): Promise<number> => {
-  const result = await prisma.refreshToken.updateMany({
-    where: { userId, sessionId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  })
-  return result.count
 }

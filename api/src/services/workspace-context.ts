@@ -1,10 +1,11 @@
-import type { MemberRole, PrismaClient } from '@prisma/client'
+import { Prisma, type MemberRole, type PrismaClient } from '@prisma/client'
 
 import { defaultColumnCreateData } from './board.js'
 import {
   resolveExternalWorkspaceSelection,
   type ExternalAuthWorkspace,
 } from './identity-display.js'
+import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 import { seedDefaultPolicies } from './policy.js'
 import { seedBootstrapRecords } from '../db/seed.js'
 
@@ -88,40 +89,38 @@ const ensureWorkspaceMemberships = async (
 // Create the project + team + #general channel for a brand-new workspace inside
 // the shared org, bound to the UOA workspace id. The first person in owns it.
 const createWorkspaceEnvironment = async (
-  prisma: PrismaClient,
+  transaction: Prisma.TransactionClient,
   input: { organizationId: string; workspaceId: string; externalOrgId: string | null },
 ): Promise<{ projectId: string; teamId: string; channelId: string }> => {
   const name = workspaceDisplayName(input.workspaceId)
-  return prisma.$transaction(async (transaction) => {
-    const project = await transaction.project.create({
-      data: { name, organizationId: input.organizationId },
-    })
-    await transaction.boardColumn.createMany({
-      data: defaultColumnCreateData(input.organizationId).map((column) => ({
-        ...column,
-        projectId: project.id,
-      })),
-    })
-    const team = await transaction.team.create({
-      data: {
-        name,
-        projectId: project.id,
-        externalWorkspaceId: input.workspaceId,
-        externalOrgId: input.externalOrgId,
-      },
-    })
-    const channel = await transaction.channel.create({
-      data: {
-        label: 'General',
-        slug: 'general',
-        organizationId: input.organizationId,
-        projectId: project.id,
-        teamId: team.id,
-        visibility: 'public',
-      },
-    })
-    return { projectId: project.id, teamId: team.id, channelId: channel.id }
+  const project = await transaction.project.create({
+    data: { name, organizationId: input.organizationId },
   })
+  await transaction.boardColumn.createMany({
+    data: defaultColumnCreateData(input.organizationId).map((column) => ({
+      ...column,
+      projectId: project.id,
+    })),
+  })
+  const team = await transaction.team.create({
+    data: {
+      name,
+      projectId: project.id,
+      externalWorkspaceId: input.workspaceId,
+      externalOrgId: input.externalOrgId,
+    },
+  })
+  const channel = await transaction.channel.create({
+    data: {
+      label: 'General',
+      slug: 'general',
+      organizationId: input.organizationId,
+      projectId: project.id,
+      teamId: team.id,
+      visibility: 'public',
+    },
+  })
+  return { projectId: project.id, teamId: team.id, channelId: channel.id }
 }
 
 // Read the user's org role after membership was ensured (owner for the bootstrap
@@ -147,7 +146,10 @@ type WorkspaceTarget = {
   teamRole: MemberRole
 }
 
-const publicChannelId = async (prisma: PrismaClient, teamId: string): Promise<string | null> => {
+const publicChannelId = async (
+  prisma: Pick<PrismaClient, 'channel'>,
+  teamId: string,
+): Promise<string | null> => {
   const channel = await prisma.channel.findFirst({
     where: { teamId, visibility: 'public' },
     orderBy: CREATED_AT_ASC,
@@ -164,26 +166,60 @@ const resolveWorkspaceTarget = async (
   workspaceId: string,
   workspace: ExternalAuthWorkspace | undefined,
 ): Promise<WorkspaceTarget> => {
-  const existing = await prisma.team.findUnique({
-    where: { externalWorkspaceId: workspaceId },
-    select: { id: true, projectId: true, project: { select: { organizationId: true } } },
-  })
+  const externalOrgId = resolveExternalWorkspaceSelection(workspace).organizationId
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT 1
+      FROM (
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(
+            ${`nessie:external-workspace:${externalOrgId ?? 'none'}:${workspaceId}`},
+            0
+          )
+        )
+      ) AS acquired
+    `)
+    const existing = await tx.team.findUnique({
+      where: { externalWorkspaceId: workspaceId },
+      select: {
+        externalOrgId: true,
+        externalWorkspaceId: true,
+        id: true,
+        projectId: true,
+        project: { select: { organizationId: true } },
+      },
+    })
 
-  if (existing && existing.project.organizationId === organizationId) {
-    return {
-      projectId: existing.projectId,
-      teamId: existing.id,
-      channelId: await publicChannelId(prisma, existing.id),
-      teamRole: mapUoaTeamRole(workspace?.teamRoles?.[workspaceId]),
+    if (existing) {
+      if (
+        existing.project.organizationId !== organizationId
+        || existing.externalWorkspaceId !== workspaceId
+        || existing.externalOrgId !== externalOrgId
+      ) {
+        throw new Error(
+          'The selected external organization and team conflict with an existing workspace binding.',
+        )
+      }
+      return {
+        projectId: existing.projectId,
+        teamId: existing.id,
+        channelId: await publicChannelId(tx, existing.id),
+        teamRole: mapUoaTeamRole(workspace?.teamRoles?.[workspaceId]),
+      }
     }
-  }
 
-  const created = await createWorkspaceEnvironment(prisma, {
-    organizationId,
-    workspaceId,
-    externalOrgId: resolveExternalWorkspaceSelection(workspace).organizationId,
-  })
-  return { projectId: created.projectId, teamId: created.teamId, channelId: created.channelId, teamRole: 'owner' }
+    const created = await createWorkspaceEnvironment(tx, {
+      organizationId,
+      workspaceId,
+      externalOrgId,
+    })
+    return {
+      projectId: created.projectId,
+      teamId: created.teamId,
+      channelId: created.channelId,
+      teamRole: 'owner',
+    }
+  }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 
 // The environment when no workspace was selected (non-UOA OIDC, single-env, or a

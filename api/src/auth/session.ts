@@ -1,5 +1,9 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
-import type { AuthProviderResponseType } from '@nessie/schemas'
+import {
+  UoaSessionIdentitySchema,
+  type AuthProviderResponseType,
+  type UoaSessionIdentity,
+} from '@nessie/schemas'
 
 export type SessionTokenClaims = {
   exp: number
@@ -12,6 +16,7 @@ export type SessionTokenClaims = {
   sid: string
   sub: string
   team: string
+  uoaIdentity?: UoaSessionIdentity
 }
 
 export type SessionTokenInput = Omit<SessionTokenClaims, 'exp' | 'iat' | 'sid'>
@@ -79,6 +84,15 @@ export const verifySessionToken = (
     const claims = JSON.parse(decodeBase64Url(payload)) as SessionTokenClaims
     if (claims.exp <= Math.floor(Date.now() / 1000)) {
       return { ok: false, code: 'TOKEN_EXPIRED', message: 'Session expired' }
+    }
+    if (
+      claims.uoaIdentity !== undefined
+      && (
+        claims.providerType !== 'uoa'
+        || !UoaSessionIdentitySchema.safeParse(claims.uoaIdentity).success
+      )
+    ) {
+      return { ok: false, code: 'TOKEN_INVALID', message: 'Invalid session token' }
     }
 
     return { ok: true, claims }

@@ -398,7 +398,12 @@ three independent proofs:
 1. `Authorization: Bearer <dsk_...>` authenticates the Nessie application.
 2. `X-UOA-Delegation` is an exact `ai.invoke` token exchange for
    `product=nessie`, resource `https://api.deepsignal.live`, and the linked
-   subject's active UOA organization/team.
+   subject's active UOA organization/team. Every renewable UOA login requires
+   nonnegative `tv` and signs immutable `{sub, org, team, tv}` proof into the
+   Nessie session. Delegation assertions and cache keys use that proof, while
+   the mutable product-link row is checked only as a current-liveness mirror.
+   The separate billing `X-UOA-Actor` assertion carries the same session epoch
+   for UOA's online recheck; products never infer or increment it.
 3. A fresh, maximum-five-minute RS256 `X-Nessie-Context` binds that subject to
    Nessie's local user/org/team/agent/run plus request and stable tool-call ids.
 
@@ -618,7 +623,13 @@ There is deliberately no direct-provider fallback.
   token-exchange endpoint for the linked `ProductAccountLink.uoaSub`. The
   exchange assertion uses Nessie's existing UOA config-JWT key and domain-hash
   bearer credential, has a maximum 60-second lifetime, and targets Ledger as
-  its resource. The stable UOA subject is required. The selected UOA org/team
+  its resource. New renewable UOA sessions require a nonnegative `tv`
+  authentication epoch and preserve immutable `{sub, org, team, tv}` proof
+  through access sessions, refreshes, durable run attribution, signed
+  assertions, and delegation cache keys. The current product-account link must
+  exactly mirror that proof but cannot supply or upgrade it. Legacy UOA refresh
+  families without encrypted family proof must sign in again. The stable UOA
+  subject is required. The selected UOA org/team
   comes from `active` or, when UOA auto-skips its chooser, the sole active team
   membership; the centralized resolution is projected into both the Nessie
   workspace and every product account link. Multiple teams without `active`

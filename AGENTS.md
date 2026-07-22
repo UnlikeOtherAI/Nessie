@@ -126,7 +126,20 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `X-UOA-Delegation` RS256 JWT minted through UOA token exchange. The stable UOA
   subject is required for DeepWater; an optional `active` UOA org/team is
   emitted only when both values exist and never replaces Nessie's local
-  tenancy. DeepWater's product auth mode remains `uoa_sso` so first login
+  tenancy. Every new renewable UOA login requires a nonnegative `tv`
+  authentication epoch and binds immutable `{sub, org, team, tv}` proof into
+  the signed Nessie access session and its refresh family. Nessie stores UOA's
+  opaque refresh token only as AES-256-GCM server-side state coupled to that
+  family; the browser receives only Nessie's unrelated rotating cookie. The
+  mutable product link is a current-liveness mirror, never the proof source.
+  Delegation assertions and caches use the immutable session epoch and require
+  exact equality with the current link and selected local team. Family/user
+  advisory locks serialize rotation, replay, issuance, logout, password change,
+  deactivation, and credential erasure across replicas; a replay barrier makes
+  reversed predecessor/current HTTP responses converge on one cookie. Login
+  confirms current direct Nessie access before local mutation, product-link
+  epochs never regress, and first-workspace provisioning is exact-workspace
+  locked. DeepWater's product auth mode remains `uoa_sso` so first login
   creates the account link even though MCP transport auth uses Nessie's app API
   key. Generic Ledger AI calls may omit UOA delegation, but never the five-field
   local attribution; user-triggered system jobs carry their durable origin and
@@ -285,7 +298,9 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   signed by `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`. Both secrets are
   cryptographically validated on the Actions runner, then installed together by
   a dependency-free host script in the main-branch deployment workflow; neither
-  may be reused by Ledger or a sibling product. Every request resolves the exact
+  may be reused by Ledger or a sibling product. The actor assertion carries the
+  signed session's UOA `tv` epoch—not a value recovered from a mutable account
+  link—for UOA's online credential-revocation check. Every request resolves the exact
   linked UOA user/org/team, rejects local workspace drift, and lets UOA
   independently recheck billing-manager membership. The public
   protocol is consumed from the MIT-licensed

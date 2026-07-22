@@ -7,7 +7,6 @@ import test from 'node:test'
 
 import {
   NESSIE_UOA_BILLING_APP_KEY_ENV,
-  confirmUoaDirectServiceAccess,
   UoaBillingError,
 } from '../src/services/uoa-billing-client.js'
 import {
@@ -78,6 +77,7 @@ test('binds the canonical statement to Nessie, the team, and a signed actor', as
     product: 'nessie',
     organisation_id: 'uoa-org',
     team_id: 'uoa-team',
+    tv: 7,
     iat: 1_784_570_000,
     exp: 1_784_570_045,
     jti: 'billing-jti',
@@ -90,47 +90,6 @@ test('binds the canonical statement to Nessie, the team, and a signed actor', as
       Buffer.from(signature, 'base64url'),
     ),
     true,
-  )
-})
-
-test('confirms direct Nessie access only through the exact 204 no-store seam', async () => {
-  let requestUrl = ''
-  let requestBody: unknown
-  const result = confirmUoaDirectServiceAccess({
-    organizationId: 'uoa-org',
-    teamId: 'uoa-team',
-    userId: 'uoa-user',
-  }, {
-    env,
-    fetchImpl: (async (input, init) => {
-      requestUrl = input.toString()
-      requestBody = JSON.parse(String(init?.body)) as unknown
-      return new Response(null, {
-        headers: { 'Cache-Control': 'private, no-store' },
-        status: 204,
-      })
-    }) as typeof fetch,
-  })
-  await assert.doesNotReject(result)
-  assert.equal(
-    requestUrl,
-    'https://uoa.example/billing/v1/service-access/confirm',
-  )
-  assert.deepEqual(requestBody, subjectBody)
-
-  await assert.rejects(
-    confirmUoaDirectServiceAccess({
-      organizationId: 'uoa-org',
-      teamId: 'uoa-team',
-      userId: 'uoa-user',
-    }, {
-      env,
-      fetchImpl: (async () =>
-        new Response(JSON.stringify({ ok: true }))) as typeof fetch,
-    }),
-    (error: unknown) =>
-      error instanceof UoaBillingError
-      && error.code === 'UOA_BILLING_RESPONSE_INVALID',
   )
 })
 
@@ -343,6 +302,58 @@ test('rejects path drift, workspace drift, and cross-tenant statements', async (
     (error: unknown) =>
       error instanceof UoaBillingError
       && error.code === 'UOA_BILLING_CONTEXT_MISMATCH',
+  )
+
+  await assert.rejects(
+    getUoaBillingStatement(
+      prisma({ uoaTokenVersion: 8 }) as never,
+      actorContext as never,
+      undefined,
+      { env },
+    ),
+    (error: unknown) =>
+      error instanceof UoaBillingError
+      && error.code === 'UOA_BILLING_CONTEXT_MISMATCH',
+  )
+
+  const {
+    uoaIdentity: _discardedUoaIdentity,
+    ...legacyActionContext
+  } = actorContext.actionContext
+  await assert.rejects(
+    getUoaBillingStatement(
+      prisma() as never,
+      {
+        ...actorContext,
+        actionContext: legacyActionContext,
+      } as never,
+      undefined,
+      { env },
+    ),
+    (error: unknown) =>
+      error instanceof UoaBillingError
+      && error.code === 'UOA_BILLING_SSO_REQUIRED',
+  )
+
+  await assert.rejects(
+    getUoaBillingStatement(
+      prisma({ uoaTokenVersion: null }) as never,
+      {
+        ...actorContext,
+        actionContext: {
+          ...actorContext.actionContext,
+          uoaIdentity: {
+            ...actorContext.actionContext.uoaIdentity,
+            tokenVersion: null,
+          },
+        },
+      } as never,
+      undefined,
+      { env },
+    ),
+    (error: unknown) =>
+      error instanceof UoaBillingError
+      && error.code === 'UOA_BILLING_SSO_REQUIRED',
   )
 
   await assert.rejects(

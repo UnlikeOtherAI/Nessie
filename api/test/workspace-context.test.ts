@@ -123,6 +123,8 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         }
         const project = projects.find((p) => p.id === found.projectId)!
         return {
+          externalOrgId: found.externalOrgId,
+          externalWorkspaceId: found.externalWorkspaceId,
           id: found.id,
           projectId: found.projectId,
           project: { organizationId: project.organizationId },
@@ -249,6 +251,7 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         return {}
       },
     },
+    $queryRaw: async () => [],
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
   }
 
@@ -336,6 +339,30 @@ test('the same workspace resolves to the same team for a second user (shared env
   assert.equal(state.teams.length, 1)
   // Both users are members of the one workspace team.
   assert.equal(state.teamMembers.filter((m) => m.teamId === first!.teamId).length, 2)
+})
+
+test('rejects an existing team bound to the same team id under another external org', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+  const first = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('owner@x.com', workspace('ws-shared', 'owner')),
+  )
+  assert.ok(first)
+  const boundTeam = state.teams.find((team) => team.id === first.teamId)
+  assert.ok(boundTeam)
+  boundTeam.externalOrgId = 'different-uoa-org'
+  const projectCount = state.projects.length
+
+  await assert.rejects(
+    resolveUoaWorkspaceContext(
+      client,
+      identityFor('attacker@x.com', workspace('ws-shared')),
+    ),
+    /conflict with an existing workspace binding/,
+  )
+  assert.equal(state.projects.length, projectCount)
+  assert.equal(state.users.some((user) => user.email === 'attacker@x.com'), false)
 })
 
 test('no workspace selection falls back to the user\'s existing team (legacy behaviour)', async () => {
