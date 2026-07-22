@@ -130,7 +130,20 @@ test('resolves the exact UOA-bound Nessie workspace and live role', async () => 
   )
 })
 
-test('rejects first-membership fallback and mutable-link drift', async () => {
+test('keeps another team family valid when account-link last-seen metadata changes', async () => {
+  const fake = new FakeBindingPrisma()
+  fake.link.activeOrgId = 'last-seen-other-org'
+  fake.link.activeTeamId = 'last-seen-other-team'
+
+  const context = await resolveUoaLocalSessionContext(fake.asClient(), {
+    identity: IDENTITY,
+    userId: USER_ID,
+  })
+
+  assert.equal(context.teamId, '00000000-0000-4000-8000-000000000020')
+})
+
+test('rejects first-membership fallback and stable-link epoch drift', async () => {
   const missingTeam = new FakeBindingPrisma()
   missingTeam.teamAvailable = false
   await assert.rejects(

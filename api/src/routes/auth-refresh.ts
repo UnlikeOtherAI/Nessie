@@ -43,7 +43,7 @@ export const registerAuthRefreshRoute = (
         rawToken,
         ttlSeconds: config.auth.refreshTokenTtlSeconds,
         userAgent: request.headers['user-agent'] ?? null,
-        refreshUoaSession: async (upstream, transaction) => {
+        refreshUoaSession: async (upstream) => {
           const refreshed = await refreshUoaSession(upstream)
           const selected = resolveExternalWorkspaceSelection(
             refreshed.identity.workspace,
@@ -59,11 +59,6 @@ export const registerAuthRefreshRoute = (
             teamId: selected.teamId,
             tokenVersion: refreshed.identity.uoaTokenVersion,
           }
-          await advanceUoaLocalSessionBindingInTransaction(transaction, {
-            nextIdentity,
-            previousIdentity: upstream.expectedIdentity,
-            userId: upstream.userId,
-          })
           return {
             identity: nextIdentity,
             refreshToken: refreshed.refreshToken,
@@ -71,6 +66,9 @@ export const registerAuthRefreshRoute = (
               Date.now() + refreshed.refreshTokenExpiresInSeconds * 1000,
             ),
           }
+        },
+        advanceUoaSessionBinding: async (binding, transaction) => {
+          await advanceUoaLocalSessionBindingInTransaction(transaction, binding)
         },
       })
     } catch (error) {

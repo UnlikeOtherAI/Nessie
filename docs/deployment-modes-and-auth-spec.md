@@ -261,11 +261,17 @@ Claims:
 - **UOA renewal:** a new UOA login must return an opaque refresh credential and
   nonnegative `tv`. Nessie encrypts the upstream credential with AES-256-GCM in
   `uoa_session_credentials`, coupled to one local family and its current local
-  token; it never enters the browser. Each active local rotation first obtains
-  UOA's replay-safe rotated successor, validates the exact immutable
-  `{sub, org, team}` tuple and monotonic epoch, then atomically advances the
-  current product-link mirror, encrypted credential, and deterministic Nessie
-  successor in the same PostgreSQL transaction. A replay of the
+  token; it never enters the browser. Each active local rotation uses one short
+  family-locked preflight, obtains UOA's exact-context replay-safe successor
+  **outside every database transaction**, validates the immutable
+  `{sub, org, team}` tuple and monotonic epoch, then uses a second short locked
+  compare-and-swap to atomically advance the stable product-link epoch,
+  encrypted credential, and deterministic Nessie successor. If an ancestor
+  replay installs the local cookie barrier while renewal is in flight, finalize
+  keeps that cookie and adopts the exact UOA successor in place; it never drops
+  an accepted upstream rotation. Concurrent calls may reach UOA with the same
+  credential, but identical finalizers converge, so SSO latency cannot pin the
+  database pool. A replay of the
   local predecessor returns the already-committed local successor without a
   second UOA call. Transient UOA/network failures preserve the family and return
   `503`; definitive revocation, tuple drift, or malformed family proof returns
@@ -273,8 +279,13 @@ Claims:
 - **workspace binding:** refreshed UOA access sessions resolve the exact local
   team mapped to the signed external org/team and require live user, project,
   team, organization, and Nessie product-link membership. They never fall back
-  to the user's first membership. The product link may mirror a newer epoch
-  after a valid refresh, but it never supplies session identity.
+  to the user's first membership. The one account link per user/product proves
+  stable subject/status/credential epoch only; its active org/team columns are
+  last-seen metadata and cannot invalidate a simultaneous family in another
+  team. The product link may mirror a newer epoch after a valid refresh, but it
+  never supplies session identity. Billing, delegated calls, activation, team
+  enablement, and webhook routing all derive workspace authority from the signed
+  family plus the exact Team mapping.
 - **revocation:** `DELETE /api/auth/session` (logout) is now **public** and cookie-driven — it revokes the token family server-side and clears the cookie, so a session can be killed even after the access token has expired. Password change, user deactivation, explicit session revocation, expiry, and reuse detection erase both matching local families and encrypted UOA credentials atomically. The access JWT itself remains stateless (verified by signature + `exp`); UOA sessions additionally carry immutable `uoaIdentity { subject, organizationId, teamId, tokenVersion }` proof
 - **credential retention:** startup and five-minute bounded sweeps take each
   candidate's family lock, retain hash-only local token history, revoke any
@@ -335,7 +346,11 @@ the signed `{sub, org, team, tv}` subject. Product-link upserts are one atomic,
 slug-ordered transaction: an existing subject cannot be replaced and an older
 epoch cannot overwrite a newer one. First-time workspace creation is likewise
 serialized by an advisory lock over the exact external organization/team, so
-simultaneous first logins converge on one project and team.
+simultaneous first logins converge on one project and team. A separate advisory
+lock over the normalized email serializes local user lookup/creation and every
+membership write after the workspace is validated, so concurrent device
+callbacks for the same principal converge without a unique-index failure or
+creating a user for an invalid team.
 Non-UOA OIDC providers and single-workspace users carry no `active` claim and
 land in their existing/default team, unchanged. See
 [docs/plans/2026-07-10-slack-workspace-login-nessie.md](plans/2026-07-10-slack-workspace-login-nessie.md).

@@ -627,12 +627,17 @@ There is deliberately no direct-provider fallback.
   authentication epoch and preserve immutable `{sub, org, team, tv}` proof
   through access sessions, refreshes, durable run attribution, signed
   assertions, and delegation cache keys. The current product-account link must
-  exactly mirror that proof but cannot supply or upgrade it. Legacy UOA refresh
-  families without encrypted family proof must sign in again. The stable UOA
-  subject is required. The selected UOA org/team
+  exactly match the stable subject and credential epoch, but cannot supply or
+  upgrade session identity. Its active org/team fields are last-seen UI
+  metadata only, so simultaneous sessions in different teams cannot invalidate
+  or rebind one another. The exact signed workspace must independently match
+  the local Team's external mapping. Legacy UOA refresh families without
+  encrypted family proof must sign in again. The stable UOA subject is
+  required. The selected UOA org/team
   comes from `active` or, when UOA auto-skips its chooser, the sole active team
-  membership; the centralized resolution is projected into both the Nessie
-  workspace and every product account link. Multiple teams without `active`
+  membership; the centralized resolution is projected into the Nessie
+  workspace, while product links retain only stable account/epoch authority.
+  Multiple teams without `active`
   remain ambiguous and fail closed. Nessie's signed local organization/team remain the
   authoritative research and raw-usage scope, so the two ID namespaces are never
   compared or substituted. Ledger verifies both assertions before assigning a

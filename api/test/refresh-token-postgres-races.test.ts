@@ -76,6 +76,7 @@ const rotate = (
   entered?: () => void,
 ) => consumeRefreshToken(prisma, {
   authSecret: AUTH_SECRET,
+  advanceUoaSessionBinding: async () => undefined,
   rawToken,
   ttlSeconds: 3_600,
   refreshUoaSession: async (input) => {
@@ -130,6 +131,37 @@ runDatabaseTest('PostgreSQL refresh-family and user locks close cross-replica ra
     assert.equal(await prisma.uoaSessionCredential.count({
       where: { familyId },
     }), 1)
+  })
+
+  await t.test('upstream renewal does not hold the only database connection', async () => {
+    const databaseUrl = new URL(process.env.DATABASE_URL!)
+    databaseUrl.searchParams.set('connection_limit', '1')
+    const singleConnectionPrisma = new PrismaClient({
+      datasources: { db: { url: databaseUrl.toString() } },
+    })
+    t.after(() => singleConnectionPrisma.$disconnect())
+    const issued = await issueUoaFamily(singleConnectionPrisma, principal)
+    const gate = deferred()
+    const entered = deferred()
+    const rotation = rotate(
+      singleConnectionPrisma,
+      issued.rawToken,
+      gate.promise,
+      entered.resolve,
+    )
+    await entered.promise
+
+    const unrelatedQuery = singleConnectionPrisma.user.count()
+    const availability = await Promise.race([
+      unrelatedQuery.then(() => 'available' as const),
+      new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 1_000)),
+    ])
+    gate.resolve()
+    const result = await rotation
+    await unrelatedQuery
+
+    assert.equal(availability, 'available')
+    assert.equal(result.ok, true)
   })
 
   await t.test('logout waiting on rotation revokes its resulting successor', async () => {

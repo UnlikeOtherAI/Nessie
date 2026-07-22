@@ -289,8 +289,6 @@ export const loadUoaProductIdentity = async (
       },
     },
     select: {
-      activeOrgId: true,
-      activeTeamId: true,
       status: true,
       uoaSub: true,
       uoaTokenVersion: true,
@@ -300,8 +298,6 @@ export const loadUoaProductIdentity = async (
     link?.status !== 'linked'
     || sessionIdentity.tokenVersion === null
     || link.uoaSub !== sessionIdentity.subject
-    || link.activeOrgId !== sessionIdentity.organizationId
-    || link.activeTeamId !== sessionIdentity.teamId
     || (link.uoaTokenVersion ?? null) !== sessionIdentity.tokenVersion
   ) {
     return null

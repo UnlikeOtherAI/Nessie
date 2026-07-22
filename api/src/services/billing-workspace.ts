@@ -68,8 +68,6 @@ export const resolveBillingWorkspace = async (
         },
       },
       select: {
-        activeOrgId: true,
-        activeTeamId: true,
         status: true,
         uoaSub: true,
         uoaTokenVersion: true,
@@ -95,8 +93,6 @@ export const resolveBillingWorkspace = async (
   if (
     identityLink?.status !== 'linked'
     || !identityLink.uoaSub
-    || !identityLink.activeOrgId
-    || !identityLink.activeTeamId
     || !team?.externalOrgId
     || !team.externalWorkspaceId
   ) {
@@ -107,8 +103,6 @@ export const resolveBillingWorkspace = async (
   }
   if (
     identityLink.uoaSub !== sessionIdentity.subject
-    || identityLink.activeOrgId !== sessionIdentity.organizationId
-    || identityLink.activeTeamId !== sessionIdentity.teamId
     || (identityLink.uoaTokenVersion ?? null) !== sessionIdentity.tokenVersion
     || sessionIdentity.organizationId !== team.externalOrgId
     || sessionIdentity.teamId !== team.externalWorkspaceId

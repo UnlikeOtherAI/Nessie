@@ -187,23 +187,13 @@ export const setProductTeamEnablement = async (
   prisma: Pick<PrismaClient, '$queryRaw'>,
   input: ProductOwner & { enabled: boolean; productSlug: string },
 ): Promise<ProductTeamEnablementRow | null> => {
-  if (!input.teamId) {
+  if (!input.teamId || input.productSlug === 'nessie') {
     return null
   }
 
   const metadataJson = JSON.stringify(teamEnablementMetadata())
   const rows = await prisma.$queryRaw<ProductTeamEnablementRow[]>(Prisma.sql`
-    WITH account_link AS (
-      SELECT
-        "active_org_id",
-        "active_team_id"
-      FROM "product_account_links"
-      WHERE "organization_id" = CAST(${input.organizationId} AS uuid)
-        AND "user_id" = CAST(${input.userId} AS uuid)
-        AND "product_slug" = ${input.productSlug}
-      LIMIT 1
-    ),
-    upserted AS (
+    WITH upserted AS (
       INSERT INTO "product_team_enablements" (
         "id",
         "organization_id",
@@ -223,8 +213,8 @@ export const setProductTeamEnablement = async (
         CAST(${input.teamId} AS uuid),
         p."slug",
         ${input.enabled},
-        account_link."active_org_id",
-        account_link."active_team_id",
+        t."external_org_id",
+        t."external_workspace_id",
         CAST(${input.userId} AS uuid),
         CAST(${metadataJson} AS jsonb),
         CURRENT_TIMESTAMP,
@@ -235,12 +225,25 @@ export const setProductTeamEnablement = async (
       JOIN "projects" pr
         ON pr."id" = t."project_id"
         AND pr."organization_id" = CAST(${input.organizationId} AS uuid)
-      LEFT JOIN account_link ON TRUE
       WHERE p."slug" = ${input.productSlug}
+        AND p."slug" <> 'nessie'
+        AND (
+          ${!input.enabled}
+          OR (
+            t."external_org_id" IS NOT NULL
+            AND t."external_workspace_id" IS NOT NULL
+          )
+        )
       ON CONFLICT ("organization_id", "team_id", "product_slug") DO UPDATE SET
         "enabled" = EXCLUDED."enabled",
-        "external_org_id" = EXCLUDED."external_org_id",
-        "external_team_id" = EXCLUDED."external_team_id",
+        "external_org_id" = COALESCE(
+          EXCLUDED."external_org_id",
+          "product_team_enablements"."external_org_id"
+        ),
+        "external_team_id" = COALESCE(
+          EXCLUDED."external_team_id",
+          "product_team_enablements"."external_team_id"
+        ),
         "configured_by_user_id" = EXCLUDED."configured_by_user_id",
         "metadata_json" = EXCLUDED."metadata_json",
         "updated_at" = CURRENT_TIMESTAMP
@@ -377,6 +380,7 @@ export const listIntegratedProducts = async (
         msi.updated_at DESC
       LIMIT 1
     ) mcp_instance ON TRUE
+    WHERE p.slug <> 'nessie'
     ORDER BY p.sort_order ASC, p.name ASC
   `)
 

@@ -95,6 +95,7 @@ export class FakeRefreshTokenPrisma {
   readonly records = new Map<string, StoredRefreshToken>()
   readonly uoaCredentials = new Map<string, StoredUoaCredential>()
   failNextTransaction = false
+  activeTransactions = 0
   private nextId = 1
   private transactionTail: Promise<void> = Promise.resolve()
 
@@ -199,6 +200,7 @@ export class FakeRefreshTokenPrisma {
     const prior = this.transactionTail
     this.transactionTail = new Promise<void>((resolve) => { release = resolve })
     await prior
+    this.activeTransactions += 1
     const tokenSnapshot = new Map(
       Array.from(this.records.entries()).map(([id, record]) => [id, cloneToken(record)]),
     )
@@ -220,6 +222,7 @@ export class FakeRefreshTokenPrisma {
       for (const [id, record] of credentialSnapshot) this.uoaCredentials.set(id, record)
       throw error
     } finally {
+      this.activeTransactions -= 1
       release()
     }
   }
@@ -290,6 +293,7 @@ export const consume = (
   refreshUoaSession: RefreshCallback = defaultUoaRefresh(now),
 ) => consumeRefreshToken(fake.asClient(), {
   authSecret: AUTH_SECRET,
+  advanceUoaSessionBinding: async () => undefined,
   rawToken,
   ttlSeconds: TTL_SECONDS,
   refreshUoaSession,

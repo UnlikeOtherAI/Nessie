@@ -32,12 +32,12 @@ const decodeJwtPart = (value: string): Record<string, unknown> =>
     unknown
   >
 
-test('binds the canonical statement to Nessie, the team, and a signed actor', async () => {
+test('binds billing to the signed team despite different last-seen link metadata', async () => {
   let requestUrl = ''
   let requestHeaders = new Headers()
   let requestBody: Record<string, unknown> = {}
   const result = await getUoaBillingStatement(
-    prisma() as never,
+    prisma({ activeOrgId: 'last-seen-other-org' }) as never,
     actorContext as never,
     '2026-07',
     {
@@ -294,7 +294,7 @@ test('rejects path drift, workspace drift, and cross-tenant statements', async (
 
   await assert.rejects(
     getUoaBillingStatement(
-      prisma({ activeOrgId: 'other-org' }) as never,
+      prisma({ externalOrgId: 'other-org' }) as never,
       actorContext as never,
       undefined,
       { env },

@@ -29,16 +29,16 @@ const createFixture = createRefreshFixture
 test('active refresh rotates local and encrypted upstream credentials atomically', async () => {
   const { fake, rawToken } = await createFixture()
   const now = new Date()
-  let callbackTransaction: unknown
+  let callbackRanOutsideTransaction = false
   const refresh = defaultUoaRefresh(now)
 
-  const result = await consume(fake, rawToken, now, async (input, transaction) => {
-    callbackTransaction = transaction
-    return refresh(input, transaction)
+  const result = await consume(fake, rawToken, now, async (input) => {
+    callbackRanOutsideTransaction = fake.activeTransactions === 0
+    return refresh(input)
   })
 
   assert.equal(result.ok, true)
-  assert.strictEqual(callbackTransaction, fake.asClient())
+  assert.equal(callbackRanOutsideTransaction, true)
   if (!result.ok) return
   assert.equal(result.replayed, false)
   assert.deepEqual(result.uoaIdentity, UOA_IDENTITY)
@@ -87,7 +87,9 @@ test('simultaneous refreshes converge on the same local and UOA successor', asyn
   if (!left.ok || !right.ok) return
   assert.equal(left.rawToken, right.rawToken)
   assert.deepEqual([left.replayed, right.replayed].sort(), [false, true])
-  assert.equal(upstreamCalls, 1)
+  // Concurrent callers may both reach UOA; its exact-context replay contract
+  // returns the same upstream successor and the local CAS persists it once.
+  assert.equal(upstreamCalls, 2)
   assert.equal(fake.records.size, 2)
   assert.equal(fake.uoaCredentials.values().next().value?.generation, 1)
   assert.equal(
@@ -101,11 +103,16 @@ test('lost local commit retries the same replay-safe UOA rotation', async () => 
   const now = new Date()
   let upstreamCalls = 0
   const refresh = defaultUoaRefresh(now)
+  let failCommit = true
   const countedRefresh: RefreshCallback = async (input) => {
     upstreamCalls += 1
-    return refresh(input)
+    const result = await refresh(input)
+    if (failCommit) {
+      failCommit = false
+      fake.failNextTransaction = true
+    }
+    return result
   }
-  fake.failNextTransaction = true
 
   await assert.rejects(
     consume(fake, rawToken, now, countedRefresh),
@@ -175,6 +182,63 @@ test('predecessor replay makes a concurrently held current cookie converge', asy
   assert.equal(upstreamCalls, 0)
 })
 
+test('ancestor replay adopts an in-flight UOA successor behind the local barrier', async () => {
+  const { fake, rawToken: ancestorRawToken } = await createFixture()
+  const now = new Date()
+  const first = await consume(fake, ancestorRawToken, now)
+  assert.equal(first.ok, true)
+  if (!first.ok) return
+
+  let releaseUpstream!: () => void
+  let markEntered!: () => void
+  const upstreamGate = new Promise<void>((resolve) => { releaseUpstream = resolve })
+  const entered = new Promise<void>((resolve) => { markEntered = resolve })
+  const refresh = defaultUoaRefresh(new Date(now.getTime() + 1_000))
+  const currentRotation = consume(
+    fake,
+    first.rawToken,
+    new Date(now.getTime() + 1_000),
+    async (input) => {
+      markEntered()
+      await upstreamGate
+      return refresh(input)
+    },
+  )
+  await entered
+
+  const ancestorReplay = await consume(
+    fake,
+    ancestorRawToken,
+    new Date(now.getTime() + 2_000),
+  )
+  releaseUpstream()
+  const current = await currentRotation
+
+  assert.equal(ancestorReplay.ok, true)
+  assert.equal(current.ok, true)
+  if (!ancestorReplay.ok || !current.ok) return
+  assert.equal(ancestorReplay.rawToken, first.rawToken)
+  assert.equal(current.rawToken, first.rawToken)
+  assert.equal(current.replayed, true)
+
+  const credential = fake.uoaCredentials.get(current.familyId)
+  const localCurrent = fake.findByHash(hashRefreshToken(first.rawToken))
+  assert.equal(credential?.generation, 2)
+  assert.equal(
+    credential?.refreshTokenHash,
+    hashRefreshToken('uoa-refresh-1.next.next'),
+  )
+  assert.equal(credential?.lastLocalTokenId, localCurrent?.id)
+
+  const afterBarrier = await consume(
+    fake,
+    first.rawToken,
+    new Date(now.getTime() + REFRESH_TOKEN_REPLAY_GRACE_MS + 3_000),
+  )
+  assert.equal(afterBarrier.ok, true)
+  if (afterBarrier.ok) assert.notEqual(afterBarrier.rawToken, first.rawToken)
+})
+
 test('slow upstream work starts the local replay grace at commit time', async () => {
   const { fake, rawToken } = await createFixture()
   const startedAt = new Date('2026-07-22T00:00:00.000Z')
@@ -184,6 +248,7 @@ test('slow upstream work starts the local replay grace at commit time', async ()
   let clockReads = 0
   const rotated = await consumeRefreshToken(fake.asClient(), {
     authSecret: AUTH_SECRET,
+    advanceUoaSessionBinding: async () => undefined,
     rawToken,
     ttlSeconds: TTL_SECONDS,
     clock: () => {

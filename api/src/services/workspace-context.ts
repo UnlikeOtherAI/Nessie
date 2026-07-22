@@ -51,7 +51,7 @@ const workspaceDisplayName = (workspaceId: string): string =>
 // clobbering an existing (possibly higher) role or resurrecting a deactivated
 // org membership: create-with-role on first join, leave untouched thereafter.
 const ensureWorkspaceMemberships = async (
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   input: {
     userId: string
     organizationId: string
@@ -126,7 +126,7 @@ const createWorkspaceEnvironment = async (
 // Read the user's org role after membership was ensured (owner for the bootstrap
 // user, member otherwise) — the role the access token is scoped to.
 const readOrgRole = async (
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   organizationId: string,
   userId: string,
 ): Promise<MemberRole> => {
@@ -157,6 +157,57 @@ const publicChannelId = async (
   })
   return channel?.id ?? null
 }
+
+// UOA can complete the same principal's callback concurrently on multiple
+// devices. Serialize user creation and every membership write across replicas;
+// Prisma's upsert alone does not make concurrent create branches conflict-safe.
+const ensureWorkspacePrincipal = async (
+  prisma: PrismaClient,
+  input: {
+    avatarUrl?: string
+    channelId: string | null
+    displayName: string
+    email: string
+    organizationId: string
+    projectId: string
+    teamId: string
+    teamRole: MemberRole
+  },
+): Promise<{ id: string; orgRole: MemberRole }> => prisma.$transaction(async (transaction) => {
+  await transaction.$queryRaw(Prisma.sql`
+    SELECT 1
+    FROM (
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${`nessie:uoa-principal:${input.email}`}, 0)
+      )
+    ) AS acquired
+  `)
+  const existing = await transaction.user.findUnique({
+    where: { email: input.email },
+    select: { id: true },
+  })
+  const user = existing ?? await transaction.user.create({
+    data: {
+      avatarUrl: input.avatarUrl,
+      displayName: input.displayName,
+      email: input.email,
+    },
+    select: { id: true },
+  })
+  await ensureWorkspaceMemberships(transaction, {
+    userId: user.id,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    teamId: input.teamId,
+    channelId: input.channelId,
+    orgRole: 'member',
+    teamRole: input.teamRole,
+  })
+  return {
+    id: user.id,
+    orgRole: await readOrgRole(transaction, input.organizationId, user.id),
+  }
+}, AUTH_LOCK_TRANSACTION_OPTIONS)
 
 // Resolve the target team for the selected UOA workspace: an existing bound team
 // (join it), or a freshly provisioned one (the first person owns it).
@@ -312,30 +363,24 @@ export const resolveUoaWorkspaceContext = async (
     return null
   }
 
-  // 3. Ensure the user exists and is a member of the target environment. Org
-  //    membership is `member` on first join (the bootstrap user is already
-  //    `owner`; the create-only upsert never downgrades them).
-  if (!user) {
-    user = await prisma.user.create({
-      data: { email, displayName: input.displayName, avatarUrl: input.avatarUrl },
-      select: { id: true },
-    })
-  }
-  await ensureWorkspaceMemberships(prisma, {
-    userId: user.id,
+  // 3. Resolve one stable local principal after validating the target. The
+  // advisory lock closes same-email callback races across devices/replicas.
+  const principal = await ensureWorkspacePrincipal(prisma, {
+    avatarUrl: input.avatarUrl,
+    channelId: target.channelId,
+    displayName: input.displayName,
+    email,
     organizationId,
     projectId: target.projectId,
     teamId: target.teamId,
-    channelId: target.channelId,
-    orgRole: 'member',
     teamRole: target.teamRole,
   })
 
   return {
-    userId: user.id,
+    userId: principal.id,
     organizationId,
     projectId: target.projectId,
     teamId: target.teamId,
-    orgRole: await readOrgRole(prisma, organizationId, user.id),
+    orgRole: principal.orgRole,
   }
 }

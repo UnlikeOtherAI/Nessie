@@ -12,6 +12,7 @@ export const UOA_TEAM_B = 'team-ds-b'
 export type Link = {
   activeOrgId?: string | null
   activeTeamId?: string | null
+  channelTeamIds?: string[]
   memberTeamIds?: string[]
   organizationActive?: boolean
   organizationId: string
@@ -71,14 +72,15 @@ export const makeInsightFake = (
   const state = { clock: new Date('2026-07-12T00:00:00.000Z') }
   const channels = new Map<string, { id: string; archivedAt: Date | null }>()
   for (const link of links) {
-    const activeTeamId = link.activeTeamId ?? UOA_TEAM_A
-    channels.set(
-      `extagent:deepsignal:${link.organizationId}:${link.userId}:${activeTeamId}`,
-      {
-        id: `chan-${link.userId}-${activeTeamId}`,
-        archivedAt: null,
-      },
-    )
+    for (const channelTeamId of link.channelTeamIds ?? [link.activeTeamId ?? UOA_TEAM_A]) {
+      channels.set(
+        `extagent:deepsignal:${link.organizationId}:${link.userId}:${channelTeamId}`,
+        {
+          id: `chan-${link.userId}-${channelTeamId}`,
+          archivedAt: null,
+        },
+      )
+    }
   }
   const client = {
     messages,
@@ -115,8 +117,6 @@ export const makeInsightFake = (
     productAccountLink: {
       findMany: async (args: {
         where: {
-          activeOrgId: string
-          activeTeamId: string
           organizationId: string
           productSlug: string
           status: string
@@ -132,9 +132,7 @@ export const makeInsightFake = (
         links
           .filter(
             (link) =>
-              (link.activeOrgId ?? UOA_ORG) === args.where.activeOrgId
-              && (link.activeTeamId ?? UOA_TEAM_A) === args.where.activeTeamId
-              && link.organizationId === args.where.organizationId
+              link.organizationId === args.where.organizationId
               && link.productSlug === args.where.productSlug
               && link.status === args.where.status
               && (link.organizationActive ?? true)
@@ -146,10 +144,7 @@ export const makeInsightFake = (
                 || args.where.uoaSub.in.includes(link.uoaSub ?? '')
               ),
           )
-          .map((link) => ({
-            activeTeamId: link.activeTeamId ?? UOA_TEAM_A,
-            userId: link.userId,
-          })),
+          .map((link) => ({ userId: link.userId })),
     },
     channel: {
       findUnique: async (args: { where: { dmKey: string } }) =>

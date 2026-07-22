@@ -80,13 +80,13 @@ const delegationToken = (tokenVersion: number | undefined = 7): string => {
   return `header.${claims}.signature`
 }
 
-test('signs Nessie context and exchanges a cached UOA delegation', async () => {
+test('delegates from signed workspace despite different last-seen link metadata', async () => {
   const exchanges: Array<{ body: Record<string, unknown>; init: RequestInit; url: string }> = []
   const prisma = {
     productAccountLink: {
       findUnique: async () => ({
-        activeOrgId: 'uoa-org',
-        activeTeamId: 'uoa-team',
+        activeOrgId: 'last-seen-other-org',
+        activeTeamId: 'last-seen-other-team',
         status: 'linked',
         uoaSub: 'uoa-user',
         uoaTokenVersion: 7,

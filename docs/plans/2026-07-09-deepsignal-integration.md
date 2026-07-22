@@ -107,13 +107,17 @@ both sides.
 - DeepSignal accepts no user OAuth/access token or personal credential as the
   app-to-app proof. Generic connectors continue to use Nessie's ordinary
   dynamic OAuth implementation.
-- `ProductAccountLink` (`organizationId, userId, productSlug='deepsignal'`, `uoaSub`,
-  active org/team, `status`) records delegated identity for the Integrations UI,
-  kept in sync by `syncUoaProductAccountLinks`.
-- The link's active org/team must exactly match the selected internal team's
-  `externalOrgId`/`externalWorkspaceId`. Enablement and that mapping are
-  revalidated on every call before exchange/dispatch; a team switch cannot
-  reuse a channel or conversation from the previous workspace.
+- `ProductAccountLink` (`organizationId, userId, productSlug='deepsignal'`,
+  `uoaSub`, credential epoch, `status`) records stable delegated-account
+  liveness for the Integrations UI, kept in sync by
+  `syncUoaProductAccountLinks`. Its active org/team columns are last-seen
+  metadata only; one user's simultaneous team sessions must not overwrite one
+  another's authority.
+- The signed session's active org/team must exactly match the selected internal
+  team's `externalOrgId`/`externalWorkspaceId`. Enablement derives its external
+  tuple from that Team row, and both are revalidated on every call before
+  exchange/dispatch; a team switch cannot reuse a channel or conversation from
+  the previous workspace.
 - DeepSignal's inbound-webhook HMAC secret remains per-org and separate from
   every outbound application key. Nessie rejects an attempted equal secret.
 
@@ -329,10 +333,12 @@ only ever holds **report references (ids)** — it never embeds report content. 
     (`20260709123000_product_webhook_secret`). On `insight.surfaced` the receiver
     first resolves the payload `teamId` through an enabled
     `ProductTeamEnablement`, requiring its external org/team to match the
-    linked Nessie `Team`. It then selects only active members whose linked UOA
-    account has the same active org/team (narrowed by payload subjects when
-    present), and coalesces insights into one rolling digest message per
-    recipient. Insight ids remain the unbounded idempotency keys; new digest
+    linked Nessie `Team`. It then selects active exact-team members with a
+    stable linked UOA account (narrowed by payload subjects when present), and
+    delivers only where that team-specific channel already exists. Mutable
+    last-seen account-link workspace metadata is not routing authority. It
+    coalesces insights into one rolling digest message per recipient. Insight
+    ids remain the unbounded idempotency keys; new digest
     notifications are budgeted per user/window, while over-budget events still
     update the durable digest.
   - **Manual registration step:** DeepSignal returns the webhook signing secret

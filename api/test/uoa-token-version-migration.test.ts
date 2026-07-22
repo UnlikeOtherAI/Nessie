@@ -11,6 +11,13 @@ const migrationSql = readFileSync(
   ),
   'utf8',
 )
+const productMigrationSql = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    '../prisma/migrations/20260722033000_nessie_account_link_product/migration.sql',
+  ),
+  'utf8',
+)
 
 test('product account links persist a nonnegative UOA token version', () => {
   assert.match(migrationSql, /ADD COLUMN "uoa_token_version" INTEGER/)
@@ -34,4 +41,11 @@ test('refresh families store one encrypted immutable UOA session credential', ()
     migrationSql,
     /FOREIGN KEY \("last_local_token_id"\) REFERENCES "refresh_tokens"\("id"\) ON DELETE CASCADE/,
   )
+})
+
+test('the stable Nessie UOA account link has a first-party product owner', () => {
+  assert.match(productMigrationSql, /'nessie'/)
+  assert.match(productMigrationSql, /'first-party\/nessie'/)
+  assert.match(productMigrationSql, /'uoa_sso'/)
+  assert.match(productMigrationSql, /ON CONFLICT \("slug"\) DO UPDATE/)
 })

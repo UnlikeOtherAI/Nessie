@@ -61,3 +61,55 @@ runDatabaseTest('concurrent first UOA logins converge on one exact workspace', a
     where: { teamId: left.teamId },
   }), 2)
 })
+
+runDatabaseTest('concurrent callbacks for one UOA principal create one local user', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  const externalOrgId = `uoa-org-principal-${suffix}`
+  const externalTeamId = `uoa-team-principal-${suffix}`
+  const email = `workspace-principal-${suffix}@example.com`
+  const organization = await prisma.organization.create({
+    data: { name: `Principal race ${suffix}` },
+  })
+  let workspaceProjectId: string | null = null
+  t.after(async () => {
+    await prisma.user.deleteMany({ where: { email } })
+    if (workspaceProjectId) {
+      await prisma.project.delete({
+        where: { id: workspaceProjectId },
+      }).catch(() => undefined)
+    }
+    await prisma.organization.delete({
+      where: { id: organization.id },
+    }).catch(() => undefined)
+    await prisma.$disconnect()
+  })
+  const workspace = {
+    activeOrgId: externalOrgId,
+    activeTeamId: externalTeamId,
+    teamIds: [externalTeamId],
+    teamRoles: { [externalTeamId]: 'member' },
+  }
+
+  const [left, right] = await Promise.all([
+    resolveUoaWorkspaceContext(prisma, {
+      displayName: 'Same Principal',
+      email,
+      workspace,
+    }),
+    resolveUoaWorkspaceContext(prisma, {
+      displayName: 'Same Principal',
+      email,
+      workspace,
+    }),
+  ])
+
+  assert.ok(left && right)
+  workspaceProjectId = left.projectId
+  assert.equal(left.userId, right.userId)
+  assert.equal(left.teamId, right.teamId)
+  assert.equal(await prisma.user.count({ where: { email } }), 1)
+  assert.equal(await prisma.teamMember.count({
+    where: { teamId: left.teamId, userId: left.userId },
+  }), 1)
+})

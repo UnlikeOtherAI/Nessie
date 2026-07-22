@@ -90,8 +90,11 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   from every configured secret-bearing environment credential and every
   encrypted per-org webhook signing secret; API/worker startup verifies both.
   Pre-existing identity headers are rejected case-insensitively before fresh
-  identity is attached. The active link org/team must exactly match the
-  selected team's external UOA mapping; enablement is rechecked for every call,
+  identity is attached. The signed session org/team must exactly match the
+  selected team's external UOA mapping; the one per-user/product account link
+  proves only stable subject/status/credential epoch, while its active org/team
+  fields are non-authoritative last-seen UI metadata. Team enablement derives
+  its external tuple from the mapped Team row and is rechecked for every call,
   and DM keys include the UOA team so conversations cannot cross a team switch.
   Legacy team-less channels fail closed. Managed instances reject generic
   lifecycle and secret writes, and their global product-linked catalog entries
@@ -131,12 +134,16 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   the signed Nessie access session and its refresh family. Nessie stores UOA's
   opaque refresh token only as AES-256-GCM server-side state coupled to that
   family; the browser receives only Nessie's unrelated rotating cookie. The
-  mutable product link is a current-liveness mirror, never the proof source.
+  product link proves stable subject/status/credential epoch only; its mutable
+  active org/team fields are last-seen metadata, never the proof source.
   Delegation assertions and caches use the immutable session epoch and require
   exact equality with the current link and selected local team. Family/user
   advisory locks serialize rotation, replay, issuance, logout, password change,
   deactivation, and credential erasure across replicas; a replay barrier makes
-  reversed predecessor/current HTTP responses converge on one cookie. Login
+  reversed predecessor/current HTTP responses converge on one cookie. UOA HTTP
+  renewal runs outside database transactions between short locked preflight and
+  finalize phases; if an ancestor replay wins mid-flight, finalize adopts the
+  accepted UOA successor in place behind the unchanged local cookie. Login
   confirms current direct Nessie access before local mutation, product-link
   epochs never regress, and first-workspace provisioning is exact-workspace
   locked. DeepWater's product auth mode remains `uoa_sso` so first login

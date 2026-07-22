@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { syncUoaProductAccountLinks } from '../src/services/integrations.js'
+import {
+  setProductTeamEnablement,
+  syncUoaProductAccountLinks,
+} from '../src/services/integrations.js'
 
 const syncInput = {
   email: 'person@example.com',
@@ -105,4 +108,47 @@ test('an older login aborts the whole account-link transaction', async () => {
     /account-link state advanced/,
   )
   assert.equal(updates, 2)
+})
+
+test('team enablement uses the Team tuple and preserves drifted teardown metadata', async () => {
+  let statement = ''
+  const prisma = {
+    $queryRaw: async (query: unknown) => {
+      statement = sqlText(query)
+      return []
+    },
+  }
+
+  assert.equal(await setProductTeamEnablement(prisma as never, {
+    enabled: true,
+    organizationId: syncInput.organizationId,
+    productSlug: 'deep-water',
+    teamId: syncInput.teamId,
+    userId: syncInput.userId,
+  }), null)
+  assert.match(statement, /t\."external_org_id"/)
+  assert.match(statement, /t\."external_workspace_id"/)
+  assert.match(statement, /t\."external_org_id" IS NOT NULL/)
+  assert.match(statement, /t\."external_workspace_id" IS NOT NULL/)
+  assert.match(statement, /COALESCE\([\s\S]*EXCLUDED\."external_org_id"/)
+  assert.match(statement, /COALESCE\([\s\S]*EXCLUDED\."external_team_id"/)
+  assert.doesNotMatch(statement, /account_link/)
+})
+
+test('the internal Nessie identity anchor cannot be toggled as an integration', async () => {
+  let queried = false
+  const prisma = {
+    $queryRaw: async () => {
+      queried = true
+      return []
+    },
+  }
+  assert.equal(await setProductTeamEnablement(prisma as never, {
+    enabled: true,
+    organizationId: syncInput.organizationId,
+    productSlug: 'nessie',
+    teamId: syncInput.teamId,
+    userId: syncInput.userId,
+  }), null)
+  assert.equal(queried, false)
 })

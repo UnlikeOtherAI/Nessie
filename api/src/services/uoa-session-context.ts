@@ -92,8 +92,6 @@ const loadBinding = async (
       },
     },
     select: {
-      activeOrgId: true,
-      activeTeamId: true,
       id: true,
       status: true,
       uoaSub: true,
@@ -103,8 +101,6 @@ const loadBinding = async (
   if (
     link?.status !== 'linked'
     || link.uoaSub !== input.identity.subject
-    || link.activeOrgId !== input.identity.organizationId
-    || link.activeTeamId !== input.identity.teamId
     || link.uoaTokenVersion === null
     || !input.tokenVersions.includes(link.uoaTokenVersion)
   ) {
@@ -141,9 +137,11 @@ export const resolveUoaLocalSessionContext = async (
 }
 
 /**
- * Advance Nessie's current-link liveness marker after UOA has refreshed the
- * same immutable subject/org/team tuple. The signed family proof remains the
- * authority; this mutable row is updated only by compare-and-swap.
+ * Advance Nessie's stable account-link epoch after UOA has refreshed the same
+ * immutable subject/org/team tuple. The signed family proof and exact Team
+ * mapping remain the workspace authority. ProductAccountLink.activeOrgId /
+ * activeTeamId are only last-seen UI metadata and cannot invalidate another
+ * live family for the same user in a different team.
  */
 export const advanceUoaLocalSessionBindingInTransaction = async (
   transaction: Prisma.TransactionClient,
@@ -178,8 +176,6 @@ export const advanceUoaLocalSessionBindingInTransaction = async (
   )
   const exactFirstPartyLinks = await transaction.productAccountLink.findMany({
     where: {
-      activeOrgId: input.nextIdentity.organizationId,
-      activeTeamId: input.nextIdentity.teamId,
       organizationId: context.organizationId,
       product: {
         authMode: { in: [...FIRST_PARTY_UOA_AUTH_MODES] },
@@ -207,8 +203,6 @@ export const advanceUoaLocalSessionBindingInTransaction = async (
 
   const updated = await transaction.productAccountLink.updateMany({
     where: {
-      activeOrgId: input.nextIdentity.organizationId,
-      activeTeamId: input.nextIdentity.teamId,
       id: { in: exactFirstPartyLinks.map((link) => link.id) },
       organizationId: context.organizationId,
       status: 'linked',
