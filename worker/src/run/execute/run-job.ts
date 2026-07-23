@@ -30,8 +30,10 @@ import {
   shouldRetryRunWithoutTerminalizing,
   type QueueAttempt,
 } from '../tool-execution-errors.js'
+import type { LoopResult } from '../agentic-loop.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import { applyBudgetGate } from './budget-gate.js'
+import { recordRunTimingEvent, summarizeRunTiming } from './run-timing.js'
 import {
   buildBudgetStopNotice,
   classifyBudgetStop,
@@ -112,6 +114,14 @@ export const executeRunJob = async (
   let streamStarted = false
   let planContext: RunPlanContext | null = null
   let deepWaterHandoffGuard: DeepWaterHandoffGuard | null = null
+  // Per-run stage-timing capture (see run-timing.ts). `claimedAt` is the
+  // claim→terminal baseline and gates emission: it stays null on any path that
+  // returns before claiming (budget-gate block, lost claim), so those non-runs
+  // emit nothing. `terminalOutcome` is set only where the run actually reaches a
+  // terminal state, so a retry-throw (run left `running`) also emits nothing.
+  let claimedAt: Date | null = null
+  let loopResult: LoopResult | null = null
+  let terminalOutcome: 'completed' | 'failed' | null = null
   const handoffTeamId =
     payload.actorContext.tenant.teamId ?? payload.actorContext.actionContext.teamId ?? null
   let handoffLocator: DeepWaterHandoffRunLocator | null = null
@@ -187,6 +197,7 @@ export const executeRunJob = async (
       console.log(`[worker] run ${context.run.id} already claimed or terminal; skipping`)
       return
     }
+    claimedAt = new Date()
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')
     await markRunPlanStarted(deps.prisma, planContext)
     await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
@@ -264,7 +275,7 @@ export const executeRunJob = async (
     })
     streamStarted = true
 
-    const loopResult = await runExecutionAgentLoop(deps, payload, context, {
+    loopResult = await runExecutionAgentLoop(deps, payload, context, {
       allowedToolIds,
       budgetModelOverride: budgetGate.modelOverride,
       initialMessages,
@@ -305,6 +316,7 @@ export const executeRunJob = async (
           responseText: `${responseText}\n\n${notice}`,
           toolCallsUsed: loopResult.toolCallsUsed,
         })
+        terminalOutcome = 'completed'
       } else {
         // No answer at all: still record the tokens/cost this run spent (the
         // failure path does not, but completeRunExecution would have), then
@@ -324,6 +336,7 @@ export const executeRunJob = async (
           streamStarted,
           terminalMessage: notice,
         })
+        terminalOutcome = 'failed'
       }
       return
     }
@@ -335,6 +348,7 @@ export const executeRunJob = async (
       responseText,
       toolCallsUsed: loopResult.toolCallsUsed,
     })
+    terminalOutcome = 'completed'
   } catch (caughtError) {
     const error = promoteUnresolvedDeepWaterHandoffError(
       caughtError,
@@ -363,7 +377,38 @@ export const executeRunJob = async (
       planContext,
       streamStarted,
     })
+    terminalOutcome = 'failed'
 
     throw error
+  } finally {
+    // Record the run's stage-timing breakdown at every terminal state
+    // (completion and failure), reusing timestamps the run already produced.
+    // Skipped when the run never reached terminal in this execution: a
+    // pre-claim early return (`claimedAt` null) or a retry-throw that leaves
+    // the run `running` (`terminalOutcome` null). Best-effort: a timing write
+    // must never turn a finished run into a failed one.
+    if (claimedAt && terminalOutcome) {
+      try {
+        await recordRunTimingEvent(deps.prisma, {
+          outcome: terminalOutcome,
+          runId: context.run.id,
+          summary: summarizeRunTiming({
+            claimedAt,
+            enqueuedAt: context.run.createdAt,
+            finishedAt: new Date(),
+            invocations: loopResult?.invocations ?? [],
+            toolCount: loopResult?.toolCallsUsed ?? 0,
+            toolMs: loopResult?.toolMs ?? 0,
+          }),
+          taskId: context.task.id,
+        })
+      } catch (timingError) {
+        console.error(
+          '[worker] failed to record run.timing event for run',
+          context.run.id,
+          timingError,
+        )
+      }
+    }
   }
 }

@@ -23,6 +23,10 @@ import {
   getTokenUsageSummary,
   listPricingProfiles,
 } from '../services/token-ledger.js'
+import {
+  clampRunTimingLimit,
+  getRecentRunTimings,
+} from '../services/run-timing-summary.js'
 import type { RouteDeps } from './types.js'
 
 export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -50,6 +54,24 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     })
 
     return createApiResponse(summary)
+  })
+
+  // Owner-only run stage-latency diagnostics: recent per-run wall-clock
+  // breakdowns (queue wait / inference / tool) from worker `run.timing` events.
+  // Wall-clock only — no cost data (that stays with Ledger/UOA).
+  app.get('/api/ledger/runs/timing', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const rows = await getRecentRunTimings(
+      prisma,
+      actorContext.tenant.organizationId,
+      clampRunTimingLimit(query['limit']),
+    )
+
+    return createApiResponse({ runs: rows })
   })
 
   app.get('/api/ledger/connectors/summary', async (request, reply) => {

@@ -212,7 +212,7 @@ const makeHarness = (opts: HarnessOptions = {}) => {
       systemPrompt: null,
     },
     channel: { id: CHANNEL, organizationId: ORG, systemChannelType: 'external_agent' },
-    run: { id: RUN, threadId: THREAD },
+    run: { id: RUN, threadId: THREAD, createdAt: new Date() },
     task: { id: TASK },
   }
 

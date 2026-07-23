@@ -248,6 +248,26 @@ reasoning effort. Surfaced in the admin Agent Designer as an "Effort" selector
      `RunGoal`/steering context, the `waiting_budget` pause state, and
      approval-driven resume (Phase 4). DeepWater handoff runs keep their exact
      existing completion path and are unaffected.
+   - **✅ Landed (per-run stage latency).** Every run records a wall-clock-only
+     latency breakdown at its terminal state — on **both** the completion and
+     failure paths — so a slow run is diagnosable without re-instrumenting the
+     pipeline (motivated by the block/buzz per-turn stage-latency work, PR
+     #2460; see `docs/reviews/2026-07-23-buzz-comparison.md`).
+     `worker/src/run/execute/run-timing.ts` builds the summary and writes a
+     **`run.timing` `TaskEvent`** whose payload is
+     `{ outcome, runId, queueWaitMs, totalMs, inferenceMs, inferenceCount,
+     toolMs, toolCount }`. Timestamps are reused from data the run already
+     produces — `Run.createdAt` (≈ enqueue, since run + queue-job creation share
+     one transaction) → the claim instant → terminal for `queueWaitMs`/`totalMs`,
+     per-`InvocationRecord.latencyMs` (main loop + delegated sub-agents) for
+     `inferenceMs`, and the agentic loop's newly-summed tool spans (`LoopResult.
+     toolMs`) for `toolMs`. `toolMs` sums concurrent per-tool spans, so it can
+     exceed `totalMs` — it measures tool work, not a wall-clock span. NO cost
+     data (raw usage/cost is Ledger's, commercial rating is UOA's). Emission is
+     gated so non-runs stay silent: a pre-claim early return or a retry-throw
+     that leaves the run `running` records nothing. Owners read recent
+     summaries at **`GET /api/ledger/runs/timing?limit=N`** (owner-only,
+     `limit` default 50 / max 200), scoped to the org via the Task relation.
 2. **Goals:** `RunGoal` + `goals_update` + UI. Independent of cap removal
    and immediately useful for today's short runs.
 3. **Cost accounting + tiers:** mid-run `ModelPricingProfile` pricing;

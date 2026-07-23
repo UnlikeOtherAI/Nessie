@@ -106,6 +106,7 @@ export const loadRunContext = async (
     run: {
       id: run.id,
       threadId: run.thread.id,
+      createdAt: run.createdAt,
     },
     task,
   }
