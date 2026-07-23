@@ -236,6 +236,18 @@ reasoning effort. Surfaced in the admin Agent Designer as an "Effort" selector
 1. **Visibility first (small, urgent):** every cap/stop posts a visible
    message with reason + partial state. Kills the silent-truncation bug
    before any redesign lands.
+   - **✅ Landed (budget caps).** A budget-cap stop is now classified
+     (`iteration_limit | tool_call_limit | time_limit | token_limit |
+     cost_limit | repeated_tool_calls`) and always user-visible:
+     `worker/src/run/execute/budget-stop.ts` builds the notice + records a
+     `run.budget_exhausted` `TaskEvent`, and `run-job.ts` either appends the
+     notice to partial assistant text (run `completed`) or, when the loop
+     produced nothing, posts the notice as the terminal message and fails the
+     run. The loop (`agentic-loop.ts`) now carries the last assistant text out
+     of a cap stop instead of returning empty. Still future for this phase:
+     `RunGoal`/steering context, the `waiting_budget` pause state, and
+     approval-driven resume (Phase 4). DeepWater handoff runs keep their exact
+     existing completion path and are unaffected.
 2. **Goals:** `RunGoal` + `goals_update` + UI. Independent of cap removal
    and immediately useful for today's short runs.
 3. **Cost accounting + tiers:** mid-run `ModelPricingProfile` pricing;

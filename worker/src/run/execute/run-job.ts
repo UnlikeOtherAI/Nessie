@@ -32,8 +32,14 @@ import {
 } from '../tool-execution-errors.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import { applyBudgetGate } from './budget-gate.js'
+import {
+  buildBudgetStopNotice,
+  classifyBudgetStop,
+  recordBudgetStopEvent,
+} from './budget-stop.js'
 import { completeRunExecution } from './completion.js'
 import { runExternalConversation } from '../external-conversation.js'
+import { persistInvocationLedgerEvents } from '../inference.js'
 import { handleRunExecutionFailure } from './failure.js'
 import {
   claimRunForExecution,
@@ -271,6 +277,56 @@ export const executeRunJob = async (
     deepWaterHandoffGuard.assertCompletion()
 
     const responseText = stripLeadingSectionTag(loopResult.finalText)
+
+    // A budget-cap stop is a classified, user-visible outcome — never a silent
+    // empty reply. DeepWater handoff runs (`handoffLocator`) keep their exact
+    // existing completion path so their strict invariants are untouched.
+    if (loopResult.exhaustedBudget && !handoffLocator) {
+      const hadPartialText = responseText.trim().length > 0
+      const notice = buildBudgetStopNotice(
+        loopResult.exhaustedBudget,
+        loopResult,
+        hadPartialText,
+      )
+      await recordBudgetStopEvent(
+        deps.prisma,
+        context.task.id,
+        loopResult.exhaustedBudget,
+        loopResult,
+        hadPartialText,
+      )
+      if (hadPartialText) {
+        // Partial answer present: deliver it with the stop notice appended and
+        // complete the run normally.
+        await completeRunExecution(deps, payload, context, planContext, {
+          invocations: loopResult.invocations,
+          iterations: loopResult.iterations,
+          memories,
+          responseText: `${responseText}\n\n${notice}`,
+          toolCallsUsed: loopResult.toolCallsUsed,
+        })
+      } else {
+        // No answer at all: still record the tokens/cost this run spent (the
+        // failure path does not, but completeRunExecution would have), then
+        // post the notice as the terminal message and fail the run so the user
+        // is told why nothing came back.
+        await persistInvocationLedgerEvents(deps.prisma, {
+          actorContext: payload.actorContext,
+          agentId: context.agent.id,
+          invocations: loopResult.invocations,
+          runId: context.run.id,
+        })
+        await handleRunExecutionFailure(deps, payload, context, {
+          error: new Error(
+            `Run stopped at ${classifyBudgetStop(loopResult.exhaustedBudget)}`,
+          ),
+          planContext,
+          streamStarted,
+          terminalMessage: notice,
+        })
+      }
+      return
+    }
 
     await completeRunExecution(deps, payload, context, planContext, {
       invocations: loopResult.invocations,

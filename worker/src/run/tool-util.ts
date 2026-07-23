@@ -6,10 +6,23 @@ export const MAX_TOOL_RESULT_CHARS = 32_000
 export const truncate = (value: string, maxLength = MAX_PREVIEW_LENGTH): string =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`
 
-export const truncateToolResult = (output: string): string =>
-  output.length > MAX_TOOL_RESULT_CHARS
-    ? output.slice(0, MAX_TOOL_RESULT_CHARS) + '\n\n[output truncated]'
-    : output
+// Marker appended to any tool result that overflows the context cap. The
+// explicit dropped-character count tells the model the result is partial (so it
+// can request the rest instead of assuming it saw everything), and the
+// end-anchored pattern lets a second pass detect an already-truncated string and
+// skip re-truncating it — the loop re-applies this at the point results enter
+// context, on top of the per-tool caps in `tools.ts`.
+const TOOL_RESULT_TRUNCATION_MARKER = /\n\n\[truncated \d+ chars\]$/
+
+export const truncateToolResult = (
+  output: string,
+  maxChars = MAX_TOOL_RESULT_CHARS,
+): string => {
+  if (output.length <= maxChars) return output
+  if (TOOL_RESULT_TRUNCATION_MARKER.test(output)) return output
+  const removed = output.length - maxChars
+  return `${output.slice(0, maxChars)}\n\n[truncated ${removed} chars]`
+}
 
 const SECRET_KEY_PATTERN =
   new RegExp(

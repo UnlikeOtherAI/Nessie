@@ -101,6 +101,15 @@ persists across every remaining iteration.
 an MCP-specific limit smaller than 32k is reasonable since connector output is
 often verbose JSON).
 
+**✅ Resolved.** `runAgenticLoop` now truncates **every** tool result at the
+single point where it enters context — `messages.push({ role: 'tool', … })` in
+`worker/src/run/agentic-loop.ts` — via `truncateToolResult` (32k cap). This
+catches MCP dispatch and `delegate` output, which previously had no cap. The
+builtin per-tool caps in `tools.ts` still run first; the truncation marker is
+`\n\n[truncated N chars]` and is idempotent (a pre-truncated string is detected
+and not re-marked), so the double pass is safe. A tighter MCP-specific limit is
+still a possible refinement.
+
 #### F2. Tool results persist verbatim for the rest of the run; nothing summarizes
 
 **Location:** `worker/src/run/agentic-loop.ts` (the `messages` array is grown

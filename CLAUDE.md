@@ -41,7 +41,15 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   cap, the historical default). `xhigh` is effectively unbounded — governed
   only by the scope `Budget` gate and the loop's repeated-call detection. See
   `worker/src/run/agentic-loop.ts` (`EFFORT_BUDGETS`) and
-  `docs/plans/2026-07-20-agent-harness-v2.md` §3.5.1.
+  `docs/plans/2026-07-20-agent-harness-v2.md` §3.5.1. A budget-cap stop is
+  never silent: it is classified (`iteration_limit` / `tool_call_limit` /
+  `time_limit` / `token_limit` / `cost_limit` / `repeated_tool_calls`,
+  `worker/src/run/execute/budget-stop.ts`) and always surfaced — partial
+  assistant text is delivered with a "stopped at the limit" notice (run
+  `completed`), or a clear notice is posted and the run `failed` when the loop
+  produced nothing; a `run.budget_exhausted` `TaskEvent` records the reason.
+  All tool results (builtin, MCP, `delegate`) are truncated at the single loop
+  chokepoint before entering context.
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 
