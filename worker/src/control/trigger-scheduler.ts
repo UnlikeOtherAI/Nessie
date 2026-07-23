@@ -2,6 +2,12 @@ import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { buildNextScheduledRunAt } from '@nessie/runtime'
 import type { AgentTriggerType } from '@nessie/schemas'
+import {
+  emptySkipReferenceTime,
+  hasPendingThreadWork,
+  recordEmptyFireSkip,
+  triggerOptsIntoEmptySkip,
+} from './trigger-empty-skip.js'
 import { queueTriggerRun, queueWorkflowTriggerRun } from './trigger-run.js'
 
 const DEFAULT_SCHEDULER_LEASE_MS = 60_000
@@ -119,7 +125,9 @@ export const sweepDueScheduledTriggers = async (
           teamId: true,
         },
       },
+      createdAt: true,
       id: true,
+      lastFiredAt: true,
       workflowInstallation: {
         select: {
           active: true,
@@ -207,14 +215,54 @@ export const sweepDueScheduledTriggers = async (
       continue
     }
 
-    try {
-      const targetChannelId = trigger.targetChannelId
-      const targetThreadId = trigger.targetThreadId
-      const agentId = trigger.agentId
-      const agent = relation.agent
+    const targetChannelId = trigger.targetChannelId
+    const targetThreadId = trigger.targetThreadId
+    const agentId = trigger.agentId
+    const agent = relation.agent
+    const dedupeKey = `scheduled:${trigger.id}:${trigger.nextRunAt.toISOString()}`
 
+    // Empty-fire skip: an opted-in schedule whose target thread has seen no new
+    // work since the last run records a `skipped` delivery and advances the
+    // schedule without enqueueing a run, so it never burns tokens on a no-op.
+    // Triggers that do not opt in, or whose thread has any pending work, always
+    // run — emptiness is never assumed.
+    if (
+      triggerOptsIntoEmptySkip(trigger.config)
+      && !(await hasPendingThreadWork(prisma, {
+        agentId,
+        since: emptySkipReferenceTime({
+          createdAt: relation.createdAt,
+          lastFiredAt: relation.lastFiredAt,
+        }),
+        threadId: targetThreadId,
+      }))
+    ) {
+      await recordEmptyFireSkip(prisma, {
+        dedupeKey,
+        payload: {
+          reason: 'empty_work_source',
+          scheduledFor: trigger.nextRunAt.toISOString(),
+        },
+        source: 'scheduler',
+        triggerId: trigger.id,
+      })
+      await finalizeScheduledTriggerClaim(prisma, {
+        claimId: trigger.schedulerClaimId,
+        nextRunAt: buildNextScheduledRunAt({
+          config: trigger.config,
+          from: trigger.nextRunAt,
+          now,
+          type: trigger.type,
+        }),
+        status: 'active',
+        triggerId: trigger.id,
+      })
+      continue
+    }
+
+    try {
       await queueTriggerRun(prisma, {
-        dedupeKey: `scheduled:${trigger.id}:${trigger.nextRunAt.toISOString()}`,
+        dedupeKey,
         payload: {
           scheduledFor: trigger.nextRunAt.toISOString(),
           triggerId: trigger.id,

@@ -1554,6 +1554,19 @@ Triggers are first-class records. An agent may have zero, one, or many triggers.
 }
 ```
 
+**Scheduled — follow up hourly, but only when the thread has new activity:**
+```json
+{
+  "type": "scheduled",
+  "config": {
+    "cron": "0 * * * *",
+    "skipWhenEmpty": true,
+    "prompt": "Review new messages in this thread and follow up where needed."
+  }
+}
+```
+> `skipWhenEmpty` (optional, scheduled/interval agent triggers) records the fire as `skipped` and enqueues **no run** when the target thread has had no new work since the last actual run. See the Scheduler Service section for the exact emptiness criterion.
+
 ### Database Tables
 
 ```
@@ -1635,6 +1648,16 @@ Scheduler loop (runs every 15 seconds):
 ```
 
 **Concurrency guard:** The scheduler skips agents that already have a running or queued run. This prevents pile-up if a scheduled agent takes longer than its interval. The skipped activation is logged with `status: skipped`.
+
+**Empty-fire skip (`config.skipWhenEmpty`):** Scheduled/interval agent triggers burn tokens even when there is provably nothing to do — a daily-digest or "follow up on this thread" schedule that fires into a thread nobody touched still spins up a full run. A trigger can opt into skipping those no-op fires by setting `"skipWhenEmpty": true` in its `config`. It is strictly opt-in: without the flag the trigger always runs, so a schedule whose real work source is *not* its target thread (e.g. "check my email hourly" via a connector) is never skipped on a guess.
+
+The emptiness criterion is deliberately the one thing provable from the data model — **no new messages in the target thread since the last actual run**:
+
+- The reference point is `last_fired_at` (the last time the trigger produced a run), falling back to the trigger's `created_at` for the first fire. Skips never advance `last_fired_at`, so the pending-work window keeps growing across consecutive skips until real work appears.
+- A message counts as pending work when it was posted after the reference time by anyone other than the trigger's own agent: human posts (`user_id` set) and other agents' posts (`agent_id` set and not this agent). The trigger's own system-injected kickoffs (`user_id` and `agent_id` both null) and its agent's replies (`agent_id` = this agent) are excluded, so a quiet thread reads as genuinely empty.
+- Zero pending messages ⇒ the fire is recorded as an `agent_trigger_deliveries` row with `status: skipped` (source `scheduler`, payload `{ reason: "empty_work_source" }`) and **no run is enqueued**; `next_run_at` still advances so the schedule keeps ticking. Any pending message ⇒ the trigger runs exactly as before.
+
+The skip is observable, not silent: the `skipped` delivery appears in the trigger history surfaces (`GET /api/triggers/{id}/history`) alongside real deliveries. Applies to agent-target scheduled/interval triggers only; workflow triggers (no target thread ⇒ emptiness unprovable) always run. Implementation: `worker/src/control/trigger-empty-skip.ts`, wired in `trigger-scheduler.ts`.
 
 **Leader election:** In multi-instance deployments, only one scheduler instance should be active. Use `pg_advisory_lock` on a well-known lock ID. If the lock holder dies, another instance acquires it automatically.
 
