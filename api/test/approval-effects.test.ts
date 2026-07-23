@@ -114,6 +114,9 @@ const buildFakePrisma = (options: {
       findFirst: async () => currentPageRow?.versions[0] ?? null,
     },
     auditLog: {
+      // emitAuditEvent now routes through @nessie/db writeAuditEntry, which reads
+      // the org's chain tip (findFirst) before inserting the next hash-linked row.
+      findFirst: async () => null,
       create: async ({ data }: { data: Record<string, unknown> }) => {
         auditLogs.push(data)
       },

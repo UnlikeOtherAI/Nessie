@@ -14,6 +14,7 @@ import {
   resolveConnector,
 } from '@nessie/comms-connect'
 
+import { writeAuditEntry } from '@nessie/db'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
@@ -233,18 +234,16 @@ export const registerCommsConnectionRoutes = (
           topic: COMMS_SYNC_INITIAL_TOPIC,
           payload: { connectionId },
         })
-        await prisma.auditLog.create({
-          data: {
-            organizationId: stateRow.organizationId,
-            actorType: 'user',
-            actorId: stateRow.userId,
-            action: 'comms.connection.created',
-            resourceType: 'comms_connection',
-            resourceId: connectionId,
-            outcome: 'success',
-            metadata: { provider },
-            requestId: request.id,
-          },
+        await writeAuditEntry(prisma, {
+          organizationId: stateRow.organizationId,
+          actorType: 'user',
+          actorId: stateRow.userId,
+          action: 'comms.connection.created',
+          resourceType: 'comms_connection',
+          resourceId: connectionId,
+          outcome: 'success',
+          metadata: { provider },
+          requestId: request.id,
         })
         return redirectToConnections(reply, { connected: provider })
       } catch (error) {

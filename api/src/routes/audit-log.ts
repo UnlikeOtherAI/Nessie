@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
+import { verifyAuditChain } from '@nessie/db'
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import {
   getAuditLogEntry,
@@ -52,6 +53,19 @@ export const registerAuditLogRoutes = (app: FastifyInstance, deps: RouteDeps): v
       query['to'],
     )
 
+    return createApiResponse(result)
+  })
+
+  // Tamper-evidence: walk the caller's organization audit hash chain and report
+  // whether every entry still links to its predecessor and matches its stored
+  // hash. Owner-only. Registered before /:entryId (Fastify matches static routes
+  // ahead of parametric ones regardless, but keep it explicit).
+  app.get('/api/audit-log/verify', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const result = await verifyAuditChain(prisma, actorContext.tenant.organizationId)
     return createApiResponse(result)
   })
 

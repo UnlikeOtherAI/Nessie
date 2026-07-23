@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { writeAuditEntry } from '@nessie/db'
 import type { AuthorizedActionContext, AuditAction, AuditOutcome } from '@nessie/schemas'
 
 const REDACTED_FIELDS = new Set([
@@ -47,24 +48,22 @@ export const emitAuditEvent = async (
   input: AuditEmitInput,
 ): Promise<void> => {
   try {
-    await prisma.auditLog.create({
-      data: {
-        organizationId: input.actorContext.tenant.organizationId,
-        projectId: input.actorContext.tenant.projectId ?? null,
-        teamId: input.actorContext.tenant.teamId ?? null,
-        channelId: input.actorContext.actionContext.channelId ?? null,
-        actorType: input.actorContext.actor.actorType as 'user' | 'agent' | 'service' | 'system',
-        actorId: input.actorContext.actor.actorId,
-        action: input.action,
-        resourceType: input.resourceType,
-        resourceId: input.resourceId ?? null,
-        outcome: input.outcome,
-        reason: input.reason ?? null,
-        metadata: (redactMetadata(input.metadata) as Prisma.InputJsonValue) ?? undefined,
-        requestId: input.actorContext.actionContext.requestId,
-        ipAddress: input.ipAddress ?? null,
-        userAgent: input.userAgent ?? null,
-      },
+    await writeAuditEntry(prisma, {
+      organizationId: input.actorContext.tenant.organizationId,
+      projectId: input.actorContext.tenant.projectId ?? null,
+      teamId: input.actorContext.tenant.teamId ?? null,
+      channelId: input.actorContext.actionContext.channelId ?? null,
+      actorType: input.actorContext.actor.actorType as 'user' | 'agent' | 'service' | 'system',
+      actorId: input.actorContext.actor.actorId,
+      action: input.action,
+      resourceType: input.resourceType,
+      resourceId: input.resourceId ?? null,
+      outcome: input.outcome,
+      reason: input.reason ?? null,
+      metadata: (redactMetadata(input.metadata) as Prisma.InputJsonValue | undefined) ?? null,
+      requestId: input.actorContext.actionContext.requestId,
+      ipAddress: input.ipAddress ?? null,
+      userAgent: input.userAgent ?? null,
     })
   } catch {
     // Audit emission must never roll back the primary mutation.
