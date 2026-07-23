@@ -90,6 +90,7 @@ import { registerIterationRoutes } from './routes/iterations.js'
 import { registerPresenceRoutes } from './routes/presence.js'
 import { registerProjectRoutes } from './routes/projects.js'
 import { registerResourceLockRoutes } from './routes/resource-locks.js'
+import { registerRunRoutes } from './routes/runs.js'
 import { registerSearchRoutes } from './routes/search.js'
 import { registerStatusRoutes } from './routes/statuses.js'
 import { registerTaskRoutes } from './routes/tasks.js'
@@ -369,6 +370,7 @@ export const buildApp = async () => {
   registerExecutionEnvironmentRoutes(app, deps)
   registerMailboxRoutes(app, deps)
   registerResourceLockRoutes(app, deps)
+  registerRunRoutes(app, deps)
   registerToolRoutes(app, deps)
   // File uploads / attachments slice (Slack-parity files).
   registerUploadRoutes(app, deps)

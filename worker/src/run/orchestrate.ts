@@ -175,6 +175,9 @@ export const executeOrchestrateDecideJob = async (
             // because the brand is a compile-time-only structural extension of string.
             threadId,
             status: 'pending',
+            // Backlink to the user message that started this run. Enables the
+            // cancel handoff-guard and restart replay (see api/src/services/runs.ts).
+            triggerMessageId: messageId,
           },
           select: { agentId: true, id: true, status: true, threadId: true },
         })
