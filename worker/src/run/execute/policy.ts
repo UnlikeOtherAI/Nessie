@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { writeAuditEntry } from '@nessie/db'
 import {
   parseAgentId,
   parseChannelId,
@@ -233,30 +234,28 @@ export const emitWorkerAuditEvent = async (
   },
 ): Promise<void> => {
   try {
-    await prisma.auditLog.create({
-      data: {
-        action: input.action,
-        actorId: actorContext.actor.actorId,
-        actorType: actorContext.actor.actorType,
-        channelId:
-          input.tenantOverride?.channelId
-          ?? actorContext.actionContext.channelId
-          ?? actorContext.tenant.channelId
-          ?? null,
-        metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? undefined,
-        organizationId: input.tenantOverride?.organizationId ?? actorContext.tenant.organizationId,
-        outcome: input.outcome,
-        projectId: input.tenantOverride?.projectId ?? actorContext.tenant.projectId ?? null,
-        reason: input.reason ?? null,
-        requestId: actorContext.actionContext.requestId,
-        resourceId: input.resourceId ?? null,
-        resourceType: input.resourceType,
-        teamId:
-          input.tenantOverride?.teamId
-          ?? actorContext.tenant.teamId
-          ?? actorContext.actionContext.teamId
-          ?? null,
-      },
+    await writeAuditEntry(prisma, {
+      action: input.action,
+      actorId: actorContext.actor.actorId,
+      actorType: actorContext.actor.actorType as 'user' | 'agent' | 'service' | 'system',
+      channelId:
+        input.tenantOverride?.channelId
+        ?? actorContext.actionContext.channelId
+        ?? actorContext.tenant.channelId
+        ?? null,
+      metadata: (input.metadata as Prisma.InputJsonValue | undefined) ?? null,
+      organizationId: input.tenantOverride?.organizationId ?? actorContext.tenant.organizationId,
+      outcome: input.outcome,
+      projectId: input.tenantOverride?.projectId ?? actorContext.tenant.projectId ?? null,
+      reason: input.reason ?? null,
+      requestId: actorContext.actionContext.requestId,
+      resourceId: input.resourceId ?? null,
+      resourceType: input.resourceType,
+      teamId:
+        input.tenantOverride?.teamId
+        ?? actorContext.tenant.teamId
+        ?? actorContext.actionContext.teamId
+        ?? null,
     })
   } catch {
     console.error('[worker:audit] Failed to emit audit event:', input.action, input.resourceType)

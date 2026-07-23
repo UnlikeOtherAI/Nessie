@@ -2363,6 +2363,12 @@ model AuditLog {
   ipAddress      String?        @map("ip_address")
   userAgent      String?        @map("user_agent")
   createdAt      DateTime       @default(now()) @map("created_at")
+  // Tamper-evident per-organization SHA-256 hash chain. Nullable: rows written
+  // before the chain existed are a pre-chain epoch (both null); the chain starts
+  // at the first new row per org (genesis: prevHash = null). See
+  // @nessie/db audit-chain.ts and docs/functionality.md §Audit trail.
+  prevHash       String?        @map("prev_hash")
+  entryHash      String?        @map("entry_hash")
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, action, createdAt(sort: Desc)])

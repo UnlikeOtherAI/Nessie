@@ -1,5 +1,17 @@
 import { type Prisma, PrismaClient } from '@prisma/client'
 
+export {
+  buildCanonicalAuditPayload,
+  computeEntryHash,
+  stableStringify,
+  verifyAuditChain,
+  writeAuditEntry,
+  type AuditActorType,
+  type AuditChainVerification,
+  type AuditEntryInput,
+  type AuditOutcome,
+} from './audit-chain.js'
+
 // Single source of truth for the Prisma connection across api/, worker/, and the
 // seed CLI. A module-scoped singleton means that when the worker runs embedded in
 // the API process (local mode), both halves share ONE connection pool instead of

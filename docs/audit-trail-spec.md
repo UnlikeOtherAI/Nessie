@@ -31,6 +31,57 @@ Cross-links:
 - sensitive fields in action context must be redacted before persistence (e.g. password fields replaced with `[REDACTED]`),
 - audit entries must include a `requestId` for correlation with other system events.
 
+## 2a) Tamper-evidence — per-organization SHA-256 hash chain
+
+Append-only is a policy; the hash chain makes it *verifiable*. Every new
+`AuditLog` row is linked into a per-organization SHA-256 hash chain, ported from
+block/buzz's `buzz-audit` crate (per-entry hash over canonical JSON + previous
+hash, single-writer serialization, verify operation). Implemented once in
+`@nessie/db` (`packages/db/src/audit-chain.ts`) and shared by the API and worker
+audit writers.
+
+- **Columns.** `AuditLog` gains two nullable strings: `prevHash` (`prev_hash`)
+  and `entryHash` (`entry_hash`). `entryHash = sha256(canonicalJson(fields,
+  prevHash))`; `prevHash` is the previous chained entry's `entryHash` for the
+  same organization, `null` for the genesis (first) entry.
+- **Pre-chain epoch, no backfill.** Both columns are nullable because rows
+  written before this feature existed have `entryHash = null`. Those rows form a
+  pre-chain epoch: the tip lookup and the verify walk ignore them, so the chain
+  simply starts at the first new row per organization (genesis, `prevHash =
+  null`). Nothing is backfilled.
+- **Canonical field contract (frozen).** The digest is taken over a
+  deterministic JSON serialization (object keys sorted recursively; `undefined`
+  normalized to `null`) of exactly these fields: `action`, `actorId`,
+  `actorType`, `channelId`, `createdAt` (ISO 8601), `ipAddress`, `metadata`,
+  `organizationId`, `outcome`, `prevHash`, `projectId`, `reason`, `requestId`,
+  `resourceId`, `resourceType`, `teamId`, `userAgent`. The row `id` (a random
+  UUID) is intentionally excluded; `entryHash` is the output, not an input.
+  Changing this serialization requires a chain-version bump.
+- **Single-writer serialization.** `writeAuditEntry(prisma, input)` runs in one
+  interactive transaction: take a transaction-scoped PostgreSQL advisory lock
+  keyed on the organization id (`pg_advisory_xact_lock(hashtextextended(
+  'audit_chain:' || orgId, 0))`, the established pattern), read the current
+  chain tip's `entryHash`, compute this entry's `entryHash`, then insert. The
+  lock serializes concurrent writers for one organization so the chain cannot
+  fork. To keep `[createdAt asc]` a total per-org order consistent with
+  insertion — Postgres `timestamp(3)` is millisecond precision, so two
+  lock-serialized writes can share a millisecond — the write stamps
+  `createdAt = max(now, tip.createdAt + 1ms)`, making it strictly monotonic per
+  organization so neither the tip read nor the verify walk can disagree with the
+  chain-link order. Per-org chains keep tenants isolated and avoid a global write
+  bottleneck. All three audit-write sites (`api` `emitAuditEvent`, worker
+  `emitWorkerAuditEvent`, and the comms OAuth-callback write) route through this
+  one function.
+- **Verification.** `verifyAuditChain(prisma, organizationId)` walks the chain
+  in insertion order, streaming in keyset-cursor pages (default 500 rows) so an
+  arbitrarily long chain never loads fully into memory. For each entry it checks
+  `prevHash` links to its predecessor's `entryHash` and that a fresh
+  recomputation matches the stored `entryHash`. It returns
+  `{ valid, checkedCount, firstBreak?: { id, reason } }`, where `reason` is
+  `entry_hash_mismatch` (content mutated), `broken_link` (an entry was
+  deleted/inserted/reordered), or `unexpected_prev_hash` (a non-null `prevHash`
+  on what should be genesis).
+
 ## 3) Data model
 
 ### Prisma schema additions
@@ -274,6 +325,19 @@ Get a single audit entry.
 
 ```ts
 // Response -- ApiResponse<AuditLogRecord>
+```
+
+### `GET /api/audit-log/verify`
+
+Owner-only. Walk the caller's organization audit hash chain (see section 2a) and
+report whether it is intact.
+
+```ts
+// Response -- ApiResponse<{
+//   valid: boolean;
+//   checkedCount: number;               // chained (non-epoch) entries verified
+//   firstBreak?: { id: string; reason: string };
+// }>
 ```
 
 ### `GET /api/audit-log/summary`
