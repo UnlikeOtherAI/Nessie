@@ -2,6 +2,7 @@ import {
   attributionFromActorContext,
   checkBudget,
   decideAgentEngagement,
+  selectFollowingAgentIds,
   type OrchestratorAgent,
   type PgRealtimeTransport,
   type ModelClient,
@@ -102,12 +103,36 @@ export const executeOrchestrateDecideJob = async (
       agentName: m.agent?.name ?? undefined,
     }))
 
+  // Thread-following: an agent that has already posted in this thread stays
+  // engaged with new *human* messages without a fresh @mention. Only human
+  // messages ever reach an engagement decision, and PA DMs keep their existing
+  // path (their single agent already answers every message), so a follow set is
+  // never computed for them.
+  const triggerIsHuman = role === 'user'
+  let followingAgentIds: string[] = []
+  if (triggerIsHuman && channel.systemChannelType !== 'personal_assistant') {
+    const candidateAgentIds = channelAgents.map((a) => a.id)
+    const authored = await deps.prisma.message.findMany({
+      where: { threadId, role: 'assistant', agentId: { in: candidateAgentIds } },
+      distinct: ['agentId'],
+      select: { agentId: true },
+    })
+    followingAgentIds = selectFollowingAgentIds(
+      candidateAgentIds,
+      authored
+        .map((m) => m.agentId)
+        .filter((id): id is string => id !== null),
+    )
+  }
+
   const decisions = await decideAgentEngagement(deps.modelClient, {
     // channelAgents from the payload is structurally identical to OrchestratorAgent[].
     // The Zod schema shape and the type both require { id, name, role, systemPrompt }.
     agents: channelAgents satisfies OrchestratorAgent[],
     content,
     recentMessages,
+    triggerIsHuman,
+    followingAgentIds,
     usage: attributionFromActorContext(actorContext, {
       systemComponent: 'orchestrator',
     }),

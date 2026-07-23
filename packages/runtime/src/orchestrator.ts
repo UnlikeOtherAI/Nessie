@@ -14,6 +14,20 @@ export type OrchestratorDecision =
   | { action: 'none' }
 
 /**
+ * Thread-following predicate. An agent *follows* a thread once it has authored a
+ * message in it — provable straight from the data, no extra schema. Given the
+ * candidate agent ids for a channel and the set of agent ids that have authored
+ * in the thread, return the candidates that are following.
+ */
+export const selectFollowingAgentIds = (
+  candidateAgentIds: readonly string[],
+  authoredAgentIds: Iterable<string>,
+): string[] => {
+  const authored = new Set(authoredAgentIds)
+  return [...new Set(candidateAgentIds)].filter((id) => authored.has(id))
+}
+
+/**
  * Invisible channel orchestrator. Reads a user message, considers which
  * bound agents are present and what they do, and decides if/how an agent
  * should engage.
@@ -22,8 +36,18 @@ export type OrchestratorDecision =
  * agents and have each one respond. An empty array means no action.
  *
  * Rules:
+ * - The orchestrator engages agents ONLY in response to a human message
+ *   (`triggerIsHuman`). An agent's own reply — or an agent @mentioning another
+ *   agent — never triggers a reply. This is the hard anti-loop guard: it stops
+ *   agent↔agent ping-pong and self-retriggering after an agent has replied.
  * - If the message @mentions only users (no agents): no action
  * - If the message @mentions one or more agents by name: reply for each
+ * - Thread-following: an agent in `followingAgentIds` (one that has already
+ *   posted in this thread) is a strong engagement candidate for a new human
+ *   message even without a fresh @mention, so it does not go deaf in a thread it
+ *   joined. Following never *forces* a reply — the LLM decision below may still
+ *   decline — and it still returns at most one non-mention reply, so multiple
+ *   followers never stampede a thread.
  * - Otherwise: ask the LLM which agent (if any) should engage
  */
 export const decideAgentEngagement = async (
@@ -32,12 +56,24 @@ export const decideAgentEngagement = async (
     agents: OrchestratorAgent[]
     content: string
     recentMessages: Array<{ role: string; content: string; agentName?: string }>
+    // True only when the triggering message was authored by a human. When false,
+    // the orchestrator engages no one — see the anti-loop guard above.
+    triggerIsHuman: boolean
+    // Ids (a subset of `agents`) already following this thread. Empty for PA DMs,
+    // whose single agent already answers every message on its existing path.
+    followingAgentIds?: string[]
     // Attribution for the engagement-decision LLM call so its tokens are billed
     // to the originating org/channel/thread/actor.
     usage?: LedgerAttribution
   },
 ): Promise<OrchestratorDecision[]> => {
   if (input.agents.length === 0) {
+    return []
+  }
+
+  // Anti-loop invariant: only human messages engage agents. An agent reply (or
+  // an agent-authored @mention) can never cascade into another agent reply.
+  if (!input.triggerIsHuman) {
     return []
   }
 
@@ -62,12 +98,17 @@ export const decideAgentEngagement = async (
     return []
   }
 
-  // LLM decision: should any agent engage?
+  // LLM decision: should any agent engage? Annotate the agents already
+  // following this thread so the model keeps them engaged on follow-ups.
+  const followingIds = new Set(
+    (input.followingAgentIds ?? []).filter((id) => input.agents.some((a) => a.id === id)),
+  )
   const agentDescriptions = input.agents
-    .map(
-      (a) =>
-        `- "${a.name}" (id: ${a.id}, role: ${a.role}): ${a.systemPrompt?.slice(0, 120) ?? 'general assistant'}`,
-    )
+    .map((a) => {
+      const following = followingIds.has(a.id) ? ' [already participating in this thread]' : ''
+      const summary = a.systemPrompt?.slice(0, 120) ?? 'general assistant'
+      return `- "${a.name}" (id: ${a.id}, role: ${a.role})${following}: ${summary}`
+    })
     .join('\n')
 
   const conversationContext = input.recentMessages
@@ -96,14 +137,24 @@ export const decideAgentEngagement = async (
       '   — pick the agent most recently active on that topic.',
       '   Treat a leading filler like "hey" as throat-clearing,',
       '   not as addressing a specific human.',
-      '3. If the message is a short acknowledgement of agent work',
+      '3. If an agent is marked [already participating in this thread]',
+      '   and the latest human message continues that conversation',
+      '   (a follow-up instruction, correction, answer, or comment on',
+      '   the ongoing work — not only a question), return',
+      '   {"action":"reply","agentId":"<id>"} for that agent even with',
+      '   no @mention: it joined the thread, so it stays engaged. If two',
+      '   or more participating agents could reply, pick only the single',
+      '   most relevant one. Still return {"action":"none"} when the',
+      '   message is clearly aimed at another human or is unrelated',
+      '   side-chatter.',
+      '4. If the message is a short acknowledgement of agent work',
       '   (e.g. "thanks", "ok", "noted") that does not need a full',
       '   reply, return:',
       '   {"action":"acknowledge","agentId":"<id>","emoji":"<emoji>"}',
-      '4. If the message is clearly a conversation between users,',
+      '5. If the message is clearly a conversation between users,',
       '   a greeting to a specific named human,',
       '   or not relevant to any agent, return: {"action":"none"}',
-      '5. When the topic is unclear AND no agent is contextually',
+      '6. When the topic is unclear AND no agent is contextually',
       '   relevant, return: {"action":"none"}.',
       '   Agents should not intrude on purely human conversations,',
       '   but they SHOULD answer direct questions in their own',

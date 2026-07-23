@@ -448,20 +448,25 @@ As the skill system grows, roles become less about hardcoded tool lists and more
 
 When a message arrives in a channel, the channel orchestrator decides which agent (if any) responds.
 
-**Current implementation** (`api/src/services/orchestrator.ts`):
+**Implementation**: the decision is pure (`decideAgentEngagement`, `packages/runtime/src/orchestrator.ts`) and is invoked from the worker's `orchestrate.decide` job (`worker/src/run/orchestrate.ts`), which the API enqueues from the message-create route (`api/src/routes/thread-message-create.ts`) — **only for human-authored messages** in a channel that has bound agents.
 
-1. **Fast path**: Explicit `@AgentName` mention → route directly to that agent
-2. **Silent path**: `@mention` exists but matches no agent → nobody responds
-3. **LLM decision**: Invisible orchestrator (cheap model, temperature 0.1, max 128 tokens) evaluates the message against all bound agents and returns one of:
+1. **Human-only gate**: the orchestrator engages agents ONLY in response to a human message (`triggerIsHuman`). An agent's own reply — and an agent @mentioning another agent — never triggers a decision. This is the hard anti-loop guard.
+2. **Fast path**: explicit `@AgentName` mention → route directly to that agent (each mentioned agent replies).
+3. **Silent path**: `@mention` exists but matches no bound agent → nobody responds.
+4. **LLM decision**: an invisible orchestrator (cheap model, temperature 0.1) evaluates the message against all bound agents and returns one of:
    - `{ action: "reply", agentId }` — agent should respond
    - `{ action: "acknowledge", agentId, emoji }` — agent reacts with emoji
    - `{ action: "none" }` — no agent engages (default when in doubt)
 
-**What needs to change**: The channel orchestrator works. It should also factor in:
-- Agent current status (don't route to a busy agent if another can handle it)
-- Budget/cost awareness (route to cheaper model agents for simple tasks)
-- Skill matching (which agent has the right skills for this request)
-- Plan context (if there's an active plan, route to the assigned agent)
+**Thread-following**: an agent that has previously **authored a message in the thread** is *following* it (provable straight from the `Message` rows — no extra schema). The worker computes the following set for the thread (`selectFollowingAgentIds`) and passes it into the decision; following agents are annotated in the orchestrator prompt so a new human message keeps them engaged **without a fresh @mention**. This fixes agents "going deaf" in threads they have joined. Following is subject to hard anti-loop invariants:
+
+- **(1) Only humans trigger.** Following never fires on another agent's message; the mention fast path keeps its existing behavior. Enforced structurally (agent replies never enqueue `orchestrate.decide`) and again at the decision (`triggerIsHuman === false` ⇒ no engagement).
+- **(2) No self-retrigger / no ping-pong.** After an agent replies it does not reply again in the thread until a **newer human message** exists: agent-authored messages do not route through message-create, each human message enqueues exactly one decision, and `run:{messageId}:{agentId}` dedupes the resulting run.
+- **(3) No thundering herd.** When several agents follow one thread, the non-mention path still returns **at most one** reply — the LLM picks the single most relevant follower. Existing per-message single-in-flight discipline is unchanged.
+- **Following ≠ forced reply.** A following agent is only a strong *candidate*; the LLM may still return `none` (e.g. human side-chatter or a message aimed at a named person).
+- **PA DMs are unchanged.** Personal-assistant DM channels answer every message on their existing path, so no following set is computed for them (behavior is byte-identical to before this feature).
+
+**What could still be factored in**: agent current status (don't route to a busy agent if another can handle it), budget/cost awareness, skill matching, and active-plan context.
 
 ### Task Orchestrator
 
