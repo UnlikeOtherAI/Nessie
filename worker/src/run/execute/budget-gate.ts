@@ -1,5 +1,6 @@
-import { checkBudget } from '@nessie/runtime'
+import { evaluateBudget } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
+import { maybeEmitBudgetAlerts } from './budget-alert.js'
 import { buildScopes } from './scopes.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.js'
 import { publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
@@ -56,7 +57,7 @@ export const applyBudgetGate = async (
   // Only a live human conversational turn (payload.interactive) is exempt by
   // default; automations — triggers (even manually fired), subtasks, mailbox,
   // scheduled runs — leave interactive unset and are throttled.
-  const budgetDecision = await checkBudget(
+  const evaluation = await evaluateBudget(
     deps.prisma,
     {
       organizationId: payload.actorContext.tenant.organizationId,
@@ -65,6 +66,7 @@ export const applyBudgetGate = async (
     },
     { isHuman: payload.interactive === true },
   )
+  const budgetDecision = evaluation.decision
   // When over a degrade budget, run on the cheaper model instead of the agent's.
   const budgetModelOverride =
     budgetDecision.action === 'degrade'
@@ -77,8 +79,13 @@ export const applyBudgetGate = async (
   }
   if (budgetDecision.action === 'block') {
     await terminalizeBudgetBlockedRun(deps, context, budgetDecision.reason, options)
+    // Alerting runs AFTER the verdict is fully applied and never throws, so the
+    // blocking behaviour is byte-identical whether or not an alert fires.
+    await maybeEmitBudgetAlerts(deps, context, evaluation)
     return { blocked: true }
   }
 
+  // Observe a threshold crossing without touching the allow/degrade verdict.
+  await maybeEmitBudgetAlerts(deps, context, evaluation)
   return { blocked: false, modelOverride: budgetModelOverride }
 }

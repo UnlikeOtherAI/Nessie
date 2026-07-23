@@ -46,8 +46,10 @@ export type DeliverWebPushInput = {
   /** The base notification already built for native delivery (title/body/data). */
   payload: PushPayload
   organizationId: string
-  messageId: string
-  channelId: string
+  /** Optional source message; null for non-message notifications (budget alerts). */
+  messageId: string | null
+  /** Deep link the service worker focuses/opens (e.g. `/channels/:id`, `/ops/usage`). */
+  deepLinkUrl: string
   /** Sender injection for tests (default: the real {@link sendWebPush}). */
   sender?: WebPushSender
   /** SSRF guard injection for tests (default: the real {@link assertSafeUrl}). */
@@ -84,11 +86,11 @@ const resultFromError = (error: unknown): PushResult => ({
  * Build the Web Push payload: the same notification plus a `data.url` deep link
  * the service worker focuses/opens. All `data` values stay strings.
  */
-const buildWebPayload = (payload: PushPayload, channelId: string): PushPayload => ({
+const buildWebPayload = (payload: PushPayload, deepLinkUrl: string): PushPayload => ({
   ...payload,
   data: {
     ...(payload.data ?? {}),
-    url: `/channels/${channelId}`,
+    url: deepLinkUrl,
   },
 })
 
@@ -109,7 +111,7 @@ export const deliverWebPush = async (
 
   const send = input.sender ?? sendWebPush
   const urlGuard = input.urlGuard ?? assertSafeUrl
-  const webPayload = buildWebPayload(input.payload, input.channelId)
+  const webPayload = buildWebPayload(input.payload, input.deepLinkUrl)
   const deadSubscriptionIds: string[] = []
 
   for (const subscription of subscriptions) {

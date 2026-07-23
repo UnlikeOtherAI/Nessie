@@ -56,6 +56,10 @@ export const runExecutionAgentLoop = async (
     budgetModelOverride: BudgetModelOverride | null
     deepWaterHandoffGuard: DeepWaterHandoffGuard
     initialMessages: ProviderMessage[]
+    // Caller-owned accumulator: every main-loop AND delegate sub-agent
+    // invocation is pushed here live, so the run's spend is attributable even if
+    // the loop throws before returning (see run-job's failure path).
+    invocationSink: InvocationRecord[]
     mcpToolset: McpToolset
     resolvedToolIds: Set<string>
     toolDefs: ToolSchemaDescriptor[]
@@ -63,7 +67,6 @@ export const runExecutionAgentLoop = async (
   },
 ): Promise<LoopResult> => {
   let currentTurnStreamed = false
-  const subAgentInvocations: InvocationRecord[] = []
   const reasoningEffort = reasoningEffortForAgentEffort(context.agent.effort)
 
   const subAgentBuiltinDescriptors = input.toolDefs.filter((d) => d.toolName !== 'delegate')
@@ -298,7 +301,7 @@ export const runExecutionAgentLoop = async (
           builtinDescriptors: subAgentBuiltinDescriptors,
           allowedBuiltinIds: subAgentBuiltinIds,
         })
-        subAgentInvocations.push(...result.invocations)
+        input.invocationSink.push(...result.invocations)
         return {
           inputSummary: result.inputSummary,
           output: result.output,
@@ -382,15 +385,14 @@ export const runExecutionAgentLoop = async (
       )
     },
     initialMessages: input.initialMessages,
+    invocationSink: input.invocationSink,
     runInference: (messages) =>
       runMainInference(messages, [...input.toolDefs, ...mcpView.descriptors]),
     toolTimeoutError: input.mcpToolset.timeoutErrorFor,
     tools: mainToolDefs,
   })
 
-  if (subAgentInvocations.length > 0) {
-    loopResult.invocations.push(...subAgentInvocations)
-  }
-
+  // Main-loop and delegate invocations were both accumulated into the shared
+  // sink, which backs loopResult.invocations — nothing left to append.
   return loopResult
 }

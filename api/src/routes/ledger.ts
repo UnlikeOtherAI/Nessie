@@ -20,6 +20,7 @@ import {
   getConnectorUsageSummary,
   getFileUsageSummary,
   getMonthlyEstimate,
+  getRunOutcomeUsageSummary,
   getTokenUsageSummary,
   listPricingProfiles,
 } from '../services/token-ledger.js'
@@ -72,6 +73,23 @@ export const registerLedgerRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     )
 
     return createApiResponse({ runs: rows })
+  })
+
+  // Owner-only: local token spend split by run outcome (completed/failed/
+  // cancelled/…), so failed-run spend is visible and attributable. Local ops
+  // telemetry only — never UOA customer credits.
+  app.get('/api/ledger/tokens/by-outcome', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const query = request.query as Record<string, string | undefined>
+    const summary = await getRunOutcomeUsageSummary(prisma, actorContext.tenant.organizationId, {
+      from: query['from'],
+      to: query['to'],
+    })
+
+    return createApiResponse(summary)
   })
 
   app.get('/api/ledger/connectors/summary', async (request, reply) => {

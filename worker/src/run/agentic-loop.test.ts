@@ -93,6 +93,47 @@ test('token usage over the cap classifies as token_limit', async () => {
   assert.equal(classifyBudgetStop(result.exhaustedBudget!), 'token_limit')
 })
 
+test('invocationSink captures partial spend even when the loop throws', async () => {
+  // First inference succeeds (records an invocation + asks for a tool call);
+  // the second throws a fatal, non-retryable error. The caller's sink must still
+  // hold the first invocation so the failed run's token spend stays attributable.
+  const sink: InferenceResult['invocations'] = []
+  const inv = (id: string): InferenceResult['invocations'][number] =>
+    ({ invocationId: id, usage: { totalTokens: 10 } }) as unknown as InferenceResult['invocations'][number]
+
+  let call = 0
+  await assert.rejects(
+    runAgenticLoop({
+      budget: budget({}),
+      callbacks: noopCallbacks(),
+      executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+      initialMessages: initial,
+      invocationSink: sink,
+      runInference: async () => {
+        call += 1
+        if (call === 1) {
+          return {
+            correlationId: undefined,
+            finishReason: undefined,
+            invocations: [inv('inv-1')],
+            model: 'test-model',
+            outputText: 'working',
+            provider: 'openai',
+            requestId: 'req-1',
+            toolCalls: [{ arguments: {}, toolCallId: 'tc-1', toolName: 'noop' }],
+          }
+        }
+        throw new Error('provider exploded')
+      },
+      tools: [],
+    }),
+    /provider exploded/,
+  )
+
+  assert.equal(sink.length, 1)
+  assert.equal(sink[0]?.invocationId, 'inv-1')
+})
+
 test('natural completion carries no budget stop', async () => {
   const result = await runAgenticLoop({
     budget: budget({}),

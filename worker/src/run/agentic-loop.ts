@@ -230,13 +230,18 @@ export const runAgenticLoop = async (input: {
   callbacks: LoopCallbacks
   executeTool: ExecuteToolFn
   initialMessages: ProviderMessage[]
+  // Optional caller-owned accumulator for every inference invocation the loop
+  // makes. It is populated live (before the loop can throw), so a crashed or
+  // aborted run's partial token spend is still attributable — the caller reads
+  // this array on the failure path even when no LoopResult is returned.
+  invocationSink?: InvocationRecord[]
   runInference: (messages: ProviderMessage[]) => Promise<InferenceResult>
   toolTimeoutError?: (toolName: string) => Error | null
   tools: ToolSchemaDescriptor[]
 }): Promise<LoopResult> => {
   const { budget, callbacks, executeTool, initialMessages } = input
   const messages: ProviderMessage[] = [...initialMessages]
-  const allInvocations: InvocationRecord[] = []
+  const allInvocations: InvocationRecord[] = input.invocationSink ?? []
   const signatureCounts = new Map<string, number>()
   const retryBudget = createRetryBudget(6)
   const toolSchemaTokens = estimateToolSchemaTokens(input.tools)

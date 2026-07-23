@@ -27,6 +27,7 @@ import {
   KNOWLEDGE_EXTRACT_TOPIC,
   KnowledgeEmbedJobPayloadSchema,
   KnowledgeExtractJobPayloadSchema,
+  BudgetAlertDispatchJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
@@ -46,6 +47,7 @@ import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
 import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
 import { handlePushDispatch } from './control/push-dispatch.js'
+import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
 import {
   dispatchEventTriggers,
   reattemptTriggerDelivery,
@@ -229,6 +231,22 @@ export const startWorker = async (
     async (job) => {
       const payload = PushDispatchJobPayloadSchema.parse(job.payload)
       await handlePushDispatch(
+        {
+          prisma,
+          authSecret: config.auth.secret ?? '',
+          ...(webPushCreds ? { webPush: webPushCreds } : {}),
+        },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    'budget.alert-dispatch',
+    async (job) => {
+      const payload = BudgetAlertDispatchJobPayloadSchema.parse(job.payload)
+      await handleBudgetAlertDispatch(
         {
           prisma,
           authSecret: config.auth.secret ?? '',

@@ -2491,6 +2491,31 @@ model Budget {
   @@map("budgets")
 }
 
+// Durable dedupe marker for budget alerts. One row per governing budget scope,
+// period window, and alert kind ('threshold' when cumulative spend first crosses
+// the warn threshold, 'blocked' when the gate first blocks a run). The unique
+// constraint makes "notify at most once per budget per period per kind" atomic
+// and crash-safe: the worker inserts with skipDuplicates and only the first
+// inserter delivers the notification. organizationId is a scalar (no relation),
+// matching the token_ledger_events pattern — this is append-only ops telemetry.
+model BudgetAlert {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  scopeType      BudgetScopeType @map("scope_type")
+  scopeId        String          @map("scope_id") @db.Uuid
+  period         BudgetPeriod
+  periodStart    DateTime        @map("period_start") @db.Timestamptz(6)
+  kind           String
+  percentUsed    Int?            @map("percent_used")
+  spentUsd       Decimal?        @map("spent_usd") @db.Decimal(14, 4)
+  costLimitUsd   Decimal?        @map("cost_limit_usd") @db.Decimal(14, 4)
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  @@unique([scopeType, scopeId, periodStart, kind])
+  @@index([organizationId, createdAt])
+  @@map("budget_alerts")
+}
+
 model ModelPricingProfile {
   id                     String        @id @default(uuid()) @db.Uuid
   organizationId         String        @map("organization_id") @db.Uuid
