@@ -1,5 +1,6 @@
 import { useOutletContext } from 'react-router-dom'
 import { AgentActivityPanel } from '../components/features/agents/AgentActivityPanel'
+import { RunLifecyclePanel } from '../components/features/runs/RunLifecyclePanel'
 import { useAgentRealtime, useAgents } from '../facades/agents/hooks'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 
@@ -21,6 +22,10 @@ export const AgentActivityPage = () => {
             recent tool usage, messages, and spawned children.
           </p>
         </header>
+
+        <div className="admin-card p-4">
+          <RunLifecyclePanel />
+        </div>
 
         <div className="admin-card p-4">
           <AgentActivityPanel

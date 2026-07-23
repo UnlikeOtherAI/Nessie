@@ -126,6 +126,10 @@ export const createPersonalAssistantIntegrationHandoff = async (
         agentId: agent.id,
         status: 'pending',
         threadId: threadState.id,
+        // Backlink to the handoff message. The cancel handoff-guard reads its
+        // `integrationLaunch` metadata to reject cancel with a research_cancel
+        // hint (see api/src/services/runs.ts).
+        triggerMessageId: message.id,
       },
       select: { agentId: true, id: true, threadId: true },
     })

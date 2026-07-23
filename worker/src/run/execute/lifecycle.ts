@@ -21,7 +21,10 @@ export const updateRunStatus = async (
   await prisma.run.update({
     where: { id: runId },
     data: {
-      finishedAt: status === 'completed' || status === 'failed' ? new Date() : null,
+      finishedAt:
+        status === 'completed' || status === 'failed' || status === 'cancelled'
+          ? new Date()
+          : null,
       startedAt: status === 'running' ? new Date() : undefined,
       status,
     },

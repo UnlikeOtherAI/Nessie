@@ -39,6 +39,11 @@ import {
   classifyBudgetStop,
   recordBudgetStopEvent,
 } from './budget-stop.js'
+import {
+  buildCancelStopNotice,
+  finalizeCancelledRun,
+  recordCancelStopEvent,
+} from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
 import { runExternalConversation } from '../external-conversation.js'
 import { persistInvocationLedgerEvents } from '../inference.js'
@@ -121,7 +126,7 @@ export const executeRunJob = async (
   // terminal state, so a retry-throw (run left `running`) also emits nothing.
   let claimedAt: Date | null = null
   let loopResult: LoopResult | null = null
-  let terminalOutcome: 'completed' | 'failed' | null = null
+  let terminalOutcome: 'completed' | 'failed' | 'cancelled' | null = null
   const handoffTeamId =
     payload.actorContext.tenant.teamId ?? payload.actorContext.actionContext.teamId ?? null
   let handoffLocator: DeepWaterHandoffRunLocator | null = null
@@ -288,6 +293,41 @@ export const executeRunJob = async (
     deepWaterHandoffGuard.assertCompletion()
 
     const responseText = stripLeadingSectionTag(loopResult.finalText)
+
+    // A cooperative cancel is a classified, user-visible outcome (like a
+    // budget-cap stop): any partial answer is delivered with a "cancelled"
+    // notice and the run ends `cancelled`. DeepWater handoff runs are guarded
+    // against cancel at the API (409 → research_cancel), so `cancelRequestedAt`
+    // is never set on them; the `!handoffLocator` check keeps their invariants
+    // untouched even if the flag somehow appeared.
+    if (loopResult.cancelled && !handoffLocator) {
+      const hadPartialText = responseText.trim().length > 0
+      const notice = buildCancelStopNotice(hadPartialText)
+      const cancelState = await deps.prisma.run.findUnique({
+        where: { id: context.run.id },
+        select: { cancelRequestedAt: true, cancelRequestedByUserId: true },
+      })
+      await recordCancelStopEvent(deps.prisma, context.task.id, {
+        cancelRequestedAt: cancelState?.cancelRequestedAt ?? null,
+        cancelledByUserId: cancelState?.cancelRequestedByUserId ?? null,
+        hadPartialText,
+        stats: {
+          iterations: loopResult.iterations,
+          toolCallsUsed: loopResult.toolCallsUsed,
+          totalCostCents: loopResult.totalCostCents,
+          totalTokensUsed: loopResult.totalTokensUsed,
+          wallclockMs: loopResult.wallclockMs,
+        },
+      })
+      await finalizeCancelledRun(deps, payload, context, planContext, {
+        hadPartialText,
+        invocations: loopResult.invocations,
+        notice,
+        responseText,
+      })
+      terminalOutcome = 'cancelled'
+      return
+    }
 
     // A budget-cap stop is a classified, user-visible outcome — never a silent
     // empty reply. DeepWater handoff runs (`handoffLocator`) keep their exact

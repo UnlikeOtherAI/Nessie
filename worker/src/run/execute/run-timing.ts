@@ -54,7 +54,7 @@ export const recordRunTimingEvent = async (
   input: {
     taskId: string
     runId: string
-    outcome: 'completed' | 'failed'
+    outcome: 'completed' | 'failed' | 'cancelled'
     summary: RunTimingSummary
   },
 ): Promise<void> => {

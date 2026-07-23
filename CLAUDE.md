@@ -55,6 +55,24 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   inferenceMs, inferenceCount, toolMs, toolCount }`, no cost data
   (`worker/src/run/execute/run-timing.ts`) — so a slow run is diagnosable;
   owners read recent summaries at `GET /api/ledger/runs/timing`.
+- Active run lifecycle controls (`api/src/routes/runs.ts` +
+  `api/src/services/runs.ts`; buzz #2453/#1593, epic #141): org-scoped
+  `GET /api/runs/active` lists live runs (+ recently-ended restartable runs);
+  `POST /api/runs/:id/cancel` cancels — a queued/approval-suspended run flips
+  straight to `cancelled` (never executes; the worker's terminal guard skips
+  it), a running run gets a cooperative `cancelRequestedAt` flag the agentic
+  loop polls between iterations and tool-call batches, exiting via the
+  classified-stop machinery (`worker/src/run/execute/cancel-stop.ts`, mirroring
+  budget-stop: partial text delivered + a "cancelled" notice, run `cancelled`,
+  `run.cancelled` `TaskEvent`). `POST /api/runs/:id/restart` re-runs a terminal
+  `failed`/`cancelled` run, enqueuing a fresh run that replays the same trigger
+  message and thread and links back via `Run.restartOfRunId`. A run whose
+  trigger message carries `integrationLaunch` metadata (DeepWater handoff) is
+  rejected from both with `409 RUN_HANDOFF_MANAGED` → use `research_cancel`; the
+  handoff invariants are never touched. `Run.triggerMessageId` (populated by the
+  chat orchestrator + integration handoffs) backs both the guard and the replay.
+  Admin surfaces cancel/restart on the Agents → Activity page
+  (`admin/src/components/features/runs/RunLifecyclePanel.tsx`).
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 

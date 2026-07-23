@@ -111,6 +111,11 @@ export type LoopResult = {
   wallclockMs: number
   totalTokensUsed: number
   exhaustedBudget: BudgetExhaustionReason | null
+  // True when the loop exited because a cooperative cancel was observed (via
+  // `checkCancelled`) between iterations or after a tool-call batch, rather than
+  // because the model finished or a budget cap tripped. `finalText` then holds
+  // whatever partial answer was produced so the caller can still deliver it.
+  cancelled: boolean
   invocations: InvocationRecord[]
 }
 
@@ -228,6 +233,11 @@ const callInferenceWithRetry = async (
 export const runAgenticLoop = async (input: {
   budget: BudgetLimits
   callbacks: LoopCallbacks
+  // Optional cooperative-cancel probe. Consulted between iterations and after
+  // each tool-call batch; when it resolves `true` the loop stops immediately and
+  // returns a `cancelled` result carrying any partial answer. Kept side-effect
+  // free (a cheap status read) — the caller owns terminalization and notices.
+  checkCancelled?: () => Promise<boolean>
   executeTool: ExecuteToolFn
   initialMessages: ProviderMessage[]
   runInference: (messages: ProviderMessage[]) => Promise<InferenceResult>
@@ -257,11 +267,13 @@ export const runAgenticLoop = async (input: {
 
   // Single construction point for every exit path, so the running totals
   // (including per-stage timing) are captured identically whether the loop
-  // completes naturally or trips a budget cap.
+  // completes naturally, trips a budget cap, or is cancelled.
   const finish = (
     exhaustedBudget: BudgetExhaustionReason | null,
     finalText: string = lastAssistantText,
+    cancelled = false,
   ): LoopResult => ({
+    cancelled,
     exhaustedBudget,
     finalText,
     invocations: allInvocations,
@@ -273,7 +285,17 @@ export const runAgenticLoop = async (input: {
     wallclockMs: elapsed(),
   })
 
+  // A cooperative-cancel probe. Between iterations and after each tool batch the
+  // loop asks whether a cancel was requested; if so it stops with any partial
+  // answer already captured in `lastAssistantText`.
+  const cancellationRequested = async (): Promise<boolean> =>
+    input.checkCancelled ? input.checkCancelled() : false
+
   while (iterations < budget.maxIterations) {
+    if (await cancellationRequested()) {
+      return finish(null, lastAssistantText, true)
+    }
+
     if (elapsed() >= budget.maxWallclockMs) {
       await callbacks.onBudgetExhausted('wallclock')
       return finish('wallclock')
@@ -449,6 +471,12 @@ export const runAgenticLoop = async (input: {
     if (toolCallsUsed >= budget.maxToolCalls) {
       await callbacks.onBudgetExhausted('tool_calls')
       return finish('tool_calls')
+    }
+
+    // Cooperative cancel between tool-call batches: the just-completed tools have
+    // been recorded and their results incorporated, so stopping here is clean.
+    if (await cancellationRequested()) {
+      return finish(null, lastAssistantText, true)
     }
 
     if (elapsed() >= budget.maxWallclockMs) {

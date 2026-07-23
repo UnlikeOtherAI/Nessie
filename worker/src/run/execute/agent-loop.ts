@@ -212,6 +212,17 @@ export const runExecutionAgentLoop = async (
 
   const loopResult = await runAgenticLoop({
     budget: budgetForEffort(context.agent.effort),
+    // Cooperative-cancel probe: a cheap status read the loop consults between
+    // iterations and after each tool-call batch. `POST /api/runs/:id/cancel`
+    // stamps `cancelRequestedAt`; the loop then exits and run-job terminalizes
+    // the run as `cancelled` via the classified-stop machinery.
+    checkCancelled: async () => {
+      const row = await deps.prisma.run.findUnique({
+        where: { id: context.run.id },
+        select: { cancelRequestedAt: true },
+      })
+      return row?.cancelRequestedAt != null
+    },
     callbacks: {
       onIterationStart: async (iteration) => {
         await deps.realtimeTransport.publishWs(buildScopes(context), {

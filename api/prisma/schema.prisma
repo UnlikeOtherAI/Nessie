@@ -681,6 +681,7 @@ model User {
   productAccountLinks ProductAccountLink[]
   productTeamEnablements ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
+  cancelledRuns       Run[]                @relation("RunCancelledBy")
   avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
@@ -1247,6 +1248,7 @@ model Message {
   user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   reactions MessageReaction[]
   productIntegrationRuns ProductIntegrationRun[]
+  triggeredRuns Run[]            @relation("RunTriggerMessage")
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
@@ -1464,10 +1466,30 @@ model Run {
   startedAt                     DateTime?                      @map("started_at")
   finishedAt                    DateTime?                      @map("finished_at")
   createdAt                     DateTime                       @default(now()) @map("created_at")
+  // Cooperative-cancel signal. Set by POST /api/runs/:id/cancel; the agentic
+  // loop polls it between iterations and between tool-call batches and exits via
+  // the classified-stop machinery with reason `cancelled`. Also recorded on a
+  // queued run so its (never-executed) job is skipped by the idempotency guard.
+  cancelRequestedAt             DateTime?                      @map("cancel_requested_at")
+  // Who asked for the cancellation. The worker reads this to attribute the
+  // terminal `run.cancelled` TaskEvent; the queued-cancel path records it in the
+  // same statement that flips the run to `cancelled`.
+  cancelRequestedByUserId       String?                        @map("cancel_requested_by_user_id") @db.Uuid
+  // The user message that started this run. Populated by the chat orchestrator
+  // and integration handoffs. Enables the cancel handoff-guard (reads the
+  // message's `integrationLaunch` metadata) and restart (replays the same input).
+  triggerMessageId              String?                        @map("trigger_message_id") @db.Uuid
+  // Set on a run created by POST /api/runs/:id/restart, pointing at the original
+  // terminal run it re-runs.
+  restartOfRunId                String?                        @map("restart_of_run_id") @db.Uuid
   agent                         Agent                          @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread                        Thread                         @relation(fields: [threadId], references: [id], onDelete: Cascade)
   trigger                       AgentTrigger?                  @relation(fields: [triggerId], references: [id], onDelete: SetNull)
   triggerDelivery               AgentTriggerDelivery?          @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
+  cancelRequestedBy             User?                          @relation("RunCancelledBy", fields: [cancelRequestedByUserId], references: [id], onDelete: SetNull)
+  triggerMessage                Message?                       @relation("RunTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: SetNull)
+  restartOfRun                  Run?                           @relation("RunRestart", fields: [restartOfRunId], references: [id], onDelete: SetNull)
+  restarts                      Run[]                          @relation("RunRestart")
   tasks                         Task[]
   toolCalls                     ToolCall[]
   plans                         Plan[]
@@ -1480,6 +1502,7 @@ model Run {
   @@index([agentId, status])
   @@index([threadId, createdAt])
   @@index([triggerId, createdAt])
+  @@index([restartOfRunId])
   @@map("runs")
 }
 
