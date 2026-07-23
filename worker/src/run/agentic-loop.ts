@@ -20,7 +20,7 @@ import {
 import type { AgentEffort } from '@nessie/schemas'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
-import { summarizeToolInput } from './tool-util.js'
+import { summarizeToolInput, truncateToolResult } from './tool-util.js'
 
 export type BudgetLimits = {
   maxIterations: number
@@ -75,7 +75,7 @@ export const EFFORT_BUDGETS: Record<AgentEffort, BudgetLimits> = {
 export const budgetForEffort = (effort: AgentEffort): BudgetLimits =>
   EFFORT_BUDGETS[effort]
 
-type BudgetExhaustionReason =
+export type BudgetExhaustionReason =
   | 'cost'
   | 'iterations'
   | 'loop_detected'
@@ -242,6 +242,10 @@ export const runAgenticLoop = async (input: {
   let toolCallsUsed = 0
   let totalCostCents = 0
   let totalTokensUsed = 0
+  // The most recent assistant text seen. On a budget-cap stop this is the run's
+  // partial answer: the caller surfaces it (with a "stopped at the limit"
+  // notice) instead of posting nothing, so a capped run is never silent.
+  let lastAssistantText = ''
   const startTime = Date.now()
 
   const elapsed = (): number => Date.now() - startTime
@@ -251,7 +255,7 @@ export const runAgenticLoop = async (input: {
       await callbacks.onBudgetExhausted('wallclock')
       return {
         exhaustedBudget: 'wallclock',
-        finalText: '',
+        finalText: lastAssistantText,
         invocations: allInvocations,
         iterations,
         totalCostCents,
@@ -279,12 +283,15 @@ export const runAgenticLoop = async (input: {
     allInvocations.push(...result.invocations)
     totalCostCents = sumCostCents(allInvocations)
     totalTokensUsed = sumTokens(allInvocations)
+    if (result.outputText) {
+      lastAssistantText = result.outputText
+    }
 
     if (budget.maxTokens && totalTokensUsed >= budget.maxTokens) {
       await callbacks.onBudgetExhausted('tokens')
       return {
         exhaustedBudget: 'tokens',
-        finalText: '',
+        finalText: lastAssistantText,
         invocations: allInvocations,
         iterations,
         totalCostCents,
@@ -298,7 +305,7 @@ export const runAgenticLoop = async (input: {
       await callbacks.onBudgetExhausted('cost')
       return {
         exhaustedBudget: 'cost',
-        finalText: '',
+        finalText: lastAssistantText,
         invocations: allInvocations,
         iterations,
         totalCostCents,
@@ -430,8 +437,13 @@ export const runAgenticLoop = async (input: {
     toolCallsUsed += toolResults.length
 
     for (const tr of toolResults) {
+      // Single truncation chokepoint: every tool result — builtin, MCP, and
+      // `delegate` sub-agent output — is capped here before it enters context.
+      // Builtins pre-truncate in `tools.ts` (idempotent: the marker is
+      // detected and not re-applied); MCP and delegate results have no other
+      // cap, so this is what bounds them (audit F1).
       messages.push({
-        content: tr.output,
+        content: truncateToolResult(tr.output),
         role: 'tool',
         toolCallId: tr.toolCallId,
       })
@@ -449,7 +461,7 @@ export const runAgenticLoop = async (input: {
       await callbacks.onBudgetExhausted('tool_calls')
       return {
         exhaustedBudget: 'tool_calls',
-        finalText: '',
+        finalText: lastAssistantText,
         invocations: allInvocations,
         iterations,
         totalCostCents,
@@ -463,7 +475,7 @@ export const runAgenticLoop = async (input: {
       await callbacks.onBudgetExhausted('wallclock')
       return {
         exhaustedBudget: 'wallclock',
-        finalText: '',
+        finalText: lastAssistantText,
         invocations: allInvocations,
         iterations,
         totalCostCents,
@@ -477,7 +489,7 @@ export const runAgenticLoop = async (input: {
   await callbacks.onBudgetExhausted('iterations')
   return {
     exhaustedBudget: 'iterations',
-    finalText: '',
+    finalText: lastAssistantText,
     invocations: allInvocations,
     iterations,
     totalCostCents,

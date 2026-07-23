@@ -14,6 +14,10 @@ export const handleRunExecutionFailure = async (
     error: unknown
     planContext: RunPlanContext | null
     streamStarted: boolean
+    // Overrides the default "I hit an error…" reply for terminal outcomes that
+    // are not crashes — e.g. a budget-cap stop that produced no partial answer,
+    // which posts a clear "stopped at the limit" notice instead.
+    terminalMessage?: string
   },
 ): Promise<void> => {
   const messageText =
@@ -22,7 +26,8 @@ export const handleRunExecutionFailure = async (
   if (input.streamStarted) {
     const fallbackMessageId = `run-error:${context.run.id}`
     let terminalMessageId = fallbackMessageId
-    let terminalContent = `I hit an error while processing this request: ${messageText}`
+    let terminalContent =
+      input.terminalMessage ?? `I hit an error while processing this request: ${messageText}`
     let terminalCreatedAt = new Date().toISOString()
 
     try {
