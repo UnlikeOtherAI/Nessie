@@ -21,7 +21,7 @@ const makeContext = (name: string, id: string = ACTING_AGENT_ID): RunContext => 
     systemPrompt: null,
   },
   channel: { id: 'c', organizationId: 'o', systemChannelType: null },
-  run: { id: 'r', threadId: 't' },
+  run: { id: 'r', threadId: 't', createdAt: new Date('2026-07-23T00:00:00Z') },
   task: { id: 'task' },
 })
 
