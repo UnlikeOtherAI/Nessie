@@ -52,7 +52,7 @@ type ConnectionRow = {
   }
 }
 
-type FakeState = { connection: ConnectionRow; job: JobRow }
+type FakeState = { connection: ConnectionRow; job: JobRow; ownerActive: boolean }
 
 const makeConnection = (lastSyncAt: Date | null): ConnectionRow => ({
   id: CONNECTION_ID,
@@ -73,6 +73,7 @@ const makeConnection = (lastSyncAt: Date | null): ConnectionRow => ({
 })
 
 const makeState = (lastSyncAt: Date | null): FakeState => ({
+  ownerActive: true,
   connection: makeConnection(lastSyncAt),
   job: {
     id: JOB_ID,
@@ -97,6 +98,10 @@ const makeFakePrisma = (state: FakeState): PrismaClient =>
         Object.assign(state.connection, data)
         return Promise.resolve(state.connection)
       },
+    },
+    organizationMember: {
+      findFirst: () =>
+        Promise.resolve(state.ownerActive ? { id: 'member-1' } : null),
     },
     commsSyncJob: {
       findFirst: () => Promise.resolve(state.job),
@@ -195,6 +200,28 @@ test('needsReauthorization parks the connection and fails without retry', async 
   assert.equal(state.connection.status, 'needs_reauthorization')
   assert.equal(state.job.status, 'failed')
   assert.match(state.job.lastError ?? '', /reauthorization required/i)
+})
+
+test('a deactivated owner stops the sync before touching the connector', async () => {
+  const state = makeState(new Date())
+  state.ownerActive = false
+  let syncCalled = false
+  registerConnector('slack', () => {
+    syncCalled = true
+    return throwingConnector(new Error('should never run'))
+  })
+
+  // Must not rethrow and must not run the connector: a removed maintainer's
+  // connection loses access instantly, like every other revocation surface.
+  await executeCommsIncrementalSyncJob(
+    { prisma: makeFakePrisma(state), encryptionSecret: ENCRYPTION_SECRET },
+    { connectionId: CONNECTION_ID },
+  )
+
+  assert.equal(syncCalled, false)
+  // The job is left untouched (still pending) — no work was attempted.
+  assert.equal(state.job.status, 'pending')
+  assert.equal(state.connection.status, 'active')
 })
 
 test('an ordinary error still fails the job and rethrows for queue retry', async () => {

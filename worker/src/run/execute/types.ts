@@ -67,6 +67,16 @@ export type RunPlanContext = {
 export type StoredConversationMessage = {
   content: string
   role: 'assistant' | 'system' | 'user'
+  /**
+   * The agent that authored this message, when it was produced by an agent
+   * (assistant-role turns). `null` for human (`user`) messages. Used by the
+   * prompt builder to distinguish the acting agent's own turns from those of
+   * other agents sharing the thread, so a model never attributes another
+   * agent's reply to itself (buzz #2287).
+   */
+  authorAgentId?: string | null
+  /** Live display name of `authorAgentId`, resolved per run (rename-safe). */
+  authorAgentName?: string | null
 }
 
 export type RetrievedMemory = Pick<SearchResult, 'content' | 'recallId'>

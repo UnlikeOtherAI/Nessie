@@ -81,6 +81,29 @@ const loadConnection = (prisma: PrismaClient, connectionId: string) =>
   })
 
 /**
+ * A connection whose owner is no longer an active member of its organisation
+ * must stop syncing immediately. This is the same "is the user still active"
+ * gate the per-request API auth (`api/src/lib/server-context.ts`) and the
+ * scheduled-trigger poller (`assertTriggerExecutionOriginTenant`) already
+ * enforce; without it, a deactivated or removed maintainer's Slack/Gmail would
+ * keep importing into Nessie long after their access was revoked.
+ */
+const isConnectionOwnerActive = async (
+  prisma: PrismaClient,
+  connection: { organizationId: string; ownerUserId: string },
+): Promise<boolean> => {
+  const membership = await prisma.organizationMember.findFirst({
+    where: {
+      organizationId: connection.organizationId,
+      userId: connection.ownerUserId,
+      deactivatedAt: null,
+    },
+    select: { id: true },
+  })
+  return membership !== null
+}
+
+/**
  * Resume the newest non-terminal sync job for this (connection, resource,
  * phase), or start a fresh one. A completed history back-fill is left alone; an
  * incremental job always continues from the newest job's cursor.
@@ -145,6 +168,12 @@ const runSyncPhase = async (
   }
   if (connection.status === 'disconnected') {
     console.warn(`[comms-sync] connection ${connection.id} is disconnected — skipping`)
+    return
+  }
+  if (!(await isConnectionOwnerActive(prisma, connection))) {
+    console.warn(
+      `[comms-sync] connection ${connection.id} owner is deactivated — skipping`,
+    )
     return
   }
 
@@ -314,6 +343,9 @@ export const renewCommsSubscriptions = async (
 
   for (const connection of connections.values()) {
     if (connection.status === 'disconnected' || !connection.credential) {
+      continue
+    }
+    if (!(await isConnectionOwnerActive(prisma, connection))) {
       continue
     }
     try {

@@ -412,6 +412,11 @@ See [docs/functionality.md](docs/functionality.md) for the authoritative API sur
   all through the worker queue. An expired provider cursor (`SyncCursorExpiredError`)
   triggers a bounded history re-sync; a rejected credential (`needsReauthorization`)
   moves the connection to `needs_reauthorization` and fails the job without retry.
+  The sync worker and the subscription-renewal sweep also skip any connection
+  whose `ownerUserId` is no longer an active org member (`deactivatedAt`), so
+  deactivating a user stops their comms import immediately — the same
+  owner-revocation gate the API request auth and the scheduled-trigger poller
+  already enforce (`worker/src/control/comms-sync.ts` `isConnectionOwnerActive`).
 - Chat-first: the `comms_connect_card` PA tool drives connect; `/settings/connections`
   is the secondary UI. The connector layer holds **no** reasoning logic (the
   Chief-of-Staff boundary). Authoritative spec:
