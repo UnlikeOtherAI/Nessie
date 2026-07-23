@@ -102,7 +102,7 @@ const input = (state: FakeState, sender: WebPushSender) => ({
   payload: basePayload,
   organizationId: 'org-1',
   messageId: 'msg-1',
-  channelId: 'channel-1',
+  deepLinkUrl: '/channels/channel-1',
   sender,
   urlGuard: allowAll,
 })

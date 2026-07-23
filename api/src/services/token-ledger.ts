@@ -169,6 +169,71 @@ export const getTokenUsageSummary = async (
   }
 }
 
+// Owner-only local telemetry: token spend split by the terminal outcome of the
+// run that produced it (completed / failed / cancelled / running / unknown), so
+// spend burned by FAILED runs is visible and attributable rather than lost in
+// the aggregate (buzz #1659). Joins token_ledger_events to runs on run_id; a
+// null/absent run maps to 'unknown'. This is Nessie-local ops data — never UOA
+// customer credits.
+export const getRunOutcomeUsageSummary = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  filters?: { from?: string; to?: string },
+) => {
+  const conditions: string[] = ['e."organization_id" = $1::uuid']
+  const params: unknown[] = [organizationId]
+  let paramIdx = 2
+
+  if (filters?.from) {
+    conditions.push(`e."occurred_at" >= $${paramIdx++}`)
+    params.push(new Date(filters.from))
+  }
+  if (filters?.to) {
+    conditions.push(`e."occurred_at" <= $${paramIdx++}`)
+    params.push(new Date(filters.to))
+  }
+
+  const whereClause = conditions.join(' AND ')
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{
+      outcome: string | null
+      total_tokens: bigint
+      estimated_cost: number
+      event_count: bigint
+      run_count: bigint
+    }>
+  >(
+    `SELECT
+       COALESCE(r."status"::text, 'unknown') as outcome,
+       COALESCE(SUM(e.total_tokens), 0) as total_tokens,
+       COALESCE(SUM(e.estimated_cost_amount), 0) as estimated_cost,
+       COUNT(e.id) as event_count,
+       COUNT(DISTINCT e.run_id) as run_count
+     FROM token_ledger_events e
+     LEFT JOIN runs r ON e.run_id = r.id
+     WHERE ${whereClause}
+     GROUP BY COALESCE(r."status"::text, 'unknown')
+     ORDER BY estimated_cost DESC`,
+    ...params,
+  )
+
+  const outcomes = rows.map((row) => ({
+    outcome: row.outcome ?? 'unknown',
+    totalTokens: Number(row.total_tokens),
+    estimatedCost: Number(row.estimated_cost),
+    eventCount: Number(row.event_count),
+    runCount: Number(row.run_count),
+  }))
+
+  const failed = outcomes.find((o) => o.outcome === 'failed')
+  return {
+    currency: 'USD',
+    outcomes,
+    failedEstimatedCost: failed?.estimatedCost ?? 0,
+    failedTotalTokens: failed?.totalTokens ?? 0,
+  }
+}
+
 export const getConnectorUsageSummary = async (
   prisma: PrismaClient,
   organizationId: string,

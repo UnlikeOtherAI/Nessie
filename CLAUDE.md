@@ -55,6 +55,25 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   inferenceMs, inferenceCount, toolMs, toolCount }`, no cost data
   (`worker/src/run/execute/run-timing.ts`) — so a slow run is diagnosable;
   owners read recent summaries at `GET /api/ledger/runs/timing`.
+- **Budget threshold alerts + failed-run attribution** (local ops only, never
+  UOA credits). The gate no longer only observes usage passively: `evaluateBudget`
+  (`packages/runtime/src/budget.ts`) returns the byte-identical verdict PLUS an
+  alert snapshot, and `applyBudgetGate` fires **at most once per budget scope per
+  period** when cumulative spend first crosses `Budget.warnThresholdPercent`
+  ('threshold') or first blocks a run ('blocked'). Alerting runs AFTER the verdict
+  is applied and swallows its own errors, so blocking behaviour is unchanged.
+  Durable crash-safe dedupe = a `budget_alerts` marker row unique on
+  `(scopeType, scopeId, periodStart, kind)`; each alert also emits a
+  `budget.threshold_alert` `TaskEvent` (queryable) and enqueues
+  `budget.alert-dispatch`, which notifies org owners + the scope's managers
+  through the shared push pipeline (`worker/src/control/push-delivery-core.ts`,
+  reused by message push + budget alerts), respecting push preferences,
+  deep-linking `/ops/usage`. Every terminal run persists its inference spend:
+  completion and the budget-stop no-text path already did; the generic
+  failure/crash path now does too via a caller-owned invocation accumulator
+  threaded through `runAgenticLoop`, so a failed run's tokens stay attributable
+  (buzz #1659, idempotent on `inferenceInvocationId`). Owners read spend split by
+  run outcome (completed/failed/cancelled/…) at `GET /api/ledger/tokens/by-outcome`.
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 

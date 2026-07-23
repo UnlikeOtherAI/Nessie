@@ -39,6 +39,37 @@ export type BudgetDecision =
   | { action: 'block'; reason: string }
   | { action: 'degrade'; model: string; provider: string; reason: string }
 
+// A read-only observation of the governing budget's period-to-date usage,
+// produced ALONGSIDE (never in place of) the gate decision so callers can alert
+// on a threshold crossing without changing the verdict. Present only for a
+// governing budget that has a cost or token limit and a cap-aware mode
+// (warn / enforce / degrade); null for unlimited, off, or no-limit budgets.
+export type BudgetAlertSnapshot = {
+  organizationId: string
+  scopeType: BudgetScopeType
+  scopeId: string
+  mode: BudgetMode
+  period: BudgetPeriod
+  // Start of the current budget period (UTC) — the dedupe key for "alert once
+  // per budget per period".
+  periodStart: Date
+  spentUsd: number
+  costLimitUsd: number | null
+  spentTokens: number
+  tokenLimit: number | null
+  percentUsed: number | null
+  warnThresholdPercent: number
+  level: BudgetLevel
+}
+
+// The gate's decision PLUS the observation used for alerting. `checkBudget`
+// returns only `.decision`, so the verdict path is unchanged; alerting callers
+// use `evaluateBudget` and read `.alert`.
+export type BudgetEvaluation = {
+  decision: BudgetDecision
+  alert: BudgetAlertSnapshot | null
+}
+
 export type BudgetStatus = {
   scopeType: BudgetScopeType
   scopeId: string
@@ -183,40 +214,56 @@ const resolveBudget = async (
   return null
 }
 
-export const checkBudget = async (
-  prisma: PrismaClient,
-  scope: BudgetScope,
-  opts: { isHuman: boolean },
-): Promise<BudgetDecision> => {
-  const budget = await resolveBudget(prisma, scope)
+// Alerting is observed against any governing budget with a limit and a
+// cap-aware mode. `unlimited` is an explicit no-cap; `off` never resolves here.
+const isCapAwareMode = (mode: BudgetMode): boolean =>
+  mode === 'warn' || mode === 'enforce' || mode === 'degrade'
 
-  // Only enforce and degrade act on spend; off (inherits, never resolved here),
-  // warn, and unlimited always allow.
-  if (!budget || (budget.mode !== 'enforce' && budget.mode !== 'degrade')) {
-    return { action: 'allow' }
+const buildAlertSnapshot = (
+  row: BudgetRow,
+  usage: { spentUsd: number; spentTokens: number },
+): BudgetAlertSnapshot => {
+  const over = overCapReason(row, usage.spentUsd, usage.spentTokens) !== null
+  const percentUsed = maxPercent(row, usage.spentUsd, usage.spentTokens)
+  const warnReached = percentUsed !== null && percentUsed >= row.warnThresholdPercent
+  const level: BudgetLevel = over ? 'over' : warnReached ? 'warn' : 'ok'
+  return {
+    organizationId: row.organizationId,
+    scopeType: row.scopeType,
+    scopeId: row.scopeId,
+    mode: row.mode,
+    period: row.period,
+    periodStart: periodStartUtc(row.period, new Date()),
+    spentUsd: usage.spentUsd,
+    costLimitUsd: row.costLimitUsd,
+    spentTokens: usage.spentTokens,
+    tokenLimit: row.tokenLimit,
+    percentUsed,
+    warnThresholdPercent: row.warnThresholdPercent,
+    level,
   }
-  if (budget.costLimitUsd === null && budget.tokenLimit === null) {
-    return { action: 'allow' }
-  }
+}
 
-  const { spentUsd, spentTokens } = await getPeriodUsage(
-    prisma,
-    scopeUsageWhere(budget),
-    budget.period,
-  )
-  const reason = overCapReason(budget, spentUsd, spentTokens)
+// The verdict, factored out so it is provably identical between the usage the
+// gate reads and the usage the alert snapshot reads (one query, two consumers).
+const deriveDecision = (
+  row: BudgetRow,
+  usage: { spentUsd: number; spentTokens: number },
+  isHuman: boolean,
+): BudgetDecision => {
+  const reason = overCapReason(row, usage.spentUsd, usage.spentTokens)
   if (reason === null) {
     return { action: 'allow' }
   }
 
   // Over cap. Degrade keeps the run going on the cheaper model (never blocks);
   // it falls back to allow if no degrade target is configured.
-  if (budget.mode === 'degrade') {
-    if (budget.degradeModel) {
+  if (row.mode === 'degrade') {
+    if (row.degradeModel) {
       return {
         action: 'degrade',
-        model: budget.degradeModel,
-        provider: budget.degradeProvider ?? 'openai',
+        model: row.degradeModel,
+        provider: row.degradeProvider ?? 'openai',
         reason,
       }
     }
@@ -224,11 +271,54 @@ export const checkBudget = async (
   }
 
   // Enforce. A live human turn passes unless the org opted into blocking people.
-  if (opts.isHuman && !budget.blockHumansWhenOver) {
+  if (isHuman && !row.blockHumansWhenOver) {
     return { action: 'allow' }
   }
   return { action: 'block', reason }
 }
+
+// Evaluate the governing budget for a run: the gate DECISION plus a read-only
+// ALERT snapshot. The decision is byte-identical to the legacy `checkBudget`
+// logic; the snapshot is an additional observation and never influences the
+// verdict. A single period-usage query feeds both.
+export const evaluateBudget = async (
+  prisma: PrismaClient,
+  scope: BudgetScope,
+  opts: { isHuman: boolean },
+): Promise<BudgetEvaluation> => {
+  const budget = await resolveBudget(prisma, scope)
+  if (!budget) {
+    return { decision: { action: 'allow' }, alert: null }
+  }
+
+  const hasLimit = budget.costLimitUsd !== null || budget.tokenLimit !== null
+
+  // Only enforce and degrade act on spend; warn and unlimited always allow. But
+  // warn budgets still produce an alert snapshot, so read usage when the budget
+  // is cap-aware and has a limit even if the verdict is a foregone `allow`.
+  if (budget.mode !== 'enforce' && budget.mode !== 'degrade') {
+    if (isCapAwareMode(budget.mode) && hasLimit) {
+      const usage = await getPeriodUsage(prisma, scopeUsageWhere(budget), budget.period)
+      return { decision: { action: 'allow' }, alert: buildAlertSnapshot(budget, usage) }
+    }
+    return { decision: { action: 'allow' }, alert: null }
+  }
+  if (!hasLimit) {
+    return { decision: { action: 'allow' }, alert: null }
+  }
+
+  const usage = await getPeriodUsage(prisma, scopeUsageWhere(budget), budget.period)
+  return {
+    decision: deriveDecision(budget, usage, opts.isHuman),
+    alert: buildAlertSnapshot(budget, usage),
+  }
+}
+
+export const checkBudget = async (
+  prisma: PrismaClient,
+  scope: BudgetScope,
+  opts: { isHuman: boolean },
+): Promise<BudgetDecision> => (await evaluateBudget(prisma, scope, opts)).decision
 
 // Stored-bytes usage scope for a budget row (org scopeId is the organization id).
 const storageScopeForRow = (row: BudgetRow) => {

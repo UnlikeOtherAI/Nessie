@@ -7,6 +7,7 @@ import {
   markAmbiguousDeepWaterHandoffRecoveryNeeded,
   markDeepWaterHandoffRecoveryNeeded,
   type DeepWaterHandoffRunLocator,
+  type InvocationRecord,
 } from '@nessie/runtime'
 import {
   parseAgentId,
@@ -122,6 +123,11 @@ export const executeRunJob = async (
   let claimedAt: Date | null = null
   let loopResult: LoopResult | null = null
   let terminalOutcome: 'completed' | 'failed' | null = null
+  // Caller-owned invocation accumulator. The agent loop pushes every inference
+  // invocation here live, so a run that throws mid-loop (crash/abort) still
+  // carries its partial token spend — the failure path persists it so failed
+  // spend stays attributable in the local ledger (buzz #1659).
+  const invocations: InvocationRecord[] = []
   const handoffTeamId =
     payload.actorContext.tenant.teamId ?? payload.actorContext.actionContext.teamId ?? null
   let handoffLocator: DeepWaterHandoffRunLocator | null = null
@@ -279,6 +285,7 @@ export const executeRunJob = async (
       allowedToolIds,
       budgetModelOverride: budgetGate.modelOverride,
       initialMessages,
+      invocationSink: invocations,
       deepWaterHandoffGuard,
       mcpToolset,
       resolvedToolIds,
@@ -369,6 +376,28 @@ export const executeRunJob = async (
         await markAmbiguousDeepWaterHandoffRecoveryNeeded(
           deps.prisma,
           handoffLocator,
+        )
+      }
+    }
+    // Attribute the tokens this run burned before it failed. Completion (and the
+    // budget-stop no-text path) persist their own invocations; a crashed/aborted
+    // run never reaches completion, so without this its inference spend would be
+    // dropped and impossible to attribute. Idempotent: persistInvocationLedgerEvents
+    // dedupes on inferenceInvocationId, so a later retry that reuses ids is safe.
+    // Best-effort — a ledger write must never mask the original failure.
+    if (invocations.length > 0) {
+      try {
+        await persistInvocationLedgerEvents(deps.prisma, {
+          actorContext: payload.actorContext,
+          agentId: context.agent.id,
+          invocations,
+          runId: context.run.id,
+        })
+      } catch (ledgerError) {
+        console.error(
+          '[worker] failed to persist ledger events for failed run',
+          context.run.id,
+          ledgerError,
         )
       }
     }

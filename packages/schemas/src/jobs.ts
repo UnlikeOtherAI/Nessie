@@ -72,6 +72,28 @@ export const PushDispatchJobPayloadSchema = z.object({
 })
 export type PushDispatchJobPayload = z.infer<typeof PushDispatchJobPayloadSchema>
 
+/**
+ * `budget.alert-dispatch` queue job — emitted by the worker's budget gate when a
+ * scope Budget first crosses its warn threshold ('threshold') or first blocks a
+ * run ('blocked') in a period. Consumed by the worker to notify org owners and
+ * the budget scope's managers through the shared push pipeline (respecting each
+ * recipient's push preferences). Durable once-per-period dedupe is enforced by
+ * the `budget_alerts` marker row before this job is enqueued; the idempotency
+ * key is a second guard. This carries only local ops telemetry — never any UOA
+ * credits/statement data.
+ */
+export const BudgetAlertDispatchJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  scopeType: z.enum(['organization', 'project', 'team']),
+  scopeId: z.string().uuid(),
+  kind: z.enum(['threshold', 'blocked']),
+  period: z.enum(['weekly', 'monthly', 'yearly']),
+  scopeLabel: z.string(),
+  percentUsed: z.number().nullable(),
+  reason: z.string(),
+})
+export type BudgetAlertDispatchJobPayload = z.infer<typeof BudgetAlertDispatchJobPayloadSchema>
+
 export const WorkflowRunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   workflowRunId: z.string().uuid(),
