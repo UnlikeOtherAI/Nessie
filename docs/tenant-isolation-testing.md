@@ -33,6 +33,7 @@ org A row left untouched.
 | Audit log | `GET /api/audit-log`, `GET …/:id` (404), `GET …/verify` (own chain only) | — (read-only surface) | `audit-log.test.ts` |
 | Triggers | `GET /api/triggers` (empty) | `DELETE /api/triggers/:id`, `POST …/pause` (404) | `triggers.test.ts` |
 | Agents (+bindings, activity) | `GET /api/agents` (empty), `GET …/:id/status` (404) | `PUT /api/agents/:id` (404), `POST …/:id/bindings` (404) | `agents.test.ts` |
+| Runs (lifecycle) | `GET /api/runs/active` (empty) | `POST …/:id/cancel`, `POST …/:id/restart` (404) | `runs.test.ts` |
 | Projects | `GET /api/projects`, `GET …/:id` (404) | — | `resources-read.test.ts` |
 | Tasks | `GET /api/tasks`, `GET …/:id` (404) | — | `resources-read.test.ts` |
 | Iterations | `GET /api/projects/:id/iterations` (404) | — | `resources-read.test.ts` |
