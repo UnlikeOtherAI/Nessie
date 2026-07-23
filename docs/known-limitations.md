@@ -66,3 +66,12 @@ scaling. They are omitted from the tables above rather than asserted, to keep
 this register limited to checked claims. Verify against
 `api/src/services/channels.ts` and the agent activity loaders before relying on
 their status.*
+
+---
+
+*Tenant isolation — the invariant that a caller in org B cannot read or mutate
+org A's rows — is machine-checked by the conformance suite in
+`api/test/conformance/`. See [tenant-isolation-testing.md](tenant-isolation-testing.md)
+for the resource×check matrix, how to add a row when introducing a route, and
+what it deliberately does not prove (no live-DB boot, no mutation-testing of
+scope clauses yet).*
