@@ -103,6 +103,10 @@ export type LoopResult = {
   finalText: string
   iterations: number
   toolCallsUsed: number
+  // Aggregate wall-clock time spent inside tool executions. Tools within one
+  // iteration run concurrently (Promise.allSettled), so this sums per-tool
+  // spans and can exceed `wallclockMs` — it measures tool work, not a span.
+  toolMs: number
   totalCostCents: number
   wallclockMs: number
   totalTokensUsed: number
@@ -240,6 +244,7 @@ export const runAgenticLoop = async (input: {
 
   let iterations = 0
   let toolCallsUsed = 0
+  let totalToolMs = 0
   let totalCostCents = 0
   let totalTokensUsed = 0
   // The most recent assistant text seen. On a budget-cap stop this is the run's
@@ -250,19 +255,28 @@ export const runAgenticLoop = async (input: {
 
   const elapsed = (): number => Date.now() - startTime
 
+  // Single construction point for every exit path, so the running totals
+  // (including per-stage timing) are captured identically whether the loop
+  // completes naturally or trips a budget cap.
+  const finish = (
+    exhaustedBudget: BudgetExhaustionReason | null,
+    finalText: string = lastAssistantText,
+  ): LoopResult => ({
+    exhaustedBudget,
+    finalText,
+    invocations: allInvocations,
+    iterations,
+    toolCallsUsed,
+    toolMs: totalToolMs,
+    totalCostCents,
+    totalTokensUsed,
+    wallclockMs: elapsed(),
+  })
+
   while (iterations < budget.maxIterations) {
     if (elapsed() >= budget.maxWallclockMs) {
       await callbacks.onBudgetExhausted('wallclock')
-      return {
-        exhaustedBudget: 'wallclock',
-        finalText: lastAssistantText,
-        invocations: allInvocations,
-        iterations,
-        totalCostCents,
-        toolCallsUsed,
-        totalTokensUsed,
-        wallclockMs: elapsed(),
-      }
+      return finish('wallclock')
     }
 
     iterations += 1
@@ -289,46 +303,19 @@ export const runAgenticLoop = async (input: {
 
     if (budget.maxTokens && totalTokensUsed >= budget.maxTokens) {
       await callbacks.onBudgetExhausted('tokens')
-      return {
-        exhaustedBudget: 'tokens',
-        finalText: lastAssistantText,
-        invocations: allInvocations,
-        iterations,
-        totalCostCents,
-        toolCallsUsed,
-        totalTokensUsed,
-        wallclockMs: elapsed(),
-      }
+      return finish('tokens')
     }
 
     if (budget.maxCostCents && totalCostCents >= budget.maxCostCents) {
       await callbacks.onBudgetExhausted('cost')
-      return {
-        exhaustedBudget: 'cost',
-        finalText: lastAssistantText,
-        invocations: allInvocations,
-        iterations,
-        totalCostCents,
-        toolCallsUsed,
-        totalTokensUsed,
-        wallclockMs: elapsed(),
-      }
+      return finish('cost')
     }
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
       if (result.outputText) {
         await callbacks.onTextDelta(result.outputText)
       }
-      return {
-        exhaustedBudget: null,
-        finalText: result.outputText,
-        invocations: allInvocations,
-        iterations,
-        totalCostCents,
-        toolCallsUsed,
-        totalTokensUsed,
-        wallclockMs: elapsed(),
-      }
+      return finish(null, result.outputText)
     }
 
     messages.push({
@@ -377,6 +364,7 @@ export const runAgenticLoop = async (input: {
             () => input.toolTimeoutError?.(tc.toolName) ?? null,
           )
           const durationMs = Date.now() - startedAt.getTime()
+          totalToolMs += durationMs
           if (toolResult.success) {
             circuitBreaker.recordSuccess(tc.toolName)
           } else {
@@ -399,6 +387,7 @@ export const runAgenticLoop = async (input: {
             : error instanceof Error ? error.message : 'Tool execution failed'
           circuitBreaker.recordError(tc.toolName)
           const durationMs = Date.now() - startedAt.getTime()
+          totalToolMs += durationMs
           try {
             await callbacks.onToolCallEnd(
               tc.toolName,
@@ -459,42 +448,15 @@ export const runAgenticLoop = async (input: {
 
     if (toolCallsUsed >= budget.maxToolCalls) {
       await callbacks.onBudgetExhausted('tool_calls')
-      return {
-        exhaustedBudget: 'tool_calls',
-        finalText: lastAssistantText,
-        invocations: allInvocations,
-        iterations,
-        totalCostCents,
-        toolCallsUsed,
-        totalTokensUsed,
-        wallclockMs: elapsed(),
-      }
+      return finish('tool_calls')
     }
 
     if (elapsed() >= budget.maxWallclockMs) {
       await callbacks.onBudgetExhausted('wallclock')
-      return {
-        exhaustedBudget: 'wallclock',
-        finalText: lastAssistantText,
-        invocations: allInvocations,
-        iterations,
-        totalCostCents,
-        toolCallsUsed,
-        totalTokensUsed,
-        wallclockMs: elapsed(),
-      }
+      return finish('wallclock')
     }
   }
 
   await callbacks.onBudgetExhausted('iterations')
-  return {
-    exhaustedBudget: 'iterations',
-    finalText: lastAssistantText,
-    invocations: allInvocations,
-    iterations,
-    totalCostCents,
-    toolCallsUsed,
-    totalTokensUsed,
-    wallclockMs: elapsed(),
-  }
+  return finish('iterations')
 }

@@ -53,6 +53,9 @@ export type RunContext = {
   run: {
     id: string
     threadId: string
+    // Run row creation ≈ enqueue instant (run.create + job enqueue share one
+    // transaction), used as the queue-wait baseline for run.timing.
+    createdAt: Date
   }
   task: {
     id: string

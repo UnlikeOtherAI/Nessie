@@ -49,7 +49,12 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   `completed`), or a clear notice is posted and the run `failed` when the loop
   produced nothing; a `run.budget_exhausted` `TaskEvent` records the reason.
   All tool results (builtin, MCP, `delegate`) are truncated at the single loop
-  chokepoint before entering context.
+  chokepoint before entering context. Every run also records a wall-clock-only
+  stage-latency breakdown at its terminal state (completion **and** failure) as
+  a `run.timing` `TaskEvent` — `{ outcome, runId, queueWaitMs, totalMs,
+  inferenceMs, inferenceCount, toolMs, toolCount }`, no cost data
+  (`worker/src/run/execute/run-timing.ts`) — so a slow run is diagnosable;
+  owners read recent summaries at `GET /api/ledger/runs/timing`.
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 
